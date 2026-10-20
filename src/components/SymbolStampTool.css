@@ -1,0 +1,114 @@
+/* KAL-407 — the Symbols panel (components/SymbolStampTool.jsx).
+   The app's floating card look (SelectionQuickBar.css): --surface-2, the
+   subtle --border edge, --radius-md corners, --shadow-popover. On desktop it
+   sits at the right of the page area, under the tool rows; on a phone it is a
+   sheet above the bottom bar so the page stays tappable above it. */
+.symbol-stamp-panel {
+  position: fixed;
+  top: 120px;
+  right: 60px;
+  z-index: 5600;
+  width: 284px;
+  max-height: calc(100vh - 160px);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-1);
+  font-size: 12px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+@media (max-width: 640px) {
+  .symbol-stamp-panel {
+    top: auto;
+    right: 8px;
+    /* Clear of the phone tool rail on the left. */
+    left: calc(var(--mobile-rail-w, 36px) + 8px);
+    bottom: 72px;
+    width: auto;
+    max-height: 42vh;
+  }
+}
+.symbol-stamp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 6px 12px;
+  font-weight: 600;
+}
+.symbol-stamp-head .symbol-stamp-hint {
+  flex: 1;
+  font-weight: 400;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.symbol-stamp-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 6px;
+}
+.symbol-stamp-tabs button {
+  flex: 1;
+  padding: 5px 4px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+.symbol-stamp-tabs small {
+  display: block;
+  color: var(--text-3);
+  font-size: 10px;
+}
+.symbol-stamp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 4px;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.symbol-stamp-grid button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 64px;
+  padding: 6px 2px;
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-align: center;
+}
+.symbol-stamp-grid img {
+  width: 40px;
+  height: 28px;
+  object-fit: contain;
+  /* The symbols are dark line art; a light tile keeps them readable on the dark card. */
+  background: #f7f7f5;
+  border-radius: 4px;
+  padding: 2px;
+}
+.symbol-stamp-colors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+}
+.symbol-stamp-colors button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--surface-2);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: pointer;
+}
+.symbol-stamp-colors button[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--text-1);
+}

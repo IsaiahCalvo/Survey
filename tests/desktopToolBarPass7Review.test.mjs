@@ -17,6 +17,9 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
 const APP_SHELL = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+// The counter-series menu moved out of AppShell into its own component; the
+// contract below reads both so it follows the markup wherever it lives.
+const COUNTER_MENU = readFileSync(new URL('../src/components/CounterSeriesMenu.jsx', import.meta.url), 'utf8');
 const STYLES = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 const PDF_VIEWER = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 const QUICK_STYLE_JSX = readFileSync(new URL('../src/components/QuickStyleControls.jsx', import.meta.url), 'utf8');
@@ -84,8 +87,8 @@ test('the counter pill names the live count and its menu ends in New', () => {
   assert.match(APP_SHELL, /Count \$\{seriesList\.length \+ 1\}/);
   // Words only, per the owner's ruling on the series menu: the row READS "New"
   // and draws nothing, while the full phrase stays its accessible name.
-  assert.match(APP_SHELL_CODE, />\s*New\s*<\/button>/);
-  assert.match(APP_SHELL, /aria-label="New count"/);
+  assert.match(codeOnly(COUNTER_MENU), />\s*New\s*<\/button>/);
+  assert.match(COUNTER_MENU, /aria-label="New count"/);
   assert.equal(
     /<Icon name="plus"[^>]*\/>\s*\n\s*New/.test(APP_SHELL_CODE),
     false,

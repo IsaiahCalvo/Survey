@@ -1,0 +1,18 @@
+.counter-series-menu { width: 100%; max-height: min(420px, 60vh); overflow-y: auto; color: var(--text-2); }
+.counter-series-menu__row { padding: 5px 8px 8px; border-bottom: 1px solid var(--border); }
+.counter-series-menu button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; border-radius: 5px; min-height: 36px; }
+.counter-series-menu button:hover { background: var(--hover); }
+.counter-series-menu button:focus-visible, .counter-series-menu input:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.counter-series-menu__continue { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; text-align: left; }
+.counter-series-menu__continue > span { overflow-wrap: anywhere; min-width: 0; }
+.counter-series-menu__continue small { white-space: nowrap; color: var(--text-3); font-size: 11px; }
+.counter-series-menu__continue.is-active { color: var(--accent); }
+.counter-series-menu__actions { display: flex; gap: 4px; }
+.counter-series-menu__actions button { padding: 0 8px; font-size: 12px; }
+.counter-series-menu .counter-series-menu__delete { color: var(--danger-text); }
+.counter-series-menu__rename input { width: 100%; box-sizing: border-box; min-height: 36px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-1); background: var(--surface-2); padding: 6px 8px; font: inherit; }
+.counter-series-menu__rename p { margin: 4px 8px; font-size: 12px; color: var(--danger-text); }
+.counter-series-menu__new { width: 100%; text-align: left; padding: 5px 16px; }
+.counter-series-menu__empty { margin: 8px 16px; color: var(--text-3); font-size: 12px; }
+.counter-series-picker--mobile .chrome-pill { width: var(--chrome-pill-w, 100%); max-width: 160px; }
+@media (pointer: coarse) { .counter-series-menu button { min-height: 44px; } }

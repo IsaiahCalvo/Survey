@@ -72,7 +72,9 @@ test('selected PDF words reopen markup actions on right-click', async ({ page })
 test('polyline midsegment handle adds a point, drag moves it, and Undo restores', async ({ page }) => {
   await page.keyboard.press('k');
   const box = await page.locator('[data-svg-annotation-layer="1"]').boundingBox();
-  for (const [x, y] of [[180,230], [350,250], [420,350]]) await page.mouse.click(box.x + x, box.y + y);
+  // Keep every point inside the actual page on narrower tablet screens.
+  const width = Math.min(box.width, 600), height = Math.min(box.height, 800);
+  for (const [x, y] of [[width * .30, height * .29], [width * .59, height * .32], [width * .70, height * .44]]) await page.mouse.click(box.x + x, box.y + y);
   await page.keyboard.press('Enter');
   await page.keyboard.press('v');
   await expect(page.locator('[data-add-vertex]')).toHaveCount(2);

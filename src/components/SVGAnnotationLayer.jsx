@@ -177,13 +177,16 @@ import {
 // w58: hold Cmd (Mac) / Ctrl (Windows) to move the selection from anywhere in its box.
 import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes } from '../utils/moveModifier.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
+import { isSymbolStamp } from '../utils/symbolLibrary.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
 import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
 import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
 import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '../utils/crossPageMove.js';
 // Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
-import { buildPolygonMarkerBounds, buildStrokeMarkerBounds, MARKER_STROKE_DEFAULT_WIDTH } from '../survey/markerShapes.js';
+import { buildPolygonMarkerBounds, buildStrokeMarkerBounds, MARKER_STROKE_DEFAULT_WIDTH, markerShapePathData } from '../survey/markerShapes.js';
+import '../survey/smartFillBeta.js';
+import { showToast, dismissToast } from '../utils/toast';
 import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
 import { isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
 import {
@@ -2363,13 +2366,25 @@ const SVGAnnotationLayerBody = memo(({
   const smartFillLive = isSmartFillPressLive({ activeTool, markerDrawMode, isTabActive });
   const smartFillLiveRef = useRef(smartFillLive);
   smartFillLiveRef.current = smartFillLive;
+  // Owner 2026-10-20 (beta): a found outline is a PREVIEW first. The user
+  // checks the whole outline, then presses Apply on the toast; a new tap,
+  // another mode or tool, or closing the toast drops it. Matches the
+  // playground's review-then-Apply rule: nothing fills on its own.
+  const [smartFillPreview, setSmartFillPreview] = useState(null);
+  const clearSmartFillPreview = useCallback(() => {
+    setSmartFillPreview(null);
+    dismissToast('smart-fill-preview');
+  }, []);
   useEffect(() => {
     if (!smartFillLive) smartFillAbortRef.current?.abort?.();
-  }, [smartFillLive]);
+    if (!smartFillLive) clearSmartFillPreview();
+  }, [clearSmartFillPreview, smartFillLive]);
+  useEffect(() => () => dismissToast('smart-fill-preview'), []);
   const startSmartFill = useCallback((point) => {
     smartFillAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     smartFillAbortRef.current = controller;
+    clearSmartFillPreview();
     setSmartFillPending(point);
     const pageEl = svgRef.current?.closest?.('[data-page-number]');
     const pageCanvas = pageEl?.querySelector?.('canvas') || null;
@@ -2382,7 +2397,10 @@ const SVGAnnotationLayerBody = memo(({
     }).then((result) => {
       if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
       const markerBounds = result ? buildPolygonMarkerBounds(result) : null;
-      if (markerBounds && typeof onSurveyMarkerCreated === 'function') {
+      if (!markerBounds || typeof onSurveyMarkerCreated !== 'function') return;
+      const apply = () => {
+        if (!smartFillLiveRef.current) return;
+        setSmartFillPreview(null);
         recordAnnotationCommit({
           surface: 'SVGAnnotationLayer',
           source: 'survey-marker:create',
@@ -2390,13 +2408,19 @@ const SVGAnnotationLayerBody = memo(({
           pageNumber,
         });
         onSurveyMarkerCreated(markerBounds);
-      }
+      };
+      setSmartFillPreview({ bounds: markerBounds, apply });
+      showToast('Smart fill found this outline. Check it, then Apply.', 'info', {
+        id: 'smart-fill-preview',
+        duration: Infinity,
+        action: { label: 'Apply', onClick: apply },
+      });
     }).finally(() => {
       if (smartFillAbortRef.current !== controller) return;
       smartFillAbortRef.current = null;
       setSmartFillPending(null);
     });
-  }, [height, onSurveyMarkerCreated, pageNumber, width]);
+  }, [clearSmartFillPreview, height, onSurveyMarkerCreated, pageNumber, width]);
 
   // ---------------------------------------------------------------------------
   // Polygon / polyline click-to-place commit + cancel.
@@ -3700,7 +3724,7 @@ const SVGAnnotationLayerBody = memo(({
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         element = renderPath(obj, i);
       } else if (isPdfStampProxy(obj)) {
-        element = <image {...getPdfStampProxySvgProps(obj)} data-pdf-stamp-proxy="true" />;
+        element = <image {...getPdfStampProxySvgProps(obj)} data-pdf-stamp-proxy="true" data-symbol-stamp={isSymbolStamp(obj) ? obj.data.symbolStamp.id : undefined} />;
       } else if (objectType === 'rect') {
         element = renderRect(obj, i);
       } else if (objectType === 'line') {
@@ -7585,6 +7609,19 @@ const SVGAnnotationLayerBody = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* Smart fill beta: the found outline, waiting for Apply. */}
+      {smartFillPreview && (
+        <path
+          data-smart-fill-preview="true"
+          d={markerShapePathData(smartFillPreview.bounds.shape)}
+          fill="rgba(74, 144, 226, 0.25)"
+          fillRule="evenodd"
+          stroke="#4A90E2"
+          strokeWidth={2 * clampInverseScale(inverseScale)}
+          strokeDasharray="5,4"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
       {/* w32: other screens' strokes while they are being drawn. */}
       <LiveStrokeGhosts documentId={documentId} pageNumber={pageNumber} />
       {/* Owner after Test 46: a mark carried over from another page, at the
@@ -7857,7 +7894,9 @@ const SVGAnnotationLayerBody = memo(({
         }
 
         const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
-        const isLockedStampProxy = isPdfStampProxy(selectionObj);
+        // KAL-407: a library symbol is a stamp you placed, so it resizes and
+        // rotates like a shape; only stamps imported from the PDF stay locked.
+        const isLockedStampProxy = isPdfStampProxy(selectionObj) && !isSymbolStamp(selectionObj);
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         // UX 2026-09-09: the object the selection chrome (cloud cusps / hull)

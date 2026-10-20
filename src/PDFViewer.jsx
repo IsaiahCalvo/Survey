@@ -1,3 +1,4 @@
+import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 // PDFViewer — the document viewer (pdf.js canvas, annotation overlays,
 // zoom/scroll lifecycle, save/sync, history). Extracted verbatim from App.jsx.
 //
@@ -26,6 +27,7 @@ import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
+import { removeCategoriesFromModules, toCategoryIdList } from './utils/surveyCategoryDelete.js';
 import {
   capturePendingSurveyMarkerUi,
   deletePendingSurveyMarkerUi,
@@ -109,6 +111,7 @@ import { deviceCanHover, isTextSelectionCaptureTool, shouldMountPanTextLayer } f
 import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
+import SchematicModeBadge from './components/SchematicModeBadge';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
@@ -184,6 +187,8 @@ import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js
 import { toolOffersCloudLineStyle } from './utils/textCloudBorder.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
+import SymbolStampTool from './components/SymbolStampTool';
+import { createSymbolStampObject } from './utils/symbolLibrary';
 import { areViewStatesEqual, normalizeViewState } from './utils/viewState';
 import { arrayMove } from '@dnd-kit/sortable';
 import { buildAnnotationSelectionContextKey, didAnnotationSelectionContextChange } from './utils/annotationSelectionContext';
@@ -3458,6 +3463,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // declaration order without introducing a first-render TDZ crash.
   const handleCounterGroupUpdateRef = useRef(null);
   const handleDeleteCounterSeriesRef = useRef(null);
+  const handleRenameCounterSeriesRef = useRef(null);
+  const counterSeriesActiveRef = useRef(isActive);
+  counterSeriesActiveRef.current = isActive;
   const commitTextMarkupDocumentTransactionRef = useRef(null);
   // UX 2026-09-23 (owner: "dragging this is laggy" — the colour picker's
   // sliders). The phase of the paint change being applied right now: 'preview'
@@ -3486,6 +3494,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clearTimeout(annotationCapturePauseRef.current.timer);
     annotationCapturePauseRef.current = { until: 0, timer: null };
   }, [pdfFile?.id]);
+  const handleRenameCounterSeriesFromToolbar = useCallback((...args) => (
+    handleRenameCounterSeriesRef.current?.(...args) || { ok: false, reason: 'unavailable' }
+  ), []);
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
   ), []);
@@ -5483,6 +5494,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       try {
         localStorage.setItem('lastShapeTool', activeTool);
       } catch (e) { }
+    } else if (activeTool === 'symbol') {
+      // KAL-407: Symbols sits in the Text group's row; it opens a panel, so
+      // it does not become the group's remembered tool.
+      setActiveCategoryDropdown((prev) => (prev === 'review' ? prev : 'review'));
     } else if (REVIEW_TOOL_IDS.includes(activeTool)) {
       setLastReviewTool(activeTool);
       setActiveCategoryDropdown((prev) => (prev === 'review' ? prev : 'review'));
@@ -14593,7 +14608,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // KAL-301 follow-up: while region editing is active the buttons reflect and
   // drive the REGION undo/redo stacks instead of the annotation history.
   useEffect(() => {
-    if (!isActive || typeof onTopToolbarApiChange !== 'function') return;
+    if (typeof onTopToolbarApiChange !== 'function') return;
     const useRegionHistory = showRegionSelection && regionHistoryApi;
     onTopToolbarApiChange({
       canUndo: useRegionHistory ? regionHistoryApi.canUndo : canUndo,
@@ -14690,6 +14705,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRegionOverlayDisabled,
   ]);
 
+  // Resolve the supplied source, including an inactive tab's queued page edit.
+  const readPageMutationPdfBytes = useCallback(async (file) => {
+    const path = file?.supabaseFilePath || file?.filePath;
+    if (!path) throw new Error('PDF source is unavailable.');
+    const blob = await downloadFromStorage(path);
+    return blob.arrayBuffer();
+  }, [downloadFromStorage]);
+
   // Sidebar handlers — page add / delete / duplicate / physical reorder /
   // rotate / cut-copy-paste / insert-blank. Mirror remains a presentation-only
   // page transformation because PDF pages have no native mirror primitive.
@@ -14714,6 +14737,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     flushPageOperations,
   } = usePageOperations({
     pdfFile,
+    readPdfBytes: readPageMutationPdfBytes,
     onUpdatePDFFile: persistPageMutationFile,
     getPageState: getPageStructureState,
     commitPageState: commitPageStructureState,
@@ -21362,7 +21386,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
-    enabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    // The viewer remains mounted on a warm switch; keep its durable store and
+    // unsaved capture live until the tab actually closes.
+    enabled: cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    isActive,
     // Slice 6 (2026-07-17): annotationsByPage carries callouts as projected
     // data.type==='callout' groups (R2.2 flip), and the hook persists them
     // per-id in the same `annotations` Y.Map as every other object — so the
@@ -26074,7 +26101,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
   useEffect(() => {
-    if (!isActive || typeof onBottomToolbarApiChange !== 'function') return;
+    if (typeof onBottomToolbarApiChange !== 'function') return;
     // Resolve the live saved object instead of relying only on the selection
     // payload captured when the user clicked it. Saves, undo/redo, series
     // updates, and remote sync can replace that object while it stays selected.
@@ -26430,6 +26457,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       onNewCounterSeries: handleNewCounterSeries,
       onSwitchCounterSeries: handleSwitchCounterSeries,
       onDeleteCounterSeries: handleDeleteCounterSeriesFromToolbar,
+      onRenameCounterSeries: handleRenameCounterSeriesFromToolbar,
       selectedCounterSeriesId,
       selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
       selectedCounterSeriesStart: selectedCounterSeriesId
@@ -26555,6 +26583,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleNewCounterSeries,
     handleSwitchCounterSeries,
     handleDeleteCounterSeriesFromToolbar,
+    handleRenameCounterSeriesFromToolbar,
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
@@ -29425,11 +29454,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (
           Object.prototype.hasOwnProperty.call(patch, 'numberColor')
           || Object.prototype.hasOwnProperty.call(patch, 'seriesStart')
+          || Object.prototype.hasOwnProperty.call(patch, 'seriesName')
         ) {
           next.data = { ...obj.data };
           if (Object.prototype.hasOwnProperty.call(patch, 'numberColor')) {
             next.data.numberColor = patch.numberColor;
           }
+          if (Object.prototype.hasOwnProperty.call(patch, 'seriesName')) next.data.seriesName = patch.seriesName;
           if (Object.prototype.hasOwnProperty.call(patch, 'seriesStart')) {
             next.data.seriesStart = patch.seriesStart;
           }
@@ -29514,12 +29545,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
   }, [documentOwnerId, handleSaveAnnotations, pushLocalAnnotationHistoryAction, user?.id, yjsUndoCtx?.userId]);
   handleCounterGroupUpdateRef.current = handleCounterGroupUpdate;
+  const handleRenameCounterSeries = useCallback((seriesId, name) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
+    const seriesName = String(name || '').trim().slice(0, 80);
+    if (!seriesName || !getCounterSeriesList(annotationsByPageRef.current).some(series => series.seriesId === seriesId)) return { ok: false, reason: 'invalid-series' };
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
+    if (!permission.ok) return permission;
+    handleCounterGroupUpdateRef.current?.(seriesId, { seriesName });
+    return { ok: true };
+  }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
+  handleRenameCounterSeriesRef.current = handleRenameCounterSeries;
 
   // Request deletion of one complete counter series. The existing shared
   // confirmation modal handles both ordinary and cross-author series. The
   // confirmed runner revalidates the exact pin ids before mutating, then saves
   // every page while pushing one document-batch Undo/Redo action.
   const handleDeleteCounterSeries = useCallback((seriesId) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     if (!seriesId) return { ok: false, reason: 'missing-series' };
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
     const collectSeriesPins = (byPage) => Object.entries(byPage || {}).flatMap(([pageKey, page]) => (
@@ -29565,6 +29608,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const requestedIdsSorted = [...requestedIds].sort();
     const seriesMeta = counterSeriesList.find((series) => series.seriesId === seriesId);
     const executeConfirmedDelete = () => {
+      if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) {
+        showToast('This document is no longer editable. The count was not deleted.', 'warn');
+        return { ok: false, reason: 'forbidden' };
+      }
       const liveByPage = annotationsByPageRef.current || {};
       const livePins = collectSeriesPins(liveByPage);
       const liveSeriesList = getCounterSeriesList(liveByPage);
@@ -29579,6 +29626,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return { ok: false, reason: 'series-changed' };
       }
 
+      const livePermission = checkCounterSeriesEdit(liveByPage, seriesId, { viewerId, documentOwnerId });
+      if (!livePermission.ok) {
+        showToast(livePermission.reason === 'locked' ? 'Unlock all pins in this count before deleting it.' : 'This count can no longer be edited.', 'warn');
+        return livePermission;
+      }
       const { updates, removedCount } = buildCounterSeriesDeletionUpdates(liveByPage, seriesId);
       const pageActions = updates.map(({ pageKey, json }) => {
         const numericKey = Number(pageKey);
@@ -29903,6 +29955,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Keep the ref in sync so the keydown useEffect (declared above
   // pasteAnnotationAt) can call it without TDZ'ing on the dep array.
   pasteAnnotationAtRef.current = pasteAnnotationAt;
+
+  // KAL-407: the Symbols tool places a library symbol where the page was
+  // clicked — one new mark, saved and undoable like a paste, with the same
+  // scope and author a paste gets.
+  const handlePlaceSymbol = useCallback(({ pageNumber, x, y, symbolId, color }) => {
+    const mark = createSymbolStampObject({ symbolId, color, centerX: x, centerY: y });
+    if (!mark || pageNumber == null) return;
+    makePastedMarkOwn(mark, user?.id || null);
+    applyPasteScope(mark, currentPasteScope(pageNumber));
+    const next = deepClone(annotationsByPageRef.current?.[pageNumber] || { objects: [] });
+    if (!Array.isArray(next.objects)) next.objects = [];
+    next.objects.push(mark);
+    handleSaveAnnotations(pageNumber, next, {
+      source: 'object:modified',
+      action: 'symbol-stamp',
+      checkpointPolicy: 'normal',
+    });
+  }, [handleSaveAnnotations, selectedModuleId, activeRegionId, annotationSpaceId, spaces, isRegionOverlayEnabled, user?.id]);
 
   // UX: Shared annotation Copy handler — called by the Cmd+C hotkey wired
   // from SVGAnnotationLayer's per-page keydown useEffect (and available for
@@ -31575,19 +31645,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [documentLocked, yjsDocRole, user?.id, documentOwnerId, appTemplates, onTemplatesChange, updateSupabaseTemplateRow, sanitizeTemplateConfig, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
   applySurveyCategoryTransferRef.current = applySurveyCategoryTransfer;
 
-  const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryId) => {
+  // Takes one category id or a list. The rail deletes every ticked category in
+  // ONE call: separate calls each started from the same old template, so the
+  // last one won and the earlier categories came back.
+  const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryIdOrIds) => {
     if (!requireCurrentSurveyTemplate()) return;
-    if (!selectedTemplate || !moduleId || !categoryId) return;
+    const categoryIds = toCategoryIdList(categoryIdOrIds);
+    if (!selectedTemplate || !moduleId || categoryIds.length === 0) return;
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
-    let changed = false;
-    const updatedModules = sourceModules.map((module) => {
-      if (module.id !== moduleId) return module;
-      const categories = module.categories || [];
-      const nextCategories = categories.filter((category) => category.id !== categoryId);
-      if (nextCategories.length === categories.length) return module;
-      changed = true;
-      return { ...module, categories: nextCategories };
-    });
+    const { modules: updatedModules, changed } = removeCategoriesFromModules(sourceModules, moduleId, categoryIds);
     if (!changed) return;
 
     const updatedAt = new Date().toISOString();
@@ -31599,7 +31665,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     const templateId = selectedTemplate.supabaseId || selectedTemplate.id;
     setSelectedTemplate(updatedTemplate);
-    setSelectedCategoryId((current) => current === categoryId ? null : current);
+    setSelectedCategoryId((current) => categoryIds.includes(current) ? null : current);
 
     if (handleTemplatesChange && appTemplates) {
       handleTemplatesChange(appTemplates.map((template) => (
@@ -32920,6 +32986,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (['running', 'complete', 'cancelled', 'error'].includes(ocrStateByPage[pageNum]?.status)) return;
     recognizeTextOnPage(pageNum);
   }, [activeTool, ocrStateByPage, pageNum, recognizeTextOnPage, textAvailabilityByPage]);
+
+  // KAL-402 Schematic Mode: the badge's quick tools. Cloud is the Rectangle
+  // with the Cloud line style, as the Style picker sets it.
+  const handleSchematicPickTool = useCallback((tool) => {
+    if (tool === 'cloud') {
+      setLineBorderStyle('cloud');
+      setActiveToolLogged('rect', { source: 'schematic-badge' });
+      return;
+    }
+    setActiveToolLogged(tool, { source: 'schematic-badge' });
+  }, [setActiveToolLogged]);
 
   const cancelTextRecognition = useCallback((pageNumber) => {
     ocrAbortByPageRef.current.get(pageNumber)?.abort?.();
@@ -35284,7 +35361,7 @@ ${pageBlocks}
   // active. Placed immediately before the loading/full render branches so every
   // sidebar prop and handler in the API has already been declared.
   useEffect(() => {
-    if (!isActive || typeof onLeftRailApiChange !== 'function') return;
+    if (typeof onLeftRailApiChange !== 'function') return;
     const nextLeftRailApi = {
       ref: pdfSidebarRef,
       features,
@@ -35483,7 +35560,7 @@ ${pageBlocks}
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App
   // shell, matching the left rail's App-owned rendering boundary.
   useEffect(() => {
-    if (!isActive || typeof onRightRailApiChange !== 'function') return;
+    if (typeof onRightRailApiChange !== 'function') return;
     const nextRightRailApi = {
       activeSpaceId,
       // Create Category modal plumbing (survey rail plus button). The modal's
@@ -36016,6 +36093,13 @@ ${pageBlocks}
           },
         },
       })}
+
+      {/* KAL-407: the Symbols panel; a click on the page places the symbol. */}
+      <SymbolStampTool
+        active={activeTool === 'symbol'}
+        onPlace={handlePlaceSymbol}
+        onClose={() => setActiveToolLogged('pan', { source: 'symbol-panel-close' })}
+      />
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
           for the owner-approved UX (friendly names, once per document open,
@@ -36684,6 +36768,16 @@ ${pageBlocks}
                             <style>
                               {nativePdfAnnotationLayerHideCss}
                             </style>
+                          )}
+                          {pdfDoc && !pageTinyOnScreen && (
+                            <SchematicModeBadge
+                              pdfDoc={pdfDoc}
+                              pageNumber={pageNumber}
+                              fingerprint={pdfDoc?.fingerprints?.[0] || pdfFile?.id || pdfFile?.name}
+                              activeTool={activeTool}
+                              lineBorderStyle={lineBorderStyle}
+                              onPickTool={handleSchematicPickTool}
+                            />
                           )}
                           {activeTool === 'text-select' && ocrStateByPage[pageNumber]?.status === 'complete' && (
                             <OcrTextLayer
@@ -37714,6 +37808,7 @@ ${pageBlocks}
                                     // stroke change "reverted" once you drop the next pin.
                                     let seriesStart = 1;
                                     let inheritedNumberColor;
+                                    let inheritedSeriesName;
                                     let existingSeriesCounterCount = 0;
                                     if (!seriesAutoCreated) {
                                       const allCounters = [];
@@ -37730,6 +37825,7 @@ ${pageBlocks}
                                       if (allCounters.length > 0) {
                                         allCounters.sort((a, b) => (a.data.createdAt || 0) - (b.data.createdAt || 0));
                                         seriesStart = Number(allCounters[0].data.seriesStart) || 1;
+                                        inheritedSeriesName = allCounters.find(counter => counter.data.seriesName)?.data.seriesName;
                                         if (allCounters[0].data.numberColor) {
                                           inheritedNumberColor = allCounters[0].data.numberColor;
                                         }
@@ -37761,6 +37857,7 @@ ${pageBlocks}
                                         displayNumber,
                                         seriesId,
                                         seriesStart,
+                                        ...(inheritedSeriesName ? { seriesName: inheritedSeriesName } : {}),
                                         numberColor,
                                       },
                                     };
@@ -38835,7 +38932,11 @@ ${pageBlocks}
               <>
                 {[
                   { id: 'text', label: 'Text', iconName: 'textBox' },
-                  { id: 'callout', label: 'Callout', iconName: 'callout' }
+                  { id: 'callout', label: 'Callout', iconName: 'callout' },
+                  // KAL-407: engineering symbols (opens the Symbols panel).
+                  // In the Text group, which has room: a Shapes row of eight
+                  // would outgrow the loadout space kept on desktop and phone.
+                  { id: 'symbol', label: 'Symbols', iconName: 'library' }
                   // TODO: Revisit the user-created Note tool later. Imported
                   // PDF Text/sticky-note annotations still render through
                   // pdfAnnotationImporter + the normal PDF annotation layers.
