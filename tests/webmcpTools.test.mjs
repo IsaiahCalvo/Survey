@@ -118,3 +118,52 @@ test('install only when the browser offers WebMCP and not turned off', () => {
   const off = { ...win, localStorage: { getItem: () => 'off' } };
   assert.equal(installWebMcp(off), null);
 });
+
+const DOC_ID = '0b6f2a52-1d1f-4a35-9a43-1a2b3c4d5e6f';
+const fakeDoc = (ready = true) => {
+  const added = [];
+  return {
+    added,
+    documentId: DOC_ID,
+    surveyReady: () => ready,
+    getPageSize: (p) => (p === 1 ? { width: 612, height: 792 } : null),
+    addSurveyMarker: (page, b) => added.push({ page, ...b }),
+  };
+};
+const markerTools = (role, doc) => {
+  const sb = fakeSupabase({ role });
+  return tool(buildAgentTools({ supabase: sb, getDocument: () => doc, readAccess: makeAccessReader(sb, TIERS) }), 'survey_add_marker');
+};
+const box = { page: 1, x: 10, y: 20, width: 100, height: 50 };
+
+test('editor and owner agents can add a marker', async () => {
+  for (const role of ['editor', 'owner']) {
+    const doc = fakeDoc();
+    assert.match(await markerTools(role, doc).execute(box), /Added/);
+    assert.deepEqual(doc.added, [{ page: 1, x: 10, y: 20, width: 100, height: 50 }]);
+  }
+});
+
+test('viewer agent cannot add a marker, and nothing is written', async () => {
+  const doc = fakeDoc();
+  await assert.rejects(markerTools('viewer', doc).execute(box), /viewer.*needs editor/);
+  await assert.rejects(markerTools(null, doc).execute(box), /do not have access/);
+  assert.equal(doc.added.length, 0);
+});
+
+test('marker must fit the page and needs survey mode', async () => {
+  const doc = fakeDoc();
+  await assert.rejects(markerTools('editor', doc).execute({ ...box, x: 600 }), /fit inside/);
+  await assert.rejects(markerTools('editor', doc).execute({ ...box, page: 2 }), /not in the open document/);
+  await assert.rejects(markerTools('editor', doc).execute({ ...box, width: 1 }), /fit inside/);
+  await assert.rejects(markerTools('editor', fakeDoc(false)).execute(box), /Survey mode/);
+  assert.equal(doc.added.length, 0);
+});
+
+test('agent cannot pick another document id to borrow its role', async () => {
+  const doc = fakeDoc();
+  const sb = fakeSupabase({ role: 'editor' });
+  const add = tool(buildAgentTools({ supabase: sb, getDocument: () => doc, readAccess: makeAccessReader(sb, TIERS) }), 'survey_add_marker');
+  await add.execute({ ...box, document_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' });
+  assert.deepEqual(sb.calls.at(-1), { rpc: 'get_my_document_role', args: { doc_id: DOC_ID } });
+});

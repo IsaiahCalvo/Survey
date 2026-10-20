@@ -21,6 +21,20 @@ function activeViewer() {
   return last;
 }
 
+const documents = new Set();
+
+// The active PDF tab registers here so agents can change its document.
+export function registerAgentDocument(handle) {
+  documents.add(handle);
+  return () => documents.delete(handle);
+}
+
+function activeDocument() {
+  let last = null;
+  for (const d of documents) last = d;
+  return last;
+}
+
 function text(value) {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
@@ -47,7 +61,7 @@ export function makeAccessReader(supabase, tierLimits) {
   };
 }
 
-export function buildAgentTools({ getViewer = activeViewer, supabase = null, readAccess = async () => ({ signedIn: false }) } = {}) {
+export function buildAgentTools({ getViewer = activeViewer, getDocument = activeDocument, supabase = null, readAccess = async () => ({ signedIn: false }) } = {}) {
   const need = () => {
     const viewer = getViewer();
     if (!viewer) throw new Error('No document is open in Survey.');
@@ -141,11 +155,48 @@ export function buildAgentTools({ getViewer = activeViewer, supabase = null, rea
         return `Went to page ${n} of ${count}.`;
       },
     },
+    {
+      name: 'survey_add_marker',
+      description: 'Add a Survey marker box to the open PDF, in the selected survey module. Needs survey mode on with a template chosen, and editor or owner access. Coordinates are PDF points from the top-left of the page.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', minimum: 1 },
+          x: { type: 'number', minimum: 0 },
+          y: { type: 'number', minimum: 0 },
+          width: { type: 'number', exclusiveMinimum: 2 },
+          height: { type: 'number', exclusiveMinimum: 2 },
+        },
+        required: ['page', 'x', 'y', 'width', 'height'],
+      },
+      access: { signIn: true, minRole: 'editor' },
+      documentScoped: true,
+      execute: async ({ page, x, y, width, height }, _ctx) => {
+        const doc = getDocument();
+        if (!doc.surveyReady()) throw new Error('Turn on Survey mode and pick a template first.');
+        const size = doc.getPageSize(Number(page));
+        if (!size) throw new Error('That page is not in the open document.');
+        const box = [x, y, width, height].map(Number);
+        if (box.some((n) => !Number.isFinite(n)) || box[2] <= 2 || box[3] <= 2
+          || box[0] < 0 || box[1] < 0 || box[0] + box[2] > size.width || box[1] + box[3] > size.height) {
+          throw new Error(`The box must fit inside the page (${size.width} x ${size.height} points).`);
+        }
+        doc.addSurveyMarker(Number(page), { x: box[0], y: box[1], width: box[2], height: box[3] });
+        return `Added a Survey marker on page ${page}.`;
+      },
+    },
   ];
   return tools.map((tool) => ({
     ...tool,
     execute: async (args = {}, options) => {
+      if (tool.documentScoped) {
+        const doc = getDocument();
+        if (!doc) throw new Error('No document is open in Survey.');
+        // A file never saved to the cloud belongs to this person alone.
+        args = { ...args, document_id: doc.documentId || undefined };
+      }
       const ctx = await readAccess(args);
+      if (tool.documentScoped && !args.document_id && ctx.signedIn) ctx.role = 'owner';
       const denied = checkAgentAccess(tool.access, ctx);
       if (denied) throw new Error(denied);
       return tool.execute(args, ctx, options);
@@ -161,7 +212,7 @@ export function installWebMcp(win = typeof window !== 'undefined' ? window : und
   } catch { /* storage blocked: stay on */ }
   const readAccess = deps.supabase ? makeAccessReader(deps.supabase, deps.tierLimits) : undefined;
   const controller = new AbortController();
-  for (const { access: _access, ...tool } of buildAgentTools({ supabase: deps.supabase, readAccess })) {
+  for (const { access: _access, documentScoped: _scoped, ...tool } of buildAgentTools({ supabase: deps.supabase, readAccess })) {
     Promise.resolve(modelContext.registerTool(tool, { signal: controller.signal }))
       .catch((err) => console.warn('[webmcp] could not add tool', tool.name, err));
   }
