@@ -69,7 +69,7 @@ export default function AgentLinkPage() {
     if (error) setMessage('Could not check that code. Try again.');
     else if (!data) setMessage('That code is wrong, used, or more than 10 minutes old. Ask the agent for a new one.');
     else {
-      setMessage(`Done. "${data}" can now read your Survey data for one hour.`);
+      setMessage(`Done. "${data}" can now read your Survey data. Remove it below at any time.`);
       setCode('');
       try { clearPendingAgentCode(window.localStorage); } catch { /* storage blocked */ }
       loadLinks();
@@ -98,7 +98,7 @@ export default function AgentLinkPage() {
   return (
     <div style={card}>
       <h2 style={{ marginTop: 0 }}>Let an AI agent use Survey</h2>
-      <p style={{ fontSize: 14, margin: '8px 0 16px', color: C.inkSoft }}>Type the code your agent showed you. It gets read-only access to your account for one hour. Only enter codes from agents you started.</p>
+      <p style={{ fontSize: 14, margin: '8px 0 16px', color: C.inkSoft }}>Type the code your agent showed you. It gets read-only access to your account until you remove it (at most 30 days without being used). Only enter codes from agents you started.</p>
       <div style={{ display: 'flex', gap: 8 }}>
         <input
           aria-label="Agent code"
