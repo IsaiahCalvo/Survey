@@ -118,23 +118,19 @@ export function readSmartFillOutlineAsync(context) {
 const MAX_SCAN_PX = 2400;
 const SCAN_TIME_LIMIT_MS = 15000;
 
-// Page scans get their own worker so a tap (2.5s limit) never waits behind a
-// scan (up to 15s); an aborted or timed-out scan terminates it to free the CPU.
-let scanWorker = null;
-function getScanWorker() {
-  if (scanWorker || workerBroken) return scanWorker;
-  try {
-    scanWorker = new Worker(new URL('./smartFillWorker.js', import.meta.url), { type: 'module' });
-    scanWorker.addEventListener('error', () => { scanWorker = null; });
-  } catch {
-    scanWorker = null;
-  }
-  return scanWorker;
-}
+// Page scans run one at a time, each on its own worker, so a tap (2.5s limit)
+// never waits behind a scan and one page's abort or timeout never kills another
+// page's scan. The time limit starts when a scan actually runs, not when queued.
+let scanQueue = Promise.resolve();
 
-function postToWorker(message, transfer, signal, limitMs) {
-  const w = typeof Worker !== 'undefined' ? getScanWorker() : null;
-  if (!w) return null;
+function runScan(message, transfer, signal, limitMs) {
+  if (signal?.aborted) return Promise.resolve({ ok: false, reason: 'aborted' });
+  let w;
+  try {
+    w = new Worker(new URL('./smartFillWorker.js', import.meta.url), { type: 'module' });
+  } catch {
+    return Promise.resolve(null);
+  }
   const id = nextId++;
   return new Promise((resolve) => {
     let done = false;
@@ -142,21 +138,24 @@ function postToWorker(message, transfer, signal, limitMs) {
       if (done) return;
       done = true;
       clearTimeout(timer);
-      w.removeEventListener('message', onMessage);
       signal?.removeEventListener?.('abort', onAbort);
-      if (value?.reason === 'aborted' || value?.reason === 'timeout') {
-        w.terminate();
-        if (scanWorker === w) scanWorker = null;
-      }
+      w.terminate();
       resolve(value);
     };
-    const onMessage = (event) => { if (event.data?.id === id) finish(event.data.result); };
     const onAbort = () => finish({ ok: false, reason: 'aborted' });
     const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), limitMs);
-    w.addEventListener('message', onMessage);
+    w.addEventListener('message', (event) => { if (event.data?.id === id) finish(event.data.result); });
+    w.addEventListener('error', () => finish(null));
     signal?.addEventListener?.('abort', onAbort);
     w.postMessage({ ...message, id }, transfer);
   });
+}
+
+function postToWorker(message, transfer, signal, limitMs) {
+  if (typeof Worker === 'undefined' || workerBroken) return null;
+  const job = scanQueue.then(() => runScan(message, transfer, signal, limitMs));
+  scanQueue = job.catch(() => {});
+  return job;
 }
 
 /**

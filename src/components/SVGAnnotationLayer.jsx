@@ -2431,6 +2431,7 @@ const SVGAnnotationLayerBody = memo(({
         if (sample) {
           showToast('Survey Marker added. Want Smart fill to find more tags like it on this page?', 'success', {
             id: 'smart-fill-find',
+            duration: Infinity,
             action: { label: 'Find more', onClick: () => findMoreLikeThisRef.current?.(sample, markerBounds) },
           });
         }
@@ -2455,14 +2456,14 @@ const SVGAnnotationLayerBody = memo(({
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     smartFillScanAbortRef.current = controller;
     const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
-    if (!quietIfNone) showToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find' });
+    if (!quietIfNone) showToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find', duration: Infinity });
     findSimilarOnPage({ pageCanvas, pageSize: { width, height }, sample, signal: controller?.signal || null }).then((res) => {
       if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
       if (!res.ok) {
         if (quietIfNone) return;
         showToast(res.reason === 'not-ready'
           ? 'Smart fill: the page is still loading. Try again.'
-          : 'Smart fill couldn’t finish looking on this page.', 'info', { id: 'smart-fill-find' });
+          : 'Smart fill couldn’t finish looking on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
         return;
       }
       const centre = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
@@ -2475,7 +2476,7 @@ const SVGAnnotationLayerBody = memo(({
       if (quietIfNone && !matches.length) return;
       showToast(matches.length
         ? `Found ${matches.length} more like it. Tap each blue outline to add it.`
-        : 'No other tags like it on this page.', 'info', { id: 'smart-fill-find' });
+        : 'No other tags like it on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
     });
   };
   // "Find tags like my sample" from the tool bar (any page in view, any drawing).

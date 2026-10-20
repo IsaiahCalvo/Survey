@@ -91,7 +91,7 @@ export default function SurveyMarkerModeTools({ chromeTip, glyphSize }) {
           data-smart-fill-find-similar="true"
           onClick={() => {
             // Pages that find matches replace this with their count.
-            showToast('Looking for tags like your last Smart fill on the pages in view…', 'info', { id: 'smart-fill-find' });
+            showToast('Looking for tags like your last Smart fill on the pages in view…', 'info', { id: 'smart-fill-find', duration: 30000 });
             window.dispatchEvent(new CustomEvent('smart-fill-find-similar'));
           }}
           {...(chromeTip ? chromeTip('Find tags like your last Smart fill', 'below') : {})}
