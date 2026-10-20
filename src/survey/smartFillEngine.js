@@ -40,6 +40,92 @@ export function inkMaskFromRgba(data, width, height, threshold = SMART_FILL_INK_
   return mask;
 }
 
+/**
+ * Ink mask that also catches faint lines and works on scanned pages (ported
+ * from the playground's adaptiveMask, local-raster.ts): a pixel is ink when it
+ * is darker than its neighbourhood (31 px box mean) by more than 6 levels.
+ * On white paper the plain threshold is added too, so solid fills still count;
+ * on grey scanned paper (median luma < 235) only the local test is used, so
+ * the paper itself never reads as ink.
+ */
+export function adaptiveInkMaskFromRgba(data, width, height) {
+  const n = width * height;
+  const gray = new Float32Array(n);
+  const hist = new Uint32Array(256);
+  for (let p = 0, i = 0; p < n; p += 1, i += 4) {
+    const a = data[i + 3] / 255;
+    const g = (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]) * a + 255 * (1 - a);
+    gray[p] = g;
+    hist[Math.max(0, Math.min(255, Math.round(g)))] += 1;
+  }
+  let median = 255;
+  for (let v = 0, seen = 0; v < 256; v += 1) { seen += hist[v]; if (seen >= n / 2) { median = v; break; } }
+  const whitePaper = median >= 235;
+  // Integral image for O(1) box means.
+  const W = width + 1;
+  const sum = new Float64Array(W * (height + 1));
+  for (let y = 0; y < height; y += 1) {
+    let row = 0;
+    for (let x = 0; x < width; x += 1) {
+      row += gray[y * width + x];
+      sum[(y + 1) * W + x + 1] = sum[y * W + x + 1] + row;
+    }
+  }
+  const R = 15;
+  const mask = new Uint8Array(n);
+  for (let y = 0; y < height; y += 1) {
+    const y0 = Math.max(0, y - R);
+    const y1 = Math.min(height, y + R + 1);
+    for (let x = 0; x < width; x += 1) {
+      const x0 = Math.max(0, x - R);
+      const x1 = Math.min(width, x + R + 1);
+      const mean = (sum[y1 * W + x1] - sum[y0 * W + x1] - sum[y1 * W + x0] + sum[y0 * W + x0]) / ((y1 - y0) * (x1 - x0));
+      const g = gray[y * width + x];
+      if (g <= mean - 6 || (whitePaper && g < SMART_FILL_INK_LUMA)) mask[y * width + x] = 1;
+    }
+  }
+  return mask;
+}
+
+/** Grow ink by `r` px (square), closing gaps up to 2r px in broken lines. */
+export function dilateMask(mask, width, height, r) {
+  if (r <= 0) return mask;
+  let cur = mask;
+  for (let k = 0; k < r; k += 1) {
+    const next = new Uint8Array(cur);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (cur[y * width + x]) continue;
+        if ((x > 0 && cur[y * width + x - 1]) || (x < width - 1 && cur[y * width + x + 1])
+          || (y > 0 && cur[(y - 1) * width + x]) || (y < height - 1 && cur[(y + 1) * width + x])
+          || (x > 0 && y > 0 && cur[(y - 1) * width + x - 1]) || (x < width - 1 && y < height - 1 && cur[(y + 1) * width + x + 1])
+          || (x > 0 && y < height - 1 && cur[(y + 1) * width + x - 1]) || (x < width - 1 && y > 0 && cur[(y - 1) * width + x + 1])) {
+          next[y * width + x] = 1;
+        }
+      }
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+function erodeRegion(region, width, height, r) {
+  let cur = region;
+  for (let k = 0; k < r; k += 1) {
+    const next = new Uint8Array(cur);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const p = y * width + x;
+        if (!cur[p]) continue;
+        if (x === 0 || y === 0 || x === width - 1 || y === height - 1
+          || !cur[p - 1] || !cur[p + 1] || !cur[p - width] || !cur[p + width]) next[p] = 0;
+      }
+    }
+    cur = next;
+  }
+  return cur;
+}
+
 /** 4-connected flood over cells where `pass(index)` is true. Returns the visited mask. */
 function flood(width, height, seeds, pass) {
   const seen = new Uint8Array(width * height);
@@ -150,7 +236,7 @@ export function traceOuterLoop(region, width, height) {
  * Returns { ok:true, ring, area } (ring in pixel-corner coords) or
  * { ok:false, reason } with reason 'on-blank' | 'open' | 'too-small' | 'too-large'.
  */
-export function findTagOutline(mask, width, height, seedX, seedY) {
+export function findTagOutline(mask, width, height, seedX, seedY, { shrink = 0 } = {}) {
   const sx = Math.round(seedX);
   const sy = Math.round(seedY);
   if (sx < 0 || sy < 0 || sx >= width || sy >= height) return { ok: false, reason: 'open' };
@@ -161,13 +247,13 @@ export function findTagOutline(mask, width, height, seedX, seedY) {
   const tried = new Uint8Array(width * height);
   for (const seed of seeds.slice(0, 24)) {
     if (tried[seed]) continue;
-    last = outlineFromSeed(mask, width, height, seed, tried);
+    last = outlineFromSeed(mask, width, height, seed, tried, shrink);
     if (last.ok) return last;
   }
   return last;
 }
 
-function outlineFromSeed(mask, width, height, seed, tried) {
+function outlineFromSeed(mask, width, height, seed, tried, shrink) {
   // 1. The paper reachable from the tap.
   const paper = flood(width, height, [seed], (p) => mask[p] === 0);
   for (let p = 0; p < paper.length; p += 1) if (paper[p]) tried[p] = 1;
@@ -207,8 +293,27 @@ function outlineFromSeed(mask, width, height, seed, tried) {
   }
   if (area > MAX_REGION_FRACTION * width * height) return { ok: false, reason: 'too-large' };
 
-  // 4. Its outer edge.
-  const ring = traceOuterLoop(region, width, height);
+  // 4. Its outer edge (pulled back in by any gap-closing growth).
+  const ring = traceOuterLoop(shrink > 0 ? erodeRegion(region, width, height, shrink) : region, width, height);
   if (!ring) return { ok: false, reason: 'too-small' };
   return { ok: true, ring, area };
+}
+
+/**
+ * findTagOutline that forgives small breaks in the outline (scanned drawings,
+ * dashed or faint borders): if the plain pass finds no closed outline, retry
+ * with the ink grown by 1 then 2 px, and shrink the answer back by the same.
+ * The first closed answer wins; `closedGaps` says how much growth it took.
+ */
+export function findTagOutlineTolerant(mask, width, height, seedX, seedY) {
+  let first = null;
+  for (const r of [0, 1, 2]) {
+    const grown = dilateMask(mask, width, height, r);
+    const found = findTagOutline(grown, width, height, seedX, seedY, { shrink: r });
+    if (found.ok) return { ...found, closedGaps: r };
+    if (!first) first = found;
+    // Only an open outline can be helped by closing gaps.
+    if (found.reason !== 'open' && found.reason !== 'on-blank') return found;
+  }
+  return first;
 }
