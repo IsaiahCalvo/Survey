@@ -38,8 +38,28 @@ with a JSON body.
 
 Users see and remove agents at https://surveytool.app/agent-link.
 
+## Outside the browser: act as the person (OAuth 2.1)
+
+Survey is an OAuth 2.1 server (authorization code with PKCE). After the person
+signs in and presses Allow on Survey's consent screen, your token works as
+that person: the same role on each document and the same plan, enforced by
+the database itself.
+
+- Discovery: `https://cvamwtpsuvxvjdnotbeg.supabase.co/.well-known/oauth-authorization-server/auth/v1`
+- Authorize: `https://cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/oauth/authorize`
+  (the person lands on `https://surveytool.app/oauth/consent`; they can create
+  a free account there first)
+- Token: `https://cvamwtpsuvxvjdnotbeg.supabase.co/auth/v1/oauth/token`
+- Scope: leave it out or ask for `email`. Don't ask for `openid`.
+- Data: `https://cvamwtpsuvxvjdnotbeg.supabase.co/rest/v1/` with headers
+  `Authorization: Bearer <access_token>` and
+  `apikey: sb_publishable_TbwXDm3ybv24oQMBMxlUfQ_kcJ_Byrx` (Survey's public key).
+
+The person sees and removes agents at https://surveytool.app/agent-link.
+
 ## Rules for agents
 
 - An agent acts for one person and has exactly that person's rights: the same
   role on each document (a viewer's agent can only read) and the same plan.
-- Agents cannot pay, change plans, or change the person's email or password.
+- Agents cannot pay, change plans, delete the account, use the person's linked
+  accounts, let other agents in, or change the person's email or password.
