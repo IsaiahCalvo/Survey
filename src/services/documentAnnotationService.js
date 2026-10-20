@@ -530,7 +530,7 @@ function convertToLocalFormat(record) {
  * Update user presence for a document
  */
 export async function updateDocumentPresence(documentId, userId, presenceData = {}) {
-  if (!documentId || !userId) return { success: false };
+  if (!documentId || !userId || !supabase) return { success: false };
 
   const { error } = await supabase
     .from('document_presence')
@@ -598,7 +598,7 @@ export async function getDocumentPresence(documentId) {
  * Remove user presence (on disconnect)
  */
 export async function removeDocumentPresence(documentId, userId, clientType = 'app') {
-  if (!documentId || !userId) return { success: false };
+  if (!documentId || !userId || !supabase) return { success: false };
 
   const { error } = await supabase
     .from('document_presence')

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { watchLightPopover } from './dismissRules';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { showToast } from '../utils/toast';
 
 const isIOS = () => {
@@ -175,6 +176,9 @@ export function SurveyMediaUploadTile({ variant, disabled, onFiles, onRecordAudi
   const filesRef = useRef(null);
   const isPhone = variant === 'phone';
 
+  // KAL-66: keyboard focus goes into this menu as it opens, Up/Down move,
+  // and focus returns to its button when it closes (mouse/touch unchanged).
+  useMenuFocus(menuRef, open);
   useEffect(() => {
     if (!open) return undefined;
     return watchLightPopover({

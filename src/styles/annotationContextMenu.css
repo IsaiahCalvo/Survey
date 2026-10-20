@@ -1,0 +1,133 @@
+/* ============================================================================
+   The mark menu (right-click / long-press) — Drawboard canvas audit, chunk 7
+   (2026-10-13). src/hooks/useAnnotationContextMenu.jsx draws it; the item
+   order is src/utils/contextMenuLayout.js.
+
+   - Opening: 100 ms, an 8 px slide from the pointer's side plus a fade
+     (Drawboard measured 100 ms / 8 px). Same numbers and curve as the shared
+     menu motion tokens (--motion-menu, --motion-menu-shift, --ease-out); the
+     fallbacks below are those values, so it matches before and after the
+     tokens land. Reduced motion: no animation.
+   - The icon row (Duplicate, Cut, Copy, Paste, Delete) and the rows use the
+     menu's existing hover fill (--surface-3 on --surface-2) and the shared
+     off look (states.css section 6).
+   - Opened by a finger or pen (data-touch-rows): 44 px targets. The rows get
+     their height from touchTargets.css; the icon buttons also get 44 px width.
+   ============================================================================ */
+
+@keyframes annotation-menu-in-down {
+  from { opacity: 0; translate: 0 calc(var(--motion-menu-shift, 8px) * -1); }
+}
+@keyframes annotation-menu-in-up {
+  from { opacity: 0; translate: 0 var(--motion-menu-shift, 8px); }
+}
+@keyframes annotation-menu-fade-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .annotation-context-menu {
+    animation: annotation-menu-in-down var(--motion-menu, 100ms) var(--ease-out, cubic-bezier(0.33, 1, 0.68, 1));
+  }
+  .annotation-context-menu[data-side='top'] {
+    animation-name: annotation-menu-in-up;
+  }
+  .annotation-menu-submenu {
+    animation: annotation-menu-fade-in var(--motion-menu, 100ms) var(--ease-out, cubic-bezier(0.33, 1, 0.68, 1));
+  }
+}
+
+/* ---- icon row ------------------------------------------------------------ */
+.annotation-menu-quick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+.annotation-menu-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-1);
+  cursor: pointer;
+}
+.annotation-menu-icon--danger {
+  color: var(--danger-text);
+}
+
+/* ---- rows ---------------------------------------------------------------- */
+.annotation-menu-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.annotation-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  color: var(--text-1);
+}
+
+.annotation-menu-chevron {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}
+
+/* Hover, keyboard focus and the open Arrange row share the hover fill. A menu
+   item shows focus as this fill (like a native menu), not as a ring. */
+.annotation-menu-icon:not([aria-disabled='true']):hover,
+.annotation-menu-row:not([aria-disabled='true']):hover,
+.annotation-menu-row.is-open,
+.annotation-menu-icon:focus-visible,
+.annotation-menu-row:focus-visible {
+  background: var(--surface-3);
+}
+.annotation-menu-icon:focus,
+.annotation-menu-row:focus {
+  outline: none;
+}
+
+/* ---- Arrange submenu ------------------------------------------------------ */
+.annotation-menu-subhost {
+  position: static;
+}
+
+.annotation-menu-submenu {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 2px);
+  min-width: 150px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  z-index: 1;
+}
+
+/* ---- opened by a finger or a pen: 44 px targets --------------------------- */
+[data-annotation-context-menu][data-touch-rows='true'] .annotation-menu-icon {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  justify-content: center;
+}
+[data-annotation-context-menu][data-touch-rows='true'] .annotation-menu-icon svg {
+  width: 18px;
+  height: 18px;
+}

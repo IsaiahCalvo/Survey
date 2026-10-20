@@ -33,7 +33,7 @@
  * Reference behavior matched: the Draw/Shapes/Text category buttons, which had
  * the instant chip from the start.
  */
-import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FONT_FAMILY } from '../viewerShared.js';
 import { viewportClampDelta } from '../utils/floatingUiGeometry.js';
@@ -111,6 +111,19 @@ export function tooltipAnchorFor(rect, placement = 'below') {
  */
 export function FloatingTooltip({ tooltip }) {
   const tooltipRef = useRef(null);
+  // KAL-66 (WCAG 1.4.13): Escape puts away the chip on screen without moving
+  // focus - a keyboard user whose focus raised it can read what is under it.
+  // The key is not consumed: an open menu or dialog still closes on the same
+  // press. The next chip (another control, or the same one shown again) shows.
+  const shownKey = tooltip?.visible ? `${tooltip.text}|${tooltip.x}|${tooltip.y}` : '';
+  const [dismissedKey, setDismissedKey] = useState('');
+  useEffect(() => {
+    if (!shownKey || typeof window === 'undefined') return undefined;
+    const onKeyDown = (event) => { if (event.key === 'Escape') setDismissedKey(shownKey); };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [shownKey]);
+  useEffect(() => { if (!shownKey) setDismissedKey(''); }, [shownKey]);
 
   useLayoutEffect(() => {
     const el = tooltipRef.current;
@@ -130,7 +143,7 @@ export function FloatingTooltip({ tooltip }) {
     return () => window.removeEventListener('resize', clampToViewport);
   }, [tooltip?.placement, tooltip?.text, tooltip?.visible, tooltip?.x, tooltip?.y]);
 
-  if (!tooltip?.visible || typeof document === 'undefined') return null;
+  if (!tooltip?.visible || shownKey === dismissedKey || typeof document === 'undefined') return null;
   return createPortal(
     <div
       ref={tooltipRef}

@@ -6,6 +6,10 @@
 // success; now B is told once, and the row is visibly kept. With the proposed
 // database rule (annotationWritePolicy 'role') the row really goes and B sees
 // no message. No network, no database.
+// 2026-10-13: production already runs the open-editing rule ('role', w54 on
+// 2026-09-28), so only that case is run. The 'author' case relied on the
+// held-back "save only your own markers" change (0f1cc79d); under the old
+// rule B's marker sync is refused first and the delete never reaches it.
 // Run (.env needs VITE_SUPABASE_URL/KEY so the client exists):
 //   PW_CHROMIUM_PATH=/opt/pw-browsers/chromium PLAYWRIGHT_BASE_URL=http://127.0.0.1:5491 \
 //     npx playwright test --config debug/playwright.config.mjs debug/scenarios/test-plan/kal440-editor-deletes-teammate-marker.spec.mjs
@@ -30,7 +34,7 @@ const B_USER = {
 };
 const REFUSED_NOTE = /server kept a saved copy/;
 
-for (const policy of ['author', 'role']) {
+for (const policy of ['role']) {
   test(`KAL-440 editor deletes the owner's Survey Marker (database rule: ${policy === 'author' ? 'current' : 'proposed'})`, async ({ browser }) => {
     const docId = policy === 'author' ? '7e57d0c0-0000-4000-8000-000000000440' : '7e57d0c0-0000-4000-8000-000000000441';
     const backend = new FakeBackend({ documentId: docId, annotationWritePolicy: policy });

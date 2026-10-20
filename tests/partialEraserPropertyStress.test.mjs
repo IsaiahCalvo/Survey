@@ -129,7 +129,11 @@ function probesForGesture(gesture, random) {
   return probes;
 }
 
-test('seeded folded-path stress preserves exact cursor contact', { timeout: 120_000 }, (context) => {
+// No per-test `timeout` (KAL-446): a node:test timeout is wall-clock, and this
+// sweep needs ~45 s of CPU, so on a busy machine it was killed while still
+// working. Hangs are bounded by the gate's CPU-aware file guard instead
+// (scripts/test-file-guard.mjs): 120 s of this file's own CPU, or no progress.
+test('seeded folded-path stress preserves exact cursor contact', (context) => {
   const kinds = ['c', 'hump', 'hairpin', 'loop', 'backtrack', 'scribble'];
   const caseCount = Math.max(1, Number.parseInt(process.env.ERASER_STRESS_CASES || '360', 10));
   const startSeed = Math.max(1, Number.parseInt(process.env.ERASER_STRESS_START_SEED || '1', 10));

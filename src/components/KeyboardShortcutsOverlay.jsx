@@ -10,12 +10,14 @@
  * or Cmd/Ctrl+/ again close it. The rows come from src/utils/keyboardShortcuts.js,
  * which a test keeps in step with the real key handlers. Stops wheel/touch
  * events from reaching the PDF handler so the list scrolls natively. Renders
- * null when closed.
+ * null when closed (after a 120 ms exit through MotionPresence).
  */
 import React from 'react';
+import { assignShortcut, canAssignShortcut, eventChord, installShortcutRemapping, resetShortcut, shortcutBinding } from '../utils/customKeyboardShortcuts.js';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import MotionPresence from './MotionPresence.jsx';
 import { isTypingTarget } from '../utils/annotationFamilyRules';
 import {
   OPEN_SHORTCUTS_EVENT,
@@ -26,6 +28,10 @@ import {
 
 const KeyboardShortcutsOverlay = () => {
   const [isOpen, setIsOpen] = React.useState(false);
+  const [editingChord, setEditingChord] = React.useState(null);
+  const [bindingTick, setBindingTick] = React.useState(0);
+  const [bindingError, setBindingError] = React.useState('');
+  React.useEffect(() => installShortcutRemapping(), []);
   const modalContentRef = React.useRef(null);
   const isOpenRef = React.useRef(isOpen);
   isOpenRef.current = isOpen;
@@ -38,6 +44,7 @@ const KeyboardShortcutsOverlay = () => {
   // it, even though focus is inside it.
   React.useEffect(() => {
     const onKeyDown = (event) => {
+      if (editingChord) return;
       if (!isShortcutsSheetKey(event)) return;
       if (!isOpenRef.current && isTypingTarget(document.activeElement)) return;
       event.preventDefault();
@@ -56,18 +63,19 @@ const KeyboardShortcutsOverlay = () => {
       window.removeEventListener(OPEN_SHORTCUTS_EVENT, open);
       if (typeof unsubscribeMenu === 'function') unsubscribeMenu();
     };
-  }, []);
+  }, [editingChord]);
 
   // Accessibility: Tab stays inside the overlay, Escape closes it (this replaces
   // the old useKeyPress('Escape') — the trap listens in the capture phase so it
   // has to own Escape), and focus returns to whatever was focused before '?'.
   const closeOverlay = React.useCallback(() => setIsOpen(false), []);
-  useFocusTrap(modalContentRef, isOpen, { onEscape: closeOverlay });
+  useFocusTrap(modalContentRef, isOpen, { avoidTextFields: true, onEscape: () => { if (editingChord) document.activeElement?.blur(); else closeOverlay(); } });
 
   // No floating hint pill — the overlay stays reachable via the '?' key, but
   // the bottom-right "Press ? for keyboard shortcuts" prompt is not shown.
+  // Closed: MotionPresence plays the sheet's exit (motion.css), then nothing.
   if (!isOpen) {
-    return null;
+    return <MotionPresence open={false} />;
   }
 
   const isMac = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
@@ -77,12 +85,14 @@ const KeyboardShortcutsOverlay = () => {
   const shortcuts = shortcutSectionsFor({ isDesktopApp }).map((section) => ({
     category: section.title,
     items: section.items.map((item) => ({
-      keyGroups: item.chords.map((chord) => chordKeycaps(chord, { isMac })),
+      chords: item.chords,
+      keyGroups: item.chords.map((chord) => chordKeycaps(shortcutBinding(chord), { isMac })),
       description: item.label,
     })),
   }));
 
   return (
+    <MotionPresence open>
     <div
       data-keyboard-shortcuts-modal="true"
       style={{
@@ -109,8 +119,8 @@ const KeyboardShortcutsOverlay = () => {
         style={{
           background: COLORS.background.secondary,
           borderRadius: BORDERS.radius.dialog,
-          padding: '32px',
-          width: 'min(420px, calc(100vw - 32px))',
+          padding: '24px',
+          width: 'min(620px, calc(100vw - 32px))',
           boxSizing: 'border-box',
           maxHeight: '80vh',
           overflow: 'auto',
@@ -180,7 +190,9 @@ const KeyboardShortcutsOverlay = () => {
         {/* Shortcuts List */}
         {/* KAL-444: the list grew from 6 honest-ish rows to every key the app
             answers to, so rows are compact enough to scan instead of scroll. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <p style={{ color: COLORS.text.muted, margin: '0 0 16px', fontSize: '13px' }}>Click a key field, then press your new shortcut.</p>
+        {bindingError && <p role="alert" style={{ color: 'var(--danger)' }}>{bindingError}</p>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {shortcuts.map((section, idx) => (
             <div key={idx}>
               <h3
@@ -223,50 +235,26 @@ const KeyboardShortcutsOverlay = () => {
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {item.keyGroups.map((keys, groupIdx) => (
                         <React.Fragment key={groupIdx}>
-                          {groupIdx > 0 && (
-                            <span
-                              style={{
-                                color: COLORS.text.disabled,
-                                fontSize: TYPOGRAPHY.fontSize.sm,
-                                fontFamily: TYPOGRAPHY.fontFamily.default,
-                                margin: '0 4px',
+                          {canAssignShortcut(item.chords[groupIdx]) ? (
+                            <input
+                              aria-label={`Shortcut for ${item.description}`}
+                              readOnly
+                              value={editingChord === item.chords[groupIdx] ? 'Press keys…' : item.keyGroups[groupIdx].join(' + ')}
+                              onFocus={() => { setEditingChord(item.chords[groupIdx]); setBindingError(''); }}
+                              onBlur={() => setEditingChord(null)}
+                              onKeyDown={(event) => {
+                                event.preventDefault(); event.stopPropagation();
+                                if (event.key === 'Escape') { event.currentTarget.blur(); return; }
+                                const chord = eventChord(event);
+                                if (!chord) return;
+                                const error = assignShortcut(item.chords[groupIdx], chord);
+                                setBindingError(error || '');
+                                if (!error) { setBindingTick(bindingTick + 1); event.currentTarget.blur(); }
                               }}
-                            >
-                              or
-                            </span>
-                          )}
-                          {keys.map((key, keyIdx) => (
-                            <React.Fragment key={keyIdx}>
-                              {keyIdx > 0 && (
-                                <span
-                                  style={{
-                                    color: COLORS.text.disabled,
-                                    fontSize: TYPOGRAPHY.fontSize.sm,
-                                    margin: '0 2px',
-                                  }}
-                                >
-                                  +
-                                </span>
-                              )}
-                              <kbd
-                                style={{
-                                  padding: '2px 7px',
-                                  background: COLORS.background.dark,
-                                  border: `1px solid ${COLORS.border.default}`,
-                                  borderRadius: BORDERS.radius.sm,
-                                  fontSize: TYPOGRAPHY.fontSize.base,
-                                  fontWeight: TYPOGRAPHY.fontWeight.semibold,
-                                  color: COLORS.text.secondary,
-                                  fontFamily: TYPOGRAPHY.fontFamily.mono,
-                                  minWidth: '32px',
-                                  textAlign: 'center',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {key}
-                              </kbd>
-                            </React.Fragment>
-                          ))}
+                              style={{ width: '132px', border: '1px solid var(--border-1)', borderRadius: '6px', background: 'var(--surface-1)', color: 'var(--text-1)', padding: '7px', textAlign: 'center', cursor: 'pointer', fontSize: '12px' }}
+                            />
+                          ) : keys.map((key, keyIdx) => <kbd key={keyIdx} style={{ padding: '2px 7px', color: COLORS.text.secondary }}>{key}</kbd>)}
+                          {shortcutBinding(item.chords[groupIdx]) !== item.chords[groupIdx] && <button type="button" aria-label={`Reset shortcut for ${item.description}`} onClick={() => { setBindingError(resetShortcut(item.chords[groupIdx]) || ''); setBindingTick(bindingTick + 1); }}>Reset</button>}
                         </React.Fragment>
                       ))}
                     </div>
@@ -278,6 +266,7 @@ const KeyboardShortcutsOverlay = () => {
         </div>
       </div>
     </div>
+    </MotionPresence>
   );
 };
 

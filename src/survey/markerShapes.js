@@ -239,15 +239,15 @@ export function normalizeMarkerPolygons(input) {
   let tolerance = 0.25;
   while (count() > MAX_POLYGON_POINTS && tolerance < 64) {
     for (let i = 0; i < polygons.length; i += 1) {
-      polygons[i] = polygons[i]
-        .map((ring) => {
-          const closed = [...ring, ring[0]];
-          const slim = simplifyPolyline(closed, tolerance);
-          slim.pop();
-          return slim.length >= 3 ? slim : null;
-        })
-        .filter((ring, index) => ring || index > 0);
-      if (!polygons[i][0]) polygons[i] = null;
+      const [outer, ...holes] = polygons[i].map((ring) => {
+        const closed = [...ring, ring[0]];
+        const slim = simplifyPolyline(closed, tolerance);
+        slim.pop();
+        return slim.length >= 3 ? slim : null;
+      });
+      // A hole thinned below three points is dropped; an outline that
+      // collapses takes its polygon (and its holes) with it.
+      polygons[i] = outer ? [outer, ...holes.filter(Boolean)] : null;
     }
     for (let i = polygons.length - 1; i >= 0; i -= 1) if (!polygons[i]) polygons.splice(i, 1);
     if (polygons.length === 0) return null;

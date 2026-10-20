@@ -30,6 +30,7 @@ import { getSupabaseSession, supabase } from './supabaseClient';
 import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
 import { countSurveyMarkersReferencingChecklistItem } from './services/documentAnnotationService';
 import { computeContentSha256 } from './services/contentHash';
+import { ownDocumentObjectPath } from './services/documentFileReplace.js';
 import { cloneDocumentIntoProject, describeReusedCopies, isReusedCopy } from './home/cloneDocument.js';
 import { purgeAnnotationDoc } from './services/annotationDocSync';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
@@ -62,7 +63,7 @@ const serializeError = (error) => {
   };
 };
 
-const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOpenStart, onDocumentOpenEnd, onBack, documents, setDocuments, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
+const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOpenStart, onDocumentOpenEnd, onBack, documents, setDocuments, onLibraryUserChange = null, templates: externalTemplates = [], onTemplatesChange, onShowAuthModal, entities, setEntities }, ref) {
   const fileInputRef = useRef();
   const projectFileInputRef = useRef();
   // Destination project for the next browser-input upload. The browser file
@@ -504,7 +505,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       );
       return [...tempDocs, ...formattedDocs];
     });
-  }, [supabaseDocuments]);
+    // Whose library this is (the open-tabs restore waits for the signed-in
+    // user's own). Runs only when a new list lands - never on the render where
+    // `user` changes but the old account's list is still here - so `user` is
+    // deliberately not a dependency.
+    // Only the WHOLE library counts: inside a project this list is that
+    // project's documents alone, and restoring against it would skip saved
+    // tabs from other projects and then save the shortened set over the
+    // user's session (Bugbot, #817). Report "not the full library" instead.
+    onLibraryUserChange?.(selectedProjectId ? null : (user?.id || null));
+  }, [supabaseDocuments]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // An EMPTY library is a loaded library too (Codex, #817): the list above
+  // does not change when the signed-in user's load returns no documents, so
+  // stamp when that user's first load finishes. initialLoading is keyed by
+  // user, so when it is false the list is the current user's.
+  useEffect(() => {
+    if (documentsInitialLoading || selectedProjectId) return;
+    onLibraryUserChange?.(user?.id || null);
+  }, [documentsInitialLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     try { localStorage.setItem('dashboardViewMode', viewMode); } catch { }
@@ -611,9 +630,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
         let resolvedDoc;
         try {
+          // Own object per row, named by the row id: a page edit on this
+          // document must never rewrite another document's bytes.
+          const newDocId = crypto.randomUUID();
           resolvedDoc = await createSupabaseDocument({
+            id: newDocId,
             name: file.name,
-            file_path: `${user.id}/${contentSha}.pdf`,
+            file_path: ownDocumentObjectPath(user.id, newDocId),
             file_size: file.size,
             page_count: 1, // placeholder; corrected in the background after parse
             project_id: projectId || null,
@@ -685,14 +708,15 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         };
         setDocuments(prev => [tempDoc, ...prev.filter(d => d.id !== tempDoc.id)]);
 
-        // Background: store the bytes (content-addressed, idempotent — a re-upload
-        // of the same file overwrites the same object) and correct the page count
+        // Background: store the bytes at the row's own file_path (idempotent — a
+        // re-upload of the same file into this project dedups to this row and
+        // overwrites its object with the same bytes) and correct the page count
         // once parsed. The marks' durability is the annotation store's job now.
         (async () => {
           setActiveUploads((count) => count + 1);
           try {
             perfUpload.mark(file.name, 'Starting cloud upload');
-            const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
+            const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha, { objectPath: resolvedDoc.file_path });
             const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs });
 
             // A page-count parse failure must not reject the join — the archive
@@ -780,9 +804,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
     let resolvedDoc;
     try {
+      // Own object per row (see the Electron picker upload above).
+      const newDocId = crypto.randomUUID();
       resolvedDoc = await createSupabaseDocument({
+        id: newDocId,
         name: file.name,
-        file_path: `${user.id}/${contentSha}.pdf`,
+        file_path: ownDocumentObjectPath(user.id, newDocId),
         file_size: file.size,
         page_count: 1,
         project_id: projectId || null,
@@ -846,12 +873,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     };
     setDocuments(prev => [tempDoc, ...prev.filter(d => d.id !== tempDoc.id)]);
 
-    // Background: store the bytes (content-addressed, idempotent) and correct
-    // the page count once parsed.
+    // Background: store the bytes at the row's own file_path (idempotent) and
+    // correct the page count once parsed.
     (async () => {
       setActiveUploads((count) => count + 1);
       try {
-        const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha);
+        const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha, { objectPath: resolvedDoc.file_path });
         const pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
           .catch((err) => {
             console.error('Error getting page count:', err);
@@ -1047,12 +1074,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const settledFiles = await mapUploadsBounded(batchEntries, async ({ file, name }) => {
       let pageCountPromise;
       try {
-        // Content-address these uploads too (decision 6): hash first so the
-        // stored object lands at {user}/{sha}.pdf, never a new time-named file.
+        // Fingerprint for dedup (decision 6). The bytes go to the row's own
+        // object, {user}/{row id}.pdf, never one shared with another document.
         const contentSha = await computeContentSha256(new Uint8Array(await file.arrayBuffer()));
+        const newDocId = crypto.randomUUID();
 
         // Start upload and page count in parallel
-        const uploadPromise = uploadToStorage(file, newProject.id, undefined, contentSha);
+        const uploadPromise = uploadToStorage(file, newProject.id, undefined, contentSha, { objectPath: ownDocumentObjectPath(user.id, newDocId) });
         pageCountPromise = readPdfPageCount(file, { readBlobAsArrayBuffer, loadPdfjs })
           .catch((err) => {
             console.error(`Error getting page count for ${file.name}:`, err);
@@ -1064,14 +1092,29 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
         // Create document record immediately after upload
         // Use null for page_count initially, will update in background
-        const doc = await createSupabaseDocument({
-          name,
-          file_path: filePath,
-          file_size: file.size,
-          page_count: null,
-          project_id: newProject.id,
-          content_sha256: contentSha,
-        });
+        let doc;
+        try {
+          doc = await createSupabaseDocument({
+            id: newDocId,
+            name,
+            file_path: filePath,
+            file_size: file.size,
+            page_count: null,
+            project_id: newProject.id,
+            content_sha256: contentSha,
+          });
+        } catch (createErr) {
+          // No row points at the object (its path is this attempt's own id,
+          // so a retry never reuses it): remove it (best effort).
+          deleteFromStorage(filePath).catch((err) => console.warn(`Could not remove unused upload ${filePath}:`, err?.message));
+          throw createErr;
+        }
+
+        // Deduped to another picked file's row: nothing reads the object we
+        // just stored, so remove it (best effort).
+        if (doc && doc.file_path !== filePath) {
+          deleteFromStorage(filePath).catch((err) => console.warn(`Could not remove unused upload ${filePath}:`, err?.message));
+        }
 
         // Two picked files with identical bytes dedup to ONE row — keep the
         // second file's name as an alias automatically (decision 6; bulk flow
@@ -2512,10 +2555,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           above the hub chrome. Both are inert until a handler awaits them. */}
       {confirmDialogElement}
       {promptDialogElement}
-      {/* hub.css places it above the phone's bottom tab bar. */}
-      <div className="hub-undo-toast">
-        <UndoToast toast={archiveUndoToast} onDismiss={dismissArchiveUndo} />
-      </div>
+      {/* hub.css places it above the phone's bottom tab bar. The toast is
+          portalled to <body> (KAL-461), so the class goes on the toast itself. */}
+      <UndoToast toast={archiveUndoToast} onDismiss={dismissArchiveUndo} className="hub-undo-toast" />
     </>
   );
 });

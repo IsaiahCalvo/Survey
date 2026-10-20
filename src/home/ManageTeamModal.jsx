@@ -24,6 +24,7 @@ import { Icon } from './HubShell';
 import { AuthContext } from '../contexts/AuthContext';
 import Spinner from '../components/Spinner';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { checkboxProps } from '../utils/keyActivate';
 import DismissBarrier from '../components/DismissBarrier';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { visibleOpenInvites } from './accessRows';
@@ -402,34 +403,24 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [sortKey, setSortKey] = React.useState("default");
   const [sortDir, setSortDir] = React.useState("asc");
-  const previouslyFocusedRef = React.useRef(null);
   const searchRootRef = React.useRef(null);
   const searchInputRef = React.useRef(null);
   const [searchFocused, setSearchFocused] = React.useState(false);
   const transientDismissActiveRef = React.useRef(false);
   transientDismissActiveRef.current = searchFocused || openMenu != null || openInviteMenu != null || openRoleSel != null || bulkRoleOpen;
 
-  // Accessibility: Escape closes the modal, and focus returns to whatever
-  // triggered it once it closes (minimal per-modal patch, no shared modal
-  // primitive/focus trap). Skipped while a nested sub-modal (Activity or
-  // Invite) is open so Escape closes that one first.
-  React.useEffect(() => {
-    if (!open) return undefined;
-    previouslyFocusedRef.current = document.activeElement;
-    const handleKey = (e) => {
-      if (e.key === 'Escape' && !activityFor && !inviteOpen) {
-        if (transientDismissActiveRef.current) return;
-        e.stopPropagation();
-        onClose?.();
-      }
-    };
-    window.addEventListener('keydown', handleKey, true);
-    return () => {
-      window.removeEventListener('keydown', handleKey, true);
-      previouslyFocusedRef.current?.focus?.();
-      previouslyFocusedRef.current = null;
-    };
-  }, [open, onClose, activityFor, inviteOpen]);
+  // Accessibility (KAL-66): the shared modal primitive — Tab stays inside
+  // the dialog, Escape closes it, focus moves in on open and returns to the
+  // opener on close. The Activity / Invite sub-dialogs use the same hook, and
+  // it answers only the topmost open dialog, so while one of those is open
+  // Tab and Escape belong to it. (The old hand-rolled effect re-ran whenever a
+  // sub-dialog opened and threw focus back to the hub behind this dialog.)
+  // An open row menu or the search box get Escape first through the shared
+  // dismiss rules; the ref check below is a belt-and-braces guard.
+  const mainCardRef = React.useRef(null);
+  useFocusTrap(mainCardRef, Boolean(open), {
+    onEscape: () => { if (!transientDismissActiveRef.current) onClose?.(); },
+  });
 
   const refresh = React.useCallback(async () => {
     if (!projectId) { setCollabRows([]); setInvites([]); return; }
@@ -655,7 +646,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
         }}
       />
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--overlay-scrim)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, fontFamily: "var(--font-ui)" }}>
-        <div role="dialog" aria-modal="true" aria-label="Manage Team" data-kal31-manage-team="true" onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: "var(--radius-dialog)", boxShadow: "var(--shadow-dialog)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
+        <div ref={mainCardRef} role="dialog" aria-modal="true" aria-label="Manage Team" data-kal31-manage-team="true" onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: "var(--radius-dialog)", boxShadow: "var(--shadow-dialog)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
           {/* Header */}
           <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 3, height: 30, background: project.color || GOLD, borderRadius: 2, flex: "none", marginRight: 10 }}></span>
@@ -774,7 +765,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 12, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.added}</div>
                     {editMode ? (
                       m.isCreator ? <span /> : (
-                        <span onClick={(e) => { e.stopPropagation(); toggleSel(m.id); }}
+                        <span {...checkboxProps(checked, () => toggleSel(m.id), `Select ${m.name || m.email || 'member'}`)} onClick={(e) => { e.stopPropagation(); toggleSel(m.id); }}
                           style={{ width: 18, height: 18, border: `1.4px solid ${checked ? GOLD : INK_500_FIELD}`, background: checked ? GOLD : "transparent", borderRadius: 3, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", justifySelf: "center" }}>
                           {checked && <Icon name="check" size={11} color="var(--accent-text)" />}
                         </span>
