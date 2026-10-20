@@ -135,9 +135,17 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
   const rail = read('../src/SurveySpacesRail.jsx');
   // Survey audit P1-5 (2026-10-01): the phone Survey sheet is a 'sheet'
   // occluder (like the phone Pages sheet), so Locate fits above it.
-  assert.match(rail, /ref=\{mobileMode \? undefined : sideOccluderRef\}\s*data-viewer-occluder=\{isSurveyPanelCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}/);
+  // KAL-66 (2026-10-13): the ref moved after the phone sheet's prop spread -
+  // on the phone it is the sheet focus ref (which also feeds the sheet
+  // motion's ref); the desktop rail still registers its side occluder.
+  assert.match(rail, /data-viewer-occluder=\{isSurveyPanelCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}[\s\S]{0,240}ref=\{mobileMode \? surveySheetFocusRef : sideOccluderRef\}/);
   const sidebar = read('../src/PDFSidebar.jsx');
-  assert.match(sidebar, /data-viewer-occluder=\{isCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}\s*ref=\{mobileMode \? undefined : sideOccluderRef\}/);
+  // Chunk D (2026-10-13): a side occluder while the desktop panel is laid out
+  // (open, or still sliding closed). 2026-10-14: the panel is one fixed width
+  // with no resize drag, so the desktop ref is the side occluder again.
+  // KAL-66: the ref sits after the phone sheet's prop spread (see above).
+  assert.match(sidebar, /data-viewer-occluder=\{mobileMode \? \(isCollapsed \? undefined : 'sheet'\) : \(layoutOpen \? 'side' : undefined\)\}[\s\S]{0,400}ref=\{mobileMode \? sheetFocusRef : sideOccluderRef\}/);
+  assert.doesNotMatch(sidebar, /setRailEl|railElRef/);
 });
 
 test('phone Fit width: a tap on chrome over the page never picks an annotation', () => {

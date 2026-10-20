@@ -1,7 +1,6 @@
-// The one loading state (owner 2026-10-04): a single quiet line of text in the
-// middle of the space that is waiting — "Opening <file>…", "Loading
-// documents…". No spinner, no bar, no pulsing skeleton, the same on desktop and
-// phone.
+// Opening a PDF keeps the same quiet label and adds a faint page outline.
+// It fades in once; there is no pulse or moving shimmer. Library loads keep
+// their plain label, so the page placeholder only appears for a document.
 //
 // It shows nothing for the first SHOW_AFTER_MS, so a fast open never flashes a
 // loading screen at all, then fades the text in. An open can pass through
@@ -43,6 +42,12 @@ export function openingLabel(name) {
 }
 
 const QUIET_LOADING_CSS = `
+.quiet-loading-page { position: absolute; width: min(380px, 68%); height: min(520px, 72%); box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: 2px; background: var(--surface-1); opacity: 0;
+  animation: quietLoadingIn 220ms ease-out both; pointer-events: none; }
+.quiet-loading-page > i { display: block; margin: 36px 32px 0; height: 7px; background: var(--border); opacity: .45; border-radius: 2px; }
+.quiet-loading-page > i + i { margin-top: 13px; width: 52%; }
+.quiet-loading-page > i + i + i { width: 68%; }
 @keyframes quietLoadingIn { from { opacity: 0; } to { opacity: 1; } }
 .quiet-loading-text {
   max-width: min(80%, 440px);
@@ -77,7 +82,7 @@ const QUIET_LOADING_CSS = `
   .survey-pdfjs-viewer .quiet-loading-text { top: 50%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .quiet-loading-text { animation-duration: 1ms; }
+  .quiet-loading-text, .quiet-loading-page { animation-duration: 1ms; }
 }
 `;
 
@@ -117,6 +122,7 @@ export default function QuietLoading({ label, background = 'transparent', style 
       }}
     >
       <style>{QUIET_LOADING_CSS}</style>
+      {(label || shownLabel).startsWith('Opening') && <div aria-hidden="true" className="quiet-loading-page" style={{ animationDelay: `${delayMs}ms` }}><i /><i /><i /></div>}
       <span className="quiet-loading-text" style={{ animationDelay: `${delayMs}ms` }}>{label || shownLabel}</span>
     </div>
   );

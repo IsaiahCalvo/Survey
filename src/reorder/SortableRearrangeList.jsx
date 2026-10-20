@@ -28,13 +28,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { CALM_LIST_AUTO_SCROLL } from './dragAutoScroll.js';
 import { getDragSlotRect } from './dragSlot.js';
+import { restrictToVerticalAxis } from './axisLock.js';
 
 export const DENSE_ROW_DRAG_OPACITY = 0.62;
-
-const restrictToVerticalAxis = ({ transform }) => ({
-  ...transform,
-  x: 0,
-});
 
 const pointerThenClosestCenter = (args) => {
   const pointerCollisions = pointerWithin(args);

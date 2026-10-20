@@ -1,3 +1,4 @@
+import { pagePresentationFrame, clientPointInPageFrame } from '../utils/pagePresentation.js';
 /**
  * Page-space eraser interaction surface.
  *
@@ -630,10 +631,9 @@ const FabricEraserCanvas = memo(({
   const pagePoint = useCallback((nativeEvent) => {
     const rect = containerRef.current?.getBoundingClientRect?.();
     if (!rect || rect.width <= 0 || rect.height <= 0) return null;
-    return {
-      x: ((nativeEvent.clientX - rect.left) / rect.width) * pageWidth,
-      y: ((nativeEvent.clientY - rect.top) / rect.height) * pageHeight,
-    };
+    const pageElement = containerRef.current?.closest?.('.survey-pdfjs-page-div');
+    const presentation = pagePresentationFrame(pageElement);
+    return clientPointInPageFrame(nativeEvent, { left: rect.left, top: rect.top, width: rect.width, height: rect.height, mirrorH: presentation?.mirrorH, mirrorV: presentation?.mirrorV }, { width: pageWidth, height: pageHeight });
   }, [pageHeight, pageWidth]);
 
   // Snapshot every annotation's exact page-unit bounds once per gesture. getBBox

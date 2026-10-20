@@ -139,11 +139,13 @@ test('tapping an open tool group closes its strip and hands the tool back to Pan
   assert.match(chrome, /const toggleCategory = \(groupId\) => \{[\s\S]{0,1600}if \(openCategory === groupId\) \{\s*setOpenCategory\(null\);\s*if \(activeGroup === groupId\) selectTool\('pan'\);\s*return;/);
   // An armed survey category / entity disc disarms to Pan on a second tap.
   assert.match(chrome, /const toggleSurveyPick = \(picked, arm\) => \{\s*if \(picked && activeTool === 'survey-marker'\) \{\s*selectTool\('pan'\);\s*return;\s*\}\s*arm\(\);/);
-  assert.match(chrome, /toggleSurveyPick\(bottomToolbarApi\.surveyToolbar\.selectedCategoryId === category\.id,/);
+  // (Phone survey round 2026-10-13: the discs moved into MobileSurveyRail.jsx
+  // columns; the rail still hands them these same tap rules.)
+  assert.match(chrome, /toggleSurveyPick\(\s*surveyToolbar\.selectedCategoryId === category\.id,/);
   // Survey audit P1-3 (2026-10-01): with a category armed, a second tap on the
   // picked entity drops only the entity (it used to disarm the category too).
-  assert.match(chrome, /toggleSurveyPick\(toolbar\.selectedEntityId === entity\.id,/);
-  assert.match(chrome, /toolbar\.selectedEntityId === entity\.id && toolbar\.selectedCategoryId && activeTool === 'survey-marker'\) \{\s*toolbar\.onSelectEntity\?\.\(null\);/);
+  assert.match(chrome, /toggleSurveyPick\(surveyToolbar\.selectedEntityId === entity\.id,/);
+  assert.match(chrome, /surveyToolbar\.selectedEntityId === entity\.id && surveyToolbar\.selectedCategoryId && markerArmed\) \{\s*surveyToolbar\.onSelectEntity\?\.\(null\);/);
   // Opening a group still arms its last-used tool.
   assert.match(chrome, /const toggleCategory = \(groupId\) => \{[\s\S]{0,1600}selectTool\(preferred && TOOL_TO_GROUP\[preferred\] === groupId \? preferred : group\.fallback\)/);
 });

@@ -25,7 +25,7 @@
 
 /* Fades in each time it shows (it stays mounted, hidden, between shows). */
 .text-selection-quick-menu[data-visible='true'] {
-  animation: text-selection-quick-menu-in 120ms ease-out;
+  animation: text-selection-quick-menu-in var(--motion-menu) var(--ease-out);
 }
 
 .text-selection-quick-menu__button {

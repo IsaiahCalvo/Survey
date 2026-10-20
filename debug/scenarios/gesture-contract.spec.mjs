@@ -1,5 +1,5 @@
 // Gesture contract (docs/GESTURE-CONTRACT.md; Linear KAL-463; Drawboard audit
-// 2026-10-13 C2/C3/C5 + the owner's "Pan must not select text").
+// 2026-10-13 C2/C3/C5; Pan over text per the owner 2026-10-14).
 //
 // WHY: the same gesture must do the same thing with every tool. This walks the
 // tools the owner named (Pen, Highlighter, Rectangle, Survey Marker, Select)
@@ -12,8 +12,9 @@
 //     a finger resting while the pen writes is ignored;
 //   - T2 a second finger mid-stroke never leaves a partial mark;
 //   - L1 a long press never fires while a drag is under way;
-//   - the Pan tool never selects page text, shows the grab cursor, and the
-//     Text Select tool still selects.
+//   - the Pan tool pans from text at once and selects text only after the
+//     mouse has rested on it (owner 2026-10-14, Drawboard), and the Text
+//     Select tool still selects.
 //
 // Needs a browser, so NOT in the CI shards. Run it by hand:
 //   PLAYWRIGHT_BASE_URL=http://127.0.0.1:5199 npx playwright test \
@@ -275,8 +276,9 @@ test.describe('desktop 1440x900: mouse, middle button, pen', () => {
     await sleep(700);
     expect(await H.marks(), 'a left drag on the page draws').toBe(m0 + 1);
     expect((await H.pos()).y).toBe(a.y);
-    // P7 (owner 2026-10-13): Pan shows no hover halo over that stroke and no
-    // pointer hand - only the grab cursor.
+    // P7 (owner 2026-10-14, reversing 10-13 - Drawboard's Pan does this): Pan
+    // shows the blue hover halo over that stroke, but no pointer hand - the
+    // grab cursor stays.
     await armDesk(H, 'pan');
     await H.mouse('mouseMoved', cx - 20, 425, { button: 'none', buttons: 0 });
     await sleep(150);
@@ -288,7 +290,7 @@ test.describe('desktop 1440x900: mouse, middle button, pen', () => {
       cursor: getComputedStyle(document.elementFromPoint(x, y)).cursor,
     }), { x: cx - 18, y: 425 });
     record('desk.pan.hoverOverMark', panHover);
-    expect(panHover.halos, 'no hover halo under Pan').toBe(0);
+    expect(panHover.halos, 'the hover halo shows under Pan').toBeGreaterThan(0);
     expect(panHover.bodyCursor).not.toBe('pointer');
     expect(panHover.cursor).toBe('grab');
     // Select: a box drag that starts on the page is a marquee, not a pan.
@@ -300,9 +302,12 @@ test.describe('desktop 1440x900: mouse, middle button, pen', () => {
   });
 });
 
-test.describe('desktop + phone: the Pan tool never selects page text', () => {
+test.describe('desktop + phone: the Pan tool selects text only after a mouse rests on it', () => {
+  // Owner 2026-10-14 (reverses 2026-10-13): Drawboard's Pan selects text once
+  // the mouse / pen has rested on it 200 ms (I-beam); before that, and on
+  // blank page, a drag pans. A finger always pans (utils/panTextSelect.js).
   for (const kind of ['desk', 'phone']) {
-    test(`${kind}: Pan drag across text pans, selects nothing, shows the grab cursor; Text Select still selects`, async ({ browser }) => {
+    test(`${kind}: Pan drag across text pans at once, selects after a rest; blank page pans; Text Select still selects`, async ({ browser }) => {
       // The phone uses the long PDF so a one-finger drag has room to move.
       const H = await openViewer(browser, { kind, pdf: kind === 'phone' ? SPIKE : TEXT_PDF });
       const { page } = H;
@@ -311,57 +316,118 @@ test.describe('desktop + phone: the Pan tool never selects page text', () => {
       if (kind === 'desk') { for (let i = 0; i < 3; i += 1) { await page.keyboard.press('Control+='); await sleep(400); } }
       await sleep(800);
       const r = await H.pageRect();
-      const x = Math.max(r.left + 60, 80);
-      const y = Math.max(r.top + 120, 200);
       const cursorAt = (px, py) => page.evaluate(({ px: cx, py: cy }) => { const e = document.elementFromPoint(cx, cy); return e ? getComputedStyle(e).cursor : null; }, { px, py });
-      const a = await H.pos();
+      const textSpan = () => page.evaluate(() => {
+        const s = [...document.querySelectorAll('.pdfjsTextLayer span')].find((e) => e.textContent.trim().length > 6 && e.getBoundingClientRect().width > 60 && e.getBoundingClientRect().top > 120 && e.getBoundingClientRect().bottom < innerHeight - 120);
+        if (!s) return null;
+        const q = s.getBoundingClientRect();
+        return { x: q.left + 2, y: q.top + q.height / 2, w: q.width };
+      });
+      const selected = () => page.evaluate(() => String(window.getSelection?.() || ''));
       if (kind === 'desk') {
-        await H.mouse('mouseMoved', x, y, { button: 'none', buttons: 0 });
-        await sleep(150);
-        const hover = await cursorAt(x, y);
-        record(`${kind}.pan.hoverCursor`, hover);
-        expect(hover).toBe('grab');
-        await H.mouse('mousePressed', x, y);
+        let span = await textSpan();
+        expect(span, 'Pan mounts the text layer on a mouse device').not.toBeNull();
+        // 1. Straight onto text and drag at once: the grab hand, and it pans.
+        await H.mouse('mouseMoved', 5, 400, { button: 'none', buttons: 0 });
+        await sleep(250);
+        await H.mouse('mouseMoved', span.x + 8, span.y, { button: 'none', buttons: 0 });
+        await sleep(60);
+        const quickCursor = await cursorAt(span.x + 8, span.y);
+        record('desk.pan.textCursorAt60ms', quickCursor);
+        expect(quickCursor).toBe('grab');
+        const a = await H.pos();
+        await H.mouse('mousePressed', span.x + 8, span.y);
         let during = null;
         for (let i = 1; i <= 12; i += 1) {
-          await H.mouse('mouseMoved', x + i * 15, y - i * 12);
+          await H.mouse('mouseMoved', span.x + 8 + i * 10, span.y - i * 12);
           await sleep(16);
-          // Under the pointer mid-drag (still over the viewer, not the toolbar).
-          if (i === 5) during = await cursorAt(x + 75, y - 60);
+          if (i === 5) during = await cursorAt(span.x + 58, span.y - 60);
         }
-        record(`${kind}.pan.dragCursor`, during);
+        record('desk.pan.dragCursor', during);
         expect(during).toBe('grabbing');
-        await H.mouse('mouseReleased', x + 180, y - 144);
-      } else {
-        await H.fdrag(x, y, x + 150, y - 160, { n: 12 });
-      }
-      await H.settle();
-      const b = await H.pos();
-      const selection = await page.evaluate(() => String(window.getSelection?.() || ''));
-      record(`${kind}.pan.textDrag`, { dx: Math.round(b.x - a.x), dy: Math.round(b.y - a.y), selection });
-      expect(selection).toBe('');
-      expect(Math.abs(b.y - a.y) + Math.abs(b.x - a.x), 'the page moved').toBeGreaterThan(40);
-      if (kind === 'desk') {
+        await H.mouse('mouseReleased', span.x + 128, span.y - 144);
+        await H.settle();
+        const b = await H.pos();
+        record('desk.pan.quickTextDrag', { dx: Math.round(b.x - a.x), dy: Math.round(b.y - a.y), selection: await selected() });
+        expect(await selected()).toBe('');
+        expect(Math.abs(b.y - a.y) + Math.abs(b.x - a.x), 'a drag before the rest pans').toBeGreaterThan(40);
+        // 2. Rest on text: the I-beam, and the drag selects (the page stays).
+        await H.toTop();
+        span = await textSpan();
+        await H.mouse('mouseMoved', span.x + 4, span.y, { button: 'none', buttons: 0 });
+        await sleep(400);
+        const restCursor = await cursorAt(span.x + 4, span.y);
+        record('desk.pan.textCursorAfterRest', restCursor);
+        expect(restCursor).toBe('text');
+        const c = await H.pos();
+        await H.drag(span.x, span.y, span.x + span.w - 4, span.y, { n: 12 });
+        await sleep(700);
+        const picked = await selected();
+        const d = await H.pos();
+        const quickMenu = await page.locator('[data-text-selection-quick-menu][data-visible="true"]').count();
+        record('desk.pan.restTextDrag', { selection: picked.slice(0, 40), dx: d.x - c.x, dy: d.y - c.y, quickMenu });
+        expect(picked.length, 'a drag after the rest selects text').toBeGreaterThan(2);
+        expect(d.y - c.y).toBe(0);
+        expect(quickMenu, 'the text quick menu (Copy, Highlight...) shows').toBe(1);
+        // 3. Off the text: the grab hand again; a click on blank page clears.
+        const blank = { x: Math.round((r.left + r.right) / 2), y: 760 };
+        await H.mouse('mouseMoved', blank.x, blank.y, { button: 'none', buttons: 0 });
+        await sleep(150);
+        expect(await cursorAt(blank.x, blank.y)).toBe('grab');
+        await H.mouse('mousePressed', blank.x, blank.y);
+        await H.mouse('mouseReleased', blank.x, blank.y);
+        await sleep(400);
+        expect(await selected(), 'a click on blank page clears the selection').toBe('');
+        // 3b. The same click at once, inside the 150 ms leave grace, clears too (Bugbot #832).
+        await H.mouse('mouseMoved', span.x + 4, span.y, { button: 'none', buttons: 0 });
+        await sleep(400);
+        await H.drag(span.x, span.y, span.x + span.w - 4, span.y, { n: 12 });
+        await sleep(300);
+        expect((await selected()).length, 'selected again').toBeGreaterThan(2);
+        await H.mouse('mouseMoved', blank.x, blank.y, { button: 'none', buttons: 0 });
+        await H.mouse('mousePressed', blank.x, blank.y);
+        await H.mouse('mouseReleased', blank.x, blank.y);
+        await sleep(400);
+        record('desk.pan.fastClickOffClears', await selected());
+        expect(await selected(), 'a click right after leaving the text clears too').toBe('');
+        // 4. A drag on blank page pans and selects nothing.
+        const e0 = await H.pos();
+        // (Upward: the page sits at its top since step 2.)
+        await H.drag(blank.x, blank.y, blank.x, blank.y - 150, { n: 10 });
+        await H.settle();
+        const e1 = await H.pos();
+        record('desk.pan.blankDrag', { dy: Math.round(e1.y - e0.y), selection: await selected() });
+        expect(Math.abs(e1.y - e0.y), 'blank page pans').toBeGreaterThan(40);
+        expect(await selected()).toBe('');
         // Text Select keeps selecting page text.
         await page.keyboard.press('Shift+V');
         await sleep(800);
-        const span = await page.evaluate(() => {
-          const s = [...document.querySelectorAll('.pdfjsTextLayer span')].find((e) => e.textContent.trim().length > 6 && e.getBoundingClientRect().width > 40 && e.getBoundingClientRect().top > 80);
-          if (!s) return null;
-          const q = s.getBoundingClientRect();
-          return { x: q.left + 2, y: q.top + q.height / 2, w: q.width };
-        });
+        span = await textSpan();
         expect(span).not.toBeNull();
         await H.drag(span.x, span.y, span.x + span.w - 4, span.y, { n: 12 });
         await sleep(500);
-        const picked = await page.evaluate(() => String(window.getSelection?.() || ''));
-        record('desk.textSelect.selection', picked.slice(0, 40));
-        expect(picked.length).toBeGreaterThan(2);
+        const textSelectPick = await selected();
+        record('desk.textSelect.selection', textSelectPick.slice(0, 40));
+        expect(textSelectPick.length).toBeGreaterThan(2);
+      } else {
+        const x = Math.max(r.left + 60, 80);
+        const y = Math.max(r.top + 120, 200);
+        const a = await H.pos();
+        await H.fdrag(x, y, x + 150, y - 160, { n: 12 });
+        await H.settle();
+        const b = await H.pos();
+        const selection = await selected();
+        record('phone.pan.textDrag', { dx: Math.round(b.x - a.x), dy: Math.round(b.y - a.y), selection });
+        expect(selection).toBe('');
+        expect(Math.abs(b.y - a.y) + Math.abs(b.x - a.x), 'the page moved').toBeGreaterThan(40);
+        // No hover pointer on a phone: Pan pays for no text layer.
+        expect(await page.locator('.pdfjsTextLayer.is-pan-text').count()).toBe(0);
       }
       await H.context.close();
     });
   }
 });
+
 
 async function touchSuite(kind) {
   let H;

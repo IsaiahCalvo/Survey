@@ -44,13 +44,15 @@ export const THUMB_CACHE_BUDGET_BYTES = 40 * 1024 * 1024;
  * Cache key for a document's thumbnail.
  *
  * The key must change when the underlying bytes change, or a re-uploaded file
- * would show its predecessor's page forever. Both of this app's storage paths
- * give us that for free:
+ * would show its predecessor's page forever. content_sha256 is the stamp: every
+ * upload sets it and a page edit refreshes it (documentFileReplace.js). Rows
+ * that predate that column carry null and fall back to file_path, which for
+ * their shapes names the upload:
  *   content-addressed uploads → `<userId>/<sha256>.pdf`   (path contains the hash)
  *   legacy uploads           → `<userId>/<projectId>/<epochMs>.pdf` (new path per upload)
- * so file_path alone is already a sound invalidation stamp. content_sha256 is
- * preferred when the caller has it, but most rows in the wild predate that
- * column and carry null — hence the fallback rather than a hard requirement.
+ * (New uploads and copies live at `<userId>/<documentId>.pdf`, which does NOT
+ * name the bytes and is never rewritten except by a page edit — and a page
+ * edit sets content_sha256, which then wins.)
  *
  * Returns null when there is nothing stable to key on; callers then skip the
  * cache entirely rather than risk serving one document's page for another.

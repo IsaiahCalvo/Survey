@@ -181,7 +181,7 @@
 }
 
 .survey-notes__media-btn > svg {
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 
 /* Phone: the field is 40px tall, so a transparent 2px above and below brings
@@ -479,7 +479,7 @@
   bottom: calc(8px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   display: grid;
   gap: 8px;
-  animation: surveyMediaRise 200ms cubic-bezier(0.33, 1, 0.68, 1);
+  animation: surveyMediaRise 200ms var(--ease-out);
 }
 
 .survey-media-sheet__group {

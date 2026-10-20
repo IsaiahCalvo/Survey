@@ -138,3 +138,7 @@
 .section-icon-btn.is-active:not(:disabled):active::before {
   background: var(--pressed);
 }
+
+.section-icon-actions { position: relative; }
+.section-icon-actions__loadout { display: inline-flex; align-items: center; gap: inherit; }
+.section-icon-actions__ghosts { position: absolute; inset: 0; pointer-events: none; }

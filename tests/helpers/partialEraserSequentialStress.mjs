@@ -5,6 +5,8 @@
 // all 36 seeds. Its erase work alone costs ~120 s on a 4-core dev machine
 // (~59 s on a CI runner), so `node scripts/run-node-tests.mjs` killed it at
 // the 120 s per-file limit on every local run and under any load in CI.
+// (2026-10-13, KAL-446: that limit is now 120 s of the file's own CPU time,
+// not of wall-clock time — see scripts/test-file-guard.mjs.)
 // Nothing was wrong with the eraser — the file was simply too big for the
 // limit. The sweep is unchanged: same 36 seeds, same gestures, same probes,
 // same assertion. Each part file runs every sixth seed (part 1: seeds 1, 7,
@@ -132,7 +134,10 @@ export function defineSequentialStressPart(part) {
   if (!Number.isInteger(part) || part < 1 || part > SEQUENTIAL_STRESS_PARTS) {
     throw new Error(`part must be 1..${SEQUENTIAL_STRESS_PARTS}, got ${part}`);
   }
-  test(`repeated curved cuts never leave ink inside any prior cursor sweep (part ${part}/${SEQUENTIAL_STRESS_PARTS})`, { timeout: 120_000 }, (context) => {
+  // No per-test `timeout`: node:test timeouts are wall-clock, so a busy machine
+  // could fail a sweep that is still working. Hangs are bounded by the gate's
+  // CPU-aware file guard (scripts/test-file-guard.mjs, KAL-446).
+  test(`repeated curved cuts never leave ink inside any prior cursor sweep (part ${part}/${SEQUENTIAL_STRESS_PARTS})`, (context) => {
     // ERASER_SEQUENTIAL_CASES is the size of the WHOLE sweep across the six
     // parts (default 36). Set ERASER_SEQUENTIAL_CASES=180 and run all six part
     // files for the full nightly/local stress sweep.

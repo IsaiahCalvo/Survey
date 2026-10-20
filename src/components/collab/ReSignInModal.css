@@ -60,7 +60,7 @@
    * (cubic-bezier(0,0,0.2,1)). 220ms is fast enough to feel instant,
    * slow enough to register as polished rather than abrupt. */
   opacity: 0;
-  animation: re-signin-modal-enter 220ms cubic-bezier(0, 0, 0.2, 1) forwards;
+  animation: re-signin-modal-enter var(--motion-dialog) var(--ease-out) forwards;
 
   /* Reuse the app font stack so modal type matches the rest of the surface. */
   font-family: var(
