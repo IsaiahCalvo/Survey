@@ -10,7 +10,7 @@
 //   5. default: off
 // Features read their flag once at load, so a change made at /flags shows on
 // the next reload. To add a flag: add it here and insert its row in a
-// migration (see supabase/migrations/20261021000000_feature_flags.sql).
+// migration (see supabase/migrations/20261021030000_feature_flags.sql).
 
 export const FEATURE_FLAGS = Object.freeze({
   'smart-fill': Object.freeze({

@@ -2014,6 +2014,14 @@ const SurveySpacesRail = ({
                 // a tap outside is how a phone sheet closes).
                 onClick={() => requestSurveySheetClose()}
                 style={surveyBackdropStyle}
+                // Starts under the survey strip (template / module / Reuse /
+                // Done), so those stay usable on the first tap while the
+                // sheet is open instead of the tap only closing the sheet.
+                ref={(el) => {
+                  if (!el) return;
+                  const strip = document.querySelector('.mobile-pdf-properties--survey');
+                  el.style.top = strip ? `${Math.round(strip.getBoundingClientRect().bottom)}px` : '';
+                }}
               />
             )}
             {/* Desktop: the Survey tab's rail - always on screen, the right-hand

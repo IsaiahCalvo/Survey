@@ -583,6 +583,11 @@ test('every app-navigation Playwright harness has a machine-enforced auth classi
   assert.match(eraserHarness, /loadVerifiedTestAccounts\(\{ minimumAccounts: 3 \}\)/);
   assert.doesNotMatch(eraserHarness, /auth\.admin\.(?:createUser|deleteUser)/);
 
+  // Signed-in E2E suite (docs/E2E-SIGNED-IN.md): its own seeded accounts on a
+  // throwaway LOCAL Supabase stack. The config refuses any non-local URL.
+  const signedInE2EConfig = readFileSync(join(root, 'playwright.e2e-signed-in.config.mjs'), 'utf8');
+  const signedInE2ELocalOnly = /refusing non-local Supabase host/.test(signedInE2EConfig)
+    && /\['127\.0\.0\.1', 'localhost'\]\.includes\(supabaseHost\)/.test(signedInE2EConfig);
   const unclassified = [];
   for (const [relativePath, source] of browserHarnesses) {
     let classified = false;
@@ -614,6 +619,8 @@ test('every app-navigation Playwright harness has a machine-enforced auth classi
       && source.includes('eraser-permission-harness.mjs')
     ) {
       classified = true;
+    } else if (relativePath.startsWith('tests/e2e-signed-in/')) {
+      classified = signedInE2ELocalOnly && source.includes('LOCAL_HOSTS');
     } else if (relativePath.startsWith('debug/scenarios/')) {
       classified = true; // debug config above disables real auto-login.
     } else if (relativePath === 'agent-cli/mobile-annotations-e2e.mjs') {

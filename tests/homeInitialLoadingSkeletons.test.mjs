@@ -10,6 +10,8 @@ const HUB = read('../src/home/SurveyHub.jsx');
 const HUB_SHELL = read('../src/home/HubShell.jsx');
 const LOADING = read('../src/home/HubLoading.jsx');
 const QUIET = read('../src/components/QuietLoading.jsx');
+const SKELETON = read('../src/components/Skeleton.jsx');
+const SKELETON_CSS = read('../src/components/skeleton.css');
 const CSS = read('../src/home/hub.css');
 const PREVIEW = read('../src/home/HubPreview.jsx');
 const DATABASE_HOOKS = read('../src/hooks/useDatabase.js');
@@ -115,19 +117,21 @@ test('primary tab navigation never waits on a first-visit code split', () => {
   assert.match(shellFrameEffect, /useLayoutEffect\(\(\) => \{[\s\S]*?document\.documentElement\.classList\.add\(pageClass\)/);
 });
 
-// Owner 2026-10-04: one calm loading state everywhere. The pulsing grey
-// placeholder rows are gone; the list area shows the app's one quiet line and
-// the header keeps the real controls' room with invisible spacers.
-test('first load shows the one quiet line, not placeholder rows, and keeps the header still', () => {
-  assert.match(LOADING, /<QuietLoading label=\{`Loading \$\{title\.toLowerCase\(\)\}…`\} \/>/);
+// Owner 2026-10-20 (after studying Drawboard PDF; supersedes the 2026-10-04
+// one-quiet-line decision): the list area shows skeleton rows shaped like the
+// real tab, after a short wait, and the header keeps the real controls' room.
+test('first load shows tab-shaped skeleton rows and keeps the header still', () => {
+  assert.match(LOADING, /<ProjectsSkeleton \/>/);
+  assert.match(LOADING, /<TemplatesSkeleton \/>/);
+  assert.match(LOADING, /<DocumentsSkeleton \/>/);
   assert.match(LOADING, /className="hub-loading-region" aria-busy="true"/);
-  assert.doesNotMatch(LOADING, /DocumentsSkeleton|ProjectsSkeleton|TemplatesSkeleton|hub-skeleton-block/);
+  assert.doesNotMatch(LOADING, /QuietLoading/);
   assert.match(LOADING, /hub-loading-space/);
   assert.match(CSS, /\.survey-hub \.hub-loading-space\s*\{[\s\S]*?background:\s*transparent/);
   assert.match(CSS, /\.survey-hub \.hub-loading-region\s*\{[\s\S]*?position:\s*relative/);
-  assert.doesNotMatch(CSS, /hubSkeletonPulse|hub-skeleton-block/);
-  assert.doesNotMatch(CSS, /hub-loading-(?:document-row|mobile-panel|mobile-row|sidebar|project-|template-|entit)/,
-    'the old placeholder-row rules are removed with the rows');
+  assert.match(SKELETON, /export const SKELETON_SHOW_AFTER_MS = 300;/);
+  assert.match(SKELETON_CSS, /animation-delay: 300ms/, 'a fast load shows nothing');
+  assert.match(SKELETON_CSS, /\.sk-docs-row \{[^}]*height: 51px/, 'rows match the ledger row height');
 });
 
 test('loading treatment fits the app palette and accessibility settings', () => {
@@ -138,7 +142,9 @@ test('loading treatment fits the app palette and accessibility settings', () => 
   assert.match(QUIET, /aria-live="polite"/);
   assert.match(QUIET, /color: var\(--text-3\)/);
   assert.match(QUIET, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.doesNotMatch(QUIET, /infinite/, 'nothing pulses or spins');
+  assert.match(SKELETON, /role="status"/);
+  assert.match(SKELETON_CSS, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.sk-block \{ animation: none;/);
+  assert.doesNotMatch(SKELETON_CSS, /#[0-9a-f]{3,6}\b/i, 'skeleton colors come from theme tokens');
 });
 
 test('dev preview can hold each loading state on screen for visual QA', () => {

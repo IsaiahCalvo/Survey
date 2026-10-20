@@ -86,7 +86,7 @@ test('dev preview exposes stable empty, loading, and long-document fixtures used
   assert.match(documents, /No documents match your search/);
   assert.match(documents, /sortOptions/);
   assert.match(loading, /aria-busy="true"/);
-  // Owner 2026-10-04: the first load is the app's one quiet line, which
-  // announces itself (QuietLoading is role="status"), not a labelled skeleton.
-  assert.match(loading, /<QuietLoading label=\{`Loading \$\{title\.toLowerCase\(\)\}…`\} \/>/);
+  // Owner 2026-10-20 (supersedes the 2026-10-04 quiet line): the first load
+  // is a skeleton shaped like the tab; Skeleton announces itself (role="status").
+  assert.match(loading, /<ProjectsSkeleton \/>[\s\S]*<TemplatesSkeleton \/>[\s\S]*<DocumentsSkeleton \/>/);
 });

@@ -115,7 +115,7 @@ test('flags: database rules', { skip: isRoot || !tool('initdb') || !tool('pg_ctl
       grant execute on all functions in schema auth to anon, authenticated;
       insert into auth.users values ('${ADMIN}', 'boss@x.com'), ('${TESTER}', 'tester@x.com');
     `);
-    psql(readFileSync(new URL('../supabase/migrations/20261021000000_feature_flags.sql', import.meta.url), 'utf8'));
+    psql(readFileSync(new URL('../supabase/migrations/20261021030000_feature_flags.sql', import.meta.url), 'utf8'));
     psql(`
       grant select, insert, update, delete on all tables in schema public to anon, authenticated;
       insert into public.feature_flag_admins values ('${ADMIN}');

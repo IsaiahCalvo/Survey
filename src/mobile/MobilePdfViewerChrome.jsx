@@ -2717,6 +2717,33 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const surveyEntities = surveyRailOn ? (surveyToolbar.entities || []) : [];
   const [railMainEl, setRailMainEl] = useState(null);
   const [surveyAnchorEl, setSurveyAnchorEl] = useState(null);
+  // When an open tool group (Shapes on an iPhone SE) runs the column past the
+  // rail, the rail scrolls (owner rule: scroll, never compress). Mark it so
+  // CSS can fade the bottom edge as a hint that more tools sit below.
+  useEffect(() => {
+    const el = railMainEl;
+    if (!el) return undefined;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const more = el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+      if (more) el.setAttribute('data-more-below', 'true');
+      else el.removeAttribute('data-more-below');
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
+    update();
+    el.addEventListener('scroll', schedule, { passive: true });
+    const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+    resize?.observe(el);
+    const mutation = typeof MutationObserver === 'function' ? new MutationObserver(schedule) : null;
+    mutation?.observe(el, { childList: true, subtree: true });
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      el.removeEventListener('scroll', schedule);
+      resize?.disconnect();
+      mutation?.disconnect();
+    };
+  }, [railMainEl]);
   const surveySlots = useMobileSurveyRailSlots({
     mainEl: railMainEl,
     anchorEl: surveyAnchorEl,

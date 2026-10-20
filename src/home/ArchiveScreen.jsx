@@ -26,7 +26,7 @@ import { ConfirmModal } from './BulkModals';
 import DismissBarrier from '../components/DismissBarrier';
 import { clickableProps } from '../utils/keyActivate';
 import PdfPageThumb from './PdfPageThumb';
-import QuietLoading from '../components/QuietLoading';
+import { ListRowsSkeleton } from '../components/Skeleton';
 import { useStorage } from '../hooks/useDatabase';
 import { showToast } from '../utils/toast';
 import { DELETE_FOREVER_COPY } from '../services/archiveContract';
@@ -985,11 +985,11 @@ export default function ArchiveScreen({
     );
   };
 
-  /* Loading (owner 2026-10-04): the one quiet loading line the whole app
-     uses, after a short wait, instead of pulsing placeholder rows. */
+  /* Loading (owner 2026-10-20, supersedes the 2026-10-04 quiet line):
+     skeleton rows shaped like archive rows, after a short wait. */
   const loadingRows = (
-    <div aria-busy="true" style={{ position: 'relative', minHeight: 200 }}>
-      <QuietLoading label="Loading archive…" />
+    <div aria-busy="true" style={{ position: 'relative', minHeight: 200, display: 'flex' }}>
+      <ListRowsSkeleton bare label="Loading archive…" />
     </div>
   );
 

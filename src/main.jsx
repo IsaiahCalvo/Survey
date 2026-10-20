@@ -5,8 +5,11 @@ import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consol
 import { installSurveyAnalytics } from './utils/surveyAnalytics';
 import { installCrashLog, setCrashLogBuild } from './utils/crashLog';
 import { agentLinkResumeUrl } from './home/agentLinkPending';
+import { installNativeDownloadShim } from './mobile/nativeDownloadShim';
 
 installSurveyAnalytics();
+// Exports in the iOS/Android app go to the share sheet (no-op elsewhere).
+installNativeDownloadShim();
 // WebMCP agent tools: loaded only in browsers that offer them.
 if (typeof document !== 'undefined' && document.modelContext) {
   Promise.all([

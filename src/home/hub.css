@@ -421,9 +421,9 @@
 .survey-hub .card { background: var(--ink-700); border: 1px solid var(--ink-500); border-radius: 10px; }
 .survey-hub .card.ghost { background: transparent; }
 
-/* First load (owner 2026-10-04: one calm loading state everywhere): the list
-   area holds the app's one quiet line (QuietLoading) — no grey placeholder
-   rows. The header keeps the real controls' room with invisible spacers
+/* First load (owner 2026-10-20, supersedes the 2026-10-04 quiet line): the
+   list area holds skeleton rows shaped like the real tab
+   (components/Skeleton.jsx). The header keeps the real controls' room with invisible spacers
    (.hub-loading-space), so nothing moves when the data lands. Existing data
    is never replaced by this during a refetch. */
 .survey-hub .hub-loading-region {
@@ -913,7 +913,9 @@
        11px/600 (owner, 2026-09-22 — one button system on both). */
     --hub-mobile-primary-action-font-size: 11px;
     position: relative;
-    width: 100vw;
+    /* 100%, not 100vw: under an open document the home sits beside the
+       viewer's 36px tool rail, and 100vw ran it 36px past the screen. */
+    width: 100%;
     min-height: 100dvh;
     height: auto;
     max-height: none;
@@ -5601,5 +5603,17 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 @media (min-width: 768px) and (max-width: 900px) {
   .survey-hub .templates-editor-grid {
     grid-template-columns: 200px minmax(0, 1fr) 200px !important;
+  }
+}
+
+/* Touch tablets: the Templates page's Excel layout and Checklist answers
+   pickers are 20px / 11px for a mouse; 36px and readable to a finger. The
+   !important beats their inline mouse sizing. */
+@media (pointer: coarse) {
+  select.hub-export-kit,
+  select.hub-answer-set {
+    min-height: 36px !important;
+    font-size: 13px !important;
+    padding: 4px 8px !important;
   }
 }
