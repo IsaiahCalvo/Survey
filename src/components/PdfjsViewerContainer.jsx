@@ -23,6 +23,7 @@
  * zoomGeneration signal (Stage 3 wires that); never throws out of a contract
  * method or callback (PDFViewer assumes the handle never throws).
  */
+import { registerAgentViewer } from '../agent/webmcp';
 import {
   forwardRef,
   memo,
@@ -5212,6 +5213,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       turn?.release();
     };
   }, [pageSizes, rotation, isMobileSurface]);
+
+  // WebMCP: let a browser AI agent read the page count and move pages.
+  useEffect(() => registerAgentViewer({
+    getPageCount: () => numPagesRef.current,
+    getCurrentPage: () => currentPageRef.current || 1,
+    goToPage,
+  }), [goToPage]);
 
   // DEV only: the zoom-perf scenario (debug/scenarios/zoom-perf.mjs) sets
   // exact zoom levels through this; never present in a production build.
