@@ -66,18 +66,31 @@ jobs:
         run: cp vercel.json dist/vercel.json
 
       - name: Deploy dist to the nightly Vercel project
-        id: deploy
+        # Same token-based CLI deploy as production (no `vercel link`: the
+        # token cannot load a user, so link and --scope fail with "User not
+        # found"). The project is found or created through the REST API.
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
+          api="https://api.vercel.com"
+          auth=(-H "Authorization: Bearer $VERCEL_TOKEN")
+          project_id="$(curl --silent "${auth[@]}" "$api/v9/projects/$NIGHTLY_PROJECT?teamId=$VERCEL_SCOPE" | jq -r '.id // empty')"
+          if [ -z "$project_id" ]; then
+            project_id="$(jq -n --arg name "$NIGHTLY_PROJECT" '{name: $name, framework: null}' \
+              | curl --fail-with-body --silent --show-error -X POST "${auth[@]}" -H 'Content-Type: application/json' \
+                  --data @- "$api/v11/projects?teamId=$VERCEL_SCOPE" | jq -r '.id')"
+            echo "Created Vercel project $NIGHTLY_PROJECT ($project_id)"
+          fi
           npm install -g vercel@latest
           cd dist
-          # Creates the project the first time; links to it after that.
-          vercel link --yes --project "$NIGHTLY_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-          url="$(vercel deploy --prod --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")"
+          url="$(VERCEL_ORG_ID="$VERCEL_SCOPE" VERCEL_PROJECT_ID="$project_id" vercel deploy --prod --yes --token "$VERCEL_TOKEN")"
           echo "Deployed $url"
-          vercel alias set "$url" "$NIGHTLY_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          deployment_id="$(curl --fail --silent --show-error "${auth[@]}" "$api/v13/deployments/${url#https://}?teamId=$VERCEL_SCOPE" | jq -r '.id')"
+          jq -n --arg alias "$NIGHTLY_HOST" '{alias: $alias}' \
+            | curl --fail-with-body --silent --show-error -X POST "${auth[@]}" -H 'Content-Type: application/json' \
+                --data @- "$api/v2/deployments/$deployment_id/aliases?teamId=$VERCEL_SCOPE" > /dev/null
+          echo "Aliased $NIGHTLY_HOST"
 
       - name: Let sign-in links come back to nightly
         # Adds the nightly address to Supabase Auth's redirect allow list once,
