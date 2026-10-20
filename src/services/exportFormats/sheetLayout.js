@@ -58,7 +58,16 @@ export function toStandardHeaders(headerRow, kit, standardKit) {
     if (c.field !== 'checklist' && standardOf[c.field] && c.header !== standardOf[c.field]) rename.set(c.header, standardOf[c.field]);
   });
   if (!rename.size) return headerRow;
-  const out = headerRow.map((h) => (typeof h === 'string' && rename.has(h.trim()) ? rename.get(h.trim()) : h));
+  // First unmatched occurrence only: a checklist item named Door / Gateway must
+  // stay put, or import treats it as Item / Entity and drops those answers.
+  const remapped = new Set();
+  const out = headerRow.map((h) => {
+    if (typeof h !== 'string') return h;
+    const key = h.trim();
+    if (!rename.has(key) || remapped.has(key)) return h;
+    remapped.add(key);
+    return rename.get(key);
+  });
   // Keep expandos such as sheetRowNumber that the import reads off row arrays.
   return Object.assign(out, Object.fromEntries(Object.entries(headerRow).filter(([k]) => !/^\d+$/.test(k))));
 }

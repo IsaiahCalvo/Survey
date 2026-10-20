@@ -128,6 +128,13 @@ test('import maps a kit\'s renamed system headers back to the standard names', a
   const out = toStandardHeaders(header, lock, std);
   assert.deepEqual([...out], ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Lock type', 'Notes']);
   assert.equal(out.sheetRowNumber, 1);
+  // A checklist column that reuses a kit header (Door / Gateway) is not rewritten
+  // — otherwise import skips it as a system column and drops those answers.
+  const colliding = ['Row ID', 'Changed By', 'Changed Date', 'Door', 'Gateway', 'Lock type', 'Door', 'Gateway', 'Notes'];
+  assert.deepEqual(
+    [...toStandardHeaders(colliding, lock, std)],
+    ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Lock type', 'Door', 'Gateway', 'Notes'],
+  );
   // The standard kit leaves the header as it is.
   assert.equal(toStandardHeaders(header, std, std), header);
   assert.equal(toStandardHeaders(header, null, std), header);
