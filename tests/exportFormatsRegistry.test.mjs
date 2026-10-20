@@ -68,3 +68,10 @@ test('kits needing a newer engine are hidden from this build', () => {
   assert.ok(!listExportKits().some((k) => k.id === 'future-kit'));
   off();
 });
+
+test('the Survey Excel export takes its layout from the default kit', async () => {
+  const { readFileSync } = await import('node:fs');
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /buildSheetLayout\(getExportKit\(DEFAULT_EXPORT_KIT_ID\), checklistItems\)/);
+  assert.doesNotMatch(viewer, /const headerRow = \['Row ID', 'Changed By', 'Changed Date', 'Item'\]/);
+});

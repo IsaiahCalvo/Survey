@@ -525,6 +525,8 @@ import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocu
 import { carryMarkerShape } from './survey/markerShapes.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
+import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
+import { buildSheetLayout } from './services/exportFormats/sheetLayout.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
   buildOcrCacheKey,
@@ -15869,30 +15871,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Sort by user order first, then Excel row order.
             categorySurveyMarkers.sort(compareSurveyMarkersForOrder);
 
-            // Build header row: Row ID, Changed By, Changed Date, Item, [checklist items], Entity, Notes
-            const headerRow = ['Row ID', 'Changed By', 'Changed Date', 'Item'];
-            checklistItems.forEach(checklistItem => {
-              headerRow.push(checklistItem.text || '');
-            });
-            headerRow.push('Entity');
-            headerRow.push('Notes');
-
-            // Build column mapping for Excel add-in sync
-            // Column mapping: A = row_id, B = changed_by, C = changed_date, D = name, E+ = checklist items, then entity, notes
-            const columnMapping = {
-              'A': 'row_id',
-              'B': 'changed_by',
-              'C': 'changed_date',
-              'D': 'name'
-            };
-            checklistItems.forEach((checklistItem, idx) => {
-              const colLetter = String.fromCharCode(69 + idx); // E, F, G, ...
-              columnMapping[colLetter] = `checklist_${checklistItem.id}`;
-            });
-            const entityColIdx = 4 + checklistItems.length;
-            const notesColIdx = entityColIdx + 1;
-            columnMapping[String.fromCharCode(65 + entityColIdx)] = 'entity_name';
-            columnMapping[String.fromCharCode(65 + notesColIdx)] = 'notes';
+            // Header row + add-in column mapping come from the export kit
+            // (src/services/exportFormats); the default kit is today's layout.
+            const { headerRow, columnMapping } = buildSheetLayout(getExportKit(DEFAULT_EXPORT_KIT_ID), checklistItems);
 
             // Add to schema mappings
             schemaMappings.push({
