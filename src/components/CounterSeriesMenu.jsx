@@ -38,7 +38,7 @@ export default function CounterSeriesMenu({ api, onClose }) {
         </div>
       </>}
     </div>)}
-    <button type="button" className="counter-series-menu__new" onClick={() => { api.onNewCounterSeries?.(); api.setActiveTool?.('counter'); onClose?.(); }}>New count</button>
+    <button type="button" className="counter-series-menu__new" aria-label="New count" onClick={() => { api.onNewCounterSeries?.(); api.setActiveTool?.('counter'); onClose?.(); }}>New</button>
   </div>;
 }
 
