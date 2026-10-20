@@ -23641,6 +23641,49 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     selectedModuleId,
   ]);
 
+  // KAL-393: "Export markup (XFDF)" — a sidecar built from the same
+  // inputs and writer as Export annotated PDF. The source PDF is not changed.
+  const handleExportXfdf = useCallback(async () => {
+    if (!pdfFile) {
+      showToast('Open a PDF first.', 'warn');
+      return;
+    }
+    try {
+      const { runXfdfExport, xfdfResultMessage } = await import('./utils/xfdfExport/runXfdfExport.js');
+      const result = await runXfdfExport({
+        sourcePdf: (await flushPageOperations()) || pdfFile,
+        pdfName: pdfFile.name || 'document.pdf',
+        annotationsByPage,
+        pageSizes,
+        exportOptions: {
+          documentId: pdfFile?.id || null,
+          callouts,
+          surveyMarkers: printableSurveyMarkers,
+          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          spaces,
+          deletedPdfAnnotations,
+        },
+      });
+      console.log('[XfdfExport] ' + JSON.stringify({ status: result.status, summary: result.summary }));
+      const message = xfdfResultMessage(result);
+      if (message) showToast(message.text, message.kind);
+    } catch (err) {
+      console.error('[XfdfExport] failed:', err);
+      showToast(`Export failed: ${err?.message || err}`, 'error');
+    }
+  }, [
+    annotationsByPage,
+    callouts,
+    deletedPdfAnnotations,
+    flushPageOperations,
+    pageSizes,
+    pdfFile,
+    spaces,
+    printableSurveyMarkers,
+    showSurveyPanel,
+    selectedModuleId,
+  ]);
+
   const queuePermanentRedactionConfirmation = useCallback((transaction) => {
     if (!transaction?.nextByPage || !transaction?.created?.length) return false;
     setPendingRedactionRequest({
@@ -23744,6 +23787,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, [handleExportAnnotatedPDF]);
+
+  // KAL-393: File menu → Export markup (XFDF).
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.electronAPI?.onExportXfdfMenu) return undefined;
+    const unsubscribe = window.electronAPI.onExportXfdfMenu(() => { handleExportXfdf(); });
+    return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
+  }, [handleExportXfdf]);
 
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
@@ -26398,7 +26448,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       handlePageInputBlur,
       // Browser-visible entry point for File → Export Annotated PDF… (the
       // Electron menu drives the same handler on desktop).
-      exportAnnotatedPdf: handleExportAnnotatedPDF
+      exportAnnotatedPdf: handleExportAnnotatedPDF,
+      // KAL-393: XFDF sidecar ("Export markup").
+      exportXfdf: handleExportXfdf
     });
   }, [
     isActive,
@@ -26507,7 +26559,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handlePageInputChange,
     handlePageInputKeyDown,
     handlePageInputBlur,
-    handleExportAnnotatedPDF
+    handleExportAnnotatedPDF,
+    handleExportXfdf
   ]);
 
   // UX 2026-07-12: clear this instance's published bottom-toolbar API on unmount.

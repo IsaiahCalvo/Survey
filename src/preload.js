@@ -122,6 +122,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('menu:export-annotated-pdf', subscription);
     return () => ipcRenderer.removeListener('menu:export-annotated-pdf', subscription);
   },
+  // KAL-393: File → Export markup (XFDF).
+  onExportXfdfMenu: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('menu:export-xfdf', subscription);
+    return () => ipcRenderer.removeListener('menu:export-xfdf', subscription);
+  },
   // KAL-444: Help > Keyboard Shortcuts opens the in-app shortcuts sheet.
   onKeyboardShortcutsMenu: (callback) => {
     const subscription = () => callback();
