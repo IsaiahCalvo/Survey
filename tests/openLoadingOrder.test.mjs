@@ -141,7 +141,7 @@ test('the PDF engine draws through the queue and starts on Fit page', () => {
   assert.doesNotMatch(CONTAINER, /RASTERDBG/);
 });
 
-test('one quiet loading state: a short wait, one line of text, nothing spinning', async () => {
+test('one opening state: a short wait, a page skeleton and its caption, no spinner', async () => {
   const { resolveQuietLoadingDelay, continuesQuietLoading, openingLabel, QUIET_LOADING_SHOW_AFTER_MS } = await import('../src/components/QuietLoading.jsx')
     .catch(() => ({}));
   // The .jsx module needs a JSX loader under plain node; fall back to source checks.
@@ -157,7 +157,8 @@ test('one quiet loading state: a short wait, one line of text, nothing spinning'
   }
   assert.match(QUIET, /export const QUIET_LOADING_SHOW_AFTER_MS = 300;/);
   assert.match(QUIET, /animationDelay: `\$\{delayMs\}ms`/);
-  assert.doesNotMatch(QUIET, /animation:[^;]*infinite|import Spinner|role="progressbar"/);
+  assert.doesNotMatch(QUIET, /import Spinner|role="progressbar"/);
+  assert.match(QUIET, /className="quiet-loading-page"[\s\S]*?<SkeletonBlock/);
   assert.match(VIEWER, /<QuietLoading label=\{openingLabel\(pdfFile\?\.name\)\} \/>/);
   assert.doesNotMatch(VIEWER, /Loading PDF\.\.\./);
   assert.match(SHELL, /<Suspense fallback=\{<QuietLoading label=\{openingLabel\(tab\.file\?\.name\)\}/);

@@ -8,6 +8,7 @@
  * onNavigateToMatch/onNavigateToPage and emits diagnostics through textSearchDiag.
  */
 import { memo, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { SearchResultsSkeleton } from '../components/Skeleton';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Icon from '../Icons';
 import { emitTextSearchDiag } from '../utils/textSearchDiag';
@@ -1931,6 +1932,12 @@ const SearchTextPanel = ({
           overflowY: 'auto'
         }}
       >
+        {/* First results still coming: result-shaped skeleton rows
+            (owner 2026-10-20), not an empty panel. */}
+        {searchPending && !queryTooShort && typedQuery && !hasResults && (
+          <SearchResultsSkeleton />
+        )}
+
         {!searchPending && !queryTooShort && typedQuery && !hasResults && (
           mobileMode ? (
             // Owner 2026-10-02 (phone = desktop): the desktop's one quiet

@@ -1,12 +1,12 @@
-/* The home's first load (owner 2026-10-04: one calm loading state, the same
-   everywhere). The list area shows the one quiet line every loading place
-   uses — "Loading documents…", after a short wait so a fast load shows
-   nothing — instead of pulsing grey placeholder rows. The header keeps the
+/* The home's first load. Owner 2026-10-20 (after studying Drawboard PDF)
+   supersedes the 2026-10-04 "one quiet line" decision: the list area shows
+   skeleton rows shaped like the real tab (components/Skeleton.jsx), after a
+   short wait so a fast load shows nothing. The header keeps the
    real controls' room with invisible spacers, so nothing moves when the list
    arrives. Shown only while a tab's list is empty on its first load, never
    over rows already on screen. */
 import { HubShell, SEARCH_SHORTCUT_LABEL } from './HubShell';
-import QuietLoading from '../components/QuietLoading';
+import { DocumentsSkeleton, ProjectsSkeleton, TemplatesSkeleton } from '../components/Skeleton';
 
 const Block = ({ className = '', style }) => (
   <span className={`hub-loading-space ${className}`} style={style} aria-hidden="true" />
@@ -37,7 +37,7 @@ const LoadingHeader = ({ tab }) => {
           <Block style={{ width: 78, height: 28 }} />
         </div>
         {desktopSearch('documents-desktop-search', 'Search documents')}
-        <Block className="hub-loading-primary-action documents-desktop-upload" style={{ width: 76, height: 28 }} />
+        <Block className="hub-loading-primary-action documents-desktop-upload" style={{ width: 73.2, height: 28 }} />
       </>
     );
   }
@@ -106,7 +106,9 @@ export default function HubLoading({ tab, onNav, user, templatesLocked = false }
       templatesLocked={templatesLocked}
     >
       <section className="hub-loading-region" aria-busy="true">
-        <QuietLoading label={`Loading ${title.toLowerCase()}…`} />
+        {tab === 'projects' ? <ProjectsSkeleton />
+          : tab === 'templates' ? <TemplatesSkeleton />
+            : <DocumentsSkeleton />}
       </section>
     </HubShell>
   );

@@ -20,21 +20,31 @@ const box = async (locator) => locator.evaluate((element) => {
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 });
 
-// Owner 2026-10-04: one calm loading state. The list area shows the quiet
-// "Loading <tab>…" line (no placeholder rows); the header must not move when
-// the data lands.
-test('first load keeps the desktop Home header still and shows one quiet line', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  for (const tab of ['documents', 'projects', 'templates']) {
-    await openHub(page, tab);
-    const real = await box(page.locator('.actions'));
-    await openHub(page, tab, true);
-    await page.locator('.hub-loading-region [data-quiet-loading]').waitFor();
-    const loading = await box(page.locator('.actions'));
-    for (const dimension of ['x', 'y', 'width', 'height']) {
-      closeTo(loading[dimension], real[dimension], 0.75, `${tab}.actions.${dimension}`);
+// Owner 2026-10-20 (Drawboard study; supersedes the 2026-10-04 quiet line):
+// the list area shows skeleton rows shaped like the real tab, and neither the
+// header nor the card/pane frames move when the data lands.
+test('first load keeps the desktop Home header still and shows tab-shaped skeletons', async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 820, height: 1180 }]) {
+    await page.setViewportSize(viewport);
+    for (const tab of ['documents', 'projects', 'templates']) {
+      await openHub(page, tab);
+      const real = await box(page.locator('.actions'));
+      await openHub(page, tab, true);
+      await page.locator('.hub-loading-region [data-skeleton]').waitFor();
+      const loading = await box(page.locator('.actions'));
+      for (const dimension of ['x', 'y', 'width', 'height']) {
+        closeTo(loading[dimension], real[dimension], 0.75, `${tab}.actions.${dimension}`);
+      }
+      await expect(page.locator('.hub-loading-region [data-skeleton]')).toHaveAttribute('role', 'status');
+      await expect(page.locator('.hub-loading-region .sk-visually-hidden')).toHaveText(new RegExp(`^Loading ${tab}…$`));
+      // The skeleton panes fill the list area with the real 8px gutters.
+      const region = await box(page.locator('.hub-loading-region'));
+      const skCards = await page.locator('.hub-loading-region .sk-card').evaluateAll((els) => els
+        .map((el) => el.getBoundingClientRect()).map((r) => ({ x: r.x, right: r.right })));
+      expect(skCards.length, `${tab} panes`).toBeGreaterThan(0);
+      closeTo(skCards[0].x, region.x + 8, 1, `${tab}@${viewport.width}.first-pane.x`);
+      closeTo(skCards.at(-1).right, region.x + region.width - 8, 1, `${tab}@${viewport.width}.last-pane.right`);
     }
-    await expect(page.locator('.hub-loading-region .quiet-loading-text')).toHaveText(new RegExp(`^Loading ${tab}…$`));
   }
 });
 
