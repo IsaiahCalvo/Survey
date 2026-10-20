@@ -9,6 +9,16 @@
 <meta property="og:description" content="Mark up, count, and survey your plans. Works in the browser, on desktop and on tablet." />
 <meta property="og:url" content="https://surveytool.app/welcome" />
 <link rel="canonical" href="https://surveytool.app/welcome" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Survey" />
+<meta property="og:image" content="https://surveytool.app/welcome/og.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Survey — PDF markup for construction drawings" />
+<meta name="twitter:description" content="Mark up, count, and survey your plans. Works in the browser, on desktop and on tablet." />
+<meta name="twitter:image" content="https://surveytool.app/welcome/og.jpg" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Survey","applicationCategory":"BusinessApplication","operatingSystem":"Web, Windows, macOS, iPadOS","url":"https://surveytool.app/welcome","offers":[{"@type":"Offer","price":"0","priceCurrency":"USD","name":"Free"},{"@type":"Offer","price":"9.99","priceCurrency":"USD","name":"Pro"}]}</script>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <meta name="theme-color" content="#0d0f14" />
 <style>
@@ -32,8 +42,21 @@ nav .links a.btn.primary{color:#1a1405}
 .hero h1{font-size:clamp(34px,6vw,56px);line-height:1.1;margin:0 0 18px;letter-spacing:-.02em}
 .hero p{font-size:clamp(17px,2.2vw,20px);color:var(--muted);max-width:640px;margin:0 auto 32px}
 .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.shot{margin:56px auto 0;max-width:920px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#171c27,#10131a);aspect-ratio:16/9;display:grid;place-items:center;overflow:hidden}
-.shot svg{width:86%;height:auto}
+.shot{margin:56px auto 0;max-width:1000px;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+img{display:block;max-width:100%;height:auto}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;margin:0 0 56px}
+.row:nth-child(even) .pic{order:2}
+.row .pic{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.row h3{font-size:24px;margin:0 0 10px}.row p{color:var(--muted);margin:0 0 10px}
+.row ul{color:var(--muted);margin:0;padding-left:20px}
+.prices{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.price{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:26px;display:flex;flex-direction:column}
+.price.best{border:2px solid var(--accent)}
+.price h3{margin:0;font-size:20px}.price .amt{font-size:36px;font-weight:700;margin:10px 0 2px}.price .amt small{font-size:15px;color:var(--muted);font-weight:400}
+.price .note{color:var(--muted);font-size:13px;min-height:20px}
+.price ul{color:var(--muted);padding-left:20px;margin:16px 0 22px;flex:1}
+.price .btn{text-align:center}
+@media (max-width:760px){.row{grid-template-columns:1fr;gap:18px}.row:nth-child(even) .pic{order:0}}
 section{padding:64px 0;border-top:1px solid var(--line)}
 h2{font-size:clamp(26px,4vw,36px);margin:0 0 12px;text-align:center}
 .lead{color:var(--muted);text-align:center;max-width:620px;margin:0 auto 40px}
@@ -58,6 +81,7 @@ footer .sp{margin-left:auto}
   <a class="brand" href="/welcome"><img src="/logo192.png" alt="" />Survey</a>
   <div class="links">
     <a href="#features">Features</a>
+    <a href="#pricing">Pricing</a>
     <a href="#platforms">Get the app</a>
     <a href="/?signin=1">Sign in</a>
     <a class="btn primary" href="/?signin=1">Open Survey</a>
@@ -72,26 +96,17 @@ footer .sp{margin-left:auto}
     <a class="btn primary" href="/?signin=1">Open Survey in your browser</a>
     <a class="btn" href="#platforms">Desktop, tablet and phone</a>
   </div>
-  <div class="shot" aria-hidden="true">
-    <svg viewBox="0 0 800 450" fill="none">
-      <rect x="40" y="30" width="720" height="390" rx="6" fill="#f4f1ea"/>
-      <g stroke="#9aa3b5" stroke-width="1.5">
-        <path d="M90 80h620v290H90z"/><path d="M90 200h300M390 80v290M390 260h320M560 80v180"/>
-      </g>
-      <rect x="120" y="100" width="230" height="80" stroke="#e5484d" stroke-width="3" rx="3"/>
-      <path d="M420 300c40-30 90 20 130-10s80 10 120-20" stroke="#4f8cff" stroke-width="4" stroke-linecap="round"/>
-      <g fill="#30a46c"><circle cx="460" cy="130" r="11"/><circle cx="510" cy="130" r="11"/><circle cx="460" cy="180" r="11"/><circle cx="510" cy="180" r="11"/></g>
-      <g fill="#fff" font-family="sans-serif" font-size="12" font-weight="700" text-anchor="middle"><text x="460" y="134">1</text><text x="510" y="134">2</text><text x="460" y="184">3</text><text x="510" y="184">4</text></g>
-      <rect x="600" y="120" width="130" height="44" rx="4" fill="#fff4c2" stroke="#d9a400"/>
-      <text x="612" y="147" fill="#5b4a00" font-family="sans-serif" font-size="13">Check slab edge</text>
-      <rect x="130" y="230" width="220" height="16" fill="#ffe066" opacity=".6"/>
-    </svg>
-  </div>
+  <div class="shot"><img src="/welcome/app-markup.jpg" width="1600" height="1000" alt="Survey with a floor plan open: numbered count markers on desks, a highlighted room name, a pen line, an arrow and a box around a room" /></div>
 </div>
 
 <section id="features"><div class="wrap">
   <h2>Everything you need on the plans</h2>
   <p class="lead">Fast tools that feel like pen on paper, made for people who live in drawing sets.</p>
+  <div class="rows">
+    <div class="row"><div class="pic"><img src="/welcome/app-counts.jpg" width="680" height="440" loading="lazy" alt="Numbered count markers placed on desks in an open office" /></div><div><h3>Count anything with a tap</h3><p>Tap to drop numbered markers on outlets, fixtures or desks. Group them into categories and see the totals as you go.</p><ul><li>Numbers keep going across pages</li><li>Totals per category</li><li>Send counts to Excel</li></ul></div></div>
+    <div class="row"><div class="pic"><img src="/welcome/app-pen.jpg" width="850" height="400" loading="lazy" alt="A highlighted room name and a smooth pen line on a plan" /></div><div><h3>Pen and highlighter that feel like paper</h3><p>Smooth ink with Apple Pencil, a mouse or a trackpad. Your fingers pan and zoom, so you never draw by mistake.</p><ul><li>Pen, highlighter and eraser</li><li>Pick the color and width</li></ul></div></div>
+    <div class="row"><div class="pic"><img src="/welcome/app-shapes.jpg" width="880" height="400" loading="lazy" alt="A box drawn around a conference room" /></div><div><h3>Shapes, clouds and arrows</h3><p>Boxes, circles, clouds, lines, polylines and arrows. They stay sharp at any zoom and print the way you see them.</p><ul><li>Solid or dashed lines</li><li>Callouts and text boxes</li></ul></div></div>
+  </div>
   <div class="grid">
     <div class="card"><div class="ico">✏️</div><h3>Pen, highlight and shapes</h3><p>Smooth ink, highlighters, clouds, arrows, lines and boxes. Works with Apple Pencil and a mouse.</p></div>
     <div class="card"><div class="ico">🔢</div><h3>Counts and surveys</h3><p>Drop numbered markers, group them into categories and see totals as you go.</p></div>
@@ -99,6 +114,16 @@ footer .sp{margin-left:auto}
     <div class="card"><div class="ico">📐</div><h3>Symbols and stamps</h3><p>A library of engineering symbols and stamps you can drop on any page.</p></div>
     <div class="card"><div class="ico">📊</div><h3>Excel export and sync</h3><p>Send your counts to a spreadsheet and keep it up to date.</p></div>
     <div class="card"><div class="ico">☁️</div><h3>Synced and shared</h3><p>Your markups save to the cloud. Invite your team as viewers or editors.</p></div>
+  </div>
+</div></section>
+
+<section id="pricing"><div class="wrap">
+  <h2>Simple pricing</h2>
+  <p class="lead">Start free. Upgrade when you need more room.</p>
+  <div class="prices">
+    <div class="price"><h3>Free</h3><div class="amt">$0<small>/month</small></div><div class="note">&nbsp;</div><ul><li>1 project</li><li>5 documents</li><li>100MB storage</li><li>Markup tools and PDF viewer</li></ul><a class="btn" href="/?signin=1">Start free</a></div>
+    <div class="price best"><h3>Pro</h3><div class="amt">$9.99<small>/month</small></div><div class="note">or $99 a year (save $20)</div><ul><li>Unlimited projects</li><li>Unlimited documents</li><li>10GB storage</li><li>Survey tools</li><li>Templates and regions</li><li>Excel export</li><li>OneDrive</li></ul><a class="btn primary" href="/?signin=1">Get Pro</a></div>
+    <div class="price"><h3>Enterprise</h3><div class="amt">$20<small>/user/month</small></div><div class="note">Minimum 3 users</div><ul><li>Everything in Pro</li><li>Team work and live editing</li><li>1TB team storage</li><li>SSO and admin tools</li><li>Priority support</li></ul><a class="btn" href="mailto:isaiahcalvo123@gmail.com?subject=Survey%20Enterprise">Contact us</a></div>
   </div>
 </div></section>
 
@@ -123,6 +148,8 @@ footer .sp{margin-left:auto}
   <span>© <span id="y">2026</span> Survey</span>
   <a href="/privacy.html">Privacy</a>
   <a href="/terms.html">Terms</a>
+  <a href="#pricing">Pricing</a>
+  <a href="mailto:isaiahcalvo123@gmail.com">Contact</a>
   <a class="sp" href="/?signin=1">Sign in</a>
 </div></footer>
 <script>document.getElementById('y').textContent=new Date().getFullYear()</script>
