@@ -92,7 +92,9 @@ jobs:
             sleep $((t - ${prev:-0})); prev=$t
             xcrun simctl io "$UDID" screenshot "$OUT/launch-${t}s.png"
           done
-          if ! xcrun simctl spawn "$UDID" launchctl list | grep -q "$BUNDLE_ID"; then
+          # Simulator apps run as ordinary host processes, so look for it there
+          # (launchctl inside the simulator was unreliable).
+          if ! pgrep -f "App.app/App" >/dev/null; then
             echo "::error::the app is no longer running 45s after launch"
             exit 1
           fi
