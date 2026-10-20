@@ -17,7 +17,8 @@ export async function loadAllHistoryRows(documentId, listEvents) {
   let beforeId = null;
   try {
     for (let i = 0; i < MAX_PAGES; i += 1) {
-      const page = await listEvents(documentId, { limit: PAGE_SIZE, before, beforeId });
+      const loadedClientEventIds = rows.map((row) => row?.client_event_id).filter(Boolean);
+      const page = await listEvents(documentId, { limit: PAGE_SIZE, before, beforeId, loadedClientEventIds });
       let added = 0;
       for (const row of page || []) {
         const key = row?.client_event_id || row?.id;
@@ -27,7 +28,10 @@ export async function loadAllHistoryRows(documentId, listEvents) {
         added += 1;
       }
       const server = (page || []).filter((row) => !row?.__local);
-      if (!added || server.length < PAGE_SIZE) break;
+      // The service merges local rows into the page and trims the merged list
+      // to the limit, so a short SERVER count does not mean History ran out:
+      // only a short MERGED page does.
+      if (!added || (page || []).length < PAGE_SIZE || !server.length) break;
       const oldest = server[server.length - 1];
       before = oldest.occurred_at;
       beforeId = oldest.id;
@@ -48,7 +52,11 @@ export function bundleResultMessage({ status, manifest, fileName }) {
   parts.push(`${plural(manifest?.history?.events || 0, 'change')}`);
   parts.push(`${plural(manifest?.thumbnails?.pages?.length || 0, 'page picture')}.`);
   let text = parts.join(', ');
-  if (manifest?.history && !manifest.history.historyAvailable) text += ' History could not be read, so no changes are listed.';
+  if (manifest?.history && !manifest.history.historyAvailable) {
+    text += manifest.history.events
+      ? ' History could not be fully read, so some changes may be missing.'
+      : ' History could not be read, so no changes are listed.';
+  }
   if (manifest?.thumbnails?.truncated) text += ' Only the first 60 pages have pictures.';
   return { text, kind: manifest?.history?.historyAvailable === false ? 'info' : 'success' };
 }

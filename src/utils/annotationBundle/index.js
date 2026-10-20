@@ -71,7 +71,7 @@ export async function buildAnnotationBundle({
     marks,
     historyAvailable,
   });
-  if (summary.written === 0 && summary.fields === 0 && auditLog.events.length === 0) {
+  if (summary.written === 0 && summary.fields === 0 && auditLog.events.length === 0 && historyAvailable) {
     return { empty: true, summary };
   }
   const thumbs = await renderThumbnails({

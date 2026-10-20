@@ -23670,6 +23670,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
           spaces,
           deletedPdfAnnotations,
+          pageTransformations,
         },
       });
       console.log('[XfdfExport] ' + JSON.stringify({ status: result.status, summary: result.summary }));
@@ -23684,6 +23685,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     callouts,
     deletedPdfAnnotations,
     flushPageOperations,
+    pageTransformations,
     pageSizes,
     pdfFile,
     spaces,
@@ -23715,6 +23717,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
           spaces,
           deletedPdfAnnotations,
+          pageTransformations,
         },
       });
       console.log('[ReviewBundle] ' + JSON.stringify({ status: result.status, files: result.manifest?.files?.map((f) => f.name) || [] }));
@@ -23729,6 +23732,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     callouts,
     deletedPdfAnnotations,
     flushPageOperations,
+    pageTransformations,
     pageSizes,
     pdfFile,
     spaces,
@@ -23843,17 +23847,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // KAL-393: File menu → Export markup (XFDF).
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.electronAPI?.onExportXfdfMenu) return undefined;
+    // Only the visible tab answers the menu; hidden tabs stay mounted.
+    if (!isActive || typeof window === 'undefined' || !window.electronAPI?.onExportXfdfMenu) return undefined;
     const unsubscribe = window.electronAPI.onExportXfdfMenu(() => { handleExportXfdf(); });
     return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
-  }, [handleExportXfdf]);
+  }, [isActive, handleExportXfdf]);
 
   // KAL-410: File menu → Export review package (ZIP).
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.electronAPI?.onExportReviewBundleMenu) return undefined;
+    // Only the visible tab answers the menu; hidden tabs stay mounted.
+    if (!isActive || typeof window === 'undefined' || !window.electronAPI?.onExportReviewBundleMenu) return undefined;
     const unsubscribe = window.electronAPI.onExportReviewBundleMenu(() => { handleExportReviewBundle(); });
     return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
-  }, [handleExportReviewBundle]);
+  }, [isActive, handleExportReviewBundle]);
 
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)

@@ -139,6 +139,31 @@ test('History is read page by page, without repeats, and a failed read is report
   assert.equal(bundleResultMessage({ status: 'empty' }).text, 'No markup or history to export yet.');
 });
 
+test('History paging keeps going when local rows fill part of a page (merged page trimmed to the limit)', async () => {
+  const { loadAllHistoryRows } = await import('../src/utils/annotationBundle/runAnnotationBundleExport.js');
+  const server = Array.from({ length: 1203 }, (_, i) => ({ id: `s${i}`, client_event_id: `s${i}`, occurred_at: at(i) }));
+  const local = { id: 'l1', client_event_id: 'l1', occurred_at: at(0), __local: true };
+  // Like listDocumentHistoryEvents: local rows are merged in, then the list is cut to `limit`.
+  const list = async (documentId, { limit, beforeId, loadedClientEventIds }) => {
+    const start = beforeId ? server.findIndex((r) => r.id === beforeId) + 1 : 0;
+    const locals = (loadedClientEventIds || []).includes('l1') ? [] : [local];
+    return [...locals, ...server.slice(start, start + limit)].slice(0, limit);
+  };
+  const { rows, available } = await loadAllHistoryRows('doc-1', list);
+  assert.equal(available, true);
+  assert.equal(rows.length, 1204, 'older history is not lost after the first page');
+});
+
+test('a failed History read is never shown as "no changes"', async () => {
+  const { bundleResultMessage } = await import('../src/utils/annotationBundle/runAnnotationBundleExport.js');
+  const sourceBytes = await makeSourcePdf();
+  const bundle = await buildAnnotationBundle({ sourcePdf: fileFrom(sourceBytes), pdfName: 'a.pdf', annotationsByPage: {}, pageSizes: PAGE_SIZES, historyRows: [], historyAvailable: false, now: NOW, renderThumbnails: thumbs });
+  assert.notEqual(bundle.empty, true, 'unreadable History with no marks still makes a bundle, not "nothing to export"');
+  const partial = bundleResultMessage({ status: 'saved', fileName: 'a review.zip', manifest: { marks: { total: 0 }, history: { events: 7, historyAvailable: false }, thumbnails: { pages: [], truncated: false } } });
+  assert.match(partial.text, /could not be fully read/);
+  assert.doesNotMatch(partial.text, /no changes are listed/);
+});
+
 test('the review package is reachable from the desktop export list, the phone More menu and the File menu', async () => {
   const { readFileSync } = await import('node:fs');
   const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -157,4 +182,17 @@ test('same document, same moment: byte-for-byte the same ZIP', async () => {
   });
   const [one, two] = [await make(), await make()];
   assert.equal(Buffer.compare(Buffer.from(one.zip), Buffer.from(two.zip)), 0);
+});
+
+test('XFDF and review package exports follow the page orientation and answer the File menu only in the visible tab', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  for (const runner of ['runXfdfExport({', 'runAnnotationBundleExport({']) {
+    const at = src.indexOf(runner);
+    assert.ok(at > 0, runner);
+    assert.match(src.slice(at, at + 1200), /exportOptions: \{[\s\S]*?pageTransformations,[\s\S]*?\}/);
+  }
+  for (const hook of ['onExportXfdfMenu', 'onExportReviewBundleMenu']) {
+    assert.match(src, new RegExp(`if \\(!isActive \\|\\| typeof window === 'undefined' \\|\\| !window\\.electronAPI\\?\\.${hook}\\)`));
+  }
 });
