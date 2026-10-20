@@ -196,3 +196,29 @@ test('XFDF and review package exports follow the page orientation and answer the
     assert.match(src, new RegExp(`if \\(!isActive \\|\\| typeof window === 'undefined' \\|\\| !window\\.electronAPI\\?\\.${hook}\\)`));
   }
 });
+
+test('custom stamps left out of XFDF still count as marks, get page pictures and are named in the toast', async () => {
+  const { PDFDocument } = await import('pdf-lib');
+  const { buildXfdfFromAnnotatedPdf } = await import('../src/utils/xfdfExport/index.js');
+  const { bundleResultMessage } = await import('../src/utils/annotationBundle/runAnnotationBundleExport.js');
+  const { buildAuditLog } = await import('../src/utils/annotationBundle/auditLog.js');
+  const src = await PDFDocument.create();
+  src.addPage([300, 200]); src.addPage([300, 200]);
+  const sourceBytes = await src.save();
+  const annotated = await PDFDocument.load(sourceBytes);
+  const ctx = annotated.context;
+  const stamp = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Stamp', Rect: [10, 10, 60, 60], AP: ctx.obj({}) }));
+  annotated.getPage(1).node.set((await import('pdf-lib')).PDFName.of('Annots'), ctx.obj([stamp]));
+  const { summary } = await buildXfdfFromAnnotatedPdf({ sourceBytes, annotatedBytes: await annotated.save(), pdfFileName: 'a.pdf' });
+  assert.equal(summary.written, 0);
+  assert.equal(summary.customStamps, 1);
+  assert.deepEqual(summary.pages, [1], 'the stamp-only page gets a picture');
+
+  const msg = bundleResultMessage({ status: 'saved', fileName: 'a review.zip', manifest: { marks: { total: 1, notInXfdf: 1 }, history: { events: 0, historyAvailable: true }, thumbnails: { pages: [2], truncated: false } } });
+  assert.match(msg.text, /1 mark,/);
+  assert.match(msg.text, /1 custom stamp is in the page pictures only/);
+
+  const partial = buildAuditLog({ rows: HISTORY, document: {}, exportedAt: NOW.toISOString(), historyAvailable: false });
+  assert.match(partial.coverage.note, /could not be fully read/);
+  assert.doesNotMatch(partial.coverage.note, /no changes are listed/);
+});

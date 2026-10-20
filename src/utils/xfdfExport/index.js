@@ -57,7 +57,7 @@ export async function buildXfdfFromAnnotatedPdf({ sourceBytes, annotatedBytes, p
   const sourceDoc = await PDFDocument.load(await toUint8(sourceBytes), loadOptions);
   const annotatedDoc = await PDFDocument.load(await toUint8(annotatedBytes), loadOptions);
   const context = annotatedDoc.context;
-  const summary = { written: 0, byElement: {}, skipped: 0, skippedBySubtype: {}, pages: [] };
+  const summary = { written: 0, byElement: {}, skipped: 0, skippedBySubtype: {}, pages: [], customStamps: 0 };
   const annotLines = [];
 
   annotatedDoc.getPages().forEach((page, pageIndex) => {
@@ -75,6 +75,12 @@ export async function buildXfdfFromAnnotatedPdf({ sourceBytes, annotatedBytes, p
       } else if (result.subtype !== 'Popup' && result.subtype !== 'Widget') {
         summary.skipped += 1;
         summary.skippedBySubtype[result.subtype] = (summary.skippedBySubtype[result.subtype] || 0) + 1;
+        // KAL-410: still a real mark on the page — the review bundle pictures
+        // and counts it even though XFDF cannot carry its appearance.
+        if (result.skipped === 'custom-appearance') {
+          summary.customStamps += 1;
+          if (!summary.pages.includes(pageIndex)) summary.pages.push(pageIndex);
+        }
       }
     }
   });

@@ -57,6 +57,9 @@ export function bundleResultMessage({ status, manifest, fileName }) {
       ? ' History could not be fully read, so some changes may be missing.'
       : ' History could not be read, so no changes are listed.';
   }
+  if (manifest?.marks?.notInXfdf) {
+    text += ` ${plural(manifest.marks.notInXfdf, 'custom stamp')} ${manifest.marks.notInXfdf === 1 ? 'is' : 'are'} in the page pictures only; the XFDF cannot carry ${manifest.marks.notInXfdf === 1 ? 'its' : 'their'} picture.`;
+  }
   if (manifest?.thumbnails?.truncated) text += ' Only the first 60 pages have pictures.';
   return { text, kind: manifest?.history?.historyAvailable === false ? 'info' : 'success' };
 }

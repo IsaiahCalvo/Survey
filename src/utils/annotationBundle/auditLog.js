@@ -49,7 +49,8 @@ export function buildAuditLog({ rows = [], document = {}, exportedAt, marks = nu
     .map(auditEventFromRow)
     .sort((a, b) => (a.at || '').localeCompare(b.at || '') || String(a.id).localeCompare(String(b.id)));
   let note;
-  if (!historyAvailable) note = 'History could not be read when this was exported, so no changes are listed.';
+  if (!historyAvailable && events.length) note = 'History could not be fully read when this was exported, so some changes may be missing.';
+  else if (!historyAvailable) note = 'History could not be read when this was exported, so no changes are listed.';
   else if (!events.length) note = 'No changes are recorded for this document.';
   else note = `Changes saved in History. History keeps the last ${HISTORY_RETENTION_DAYS} days.`;
   return {

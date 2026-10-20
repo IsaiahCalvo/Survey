@@ -63,7 +63,8 @@ export async function buildAnnotationBundle({
   const { xfdf, summary, sourceBytes, annotatedBytes } = xfdfResult;
   const exportedAt = now.toISOString();
   const sourceSha256 = await sha256Hex(sourceBytes);
-  const marks = { total: summary.written, byKind: summary.byElement, formFields: summary.fields };
+  const notInXfdf = summary.customStamps || 0;
+  const marks = { total: summary.written + notInXfdf, byKind: summary.byElement, formFields: summary.fields, notInXfdf };
   const auditLog = buildAuditLog({
     rows: historyRows,
     document: { name: pdfName, id: documentId, sourceSha256 },
@@ -71,12 +72,12 @@ export async function buildAnnotationBundle({
     marks,
     historyAvailable,
   });
-  if (summary.written === 0 && summary.fields === 0 && auditLog.events.length === 0 && historyAvailable) {
+  if (marks.total === 0 && summary.fields === 0 && auditLog.events.length === 0 && historyAvailable) {
     return { empty: true, summary };
   }
   const thumbs = await renderThumbnails({
     annotatedBytes,
-    pageNumbers: (summary.pages || []).map((index) => index + 1),
+    pageNumbers: [...(summary.pages || [])].sort((a, b) => a - b).map((index) => index + 1),
   });
 
   const contentFiles = [
