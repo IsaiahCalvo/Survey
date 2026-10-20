@@ -35,3 +35,37 @@ test('native build takes over blob downloads', () => {
   try { new A({ href: 'blob:nope', download: 'r.zip' }).click(); } finally { setTimeout(() => { console.warn = orig; }, 50); }
   assert.deepEqual(calls, []);
 });
+
+test('native blob download keeps the file after the caller revokes the URL', async () => {
+  const { win, A, calls } = fakeWindow(true);
+  const live = new Map();
+  let n = 0;
+  win.URL = {
+    createObjectURL(obj) {
+      const url = `blob:test-${++n}`;
+      live.set(url, obj);
+      return url;
+    },
+    revokeObjectURL(url) { live.delete(url); },
+  };
+  installNativeDownloadShim(win);
+  const url = win.URL.createObjectURL(new Blob(['pdf-bytes'], { type: 'application/pdf' }));
+  const fetchCalls = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = (href) => {
+    fetchCalls.push(href);
+    return Promise.reject(new Error('blob URL was already revoked'));
+  };
+  const origWarn = console.warn;
+  console.warn = () => {};
+  try {
+    new A({ href: url, download: 'space.pdf' }).click();
+    win.URL.revokeObjectURL(url);
+    await new Promise((r) => setTimeout(r, 0));
+    assert.deepEqual(calls, []);
+    assert.deepEqual(fetchCalls, []);
+  } finally {
+    globalThis.fetch = origFetch;
+    console.warn = origWarn;
+  }
+});

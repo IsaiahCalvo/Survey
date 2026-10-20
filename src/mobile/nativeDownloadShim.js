@@ -10,20 +10,39 @@ export function installNativeDownloadShim(win = typeof window !== 'undefined' ? 
   if (!proto || proto.__surveyNativeDownload) return false;
   const originalClick = proto.click;
   proto.__surveyNativeDownload = true;
+  // Keep the Blob itself, not just the URL. Callers (annotated PDF, space CSV,
+  // space PDF) revoke in the same turn as click(), and WebKit's blob fetch
+  // then fails — the share sheet never opens.
+  const blobByUrl = new Map();
+  const URLCtor = win.URL;
+  if (URLCtor?.createObjectURL && !URLCtor.__surveyNativeDownload) {
+    const createObjectURL = URLCtor.createObjectURL.bind(URLCtor);
+    const revokeObjectURL = URLCtor.revokeObjectURL.bind(URLCtor);
+    URLCtor.createObjectURL = (obj) => {
+      const url = createObjectURL(obj);
+      blobByUrl.set(url, obj);
+      return url;
+    };
+    URLCtor.revokeObjectURL = (url) => {
+      blobByUrl.delete(url);
+      revokeObjectURL(url);
+    };
+    URLCtor.__surveyNativeDownload = true;
+  }
   proto.click = function click() {
     const name = this.getAttribute('download');
     const href = this.href || '';
     if (name === null || !/^(blob|data):/.test(href)) return originalClick.call(this);
-    shareDownload(href, name || 'download').catch((err) => {
+    const held = blobByUrl.get(href);
+    shareDownload(href, name || 'download', typeof Blob === 'function' && held instanceof Blob ? held : null).catch((err) => {
       console.warn('[nativeDownload] share failed', err);
     });
   };
   return true;
 }
 
-async function shareDownload(href, fileName) {
-  // Read the bytes now: callers revoke the blob URL right after click().
-  const blob = await fetch(href).then((r) => r.blob());
+async function shareDownload(href, fileName, snapshot) {
+  const blob = snapshot || await fetch(href).then((r) => r.blob());
   const [{ Filesystem, Directory }, { Share }] = await Promise.all([
     import('@capacitor/filesystem'),
     import('@capacitor/share'),
