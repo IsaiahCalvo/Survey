@@ -401,3 +401,9 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # the caller's Bearer JWT itself, so the CORS preflight must reach it.
 [functions.survey-agent]
 verify_jwt = false
+
+# Remote MCP endpoint for outside agents. It answers a CORS preflight and the
+# OAuth metadata GET without a token, and checks the agent's Bearer token
+# itself.
+[functions.survey-mcp]
+verify_jwt = false

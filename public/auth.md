@@ -8,6 +8,12 @@ If your agent runs inside the user's browser and the browser supports WebMCP,
 Survey offers tools through `document.modelContext` while the user is signed in.
 No extra sign-in is needed: tools act as that user.
 
+With Survey mode open and a template chosen, the survey item tools are there
+too: `survey_get_context` (categories, checklists, answers, entities),
+`survey_find_items`, `survey_get_item`, `survey_set_answers`,
+`survey_add_note`, `survey_set_entity` and `survey_show_item`. Writing needs
+editor or owner access to the document.
+
 ## Outside the browser: user-claimed flow
 
 Supported flows: `user_claimed` (the user confirms a code). Agent-verified
@@ -56,6 +62,22 @@ the database itself.
   `apikey: sb_publishable_TbwXDm3ybv24oQMBMxlUfQ_kcJ_Byrx` (Survey's public key).
 
 The person sees and removes agents at https://surveytool.app/agent-link.
+
+## Outside the browser: remote MCP server
+
+For agents that speak MCP (Claude and ChatGPT connectors, scripts):
+
+- Server URL: `https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp`
+  (MCP over HTTP POST, JSON-RPC, no session).
+- Sign-in: the OAuth 2.1 flow above. Without a token the server answers 401
+  with `WWW-Authenticate: Bearer resource_metadata="<server URL>/.well-known/oauth-protected-resource"`,
+  which points to Survey's authorization server, so MCP clients find the sign-in
+  on their own. Dynamic client registration is on.
+- Tools (read-only for now): `list_projects`, `list_documents`,
+  `list_survey_items`, `find_survey_items`, `get_survey_item`.
+- Every call runs as the person, so the agent sees exactly their documents.
+
+In Claude: Settings > Connectors > Add custom connector, paste the server URL.
 
 ## Rules for agents
 

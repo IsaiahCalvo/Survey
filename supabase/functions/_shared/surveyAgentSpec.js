@@ -165,3 +165,62 @@ export function surveyAgentCostMicros(usage = {}, prices = { input: 0, output: 0
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   return Math.ceil(n(usage.prompt_tokens) * n(prices.input) + n(usage.completion_tokens) * n(prices.output));
 }
+
+// Item names the way people say them (shared by the app's tools and the
+// survey-mcp endpoint).
+const NUMBER_WORDS = {
+  zero: '0', oh: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
+  ten: '10', eleven: '11', twelve: '12', thirteen: '13', fourteen: '14', fifteen: '15', sixteen: '16',
+  seventeen: '17', eighteen: '18', nineteen: '19', twenty: '20', thirty: '30', forty: '40', fifty: '50',
+  sixty: '60', seventy: '70', eighty: '80', ninety: '90',
+};
+
+// "Door D one seventeen" -> "doord117": lower case, number words to digits,
+// only letters and digits left.
+export function normalizeItemName(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[a-z]+/g, (word) => NUMBER_WORDS[word] ?? word)
+    .replace(/[^a-z0-9]/g, '');
+}
+
+const digitsOf = (s) => s.replace(/[^0-9]/g, '');
+const lettersOf = (s) => s.replace(/[0-9]/g, '');
+
+function editRatio(a, b) {
+  if (!a.length || !b.length) return 0;
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const tmp = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return 1 - row[b.length] / Math.max(a.length, b.length);
+}
+
+// How well a heard name matches an item's name, 0 to 1.
+export function scoreItemName(query, name, categoryName = '') {
+  let q = normalizeItemName(query);
+  const n = normalizeItemName(name);
+  if (!q || !n) return 0;
+  const cat = normalizeItemName(categoryName);
+  // "door d117" for an item "D117" in the Door category.
+  if (cat && q.startsWith(cat) && q.length > cat.length && !n.startsWith(cat)) q = q.slice(cat.length);
+  if (q === n) return 1;
+  const qd = digitsOf(q);
+  const nd = digitsOf(n);
+  if (qd && qd === nd) {
+    const ql = lettersOf(q);
+    const nl = lettersOf(n);
+    if (ql === nl) return 0.95;
+    if (!ql || !nl || ql.startsWith(nl) || nl.startsWith(ql)) return 0.85;
+    return 0.6;
+  }
+  if (qd && nd && qd !== nd) return Math.min(0.3, editRatio(q, n));
+  if (n.includes(q) || q.includes(n)) return 0.7;
+  return editRatio(q, n) * 0.8;
+}

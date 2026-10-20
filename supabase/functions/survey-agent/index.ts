@@ -79,9 +79,9 @@ function transcriber() {
   return null;
 }
 
-function decodeBase64(value: string) {
+function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
     if (!t) return json(501, { error: 'transcription_not_set_up' });
     const mime = String(body.mime || '').split(';')[0].trim().toLowerCase();
     if (!AUDIO_TYPES.has(mime)) return json(400, { error: 'unsupported_audio' });
-    let bytes: Uint8Array;
+    let bytes: Uint8Array<ArrayBuffer>;
     try { bytes = decodeBase64(String(body.audio || '')); } catch { return json(400, { error: 'bad_audio' }); }
     if (!bytes.length || bytes.length > MAX_AUDIO_BYTES) return json(413, { error: 'audio_too_large' });
     const hints = (Array.isArray(body.hints) ? body.hints : [])
@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
         headers: { Authorization: `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: provider.model,
-          messages: [{ role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT }, ...clean.messages],
+          messages: [{ role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT }, ...(clean.messages || [])],
           tools: buildSurveyAgentTools(body.answer_values),
           tool_choice: 'auto',
           temperature: 0.2,
