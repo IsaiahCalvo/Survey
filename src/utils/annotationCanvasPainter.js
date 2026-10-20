@@ -41,6 +41,9 @@ import { resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from './pdfStampProxy.js';
 import { getAnnotationImage } from './annotationImageCache.js';
 import {
+  getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
+} from './symbolLibrary.js';
+import {
   buildTextMarkupRenderSpec,
   groupUniformTextMarkupHighlights,
   isUniformTextMarkupHighlight,
@@ -1253,6 +1256,32 @@ function drawImageMark(context, object) {
   context.restore();
 }
 
+// KAL-407: a library symbol paints from its own vector paths (Path2D), not
+// by decoding its SVG picture — synchronous, crisp, and it works in the
+// worker, where an SVG image cannot be decoded. Same box and rotation as the
+// SVG layer's stamp <image> (transformSymbolPath).
+function drawSymbolStamp(context, object) {
+  const symbol = getSymbol(object?.data?.symbolStamp?.id);
+  const box = symbolStampBox(object);
+  if (!symbol || !(box.width > 0 && box.height > 0) || typeof Path2D !== 'function') return false;
+  const color = object.data.symbolStamp.color || '#000000';
+  context.save();
+  context.globalAlpha = clampOpacity(Number.isFinite(Number(object.opacity)) ? Number(object.opacity) : 1);
+  context.globalCompositeOperation = 'source-over';
+  context.lineWidth = symbolStampStrokeWidth(symbol, box);
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.strokeStyle = color;
+  context.fillStyle = color;
+  for (const path of symbol.paths) {
+    const shape = new Path2D(transformSymbolPath(path.d, symbol.viewBox, box));
+    if (path.fill) context.fill(shape);
+    context.stroke(shape);
+  }
+  context.restore();
+  return true;
+}
+
 function traceTextMarkupRuns(context, runs, closed) {
   context.beginPath();
   for (const points of runs) {
@@ -1365,6 +1394,7 @@ export function drawAnnotationObject(context, object, displayScale = 1) {
     drawTextMarkup(context, object);
     return;
   }
+  if (isSymbolStamp(object) && drawSymbolStamp(context, object)) return;
   if (isPdfStampProxy(object)) {
     drawImageMark(context, object);
     return;

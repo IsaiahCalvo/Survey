@@ -132,7 +132,10 @@ export function resolveViewerPressRoute({ pointerType = 'mouse', button = 0, pan
  */
 export function resolveTouchStartRoute({ touches = [], changedTouches = [], drawMode = state.drawMode, penDown = false, toolIsPan = false } = {}) {
   const pencilOnly = drawMode === DRAW_MODES.PEN;
-  if (pencilOnly && (penDown || hasStylusTouch(touches))) {
+  // P3 in both modes: a pen contact is never a finger, so a finger or knuckle
+  // landing while the pen writes is set aside instead of turning the stroke
+  // into a pinch/pan (T2 would drop the stroke and move the page).
+  if (penDown || hasStylusTouch(touches)) {
     return hasStylusTouch(changedTouches) ? 'pen-tool' : 'ignore';
   }
   if (touches.length >= 2) return 'pinch';
@@ -153,8 +156,8 @@ const CLICK_AFTER_GATED_TAP_MS = 700;
 const elementOf = (target) => (target && target.nodeType === 3 ? target.parentElement : target);
 
 /** True for a finger press the tools must never see (Pencil-only mode). */
-export function isGatedFingerTarget(target, drawMode = state.drawMode) {
-  if (drawMode !== DRAW_MODES.PEN) return false;
+export function isGatedFingerTarget(target, drawMode = state.drawMode, penDown = false) {
+  if (drawMode !== DRAW_MODES.PEN && !penDown) return false;
   const element = elementOf(target);
   if (!element || typeof element.closest !== 'function') return false;
   if (!element.closest(VIEWER_SELECTOR)) return false;
@@ -199,7 +202,8 @@ function onPointer(event) {
   }
   if (event.pointerType !== 'touch') return;
   if (type === 'pointerdown') {
-    if (!isGatedFingerTarget(event.target)) return;
+    // While a pen is down a finger never reaches the tools in either mode (P3).
+    if (!isGatedFingerTarget(event.target, state.drawMode, penPointers.size > 0)) return;
     gatedPointers.add(event.pointerId);
   } else if (!gatedPointers.has(event.pointerId)) {
     return;

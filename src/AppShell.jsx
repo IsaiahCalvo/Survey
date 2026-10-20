@@ -1,3 +1,4 @@
+import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 // AppShell — application root: tab management, auth/entity state, chrome host
 // divs, the top-right zoom/page pill (reads bottomToolbarApi), and the router
 // between Dashboard (home) and PDFViewer (open document).
@@ -14,6 +15,8 @@
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import Dashboard from './Dashboard';
+import { createTabChromeCache } from './utils/tabChromeCache.js';
+import { captureTabSource, isCurrentTabSource } from './utils/tabSourceIdentity.js';
 import DocumentLockBanner from './components/DocumentLockBanner.jsx';
 import Icon from './Icons';
 import SurveyMarkerModeTools from './survey/SurveyMarkerModeTools.jsx';
@@ -27,6 +30,7 @@ import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleContro
 import { isPaintSelectionMixed } from './utils/selectionRestyle.js';
 import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
+import ExportMenu from './components/ExportMenu.jsx';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import usePhoneLayout from './hooks/usePhoneLayout.js';
@@ -742,6 +746,8 @@ export default function App({ devPreviewReturnTab = null }) {
   }, []);
 
   const [currentView, setCurrentView] = useState('dashboard');
+  const currentViewRef = useRef(currentView);
+  currentViewRef.current = currentView;
   const [selectedPDF, setSelectedPDF] = useState(null);
   const [documents, setDocuments] = useState(() => {
     if (
@@ -1266,6 +1272,19 @@ export default function App({ devPreviewReturnTab = null }) {
   const HOME_TAB_ID = 'home-tab';
   const [tabs, setTabs] = useState([{ id: HOME_TAB_ID, name: 'Home', file: null, isHome: true }]); // Array of { id, name, file, isHome? }
   const [activeTabId, setActiveTabId] = useState(HOME_TAB_ID);
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const chromeCache = useMemo(() => createTabChromeCache(id => activeTabIdRef.current === id && currentViewRef.current === 'viewer'), []);
+  const chromeSetters = useMemo(() => ({
+    top: setTopToolbarApi, bottom: setBottomToolbarApi,
+    left: setLeftRailApi, right: setRightRailApi,
+  }), []);
+  useLayoutEffect(() => {
+    chromeCache.retain(tabs.filter(tab => !tab.isHome).map(tab => tab.id));
+  }, [tabs, chromeCache]);
+  useLayoutEffect(() => {
+    chromeCache.activate(activeTabId, chromeSetters);
+  }, [activeTabId, currentView, chromeCache, chromeSetters]);
   const [documentLockedByTab, setDocumentLockedByTab] = useState({});
   // Track PDFs that are currently being opened to prevent duplicate opens
   const openingPdfsRef = useRef(new Set());
@@ -1425,10 +1444,11 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // DEV-ONLY: Auto-open test PDF when loaded via dev test route
   useEffect(() => {
-    if (import.meta.env.DEV && window.__devTestPdf) {
-      const file = window.__devTestPdf;
-      window.__devTestPdf = null; // consume so it only fires once
-      handleDocumentSelect(file);
+    if (import.meta.env.DEV && (window.__devTestPdf || window.__devTestPdfs)) {
+      const files = window.__devTestPdfs || [window.__devTestPdf];
+      window.__devTestPdf = null;
+      window.__devTestPdfs = null;
+      files.forEach((file) => handleDocumentSelect(file));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1487,6 +1507,7 @@ export default function App({ devPreviewReturnTab = null }) {
         dashboardRef.current.exitSelectionMode();
       }
 
+      activeTabIdRef.current = tabId;
       setActiveTabId(tabId);
       if (tab.isHome) {
         if (returnToDevHubPreview()) return;
@@ -1589,6 +1610,9 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Memoized callback to update PDF file
   const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
+    const origin = captureTabSource(targetTabId
+      ? tabsRef.current.find(tab => tab.id === targetTabId)?.file
+      : selectedPDF);
     const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
     let saved = null;
     if (newFile?.id && durablePath) {
@@ -1599,23 +1623,12 @@ export default function App({ devPreviewReturnTab = null }) {
       if (saved.filePath !== durablePath) newFile.supabaseFilePath = saved.filePath;
       newFile.contentSha256 = saved.contentSha256;
     }
-    setTabs(prev => {
-      if (targetTabId) {
-        return prev.map(tab =>
-          tab.id === targetTabId ? { ...tab, file: newFile } : tab
-        );
-      }
-
-      const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
-      if (!pdfTab) return prev;
-      return prev.map(tab =>
-        tab.id === pdfTab.id ? { ...tab, file: newFile } : tab
-      );
-    });
-    // Only update selectedPDF if the updated tab is the active one
-    if (!targetTabId || targetTabId === activeTabId) {
-      setSelectedPDF(newFile);
-    }
+    const currentFile = targetTabId
+      ? tabsRef.current.find(tab => tab.id === targetTabId)?.file
+      : selectedPDF;
+    // Storage already moved on (replaceDocument may have forked a new path).
+    // Keep the dashboard row in sync even if the tab closed or swapped source
+    // so a later open does not reload the previous object.
     setDocuments((prev) => prev.map((document) => (
       document?.id === newFile?.id
         ? {
@@ -1627,6 +1640,25 @@ export default function App({ devPreviewReturnTab = null }) {
         }
         : document
     )));
+    if (!isCurrentTabSource(origin, currentFile)) return newFile;
+    setTabs(prev => {
+      if (targetTabId) {
+        return prev.map(tab =>
+          tab.id === targetTabId && isCurrentTabSource(origin, tab.file)
+            ? { ...tab, file: newFile } : tab
+        );
+      }
+
+      const pdfTab = prev.find(t => t.file === selectedPDF && !t.isHome);
+      if (!pdfTab) return prev;
+      return prev.map(tab =>
+        tab.id === pdfTab.id ? { ...tab, file: newFile } : tab
+      );
+    });
+    // Only update selectedPDF if the updated tab is the active one
+    if (!targetTabId || targetTabId === activeTabIdRef.current) {
+      setSelectedPDF(current => isCurrentTabSource(origin, current) ? newFile : current);
+    }
     return newFile;
   }, [selectedPDF, activeTabId, replaceDocument]);
 
@@ -1641,8 +1673,6 @@ export default function App({ devPreviewReturnTab = null }) {
   // it directly (onCloseAfterFailure): there is nothing to protect.
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
-  const activeTabIdRef = useRef(activeTabId);
-  activeTabIdRef.current = activeTabId;
   const bottomToolbarApiRef = useRef(bottomToolbarApi);
   bottomToolbarApiRef.current = bottomToolbarApi;
   const [askTabConfirm, tabConfirmDialog] = useConfirmDialog();
@@ -2631,6 +2661,19 @@ export default function App({ devPreviewReturnTab = null }) {
               >
                 <Icon name="download" size={CHROME_GLYPH} />
               </button>
+              {/* KAL-393: every export in one list; the button above stays
+                  the one-click annotated PDF. */}
+              <ExportMenu
+                tooltip={chromeTip('More export options', 'below')}
+                items={[
+                  { label: 'Annotated PDF', onSelect: bottomToolbarApi.exportAnnotatedPdf },
+                  {
+                    label: 'Markup only (XFDF)',
+                    title: 'Your marks in a separate file for Acrobat or Bluebeam. Your PDF stays the same.',
+                    onSelect: bottomToolbarApi.exportXfdf,
+                  },
+                ]}
+              />
             </div>
           )}
 
@@ -2655,10 +2698,10 @@ export default function App({ devPreviewReturnTab = null }) {
             alignItems: 'center',
             gap: 'var(--chrome-tool-gap)'
           }}>
-            <span {...chromeTip(topToolbarApi.canUndo ? 'Undo' : 'Nothing to undo', 'below')} style={{ display: 'inline-flex' }}>
+            <span {...chromeTip(topToolbarApi?.canUndo ? 'Undo' : 'Nothing to undo', 'below')} style={{ display: 'inline-flex' }}>
               <button
-                onClick={topToolbarApi.onUndo || (() => {})}
-                disabled={!topToolbarApi.canUndo}
+                onClick={topToolbarApi?.onUndo || (() => {})}
+                disabled={!topToolbarApi?.canUndo}
                 // UX 2026-09-16: Undo/Redo take the shared top-bar control
                 // size and glyph like every other button in this row. They
                 // were a one-off 32x26 with a 14px glyph — the smallest pair
@@ -2669,23 +2712,23 @@ export default function App({ devPreviewReturnTab = null }) {
                 className="btn chrome-control chrome-history"
                 aria-label="Undo"
                 style={{
-                  cursor: topToolbarApi.canUndo ? 'pointer' : 'not-allowed',
-                  pointerEvents: topToolbarApi.canUndo ? 'auto' : 'none'
+                  cursor: topToolbarApi?.canUndo ? 'pointer' : 'not-allowed',
+                  pointerEvents: topToolbarApi?.canUndo ? 'auto' : 'none'
                 }}
               >
                 <Icon name="undo" size={HISTORY_GLYPH} />
               </button>
             </span>
-            <span {...chromeTip(topToolbarApi.canRedo ? 'Redo' : 'Nothing to redo', 'below')} style={{ display: 'inline-flex' }}>
+            <span {...chromeTip(topToolbarApi?.canRedo ? 'Redo' : 'Nothing to redo', 'below')} style={{ display: 'inline-flex' }}>
               <button
-                onClick={topToolbarApi.onRedo || (() => {})}
-                disabled={!topToolbarApi.canRedo}
+                onClick={topToolbarApi?.onRedo || (() => {})}
+                disabled={!topToolbarApi?.canRedo}
                 // UX 2026-09-16: see Undo — shared top-bar control size + glyph.
                 className="btn chrome-control chrome-history"
                 aria-label="Redo"
                 style={{
-                  cursor: topToolbarApi.canRedo ? 'pointer' : 'not-allowed',
-                  pointerEvents: topToolbarApi.canRedo ? 'auto' : 'none'
+                  cursor: topToolbarApi?.canRedo ? 'pointer' : 'not-allowed',
+                  pointerEvents: topToolbarApi?.canRedo ? 'auto' : 'none'
                   // UX 2026-09-16: the old -0.591158px ink-centre nudge is
                   // gone. It was measured against the 14px Redo glyph; at the
                   // shared 18px size the Undo and Redo glyphs share an ink
@@ -3611,178 +3654,11 @@ export default function App({ devPreviewReturnTab = null }) {
                            smallest thing in the bar. */
                         triggerContent={seriesLabel}
                         width="var(--chrome-field-w-series)"
-                        contentWidth="var(--chrome-field-w-series)"
+                        contentWidth="min(300px, calc(100vw - 24px))"
                         dataMarker="data-counter-series-menu"
                         outsideBoundarySelector="[data-counter-series-context-menu]"
                       >
-                          <div className="annotation-dropdown__body">
-                            {/* PASS 7 (board 15): the counts the user already
-                                has come first and "New count" closes the list —
-                                continuing a count is the common act, starting
-                                one is the exception. The "CONTINUE COUNT"
-                                caption that used to split them is gone: three
-                                words of chrome above three words of content. */}
-                            {seriesList.map((series) => {
-                              const isActive = series.seriesId === bottomToolbarApi.activeCounterSeriesId;
-                              return (
-                                <button
-                                  key={series.seriesId}
-                                  className={`annotation-dropdown__option${isActive ? ' is-active' : ''}`}
-                                  aria-haspopup="menu"
-                                  aria-label={`${series.label}, ${series.count} pins`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    bottomToolbarApi.onSwitchCounterSeries(series.seriesId);
-                                    bottomToolbarApi.setActiveTool?.('counter');
-                                    setShowCounterSeriesMenu(false);
-                                  }}
-                                  onPointerDown={(e) => {
-                                    if (e.button !== 2) return;
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    counterSeriesContextTriggerRef.current = e.currentTarget;
-                                    setCounterSeriesContextMenu({
-                                      seriesId: series.seriesId,
-                                      label: series.label,
-                                      count: series.count,
-                                      x: e.clientX || rect.left + Math.min(36, rect.width / 2),
-                                      y: e.clientY || rect.top + Math.min(24, rect.height),
-                                    });
-                                  }}
-                                  onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    const rect = e.currentTarget.getBoundingClientRect();
-                                    counterSeriesContextTriggerRef.current = e.currentTarget;
-                                    setCounterSeriesContextMenu({
-                                      seriesId: series.seriesId,
-                                      label: series.label,
-                                      count: series.count,
-                                      x: rect.left + Math.min(36, rect.width / 2),
-                                      y: rect.top + Math.min(24, rect.height),
-                                    });
-                                  }}
-                                >
-                                  {/* PASS 7 (board 15, owner ruling): the series
-                                      menu is WORDS ONLY — the dot and the pin
-                                      tally are gone from the row. How many pins
-                                      a count holds is still announced to a
-                                      screen reader through aria-label above. */}
-                                  <span style={{ flex: 1 }}>{series.label}</span>
-                                </button>
-                              );
-                            })}
-                            <button
-                              className="annotation-dropdown__option"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                bottomToolbarApi.onNewCounterSeries();
-                                setShowCounterSeriesMenu(false);
-                              }}
-                              aria-label="New count"
-                            >
-                              {/* PASS 7 (owner ruling, 2026-09-22): the series
-                                  menu is WORDS ONLY, and that includes this
-                                  row. It read "New count" beside a plus glyph —
-                                  a drawing and two words under three rows that
-                                  are one word and a number. "New" is what it
-                                  does; the full phrase stays the accessible
-                                  name for a screen reader. */}
-                              New
-                            </button>
-                          </div>
-                        {showCounterSeriesMenu && counterSeriesContextMenu && typeof document !== 'undefined' && createPortal((
-                          <div
-                            ref={counterSeriesContextMenuRef}
-                            data-counter-series-context-menu
-                            role="menu"
-                            aria-label={`${counterSeriesContextMenu.label} actions`}
-                            style={{
-                              position: 'fixed',
-                              left: `${Math.max(8, Math.min(counterSeriesContextMenu.x, window.innerWidth - 120))}px`,
-                              top: `${Math.max(8, Math.min(counterSeriesContextMenu.y, window.innerHeight - 72))}px`,
-                              width: '112px',
-                              padding: '3px',
-                              background: 'var(--surface-1)',
-                              border: '1px solid var(--border)',
-                              borderRadius: 'var(--radius-md)',
-                              boxShadow: 'var(--shadow-popover)',
-                              zIndex: 5700,
-                            }}
-                          >
-                            <button
-                              role="menuitem"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                bottomToolbarApi.onSwitchCounterSeries(counterSeriesContextMenu.seriesId);
-                                bottomToolbarApi.setActiveTool?.('counter');
-                                setCounterSeriesContextMenu(null);
-                                setShowCounterSeriesMenu(false);
-                              }}
-                              style={{
-                                display: 'block',
-                                width: '100%',
-                                height: '28px',
-                                padding: '0 8px',
-                                background: 'transparent',
-                                border: 'none',
-                                borderRadius: '4px',
-                                color: 'var(--text-2)',
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                                font: 'inherit',
-                                fontSize: '12px',
-                                outline: 'none',
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 2px var(--focus)'; }}
-                              onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-                            >
-                              Continue
-                            </button>
-                            <button
-                              role="menuitem"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const { seriesId } = counterSeriesContextMenu;
-                                setCounterSeriesContextMenu(null);
-                                const result = bottomToolbarApi.onDeleteCounterSeries?.(seriesId);
-                                setShowCounterSeriesMenu(false);
-                                if (result?.ok === false) {
-                                  showToast('This count could not be deleted. Check your permission and try again.', 'error');
-                                }
-                              }}
-                              style={{
-                                display: 'block',
-                                width: '100%',
-                                height: '28px',
-                                padding: '0 8px',
-                                background: 'transparent',
-                                border: 'none',
-                                borderRadius: '4px',
-                                color: 'var(--danger-text)',
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                                font: 'inherit',
-                                fontSize: '12px',
-                                outline: 'none',
-                              }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--danger-soft)'; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                              onFocus={(e) => { e.currentTarget.style.boxShadow = 'inset 0 0 0 2px var(--focus)'; }}
-                              onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        ), document.body)}
+                        {showCounterSeriesMenu && <CounterSeriesMenu api={bottomToolbarApi} onClose={() => setShowCounterSeriesMenu(false)} />}
                       </AnnotationDropdown>
                     ), { canCompact: false });
                   })()}
@@ -4554,6 +4430,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
               const isVisible = tab.id === activeTabId && currentView === 'viewer';
               const tabViewState = tab.viewState;
+              const chrome = chromeCache.callbacks(tab.id, chromeSetters);
 
               return (
                 <div
@@ -4592,10 +4469,10 @@ export default function App({ devPreviewReturnTab = null }) {
                       isActive={isVisible}
                       documentLocked={documentLockedByTab[tab.id] === true}
                       mobileMode={isNarrowShell}
-                      onTopToolbarApiChange={setTopToolbarApi}
-                      onBottomToolbarApiChange={setBottomToolbarApi}
-                      onLeftRailApiChange={setLeftRailApi}
-                      onRightRailApiChange={setRightRailApi}
+                      onTopToolbarApiChange={chrome.top}
+                      onBottomToolbarApiChange={chrome.bottom}
+                      onLeftRailApiChange={chrome.left}
+                      onRightRailApiChange={chrome.right}
                       onUpdatePDFFile={stableUpdatePDFFile}
                       onCloseAfterFailure={stableTabClose}
                       onUnsavedAnnotationsChange={stableUnsavedAnnotationsChange}

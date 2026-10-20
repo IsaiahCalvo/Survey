@@ -23,6 +23,7 @@
  * zoomGeneration signal (Stage 3 wires that); never throws out of a contract
  * method or callback (PDFViewer assumes the handle never throws).
  */
+import { registerAgentViewer } from '../agent/webmcp';
 import {
   forwardRef,
   memo,
@@ -41,6 +42,7 @@ import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { resolvePinchCommitCursor, resolvePinchEndTransition } from '../utils/mobilePinchGesture';
 import { isPalmContact, withoutPalmTouches } from '../utils/touchContact';
 import { isSpaceTap, isSpaceTapBlockedTarget } from '../utils/spaceTapToggle';
+import { createFocusModalityTracker, spaceBelongsToFocusedControl } from '../utils/spaceKeyControls';
 import { createPanMomentumRunner, createPanVelocityTracker, isGlideSlowEnoughToSharpen, PAN_MOMENTUM_DEFAULTS, panEventTime } from '../utils/panMomentum';
 import {
   ELASTIC_ZOOM_EASE_MS,
@@ -1425,6 +1427,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const nativePanCoastMarkerRef = useRef(null);
   const nativeLiveZoomFloorRef = useRef(null);
   const pdfRef = useRef(null);
+  const pendingViewportFitRef = useRef(null);
 
   const [numPages, setNumPages] = useState(0);
   const [pageSizes, setPageSizes] = useState([]);
@@ -1449,6 +1452,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const [range, setRange] = useState([0, -1]);
   const [containerW, setContainerW] = useState(800);
   const [containerH, setContainerH] = useState(600);
+  const [viewportFitRevision, setViewportFitRevision] = useState(0);
   // Three separate questions (owner 2026-10-13: touch must never pick the
   // phone layout):
   //  - phoneLayout: the phone's page layout (narrow gaps, the 390px page cap,
@@ -1780,6 +1784,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       cb.current.onDocumentUnload?.();
     };
     if (externalPdf && pdfRef.current === externalPdf) return unload;
+    pendingViewportFitRef.current = null;
     setPageSizes([]); setNumPages(0); setRange([0, -1]);
     pageContainerMapRef.current = {};
     if (!externalPdf && !params) return undefined;
@@ -1808,6 +1813,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
         const el = scrollerRef.current;
         const cw = el ? el.clientWidth : 800;
+        const hasViewport = el && cw > 0 && el.clientHeight > 0;
+        // Inactive tabs can finish loading with display:none. Fit once the real
+        // viewport appears, rather than fitting a zero-sized box to the zoom floor.
+        if (!hasViewport) pendingViewportFitRef.current = { source: activeSource, target: 'fit' };
         // A fresh open lands on Fit page (PDFViewer asks for it right after
         // onDocumentLoaded). Start at that same scale, measured the way
         // zoomToScale('fit') measures it, so page 1 is drawn once at its final
@@ -1815,7 +1824,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // 2026-10-04: one draw, nothing jumps).
         const metrics = layoutMetricsRef.current;
         const side = sideInsetRef.current;
-        const fitPageScale = el ? computeFitScale({
+        const fitPageScale = hasViewport ? computeFitScale({
           mode: 'fitPage',
           pageW: firstSize.w,
           pageH: firstSize.h,
@@ -1827,7 +1836,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           padBottom: metrics.padBottom,
           maxPageWidth: metrics.maxPageWidth,
         }) : NaN;
-        const fit = Number.isFinite(fitPageScale) && fitPageScale > 0
+        const fit = !hasViewport ? scaleRef.current : Number.isFinite(fitPageScale) && fitPageScale > 0
           ? Math.min(isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE, Math.max(
             getMinimumScaleForLayout(sizes, el.clientHeight, metrics, cw),
             fitPageScale,
@@ -2047,7 +2056,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- which pages are mounted ---------------------------------------------
   const recomputeWindow = useCallback(() => {
     const el = scrollerRef.current;
-    if (!el || !layout.tops.length) return;
+    if (!el || !el.clientWidth || !el.clientHeight || !layout.tops.length) return;
     // layout.tops are raw-content-space; padTop shifts pages down relative to
     // scroll, so the visibility window is expressed in raw space by subtracting it.
     const padTop = layout.padTop;
@@ -2097,11 +2106,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     if (!el) return undefined;
     const update = () => {
-      setContainerW(el.clientWidth);
+      // A hidden tab has no viewport; keep its last measured page window.
+      if (el.clientWidth > 0) setContainerW(el.clientWidth);
       // containerH drives padTop (vertical centering). Guard against a 0 height
       // during mount/teardown so padTop doesn't transiently center against nothing.
       const h = el.clientHeight;
       if (h > 0) setContainerH(h);
+      // Showing a tab may match the cached dimensions exactly; still resume its fit.
+      if (el.clientWidth > 0 && h > 0 && pendingViewportFitRef.current) {
+        setViewportFitRevision((revision) => revision + 1);
+      }
     };
     update();
     const ro = new ResizeObserver(update);
@@ -2138,6 +2152,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const observed = new Set();
     const measure = () => {
       raf = 0;
+      if (!el.clientWidth || !el.clientHeight) return;
       const strips = getViewerTopOverlays().filter((node) => node?.isConnected);
       const inset = computeTopOverlayInset(
         el.getBoundingClientRect(),
@@ -2233,6 +2248,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const observed = new Set();
     const measure = () => {
       raf = 0;
+      if (!el.clientWidth || !el.clientHeight) return;
       const panels = getViewerSideOccluders()
         .filter((node) => node?.isConnected && node.getAttribute?.('data-viewer-occluder') === 'side');
       const next = computeSideOverlayInsets(
@@ -3642,9 +3658,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   }, [flushPan, releaseElasticPan, setPanInteraction, startPanInertia, updatePanPresentation]);
 
   useEffect(() => {
+    // KAL-503: Space presses a focused button, tab, switch or menu item in a
+    // dialog or menu, or a button reached with Tab (spaceKeyControls.js).
+    const focusModality = createFocusModalityTracker();
+    let spaceForControl = false;
     const activateSpacePan = (event) => {
       if (!isSpaceKey(event)) return;
       if (isEditableTarget(event.target) || isEditableTarget(document.activeElement)) return;
+      if (!spacePanRef.current && spaceBelongsToFocusedControl(document.activeElement, { tabbedTo: focusModality.tabbedTo() })) {
+        spaceForControl = true;
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       if (spacePanRef.current) return;
@@ -3661,7 +3685,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     const releaseSpacePan = (event) => {
       if (event?.type === 'keyup' && !isSpaceKey(event)) return;
-      if (event?.type === 'keyup') {
+      const passedToControl = spaceForControl;
+      spaceForControl = false;
+      if (event?.type === 'keyup' && !passedToControl) {
         event.preventDefault();
         event.stopPropagation();
       }
@@ -3680,12 +3706,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     window.addEventListener('keydown', activateSpacePan, true);
     window.addEventListener('keyup', releaseSpacePan, true);
+    window.addEventListener('pointerdown', focusModality.onPointerDown, true);
+    window.addEventListener('keydown', focusModality.onKeyDown, true);
     window.addEventListener('blur', releaseSpacePan);
     window.addEventListener('pagehide', releaseSpacePan);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('keydown', activateSpacePan, true);
       window.removeEventListener('keyup', releaseSpacePan, true);
+      window.removeEventListener('pointerdown', focusModality.onPointerDown, true);
+      window.removeEventListener('keydown', focusModality.onKeyDown, true);
       window.removeEventListener('blur', releaseSpacePan);
       window.removeEventListener('pagehide', releaseSpacePan);
       document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -4160,7 +4190,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         }
         return;
       }
-      if (isPencilOnly()) {
+      if (isPencilOnly() || isPenDown() || hasStylusTouch(event.touches)) {
         const route = resolveTouchStartRoute({
           touches: event.touches,
           changedTouches: event.changedTouches,
@@ -4259,11 +4289,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }
       if (isNativeInteractionTarget(event.target, event) && !widgetTapPromotedToPan) return;
       event.preventDefault();
-      // Pencil-only: while the pen is on the glass (or a resting finger was
-      // set aside) no finger pans or pinches - the pen's own contact keeps
+      // While the pen is on the glass (either mode, P3) or a resting finger
+      // was set aside, no finger pans or pinches - the pen's own contact keeps
       // going to the tool below.
-      if (isPencilOnly() && mobileTouchRef.current?.mode !== 'pinch'
-        && (mobileTouchRef.current?.mode === 'ignore' || hasStylusTouch(touches))) return;
+      if (mobileTouchRef.current?.mode !== 'pinch'
+        && (mobileTouchRef.current?.mode === 'ignore' || hasStylusTouch(touches) || isPenDown())) return;
       if (touches.length >= 2) {
         event.stopPropagation();
         if (mobileTouchRef.current?.mode !== 'pinch') startPinch(touches);
@@ -4455,11 +4485,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     window.addEventListener('blur', abortTouch);
     window.addEventListener('pagehide', abortTouch);
     document.addEventListener('visibilitychange', onVisibilityAbort);
-    // Pencil-only: a pen landing while a finger pans (a pen that sends no
+    // A pen landing while a finger pans (either mode, P3) (a pen that sends no
     // stylus touches - Android, Windows, tests) stops the pan where it is and
     // sets that finger aside, so the page never slides under the pen.
     const unsubscribePenDown = subscribeGatedPointers((_event, kind) => {
-      if (kind !== 'pen-down' || !isPencilOnly() || mobileTouchRef.current?.mode !== 'pan') return;
+      if (kind !== 'pen-down' || mobileTouchRef.current?.mode !== 'pan') return;
       panVelocityRef.current.reset();
       endTouchPan(0, 0);
       mobileTouchRef.current = { mode: 'ignore' };
@@ -4637,6 +4667,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el) return;
     let newScale = target;
     const isFit = target === 'fit' || target === 'fitw' || target === 'fith';
+    if (isFit && !(el.clientWidth > 0 && el.clientHeight > 0)) {
+      pendingViewportFitRef.current = { source: latestActiveSourceRef.current, target, options };
+      return;
+    }
+    // A manual zoom supersedes a pending initial fit, including saved-view restores.
+    pendingViewportFitRef.current = null;
     // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
     // band between panels). `auto` = a re-fit the app runs by itself after a
     // layout change (panel open/close, window resize, tab switch, template
@@ -4736,6 +4772,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       el.scrollLeft = landLeft;
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax]);
+
+  useLayoutEffect(() => {
+    const pending = pendingViewportFitRef.current;
+    const el = scrollerRef.current;
+    if (!pending || pending.source !== activeSource || !pageSizes.length
+      || !(el?.clientWidth > 0 && el.clientHeight > 0)) return;
+    zoomToScale(pending.target, pending.options);
+  }, [activeSource, containerW, containerH, pageSizes, viewportFitRevision, zoomToScale]);
 
   // RULED 2026-09-28 owner: History option A — clicking a History row takes
   // you to the mark: its page, zoomed so the mark fills about 40% of the part
@@ -5184,6 +5228,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       turn?.release();
     };
   }, [pageSizes, rotation, isMobileSurface]);
+
+  // WebMCP: let a browser AI agent read the page count and move pages.
+  useEffect(() => registerAgentViewer({
+    getPageCount: () => numPagesRef.current,
+    getCurrentPage: () => currentPageRef.current || 1,
+    goToPage,
+  }), [goToPage]);
 
   // DEV only: the zoom-perf scenario (debug/scenarios/zoom-perf.mjs) sets
   // exact zoom levels through this; never present in a production build.

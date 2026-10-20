@@ -158,3 +158,13 @@ test('the Expo shell: dark splash, no spinner, patient timeout, retries by itsel
   assert.match(EXPO_APP, /const SHELL_AUTO_RETRY_DELAYS_MS = \[4_000, 8_000, 15_000, 30_000\];/);
   assert.match(EXPO_APP, /AppState\.addEventListener\('change', \(state\) => \{/);
 });
+
+
+test('the Expo loading screen has a distinct sibling key from the WebView', () => {
+  const webViewKey = /<WebView\s+key=\{([^}]+)\}/.exec(EXPO_APP)?.[1];
+  const loadingKey = /<QuietShellLoading\s+key=\{((?:`[^`]+`)|[^}]+)\}/.exec(EXPO_APP)?.[1];
+  assert.ok(webViewKey, 'WebView keeps its generation key for recovery');
+  assert.ok(loadingKey, 'the loading screen resets for the same generation');
+  assert.notEqual(loadingKey, webViewKey, 'sibling keys must differ during a cold launch');
+  assert.match(loadingKey, /webViewKey/, 'the loading screen still resets at each recovery');
+});

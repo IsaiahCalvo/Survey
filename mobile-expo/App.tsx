@@ -644,7 +644,7 @@ function SurveyApp() {
         }}
       />
       {!shellReady && !loadError && !quietRetry ? (
-        <QuietShellLoading key={webViewKey} topInset={insets.top} bottomInset={nativeBottomInset} />
+        <QuietShellLoading key={`loading-${webViewKey}`} topInset={insets.top} bottomInset={nativeBottomInset} />
       ) : null}
       {externalNavigationActive ? (
         <Pressable

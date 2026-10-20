@@ -133,7 +133,8 @@ includes Pan.)
 
 **T1 Two or more fingers always navigate** — pan and pinch together, glued to
 the fingers (the page point under the fingers stays under them), whatever
-the tool. (In Pencil-only mode a pen contact is not a finger: see P3.)
+the tool. (A pen contact is never a finger, in either mode: a finger landing
+while the pen writes is set aside as in P3, so a stroke never turns into a pan.)
 
 **T2 A second finger mid-gesture cancels the one-finger gesture — it is
 never committed.** A stroke, a shape draft, a marquee, a lasso, an eraser

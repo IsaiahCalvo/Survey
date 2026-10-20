@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
 
-// Local mock PDF only; bundled headless Chromium, no owner browser or real auth.
-test.use({ viewport: { width: 1440, height: 900 }, video: 'off' });
+// Local mock PDF only; bundled headless browsers, no owner browser or real auth.
+// Inherit each project viewport so tablet runs use their actual dimensions.
+test.use({ video: 'off' });
 const button = (page, name) => page.getByRole('button', { name, exact: true }).filter({ visible: true }).first();
 async function setup(page, context) {
   await context.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
@@ -67,7 +68,7 @@ test('Spaces edit mode, visibility animation, copy, move and scoped Undo', async
   await expect.poll(() => page.evaluate(() => window.__fix20CollabHarness.getState().annotations.filter((mark) => mark.id === 'spaces-owned').length)).toBe(1);
 });
 
-test('nonadjacent Spaces pages keep correct fractional-zoom layout and stable spring-back', async ({ page, context }) => {
+test('nonadjacent Spaces pages keep correct fractional-zoom layout and stable spring-back', async ({ page, context, browserName, isMobile }, testInfo) => {
   await setup(page, context);
   await button(page, 'Edit Spaces').click();
   await page.getByRole('textbox', { name: 'Add pages (e.g. 3, 6-9, 12)' }).first().fill('3');
@@ -87,9 +88,23 @@ test('nonadjacent Spaces pages keep correct fractional-zoom layout and stable sp
     return values;
   });
   expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(1);
-  const box = await scroller.boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  for (let index = 0; index < 6; index += 1) { await page.mouse.wheel(0, 120); await page.waitForTimeout(15); }
+  if (browserName === 'webkit' && isMobile) {
+    // Playwright mobile WebKit has no wheel input or touchscreen swipe API.
+    // Exercise DOM scroll/event stability here; native touch spring-back is a separate check.
+    testInfo.annotations.push({ type: 'scroll-input', description: 'DOM scroll + scroll events (mobile WebKit); no wheel/touch gesture claim' });
+    for (let index = 0; index < 6; index += 1) {
+      await scroller.evaluate((element) => {
+        element.scrollBy({ top: 120, behavior: 'instant' });
+        element.dispatchEvent(new Event('scroll'));
+      });
+      await page.waitForTimeout(15);
+    }
+  } else {
+    testInfo.annotations.push({ type: 'scroll-input', description: 'browser wheel input' });
+    const box = await scroller.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (let index = 0; index < 6; index += 1) { await page.mouse.wheel(0, 120); await page.waitForTimeout(15); }
+  }
   await page.waitForTimeout(900);
   expect(await scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   const pageThree = page.locator('.survey-pdfjs-page-div[data-page-number="3"]');
