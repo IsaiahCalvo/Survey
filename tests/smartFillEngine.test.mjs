@@ -56,3 +56,45 @@ test('refuses an outline that runs off the window it looked at', () => {
   for (let y = 40; y <= 60; y += 1) ink(30, y);
   assert.equal(findTagOutline(mask, 100, 100, 50, 50).ok, false);
 });
+
+import { adaptiveInkMaskFromRgba, dilateMask, findTagOutlineTolerant } from '../src/survey/smartFillEngine.js';
+
+function rgbaPage(w, h, paper, drawInk) {
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let p = 0; p < w * h; p += 1) data.set([paper, paper, paper, 255], p * 4);
+  drawInk((x, y, v) => { if (x >= 0 && y >= 0 && x < w && y < h) data.set([v, v, v, 255], (y * w + x) * 4); });
+  return data;
+}
+const box = (put, x0, y0, x1, y1, v, skip = () => false) => {
+  for (let x = x0; x <= x1; x += 1) { if (!skip(x, y0)) put(x, y0, v); if (!skip(x, y1)) put(x, y1, v); }
+  for (let y = y0; y <= y1; y += 1) { if (!skip(x0, y)) put(x0, y, v); if (!skip(x1, y)) put(x1, y, v); }
+};
+
+test('faint border (light grey line on white) still reads as an outline', () => {
+  const data = rgbaPage(120, 120, 255, (put) => box(put, 40, 40, 80, 70, 238));
+  const mask = adaptiveInkMaskFromRgba(data, 120, 120);
+  const found = findTagOutlineTolerant(mask, 120, 120, 60, 55);
+  assert.equal(found.ok, true);
+});
+
+test('scanned grey paper does not read as ink; the darker outline does', () => {
+  const data = rgbaPage(120, 120, 205, (put) => box(put, 40, 40, 80, 70, 120));
+  const mask = adaptiveInkMaskFromRgba(data, 120, 120);
+  assert.equal(mask[10 * 120 + 10], 0);
+  assert.equal(findTagOutlineTolerant(mask, 120, 120, 60, 55).ok, true);
+});
+
+test('a broken outline (2 px gap, like a scan) closes and keeps its size', () => {
+  const data = rgbaPage(120, 120, 255, (put) => box(put, 40, 40, 80, 70, 0, (x, y) => y === 40 && (x === 60 || x === 61)));
+  const mask = adaptiveInkMaskFromRgba(data, 120, 120);
+  const found = findTagOutlineTolerant(mask, 120, 120, 60, 55);
+  assert.equal(found.ok, true);
+  assert.ok(found.closedGaps >= 1);
+  const xs = found.ring.map((p) => p[0]);
+  assert.ok(Math.abs(Math.min(...xs) - 40) <= 1 && Math.abs(Math.max(...xs) - 81) <= 1);
+});
+
+test('dilateMask grows one pixel into its 8 neighbours', () => {
+  const m = new Uint8Array(9); m[4] = 1;
+  assert.equal(dilateMask(m, 3, 3, 1).reduce((a, b) => a + b, 0), 9);
+});

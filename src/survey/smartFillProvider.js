@@ -8,15 +8,21 @@
  * onNoMatch so the page can say "No outline found".
  */
 import { registerMarkerShapeProvider } from './markerShapeProviders.js';
-import { findTagOutline, inkMaskFromRgba } from './smartFillEngine.js';
+import { adaptiveInkMaskFromRgba, findTagOutlineTolerant } from './smartFillEngine.js';
 
 // Window around the tap, page units (1 = 1 PDF point; a tag is ~10-80 pt).
 const WINDOW_PAGE_UNITS = 360;
 // Pixel cap per side so one tap stays quick on a big zoom.
 const MAX_WINDOW_PX = 1200;
 
-export function readSmartFillOutline({ point, pageSize, pageCanvas }) {
-  if (!pageCanvas || !pageSize?.width || !pageCanvas.width) return { ok: false, reason: 'not-ready' };
+// UX: a tap answers fast or not at all; past this the toast says so.
+const TIME_LIMIT_MS = 2500;
+
+/** Crop the rendered page around the tap. Returns pixels + the mapping back. */
+export function cropAroundTap({ point, pageSize, pageCanvas }) {
+  if (!pageCanvas || !pageSize?.width || !pageCanvas.width) return null;
+  // A canvas that isn't drawn yet (pdf.js placeholder) has the wrong shape.
+  if (Math.abs(pageCanvas.width / pageCanvas.height - pageSize.width / pageSize.height) > 0.02 * (pageSize.width / pageSize.height)) return null;
   const pxPerUnit = pageCanvas.width / pageSize.width;
   const half = WINDOW_PAGE_UNITS / 2;
   const left = Math.max(0, point.x - half);
@@ -25,23 +31,87 @@ export function readSmartFillOutline({ point, pageSize, pageCanvas }) {
   const bottom = Math.min(pageSize.height, point.y + half);
   const srcW = (right - left) * pxPerUnit;
   const srcH = (bottom - top) * pxPerUnit;
+  if (!(srcW > 0 && srcH > 0)) return null;
   const scale = Math.min(1, MAX_WINDOW_PX / Math.max(srcW, srcH));
-  const w = Math.max(1, Math.round(srcW * scale));
-  const h = Math.max(1, Math.round(srcH * scale));
+  const width = Math.max(1, Math.round(srcW * scale));
+  const height = Math.max(1, Math.round(srcH * scale));
   const work = document.createElement('canvas');
-  work.width = w;
-  work.height = h;
+  work.width = width;
+  work.height = height;
   const ctx = work.getContext('2d', { willReadFrequently: true });
   ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, w, h);
-  ctx.drawImage(pageCanvas, left * pxPerUnit, top * pxPerUnit, srcW, srcH, 0, 0, w, h);
-  const { data } = ctx.getImageData(0, 0, w, h);
-  const mask = inkMaskFromRgba(data, w, h);
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(pageCanvas, left * pxPerUnit, top * pxPerUnit, srcW, srcH, 0, 0, width, height);
+  const { data } = ctx.getImageData(0, 0, width, height);
   const unitsPerPx = 1 / (pxPerUnit * scale);
-  const found = findTagOutline(mask, w, h, (point.x - left) / unitsPerPx, (point.y - top) / unitsPerPx);
-  if (!found.ok) return found;
-  const ring = found.ring.map(([x, y]) => [left + x * unitsPerPx, top + y * unitsPerPx]);
-  return { ok: true, polygons: { type: 'Polygon', coordinates: [ring] } };
+  return {
+    rgba: data,
+    width,
+    height,
+    seedX: (point.x - left) / unitsPerPx,
+    seedY: (point.y - top) / unitsPerPx,
+    toPage: ([x, y]) => [left + x * unitsPerPx, top + y * unitsPerPx],
+  };
+}
+
+function toPolygons(found, crop) {
+  if (!found?.ok) return { ok: false, reason: found?.reason || 'open' };
+  return { ok: true, polygons: { type: 'Polygon', coordinates: [found.ring.map(crop.toPage)] } };
+}
+
+/** Same-thread run (tests, and browsers with no module workers). */
+export function readSmartFillOutline(context) {
+  const crop = cropAroundTap(context);
+  if (!crop) return { ok: false, reason: 'not-ready' };
+  const mask = adaptiveInkMaskFromRgba(crop.rgba, crop.width, crop.height);
+  return toPolygons(findTagOutlineTolerant(mask, crop.width, crop.height, crop.seedX, crop.seedY), crop);
+}
+
+let worker = null;
+let workerBroken = false;
+let nextId = 1;
+function getWorker() {
+  if (worker || workerBroken) return worker;
+  try {
+    worker = new Worker(new URL('./smartFillWorker.js', import.meta.url), { type: 'module' });
+    worker.addEventListener('error', () => { workerBroken = true; worker = null; });
+  } catch {
+    workerBroken = true;
+    worker = null;
+  }
+  return worker;
+}
+
+/** Off-thread run with a time limit; falls back to same-thread. */
+export function readSmartFillOutlineAsync(context) {
+  const crop = cropAroundTap(context);
+  if (!crop) return Promise.resolve({ ok: false, reason: 'not-ready' });
+  const w = typeof Worker !== 'undefined' ? getWorker() : null;
+  if (!w) {
+    const mask = adaptiveInkMaskFromRgba(crop.rgba, crop.width, crop.height);
+    return Promise.resolve(toPolygons(findTagOutlineTolerant(mask, crop.width, crop.height, crop.seedX, crop.seedY), crop));
+  }
+  const id = nextId++;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      w.removeEventListener('message', onMessage);
+      context.signal?.removeEventListener?.('abort', onAbort);
+      resolve(value);
+    };
+    const onMessage = (event) => {
+      if (event.data?.id === id) finish(toPolygons(event.data.result, crop));
+    };
+    const onAbort = () => finish({ ok: false, reason: 'aborted' });
+    const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), TIME_LIMIT_MS);
+    w.addEventListener('message', onMessage);
+    context.signal?.addEventListener?.('abort', onAbort);
+    const buffer = crop.rgba.buffer.slice(0);
+    w.postMessage({ id, rgba: buffer, width: crop.width, height: crop.height, seedX: crop.seedX, seedY: crop.seedY }, [buffer]);
+  });
 }
 
 export function registerSmartFillProvider({ onNoMatch } = {}) {
@@ -50,12 +120,9 @@ export function registerSmartFillProvider({ onNoMatch } = {}) {
     label: 'Smart fill (beta)',
     icon: 'smartFillDrop',
     onPagePointerDown: async (context) => {
-      // Let the pending ring paint before the pixel work.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      if (context.signal?.aborted) return null;
-      const result = readSmartFillOutline(context);
+      const result = await readSmartFillOutlineAsync(context);
       if (result.ok) return { polygons: result.polygons };
-      onNoMatch?.(result.reason);
+      if (result.reason !== 'aborted' && !context.signal?.aborted) onNoMatch?.(result.reason);
       return null;
     },
   });

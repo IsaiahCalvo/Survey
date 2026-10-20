@@ -15,6 +15,8 @@ const NO_MATCH_MESSAGES = {
   'too-small': 'Smart fill: that outline is too small to fill.',
   'too-large': 'Smart fill: that area is too big for a tag. Try Rectangle.',
   'not-ready': 'Smart fill: the page is still loading. Try again.',
+  timeout: 'Smart fill took too long here. Try zooming in, or use Rectangle.',
+  error: 'Smart fill hit a problem on that spot. Try again or use Rectangle.',
 };
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined' && isSmartFillBetaEnabled()) {
