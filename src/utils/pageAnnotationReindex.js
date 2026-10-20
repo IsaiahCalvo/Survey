@@ -359,6 +359,14 @@ export function transformPageState(model = {}, op, { createId = fallbackId } = {
     const next = baseRemap(model, (value) => (value <= afterPage ? value : value + 1));
     return reinstatePageSlice(next, op.from, fromPage, afterPage + 1);
   }
+  if (type === 'presentation') {
+    const next = baseRemap(model, (page) => page);
+    const page = asPage(op.page);
+    if (page == null) throw new Error('presentation requires a positive page');
+    if (op.pageTransformation) next.pageTransformations[page] = clone(op.pageTransformation);
+    else delete next.pageTransformations[page];
+    return next;
+  }
   if (type === 'rotate') {
     const next = baseRemap(model, (page) => page);
     const page = asPage(op.page);

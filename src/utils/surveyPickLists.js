@@ -91,6 +91,56 @@ export function pickSurveyRowItems(items, { currentId = null, recentIds = [], ma
   return { shown: list.filter((item) => chosen.has(String(item.id))), overflow: true, total: list.length };
 }
 
+/** Fewest disc slots a phone rail column gives up to ("All N" + 2 discs). */
+export const SURVEY_RAIL_MIN_SLOTS = 3;
+
+/**
+ * The phone tool rail's two survey disc columns (categories, entities) - the
+ * phone twin of the desktop rows (phone survey round, 2026-10-13).
+ *
+ * Intended UX: the same count rule as desktop (up to 8: every disc; above 8:
+ * 7 discs + "All N"), and - like a narrow desktop window, its last resort -
+ * when the rail is too short for both columns, the longer column gives up
+ * discs first (never below 3 slots: 2 discs + "All N") so no disc is ever
+ * hidden below the rail's fold. The phone rail is as tall as the screen, so
+ * this is decided once per screen size, never while working (`slots` is
+ * measured with no tool group open). With no room even for that, the rail
+ * scrolls (owner 2026-10-01: "if the rail runs out of room it should scroll
+ * rather than compress").
+ *
+ * @param {object} args
+ * @param {number} args.categoryCount  categories of the chosen module
+ * @param {number} args.entityCount    entities of the template
+ * @param {number|null} args.slots     discs the rail can hold for both
+ *                                     columns ("All N" is a disc); null =
+ *                                     not measured yet (count rule only)
+ * @returns {{ categoryMax: number, entityMax: number }} each column's `max`
+ *   for pickSurveyRowItems (all shown when count <= max).
+ */
+export function planPhoneSurveyRail({ categoryCount = 0, entityCount = 0, slots = null } = {}) {
+  const cap = (count) => Math.min(Math.max(0, count | 0), SURVEY_ROW_MAX_ITEMS);
+  let cats = cap(categoryCount);
+  let ents = cap(entityCount);
+  if (!Number.isFinite(slots)) return { categoryMax: SURVEY_ROW_MAX_ITEMS, entityMax: SURVEY_ROW_MAX_ITEMS };
+  const floorOf = (count) => Math.min(Math.max(0, count | 0), SURVEY_RAIL_MIN_SLOTS);
+  const catFloor = floorOf(categoryCount);
+  const entFloor = floorOf(entityCount);
+  while (cats + ents > slots) {
+    // The longer column gives first; on a tie the entities (the second pick).
+    const entsCan = ents > entFloor;
+    const catsCan = cats > catFloor;
+    if (entsCan && (!catsCan || ents >= cats)) ents -= 1;
+    else if (catsCan) cats -= 1;
+    else break;
+  }
+  // A column that keeps every item uses exactly its count; one that shows
+  // fewer keeps at least 2 so it is "1 disc + All" at the very least.
+  return {
+    categoryMax: cats >= categoryCount ? SURVEY_ROW_MAX_ITEMS : Math.max(2, cats),
+    entityMax: ents >= entityCount ? SURVEY_ROW_MAX_ITEMS : Math.max(2, ents),
+  };
+}
+
 /** Case-insensitive "contains" filter for the find field. */
 export function filterSurveyListItems(items, query) {
   const q = String(query || '').trim().toLowerCase();

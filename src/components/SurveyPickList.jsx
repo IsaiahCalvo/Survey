@@ -23,6 +23,9 @@ import './SurveyPickList.css';
  * @param {string} [searchPlaceholder]
  * @param {string} [ariaLabel]
  * @param {'popover'|'sheet'} [variant]
+ * @param {boolean} [autoFocus]  open on the find field / current row
+ *   (desktop). The phone sheet passes false: focusing the field would throw
+ *   the keyboard up over the list before the user asked to type.
  */
 export default function SurveyPickList({
   sections,
@@ -33,6 +36,7 @@ export default function SurveyPickList({
   emptyText = 'Nothing matches',
   variant = 'popover',
   searchFrom = SURVEY_LIST_SEARCH_FROM,
+  autoFocus = variant !== 'sheet',
 }) {
   const [query, setQuery] = useState('');
   const rowRefs = useRef([]);
@@ -46,6 +50,7 @@ export default function SurveyPickList({
 
   // Open on the find field (long list) or on the current row.
   useEffect(() => {
+    if (!autoFocus) return undefined;
     const frame = typeof window !== 'undefined' ? window.requestAnimationFrame(() => {
       if (showSearch) { searchRef.current?.focus({ preventScroll: true }); return; }
       const at = flat.findIndex(({ item }) => item.id === currentId);
@@ -112,6 +117,9 @@ export default function SurveyPickList({
                   type="button"
                   role="option"
                   aria-selected={current}
+                  // The phone sheet's focus trap opens on the current row
+                  // (KAL-66; the desktop popover focuses it itself).
+                  data-autofocus={variant === 'sheet' && current ? '' : undefined}
                   className={`survey-pick__row${current ? ' is-current' : ''}`}
                   data-survey-pick-id={item.id}
                   onKeyDown={(event) => onRowKey(event, at)}

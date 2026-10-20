@@ -7,6 +7,7 @@
  * for cut/copy/paste/duplicate/rotate/mirror/reset/delete. Honors pageTransformations.
  */
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -30,9 +31,11 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
+import { restrictToVerticalAxis } from '../reorder/axisLock.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import Icon from '../Icons';
 import Spinner from '../components/Spinner';
+import { useConfirmDialog } from '../components/dialogPrompts';
 import { useTooltip } from '../components/Tooltip';
 import { watchLightPopover } from '../components/dismissRules.js';
 import { placeAnchoredMenu } from '../utils/floatingUiGeometry.js';
@@ -92,9 +95,6 @@ const PAGE_SLIDE = { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
 // scrolls under a carried page, and a slot measured before that would send
 // the drop to the wrong place ("dragging during a thumbnail load").
 const PAGE_DRAG_MEASURING = { droppable: { strategy: MeasuringStrategy.WhileDragging, frequency: 100 } };
-
-// Desktop: the strip is one column, so a carried page only moves up / down.
-const restrictToVerticalAxis = ({ transform }) => ({ ...transform, x: 0 });
 
 function usePrefersReducedMotion() {
   const query = '(prefers-reduced-motion: reduce)';
@@ -213,6 +213,7 @@ const PagesPanel = ({
   const contextMenuRef = useRef(null);
   const thumbnailRefs = useRef({});
   const observerRef = useRef(null);
+  const [askConfirm, confirmDialog] = useConfirmDialog();
   const containerRef = useRef(null);
   const isMountedRef = useRef(true);
   const thumbnailsRef = useRef(thumbnails);
@@ -941,6 +942,9 @@ const PagesPanel = ({
   // (src/components/dismissRules.js, owner 2026-09-23) — an outside press
   // closes it and still does its job (R1), a press on the bare page only
   // closes it (R2), Escape closes it (R5).
+  // KAL-66: keyboard focus goes into this menu as it opens, Up/Down move,
+  // and focus returns to its button when it closes (mouse/touch unchanged).
+  useMenuFocus(contextMenuRef, Boolean(contextMenu));
   useEffect(() => {
     if (!contextMenu) return undefined;
     return watchLightPopover({
@@ -1178,13 +1182,16 @@ const PagesPanel = ({
     setSelection({ keys: key ? [key] : [], anchor: key || null });
     setSelectedPage(pageNumber);
     if (onNavigateToPage) {
-      onNavigateToPage(pageNumber);
+      // Drawboard canvas audit chunk 6: a thumbnail click glides to the page.
+      onNavigateToPage(pageNumber, { smooth: true });
     }
   }, [cardKeys, flushPendingDrop, mobileMode, onNavigateToPage, selectMode, selectRange, togglePage]);
 
   const handlePageDoubleClick = useCallback((pageNumber) => {
     if (onNavigateToPage) {
-      onNavigateToPage(pageNumber);
+      // Smooth too, so the second click of a double-click does not cut the
+      // glide its first click started short.
+      onNavigateToPage(pageNumber, { smooth: true });
     }
   }, [onNavigateToPage]);
 
@@ -1294,9 +1301,11 @@ const PagesPanel = ({
     mirror: onMirrorPage,
     reset: onResetPage,
     delete: onDeletePage
-      ? (pageNumber) => { if (window.confirm(`Delete page ${pageNumber}?`)) onDeletePage(pageNumber); }
+      ? async (pageNumber) => {
+        if (await askConfirm({ title: `Delete page ${pageNumber}?`, message: 'You can restore it with Undo.', confirmLabel: 'Delete page', danger: true })) onDeletePage(pageNumber);
+      }
       : undefined,
-  }), [cardKeys, mobileMode, movePageByOffset, onReorderPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onInsertBlankPage, onRotatePage, onMirrorPage, onResetPage, onDeletePage]);
+  }), [askConfirm, cardKeys, mobileMode, movePageByOffset, onReorderPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onInsertBlankPage, onRotatePage, onMirrorPage, onResetPage, onDeletePage]);
 
   // The same items on a selection of several pages: each is ONE change and
   // ONE Undo step for all of them (hooks/usePageOperations.js).
@@ -1311,9 +1320,11 @@ const PagesPanel = ({
       : undefined,
     rotate: onRotatePage ? (pages, delta) => actOnPages(() => onRotatePage(pages, delta)) : undefined,
     delete: onDeletePage
-      ? (pages) => { if (window.confirm(`Delete ${pages.length} pages?`)) actOnPages(() => onDeletePage(pages)); }
+      ? async (pages) => {
+        if (await askConfirm({ title: `Delete ${pages.length} pages?`, message: 'You can restore them with Undo.', confirmLabel: 'Delete pages', danger: true })) actOnPages(() => onDeletePage(pages));
+      }
       : undefined,
-  }), [actOnPages, numPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onRotatePage, onDeletePage]);
+  }), [askConfirm, actOnPages, numPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onRotatePage, onDeletePage]);
 
   const pickPageMenuItem = useCallback((key) => {
     const menu = contextMenu;
@@ -1474,6 +1485,7 @@ const PagesPanel = ({
     sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }),
   }), [reducedMotion, dropGlide]);
 
+  // Desktop: the strip is one column, so a carried page only moves up / down.
   const dragModifiers = useMemo(() => (mobileMode ? [] : [restrictToVerticalAxis]), [mobileMode]);
 
   // Let go outside the strip (over the page, the toolbar, off the sheet):
@@ -2057,6 +2069,7 @@ const PagesPanel = ({
         </>,
         document.body,
       )}
+      {confirmDialog}
     </div>
   );
 };

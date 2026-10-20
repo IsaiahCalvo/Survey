@@ -15,6 +15,7 @@
 // ops), so the viewer's per-page render metadata is never clobbered.
 
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { flushAnnotationDoc } from '../utils/flushAnnotationDoc.js';
 import { supabase } from '../supabaseClient.js';
 import { openAnnotationDoc, getClientId } from '../services/annotationDocSync.js';
 import {
@@ -1049,16 +1050,11 @@ export function useAnnotationDoc({
   const forceFlush = useCallback(async () => {
     const h = handleRef.current;
     if (!h) return;
-    setSyncStatus((prev) => ({ ...prev, stage: 'syncing' }));
-    await h.drain();
-    const saved = await h.flushSnapshot();
-    const next = h.getSyncStatus?.() || {};
-    setSyncStatus({
-      stage: saved && next.healthy !== false ? 'idle' : 'error',
-      healthy: saved && next.healthy !== false,
-      error: saved ? null : (next.error || 'sync failed'),
+    await flushAnnotationDoc(h, {
+      onStatus: setSyncStatus,
+      onQueueSize: setSyncQueueSize,
+      isCurrent: () => handleRef.current === h,
     });
-    setSyncQueueSize(Math.max(0, Number(next.queueSize) || 0));
   }, []);
 
   const commitEraserMutation = useCallback(({
@@ -1093,6 +1089,15 @@ export function useAnnotationDoc({
     const h = handleRef.current;
     if (!h || !h.doc) return false;
     return setMetaValueOnDoc(h.doc, key, value, origin);
+  }, []);
+
+  const metaSubscribe = useCallback((key, listener) => {
+    const doc = handleRef.current?.doc;
+    if (!doc || typeof listener !== 'function') return () => {};
+    const meta = doc.getMap(META_MAP);
+    const observe = (event) => { if (event.keysChanged.has(key)) listener(meta.get(key)); };
+    meta.observe(observe);
+    return () => meta.unobserve(observe);
   }, []);
 
   // 2026-10-07: the embedded import names its marks before saving them (see
@@ -1250,6 +1255,7 @@ export function useAnnotationDoc({
     commitEraserMutation,
     metaGet,
     metaSet,
+    metaSubscribe,
     hasStoredMarks,
     beginBulkImport,
     whenBulkImportSaved,

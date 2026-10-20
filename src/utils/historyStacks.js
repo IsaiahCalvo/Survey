@@ -1,3 +1,4 @@
+import { restoreSpaceRegionTransfer } from './spaceRegionTransfer.js';
 /**
  * historyStacks.js — orders undo/redo between the local Fabric history and the
  * legacy (Pdfjs) history so the two stacks interleave correctly.
@@ -269,6 +270,14 @@ export function scopeLegacyRestoreToOwnSlices(meta, currentState, target, { dire
     } else {
       out.surveyMarkers = targetMarkers;
     }
+    return out;
+  }
+  if (reason === 'space:transfer-region') {
+    const restored = restoreSpaceRegionTransfer(out, context.transferState, { direction });
+    out.spaces = restored.spaces;
+    out.annotationsByPage = restored.annotationsByPage;
+    out.surveyMarkers = restored.surveyMarkers;
+    if (typeof deriveCallouts === 'function') out.callouts = deriveCallouts(out.annotationsByPage);
     return out;
   }
   const spaceId = context.spaceId != null ? String(context.spaceId) : null;
