@@ -8,6 +8,10 @@ import { supabase } from '../supabaseClient';
 import { buildAppDestination } from '../utils/accountPlatform';
 import { AuthModal } from '../components/AuthModal';
 import { C } from '../uiPalette';
+// This page renders outside the app shell, so the modal's scrim and motion
+// variables are not loaded unless we pull them in here.
+import '../styles/tokens.css';
+import '../styles/motion.css';
 import { readPendingAgentCode, savePendingAgentCode, clearPendingAgentCode } from './agentLinkPending';
 
 export function normalizeAgentCode(value) {
@@ -42,7 +46,8 @@ export default function AgentLinkPage() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [links, setLinks] = useState([]);
-  const [authOpen, setAuthOpen] = useState(true);
+  // Closed at first so the person reads why they're here before signing in.
+  const [authOpen, setAuthOpen] = useState(false);
 
   // Keep the code through sign-up's email check or a Google sign-in, which
   // come back to the app's front page (see main.jsx).
@@ -90,7 +95,7 @@ export default function AgentLinkPage() {
           {code ? ` After you sign in, you'll press Allow for code ${code}.` : ''}
         </p>
         <button style={btn} onClick={() => setAuthOpen(true)}>Sign in or sign up</button>
-        <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
+        <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} initialMode="signup" />
       </div>
     );
   }
