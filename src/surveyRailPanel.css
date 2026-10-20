@@ -1199,8 +1199,11 @@
   }
 }
 
-/* Touch tablets: Y / N / N/A were 22px tall; 36px to a finger. */
+/* Touch tablets: Y / N / N/A were 22px tall; 36px to a finger.
+   .is-active is 18px on pointer:fine (a 4px-shorter plate in the 22px well)
+   and outranks the two-class rule above, so it must be restated here. */
 @media (pointer: coarse) {
   .survey-rail .survey-rail__answers { height: 36px; }
   .survey-rail .survey-rail__answer { height: 36px; min-width: 40px; }
+  .survey-rail .survey-rail__answer.is-active { height: 32px; }
 }
