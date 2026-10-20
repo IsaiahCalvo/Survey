@@ -355,7 +355,8 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
-import { normalizePresentationPdf } from './utils/pdfPagePresentation.js';
+import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
+import { chooseCloudPdfOpenPath, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
 import { getAnnotationBBox, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
@@ -1098,7 +1099,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
-  const { uploadDataFile, downloadDocument: downloadFromStorage } = useStorage();
+  const { uploadDataFile, downloadDocument: downloadFromStorage, openDocumentStream } = useStorage();
   const { updateDocument: updateSupabaseDocument } = useDocuments(null, { enabled: false });
   const { features } = useAuth();
 
@@ -24109,6 +24110,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   latestPdfFileRef.current = pdfFile;
   const latestLoadRetryTokenRef = useRef(loadRetryToken);
   latestLoadRetryTokenRef.current = loadRetryToken;
+  // Cloud paths whose streamed bytes carried a page-presentation tag: these
+  // open through the full download, which applies it (services/cloudPdfStream).
+  const streamNeedsBytesPathsRef = useRef(new Set());
   // Load PDF
   useEffect(() => {
     if (!pdfFile) {
@@ -24167,22 +24171,56 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setUnsupportedAnnotationCounts(null);
         setShowUnsupportedNotice(false);
 
+        let streamedPdf = null;
+        let byteSizeBucket = 'streamed';
+        let pdf = null;
         if (typeof pdfFile.arrayBuffer === 'function') {
           // Local file
           arrayBuffer = await pdfFile.arrayBuffer();
           perfLoad.mark(docName, 'Local file to ArrayBuffer');
         } else if (pdfFile.filePath) {
+          // Open speed: stream with range requests so page 1 shows before the
+          // whole file is here; any failure falls back to the download below.
+          const openPath = chooseCloudPdfOpenPath({
+            pdfFile,
+            hasDurablePresentation: pagePresentationMetaGetRef.current?.(PAGE_PRESENTATION_META_KEY) != null,
+            forceDownload: streamNeedsBytesPathsRef.current.has(pdfFile.filePath),
+            streamSupported: typeof openDocumentStream === 'function',
+          });
+          const streamPath = pdfFile.filePath;
+          const streamed = openPath.path === 'stream' ? await tryOpenCloudPdfStream({
+            pdfjsReady: pdfjsReadyPromise,
+            filePath: streamPath,
+            source: openDocumentStream,
+            isCancelled: () => isCancelled,
+            onFallback: (why) => loadTrace('stream open fell back to download: ' + why),
+            onAllBytes: (bytes) => {
+              if (!pdfBytesHavePresentationTag(bytes)) return;
+              streamNeedsBytesPathsRef.current.add(streamPath);
+              if (!isCancelled) setLoadRetryToken((t) => t + 1);
+            },
+          }) : null;
+          if (isCancelled) { try { await streamed?.pdf?.destroy(); } catch { /* noop */ } return; }
+          if (streamed?.pdf) {
+            streamedPdf = streamed.pdf;
+            perfLoad.mark(docName, 'PDF.js document opened (streamed)');
+          } else {
           // Supabase file - download it
           perfLoad.mark(docName, 'Starting Supabase download');
-          const blob = await downloadFromStorage(pdfFile.filePath);
+          const blob = streamed?.blob || await downloadFromStorage(pdfFile.filePath);
           if (!blob) throw new Error('Failed to download PDF');
           perfLoad.mark(docName, 'Supabase download complete');
           arrayBuffer = await blob.arrayBuffer();
           perfLoad.mark(docName, 'Blob to ArrayBuffer');
+          }
         } else {
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
 
+        if (streamedPdf) {
+          pdf = streamedPdf;
+          firstPagePaintAnalyticsRef.current.byteSizeBucket = byteSizeBucket;
+        } else {
         const presentationSource = await normalizePresentationPdf(arrayBuffer);
         if (presentationSource.presentations) {
           arrayBuffer = presentationSource.bytes.buffer.slice(presentationSource.bytes.byteOffset, presentationSource.bytes.byteOffset + presentationSource.bytes.byteLength);
@@ -24193,7 +24231,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           if (durablePresentation == null) pagePresentationMetaSetRef.current?.(PAGE_PRESENTATION_META_KEY, nextPresentation, 'local');
         }
         const loadedByteLength = arrayBuffer.byteLength;
-        const byteSizeBucket = loadedByteLength < 1024 * 1024
+        byteSizeBucket = loadedByteLength < 1024 * 1024
           ? 'under-1mb'
           : loadedByteLength < 10 * 1024 * 1024
             ? '1-10mb'
@@ -24217,7 +24255,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           }
         } catch (e) { console.error('Error checking header', e); }
 
-        let pdf;
         // Ensure the pdf.js worker is configured (no longer set globally at boot).
         loadTrace('configuring pdf.js worker (loadPdfjs)');
         await pdfjsReadyPromise;
@@ -24296,6 +24333,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               throw firstError;
             }
           }
+        }
         }
         if (isCancelled) {
           try { await pdf.destroy(); } catch { /* noop */ }
