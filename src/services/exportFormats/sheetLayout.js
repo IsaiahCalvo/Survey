@@ -21,5 +21,24 @@ export function buildSheetLayout(kit, checklistItems = []) {
       push(col.header, col.field);
     }
   });
-  return { headerRow, columnMapping };
+  // 1-based column number per field, plus the checklist block, for the
+  // export's styling, validation and widths.
+  const colOf = {};
+  Object.entries(columnMapping).forEach(([letter, field]) => {
+    if (!field.startsWith('checklist_')) colOf[field] = letter.charCodeAt(0) - 64;
+  });
+  const checklistAt = kit.columns.findIndex((c) => c.field === 'checklist');
+  const firstChecklistCol = checklistAt + 1;
+  const lastChecklistCol = firstChecklistCol + checklistItems.length - 1;
+  return { headerRow, columnMapping, colOf, firstChecklistCol, lastChecklistCol };
+}
+
+/** One data row in the kit's column order. `cells` holds a value per field. */
+export function buildSheetRow(kit, checklistItems, cells, answers = {}) {
+  const row = [];
+  kit.columns.forEach((col) => {
+    if (col.field === 'checklist') checklistItems.forEach((item) => row.push(answers[item.id] ?? ''));
+    else row.push(cells[col.field]);
+  });
+  return row;
 }

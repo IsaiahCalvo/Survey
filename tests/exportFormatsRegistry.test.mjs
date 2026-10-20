@@ -7,7 +7,7 @@ import {
   registerExportKit, listExportKits, getExportKit, validateExportKit,
   DEFAULT_EXPORT_KIT_ID, EXPORT_ENGINE_VERSION,
 } from '../src/services/exportFormats/registry.js';
-import { buildSheetLayout } from '../src/services/exportFormats/sheetLayout.js';
+import { buildSheetLayout, buildSheetRow } from '../src/services/exportFormats/sheetLayout.js';
 
 // Copy of the inline logic in PDFViewer.jsx handleExportSurveyToExcel.
 function inlineLayout(checklistItems) {
@@ -37,11 +37,25 @@ test('default kit layout matches the current inline export', () => {
     [{ id: 'c1', text: 'Door closes' }],
     [{ id: 1, text: 'A' }, { id: 2, text: '' }, { id: 3 }, { id: 'x', text: 'Lock works' }],
   ]) {
-    assert.deepEqual(buildSheetLayout(kit, items), inlineLayout(items));
+    const { headerRow, columnMapping, colOf, firstChecklistCol, lastChecklistCol } = buildSheetLayout(kit, items);
+    assert.deepEqual({ headerRow, columnMapping }, inlineLayout(items));
+    // Old hard-coded positions: Item 4, checklist 5.., Entity second to last, Notes last.
+    const n = headerRow.length;
+    assert.deepEqual(colOf, { row_id: 1, changed_by: 2, changed_date: 3, name: 4, entity_name: n - 1, notes: n });
+    assert.equal(firstChecklistCol, 5);
+    assert.equal(lastChecklistCol, n - 2);
+    // Old inline row order.
+    const answers = Object.fromEntries(items.map((c, i) => [c.id, i % 2 ? 'N' : 'Y']));
+    const cells = { row_id: 'tok', changed_by: 'IC', changed_date: '10/20/2026', name: 'D1', entity_name: 'E', notes: 'n' };
+    assert.deepEqual(buildSheetRow(kit, items, cells, answers),
+      ['tok', 'IC', '10/20/2026', 'D1', ...items.map((c) => answers[c.id]), 'E', 'n']);
   }
 });
 
 test('invalid kits are refused', () => {
+  const base = getExportKit(DEFAULT_EXPORT_KIT_ID);
+  assert.ok(validateExportKit({ ...base, columns: base.columns.filter((c) => c.field !== 'notes') }).some((e) => e.includes('missing "notes"')));
+  assert.ok(validateExportKit({ ...base, columns: [...base.columns].reverse() }).some((e) => e.includes('must start with')));
   assert.throws(() => registerExportKit({ id: 'Bad Id', kind: 'exportKit', version: '1', minEngine: 1, columns: [] }));
   assert.ok(validateExportKit({ id: 'a', kind: 'exportKit', version: '1.0.0', minEngine: 1, columns: [{ field: 'rm -rf' , header: 'x' }] }).length);
   assert.ok(validateExportKit({ id: 'a', kind: 'exportKit', version: '1.0.0', minEngine: 1, columns: [{ field: 'notes', header: 'N' }, { field: 'notes', header: 'N' }] }).length);
@@ -50,11 +64,18 @@ test('invalid kits are refused', () => {
 test('a tweaked kit registers, reorders columns, and unregisters', () => {
   const off = registerExportKit({
     id: 'tweak-test', kind: 'exportKit', version: '1.0.0', minEngine: 1, extends: 'default-survey@1.0.0',
-    columns: [{ field: 'name', header: 'Door' }, { field: 'checklist' }, { field: 'notes', header: 'Comments' }],
+    columns: [
+      { field: 'row_id', header: 'Row ID' }, { field: 'changed_by', header: 'By' }, { field: 'changed_date', header: 'Date' },
+      { field: 'notes', header: 'Comments' }, { field: 'checklist' }, { field: 'entity_name', header: 'Gateway' }, { field: 'name', header: 'Door' },
+    ],
   });
-  const { headerRow, columnMapping } = buildSheetLayout(getExportKit('tweak-test'), [{ id: 'k', text: 'Gateway in range' }]);
-  assert.deepEqual(headerRow, ['Door', 'Gateway in range', 'Comments']);
-  assert.deepEqual(columnMapping, { A: 'name', B: 'checklist_k', C: 'notes' });
+  const kit = getExportKit('tweak-test');
+  const { headerRow, columnMapping, colOf, firstChecklistCol, lastChecklistCol } = buildSheetLayout(kit, [{ id: 'k', text: 'In range' }]);
+  assert.deepEqual(headerRow, ['Row ID', 'By', 'Date', 'Comments', 'In range', 'Gateway', 'Door']);
+  assert.deepEqual(columnMapping, { A: 'row_id', B: 'changed_by', C: 'changed_date', D: 'notes', E: 'checklist_k', F: 'entity_name', G: 'name' });
+  assert.deepEqual([colOf.notes, firstChecklistCol, lastChecklistCol, colOf.entity_name, colOf.name], [4, 5, 5, 6, 7]);
+  assert.deepEqual(buildSheetRow(kit, [{ id: 'k' }], { row_id: 'r', changed_by: 'b', changed_date: 'd', name: 'D1', entity_name: 'G1', notes: 'x' }, { k: 'Y' }),
+    ['r', 'b', 'd', 'x', 'Y', 'G1', 'D1']);
   off();
   assert.equal(getExportKit('tweak-test'), null);
 });
@@ -62,7 +83,10 @@ test('a tweaked kit registers, reorders columns, and unregisters', () => {
 test('kits needing a newer engine are hidden from this build', () => {
   const off = registerExportKit({
     id: 'future-kit', kind: 'exportKit', version: '1.0.0', minEngine: EXPORT_ENGINE_VERSION + 1,
-    columns: [{ field: 'name', header: 'Item' }],
+    columns: [
+      { field: 'row_id', header: 'Row ID' }, { field: 'changed_by', header: 'By' }, { field: 'changed_date', header: 'Date' },
+      { field: 'name', header: 'Item' }, { field: 'checklist' }, { field: 'entity_name', header: 'E' }, { field: 'notes', header: 'N' },
+    ],
   });
   assert.equal(getExportKit('future-kit'), null);
   assert.ok(!listExportKits().some((k) => k.id === 'future-kit'));
@@ -72,7 +96,10 @@ test('kits needing a newer engine are hidden from this build', () => {
 test('the Survey Excel export takes its layout from the default kit', async () => {
   const { readFileSync } = await import('node:fs');
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
-  assert.match(viewer, /buildSheetLayout\(getExportKit\(DEFAULT_EXPORT_KIT_ID\), checklistItems\)/);
+  assert.match(viewer, /buildSheetLayout\(exportKit, checklistItems\)/);
+  assert.match(viewer, /buildSheetRow\(exportKit, checklistItems,/);
+  // Styling must not assume Entity is second to last any more.
+  assert.doesNotMatch(viewer, /const entityColIndex = headerRow\.length - 1/);
   assert.doesNotMatch(viewer, /const headerRow = \['Row ID', 'Changed By', 'Changed Date', 'Item'\]/);
 });
 
