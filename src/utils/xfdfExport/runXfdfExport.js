@@ -6,14 +6,25 @@ import { exportAnnotationsAsXfdf, xfdfFileNameForPdf } from './index.js';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+function savedWhat(summary) {
+  const written = summary?.written || 0;
+  const fields = summary?.fields || 0;
+  const parts = [];
+  if (written) parts.push(plural(written, 'mark'));
+  if (fields) parts.push(plural(fields, 'field'));
+  return parts.join(' and ');
+}
+
 export function xfdfResultMessage({ status, summary, fileName }) {
   if (status === 'empty') return { text: 'No markup to export yet.', kind: 'warn' };
   if (status === 'canceled') return null;
   const skipped = summary?.skipped || 0;
-  const saved = `Saved ${plural(summary?.written || 0, 'mark')} to ${fileName}.`;
+  const what = savedWhat(summary);
+  const saved = what ? `Saved ${what} to ${fileName}.` : null;
   if (!skipped) return { text: saved, kind: 'success' };
+  const skipText = `${plural(skipped, 'mark')} could not go in this file type.`;
   return {
-    text: `${saved} ${plural(skipped, 'mark')} could not go in this file type.`,
+    text: saved ? `${saved} ${skipText}` : skipText,
     kind: 'info',
   };
 }
@@ -25,13 +36,14 @@ export async function runXfdfExport({
   pageSizes,
   exportOptions = {},
   deliver = deliverGeneratedFile,
+  exportXfdf = exportAnnotationsAsXfdf,
 }) {
   const fileName = xfdfFileNameForPdf(pdfName);
-  const result = await exportAnnotationsAsXfdf(sourcePdf, annotationsByPage, pageSizes, {
+  const result = await exportXfdf(sourcePdf, annotationsByPage, pageSizes, {
     ...exportOptions,
     pdfFileName: pdfName,
   });
-  if (!result || (result.summary.written === 0 && result.summary.fields === 0)) {
+  if (!result || (result.summary.written === 0 && result.summary.fields === 0 && !result.summary.skipped)) {
     return { status: 'empty', fileName, summary: result?.summary || null };
   }
   const saved = await deliver({

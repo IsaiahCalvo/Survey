@@ -12,7 +12,7 @@ import {
 } from '../src/utils/xfdfExport/index.js';
 import { formValuesToXfdf } from '../src/utils/xfdfExport/formFields.js';
 import { escapeXml, formatNumber, pdfColorToHex, pdfFlagsToXfdf } from '../src/utils/xfdfExport/xfdfXml.js';
-import { xfdfResultMessage } from '../src/utils/xfdfExport/runXfdfExport.js';
+import { runXfdfExport, xfdfResultMessage } from '../src/utils/xfdfExport/runXfdfExport.js';
 import { EXPECTED, PAGE_SIZES, fileFrom, makeAnnotationsByPage, makeSourcePdf, sha256 } from './helpers/xfdfFixtures.mjs';
 
 const parseXml = (text) => {
@@ -113,6 +113,54 @@ test('format helpers', () => {
     xfdfResultMessage({ status: 'saved', fileName: 'a.xfdf', summary: { written: 1, skipped: 2 } }),
     { text: 'Saved 1 mark to a.xfdf. 2 marks could not go in this file type.', kind: 'info' },
   );
+  assert.deepEqual(
+    xfdfResultMessage({ status: 'saved', fileName: 'a.xfdf', summary: { written: 0, fields: 3 } }),
+    { text: 'Saved 3 fields to a.xfdf.', kind: 'success' },
+  );
+  assert.deepEqual(
+    xfdfResultMessage({ status: 'saved', fileName: 'a.xfdf', summary: { written: 2, fields: 1 } }),
+    { text: 'Saved 2 marks and 1 field to a.xfdf.', kind: 'success' },
+  );
+  assert.deepEqual(
+    xfdfResultMessage({ status: 'saved', fileName: 'a.xfdf', summary: { written: 0, fields: 0, skipped: 4 } }),
+    { text: '4 marks could not go in this file type.', kind: 'info' },
+  );
+});
+
+test('fields-only and skipped-only exports save a file and do not look empty', async () => {
+  const delivered = [];
+  const deliver = async (file) => {
+    delivered.push(file);
+    return {};
+  };
+  const run = (summary) => runXfdfExport({
+    sourcePdf: {},
+    pdfName: 'plan.pdf',
+    annotationsByPage: {},
+    pageSizes: {},
+    deliver,
+    exportXfdf: async () => ({ xfdf: '<xfdf/>', summary }),
+  });
+
+  const fieldsOnly = await run({ written: 0, fields: 2, skipped: 0 });
+  assert.equal(fieldsOnly.status, 'saved');
+  assert.equal(delivered.length, 1);
+  assert.deepEqual(xfdfResultMessage(fieldsOnly), { text: 'Saved 2 fields to plan.xfdf.', kind: 'success' });
+
+  delivered.length = 0;
+  const skippedOnly = await run({ written: 0, fields: 0, skipped: 3 });
+  assert.equal(skippedOnly.status, 'saved');
+  assert.equal(delivered.length, 1);
+  assert.deepEqual(
+    xfdfResultMessage(skippedOnly),
+    { text: '3 marks could not go in this file type.', kind: 'info' },
+  );
+
+  delivered.length = 0;
+  const empty = await run({ written: 0, fields: 0, skipped: 0 });
+  assert.equal(empty.status, 'empty');
+  assert.equal(delivered.length, 0);
+  assert.deepEqual(xfdfResultMessage(empty), { text: 'No markup to export yet.', kind: 'warn' });
 });
 
 test('changed form values nest by partial name', () => {
