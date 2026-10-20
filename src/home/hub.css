@@ -5603,3 +5603,15 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
     grid-template-columns: 200px minmax(0, 1fr) 200px !important;
   }
 }
+
+/* Touch tablets: the Templates page's Excel layout and Checklist answers
+   pickers are 20px / 11px for a mouse; 36px and readable to a finger. The
+   !important beats their inline mouse sizing. */
+@media (pointer: coarse) {
+  select.hub-export-kit,
+  select.hub-answer-set {
+    min-height: 36px !important;
+    font-size: 13px !important;
+    padding: 4px 8px !important;
+  }
+}
