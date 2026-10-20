@@ -12,11 +12,14 @@
 //     time that was left.
 //   - An optional action button ({ label, onClick }, e.g. Undo): pressing it
 //     runs onClick once and dismisses the toast.
+//   - An optional onDismiss runs when the toast starts leaving (click,
+//     timeout, dismissToast). Replacing the same id does not run it.
 //   - Leaving is two steps: the toast is first marked `leaving` (the host
 //     plays the exit animation), then removed after `exitMs()` (0 under
 //     reduced motion, so it goes at once).
-//   - Kept from before: an identical message already on screen is not shown
-//     twice, and at most `max` (4) toasts stand at once (the oldest leaves).
+//   - An explicit id replaces any standing or leaving toast with that id so
+//     the latest action stays on that id. Anonymous repeats still de-dupe
+//     by message. At most `max` (4) toasts stand at once (the oldest leaves).
 
 import { MOTION_MS, toastDurationMs } from './motion.js';
 
@@ -71,29 +74,40 @@ export function createToastStore({
     const toast = toasts.find((t) => t.id === id);
     if (!toast || toast.leaving) return;
     stopTimer(id);
+    const onDismiss = toast.onDismiss;
     const ms = Number(exitMs()) || 0;
     if (ms <= 0) {
       remove(id);
-      return;
+    } else {
+      toasts = toasts.map((t) => (t.id === id ? { ...t, leaving: true } : t));
+      notify();
+      removals.set(id, setT(() => remove(id), ms));
     }
-    toasts = toasts.map((t) => (t.id === id ? { ...t, leaving: true } : t));
-    notify();
-    removals.set(id, setT(() => remove(id), ms));
+    if (typeof onDismiss === 'function') {
+      try { onDismiss(); } catch { /* the caller's error stays its own */ }
+    }
   }
 
   function add(detail = {}) {
     if (detail == null || detail.message == null || detail.message === '') return null;
     const message = String(detail.message);
-    const existing = toasts.find((t) => !t.leaving && t.message === message);
-    if (existing) return existing.id; // de-dupe rapid repeats
+    const requestedId = detail.id != null ? String(detail.id) : null;
+    // An explicit id replaces any standing or leaving toast with that id so
+    // dismissToast(id) and the latest action stay aligned. Message de-dupe
+    // is only for anonymous rapid repeats.
+    if (requestedId) {
+      if (toasts.some((t) => t.id === requestedId)) remove(requestedId);
+    } else {
+      const existing = toasts.find((t) => !t.leaving && t.message === message);
+      if (existing) return existing.id; // de-dupe rapid repeats
+    }
     const type = TYPES.has(detail.type) ? detail.type : 'info';
-    const id = detail.id != null && !toasts.some((t) => t.id === detail.id)
-      ? String(detail.id)
-      : `toast-${now()}-${(seq += 1)}`;
+    const id = requestedId || `toast-${now()}-${(seq += 1)}`;
     const action = detail.action && typeof detail.action.onClick === 'function'
       ? { label: String(detail.action.label || 'Undo'), onClick: detail.action.onClick }
       : null;
-    toasts = [...toasts, { id, message, type, action, leaving: false }];
+    const onDismiss = typeof detail.onDismiss === 'function' ? detail.onDismiss : null;
+    toasts = [...toasts, { id, message, type, action, onDismiss, leaving: false }];
     startTimer(id, toastDurationMs(type, detail.duration));
     // Cap the stack so a runaway loop can't paper over the screen.
     const standing = toasts.filter((t) => !t.leaving);

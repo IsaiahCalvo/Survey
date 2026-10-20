@@ -18,7 +18,11 @@
 //                                it runs onClick once and dismisses the toast.
 //   duration ms                  overrides the per-type time; <= 0 or Infinity
 //                                keeps it until dismissToast(id) or a click.
-//   id       string              your own id (to dismiss it later).
+//   id       string              your own id (to dismiss it later). Showing
+//                                again with the same id replaces that toast.
+//   onDismiss function           runs when the toast starts leaving (click,
+//                                timeout, or dismissToast). Not used when the
+//                                same id is replaced by a later showToast.
 // Returns the toast id (or null when nothing was shown).
 
 const newId = () => `${Math.round(performance.now())}-${Math.random().toString(36).slice(2, 8)}`;
@@ -33,6 +37,7 @@ export function showToast(message, type = 'error', options = {}) {
     if (opts.action && typeof opts.action.onClick === 'function') {
       detail.action = { label: String(opts.action.label || 'Undo'), onClick: opts.action.onClick };
     }
+    if (typeof opts.onDismiss === 'function') detail.onDismiss = opts.onDismiss;
     if (opts.duration !== undefined) detail.duration = opts.duration;
     window.dispatchEvent(new CustomEvent('app-toast', { detail }));
   } catch (_e) {

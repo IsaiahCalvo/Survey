@@ -181,6 +181,59 @@ test('motion helpers: toast times, exit times, reduced motion', () => {
   assert.equal(exitMs('dialog', reduce), 0);
 });
 
+test('an explicit id replaces a standing or leaving toast so the latest action stays on that id', () => {
+  const clock = fakeClock();
+  const store = storeWith(clock);
+  let applied = '';
+  const first = store.add({
+    message: 'Smart fill found this outline. Check it, then Apply.',
+    type: 'info',
+    id: 'smart-fill-preview',
+    duration: Infinity,
+    action: { label: 'Apply', onClick: () => { applied = 'first'; } },
+  });
+  assert.equal(first, 'smart-fill-preview');
+  store.dismiss('smart-fill-preview');
+  assert.equal(store.getToasts()[0].leaving, true);
+  const second = store.add({
+    message: 'Smart fill found this outline. Check it, then Apply.',
+    type: 'info',
+    id: 'smart-fill-preview',
+    duration: Infinity,
+    action: { label: 'Apply', onClick: () => { applied = 'second'; } },
+  });
+  assert.equal(second, 'smart-fill-preview');
+  assert.equal(store.getToasts().length, 1);
+  assert.equal(store.getToasts()[0].leaving, false);
+  assert.equal(store.runAction('smart-fill-preview'), true);
+  assert.equal(applied, 'second', 'Apply commits the latest outline, not the leaving one');
+});
+
+test('onDismiss runs when the toast starts leaving, not when the same id is replaced', () => {
+  const clock = fakeClock();
+  const store = storeWith(clock);
+  const seen = [];
+  store.add({
+    message: 'Preview',
+    type: 'info',
+    id: 'smart-fill-preview',
+    duration: Infinity,
+    onDismiss: () => { seen.push('first'); },
+  });
+  store.add({
+    message: 'Preview',
+    type: 'info',
+    id: 'smart-fill-preview',
+    duration: Infinity,
+    onDismiss: () => { seen.push('second'); },
+  });
+  assert.deepEqual(seen, [], 'replacing the same id does not treat it as a dismiss');
+  store.dismiss('smart-fill-preview');
+  assert.deepEqual(seen, ['second']);
+  clock.advance(MOTION_MS.toastExit);
+  assert.deepEqual(seen, ['second'], 'the exit does not run it again');
+});
+
 test('showToast passes an action, a duration and an id through the bus; dismissToast asks the host to close it', async () => {
   const events = [];
   const prevWindow = globalThis.window;
@@ -191,10 +244,11 @@ test('showToast passes an action, a duration and an id through the bus; dismissT
   try {
     const { showToast, dismissToast } = await import('../src/utils/toast.js');
     const onClick = () => {};
-    const id = showToast('Moved to Archive', 'info', { action: { label: 'Undo', onClick }, duration: 5000, id: 'archive-1' });
+    const onDismiss = () => {};
+    const id = showToast('Moved to Archive', 'info', { action: { label: 'Undo', onClick }, duration: 5000, id: 'archive-1', onDismiss });
     assert.equal(id, 'archive-1');
     assert.equal(events[0].type, 'app-toast');
-    assert.deepEqual(events[0].detail, { message: 'Moved to Archive', type: 'info', id: 'archive-1', action: { label: 'Undo', onClick }, duration: 5000 });
+    assert.deepEqual(events[0].detail, { message: 'Moved to Archive', type: 'info', id: 'archive-1', action: { label: 'Undo', onClick }, onDismiss, duration: 5000 });
     // The old two-argument call is unchanged (no action / duration keys).
     const plain = showToast('Saved', 'success');
     assert.equal(typeof plain, 'string');

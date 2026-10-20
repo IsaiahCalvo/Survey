@@ -2413,6 +2413,7 @@ const SVGAnnotationLayerBody = memo(({
         id: 'smart-fill-preview',
         duration: Infinity,
         action: { label: 'Apply', onClick: apply },
+        onDismiss: () => setSmartFillPreview(null),
       });
     }).finally(() => {
       if (smartFillAbortRef.current !== controller) return;

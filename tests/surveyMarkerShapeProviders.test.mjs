@@ -141,6 +141,7 @@ test('a pending Smart fill press stays live only while Smart fill is still what 
   assert.match(layer, /isSmartFillPressLive\(\{ activeTool, markerDrawMode, isTabActive \}\)/);
   assert.match(layer, /if \(!smartFillLive\) smartFillAbortRef\.current\?\.abort\?\.\(\);/, 'the press is aborted when it stops applying');
   assert.match(layer, /if \(controller\?\.signal\?\.aborted \|\| !smartFillLiveRef\.current\) return;/, 'a late answer is dropped');
+  assert.match(layer, /onDismiss:\s*\(\)\s*=>\s*setSmartFillPreview\(null\)/, 'closing the Apply toast drops the outline');
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /<SVGAnnotationLayer[\s\S]{0,300}isTabActive=\{isActive !== false\}/, 'the viewer tells the layer whether its tab is in front');
 });
