@@ -1,0 +1,123 @@
+/* src/components/ToastHost.css — the toast stack (ToastHost.jsx).
+ *
+ * Moved out of inline styles on 2026-10-13 (Drawboard shell audit, Chunk A) so
+ * the toasts can animate in and out on the motion tokens. The look is
+ * unchanged: the app's one calm alert (tokens.css --alert-*), a soft tint
+ * inside a thin edge all the way round on the opaque panel surface; only
+ * trouble (error) and caution (warn) carry a colour.
+ *
+ * Placement: bottom-centre on desktop. On a phone styles.css (PHONE TOASTS)
+ * moves the stack under the top bar with !important rules, which outrank the
+ * desktop placement here. */
+
+.app-toast-host {
+  position: fixed;
+  bottom: 24px; /* design decision 3: the ONE toast lives at the bottom */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100000; /* UX: above floating chrome so an error is never hidden. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: min(92vw, 420px);
+  pointer-events: none;
+  transition: bottom var(--motion-toast) var(--ease-out);
+}
+
+/* Desktop: the viewer / Home "Undo" toast (UndoToast) sits at the bottom
+   edge on its own clock. While it is up the stack stands just above it, so
+   the two never overlap (UndoToast sets the flag on <html>). */
+html[data-undo-toast-open] .app-toast-host {
+  bottom: 68px;
+}
+
+.app-toast {
+  pointer-events: auto;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  /* The tint over the opaque panel surface, so the page under a floating
+     toast never shows through it. */
+  background: var(--surface-2);
+  color: var(--text-1); /* --bone-100 primary text */
+  border: var(--alert-neutral-border);
+  padding: 9px 14px;
+  border-radius: var(--alert-radius);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+  /* Enter: slide up 8px and fade in, 150 ms. */
+  animation: sv-toast-in-up var(--motion-toast) var(--ease-out);
+}
+
+.app-toast--error {
+  background: linear-gradient(var(--alert-danger-bg), var(--alert-danger-bg)), var(--surface-2);
+  border: var(--alert-danger-border);
+}
+
+.app-toast--warn {
+  background: linear-gradient(var(--alert-warning-bg), var(--alert-warning-bg)), var(--surface-2);
+  border: var(--alert-warning-border);
+}
+
+/* Exit: fade and drop 4px, 120 ms, then ToastHost removes it. */
+.app-toast[data-state="closing"] {
+  pointer-events: none;
+  animation: sv-toast-out var(--motion-toast-exit) var(--ease-in) forwards;
+}
+
+.app-toast__message {
+  min-width: 0;
+}
+
+/* The optional action (e.g. Undo): the app's calm text link, the same as the
+   Undo toast's (UndoToast.css .undo-toast__action). */
+.app-toast__action {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 400;
+  color: var(--link);
+  text-decoration: underline;
+  transition: color var(--motion-state) var(--ease-standard);
+}
+
+.app-toast__action:hover {
+  color: var(--link-hover);
+}
+
+.app-toast__action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus);
+  border-radius: 2px;
+}
+
+/* Phone: the stack hangs under the top bar, so a toast comes down from it
+   and goes back up. */
+@media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  .app-toast {
+    animation-name: sv-toast-in-down;
+  }
+  .app-toast[data-state="closing"] {
+    animation-name: sv-toast-out-up;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-toast,
+  .app-toast[data-state="closing"] {
+    animation: none;
+  }
+  .app-toast-host {
+    transition: none;
+  }
+}

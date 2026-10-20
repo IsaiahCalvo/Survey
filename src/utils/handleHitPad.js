@@ -22,6 +22,17 @@
  *   - coarse pointer (finger / stylus): 44 x 44 CSS px — Apple's minimum touch
  *     target, and the size the polygon vertex grabbers already used. A finger
  *     has no hover and hides what it touches, so it keeps the big pad.
+ *   - pen (2026-10-13, touch audit T3): 32 x 32 CSS px. A pen tip is as exact
+ *     as a mouse but usually has no cursor to aim with and a little parallax,
+ *     so it gets the pad Survey first shipped for every pointer (Drawboard's
+ *     34 rounded to our 4 px grid) — not a finger's 44, which would grab a
+ *     corner from a box-select started next to a small mark.
+ *
+ * WHICH pointer: callers pass the input the user is USING (`inputKind`,
+ * 'mouse' | 'pen' | 'touch', from hooks/useInputModality.js — the last press
+ * or hover), not the device's primary pointer: a touch laptop says "fine" but
+ * its finger still needs 44, an iPad says "coarse" but its mouse wants 20.
+ * The older `isCoarsePointer` boolean still works (true = touch).
  *
  * The pad is SCREEN-CONSTANT: it is expressed in CSS px and converted to page
  * units at the call site by multiplying by the (clamped) inverse scale, so it
@@ -47,6 +58,9 @@ export const HANDLE_HIT_PAD_FINE_MARGIN_PX = 4;
 // Apple HIG minimum (44 pt) — also what the polygon vertex grabbers already used.
 export const HANDLE_HIT_PAD_COARSE_PX = 44;
 
+// Invisible catch area for one handle, CSS px, pen / stylus press (see above).
+export const HANDLE_HIT_PAD_PEN_PX = 32;
+
 // How far past a mark's real ink a pointer still counts as "on" it, in CSS px
 // each side, whatever the zoom and however much the mark was enlarged.
 // Owner 2026-10-04 ("I get the blue ring way earlier than when my cursor
@@ -56,21 +70,43 @@ export const HANDLE_HIT_PAD_COARSE_PX = 44;
 // (it cannot hover, and it is not a fine pointer).
 export const MARK_HIT_TOLERANCE_FINE_PX = 4;
 export const MARK_HIT_TOLERANCE_COARSE_PX = 12;
+// A pen sits between: exact tip, but no hover ring to aim with on most tablets.
+export const MARK_HIT_TOLERANCE_PEN_PX = 8;
 
 /**
- * Base pad for the current pointer kind, in CSS px.
- * @param {boolean} isCoarsePointer true when the primary pointer is a finger.
+ * The pointer kind a caller means: 'mouse' | 'pen' | 'touch'. Accepts the
+ * input kind string, or the legacy boolean (true = touch, false = mouse).
+ * An explicit `inputKind` wins over `isCoarsePointer`.
  */
-export function getHandleHitPadPx(isCoarsePointer) {
-  return isCoarsePointer ? HANDLE_HIT_PAD_COARSE_PX : HANDLE_HIT_PAD_FINE_PX;
+export function resolveHitPointerKind(kindOrCoarse, inputKind) {
+  const pick = (value) => {
+    if (value === 'mouse' || value === 'pen' || value === 'touch') return value;
+    return null;
+  };
+  return pick(inputKind) || pick(kindOrCoarse) || (kindOrCoarse === true ? 'touch' : 'mouse');
 }
 
 /**
- * Hit tolerance past the ink, in CSS px, for the current pointer kind.
- * @param {boolean} isCoarsePointer true when the primary pointer is a finger.
+ * Base pad for the pointer kind, in CSS px.
+ * @param {boolean|'mouse'|'pen'|'touch'} kindOrCoarse the input in use (or
+ *   the legacy "is it a finger" boolean).
  */
-export function getMarkHitTolerancePx(isCoarsePointer) {
-  return isCoarsePointer ? MARK_HIT_TOLERANCE_COARSE_PX : MARK_HIT_TOLERANCE_FINE_PX;
+export function getHandleHitPadPx(kindOrCoarse) {
+  const kind = resolveHitPointerKind(kindOrCoarse);
+  if (kind === 'touch') return HANDLE_HIT_PAD_COARSE_PX;
+  if (kind === 'pen') return HANDLE_HIT_PAD_PEN_PX;
+  return HANDLE_HIT_PAD_FINE_PX;
+}
+
+/**
+ * Hit tolerance past the ink, in CSS px, for the pointer kind.
+ * @param {boolean|'mouse'|'pen'|'touch'} kindOrCoarse
+ */
+export function getMarkHitTolerancePx(kindOrCoarse) {
+  const kind = resolveHitPointerKind(kindOrCoarse);
+  if (kind === 'touch') return MARK_HIT_TOLERANCE_COARSE_PX;
+  if (kind === 'pen') return MARK_HIT_TOLERANCE_PEN_PX;
+  return MARK_HIT_TOLERANCE_FINE_PX;
 }
 
 /**
@@ -85,12 +121,13 @@ export function getMarkHitTolerancePx(isCoarsePointer) {
  *   inverseScale for page units, inverseScale / scale under a scaling
  *   transform, 1 for a non-scaling-stroke
  * @param {boolean} [opts.isCoarsePointer]
+ * @param {'mouse'|'pen'|'touch'} [opts.inputKind] the input in use (wins)
  */
-export function getMarkHitBandWidth({ inkWidth = 0, unitsPerPx = 1, isCoarsePointer = false } = {}) {
+export function getMarkHitBandWidth({ inkWidth = 0, unitsPerPx = 1, isCoarsePointer = false, inputKind } = {}) {
   const ink = Math.max(0, Number(inkWidth) || 0);
   const perPx = Number(unitsPerPx);
   const safePerPx = Number.isFinite(perPx) && perPx > 0 ? perPx : 1;
-  return ink + 2 * getMarkHitTolerancePx(isCoarsePointer) * safePerPx;
+  return ink + 2 * getMarkHitTolerancePx(resolveHitPointerKind(isCoarsePointer, inputKind)) * safePerPx;
 }
 
 /**
@@ -147,7 +184,8 @@ export function resolveHandleHitPadSize({
  * crowding rule is asked in screen px and answered in page units.
  *
  * @param {object} opts
- * @param {boolean} opts.isCoarsePointer
+ * @param {boolean} [opts.isCoarsePointer]     legacy: true = finger
+ * @param {'mouse'|'pen'|'touch'} [opts.inputKind] the input in use (wins)
  * @param {number} opts.inverseScale             clamped inverse scale
  * @param {number} [opts.neighbourSpacingPageUnits] spacing in PAGE units
  * @param {number} [opts.minPadPageUnits]        floor in PAGE units
@@ -155,6 +193,7 @@ export function resolveHandleHitPadSize({
  */
 export function resolveHandleHitPadPageSize({
   isCoarsePointer,
+  inputKind,
   inverseScale,
   neighbourSpacingPageUnits,
   minPadPageUnits = 0,
@@ -165,10 +204,12 @@ export function resolveHandleHitPadPageSize({
   const floor = Number(minPadPageUnits);
   const floorPx = Number.isFinite(floor) ? floor / safeInv : 0;
   // A mouse pad is the visible grabber plus a small margin, never below the
-  // fine base; a finger always gets its full 44.
-  const basePadPx = isCoarsePointer
-    ? getHandleHitPadPx(true)
-    : Math.max(getHandleHitPadPx(false), floorPx + HANDLE_HIT_PAD_FINE_MARGIN_PX * 2);
+  // fine base; a finger always gets its full 44, a pen its 32 (or the grabber
+  // plus the margin, if a grabber were ever drawn bigger than that).
+  const kind = resolveHitPointerKind(isCoarsePointer, inputKind);
+  const basePadPx = kind === 'touch'
+    ? getHandleHitPadPx('touch')
+    : Math.max(getHandleHitPadPx(kind), floorPx + HANDLE_HIT_PAD_FINE_MARGIN_PX * 2);
   const padPx = resolveHandleHitPadSize({
     basePadPx,
     neighbourSpacingPx: Number.isFinite(spacing) ? spacing / safeInv : undefined,

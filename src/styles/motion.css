@@ -1,0 +1,125 @@
+/* ============================================================================
+   Survey — shared enter / exit motion for the chrome
+   ============================================================================
+   Drawboard shell audit, Chunk A (2026-10-13). The numbers are the motion
+   tokens in tokens.css (--motion-*, --ease-*); this file holds the keyframes
+   and the rules that give every menu, popover, dialog and toast the same
+   enter and exit.
+
+   How it stays out of the way:
+   - Every shared rule is wrapped in :where(), so it has NO specificity. A
+     component that already sets its own `animation` (the Documents row menu,
+     the tab strip menu, AnnotationDropdown, the phone sheets, the canvas quick
+     bar...) keeps it; only things that appeared with no animation pick these
+     up.
+   - The keyframes move with the individual `translate` / `scale` properties,
+     never `transform`, so a component that centres itself with
+     transform: translate(-50%, ...) keeps its place while it animates.
+   - Only a `from` frame is given, and there is no fill on entries, so when
+     the animation ends the element is back on its own styles (a persistent
+     menu that hides itself with opacity keeps working).
+   - Reduced motion: the shared rules only exist under no-preference, and the
+     tokens are 0ms under reduce, so everything is instant.
+   - Not used for gesture-driven motion or anything inside the PDF canvas.
+
+   Exits need the element to stay in the page for a moment after it "closes":
+   src/components/MotionPresence.jsx does that and marks the element with
+   data-motion-state="closing"; the toasts do the same in ToastHost /
+   UndoToast. */
+
+@keyframes sv-menu-in {
+  from { opacity: 0; translate: 0 calc(var(--motion-menu-shift, 8px) * -1); }
+}
+@keyframes sv-menu-in-up {
+  from { opacity: 0; translate: 0 var(--motion-menu-shift, 8px); }
+}
+@keyframes sv-fade-in {
+  from { opacity: 0; }
+}
+@keyframes sv-fade-out {
+  to { opacity: 0; }
+}
+@keyframes sv-dialog-in {
+  from { opacity: 0; scale: var(--motion-dialog-scale, 0.98); }
+}
+@keyframes sv-dialog-out {
+  to { opacity: 0; scale: var(--motion-dialog-scale, 0.98); }
+}
+@keyframes sv-toast-in-up {
+  from { opacity: 0; translate: 0 var(--motion-toast-shift, 8px); }
+}
+@keyframes sv-toast-in-down {
+  from { opacity: 0; translate: 0 calc(var(--motion-toast-shift, 8px) * -1); }
+}
+@keyframes sv-toast-out {
+  to { opacity: 0; translate: 0 calc(var(--motion-toast-shift, 8px) / 2); }
+}
+@keyframes sv-toast-out-up {
+  to { opacity: 0; translate: 0 calc(var(--motion-toast-shift, 8px) / -2); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* MENUS AND POPOVERS: 100 ms, slide 8px down from the trigger (a menu
+     that opens upward, .opens-up / [data-side="top"], slides up instead).
+     Excluded: the hub section menu, which is always in the page and hides
+     itself with its own opacity / transform transition. */
+  :where([role="menu"]:not(.hub-section-menu)),
+  :where(
+    .pp-ppicker-menu,
+    .mobile-styled-select__menu,
+    .survey-marker-entity-options,
+    .mobile-survey-detail-menu,
+    .sync-status-details,
+    .mobile-pdf-tools__sync-details,
+    [data-presence-list]
+  ) {
+    animation: sv-menu-in var(--motion-menu) var(--ease-out);
+  }
+  /* Menus that open upward from their trigger (the Home account menu, a
+     phone select that flipped above its field). */
+  :where(
+    [role="menu"].opens-up,
+    [role="menu"][data-side="top"],
+    .profile-menu-popup,
+    .mobile-styled-select__menu[style*=" bottom:"]
+  ) {
+    animation-name: sv-menu-in-up;
+  }
+
+  /* DIALOGS: 150 ms, fade in from 0.98 scale. The scrim behind fades in on
+     the same clock: the inline-styled full-screen scrims (the usual shape,
+     a fixed div whose child is the dialog card) and the named ones. */
+  :where([role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]) {
+    animation: sv-dialog-in var(--motion-dialog) var(--ease-out);
+  }
+  :where(
+    [style*="position: fixed"]:has(> [role="dialog"][aria-modal="true"]),
+    [style*="position: fixed"]:has(> [role="alertdialog"][aria-modal="true"]),
+    .documents-mobile-detail-scrim,
+    .templates-mobile-modal-scrim,
+    .create-project-modal-scrim,
+    .apply-redactions-backdrop
+  ) {
+    animation: sv-fade-in var(--motion-dialog) var(--ease-out);
+  }
+
+  /* EXITS (MotionPresence keeps the element for --motion-*-exit and marks it
+     closing). Filled forwards so it stays gone until it is removed. */
+  [data-motion-state="closing"] {
+    animation: sv-fade-out var(--motion-dialog-exit) var(--ease-in) forwards;
+  }
+  [data-motion-state="closing"] :is([role="dialog"], [role="alertdialog"])[aria-modal="true"],
+  :is([role="dialog"], [role="alertdialog"])[aria-modal="true"][data-motion-state="closing"] {
+    animation: sv-dialog-out var(--motion-dialog-exit) var(--ease-in) forwards;
+  }
+  [data-motion-state="closing"][data-motion-kind="menu"] {
+    animation: sv-fade-out var(--motion-menu-exit) var(--ease-in) forwards;
+  }
+}
+
+/* A closing element never takes a click or a key (pointer-events also under
+   reduced motion, where it is gone at once anyway). */
+[data-motion-state="closing"],
+[data-motion-state="closing"] * {
+  pointer-events: none !important;
+}

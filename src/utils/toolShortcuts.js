@@ -191,6 +191,18 @@ export function shortcutConflicts(shortcuts = TOOL_SHORTCUTS) {
     .map(([chord, list]) => ({ chord, labels: list.map((s) => s.label) }));
 }
 
+// Tooltips follow the key shown in the shortcuts sheet.
+function currentBadge(shortcut) {
+  try {
+    const chord = JSON.parse(localStorage.getItem('survey:keyboard-shortcuts') || '{}')?.[chordOf(shortcut)];
+    if (typeof chord === 'string') {
+      const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+      return chord.split('+').map(key => key === 'mod' ? (mac ? 'Cmd' : 'Ctrl') : key === 'alt' ? 'Alt' : key === 'shift' ? 'Shift' : key.toUpperCase()).join('+');
+    }
+  } catch { /* use the default */ }
+  return shortcut.badge;
+}
+
 /**
  * The badge for a tool, or '' when it has none. `variant` disambiguates the
  * tools that own more than one binding: the select family by selectionMode,
@@ -202,10 +214,10 @@ export function toolShortcutBadge(toolId, variant = null) {
   if (!matches.length) return '';
   if (variant) {
     const exact = matches.find((s) => s.selectionMode === variant || s.eraserMode === variant);
-    if (exact) return exact.badge;
+    if (exact) return currentBadge(exact);
   }
   // No variant asked for: the plain, unmodified binding is the tool's own key.
-  return (matches.find((s) => !s.shift && !s.alt) || matches[0]).badge;
+  return currentBadge(matches.find((s) => !s.shift && !s.alt) || matches[0]);
 }
 
 /**
@@ -235,7 +247,7 @@ export function tooltipForLabel(label) {
   const match = TOOL_SHORTCUTS.find((s) => (
     s.label === label || (s.altLabels || []).includes(label)
   ));
-  return match ? `${label}  ${match.badge}` : label;
+  return match ? `${label}  ${currentBadge(match)}` : label;
 }
 
 export default TOOL_SHORTCUTS;

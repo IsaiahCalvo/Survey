@@ -44,7 +44,7 @@ test('the morph data is the icon set\'s own geometry, verbatim — redraw an ico
       if (path.transform) assert.ok(source.includes(path.transform), `${name}: ${path.transform}`);
       if (path.rect) {
         const [x, y, w, h, r] = path.rect;
-        assert.ok(new RegExp(`x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"`).test(source), `${name}: rect ${path.rect}`);
+        assert.ok(new RegExp(`<rect(?=[^>]*x="${x}")(?=[^>]*y="${y}")(?=[^>]*width="${w}")(?=[^>]*height="${h}")(?=[^>]*rx="${r}")`).test(source), `${name}: rect ${path.rect}`);
       } else if (path.circle) {
         const [cx, cy, r] = path.circle;
         assert.ok(source.includes(`cx="${cx}" cy="${cy}" r="${r}"`), `${name}: circle ${path.circle}`);
@@ -52,7 +52,7 @@ test('the morph data is the icon set\'s own geometry, verbatim — redraw an ico
         assert.ok(source.includes(`[${path.node[0]}, ${path.node[1]}]`), `${name}: node ${path.node}`);
       } else if (path.line) {
         const [x1, y1, x2, y2] = path.line;
-        assert.ok(source.includes(`x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"`), `${name}: line ${path.line}`);
+        assert.ok(new RegExp(`<line(?=[^>]*x1="${x1}")(?=[^>]*y1="${y1}")(?=[^>]*x2="${x2}")(?=[^>]*y2="${y2}")`).test(source), `${name}: line ${path.line}`);
       } else {
         assert.ok(source.includes(squash(path.d)), `${name}: path ${path.d.slice(0, 40)}… is in ${icon.source}`);
       }
@@ -60,7 +60,7 @@ test('the morph data is the icon set\'s own geometry, verbatim — redraw an ico
       // (utils/areaToolGlyphs.js, owner 2026-10-02) keep theirs as data.
       if (path.dash) {
         assert.ok(
-          source.includes(`stroke-dasharray="${path.dash.join(' ')}"`) || source.includes(`dasharray: '${path.dash.join(' ')}'`),
+          source.includes(`stroke-dasharray="${path.dash.join(' ')}"`) || source.includes(`strokeDasharray="${path.dash.join(' ')}"`) || source.includes(`dasharray: '${path.dash.join(' ')}'`),
           `${name}: dash`,
         );
       }

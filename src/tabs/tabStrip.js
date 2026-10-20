@@ -86,6 +86,22 @@ export function closeConfirmFor({ tabs, closingIds, action }) {
   };
 }
 
+/**
+ * "Close without saving" must lose the changes, as the confirm says. A local
+ * file's viewer keeps a copy of its marks in this browser on every change (so
+ * a crash or reload loses nothing), and that copy brought the dropped stroke
+ * back after a reload (batch-6 verify). AppShell sends this event, with the
+ * tab's id, for each tab closed that way; the tab's viewer puts its local
+ * copy back to the last Save (PDFViewer). Cloud documents never ask (their
+ * changes are synced as they are made), so they never get it.
+ */
+export const DISCARD_LOCAL_DRAFT_EVENT = 'survey:discard-local-draft';
+
+/** The tabs whose local copy a confirmed close drops: the unsaved ones. */
+export function tabIdsToDiscardOnClose(tabs, closingIds) {
+  return tabsWithUnsavedWork(tabs, closingIds).map((tab) => tab.id);
+}
+
 /* ---------- saved open tabs ---------- */
 
 /** A cloud document id the app can open again, or null. */
@@ -239,7 +255,10 @@ export function createTabSessionController(getStorage) {
     restore({ enabled = true, userId, documents, documentsUserId, tabs, onRestore }) {
       noteUser(userId, tabs);
       if (!enabled || !userId || restoredFor === userId) return null;
-      if (documentsUserId !== userId || !libraryHasLoaded(documents)) return null;
+      // The stamp proves this user's library load finished, even when it
+      // returned no documents (Codex, #817: an empty library must still
+      // restore - skipping everything - so the stale session is cleared).
+      if (documentsUserId !== userId) return null;
       restoredFor = userId;
       lastWritten = null;
       skipWrite = false;

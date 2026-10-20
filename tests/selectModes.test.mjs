@@ -412,9 +412,11 @@ test('rule 2: Select / Pan pick any mark; group tools pick their own group; the 
   assert.match(SVG_LAYER_SOURCE, /if \(clicked && state\.pressFallback\) \{[\s\S]{0,300}applyPressFallbackRef\.current\?\.\(state\.pressFallback\)/);
   // Pan picks and STAYS Pan; the group tools' halo comes from the same hover
   // effect, filtered by the hovered mark's group.
-  // DELIBERATE ASSERTION CHANGE (owner 2026-10-13, docs/GESTURE-CONTRACT.md
-  // P7): Pan shows no hover halo and no pointer hand any more.
-  assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'eraser'\s*\|\| \(shouldShowHoverHalo\(activeTool\) && activeTool !== 'pan'/);
+  // DELIBERATE ASSERTION CHANGE (owner 2026-10-14, reversing 10-13; Drawboard
+  // measured: its Pan shows the blue halo over a mark): Pan shows the halo
+  // again, but still no pointer hand - the grab hand stays (P7).
+  assert.match(PDF_VIEWER_SOURCE, /const haloByPosition = activeTool === 'eraser' \|\| activeTool === 'pan'\s*\|\| \(shouldShowHoverHalo\(activeTool\) && activeTool !== 'pan'/);
+  assert.doesNotMatch(PDF_VIEWER_SOURCE, /const pointerCursor = activeTool === 'pan'/);
   assert.match(PDF_VIEWER_SOURCE, /shouldShowHoverHalo\(activeTool, hit\?\.kind === 'callout'\s*\? CALLOUT_MARK_GROUP\s*: getMarkGroup\(/);
 });
 
@@ -530,8 +532,34 @@ test('rule 10: Escape closes, commits, cancels, deselects, then puts the tool do
 test('rule 11: handles hide while the selection is moved, resized or rotated', () => {
   for (const state of ['dragging', 'resizing', 'rotating']) assert.equal(rules.shouldHideSelectionChrome(state), true, state);
   assert.equal(rules.shouldHideSelectionChrome('idle'), false);
-  assert.match(SVG_LAYER_SOURCE, /data-selection-gesture=\{shouldHideSelectionChrome\(interactionState\) \? 'true' : undefined\}/);
+  // Batch-6 follow-up: the one gesture signal also counts a Survey Marker's
+  // own drag (its preview carries dragMode), so the floating quick bar
+  // (SelectionQuickBar, which watches data-selection-gesture) hides for
+  // markers like it does for shapes.
+  assert.match(SVG_LAYER_SOURCE, /data-selection-gesture=\{isSelectionGestureActive\(interactionState, surveyMarkerPreviewBounds\?\.dragMode\) \? 'true' : undefined\}/);
   assert.match(STYLES_SOURCE, /\[data-selection-gesture="true"\] \.svg-selection-overlay/);
+});
+
+test('rule 11 for Survey Markers: their own move / resize / rotate is a selection gesture', () => {
+  assert.deepEqual({ ...rules.SURVEY_MARKER_DRAG_GESTURE }, { move: 'dragging', resize: 'resizing', rotate: 'rotating' });
+  for (const mode of ['move', 'resize', 'rotate']) {
+    assert.equal(rules.isSelectionGestureActive('idle', mode), true, mode);
+  }
+  for (const state of ['dragging', 'resizing', 'rotating']) {
+    assert.equal(rules.isSelectionGestureActive(state, null), true, state);
+  }
+  // At rest, and an arrow-key nudge (a preview with no dragMode), is not one.
+  assert.equal(rules.isSelectionGestureActive('idle', null), false);
+  assert.equal(rules.isSelectionGestureActive('idle', undefined), false);
+  assert.equal(rules.isSelectionGestureActive('idle', 'toString'), false);
+  // Every marker drag start / step marks its preview with the drag's mode,
+  // from the press on (a shape's drag hides on the press too).
+  assert.match(SVG_LAYER_SOURCE, /setSurveyMarkerPreviewBounds\(\{ annotationId, bounds: originalBounds, dragMode: 'move' \}\)/);
+  assert.match(SVG_LAYER_SOURCE, /bounds: originalBounds, dragMode: surveyMarkerDragRef\.current\.mode \}\)/);
+  assert.match(SVG_LAYER_SOURCE, /bounds: nextBounds, dragMode: drag\.mode \}\)/);
+  assert.match(SVG_LAYER_SOURCE, /bounds: surveyMarkerDragRef\.current\.originalBounds,\s*dragMode: 'move',/);
+  // The nudge preview stays a plain preview.
+  assert.doesNotMatch(SVG_LAYER_SOURCE, /burst[\s\S]{0,40}dragMode/);
 });
 
 test('rule 12: view changes keep the selection; every tool switch but Select <-> Pan drops it', () => {

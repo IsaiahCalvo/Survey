@@ -114,6 +114,12 @@ import {
   setLiveStrokeSink,
 } from './annotationLiveStrokes.js';
 import {
+  LIVE_CURSOR_VERSION,
+  applyRemoteLiveCursor,
+  clearLiveCursors,
+  setLiveCursorSink,
+} from './annotationLiveCursors.js';
+import {
   bytesToPgHex,
   gunzipBytes as gunzip,
   mergeCheckpointWithUpdate,
@@ -5342,6 +5348,21 @@ function acquireLiveChannel(state) {
             && bus.send(payload)
           ),
         });
+        // KAL-399: where this screen points goes out on the same channel
+        // (annotationLiveCursors.js; useLiveCursorBroadcast sends). Display
+        // only, so a read-only screen sends it too (the channel's own
+        // policy decides who may).
+        state.unregisterLiveCursorSink?.();
+        state.unregisterLiveCursorSink = setLiveCursorSink({
+          documentId: state.documentId,
+          writerId: state.writerId,
+          send: (payload) => (
+            state.liveBus === bus
+            && !state.destroyed
+            && !state.closePromise
+            && bus.send(payload)
+          ),
+        });
       }
     })
     .catch((error) => {
@@ -5689,6 +5710,11 @@ function onLivePreviewMessage(state, payload) {
     if (!livePreviewReceiveAllowed(state, payload.w)) return;
     if (getAnnotationsMap(state.doc).has(String(payload.g))) return; // already a mark here
     applyRemoteLiveStroke(state.documentId, payload, { ownWriterId: state.writerId });
+    return;
+  }
+  if (payload?.v === LIVE_CURSOR_VERSION) {
+    // KAL-399: where another screen is pointing (its own rate guard).
+    applyRemoteLiveCursor(state.documentId, payload, { ownWriterId: state.writerId });
     return;
   }
   if (!payload || payload.v !== 1) return;
@@ -6294,6 +6320,9 @@ function closeLivePreviews(state) {
   state.unregisterLiveStrokeSink?.();
   state.unregisterLiveStrokeSink = null;
   clearLiveStrokes(state.documentId);
+  state.unregisterLiveCursorSink?.();
+  state.unregisterLiveCursorSink = null;
+  clearLiveCursors(state.documentId);
   if (state.livePreviews.size > 0 || state.liveEdits.size > 0 || state.liveMarkerEdits.size > 0) {
     state.livePreviews.clear();
     state.liveEdits.clear();

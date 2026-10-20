@@ -141,6 +141,24 @@ test('a narrow window plans for the panels actually open, and only loses chips t
   assert.ok(at(900, { left: true, right: true }, { ...SAMPLE, entityCount: 40 }).entityRowMax < 8);
 });
 
+test('the entity row is planned with the swatch gutter as drawn (a touch tablet opens it to 18px)', () => {
+  // iPad portrait, Survey panel open: 928px bar, centre 464, 136px each side
+  // of it before the Survey panel. 10 entities: on 6px gutters 7 + "All 10"
+  // fit; on the tablet's 18px gutters they would run ~50px under the panel.
+  const ipad = { barWidth: 928, centre: 464, insetLeft: 208, insetRight: 320, ...SAMPLE, entityCount: 10, entityAllChip: 45 };
+  const desk = planSurveyBar(ipad);
+  const tablet = planSurveyBar({ ...ipad, swatchGap: 18 });
+  assert.equal(desk.entityRowMax, 8);
+  assert.ok(tablet.entityRowMax < desk.entityRowMax, JSON.stringify(tablet));
+  const row = (max, gap) => surveyRowWidth({ count: 10, item: SURVEY_BAR_PARTS.swatch, gap, allChip: 45, max });
+  assert.ok(row(tablet.entityRowMax, 18) <= 2 * (928 - 320 - SURVEY_BAR_PARTS.inset - 464));
+  // Left out or junk: the 6px gutter.
+  assert.deepEqual(planSurveyBar({ ...ipad, swatchGap: undefined }), desk);
+  assert.deepEqual(planSurveyBar({ ...ipad, swatchGap: NaN }), desk);
+  // The hook reads the gutter off the drawn entity row.
+  assert.match(fs.readFileSync(new URL('../src/hooks/useSurveyBarFit.js', import.meta.url), 'utf8'), /getComputedStyle\(entityRowEl\)\.columnGap/);
+});
+
 test('the plan depends only on its inputs (never on what is drawn now)', () => {
   for (let window = 721; window <= 2000; window += 37) {
     assert.deepEqual(at(window, { right: true }), at(window, { right: true }));

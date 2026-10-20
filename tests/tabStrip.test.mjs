@@ -17,6 +17,8 @@ import {
   tabIdsForCloseAction,
   tabSessionStorageKey,
   tabsWithUnsavedWork,
+  tabIdsToDiscardOnClose,
+  DISCARD_LOCAL_DRAFT_EVENT,
   writeTabSession,
 } from '../src/tabs/tabStrip.js';
 
@@ -193,7 +195,8 @@ test('account switch without a reload: restore waits for the new library and nev
 
   // A signs in; A's library lands; A's tab comes back.
   let tabs = [home];
-  session.restore({ userId: 'user-a', documents: [], documentsUserId: 'user-a', tabs, onRestore });
+  // (Before A's load finishes the library carries no owner stamp.)
+  session.restore({ userId: 'user-a', documents: [], documentsUserId: null, tabs, onRestore });
   assert.equal(session.save({ userId: 'user-a', tabs, activeTabId: HOME }), false, 'nothing written before the restore');
   session.restore({ userId: 'user-a', documents: libraryA, documentsUserId: 'user-a', tabs, onRestore });
   assert.deepEqual(restores, [['doc-1']]);
@@ -235,6 +238,61 @@ test('the library is stamped with its owner where it loads, and the restore read
   const dashboard = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
   assert.match(appShell, /onLibraryUserChange=\{setDocumentsUserId\}/);
   assert.match(appShell, /useTabSession\(\{[\s\S]{0,200}documentsUserId,/);
-  assert.match(dashboard, /onLibraryUserChange\?\.\(user\?\.id \|\| null\);\n\s*\}, \[supabaseDocuments\]\)/,
+  assert.match(dashboard, /onLibraryUserChange\?\.\([^;]*user\?\.id \|\| null\)\);\n\s*\}, \[supabaseDocuments\]\)/,
     'stamped only when a new list lands, never on the user change alone');
+});
+
+test('the open-tabs restore only runs against the whole library, never one project', () => {
+  // Bugbot (#817): inside a project the Dashboard list holds that project's
+  // documents only; restoring against it skipped other projects' saved tabs
+  // and the next save overwrote the session with the shortened set.
+  const dashboard = readFileSync(new URL('../src/Dashboard.jsx', import.meta.url), 'utf8');
+  assert.match(dashboard, /onLibraryUserChange\?\.\(selectedProjectId \? null : \(user\?\.id \|\| null\)\)/);
+});
+
+test('an empty library that finished loading still restores (skipping all) and clears the stale session', () => {
+  // Codex (#817): after archiving the last document the load returns zero
+  // rows; restore must still complete so the old session is not replayed later.
+  const storage = memoryStorage();
+  writeTabSession(storage, 'user-a', serializeTabSession([home, cloud(1)], 't1'));
+  const session = createTabSessionController(() => storage);
+  const restores = [];
+  const plan = session.restore({ userId: 'user-a', documents: [], documentsUserId: 'user-a', tabs: [home], onRestore: (p) => restores.push(p) });
+  assert.ok(plan, 'restore completed');
+  assert.deepEqual(plan.rows, []);
+  assert.deepEqual(restores, []);
+  assert.equal(session.save({ userId: 'user-a', tabs: [home], activeTabId: HOME }), true, 'save runs again');
+  assert.deepEqual(readTabSession(storage, 'user-a')?.tabs ?? [], []);
+  // The document coming back later does not reopen a tab.
+  assert.equal(session.restore({ userId: 'user-a', documents: [{ id: 'doc-1', name: 'Doc 1.pdf' }], documentsUserId: 'user-a', tabs: [home], onRestore: (p) => restores.push(p) }), null);
+  assert.deepEqual(restores, []);
+});
+
+test('Close without saving drops the local copy of exactly the unsaved local tabs (batch-6 follow-up)', () => {
+  const tabs = [
+    home,
+    local(1, { hasUnsavedAnnotations: true }),
+    local(2, { hasUnsavedAnnotations: false }),
+    cloud(3, { hasUnsavedAnnotations: true }),
+    local(4, { hasUnsavedAnnotations: true }),
+  ];
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, ['t1']), ['t1']);
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, ['t2']), [], 'a saved local file keeps its copy');
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, ['t3']), [], 'a cloud document never asks and keeps its synced changes');
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, ['t1', 't2', 't3', 't4']), ['t1', 't4']);
+  assert.deepEqual(tabIdsToDiscardOnClose(tabs, [HOME]), []);
+  // The same tabs the confirm names: never drop what the person was not warned about.
+  const confirm = closeConfirmFor({ tabs, closingIds: ['t1', 't4'], action: 'closeOthers' });
+  assert.match(confirm.message, /^2 documents have changes that are not saved\. Closing loses them\.$/);
+
+  const appShell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  // Only after the confirm said yes, and before the viewers unmount.
+  assert.match(appShell, /if \(confirm && !\(await askTabConfirm\(confirm\)\)\) return;\s*(\/\/[^\n]*\n\s*)*for \(const tabId of tabIdsToDiscardOnClose\(tabsRef\.current, ids\)\) \{\s*window\.dispatchEvent\(new CustomEvent\(DISCARD_LOCAL_DRAFT_EVENT, \{ detail: \{ tabId \} \}\)\);\s*\}\s*closeTabsNow\(ids\);/);
+  // The viewer puts the local copy back to the last Save and stops mirroring.
+  assert.equal(DISCARD_LOCAL_DRAFT_EVENT, 'survey:discard-local-draft');
+  assert.match(viewer, /window\.addEventListener\(DISCARD_LOCAL_DRAFT_EVENT, onDiscard\)/);
+  assert.match(viewer, /const saved = savedAnnotationsByPageRef\.current \|\| \{\};\s*saveAnnotationsByPage\(pdfId, saved\);\s*saveCallouts\(pdfId, deriveCalloutsFromByPage\(saved\)\);/);
+  assert.match(viewer, /if \(localDraftDiscardedRef\.current\) return;\s*saveAnnotationsByPage\(pdfId, annotationsByPage\);/);
+  assert.match(viewer, /if \(!tabId \|\| !pdfId \|\| pdfFile\?\.id\) return undefined;/, 'cloud documents are left alone');
 });
