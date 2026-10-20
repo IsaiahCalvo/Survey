@@ -9,7 +9,7 @@
  * Publishes its width as the `--app-sidebar-width` CSS var; exposes an
  * `openSearchPanel` imperative handle. Rendered by App into the chrome host.
  */
-import React, { useState, useCallback, useImperativeHandle, lazy, Suspense } from 'react';
+import React, { useState, useCallback, useImperativeHandle, useSyncExternalStore, lazy, Suspense } from 'react';
 import Icon from './Icons';
 import PagesPanel from './sidebar/PagesPanel';
 // Lazy so pdf.js (statically imported by SearchTextPanel for text-layer rendering)
@@ -22,11 +22,21 @@ import PresenceAvatars from './components/PresenceAvatars';
 import { withDevFakePresence } from './components/presenceIdentity.js';
 import RevisionsPanel from './components/revisions/RevisionsPanel';
 import { useMobileSheetMotion } from './mobile/useMobileSheetMotion';
+import { useSheetFocus } from './mobile/useSheetFocus';
 import { useTooltip } from './components/Tooltip';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import SectionIconButton from './components/SectionIconButton.jsx';
 import { openKeyboardShortcuts } from './utils/keyboardShortcuts.js';
+import {
+  DEFAULT_PANEL_LAYOUT,
+  browserStorage,
+  getSideRoom,
+  leftPanelWidth,
+  readPanelLayout,
+  subscribeSideRoom,
+  writePanelLayout,
+} from './sidebar/panelLayoutStore.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -108,7 +118,23 @@ const HistoryButton = ({ isActive, onClick, round = false }) => {
 // the open tab pressed again closes it, another tab swaps the panel in place.
 // There is no collapse row and no chevron any more, open or closed.
 const LEFT_RAIL_W = 48;
-const LEFT_PANEL_W = 272;
+// Owner 2026-10-14: every panel is one fixed width (260px, chosen so all the
+// tabs fit; sidebar/panelLayoutStore.js) - no drag edge, no remembered width.
+// Opening and closing (Chunk D, 2026-10-13) slide the panel with a
+// transform (200ms, Drawboard's side-panel slide) instead of tweening the
+// rail's width, so nothing is laid out again on each frame: the rail takes
+// its open width once as a panel opens, and gives it back once the closing
+// slide has finished.
+const PANEL_SLIDE_MS = 200;
+const prefersReducedMotion = () => {
+  try {
+    return typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+};
 const PANEL_TITLES = {
   pages: 'Pages',
   search: 'Search text',
@@ -160,6 +186,7 @@ const PDFSidebar = React.forwardRef(({
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
+  onSpaceTransferRegion,
   getSpaceRemovalImpact = null,
   onNavigateToSpacePage = null,
   onReorderSpaces,
@@ -213,20 +240,38 @@ const PDFSidebar = React.forwardRef(({
   mobileMode = false,
   onPanelStateChange = null,
 }, ref) => {
-  const [isCollapsed, setIsCollapsed] = useState(true);
-  // 2026-04-29: publish the live sidebar width as a CSS variable so the
-  // StorageFailureBanner overlay can anchor inside the PDF area without
-  // running over the sidebar's vertical tool rail (Pages / Search /
-  // Bookmarks / Spaces).
+  // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
+  // which panel and whether it was open - per user
+  // (sidebar/panelLayoutStore.js). The phone's sheet always starts closed.
+  const layoutUserKey = currentUserId || user?.id || null;
+  const layoutDocumentKey = documentId || tabId || pdfDocumentKey || 'unbound';
+  const initialLayoutRef = React.useRef(null);
+  if (initialLayoutRef.current === null) {
+    const stored = mobileMode ? DEFAULT_PANEL_LAYOUT : readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
+    initialLayoutRef.current = stored.panel === 'history' && !documentId
+      ? { ...stored, panel: 'pages' }
+      : stored;
+  }
+  const [isCollapsed, setIsCollapsed] = useState(() => !initialLayoutRef.current.open);
+  const [activeTab, setActiveTab] = useState(() => initialLayoutRef.current.panel); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1440));
   React.useEffect(() => {
-    if (typeof document === 'undefined' || !document.documentElement) return;
-    document.documentElement.style.setProperty('--app-sidebar-width', mobileMode ? '44px' : `${isCollapsed ? LEFT_RAIL_W : LEFT_RAIL_W + LEFT_PANEL_W}px`);
-  }, [isCollapsed, mobileMode]);
-  const [activeTab, setActiveTab] = useState('pages'); // 'pages' | 'search' | 'bookmarks' | 'spaces' | 'history'
+    if (mobileMode || typeof window === 'undefined') return undefined;
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [mobileMode]);
+  // What covers the window's right side (the right rail, the Survey panel)
+  // and, in Survey, the survey bar's centre spot: on a small window the panel
+  // stops short of both (panelLayoutStore.js leftPanelWidth).
+  const sideRoom = useSyncExternalStore(subscribeSideRoom, getSideRoom, getSideRoom);
+  // The open panel's width: the one fixed width (260), the same for every
+  // tab; only a window too small for it narrows it.
+  const panelWidth = leftPanelWidth(viewportWidth, sideRoom);
   // Desktop (owner 2026-10-07, Drawboard rail): a closed panel stays drawn for
-  // the 140ms it takes to fade back into the rail - the reverse of its arrival -
-  // instead of vanishing in one frame. A timer, not animationend, ends it, so
-  // reduced motion (no animation) cannot strand it on screen.
+  // the slide that carries it back under the rail, instead of vanishing in
+  // one frame. A timer, not animationend, ends it, so reduced motion (no
+  // animation: it leaves at once) cannot strand it on screen.
   const [panelLeaving, setPanelLeaving] = useState(false);
   const panelWasOpenRef = React.useRef(false);
   React.useLayoutEffect(() => {
@@ -238,14 +283,57 @@ const PDFSidebar = React.forwardRef(({
     }
     if (!panelWasOpenRef.current) return undefined;
     panelWasOpenRef.current = false;
+    if (prefersReducedMotion()) {
+      setPanelLeaving(false);
+      return undefined;
+    }
     setPanelLeaving(true);
-    const timer = window.setTimeout(() => setPanelLeaving(false), 140);
+    const timer = window.setTimeout(() => setPanelLeaving(false), PANEL_SLIDE_MS);
     return () => window.clearTimeout(timer);
   }, [isCollapsed, mobileMode]);
+  // Desktop: the rail is laid out open from the moment a panel opens until
+  // its closing slide ends - the one width change at each end of the motion.
+  const layoutOpen = !mobileMode && (!isCollapsed || panelLeaving);
+  const layoutCollapsed = mobileMode ? isCollapsed : !layoutOpen;
+  // 2026-04-29: publish the live sidebar width as a CSS variable so the
+  // StorageFailureBanner overlay can anchor inside the PDF area without
+  // running over the sidebar's vertical tool rail (Pages / Search /
+  // Bookmarks / Spaces).
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    document.documentElement.style.setProperty('--app-sidebar-width', mobileMode ? '44px' : `${layoutOpen ? LEFT_RAIL_W + panelWidth : LEFT_RAIL_W}px`);
+  }, [layoutOpen, panelWidth, mobileMode]);
+  // Remember the layout (desktop). A user arriving after the first render
+  // (sign-in resolves late) gets their own saved layout - the rail's open
+  // state too, unless it has been used in the meantime.
+  const userTouchedLayoutRef = React.useRef(false);
+  const loadedLayoutKeyRef = React.useRef(layoutUserKey);
+  const persistLayoutKeyRef = React.useRef(layoutUserKey);
+  React.useEffect(() => {
+    if (mobileMode || loadedLayoutKeyRef.current === layoutUserKey) return;
+    loadedLayoutKeyRef.current = layoutUserKey;
+    const stored = readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
+    if (!userTouchedLayoutRef.current) {
+      setIsCollapsed(!stored.open);
+      setActiveTab(stored.panel === 'history' && !documentId ? 'pages' : stored.panel);
+    }
+    // documentId is read once, as the stored layout lands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutUserKey, mobileMode]);
+  React.useEffect(() => {
+    if (mobileMode) return;
+    // The render the user changed in still holds the previous user's layout:
+    // never write it under the new user's key.
+    if (persistLayoutKeyRef.current !== layoutUserKey) {
+      persistLayoutKeyRef.current = layoutUserKey;
+      return;
+    }
+    writePanelLayout(browserStorage(), layoutUserKey, { open: !isCollapsed, panel: activeTab }, layoutDocumentKey);
+  }, [isCollapsed, activeTab, mobileMode, layoutUserKey, layoutDocumentKey]);
   const footerPresence = withDevFakePresence({ presence, currentUserId, currentUserEmail, currentUserDisplayName });
   const tip = useTooltip();
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
-  // band between panels): the open desktop panel covers the left ~224px of the
+  // band between panels): the open desktop panel covers the left 260px of the
   // PDF; fits size and centre the page beside it (utils/viewerSideOverlay.js).
   const sideOccluderRef = useViewerSideOccluderRef();
   const [searchFocusRequestToken, setSearchFocusRequestToken] = useState(0);
@@ -271,16 +359,21 @@ const PDFSidebar = React.forwardRef(({
     onToggleCollapseRef.current = onToggleCollapse;
   }, [onToggleCollapse]);
 
+  // The viewer hears about the rail when its layout changes: as a panel opens,
+  // and once a closing panel has slid away (Chunk D) - so a fit refits once,
+  // at the end, not while the panel is still on screen. The width is the open
+  // panel's, for the survey bar to keep clear of (PDFViewer).
   React.useEffect(() => {
     if (typeof onToggleCollapseRef.current === 'function') {
-      onToggleCollapseRef.current(isCollapsed);
+      onToggleCollapseRef.current(layoutCollapsed, panelWidth);
     }
-  }, [isCollapsed]);
+  }, [layoutCollapsed, panelWidth]);
 
   const openPanel = useCallback((panelId = 'pages', { focus = panelId === 'search', select = true } = {}) => {
     const validPanel = ['pages', 'search', 'bookmarks', 'spaces', 'history'].includes(panelId)
       ? panelId
       : 'pages';
+    userTouchedLayoutRef.current = true;
     setIsCollapsed(false);
     setActiveTab(validPanel);
     if (validPanel === 'search' && focus) {
@@ -290,6 +383,7 @@ const PDFSidebar = React.forwardRef(({
   }, []);
 
   const closePanel = useCallback(() => {
+    userTouchedLayoutRef.current = true;
     setIsCollapsed(true);
   }, []);
   // Owner 2026-10-01 (iPhone: closing from the dock was abrupt): on the phone a
@@ -414,6 +508,14 @@ const PDFSidebar = React.forwardRef(({
       contentKey: activeTab === 'spaces' || activeTab === 'history' ? activeTab : 'hub',
     });
   mobileSheetCloseRef.current = mobileMode ? requestSheetClose : null;
+  // KAL-66 / KAL-460: with its dimmed backdrop up (every tab but History,
+  // which leaves the page live) the phone sheet is modal - focus goes in, Tab
+  // stays in, Escape slides it away, and focus comes back after.
+  const sheetFocusRef = useSheetFocus(
+    mobileMode && !isCollapsed && activeTab !== 'history',
+    requestSheetClose,
+    sheetProps.ref,
+  );
   // The phone hub's three tabs (Spaces has its own dock button).
   const expandedNavigationTabs = tabs.filter((tab) => tab.id !== 'spaces');
   // RULED CHANGE 2026-09-21 (pass 7 / DESIGN-SYSTEM.md "Standard is the starting
@@ -436,19 +538,22 @@ const PDFSidebar = React.forwardRef(({
     role: isCollapsed ? undefined : 'region',
     'aria-label': isCollapsed ? undefined : PANEL_TITLES[activeTab],
     'aria-hidden': isCollapsed ? 'true' : undefined,
-    // UX 2026-09-16: the panel fades and slides in 6px from the rail it is
-    // anchored to (140ms), and back out the same way when it closes
-    // (styles.css honours reduced motion).
-    className: `left-rail__panel ${isCollapsed ? 'survey-surface-out-left' : 'survey-surface-in-left'}`,
+    // Chunk D (owner 2026-10-13, Drawboard audit): the panel slides out from
+    // under the rail as it opens and back under it as it closes - a transform
+    // only (200ms, styles.css .left-rail__panel; none under reduced motion),
+    // so the page under it is never laid out again mid-slide.
+    className: `left-rail__panel${isCollapsed ? ' is-leaving' : ''}`,
     style: {
-      pointerEvents: isCollapsed ? 'none' : undefined,
-      width: `${LEFT_PANEL_W}px`,
-      flex: `0 0 ${LEFT_PANEL_W}px`,
+      position: 'relative',
+      pointerEvents: isCollapsed ? 'none' : 'auto',
+      width: 'var(--left-panel-w)',
+      flex: '0 0 var(--left-panel-w)',
       minWidth: 0,
       display: 'flex',
       flexDirection: 'column',
       background: 'var(--panel-bg)',
-      borderLeft: '1px solid var(--border)',
+      // The hairline between the rail and the panel is the rail column's own
+      // right edge (it stays when the panel slides away under it).
       // Owner 2026-10-07 (rail headers round): "they should have a border on
       // the inside, where the canvas is. The right rail seems to have it, but
       // the left rail does not." The rail's own right edge sat under this
@@ -493,11 +598,21 @@ const PDFSidebar = React.forwardRef(({
       // Text search centres a picked match in the part of the PDF you can see,
       // so the open panel marks itself as covering the viewer: a side panel on
       // desktop, a bottom sheet on the phone (see utils/searchMatchNavigation).
-      data-viewer-occluder={isCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
-      ref={mobileMode ? undefined : sideOccluderRef}
+      // Desktop: while the panel is laid out (open, or still sliding closed).
+      data-viewer-occluder={mobileMode ? (isCollapsed ? undefined : 'sheet') : (layoutOpen ? 'side' : undefined)}
       // Phone: swipe down anywhere on the sheet + the keyboard lift (owner
-      // 2026-09-30, see useMobileSheetMotion).
+      // 2026-09-30, see useMobileSheetMotion). The ref is set after the
+      // spread below (sheetFocusRef also feeds the sheet motion's ref).
       {...(mobileMode ? sheetProps : null)}
+      ref={mobileMode ? sheetFocusRef : sideOccluderRef}
+      tabIndex={mobileMode && !isCollapsed ? -1 : undefined}
+      // KAL-66: on the phone this bottom sheet is a named region (VoiceOver
+      // reads "Pages", "Spaces"...). Not role="dialog": several viewer key
+      // and press rules treat [role="dialog"] as "a modal owns this" (the
+      // History tab leaves the page live). The desktop rail has its own
+      // region inside.
+      role={mobileMode && !isCollapsed ? 'region' : undefined}
+      aria-label={mobileMode && !isCollapsed ? PANEL_TITLES[activeTab] : undefined}
       className={`${mobileMode ? 'mobile-pdf-sheet ' : 'left-rail '}${mobileMode && sheetFullscreen ? 'is-fullscreen ' : ''}${isCollapsed ? 'is-collapsed' : ''}`} style={{
       // The two heights (owner 2026-10-01: "the small one and the big one").
       // Full has to be written here, not only from the stylesheet: this inline
@@ -506,11 +621,20 @@ const PDFSidebar = React.forwardRef(({
         ? (sheetFullscreen ? 'var(--mobile-panel-full)' : MOBILE_PANEL_STANDARD)
         : undefined,
       // Desktop (owner 2026-10-07, Drawboard rail): the 48px icon column, plus
-      // the 272px panel beside it while a tab is open.
-      width: mobileMode ? (isCollapsed ? '0px' : '100%') : `${isCollapsed ? LEFT_RAIL_W : LEFT_RAIL_W + LEFT_PANEL_W}px`,
+      // the open panel beside it (one fixed width, 2026-10-14). The width
+      // changes once as a panel opens and once after it has slid closed -
+      // never per frame.
+      '--left-panel-w': mobileMode ? undefined : `${panelWidth}px`,
+      width: mobileMode
+        ? (isCollapsed ? '0px' : '100%')
+        : (layoutOpen ? `calc(${LEFT_RAIL_W}px + var(--left-panel-w))` : `${LEFT_RAIL_W}px`),
       height: '100%',
-      background: 'var(--panel-bg)',
-      borderRight: mobileMode ? 'none' : '1px solid var(--border)',
+      // Desktop: the rail column, the panel and the footer paint themselves;
+      // the frame is see-through and takes no presses, so the strip a closing
+      // panel has already slid out of shows (and passes clicks to) the page.
+      background: mobileMode ? 'var(--panel-bg)' : 'transparent',
+      pointerEvents: mobileMode ? undefined : 'none',
+      borderRight: 'none',
       display: 'flex',
       // Desktop (owner 2026-10-07, rail headers round): the rail and its
       // panel side by side, and - while a panel is open - the one-row
@@ -519,7 +643,8 @@ const PDFSidebar = React.forwardRef(({
       // Phone: every height change (detents, the keyboard) is the sheet
       // hook's resize glide now (2026-10-01), so no CSS height leg here - a
       // second engine on the same property would fight it.
-      transition: mobileMode ? 'none' : 'width 0.2s ease, height 0.26s cubic-bezier(0.22, 1.15, 0.36, 1)',
+      // Desktop (Chunk D): no width tween - the panel slides by transform.
+      transition: 'none',
       flexShrink: 0,
       // Phase F: finger-follow / spring-back / slide-down exit (mobile only).
       ...(mobileMode ? sheetMotionStyle : null)
@@ -555,9 +680,14 @@ const PDFSidebar = React.forwardRef(({
           width: `${LEFT_RAIL_W}px`,
           flex: `0 0 ${LEFT_RAIL_W}px`,
           minWidth: 0,
+          boxSizing: 'border-box',
           display: 'flex',
           flexDirection: 'column',
           background: 'var(--panel-bg)',
+          // The rail's edge: beside the page when no panel is open, between
+          // the rail and the panel when one is.
+          borderRight: '1px solid var(--border)',
+          pointerEvents: 'auto',
           // Above the panel, which slides out from under it.
           position: 'relative',
           zIndex: 1
@@ -941,6 +1071,7 @@ const PDFSidebar = React.forwardRef(({
                 onSpaceAssignPages={onSpaceAssignPages}
                 onSpaceRenamePage={onSpaceRenamePage}
                 onSpaceRemovePage={onSpaceRemovePage}
+                onSpaceTransferRegion={onSpaceTransferRegion}
                 getSpaceRemovalImpact={getSpaceRemovalImpact}
                 initiallyExpandedSpaceId={mobileMode ? regionEditReturnSpaceId : null}
                 expandedSpacesStoreRef={spacesExpandedStoreRef}
@@ -1011,6 +1142,7 @@ const PDFSidebar = React.forwardRef(({
       {showFooter && !isCollapsed && (
         <div data-chrome-rail="true" data-presence-footer="expanded" style={{
           flex: '0 0 auto',
+          pointerEvents: 'auto',
           borderTop: '1px solid var(--border)',
           padding: '8px 12px',
           display: 'grid',

@@ -41,7 +41,9 @@ import {
   TEXT_PADDING,
   buildNewTextCommitJSON,
   buildExistingTextCommitJSON,
+  shouldAutoFitExistingText,
 } from '../utils/textEditCommit.js';
+import { readTextboxAutoFit } from '../utils/annotationPreferences.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
 import { shouldStampActiveRegionId } from '../utils/annotationVisibilityRules.js';
 import { resolveCaretAnchorPoint } from '../utils/doubleTapEditEntry.js';
@@ -268,6 +270,9 @@ export default function TextEditOverlay({
   // button, new-text creation), which keeps the old select-all.
   caretAnchor = null,
   textBoxWidth,
+  // KAL-397: the dragged height of a NEW box. Kept only when Settings ->
+  // Annotations -> "Fit text boxes to their text" is off.
+  textBoxHeight,
   newTextStyle = null,
   strokeColor,
   authorId = null,
@@ -305,9 +310,17 @@ export default function TextEditOverlay({
   // Read at the moment of drawing: the box keeps the style it was drawn with.
   const newTextCloudIntensityRef = useRef(isNewText ? newTextCloudIntensity : null);
   const geomRef = useRef(null);
+  // KAL-397: does this edit fit the box to its text on commit? Read once per
+  // edit (the Settings switch, plus the box's own auto-fit mark when it is an
+  // existing box) so the live box and the committed box agree.
+  const autoFitRef = useRef(null);
   if (styleRef.current === null) {
     const src = annotationData || {};
     originalRef.current = annotationData ? deepClone(annotationData) : null;
+    const autoFitPreference = readTextboxAutoFit();
+    autoFitRef.current = isNewText
+      ? autoFitPreference
+      : shouldAutoFitExistingText({ original: originalRef.current, isCallout, preference: autoFitPreference });
     styleRef.current = isNewText
       ? {
         fontSize: Number(newTextStyle?.fontSize) || 16,
@@ -341,12 +354,16 @@ export default function TextEditOverlay({
       };
     const scaleX = Math.abs(Number(src.scaleX) || 1);
     const scaleY = Math.abs(Number(src.scaleY) || 1);
+    const oneLineOuterH = (Number(isNewText ? newTextStyle?.fontSize : src.fontSize) || 16)
+      * (isNewText ? 1.16 : (Number(src.lineHeight) || 1.16)) * 1.13 + 2 * padY;
     geomRef.current = isNewText
       ? {
         left: clickPosition?.x ?? 0,
         top: clickPosition?.y ?? 0,
         outerW: Math.max(8 + 2 * pad, textBoxWidth || 160),
-        outerH: (Number(newTextStyle?.fontSize) || 16) * 1.16 * 1.13 + 2 * pad,
+        outerH: autoFitRef.current
+          ? oneLineOuterH
+          : Math.max(oneLineOuterH, Number(textBoxHeight) || 0),
         angle: 0,
       }
       : {
@@ -356,6 +373,11 @@ export default function TextEditOverlay({
         outerH: (Number(src.height) || 0) * scaleY,
         angle: Number(src.angle) || 0,
       };
+    // An auto-fitting existing box may shrink while its text is deleted (the
+    // commit fits it the same way), down to one line.
+    if (!isNewText && autoFitRef.current) {
+      geomRef.current.floorH = Math.min(geomRef.current.outerH, oneLineOuterH);
+    }
   }
 
   // Live outer height (grows with content; floor = the mount-time height).
@@ -449,7 +471,7 @@ export default function TextEditOverlay({
     const g = geomRef.current;
     const text = readText();
     const naturalInnerH = measureNaturalInnerHeight();
-    const floorH = g.outerH;
+    const floorH = g.floorH ?? g.outerH;
     const outerH = Math.max(naturalInnerH + 2 * padY, floorH);
     // A callout's box grows away from its leader: with the knee below, the
     // bottom edge stays and the top moves up (the knee and tip never move).
@@ -589,10 +611,10 @@ export default function TextEditOverlay({
     }
 
     let json = null;
+    const lines = text.split('\n');
+    const perLine = s.fontSize * s.lineHeight * 1.13;
+    const renderedLines = Math.max(lines.length, perLine > 0 ? Math.round(naturalInnerH / perLine) : 1);
     if (isNewText) {
-      const lines = text.split('\n');
-      const perLine = s.fontSize * s.lineHeight * 1.13;
-      const renderedLines = Math.max(lines.length, perLine > 0 ? Math.round(naturalInnerH / perLine) : 1);
       json = buildNewTextCommitJSON({
         text,
         left: g.left,
@@ -606,6 +628,8 @@ export default function TextEditOverlay({
         stroke: s.stroke || '#000000',
         strokeWidth: s.strokeWidth ?? 1,
         cloudIntensity: newTextCloudIntensityRef.current,
+        autoFit: autoFitRef.current,
+        minOuterHeight: g.outerH,
         selectedModuleId,
         stampRegionId: shouldStampActiveRegionId({
           regionId: activeRegionId,
@@ -629,6 +653,9 @@ export default function TextEditOverlay({
         naturalInnerHeight: naturalInnerH,
         isCallout,
         style: s,
+        autoFit: autoFitRef.current,
+        maxLineWidth: autoFitRef.current ? measureLineWidth(text, s) : 0,
+        lineCount: renderedLines,
       });
       if (!json) {
         if (typeof onEditCancel === 'function') onEditCancel();

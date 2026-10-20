@@ -25,7 +25,9 @@
  * a document, the hub's own host on the home screen (KAL-65). Only a render
  * with no host at all (a unit test) falls back to the native title.
  */
-import { useContext } from 'react';
+import { useContext, useState, useRef, useLayoutEffect } from 'react';
+import { attachLoadoutTransition } from '../utils/loadoutTransition';
+import useLoadoutTransition from '../hooks/useLoadoutTransition';
 import Icon from '../Icons.jsx';
 import { TooltipContext } from './Tooltip.jsx';
 import { selectAllState, selectModeActionState } from '../utils/disabledActions.js';
@@ -69,6 +71,21 @@ export default function SectionIconButton({
   ...rest
 }) {
   const bindTooltip = useContext(TooltipContext);
+  const buttonRef = useRef(null);
+  useLayoutEffect(() => {
+    if (action !== 'select' && action !== 'edit') return undefined;
+    const parent = buttonRef.current?.parentElement;
+    if (!parent || parent.classList.contains('section-icon-actions__loadout')) return undefined;
+    const layer = document.createElement('span');
+    layer.className = 'section-icon-actions__ghosts';
+    layer.setAttribute('data-loadout-ignore', '');
+    layer.setAttribute('aria-hidden', 'true');
+    const oldPosition = parent.style.position;
+    if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
+    parent.appendChild(layer);
+    const detach = attachLoadoutTransition(parent, layer);
+    return () => { detach?.(); layer.remove(); parent.style.position = oldPosition; };
+  }, [action]);
   const empty = Boolean(nothingToSelect) && !active;
   const tip = empty
     ? (typeof nothingToSelect === 'string' ? nothingToSelect : 'Nothing to select')
@@ -77,9 +94,11 @@ export default function SectionIconButton({
   const size = phone ? SECTION_ICON_SIZES.phone : SECTION_ICON_SIZES.desktop;
   return (
     <button
+      ref={buttonRef}
       type="button"
       data-glyph-only=""
       data-section-action={action}
+      data-morph-icon={word ? undefined : (active ? SECTION_DONE_ICON : (icon || SECTION_ACTION_ICONS[action]))}
       aria-label={label}
       className={`section-icon-btn${word ? ' is-word' : ''}${phone ? ' is-phone' : ''}${active ? ' is-active' : ''}${className ? ` ${className}` : ''}`}
       {...tipProps}
@@ -95,9 +114,13 @@ export default function SectionIconButton({
 
 /** The right-aligned row that holds a header's icons, [Select] then [Add]. */
 export function SectionIconActions({ phone = false, className = '', children, ...rest }) {
+  const [slot, setSlot] = useState(null);
+  const [layer, setLayer] = useState(null);
+  useLoadoutTransition(slot, layer);
   return (
     <span className={`section-icon-actions${phone ? ' is-phone' : ''}${className ? ` ${className}` : ''}`} {...rest}>
-      {children}
+      <span ref={setSlot} className="section-icon-actions__loadout">{children}</span>
+      <span ref={setLayer} className="section-icon-actions__ghosts" aria-hidden="true" data-loadout-ignore="" />
     </span>
   );
 }

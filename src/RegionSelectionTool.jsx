@@ -10,6 +10,7 @@
  */
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
+import { pagePresentationFrame, clientPointInPageFrame } from './utils/pagePresentation.js';
 import { diff, union, intersection } from './vendor/martinezPolygonClipping.js';
 import { areaDrawCursor } from './utils/areaDrawCursor';
 import { REGION_OPERATIONS, polygonToRegionCoords, regionToPolygon, simplifyPolygon, subtractRegionFromRegion, rotateCoordsAroundPoint, getRegionRotation, normalizeRegionRotation, deriveRegionChromeGeometry } from './utils/regionMath';
@@ -299,7 +300,7 @@ const RegionSelectionTool = ({
 
   const getTargetRect = useCallback(() => {
     if (targetElement?.getBoundingClientRect) {
-      return targetElement.getBoundingClientRect();
+      return pagePresentationFrame(targetElement);
     }
     if (canvasRectRef.current) {
       const { left, top, width, height } = canvasRectRef.current;
@@ -344,13 +345,8 @@ const RegionSelectionTool = ({
     if (!rect) {
       return null;
     }
-    const { sx, sy } = getVisualScale(rect);
-
-    return {
-      x: (clientX - rect.left) / sx,
-      y: (clientY - rect.top) / sy
-    };
-  }, [getTargetRect, getVisualScale]);
+    return clientPointInPageFrame({ clientX, clientY }, rect, { width: resolvedPageWidth, height: resolvedPageHeight });
+  }, [getTargetRect, resolvedPageWidth, resolvedPageHeight]);
 
 
   // Calculate effective tool type (override with Cmd/Ctrl for quick select)
@@ -603,7 +599,7 @@ const RegionSelectionTool = ({
       let width = targetElement.offsetWidth;
       let height = targetElement.offsetHeight;
       if (!(width > 0 && height > 0)) {
-        const rect = targetElement.getBoundingClientRect();
+        const rect = pagePresentationFrame(targetElement);
         width = rect.width;
         height = rect.height;
       }
@@ -1329,7 +1325,7 @@ const RegionSelectionTool = ({
 
     if (event.isPrimary === false || !captureInteractionPointer(event)) return;
 
-    const rect = targetElement.getBoundingClientRect();
+    const rect = pagePresentationFrame(targetElement);
     const isWithinCanvas = isPointWithinTargetRect(event.clientX, event.clientY, rect);
 
     regionDebug(
@@ -1416,7 +1412,7 @@ const RegionSelectionTool = ({
       return; // Let the event pass through for pan
     }
 
-    const rect = targetElement.getBoundingClientRect();
+    const rect = pagePresentationFrame(targetElement);
     const isWithinCanvas =
       event.clientX >= rect.left &&
       event.clientX <= rect.right &&
@@ -1453,8 +1449,8 @@ const RegionSelectionTool = ({
         // Use raw client coordinates for delta to avoid scale/offset mismatch issues
         // interactionState.startPoint is in client coordinates (from handleRegionPointerDown)
         const { sx: moveScaleX, sy: moveScaleY } = getVisualScale(rect);
-        const dx = (event.clientX - interactionState.startPoint.x) / moveScaleX;
-        const dy = (event.clientY - interactionState.startPoint.y) / moveScaleY;
+        const dx = (event.clientX - interactionState.startPoint.x) / moveScaleX * (rect.mirrorH ? -1 : 1);
+        const dy = (event.clientY - interactionState.startPoint.y) / moveScaleY * (rect.mirrorV ? -1 : 1);
 
         if (dx !== 0 || dy !== 0) {
           // KAL-301a: mark that the drag actually moved coords

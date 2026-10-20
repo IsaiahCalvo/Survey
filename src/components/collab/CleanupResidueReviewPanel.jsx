@@ -21,6 +21,7 @@
 //   - .planning/phases/35-per-user-delete-authority-confirm-before-wipe/35-05-PLAN.md
 //     Task 3 — minimal Review surface, count + first 5 IDs + Clean up + Close
 
+import { createPortal } from 'react-dom';
 import './CleanupResidueReviewPanel.css';
 
 /**
@@ -48,7 +49,13 @@ export function CleanupResidueReviewPanel({ isOpen, residueIds, onClose, onClean
   const sample = ids.slice(0, 5);
   const remainder = Math.max(0, ids.length - sample.length);
 
-  return (
+  // Portalled to <body> (KAL-420 follow-up, 2026-10-13): mounted in place it
+  // lived inside the document tab's layer (z 5000), so the phone's top bar,
+  // tool rail and dock and the desktop rails (5600+) painted over its scrim
+  // and over the card's edge, and stayed tappable behind a modal. From <body>
+  // its z-index (CleanupResidueReviewPanel.css) is measured against the whole
+  // app, as the toasts' and tooltips' are.
+  const node = (
     <div
       className="cleanup-residue-review__backdrop"
       // role="dialog" + aria-modal="true" — same accessibility shape as
@@ -104,5 +111,6 @@ export function CleanupResidueReviewPanel({ isOpen, residueIds, onClose, onClean
       </div>
     </div>
   );
+  return typeof document !== 'undefined' && document.body ? createPortal(node, document.body) : node;
 }
 

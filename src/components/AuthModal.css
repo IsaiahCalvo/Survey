@@ -22,7 +22,7 @@
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  animation: fadeIn 0.2s ease-out;
+  animation: sv-fade-in var(--motion-dialog) var(--ease-out); /* shared dialog scrim (motion.css) */
 }
 
 @keyframes fadeIn {
@@ -44,7 +44,7 @@
   overflow-y: auto;
   position: relative;
   box-shadow: var(--shadow-dialog);
-  animation: slideUp 0.3s ease-out;
+  animation: sv-dialog-in var(--motion-dialog) var(--ease-out); /* shared dialog enter (motion.css) */
   border: 1px solid var(--border);
   font-family: var(--font-ui);
   color: var(--text-1);

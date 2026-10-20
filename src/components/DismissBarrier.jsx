@@ -8,6 +8,7 @@ import {
   registerLightPopover,
   swallowRestOfPress,
 } from './dismissRules.js';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 
 const resolvesInside = (target, insideRefs, insideSelector) => {
   const element = elementOf(target);
@@ -56,6 +57,11 @@ const typingInside = (insideRefs, insideSelector) => {
  *
  * mode="blocking" — R4: the first outside press is consumed through its
  *   trailing click and only closes the surface.
+ *
+ * menu — KAL-66: the surface is a dropdown menu (or listbox). Opened from the
+ *   keyboard, focus moves into it, Up/Down move between its items, and when
+ *   it closes focus goes back to the button that opened it. See
+ *   src/hooks/useMenuFocus.js. The menu is found inside insideRefs.
  */
 export default function DismissBarrier({
   active = true,
@@ -65,7 +71,10 @@ export default function DismissBarrier({
   passthroughSelector = '',
   dismissOnEscape = true,
   mode = 'light',
+  menu = false,
 }) {
+  useMenuFocus(insideRefs, Boolean(menu && active));
+
   // The control whose press opened this surface (see recentPressedControl).
   const openerRef = useRef(null);
   useEffect(() => {
