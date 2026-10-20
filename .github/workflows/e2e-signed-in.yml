@@ -1,0 +1,94 @@
+name: Signed-in E2E
+
+# Real sign-in end-to-end suite (tests/e2e-signed-in/) against a throwaway local
+# Supabase stack: every migration replayed from the repo, seeded test accounts,
+# the app served by Vite. How-to: docs/E2E-SIGNED-IN.md.
+#
+# INFORMATIONAL ONLY. Nothing depends on this workflow: deploy-production.yml
+# keys off "Build and tests" (ci.yml) by name, and this job must never be made a
+# required check without the owner's say-so.
+#
+# Minutes: the repo is private on the Free plan (see the budget block in
+# ci.yml). One run is roughly 5-7 billed minutes, mostly Supabase image pulls.
+# To keep that bounded it skips Dependabot, skips drafts, runs only when a pull
+# request touches something the suite exercises, and cancels superseded runs.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'src/**'
+      - 'supabase/migrations/**'
+      - 'supabase/config.toml'
+      - 'scripts/e2e-local-supabase.mjs'
+      - 'scripts/e2e/**'
+      - 'tests/e2e-signed-in/**'
+      - 'playwright.e2e-signed-in.config.mjs'
+      - 'vite.config.js'
+      - 'viteEnvConfig.mjs'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/e2e-signed-in.yml'
+
+concurrency:
+  group: e2e-signed-in-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  signed-in-e2e:
+    name: Signed-in E2E (local Supabase)
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event.pull_request.draft == false
+          && github.triggering_actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --include=optional --no-audit --no-fund
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.111.0
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Start local Supabase and seed test accounts
+        run: npm run e2e:stack:up
+
+      - name: Run signed-in E2E suite
+        run: npm run test:e2e:signed-in
+        env:
+          CI: '1'
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-signed-in-report
+          path: |
+            playwright-report-e2e/
+            test-results/e2e-signed-in/
+          retention-days: 7
+
+      - name: Stop local Supabase
+        if: always()
+        run: npm run e2e:stack:down
