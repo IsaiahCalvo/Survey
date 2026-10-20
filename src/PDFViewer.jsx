@@ -527,7 +527,7 @@ import { carryMarkerShape } from './survey/markerShapes.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
-import { buildSheetLayout, buildSheetRow } from './services/exportFormats/sheetLayout.js';
+import { buildSheetLayout, buildSheetRow, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
 import { answerSetFor, excelAnswerListFormula, DEFAULT_ANSWER_SET } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import {
@@ -19310,6 +19310,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
           if (jsonData.length < 1) return; // No header row at all
 
+          // A kit may rename system columns (Item -> Door); import reads the standard names.
+          jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
           // Iterate all modules and categories in selectedTemplate to find match
@@ -19541,6 +19543,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
           if (jsonData.length < 1) return; // No header row at all
 
+          // A kit may rename system columns (Item -> Door); import reads the standard names.
+          jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
           let matchedCategory = null;

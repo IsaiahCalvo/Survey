@@ -42,3 +42,23 @@ export function buildSheetRow(kit, checklistItems, cells, answers = {}) {
   });
   return row;
 }
+
+/**
+ * Import reads system columns by their standard header text (Item, Entity,
+ * Notes ...), here, in buildScopeImportPlans and in the excel-apply-changeset
+ * function. A kit may rename them (Item -> Door), so map a sheet's header row
+ * back to the standard names before anything reads it.
+ */
+export function toStandardHeaders(headerRow, kit, standardKit) {
+  if (!Array.isArray(headerRow) || !kit || !standardKit || kit === standardKit) return headerRow;
+  const standardOf = {};
+  standardKit.columns.forEach((c) => { if (c.field !== 'checklist') standardOf[c.field] = c.header; });
+  const rename = new Map();
+  kit.columns.forEach((c) => {
+    if (c.field !== 'checklist' && standardOf[c.field] && c.header !== standardOf[c.field]) rename.set(c.header, standardOf[c.field]);
+  });
+  if (!rename.size) return headerRow;
+  const out = headerRow.map((h) => (typeof h === 'string' && rename.has(h.trim()) ? rename.get(h.trim()) : h));
+  // Keep expandos such as sheetRowNumber that the import reads off row arrays.
+  return Object.assign(out, Object.fromEntries(Object.entries(headerRow).filter(([k]) => !/^\d+$/.test(k))));
+}

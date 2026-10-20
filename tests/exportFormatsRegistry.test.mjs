@@ -119,3 +119,16 @@ test('template fingerprint: unchanged without an Excel layout, changes when one 
   assert.equal(templateFingerprint(t), JSON.stringify(['Doors', [], []]));
   assert.notEqual(templateFingerprint({ ...t, exportKitId: 'wireless-lock-schedule' }), templateFingerprint(t));
 });
+
+test('import maps a kit\'s renamed system headers back to the standard names', async () => {
+  const { toStandardHeaders } = await import('../src/services/exportFormats/sheetLayout.js');
+  const std = getExportKit(DEFAULT_EXPORT_KIT_ID);
+  const lock = getExportKit('wireless-lock-schedule');
+  const header = Object.assign(['Row ID', 'Changed By', 'Changed Date', 'Door', 'Gateway', 'Lock type', 'Notes'], { sheetRowNumber: 1 });
+  const out = toStandardHeaders(header, lock, std);
+  assert.deepEqual([...out], ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Lock type', 'Notes']);
+  assert.equal(out.sheetRowNumber, 1);
+  // The standard kit leaves the header as it is.
+  assert.equal(toStandardHeaders(header, std, std), header);
+  assert.equal(toStandardHeaders(header, null, std), header);
+});
