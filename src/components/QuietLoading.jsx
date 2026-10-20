@@ -86,7 +86,23 @@ const QUIET_LOADING_CSS = `
   }
   html[data-native-shell="expo"] .quiet-loading-text { --quiet-phone-header-h: 34px; }
   .survey-pdfjs-viewer .quiet-loading-text { top: 50%; }
-  .quiet-loading-page { display: none; }
+  /* 2026-10-20 (phone page placeholder): the page skeleton sits where the real
+     page lands — fit-width with the viewer's 14px side margins, centred in the
+     page area beside the 36px rail — and the caption rides at the page area's
+     foot so it never pushes the page off centre. Fixed like the caption, for
+     the same reason: one open passes through three boxes. */
+  .quiet-loading-stack:has(.quiet-loading-page) {
+    position: fixed; padding: 0; gap: 0;
+    top: var(--quiet-phone-header-h, calc(34px + env(safe-area-inset-top, 0px)));
+    bottom: calc(36px + max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
+    left: var(--mobile-rail-w, 36px); right: 0; width: auto; height: auto;
+  }
+  html[data-native-shell="expo"] .quiet-loading-stack:has(.quiet-loading-page) { top: 34px; }
+  .survey-pdfjs-viewer .quiet-loading-stack:has(.quiet-loading-page) { top: 0; bottom: 0; left: 0; }
+  .quiet-loading-page { width: calc(100% - 28px); height: auto; max-width: none;
+    max-height: calc(100% - 28px); padding: 9% 8%; gap: 2.2%; }
+  .quiet-loading-stack:has(.quiet-loading-page) .quiet-loading-text {
+    position: absolute; top: auto; bottom: 10px; left: 50%; transform: translateX(-50%); }
 }
 @media (prefers-reduced-motion: reduce) {
   .quiet-loading-text, .quiet-loading-page { animation-duration: 1ms; }
