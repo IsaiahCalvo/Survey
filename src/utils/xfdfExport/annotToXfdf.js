@@ -98,6 +98,11 @@ function lineEndings(context, dict) {
   return { head: le[0] || 'None', tail: le[1] || 'None' };
 }
 
+const STANDARD_STAMP_NAMES = new Set([
+  'Approved', 'Experimental', 'NotApproved', 'AsIs', 'Expired', 'NotForPublicRelease',
+  'Confidential', 'Final', 'Sold', 'Departmental', 'ForComment', 'TopSecret', 'Draft', 'ForPublicRelease',
+]);
+
 function typeSpecific(element, context, dict) {
   const attrs = {};
   const children = [];
@@ -134,8 +139,15 @@ function typeSpecific(element, context, dict) {
     const ds = readText(context, dict, 'DS');
     if (da) children.push(xmlTextElement('defaultappearance', da, I2));
     if (ds) children.push(xmlTextElement('defaultstyle', ds, I2));
-  } else if (element === 'text' || element === 'stamp') {
+  } else if (element === 'text') {
     attrs.icon = readName(context, dict, 'Name');
+  } else if (element === 'stamp') {
+    // XFDF here carries no appearance stream, so only a standard named stamp
+    // survives the trip. A custom picture/symbol stamp would come back as a
+    // blank default stamp; report it as skipped instead of claiming success.
+    const icon = readName(context, dict, 'Name');
+    if (!icon || !STANDARD_STAMP_NAMES.has(icon)) return { skipped: 'custom-appearance' };
+    attrs.icon = icon;
   } else if (element === 'link') {
     const action = readDict(context, dict, 'A');
     const uri = action && readName(context, action, 'S') === 'URI' ? readText(context, action, 'URI') : null;
@@ -156,6 +168,7 @@ export function annotDictToXfdf(context, dict, pageIndex) {
   if (!element) return { skipped: 'unsupported-subtype', subtype };
   const extra = typeSpecific(element, context, dict);
   if (!extra) return { skipped: 'missing-geometry', subtype };
+  if (extra.skipped) return { skipped: extra.skipped, subtype };
   const attrs = { ...commonAttrs(context, dict, pageIndex), ...extra.attrs };
   if (subtype === 'SurveyMarker' && !attrs.subject) attrs.subject = 'Survey marker';
   const contents = readText(context, dict, 'Contents');

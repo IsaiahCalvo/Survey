@@ -2672,6 +2672,11 @@ export default function App({ devPreviewReturnTab = null }) {
                     title: 'Your marks in a separate file for Acrobat or Bluebeam. Your PDF stays the same.',
                     onSelect: bottomToolbarApi.exportXfdf,
                   },
+                  {
+                    label: 'Review package (ZIP)',
+                    title: 'Your marks, a log of changes and page pictures in one ZIP file. Your PDF stays the same.',
+                    onSelect: bottomToolbarApi.exportReviewBundle,
+                  },
                 ]}
               />
             </div>

@@ -23652,6 +23652,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
           spaces,
           deletedPdfAnnotations,
+          pageTransformations,
         },
       });
       console.log('[XfdfExport] ' + JSON.stringify({ status: result.status, summary: result.summary }));
@@ -23666,6 +23667,54 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     callouts,
     deletedPdfAnnotations,
     flushPageOperations,
+    pageTransformations,
+    pageSizes,
+    pdfFile,
+    spaces,
+    printableSurveyMarkers,
+    showSurveyPanel,
+    selectedModuleId,
+  ]);
+
+  // KAL-410: "Review package (ZIP)" — the XFDF above, an audit log from
+  // History, page pictures and a manifest. The source PDF is not changed.
+  const handleExportReviewBundle = useCallback(async () => {
+    if (!pdfFile) {
+      showToast('Open a PDF first.', 'warn');
+      return;
+    }
+    try {
+      showToast('Making the review package…', 'info');
+      const { runAnnotationBundleExport, bundleResultMessage } = await import('./utils/annotationBundle/runAnnotationBundleExport.js');
+      const result = await runAnnotationBundleExport({
+        sourcePdf: (await flushPageOperations()) || pdfFile,
+        pdfName: pdfFile.name || 'document.pdf',
+        documentId: pdfFile?.id || null,
+        annotationsByPage,
+        pageSizes,
+        exportOptions: {
+          documentId: pdfFile?.id || null,
+          callouts,
+          surveyMarkers: printableSurveyMarkers,
+          activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+          spaces,
+          deletedPdfAnnotations,
+          pageTransformations,
+        },
+      });
+      console.log('[ReviewBundle] ' + JSON.stringify({ status: result.status, files: result.manifest?.files?.map((f) => f.name) || [] }));
+      const message = bundleResultMessage(result);
+      if (message) showToast(message.text, message.kind);
+    } catch (err) {
+      console.error('[ReviewBundle] failed:', err);
+      showToast(`Export failed: ${err?.message || err}`, 'error');
+    }
+  }, [
+    annotationsByPage,
+    callouts,
+    deletedPdfAnnotations,
+    flushPageOperations,
+    pageTransformations,
     pageSizes,
     pdfFile,
     spaces,
@@ -23780,10 +23829,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // KAL-393: File menu → Export markup (XFDF).
   useEffect(() => {
-    if (typeof window === 'undefined' || !window.electronAPI?.onExportXfdfMenu) return undefined;
+    // Only the visible tab answers the menu; hidden tabs stay mounted.
+    if (!isActive || typeof window === 'undefined' || !window.electronAPI?.onExportXfdfMenu) return undefined;
     const unsubscribe = window.electronAPI.onExportXfdfMenu(() => { handleExportXfdf(); });
     return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
-  }, [handleExportXfdf]);
+  }, [isActive, handleExportXfdf]);
+
+  // KAL-410: File menu → Export review package (ZIP).
+  useEffect(() => {
+    // Only the visible tab answers the menu; hidden tabs stay mounted.
+    if (!isActive || typeof window === 'undefined' || !window.electronAPI?.onExportReviewBundleMenu) return undefined;
+    const unsubscribe = window.electronAPI.onExportReviewBundleMenu(() => { handleExportReviewBundle(); });
+    return () => { if (typeof unsubscribe === 'function') unsubscribe(); };
+  }, [isActive, handleExportReviewBundle]);
 
   // Save function for annotations (triggered by Cmd/Ctrl+S or auto-save)
   // silent=true skips alerts (for auto-save)
@@ -26445,7 +26503,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Electron menu drives the same handler on desktop).
       exportAnnotatedPdf: handleExportAnnotatedPDF,
       // KAL-393: XFDF sidecar ("Export markup").
-      exportXfdf: handleExportXfdf
+      exportXfdf: handleExportXfdf,
+      // KAL-410: review package ZIP.
+      exportReviewBundle: handleExportReviewBundle
     });
   }, [
     isActive,
@@ -26555,7 +26615,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handlePageInputKeyDown,
     handlePageInputBlur,
     handleExportAnnotatedPDF,
-    handleExportXfdf
+    handleExportXfdf,
+    handleExportReviewBundle
   ]);
 
   // UX 2026-07-12: clear this instance's published bottom-toolbar API on unmount.

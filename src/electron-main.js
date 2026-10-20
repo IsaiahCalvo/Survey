@@ -592,6 +592,16 @@ function createAppMenu() {
             }
           }
         },
+        {
+          // KAL-410: XFDF + audit log + page pictures in one ZIP.
+          label: 'Export review package (ZIP)…',
+          click: () => {
+            const win = getTargetWindow();
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('menu:export-review-bundle');
+            }
+          }
+        },
         { type: 'separator' },
         {
           label: 'Re-import PDF Bookmarks',

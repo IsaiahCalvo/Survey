@@ -138,3 +138,16 @@ test('XFDF export is reachable from the desktop export menu, the phone More menu
   assert.match(read('src/preload.js'), /onExportXfdfMenu[\s\S]{0,120}menu:export-xfdf/);
   assert.match(read('src/PDFViewer.jsx'), /exportXfdf: handleExportXfdf/);
 });
+
+test('a custom picture stamp is reported as skipped, a standard named stamp is kept', async () => {
+  const { PDFDocument, PDFName } = await import('pdf-lib');
+  const { annotDictToXfdf } = await import('../src/utils/xfdfExport/annotToXfdf.js');
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const custom = ctx.obj({ Type: 'Annot', Subtype: 'Stamp', Rect: [0, 0, 10, 10], AP: ctx.obj({}) });
+  assert.deepEqual(annotDictToXfdf(ctx, custom, 0), { skipped: 'custom-appearance', subtype: 'Stamp' });
+  const named = ctx.obj({ Type: 'Annot', Subtype: 'Stamp', Rect: [0, 0, 10, 10], Name: PDFName.of('Approved') });
+  const out = annotDictToXfdf(ctx, named, 0);
+  assert.equal(out.element, 'stamp');
+  assert.match(out.xml, /icon="Approved"/);
+});
