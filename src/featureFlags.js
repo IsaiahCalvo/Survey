@@ -18,6 +18,11 @@ export const FEATURE_FLAGS = Object.freeze({
     legacyKey: 'SMART_FILL_BETA',
     env: 'VITE_ENABLE_SMART_FILL',
   }),
+  'survey-agent': Object.freeze({
+    label: 'Survey agent',
+    legacyKey: 'SURVEY_AGENT_BETA',
+    env: 'VITE_ENABLE_SURVEY_AGENT',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

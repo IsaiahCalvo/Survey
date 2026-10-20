@@ -47,3 +47,9 @@ $$;
 
 revoke all on function public.record_survey_agent_usage(uuid, bigint, bigint, bigint) from public, anon, authenticated;
 grant execute on function public.record_survey_agent_usage(uuid, bigint, bigint, bigint) to service_role;
+
+-- The app-side switch for the chat panel (src/featureFlags.js). Off until it
+-- is turned on at /flags; the edge function still checks its tester list.
+insert into public.feature_flags (key, mode, description) values
+  ('survey-agent', 'off', 'Survey agent: talk or type to fill survey items.')
+on conflict (key) do nothing;
