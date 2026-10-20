@@ -43,7 +43,27 @@ const pillStyle = {
   boxShadow: '0 1px 3px rgba(0,0,0,0.18)', cursor: 'pointer', whiteSpace: 'nowrap',
 };
 
-export default function SchematicModeBadge({
+// Off by default: the owner did not want the badge shown. Nothing renders and
+// no page detection runs unless a viewer opts in with
+// localStorage['survey.schematicMode'] = '1'.
+export const SCHEMATIC_MODE_ENABLED = false;
+export const SCHEMATIC_MODE_OPT_IN_KEY = 'survey.schematicMode';
+
+export function isSchematicModeEnabled() {
+  if (SCHEMATIC_MODE_ENABLED) return true;
+  try {
+    return globalThis.localStorage?.getItem(SCHEMATIC_MODE_OPT_IN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export default function SchematicModeBadge(props) {
+  if (!isSchematicModeEnabled()) return null;
+  return <SchematicModeBadgeBody {...props} />;
+}
+
+function SchematicModeBadgeBody({
   pdfDoc, pageNumber, fingerprint, activeTool, lineBorderStyle, onPickTool,
 }) {
   useSyncExternalStore(subscribeSchematicPages, getSchematicStoreVersion, getSchematicStoreVersion);
