@@ -48,7 +48,7 @@
 .sk-docs { flex: 1; flex-direction: row; }
 .sk-docs-list { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .sk-docs-head, .sk-docs-row {
-  display: grid; grid-template-columns: 32px 54px minmax(0, 1fr) 124px 124px 72px 36px; align-items: center;
+  display: grid; grid-template-columns: 32px 54px minmax(150px, 1fr) 124px 124px 72px 36px; align-items: center;
 }
 .sk-docs-head { height: 32px; border-bottom: 1px solid var(--border); }
 .sk-docs-row { height: 51px; border-bottom: 1px solid var(--border); box-sizing: border-box; }
@@ -56,9 +56,6 @@
 .sk-docs-row .sk-stack { display: flex; flex-direction: column; gap: 6px; }
 .sk-docs-aside { width: clamp(200px, 31%, 398px); flex: none; border-left: 1px solid var(--border); padding: 18px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; }
 .sk-docs-aside .sk-preview { width: 100%; aspect-ratio: 1 / 1; margin-top: 10px; }
-@media (max-width: 1100px) {
-  .sk-docs-head, .sk-docs-row { grid-template-columns: 32px 54px minmax(0, 1fr) 124px 100px 0 0; }
-}
 
 /* ── Home: Projects / Templates panes ───────────────────────────────── */
 .sk-pane-left { width: 260px; flex: none; }

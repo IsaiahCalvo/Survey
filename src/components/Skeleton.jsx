@@ -190,20 +190,22 @@ export function TemplatesSkeleton({ label = 'Loading templates…' }) {
   );
 }
 
-// Plain list rows (Archive and any other single-column list).
-// `bare` drops the hub card + gutters when the caller already sits in one.
+// Archive list rows: the live six-column grid (select, thumb, Name, Type,
+// Archived, Days remaining). `bare` drops the hub card + gutters when the
+// caller already sits in one.
 export function ListRowsSkeleton({ rows = 6, label = 'Loading…', bare = false }) {
   return (
     <Skeleton label={label} className="sk-root" style={{ display: 'flex', flex: 1, minHeight: 0, flexDirection: 'column' }}>
       <div className="sk-hub" aria-hidden="true" style={bare ? { padding: 0 } : undefined}>
         <div className={bare ? undefined : 'sk-card'} style={{ flex: 1 }}>
           {range(rows).map((i) => (
-            <div className="sk-docs-row" key={i} style={{ gridTemplateColumns: '24px 46px minmax(0,1fr) 140px 24px' }}>
+            <div className="sk-docs-row" key={i} style={{ gridTemplateColumns: '32px 54px minmax(150px,1fr) 110px 124px 110px' }}>
               <span />
               <SkeletonBlock w={22} h={30} paper />
               <SkeletonBlock w={skeletonWidth(i, 0.8)} h={11} />
-              <SkeletonBlock w={80} h={9} />
-              <span />
+              <SkeletonBlock w={56} h={9} />
+              <SkeletonBlock w={64} h={9} />
+              <SkeletonBlock w={40} h={9} />
             </div>
           ))}
         </div>
@@ -228,11 +230,12 @@ export function PageThumbsSkeleton({ count = 4, width = 120, ratio = 11 / 8.5, l
 }
 
 // Viewer → Search panel while the first results are being found.
-export function SearchResultsSkeleton({ groups = 2, label = 'Searching…' }) {
+// Decorative only: the panel status line already announces "Searching…".
+export function SearchResultsSkeleton({ groups = 2 }) {
   return (
-    <Skeleton label={label} className="sk-search">
+    <div className="sk sk-search" data-skeleton="true" aria-hidden="true">
       {range(groups).map((g) => (
-        <div key={g} aria-hidden="true">
+        <div key={g}>
           <div className="sk-search-head"><SkeletonBlock w={46} h={8} /></div>
           {range(3 - g).map((i) => (
             <div className="sk-search-row" key={i}>
@@ -242,6 +245,6 @@ export function SearchResultsSkeleton({ groups = 2, label = 'Searching…' }) {
           ))}
         </div>
       ))}
-    </Skeleton>
+    </div>
   );
 }
