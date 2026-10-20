@@ -341,6 +341,11 @@ deno_version = 2
 [functions.stripe-webhook]
 verify_jwt = false
 
+# Agent sign-in. Agents carry no Supabase JWT; the function checks its own
+# device codes and agent tokens.
+[functions.agent-auth]
+verify_jwt = false
+
 # Browser-invoked and self-authenticating. Keep gateway verification off so the
 # browser's unauthenticated CORS preflight reaches the function.
 [functions.create-portal-session]
