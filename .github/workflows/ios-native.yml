@@ -108,6 +108,29 @@ jobs:
           path: ios-native-out
           retention-days: 7
 
+  ios-pinch:
+    name: iOS pinch zoom (XCUITest against a test PDF)
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      MOBILE_IOS_PINCH_ARTIFACT_DIR: ${{ github.workspace }}/ios-pinch-out
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      # Starts the Vite dev server (for the ?testPdf fixture route), points the
+      # app at it, builds and runs the AppNativePinch UI tests.
+      - run: npm run test:mobile-pinch-native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-pinch-results
+          path: ios-pinch-out
+          retention-days: 7
+
   android:
     name: Build and launch Android app (Pixel emulator)
     runs-on: ubuntu-latest
