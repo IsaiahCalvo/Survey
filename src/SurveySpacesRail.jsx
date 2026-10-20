@@ -2575,9 +2575,11 @@ const SurveySpacesRail = ({
                                       console.error('[App] Error deleting annotations from Supabase:', err);
                                     });
                                 }
-
-                                deleteCategory(selectedModuleId, catId);
                               });
+                              // All ticked categories in ONE call. One call per category
+                              // let the last call win (each started from the same old
+                              // template), so only the last category went away.
+                              deleteCategory(selectedModuleId, selectedCatIds);
 
                               setCategorySelectModeActive(false);
                               setCategorySelectModeForCategory(null);
