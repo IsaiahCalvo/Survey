@@ -14753,6 +14753,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clipboardType,
     setClipboardType,
   });
+  // Export, print and redaction writers read bytes with source.arrayBuffer().
+  // A cloud document's pdfFile is only metadata (filePath, no bytes), so
+  // download it first; a local File or a page-edited file passes through.
+  const getExportSourcePdf = useCallback(async () => {
+    const source = (await flushPageOperations()) || pdfFile;
+    if (typeof source?.arrayBuffer === 'function') return source;
+    const bytes = await readPageMutationPdfBytes(source);
+    return new File([bytes], source?.name || 'document.pdf', { type: 'application/pdf' });
+  }, [flushPageOperations, pdfFile, readPageMutationPdfBytes]);
   const handleMirrorPage = useCallback((...args) => {
     if (!canRestoreFromHistoryRef.current) {
       showToast('This document is read-only.', 'info');
@@ -23519,7 +23528,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }));
       // Page operations save in the background; export the bytes that match
       // the pages on screen.
-      const sourcePdfForExport = (await flushPageOperations()) || pdfFile;
+      const sourcePdfForExport = await getExportSourcePdf();
       if (typeof pdfjsViewerRef.current?.saveAsBlob === 'function') {
         console.log('[PDFSaveExport] source PDF selection ' + JSON.stringify({
           actionType: 'pdf-export',
@@ -23621,7 +23630,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
-    flushPageOperations,
+    getExportSourcePdf,
     pageTransformations,
     pageSizes,
     pdfFile,
@@ -23641,7 +23650,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     try {
       const { runXfdfExport, xfdfResultMessage } = await import('./utils/xfdfExport/runXfdfExport.js');
       const result = await runXfdfExport({
-        sourcePdf: (await flushPageOperations()) || pdfFile,
+        sourcePdf: await getExportSourcePdf(),
         pdfName: pdfFile.name || 'document.pdf',
         annotationsByPage,
         pageSizes,
@@ -23666,7 +23675,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
-    flushPageOperations,
+    getExportSourcePdf,
     pageTransformations,
     pageSizes,
     pdfFile,
@@ -23687,7 +23696,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       showToast('Making the review package…', 'info');
       const { runAnnotationBundleExport, bundleResultMessage } = await import('./utils/annotationBundle/runAnnotationBundleExport.js');
       const result = await runAnnotationBundleExport({
-        sourcePdf: (await flushPageOperations()) || pdfFile,
+        sourcePdf: await getExportSourcePdf(),
         pdfName: pdfFile.name || 'document.pdf',
         documentId: pdfFile?.id || null,
         annotationsByPage,
@@ -23713,7 +23722,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     annotationsByPage,
     callouts,
     deletedPdfAnnotations,
-    flushPageOperations,
+    getExportSourcePdf,
     pageTransformations,
     pageSizes,
     pdfFile,
@@ -23747,7 +23756,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         import('./utils/permanentPdfRedaction.js'),
       ]);
       const annotatedBytes = await savePDFWithAnnotationsPdfLib(
-        (await flushPageOperations()) || pdfFile,
+        await getExportSourcePdf(),
         redactionAnnotationsByPage,
         pageSizes,
         null,
@@ -23805,7 +23814,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     applyRedactionsBusy,
     callouts,
     deletedPdfAnnotations,
-    flushPageOperations,
+    getExportSourcePdf,
     numPages,
     pageSizes,
     pdfFile,
@@ -34750,7 +34759,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 spaces,
               });
               const annotatedBytes = await savePDFWithFlattenedRegularAnnotationsForPrint(
-                (await flushPageOperations()) || pdfFile,
+                await getExportSourcePdf(),
                 printableRegularPayload.annotationsByPage,
                 pageSizes,
                 {
@@ -35867,6 +35876,7 @@ ${pageBlocks}
       key="browser-print-document"
       ref={browserPrintDocumentRef}
       pdfFile={pdfFile}
+      getSourcePdf={getExportSourcePdf}
       annotationsByPage={printableAnnotationsByPage}
       callouts={printableCallouts}
       surveyMarkers={printableSurveyMarkers}
