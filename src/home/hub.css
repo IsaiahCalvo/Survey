@@ -182,9 +182,9 @@
   transform: none;
   box-shadow: none;
   transition:
-    color 100ms cubic-bezier(0.4, 0, 0.2, 1),
-    background-color 100ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
+    color 100ms var(--ease-standard),
+    background-color 100ms var(--ease-standard),
+    border-color 100ms var(--ease-standard);
 }
 .hub-btn > svg,
 .survey-hub .btn > svg {
@@ -218,7 +218,7 @@
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 100ms var(--ease-standard);
 }
 .create-project-file-input:not(:disabled)::file-selector-button:hover { background: var(--hover); }
 .create-project-file-input:not(:disabled)::file-selector-button:active { background: var(--pressed); }
@@ -322,7 +322,7 @@
   cursor: pointer;
   transform: none;
   box-shadow: none;
-  transition: color 100ms cubic-bezier(0.4, 0, 0.2, 1), background-color 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: color 100ms var(--ease-standard), background-color 100ms var(--ease-standard);
 }
 /* Owner 2026-09-23: no visible box on a lone-icon button, ever. Hover
    brightens and grows the glyph; the button itself stays clear. */
@@ -334,7 +334,7 @@
 .hub-icon-btn:not(.is-danger):not(:disabled):hover { color: var(--text-1); }
 .hub-icon-btn:not(:disabled):active { background: transparent; }
 .hub-icon-btn:not(:disabled):active > svg { transform: scale(0.88); }
-.hub-icon-btn > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+.hub-icon-btn > svg { transition: transform 100ms var(--ease-out); }
 /* Polish round 5 (2026-10-04): a dialog's × — Share, Rename, Move / Copy, New
    project, Manage access, the phone Document details — keeps its 24px look
    but is 44px to a finger on a touch screen (it measured 24). */
@@ -828,8 +828,12 @@
     overscroll-behavior: none;
   }
 
+  /* Not the tab strip's dialog layer (AppShell [data-tab-strip-dialogs]): it
+     is an empty wrapper beside the app, and at full height it pushed the
+     whole viewer below the phone screen and sat over it (found 2026-10-13
+     while checking the page glide on a 390x844 phone). */
   #root.survey-hub-native-root,
-  #root.survey-hub-native-root > div {
+  #root.survey-hub-native-root > div:not([data-tab-strip-dialogs]) {
     height: 100% !important;
     min-height: 0 !important;
     overflow: hidden !important;
@@ -858,7 +862,7 @@
   }
 
   #root.survey-hub-mobile-scroll-root,
-  #root.survey-hub-mobile-scroll-root > div {
+  #root.survey-hub-mobile-scroll-root > div:not([data-tab-strip-dialogs]) {
     height: 100% !important;
     min-height: 0 !important;
     overflow: hidden !important;
@@ -4457,7 +4461,7 @@
 }
 .survey-hub [data-entity-color-panel] {
   overflow: hidden;
-  animation: hub-color-panel-drop 320ms cubic-bezier(0.4, 0, 0.2, 1) backwards;
+  animation: hub-color-panel-drop 320ms var(--ease-standard) backwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .survey-hub [data-entity-color-panel] { animation: none; }
@@ -4473,7 +4477,7 @@
 }
 .survey-hub [data-entity-color-panel] { box-sizing: border-box; }
 .survey-hub [data-entity-color-panel][data-folding="true"] {
-  animation: hub-color-panel-fold 260ms cubic-bezier(0.32, 0, 0.67, 0) both;
+  animation: hub-color-panel-fold 260ms var(--ease-in) both;
   pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -4574,7 +4578,7 @@
   button[aria-label="More"]:not(:disabled):hover { color: var(--text-1) !important; background: transparent !important; }
   button[aria-label="More"]:not(:disabled):hover > svg { transform: scale(1.15); }
 }
-button[aria-label="More"] > svg { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+button[aria-label="More"] > svg { transition: transform 100ms var(--ease-out); }
 button[aria-label="More"]:not(:disabled):active { background: transparent !important; color: var(--text-1) !important; }
 button[aria-label="More"]:not(:disabled):active > svg { transform: scale(0.9); }
 
@@ -4584,7 +4588,7 @@ button[aria-label="More"]:not(:disabled):active > svg { transform: scale(0.9); }
    keeps its height and the rows between glide as one piece instead of the list
    lurching. (The tapped row is also held still wherever the list can scroll.) */
 .survey-hub [data-entity-color-panel][data-folding="switch"] {
-  animation: hub-color-panel-fold 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: hub-color-panel-fold 320ms var(--ease-standard) both;
   pointer-events: none;
 }
 .survey-hub [data-entity-color-panel]:not([data-folding]) {
@@ -4613,7 +4617,7 @@ button[aria-label="Edit color"]:active,
   background-color: transparent !important;
 }
 button[aria-label="Edit color"] > span, .hub-btn.hub-btn--icon > svg, .templates-mobile-more > svg {
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 button[aria-label="Edit color"]:active { transform: scale(0.88); }
 button[aria-label="Edit color"]:active:has(> span) { transform: none; }
@@ -4836,12 +4840,7 @@ button[aria-label="Edit color"]:active > span,
     position: absolute;
     inset: -3px 0;
   }
-  /* Shell audit 2026-10-13 (Chunk B): desktop Documents retires the
-     Select-mode button, its rows have always-on checkboxes (Drawboard). The
-     phone keeps it (its cards have no checkbox column). */
-  .survey-hub.hub-tab-documents .documents-mobile-select-main > .mobile-header-select-button {
-    display: none;
-  }
+
 }
 
 /* ==========================================================================
@@ -5289,7 +5288,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   background: transparent;
   display: grid;
   place-items: center;
-  transition: background-color 150ms cubic-bezier(.4, 0, .2, 1), border-color 150ms cubic-bezier(.4, 0, .2, 1);
+  transition: background-color 150ms var(--ease-standard), border-color 150ms var(--ease-standard);
 }
 .survey-hub .documents-row-check.is-checked .documents-row-check__box {
   border-color: var(--gold);
@@ -5314,7 +5313,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 /* Rows: selection fills fade like Drawboard's (150 ms); the rows being
    dragged go half-clear so you can see what is moving. */
 .survey-hub .documents-ledger-row {
-  transition: background-color 150ms cubic-bezier(.4, 0, .2, 1), opacity 150ms cubic-bezier(.4, 0, .2, 1);
+  transition: background-color 150ms var(--ease-standard), opacity 150ms var(--ease-standard);
 }
 .survey-hub .documents-ledger-row.is-dragging {
   opacity: .5;
@@ -5330,7 +5329,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 /* The row menu (⋮ or right-click) slides 6px in from the side it opens on,
    100 ms, like Drawboard's Radix menus; a short fade keeps it calm. */
 .hub-menu.documents-row-menu {
-  animation: documents-row-menu-in 100ms cubic-bezier(0, 0, .2, 1) both;
+  animation: documents-row-menu-in var(--motion-menu) var(--ease-out) both;
 }
 .hub-menu.documents-row-menu.opens-up {
   animation-name: documents-row-menu-in-up;
@@ -5464,7 +5463,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   margin: 0 0 4px 14px;
   max-height: min(50vh, 360px);
   overflow-y: auto;
-  animation: hub-project-drop-list-in 150ms cubic-bezier(.4, 0, .2, 1) both;
+  animation: hub-project-drop-list-in 150ms var(--ease-standard) both;
 }
 @keyframes hub-project-drop-list-in {
   from { opacity: 0; transform: translateY(-4px); }
@@ -5481,7 +5480,7 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   border-radius: 6px;
   color: var(--ink-200);
   font-size: 12px;
-  transition: background-color 150ms cubic-bezier(.4, 0, .2, 1), border-color 150ms cubic-bezier(.4, 0, .2, 1), color 150ms cubic-bezier(.4, 0, .2, 1);
+  transition: background-color 150ms var(--ease-standard), border-color 150ms var(--ease-standard), color 150ms var(--ease-standard);
 }
 .survey-hub .hub-project-drop-list__item.is-over {
   border-color: var(--text-2);
@@ -5513,17 +5512,18 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 }
 
 /* Home's "Moved to Archive · Undo" toast (Dashboard renders the viewer's
-   UndoToast inside .hub-undo-toast). It sizes to its words instead of the
+   UndoToast with className="hub-undo-toast"; it is portalled to <body>, so
+   the class sits on the toast itself, not on a wrapper). It sizes to its words instead of the
    half-screen a left:50% box gets, and on the phone it floats just above the
    bottom tab bar (56px + the home-indicator inset), over the dock like the
    viewer's own Undo toast. */
-.hub-undo-toast .undo-toast {
+.undo-toast.hub-undo-toast {
   width: max-content;
   max-width: calc(100vw - 32px);
   box-sizing: border-box;
 }
 @media screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
-  .hub-undo-toast .undo-toast {
+  .undo-toast.hub-undo-toast {
     bottom: calc(max(var(--native-safe-area-bottom, 10px), env(safe-area-inset-bottom, 0px)) + 56px + 10px);
     z-index: 100000;
   }
@@ -5532,4 +5532,25 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
    column-label row taller than the labels (it pulls back to their line). */
 .survey-hub .documents-ledger-head-check .documents-row-check {
   margin-block: -8px;
+}
+
+/* PHONE HOME TAPS (found 2026-10-13 by the shell-motion e2e): the tab strip's
+   dialog layer (AppShell, [data-tab-strip-dialogs]) is an empty box at rest,
+   but the phone's `#root > div` height pin turns it into a full-screen box at
+   z 6500 that sat over Home's top area and swallowed taps on the sort button
+   and the header. It lets every click through; its dialogs (fixed scrims, its
+   direct children) still take their own. */
+[data-tab-strip-dialogs] {
+  pointer-events: none;
+}
+[data-tab-strip-dialogs] > * {
+  pointer-events: auto;
+}
+
+/* Documents use an explicit Select mode on desktop too. Normal rows preview
+   the file; selection checks only appear when the user asks for them. */
+@media (min-width: 821px) {
+  .survey-hub.hub-tab-documents .documents-select-toolbar { display: inline-flex !important; margin-left: 10px; }
+  .survey-hub.hub-tab-documents .documents-select-toolbar .documents-mobile-select-main { display: inline-flex; align-items: center; }
+  .survey-hub.hub-tab-documents .documents-select-toolbar .mobile-header-select-button { display: inline-grid !important; }
 }

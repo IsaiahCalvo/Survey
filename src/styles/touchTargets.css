@@ -1,0 +1,217 @@
+/* ============================================================================
+   Survey — FINGER-SIZED TARGETS on the desktop layout (touch audit 2026-10-13,
+   Drawboard deep audit TOUCH.md S1-S4, T1/S2, M3).
+
+   WHY. iPads, Android tablets and touch laptops use the DESKTOP layout
+   (src/utils/layoutMode.js). Its chrome is drawn for a mouse: 28px tool
+   buttons on a 34px pitch, 24px zoom and page buttons, a 17px tab close, 26-28px
+   menu rows. Measured at 1024x1366 (iPad, touch) the median control was 28px
+   and none reached 40. Apple's and Google's floor for a finger is 44.
+
+   WHAT DOES NOT CHANGE. A mouse on a desktop matches none of the queries
+   below, so a desktop with a mouse looks and measures exactly as before.
+
+   TWO TIERS.
+   1. (any-pointer: coarse) — any screen with touch, a touch laptop's too.
+      INVISIBLE hit zones only: a transparent ::after on the control grows
+      the area a press lands on into the free space around it — the bar's own
+      height, half the gutter to each neighbour — never into a neighbour, so
+      a press can never land on the wrong control. Nothing is drawn, nothing
+      moves, so a touch laptop used with its mouse looks the same.
+   2. Desktop layout + (pointer: coarse) — a screen that is touch FIRST (iPad,
+      Android tablet). The bars get the room the zones need: bars 44 tall, a
+      12px tool gutter (a 40px pitch), roomier colour discs and rail stacks,
+      44px menu rows and list rows (the phone's row rule, tokens.css
+      --sheet-*). The buttons themselves, their 16px glyphs and their fills
+      stay the same size: only the space around them grows, which is what
+      the zones fill.
+
+   HOVER. A finger leaves :hover stuck on the last thing it tapped. Hover
+   paints in the chrome stylesheets this pass touched are behind
+   @media (hover: hover) (TabBar.css, AnnotationDropdown.css,
+   AnnotationSizeControl.css, QuickStyleControls.css, SurveyPickList.css,
+   pencilModeControl.css, the chrome rules in styles.css); states.css already
+   keeps its hover rules there.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Tier 1 — the invisible zones (any screen with touch).
+   -------------------------------------------------------------------------- */
+@media (any-pointer: coarse) {
+  /* Tool bar buttons: the bar's full height, half the gutter each side
+     (34x36 with the desktop spacing, 40x44 with tier 2's). */
+  :is(#chrome-top-host, #chrome-sub-toolbar-host) :is(.chrome-control, .chrome-subcontrol):not(:is([role='dialog'], [role='menu'], [role='listbox']) *) {
+    position: relative;
+  }
+  :is(#chrome-top-host, #chrome-sub-toolbar-host) :is(.chrome-control, .chrome-subcontrol):not(:is([role='dialog'], [role='menu'], [role='listbox']) *)::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - var(--chrome-bar-h) / 2);
+    bottom: calc(50% - var(--chrome-bar-h) / 2);
+    left: calc(var(--chrome-tool-gap) / -2);
+    right: calc(var(--chrome-tool-gap) / -2);
+  }
+
+  /* Setting pills (width, style, font ...): the bar's height, half the
+     settings gutter each side. */
+  :is(#chrome-top-host, #chrome-sub-toolbar-host) .chrome-pill:not(:is([role='dialog'], [role='menu'], [role='listbox']) *) {
+    position: relative;
+  }
+  :is(#chrome-top-host, #chrome-sub-toolbar-host) .chrome-pill:not(:is([role='dialog'], [role='menu'], [role='listbox']) *)::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - var(--chrome-bar-h) / 2);
+    bottom: calc(50% - var(--chrome-bar-h) / 2);
+    left: calc(var(--chrome-gap) / -2);
+    right: calc(var(--chrome-gap) / -2);
+  }
+
+  /* The text bar's B / I / U / S and alignment toggles, and the survey bar's
+     Leave Survey: the bar's height, half a 6px gutter each side. */
+  :is(#chrome-top-host, #chrome-sub-toolbar-host, #chrome-survey-row-slot) :is(.chrome-text-toggle, .survey-subrow__done) {
+    position: relative;
+  }
+  :is(#chrome-top-host, #chrome-sub-toolbar-host, #chrome-survey-row-slot) :is(.chrome-text-toggle, .survey-subrow__done)::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - var(--chrome-bar-h) / 2);
+    bottom: calc(50% - var(--chrome-bar-h) / 2);
+    left: -3px;
+    right: -3px;
+  }
+
+  /* The survey bar and the entity bar (batch-7 tablet check 2026-10-13: the
+     "All N" chips and Reuse took a finger only on their 28px / 22px box).
+     Their chips, swatches, template pill and More already get the zones
+     above (the row slot sits in #chrome-sub-toolbar-host). These two are
+     plain buttons: the bar's height, and 2px each side - inside half the
+     tightest gutter they sit in (4px, planSurveyBar 'tight'), so the plan's
+     widths and the centring are untouched. */
+  #chrome-survey-row-slot :is(.survey-row-all, .survey-subrow__keep) {
+    position: relative;
+  }
+  #chrome-survey-row-slot :is(.survey-row-all, .survey-subrow__keep)::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - var(--chrome-bar-h) / 2);
+    bottom: calc(50% - var(--chrome-bar-h) / 2);
+    left: -2px;
+    right: -2px;
+  }
+
+  /* A side panel's title row (Pages, Search, Survey ...): its buttons take
+     the row's full height (--chrome-bar-h). */
+  :is(.left-rail__head, .survey-rail__head) .section-icon-btn::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - var(--chrome-bar-h) / 2);
+    bottom: calc(50% - var(--chrome-bar-h) / 2);
+    left: -1px;
+    right: -1px;
+  }
+
+  /* Colour discs: the bar's height, half the colour gutter each side. The
+     disc already draws its zone as ::after (QuickStyleControls.css); this
+     only feeds it the size. */
+  :is(#chrome-top-host, #chrome-sub-toolbar-host) {
+    --quick-style-hit-inset: calc(11px - var(--chrome-bar-h) / 2) calc(var(--chrome-colour-gap) / -2);
+  }
+  /* A full rectangle, not the disc's ellipse: no dead corners between discs. */
+  :is(#chrome-top-host, #chrome-sub-toolbar-host) :is(.quick-style__dot, .quick-style__swatch)::after {
+    border-radius: 0;
+  }
+
+  /* Rail buttons (left rail panels, keyboard, sync, people; right rail
+     Survey, zoom, page, fit): 44px wide inside the 48px rail, and half the
+     gap to each neighbour tall (--rail-zone-gap: the stack's own gap; tier 2
+     opens the gaps so the zones reach 44). */
+  [data-chrome-rail][data-presence-footer='collapsed'] {
+    --rail-zone-gap: 10px;
+  }
+  [data-chrome-rail]:not([data-presence-footer='expanded']) :is(button, [role='button']):not(:is([role='dialog'], [role='menu'], [role='listbox']) *) {
+    position: relative;
+  }
+  [data-chrome-rail]:not([data-presence-footer='expanded']) :is(button, [role='button']):not(:is([role='dialog'], [role='menu'], [role='listbox']) *)::after {
+    content: '';
+    position: absolute;
+    top: calc(var(--rail-zone-gap, 4px) / -2);
+    bottom: calc(var(--rail-zone-gap, 4px) / -2);
+    left: calc(50% - 22px);
+    right: calc(50% - 22px);
+  }
+
+  /* A tab's close X: a 32px square (the tab's height) instead of 17px. */
+  .tab-bar [role='tab'] button[aria-label^='Close '],
+  .tab-bar button[aria-label^='Close '] {
+    position: relative;
+  }
+  .tab-bar button[aria-label^='Close ']::after {
+    content: '';
+    position: absolute;
+    inset: calc(50% - 16px);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Tier 2 — the room (touch-first screens, desktop layout only).
+   html:root out-ranks the :root token blocks in tokens.css / styles.css,
+   which are imported or written later in the cascade. It comes after tier 1
+   so its rail gaps win over tier 1's defaults.
+   -------------------------------------------------------------------------- */
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) and (pointer: coarse) {
+  html:root {
+    --chrome-bar-h: 44px;
+    --chrome-colour-gap: 18px;
+    --chrome-menu-row-h: 44px;
+    --row-h: 44px;
+    --row-h-sub: 44px;
+  }
+
+
+  /* Rail stacks: a pitch of about 44px so each zone below is 44 tall. The
+     gaps are inline styles, hence !important; --rail-zone-gap tells the zones
+     the gap they may fill. (The panel buttons are 40px on a 4px gap: 44
+     already.) */
+  [data-chrome-rail][data-presence-footer='collapsed'] {
+    gap: 16px !important; /* 28px sync / history / people buttons */
+    --rail-zone-gap: 16px;
+  }
+  #chrome-right-host [data-chrome-rail]:not(.survey-rail-strip) {
+    gap: 22px !important; /* 24px zoom / page buttons, 20px fields */
+    --rail-zone-gap: 22px;
+  }
+
+  /* Menus: 44px rows by finger (the phone's rule). */
+  [role='menu'] :is([role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox']) {
+    min-height: 44px !important; /* several rows set a 26-28px min-height inline */
+    box-sizing: border-box;
+  }
+
+  /* The colour discs' group takes the roomier colour gutter. */
+  :is(#chrome-top-host, #chrome-sub-toolbar-host) .quick-style--colours {
+    gap: var(--chrome-colour-gap);
+  }
+}
+
+/* The tool bar's own gutter (Undo / Redo, Pan / Select, the tool groups and
+   their sub-tools): a 40px pitch. Only this bar: the survey bar plans its
+   chips on the 6px gutter (utils/responsiveToolbar.js chipGap). Only from
+   680px: the widest loadout (Shapes' seven) then still clears Export
+   (useResponsiveToolbar reads this gutter; the bar needs ~614px). A 7-inch
+   tablet held upright keeps the 6px gutter (34px-wide zones). */
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) and (pointer: coarse) and (min-width: 680px) {
+  #chrome-top-host {
+    --chrome-tool-gap: 12px;
+  }
+}
+
+/* The annotation menu opened by a finger or a pen (a long press, rule L1 in
+   docs/GESTURE-CONTRACT.md; useAnnotationContextMenu marks it): 44px rows on
+   any screen. A mouse right-click is never marked, so it keeps the compact
+   desktop rows. */
+[data-annotation-context-menu][data-touch-rows='true'] [role='menuitem'] {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}

@@ -143,16 +143,16 @@ for (const device of ['desktop', 'phone']) {
 
     expect(firstCopy?.content_sha256).toBe(SHA);
     // The copy's own object (never the original's), in the copier's folder.
-    expect(firstCopy?.file_path).toBe(`${USER}/${P2}/copy-${firstCopy?.id}.pdf`);
+    expect(firstCopy?.file_path).toBe(`${USER}/${firstCopy?.id}.pdf`);
     expect(southRows.length).toBe(1);
     expect(northRows.length).toBe(2);
     expect(duplicate?.name).toBe('Landscape sheets (Copy).pdf');
     expect(duplicate?.content_sha256 ?? null).toBe(null);
-    expect(duplicate?.file_path).toBe(`${USER}/${P1}/copy-${duplicate?.id}.pdf`);
+    expect(duplicate?.file_path).toBe(`${USER}/${duplicate?.id}.pdf`);
     // The original, the one copy and the duplicate; the repeat leaves nothing behind.
     expect(objects.sort()).toEqual([
-      `documents/${USER}/${P2}/copy-${firstCopy?.id}.pdf`,
-      `documents/${USER}/${P1}/copy-${duplicate?.id}.pdf`,
+      `documents/${USER}/${firstCopy?.id}.pdf`,
+      `documents/${USER}/${duplicate?.id}.pdf`,
       `documents/${USER}/${SHA}.pdf`,
     ].sort());
     expect(noteAfterRepeat).toBeTruthy();

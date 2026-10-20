@@ -12,7 +12,7 @@
  *   registerMarkerShapeProvider({
  *     id: 'smartFill',              // the tool-bar mode this provider drives
  *     label: 'Smart fill',          // tooltip + accessible name
- *     icon: 'paintBucket',          // an <Icon> name from src/Icons.jsx
+ *     icon: 'smartFillDrop',        // an <Icon> name from src/Icons.jsx
  *     onPagePointerDown: async ({
  *       pageIndex,                  // 0-based page index
  *       pageNumber,                 // 1-based (the app's own numbering)
@@ -67,7 +67,7 @@ export function registerMarkerShapeProvider(provider) {
   const entry = Object.freeze({
     id: provider.id,
     label: typeof provider.label === 'string' && provider.label ? provider.label : provider.id,
-    icon: typeof provider.icon === 'string' && provider.icon ? provider.icon : 'paintBucket',
+    icon: typeof provider.icon === 'string' && provider.icon ? provider.icon : 'smartFillDrop',
     onPagePointerDown: provider.onPagePointerDown,
   });
   providers.set(entry.id, entry);
@@ -149,6 +149,16 @@ export async function runMarkerShapeProvider(id, { pageNumber, point, pageSize =
     console.warn(`[markerShapeProviders] provider "${id}" failed`, error);
     return null;
   }
+}
+
+/**
+ * True while a Smart fill press may still become a marker: the Survey Marker
+ * tool is armed, its draw mode is still Smart fill, and the page's document
+ * tab is the one in front. Anything else (Rectangle / Freehand picked, another
+ * tool, another tab) aborts the pending press and drops its answer.
+ */
+export function isSmartFillPressLive({ activeTool, markerDrawMode, isTabActive = true } = {}) {
+  return activeTool === 'survey-marker' && markerDrawMode === 'smartFill' && isTabActive !== false;
 }
 
 /** Test-only: forget every provider and the document. */

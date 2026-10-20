@@ -31,7 +31,9 @@ import ExportMenu from './components/ExportMenu.jsx';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useResponsiveToolbar from './hooks/useResponsiveToolbar.js';
 import usePhoneLayout from './hooks/usePhoneLayout.js';
+import { hasTouchInput, isElectronApp } from './utils/layoutMode.js';
 import useLoadoutTransition, { useDropInRow, useLeavingRow, useRowCrossfade } from './hooks/useLoadoutTransition.js';
+import { LOADOUT_MOTION } from './utils/loadoutTransition.js';
 import { placeUnderOpenerAvoiding, slotDefinition, TEXT_ROW_CAPTION_ROOM, TEXT_ROW_PARTS, textRowLook, TIGHT_SPACING } from './utils/responsiveToolbar.js';
 import { recentPressedControl, registerLightPopover } from './components/dismissRules.js';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from './utils/annotationSize';
@@ -43,7 +45,7 @@ import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
 import { RenameModal } from './home/BulkModals';
 import { useConfirmDialog } from './components/dialogPrompts';
-import { closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction } from './tabs/tabStrip.js';
+import { DISCARD_LOCAL_DRAFT_EVENT, closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction, tabIdsToDiscardOnClose } from './tabs/tabStrip.js';
 import { useTabSession } from './tabs/useTabSession.js';
 import {
   MobilePdfViewerDock,
@@ -87,7 +89,7 @@ import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
-import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow } from './utils/toolbarRows.js';
+import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
 import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 
@@ -754,6 +756,10 @@ export default function App({ devPreviewReturnTab = null }) {
     }
     return [];
   });
+  // Whose library `documents` holds (the Dashboard stamps it with each load).
+  // After an account switch without a reload the old library lingers until
+  // the new one arrives; the tab restore waits for the signed-in user's own.
+  const [documentsUserId, setDocumentsUserId] = useState(null);
   const deepLinkDocumentIdRef = useRef(
     typeof window === 'undefined'
       ? null
@@ -1253,6 +1259,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const [mobileSurveyRequestKey, setMobileSurveyRequestKey] = useState(0);
   const [mobileSurveyCollapseRequestKey, setMobileSurveyCollapseRequestKey] = useState(0);
   const [mobileSurveyPanelOpen, setMobileSurveyPanelOpen] = useState(false);
+  const pendingMobilePanelRequestRef = useRef(null);
   const [mobileDocumentPanelState, setMobileDocumentPanelState] = useState({ isOpen: false, activePanel: 'pages' });
   const [mobileAuxPanel, setMobileAuxPanel] = useState(null);
 
@@ -1584,8 +1591,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // Memoized callback to update PDF file
   const handleUpdatePDFFile = useCallback(async (newFile, targetTabId) => {
     const durablePath = newFile?.supabaseFilePath || newFile?.filePath || null;
+    let saved = null;
     if (newFile?.id && durablePath) {
-      await replaceDocument(newFile, durablePath);
+      saved = await replaceDocument(newFile, durablePath, { documentId: newFile.id });
+      // The row may now read its own object (its old one is shared with
+      // another document) and has a new fingerprint. Carry both, so the next
+      // page edit writes there and thumbnails key on the new bytes.
+      if (saved.filePath !== durablePath) newFile.supabaseFilePath = saved.filePath;
+      newFile.contentSha256 = saved.contentSha256;
     }
     setTabs(prev => {
       if (targetTabId) {
@@ -1610,6 +1623,7 @@ export default function App({ devPreviewReturnTab = null }) {
           ...document,
           size: newFile.size,
           file_size: newFile.size,
+          ...(saved ? { file_path: saved.filePath, content_sha256: saved.contentSha256 } : {}),
           updated_at: new Date().toISOString(),
         }
         : document
@@ -1665,6 +1679,11 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!ids.length) return;
     const confirm = closeConfirmFor({ tabs: tabsRef.current, closingIds: ids, action });
     if (confirm && !(await askTabConfirm(confirm))) return;
+    // "Close without saving": the closing viewers drop their unsaved local
+    // copy first (they are still mounted), so a reload does not bring it back.
+    for (const tabId of tabIdsToDiscardOnClose(tabsRef.current, ids)) {
+      window.dispatchEvent(new CustomEvent(DISCARD_LOCAL_DRAFT_EVENT, { detail: { tabId } }));
+    }
     closeTabsNow(ids);
   };
 
@@ -1786,6 +1805,7 @@ export default function App({ devPreviewReturnTab = null }) {
   useTabSession({
     userId: user?.id || null,
     documents,
+    documentsUserId,
     tabs,
     activeTabId,
     onRestore: handleTabSessionRestore,
@@ -1925,6 +1945,8 @@ export default function App({ devPreviewReturnTab = null }) {
     ? resolveToolBarGroup({ ...bottomToolbarApi, contextTool: bottomToolbarApi.toolBarContextTool ?? bottomToolbarApi.contextTool })
     : null;
   const formatRowShown = !isMobileViewer && !!isViewerVisible && showsFormatRow(bottomToolbarApi);
+  const surveyRowShown = !isMobileViewer && Boolean(bottomToolbarApi?.surveyToolbar) && showsSurveyRow(bottomToolbarApi);
+  const surveyToolAvailable = Boolean(bottomToolbarApi?.showSurveyPanel && bottomToolbarApi?.surveyToolbar);
   // RULED 2026-09-26 owner: fixed centred groups + animated loadouts (w47).
   // The loadout (the tools right of the group icons) and row 2's settings
   // crossfade when their set of controls changes, and row 2 fades out when it
@@ -2063,10 +2085,17 @@ export default function App({ devPreviewReturnTab = null }) {
   const [mobileAuxCloseRequestKey, setMobileAuxCloseRequestKey] = useState(0);
 
   const openMobileDocumentPanel = useCallback((panelId) => {
+    if (rightRailApi?.pdfFile !== activeTab?.file || typeof leftRailApi?.ref?.current?.togglePanel !== 'function') {
+      const pending = pendingMobilePanelRequestRef.current;
+      pendingMobilePanelRequestRef.current = pending?.tabId === activeTabId && pending.panelId === panelId
+        ? null : { tabId: activeTabId, panelId };
+      return;
+    }
+    pendingMobilePanelRequestRef.current = null;
     setMobileSurveyCollapseRequestKey((key) => key + 1);
     setMobileAuxCloseRequestKey((key) => key + 1);
-    leftRailApi?.ref?.current?.togglePanel?.(panelId);
-  }, [leftRailApi]);
+    leftRailApi.ref.current.togglePanel(panelId);
+  }, [leftRailApi, rightRailApi, activeTabId, activeTab?.file]);
 
   const toggleMobileDocumentHub = useCallback(() => {
     const activePanel = ['pages', 'search', 'bookmarks'].includes(mobileDocumentPanelState.activePanel)
@@ -2076,6 +2105,15 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [mobileDocumentPanelState.activePanel, openMobileDocumentPanel]);
 
   const openMobileSurveyPanel = useCallback(() => {
+    // The dock is visible while PDFViewer still loads. Keep that tap for this
+    // document only; a second tap cancels it before the viewer registers.
+    if (rightRailApi?.pdfFile !== activeTab?.file || typeof rightRailApi?.handleSurveyToggle !== 'function') {
+      const pending = pendingMobilePanelRequestRef.current;
+      pendingMobilePanelRequestRef.current = pending?.tabId === activeTabId && pending.panelId === 'survey'
+        ? null : { tabId: activeTabId, panelId: 'survey' };
+      return;
+    }
+    pendingMobilePanelRequestRef.current = null;
     // Opening Survey over an open Pages / Spaces sheet: that sheet holds still
     // until Survey takes its place (a dock switch keeps the sheet standing and
     // fades the content, see useMobileSheetMotion PANEL TO PANEL). Survey opens
@@ -2090,7 +2128,31 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!rightRailApi?.showSurveyPanel) {
       rightRailApi?.handleSurveyToggle?.();
     }
-  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi]);
+  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi, activeTabId, activeTab?.file]);
+
+  useEffect(() => {
+    const pending = pendingMobilePanelRequestRef.current;
+    if (!pending) return;
+    if (!isMobileViewer || pending.tabId !== activeTabId) {
+      pendingMobilePanelRequestRef.current = null;
+      return;
+    }
+    if (rightRailApi?.pdfFile !== activeTab?.file) return;
+    if (pending.panelId !== 'survey') {
+      if (typeof leftRailApi?.ref?.current?.togglePanel !== 'function') return;
+      pendingMobilePanelRequestRef.current = null;
+      setMobileSurveyCollapseRequestKey((key) => key + 1);
+      setMobileAuxCloseRequestKey((key) => key + 1);
+      leftRailApi.ref.current.togglePanel(pending.panelId);
+      return;
+    }
+    if (typeof rightRailApi?.handleSurveyToggle !== 'function') return;
+    pendingMobilePanelRequestRef.current = null;
+    leftRailApi?.ref?.current?.closePanel?.({ handover: true });
+    setMobileAuxCloseRequestKey((key) => key + 1);
+    setMobileSurveyRequestKey((key) => key + 1);
+    if (!rightRailApi.showSurveyPanel) rightRailApi.handleSurveyToggle();
+  }, [isMobileViewer, activeTabId, activeTab?.file, leftRailApi, rightRailApi]);
 
   // Spaces chunk B: the active space, named outside the Spaces panel - a chip
   // in the desktop tool bar and under the phone's top bar. Its words open the
@@ -2127,6 +2189,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
   useEffect(() => {
     if (!mobileAuxPanel) return;
+    pendingMobilePanelRequestRef.current = null;
     leftRailApi?.ref?.current?.closePanel?.();
     setMobileSurveyCollapseRequestKey((key) => key + 1);
   }, [mobileAuxPanel]);
@@ -2149,14 +2212,23 @@ export default function App({ devPreviewReturnTab = null }) {
   //
   // The controller publishes --keyboard-inset on <html> and re-pins the
   // document to 0,0 on every viewport event; mobilePdfViewer.css pins body and
-  // spends the inset on the PDF scroller alone. Mounted only for the phone
-  // viewer, which is the only surface with page-level text editing and fixed
-  // chrome; it tears itself down (clearing the var) when the viewer closes.
+  // spends the inset on the PDF scroller alone. It tears itself down
+  // (clearing the var) when the viewer closes.
+  //
+  // Owner 2026-10-13 (Drawboard touch audit, K1): iPads and touch laptops use
+  // the DESKTOP layout, and their on-screen keyboard covered text boxes low on
+  // the page, Survey Marker names low in the right rail and dialog fields. The
+  // same controller now runs for the desktop viewer on any touch device, in
+  // its `desktop` mode (keyboardViewport.js header: no predicted keyboard, so
+  // a hardware keyboard changes nothing). A mouse-only desktop and Electron
+  // never mount it.
+  const [touchDesktop] = useState(() => hasTouchInput() && !isElectronApp());
+  const isTouchDesktopViewer = Boolean(touchDesktop && isViewerVisible && !isNarrowShell);
   useEffect(() => {
-    if (!isMobileViewer) return undefined;
-    const controller = createKeyboardViewportController();
+    if (!isMobileViewer && !isTouchDesktopViewer) return undefined;
+    const controller = createKeyboardViewportController(isMobileViewer ? undefined : { desktop: true });
     return () => controller.dispose();
-  }, [isMobileViewer]);
+  }, [isMobileViewer, isTouchDesktopViewer]);
 
   // The sub-toolbar host lies over the top of the PDF scroll area; registering it
   // lets the viewer add scroll room so the page can be scrolled out from under
@@ -2341,30 +2413,30 @@ export default function App({ devPreviewReturnTab = null }) {
     if (regionApi.fullPageConfirmPending) {
       return (
         <div data-area-actions="confirm-full-page" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these areas with the full page?</span>
-          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep areas</button>
+          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these regions with the full page?</span>
+          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep regions</button>
           <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirmFullPage}>Use full page</button>
         </div>
       );
     }
     return (
       <div data-area-actions="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Areas</span>
+        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Regions</span>
         <button
           type="button"
           className="btn btn-sm btn-default"
           disabled={!regionApi.canDelete}
           onClick={regionApi.deleteSelected}
-          {...chromeTip(regionApi.canDelete ? 'Delete the picked areas' : 'Pick an area with Select to delete it', 'below')}
+          {...chromeTip(regionApi.canDelete ? 'Delete the picked regions' : 'Pick a region with Select to delete it', 'below')}
         >
-          Delete area
+          Delete region
         </button>
         {regionApi.canSetFullPage && (
           <button
             type="button"
             className="btn btn-sm btn-default"
             onClick={regionApi.setFullPage}
-            {...chromeTip('Use the whole page as the area', 'below')}
+            {...chromeTip('Use the whole page as the region', 'below')}
           >
             Full page
           </button>
@@ -2373,7 +2445,7 @@ export default function App({ devPreviewReturnTab = null }) {
         <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
           Cancel
         </button>
-        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
+        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the regions (Enter)', 'below')}>
           Done
         </button>
       </div>
@@ -2423,7 +2495,11 @@ export default function App({ devPreviewReturnTab = null }) {
           Rename document dialog - the home's own dialogs. */}
       {/* Their own layer: they open over an open document, whose viewer
           sits at z-index 5000 (the home's dialogs only ever cover the home). */}
-      <div data-tab-strip-dialogs="" style={{ position: 'relative', zIndex: 6500 }}>
+      {/* Out of the page flow (absolute, no width): the phone frame rule
+          `#root.survey-hub-native-root > div { height: 100% }` (hub.css) made
+          this empty in-flow host a full screen tall and pushed the whole phone
+          viewer below the screen (found 2026-10-13, phone survey round). */}
+      <div data-tab-strip-dialogs="" style={{ position: 'absolute', top: 0, left: 0, width: 0, zIndex: 6500 }}>
         {tabConfirmDialog}
         <RenameModal
           open={!!renameTab}
@@ -2852,6 +2928,39 @@ export default function App({ devPreviewReturnTab = null }) {
                 <Icon name="textGroup" size={CHROME_GLYPH} />
               </button>
 
+              {/* Keep Text fixed. Survey grows beside it; the loadout slides
+                  over by one button and gutter. It never morphs into a tool. */}
+              <div
+                data-survey-tool-slot="true"
+                data-shown={surveyToolAvailable ? 'true' : 'false'}
+                aria-hidden={surveyToolAvailable ? undefined : true}
+                inert={surveyToolAvailable ? undefined : ''}
+                style={{
+                  position: 'absolute', left: '100%', top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'flex', alignItems: 'center',
+                  paddingLeft: 'var(--chrome-tool-gap)',
+                  '--toolbar-insert-duration': `${LOADOUT_MOTION.durationMs}ms`,
+                  '--toolbar-insert-easing': LOADOUT_MOTION.easing,
+                  '--toolbar-insert-scale': LOADOUT_MOTION.growFrom,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => bottomToolbarApi.surveyToolbar?.onArmMarker()}
+                  {...chromeTip('Survey', 'below')}
+                  className={`btn chrome-control ${surveyRowShown ? 'btn-active' : 'btn-default'}`}
+                  data-tool-group="true"
+                  data-tool-switch="true"
+                  data-survey-tool="true"
+                  aria-label="Survey"
+                  aria-pressed={surveyRowShown}
+                  disabled={!surveyToolAvailable || areasMode}
+                >
+                  <Icon name="survey" size={CHROME_GLYPH} />
+                </button>
+              </div>
+
               {/* KAL-47: Forms category. Opens the form-field subtoolbar
                   (Textbox / Checkbox / Radio / Signature) and routes
                   activeTool through the FORM_TOOL_IDS set. We do not
@@ -2916,7 +3025,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? { position: 'static' }
                     : {
                         position: 'absolute',
-                        left: '100%',
+                        left: surveyToolAvailable
+                          ? 'calc(100% + var(--chrome-control-w) + var(--chrome-tool-gap))'
+                          : '100%',
                         top: '50%',
                         transform: 'translateY(-50%)',
                         width: 'max-content',
@@ -2925,6 +3036,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   alignItems: 'center',
                   gap: 'var(--chrome-tool-gap)',
                   '--chrome-row-gap': 'var(--chrome-tool-gap)',
+                  '--toolbar-insert-duration': `${LOADOUT_MOTION.durationMs}ms`,
+                  '--toolbar-insert-easing': LOADOUT_MOTION.easing,
                   whiteSpace: 'nowrap'
                 }}
               >
@@ -3045,7 +3158,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   rectangle swatch until they migrate. */}
               <div data-toolbar-settings-row="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-settings-gap, var(--chrome-gap))', position: 'relative' }}>
                 {areasMode && renderAreaActions()}
-                {showTextFormatting && textFormatRowEl && createPortal(
+                {showTextFormatting && !surveyRowShown && textFormatRowEl && createPortal(
                   /* 2026-05-26: the formatting controls drop into the sub-row
                      beneath the top strip (mirrors the Draw / Shape category
                      sub-rows). The inline strip's swatch, width input and Aa
@@ -4321,6 +4434,7 @@ export default function App({ devPreviewReturnTab = null }) {
             )}
             {leftRailApi && (
               <PDFSidebar
+                key={leftRailApi.documentId || activeTabId}
                 {...leftRailApi}
                 mobileMode={isMobileViewer}
                 onPanelStateChange={setMobileDocumentPanelState}
@@ -4379,13 +4493,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   hidden and row 3 empty, 0px tall), so they are never re-added
                   after the Survey row or the text-selection bar that drop into
                   this host too — the rows always stack in this order. */}
-              {/* w46 (owner 2026-09-26: select modes in top bar): the Survey
-                  row's slot comes FIRST, right under the tool bar. In Select
-                  mode row 2 now comes and goes as a mark is picked and dropped
-                  (it has nothing to show for Box / Lasso with nothing picked);
-                  drawn above it, the Survey row never moves when it does. The
-                  two only share the screen in Select mode — any drawing tool
-                  closes the Survey row. */}
+              {/* Survey and annotation formatting take turns in this band.
+                  Keep the Survey slot for its entity row and touch targets;
+                  hide outgoing annotation rows as soon as Survey returns. */}
               <div id="chrome-survey-row-slot" data-chrome-survey-row-slot="true" />
               {/* RULED 2026-09-26 owner: fixed centred groups + animated
                   loadouts (w47). Row 2 drops in with the 140ms fade it always
@@ -4411,7 +4521,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   data-leaving={formatRowLeaving ? 'true' : undefined}
                   className="chrome-row-drop-in"
                   style={{
-                    display: formatRowShown || formatRowLeaving ? 'block' : 'none',
+                    display: !surveyRowShown && (formatRowShown || formatRowLeaving) ? 'block' : 'none',
                     position: 'relative',
                     width: '100%',
                     height: 'var(--chrome-bar-h)',
@@ -4442,6 +4552,7 @@ export default function App({ devPreviewReturnTab = null }) {
               onDocumentOpenEnd={stableDocumentOpenEnd}
               documents={documents}
               setDocuments={setDocuments}
+              onLibraryUserChange={setDocumentsUserId}
               templates={appTemplates}
               onTemplatesChange={handleTemplatesChange}
               onShowAuthModal={stableShowAuthModal}
@@ -4566,6 +4677,7 @@ export default function App({ devPreviewReturnTab = null }) {
           >
             {rightRailApi && (
               <SurveySpacesRail
+                key={rightRailApi.pdfFile?.id || activeTabId}
                 {...rightRailApi}
                 mobileMode={isMobileViewer}
                 expandRequestKey={(rightRailApi.expandRequestKey || 0) + mobileSurveyRequestKey}
@@ -4774,8 +4886,11 @@ export default function App({ devPreviewReturnTab = null }) {
               // popup tokens (--radius-md / --shadow-popover) that
               // AnnotationDropdown's popover uses.
               const fitMenu = (anchorStyle) => (
-                <div style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
-                  <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} />
+                <div role="menu" aria-label="Fit modes" style={{ position: 'absolute', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-popover)', minWidth: '140px', zIndex: 6000, padding: '2px', ...anchorStyle }}>
+                  {/* KAL-66: `menu` — opened from the keyboard, focus goes to
+                      the current fit, arrows move, and focus returns to the
+                      Fit options button when it closes. */}
+                  <DismissBarrier active insideRefs={railFitMenuRefs} onDismiss={dismissRailFitMenu} menu />
                   {ZOOM_MODE_OPTIONS.map((option) => {
                     if (option.id === ZOOM_MODES.MANUAL) return null;
                     const isActive = option.id === api.zoomMode;
@@ -4784,6 +4899,10 @@ export default function App({ devPreviewReturnTab = null }) {
                         key={option.id}
                         onClick={() => api.handleZoomModeSelect(option.id)}
                         data-active={isActive}
+                        // A menu row (touch audit 2026-10-13: 44px rows by
+                        // finger, styles/touchTargets.css).
+                        role="menuitemradio"
+                        aria-checked={isActive}
                         /* Owner 2026-10-02 (phone/desktop consistency): the
                            phone's menu - a label, and a check on the chosen
                            row (which steps up to --text-1). No fit glyphs on
@@ -4807,7 +4926,12 @@ export default function App({ devPreviewReturnTab = null }) {
               // rail's full height; a transparent background lets the strip's
               // --panel-bg show through.
                 return (
-                  <div data-chrome-rail="true" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
+                  <div data-chrome-rail="true" data-keyboard-lift="" style={{ position: 'relative', zIndex: 2, width: '100%', borderTop: '1px solid var(--border)', padding: '8px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: 'transparent' }}>
+                    {/* data-keyboard-lift (owner 2026-10-13, touch audit K1):
+                        on an iPad these zoom / page fields sit where the
+                        on-screen keyboard lands, so while one is typed in the
+                        stack stands on the keyboard and goes back down with
+                        it (keyboardViewport.js). */}
                     <button
                       onClick={api.zoomIn}
                       {...chromeTip('Zoom in', 'left')}

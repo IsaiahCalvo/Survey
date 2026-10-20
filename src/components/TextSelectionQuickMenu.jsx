@@ -57,8 +57,24 @@ function liveSelectionRect() {
   }
 }
 
+// Every opened document tab keeps its viewer mounted (AppShell hides the
+// others with display: none), so a plain querySelector can return a hidden
+// tab's zero-sized viewer and the menu never showed on later tabs (Codex,
+// #817). Use the viewer that holds the selection, else the one on screen.
+function selectionViewer() {
+  try {
+    const node = window.getSelection?.()?.anchorNode;
+    const element = node?.nodeType === 1 ? node : node?.parentElement;
+    const owner = element?.closest?.('[data-testid="pdf-container"]');
+    if (owner) return owner;
+  } catch { /* fall through */ }
+  const all = document.querySelectorAll('[data-testid="pdf-container"]');
+  for (const element of all) if (element.getClientRects().length > 0) return element;
+  return all[0] || null;
+}
+
 function viewerBounds() {
-  const container = document.querySelector('[data-testid="pdf-container"]');
+  const container = selectionViewer();
   const rect = container?.getBoundingClientRect?.();
   const viewport = window.visualViewport;
   const viewportTop = viewport ? viewport.offsetTop : 0;
@@ -120,13 +136,14 @@ function QuickMenuButton({ label, tip, icon, pressed, paintColor, onActivate }) 
 }
 
 export default function TextSelectionQuickMenu({
+  active = true,
   selection,
   activeMarkupTypes = [],
   paintByMark = {},
   onAction,
   onCopy,
 }) {
-  const key = textSelectionQuickMenuKey(selection);
+  const key = active ? textSelectionQuickMenuKey(selection) : '';
   const keyRef = useRef(key);
   keyRef.current = key;
   const [settledKey, setSettledKey] = useState('');
@@ -150,6 +167,21 @@ export default function TextSelectionQuickMenu({
     return () => window.clearTimeout(timer);
   }, [key]);
 
+  // Right-click reopens the same markup actions, including after a dismissal.
+  useEffect(() => {
+    if (!key) return undefined;
+    const openContextMenu = (event) => {
+      const owner = selectionViewer();
+      if (!owner || owner.getClientRects().length === 0) return;
+      event.preventDefault();
+      setPressing(false);
+      setDismissedKey('');
+      setSettledKey(keyRef.current);
+    };
+    window.addEventListener('survey-pdf-text-context-menu', openContextMenu);
+    return () => window.removeEventListener('survey-pdf-text-context-menu', openContextMenu);
+  }, [key]);
+
   // A dismissal belongs to one selection; a new one may show the menu again.
   useEffect(() => {
     if (dismissedKey && key !== dismissedKey) setDismissedKey('');
@@ -167,7 +199,7 @@ export default function TextSelectionQuickMenu({
     let down = null;
     let timer = 0;
     const onDown = (event) => {
-      if (menuRef.current?.contains(event.target)) return;
+      if (event.button === 2 || menuRef.current?.contains(event.target)) return;
       down = { x: event.clientX, y: event.clientY, key: keyRef.current };
       setPressing(true);
     };

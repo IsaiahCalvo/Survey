@@ -144,7 +144,7 @@
 .survey-rail .survey-rail__title-button > svg {
   flex: 0 0 auto;
   color: var(--text-3);
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1), color 90ms ease-out;
+  transition: transform 100ms var(--ease-out), color 90ms ease-out;
 }
 
 .survey-rail .survey-rail__title-button[aria-expanded='true'] > svg {
@@ -325,7 +325,7 @@
 }
 
 .survey-rail .survey-rail__foot svg {
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 
 .survey-rail .survey-rail__foot button:not(:disabled):active svg {
@@ -904,7 +904,7 @@
 }
 
 .survey-rail .survey-rail__marker-action svg {
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 
 .survey-rail .survey-rail__marker-action:active {
@@ -1072,7 +1072,7 @@
   font-size: var(--sv-small-type);
   font-weight: 600;
   cursor: pointer;
-  transition: color 90ms ease-out, transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: color 90ms ease-out, transform 100ms var(--ease-out);
 }
 
 .survey-rail .survey-rail__answer:active {

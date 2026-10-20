@@ -217,7 +217,10 @@ test('dock closes slide, dock switches hand over, and height changes glide', () 
   assert.doesNotMatch(sheetMotion, /setDragY|useState\(0\);\s*\/\/ drag/);
   assert.match(sheetMotion, /engineRef\.current\?\.dragBy\(y - g\.anchorY\);/);
   assert.match(sheetMotion, /springKeyframes\(fromY, toY, velocity, \{ min: 0 \}\)/);
-  assert.match(sidebar, /transition: mobileMode \? 'none' : 'width 0\.2s ease, height 0\.26s/);
+  // Chunk D (2026-10-13): the phone sheet still has no CSS transition (the
+  // glide owns it); the desktop rail lost its width tween too - its panel now
+  // slides by transform (styles.css .left-rail__panel), so it is 'none' for both.
+  assert.match(sidebar, /\/\/ Desktop \(Chunk D\): no width tween - the panel slides by transform\.\s*transition: 'none',/);
   assert.match(survey, /transition: mobileMode \? 'none' : 'right 0\.2s ease, top 0\.2s ease, height 0\.2s ease'/);
   // The keyboard lift of a one-height sheet lands in layout at once (no CSS
   // transition on it); the glide carries it there on the keyboard's own clock.

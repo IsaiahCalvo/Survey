@@ -175,3 +175,13 @@ test('the bar never reaches into the annotation layer\'s zoom handling', () => {
   assert.doesNotMatch(css, /gold|--accent|#d8a84e/i, 'no gold in the bar');
   assert.doesNotMatch(css, /transition:\s*opacity/, 'shows and hides at once');
 });
+
+test('with several document tabs open, the bar reads the tab on screen, not the first mounted one', () => {
+  // AppShell keeps every opened tab's viewer mounted (display: none when not
+  // in front); a document-wide querySelector found the hidden first tab's page
+  // layer and the bar never showed on any other tab (batch-6 verify).
+  const bar = readFileSync(new URL('../src/components/SelectionQuickBar.jsx', import.meta.url), 'utf8');
+  assert.match(bar, /const shownElement = \(selector\) =>[\s\S]{0,200}getClientRects\(\)\.length > 0/);
+  assert.match(bar, /const pageLayer = \(pageNumber\) => shownElement\(/);
+  assert.doesNotMatch(bar, /document\.querySelector\(/, 'every lookup goes through shownElement');
+});

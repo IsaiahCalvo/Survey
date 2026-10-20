@@ -17,9 +17,12 @@ async function loadDismissBarrier() {
   const componentPath = path.join(repoRoot, 'src/components/DismissBarrier.jsx');
   const reactUrl = pathToFileURL(require.resolve('react')).href;
   const rulesUrl = pathToFileURL(path.join(repoRoot, 'src/components/dismissRules.js')).href;
+  // KAL-66: DismissBarrier's `menu` prop imports the menu keyboard hook.
+  const menuFocusUrl = pathToFileURL(path.join(repoRoot, 'src/hooks/useMenuFocus.js')).href;
   const source = (await readFile(componentPath, 'utf8'))
     .replace(/from 'react';/, `from ${JSON.stringify(reactUrl)};`)
-    .replace("from './dismissRules.js';", `from ${JSON.stringify(rulesUrl)};`);
+    .replace("from './dismissRules.js';", `from ${JSON.stringify(rulesUrl)};`)
+    .replace("from '../hooks/useMenuFocus.js';", `from ${JSON.stringify(menuFocusUrl)};`);
   const tempDir = await mkdtemp(path.join(tmpdir(), 'dismiss-barrier-test-'));
   const modulePath = path.join(tempDir, 'DismissBarrier.mjs');
   await writeFile(modulePath, source);

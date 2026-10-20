@@ -18,7 +18,7 @@ const YDOC_PROVIDER_SOURCE = readFileSync(
 
 test('KAL-436: mode, template, and category transitions do not reset the open PDF', () => {
   const templateHandler = PDF_VIEWER_SOURCE.match(
-    /const handleSelectSurveyTemplate = useCallback\(\(template\) => \{([\s\S]*?)\n  \}, \[\]\);/,
+    /const enterSurveyTemplateVersion = useCallback\(\(template\) => \{([\s\S]*?)\n  \}, \[\]\);/,
   )?.[1] || '';
   assert.match(templateHandler, /setSelectedTemplate\(template\)/);
   assert.match(templateHandler, /setSelectedModuleId\(firstModuleId\)/);

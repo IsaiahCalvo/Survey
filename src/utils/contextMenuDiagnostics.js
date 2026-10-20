@@ -170,7 +170,12 @@ function diag(line) {
     // PDF text owns its native copy menu while a real range is selected.
     // Do not replace it with the annotation/page menu.
     if (selectionUsesPdfTextLayer(window.getSelection?.())) {
-      diag('[CTXDIAG] native — selected PDF text');
+      const request = new CustomEvent('survey-pdf-text-context-menu', { cancelable: true });
+      window.dispatchEvent(request);
+      if (request.defaultPrevented) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       return;
     }
 
@@ -241,7 +246,19 @@ function diag(line) {
       return;
     }
 
-    const hit = resolveAnnotationAt(e);
+    let hit = resolveAnnotationAt(e);
+    // A visible single-selection frame owns right-clicks in its empty interior.
+    // Ordinary clicks keep the ink-accurate hit test used by the canvas.
+    if (hit.kind === 'page') {
+      for (const frame of document.querySelectorAll('[data-selection-context-index]')) {
+        const box = frame.querySelector('[data-selection-context-hitbox]')?.getBoundingClientRect();
+        if (!box || box.width <= 0 || box.height <= 0 || e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom) continue;
+        const wrapper = frame.closest('[data-diag-svg-wrapper]');
+        if (!wrapper) continue;
+        hit = { ...hit, kind: 'annotation', pageNumber: Number(wrapper.getAttribute('data-diag-svg-wrapper')), annotationIndex: Number(frame.getAttribute('data-selection-context-index')) };
+        break;
+      }
+    }
     const { pageNumber } = hit;
     let { annotationIndex, calloutId, kind, groupIndices } = hit;
     const groupBox = pageNumber != null

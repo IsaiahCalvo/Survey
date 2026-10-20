@@ -114,6 +114,28 @@ test('smart-fill polygons: a huge outline is thinned to the storage cap', () => 
   assert.ok(count <= 6000 && count >= 16, `kept ${count}`);
 });
 
+// Bugbot on #817: thinning a dense outline must drop a hole (or a whole
+// polygon) that collapses below three points, not keep it as null and throw.
+test('smart-fill polygons: thinning drops a hole or an island that collapses', () => {
+  const circle = (cx, cy, r, n) => Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  });
+  const outer = circle(500, 500, 200, 20000);
+  const tinyHole = circle(500, 500, 0.1, 40);
+  const bigHole = circle(500, 500, 50, 400);
+  const tinyIsland = circle(900, 900, 0.1, 40);
+  const out = normalizeMarkerPolygons({ type: 'MultiPolygon', coordinates: [[outer, tinyHole, bigHole], [tinyIsland]] });
+  assert.equal(out.length, 1, 'the island that collapsed is gone');
+  assert.equal(out[0].length, 2, 'outer ring + the hole that survived');
+  for (const ring of out[0]) {
+    assert.ok(Array.isArray(ring) && ring.length >= 3);
+  }
+  const bounds = buildPolygonMarkerBounds({ polygons: [[outer, tinyHole]] });
+  assert.ok(bounds, 'the marker is still made');
+  assert.equal(bounds.shape.polygons[0].length, 1, 'only the outline is left');
+});
+
 test('getMarkerShape: plain boxes, malformed or newer outlines read as "no outline"', () => {
   assert.equal(getMarkerShape({ bounds: { x: 1, y: 1, width: 5, height: 5 } }), null);
   const bounds = buildStrokeMarkerBounds(diagonal);

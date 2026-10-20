@@ -47,6 +47,11 @@ export function isAreaEditing(api) {
   return Boolean(api && (api.regionEditing || api.activeTool === 'region-edit'));
 }
 
+/** Survey stays open while its controls give way to annotation formatting. */
+export function showsSurveyRow(api) {
+  return Boolean(api?.showSurveyPanel && api.activeTool === 'survey-marker' && !isAreaEditing(api));
+}
+
 /** The tool groups whose tools sit in the tool bar. */
 export const TOOL_BAR_GROUPS = Object.freeze(['draw', 'shape', 'review', 'forms']);
 
@@ -68,6 +73,7 @@ export function resolveToolBarGroup({ activeTool, activeCategoryDropdown, contex
   // Editing a Space's areas: the tool bar shows the Areas tools instead
   // (AppShell), never a drawing group's.
   if (regionEditing || activeTool === 'region-edit') return null;
+  if (activeTool === 'survey-marker') return null;
   if (TOOL_BAR_GROUPS.includes(activeCategoryDropdown)) return activeCategoryDropdown;
   if (isSelectFamilyTool(activeTool)) return TOOL_GROUP_BY_TOOL[contextTool] || 'select';
   // Owner 2026-10-04: a Pan pick brings up the picked mark's group as a
@@ -106,6 +112,7 @@ export function showsFormatRow(api) {
   // Owner 2026-10-01 (Spaces toolbar): while a Space's areas are being edited
   // row 2 holds the Areas actions (Delete area, Full page, Cancel, Done).
   if (isAreaEditing(api)) return true;
+  if (showsSurveyRow(api)) return false;
   if (api.activeTool === 'eraser' || api.richTextEditor) return true;
   return FORMAT_ROW_TOOLS.includes(api.contextTool) || FORMAT_ROW_TOOLS.includes(api.activeTool);
 }

@@ -1105,7 +1105,7 @@ const CompactColorPicker = ({
                 background: `linear-gradient(to right, transparent, var(--picker-alpha-ink))${paintBox},`
                     + ` ${isDesktop ? ALPHA_CHEQUER_DESKTOP : ALPHA_CHEQUER}${paintBox}`,
                 transition: glideAlpha
-                    ? `--picker-alpha-ink ${ALPHA_GLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
+                    ? `--picker-alpha-ink ${ALPHA_GLIDE_MS}ms var(--ease-out)`
                     : 'none',
                 opacity: transparentMode ? 0.4 : 1,
                 cursor: transparentMode ? 'not-allowed' : 'ew-resize',
@@ -1114,7 +1114,7 @@ const CompactColorPicker = ({
         >
             <span style={thumb(
                 localOpacity,
-                glideAlpha ? `left ${ALPHA_GLIDE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : undefined,
+                glideAlpha ? `left ${ALPHA_GLIDE_MS}ms var(--ease-out)` : undefined,
                 localHex,
             )} />
             {readoutPill('alpha')}
