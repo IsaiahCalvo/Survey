@@ -309,6 +309,7 @@ footer{border-top:1px solid var(--line);padding:56px 0 40px;color:var(--muted);f
 </div></footer>
 <script>
 document.getElementById('y').textContent=new Date().getFullYear();
+if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){var hv=document.querySelector('.laptop video');if(hv){hv.removeAttribute('autoplay');hv.pause();hv.controls=true}}
 var tabs=document.querySelectorAll('[role=tab]');
 tabs.forEach(function(t){t.addEventListener('click',function(){tabs.forEach(function(o){o.setAttribute('aria-selected',o===t);document.getElementById(o.getAttribute('aria-controls')).classList.toggle('on',o===t)})})});
 if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px'});document.querySelectorAll('.rv').forEach(function(el){io.observe(el)})}else{document.querySelectorAll('.rv').forEach(function(el){el.classList.add('in')})}
