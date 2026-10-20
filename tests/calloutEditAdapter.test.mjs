@@ -98,3 +98,56 @@ test('sanitizeFontFamily returns "Arial" for undefined', () => {
 test('sanitizeFontFamily trims whitespace', () => {
   assert.equal(sanitizeFontFamily('   Times New Roman  '), 'Times New Roman');
 });
+
+test('callout lifecycle diag + alternate fabric child shapes', () => {
+  const originalWindow = globalThis.window;
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  globalThis.window = { __CALLOUT_LIFECYCLE_DIAG: true };
+  try {
+    const group = toFabricGroup({
+      ...reactCallout,
+      isPdfImported: true,
+      pdfAnnotationId: 'pdf-1',
+    }, pageSize);
+    assert.ok(logs.some((l) => l.includes('CalloutLifecycle state->edit')));
+
+    const viaGetObjects = fromFabricGroup({
+      getObjects: () => group.objects,
+    }, pageSize, reactCallout);
+    assert.equal(viaGetObjects.text, 'hello world');
+
+    const viaPrivate = fromFabricGroup({
+      _objects: group.objects,
+    }, pageSize, reactCallout);
+    assert.equal(viaPrivate.text, 'hello world');
+
+    const legacyParts = group.objects.map((child) => {
+      if (child?.data?.calloutPart === 'textBox') {
+        return { ...child, data: { ...child.data, calloutPart: 'text' } };
+      }
+      return child;
+    });
+    const viaLegacy = fromFabricGroup({ objects: legacyParts }, pageSize, reactCallout);
+    assert.equal(viaLegacy.text, 'hello world');
+
+    const typeOnly = group.objects.map((child) => {
+      if (child?.data?.calloutPart === 'textBox' || child?.type === 'textbox') {
+        const { data, ...rest } = child;
+        return { ...rest, type: 'textbox', text: child.text };
+      }
+      return { ...child, data: { ...(child.data || {}), calloutPart: 'line1' } };
+    });
+    const viaType = fromFabricGroup({ objects: typeOnly }, pageSize, reactCallout);
+    assert.equal(viaType.text, 'hello world');
+    assert.ok(logs.some((l) => l.includes('CalloutLifecycle edit->commit')));
+
+    const emptyChildren = fromFabricGroup({}, pageSize, reactCallout);
+    assert.equal(typeof emptyChildren.text, 'string');
+  } finally {
+    console.log = originalLog;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});

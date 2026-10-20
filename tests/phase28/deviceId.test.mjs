@@ -134,3 +134,61 @@ test(
     });
   }
 );
+test(
+  'deviceId: setItem failure keeps ephemeral session id; localStorage throw → ephemeral',
+  { skip: !existsSync(TARGET) ? 'src/lib/collab/deviceId.js not yet present (Plan 28-02)' : false },
+  async () => {
+    const { getDeviceId } = await import(TARGET);
+    // A fresh mock window per case gets a fresh per-window cache, so no reset
+    // is needed (the old _resetForTest export was deleted in 6749a7d28).
+    const quotaLs = {
+      getItem: () => null,
+      setItem: () => { throw new Error('quota'); },
+    };
+    await withMockWindow({ localStorage: quotaLs }, async () => {
+      const id = getDeviceId();
+      ok(typeof id === 'string' && id.length > 0);
+      strictEqual(getDeviceId(), id);
+    });
+
+    await withMockWindow({
+      localStorage: {
+        getItem() { throw new Error('blocked'); },
+        setItem() {},
+      },
+    }, async () => {
+      const id = getDeviceId();
+      ok(id.startsWith('ephemeral-'));
+    });
+
+    await withMockWindow({}, async () => {
+      const id = getDeviceId();
+      ok(id.startsWith('ephemeral-'));
+    });
+  }
+);
+
+test(
+  'deviceId: UUID fallback when crypto.randomUUID missing',
+  { skip: !existsSync(TARGET) ? 'src/lib/collab/deviceId.js not yet present (Plan 28-02)' : false },
+  async () => {
+    const { getDeviceId } = await import(TARGET);
+    const savedCrypto = globalThis.crypto;
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: {},
+    });
+    try {
+      const ls = buildLocalStorageMock();
+      await withMockWindow({ localStorage: ls }, async () => {
+        const id = getDeviceId();
+        ok(/^[0-9a-f-]{36}$/i.test(id));
+      });
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', {
+        configurable: true,
+        value: savedCrypto,
+      });
+    }
+  }
+);
