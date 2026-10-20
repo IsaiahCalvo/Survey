@@ -13,7 +13,7 @@ if (typeof document !== 'undefined' && document.modelContext) {
     import('./supabaseClient'),
     import('./hooks/useSubscriptionLimits'),
   ]).then(([{ installWebMcp }, { supabase }, { TIER_LIMITS }]) => {
-    if (supabase) installWebMcp(window, { supabase, tierLimits: TIER_LIMITS });
+    installWebMcp(window, { supabase, tierLimits: TIER_LIMITS });
   }).catch((err) => console.warn('[webmcp] not started', err));
 }
 // Crash reports (Settings -> Crash reports): kept on this device only.

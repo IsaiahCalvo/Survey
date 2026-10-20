@@ -70,7 +70,7 @@ export function buildAgentTools({ getViewer = activeViewer, supabase = null, rea
       access: { signIn: true },
       execute: async () => {
         const { data, error } = await supabase.from('projects')
-          .select('id, name, updated_at').eq('archived', false).is('user_archived_at', null)
+          .select('id, name, updated_at').is('user_archived_at', null)
           .order('updated_at', { ascending: false }).limit(200);
         if (error) throw new Error('Could not list projects.');
         return text(data || []);

@@ -109,6 +109,13 @@ test('list_documents uses the user session and hides archived items', async () =
   await assert.rejects(tool(tools, 'survey_list_documents').execute({ project_id: 'bad' }), /project id/);
 });
 
+test('list_projects hides user-Archive but keeps downgrade-archived rows', async () => {
+  const sb = fakeSupabase({ rows: [{ id: 'p1', name: 'Job' }] });
+  const tools = buildAgentTools({ supabase: sb, readAccess: makeAccessReader(sb, TIERS) });
+  assert.deepEqual(JSON.parse(await tool(tools, 'survey_list_projects').execute({})), [{ id: 'p1', name: 'Job' }]);
+  assert.deepEqual(sb.calls.at(-1).filters, [['is', 'user_archived_at', null]]);
+});
+
 test('install only when the browser offers WebMCP and not turned off', () => {
   assert.equal(installWebMcp({ document: {} }), null);
   const names = [];
@@ -117,4 +124,8 @@ test('install only when the browser offers WebMCP and not turned off', () => {
   assert.ok(names.includes('survey_go_to_page') && names.includes('survey_whoami'));
   const off = { ...win, localStorage: { getItem: () => 'off' } };
   assert.equal(installWebMcp(off), null);
+  const offlineNames = [];
+  const offline = { document: { modelContext: { registerTool: (t) => { offlineNames.push(t.name); } } }, localStorage: { getItem: () => null } };
+  assert.ok(installWebMcp(offline));
+  assert.ok(offlineNames.includes('survey_get_open_document') && offlineNames.includes('survey_go_to_page'));
 });
