@@ -8,7 +8,7 @@
  * onNoMatch so the page can say "No outline found".
  */
 import { registerMarkerShapeProvider } from './markerShapeProviders.js';
-import { adaptiveInkMaskFromRgba, findTagOutlineTolerant } from './smartFillEngine.js';
+import { adaptiveInkMaskFromRgba, findSimilarTags, findTagOutlineTolerant } from './smartFillEngine.js';
 
 // Window around the tap, page units (1 = 1 PDF point; a tag is ~10-80 pt).
 const WINDOW_PAGE_UNITS = 360;
@@ -112,6 +112,83 @@ export function readSmartFillOutlineAsync(context) {
     const buffer = crop.rgba.buffer.slice(0);
     w.postMessage({ id, rgba: buffer, width: crop.width, height: crop.height, seedX: crop.seedX, seedY: crop.seedY }, [buffer]);
   });
+}
+
+// The whole page at most this many px on its long side for a scan.
+const MAX_SCAN_PX = 2400;
+const SCAN_TIME_LIMIT_MS = 15000;
+
+// Page scans run one at a time, each on its own worker, so a tap (2.5s limit)
+// never waits behind a scan and one page's abort or timeout never kills another
+// page's scan. The time limit starts when a scan actually runs, not when queued.
+let scanQueue = Promise.resolve();
+
+function runScan(message, transfer, signal, limitMs) {
+  if (signal?.aborted) return Promise.resolve({ ok: false, reason: 'aborted' });
+  let w;
+  try {
+    w = new Worker(new URL('./smartFillWorker.js', import.meta.url), { type: 'module' });
+  } catch {
+    return Promise.resolve({ ok: false, reason: 'no-worker' });
+  }
+  const id = nextId++;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', onAbort);
+      w.terminate();
+      resolve(value);
+    };
+    const onAbort = () => finish({ ok: false, reason: 'aborted' });
+    const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), limitMs);
+    w.addEventListener('message', (event) => { if (event.data?.id === id) finish(event.data.result); });
+    w.addEventListener('error', () => finish({ ok: false, reason: 'error' }));
+    signal?.addEventListener?.('abort', onAbort);
+    w.postMessage({ ...message, id }, transfer);
+  });
+}
+
+function postToWorker(message, transfer, signal, limitMs) {
+  if (typeof Worker === 'undefined' || workerBroken) return null;
+  const job = scanQueue.then(() => runScan(message, transfer, signal, limitMs));
+  scanQueue = job.catch(() => {});
+  return job;
+}
+
+/**
+ * Find the tags on a page that match a saved sample (page units). Resolves to
+ * { ok:true, polygons: [GeoJSON Polygon, ...] } or { ok:false, reason }.
+ */
+export async function findSimilarOnPage({ pageCanvas, pageSize, sample, signal = null }) {
+  if (!pageCanvas || !pageSize?.width || !pageCanvas.width || !sample?.width) return { ok: false, reason: 'not-ready' };
+  if (Math.abs(pageCanvas.width / pageCanvas.height - pageSize.width / pageSize.height) > 0.02 * (pageSize.width / pageSize.height)) {
+    return { ok: false, reason: 'not-ready' };
+  }
+  const scale = Math.min(1, MAX_SCAN_PX / Math.max(pageCanvas.width, pageCanvas.height));
+  const width = Math.max(1, Math.round(pageCanvas.width * scale));
+  const height = Math.max(1, Math.round(pageCanvas.height * scale));
+  const work = document.createElement('canvas');
+  work.width = width;
+  work.height = height;
+  const ctx = work.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(pageCanvas, 0, 0, width, height);
+  const { data } = ctx.getImageData(0, 0, width, height);
+  const pxPerUnit = width / pageSize.width;
+  const pxSample = { ...sample, width: sample.width * pxPerUnit, height: sample.height * pxPerUnit };
+  const buffer = data.buffer;
+  const pending = postToWorker({ kind: 'scan', rgba: buffer, width, height, sample: pxSample }, [buffer], signal, SCAN_TIME_LIMIT_MS);
+  let result = pending ? await pending : null;
+  if (!result || result.reason === 'no-worker') result = { ok: true, rings: findSimilarTags(adaptiveInkMaskFromRgba(data, width, height), width, height, pxSample) };
+  if (!result?.ok) return { ok: false, reason: result?.reason || 'error' };
+  return {
+    ok: true,
+    polygons: result.rings.map((ring) => ({ type: 'Polygon', coordinates: [ring.map(([x, y]) => [x / pxPerUnit, y / pxPerUnit])] })),
+  };
 }
 
 export function registerSmartFillProvider({ onNoMatch } = {}) {

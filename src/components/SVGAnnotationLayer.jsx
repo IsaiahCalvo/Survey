@@ -186,7 +186,16 @@ import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '
 // Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
 import { buildPolygonMarkerBounds, buildStrokeMarkerBounds, MARKER_STROKE_DEFAULT_WIDTH, markerShapePathData } from '../survey/markerShapes.js';
 import '../survey/smartFillBeta.js';
+import { findSimilarOnPage } from '../survey/smartFillProvider.js';
+import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
+import { markerShapeHitTest } from '../survey/markerShapes.js';
 import { showToast, dismissToast } from '../utils/toast';
+// The toast store renames a toast whose id is still showing, so a later
+// dismissToast(id) would miss it; clear the old one first.
+const showSmartFillFindToast = (message, type, options) => {
+  dismissToast('smart-fill-find');
+  return showToast(message, type, options);
+};
 import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
 import { isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
 import {
@@ -2375,11 +2384,27 @@ const SVGAnnotationLayerBody = memo(({
     setSmartFillPreview(null);
     dismissToast('smart-fill-preview');
   }, []);
+  // Owner 2026-10-20 (beta): "find more like this". After a tag is applied,
+  // its outline is remembered (this browser only) and Smart fill can look for
+  // the same kind of tag on the page. Matches show as blue outlines; each one
+  // is added only when the user taps it (still review-first, and each goes
+  // through the normal create path: category, entity, undo).
+  const [smartFillMatches, setSmartFillMatches] = useState([]);
+  const smartFillScanAbortRef = useRef(null);
   useEffect(() => {
     if (!smartFillLive) smartFillAbortRef.current?.abort?.();
     if (!smartFillLive) clearSmartFillPreview();
+    if (!smartFillLive) {
+      smartFillScanAbortRef.current?.abort?.();
+      setSmartFillMatches([]);
+      dismissToast('smart-fill-find');
+    }
   }, [clearSmartFillPreview, smartFillLive]);
-  useEffect(() => () => dismissToast('smart-fill-preview'), []);
+  useEffect(() => () => {
+    smartFillScanAbortRef.current?.abort?.();
+    dismissToast('smart-fill-preview');
+    dismissToast('smart-fill-find');
+  }, []);
   const startSmartFill = useCallback((point) => {
     smartFillAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -2408,6 +2433,14 @@ const SVGAnnotationLayerBody = memo(({
           pageNumber,
         });
         onSurveyMarkerCreated(markerBounds);
+        const sample = saveSmartFillSample(markerBounds.shape.polygons[0][0]);
+        if (sample) {
+          showSmartFillFindToast('Survey Marker added. Want Smart fill to find more tags like it on this page?', 'success', {
+            id: 'smart-fill-find',
+            duration: Infinity,
+            action: { label: 'Find more', onClick: () => findMoreLikeThisRef.current?.(sample, markerBounds) },
+          });
+        }
       };
       setSmartFillPreview({ bounds: markerBounds, apply });
       showToast('Smart fill found this outline. Check it, then Apply.', 'info', {
@@ -2421,6 +2454,62 @@ const SVGAnnotationLayerBody = memo(({
       setSmartFillPending(null);
     });
   }, [clearSmartFillPreview, height, onSurveyMarkerCreated, pageNumber, width]);
+
+  const findMoreLikeThisRef = useRef(null);
+  findMoreLikeThisRef.current = (sample, skipBounds = null, { quietIfNone = false } = {}) => {
+    if (!sample || !smartFillLiveRef.current) return;
+    smartFillScanAbortRef.current?.abort?.();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    smartFillScanAbortRef.current = controller;
+    const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
+    if (!quietIfNone) showSmartFillFindToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find', duration: Infinity });
+    findSimilarOnPage({ pageCanvas, pageSize: { width, height }, sample, signal: controller?.signal || null }).then((res) => {
+      if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
+      if (!res.ok) {
+        if (quietIfNone) return;
+        showSmartFillFindToast(res.reason === 'not-ready'
+          ? 'Smart fill: the page is still loading. Try again.'
+          : 'Smart fill couldn’t finish looking on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
+        return;
+      }
+      const centre = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+      const inside = (pt, b) => b && pt.x >= b.x && pt.x <= b.x + b.width && pt.y >= b.y && pt.y <= b.y + b.height;
+      const matches = res.polygons
+        .map((polygon) => buildPolygonMarkerBounds(polygon))
+        .filter((b) => b && !inside(centre(b), skipBounds));
+      setSmartFillMatches(matches);
+      // From the tool bar every page in view looks; only pages with matches speak.
+      if (quietIfNone && !matches.length) return;
+      showSmartFillFindToast(matches.length
+        ? `Found ${matches.length} more like it. Tap each blue outline to add it.`
+        : 'No other tags like it on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
+    });
+  };
+  // "Find tags like my sample" from the tool bar (any page in view, any drawing).
+  useEffect(() => {
+    const onFind = () => {
+      if (!smartFillLiveRef.current) return;
+      const rect = svgRef.current?.getBoundingClientRect?.();
+      if (!rect || rect.bottom < 0 || rect.top > window.innerHeight) return;
+      findMoreLikeThisRef.current?.(latestSmartFillSample(), null, { quietIfNone: true });
+    };
+    window.addEventListener('smart-fill-find-similar', onFind);
+    return () => window.removeEventListener('smart-fill-find-similar', onFind);
+  }, []);
+  // A tap on a found match adds it; returns true when the tap was used.
+  const applySmartFillMatchAt = useCallback((point) => {
+    const hit = smartFillMatches.find((b) => markerShapeHitTest(b.shape, point, 0));
+    if (!hit || typeof onSurveyMarkerCreated !== 'function') return false;
+    setSmartFillMatches((list) => list.filter((b) => b !== hit));
+    recordAnnotationCommit({
+      surface: 'SVGAnnotationLayer',
+      source: 'survey-marker:create',
+      action: 'survey-marker-smart-fill-match',
+      pageNumber,
+    });
+    onSurveyMarkerCreated(hit);
+    return true;
+  }, [onSurveyMarkerCreated, pageNumber, smartFillMatches]);
 
   // ---------------------------------------------------------------------------
   // Polygon / polyline click-to-place commit + cancel.
@@ -7127,7 +7216,7 @@ const SVGAnnotationLayerBody = memo(({
                 startClient: { x: e.clientX, y: e.clientY }, pointerType: e.pointerType, passed: false,
               });
             } else if (point && markerDrawMode === 'smartFill') {
-              startSmartFill(point);
+              if (!applySmartFillMatchAt(point)) startSmartFill(point);
             }
             e.preventDefault();
             return;
@@ -7622,6 +7711,20 @@ const SVGAnnotationLayerBody = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* Smart fill beta: tags that match the sample, waiting for a tap. */}
+      {smartFillMatches.map((b, k) => (
+        <path
+          key={`smart-fill-match-${k}`}
+          data-smart-fill-match="true"
+          d={markerShapePathData(b.shape)}
+          fill="rgba(74, 144, 226, 0.15)"
+          fillRule="evenodd"
+          stroke="#4A90E2"
+          strokeWidth={1.5 * clampInverseScale(inverseScale)}
+          strokeDasharray="3,3"
+          style={{ pointerEvents: 'none' }}
+        />
+      ))}
       {/* w32: other screens' strokes while they are being drawn. */}
       <LiveStrokeGhosts documentId={documentId} pageNumber={pageNumber} />
       {/* Owner after Test 46: a mark carried over from another page, at the

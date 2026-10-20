@@ -317,3 +317,128 @@ export function findTagOutlineTolerant(mask, width, height, seedX, seedY) {
   }
   return first;
 }
+
+// --- Reusing a sample tag (owner 2026-10-20) ---------------------------------
+// After the user applies one outline, Smart fill can find the tags on the page
+// that look the same. A tag "looks the same" when its outline is within 15% of
+// the sample's size and its filled shape overlaps the sample's (both scaled to
+// a 24 x 24 grid) by at least 85% (a circle in its square is ~79%). Every match is still shown for review.
+
+const SIGNATURE_GRID = 24;
+export const MATCH_SIZE_TOLERANCE = 0.15;
+export const MATCH_MIN_OVERLAP = 0.85;
+
+function pointInRing(x, y, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Shape signature of an outline ring (any units): size + a 24x24 fill grid. */
+export function outlineSignature(ring) {
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x; if (y < minY) minY = y;
+    if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+  }
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const grid = new Array(SIGNATURE_GRID * SIGNATURE_GRID).fill(0);
+  if (!(width > 0 && height > 0)) return { width: 0, height: 0, grid };
+  for (let gy = 0; gy < SIGNATURE_GRID; gy += 1) {
+    for (let gx = 0; gx < SIGNATURE_GRID; gx += 1) {
+      const x = minX + ((gx + 0.5) / SIGNATURE_GRID) * width;
+      const y = minY + ((gy + 0.5) / SIGNATURE_GRID) * height;
+      grid[gy * SIGNATURE_GRID + gx] = pointInRing(x, y, ring) ? 1 : 0;
+    }
+  }
+  return { width, height, grid };
+}
+
+/** True when two signatures (same units) describe the same kind of tag. */
+export function signaturesMatch(a, b) {
+  if (!a || !b || !(a.width > 0) || !(b.width > 0)) return false;
+  const close = (p, q) => Math.abs(p - q) <= MATCH_SIZE_TOLERANCE * Math.max(p, q);
+  if (!close(a.width, b.width) || !close(a.height, b.height)) return false;
+  let both = 0;
+  let either = 0;
+  for (let i = 0; i < a.grid.length; i += 1) {
+    if (a.grid[i] && b.grid[i]) both += 1;
+    if (a.grid[i] || b.grid[i]) either += 1;
+  }
+  return either > 0 && both / either >= MATCH_MIN_OVERLAP;
+}
+
+function candidateCells(mask, width, height, sample) {
+  const label = new Int32Array(width * height).fill(-1);
+  const queue = new Int32Array(width * height);
+  const cells = [];
+  let id = 0;
+  for (let start = 0; start < mask.length; start += 1) {
+    if (mask[start] || label[start] !== -1) continue;
+    id += 1;
+    let head = 0; let tail = 0; let touches = false;
+    let minX = width; let minY = height; let maxX = 0; let maxY = 0;
+    label[start] = id; queue[tail++] = start;
+    while (head < tail) {
+      const p = queue[head++];
+      const x = p % width; const y = (p - x) / width;
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) touches = true;
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      for (const q of [x > 0 ? p - 1 : -1, x < width - 1 ? p + 1 : -1, p - width, p + width]) {
+        if (q < 0 || q >= mask.length || mask[q] || label[q] !== -1) continue;
+        label[q] = id; queue[tail++] = q;
+      }
+    }
+    if (touches) continue;
+    const w = maxX - minX + 1; const h = maxY - minY + 1;
+    // A cell inside the tag is at most the tag's size, and not tiny next to it
+    // (a tag split by a divider has cells about half its size).
+    if (w > sample.width * 1.2 || h > sample.height * 1.2) continue;
+    if (w < sample.width * 0.2 && h < sample.height * 0.2) continue;
+    cells.push({ seed: start });
+  }
+  return cells;
+}
+
+/**
+ * Find every tag on a whole-page ink mask that matches `sample` (a signature
+ * in mask pixels). Each closed paper cell about the right size is a candidate;
+ * the normal tap engine runs on a crop around it and the answer is compared to
+ * the sample. Returns rings in mask pixels, de-duplicated. Bounded: at most
+ * `maxCandidates` crops are tried.
+ */
+export function findSimilarTags(mask, width, height, sample, { maxCandidates = 400 } = {}) {
+  if (!sample?.width) return [];
+  // Cells come from the plain mask and from the gap-closed masks too, so a tag
+  // whose border has a small break (which a tap closes, closedGaps 1-2) is
+  // still a candidate. Paper in a grown mask is paper in the plain one, so the
+  // seed is valid for the normal engine below, which re-verifies every cell.
+  const cells = [];
+  for (const r of [0, 1, 2]) {
+    cells.push(...candidateCells(r ? dilateMask(mask, width, height, r) : mask, width, height, sample));
+  }
+  const found = [];
+  const pad = Math.ceil(Math.max(sample.width, sample.height) * 1.5) + 8;
+  for (const cell of cells.slice(0, maxCandidates)) {
+    const sx = cell.seed % width; const sy = (cell.seed - sx) / width;
+    if (found.some((f) => sx >= f.minX && sx <= f.maxX && sy >= f.minY && sy <= f.maxY)) continue;
+    const x0 = Math.max(0, sx - pad); const y0 = Math.max(0, sy - pad);
+    const x1 = Math.min(width, sx + pad); const y1 = Math.min(height, sy + pad);
+    const cw = x1 - x0; const ch = y1 - y0;
+    const crop = new Uint8Array(cw * ch);
+    for (let y = 0; y < ch; y += 1) crop.set(mask.subarray((y0 + y) * width + x0, (y0 + y) * width + x1), y * cw);
+    const res = findTagOutlineTolerant(crop, cw, ch, sx - x0, sy - y0);
+    if (!res?.ok) continue;
+    const ring = res.ring.map(([x, y]) => [x + x0, y + y0]);
+    if (!signaturesMatch(outlineSignature(ring), sample)) continue;
+    const xs = ring.map((p) => p[0]); const ys = ring.map((p) => p[1]);
+    found.push({ ring, minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) });
+  }
+  return found.map((f) => f.ring);
+}

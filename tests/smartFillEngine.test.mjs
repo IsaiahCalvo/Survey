@@ -98,3 +98,33 @@ test('dilateMask grows one pixel into its 8 neighbours', () => {
   const m = new Uint8Array(9); m[4] = 1;
   assert.equal(dilateMask(m, 3, 3, 1).reduce((a, b) => a + b, 0), 9);
 });
+
+import { findSimilarTags, outlineSignature, signaturesMatch } from '../src/survey/smartFillEngine.js';
+
+test('find more like this: same-size boxes match, a different shape does not', () => {
+  const { mask, rect } = canvas(300, 200);
+  rect(20, 20, 50, 40);   // sample
+  rect(120, 30, 150, 50); // same kind
+  rect(200, 120, 230, 140); // same kind
+  rect(60, 120, 140, 180); // much bigger: not a match
+  const sample = outlineSignature([[20, 20], [51, 20], [51, 41], [20, 41]]);
+  const rings = findSimilarTags(mask, 300, 200, sample);
+  assert.equal(rings.length, 3);
+});
+
+test('find more like this: a box with a 2px border gap is still found', () => {
+  const { mask, rect } = canvas(300, 200);
+  rect(20, 20, 50, 40);   // sample
+  rect(120, 30, 150, 50); // same kind, but with a gap in its top edge
+  mask[30 * 300 + 134] = 0; mask[30 * 300 + 135] = 0;
+  const sample = outlineSignature([[20, 20], [51, 20], [51, 41], [20, 41]]);
+  const rings = findSimilarTags(mask, 300, 200, sample);
+  assert.equal(rings.length, 2);
+});
+
+test('signatures: a circle does not match a square of the same size', () => {
+  const square = outlineSignature([[0, 0], [20, 0], [20, 20], [0, 20]]);
+  const circle = outlineSignature(Array.from({ length: 40 }, (_, i) => [10 + 10 * Math.cos(i / 40 * 2 * Math.PI), 10 + 10 * Math.sin(i / 40 * 2 * Math.PI)]));
+  assert.equal(signaturesMatch(square, square), true);
+  assert.equal(signaturesMatch(square, circle), false);
+});
