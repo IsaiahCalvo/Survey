@@ -768,8 +768,10 @@ async function runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts }) {
   const storedIds = (entries) => entries.flatMap(([, records]) => Object.entries(records || {})
     .flatMap(([key, value]) => (Array.isArray(value) ? value.map((m) => m?.id).filter(Boolean) : [key])));
   let markerId = null;
+  let entries = [];
   for (let tries = 0; tries < 20 && !markerId; tries += 1) {
-    markerId = storedIds(await markerStorage(page)).find((id) => !before.has(id)) || null;
+    entries = await markerStorage(page);
+    markerId = storedIds(entries).find((id) => !before.has(id)) || null;
     if (!markerId) await wait(500);
   }
   invariant(markerId, 'Created Survey Marker has no stable persisted id ' + JSON.stringify(await markerStorage(page)).slice(0, 600));
