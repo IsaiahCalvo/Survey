@@ -2432,7 +2432,9 @@ export default function TemplatesEditor({
                   />
                 </span>
               </div>
-              <div className="micro" style={{ textAlign: 'right' }}>
+              {/* minWidth/maxWidth: the two layout pickers must shrink with a
+                  narrow middle column (portrait tablet) instead of overflowing it. */}
+              <div className="micro" style={{ textAlign: 'right', flex: '0 1 auto', minWidth: 72, maxWidth: '50%' }}>
                 <div>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'}</div>
                 {/* Excel layout (export kit). Only shown once there is a choice. */}
                 {exportKitOptions.length > 1 && (
@@ -2448,7 +2450,7 @@ export default function TemplatesEditor({
                       });
                     }}
                     {...hoverOnly(tip('Excel layout for this template. A linked workbook picks it up on its next full export.'))}
-                    style={{ marginTop: 4, font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
+                    style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
                   >
                     {exportKitOptions.map((k) => <option key={k.id} value={k.id}>{k.label || k.id}</option>)}
                   </select>
@@ -2466,7 +2468,7 @@ export default function TemplatesEditor({
                     });
                   }}
                   {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
-                  style={{ display: 'block', marginTop: 4, marginLeft: 'auto', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
+                  style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
                 >
                   {!answerPresetIdOf(tpl.answerSet) && <option value="">Custom</option>}
                   {ANSWER_SET_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}

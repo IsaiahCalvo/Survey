@@ -2456,6 +2456,8 @@ const SVGAnnotationLayerBody = memo(({
   }, [clearSmartFillPreview, height, onSurveyMarkerCreated, pageNumber, width]);
 
   const findMoreLikeThisRef = useRef(null);
+  const surveyMarkersRef = useRef(surveyMarkers);
+  surveyMarkersRef.current = surveyMarkers;
   findMoreLikeThisRef.current = (sample, skipBounds = null, { quietIfNone = false } = {}) => {
     if (!sample || !smartFillLiveRef.current) return;
     smartFillScanAbortRef.current?.abort?.();
@@ -2476,7 +2478,10 @@ const SVGAnnotationLayerBody = memo(({
       const inside = (pt, b) => b && pt.x >= b.x && pt.x <= b.x + b.width && pt.y >= b.y && pt.y <= b.y + b.height;
       const matches = res.polygons
         .map((polygon) => buildPolygonMarkerBounds(polygon))
-        .filter((b) => b && !inside(centre(b), skipBounds));
+        .filter((b) => b && !inside(centre(b), skipBounds))
+        // A tag that already has a marker here is not "more" (the tool-bar
+        // search has no skipBounds, so it re-offered the tag just applied).
+        .filter((b) => !(surveyMarkersRef.current || []).some((m) => m && inside(centre(b), m)));
       setSmartFillMatches(matches);
       // From the tool bar every page in view looks; only pages with matches speak.
       if (quietIfNone && !matches.length) return;
