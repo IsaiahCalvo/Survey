@@ -73,7 +73,11 @@ function Consent({ authorizationId }) {
       if (!live) return;
       if (error || !data) { setMessage('This request is old or not valid. Start again from your agent.'); return; }
       // Allowed before: go straight back to the agent.
-      if (!('authorization_id' in data)) { window.location.assign(data.redirect_url); return; }
+      if (!('authorization_id' in data)) {
+        try { clearPendingConsent(window.localStorage); } catch { /* storage blocked */ }
+        window.location.assign(data.redirect_url);
+        return;
+      }
       setDetails(data);
     })();
     return () => { live = false; };
@@ -122,11 +126,16 @@ export default function AgentLinkPage() {
 
   // Keep the code or consent request through sign-up's email check or a
   // Google sign-in, which come back to the app's front page (see main.jsx).
+  // Only one flow is kept: starting one drops the other's leftover.
   useEffect(() => {
-    if (user) return;
     try {
-      if (code) savePendingAgentCode(window.localStorage, code);
-      if (consentId) savePendingConsent(window.localStorage, consentId);
+      if (consentId) {
+        if (!user) savePendingConsent(window.localStorage, consentId);
+        clearPendingAgentCode(window.localStorage);
+      } else if (code) {
+        if (!user) savePendingAgentCode(window.localStorage, code);
+        clearPendingConsent(window.localStorage);
+      }
     } catch { /* storage blocked */ }
   }, [code, consentId, user]);
 
@@ -169,7 +178,11 @@ export default function AgentLinkPage() {
     loadLinks();
   };
 
-  if (!auth.loading && !user) {
+  // Until sign-in is known, show neither form: a consent return must not
+  // flash the code form with a leftover code in it.
+  if (auth.loading) return <div style={card}><p style={{ margin: 0, color: C.inkSoft }}>Loading…</p></div>;
+
+  if (!user) {
     return (
       <div style={card}>
         <h2 style={{ marginTop: 0 }}>Sign in or create a free account</h2>

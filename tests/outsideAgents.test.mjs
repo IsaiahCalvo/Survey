@@ -35,6 +35,12 @@ test('consent route and rules are wired', () => {
   assert.match(page, /approveAuthorization\(authorizationId, \{ skipBrowserRedirect: true \}\)/);
   assert.match(page, /where you can only view, it can only view/);
   assert.match(page, /revokeGrant\(\{ clientId \}\)/);
+  // Only one flow is kept, nothing shows until sign-in is known, and an
+  // already-allowed redirect drops the saved request.
+  assert.match(page, /savePendingConsent\(window\.localStorage, consentId\);\s+clearPendingAgentCode/);
+  assert.match(page, /savePendingAgentCode\(window\.localStorage, code\);\s+clearPendingConsent/);
+  assert.match(page, /if \(auth\.loading\) return/);
+  assert.match(page, /clearPendingConsent\(window\.localStorage\); \} catch \{ \/\* storage blocked \*\/ \}\s+window\.location\.assign\(data\.redirect_url\);\s+return;/);
   // An agent-code link starts that flow, never an older saved consent.
   assert.match(page, /if \(params\.get\('user_code'\) \|\| \/\^\\\/agent-link/);
 });
