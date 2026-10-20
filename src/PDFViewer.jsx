@@ -15874,7 +15874,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             // Header row + add-in column mapping come from the export kit
             // (src/services/exportFormats); the default kit is today's layout.
-            const exportKit = getExportKit(DEFAULT_EXPORT_KIT_ID);
+            const exportKit = getExportKit(selectedTemplate?.exportKitId) || getExportKit(DEFAULT_EXPORT_KIT_ID);
             const { headerRow, columnMapping, colOf, firstChecklistCol, lastChecklistCol } = buildSheetLayout(exportKit, checklistItems);
 
             // Add to schema mappings
