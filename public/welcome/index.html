@@ -74,12 +74,25 @@ footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
 footer a{text-decoration:none}
 footer .sp{margin-left:auto}
 @media (max-width:640px){nav .links a:not(.btn){display:none}.hero{padding-top:56px;padding-bottom:40px}}
+.demo{position:relative;max-width:900px;margin:0 auto;border:1px solid var(--line);border-radius:12px;overflow:hidden;aspect-ratio:16/10;background:#000}
+.demo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;animation:fade 12s infinite}
+.demo img:nth-child(1){opacity:1;animation-delay:0s}.demo img:nth-child(2){animation-delay:4s}.demo img:nth-child(3){animation-delay:8s}
+@keyframes fade{0%{opacity:0}4%{opacity:1}33%{opacity:1}37%{opacity:0}100%{opacity:0}}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:900px;margin:20px auto 0}
+.steps div{color:var(--muted);font-size:15px}.steps b{display:block;color:var(--text);font-size:16px;margin-bottom:2px}
+@media (max-width:640px){.steps{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.demo img{animation:none;opacity:0}.demo img:nth-child(2){opacity:1}}
+.faq{max-width:760px;margin:0 auto}
+.faq details{border-bottom:1px solid var(--line);padding:16px 0}
+.faq summary{cursor:pointer;font-weight:600;font-size:17px}
+.faq p{color:var(--muted);margin:10px 0 0}
 </style>
 </head>
 <body>
 <header><div class="wrap"><nav>
   <a class="brand" href="/welcome"><img src="/logo192.png" alt="" />Survey</a>
   <div class="links">
+    <a href="#how">How it works</a>
     <a href="#features">Features</a>
     <a href="#pricing">Pricing</a>
     <a href="#platforms">Get the app</a>
@@ -96,16 +109,31 @@ footer .sp{margin-left:auto}
     <a class="btn primary" href="/?signin=1">Open Survey in your browser</a>
     <a class="btn" href="#platforms">Desktop, tablet and phone</a>
   </div>
-  <div class="shot"><img src="/welcome/app-markup.jpg" width="1600" height="1000" alt="Survey with a floor plan open: numbered count markers on desks, a highlighted room name, a pen line, an arrow and a box around a room" /></div>
+  <div class="shot"><img src="/welcome/app-markup.webp" srcset="/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w" sizes="(max-width: 1000px) 100vw, 1000px" width="1600" height="1000" fetchpriority="high" alt="Survey with a floor plan open: numbered count markers on desks, a highlighted room name, a pen line, an arrow and a box around a room" /></div>
 </div>
+
+<section id="how"><div class="wrap">
+  <h2>How it works</h2>
+  <p class="lead">From PDF to finished markup in three steps.</p>
+  <div class="demo" role="img" aria-label="Walkthrough: a floor plan opens in Survey, then gets marked up and counted">
+    <img src="/welcome/step-open.webp" srcset="/welcome/step-open-800.webp 800w, /welcome/step-open.webp 1600w" sizes="(max-width: 1000px) 100vw, 1000px" width="1600" height="1000" alt="" loading="lazy" />
+    <img src="/welcome/app-markup.webp" srcset="/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w" sizes="(max-width: 1000px) 100vw, 1000px" width="1600" height="1000" alt="" loading="lazy" />
+    <img src="/welcome/app-counts.webp" width="680" height="440" alt="" loading="lazy" />
+  </div>
+  <div class="steps">
+    <div><b>1. Open your PDF</b>Drop in a drawing set from your computer or OneDrive.</div>
+    <div><b>2. Mark it up</b>Pen, highlighter, shapes, clouds and callouts.</div>
+    <div><b>3. Count and share</b>Tap to count, then send totals to Excel or share with your team.</div>
+  </div>
+</div></section>
 
 <section id="features"><div class="wrap">
   <h2>Everything you need on the plans</h2>
   <p class="lead">Fast tools that feel like pen on paper, made for people who live in drawing sets.</p>
   <div class="rows">
-    <div class="row"><div class="pic"><img src="/welcome/app-counts.jpg" width="680" height="440" loading="lazy" alt="Numbered count markers placed on desks in an open office" /></div><div><h3>Count anything with a tap</h3><p>Tap to drop numbered markers on outlets, fixtures or desks. Group them into categories and see the totals as you go.</p><ul><li>Numbers keep going across pages</li><li>Totals per category</li><li>Send counts to Excel</li></ul></div></div>
-    <div class="row"><div class="pic"><img src="/welcome/app-pen.jpg" width="850" height="400" loading="lazy" alt="A highlighted room name and a smooth pen line on a plan" /></div><div><h3>Pen and highlighter that feel like paper</h3><p>Smooth ink with Apple Pencil, a mouse or a trackpad. Your fingers pan and zoom, so you never draw by mistake.</p><ul><li>Pen, highlighter and eraser</li><li>Pick the color and width</li></ul></div></div>
-    <div class="row"><div class="pic"><img src="/welcome/app-shapes.jpg" width="880" height="400" loading="lazy" alt="A box drawn around a conference room" /></div><div><h3>Shapes, clouds and arrows</h3><p>Boxes, circles, clouds, lines, polylines and arrows. They stay sharp at any zoom and print the way you see them.</p><ul><li>Solid or dashed lines</li><li>Callouts and text boxes</li></ul></div></div>
+    <div class="row"><div class="pic"><img src="/welcome/app-counts.webp" width="680" height="440" loading="lazy" alt="Numbered count markers placed on desks in an open office" /></div><div><h3>Count anything with a tap</h3><p>Tap to drop numbered markers on outlets, fixtures or desks. Group them into categories and see the totals as you go.</p><ul><li>Numbers keep going across pages</li><li>Totals per category</li><li>Send counts to Excel</li></ul></div></div>
+    <div class="row"><div class="pic"><img src="/welcome/app-pen.webp" width="850" height="400" loading="lazy" alt="A highlighted room name and a smooth pen line on a plan" /></div><div><h3>Pen and highlighter that feel like paper</h3><p>Smooth ink with Apple Pencil, a mouse or a trackpad. Your fingers pan and zoom, so you never draw by mistake.</p><ul><li>Pen, highlighter and eraser</li><li>Pick the color and width</li></ul></div></div>
+    <div class="row"><div class="pic"><img src="/welcome/app-shapes.webp" width="880" height="400" loading="lazy" alt="A box drawn around a conference room" /></div><div><h3>Shapes, clouds and arrows</h3><p>Boxes, circles, clouds, lines, polylines and arrows. They stay sharp at any zoom and print the way you see them.</p><ul><li>Solid or dashed lines</li><li>Callouts and text boxes</li></ul></div></div>
   </div>
   <div class="grid">
     <div class="card"><div class="ico">✏️</div><h3>Pen, highlight and shapes</h3><p>Smooth ink, highlighters, clouds, arrows, lines and boxes. Works with Apple Pencil and a mouse.</p></div>
@@ -137,6 +165,18 @@ footer .sp{margin-left:auto}
   </div>
 </div></section>
 
+<section id="faq"><div class="wrap">
+  <h2>Questions</h2>
+  <div class="faq">
+    <details><summary>Do I need to install anything?</summary><p>No. Survey runs in Chrome, Edge and Safari. Just open surveytool.app and sign in.</p></details>
+    <details><summary>Does it work on iPad with Apple Pencil?</summary><p>Yes. The Pencil draws and your fingers pan and zoom, so you never mark the page by mistake.</p></details>
+    <details><summary>Is it free?</summary><p>Yes. The Free plan gives you 1 project, 5 documents and 100MB of storage. Pro adds unlimited projects and documents, 10GB of storage, survey tools and Excel export.</p></details>
+    <details><summary>Can I cancel Pro any time?</summary><p>Yes. You can cancel from your account settings and keep Pro until the end of the period you paid for.</p></details>
+    <details><summary>Where are my files kept?</summary><p>Your markups save to the cloud so they sync to every device. See our <a href="/privacy.html">privacy policy</a> for details.</p></details>
+    <details><summary>Can my team work on the same drawings?</summary><p>Yes. Invite people as viewers or editors. Enterprise adds live editing together, admin tools and SSO.</p></details>
+  </div>
+</div></section>
+
 <section class="final"><div class="wrap">
   <h2>Ready to mark up your next set?</h2>
   <p class="lead">Free to start. Upgrade when your team needs more.</p>
@@ -149,6 +189,7 @@ footer .sp{margin-left:auto}
   <a href="/privacy.html">Privacy</a>
   <a href="/terms.html">Terms</a>
   <a href="#pricing">Pricing</a>
+  <a href="#faq">FAQ</a>
   <a href="mailto:isaiahcalvo123@gmail.com">Contact</a>
   <a class="sp" href="/?signin=1">Sign in</a>
 </div></footer>
