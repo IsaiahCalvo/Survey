@@ -1,0 +1,167 @@
+name: Native app check (iOS + Android)
+
+# Builds the real Capacitor iOS app (not Safari / Expo Go - that is
+# ios-sim.yml) on a GitHub macOS runner, installs it in an iPhone simulator,
+# launches it and checks it stays up. So native changes can be tested without
+# the owner's Mac. Screenshots and logs are uploaded as the run artifact.
+#
+# Runs on any PR that can change the native app (web UI included: the app
+# ships the same bundle), plus manual runs. The repo is public, so macOS
+# runner minutes are free.
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'android/**'
+      - 'capacitor.config.ts'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ios-native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-native-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  native:
+    name: Build and launch iOS app
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      OUT: ${{ github.workspace }}/ios-native-out
+      DEVICE: iPhone 16
+      BUNDLE_ID: com.kalvoe.survey
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Build web bundle
+        run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - run: npx cap sync ios
+      - name: Build app for the simulator
+        run: |
+          mkdir -p "$OUT"
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build 2>&1 \
+            | tee "$OUT/xcodebuild.log" | grep -E "error:|warning: .*Info.plist|BUILD (SUCCEEDED|FAILED)"
+          test "${PIPESTATUS[0]}" = 0
+      - name: Check the built app
+        run: |
+          APP=$(find build/ios/Build/Products -maxdepth 2 -name 'App.app' | head -1)
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          for k in NSCameraUsageDescription NSMicrophoneUsageDescription NSPhotoLibraryUsageDescription; do
+            /usr/libexec/PlistBuddy -c "Print :$k" "$APP/Info.plist" >/dev/null || { echo "::error::missing $k"; exit 1; }
+          done
+          # Native plugins the web code calls must be registered in the shell.
+          for p in FilesystemPlugin SharePlugin; do
+            grep -q "$p" "$APP/capacitor.config.json" || { echo "::error::$p not registered"; exit 1; }
+          done
+      - name: Install, launch and stay up
+        run: |
+          UDID=$(xcrun simctl list devices available -j | node -e '
+            const d=JSON.parse(require("fs").readFileSync(0)).devices;
+            const all=Object.entries(d).filter(([r])=>r.includes("iOS")).flatMap(([,l])=>l);
+            const m=all.reverse().find(x=>x.name===process.env.DEVICE)||all.find(x=>x.name.startsWith("iPhone"));
+            console.log(m.udid)')
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          for t in 10 25 45; do
+            sleep $((t - ${prev:-0})); prev=$t
+            xcrun simctl io "$UDID" screenshot "$OUT/launch-${t}s.png"
+          done
+          # Simulator apps run as ordinary host processes, so look for it there
+          # (launchctl inside the simulator was unreliable).
+          if ! pgrep -f "App.app/App" >/dev/null; then
+            echo "::error::the app is no longer running 45s after launch"
+            exit 1
+          fi
+          echo "App still running after 45s."
+      - name: Save logs
+        if: always()
+        run: |
+          xcrun simctl spawn booted log show --last 5m --predicate 'process == "App"' > "$OUT/app.log" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-native-results
+          path: ios-native-out
+          retention-days: 7
+
+  android:
+    name: Build and launch Android app (Pixel emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OUT: ${{ github.workspace }}/android-native-out
+      APP_ID: com.kalvoe.survey
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Build web bundle
+        run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - run: npx cap sync android
+      - name: Build debug APK
+        run: cd android && ./gradlew --no-daemon assembleDebug
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Install, launch and stay up on a Pixel emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          disable-animations: true
+          script: |
+            mkdir -p "$OUT"
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell monkey -p "$APP_ID" -c android.intent.category.LAUNCHER 1
+            sleep 10; adb exec-out screencap -p > "$OUT/launch-10s.png"
+            sleep 15; adb exec-out screencap -p > "$OUT/launch-25s.png"
+            sleep 20; adb exec-out screencap -p > "$OUT/launch-45s.png"
+            adb logcat -d > "$OUT/logcat.txt" || true
+            adb shell pidof "$APP_ID" || { echo "::error::the app is no longer running 45s after launch"; exit 1; }
+            echo "App still running after 45s."
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-native-results
+          path: android-native-out
+          retention-days: 7
