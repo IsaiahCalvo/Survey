@@ -95,3 +95,24 @@ test('no source, range/CORS failure and timeout fall back (null) without throwin
   assert.equal(hanging.destroyed, 1);
   assert.deepEqual(reasons, ['no-stream-source', 'sign failed', 'range 403', 'stream open timed out']);
 });
+
+import { shouldRetryStreamedOpenWithDownload } from '../src/services/cloudPdfStream.js';
+
+test('a failure after a streamed open retries once through the download', () => {
+  assert.equal(shouldRetryStreamedOpenWithDownload({ openedByStream: true, filePath: 'a.pdf', forced: new Set() }), true);
+  assert.equal(shouldRetryStreamedOpenWithDownload({ openedByStream: true, filePath: 'a.pdf', forced: new Set(['a.pdf']) }), false);
+  assert.equal(shouldRetryStreamedOpenWithDownload({ openedByStream: false, filePath: 'a.pdf', forced: new Set() }), false);
+});
+
+test('a timed-out open leaves no unhandled rejection', async () => {
+  let rejectLate;
+  const lib = { VerbosityLevel: {}, getDocument: () => ({ promise: new Promise((_, r) => { rejectLate = r; }), destroy: async () => {} }) };
+  const unhandled = [];
+  const onUnhandled = (e) => unhandled.push(e);
+  process.on('unhandledRejection', onUnhandled);
+  assert.equal(await tryOpenCloudPdfStream({ pdfjsReady: Promise.resolve(lib), filePath: 'a', source: async () => ({ url: 'u' }), timeoutMs: 5 }), null);
+  rejectLate(new Error('late'));
+  await new Promise((r) => setTimeout(r, 20));
+  process.off('unhandledRejection', onUnhandled);
+  assert.equal(unhandled.length, 0);
+});

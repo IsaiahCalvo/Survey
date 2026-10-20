@@ -356,7 +356,7 @@ import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
-import { chooseCloudPdfOpenPath, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
+import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
 import { getAnnotationBBox, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
@@ -24142,6 +24142,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Hoisted so the outer catch's rewrite-and-retry path can reuse
       // bytes we've already fetched instead of re-downloading.
       let arrayBuffer;
+      // Set once a streamed (range-request) open succeeds: a later range
+      // failure (page 1, sizing) reloads through the full download instead.
+      let openedByStream = false;
       try {
         // Note: verbosity cannot be set directly on imports in ES modules
         // PDF.js will use default verbosity level
@@ -24197,12 +24200,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             onAllBytes: (bytes) => {
               if (!pdfBytesHavePresentationTag(bytes)) return;
               streamNeedsBytesPathsRef.current.add(streamPath);
-              if (!isCancelled) setLoadRetryToken((t) => t + 1);
+              // Not after cleanup, nor once a page view replaced this file.
+              if (!isCancelled && latestPdfFileRef.current === pdfFile) setLoadRetryToken((t) => t + 1);
             },
           }) : null;
           if (isCancelled) { try { await streamed?.pdf?.destroy(); } catch { /* noop */ } return; }
           if (streamed?.pdf) {
             streamedPdf = streamed.pdf;
+            openedByStream = true;
             perfLoad.mark(docName, 'PDF.js document opened (streamed)');
           } else {
           // Supabase file - download it
@@ -24726,6 +24731,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         perfLoad.end(docName);
         loadTrace('❌ LOAD ERROR', String(error?.message || error));
         if (isCancelled) return;
+        if (shouldRetryStreamedOpenWithDownload({ openedByStream, filePath: pdfFile?.filePath, forced: streamNeedsBytesPathsRef.current })) {
+          streamNeedsBytesPathsRef.current.add(pdfFile.filePath);
+          setLoadRetryToken((t) => t + 1);
+          return;
+        }
         // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed object
         // streams that pdf.js trips on at parse or page-load time ("bad
         // ObjStm stream"). Re-save via pdf-lib with plain xref and retry

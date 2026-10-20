@@ -80,6 +80,8 @@ export async function tryOpenCloudPdfStream({
     const pdfjs = lib?.getDocument ? lib : pdfjsLib;
     if (isCancelled()) return null;
     loadingTask = pdfjs.getDocument(streamGetDocumentOptions(opened.url, pdfjs.VerbosityLevel?.ERRORS));
+    // A timeout leaves this promise behind; it must not become unhandled.
+    loadingTask.promise?.catch?.(() => {});
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('stream open timed out')), timeoutMs);
     });
@@ -99,4 +101,13 @@ export async function tryOpenCloudPdfStream({
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * After a streamed open succeeded, a later failure (a range request for page 1
+ * or page sizing) reloads once through the full download rather than showing
+ * a load error. Once per path: the retry is a download, so it cannot loop.
+ */
+export function shouldRetryStreamedOpenWithDownload({ openedByStream, filePath, forced }) {
+  return Boolean(openedByStream && filePath && !forced?.has?.(filePath));
 }
