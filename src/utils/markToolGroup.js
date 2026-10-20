@@ -30,6 +30,8 @@ export const TOOL_GROUP_BY_TOOL = Object.freeze({
   counter: 'shape',
   text: 'review',
   callout: 'review',
+  // KAL-407: the Symbols tool sits in the Text group's row.
+  symbol: 'review',
 });
 
 /** Survey Markers: placed by their own tool, picked by it and by Select / Pan. */

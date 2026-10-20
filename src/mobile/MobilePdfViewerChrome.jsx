@@ -148,6 +148,8 @@ const TOOL_GROUPS = {
     tools: [
       { id: 'text', label: 'Text', icon: 'textBox' },
       { id: 'callout', label: 'Callout', icon: 'callout' },
+      // KAL-407: engineering symbols (opens the Symbols sheet).
+      { id: 'symbol', label: 'Symbols', icon: 'library' },
     ],
   },
 };

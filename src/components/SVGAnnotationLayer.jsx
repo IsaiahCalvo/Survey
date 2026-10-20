@@ -177,6 +177,7 @@ import {
 // w58: hold Cmd (Mac) / Ctrl (Windows) to move the selection from anywhere in its box.
 import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes } from '../utils/moveModifier.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
+import { isSymbolStamp } from '../utils/symbolLibrary.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
 import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
@@ -3723,7 +3724,7 @@ const SVGAnnotationLayerBody = memo(({
       } else if (objectType === 'path' && Array.isArray(obj.path) && obj.path.length > 0) {
         element = renderPath(obj, i);
       } else if (isPdfStampProxy(obj)) {
-        element = <image {...getPdfStampProxySvgProps(obj)} data-pdf-stamp-proxy="true" />;
+        element = <image {...getPdfStampProxySvgProps(obj)} data-pdf-stamp-proxy="true" data-symbol-stamp={isSymbolStamp(obj) ? obj.data.symbolStamp.id : undefined} />;
       } else if (objectType === 'rect') {
         element = renderRect(obj, i);
       } else if (objectType === 'line') {
@@ -7893,7 +7894,9 @@ const SVGAnnotationLayerBody = memo(({
         }
 
         const textMarkupSelectionChrome = getTextMarkupSelectionChrome(selectionObj);
-        const isLockedStampProxy = isPdfStampProxy(selectionObj);
+        // KAL-407: a library symbol is a stamp you placed, so it resizes and
+        // rotates like a shape; only stamps imported from the PDF stay locked.
+        const isLockedStampProxy = isPdfStampProxy(selectionObj) && !isSymbolStamp(selectionObj);
 
         // Apply visualTransform to bbox so overlay follows annotation live during drag/resize/rotate
         // UX 2026-09-09: the object the selection chrome (cloud cusps / hull)
