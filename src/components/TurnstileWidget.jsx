@@ -13,7 +13,7 @@
  * can decide not to hard-block. When Supabase enforcement is ON the server will
  * still reject a tokenless request, but the client never adds an *extra* lockout.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { isTurnstileEnabled, resolveTurnstileSiteKey } from './turnstileConfig';
 
 // Public site key — safe to ship in client code (Cloudflare renders it in HTML).
@@ -55,6 +55,14 @@ export default function TurnstileWidget({ onToken, onError, action }) {
   // sheet, and its 65px box used to push the sheet up as it landed. The room is
   // kept from the first frame and only given back if the check cannot load.
   const [unavailable, setUnavailable] = useState(false);
+  // The normal check is a fixed 300px wide and spilled out of the sign-in sheet
+  // on 320px phones (iPhone SE). Below that width use the narrow, taller one.
+  const [compact, setCompact] = useState(false);
+  // Measured before paint so the narrow box's room is kept from the first frame too.
+  useLayoutEffect(() => {
+    const w = containerRef.current?.clientWidth || 0;
+    if (w > 0 && w < 300) setCompact(true);
+  }, []);
 
   useEffect(() => {
     if (!TURNSTILE_ENABLED) return undefined;
@@ -62,12 +70,15 @@ export default function TurnstileWidget({ onToken, onError, action }) {
     loadTurnstile()
       .then((ts) => {
         if (cancelled || !ts || !containerRef.current) return;
+        const w = containerRef.current.clientWidth;
+        const narrow = w > 0 && w < 300;
         widgetIdRef.current = ts.render(containerRef.current, {
           sitekey: TURNSTILE_SITE_KEY,
           action,
           // Dark like the app. 'auto' follows the phone's own light/dark
           // setting and flashed a white box onto the dark sheet.
           theme: 'dark',
+          size: narrow ? 'compact' : 'normal',
           callback: (token) => onToken?.(token),
           'expired-callback': () => onToken?.(''),
           'error-callback': () => {
@@ -97,5 +108,5 @@ export default function TurnstileWidget({ onToken, onError, action }) {
   }, []);
 
   if (!TURNSTILE_ENABLED) return null;
-  return <div ref={containerRef} className="turnstile-widget" style={{ marginTop: 12, minHeight: unavailable ? 0 : 65 }} />;
+  return <div ref={containerRef} className="turnstile-widget" style={{ marginTop: 12, minHeight: unavailable ? 0 : (compact ? 140 : 65) }} />;
 }

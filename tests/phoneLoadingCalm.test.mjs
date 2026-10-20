@@ -82,7 +82,8 @@ test('on a touch screen the sign-in sheet opens without raising the keyboard or 
 
 test('the human check keeps its room from the first frame and is dark', () => {
   assert.match(TURNSTILE, /theme: 'dark'/);
-  assert.match(TURNSTILE, /minHeight: unavailable \? 0 : 65/);
+  assert.match(TURNSTILE, /size: narrow \? 'compact' : 'normal'/);
+  assert.match(TURNSTILE, /minHeight: unavailable \? 0 : \(compact \? 140 : 65\)/);
 });
 
 test('a tapped document answers at once with the quiet "Opening <file>…"', () => {
