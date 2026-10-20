@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 // The default export was deleted in 6749a7d28; the named export is the same function.
 import { showToast } from '../src/utils/toast.js';
 
-test('showToast no-ops without window or message', () => {
+test('showToast shows nothing (returns null) without window or message', () => {
   const original = globalThis.window;
   delete globalThis.window;
-  assert.equal(showToast('hi'), undefined);
+  assert.equal(showToast('hi'), null);
   globalThis.window = original;
-  assert.equal(showToast(null), undefined);
-  assert.equal(showToast(''), undefined);
+  assert.equal(showToast(null), null);
+  assert.equal(showToast(''), null);
 });
 
 test('showToast dispatches an app-toast CustomEvent', () => {
