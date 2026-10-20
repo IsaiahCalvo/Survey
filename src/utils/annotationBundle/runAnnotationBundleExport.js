@@ -16,6 +16,7 @@ export async function loadAllHistoryRows(documentId, listEvents) {
   let before = null;
   let beforeId = null;
   try {
+    let complete = false;
     for (let i = 0; i < MAX_PAGES; i += 1) {
       const loadedClientEventIds = rows.map((row) => row?.client_event_id).filter(Boolean);
       const page = await listEvents(documentId, { limit: PAGE_SIZE, before, beforeId, loadedClientEventIds });
@@ -31,12 +32,14 @@ export async function loadAllHistoryRows(documentId, listEvents) {
       // The service merges local rows into the page and trims the merged list
       // to the limit, so a short SERVER count does not mean History ran out:
       // only a short MERGED page does.
-      if (!added || (page || []).length < PAGE_SIZE || !server.length) break;
+      if (!added || (page || []).length < PAGE_SIZE || !server.length) { complete = true; break; }
       const oldest = server[server.length - 1];
       before = oldest.occurred_at;
       beforeId = oldest.id;
     }
-    return { rows, available: true };
+    // Hitting the page cap means older rows were left unread: say so.
+    if (!complete) console.warn('[ReviewBundle] History has more rows than the export reads; older changes are left out.');
+    return { rows, available: complete };
   } catch (error) {
     console.warn('[ReviewBundle] History could not be read:', error);
     return { rows, available: false };

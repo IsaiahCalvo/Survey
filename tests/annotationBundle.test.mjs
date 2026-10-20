@@ -222,3 +222,30 @@ test('custom stamps left out of XFDF still count as marks, get page pictures and
   assert.match(partial.coverage.note, /could not be fully read/);
   assert.doesNotMatch(partial.coverage.note, /no changes are listed/);
 });
+
+test('History past the page cap is reported as not fully read', async () => {
+  const { loadAllHistoryRows } = await import('../src/utils/annotationBundle/runAnnotationBundleExport.js');
+  let n = 0;
+  const endless = async (documentId, { limit }) => Array.from({ length: limit }, () => { n += 1; return { id: `r${n}`, client_event_id: `r${n}`, occurred_at: at(0) }; });
+  const result = await loadAllHistoryRows('doc-1', endless);
+  assert.equal(result.available, false, 'a capped read must not claim to be complete');
+  assert.equal(result.rows.length, 10000);
+});
+
+test('a contact sheet the device cannot draw does not fail the export', { skip: !napiCanvas }, async () => {
+  const sourceBytes = await makeSourcePdf();
+  let calls = 0;
+  const result = await renderBundleThumbnails({
+    annotatedBytes: sourceBytes,
+    pageNumbers: [1, 2],
+    pdfjs: pdfjsLib,
+    createCanvas: (w, h) => {
+      calls += 1;
+      if (calls > 2) throw new Error('canvas too large');
+      return napiCanvas.createCanvas(w, h);
+    },
+    toPng: async (canvas) => new Uint8Array(await canvas.encode('png')),
+  });
+  assert.deepEqual(result.pages, [1, 2]);
+  assert.deepEqual(result.files.map((f) => f.name), ['thumbnails/page-001.png', 'thumbnails/page-002.png']);
+});

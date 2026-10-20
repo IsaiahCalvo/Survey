@@ -12,6 +12,8 @@ import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber } from 'pdf-lib';
 export const THUMBNAIL_WIDTH = 320;
 export const MAX_THUMBNAIL_PAGES = 60;
 export const SHEET_COLUMNS = 3;
+// 8 rows of 3: about 1000 x 2400 px for letter pages, inside mobile canvas limits.
+export const MAX_SHEET_PAGES = 24;
 const GAP = 16;
 const LABEL_H = 22;
 
@@ -93,7 +95,13 @@ export async function renderBundleThumbnails({
       page.cleanup?.();
     }
     if (drawn.length) {
-      files.push({ name: 'thumbnails/contact-sheet.png', data: await toPng(drawSheet(drawn, createCanvas)) });
+      // The sheet is a convenience: if the device cannot make a canvas that
+      // big, keep the per-page pictures and leave the sheet out.
+      try {
+        files.push({ name: 'thumbnails/contact-sheet.png', data: await toPng(drawSheet(drawn.slice(0, MAX_SHEET_PAGES), createCanvas)) });
+      } catch (error) {
+        console.warn('[ReviewBundle] contact sheet skipped:', error);
+      }
     }
   } finally {
     await task.destroy();
