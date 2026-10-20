@@ -133,9 +133,28 @@ jobs:
             const all=Object.entries(d).filter(([r])=>r.includes("iOS")).flatMap(([,l])=>l);
             console.log((all.reverse().find(x=>x.name==="iPhone 16")||all.find(x=>x.name.startsWith("iPhone"))).udid)')
           xcrun simctl boot "$UDID"
-      # Starts the Vite dev server (for the ?testPdf fixture route), points the
-      # app at it, builds and runs the AppNativePinch UI tests.
+      # The UI tests give the viewer 30s to appear. A cold Vite dev server on a
+      # CI runner compiles the viewer slower than that, so start it here and
+      # load the test page once in headless Chromium first.
+      - name: Start and warm the Vite dev server
+        run: |
+          (npm run dev:ui -- --host 127.0.0.1 --port 5179 --strictPort > vite.log 2>&1 &)
+          for i in $(seq 60); do curl -sf http://127.0.0.1:5179/ >/dev/null && break; sleep 2; done
+          npx playwright install chromium
+          node -e '
+            const { chromium } = require("playwright");
+            (async () => {
+              const b = await chromium.launch();
+              const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+              await p.goto("http://127.0.0.1:5179/?testPdf=clickable-link-test.pdf&mobileNav=tabs&nativeShell=capacitor", { timeout: 300000 });
+              await p.waitForSelector("canvas", { timeout: 300000 });
+              await b.close();
+              console.log("warm");
+            })().catch((e) => { console.error(e); process.exit(1); });'
+      # Points the app at that server, builds and runs the AppNativePinch UI tests.
       - run: npm run test:mobile-pinch-native
+        env:
+          MOBILE_QA_BASE_URL: http://127.0.0.1:5179
       - uses: actions/upload-artifact@v4
         if: always()
         with:
