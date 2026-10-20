@@ -4,6 +4,14 @@ import { readFileSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
+test('agent link waits for the session before Allow', () => {
+  const src = read('src/home/AgentLinkPage.jsx');
+  assert.match(src, /if \(auth\.loading \|\| !user\) return;/);
+  assert.match(src, /if \(auth\.loading\) \{/);
+  assert.doesNotMatch(src, /if \(!auth\.loading && !user\)/);
+  assert.ok(src.indexOf('if (auth.loading) {') < src.indexOf('>Allow<'), 'settle before the Allow form');
+});
+
 test('agent code input keeps 8 upper-case letters and numbers', async () => {
   const src = read('src/home/AgentLinkPage.jsx');
   const body = src.match(/export function normalizeAgentCode\(value\) \{([\s\S]*?)\n\}/)[1];

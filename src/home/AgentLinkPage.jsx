@@ -62,6 +62,7 @@ export default function AgentLinkPage() {
   useEffect(() => { loadLinks(); }, [loadLinks]);
 
   const approve = async () => {
+    if (auth.loading || !user) return;
     if (code.length !== 8) { setMessage('The code has 8 letters and numbers.'); return; }
     setBusy(true);
     const { data, error } = await supabase.rpc('approve_agent_link', { p_user_code: code });
@@ -81,7 +82,19 @@ export default function AgentLinkPage() {
     loadLinks();
   };
 
-  if (!auth.loading && !user) {
+  // AuthProvider starts with loading=true and user=null while it exchanges a
+  // return-from-sign-in URL. Wait for that to finish so Allow never fires
+  // without a session (same settle-first pattern as invite / reset-password).
+  if (auth.loading) {
+    return (
+      <div style={card}>
+        <h2 style={{ marginTop: 0 }}>Let an AI agent use Survey</h2>
+        <p style={{ fontSize: 14, margin: '8px 0 16px', color: C.inkSoft }}>Checking your sign-in. One moment…</p>
+      </div>
+    );
+  }
+
+  if (!user) {
     return (
       <div style={card}>
         <h2 style={{ marginTop: 0 }}>Sign in or create a free account</h2>
@@ -107,7 +120,7 @@ export default function AgentLinkPage() {
           placeholder="ABCD2345"
           style={{ flex: 1, minWidth: 0, padding: 10, fontSize: 18, letterSpacing: 2, borderRadius: 8, border: `1px solid ${C.ruleStrong}`, background: C.bg, color: C.ink }}
         />
-        <button style={btn} disabled={busy} onClick={approve}>Allow</button>
+        <button style={btn} disabled={busy || !user} onClick={approve}>Allow</button>
       </div>
       {message && <p style={{ fontSize: 14 }}>{message}</p>}
       {links.length > 0 && (
