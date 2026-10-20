@@ -28,7 +28,7 @@ export function registerDevFakeSmartFillProvider() {
   return registerMarkerShapeProvider({
     id: 'smartFill',
     label: 'Smart fill (test)',
-    icon: 'paintBucket',
+    icon: 'smartFillDrop',
     onPagePointerDown: async (context) => {
       if (typeof window !== 'undefined') {
         window.__fakeSmartFillCalls.push({

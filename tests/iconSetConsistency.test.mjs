@@ -38,6 +38,10 @@ const PAINTED_TAGS = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'poly
 const EXEMPT_RENDERERS = new Map([
   ['google', 'the Google brand mark, drawn to their spec in their colours'],
   ['oneDrive', 'the OneDrive brand logo, an <img>'],
+  // Owner's own traced Smart fill glyph (2026-10-14): a FILLED shape whose
+  // lines are ~20 units wide; the 18-unit outline thickens them to ~38 of 620,
+  // i.e. 1.47 at 24 - the house weight, which this stroke-only check can't see.
+  ['smartFillDrop', 'filled traced glyph; fill + outline = house weight'],
 ]);
 
 /*

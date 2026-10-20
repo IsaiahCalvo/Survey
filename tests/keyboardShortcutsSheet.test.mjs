@@ -173,6 +173,11 @@ const HANDLED = {
   backspace: () => /e\.key !== 'Delete' && e\.key !== 'Backspace'/.test(SRC.svg),
   escape: () => /resolveEscape\(/.test(SRC.viewer) && /'switch-to-pan'/.test(SRC.viewer)
     && /e\.key === 'Escape'\) \{[\s\S]{0,200}cancelPolyDraft\(\)/.test(SRC.svg),
+  // Chunk 6 (Drawboard canvas audit): PageUp / PageDown glide one view.
+  pageup: () => /event\.key !== 'PageDown' && event\.key !== 'PageUp'/.test(SRC.container)
+    && /event\.key === 'PageDown' \? screen : -screen/.test(SRC.container),
+  pagedown: () => /event\.key !== 'PageDown' && event\.key !== 'PageUp'/.test(SRC.container)
+    && /event\.key === 'PageDown' \? screen : -screen/.test(SRC.container),
   // Hold Space: pan without putting the tool down. While a box or lasso is
   // being dragged, Space switches Window / Crossing instead.
   space: () => /addEventListener\('keydown', activateSpacePan, true\)/.test(SRC.container)

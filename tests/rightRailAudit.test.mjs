@@ -195,7 +195,7 @@ test('typed page jump: Fit page, top at the top of the view, centred across, cla
 
 test('typed page jump wiring: the page field asks for Fit page after navigating; Fit page lands through the shared rule', () => {
   const commit = viewer.slice(viewer.indexOf('const commitPageInput = useCallback('), viewer.indexOf('const handlePageInputKeyDown'));
-  assert.match(commit, /goToPage\(value\);[\s\S]{0,400}if \(TYPED_PAGE_JUMP_FITS_PAGE\) handleZoomModeSelect\(ZOOM_MODES\.FIT_PAGE\);/);
+  assert.match(commit, /goToPage\(value(?:, \{ smooth: true \})?\);[\s\S]{0,400}if \(TYPED_PAGE_JUMP_FITS_PAGE\) handleZoomModeSelect\(ZOOM_MODES\.FIT_PAGE\);/);
   const zoomTo = container.slice(container.indexOf('const zoomToScale = useCallback('), container.indexOf('const goToPage = useCallback('));
   assert.match(zoomTo, /resolveFitPageLanding\(\{/);
   assert.match(container, /fitToPage: \(\) => zoomToScale\('fit'\)/);

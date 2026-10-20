@@ -38,6 +38,7 @@ import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/Sortable
 import { pickByIds } from './selectionById';
 import useMobileEdgeSwipeBack from './useMobileEdgeSwipeBack';
 import DismissBarrier from '../components/DismissBarrier';
+import { checkboxProps } from '../utils/keyActivate';
 import { isPhoneLayout } from '../utils/layoutMode.js';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
@@ -143,7 +144,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
 
   return createPortal(
     <>
-      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} />
+      <DismissBarrier insideRefs={[ref]} onDismiss={onClose} menu />
       <div
         ref={ref}
         role="menu"
@@ -900,6 +901,7 @@ export default function ProjectsFolderTree({
       <div
         key={`${keyPrefix}-${f.id}`}
         data-document-id={f.id}
+        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setFileMenu({ id: f.id, rect: { left: event.clientX, right: event.clientX + 168, top: event.clientY, bottom: event.clientY } }); setTeamMenu(null); }}
         className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}${fileSelect && isChecked ? ' is-selected' : ''}`}
         onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
       >
@@ -911,7 +913,8 @@ export default function ProjectsFolderTree({
         </div>
         {fileSelect ? (
           <span
-            onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
+            {...checkboxProps(isChecked, () => toggleFileSel(f.id), `Select ${f.name}`)}
+                        onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
             className={`projects-mobile-check ${isChecked ? 'checked' : ''}`}
           >
             {isChecked ? <Icon name="check" size={11} color="var(--accent-text)" /> : null}
@@ -1015,6 +1018,7 @@ export default function ProjectsFolderTree({
                   <div
                     data-drag-rearrange-row
                     data-project-id={p.id}
+                    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTeamMenu({ id: p.id, rect: { left: event.clientX, right: event.clientX + 184, top: event.clientY, bottom: event.clientY } }); setFileMenu(null); }}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
                     style={{
                       display: 'grid',
@@ -1062,6 +1066,7 @@ export default function ProjectsFolderTree({
                          disabled one. All four checkboxes in this file changed;
                          checked stays gold and 1.4px is unchanged. */
                       <span
+                        {...checkboxProps(isSel, () => toggleProjSel(p.id), `Select ${p.name}`)}
                         onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
                         data-drag-keep-fill style={{ width: 14, height: 14, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 2, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 4 }}
                       >
@@ -1107,7 +1112,7 @@ export default function ProjectsFolderTree({
                     size={1}
                     key={open.id}
                     {...projectNameField(open)}
-                    aria-label="Click to rename"
+                    aria-label="Project name"
                     {...hoverOnly(tip('Click to rename'))}
                     onDoubleClick={(e) => e.currentTarget.select()}
                     /* Same dotted rename line as the Templates editor
@@ -1197,6 +1202,7 @@ export default function ProjectsFolderTree({
                           <div
                             data-drag-rearrange-row
                             data-document-id={f.id}
+        onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setFileMenu({ id: f.id, rect: { left: event.clientX, right: event.clientX + 168, top: event.clientY, bottom: event.clientY } }); setTeamMenu(null); }}
                             onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
                             style={{
                               // UX 2026-09-17 (owner ruling): a ticked row lifts a
@@ -1235,7 +1241,8 @@ export default function ProjectsFolderTree({
                             <span className="mono meta" style={{ fontSize: 11, lineHeight: '16px' }}>{shortWhen(f)}</span>
                             {fileSelect ? (
                               <span
-                                onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
+                                {...checkboxProps(isChecked, () => toggleFileSel(f.id), `Select ${f.name}`)}
+                        onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
                                 style={{ width: 14, height: 14, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 2, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                               >
                                 {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
@@ -1409,6 +1416,7 @@ export default function ProjectsFolderTree({
                           <div
                             data-drag-rearrange-row
                             data-project-id={p.id}
+                    onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTeamMenu({ id: p.id, rect: { left: event.clientX, right: event.clientX + 184, top: event.clientY, bottom: event.clientY } }); setFileMenu(null); }}
                             role="button"
                             tabIndex={0}
                             /* Selected takes the panel's cue — a --surface-3
@@ -1723,7 +1731,8 @@ export default function ProjectsFolderTree({
               </div>
               {jobsEdit ? (
                 <span
-                  onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
+                  {...checkboxProps(isSel, () => toggleProjSel(p.id), `Select ${p.name}`)}
+                        onClick={(e) => { e.stopPropagation(); toggleProjSel(p.id); }}
                   style={{ width: 16, height: 16, border: `1.4px solid ${isSel ? 'var(--gold)' : 'var(--border-strong)'}`, background: isSel ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   {isSel && <Icon name="check" size={10} color="var(--accent-text)" />}
@@ -1831,7 +1840,7 @@ export default function ProjectsFolderTree({
               <input
                 key={`mobile-${open.id}`}
                 {...projectNameField(open)}
-                aria-label="Click to rename"
+                aria-label="Project name"
                 {...hoverOnly(tip('Click to rename'))}
                 style={{
                   background: 'transparent',
@@ -1884,6 +1893,7 @@ export default function ProjectsFolderTree({
                     </div>
                     {fileSelect ? (
                       <span
+                        {...checkboxProps(isChecked, () => toggleFileSel(f.id), `Select ${f.name}`)}
                         onClick={(e) => { e.stopPropagation(); toggleFileSel(f.id); }}
                         style={{ width: 16, height: 16, border: `1.4px solid ${isChecked ? 'var(--gold)' : 'var(--border-strong)'}`, background: isChecked ? 'var(--gold)' : 'transparent', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', justifySelf: 'center' }}
                       >
@@ -1992,6 +2002,9 @@ export default function ProjectsFolderTree({
             items={[
               // "Add member" opens the invite/share popup — same flow as
               // "Get link to project". Only "Manage project" opens the modal.
+              { label: 'Duplicate', onClick: () => duplicateProjects([proj.id]) },
+              { label: 'Share', onClick: () => onShare?.(proj) },
+              { label: 'Delete', danger: true, onClick: () => { void deleteProjects([proj.id]); } },
               { icon: 'users', label: 'Add member', onClick: () => onShare && onShare(proj) },
               { icon: 'arrow-r', label: 'Get link to project', onClick: () => onShare && onShare(proj) },
               { icon: 'upload', label: 'Upload files', onClick: () => { setOpenId(proj.id); addFiles(proj); } },
@@ -2023,6 +2036,9 @@ export default function ProjectsFolderTree({
             onClose={() => setFileMenu(null)}
             minWidth={168}
             items={[
+              { label: 'Duplicate', onClick: () => duplicateFiles([f.id]) },
+              { label: 'Move to project', onClick: () => openMoveCopy([f], 'move') },
+              { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
               { label: 'Delete', danger: true, onClick: () => deleteFiles([fileMenu.id]) },

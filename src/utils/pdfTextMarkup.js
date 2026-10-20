@@ -1,3 +1,4 @@
+import { pagePresentationFrame } from './pagePresentation.js';
 import { maxOf, minOf } from './arrayExtrema.js';
 
 const MARKUP_TYPES = new Set(['highlight', 'underline', 'squiggly', 'strikeout', 'link', 'redact']);
@@ -117,10 +118,12 @@ export function clientRectToPageQuad(clientRect, pageRect, pageSize) {
   if (!clientRect || !pageRect || !pageSize || pageRect.width <= 0 || pageRect.height <= 0) return null;
   const scaleX = Number(pageSize.width) / pageRect.width;
   const scaleY = Number(pageSize.height) / pageRect.height;
-  const left = Math.max(0, Math.min(Number(pageSize.width), (clientRect.left - pageRect.left) * scaleX));
-  const right = Math.max(0, Math.min(Number(pageSize.width), (clientRect.right - pageRect.left) * scaleX));
-  const top = Math.max(0, Math.min(Number(pageSize.height), (clientRect.top - pageRect.top) * scaleY));
-  const bottom = Math.max(0, Math.min(Number(pageSize.height), (clientRect.bottom - pageRect.top) * scaleY));
+  let left = Math.max(0, Math.min(Number(pageSize.width), (clientRect.left - pageRect.left) * scaleX));
+  let right = Math.max(0, Math.min(Number(pageSize.width), (clientRect.right - pageRect.left) * scaleX));
+  let top = Math.max(0, Math.min(Number(pageSize.height), (clientRect.top - pageRect.top) * scaleY));
+  let bottom = Math.max(0, Math.min(Number(pageSize.height), (clientRect.bottom - pageRect.top) * scaleY));
+  if (pageRect.mirrorH) [left, right] = [Number(pageSize.width) - right, Number(pageSize.width) - left];
+  if (pageRect.mirrorV) [top, bottom] = [Number(pageSize.height) - bottom, Number(pageSize.height) - top];
   if (right - left < 0.01 || bottom - top < 0.01) return null;
   return {
     x1: round(left), y1: round(top),
@@ -590,10 +593,10 @@ const resizeTextMarkupFromTextLayer = (annotation, handleId, pointer, pageWidth,
   if (!Number.isFinite(storedRange?.start) || !Number.isFinite(storedRange?.end) || !Number.isFinite(pageNumber)) return null;
   const pageEl = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
   const textLayer = pageEl?.querySelector?.('.pdfjsTextLayer.is-interactive');
-  const pageRect = pageEl?.getBoundingClientRect?.();
+  const pageRect = pagePresentationFrame(pageEl);
   if (!textLayer || !pageRect?.width || !pageRect?.height || !pageWidth || !pageHeight) return null;
-  const clientX = pageRect.left + pointer.x * pageRect.width / pageWidth;
-  const clientY = pageRect.top + pointer.y * pageRect.height / pageHeight;
+  const clientX = pageRect.left + (pageRect.mirrorH ? pageWidth - pointer.x : pointer.x) * pageRect.width / pageWidth;
+  const clientY = pageRect.top + (pageRect.mirrorV ? pageHeight - pointer.y : pointer.y) * pageRect.height / pageHeight;
   const candidate = textOffsetAtClientPoint(textLayer, clientX, clientY);
   if (!Number.isFinite(candidate)) return null;
   const fixed = Number.isFinite(Number(fixedOffset))
@@ -738,7 +741,8 @@ export function getSelectionPageRanges(selection, pageSizes) {
   if (!selectedText.trim()) return [];
   const range = selection.getRangeAt(0);
   const pages = [];
-  const textLayers = Array.from(document.querySelectorAll('.pdfjsTextLayer.is-interactive'));
+  // Text Select's live layer, or Pan's (utils/panTextSelect.js).
+  const textLayers = Array.from(document.querySelectorAll('.pdfjsTextLayer.is-interactive, .pdfjsTextLayer.is-pan-text'));
   for (const textLayer of textLayers) {
     try {
       if (!range.intersectsNode(textLayer)) continue;
@@ -759,7 +763,7 @@ export function getSelectionPageRanges(selection, pageSizes) {
     }
     const pageText = String(pageRange.toString() || '');
     if (!pageText.trim()) continue;
-    const pageRect = pageEl.getBoundingClientRect();
+    const pageRect = pagePresentationFrame(pageEl);
     const quads = Array.from(pageRange.getClientRects?.() || [])
       .map((rect) => clientRectToPageQuad(rect, pageRect, pageSize))
       .filter(Boolean);
@@ -807,8 +811,8 @@ export function restorePdfjsTextSelection(selectionPayload) {
   if (!pages.length) return false;
   const first = pages[0];
   const last = pages.at(-1);
-  const firstLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${first.pageNumber}"] .pdfjsTextLayer.is-interactive`);
-  const lastLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${last.pageNumber}"] .pdfjsTextLayer.is-interactive`);
+  const firstLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${first.pageNumber}"] .pdfjsTextLayer:is(.is-interactive, .is-pan-text)`);
+  const lastLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${last.pageNumber}"] .pdfjsTextLayer:is(.is-interactive, .is-pan-text)`);
   const start = boundaryAtTextOffset(firstLayer, first.textRange.start);
   const end = boundaryAtTextOffset(lastLayer, last.textRange.end);
   if (!start || !end) return false;

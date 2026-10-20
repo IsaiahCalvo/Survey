@@ -207,3 +207,15 @@ test('review round: renumbered counters are not "erased part of"; cut / place wo
   assert.ok(JSON.stringify(moved.previewBefore).length < 400, 'the Before copy keeps only what the ghost needs');
   assert.equal(moved.previewBefore.stroke, '#ff0000');
 });
+
+
+test('status picks combine without hiding another selected kind and clear to show all', () => {
+  const rows = ['annotation_created', 'annotation_moved', 'annotation_deleted', 'annotation_restored'].map((event_type, i) => ({
+    id: `status-${i}`, client_event_id: `status-${i}`, event_type: i === 0 || i === 1 || i === 3 ? 'local_annotation_history_added' : event_type, annotation_id: `mark-${i}`,
+    user_id: 'u', occurred_at: new Date(1700000000000 + i * 1000).toISOString(), payload: { annotationType: 'rect', actionType: ['create', 'move', 'delete', 'restore'][i], restoredFromHistory: i === 3 },
+  }));
+  const feed = buildHistoryFeed(rows, { statuses: ['created', 'deleted'] });
+  assert.deepEqual(feed.items.filter((item) => item.type === 'group').map((item) => item.group.last.status).sort(), ['created', 'deleted']);
+  assert.equal(buildHistoryFeed(rows, { statuses: ['restored'] }).groupCount, 1);
+  assert.equal(buildHistoryFeed(rows, { statuses: [] }).groupCount, 4);
+});

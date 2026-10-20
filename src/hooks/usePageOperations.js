@@ -173,12 +173,18 @@ export function usePageOperations({
     if (records.length === 0) return;
     const currentPdfFile = pdfFileRef.current;
     try {
+      // An Undo of a delete copies the page back from the document as first
+      // opened; those bytes are read only when such a step is saved.
+      const steps = flattenOperations(records.map((record) => record.pdfOperation)).filter((operation) => operation.type !== 'presentation');
+      if (steps.length === 0) {
+        pendingRef.current = pendingRef.current.slice(records.length);
+        statusRef.current.savedCount += 1;
+        publishStatus();
+        return;
+      }
       if (!currentPdfFile || !callbacksRef.current.onUpdatePDFFile) {
         throw new Error('PDF file not available for manipulation');
       }
-      // An Undo of a delete copies the page back from the document as first
-      // opened; those bytes are read only when such a step is saved.
-      const steps = flattenOperations(records.map((record) => record.pdfOperation));
       const needsBase = steps.some((step) => step?.type === 'restore' && !step.entry?.blank);
       const baseBytes = needsBase && baseFileRef.current ? await baseFileRef.current.arrayBuffer() : null;
       const operations = steps.map((step) => (
@@ -503,26 +509,15 @@ export function usePageOperations({
   ), [runMutation, runPlan]);
 
   const handleMirrorPage = useCallback((pageNumber, direction) => {
-    setPageTransformations((prev) => {
-      const current = prev[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
-      return {
-        ...prev,
-        [pageNumber]: {
-          ...current,
-          [direction === 'horizontal' ? 'mirrorH' : 'mirrorV']:
-            !current[direction === 'horizontal' ? 'mirrorH' : 'mirrorV'],
-        },
-      };
-    });
-  }, [setPageTransformations]);
+    const state = pageStateRef.current?.next || getPageState?.();
+    const current = state?.pageTransformations?.[pageNumber] || { rotation: 0, mirrorH: false, mirrorV: false };
+    const key = direction === 'horizontal' ? 'mirrorH' : 'mirrorV';
+    return runMutation({ type: 'presentation', page: pageNumber, pageTransformation: { ...current, [key]: !current[key] } }, 'mirroring');
+  }, [getPageState, runMutation]);
 
-  const handleResetPage = useCallback((pageNumber) => {
-    setPageTransformations((prev) => {
-      const next = { ...prev };
-      delete next[pageNumber];
-      return next;
-    });
-  }, [setPageTransformations]);
+  const handleResetPage = useCallback((pageNumber) => (
+    runMutation({ type: 'presentation', page: pageNumber, pageTransformation: null }, 'resetting')
+  ), [runMutation]);
 
   const handleRotatePageCW = useCallback((pageNumber) => (
     runMutation({ type: 'rotate', page: pageNumber, delta: 90 }, 'rotating')

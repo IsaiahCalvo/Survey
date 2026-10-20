@@ -6,6 +6,12 @@
 // in the same project are ONE document. A matching row — even an archived one,
 // which is un-archived — is reused instead of inserting a duplicate.
 //
+// That includes a row the person moved to Archive (user_archived_at set): the
+// unique index below covers those rows too, so a second row cannot be inserted
+// beside it. Landing silently on the hidden row would leave the upload / copy
+// invisible in Documents, so the row is first restored through restore_document
+// — the one restore path, which also clears the purge expiry.
+//
 // The database enforces the same rule with the unique index
 // documents_user_project_sha_uidx (user_id, COALESCE(project_id, nil), sha);
 // two near-simultaneous creates can both miss the lookup, and the loser's
@@ -24,6 +30,43 @@ const findSameContentRow = (supabase, userId, sha, projectId) => {
     ? lookup.is('project_id', null)
     : lookup.eq('project_id', projectId);
   return lookup.maybeSingle();
+};
+
+// Bring a matched row back into Documents: out of the person's Archive (via
+// the restore RPC) and off the `archived` flag, as before.
+const reviveRow = async (supabase, row) => {
+  let current = row;
+  if (current.user_archived_at) {
+    const { data: restored, error: restoreErr } = await supabase
+      .rpc('restore_document', { p_document_id: current.id });
+    if (restoreErr) throw restoreErr;
+    if (!restored || restored.ok !== true) {
+      // 'project_child': the whole project is in Archive - restore it there.
+      const error = new Error(restored?.reason === 'project_child'
+        ? 'This file is in an archived project. Restore the project from Archive first.'
+        : 'This file is in Archive and could not be restored.');
+      error.reason = restored?.reason || 'unknown';
+      throw error;
+    }
+    current = {
+      ...current,
+      user_archived_at: null,
+      user_archive_expires_at: null,
+      user_archived_by: null,
+      archive_group_id: null,
+    };
+  }
+  if (current.archived) {
+    const { data: revived, error: reviveErr } = await supabase
+      .from('documents')
+      .update({ archived: false, updated_at: new Date().toISOString() })
+      .eq('id', current.id)
+      .select()
+      .single();
+    if (reviveErr) throw reviveErr;
+    return revived;
+  }
+  return current;
 };
 
 /**
@@ -51,19 +94,7 @@ export async function createOrReuseDocumentRow({
   if (sha) {
     const { data: existing, error: lookupErr } = await findSameContentRow(supabase, userId, sha, projectId);
     if (lookupErr && !isNotFoundError(lookupErr)) throw lookupErr;
-    if (existing) {
-      if (existing.archived) {
-        const { data: revived, error: reviveErr } = await supabase
-          .from('documents')
-          .update({ archived: false, updated_at: new Date().toISOString() })
-          .eq('id', existing.id)
-          .select()
-          .single();
-        if (reviveErr) throw reviveErr;
-        return { row: revived, reused: true };
-      }
-      return { row: existing, reused: true };
-    }
+    if (existing) return { row: await reviveRow(supabase, existing), reused: true };
   }
 
   const { data, error } = await supabase
@@ -82,7 +113,7 @@ export async function createOrReuseDocumentRow({
   // and reuse the winner's row.
   if (error && error.code === '23505' && sha) {
     const { data: winner, error: retryErr } = await findSameContentRow(supabase, userId, sha, projectId);
-    if (!retryErr && winner) return { row: winner, reused: true };
+    if (!retryErr && winner) return { row: await reviveRow(supabase, winner), reused: true };
   }
 
   if (error) throw error;

@@ -172,7 +172,9 @@ test('wiring: drops reuse the Upload button path, never a second one', () => {
   const core = dashboard.slice(dashboard.indexOf('const uploadBrowserPdf'), dashboard.indexOf('const handleFileUpload'));
   assert.match(core, /confirmSameNameDifferentContent\(/);
   assert.match(core, /createSupabaseDocument\(/);
-  assert.match(core, /uploadToStorage\(file, projectId \|\| 'general', undefined, contentSha\)/);
+  // Row first, at its own object <user>/<row id>.pdf (#812), then the bytes go there.
+  assert.match(core, /file_path: ownDocumentObjectPath\(user\.id, newDocId\)/);
+  assert.match(core, /uploadToStorage\(file, projectId \|\| 'general', undefined, contentSha, \{ objectPath: resolvedDoc\.file_path \}\)/);
 
   const appShell = read('src/AppShell.jsx');
   assert.match(appShell, /enabled: Boolean\(isViewerVisible && !isNarrowShell\)/, 'viewer drop is desktop only');

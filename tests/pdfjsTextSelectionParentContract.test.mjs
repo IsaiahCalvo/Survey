@@ -22,7 +22,7 @@ test('mobile PDF root allows native selection while Text Select is active', () =
   );
   assert.match(
     source,
-    /\.survey-pdfjs-mobile-surface\[data-text-selection='true'\] \{[\s\S]*?-webkit-user-select: text !important;[\s\S]*?user-select: text !important;/,
+    /\.survey-pdfjs-mobile-surface\[data-text-selection='true'\],\s*\.survey-pdfjs-mobile-surface\[data-pan-text\] \{[\s\S]*?-webkit-user-select: text !important;[\s\S]*?user-select: text !important;/,
     'the active mobile root must override the default mobile no-selection rule',
   );
   assert.match(

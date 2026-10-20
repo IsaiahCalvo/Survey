@@ -24,7 +24,7 @@
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  animation: fadeIn 0.2s ease-out;
+  animation: sv-fade-in var(--motion-dialog) var(--ease-out); /* shared dialog scrim (motion.css) */
   padding: 20px;
   font-family: var(--font-ui);
 }
@@ -45,7 +45,7 @@
   flex-direction: column;
   border: 1px solid var(--border);
   box-shadow: var(--shadow-dialog);
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: sv-dialog-in var(--motion-dialog) var(--ease-out); /* shared dialog enter (motion.css) */
 }
 
 @keyframes fadeIn {
@@ -371,6 +371,100 @@
   font-size: 11px;
   color: var(--text-3);
   margin: 0;
+}
+
+/* KAL-397 — Settings -> Annotations: one row per setting, words on the left,
+   a calm switch on the right (the phone's Reuse switch look: grey track,
+   white knob, a darker ink track when on — no gold). */
+.account-pref-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.account-pref-copy {
+  min-width: 0;
+}
+
+.account-pref-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0 0 2px 0;
+}
+
+.account-pref-description {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-3);
+  margin: 0;
+}
+
+/* 44px tap target around a 36x20 switch. */
+.account-switch {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -12px -4px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.account-switch-track {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.account-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 160ms ease;
+}
+
+.account-switch[aria-checked='true'] .account-switch-track {
+  background: var(--text-2);
+  box-shadow: none;
+}
+
+.account-switch[aria-checked='true'] .account-switch-track::after {
+  transform: translateX(16px);
+}
+
+.account-switch:focus-visible {
+  outline: none;
+}
+
+.account-switch:focus-visible .account-switch-track {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-switch-track,
+  .account-switch-track::after {
+    transition: none;
+  }
 }
 
 .account-btn-group {
@@ -820,12 +914,12 @@
     gap: 0;
   }
 
-  /* Four tabs since Crash reports (2026-10-07): each a quarter, and a long
-     name ("Connected services") takes two short lines instead of running
-     off the strip. */
+  /* Five tabs since Annotations (KAL-397; four since Crash reports,
+     2026-10-07): each a fifth, and a long name ("Connected services") takes
+     two short lines instead of running off the strip. */
   .account-sidebar-btn {
     flex: 1 1 0;
-    width: 25%;
+    width: 20%;
     min-width: 0;
     max-width: none;
     display: flex;
