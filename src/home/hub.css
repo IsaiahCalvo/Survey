@@ -5557,3 +5557,11 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   .survey-hub.hub-tab-documents .documents-select-toolbar .documents-mobile-select-main { display: inline-flex; align-items: center; }
   .survey-hub.hub-tab-documents .documents-select-toolbar .mobile-header-select-button { display: inline-grid !important; }
 }
+
+/* A touch-only tablet has no keyboard, so the ⌘K / Ctrl K hint means nothing
+   there. A tablet with a trackpad or mouse reports a fine pointer and keeps it. */
+@media (hover: none) and (pointer: coarse) and (not (any-pointer: fine)) {
+  .survey-hub .kbd {
+    display: none;
+  }
+}
