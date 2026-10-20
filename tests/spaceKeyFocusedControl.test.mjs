@@ -58,6 +58,12 @@ test('the tracker: the last of a Tab press and a mouse/touch press wins; other k
   assert.equal(t.tabbedTo(), false);
   t.onKeyDown({ key: 'r' });
   assert.equal(t.tabbedTo(), false, 'a shortcut after a click still pans');
+  t.onKeyDown({ key: 'Tab', ctrlKey: true });
+  t.onKeyDown({ key: 'Tab', metaKey: true });
+  t.onKeyDown({ key: 'Tab', altKey: true });
+  assert.equal(t.tabbedTo(), false, 'Ctrl/Meta/Alt+Tab do not count as keyboard focus');
+  t.onKeyDown({ key: 'Tab', shiftKey: true });
+  assert.equal(t.tabbedTo(), true, 'Shift+Tab is in-page navigation');
 });
 
 test('the viewer lets those presses through and keeps the rest for panning', () => {

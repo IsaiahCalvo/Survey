@@ -48,7 +48,9 @@ export function createFocusModalityTracker() {
   let tabbed = false;
   return {
     onPointerDown() { tabbed = false; },
-    onKeyDown(event) { if (event?.key === 'Tab') tabbed = true; },
+    onKeyDown(event) {
+      if (event?.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) tabbed = true;
+    },
     tabbedTo: () => tabbed,
   };
 }
