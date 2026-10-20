@@ -5565,3 +5565,11 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
     display: none;
   }
 }
+
+/* Portrait tablet (820px): the fixed 260/268px side columns left the template
+   editor's middle column ~110px wide, clipping the name and layout pickers. */
+@media (min-width: 768px) and (max-width: 900px) {
+  .survey-hub .templates-editor-grid {
+    grid-template-columns: 200px minmax(0, 1fr) 200px !important;
+  }
+}
