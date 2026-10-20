@@ -105,7 +105,7 @@ async function collapseSurveySheet(page) {
 
 async function openSurveyCategory(page) {
   await clickVisible(page.getByRole('button', { name: 'Open survey' }), 'Open survey button');
-  const chooser = page.getByRole('heading', { name: 'Choose survey template' });
+  const chooser = page.getByRole('heading', { name: 'Choose a survey template' });
   if (await chooser.isVisible().catch(() => false)) {
     await clickVisible(
       page.getByRole('button', { name: /KAL-436 Preservation Template/ }),
@@ -204,7 +204,7 @@ export async function runSurveyMarkerLifecycle({
   // Re-selecting the fixture template hydrates its persisted marker overlay
   // after a hard reload; the marker row itself is not needed for editing.
   await clickVisible(page.getByRole('button', { name: 'Open survey' }), 'Open survey button');
-  const chooser = page.getByRole('heading', { name: 'Choose survey template' });
+  const chooser = page.getByRole('heading', { name: 'Choose a survey template' });
   if (await chooser.isVisible().catch(() => false)) {
     await clickVisible(
       page.getByRole('button', { name: /KAL-436 Preservation Template/ }),

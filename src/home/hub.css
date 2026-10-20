@@ -3134,6 +3134,36 @@
     padding: 10px;
   }
 
+  .survey-hub .templates-mobile-template-options {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--rule);
+  }
+  .survey-hub .templates-mobile-option {
+    min-height: 44px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--text-2);
+  }
+  .survey-hub .templates-mobile-option + .templates-mobile-option {
+    border-top: 1px solid var(--rule);
+  }
+  .survey-hub .templates-mobile-option select {
+    min-width: 0;
+    max-width: 66%;
+    height: 36px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0 8px;
+  }
   .survey-hub .templates-mobile-entities-button {
     height: 32px;
     min-width: 92px;
@@ -5571,5 +5601,17 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 @media (min-width: 768px) and (max-width: 900px) {
   .survey-hub .templates-editor-grid {
     grid-template-columns: 200px minmax(0, 1fr) 200px !important;
+  }
+}
+
+/* Touch tablets: the Templates page's Excel layout and Checklist answers
+   pickers are 20px / 11px for a mouse; 36px and readable to a finger. The
+   !important beats their inline mouse sizing. */
+@media (pointer: coarse) {
+  select.hub-export-kit,
+  select.hub-answer-set {
+    min-height: 36px !important;
+    font-size: 13px !important;
+    padding: 4px 8px !important;
   }
 }

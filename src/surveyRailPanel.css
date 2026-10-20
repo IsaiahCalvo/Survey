@@ -1198,3 +1198,9 @@
     color: #f5a623 !important;
   }
 }
+
+/* Touch tablets: Y / N / N/A were 22px tall; 36px to a finger. */
+@media (pointer: coarse) {
+  .survey-rail .survey-rail__answers { height: 36px; }
+  .survey-rail .survey-rail__answer { height: 36px; min-width: 40px; }
+}

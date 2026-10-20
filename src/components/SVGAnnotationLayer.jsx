@@ -2432,7 +2432,7 @@ const SVGAnnotationLayerBody = memo(({
           action: 'survey-marker-smart-fill',
           pageNumber,
         });
-        onSurveyMarkerCreated(markerBounds);
+        onSurveyMarkerCreated(markerBounds, { smartFill: true });
         const sample = saveSmartFillSample(markerBounds.shape.polygons[0][0]);
         if (sample) {
           showSmartFillFindToast('Survey Marker added. Want Smart fill to find more tags like it on this page?', 'success', {
@@ -2512,7 +2512,7 @@ const SVGAnnotationLayerBody = memo(({
       action: 'survey-marker-smart-fill-match',
       pageNumber,
     });
-    onSurveyMarkerCreated(hit);
+    onSurveyMarkerCreated(hit, { smartFill: true });
     return true;
   }, [onSurveyMarkerCreated, pageNumber, smartFillMatches]);
 

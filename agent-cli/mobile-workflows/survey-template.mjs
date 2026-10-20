@@ -133,7 +133,11 @@ async function ensureCategoryExpanded(touch, card, label) {
 }
 
 async function saveTemplate(page, touch) {
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  // The Save row only shows while the template has unsaved edits; some edits
+  // (entities) now save on their own, leaving nothing to press.
+  const save = page.getByRole('button', { name: 'Save', exact: true });
+  if (!await save.waitFor({ state: 'visible', timeout: 2_000 }).then(() => true, () => false)) return;
+  await save.click();
   await page.getByRole('button', { name: 'Save', exact: true }).waitFor({ state: 'hidden', timeout: 10_000 });
 }
 
@@ -308,7 +312,7 @@ async function createTemplateTree({ page, touch, artifacts }) {
   await tapLocator(touch, page.getByRole('button', { name: 'Add module', exact: true }), 'New module');
   const moduleInput = page.locator('.templates-mobile-module-tabs [data-module-tab-id] input.inline-edit').last();
   await moduleInput.waitFor({ state: 'visible', timeout: 10_000 });
-  const moduleId = invariant(await moduleInput.locator('xpath=..').getAttribute('data-module-tab-id'), 'Created module has no stable id');
+  const moduleId = invariant(await moduleInput.locator('xpath=ancestor::*[@data-module-tab-id][1]').getAttribute('data-module-tab-id'), 'Created module has no stable id');
   const moduleName = 'Mobile Walkthrough Module';
   await fillAndCommit(moduleInput, moduleName);
 
@@ -406,8 +410,8 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   let inspectorRow = rows.last();
   await fillAndCommit(inspectorRow.locator('input'), 'Inspector');
   let colorPanel = await openEntityColorPanel(touch, modal, inspectorRow, 'Inspector');
-  await tapEntityColorControl(touch, colorPanel.getByTitle('#00FF00'), 'Inspector fill green');
-  await tapEntityColorControl(touch, colorPanel.getByRole('button', { name: 'Border', exact: true }), 'Inspector border tab');
+  await tapEntityColorControl(touch, colorPanel.getByTitle('#22c55e'), 'Inspector fill green');
+  await tapEntityColorControl(touch, colorPanel.getByRole('tab', { name: 'Border', exact: true }), 'Inspector border tab');
   await tapEntityColorControl(touch, colorPanel.getByTitle('#0000FF'), 'Inspector border blue');
   await tapLocator(touch, inspectorRow.getByLabel('Edit color', { exact: true }), 'Close Inspector color picker');
   await colorPanel.waitFor({ state: 'hidden', timeout: 10_000 });
@@ -430,11 +434,12 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   await fillAndCommit(ownerRow.locator('input'), 'Owner');
   colorPanel = await openEntityColorPanel(touch, modal, ownerRow, 'Owner');
   await tapEntityColorControl(touch, colorPanel.getByTitle('#FF0000'), 'Owner fill red');
-  await tapEntityColorControl(touch, colorPanel.getByRole('button', { name: 'Border', exact: true }), 'Owner border tab');
+  await tapEntityColorControl(touch, colorPanel.getByRole('tab', { name: 'Border', exact: true }), 'Owner border tab');
   await tapEntityColorControl(touch, colorPanel.getByTitle('#0000FF'), 'Owner border blue before match fill');
-  const matchFill = colorPanel.getByRole('checkbox');
+  // Match fill is the border grid's first cell (a pressed toggle), not a checkbox.
+  const matchFill = colorPanel.getByRole('button', { name: /^Match fill/ });
   await tapEntityColorControl(touch, matchFill, 'Owner match fill');
-  invariant(await matchFill.isChecked(), 'Owner Match fill did not enable');
+  invariant(await matchFill.first().getAttribute('aria-pressed') === 'true', 'Owner Match fill did not enable');
   await tapLocator(touch, ownerRow.getByLabel('Edit color', { exact: true }), 'Close Owner color picker');
   await colorPanel.waitFor({ state: 'hidden', timeout: 10_000 });
   // DismissBarrier deliberately retains its trailing click shield briefly after
@@ -484,7 +489,7 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
         && owner?.color?.toLowerCase() === '#ff0000'
         && owner?.matchFill === true
         && owner?.borderColor?.toLowerCase() === '#ff0000'
-        && inspector?.color?.toLowerCase() === '#00ff00'
+        && inspector?.color?.toLowerCase() === '#22c55e'
         && inspector?.borderColor?.toLowerCase() === '#0000ff'
         && inspector?.matchFill === false
         && inspectorCopy?.color === inspector?.color
@@ -669,7 +674,7 @@ async function armCreatedSurveyInViewer({ page, touch, ids }) {
   await page.getByRole('button', { name: 'Open survey' }).waitFor({ state: 'visible', timeout: 60_000 });
   const openSurvey = invariant(await firstVisible(page.getByRole('button', { name: 'Open survey' })), 'Open survey is not visible');
   await openSurvey.click();
-  const chooser = page.locator('h1:visible, h2:visible, h3:visible', { hasText: 'Choose survey template' });
+  const chooser = page.locator('h1:visible, h2:visible, h3:visible', { hasText: 'Choose a survey template' });
   const category = page.locator('button.survey-marker-category-main:visible', { hasText: ids.categoryName });
   const state = await Promise.race([
     chooser.first().waitFor({ state: 'visible', timeout: 10_000 }).then(() => 'chooser'),
@@ -679,11 +684,21 @@ async function armCreatedSurveyInViewer({ page, touch, ids }) {
     const templateButton = invariant(await firstVisible(page.getByRole('button', { name: new RegExp(ids.templateName) })), 'Created survey template is not visible');
     await templateButton.click();
   }
-  await category.first().waitFor({ state: 'visible', timeout: 10_000 });
-  const visibleCategory = invariant(await firstVisible(category), 'Created survey category is not visible');
-  await visibleCategory.click();
+  // A template with one category arms it on pick and closes the sheet; the
+  // rail's category disc then names it. Otherwise pick the category.
+  const armed = page.locator(`[aria-label="Survey category ${ids.categoryName}"]:visible`);
+  await page.waitForTimeout(1_500); // the sheet's close animation after arming
+  if (!await armed.first().isVisible().catch(() => false)) {
+    await category.first().waitFor({ state: 'visible', timeout: 10_000 });
+    const visibleCategory = invariant(await firstVisible(category), 'Created survey category is not visible');
+    await visibleCategory.click();
+  }
   const collapse = await firstVisible(page.getByRole('button', { name: 'Collapse Survey panel' }));
   if (collapse) await collapse.click();
+  // A template with entities needs one picked on the phone rail, or the
+  // placement asks for it in the Categorize dialog instead of committing.
+  const entity = await firstVisible(page.locator('[aria-label^="Survey entity "]'));
+  if (entity) await entity.click();
 }
 
 async function openCreatedSurveyInViewer({ page, touch, ids, baseUrl }) {
@@ -715,7 +730,8 @@ async function markerStorage(page) {
 }
 
 async function runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts }) {
-  const before = new Set((await markerStorage(page)).flatMap(([, records]) => Object.keys(records || {})));
+  const before = new Set((await markerStorage(page)).flatMap(([, records]) => Object.entries(records || {})
+    .flatMap(([key, value]) => (Array.isArray(value) ? value.map((m) => m?.id).filter(Boolean) : [key]))));
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (attempt > 0) {
       await armCreatedSurveyInViewer({ page, touch, ids });
@@ -747,9 +763,16 @@ async function runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts }) {
       if (attempt === 1) throw error;
     }
   }
-  const entries = await markerStorage(page);
-  const markerId = invariant(entries.flatMap(([, records]) => Object.keys(records || {}))
-    .find((id) => !before.has(id)), 'Created Survey Marker has no stable persisted id');
+  // The cache is keyed by page ({ [page]: [marker] }); read the ids out of
+  // both shapes, and from the painted layer.
+  const storedIds = (entries) => entries.flatMap(([, records]) => Object.entries(records || {})
+    .flatMap(([key, value]) => (Array.isArray(value) ? value.map((m) => m?.id).filter(Boolean) : [key])));
+  let markerId = null;
+  for (let tries = 0; tries < 20 && !markerId; tries += 1) {
+    markerId = storedIds(await markerStorage(page)).find((id) => !before.has(id)) || null;
+    if (!markerId) await wait(500);
+  }
+  invariant(markerId, 'Created Survey Marker has no stable persisted id ' + JSON.stringify(await markerStorage(page)).slice(0, 600));
   const [markerKey, markerMap] = invariant(entries.find(([, records]) => records?.[markerId]), 'Survey Marker missing from exact storage');
   let marker = markerMap[markerId];
   // Survey Marker records are scoped by module/category; the selected

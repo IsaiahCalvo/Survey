@@ -17,6 +17,22 @@ if (typeof document !== 'undefined' && document.modelContext) {
     if (supabase) installWebMcp(window, { supabase, tierLimits: TIER_LIMITS });
   }).catch((err) => console.warn('[webmcp] not started', err));
 }
+// Feature flags (src/featureFlags.js): save this person's server answers for
+// the next load, and again whenever they sign in or out.
+if (typeof window !== 'undefined') {
+  Promise.all([import('./featureFlags'), import('./supabaseClient')])
+    .then(([{ refreshFeatureFlags, releaseChannel }, { supabase }]) => {
+      // So nobody mistakes the nightly tab for the real app.
+      if (releaseChannel() === 'nightly' && !document.title.startsWith('Nightly')) document.title = `Nightly · ${document.title}`;
+      if (!supabase) return;
+      const refresh = () => refreshFeatureFlags(supabase).catch(() => {});
+      refresh();
+      supabase.auth?.onAuthStateChange?.((event) => {
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') refresh();
+      });
+    })
+    .catch((err) => console.warn('[flags] not loaded', err));
+}
 // Crash reports (Settings -> Crash reports): kept on this device only.
 installCrashLog({
   build: [
@@ -548,6 +564,23 @@ if (!devRouteActive && isAgentLinkRoute) {
       <ErrorBoundary>
         <AuthProvider>
           <AgentLinkPage />
+        </AuthProvider>
+      </ErrorBoundary>
+    );
+  });
+}
+
+// `/flags`: flag admins turn unfinished features on for testers or everyone.
+const isFlagsRoute = typeof window !== 'undefined'
+  && /^\/flags(?:\/|$)/.test(window.location.pathname || '');
+
+if (!devRouteActive && isFlagsRoute) {
+  devRouteActive = true;
+  import('./home/FeatureFlagsPage').then(({ default: FeatureFlagsPage }) => {
+    createRoot(document.getElementById('root')).render(
+      <ErrorBoundary>
+        <AuthProvider>
+          <FeatureFlagsPage />
         </AuthProvider>
       </ErrorBoundary>
     );
