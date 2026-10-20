@@ -5,7 +5,7 @@
    real controls' room with invisible spacers, so nothing moves when the list
    arrives. Shown only while a tab's list is empty on its first load, never
    over rows already on screen. */
-import { HubShell } from './HubShell';
+import { HubShell, SEARCH_SHORTCUT_LABEL } from './HubShell';
 import QuietLoading from '../components/QuietLoading';
 
 const Block = ({ className = '', style }) => (
@@ -18,7 +18,7 @@ const LoadingHeader = ({ tab }) => {
       <span className="hub-loading-search-metric">
         <svg width="13" height="13" aria-hidden="true" />
         <input value="" readOnly tabIndex={-1} aria-hidden="true" />
-        <span className="kbd" aria-hidden="true">⌘K</span>
+        <span className="kbd" aria-hidden="true">{SEARCH_SHORTCUT_LABEL}</span>
         <Block className="hub-loading-search-fill" />
         <span className="hub-loading-search-label" aria-hidden="true">{label}</span>
       </span>

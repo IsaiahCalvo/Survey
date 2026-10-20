@@ -12,6 +12,10 @@ import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
 import { useTooltip } from '../components/Tooltip';
 import { isDocumentDrag, readDocumentDragIds } from './documentSelection.js';
 
+const IS_MAC = typeof navigator !== 'undefined'
+  && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+export const SEARCH_SHORTCUT_LABEL = IS_MAC ? '⌘K' : 'Ctrl K';
+
 const HUB_BUILD_STAMP = (
   typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__
 ) || 'unknown';
@@ -107,6 +111,22 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
   const inputRef = useRef(null);
   const [focused, setFocused] = useState(false);
 
+  // The field shows a ⌘K / Ctrl K hint, so the chord has to work. Skip a
+  // field that is hidden (another tab's copy) so only the visible one wins.
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key?.toLowerCase() !== 'k' || event.altKey || event.shiftKey) return;
+      if (!(IS_MAC ? event.metaKey : event.ctrlKey)) return;
+      const input = inputRef.current;
+      if (!input || !input.offsetParent) return;
+      event.preventDefault();
+      input.focus();
+      input.select();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   return (
     <>
       {/* R3 (dismiss rules, owner 2026-09-23): while you type here, the first
@@ -143,7 +163,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
           placeholder={placeholder}
           style={{ background: 'transparent', border: 0, outline: 'none', color: 'var(--bone-100)', font: 'inherit', flex: 1, minWidth: 0, textOverflow: 'ellipsis' }}
         />
-        <span className="kbd">⌘K</span>
+        <span className="kbd">{SEARCH_SHORTCUT_LABEL}</span>
       </div>
     </>
   );
