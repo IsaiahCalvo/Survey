@@ -68,6 +68,7 @@ export async function tryOpenCloudPdfStream({
   isCancelled = () => false,
   onFallback = () => {},
   onAllBytes = () => {},
+  onBytesFailed = () => {},
 }) {
   let loadingTask = null;
   let timer = null;
@@ -91,7 +92,7 @@ export async function tryOpenCloudPdfStream({
       // once it is all here, hand the bytes on (device cache, mirror check).
       pdf.getData().then((bytes) => {
         try { opened.onBytes?.(bytes); } finally { onAllBytes(bytes); }
-      }).catch(() => {});
+      }).catch((error) => onBytesFailed(error));
     }
     return { pdf };
   } catch (error) {

@@ -143,3 +143,18 @@ test('PDFViewer marks fallback paths and re-arms the watchdog on stream fallback
   assert.match(src, /\}, \[isLoadingPDF, pdfFile, loadRetryToken, streamFallbackCount\]\);/);
   assert.match(src, /streamNeedsBytesPathsRef\.current\.add\(pdfFile\.filePath\);\n\s*setLoadRetryToken/);
 });
+
+test('a getData failure after a streamed open is reported (cache + mirror check fallback)', async () => {
+  const lib = fakePdfjs();
+  lib.getDocument = () => ({ promise: Promise.resolve({ numPages: 1, getData: () => Promise.reject(new Error('range died')) }), destroy: async () => {} });
+  const failed = [];
+  const all = [];
+  const result = await tryOpenCloudPdfStream({
+    pdfjsReady: Promise.resolve(lib), filePath: 'a', source: async () => ({ url: 'u' }),
+    onAllBytes: (b) => all.push(b), onBytesFailed: (e) => failed.push(e.message),
+  });
+  assert.ok(result.pdf);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(failed, ['range died']);
+  assert.equal(all.length, 0);
+});
