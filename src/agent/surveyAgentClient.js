@@ -27,6 +27,8 @@ export class SurveyAgentError extends Error {
 // Calls the edge function through supabase-js (it adds the person's JWT).
 export function makeSurveyAgentCaller(supabase) {
   return async (payload) => {
+    // No Supabase config (offline builds, local test runs): nothing to call.
+    if (!supabase?.functions) throw new SurveyAgentError('not_set_up');
     const { data, error } = await supabase.functions.invoke('survey-agent', { body: payload });
     if (error) {
       let code = null;
