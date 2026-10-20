@@ -108,3 +108,64 @@ test('reload materialization includes callouts from the Y.Doc callouts map', () 
     ],
   );
 });
+
+test('bridge warn paths + page update + applyYUpdateToFabric registry edges', async () => {
+  const {
+    applyFabricCommit,
+    applyFabricDelete,
+    applyYUpdateToFabric,
+  } = await import('../src/lib/collab/crdtAnnotationBridge.js');
+
+  const ydoc = new Y.Doc();
+  const yMapAnnotations = ydoc.getMap('annotations');
+  const yMapCallouts = ydoc.getMap('callouts');
+
+  applyFabricDelete(ydoc, yMapAnnotations, null, origin);
+  applyCalloutDelete(ydoc, yMapCallouts, null, origin);
+  applyCalloutCommit(ydoc, yMapCallouts, { text: 'no-id' }, origin, ctx);
+  applyFabricCommit(ydoc, yMapAnnotations, { __dragCancelled: true, data: { id: 'x' } }, origin, ctx);
+  applyFabricCommit(ydoc, yMapAnnotations, { type: 'rect', left: 0, top: 0 }, origin, ctx);
+
+  applyCalloutCommit(ydoc, yMapCallouts, makeCallout({ id: 'c-page', pageNumber: 1 }), origin, ctx);
+  applyCalloutCommit(ydoc, yMapCallouts, makeCallout({ id: 'c-page', pageNumber: 9, text: 'moved' }), origin, ctx);
+  assert.equal(yMapCallouts.get('c-page').get('pageNumber'), 9);
+
+  // materialize via forEach fallback (no toJSON)
+  const fakeYMap = {
+    get(key) {
+      if (key === 'callout') {
+        return {
+          forEach(cb) { cb('hi', 'text'); cb('c-fake', 'id'); },
+        };
+      }
+      if (key === 'id') return 'c-fake';
+      if (key === 'pageNumber') return 2;
+      if (key === 'meta') return { get: () => null };
+      return undefined;
+    },
+  };
+  const mat = materializeCalloutFromYMap(fakeYMap);
+  assert.equal(mat.text, 'hi');
+  assert.equal(mat.pageNumber, 2);
+  assert.equal(materializeCalloutFromYMap(null), null);
+
+  // applyYUpdateToFabric: missing registry / missing anno / setCoords path
+  applyYUpdateToFabric(yMapAnnotations, 'missing', new Map());
+  const registry = new Map();
+  const fakeObj = {
+    set() {},
+    setCoords() {},
+    canvas: { requestRenderAll() {} },
+  };
+  registry.set('a1', fakeObj);
+  applyYUpdateToFabric(yMapAnnotations, 'a1', registry); // no anno in ymap
+  applyFabricCommit(
+    ydoc,
+    yMapAnnotations,
+    { type: 'rect', left: 1, top: 2, width: 3, height: 4, data: { id: 'a1' }, pageNumber: 1 },
+    origin,
+    ctx,
+  );
+  applyYUpdateToFabric(yMapAnnotations, 'a1', registry);
+  await Promise.resolve();
+});

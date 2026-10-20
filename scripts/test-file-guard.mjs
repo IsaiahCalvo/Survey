@@ -291,6 +291,7 @@ export function runGuardedTestFile(file, {
   log = console.error,
   sampleEveryMs = SAMPLE_EVERY_MS,
   readRows = readProcessRows,
+  nodeArgs = [],
   ...limits
 } = {}) {
   const wallGraceMs = limits.wallGraceMs ?? WALL_GRACE_MS;
@@ -301,7 +302,7 @@ export function runGuardedTestFile(file, {
     // NODE_TEST_CONTEXT is dropped so a file run from inside another
     // `node --test` (the guard's own tests) still reports as a top-level run.
     const { NODE_TEST_CONTEXT: _nested, ...env } = process.env;
-    const child = spawn(process.execPath, ['--test', file], { stdio, env });
+    const child = spawn(process.execPath, [...nodeArgs, '--test', file], { stdio, env });
     const samples = [];
     // Last CPU reading of every process ever seen in the tree. A child that
     // exits takes its CPU time out of the process table; keeping its last

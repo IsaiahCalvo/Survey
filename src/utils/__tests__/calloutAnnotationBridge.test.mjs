@@ -956,3 +956,54 @@ describe('style.arrowheadStyle round-trip', () => {
     assert.equal(derived[0].style.arrowheadStyle, 'vShape');
   });
 });
+
+// Recovered from the July coverage commit 90f10085 (KAL-370), where these
+// cases sat in the projectCalloutsIntoByPage describe.
+describe('projectCalloutsIntoByPage / annotationObjectToCallout — defaults and fallbacks', () => {
+  const SIZES = { 2: PAGE };
+
+  it('uses default text-box geometry when label/textBox fields are absent', () => {
+    const obj = calloutToAnnotationObject({
+      id: 'c-defaults',
+      pageNumber: 1,
+      arrowTip: { x: 0.5, y: 0.5 },
+      text: 'x',
+    }, PAGE);
+    const tb = obj.objects.find((c) => c?.data?.calloutPart === 'textBox');
+    assertClose(tb.left, 0, 1e-10, 'default left');
+    assertClose(tb.top, 0, 1e-10, 'default top');
+    assertClose(tb.width, 0.1 * PAGE.width, 1e-10, 'default width');
+    assertClose(tb.height, 0.05 * PAGE.height, 1e-10, 'default height');
+  });
+
+  it('returns un-projected byPage when projection throws', () => {
+    const byPage = new Proxy({}, {
+      ownKeys() { throw new Error('project-boom'); },
+      getOwnPropertyDescriptor() { return { configurable: true, enumerable: true }; },
+    });
+    const out = projectCalloutsIntoByPage(byPage, [baseCallout], SIZES);
+    assert.equal(out, byPage);
+  });
+
+  it('annotationObjectToCallout reads _objects and unmarked textbox children', () => {
+    const back = annotationObjectToCallout({
+      data: { type: 'callout', id: 'c-legacy-children' },
+      _objects: [
+        { type: 'line', data: { calloutPart: 'line1' }, x2: 10, y2: 20 },
+        { type: 'line', data: { calloutPart: 'line2' }, x2: 30, y2: 40 },
+        { type: 'textbox', text: 'hi', left: 50, top: 60, width: 80, height: 24 },
+      ],
+    }, PAGE);
+    assert.equal(back.id, 'c-legacy-children');
+    assertClose(back.knee.x * PAGE.width, 10, 1e-10, 'knee.x');
+    assertClose(back.arrowTip.x * PAGE.width, 30, 1e-10, 'arrowTip.x');
+    assert.equal(back.text, 'hi');
+
+    const empty = annotationObjectToCallout({
+      data: { type: 'callout', id: 'c-empty-children' },
+    }, PAGE);
+    assert.equal(empty.id, 'c-empty-children');
+    assert.equal(empty.knee.x, 0);
+    assert.equal(empty.arrowTip.x, 0);
+  });
+});

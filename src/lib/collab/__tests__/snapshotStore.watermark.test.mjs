@@ -117,3 +117,109 @@ test('readByPageSnapshot: legacy snapshot without meta → meta null (back-compa
   // And such a snapshot must NEVER trigger a skip.
   assert.equal(isSnapshotWatermarkCurrent(r.meta, { rowCount: 1, maxUpdatedAt: null, error: null }), false);
 });
+
+test('write/read snapshot guards and failure paths', async () => {
+  assert.deepEqual(await writeByPageSnapshot(null, {}, [], makeFakeClient()), { ok: false });
+  assert.equal(await readByPageSnapshot(null, makeFakeClient()), null);
+
+  const failWrite = {
+    from() {
+      return {
+        upsert: async () => ({ error: { message: 'upsert-fail' } }),
+      };
+    },
+  };
+  const w = await writeByPageSnapshot('doc-x', { 1: {} }, [], failWrite);
+  assert.equal(w.ok, false);
+
+  const failRead = {
+    from() {
+      const api = {
+        select: () => api,
+        eq: () => api,
+        maybeSingle: async () => ({ data: null, error: { message: 'read-fail' } }),
+      };
+      return api;
+    },
+  };
+  assert.equal(await readByPageSnapshot('doc-x', failRead), null);
+
+  const badVersion = {
+    from() {
+      const api = {
+        select: () => api,
+        eq: () => api,
+        maybeSingle: async () => ({
+          data: { encoding_version: 1, state: '\\x00' },
+          error: null,
+        }),
+      };
+      return api;
+    },
+  };
+  assert.equal(await readByPageSnapshot('doc-x', badVersion), null);
+
+  const throwWrite = {
+    from() {
+      return {
+        upsert: async () => { throw new Error('boom'); },
+      };
+    },
+  };
+  const tw = await writeByPageSnapshot('doc-y', {}, [], throwWrite);
+  assert.equal(tw.ok, false);
+
+  const throwRead = {
+    from() {
+      const api = {
+        select: () => api,
+        eq: () => api,
+        maybeSingle: async () => { throw new Error('boom'); },
+      };
+      return api;
+    },
+  };
+  assert.equal(await readByPageSnapshot('doc-y', throwRead), null);
+
+  assert.equal(
+    isSnapshotWatermarkCurrent(
+      { calloutsComplete: true, sourceRowCount: 0, sourceMaxUpdatedAt: null },
+      { rowCount: 0, maxUpdatedAt: null, error: null },
+    ),
+    true,
+  );
+  assert.equal(
+    isSnapshotWatermarkCurrent(
+      { calloutsComplete: true, sourceRowCount: 1, sourceMaxUpdatedAt: 'not-a-date' },
+      { rowCount: 1, maxUpdatedAt: 'also-bad', error: null },
+    ),
+    false,
+  );
+});
+
+test('writeByPageSnapshot skips when compressed payload exceeds cap', async () => {
+  const OrigCS = globalThis.CompressionStream;
+  globalThis.CompressionStream = class OversizedCompressionStream {
+    constructor() {
+      this.readable = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(12 * 1024 * 1024 + 1));
+          controller.close();
+        },
+      });
+      this.writable = new WritableStream({ write() {} });
+    }
+  };
+  const info = console.info;
+  const logs = [];
+  console.info = (...args) => logs.push(args.join(' '));
+  try {
+    const result = await writeByPageSnapshot('doc-oversize', { 1: {} }, [], makeFakeClient());
+    assert.equal(result.ok, false);
+    assert.ok(result.compressedBytes > 12 * 1024 * 1024);
+    assert.ok(logs.some((l) => l.includes('snapshot over cap')));
+  } finally {
+    console.info = info;
+    globalThis.CompressionStream = OrigCS;
+  }
+});

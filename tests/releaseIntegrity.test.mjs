@@ -82,8 +82,8 @@ test('Node test gate isolates files and bounds hangs', () => {
   const runner = readFileSync('scripts/run-node-tests.mjs', 'utf8');
   const guard = readFileSync('scripts/test-file-guard.mjs', 'utf8');
   assert.match(runner, /import \{ runGuardedTestFile \} from '\.\/test-file-guard\.mjs'/);
-  assert.match(runner, /await runGuardedTestFile\(file\)/);
-  assert.match(guard, /spawn\(process\.execPath, \['--test', file\]/);
+  assert.match(runner, /await runGuardedTestFile\(file(?:, \{ nodeArgs \})?\)/);
+  assert.match(guard, /spawn\(process\.execPath, \[(?:\.\.\.nodeArgs, )?'--test', file\]/);
   assert.match(guard, /WALL_GRACE_MS = 120_000/);
   assert.match(guard, /CPU_BUDGET_MS = 120_000/);
   assert.match(guard, /HARD_CAP_MS = 3_600_000/);

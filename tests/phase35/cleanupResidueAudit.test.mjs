@@ -200,3 +200,34 @@ test(
     ok(true, 'pure function contract upheld');
   },
 );
+test(
+  'cleanupResidueAudit #6: defensive guards return empty audit',
+  { skip: !existsSync(TARGET) ? 'cleanupResidueAudit module not yet present (Plan 35-05)' : false },
+  async () => {
+    const { auditResidue } = await import(TARGET_URL);
+    deepStrictEqual(auditResidue({ cloudAnnotations: null, viewerId: OWNER_ID, isViewerOwner: true }), {
+      residueIds: [],
+      count: 0,
+    });
+    deepStrictEqual(auditResidue({ cloudAnnotations: [], viewerId: '', isViewerOwner: true }), {
+      residueIds: [],
+      count: 0,
+    });
+    deepStrictEqual(auditResidue({
+      cloudAnnotations: [makeCloudAnno('a1', OWNER_ID, 1)],
+      viewerId: OWNER_ID,
+      isViewerOwner: true,
+      dismissedDocIds: new Set(),
+      documentId: 'doc-1',
+      localUserDeletedSet: null,
+    }), { residueIds: [], count: 0 });
+    deepStrictEqual(auditResidue({
+      cloudAnnotations: [makeCloudAnno('a1', OWNER_ID, 1)],
+      viewerId: OWNER_ID,
+      isViewerOwner: true,
+      dismissedDocIds: new Set(),
+      documentId: 'doc-1',
+      localUserDeletedSet: [{ id: 'x' }, null],
+    }), { residueIds: [], count: 0 });
+  },
+);

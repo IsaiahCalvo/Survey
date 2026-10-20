@@ -329,7 +329,11 @@ console.log(`[tests] selection: ${selectionLabel}`);
 // cannot turn a slow-but-working file into a red run (KAL-446).
 async function runTestFile(file, label) {
   console.log(`\n[tests] ${label}`);
-  const { exitCode } = await runGuardedTestFile(file);
+  // A `*.mocked.test.mjs` file replaces a module with node:test's
+  // mock.module(), which Node only offers behind this flag. Only those files
+  // get it, so no other test runs with the module-mock loader installed.
+  const nodeArgs = file.endsWith('.mocked.test.mjs') ? ['--experimental-test-module-mocks'] : [];
+  const { exitCode } = await runGuardedTestFile(file, { nodeArgs });
   return exitCode;
 }
 

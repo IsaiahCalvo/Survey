@@ -43,6 +43,8 @@ function installFakeLocalStorage() {
     setItem(k, v) { store[k] = String(v); },
     removeItem(k) { delete store[k]; },
     clear() { for (const k of Object.keys(store)) delete store[k]; },
+    get length() { return Object.keys(store).length; },
+    key(i) { return Object.keys(store)[i] || null; },
   };
   originalLocalStorage = globalThis.localStorage;
   globalThis.localStorage = fake;
@@ -318,4 +320,154 @@ test('queue persists across module reloads (localStorage round-trip survives imp
       restoreLocalStorage();
     }
   }
+);
+
+test('read helpers cover pending/stuck/quarantine and kill-switch drain',
+  { skip: !existsSync(TARGET) ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)' : false },
+  async () => {
+    const fake = installFakeLocalStorage();
+    try {
+      const mod = await import(TARGET);
+      assert.deepEqual(mod.readQueue(null), {});
+      fake._store['crdt_dual_write_queue:u8'] = '{bad-json';
+      assert.deepEqual(mod.readQueue('u8'), {});
+
+      mod.enqueue({ userId: 'u9', annoId: 'pending', side: 'crdt', payload: { ok: 1 } });
+      assert.equal(mod.hasPendingForUser('u9'), true);
+      assert.equal(mod.getStuckCount('u9'), 0);
+
+      const queue = JSON.parse(fake._store['crdt_dual_write_queue:u9']);
+      queue.pending.queuedAt = Date.now() - mod.STUCK_THRESHOLD_MS - 1;
+      queue.q = {
+        annoId: 'q',
+        side: 'legacy',
+        payload: {},
+        attempts: 10,
+        queuedAt: Date.now() - 60_000,
+        lastAttemptAt: Date.now() - 60_000,
+        quarantined: true,
+      };
+      fake._store['crdt_dual_write_queue:u9'] = JSON.stringify(queue);
+      assert.equal(mod.getStuckCount('u9'), 1);
+      assert.deepEqual(mod.getQuarantinedAnnoIds('u9'), ['q']);
+
+      const prevWindow = globalThis.window;
+      globalThis.window = { localStorage: fake };
+      fake._store.CRDT_LAYER_DISABLED = '1';
+      try {
+        const killed = await mod.drainQueue({
+          userId: 'u9',
+          retryLegacyWrite: async () => {},
+          retryCrdtWrite: async () => {},
+        });
+        assert.equal(killed.skippedKillSwitch, true);
+      } finally {
+        if (prevWindow === undefined) delete globalThis.window;
+        else globalThis.window = prevWindow;
+      }
+
+      await assert.doesNotThrow(async () => {
+        await mod.drainQueue({ userId: null });
+      });
+    } finally {
+      restoreLocalStorage();
+    }
+  }
+);
+
+test('enqueue fails loudly when storage refuses the write; crdt-side drain',
+  { skip: !existsSync(TARGET) ? 'crdtDualWriteQueue.js not yet present (Plan 30-03)' : false },
+  async () => {
+    const boomStore = {
+      _store: {},
+      getItem(k) { return Object.prototype.hasOwnProperty.call(this._store, k) ? this._store[k] : null; },
+      setItem() { throw new Error('quota'); },
+      removeItem(k) { delete this._store[k]; },
+      clear() {},
+      get length() { return Object.keys(this._store).length; },
+      key(i) { return Object.keys(this._store)[i] || null; },
+    };
+    const prev = globalThis.localStorage;
+    globalThis.localStorage = boomStore;
+    try {
+      const mod = await import(TARGET);
+      // Since 9f6c3f070 (#802) a retry queue that cannot be saved fails loudly
+      // (the old test expected the setItem failure to be swallowed).
+      assert.throws(
+        () => mod.enqueue({ userId: 'u10', annoId: 'x', side: 'crdt', payload: {} }),
+        (err) => err?.code === 'DUAL_WRITE_STORAGE_FAILED',
+      );
+
+      const ok = installFakeLocalStorage();
+      ok._store['crdt_dual_write_queue:u11'] = JSON.stringify({
+        C: {
+          annoId: 'C',
+          side: 'crdt',
+          payload: { v: 1 },
+          attempts: 0,
+          queuedAt: Date.now() - 5_000,
+          lastAttemptAt: null,
+          quarantined: false,
+        },
+      });
+      let crdt = 0;
+      const drained = await mod.drainQueue({
+        userId: 'u11',
+        retryCrdtWrite: async () => { crdt++; },
+      });
+      assert.equal(crdt, 1);
+      assert.equal(drained.drained, 1);
+
+      // Only quarantined → no pending
+      ok._store['crdt_dual_write_queue:u12'] = JSON.stringify({
+        q: { annoId: 'q', quarantined: true },
+      });
+      assert.equal(mod.hasPendingForUser('u12'), false);
+
+      // The old clearAllDualWriteQueuesAndFlags() checks relied on an export the
+      // coverage commit added for tests only; the DevTools helper it backs is
+      // covered by tests/crdtDualWriteQueue.window.test.mjs.
+    } finally {
+      if (prev === undefined) delete globalThis.localStorage;
+      else globalThis.localStorage = prev;
+      restoreLocalStorage();
+    }
+  }
+);
+
+test('drainQueue leaves entries alone when no side handler is injected',
+  { skip: !existsSync(TARGET) },
+  async () => {
+    const prev = globalThis.localStorage;
+    const store = {};
+    globalThis.localStorage = {
+      getItem: (k) => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v); },
+      removeItem: (k) => { delete store[k]; },
+      key: (i) => Object.keys(store)[i] ?? null,
+      get length() { return Object.keys(store).length; },
+    };
+    try {
+      const mod = await import(TARGET);
+      store['crdt_dual_write_queue:u-nohandler'] = JSON.stringify({
+        a1: {
+          annoId: 'a1',
+          side: 'legacy',
+          payload: { v: 1 },
+          attempts: 0,
+          queuedAt: Date.now() - 60_000,
+          lastAttemptAt: null,
+          quarantined: false,
+        },
+      });
+      const result = await mod.drainQueue({ userId: 'u-nohandler' });
+      assert.equal(result.drained, 0);
+      const kept = JSON.parse(store['crdt_dual_write_queue:u-nohandler']);
+      assert.ok(kept.a1);
+      assert.equal(kept.a1.attempts, 0);
+    } finally {
+      if (prev === undefined) delete globalThis.localStorage;
+      else globalThis.localStorage = prev;
+    }
+  },
 );

@@ -266,3 +266,45 @@ test('no baseline / no app values → no whitelist attached (legacy Excel-wins b
   assert.equal(decision.action, 'apply');
   assert.equal(decision.excelChangedFields, undefined);
 });
+
+test('default logger swallows console.info failures', async () => {
+  const prev = console.info;
+  console.info = () => { throw new Error('log-boom'); };
+  try {
+    const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm-log' });
+    const surveyMarkers = { 'm-log': await markerWithRecord('m-log', { item: 'Door Log' }) };
+    const plans = await buildScopeImportPlans({
+      worksheetDataList: [{
+        jsonData: [headerRow, excelRowFor(token, { item: 'Door Log' })],
+        headerRow,
+        matchedCategory: { id: CATEGORY },
+        matchedModuleId: MODULE,
+      }],
+      surveyMarkers,
+      templateToUse,
+      documentId: DOC,
+      resolveSecret,
+    });
+    assert.ok(plans.size >= 1);
+  } finally {
+    console.info = prev;
+  }
+});
+
+test('resolveUpdatedCategory falls back when template no longer has the category', async () => {
+  const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm-gone' });
+  const surveyMarkers = { 'm-gone': await markerWithRecord('m-gone', { item: 'Gone Cat' }) };
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{
+      jsonData: [headerRow, excelRowFor(token, { item: 'Gone Cat' })],
+      headerRow,
+      matchedCategory: { id: CATEGORY, checklist: [{ id: 'chk-1', text: 'Locked?' }] },
+      matchedModuleId: MODULE,
+    }],
+    surveyMarkers,
+    templateToUse: { modules: [{ id: MODULE, categories: [] }] },
+    documentId: DOC,
+    resolveSecret,
+  });
+  assert.ok(plans.size >= 1);
+});
