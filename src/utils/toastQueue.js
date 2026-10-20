@@ -67,9 +67,13 @@ export function createToastStore({
     }
   }
 
-  function dismiss(id) {
-    const toast = toasts.find((t) => t.id === id);
-    if (!toast || toast.leaving) return;
+  function dismiss(requestedId) {
+    // A caller id that was still held by a leaving toast went to the newer
+    // toast as `key` (see add), so dismissToast(callerId) must reach it too.
+    const toast = toasts.find((t) => t.id === requestedId && !t.leaving)
+      || toasts.find((t) => t.key === requestedId && !t.leaving);
+    if (!toast) return;
+    const { id } = toast;
     stopTimer(id);
     const ms = Number(exitMs()) || 0;
     if (ms <= 0) {
@@ -87,13 +91,17 @@ export function createToastStore({
     const existing = toasts.find((t) => !t.leaving && t.message === message);
     if (existing) return existing.id; // de-dupe rapid repeats
     const type = TYPES.has(detail.type) ? detail.type : 'info';
+    // A toast that is only playing its exit must not keep its id: otherwise
+    // the new toast gets a random id and a later dismiss(id) can't reach it
+    // (Smart fill "Find more" left "looking for matching tags…" up forever).
+    if (detail.id != null && toasts.some((t) => t.leaving && t.id === String(detail.id))) remove(String(detail.id));
     const id = detail.id != null && !toasts.some((t) => t.id === detail.id)
       ? String(detail.id)
       : `toast-${now()}-${(seq += 1)}`;
     const action = detail.action && typeof detail.action.onClick === 'function'
       ? { label: String(detail.action.label || 'Undo'), onClick: detail.action.onClick }
       : null;
-    toasts = [...toasts, { id, message, type, action, leaving: false }];
+    toasts = [...toasts, { id, key: detail.id != null ? String(detail.id) : id, message, type, action, leaving: false }];
     startTimer(id, toastDurationMs(type, detail.duration));
     // Cap the stack so a runaway loop can't paper over the screen.
     const standing = toasts.filter((t) => !t.leaving);
@@ -121,8 +129,10 @@ export function createToastStore({
   function runAction(id) {
     const toast = toasts.find((t) => t.id === id);
     if (!toast || toast.leaving || !toast.action) return false;
-    try { toast.action.onClick(); } catch { /* the caller's error stays its own */ }
+    // Take this toast down first: onClick may show a follow-up under the same
+    // caller id, and that one must stay up.
     dismiss(id);
+    try { toast.action.onClick(); } catch { /* the caller's error stays its own */ }
     return true;
   }
 

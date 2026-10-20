@@ -3134,6 +3134,36 @@
     padding: 10px;
   }
 
+  .survey-hub .templates-mobile-template-options {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--rule);
+  }
+  .survey-hub .templates-mobile-option {
+    min-height: 44px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--text-2);
+  }
+  .survey-hub .templates-mobile-option + .templates-mobile-option {
+    border-top: 1px solid var(--rule);
+  }
+  .survey-hub .templates-mobile-option select {
+    min-width: 0;
+    max-width: 66%;
+    height: 36px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0 8px;
+  }
   .survey-hub .templates-mobile-entities-button {
     height: 32px;
     min-width: 92px;
@@ -5563,5 +5593,13 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 @media (hover: none) and (pointer: coarse) and (not (any-pointer: fine)) {
   .survey-hub .kbd {
     display: none;
+  }
+}
+
+/* Portrait tablet (820px): the fixed 260/268px side columns left the template
+   editor's middle column ~110px wide, clipping the name and layout pickers. */
+@media (min-width: 768px) and (max-width: 900px) {
+  .survey-hub .templates-editor-grid {
+    grid-template-columns: 200px minmax(0, 1fr) 200px !important;
   }
 }
