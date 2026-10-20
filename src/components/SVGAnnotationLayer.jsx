@@ -8412,9 +8412,13 @@ const SVGAnnotationLayerBody = memo(({
                   style={{ pointerEvents: 'none' }}
                 />
               )}
-              {/* Midsegment handles insert one point, then use the normal vertex drag. */}
-              {!modifierMoveActive && worldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? worldPoints.length : -1).map((wp, i) => {
+              {/* Midsegment handles insert one point, then use the normal vertex drag.
+                  Hidden while a corner is being dragged (they would trail the
+                  old outline) and on sides too short to fit one beside the
+                  corner dots. */}
+              {!modifierMoveActive && interactionState === 'idle' && worldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? worldPoints.length : -1).map((wp, i) => {
                 const next = worldPoints[(i + 1) % worldPoints.length];
+                if (Math.hypot(next.x - wp.x, next.y - wp.y) < vHandleR * 6) return null;
                 const x = (wp.x + next.x) / 2;
                 const y = (wp.y + next.y) / 2;
                 return <g key={`insert-vertex-${i}`} role="button" aria-label="Add vertex" data-add-vertex={i} onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, `insert-vertex-${i}`); }} style={{ cursor: 'crosshair', pointerEvents: 'auto' }}>
