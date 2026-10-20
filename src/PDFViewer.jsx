@@ -32446,7 +32446,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // places, auto-names, and opens SurveySheet in one step). Desktop keeps its
   // modal chain unchanged. Reuses the exact store writes of the desktop name
   // prompt's save path so sync sees identical operations.
-  const commitMobileSurveyMarker = useCallback((surveyMarker, categoryId) => {
+  const commitMobileSurveyMarker = useCallback((surveyMarker, categoryId, { openPanel = true } = {}) => {
     if (!selectedTemplate || !surveyMarker?.id || !categoryId) return;
     storeSurveyTemplateBinding(selectedTemplate.id, bindUsedTemplate(selectedTemplate, readSurveyTemplateBinding(selectedTemplate.id)));
     const moduleId = surveyMarker.moduleId || selectedModuleId;
@@ -32539,6 +32539,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // Open the mobile sheet's detail view for the new Survey Marker
     // (demo App.tsx:1155 — openSurvey(next.id) right after placement).
+    if (!openPanel) return;
     setExpandedCategories({ [categoryId]: true });
     setExpandedSurveyMarkers({ [surveyMarker.id]: true });
     setShowSurveyPanel(true);
@@ -32546,7 +32547,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [selectedTemplate, selectedModuleId, surveyMarkers, items, selectedSpaceId, normalizeSurveyMarkerColor, buildSurveyMarkerPreview, requestRightRailExpand, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
 
   // Handle surveyMarker creation from annotation tool
-  const handleSurveyMarkerCreated = useCallback((pageNumber, bounds) => {
+  const handleSurveyMarkerCreated = useCallback((pageNumber, bounds, createOptions = null) => {
     // Decision 10 (KAL-90): generate the marker id up-front so the pre-creation
     // checkpoint can stamp it — the History panel needs annotation_id on the
     // "created a survey marker" row to spotlight the mark on click. The locate
@@ -32719,6 +32720,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           || placementEntity.color
           || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY))
         : null;
+      // Phone: a Smart fill marker keeps the tool armed and the sheet shut, so
+      // its "Find more" toast survives and the found outlines stay tappable.
+      const smartFillOnPhone = mobileMode && createOptions?.smartFill === true;
       commitMobileSurveyMarker({
         id: annotationId,
         // Owner ruling 2026-09-28: the creator stamp (lock rights).
@@ -32732,12 +32736,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           entityName: placementEntity.name,
           entityColor: placementEntityColor,
         } : {})
-      }, selectedCategoryId);
+      }, selectedCategoryId, { openPanel: !smartFillOnPhone });
       if (!mobileMode) {
         setSurveyMarkerNameFocusRequest({ id: annotationId, tick: Date.now() });
       }
 
-      if (!surveyKeepCategoryActive) {
+      if (!surveyKeepCategoryActive && !smartFillOnPhone) {
         setSelectedCategoryId(null);
         setMobileSurveyEntityId(null);
         // UX (mobile demo parity): with "Keep active" unchecked, the tool
@@ -32746,7 +32750,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Marker. Desktop keeps the survey-marker tool armed (unchanged).
         if (mobileMode) setActiveTool('pan');
       }
-      setShowSurveyPanel(true);
+      if (!smartFillOnPhone) setShowSurveyPanel(true);
     } else {
       // No category selected, show category selection modal (only if survey panel is visible)
       if (showSurveyPanel) {
@@ -32820,7 +32824,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         caretAnchor: editOptions?.caretAnchor || null,
       }),
       onRequestExitEdit: () => setEditingAnnotation(null),
-      onSurveyMarkerCreated: (bounds) => latest().handleSurveyMarkerCreated(pageNumber, bounds),
+      onSurveyMarkerCreated: (bounds, opts) => latest().handleSurveyMarkerCreated(pageNumber, bounds, opts),
       onDeleteSurveyMarker: (annotationId) => latest().handleDeleteSurveyMarker(annotationId),
       onDeleteSurveyMarkers: (annotationIds) => latest().handleDeleteSurveyMarkers(annotationIds),
       onMoveMarksToPage: (move) => latest().handleMoveMarksToPage(pageNumber, move),

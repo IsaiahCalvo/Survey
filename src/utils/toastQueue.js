@@ -91,6 +91,10 @@ export function createToastStore({
     const existing = toasts.find((t) => !t.leaving && t.message === message);
     if (existing) return existing.id; // de-dupe rapid repeats
     const type = TYPES.has(detail.type) ? detail.type : 'info';
+    // A toast that is only playing its exit must not keep its id: otherwise
+    // the new toast gets a random id and a later dismiss(id) can't reach it
+    // (Smart fill "Find more" left "looking for matching tags…" up forever).
+    if (detail.id != null && toasts.some((t) => t.leaving && t.id === String(detail.id))) remove(String(detail.id));
     const id = detail.id != null && !toasts.some((t) => t.id === detail.id)
       ? String(detail.id)
       : `toast-${now()}-${(seq += 1)}`;
