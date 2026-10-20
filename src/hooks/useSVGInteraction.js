@@ -27,6 +27,7 @@ import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
 import { remapSelectedIndices } from '../utils/selectionRemap.js';
+import { trackHandleZoom, untrackHandleZoom } from '../utils/liveHandleZoom.js';
 import { resizeCalloutBox } from '../utils/markBorderOutline.js';
 // w59: one rule for where a moved mark lands (preview === save).
 import {
@@ -679,6 +680,22 @@ export function useSVGInteraction({
       if (waitTimer) clearTimeout(waitTimer);
     };
   }, [svgRef, pageWidth]);
+
+  // Grabbers keep one screen size during a pinch or wheel zoom, before the
+  // retune above lands (utils/liveHandleZoom.js). Only while something here
+  // is selected, so pages with no grabbers do no per-frame work.
+  const showsGrabbers = selectedIds.size > 0 || (selectedCalloutIds?.size ?? selectedCalloutIds?.length ?? 0) > 0;
+  useLayoutEffect(() => {
+    const svgEl = svgRef.current;
+    if (!svgEl || !pageWidth || !showsGrabbers) return undefined;
+    trackHandleZoom(svgEl, { pageWidth, renderedInverseScale: inverseScale });
+    return undefined;
+  }, [svgRef, pageWidth, inverseScale, showsGrabbers]);
+  useLayoutEffect(() => {
+    const svgEl = svgRef.current;
+    if (!svgEl || !showsGrabbers) return undefined;
+    return () => untrackHandleZoom(svgEl);
+  }, [svgRef, showsGrabbers]);
 
   // UX: 2026-04-21 — Helper: stable string signature of the current multi-
   // selection. Used to detect when the user has changed selection so the
@@ -3061,22 +3078,26 @@ export function useSVGInteraction({
       const rad = (angle * Math.PI) / 180;
       const cosA = Math.cos(rad);
       const sinA = Math.sin(rad);
-      // Step 1: subtract translate(left, top)
-      const w1x = svgPoint.x - left;
-      const w1y = svgPoint.y - top;
-      // Step 2: un-rotate around old rotation center by -angle
-      const ox = w1x - oldRotCx;
-      const oy = w1y - oldRotCy;
-      const w2x = oldRotCx + ox * cosA + oy * sinA;
-      const w2y = oldRotCy - ox * sinA + oy * cosA;
-      // Step 3: un-scale
-      const sxSafe = scaleX || 1;
-      const sySafe = scaleY || 1;
-      const w3x = w2x / sxSafe;
-      const w3y = w2y / sySafe;
-      // Step 4: re-apply pathOffset to get local point coord
-      const localX = w3x + pathOffsetX;
-      const localY = w3y + pathOffsetY;
+      const toLocal = (point) => {
+        // Step 1: subtract translate(left, top)
+        const w1x = point.x - left;
+        const w1y = point.y - top;
+        // Step 2: un-rotate around old rotation center by -angle
+        const ox = w1x - oldRotCx;
+        const oy = w1y - oldRotCy;
+        const w2x = oldRotCx + ox * cosA + oy * sinA;
+        const w2y = oldRotCy - ox * sinA + oy * cosA;
+        // Step 3: un-scale, then Step 4: re-apply pathOffset
+        return { x: w2x / (scaleX || 1) + pathOffsetX, y: w2y / (scaleY || 1) + pathOffsetY };
+      };
+      // The corner moves BY the pointer's travel, not TO the pointer: a press
+      // anywhere on the grab pad (up to 16 px / 22 pt off the dot) no longer
+      // makes the corner jump under the cursor on the first move (Drawboard).
+      if (!ds.startLocal) ds.startLocal = toLocal(ds.startSVGPoint);
+      const pointerLocal = toLocal(svgPoint);
+      const grabbed = ds.originalPoints[ds.vertexIndex];
+      const localX = grabbed.x + pointerLocal.x - ds.startLocal.x;
+      const localY = grabbed.y + pointerLocal.y - ds.startLocal.y;
 
       // One definition of "move a single vertex", shared with the polygon /
       // polyline draft module: the dragged point is replaced, every other
@@ -5867,6 +5888,12 @@ export function useSVGInteraction({
             pathOffsetY: obj.pathOffset?.y || 0,
           },
         };
+        // The new corner shows (with its own grabber) from the press, not
+        // only once the pointer moves.
+        if (insertion) {
+          setVisualTransform({ id: selectedIndex, dx: 0, dy: 0, previewObjects: { [selectedIndex]: obj } });
+          setInteractionState('dragging');
+        }
       }
       return;
     }

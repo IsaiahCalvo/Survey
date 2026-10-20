@@ -172,3 +172,82 @@ for (const [tool,key] of [['line','l'],['arrow','a']]) test(`off-centre ${tool} 
   await page.getByRole('button',{name:'Redo',exact:true}).click();
   await expect.poll(async()=>(await bendGeometry(page)).d).toBe(after.d);
 });
+
+const drawSelectedPolygon = async (page) => {
+  await page.keyboard.press('g');
+  const box = await page.locator('[data-svg-annotation-layer="1"]').boundingBox();
+  const width = Math.min(box.width, 600), height = Math.min(box.height, 800);
+  for (const [x, y] of [[.30, .25], [.70, .25], [.70, .50], [.30, .50]]) await page.mouse.click(box.x + width * x, box.y + height * y);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('v');
+  await page.mouse.click(box.x + width * .5, box.y + height * .375);
+  await expect(page.locator('[data-add-vertex]')).toHaveCount(4);
+};
+const screenCenter = async (locator) => { const b = await locator.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, r: b.width / 2 }; };
+const vertexDot = (page, i) => page.locator(`circle[data-resize-handle="vertex-${i}"]:not([data-handle-hit-pad])`);
+
+test('polygon add-point grabber stays put under the pointer and the new corner follows the drag', async ({ page }) => {
+  await drawSelectedPolygon(page);
+  const plus = await screenCenter(page.locator('[data-add-vertex="0"] circle').nth(1));
+  // Press a little off the dot, as a finger or a quick click does.
+  await page.mouse.move(plus.x + 4, plus.y + 3);
+  await page.mouse.down();
+  // The new corner shows at the press, and the side grabbers step aside.
+  await expect(vertexDot(page, 1)).toHaveCount(1);
+  await expect(page.locator('[data-add-vertex]')).toHaveCount(0);
+  const atPress = await screenCenter(vertexDot(page, 1));
+  expect(Math.abs(atPress.x - plus.x)).toBeLessThan(1);
+  expect(Math.abs(atPress.y - plus.y)).toBeLessThan(1);
+  await page.mouse.move(plus.x + 4 + 30, plus.y + 3 - 50, { steps: 8 });
+  const dragged = await screenCenter(vertexDot(page, 1));
+  expect(Math.abs(dragged.x - (plus.x + 30))).toBeLessThan(1.5);
+  expect(Math.abs(dragged.y - (plus.y - 50))).toBeLessThan(1.5);
+  await page.mouse.up();
+  await expect(page.locator('[data-add-vertex]')).toHaveCount(5);
+});
+
+test('a corner grabbed off-centre moves by the pointer travel, without a jump', async ({ page }) => {
+  await drawSelectedPolygon(page);
+  const start = await screenCenter(vertexDot(page, 2));
+  // Off the dot but on its grab pad.
+  await page.mouse.move(start.x + 6, start.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 7, start.y + 5);
+  // Before, the corner leapt to the pointer (7 px here) on the first move.
+  const nudged = await screenCenter(vertexDot(page, 2));
+  expect(Math.hypot(nudged.x - start.x, nudged.y - start.y)).toBeLessThan(2);
+  await page.mouse.move(start.x + 46, start.y + 24, { steps: 6 });
+  await page.mouse.up();
+  const end = await screenCenter(vertexDot(page, 2));
+  expect(Math.hypot(end.x - (start.x + 40), end.y - (start.y + 20))).toBeLessThan(1.5);
+});
+
+test('polygon grabbers keep one screen size and stay on their corners through a pinch zoom', async ({ page }) => {
+  await drawSelectedPolygon(page);
+  const at = await screenCenter(vertexDot(page, 0));
+  await page.evaluate(() => {
+    window.__grabberSamples = [];
+    const svgPoint = (svg, x, y) => new DOMPoint(x, y).matrixTransform(svg.getScreenCTM());
+    const sample = () => {
+      const dot = document.querySelector('circle[data-resize-handle="vertex-0"]:not([data-handle-hit-pad])');
+      if (dot) {
+        const r = dot.getBoundingClientRect();
+        const svg = dot.ownerSVGElement;
+        const p = svgPoint(svg, Number(dot.getAttribute('cx')), Number(dot.getAttribute('cy')));
+        window.__grabberSamples.push({ r: r.width / 2, off: Math.hypot(r.x + r.width / 2 - p.x, r.y + r.height / 2 - p.y) });
+      }
+      if (window.__grabberSamples.length < 90) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  // A trackpad pinch arrives as Ctrl+wheel with no key down.
+  for (const deltaY of [...Array(10).fill(-10), ...Array(16).fill(10)]) {
+    await page.evaluate(([x, y, d]) => document.elementFromPoint(x, y).dispatchEvent(new WheelEvent('wheel', { deltaY: d, ctrlKey: true, clientX: x, clientY: y, bubbles: true, cancelable: true })), [at.x, at.y, deltaY]);
+    await page.waitForTimeout(16);
+  }
+  await expect.poll(() => page.evaluate(() => window.__grabberSamples.length), { timeout: 10000 }).toBeGreaterThanOrEqual(90);
+  const samples = await page.evaluate(() => window.__grabberSamples);
+  const radii = samples.map(s => s.r);
+  expect(Math.max(...radii) - Math.min(...radii)).toBeLessThan(0.75);
+  expect(Math.max(...samples.map(s => s.off))).toBeLessThan(1);
+});
