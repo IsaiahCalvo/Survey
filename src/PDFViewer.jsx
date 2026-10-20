@@ -24162,6 +24162,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         setIsLoadingPDF(true);
 
+        // Open speed: start pdf.js/worker setup now so it overlaps the PDF
+        // download; awaited below. Rejection is surfaced at that await.
+        const pdfjsReadyPromise = loadPdfjs();
+        pdfjsReadyPromise.catch(() => {});
+
         // Open speed (2026-10-04): the project sidecar read below used to start
         // only after the PDF was downloaded and parsed, holding the first page
         // back by one more round trip. Start it now, alongside the PDF download
@@ -24233,7 +24238,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         let pdf;
         // Ensure the pdf.js worker is configured (no longer set globally at boot).
         loadTrace('configuring pdf.js worker (loadPdfjs)');
-        await loadPdfjs();
+        await pdfjsReadyPromise;
         loadTrace('pdf.js worker ready');
         perfLoad.mark(docName, 'Starting PDF.js getDocument');
         try {
