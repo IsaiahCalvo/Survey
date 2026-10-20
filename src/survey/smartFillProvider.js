@@ -129,7 +129,7 @@ function runScan(message, transfer, signal, limitMs) {
   try {
     w = new Worker(new URL('./smartFillWorker.js', import.meta.url), { type: 'module' });
   } catch {
-    return Promise.resolve(null);
+    return Promise.resolve({ ok: false, reason: 'no-worker' });
   }
   const id = nextId++;
   return new Promise((resolve) => {
@@ -145,7 +145,7 @@ function runScan(message, transfer, signal, limitMs) {
     const onAbort = () => finish({ ok: false, reason: 'aborted' });
     const timer = setTimeout(() => finish({ ok: false, reason: 'timeout' }), limitMs);
     w.addEventListener('message', (event) => { if (event.data?.id === id) finish(event.data.result); });
-    w.addEventListener('error', () => finish(null));
+    w.addEventListener('error', () => finish({ ok: false, reason: 'error' }));
     signal?.addEventListener?.('abort', onAbort);
     w.postMessage({ ...message, id }, transfer);
   });
@@ -182,9 +182,8 @@ export async function findSimilarOnPage({ pageCanvas, pageSize, sample, signal =
   const pxSample = { ...sample, width: sample.width * pxPerUnit, height: sample.height * pxPerUnit };
   const buffer = data.buffer;
   const pending = postToWorker({ kind: 'scan', rgba: buffer, width, height, sample: pxSample }, [buffer], signal, SCAN_TIME_LIMIT_MS);
-  const result = pending
-    ? await pending
-    : { ok: true, rings: findSimilarTags(adaptiveInkMaskFromRgba(data, width, height), width, height, pxSample) };
+  let result = pending ? await pending : null;
+  if (!result || result.reason === 'no-worker') result = { ok: true, rings: findSimilarTags(adaptiveInkMaskFromRgba(data, width, height), width, height, pxSample) };
   if (!result?.ok) return { ok: false, reason: result?.reason || 'error' };
   return {
     ok: true,

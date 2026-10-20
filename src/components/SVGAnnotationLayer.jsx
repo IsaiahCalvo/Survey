@@ -190,6 +190,12 @@ import { findSimilarOnPage } from '../survey/smartFillProvider.js';
 import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
 import { markerShapeHitTest } from '../survey/markerShapes.js';
 import { showToast, dismissToast } from '../utils/toast';
+// The toast store renames a toast whose id is still showing, so a later
+// dismissToast(id) would miss it; clear the old one first.
+const showSmartFillFindToast = (message, type, options) => {
+  dismissToast('smart-fill-find');
+  return showToast(message, type, options);
+};
 import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
 import { isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
 import {
@@ -2429,7 +2435,7 @@ const SVGAnnotationLayerBody = memo(({
         onSurveyMarkerCreated(markerBounds);
         const sample = saveSmartFillSample(markerBounds.shape.polygons[0][0]);
         if (sample) {
-          showToast('Survey Marker added. Want Smart fill to find more tags like it on this page?', 'success', {
+          showSmartFillFindToast('Survey Marker added. Want Smart fill to find more tags like it on this page?', 'success', {
             id: 'smart-fill-find',
             duration: Infinity,
             action: { label: 'Find more', onClick: () => findMoreLikeThisRef.current?.(sample, markerBounds) },
@@ -2456,12 +2462,12 @@ const SVGAnnotationLayerBody = memo(({
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     smartFillScanAbortRef.current = controller;
     const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
-    if (!quietIfNone) showToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find', duration: Infinity });
+    if (!quietIfNone) showSmartFillFindToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find', duration: Infinity });
     findSimilarOnPage({ pageCanvas, pageSize: { width, height }, sample, signal: controller?.signal || null }).then((res) => {
       if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
       if (!res.ok) {
         if (quietIfNone) return;
-        showToast(res.reason === 'not-ready'
+        showSmartFillFindToast(res.reason === 'not-ready'
           ? 'Smart fill: the page is still loading. Try again.'
           : 'Smart fill couldn’t finish looking on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
         return;
@@ -2474,7 +2480,7 @@ const SVGAnnotationLayerBody = memo(({
       setSmartFillMatches(matches);
       // From the tool bar every page in view looks; only pages with matches speak.
       if (quietIfNone && !matches.length) return;
-      showToast(matches.length
+      showSmartFillFindToast(matches.length
         ? `Found ${matches.length} more like it. Tap each blue outline to add it.`
         : 'No other tags like it on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
     });

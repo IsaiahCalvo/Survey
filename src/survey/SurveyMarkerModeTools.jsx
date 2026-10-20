@@ -18,7 +18,7 @@ import {
 } from './markerDrawMode.js';
 import { getMarkerShapeProviders, subscribeMarkerShapeProviders } from './markerShapeProviders.js';
 import { latestSmartFillSample } from './smartFillSamples.js';
-import { showToast } from '../utils/toast';
+import { showToast, dismissToast } from '../utils/toast';
 
 // Test-only fake Smart fill (dev server + ?fakeSmartFill=1). Never in a
 // production build: Vite folds import.meta.env.DEV to false and drops this.
@@ -91,6 +91,7 @@ export default function SurveyMarkerModeTools({ chromeTip, glyphSize }) {
           data-smart-fill-find-similar="true"
           onClick={() => {
             // Pages that find matches replace this with their count.
+            dismissToast('smart-fill-find');
             showToast('Looking for tags like your last Smart fill on the pages in view…', 'info', { id: 'smart-fill-find', duration: 30000 });
             window.dispatchEvent(new CustomEvent('smart-fill-find-similar'));
           }}
