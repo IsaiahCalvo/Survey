@@ -523,6 +523,23 @@ if (!devRouteActive && isResetPasswordRoute) {
   });
 }
 
+// `/agent-link`: approve an AI agent's sign-in code (see public/auth.md).
+const isAgentLinkRoute = typeof window !== 'undefined'
+  && /^\/agent-link(?:\/|$)/.test(window.location.pathname || '');
+
+if (!devRouteActive && isAgentLinkRoute) {
+  devRouteActive = true;
+  import('./home/AgentLinkPage').then(({ default: AgentLinkPage }) => {
+    createRoot(document.getElementById('root')).render(
+      <ErrorBoundary>
+        <AuthProvider>
+          <AgentLinkPage />
+        </AuthProvider>
+      </ErrorBoundary>
+    );
+  });
+}
+
 if (!devRouteActive) {
   createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
