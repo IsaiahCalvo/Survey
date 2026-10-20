@@ -260,3 +260,15 @@ test('copy uses the Clipboard API and falls back to the legacy copy command', as
   assert.deepEqual(commands, ['copy']);
   assert.equal(await copyTextSelection('', { clipboard: { writeText: async () => {} } }), false);
 });
+
+test('the menu measures the viewer that holds the selection, not the first mounted tab', () => {
+  // Codex (#817): hidden tabs stay mounted with display:none; a plain
+  // querySelector picked the first, zero-sized viewer and the menu never
+  // showed on later tabs.
+  const src = readFileSync(new URL('../src/components/TextSelectionQuickMenu.jsx', import.meta.url), 'utf8');
+  const bounds = /function viewerBounds\(\) \{\n([^\n]*)/.exec(src);
+  assert.ok(bounds, 'viewerBounds found');
+  assert.match(bounds[1], /selectionViewer\(\)/);
+  assert.match(src, /closest\?\.\('\[data-testid="pdf-container"\]'\)/);
+  assert.match(src, /getClientRects\(\)\.length > 0/);
+});

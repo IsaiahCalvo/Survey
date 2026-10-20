@@ -275,9 +275,11 @@ test('single-annotation delete journals exactly one durable row (bulk path dedup
   const pushBody = pdfViewerSrc.slice(pushStart, pushStart + 8000);
   assert.match(pushBody, /journaledByBulkPath/, 'bulk dedupe check missing from pushLocalAnnotationHistoryAction');
   assert.match(pushBody, /suppressHistoryRow:\s*suppressActivityHistoryRow/, 'delete activity twin suppression flag missing');
+  assert.match(pushBody, /buildAnnotationDeleteHistoryRowsForAction\(/);
+  assert.match(pushBody, /isAlreadyJournaled: isBulkJournaledAnnotationId/);
   assert.match(
     pushBody,
-    /scopedAction\.type === 'fabric:delete' && !journaledByBulkPath/,
-    'single trash row must be skipped when the bulk path already journaled the id',
+    /documentId && !journaledByBulkPath/,
+    'transaction trash rows must be skipped when the bulk path already journaled their ids',
   );
 });

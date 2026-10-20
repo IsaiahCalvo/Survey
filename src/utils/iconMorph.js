@@ -68,6 +68,48 @@ const POLYGON_NODES = [[14.71, 4.92], [5.91, 7.13], [4.77, 16.73], [13.59, 19.08
  * translateY(2px) was folded into its asset in the 2026-10-02 optical pass.
  */
 export const MORPH_ICONS = Object.freeze({
+  listChecks: { source: 'src/Icons.jsx', paths: [
+    { d: "M3 7L5 9L9 5M3 17L5 19L9 15" },
+    { d: "M13 6H21M13 12H21M13 18H21" }
+  ] },
+  editList: { source: 'src/Icons.jsx', paths: [
+    { d: "M3 6h18M3 12h9M3 18h5" },
+    { d: "M12 21l.75-3 6.1-6.1a1.6 1.6 0 0 1 2.25 2.25L15 20.25z" }
+  ] },
+  check: { source: 'src/Icons.jsx', paths: [
+    { d: "M20 6L9 17L4 12" }
+  ] },
+  plus: { source: 'src/Icons.jsx', paths: [
+    { d: "M12 5V19" },
+    { d: "M5 12H19" }
+  ] },
+  duplicate: { source: 'src/Icons.jsx', paths: [
+    { d: "M15 12L15 18", line: [15, 12, 15, 18] },
+    { d: "M12 15L18 15", line: [12, 15, 18, 15] },
+    { d: rectPath(8, 8, 14, 14, 1.56), rect: [8, 8, 14, 14, 1.56] },
+    { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }
+  ] },
+  copy: { source: 'src/Icons.jsx', paths: [
+    { d: rectPath(8, 8, 14, 14, 1.56), rect: [8, 8, 14, 14, 1.56] },
+    { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }
+  ] },
+  moveTo: { source: 'src/Icons.jsx', paths: [
+    { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", dash: [1.5, 3] },
+    { d: rectPath(8, 8, 14, 14, 1.56), rect: [8, 8, 14, 14, 1.56] },
+    { d: "M11.5 15h6.5M15.5 12l3 3-3 3" }
+  ] },
+  trash: { source: 'src/Icons.jsx', paths: [
+    { d: "M3 6H5H21" },
+    { d: "M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" },
+    { d: "M10 11V17" },
+    { d: "M14 11V17" }
+  ] },
+  share: { source: 'src/Icons.jsx', paths: [
+    { d: circlePath(18, 5, 3), circle: [18, 5, 3] },
+    { d: circlePath(6, 12, 3), circle: [6, 12, 3] },
+    { d: circlePath(18, 19, 3), circle: [18, 19, 3] },
+    { d: "M8.6 13.5L15.4 17.5M15.4 6.5L8.6 10.5" }
+  ] },
   pen: {
     source: 'src/Icons.jsx',
     transform: 'translate(12 12) scale(0.93) translate(-11.9 -12.2)',

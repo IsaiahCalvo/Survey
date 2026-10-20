@@ -73,11 +73,17 @@ import { getViewportScrollbarAxis } from '../utils/pdfViewportScrollbar';
 import { computeDetailTileBox, resolveDetailTileStyle } from '../utils/pdfDetailTileGeometry.js';
 import { LIVE_ZOOM_EVENT } from '../utils/liveZoomEvents.js';
 import { createZoomGlide, retargetZoomGlide, stepZoomGlide } from '../utils/zoomGlide.js';
+import { startPageGlide } from '../utils/pageScrollGlide.js';
 import { isLiveFormWidgetTarget } from '../utils/formWidgetPointerTargets.js';
 import { isSelectionGrabPress } from '../hooks/useSelectionGrabHandoff.js';
 import {
-  hasStylusTouch, isPenDown, isPencilOnly, resolveTouchStartRoute, resolveViewerPressRoute, subscribeGatedPointers,
+  DRAW_MODES, hasStylusTouch, isPenDown, isPencilOnly, resolveTouchStartRoute, resolveViewerPressRoute, subscribeGatedPointers,
 } from '../utils/pencilMode.js';
+import {
+  PAN_TEXT_CLICK_SLOP_PX, PAN_TEXT_HOVER_MS, PAN_TEXT_LEAVE_GRACE_MS, hasLivePdfTextSelection, isPanTextTarget,
+  panTextLeaveWaits, panTextOwnsPress, resolvePanTextHover, resolvePanTextSelectionChange,
+} from '../utils/panTextSelect.js';
+import { createLongPressTracker, longPressMayArm, markLongPressEvent } from '../utils/touchLongPress.js';
 import {
   compensateScrollTopForRoom,
   computeTopOverlayInset,
@@ -88,6 +94,7 @@ import {
   resolveVerticalPlacement,
   subscribeViewerTopOverlays,
 } from '../utils/viewerTopOverlay.js';
+import { buildVisiblePageStack } from '../utils/visiblePageLayout.js';
 import { computeFitScale, pickCurrentPage, resolveFitPageLanding } from '../utils/pageNavigationMath.js';
 import { createPageRasterQueue } from '../utils/pageRasterQueue.js';
 import {
@@ -1260,7 +1267,11 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onS
     <>
       {vertical.maxScroll > 0 && <div
         ref={verticalRailRef}
+        // KAL-66: a pointer-only drawing of the scroll position; the page
+        // itself scrolls from the keyboard. Hidden from assistive tech (its
+        // labels stay for the debug specs that find it by them).
         aria-label="Viewport vertical scroll bar"
+        aria-hidden="true"
         onTransitionEnd={finishFade}
         onPointerDown={takeScrollerFromGlide}
         onPointerEnter={() => hoverRail('vertical')}
@@ -1290,6 +1301,7 @@ function ViewportScrollbars({ scrollerRef, previewMetrics, disabled = false, onS
       {horizontal.maxScroll > 0 && <div
         ref={horizontalRailRef}
         aria-label="Viewport horizontal scroll bar"
+        aria-hidden="true"
         onTransitionEnd={finishFade}
         onPointerDown={takeScrollerFromGlide}
         onPointerEnter={() => hoverRail('horizontal')}
@@ -1327,6 +1339,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // eslint-disable-next-line no-unused-vars -- accepted for older callsites; pdf.js needs no resource path
   resourceUrl,
   documentSource,
+  visiblePageNumbers = null,
   // The following props are accepted for compatibility with older PDFViewer callsites.
   // pdf.js handles these concerns differently; do not crash on a forwarded prop.
   // interactionMode === 'Pan' drives the drag-to-pan handler below (Pdfjs
@@ -1359,8 +1372,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   textMarkupOpacity = null,
   textSelectionLayerActive = false,
   textSelectionLayerInteractive = textSelectionLayerActive,
+  // Pan over text (utils/panTextSelect.js): mount the text layer under Pan so a
+  // mouse / pen resting on text can select it, as Drawboard's Pan does.
+  panTextHoverSelect = false,
   className = '',
   style = {},
+  pageTransformations = {},
   // eslint-disable-next-line no-unused-vars
   formDesignerEnabled = false,
   onDocumentLoaded,
@@ -1485,6 +1502,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const zoomGlideCancelRef = useRef(null);
   const zoomGlideFinishRef = useRef(null);
   const zoomGlideScheduleRef = useRef(null);
+  // Smooth page moves (Drawboard canvas audit chunk 6, utils/pageScrollGlide.js):
+  // the running glide's controller, and whether it is a page jump (the page you
+  // asked for stays the current page while it glides, so the page number never
+  // flickers through the pages it passes).
+  const pageGlideRef = useRef(null);
+  const pageGlideHoldsPageRef = useRef(false);
   const dimsPtRef = useRef([]);
   // Widest page in PDF points (rotation applied): sizes the shared column.
   const widestPagePtRef = useRef(0);
@@ -1547,6 +1570,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const spacePressRef = useRef(null);
   const panInteractionRef = useRef(false);
   const panPointerRef = useRef(null);
+  // 'off' | 'on' | 'keep' (utils/panTextSelect.js); mirrored to data-pan-text.
+  const panTextStateRef = useRef('off');
   const panDeltaRef = useRef({ x: 0, y: 0 });
   const panRafRef = useRef(0);
   // Shared flick physics (src/utils/panMomentum.js) drives BOTH the mobile
@@ -1865,27 +1890,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- layout: cumulative offsets ------------------------------------------
   const layout = useMemo(() => {
     const metrics = layoutMetrics;
-    const rot90 = rotation === 90 || rotation === 270;
-    const dims = pageSizes.map((s) => (rot90 ? { w: s.h, h: s.w } : { w: s.w, h: s.h }));
-    // UX intent: the white space between pages must stay PROPORTIONAL to page
-    // size at every zoom — the same visual breathing room the pdf.js reference
-    // viewer shows. A fixed screen-space gap looks oversized between shrunken
-    // pages when zoomed out and cramped between enlarged pages when zoomed in.
-    // Page heights already scale (dims[i].h * scale), so the gap scales the same
-    // way: metrics.gap is the base at 100% (scale = 1), so 100% is unchanged and
-    // the gap-to-page ratio is held constant across all zoom levels.
-    const gapPx = metrics.gap * scale;
-    // The document's outer top/bottom margins use the exact same proportional
-    // gap as the space between pages. This makes the minimum zoom a geometric
-    // boundary instead of an arbitrary percentage, including for one-page PDFs.
-    let y = metrics.padTop + gapPx;
-    const tops = [];
-    let widestPt = 0;
-    for (let i = 0; i < dims.length; i += 1) {
-      tops.push(y);
-      y += dims[i].h * scale + gapPx;
-      widestPt = Math.max(widestPt, dims[i].w);
-    }
+    const { dims, tops, widestPt, height: y } = buildVisiblePageStack({
+      pageSizes, visiblePageNumbers, rotation, scale,
+      padTop: metrics.padTop, gap: metrics.gap,
+    });
     // One column for every page (src/utils/pdfPageColumn.js).
     const columnW = resolveDocumentColumnWidth({
       viewportWidth: containerW,
@@ -1908,7 +1916,30 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       topRoom,
     });
     return { tops, dims, widestPt, columnW, totalH: rawTotalH, rawTotalH, padTop, contentHeight, contentW };
-  }, [pageSizes, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom]);
+  }, [pageSizes, visiblePageNumbers, scale, rotation, containerW, containerH, layoutMetrics, topRoom, sideRoom]);
+
+  // A Space changes the page stack, not the physical page being read.
+  // Capture its old scroll offset before React applies the filtered layout.
+  const previousSpaceLayoutRef = useRef(null);
+  const spaceLayoutAnchorRef = useRef(null);
+  const previousSpaceLayout = previousSpaceLayoutRef.current;
+  if (previousSpaceLayout && previousSpaceLayout.visiblePages !== visiblePageNumbers) {
+    const el = scrollerRef.current;
+    const index = Math.max(0, (currentPageRef.current || 1) - 1);
+    if (el && !previousSpaceLayout.layout.dims[index]?.hidden && !layout.dims[index]?.hidden) {
+      spaceLayoutAnchorRef.current = { index,
+        offset: el.scrollTop - previousSpaceLayout.layout.tops[index] - previousSpaceLayout.layout.padTop,
+      };
+    }
+  }
+  previousSpaceLayoutRef.current = { visiblePages: visiblePageNumbers, layout };
+  useLayoutEffect(() => {
+    const anchor = spaceLayoutAnchorRef.current;
+    spaceLayoutAnchorRef.current = null;
+    const el = scrollerRef.current;
+    if (!anchor || !el) return;
+    el.scrollTop = Math.max(0, layout.tops[anchor.index] + layout.padTop + anchor.offset);
+  }, [layout]);
 
   dimsPtRef.current = layout.dims;
   widestPagePtRef.current = layout.widestPt;
@@ -1999,6 +2030,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       currentPage: currentPageRef.current,
     });
     clampHorizontalScroll();
+    // A page jump still gliding keeps the page it is heading to (set by goToPage).
+    if (pageGlideHoldsPageRef.current) return;
     if (page !== currentPageRef.current) {
       const prev = currentPageRef.current;
       currentPageRef.current = page;
@@ -2026,6 +2059,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let first = -1; let last = -1;
     let visibleFirst = -1; let visibleLast = -1;
     for (let i = 0; i < layout.tops.length; i += 1) {
+      if (layout.dims[i].hidden) continue;
       const t = layout.tops[i];
       const b = t + layout.dims[i].h * scale;
       if (b >= lo && t <= hi) { if (first === -1) first = i; last = i; }
@@ -2374,7 +2408,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // arbitrary scale sc uses metrics.gap * sc to match the layout it commits to.
     const gapPx = metrics.gap * sc;
     let y = metrics.padTop + gapPx;
-    for (let k = 0; k < dims.length; k += 1) y += dims[k].h * sc + gapPx;
+    for (let k = 0; k < dims.length; k += 1) if (!dims[k].hidden) y += dims[k].h * sc + gapPx;
     const rawTotalH = y + metrics.padBottom;
     return Math.max(0, (containerHRef.current - rawTotalH) / 2);
   };
@@ -2388,7 +2422,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dims = dimsPtRef.current;
     // Zoom-proportional gap (see layout memo): stack with metrics.gap * sc.
     let y = metrics.padTop + (metrics.gap * sc) + padTopFor(sc);
-    for (let k = 0; k < i; k += 1) y += dims[k].h * sc + metrics.gap * sc;
+    for (let k = 0; k < i; k += 1) if (!dims[k].hidden) y += dims[k].h * sc + metrics.gap * sc;
     return y;
   };
   const leftAt = (i, sc) => getPageLeftAtScale(i, sc);
@@ -2399,11 +2433,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const gapPx = metrics.gap * sc;
     let y = metrics.padTop + gapPx + padTopFor(sc);
     for (let i = 0; i < dims.length; i += 1) {
+      if (dims[i].hidden) continue;
       const h = dims[i].h * sc;
       if (cY < y + h + gapPx) return i;
       y += h + gapPx;
     }
-    return Math.max(0, dims.length - 1);
+    for (let i = dims.length - 1; i >= 0; i -= 1) if (!dims[i].hidden) return i;
+    return 0;
   };
 
   const resolveGesturePreview = useCallback((gesture, requestedScale) => {
@@ -2459,6 +2495,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const gapPx = metrics.gap * sc;
       let height = metrics.padTop + gapPx + metrics.padBottom;
       dims.forEach((dim) => {
+        if (dim.hidden) return;
         height += dim.h * sc + gapPx;
       });
       // With strip room the bottom centring pad is part of the content too
@@ -3272,9 +3309,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
     el.dataset.spacePan = dragging ? 'dragging' : (armed ? 'armed' : 'off');
     el.style.cursor = dragging ? 'grabbing' : (armed ? 'grab' : '');
-    el.style.userSelect = armed ? 'none' : '';
+    // Pan over text: while the I-beam shows (or a Pan text selection is live)
+    // no ancestor of the text may be user-select:none, or the browser refuses
+    // or drops the selection. Presses that pan still preventDefault.
+    const noSelect = armed && panTextStateRef.current === 'off';
+    el.style.userSelect = noSelect ? 'none' : '';
     // Owner 2026-10-13: Safari / iPad WebKit only honour the prefixed form.
-    el.style.webkitUserSelect = armed ? 'none' : '';
+    el.style.webkitUserSelect = noSelect ? 'none' : '';
   }, []);
 
   // Phone one-finger pan past an edge (owner 2026-10-02, Drawboard parity):
@@ -3654,6 +3695,124 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
   }, [finishPan, setPanInteraction, updatePanPresentation]);
 
+  // Pan over text (owner 2026-10-14, Drawboard parity; utils/panTextSelect.js):
+  // a mouse or pen resting 200 ms on text shows the I-beam and its press-drag
+  // selects text; off the text, or before the rest, a press pans as before.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || !panTextHoverSelect) return undefined;
+    let timer = 0;
+    let overText = false;
+    let press = null;
+    const setState = (next) => {
+      if (panTextStateRef.current === next) return;
+      panTextStateRef.current = next;
+      if (next === 'off') delete el.dataset.panText; else el.dataset.panText = next;
+      updatePanPresentation();
+    };
+    let leaveTimer = 0;
+    const stopLeave = () => { window.clearTimeout(leaveTimer); leaveTimer = 0; };
+    const stopTimer = () => { window.clearTimeout(timer); timer = 0; };
+    const hoverFor = (event, onText) => resolvePanTextHover({
+      toolIsPan: interactionModeRef.current === 'Pan',
+      spaceHeld: spacePanRef.current || Boolean(panPointerRef.current),
+      pointerType: event.pointerType,
+      buttons: event.buttons,
+      overText: onText,
+      state: panTextStateRef.current,
+      selectionLive: hasLivePdfTextSelection(window.getSelection?.()),
+    });
+    const onMove = (event) => {
+      const onText = isPanTextTarget(event.target);
+      // A gap between text boxes on a line: off text only once the pointer
+      // stays off it for PAN_TEXT_LEAVE_GRACE_MS (Bugbot #832).
+      if (panTextLeaveWaits({
+        toolIsPan: interactionModeRef.current === 'Pan',
+        spaceHeld: spacePanRef.current || Boolean(panPointerRef.current),
+        pointerType: event.pointerType,
+        buttons: event.buttons,
+        overText: onText,
+      }) && (overText || timer || panTextStateRef.current === 'on')) {
+        if (!leaveTimer) {
+          const { pointerType } = event;
+          leaveTimer = window.setTimeout(() => {
+            leaveTimer = 0;
+            overText = false;
+            const late = hoverFor({ pointerType, buttons: 0 }, false);
+            if (late.stopTimer) stopTimer();
+            setState(late.state);
+          }, PAN_TEXT_LEAVE_GRACE_MS);
+        }
+        return;
+      }
+      stopLeave();
+      overText = onText;
+      const next = hoverFor(event, overText);
+      if (next.stopTimer) stopTimer();
+      setState(next.state);
+      if (next.startTimer && !timer) {
+        timer = window.setTimeout(() => {
+          timer = 0;
+          if (overText && !spacePanRef.current && !panPointerRef.current) setState('on');
+        }, PAN_TEXT_HOVER_MS);
+      }
+    };
+    const onLeave = () => {
+      overText = false;
+      stopLeave();
+      stopTimer();
+      if (panTextStateRef.current === 'on') {
+        setState(hasLivePdfTextSelection(window.getSelection?.()) ? 'keep' : 'off');
+      }
+    };
+    // A click (no drag) on the page away from the text clears a Pan selection,
+    // like a click on the page under Text Select.
+    const onDown = (event) => {
+      press = { x: event.clientX, y: event.clientY, onText: isPanTextTarget(event.target) };
+    };
+    const onUp = (event) => {
+      const start = press;
+      press = null;
+      // Any live Pan selection, not only in 'keep': within the leave grace the
+      // state can still read 'on' when the click lands off text (Bugbot #832).
+      if (!start || start.onText || panTextStateRef.current === 'off') return;
+      if (!hasLivePdfTextSelection(window.getSelection?.())) return;
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > PAN_TEXT_CLICK_SLOP_PX) return;
+      try { window.getSelection?.()?.removeAllRanges?.(); } catch { /* noop */ }
+    };
+    const onSelectionChange = () => {
+      const live = hasLivePdfTextSelection(window.getSelection?.());
+      setState(resolvePanTextSelectionChange({ state: panTextStateRef.current, selectionLive: live }));
+    };
+    // Scroll or zoom under a still pointer moves the text away from it, and
+    // no pointermove says so: drop the I-beam until the next move re-checks
+    // (Codex #832). Not mid-press: a text drag that autoscrolls keeps going.
+    const onScroll = () => {
+      if (press || panTextStateRef.current !== 'on') return;
+      overText = false;
+      stopLeave();
+      stopTimer();
+      setState(hasLivePdfTextSelection(window.getSelection?.()) ? 'keep' : 'off');
+    };
+    el.addEventListener('pointermove', onMove, { capture: true, passive: true });
+    el.addEventListener('pointerleave', onLeave);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    el.addEventListener('pointerdown', onDown, { capture: true, passive: true });
+    el.addEventListener('pointerup', onUp, { capture: true, passive: true });
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => {
+      stopTimer();
+      stopLeave();
+      el.removeEventListener('pointermove', onMove, true);
+      el.removeEventListener('pointerleave', onLeave);
+      el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('pointerdown', onDown, true);
+      el.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('selectionchange', onSelectionChange);
+      setState('off');
+    };
+  }, [panTextHoverSelect, updatePanPresentation]);
+
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return undefined;
@@ -3668,6 +3827,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       || (event.target === contentRef.current && contentRef.current != null);
     const isMiddlePress = (event) => event.pointerType === 'mouse' && event.button === 1;
     const onPointerDown = (event) => {
+      // Pan over text with the I-beam showing: the press selects text.
+      if (panTextOwnsPress({
+        toolIsPan: interactionModeRef.current === 'Pan',
+        spaceHeld: spacePanRef.current,
+        state: panTextStateRef.current,
+        pointerType: event.pointerType,
+        button: event.button,
+        // A glyph only: the text layer root also takes presses while the
+        // I-beam shows, and a press on its blank part must still pan (Codex #832).
+        onTextLayer: isPanTextTarget(event.target),
+      })) return;
       const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
       const route = resolveViewerPressRoute({
         pointerType: event.pointerType,
@@ -4257,6 +4427,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     const stopNativeSelection = (event) => {
       if (isNativeInteractionTarget(event.target)) return;
+      // Pan over text: a resting mouse / pen (an iPad trackpad) selects text.
+      if (event.type === 'selectstart' && panTextStateRef.current === 'on') return;
       event.preventDefault();
     };
     const stopPostGestureClick = (event) => {
@@ -4346,15 +4518,23 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
   }, [applyWheelZoom, beginElasticPan, cancelPanInertia, catchElastic, checkpointPinchGesture, commitGesture, flushPan, isMobileSurface, releaseElastic, releaseElasticPan, releaseLayoutShift, schedulePan, setPanInteraction, setZoomInteraction, startPanInertia, stopElastic, touchSurface]);
 
-  // Mobile long-press → context menu (Phase D parity). Isolated, additive,
-  // and passive: this effect only OBSERVES touches (it never preventDefaults or
-  // stops propagation), so it cannot disturb the pan/pinch/tool contract above.
-  // A single finger held still for ~380ms synthesizes a `contextmenu` MouseEvent
-  // at the touch point; the app-wide right-click dispatcher
+  // Long-press → context menu (Phase D parity; docs/GESTURE-CONTRACT.md L1).
+  // Isolated, additive and passive: this effect only OBSERVES touches and pen
+  // pointers (it never preventDefaults or stops propagation), so it cannot
+  // disturb the pan/pinch/tool contract above.
+  // A finger or pen held still for 380ms synthesizes a `contextmenu` MouseEvent
+  // at the press point; the app-wide right-click dispatcher
   // (utils/contextMenuDiagnostics.js) then resolves the target and opens the
   // annotation / paste / region menu — reusing the exact desktop handlers, so
   // sync/CRDT sees identical operations. Movement beyond 10px, a second finger,
-  // or lift-off before the timer cancels the press.
+  // or lift-off before the timer cancels the press (utils/touchLongPress.js).
+  //
+  // Every touch screen, not only the phone (Drawboard touch audit 2026-10-13,
+  // T1): iPads and touch laptops use the desktop layout, where a finger had no
+  // other way to reach Delete / Duplicate / Lock / Arrange. Pencil only: a
+  // finger navigates (P2), so only the pen's long press opens the menu. A pen
+  // that sends no touch events (Windows / Surface pens) is heard through its
+  // pointer events; an Apple Pencil sends both and simply re-arms the same press.
   //
   // Demo reference: mobile-expo-go/App.tsx wires per-target long-press —
   // annotation 320ms (866-895), canvas paste 360ms (897-915), region 420ms
@@ -4363,83 +4543,93 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // all three rather than three separate delays.
   useEffect(() => {
     const el = scrollerRef.current;
-    if (!el || !isMobileSurface || !mobileLongPressContextMenu) return undefined;
+    if (!el || !touchSurface || !mobileLongPressContextMenu) return undefined;
 
-    const LONG_PRESS_MS = 380;
-    const MOVE_CANCEL_PX = 10;
-    let timer = null;
-    let startX = 0;
-    let startY = 0;
+    // Synthesize a right-click at the held point on whatever element is
+    // topmost there. The dispatcher reads clientX/clientY + composedPath /
+    // elementsFromPoint, so a real MouseEvent on the hit element resolves
+    // the page + annotation/region exactly as a desktop right-click would.
+    // The event carries the input so the menu takes its 44px touch rows.
+    const press = createLongPressTracker({
+      onFire: ({ x, y, input }) => {
+        const target = document.elementFromPoint(x, y) || el;
+        const ev = new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: x,
+          clientY: y,
+          button: 2,
+        });
+        target.dispatchEvent(markLongPressEvent(ev, input));
+      },
+    });
+    const drawMode = () => (isPencilOnly() ? DRAW_MODES.PEN : DRAW_MODES.TOUCH);
 
-    const clear = () => {
-      if (timer) { clearTimeout(timer); timer = null; }
-    };
-
-    const fire = () => {
-      timer = null;
-      // Synthesize a right-click at the held point on whatever element is
-      // topmost there. The dispatcher reads clientX/clientY + composedPath /
-      // elementsFromPoint, so a real MouseEvent on the hit element resolves
-      // the page + annotation/region exactly as a desktop right-click would.
-      const target = document.elementFromPoint(startX, startY) || el;
-      const ev = new MouseEvent('contextmenu', {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: startX,
-        clientY: startY,
-        button: 2,
-      });
-      target.dispatchEvent(ev);
-    };
+    // Resize/rotation handles own the entire touch sequence. Never arm the
+    // annotation long-press menu beneath them; WebKit otherwise may surface
+    // its native Page/Paste callout during a deliberate slow transform.
+    // UX 2026-09-16: the invisible 44 pt pad behind each grabber counts as
+    // the grabber for this rule. Without it a finger that landed on the pad
+    // (which is the normal way to grab a handle by touch) armed the
+    // long-press menu underneath instead of starting the transform.
+    const onHandle = (target) => Boolean(target?.closest?.('[data-resize-handle], [data-rotation-handle], [data-handle-hit-pad]'));
 
     const onStart = (event) => {
-      if (event.touches.length !== 1) { clear(); return; }
-      // Resize/rotation handles own the entire touch sequence. Never arm the
-      // annotation long-press menu beneath them; WebKit otherwise may surface
-      // its native Page/Paste callout during a deliberate slow transform.
-      if (event.target?.closest?.('[data-resize-handle], [data-rotation-handle]')) {
-        clear();
-        return;
-      }
-      // UX 2026-09-16: the invisible 44 pt pad behind each grabber counts as
-      // the grabber for this rule. Without it a finger that landed on the pad
-      // (which is the normal way to grab a handle by touch) armed the
-      // long-press menu underneath instead of starting the transform.
-      if (event.target?.closest?.('[data-handle-hit-pad]')) {
-        clear();
-        return;
-      }
+      if (event.touches.length !== 1) { press.cancel(); return; }
+      if (onHandle(event.target)) { press.cancel(); return; }
       const t = event.touches[0];
       // A resting palm never opens the page menu (Drawboard audit C1).
-      if (isPalmContact(t)) { clear(); return; }
-      startX = t.clientX;
-      startY = t.clientY;
-      clear();
-      timer = window.setTimeout(fire, LONG_PRESS_MS);
+      if (isPalmContact(t)) { press.cancel(); return; }
+      const input = hasStylusTouch(event.touches) ? 'pen' : 'touch';
+      if (!longPressMayArm(input, drawMode())) { press.cancel(); return; }
+      press.start(t.clientX, t.clientY, input);
     };
     const onMove = (event) => {
-      if (!timer) return;
-      if (event.touches.length !== 1) { clear(); return; }
+      if (event.touches.length !== 1) { press.cancel(); return; }
       const t = event.touches[0];
-      if (Math.abs(t.clientX - startX) > MOVE_CANCEL_PX || Math.abs(t.clientY - startY) > MOVE_CANCEL_PX) {
-        clear();
-      }
+      press.move(t.clientX, t.clientY);
+    };
+    const cancel = () => press.cancel();
+    // Pen pointers (a pen that sends no touch events). Fingers stay on the
+    // touch stream above; a mouse never arms (it has the right button).
+    let penId = null;
+    const onPenDown = (event) => {
+      if (event.pointerType !== 'pen') return;
+      if (event.button !== 0 || onHandle(event.target)) { penId = null; press.cancel(); return; }
+      penId = event.pointerId;
+      press.start(event.clientX, event.clientY, 'pen');
+    };
+    const onPenMove = (event) => {
+      if (event.pointerType === 'pen' && event.pointerId === penId) press.move(event.clientX, event.clientY);
+    };
+    const onPenEnd = (event) => {
+      if (event.pointerType !== 'pen' || event.pointerId !== penId) return;
+      penId = null;
+      press.cancel();
     };
 
     // passive:true — guarantees we never interfere with the active touch contract.
     el.addEventListener('touchstart', onStart, { capture: true, passive: true });
     el.addEventListener('touchmove', onMove, { capture: true, passive: true });
-    el.addEventListener('touchend', clear, { capture: true, passive: true });
-    el.addEventListener('touchcancel', clear, { capture: true, passive: true });
+    el.addEventListener('touchend', cancel, { capture: true, passive: true });
+    el.addEventListener('touchcancel', cancel, { capture: true, passive: true });
+    el.addEventListener('pointerdown', onPenDown, { capture: true, passive: true });
+    el.addEventListener('pointermove', onPenMove, { capture: true, passive: true });
+    el.addEventListener('pointerup', onPenEnd, { capture: true, passive: true });
+    el.addEventListener('pointercancel', onPenEnd, { capture: true, passive: true });
     return () => {
-      clear();
+      press.cancel();
       el.removeEventListener('touchstart', onStart, true);
       el.removeEventListener('touchmove', onMove, true);
-      el.removeEventListener('touchend', clear, true);
-      el.removeEventListener('touchcancel', clear, true);
+      el.removeEventListener('touchend', cancel, true);
+      el.removeEventListener('touchcancel', cancel, true);
+      el.removeEventListener('pointerdown', onPenDown, true);
+      el.removeEventListener('pointermove', onPenMove, true);
+      el.removeEventListener('pointerup', onPenEnd, true);
+      el.removeEventListener('pointercancel', onPenEnd, true);
     };
-  }, [isMobileSurface, mobileLongPressContextMenu]);
+  }, [touchSurface, mobileLongPressContextMenu]);
 
   // ---- imperative zoom / nav -----------------------------------------------
   const zoomToScale = useCallback((target, options = {}) => {
@@ -4467,7 +4657,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // a panel does not halve the zoom.
     const lastFit = lastFitRef.current;
     const fitPageNumber = auto && lastFit ? lastFit.pageIndex + 1 : (currentPageRef.current || 1);
-    const pageIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, fitPageNumber - 1));
+    const requestedIndex = Math.max(0, Math.min(dimsPtRef.current.length - 1, fitPageNumber - 1));
+    const pageIndex = dimsPtRef.current[requestedIndex]?.hidden
+      ? Math.max(0, dimsPtRef.current.findIndex((dim) => !dim.hidden))
+      : requestedIndex;
     if (isFit) {
       const metrics = layoutMetricsRef.current;
       const d = dimsPtRef.current[pageIndex] || { w: 612, h: 792 };
@@ -4534,7 +4727,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         pageIndex,
       };
     } else {
-      if (landTop != null) el.scrollTop = Math.max(0, landTop);
+      // Chunk 6: the typed page jump glides; the Fit page it asks for right
+      // after (same zoom) moves where that glide ends instead of jumping.
+      if (landTop != null) {
+        if (pageGlideRef.current?.isRunning()) pageGlideRef.current.retarget(Math.max(0, landTop));
+        else el.scrollTop = Math.max(0, landTop);
+      }
       el.scrollLeft = landLeft;
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax]);
@@ -4603,13 +4801,58 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     return true;
   }, [applyAnchoredScale, cancelPanInertia, getPageLeftAtScale, getHorizontalScrollMax, isMobileSurface]);
 
-  const goToPage = useCallback((n) => {
+  // Drawboard canvas audit chunk 6: glide scrollTop to `top` over 250 ms
+  // (utils/pageScrollGlide.js has the rules), or point a glide already running
+  // at it. `holdsPage`: a page jump, whose target page stays the current page
+  // while it glides. Stops by itself on a wheel, press, touch, zoom or any
+  // other scroll write; reduced motion lands at once.
+  const glideScrollTopTo = useCallback((top, { holdsPage = false } = {}) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const running = pageGlideRef.current;
+    if (running?.isRunning()) {
+      pageGlideHoldsPageRef.current = holdsPage;
+      if (running.retarget(top)) return;
+    }
+    const startScale = scaleRef.current;
+    const startAnchor = pendingAnchorRef.current;
+    let controller = null;
+    pageGlideHoldsPageRef.current = holdsPage;
+    controller = startPageGlide({
+      el,
+      to: top,
+      // The part of the view below any tool strips.
+      screen: Math.max(1, el.clientHeight - Math.min(topInsetRef.current, el.clientHeight)),
+      // A zoom took over (its anchor or its glide now owns the scroll position).
+      shouldStop: () => Math.abs(scaleRef.current - startScale) > 1e-4
+        || Boolean(zoomGlideRef.current)
+        || Boolean(pendingAnchorRef.current && pendingAnchorRef.current !== startAnchor),
+      onEnd: () => {
+        if (pageGlideRef.current === controller) pageGlideRef.current = null;
+        pageGlideHoldsPageRef.current = false;
+        detectCurrentPage();
+      },
+    });
+    pageGlideRef.current = controller;
+  }, [detectCurrentPage]);
+
+  const cancelPageGlide = useCallback(() => {
+    pageGlideRef.current?.cancel('cancel');
+    pageGlideRef.current = null;
+    pageGlideHoldsPageRef.current = false;
+  }, []);
+
+  // `options.smooth`: glide there (Previous / Next page, the typed page jump, a
+  // page thumbnail, PageUp / PageDown). Everything else lands at once, as before.
+  const goToPage = useCallback((n, options) => {
     // A zoom glide still playing lands first (where it is shown), so the jump
     // is measured on the laid-out page and the glide's commit cannot undo it.
     zoomGlideFinishRef.current?.();
     const el = scrollerRef.current;
     const tops = topsRef.current;
     if (!el || !tops.length) return false;
+    const smooth = options?.smooth === true;
+    if (!smooth) cancelPageGlide();
     // UX: Previous/Next page, the page-number field, a sidebar thumbnail, a
     // bookmark jump and a search hit all land here. A coast still writing
     // scrollTop every frame would drag the page straight back off the target,
@@ -4622,12 +4865,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // UX 2026-09-23: the page lands with its own (zoom-proportional) top gap
     // showing (owner: right rail audit), just BELOW any tool strips over the
     // viewer (owner: scroll the page out from under toolbars).
-    el.scrollTop = resolvePageLandingScrollTop({
+    const landingTop = resolvePageLandingScrollTop({
       padTop: padTopRef.current,
       pageTop: (tops[i] - layoutMetricsRef.current.gap * scaleRef.current),
       fixedTopInset: layoutMetricsRef.current.padTop,
       overlayInset: topInsetRef.current,
     });
+    if (!smooth) el.scrollTop = landingTop;
     el.scrollLeft = Math.min(el.scrollLeft, getHorizontalScrollMax(scaleRef.current));
     // The page you asked for IS the current page (the scroll event that
     // follows keeps it while it stays fully visible), so the rail never shows
@@ -4643,8 +4887,46 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         raw: { scrollTop: el.scrollTop },
       });
     }
+    if (smooth) glideScrollTopTo(landingTop, { holdsPage: true });
     return true;
-  }, [cancelPanInertia, getHorizontalScrollMax]);
+  }, [cancelPanInertia, cancelPageGlide, getHorizontalScrollMax, glideScrollTopTo]);
+
+  // Chunk 6: PageUp / PageDown move one view (the part below the tool strips)
+  // on the same 250 ms glide, wherever the focus is - unless it is in a field,
+  // a menu or another scrolling list, which keep the key. Drawboard does the
+  // same; before this the key did nothing once a toolbar button had focus.
+  // Presses while gliding add up (each counts from where the glide is going).
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key !== 'PageDown' && event.key !== 'PageUp') return;
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      const el = scrollerRef.current;
+      if (!el || !el.isConnected || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target && target !== document.body && target !== document.documentElement && !el.contains(target)) {
+        if (isEditableTarget(target)) return;
+        if (target.closest('[role="menu"], [role="listbox"], [role="slider"], [role="dialog"], [role="tree"], [role="grid"]')) return;
+        for (let node = target; node && node !== document.body; node = node.parentElement) {
+          const overflowY = window.getComputedStyle(node).overflowY;
+          if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight + 1) return;
+        }
+      }
+      event.preventDefault();
+      zoomGlideFinishRef.current?.();
+      cancelPanInertia(false);
+      const screen = Math.max(1, el.clientHeight - Math.min(topInsetRef.current, el.clientHeight));
+      const running = pageGlideRef.current;
+      const from = running?.isRunning() ? running.target : el.scrollTop;
+      const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      const to = Math.min(maxTop, Math.max(0, from + (event.key === 'PageDown' ? screen : -screen)));
+      glideScrollTopTo(to, { holdsPage: false });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cancelPanInertia, glideScrollTopTo]);
+
+  // A glide never outlives the viewer.
+  useEffect(() => () => { pageGlideRef.current?.cancel('cancel'); }, []);
 
   // ---- onZoomChanged (settle only — scale changes only on commit) ----------
   useLayoutEffect(() => {
@@ -5013,21 +5295,27 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dim = layout.dims[i];
     const left = getPageLeftAtScale(i, scale);
     const top = layout.tops[i];
-    const mounted = i >= range[0] && i <= range[1];
+    const mounted = !dim.hidden && i >= range[0] && i <= range[1];
     return (
       <div
         key={i}
         data-page-number={i + 1}
+        data-page-mirror-h={pageTransformations[i + 1]?.mirrorH ? 'true' : undefined}
+        data-page-mirror-v={pageTransformations[i + 1]?.mirrorV ? 'true' : undefined}
         data-page-mounted={mounted ? 'true' : 'false'}
         className="survey-pdfjs-page-div"
         id={`${viewerId}_pageDiv_${i}`}
         style={{
           position: 'absolute',
+          display: dim.hidden ? 'none' : undefined,
           left,
           top,
           width: dim.w * scale,
           height: dim.h * scale,
           background: '#fff',
+          transform: pageTransformations[i + 1]?.mirrorH || pageTransformations[i + 1]?.mirrorV
+            ? `scale(${pageTransformations[i + 1]?.mirrorH ? -1 : 1}, ${pageTransformations[i + 1]?.mirrorV ? -1 : 1})`
+            : undefined,
           boxShadow: phoneLayout
             ? '0 0 0 1px var(--text-2), 0 10px 28px rgba(0,0,0,0.35)'
             : undefined,
@@ -5058,13 +5346,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
               scrollerRef={scrollerRef}
               isMobileSurface={isMobileSurface}
             />
-            {textSelectionLayerActive && (
+            {(textSelectionLayerActive || panTextHoverSelect) && (
               <PdfjsTextLayer
                 pdf={pdfRef.current}
                 pageNumber={i + 1}
                 scale={scale}
                 rotation={rotation}
                 interactive={textSelectionLayerInteractive}
+                panHover={panTextHoverSelect && !textSelectionLayerActive}
                 onTextAvailability={onTextAvailability}
               />
             )}
@@ -5085,8 +5374,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         />
       </div>
     );
-  }), [pageSizes, layout, scale, range, viewerId, isMobileSurface, phoneLayout, onRaster, rotation,
-    textSelectionLayerActive, textSelectionLayerInteractive, onTextAvailability, tileLiveZoomSignal,
+  }), [pageSizes, layout, scale, range, pageTransformations, viewerId, isMobileSurface, phoneLayout, onRaster, rotation,
+    textSelectionLayerActive, textSelectionLayerInteractive, panTextHoverSelect, onTextAvailability, tileLiveZoomSignal,
     getPageLeftAtScale]);
 
   const scrollbarPreviewMetrics = livePreview ? (() => {
@@ -5095,6 +5384,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const gapPx = metrics.gap * targetScale;
     let rawHeight = metrics.padTop + gapPx;
     layout.dims.forEach((dim) => {
+      if (dim.hidden) return;
       rawHeight += dim.h * targetScale + gapPx;
     });
     rawHeight += metrics.padBottom;
@@ -5205,10 +5495,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         /* Pan opens links on a click, so a link shows the hand (utils/linkClickPolicy.js). */
         [data-space-pan='armed'] :is([data-text-markup-link], [data-pdfjs-link-layer] a) { cursor: pointer !important; }
         [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }
-        /* Owner 2026-10-13 (docs/GESTURE-CONTRACT.md P7): with Pan (or Space)
-           nothing on the page is selectable text - a press-drag always pans.
-           Fields and the text editor keep their own caret. */
-        :is([data-space-pan='armed'], [data-space-pan='dragging']) :not(input, textarea, select, [contenteditable='true'], [contenteditable='true'] *) {
+        /* docs/GESTURE-CONTRACT.md P7: with Pan (or Space) a press-drag pans and
+           selects nothing, except under Pan once a mouse / pen has rested on
+           text (data-pan-text, utils/panTextSelect.js - owner 2026-10-14,
+           Drawboard parity). Fields and the text editor keep their own caret. */
+        :is([data-space-pan='armed'], [data-space-pan='dragging']):not([data-pan-text]) :not(input, textarea, select, [contenteditable='true'], [contenteditable='true'] *) {
           -webkit-user-select: none !important;
           user-select: none !important;
         }
@@ -5223,7 +5514,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           -webkit-touch-callout: none !important;
           -webkit-user-drag: none !important;
         }
-        .survey-pdfjs-mobile-surface[data-text-selection='true'] {
+        .survey-pdfjs-mobile-surface[data-text-selection='true'],
+        .survey-pdfjs-mobile-surface[data-pan-text] {
           -webkit-user-select: text !important;
           user-select: text !important;
           -webkit-touch-callout: default !important;

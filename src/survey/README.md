@@ -22,7 +22,7 @@ import { registerMarkerShapeProvider } from './markerShapeProviders.js';
 const unregister = registerMarkerShapeProvider({
   id: 'smartFill',          // must be exactly this to drive the Smart fill button
   label: 'Smart fill',      // tooltip / accessible name
-  icon: 'paintBucket',      // any <Icon> name in src/Icons.jsx
+  icon: 'smartFillDrop',    // any <Icon> name in src/Icons.jsx (default: smartFillDrop)
   async onPagePointerDown({ pageIndex, pageNumber, point, pageSize, pdfPage, viewport, pageCanvas, signal }) {
     // point: { x, y } where the user pressed, PDF page units (see below)
     // pdfPage: the pdf.js PDFPageProxy (pdfPage.getOperatorList(), getTextContent() …)
@@ -91,6 +91,7 @@ the eraser's first pass, PDF export) just see the box. See `markerShapes.js`.
 - `markerShapeProviders.js` — the registry + `runMarkerShapeProvider`
 - `markerShapes.js` — build / normalise / project / hit-test outlines
 - `markerShapeSvg.jsx` — how an outline paints on the page
-- `markerDrawMode.js` — the remembered mode (Rectangle where no picker shows, e.g. the phone)
+- `markerDrawMode.js` — the remembered mode (Rectangle where no picker shows)
+- `../mobile/MobileSurveyRail.jsx` `MobileMarkerShapeChip` — the phone's picker: one rail chip in survey mode opening a Rectangle / Freehand (/ Smart fill) menu
 - `SurveyMarkerModeTools.jsx` — the tool-bar group
 - `devFakeSmartFillProvider.js` — test-only stand-in

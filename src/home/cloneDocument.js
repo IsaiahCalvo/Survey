@@ -14,23 +14,29 @@
 //     destination already holds the same file, that document is reused and the
 //     result is flagged `reusedExisting` — a rollback must never delete a
 //     document the copy did not create;
-//   * the bytes get the copy's OWN object, at a path that does not pretend to
-//     be a content address: `{me}/{project|general}/copy-{copyId}.pdf` (the
-//     conversion tooling reads this shape as "not converted yet", which is
-//     true). The copy deliberately does not share the source's
-//     `{owner}/{sha}.pdf` object: page edits (insert / delete / rotate) rewrite
-//     a document's stored file IN PLACE, so a shared object would let editing
+//   * the bytes get the copy's OWN object, `{me}/{copyId}.pdf` — the same
+//     "named by the row id" rule every new upload follows, and the exact path
+//     the fork_document_file server function moves a row onto
+//     (services/documentFileReplace.js), so a copy that is later page-edited
+//     is already on its own object and is simply overwritten in place. (KAL-443
+//     first used `{me}/{project|general}/copy-{copyId}.pdf`; rows made that
+//     way keep it — documents.file_path is immutable.) The copy deliberately
+//     does not share the source's object: a shared object would let editing
 //     the original silently change the copy. The path is keyed by the copy's
-//     stable id, so a retried batch overwrites the same object.
+//     stable id, so a retried batch overwrites the same object. A UUID is not a
+//     64-hex digest, so the conversion tooling never mistakes it for a
+//     content address.
 //   * Duplicate INSIDE the same project is the one exception to the
 //     fingerprint: the person asked for a second copy right next to the
 //     original, and the database allows only one fingerprinted row per file
 //     per person per project (documents_user_project_sha_uidx). Such a copy is
 //     written without content_sha256 so Duplicate keeps working; it still gets
-//     its own honest `copy-{id}` object, and later uploads of the same file
+//     its own `{me}/{copyId}.pdf` object, and later uploads of the same file
 //     keep deduping against the original.
 //
 // Pure: storage, row creation and hashing are injected.
+
+import { ownDocumentObjectPath } from '../services/documentFileReplace.js';
 
 export const REUSED_EXISTING_FLAG = 'reusedExisting';
 
@@ -42,10 +48,8 @@ export function copyNameFor(sourceName) {
     : `${name} (Copy)`;
 }
 
-/** The copy's own storage object (not a content address — see above). */
-export const copyObjectPath = (userId, projectId, copyId) => (
-  `${userId}/${projectId || 'general'}/copy-${copyId}.pdf`
-);
+/** The copy's own storage object, named by its row id (see above). */
+export const copyObjectPath = (userId, copyId) => ownDocumentObjectPath(userId, copyId);
 
 /** True for a copy result that is an already-existing document (dedupe hit). */
 export const isReusedCopy = (value) => value?.[REUSED_EXISTING_FLAG] === true;
@@ -94,7 +98,7 @@ export async function cloneDocumentIntoProject({
   // upload and the documents insert idempotent after a committed-but-lost reply.
   const stableCopyId = operationId || makeId();
   const copyFile = new File([blob], copyName, { type: blob.type || 'application/pdf' });
-  const uploadedPath = await upload(copyFile, copyObjectPath(userId, projectId, stableCopyId));
+  const uploadedPath = await upload(copyFile, copyObjectPath(userId, stableCopyId));
 
   let row;
   try {

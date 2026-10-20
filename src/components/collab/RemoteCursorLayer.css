@@ -1,0 +1,85 @@
+/* src/components/collab/RemoteCursorLayer.css
+ * KAL-399: other people's cursors on a page. Calm: a small arrow and a soft
+ * name tag in the person's pastel (utils/userColors.js), no gold, no
+ * animation beyond a short glide and a fade. Per-person colours arrive as
+ * inline custom properties (they are the same class of thing as an ink, not
+ * chrome tokens). */
+
+.remote-cursor-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  /* Above the page's marks and edit chrome (other people's pointers are
+     never under what they point at); never a hit target. The mark layers
+     in the page overlay (PDFViewer) sit at 95-105 and the busy cover at
+     1000, so 110 is over the marks and under the cover. */
+  z-index: 110;
+}
+
+.remote-cursor {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  /* ~10 messages a second (one per 100 ms); a glide a little shorter than
+     the gap reads as continuous motion without lagging behind the person. */
+  transition: left 90ms linear, top 90ms linear, opacity 400ms ease-out;
+  opacity: 1;
+  animation: remote-cursor-in 160ms ease-out;
+}
+
+.remote-cursor[data-leaving='true'] {
+  opacity: 0;
+}
+
+.remote-cursor__arrow {
+  position: absolute;
+  /* The arrow's tip (1.6, 1.4 in its box) sits exactly on the point. */
+  left: -1.6px;
+  top: -1.4px;
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.28));
+}
+
+.remote-cursor__arrow path {
+  fill: var(--remote-cursor-fill);
+  stroke: var(--remote-cursor-line);
+  stroke-width: 1.25px;
+  stroke-linejoin: round;
+}
+
+.remote-cursor__label {
+  position: absolute;
+  left: 11px;
+  top: 15px;
+  max-width: 132px;
+  padding: 2px 7px 3px;
+  border-radius: 9px;
+  background: var(--remote-cursor-fill);
+  color: var(--remote-cursor-ink);
+  /* A hairline in the darker twin keeps the pastel tag readable on white. */
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--remote-cursor-line) 45%, transparent),
+    0 1px 3px rgba(0, 0, 0, 0.22);
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+@keyframes remote-cursor-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remote-cursor {
+    transition: opacity 200ms linear;
+    animation: none;
+  }
+}

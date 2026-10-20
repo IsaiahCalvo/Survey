@@ -145,6 +145,52 @@ export function isFabricAnnotationHistoryAction(restoreAction) {
   );
 }
 
+// A document transaction may delete on several pages. A cross-page move also
+// has a delete child, but re-creates the same id: it must never appear as trash.
+export function isAnnotationRemovalOnlyHistoryAction(action) {
+  if (action?.type === 'fabric:delete') return true;
+  if (action?.type === 'fabric:batch') return (action.deleted || []).length > 0 && !(action.created || []).length && !(action.updated || []).length;
+  if (action?.type === 'fabric:document-batch') return (action.actions || []).length > 0 && action.actions.every(isAnnotationRemovalOnlyHistoryAction);
+  return false;
+}
+
+export function buildAnnotationDeleteHistoryRowsForAction({ action, documentId, userId, actorName, deletedAt, isAlreadyJournaled = () => false }) {
+  const removed = new Map();
+  const retained = new Set();
+  const idOf = (annotation) => annotation?.data?.id || annotation?.data?.annoId || annotation?.id || annotation?.annotationId || annotation?.pdfAnnotationId;
+  const walk = (step) => {
+    if (!step) return;
+    if (step.type === 'fabric:document-batch') { (step.actions || []).forEach(walk); return; }
+    if (step.type === 'fabric:create') {
+      const id = step.annotationId || idOf(step.annotation);
+      if (id) retained.add(String(id));
+    }
+    if (step.type === 'fabric:delete') {
+      const id = step.annotationId || idOf(step.annotation);
+      if (id && step.annotation) removed.set(String(id), { ...step, annotationId: id });
+    }
+    if (step.type === 'fabric:batch') {
+      for (const entry of step.created || []) {
+        const id = entry.id || idOf(entry.annotation);
+        if (id) retained.add(String(id));
+      }
+      // Replacement batches (for example an eraser splitting one path) keep
+      // their existing atomic history; restoring only the old object would
+      // duplicate the surviving fragments. Only removals get trash rows here.
+      if ((step.created || []).length > 0) return;
+      for (const entry of step.deleted || []) {
+        const id = entry.id || idOf(entry.annotation);
+        if (id && entry.annotation) removed.set(String(id), { type: 'fabric:delete', pageNumber: step.pageNumber, annotationId: id, annotation: entry.annotation, index: entry.index });
+      }
+    }
+  };
+  walk(action);
+  return [...removed.entries()]
+    .filter(([id]) => !retained.has(id) && !isAlreadyJournaled(id))
+    .map(([, deleteAction]) => buildAnnotationDeleteHistoryRow({ deleteAction, documentId, userId, actorName, deletedAt }))
+    .filter(Boolean);
+}
+
 // ─── Slice 3: Callout (parallel branch — deleted at KAL-81 unification) ───
 
 /**

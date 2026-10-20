@@ -9,16 +9,13 @@
  * is restored, and start-up never waits on it.
  *
  * Nothing is written before the restore has had its turn, so the empty strip
- * of a fresh start never overwrites the saved list.
+ * of a fresh start never overwrites the saved list. `documentsUserId` names
+ * whose library `documents` is: after an account switch without a reload the
+ * old library is still there until the new one loads, and restore waits for
+ * the new one (createTabSessionController).
  */
 import { useEffect, useRef } from 'react';
-import {
-  libraryHasLoaded,
-  planTabRestore,
-  readTabSession,
-  serializeTabSession,
-  writeTabSession,
-} from './tabStrip.js';
+import { createTabSessionController } from './tabStrip.js';
 
 const browserStorage = () => {
   try {
@@ -28,45 +25,28 @@ const browserStorage = () => {
   }
 };
 
-export function useTabSession({ userId, documents, tabs, activeTabId, onRestore, enabled = true }) {
-  const restoredForRef = useRef(null);
-  const lastWrittenRef = useRef(null);
-  // The commit that restores still holds the old strip; its write would
-  // replace the saved list with it, so that one write is skipped.
-  const skipWriteRef = useRef(false);
+export function useTabSession({ userId, documents, documentsUserId, tabs, activeTabId, onRestore, enabled = true }) {
+  const controllerRef = useRef(null);
+  if (!controllerRef.current) controllerRef.current = createTabSessionController(browserStorage);
   const onRestoreRef = useRef(onRestore);
   onRestoreRef.current = onRestore;
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
 
-  // Restore once per signed-in user, when the library is in.
+  // Restore once per signed-in user, when that user's library is in.
   useEffect(() => {
-    if (!enabled || !userId || restoredForRef.current === userId) return;
-    if (!libraryHasLoaded(documents)) return;
-    restoredForRef.current = userId;
-    lastWrittenRef.current = null;
-    const session = readTabSession(browserStorage(), userId);
-    const plan = planTabRestore(session, documents, tabsRef.current);
-    if (plan.skipped.length) {
-      console.info('[TabSession] skipped documents that are no longer available:', plan.skipped.length);
-    }
-    if (plan.rows.length) {
-      skipWriteRef.current = true;
-      try {
-        onRestoreRef.current?.(plan);
-      } catch (error) {
-        console.warn('[TabSession] restore failed', error);
-      }
-    }
-  }, [enabled, userId, documents]);
+    controllerRef.current.restore({
+      enabled,
+      userId,
+      documents,
+      documentsUserId,
+      tabs: tabsRef.current,
+      onRestore: (plan) => onRestoreRef.current?.(plan),
+    });
+  }, [enabled, userId, documents, documentsUserId]);
 
   // Save on every real change of the open documents / order / active tab.
   useEffect(() => {
-    if (!enabled || !userId || restoredForRef.current !== userId) return;
-    if (skipWriteRef.current) { skipWriteRef.current = false; return; }
-    const session = serializeTabSession(tabs, activeTabId);
-    const text = JSON.stringify(session);
-    if (text === lastWrittenRef.current) return;
-    if (writeTabSession(browserStorage(), userId, session)) lastWrittenRef.current = text;
+    controllerRef.current.save({ enabled, userId, tabs, activeTabId });
   }, [enabled, userId, tabs, activeTabId]);
 }

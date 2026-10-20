@@ -26,10 +26,22 @@
      (tokens.css --alert-*), so it stands 8px clear of the chrome and the
      page edges as a box with corners instead of a strip. The anchor lines
      stay as they were; the margins step the box in from them. */
+  /* KAL-420 follow-up (2026-10-13): the right edge stops at the right rail
+     the way the left edge stops at the left one. --app-right-rail-width is
+     published by SurveySpacesRail (48px rail, + 320px while the Survey panel
+     is open, 0 on a phone). The rails are a layer above the whole document
+     tab (5600 vs the tab's 5000), so with right: 0 the rail hid the ×.
+     Why 100020: it orders the notice only among the layers INSIDE the
+     document tab (page overlays, the viewer's floating chrome up to 5500,
+     the region tool's 100000-100004 layers, the "Document locked" banner at
+     99999), so a failure notice is never under the document's own layers.
+     Toasts, the Undo toast, tooltips, sheets and the rails are outside the
+     tab and keep their own order. A dialog the notice opens hides the
+     notice while it is up (YDocProvider), rather than raising the dialog. */
   position: fixed;
   top: var(--app-banner-top, var(--app-chrome-top, 96px));
   left: var(--app-sidebar-width, 48px);
-  right: 0;
+  right: var(--app-right-rail-width, 48px);
   margin: 8px 8px 0;
   z-index: 100020;
   pointer-events: none;
@@ -207,9 +219,39 @@
 
 .svg-annotations--hydrated {
   opacity: 1;
-  transition: opacity 220ms cubic-bezier(0, 0, 0.2, 1);
+  transition: opacity 220ms var(--ease-out);
 }
 
 /* The banner's action had no hover and no press (UX 2026-09-22). */
 .storage-banner__action:hover { background: var(--hover); }
 .storage-banner__action:active { background: var(--pressed); }
+
+/* PHONE (KAL-420 follow-up, 2026-10-13): beside the text the two links and the
+   × left the words a 165px column, so the notice stood 350px tall over the
+   page. On a narrow screen the text takes the first line with the ×, and the
+   links drop to their own line under the text. */
+@media screen and (max-width: 599px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  .storage-banner {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 12px 16px;
+  }
+  .storage-banner__icon { order: 1; }
+  .storage-banner__text {
+    order: 2;
+    /* icon 16 + its 8 margin + 8 gap, and the × 24 + its 8 margin + 8 gap */
+    flex: 1 1 calc(100% - 72px);
+    min-width: 0;
+  }
+  .storage-banner__dismiss { order: 3; }
+  .storage-banner > .storage-banner__actions,
+  .storage-banner > .storage-banner__action {
+    order: 4;
+    /* under the text: icon 16 + 8 margin + 8 gap, less the link's own 8 */
+    margin-left: 24px;
+    align-self: flex-start;
+  }
+  .storage-banner > .storage-banner__actions {
+    flex-basis: calc(100% - 24px);
+  }
+}

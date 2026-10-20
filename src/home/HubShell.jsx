@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useContext, createContext
 import { useAuth } from '../contexts/AuthContext';
 import AppIcon from '../Icons';
 import DismissBarrier from '../components/DismissBarrier';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
@@ -222,6 +223,10 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
   const [open, setOpen] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const ref = useRef(null);
+  const menuRef = useRef(null);
+  // KAL-66: keyboard focus goes into the menu as it opens and back to this
+  // button when it closes (useMenuFocus; mouse/touch unchanged).
+  useMenuFocus(menuRef, open);
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event) => {
@@ -287,7 +292,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
               setConfirmSignOut(false);
             }}
           />
-          <div className="profile-menu-popup" role="menu" aria-label="Account menu" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 270, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
+          <div ref={menuRef} className="profile-menu-popup" role="menu" aria-label="Account menu" style={{ position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, width: 270, background: 'var(--ink-700)', border: '1px solid var(--ink-500)', borderRadius: 10, boxShadow: '0 16px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 50 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12 }}>
               <Avatar initials={initials} id={user?.id || email || name} size={34} />
               <div style={{ minWidth: 0 }}>
@@ -300,6 +305,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
               {showArchive && (
                 <button
                   type="button"
+                  role="menuitem"
                   className={`hub-menu__item${tab === 'archive' ? ' active' : ''}`}
                   style={tab === 'archive' ? { color: 'var(--gold)' } : undefined}
                   onClick={() => { setOpen(false); setConfirmSignOut(false); onNav && onNav('archive'); }}
@@ -307,7 +313,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
                   <Icon name="clock" size={15} color={tab === 'archive' ? 'var(--gold)' : 'var(--ink-200)'} />Archive
                 </button>
               )}
-              <button type="button" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
+              <button type="button" role="menuitem" className="hub-menu__item" onClick={() => { setOpen(false); setConfirmSignOut(false); onSettings && onSettings(); }}>
                 <Icon name="settings" size={15} color="var(--ink-200)" />Settings
               </button>
               {/* KAL-444: Home's visible way into the shortcuts sheet (the
@@ -319,7 +325,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
                 </button>
               )}
               {confirmSignOut ? (
-                <div className="profile-signout-confirm">
+                <div className="profile-signout-confirm" role="group" aria-label="Sign out of Survey?">
                   <div className="profile-signout-copy">Sign out of Survey?</div>
                   <div className="profile-signout-buttons">
                     <button type="button" onClick={() => setConfirmSignOut(false)}>Cancel</button>
@@ -327,7 +333,7 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
                   </div>
                 </div>
               ) : (
-                <button type="button" className="hub-menu__item is-danger profile-menu-signout" onClick={() => setConfirmSignOut(true)}>
+                <button type="button" role="menuitem" className="hub-menu__item is-danger profile-menu-signout" onClick={() => setConfirmSignOut(true)}>
                   <Icon name="signout" size={15} color="var(--danger)" />Sign out
                 </button>
               )}

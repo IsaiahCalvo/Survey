@@ -152,7 +152,9 @@ test('(3) every renderer stops the fill at the stroke under a see-through border
 });
 
 test('(B) a just-drawn callout keeps its caret when the tool flips back to Select', () => {
-  const start = viewerSource.indexOf("if (activeTool !== 'text-select') {");
+  // (2026-10-14: the gate now also lets Pan's text selection through.)
+  const start = viewerSource.indexOf('if (!isTextSelectionCaptureTool(activeTool)) {');
+  assert.ok(start > 0, 'the capture effect gate');
   const block = viewerSource.slice(start, start + 900);
   assert.match(block, /document\.activeElement\?\.isContentEditable/);
   assert.ok(block.indexOf('isContentEditable') < block.indexOf('clearLiveTextSelection();'), 'an open editor is checked before the selection is cleared');

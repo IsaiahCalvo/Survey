@@ -24,6 +24,8 @@
  * Pure JS — the Node test runner imports it directly.
  */
 
+import { readAnnotationSnapping } from './annotationPreferences.js';
+
 export const SNAP_DISTANCE_PX = 6;
 export const SNAP_GUIDE_OVERHANG_PX = 24;
 export const SNAP_GUIDE_STROKE_PX = 1.9;
@@ -39,6 +41,11 @@ export const ROTATE_SHIFT_STEP_DEG = 15;
 /** Alt held: this frame of the drag is free of snapping (see header). */
 export function isSnapFreeModifier(event) {
   return !!(event && event.altKey);
+}
+
+/** Device preference disables alignment to other marks, separately from rotation steps. */
+export function isAnnotationSnapFree(event) {
+  return !readAnnotationSnapping() || isSnapFreeModifier(event);
 }
 
 /** Page units for the 6 px screen threshold. */

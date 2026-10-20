@@ -51,9 +51,14 @@
   cursor: default;
 }
 
-.tab-strip-menu__item:not(:disabled):hover,
 .tab-strip-menu__item:not(:disabled):focus-visible {
   background: var(--hover);
+}
+
+@media (hover: hover) {
+  .tab-strip-menu__item:not(:disabled):hover {
+    background: var(--hover);
+  }
 }
 
 .tab-strip-menu__item:not(:disabled):active {
@@ -83,10 +88,16 @@
   transition: background 150ms cubic-bezier(0.4, 0, 0.2, 1), color 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.tab-strip-overflow:hover,
 .tab-strip-overflow[aria-expanded='true'] {
   background: var(--hover);
   color: var(--text-1);
+}
+
+@media (hover: hover) {
+  .tab-strip-overflow:hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
 }
 
 .tab-strip-overflow:active {
@@ -124,11 +135,18 @@
   cursor: pointer;
 }
 
-.tab-strip-list__close-all:hover,
 .tab-strip-list__close-all:focus-visible {
   background: var(--hover);
   color: var(--text-1);
   outline: none;
+}
+
+@media (hover: hover) {
+  .tab-strip-list__close-all:hover {
+    background: var(--hover);
+    color: var(--text-1);
+    outline: none;
+  }
 }
 
 .tab-strip-list__rows {
@@ -145,8 +163,10 @@
   border-radius: var(--radius-xs, 4px);
 }
 
-.tab-strip-list__row:hover {
-  background: var(--hover);
+@media (hover: hover) {
+  .tab-strip-list__row:hover {
+    background: var(--hover);
+  }
 }
 
 /* The open document: the strip's own active marks — the accent edge and the
@@ -228,10 +248,16 @@
   cursor: pointer;
 }
 
-.tab-strip-list__x:hover,
 .tab-strip-list__x:focus-visible {
   color: var(--text-1);
   outline: none;
+}
+
+@media (hover: hover) {
+  .tab-strip-list__x:hover {
+    color: var(--text-1);
+    outline: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

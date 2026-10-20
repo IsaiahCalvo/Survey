@@ -13,17 +13,21 @@
  */
 
 .cleanup-residue-review__backdrop {
-  /* UX: full-viewport scrim. z-index 210 sits ABOVE the ConfirmDeleteModal
-     scrim (200) so if both ever co-mount the review panel takes precedence.
-     In practice this can't happen because the cleanup banner only fires on
-     document open and the bulk-delete modal fires on user gesture, but the
-     z-index stack makes the boundary explicit. */
+  /* UX: full-viewport scrim, portalled to <body> (KAL-420 follow-up,
+     2026-10-13). It was z 210 inside the document tab's layer (z 5000), so
+     the rails (5600), the phone top bar / dock (5850-6750) and the
+     clean-up notice (100020 inside the tab) all painted over it. 9000 is the
+     phone delete confirmation's level (ConfirmDeleteModal.css): above every
+     rail, bar, dock and sheet (up to 7400) and the selection quick bar
+     (5700); under tooltips (10000), the file-drop veil (99000) and the
+     toasts / Undo toast (100000), so a clean-up error is never hidden. The
+     notice itself is hidden while this is open (YDocProvider). */
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 210;
+  z-index: 9000;
   /* UX (KAL-62): the app's one modal scrim — warm-dark dim plus an 8px blur,
      matching every other dialog instead of a flat black wash. */
   background: var(--overlay-scrim);
@@ -35,7 +39,7 @@
   justify-content: center;
 
   /* UX: 120ms ease-out fade-in matches ConfirmDeleteModal cadence. */
-  animation: cleanup-residue-review-fade-in 120ms cubic-bezier(0, 0, 0.2, 1);
+  animation: cleanup-residue-review-fade-in var(--motion-dialog) var(--ease-out);
 }
 
 @keyframes cleanup-residue-review-fade-in {
@@ -125,6 +129,9 @@
   padding: 2px 6px;
   color: var(--text-2);
   font-size: 12px;
+  /* A box of its own, so the row's line box holds its padding and edge (the
+     last ID's bottom edge was clipped by the list's scroll box). */
+  display: inline-block;
 }
 
 .cleanup-residue-review__sample-row--more {

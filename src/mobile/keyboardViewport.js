@@ -108,6 +108,30 @@
  * focus, against the layout the focus produced; lists move by compositor
  * FLIP; browse panels get scroll room instead of padding; and the dismiss
  * gives back exactly what the reveal took, on the same clock.
+ *
+ * OWNER 2026-10-13 (Drawboard touch audit, K1 / chunk E): iPads and touch
+ * laptops use the DESKTOP layout now (src/utils/layoutMode.js), so their
+ * on-screen keyboard could cover a text box low on the page, a Survey Marker's
+ * name low in the right rail, or a dialog's field. The same controller now
+ * runs there too (AppShell mounts it with `desktop: true` on a touch device;
+ * never on a mouse-only desktop or in Electron). What differs, and why:
+ *   - no PREDICTED inset (step 4): an iPad may have a hardware keyboard, and
+ *     then no on-screen keyboard ever comes - a guess would lift things for a
+ *     second for nothing. The lift waits for the real keyboard (the visual
+ *     viewport shrinking by 80px or more), so a hardware keyboard - whose
+ *     shortcut bar is well under 80px - changes nothing at all;
+ *   - iOS taps on a field are still focused with preventScroll (step 6) so
+ *     WebKit never pans the whole app up, and so are focus() calls from our
+ *     own code on a field already wholly on screen; a field focused OFF
+ *     screen keeps the browser's scroll into view, because with a hardware
+ *     keyboard nothing else would bring it there;
+ *   - the field's own lists get the keyboard's room at their end (the right
+ *     rail's Survey list), like a phone browse panel's lists do;
+ *   - a dialog or another small fixed holder whose field is still covered
+ *     once its lists have moved is lifted above the keyboard on its clock,
+ *     and goes back down with it (liftHolders below);
+ *   - a pinch-zoomed page (visualViewport.scale > 1) is never a keyboard, and
+ *     the document is not re-pinned under a pinch.
  */
 
 export const KEYBOARD_INSET_VAR = '--keyboard-inset';
@@ -683,6 +707,28 @@ function focusFieldAt(win, field, x, y) {
   place();
 }
 
+/**
+ * True when `el` is wholly on screen: inside the window and inside every box
+ * that clips it. Pure enough to test with plain objects.
+ */
+export function fullyInView(win, el) {
+  try {
+    const rect = el.getBoundingClientRect();
+    if (!(rect.width || rect.height)) return false;
+    if (rect.top < 0 || rect.left < 0 || rect.bottom > (Number(win.innerHeight) || 0) || rect.right > (Number(win.innerWidth) || 0)) return false;
+    const doc = el.ownerDocument || win.document;
+    for (let node = el.parentElement; node && node !== doc?.body && node !== doc?.documentElement; node = node.parentElement) {
+      const style = win.getComputedStyle(node);
+      if (style.overflowY === 'visible' && style.overflowX === 'visible') continue;
+      const box = node.getBoundingClientRect();
+      if (rect.top < box.top - 1 || rect.bottom > box.bottom + 1 || rect.left < box.left - 1 || rect.right > box.right + 1) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isVerticalScroller(win, el) {
   const overflowY = win.getComputedStyle(el).overflowY;
   return (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay')
@@ -814,9 +860,23 @@ export function createKeyboardViewportController(options = {}) {
   let focusOutFrame = 0;
   const revealTimers = new Set();
   let disposed = false;
-  const predicts = options.predict ?? hasOnScreenKeyboard(win);
-  // Step 6 (iOS only): focus every field with preventScroll.
-  const takesOverFocus = options.preventFocusPan ?? (predicts && isAppleTouchWebKit(win));
+  // The desktop layout on a touch device (iPad, touch laptop): see the header.
+  const desktop = Boolean(options.desktop);
+  const predicts = options.predict ?? (!desktop && hasOnScreenKeyboard(win));
+  // Step 6 (iOS only): focus every field with preventScroll. On the desktop
+  // layout a focus() call from our own code keeps its scroll when the field
+  // is not fully on screen yet (see focusWithoutPan).
+  const takesOverTaps = options.preventFocusPan ?? (
+    desktop ? isAppleTouchWebKit(win) : (predicts && isAppleTouchWebKit(win))
+  );
+  const takesOverFocus = takesOverTaps;
+  // Focus leaving the last field starts the keyboard's way down at once.
+  // On the desktop layout the inset is only ever a real keyboard, so this
+  // holds whenever there is one.
+  const hidesOnBlur = predicts || desktop;
+  // Pinch zoom shrinks the visual viewport too; on the desktop layout a page
+  // can be pinch-zoomed by the browser, and that is not a keyboard.
+  const pinched = () => desktop && Number(win.visualViewport?.scale || 1) > 1.01;
   const raf = typeof win.requestAnimationFrame === 'function'
     ? (fn) => win.requestAnimationFrame(fn) || 1
     : null;
@@ -840,6 +900,22 @@ export function createKeyboardViewportController(options = {}) {
    * keyboard is down so the page can glide back first.
    */
   const rooms = new Map();
+  // Give list `el` (box `box`) `need` px of room at its end - see above.
+  const giveRoom = (el, box, need) => {
+    // A list sized by its content (the Survey list) would GROW by its room
+    // instead of scrolling into it: it is held at the height it has, so its
+    // box does not change at all.
+    if (!rooms.has(el)) {
+      const style = win.getComputedStyle(el);
+      const hold = style.boxSizing === 'content-box'
+        ? el.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0)
+        : box.height;
+      el.style.setProperty(KEYBOARD_ROOM_HOLD_VAR, `${hold}px`);
+    }
+    rooms.set(el, need);
+    el.style.setProperty(KEYBOARD_ROOM_VAR, `${need}px`);
+    el.setAttribute(KEYBOARD_ROOM_ATTR, '');
+  };
   let scrollRoom = 0;
   let scrollRoomTimer = 0;
   const holdScrollRoom = (px) => {
@@ -877,21 +953,7 @@ export function createKeyboardViewportController(options = {}) {
               // would jump. Looked at again when the list changes (onInput).
               const filler = el.scrollHeight <= el.clientHeight + 1
                 && [...el.children].some((child) => parseFloat(win.getComputedStyle(child).flexGrow) > 0);
-              if (!filler && need > (rooms.get(el) || 0)) {
-                // A list sized by its content (the Survey list) would GROW
-                // by its room instead of scrolling into it: it is held at
-                // the height it has, so its box does not change at all.
-                if (!rooms.has(el)) {
-                  const style = win.getComputedStyle(el);
-                  const hold = style.boxSizing === 'content-box'
-                    ? el.clientHeight - (parseFloat(style.paddingTop) || 0) - (parseFloat(style.paddingBottom) || 0)
-                    : box.height;
-                  el.style.setProperty(KEYBOARD_ROOM_HOLD_VAR, `${hold}px`);
-                }
-                rooms.set(el, need);
-                el.style.setProperty(KEYBOARD_ROOM_VAR, `${need}px`);
-                el.setAttribute(KEYBOARD_ROOM_ATTR, '');
-              }
+              if (!filler && need > (rooms.get(el) || 0)) giveRoom(el, box, need);
             } else if (depth < 8) {
               visit(el, depth + 1);
             }
@@ -908,7 +970,10 @@ export function createKeyboardViewportController(options = {}) {
     el.style?.removeProperty?.(KEYBOARD_ROOM_HOLD_VAR);
   };
   const pdfScroller = () => {
-    let el = win.document?.querySelector?.('[data-mobile-pdf-surface="true"] [data-pdfjs-content="true"]')?.parentElement;
+    // The phone's page area, or the desktop layout's (data-mobile-pdf-surface
+    // is "false" there).
+    const surface = desktop ? '[data-mobile-pdf-surface]' : '[data-mobile-pdf-surface="true"]';
+    let el = win.document?.querySelector?.(`${surface} [data-pdfjs-content="true"]`)?.parentElement;
     while (el && el !== win.document.body) {
       if (isVerticalScroller(win, el)) return el;
       el = el.parentElement;
@@ -941,13 +1006,136 @@ export function createKeyboardViewportController(options = {}) {
     revealedScrollers.clear();
   };
 
+  /*
+   * DESKTOP LAYOUT (iPad, touch laptop). There are no bottom sheets; a field
+   * sits in a list (the right rail's Survey list, a side panel), on the page,
+   * or in a dialog. Each list that holds the field gets the keyboard's room at
+   * its end, exactly as a phone browse panel's lists do, so a row low in the
+   * rail can be scrolled above the keyboard even when the list is short. The
+   * page area is left out: it has its own room (--keyboard-scroll-room).
+   */
+  const applyFieldRooms = (field, px) => {
+    const doc = win.document;
+    if (!doc || !field || !(px > 0)) return;
+    const keyboardTop = (Number(win.innerHeight) || 0) - px;
+    let el = field.parentElement;
+    while (el && el !== doc.body && el !== doc.documentElement) {
+      const overflowY = win.getComputedStyle(el).overflowY;
+      if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay')
+        && el.clientHeight > 40
+        && !el.querySelector?.(':scope > [data-pdfjs-content]')) {
+        const box = el.getBoundingClientRect();
+        const need = Math.ceil(box.bottom - keyboardTop);
+        if (need > (rooms.get(el) || 0)) giveRoom(el, box, need);
+      }
+      el = el.parentElement;
+    }
+  };
+
+  /*
+   * DESKTOP LAYOUT: a dialog (or a small fixed bar or popover) that holds the
+   * field and is still covered once its lists have moved stands ON the
+   * keyboard: it is lifted by the least amount that clears it (never past
+   * the top of the screen), on the keyboard's own clock, and goes back down
+   * with the keyboard. Panel-sized holders never move. A holder can opt in
+   * with data-keyboard-lift.
+   */
+  const LIFT_TOP_GAP_PX = 8;
+  const LIFT_MAX_SHARE = 0.7;
+  const lifts = new Map(); // holder -> px lifted (its resting translate)
+  const liftAnims = new Map();
+  const liftOffsetOf = (holder) => {
+    const value = win.getComputedStyle(holder).translate;
+    if (!value || value === 'none') return 0;
+    return parseFloat(String(value).split(' ')[1]) || 0;
+  };
+  const liftHolderOf = (field) => {
+    const doc = win.document;
+    const marked = field.closest?.('[data-keyboard-lift], [role="dialog"], [role="alertdialog"]');
+    let holder = marked || null;
+    if (!holder) {
+      let el = field.parentElement;
+      while (el && el !== doc?.body && el !== doc?.documentElement) {
+        if (win.getComputedStyle(el).position === 'fixed') { holder = el; break; }
+        el = el.parentElement;
+      }
+    }
+    if (!holder || holder.closest?.('[data-mobile-sheet]')) return null;
+    const height = holder.getBoundingClientRect().height;
+    if (!(height > 0) || height > (Number(win.innerHeight) || 0) * LIFT_MAX_SHARE) return null;
+    // Something else already places it with `translate` (not ours): leave it.
+    if (!lifts.has(holder) && liftOffsetOf(holder)) return null;
+    return holder;
+  };
+  const animateLift = (holder, to, onDone) => {
+    const from = liftOffsetOf(holder);
+    liftAnims.get(holder)?.cancel();
+    liftAnims.delete(holder);
+    holder.style.translate = to ? `0 ${to}px` : '';
+    const now = nowOf(win);
+    const follow = Math.abs(to - from) >= 0.5 && typeof holder.animate === 'function' && !prefersReducedMotion(win)
+      ? followFrames(motionClock(now), from, to, now, Math.abs(from) < 0.5)
+      : null;
+    if (!follow) { onDone?.(); return; }
+    const anim = holder.animate(
+      follow.points.map(({ y, offset }) => ({ translate: `0 ${y}px`, offset })),
+      { duration: follow.ms, easing: follow.easing },
+    );
+    liftAnims.set(holder, anim);
+    anim.onfinish = () => {
+      if (liftAnims.get(holder) !== anim) return;
+      liftAnims.delete(holder);
+      onDone?.();
+    };
+  };
+  const dropLift = (holder) => {
+    lifts.delete(holder);
+    if (!holder.isConnected) { liftAnims.get(holder)?.cancel(); liftAnims.delete(holder); holder.style.translate = ''; return; }
+    animateLift(holder, 0);
+  };
+  const dropLifts = (keep = null) => {
+    [...lifts.keys()].forEach((holder) => { if (holder !== keep) dropLift(holder); });
+  };
+  const liftHolders = (field) => {
+    const holder = liftHolderOf(field);
+    dropLifts(holder);
+    if (!holder) return;
+    // Where the holder and the field are at rest: without our lift, and
+    // with the lists they sit in already where the reveal is taking them.
+    const shown = liftOffsetOf(holder);
+    let pending = 0;
+    for (let el = field.parentElement; el && el !== holder; el = el.parentElement) {
+      if (scrollGlides.has(el) || scrollFlips.has(el)) pending += (scrollTargetOf(el) - el.scrollTop) + flipOffsetOf(win, el);
+    }
+    const box = holder.getBoundingClientRect();
+    const rect = field.getBoundingClientRect();
+    const holderTop = box.top - shown;
+    const holderBottom = box.bottom - shown;
+    const fieldBottom = rect.bottom - shown - pending;
+    const visibleBottom = (Number(win.innerHeight) || 0) - Math.max(0, inset);
+    const margin = Number(field.getAttribute?.(KEYBOARD_REVEAL_MARGIN_ATTR)) || REVEAL_MARGIN_PX;
+    // The whole holder above the keyboard when it fits (a dialog keeps its
+    // buttons in sight); at the least, the field.
+    const want = Math.max(holderBottom + LIFT_TOP_GAP_PX, fieldBottom + margin) - visibleBottom;
+    const lift = Math.round(Math.max(0, Math.min(want, holderTop - LIFT_TOP_GAP_PX)));
+    if (lift < 1) {
+      if (lifts.has(holder)) dropLift(holder);
+      return;
+    }
+    if (lifts.get(holder) === lift) return;
+    lifts.set(holder, lift);
+    animateLift(holder, -lift);
+  };
+
   const reveal = () => {
     revealFrame = 0;
     if (disposed) return;
     const field = activeEditable();
     if (!field || !(inset > 0)) return;
     applyRooms(inset);
+    if (desktop) applyFieldRooms(field, inset);
     revealAboveKeyboard(field, { win, inset, animate: true });
+    if (desktop) liftHolders(field);
   };
   const scheduleReveal = () => {
     if (revealFrame || disposed) return;
@@ -984,7 +1172,7 @@ export function createKeyboardViewportController(options = {}) {
     moveClock(next);
     // Going down: the lists the reveal moved go back first, measured while
     // their room still exists.
-    if (next === 0) returnScrollers();
+    if (next === 0) { returnScrollers(); dropLifts(); }
     inset = next;
     root.style.setProperty(KEYBOARD_INSET_VAR, `${next}px`);
     if (next > 0) root.setAttribute(KEYBOARD_OPEN_ATTR, 'true');
@@ -1039,11 +1227,12 @@ export function createKeyboardViewportController(options = {}) {
   const update = () => {
     frame = 0;
     if (disposed) return inset;
-    pinDocument();
+    const pinch = pinched();
+    if (!pinch) pinDocument();
     // A native plugin height wins only when it is the larger of the two: with
     // `Keyboard.resize: "none"` the webview is not resized, and visualViewport
     // is still the honest measure in every WKWebView build we ship to.
-    let measured = Math.max(measureKeyboardInset(win), nativeInset);
+    let measured = Math.max(pinch ? 0 : measureKeyboardInset(win), nativeInset);
     if (hiding) {
       if (measured > 0) measured = 0;
       else endHide();
@@ -1109,7 +1298,7 @@ export function createKeyboardViewportController(options = {}) {
         focusOutFrame = 0;
         if (activeEditable()) return;
         clearPrediction();
-        if (predicts && !hiding) {
+        if (hidesOnBlur && !hiding) {
           hiding = true;
           hideTimer = setTimer ? setTimer(() => { hideTimer = 0; hiding = false; update(); }, KEYBOARD_PREDICT_TIMEOUT_MS) : 0;
         }
@@ -1177,6 +1366,11 @@ export function createKeyboardViewportController(options = {}) {
     if (typeof original === 'function') {
       const focusWithoutPan = function focus(focusOptions) {
         if (!isKeyboardEditable(this)) return original.call(this, focusOptions);
+        // Desktop layout: a field off screen (in its list or the window) is
+        // still scrolled into view - with a hardware keyboard nothing else
+        // would bring it there. One already in view gains nothing from that
+        // scroll but WebKit's pan of the whole app.
+        if (desktop && !fullyInView(win, this)) return original.call(this, focusOptions);
         const base = focusOptions && typeof focusOptions === 'object' ? focusOptions : {};
         return original.call(this, { ...base, preventScroll: true });
       };
@@ -1224,7 +1418,11 @@ export function createKeyboardViewportController(options = {}) {
   // sits in the background - the Expo shell then reloads it - and an unsaved
   // field would be gone. Typing on the page itself (the PDF text box) is left
   // alone: it has its own commit rules.
+  // On the desktop layout only iOS can close a page in the background; a
+  // touch laptop switching windows keeps its field focused as before.
+  const commitsWhenHidden = !desktop || isAppleTouchWebKit(win);
   const onAppHidden = (event) => {
+    if (!commitsWhenHidden) return;
     if (event?.type === 'visibilitychange' && win.document?.visibilityState !== 'hidden') return;
     commitPanelTyping(win.document);
   };
@@ -1245,7 +1443,7 @@ export function createKeyboardViewportController(options = {}) {
   win.addEventListener?.('keyboardDidShow', onNativeShow);
   win.addEventListener?.('keyboardWillHide', onNativeHide);
   win.addEventListener?.('keyboardDidHide', onNativeHide);
-  if (takesOverFocus) {
+  if (takesOverTaps) {
     win.addEventListener?.('touchstart', onTouchStart, { capture: true, passive: true });
     win.addEventListener?.('touchmove', onTouchMove, { capture: true, passive: true });
     win.addEventListener?.('touchend', onTouchEnd, { capture: true, passive: false });
@@ -1272,6 +1470,10 @@ export function createKeyboardViewportController(options = {}) {
     if (roomTimer) clearTimer(roomTimer);
     [...rooms.keys()].forEach(dropRoom);
     revealedScrollers.clear();
+    liftAnims.forEach((anim) => anim.cancel());
+    liftAnims.clear();
+    lifts.forEach((px, holder) => { holder.style.translate = ''; });
+    lifts.clear();
     dropScrollRoom();
     resetKeyboardClock();
     win.document?.removeEventListener?.('visibilitychange', onAppHidden);

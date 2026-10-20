@@ -245,7 +245,7 @@
    press here would compound with section 5's `scale`. */
 :where(button, [role='button']):has(> svg:only-child) { -webkit-tap-highlight-color: transparent; }
 :where(button, [role='button']):where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *, .section-icon-btn)):has(> svg:only-child) > svg {
-  transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: transform 100ms var(--ease-out);
 }
 :where(button, [role='button']):where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *, .section-icon-btn)):not(:disabled):has(> svg:only-child):active > svg {
   transform: scale(0.88);
@@ -262,7 +262,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 [data-glyph-only] { -webkit-tap-highlight-color: transparent; }
-[data-glyph-only]:where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *, .section-icon-btn)) > * { transition: transform 100ms cubic-bezier(0.33, 1, 0.68, 1); }
+[data-glyph-only]:where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *, .section-icon-btn)) > * { transition: transform 100ms var(--ease-out); }
 [data-glyph-only]:where(:not(#chrome-top-host *, #chrome-sub-toolbar-host *, .tab-bar *, [data-chrome-rail] *, .survey-rail__head *, .mobile-pdf-header *, .mobile-pdf-tools *, .mobile-pdf-dock *, .section-icon-btn)):not(:disabled):active > * { transform: scale(0.88); }
 
 /* --------------------------------------------------------------------------
@@ -333,8 +333,8 @@
 }
 :is(#chrome-top-host, #chrome-sub-toolbar-host, .tab-bar, [data-chrome-rail], .survey-rail__head, .mobile-pdf-header, .mobile-pdf-tools, .mobile-pdf-dock) :is([data-glyph-only], .chrome-icon-btn):not(.hero-swatch):not(.quick-style__dot) > :not([data-anchored-tooltip]) {
   transition:
-    scale 120ms cubic-bezier(0.33, 1, 0.68, 1),
-    transform 120ms cubic-bezier(0.33, 1, 0.68, 1);
+    scale 120ms var(--ease-out),
+    transform 120ms var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
   :is(#chrome-top-host, #chrome-sub-toolbar-host, .tab-bar, [data-chrome-rail], .survey-rail__head, .mobile-pdf-header, .mobile-pdf-tools, .mobile-pdf-dock) :is([data-glyph-only], .chrome-icon-btn):not(.hero-swatch):not(.quick-style__dot):not(:disabled):not([aria-disabled='true']):hover > :not([data-anchored-tooltip]) {
@@ -379,8 +379,8 @@
    grow, section 4's press) so the two never multiply. */
 .section-icon-btn > svg {
   transition:
-    scale 120ms cubic-bezier(0.33, 1, 0.68, 1),
-    transform 120ms cubic-bezier(0.33, 1, 0.68, 1);
+    scale 120ms var(--ease-out),
+    transform 120ms var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
   .section-icon-btn:not(:disabled):hover {
@@ -402,7 +402,7 @@
    numbers on its text. No plate either: the word is not glyph-only, so the
    two plate rules above skip .section-icon-btn by class. */
 .section-icon-btn > .section-icon-btn__word {
-  transition: scale 120ms cubic-bezier(0.33, 1, 0.68, 1);
+  transition: scale 120ms var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
   .section-icon-btn:not(:disabled):hover > .section-icon-btn__word {
