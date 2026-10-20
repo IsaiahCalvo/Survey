@@ -21,7 +21,9 @@ const TIME_LIMIT_MS = 2500;
 /** Crop the rendered page around the tap. Returns pixels + the mapping back. */
 export function cropAroundTap({ point, pageSize, pageCanvas }) {
   if (!pageCanvas || !pageSize?.width || !pageCanvas.width) return null;
-  // A canvas that isn't drawn yet (pdf.js placeholder) has the wrong shape.
+  // Undrawn <canvas> is 300×150 until pdf.js blits a bitmap. Aspect alone
+  // misses 2:1 plot sheets (36×18, 24×12), which match that default ratio.
+  if (pageCanvas.width === 300 && pageCanvas.height === 150) return null;
   if (Math.abs(pageCanvas.width / pageCanvas.height - pageSize.width / pageSize.height) > 0.02 * (pageSize.width / pageSize.height)) return null;
   const pxPerUnit = pageCanvas.width / pageSize.width;
   const half = WINDOW_PAGE_UNITS / 2;
@@ -70,16 +72,28 @@ export function readSmartFillOutline(context) {
 let worker = null;
 let workerBroken = false;
 let nextId = 1;
+function onWorkerError() {
+  workerBroken = true;
+  worker = null;
+}
+
 function getWorker() {
   if (worker || workerBroken) return worker;
   try {
     worker = new Worker(new URL('./smartFillWorker.js', import.meta.url), { type: 'module' });
-    worker.addEventListener('error', () => { workerBroken = true; worker = null; });
+    worker.addEventListener('error', onWorkerError);
   } catch {
     workerBroken = true;
     worker = null;
   }
   return worker;
+}
+
+function discardWorker(w) {
+  if (worker !== w) return;
+  worker = null;
+  try { w.removeEventListener('error', onWorkerError); } catch { /* already gone */ }
+  try { w.terminate(); } catch { /* already gone */ }
 }
 
 /** Off-thread run with a time limit; falls back to same-thread. */
@@ -100,6 +114,9 @@ export function readSmartFillOutlineAsync(context) {
       clearTimeout(timer);
       w.removeEventListener('message', onMessage);
       context.signal?.removeEventListener?.('abort', onAbort);
+      // Drop the shared worker so a timed-out or aborted job cannot occupy
+      // the queue while the next tap's 2.5s limit is already running.
+      if (value?.reason === 'timeout' || value?.reason === 'aborted') discardWorker(w);
       resolve(value);
     };
     const onMessage = (event) => {
