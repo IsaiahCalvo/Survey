@@ -103,12 +103,17 @@ export async function waitForSchematicQueue() {
 
 const offCache = new Map();
 
+// Page views rewrite pdf.js fingerprints to `base~pv{n}` so raster caches
+// treat the view as a new document. The turn-off choice is a reload-surviving
+// preference, so drop that version suffix and keep the durable base key.
+const stableFingerprint = (fingerprint) => String(fingerprint || '').replace(/~pv\d+$/, '');
+
 const readOffPages = (fingerprint) => {
-  const cacheKey = fingerprint || '';
+  const cacheKey = stableFingerprint(fingerprint);
   if (offCache.has(cacheKey)) return offCache.get(cacheKey);
   let pages = new Set();
-  if (fingerprint) try {
-    const raw = globalThis.localStorage?.getItem(OFF_KEY_PREFIX + fingerprint);
+  if (cacheKey) try {
+    const raw = globalThis.localStorage?.getItem(OFF_KEY_PREFIX + cacheKey);
     const parsed = raw ? JSON.parse(raw) : [];
     if (Array.isArray(parsed)) pages = new Set(parsed.map(Number).filter((n) => n >= 1));
   } catch { /* unreadable storage: nothing turned off */ }
@@ -121,11 +126,12 @@ export function isSchematicTurnedOff(fingerprint, pageNumber) {
 }
 
 export function setSchematicTurnedOff(fingerprint, pageNumber, off) {
-  const pages = new Set(readOffPages(fingerprint));
+  const cacheKey = stableFingerprint(fingerprint);
+  const pages = new Set(readOffPages(cacheKey));
   if (off) pages.add(pageNumber); else pages.delete(pageNumber);
-  offCache.set(fingerprint || '', pages);
-  if (fingerprint) try {
-    const key = OFF_KEY_PREFIX + fingerprint;
+  offCache.set(cacheKey, pages);
+  if (cacheKey) try {
+    const key = OFF_KEY_PREFIX + cacheKey;
     if (pages.size) globalThis.localStorage?.setItem(key, JSON.stringify([...pages].sort((a, b) => a - b)));
     else globalThis.localStorage?.removeItem(key);
   } catch { /* storage full or blocked: the choice lasts this session */ }

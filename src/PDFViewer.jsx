@@ -36593,7 +36593,7 @@ ${pageBlocks}
                             <SchematicModeBadge
                               pdfDoc={pdfDoc}
                               pageNumber={pageNumber}
-                              fingerprint={pdfDoc?.fingerprints?.[0] || pdfFile?.id || pdfFile?.name}
+                              fingerprint={pdfBaseDoc?.fingerprints?.[0] || pdfFile?.id || pdfFile?.name}
                               activeTool={activeTool}
                               lineBorderStyle={lineBorderStyle}
                               onPickTool={handleSchematicPickTool}

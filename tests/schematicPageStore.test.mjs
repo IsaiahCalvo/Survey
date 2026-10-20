@@ -86,6 +86,27 @@ test('turning a page off is kept per document and survives a reload', () => {
   }
 });
 
+test('turn-off key ignores the page-view fingerprint suffix', () => {
+  const storage = memoryStorage();
+  const previous = globalThis.localStorage;
+  globalThis.localStorage = storage;
+  try {
+    resetSchematicStoreForTests();
+    setSchematicTurnedOff('abc123', 2, true);
+    assert.equal(isSchematicTurnedOff('abc123~pv4', 2), true);
+    resetSchematicStoreForTests();
+    assert.equal(isSchematicTurnedOff('abc123', 2), true);
+    setSchematicTurnedOff('abc123~pv9', 1, true);
+    resetSchematicStoreForTests();
+    assert.equal(isSchematicTurnedOff('abc123', 1), true);
+    assert.equal(isSchematicTurnedOff('abc123', 2), true);
+    assert.equal(storage.map.has('survey:schematic-off:abc123'), true);
+    assert.equal(storage.map.has('survey:schematic-off:abc123~pv9'), false);
+  } finally {
+    globalThis.localStorage = previous;
+  }
+});
+
 test('blocked storage still lets the choice last for the session', () => {
   const previous = globalThis.localStorage;
   globalThis.localStorage = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() {} };
