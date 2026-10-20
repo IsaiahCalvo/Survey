@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <meta name="theme-color" content="#0d0f14" />
 <style>
-:root{--bg:#0d0f14;--panel:#151922;--line:#252b38;--text:#e8ebf1;--muted:#9aa3b5;--accent:#4f8cff;--accent2:#3a73e0}
+:root{--bg:#0d0f14;--panel:#151922;--line:#252b38;--text:#e8ebf1;--muted:#9aa3b5;--accent:#d8a84e;--accent2:#edc26d}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.55}
 a{color:inherit}
@@ -25,10 +25,10 @@ nav .links{margin-left:auto;display:flex;gap:18px;align-items:center}
 nav .links a{text-decoration:none;color:var(--muted);font-size:15px}
 nav .links a:hover{color:var(--text)}
 .btn{display:inline-block;padding:11px 20px;border-radius:9px;font-weight:600;text-decoration:none;font-size:15px;border:1px solid var(--line)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1a1405}
 .btn.primary:hover{background:var(--accent2)}
-nav .links a.btn.primary{color:#fff}
-.hero{padding:88px 0 64px;text-align:center}
+nav .links a.btn.primary{color:#1a1405}
+.hero{padding-top:88px;padding-bottom:64px;text-align:center}
 .hero h1{font-size:clamp(34px,6vw,56px);line-height:1.1;margin:0 0 18px;letter-spacing:-.02em}
 .hero p{font-size:clamp(17px,2.2vw,20px);color:var(--muted);max-width:640px;margin:0 auto 32px}
 .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
@@ -50,7 +50,7 @@ footer{border-top:1px solid var(--line);padding:28px 0;color:var(--muted);font-s
 footer .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
 footer a{text-decoration:none}
 footer .sp{margin-left:auto}
-@media (max-width:640px){nav .links a:not(.btn){display:none}.hero{padding:56px 0 40px}}
+@media (max-width:640px){nav .links a:not(.btn){display:none}.hero{padding-top:56px;padding-bottom:40px}}
 </style>
 </head>
 <body>
