@@ -115,10 +115,12 @@ export function assertRequiredSecrets(payload) {
 }
 
 function assertOrdered(text, markers, label) {
+  // Each marker must appear somewhere after the one before it (an earlier
+  // mention, e.g. a check that reads release.json before the deploy, is fine).
   let previous = -1;
   for (const marker of markers) {
-    const position = text.indexOf(marker);
-    assert.ok(position >= 0, `${label} is missing: ${marker}`);
+    assert.ok(text.includes(marker), `${label} is missing: ${marker}`);
+    const position = text.indexOf(marker, previous + 1);
     assert.ok(position > previous, `${label} is out of order at: ${marker}`);
     previous = position;
   }
