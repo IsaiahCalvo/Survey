@@ -1,3 +1,4 @@
+import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 // PDFViewer — the document viewer (pdf.js canvas, annotation overlays,
 // zoom/scroll lifecycle, save/sync, history). Extracted verbatim from App.jsx.
 //
@@ -3458,6 +3459,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // declaration order without introducing a first-render TDZ crash.
   const handleCounterGroupUpdateRef = useRef(null);
   const handleDeleteCounterSeriesRef = useRef(null);
+  const handleRenameCounterSeriesRef = useRef(null);
+  const counterSeriesActiveRef = useRef(isActive);
+  counterSeriesActiveRef.current = isActive;
   const commitTextMarkupDocumentTransactionRef = useRef(null);
   // UX 2026-09-23 (owner: "dragging this is laggy" — the colour picker's
   // sliders). The phase of the paint change being applied right now: 'preview'
@@ -3486,6 +3490,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     clearTimeout(annotationCapturePauseRef.current.timer);
     annotationCapturePauseRef.current = { until: 0, timer: null };
   }, [pdfFile?.id]);
+  const handleRenameCounterSeriesFromToolbar = useCallback((...args) => (
+    handleRenameCounterSeriesRef.current?.(...args) || { ok: false, reason: 'unavailable' }
+  ), []);
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
   ), []);
@@ -14593,7 +14600,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // KAL-301 follow-up: while region editing is active the buttons reflect and
   // drive the REGION undo/redo stacks instead of the annotation history.
   useEffect(() => {
-    if (!isActive || typeof onTopToolbarApiChange !== 'function') return;
+    if (typeof onTopToolbarApiChange !== 'function') return;
     const useRegionHistory = showRegionSelection && regionHistoryApi;
     onTopToolbarApiChange({
       canUndo: useRegionHistory ? regionHistoryApi.canUndo : canUndo,
@@ -14690,6 +14697,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setRegionOverlayDisabled,
   ]);
 
+  // Resolve the supplied source, including an inactive tab's queued page edit.
+  const readPageMutationPdfBytes = useCallback(async (file) => {
+    const path = file?.supabaseFilePath || file?.filePath;
+    if (!path) throw new Error('PDF source is unavailable.');
+    const blob = await downloadFromStorage(path);
+    return blob.arrayBuffer();
+  }, [downloadFromStorage]);
+
   // Sidebar handlers — page add / delete / duplicate / physical reorder /
   // rotate / cut-copy-paste / insert-blank. Mirror remains a presentation-only
   // page transformation because PDF pages have no native mirror primitive.
@@ -14714,6 +14729,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     flushPageOperations,
   } = usePageOperations({
     pdfFile,
+    readPdfBytes: readPageMutationPdfBytes,
     onUpdatePDFFile: persistPageMutationFile,
     getPageState: getPageStructureState,
     commitPageState: commitPageStructureState,
@@ -21362,7 +21378,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   } = useAnnotationDoc({
     documentId: pdfFile?.id || null,
     userId: user?.id || null,
-    enabled: isActive && cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    // The viewer remains mounted on a warm switch; keep its durable store and
+    // unsaved capture live until the tab actually closes.
+    enabled: cloudSyncEnabled && !!pdfFile?.id && !!user?.id,
+    isActive,
     // Slice 6 (2026-07-17): annotationsByPage carries callouts as projected
     // data.type==='callout' groups (R2.2 flip), and the hook persists them
     // per-id in the same `annotations` Y.Map as every other object — so the
@@ -25972,7 +25991,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // is active. Keep this effect below every value in the API object to avoid
   // temporal-dead-zone crashes during PDFViewer's first render.
   useEffect(() => {
-    if (!isActive || typeof onBottomToolbarApiChange !== 'function') return;
+    if (typeof onBottomToolbarApiChange !== 'function') return;
     // Resolve the live saved object instead of relying only on the selection
     // payload captured when the user clicked it. Saves, undo/redo, series
     // updates, and remote sync can replace that object while it stays selected.
@@ -26328,6 +26347,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       onNewCounterSeries: handleNewCounterSeries,
       onSwitchCounterSeries: handleSwitchCounterSeries,
       onDeleteCounterSeries: handleDeleteCounterSeriesFromToolbar,
+      onRenameCounterSeries: handleRenameCounterSeriesFromToolbar,
       selectedCounterSeriesId,
       selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
       selectedCounterSeriesStart: selectedCounterSeriesId
@@ -26449,6 +26469,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleNewCounterSeries,
     handleSwitchCounterSeries,
     handleDeleteCounterSeriesFromToolbar,
+    handleRenameCounterSeriesFromToolbar,
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
@@ -29317,11 +29338,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (
           Object.prototype.hasOwnProperty.call(patch, 'numberColor')
           || Object.prototype.hasOwnProperty.call(patch, 'seriesStart')
+          || Object.prototype.hasOwnProperty.call(patch, 'seriesName')
         ) {
           next.data = { ...obj.data };
           if (Object.prototype.hasOwnProperty.call(patch, 'numberColor')) {
             next.data.numberColor = patch.numberColor;
           }
+          if (Object.prototype.hasOwnProperty.call(patch, 'seriesName')) next.data.seriesName = patch.seriesName;
           if (Object.prototype.hasOwnProperty.call(patch, 'seriesStart')) {
             next.data.seriesStart = patch.seriesStart;
           }
@@ -29406,12 +29429,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     appDebug(`[CSeries group-update] seriesId=${seriesId} patch=${JSON.stringify(patch)} -> updated ${updates.length} page(s)`);
   }, [documentOwnerId, handleSaveAnnotations, pushLocalAnnotationHistoryAction, user?.id, yjsUndoCtx?.userId]);
   handleCounterGroupUpdateRef.current = handleCounterGroupUpdate;
+  const handleRenameCounterSeries = useCallback((seriesId, name) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
+    const seriesName = String(name || '').trim().slice(0, 80);
+    if (!seriesName || !getCounterSeriesList(annotationsByPageRef.current).some(series => series.seriesId === seriesId)) return { ok: false, reason: 'invalid-series' };
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
+    if (!permission.ok) return permission;
+    handleCounterGroupUpdateRef.current?.(seriesId, { seriesName });
+    return { ok: true };
+  }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
+  handleRenameCounterSeriesRef.current = handleRenameCounterSeries;
 
   // Request deletion of one complete counter series. The existing shared
   // confirmation modal handles both ordinary and cross-author series. The
   // confirmed runner revalidates the exact pin ids before mutating, then saves
   // every page while pushing one document-batch Undo/Redo action.
   const handleDeleteCounterSeries = useCallback((seriesId) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
     if (!seriesId) return { ok: false, reason: 'missing-series' };
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
     const collectSeriesPins = (byPage) => Object.entries(byPage || {}).flatMap(([pageKey, page]) => (
@@ -29457,6 +29492,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const requestedIdsSorted = [...requestedIds].sort();
     const seriesMeta = counterSeriesList.find((series) => series.seriesId === seriesId);
     const executeConfirmedDelete = () => {
+      if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) {
+        showToast('This document is no longer editable. The count was not deleted.', 'warn');
+        return { ok: false, reason: 'forbidden' };
+      }
       const liveByPage = annotationsByPageRef.current || {};
       const livePins = collectSeriesPins(liveByPage);
       const liveSeriesList = getCounterSeriesList(liveByPage);
@@ -29471,6 +29510,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return { ok: false, reason: 'series-changed' };
       }
 
+      const livePermission = checkCounterSeriesEdit(liveByPage, seriesId, { viewerId, documentOwnerId });
+      if (!livePermission.ok) {
+        showToast(livePermission.reason === 'locked' ? 'Unlock all pins in this count before deleting it.' : 'This count can no longer be edited.', 'warn');
+        return livePermission;
+      }
       const { updates, removedCount } = buildCounterSeriesDeletionUpdates(liveByPage, seriesId);
       const pageActions = updates.map(({ pageKey, json }) => {
         const numericKey = Number(pageKey);
@@ -35176,7 +35220,7 @@ ${pageBlocks}
   // active. Placed immediately before the loading/full render branches so every
   // sidebar prop and handler in the API has already been declared.
   useEffect(() => {
-    if (!isActive || typeof onLeftRailApiChange !== 'function') return;
+    if (typeof onLeftRailApiChange !== 'function') return;
     const nextLeftRailApi = {
       ref: pdfSidebarRef,
       features,
@@ -35375,7 +35419,7 @@ ${pageBlocks}
   // UX 2026-05-29: Publish the active PDF viewer's right-rail data to the App
   // shell, matching the left rail's App-owned rendering boundary.
   useEffect(() => {
-    if (!isActive || typeof onRightRailApiChange !== 'function') return;
+    if (typeof onRightRailApiChange !== 'function') return;
     const nextRightRailApi = {
       activeSpaceId,
       // Create Category modal plumbing (survey rail plus button). The modal's
@@ -37606,6 +37650,7 @@ ${pageBlocks}
                                     // stroke change "reverted" once you drop the next pin.
                                     let seriesStart = 1;
                                     let inheritedNumberColor;
+                                    let inheritedSeriesName;
                                     let existingSeriesCounterCount = 0;
                                     if (!seriesAutoCreated) {
                                       const allCounters = [];
@@ -37622,6 +37667,7 @@ ${pageBlocks}
                                       if (allCounters.length > 0) {
                                         allCounters.sort((a, b) => (a.data.createdAt || 0) - (b.data.createdAt || 0));
                                         seriesStart = Number(allCounters[0].data.seriesStart) || 1;
+                                        inheritedSeriesName = allCounters.find(counter => counter.data.seriesName)?.data.seriesName;
                                         if (allCounters[0].data.numberColor) {
                                           inheritedNumberColor = allCounters[0].data.numberColor;
                                         }
@@ -37653,6 +37699,7 @@ ${pageBlocks}
                                         displayNumber,
                                         seriesId,
                                         seriesStart,
+                                        ...(inheritedSeriesName ? { seriesName: inheritedSeriesName } : {}),
                                         numberColor,
                                       },
                                     };

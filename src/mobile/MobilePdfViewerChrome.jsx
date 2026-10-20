@@ -1,3 +1,4 @@
+import { CounterSeriesPicker } from '../components/CounterSeriesMenu.jsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -1925,41 +1926,6 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
     if (arrowheadValue === 'none') api.setArrowheadStyle?.('solidTriangle');
     api.setArrowBothEnds?.(next === 'both');
   };
-  /* BOARD 15 (counter series menu) — words only: "Count 1", "Count 2", then a
-     plus and "New count". The rows come from the app's own series list, which is
-     derived from the pins already on the document (getCounterSeriesList in
-     src/utils/counterNumbering.js), so a name here can never disagree with the
-     name the desktop menu shows for the same group.
-
-     MEASURED 2026-09-22 (phone): that list alone left the strip's pill reading
-     its placeholder ("Count") and the menu holding a single "New count" row,
-     because the list counts PLACED pins and the series the next pin will join
-     has none yet — so the control looked dead. The live series is named here as
-     the count it is about to become, which gives the pill the group in force and
-     the menu something to switch between from the first tap. */
-  const counterSeriesRows = (api.counterSeriesList || []).map((series, index) => ({
-    value: series.seriesId,
-    label: series.label || `Count ${index + 1}`,
-  }));
-  const activeCounterSeriesId = api.activeCounterSeriesId || '';
-  if (!counterSeriesRows.some((row) => row.value === activeCounterSeriesId)) {
-    counterSeriesRows.push({ value: activeCounterSeriesId, label: `Count ${counterSeriesRows.length + 1}` });
-  }
-  const counterSeriesOptions = [
-    ...counterSeriesRows,
-    {
-      value: '__new',
-      label: 'New count',
-      // The app's own plus, not a redrawn one.
-      menuPreview: <Icon name="plus" size={13} color="currentColor" />,
-    },
-  ];
-  const applyCounterSeries = (seriesId) => {
-    if (seriesId === '__new') api.onNewCounterSeries?.();
-    // The row the tool is already on (including the not-yet-drawn first count,
-    // which has no id to switch to) is a no-op rather than a failed lookup.
-    else if (seriesId && seriesId !== activeCounterSeriesId) api.onSwitchCounterSeries?.(seriesId);
-  };
   // Which board a tool's strip follows. Multi-colour tools show ONE combined
   // swatch instead of the three preset discs (owner ruling); the counter's
   // swatch is its pin with its number.
@@ -2188,14 +2154,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
           frame), because the board gives the strip two controls and a size is
           not one of them. */}
       {tool === 'counter' && (
-        <MobileStyledSelect
-          ariaLabel="Counter series"
-          width="var(--mobile-strip-series-w)"
-          value={activeCounterSeriesId}
-          placeholder="Count"
-          options={counterSeriesOptions}
-          onChange={applyCounterSeries}
-        />
+        <CounterSeriesPicker api={api} width="var(--mobile-strip-series-w)" />
       )}
       {showLineStyleOnStrip && (
         <MobileStyledSelect
@@ -2580,13 +2539,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                   <SheetSection>
                     {tool === 'counter' && (
                       <SheetRow label="Series">
-                        <MobileStyledSelect
-                          ariaLabel="Counter series"
-                          value={activeCounterSeriesId}
-                          placeholder="Count"
-                          options={counterSeriesOptions}
-                          onChange={applyCounterSeries}
-                        />
+                        <CounterSeriesPicker api={api} />
                       </SheetRow>
                     )}
                     {/* A selected line / polygon / polyline / counter can

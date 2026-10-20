@@ -11,17 +11,18 @@ test('mobile live text formatting drives every control through app-styled menus'
   await expect(page.getByRole('listbox', { name: 'Font' })).toBeVisible();
   await page.getByRole('option', { name: 'Helvetica' }).click();
 
-  const fontSize = page.getByRole('textbox', { name: 'Font size' });
-  await fontSize.fill('28');
+  await page.getByRole('button', { name: /^Font size:/ }).click();
+  await page.getByRole('option', { name: '28 pt', exact: true }).click();
   for (const name of ['Bold', 'Italic', 'Underline', 'Strikethrough']) {
     const toggle = page.getByRole('button', { name });
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   }
 
-  await page.getByRole('button', { name: /^Text alignment:/ }).click();
-  await expect(page.getByRole('listbox', { name: 'Text alignment' })).toBeVisible();
-  await page.getByRole('option', { name: 'middle center' }).click();
+  await page.getByRole('button', { name: 'Text alignment', exact: true }).click();
+  await page.getByRole('button', { name: 'Center horizontal alignment', exact: true }).click();
+  await page.getByRole('button', { name: 'Center vertical alignment', exact: true }).click();
+  await page.getByRole('button', { name: 'Close text formatting', exact: true }).click({ position: { x: 5, y: 5 } });
 
   await expect.poll(() => state(page)).toMatchObject({
     fontFamily: 'Helvetica',
@@ -58,9 +59,19 @@ test('mobile live text controls expose measured 44px hit boxes', async ({ page }
   const controls = page.getByRole('toolbar', { name: 'Text formatting' }).locator('button, input');
   await expect(controls).toHaveCount(8);
   for (let index = 0; index < await controls.count(); index += 1) {
-    const rect = await controls.nth(index).boundingBox();
-    expect(rect.width).toBeGreaterThanOrEqual(44);
-    expect(rect.height).toBeGreaterThanOrEqual(44);
+    const geometry = await controls.nth(index).evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const pseudo = getComputedStyle(element, '::after');
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.bottom + 8);
+      return {
+        height: rect.height - (Number.parseFloat(pseudo.top) || 0) - (Number.parseFloat(pseudo.bottom) || 0),
+        hitBelow: hit === element || element.contains(hit),
+      };
+    });
+    // Compact adjacent buttons keep their own width; their vertical pads
+    // must reach the full touch target without overlapping their neighbors.
+    expect(geometry.height).toBeGreaterThanOrEqual(44);
+    expect(geometry.hitBelow).toBe(true);
   }
 });
 
@@ -99,21 +110,21 @@ test('styled select keyboard model focuses, navigates, selects, escapes, and res
   await expect(page.getByRole('option', { name: 'Verdana' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('listbox', { name: 'Font' })).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: 'Font size' })).toBeFocused();
+  await expect(page.getByRole('button', { name: /^Font size:/ })).toBeFocused();
   await expect(trigger).toHaveAccessibleName('Font: Verdana');
 });
 
 test('eraser, shape, and arrow strips keep compact visuals with unclipped 44px select targets', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   for (const [tool, labels] of [
-    ['eraser', ['Eraser mode']],
-    ['rect', ['Border style']],
-    ['arrow', ['Border style', 'Arrowhead style']],
+    ['eraser', ['Eraser size']],
+    ['rect', ['Line style']],
+    ['arrow', ['Line style']],
   ]) {
     await page.goto(`/?mobileTextFormattingHarness=${tool}`);
-    const toolbar = page.getByRole('toolbar', { name: `${tool} formatting` });
+    const toolbar = page.getByRole('toolbar', { name: `${tool} settings` });
     await expect(toolbar).toBeVisible();
-    expect((await toolbar.boundingBox()).height).toBe(36);
+    expect((await toolbar.boundingBox()).height).toBe(44);
     expect(await toolbar.evaluate((element) => getComputedStyle(element).overflowY)).toBe('visible');
 
     for (const label of labels) {
@@ -130,9 +141,16 @@ test('eraser, shape, and arrow strips keep compact visuals with unclipped 44px s
           hitBelow: hitBelow === element || element.contains(hitBelow),
         };
       });
-      expect(geometry.visualHeight).toBe(24);
+      expect(geometry.visualHeight).toBe(20);
       expect(geometry.effectiveHeight).toBeGreaterThanOrEqual(44);
       expect(geometry.hitBelow).toBe(true);
+    }
+    if (tool === 'arrow') {
+      await page.getByRole('button', { name: 'More Arrow settings', exact: true }).click();
+      const heads = page.getByRole('radiogroup', { name: 'Arrowhead', exact: true });
+      await heads.getByRole('radio', { name: 'Square', exact: true }).click();
+      await expect(heads.getByRole('radio', { name: 'Square', exact: true })).toBeChecked();
+      await expect.poll(() => state(page)).toMatchObject({ arrowheadStyle: 'square' });
     }
   }
 });

@@ -193,7 +193,6 @@ test('every strip pill takes its width from its own shared token', () => {
     ['Line width', '--mobile-strip-dropdown-w'],
     ['Eraser size', '--mobile-strip-dropdown-w'],
     ['Line style', '--mobile-strip-linestyle-w'],
-    ['Counter series', '--mobile-strip-series-w'],
   ]) {
     assert.match(
       chrome,
@@ -201,6 +200,10 @@ test('every strip pill takes its width from its own shared token', () => {
       `${label} must take its width from ${token}`,
     );
   }
+  // The counter series pill is now the shared CounterSeriesPicker (its
+  // ariaLabel "Counter series" lives in CounterSeriesMenu.jsx); the strip still
+  // hands it the series token.
+  assert.match(chrome, /<CounterSeriesPicker[^>]*width="var\(--mobile-strip-series-w\)"/, 'Counter series must take its width from --mobile-strip-series-w');
 
   // One height for every one of them, from the strip's own control token. The
   // leading newline picks the rule whose whole selector is that class, not the

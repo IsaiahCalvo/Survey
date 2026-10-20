@@ -2,8 +2,11 @@ import { test, expect } from '@playwright/test';
 
 const templates = [{ id: 'work', name: 'Work Survey', entities: [], modules: [{ id: 'existing', name: 'Existing', categories: [] }] }];
 
-test.describe('phone panels requested during viewer loading', () => {
-  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+for (const [layout, viewport, query] of [
+  ['mobile Safari', { width: 390, height: 664 }, ''],
+  ['native app', { width: 390, height: 844 }, '&mobileNav=tabs&nativeShell=expo'],
+]) test.describe(`${layout} panels requested during viewer loading`, () => {
+  test.use({ viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   const cases = [
     { name: 'Survey opens once after its viewer registers', taps: ['Open survey'], panel: 'survey' },
     { name: 'Spaces opens after its viewer registers', taps: ['Open spaces'], panel: 'spaces' },
@@ -26,7 +29,7 @@ test.describe('phone panels requested during viewer loading', () => {
       });
       const errors = []; page.on('pageerror', (error) => errors.push(error.message));
       try {
-        await page.goto('/?testPdf=clickable-link-test.pdf&surveyTemplateWorkflowE2E=1&mobileNav=tabs&nativeShell=expo', { waitUntil: 'domcontentloaded' });
+        await page.goto(`/mobile?testPdf=clickable-link-test.pdf&surveyTemplateWorkflowE2E=1${query}`, { waitUntil: 'domcontentloaded' });
         await expect(page.getByRole('button', { name: 'Open survey', exact: true })).toBeVisible();
         expect(viewerRequestHeld).toBe(true);
         await expect(page.locator('[data-svg-annotation-layer]')).toHaveCount(0);
