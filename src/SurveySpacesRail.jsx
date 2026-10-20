@@ -45,6 +45,7 @@ import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
 import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
+import { removeSurveyMarkersFromPages } from './utils/surveyMarkerPageRemoval.js';
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
 import { publishSideRoom } from './sidebar/panelLayoutStore.js';
@@ -2565,6 +2566,21 @@ const SurveySpacesRail = ({
                                   });
                                   return updated;
                                 });
+                                // KAL-502: the page draws markers from newSurveyMarkersByPage,
+                                // so take them off there too (as the ✕ delete does), or
+                                // their boxes stay drawn until a reload. Then empty the
+                                // removal queue, as the other delete paths do.
+                                const deletedForPage = surveyMarkersInCategory.map(([id, marker]) => ({
+                                  id, pageNumber: marker?.pageNumber, bounds: marker?.bounds,
+                                }));
+                                setNewSurveyMarkersByPage(prev => removeSurveyMarkersFromPages(prev, deletedForPage));
+                                setTimeout(() => {
+                                  setSurveyMarkersToRemoveByPage(prev => {
+                                    const updated = { ...prev };
+                                    deletedForPage.forEach(({ pageNumber }) => { if (pageNumber) delete updated[pageNumber]; });
+                                    return updated;
+                                  });
+                                }, 100);
 
                                 const documentId = pdfFile?.id;
                                 const surveyMarkerIdsToDelete = surveyMarkersInCategory.map(([id]) => id);
