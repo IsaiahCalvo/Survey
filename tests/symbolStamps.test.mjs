@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { PDFDocument, PDFName } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import {
-  SYMBOLS, SYMBOL_CATEGORIES, buildSymbolSvg, createSymbolStampObject, getSymbol, isSymbolStamp,
-  parseSymbolPath, symbolsInCategory, transformSymbolPath,
+  SYMBOLS, SYMBOL_CATEGORIES, SYMBOL_STROKE_WIDTH, buildSymbolSvg, createSymbolStampObject, getSymbol,
+  isSymbolStamp, parseSymbolPath, symbolPaintViewBox, symbolsInCategory, transformSymbolPath,
 } from '../src/utils/symbolLibrary.js';
 import { isPdfStampProxy } from '../src/utils/pdfStampProxy.js';
 import { annotationImageSource } from '../src/utils/annotationImageCache.js';
@@ -19,7 +19,12 @@ test('library: unique ids, both disciplines filled, every path parses', () => {
   for (const symbol of SYMBOLS) {
     assert.ok(symbol.label && symbol.viewBox.every((n) => n > 0), symbol.id);
     for (const path of symbol.paths) assert.ok(parseSymbolPath(path.d).length > 0, symbol.id);
-    assert.match(buildSymbolSvg(symbol, '#2563eb'), /^<svg [^>]*viewBox="0 0 \d+ \d+"[^>]*>.*stroke="#2563eb".*<\/svg>$/);
+    const [px, py, pw, ph] = symbolPaintViewBox(symbol);
+    const pad = SYMBOL_STROKE_WIDTH / 2;
+    assert.deepEqual([px, py, pw, ph], [-pad, -pad, symbol.viewBox[0] + 2 * pad, symbol.viewBox[1] + 2 * pad]);
+    const svg = buildSymbolSvg(symbol, '#2563eb');
+    assert.ok(svg.includes(`viewBox="${px} ${py} ${pw} ${ph}"`), symbol.id);
+    assert.ok(svg.includes('stroke="#2563eb"'), symbol.id);
   }
   assert.throws(() => parseSymbolPath('m0 0 l10 10'), /absolute/);
   assert.throws(() => parseSymbolPath('M0 0 C1 1 2 2 3 3'));
@@ -50,6 +55,10 @@ test('symbol paths map onto the mark box, resized and rotated like the screen', 
   // 90 degrees clockwise (y down) about the box centre (58, 44).
   assert.equal(transformSymbolPath('M24 4 V24', symbol.viewBox, { ...box, angle: 90 }), 'M78 44 L58 44');
   assert.equal(transformSymbolPath('M0 0 A5 5 0 0 1 10 0', [10, 10], { left: 0, top: 0, width: 20, height: 10, angle: 0 }), 'M0 0 A10 5 0 0 1 20 0');
+  // Same padded viewBox the SVG picture uses: an authored edge stays inside the
+  // mark so Path2D / print keep the stroke the <image> no longer clips.
+  const paint = { left: 0, top: 0, width: 66.5, height: 26.5, angle: 0 };
+  assert.equal(transformSymbolPath('M0 12', symbolPaintViewBox(getSymbol('iec-resistor')), paint), 'M1.25 13.25');
 });
 
 test('canvas painter draws a symbol from its paths, in its colour', () => {

@@ -41,7 +41,7 @@ import { resolveCloudAnnotationGeometry } from './cloudAnnotationGeometry.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from './pdfStampProxy.js';
 import { getAnnotationImage } from './annotationImageCache.js';
 import {
-  getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
+  getSymbol, isSymbolStamp, symbolPaintViewBox, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
 } from './symbolLibrary.js';
 import {
   buildTextMarkupRenderSpec,
@@ -1274,7 +1274,7 @@ function drawSymbolStamp(context, object) {
   context.strokeStyle = color;
   context.fillStyle = color;
   for (const path of symbol.paths) {
-    const shape = new Path2D(transformSymbolPath(path.d, symbol.viewBox, box));
+    const shape = new Path2D(transformSymbolPath(path.d, symbolPaintViewBox(symbol), box));
     if (path.fill) context.fill(shape);
     context.stroke(shape);
   }

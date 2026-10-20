@@ -70,6 +70,9 @@ export default function SymbolStampTool({ active, onPlace, onClose }) {
     let press = null;
     const onDown = (event) => {
       if (event.button > 0 || event.isPrimary === false) { press = null; return; }
+      // Both ends of the tap must be a page target: a press that starts on the
+      // panel or a tool control is never a place, even if it slips onto the page.
+      if (!resolveSymbolPlacement(document, event.clientX, event.clientY)) { press = null; return; }
       press = { id: event.pointerId, x: event.clientX, y: event.clientY, at: Date.now() };
     };
     const swallowClick = (event) => { event.stopPropagation(); event.preventDefault(); };

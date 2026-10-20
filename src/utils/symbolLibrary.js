@@ -96,15 +96,26 @@ export const symbolsInCategory = (categoryId) => SYMBOLS.filter((s) => s.categor
 
 const escapeAttr = (value) => String(value).replace(/[^#0-9a-zA-Z]/g, '');
 
+/**
+ * Authored viewBox plus half a stroke. An SVG `<image>` always clips to its
+ * viewport, so `overflow="visible"` cannot keep edge strokes — this pad does,
+ * and Path2D / print use the same box so they stay in lockstep with the page.
+ */
+export function symbolPaintViewBox(symbol) {
+  const pad = SYMBOL_STROKE_WIDTH / 2;
+  const [w, h] = symbol.viewBox;
+  return [-pad, -pad, w + 2 * pad, h + 2 * pad];
+}
+
 /** The symbol as a standalone SVG document (stretches with its box, like the other renderers). */
 export function buildSymbolSvg(symbol, color = SYMBOL_COLORS[0]) {
   if (!symbol) return '';
-  const [w, h] = symbol.viewBox;
+  const [x, y, w, h] = symbolPaintViewBox(symbol);
   const c = escapeAttr(color) || '#000000';
   const body = symbol.paths.map((path) => (path.fill
     ? `<path d="${path.d}" fill="${c}" stroke="${c}" stroke-width="${SYMBOL_STROKE_WIDTH}" stroke-linejoin="round"/>`
     : `<path d="${path.d}" fill="none" stroke="${c}" stroke-width="${SYMBOL_STROKE_WIDTH}" stroke-linecap="round" stroke-linejoin="round"/>`)).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none" overflow="visible">${body}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}" width="${w}" height="${h}" preserveAspectRatio="none" overflow="visible">${body}</svg>`;
 }
 
 export const symbolDataUrl = (symbol, color) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(buildSymbolSvg(symbol, color))}`;
@@ -195,13 +206,13 @@ export function symbolStampBox(obj) {
  * radii scaled per axis and take the rotation as their x-axis rotation.
  */
 export function transformSymbolPath(d, viewBox, box) {
-  const [vw, vh] = viewBox;
+  const [vx, vy, vw, vh] = viewBox.length >= 4 ? viewBox : [0, 0, viewBox[0], viewBox[1]];
   const sx = box.width / vw; const sy = box.height / vh;
   const cx = box.left + box.width / 2; const cy = box.top + box.height / 2;
   const rad = (box.angle * Math.PI) / 180;
   const cos = Math.cos(rad); const sin = Math.sin(rad);
   const at = (x, y) => {
-    const px = box.left + x * sx - cx; const py = box.top + y * sy - cy;
+    const px = box.left + (x - vx) * sx - cx; const py = box.top + (y - vy) * sy - cy;
     return [cx + px * cos - py * sin, cy + px * sin + py * cos];
   };
   const r = (n) => Math.round(n * 1000) / 1000;
@@ -225,5 +236,7 @@ export function transformSymbolPath(d, viewBox, box) {
 }
 
 /** The stroke width on the page for a mark's box (scales with the box like the SVG image does). */
-export const symbolStampStrokeWidth = (symbol, box) => SYMBOL_STROKE_WIDTH
-  * Math.sqrt((box.width / symbol.viewBox[0]) * (box.height / symbol.viewBox[1]));
+export const symbolStampStrokeWidth = (symbol, box) => {
+  const [, , vw, vh] = symbolPaintViewBox(symbol);
+  return SYMBOL_STROKE_WIDTH * Math.sqrt((box.width / vw) * (box.height / vh));
+};

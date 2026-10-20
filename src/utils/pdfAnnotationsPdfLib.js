@@ -144,7 +144,7 @@ import { calculateCalloutConnection } from './calloutGeometry.js';
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { isPdfStampProxy, pngDataUrlToBytes } from './pdfStampProxy.js';
 import {
-  getSymbol, isSymbolStamp, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
+  getSymbol, isSymbolStamp, symbolPaintViewBox, symbolStampBox, symbolStampStrokeWidth, transformSymbolPath,
 } from './symbolLibrary.js';
 
 // ---------------------------------------------------------------------------
@@ -6345,7 +6345,7 @@ const drawFlattenedSymbolStamp = (page, obj, pageHeight) => {
   const opacity = Number.isFinite(Number(obj.opacity)) ? Math.max(0, Math.min(1, Number(obj.opacity))) : 1;
   const borderWidth = symbolStampStrokeWidth(symbol, box);
   for (const path of symbol.paths) {
-    drawSvgPathLinear(page, transformSymbolPath(path.d, symbol.viewBox, box), {
+    drawSvgPathLinear(page, transformSymbolPath(path.d, symbolPaintViewBox(symbol), box), {
       x: 0,
       y: pageHeight,
       borderColor: paint.color,
