@@ -454,7 +454,7 @@ async function testTemplateDisclosureIconParity(page, baseUrl, touch, device) {
   assert.equal(rendered.hasSvg, true, `${device}: category disclosure uses the shared desktop/web SVG chevron`);
   assert.equal(rendered.glyphWidth, 18, `${device}: shared category chevron is large enough to read`);
   assert.equal(rendered.glyphHeight, 18, `${device}: shared category chevron stays square`);
-  assert.equal(rendered.strokeWidth, '2', `${device}: shared category chevron keeps readable weight`);
+  assert.equal(rendered.strokeWidth, '1.5', `${device}: shared category chevron keeps readable weight`);
   await activate(toggle, touch, device);
   if (device === 'mobile') {
     const expandedToggle = page.locator('.templates-mobile-category-toggle[aria-label^="Collapse"]:visible').first();

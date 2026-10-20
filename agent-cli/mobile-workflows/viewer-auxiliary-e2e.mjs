@@ -296,7 +296,6 @@ async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnos
     if (device === 'mobile') {
       await activateOne(page.getByRole('button', { name: 'Zoom and fit options', exact: true }), 'mobile zoom options', touch, device);
       await activateOne(page.getByRole('option', { name: 'Fit width', exact: true }), 'mobile fit width', touch, device);
-      await activateOne(page.getByRole('button', { name: 'More document options', exact: true }), 'mobile more options', touch, device);
     } else {
       await activateOne(page.getByRole('button', { name: 'Fit options', exact: true }), 'desktop fit options', touch, device);
       const desktopFitPage = page.getByText('Fit page', { exact: true });
@@ -304,13 +303,15 @@ async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnos
       await activateOne(desktopFitPage, 'desktop fit page', touch, device);
     }
     const fittedWidth = await pageWidth(page);
+    if (device === 'mobile') {
+      // Zoom steppers live in the zoom menu, which closes after a fit pick and
+      // stays open across stepper taps.
+      await activateOne(page.getByRole('button', { name: 'Zoom and fit options', exact: true }), 'mobile reopen zoom options', touch, device);
+    }
     await activateOne(page.getByRole('button', { name: 'Zoom in', exact: true }), `${device} zoom in`, touch, device);
     await page.waitForTimeout(350);
     const zoomedWidth = await pageWidth(page);
     assert.ok(zoomedWidth > fittedWidth, `${device}: zoom-in must enlarge the page (${fittedWidth} -> ${zoomedWidth})`);
-    if (device === 'mobile') {
-      await activateOne(page.getByRole('button', { name: 'More document options', exact: true }), 'mobile reopen more options', touch, device);
-    }
     await activateOne(page.getByRole('button', { name: 'Zoom out', exact: true }), `${device} zoom out`, touch, device);
     await page.waitForTimeout(350);
     const zoomedOutWidth = await pageWidth(page);

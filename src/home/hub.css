@@ -5059,10 +5059,6 @@ button[aria-label="Edit color"]:active > span,
 }
 /* The whole row is the toggle's target now; the chevron needs no pad. */
 .survey-hub .templates-mobile-category-row > .templates-mobile-category-toggle::after { display: none; }
-.survey-hub .templates-mobile-category-row > .templates-mobile-category-toggle > svg {
-  width: 16px;
-  height: 16px;
-}
 /* Every name here is a field, and index.html lifts every phone field to
    16px so iOS never zooms on focus. At 16px a bold name was the loudest
    text in the app (owner 2026-10-02, UI consistency audit), so category,

@@ -123,7 +123,22 @@ async function openGroupMenu(page, touch) {
 }
 
 async function selectPairWithMarquee(page, touch, ids) {
-  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await page.getByRole('button', { name: 'Rectangle Select', exact: true }).click();
+  // The last mark drawn stays selected, and its finger-sized handle pads can
+  // cover where the marquee starts, turning the drag into a resize. Tap blank
+  // page first so the drag starts on bare SVG.
+  const blank = await page.locator('[data-svg-annotation-layer="1"]').first().evaluate((svg) => {
+    const box = svg.getBoundingClientRect();
+    for (let y = box.bottom - 20; y > box.top + 20; y -= 15) {
+      for (let x = box.left + 20; x < box.right - 20; x += 15) {
+        if (document.elementFromPoint(x, y) === svg) return { x, y };
+      }
+    }
+    return null;
+  });
+  assert(blank, 'blank page point required to clear the selection');
+  await touch.tap(blank);
+  await page.locator('.svg-selection-overlay').first().waitFor({ state: 'detached', timeout: 10_000 });
   const boxes = [];
   for (const id of ids) {
     const box = await page.locator(`g[data-anno-id="${id}"]`).boundingBox();
@@ -170,33 +185,37 @@ async function runMultiSelectClipboardAndZOrder(page, touch, baseUrl) {
   const pastedIds = afterCopyPaste.filter((id) => !prePasteIds.has(id));
   assert.equal(pastedIds.length, 2, 'group paste must create two new annotations');
 
+  // A paste selects what it created (w53), so the group menu now acts on the
+  // pasted pair, which lands on top. Send it to the back first so every
+  // reorder below actually moves it.
+  const subject = pastedIds;
   menu = await openGroupMenu(page, touch);
-  await menu.getByText('Bring to front', { exact: true }).click();
+  await menu.getByText('Send to back', { exact: true }).click();
   let snapshot = await persistedSnapshot(page, storageKeys);
   let order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
-  assert.deepEqual(order.slice(-2), [rectangle.id, ellipse.id], 'group Bring to front must move the selected pair above pasted copies');
-
-  menu = await openGroupMenu(page, touch);
-  await menu.getByText('Send backward', { exact: true }).click();
-  snapshot = await persistedSnapshot(page, storageKeys);
-  order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
-  assert(!order.slice(-2).includes(rectangle.id), 'group Send backward must move the selection down one layer');
+  assert.deepEqual(order.slice(0, 2), subject, 'group Send to back must move the selected pair below the originals');
 
   menu = await openGroupMenu(page, touch);
   await menu.getByText('Bring forward', { exact: true }).click();
   snapshot = await persistedSnapshot(page, storageKeys);
   order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
-  assert.deepEqual(order.slice(-2), [rectangle.id, ellipse.id], 'group Bring forward must restore the pair one layer up');
+  assert.notDeepEqual(order.slice(0, 2), subject, 'group Bring forward must move the selection up one layer');
 
   menu = await openGroupMenu(page, touch);
-  await menu.getByText('Send to back', { exact: true }).click();
+  await menu.getByText('Bring to front', { exact: true }).click();
   snapshot = await persistedSnapshot(page, storageKeys);
   order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
-  assert.deepEqual(order.slice(0, 2), [rectangle.id, ellipse.id], 'group Send to back must move the selected pair below pasted copies');
+  assert.deepEqual(order.slice(-2), subject, 'group Bring to front must move the selected pair above the originals');
+
+  menu = await openGroupMenu(page, touch);
+  await menu.getByText('Send backward', { exact: true }).click();
+  snapshot = await persistedSnapshot(page, storageKeys);
+  order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
+  assert(!order.slice(-2).includes(subject[0]), 'group Send backward must move the selection down one layer');
 
   menu = await openGroupMenu(page, touch);
   await menu.getByText('Cut', { exact: true }).click();
-  await page.waitForFunction((ids) => ids.every((id) => !document.querySelector(`g[data-anno-id="${id}"]`)), [rectangle.id, ellipse.id]);
+  await page.waitForFunction((ids) => ids.every((id) => !document.querySelector(`g[data-anno-id="${id}"]`)), subject);
 
   // Paste the cut group from an empty point inside the page.
   const pageBox = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
