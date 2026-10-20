@@ -120,3 +120,26 @@ test('a timed-out open leaves no unhandled rejection', async () => {
 test('no late-failure reload once a page view replaced the file', () => {
   assert.equal(shouldRetryStreamedOpenWithDownload({ openedByStream: true, filePath: 'a.pdf', forced: new Set(), stillCurrent: false }), false);
 });
+
+test('after a stream fallback the path is forced to download (no stream loop)', async () => {
+  const forced = new Set();
+  const pdfFile = { id: 'd', filePath: 'p.pdf' };
+  const hanging = fakePdfjs({ hang: true });
+  const result = await tryOpenCloudPdfStream({
+    pdfjsReady: Promise.resolve(hanging), filePath: 'p.pdf', source: async () => ({ url: 'u' }), timeoutMs: 5,
+    onFallback: () => forced.add('p.pdf'),
+  });
+  assert.equal(result, null);
+  assert.deepEqual(
+    chooseCloudPdfOpenPath({ pdfFile, protocol: 'https:', online: true, forceDownload: forced.has('p.pdf') }),
+    { path: 'download', reason: 'needs-bytes' },
+  );
+});
+
+test('PDFViewer marks fallback paths and re-arms the watchdog on stream fallback', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(src, /onFallback: \(why\) => \{[\s\S]{0,400}streamNeedsBytesPathsRef\.current\.add\(streamPath\);[\s\S]{0,120}setStreamFallbackCount/);
+  assert.match(src, /\}, \[isLoadingPDF, pdfFile, loadRetryToken, streamFallbackCount\]\);/);
+  assert.match(src, /streamNeedsBytesPathsRef\.current\.add\(pdfFile\.filePath\);\n\s*setLoadRetryToken/);
+});

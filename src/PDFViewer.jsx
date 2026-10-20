@@ -24109,6 +24109,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Cloud paths whose streamed bytes carried a page-presentation tag: these
   // open through the full download, which applies it (services/cloudPdfStream).
   const streamNeedsBytesPathsRef = useRef(new Set());
+  // Bumped when a stream falls back: re-arms the load watchdog for the download.
+  const [streamFallbackCount, setStreamFallbackCount] = useState(0);
   // Load PDF
   useEffect(() => {
     if (!pdfFile) {
@@ -24192,7 +24194,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             filePath: streamPath,
             source: openDocumentStream,
             isCancelled: () => isCancelled,
-            onFallback: (why) => loadTrace('stream open fell back to download: ' + why),
+            onFallback: (why) => {
+              loadTrace('stream open fell back to download: ' + why);
+              // Never stream this path again this session (no stream loops),
+              // and give the download a fresh watchdog window.
+              streamNeedsBytesPathsRef.current.add(streamPath);
+              if (!isCancelled) setStreamFallbackCount((n) => n + 1);
+            },
             onAllBytes: (bytes) => {
               if (!pdfBytesHavePresentationTag(bytes)) return;
               streamNeedsBytesPathsRef.current.add(streamPath);
@@ -24853,7 +24861,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             loadWatchdogRetryCountRef.current + '/' + MAX_AUTO_RETRIES + ') ' +
             '[wake-recover]');
         } catch (_e) { /* swallow */ }
-        // Re-run the loadPDF effect with a fresh download/parse.
+        // Re-run the loadPDF effect with a fresh download/parse (a full
+        // download, never another stream attempt).
+        if (pdfFile?.filePath) streamNeedsBytesPathsRef.current.add(pdfFile.filePath);
         setLoadRetryToken((t) => t + 1);
       } else {
         try {
@@ -24871,7 +24881,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }, HANG_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [isLoadingPDF, pdfFile, loadRetryToken]);
+  }, [isLoadingPDF, pdfFile, loadRetryToken, streamFallbackCount]);
 
   // KAL-token-refresh — the former focus/online/visibilitychange "wake-kick"
   // that bumped loadRetryToken to re-run loadPDF on wake was REMOVED here.
