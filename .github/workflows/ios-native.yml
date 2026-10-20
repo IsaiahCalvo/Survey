@@ -5,16 +5,21 @@ name: iOS native app check
 # launches it and checks it stays up. So native changes can be tested without
 # the owner's Mac. Screenshots and logs are uploaded as the run artifact.
 #
-# Runs on PRs that touch the native shell or its plugins, plus manual runs.
+# Runs on any PR that can change the native app (web UI included: the app
+# ships the same bundle), plus manual runs. The repo is public, so macOS
+# runner minutes are free.
 
 on:
   pull_request:
     paths:
       - 'ios/**'
       - 'capacitor.config.ts'
-      - 'src/mobile/nativeDownloadShim.js'
-      - 'src/main.jsx'
+      - 'src/**'
+      - 'public/**'
+      - 'index.html'
+      - 'vite.config.js'
       - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/ios-native.yml'
   workflow_dispatch:
 
