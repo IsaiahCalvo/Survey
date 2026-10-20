@@ -10,6 +10,14 @@ test('never used templates do not prompt, meaningful used versions do',()=>{
   assert.equal(needsTemplateVersionChoice(binding,revised),true);
   assert.equal(templateFingerprint({...original,updatedAt:'later'}),templateFingerprint(original));
 });
+test('a kit-only library edit prompts a used document to pick the new version',()=>{
+  const binding=bindUsedTemplate(original);
+  const kitOnly={...original,exportKitId:'wireless-lock-schedule'};
+  assert.equal(needsTemplateVersionChoice(binding,original),false);
+  assert.equal(needsTemplateVersionChoice(binding,kitOnly),true);
+  assert.notEqual(templateFingerprint(kitOnly),templateFingerprint(original));
+  assert.equal(templateFingerprint({...original,exportKitId:undefined}),templateFingerprint(original));
+});
 test('keeping a version keeps its definitions; only a later new edit prompts again',()=>{
   const binding=acceptTemplateVersion(bindUsedTemplate(original),revised,false);
   assert.deepEqual(binding.snapshot,original);

@@ -119,3 +119,13 @@ test('template fingerprint: unchanged without an Excel layout, changes when one 
   assert.equal(templateFingerprint(t), JSON.stringify(['Doors', [], []]));
   assert.notEqual(templateFingerprint({ ...t, exportKitId: 'wireless-lock-schedule' }), templateFingerprint(t));
 });
+
+test('every kit name/entity header is known to import', async () => {
+  const { ITEM_COLUMN_HEADERS, ENTITY_COLUMN_HEADERS } = await import('../src/services/buildScopeImportPlans.js');
+  for (const kit of listExportKits()) {
+    const nameH = kit.columns.find((c) => c.field === 'name')?.header;
+    const entH = kit.columns.find((c) => c.field === 'entity_name')?.header;
+    assert.ok(ITEM_COLUMN_HEADERS.includes(nameH), `${kit.id} name header "${nameH}" missing from import aliases`);
+    assert.ok(ENTITY_COLUMN_HEADERS.includes(entH), `${kit.id} entity header "${entH}" missing from import aliases`);
+  }
+});

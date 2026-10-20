@@ -267,7 +267,7 @@ import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncB
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
 import { fetchOrCreateSigningSecret, fetchSigningSecret } from './services/rowIdServerSecretClient';
-import { buildScopeImportPlans, scopeKeyFor } from './services/buildScopeImportPlans';
+import { buildScopeImportPlans, headerIndexOf, ITEM_COLUMN_HEADERS, resolveImportColumns, scopeKeyFor } from './services/buildScopeImportPlans';
 import { triageCandidateDelete, markPendingDelete, clearPendingDeleteMark } from './services/excelDeleteGrace';
 import { RECENCY, classifyWorkbookRecency, latestAppExportStamp, readWorkbookExportStamp, staleAutoSkipMessage, staleManualConfirmText } from './services/excelImportRecencyGuard';
 import { buildMarkerRowValues, resolveMarkerModuleData } from './services/markerRowValues';
@@ -17435,7 +17435,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const cId = ws?.matchedCategory?.id;
         if (mId == null || cId == null) continue;
         const header = Array.isArray(ws.headerRow) ? ws.headerRow : [];
-        reviewSheetIndex.set(`${mId}:${cId}`, { ws, itemColumnIndex: header.indexOf('Item') });
+        reviewSheetIndex.set(`${mId}:${cId}`, { ws, itemColumnIndex: headerIndexOf(header, ITEM_COLUMN_HEADERS) });
       }
       const describeOutcomeRow = (opId) => {
         if (typeof opId !== 'string' || opId.startsWith('del#')) return {};
@@ -17628,9 +17628,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       const checklistItems = updatedCategory.checklist || [];
+      const { itemColumnIndex, entityIndex, notesIndex, isSystemHeader } = resolveImportColumns(headerRow);
 
       headerRow.forEach((colText, index) => {
-        if (['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
+        if (isSystemHeader(colText, index)) return;
         if (!colText?.toString().trim()) return;
 
         const trimmedText = colText.toString().trim();
@@ -17639,10 +17640,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           colToChecklistId[index] = checklistItem.id;
         }
       });
-
-      const itemColumnIndex = headerRow.indexOf('Item');
-      const entityIndex = headerRow.indexOf('Entity');
-      const notesIndex = headerRow.indexOf('Notes');
 
       // Collect all item names from Excel for deletion detection
       const scopeKey = `${matchedModuleId}-${matchedCategory.id}`;
@@ -18275,9 +18272,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       const checklistItems = updatedCategory.checklist || [];
+      const { itemColumnIndex, entityIndex, notesIndex, isSystemHeader } = resolveImportColumns(headerRow);
 
       headerRow.forEach((colText, index) => {
-        if (['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
+        if (isSystemHeader(colText, index)) return;
         if (!colText?.toString().trim()) return;
 
         const trimmedText = colText.toString().trim();
@@ -18286,10 +18284,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           colToChecklistId[index] = checklistItem.id;
         }
       });
-
-      const itemColumnIndex = headerRow.indexOf('Item');
-      const entityIndex = headerRow.indexOf('Entity');
-      const notesIndex = headerRow.indexOf('Notes');
 
       // Collect all item names from Excel for deletion detection
       const scopeKey = `${matchedModuleId}-${matchedCategory.id}`;
@@ -19343,9 +19337,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const excelColumnOrder = []; // Track all non-system columns in Excel order
           const foundItemIds = new Set(); // Track which template items are in Excel
 
+          const { isSystemHeader } = resolveImportColumns(headerRow);
           headerRow.forEach((colText, index) => {
             // Skip system columns
-            if (['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
+            if (isSystemHeader(colText, index)) return;
             if (!colText?.toString().trim()) return;
 
             const trimmedText = colText.toString().trim();
@@ -19573,8 +19568,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const excelColumnOrder = []; // Track all non-system columns in Excel order
           const foundItemIds = new Set(); // Track which template items are in Excel
 
+          const { isSystemHeader } = resolveImportColumns(headerRow);
           headerRow.forEach((colText, index) => {
-            if (['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'].includes(colText)) return;
+            if (isSystemHeader(colText, index)) return;
             if (!colText?.toString().trim()) return;
 
             const trimmedText = colText.toString().trim();

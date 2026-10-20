@@ -21,7 +21,33 @@ import { computeRowFingerprints } from './rowFingerprint.js';
 import { detectFieldConflicts } from './excelConflictDetect.js';
 import { parseRowIdToken } from './rowIdToken.js';
 
-const SYSTEM_HEADERS = ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Entity', 'Notes'];
+// Item / entity headers from export kits. Default kit uses Item/Entity;
+// wireless-lock-schedule uses Door/Gateway. First match wins so a standard
+// sheet that also has a checklist named "Door" still reads the Item column.
+export const ITEM_COLUMN_HEADERS = ['Item', 'Door'];
+export const ENTITY_COLUMN_HEADERS = ['Entity', 'Gateway'];
+const FIXED_SYSTEM_HEADERS = ['Row ID', 'Changed By', 'Changed Date', 'Notes'];
+
+export function headerIndexOf(headerRow, names) {
+  if (!Array.isArray(headerRow) || !Array.isArray(names)) return -1;
+  for (const name of names) {
+    const idx = headerRow.indexOf(name);
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
+export function resolveImportColumns(headerRow) {
+  const itemColumnIndex = headerIndexOf(headerRow, ITEM_COLUMN_HEADERS);
+  const entityIndex = headerIndexOf(headerRow, ENTITY_COLUMN_HEADERS);
+  const notesIndex = Array.isArray(headerRow) ? headerRow.indexOf('Notes') : -1;
+  const changedByIdx = Array.isArray(headerRow) ? headerRow.indexOf('Changed By') : -1;
+  const changedDateIdx = Array.isArray(headerRow) ? headerRow.indexOf('Changed Date') : -1;
+  const isSystemHeader = (colText, index) => (
+    FIXED_SYSTEM_HEADERS.includes(colText) || index === itemColumnIndex || index === entityIndex
+  );
+  return { itemColumnIndex, entityIndex, notesIndex, changedByIdx, changedDateIdx, isSystemHeader };
+}
 
 // Privacy-bounded short hash (FNV-1a, 8 hex) for correlating a Row ID cell across
 // imports WITHOUT logging the token, notes, or any user content.
@@ -114,17 +140,20 @@ export const buildScopeImportPlans = async ({
       const scopeId = `${matchedModuleId}:${matchedCategory.id}`;
       const scopeKey = scopeKeyFor(matchedModuleId, matchedCategory.id);
 
-      const changedByIdx = headerRow.indexOf('Changed By');
-      const changedDateIdx = headerRow.indexOf('Changed Date');
-      const itemIdx = headerRow.indexOf('Item');
-      const entityIdx = headerRow.indexOf('Entity');
-      const notesIdx = headerRow.indexOf('Notes');
+      const {
+        itemColumnIndex: itemIdx,
+        entityIndex: entityIdx,
+        notesIndex: notesIdx,
+        changedByIdx,
+        changedDateIdx,
+        isSystemHeader
+      } = resolveImportColumns(headerRow);
 
       // header text → checklistId, using the live category (same resolution as the caller)
       const checklistItems = resolveUpdatedCategory(templateToUse, matchedCategory).checklist || [];
       const colToChecklistId = {};
       headerRow.forEach((colText, index) => {
-        if (SYSTEM_HEADERS.includes(colText)) return;
+        if (isSystemHeader(colText, index)) return;
         const trimmed = colText?.toString().trim();
         if (!trimmed) return;
         const ci = checklistItems.find((c) => c.text === trimmed);

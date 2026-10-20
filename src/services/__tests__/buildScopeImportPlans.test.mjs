@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildScopeImportPlans, scopeKeyFor } from '../buildScopeImportPlans.js';
+import { buildScopeImportPlans, resolveImportColumns, scopeKeyFor } from '../buildScopeImportPlans.js';
 import { generateRowIdToken } from '../rowIdToken.js';
 import { computeRowFingerprints } from '../rowFingerprint.js';
 import { buildMarkerIdentityRecord } from '../excelIdentityRecord.js';
@@ -289,6 +289,39 @@ test('default logger swallows console.info failures', async () => {
   } finally {
     console.info = prev;
   }
+});
+
+test('wireless-lock Door/Gateway columns are item/entity, not checklist', async () => {
+  const token = await generateRowIdToken({ keyId: KEY_ID, secret: SECRET, documentId: DOC, scopeId: SCOPE, markerId: 'm1' });
+  const wirelessHeader = ['Row ID', 'Changed By', 'Changed Date', 'Door', 'Gateway', 'Locked?', 'Notes'];
+  const surveyMarkers = { m1: await markerWithRecord('m1', { item: 'D1', entity: 'GW-1' }) };
+  const jsonData = [wirelessHeader, [token, 'IC', '6/8/2026', 'D1 RENAMED', 'GW-2', 'Y', 'ok']];
+
+  const plans = await buildScopeImportPlans({
+    worksheetDataList: [{ jsonData, headerRow: wirelessHeader, matchedCategory: { id: CATEGORY }, matchedModuleId: MODULE }],
+    surveyMarkers, templateToUse, documentId: DOC, resolveSecret
+  });
+  const decision = plans.get(scopeKeyFor(MODULE, CATEGORY)).byRowIndex.get(1);
+  assert.equal(decision.action, 'apply');
+  const incoming = await computeRowFingerprints({
+    changedBy: 'IC', changedDate: '6/8/2026', item: 'D1 RENAMED', entity: 'GW-2', notes: 'ok', answers: { 'chk-1': 'Y' }
+  });
+  assert.equal(decision.identityRecord.fullRowFingerprint, incoming.fullRowFingerprint);
+});
+
+test('resolveImportColumns prefers Item/Entity and treats kit aliases as system columns', () => {
+  const standard = resolveImportColumns(['Row ID', 'Changed By', 'Changed Date', 'Item', 'Door', 'Entity', 'Notes']);
+  assert.equal(standard.itemColumnIndex, 3);
+  assert.equal(standard.entityIndex, 5);
+  assert.equal(standard.isSystemHeader('Item', 3), true);
+  assert.equal(standard.isSystemHeader('Door', 4), false, 'a checklist named Door on a standard sheet stays a checklist');
+
+  const wireless = resolveImportColumns(['Row ID', 'Changed By', 'Changed Date', 'Door', 'Gateway', 'Locked?', 'Notes']);
+  assert.equal(wireless.itemColumnIndex, 3);
+  assert.equal(wireless.entityIndex, 4);
+  assert.equal(wireless.isSystemHeader('Door', 3), true);
+  assert.equal(wireless.isSystemHeader('Gateway', 4), true);
+  assert.equal(wireless.isSystemHeader('Locked?', 5), false);
 });
 
 test('resolveUpdatedCategory falls back when template no longer has the category', async () => {
