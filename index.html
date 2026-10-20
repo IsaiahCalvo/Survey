@@ -2,6 +2,24 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <script>
+      // Signed-out first-time visitors to surveytool.app see the marketing
+      // page. Anyone with a session, an auth link, or a past visit to the app
+      // goes straight in. Desktop and mobile builds never match this host.
+      (function () {
+        try {
+          var h = location.hostname, ls = window.localStorage;
+          if (h !== 'surveytool.app' && h !== 'www.surveytool.app') return;
+          if (location.search || location.hash) { ls.setItem('survey.seenApp', '1'); return; }
+          if (location.pathname !== '/' || ls.getItem('survey.seenApp')) return;
+          for (var i = 0; i < ls.length; i++) {
+            var k = ls.key(i) || '';
+            if (k.indexOf('sb-') === 0 && /-auth-token$/.test(k)) { ls.setItem('survey.seenApp', '1'); return; }
+          }
+          location.replace('/welcome');
+        } catch (e) {}
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0d0f14" />
     <meta name="color-scheme" content="dark" />

@@ -4,6 +4,7 @@
     "deploymentEnabled": false
   },
   "rewrites": [
+    { "source": "/welcome", "destination": "/welcome/index.html" },
     { "source": "/(.*)/assets/(.*)", "destination": "/assets/$2" },
     { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
   ],
