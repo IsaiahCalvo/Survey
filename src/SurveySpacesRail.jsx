@@ -29,7 +29,10 @@ import { reportAnnotationDeleteOutcome } from './services/annotationDeleteOutcom
 import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import SurveyMarkerNotes from './components/SurveyMarkerNotes';
-import { normalizeNoteMedia } from './services/surveyMediaService';
+import { buildNoteWithMedia, normalizeNoteMedia, uploadSurveyMedia } from './services/surveyMediaService';
+import SurveyAgentPanel from './components/SurveyAgentPanel.jsx';
+import { isSurveyAgentEnabled } from './agent/surveyAgentFlag.js';
+import { surveyAgentBridge } from './agent/surveyAgentTools.js';
 import { SHEET_DETENT_STANDARD, endSheetReveal, revealInSheet, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useSheetFocus } from './mobile/useSheetFocus';
 // Phone Survey panel look (layout B, one card divided). Every rule in it is
@@ -1403,10 +1406,12 @@ const SurveySpacesRail = ({
   // answer never clears or changes the entity; no Space has to be selected
   // (it used to run only with selectedSpaceId set, and cleared the entity to
   // None as soon as one answer was not Y / N/A).
-  const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option) => {
+  // `baseResponses`: the Survey agent sets several answers in one go before
+  // the panel re-renders, so it passes the answers it already set.
+  const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option, baseResponses = null) => {
     const currentMarker = surveyMarkers[annotationId] || {};
     const nextResponses = {
-      ...currentMarker.checklistResponses,
+      ...(baseResponses || currentMarker.checklistResponses),
       [checklistItemId]: {
         ...currentMarker.checklistResponses?.[checklistItemId],
         selection: option
@@ -1495,6 +1500,81 @@ const SurveySpacesRail = ({
       };
     });
   }, [setSurveyMarkers]);
+
+  // Survey agent (KAL-527): the agent chat (survey_agent flag) and browser
+  // agents (WebMCP) write through this panel's own writes, so an agent change
+  // is the same change a tap makes.
+  const [surveyAgentEnabled] = useState(isSurveyAgentEnabled);
+  const [surveyAgentOpen, setSurveyAgentOpen] = useState(false);
+  const surveyAgentCategoryOf = (marker) => {
+    const moduleId = marker?.moduleId || selectedModuleId;
+    const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+    const module = modules.find((m) => m.id === moduleId);
+    const category = (module?.categories || []).find((c) => c.id === marker?.categoryId)
+      || modules.flatMap((m) => m.categories || []).find((c) => c.id === marker?.categoryId)
+      || null;
+    return { moduleId, category };
+  };
+  {
+    surveyAgentBridge.current = {
+      template: showSurveyPanel ? selectedTemplate || null : null,
+      markers: surveyMarkers || {},
+      documentId: pdfFile?.id || null,
+      canEdit: canEditSurveyMarkers !== false,
+      selectedMarkerId: Object.keys(expandedSurveyMarkers || {}).find((id) => expandedSurveyMarkers[id] && surveyMarkers?.[id]) || null,
+      setAnswers: (annotationId, answers) => {
+        const marker = surveyMarkers?.[annotationId];
+        if (!marker) return;
+        const { moduleId, category } = surveyAgentCategoryOf(marker);
+        let responses = { ...(marker.checklistResponses || {}) };
+        for (const { checklistItemId, value } of answers) {
+          applyChecklistResponseSelection(annotationId, moduleId, category, marker.name || '', checklistItemId, value, responses);
+          responses = { ...responses, [checklistItemId]: { ...responses[checklistItemId], selection: value } };
+        }
+      },
+      setEntity: (annotationId, entityId) => {
+        const marker = surveyMarkers?.[annotationId];
+        if (!marker) return;
+        const { moduleId, category } = surveyAgentCategoryOf(marker);
+        applyEntitySelectionForMarker(annotationId, moduleId, category, entityId, { automatic: true });
+      },
+      updateNote: (annotationId, updater) => updateSurveyMarkerNote(annotationId, updater, { requireExisting: true }),
+      uploadMedia: (annotationId, file, kind) => uploadSurveyMedia({ documentId: pdfFile?.id || null, markerId: annotationId, file, kind }),
+      addMediaRefs: (annotationId, refs) => updateSurveyMarkerNote(
+        annotationId,
+        (prev) => buildNoteWithMedia(prev, [...normalizeNoteMedia(prev), ...refs]),
+        { requireExisting: true },
+      ),
+      restoreMarker: (annotationId, snapshot) => {
+        const marker = surveyMarkers?.[annotationId];
+        if (!marker) return;
+        setSurveyMarkers((prev) => (prev?.[annotationId]
+          ? { ...prev, [annotationId]: { ...prev[annotationId], checklistResponses: snapshot.checklistResponses, note: snapshot.note } }
+          : prev));
+        if ((marker.entityId || null) !== (snapshot.entityId || null)) {
+          const { moduleId, category } = surveyAgentCategoryOf(marker);
+          applyEntitySelectionForMarker(annotationId, moduleId, category, snapshot.entityId || null, { automatic: true });
+        }
+      },
+      showMarker: (annotationId) => {
+        const marker = surveyMarkers?.[annotationId];
+        if (!marker) return;
+        setExpandedSurveyMarkers({ [annotationId]: true });
+        if (marker.pageNumber && marker.bounds) handleLocateItemOnPDF({ ...marker, id: annotationId });
+      },
+    };
+  }
+  useEffect(() => () => { surveyAgentBridge.current = null; }, []);
+  const surveyAgentButton = surveyAgentEnabled && selectedTemplate ? (
+    <SectionIconButton
+      action="add"
+      icon="mic"
+      label="Survey agent: talk or type to fill items"
+      phone={mobileMode}
+      aria-pressed={surveyAgentOpen}
+      onClick={() => setSurveyAgentOpen((open) => !open)}
+    />
+  ) : null;
 
   const renderSurveyMarkerNotes = (annotationId, variant) => (
     <SurveyMarkerNotes
@@ -2663,6 +2743,7 @@ const SurveySpacesRail = ({
                                     </>
                                   ) : (
                                     <>
+                                      {surveyAgentButton}
                                       <SectionIconButton
                                         action="select"
                                         label="Select"
@@ -3041,6 +3122,11 @@ const SurveySpacesRail = ({
                               {!mobileMode && (
                                 <SectionIconActions className="survey-rail__cats-actions">
                                   <SectionIconButton action="add" label="Add category" disabled={!canEditSurveyCategories} onClick={openCreateCategoryModal} />
+                                </SectionIconActions>
+                              )}
+                              {mobileMode && surveyAgentButton && (
+                                <SectionIconActions phone className="survey-rail__cats-actions">
+                                  {surveyAgentButton}
                                 </SectionIconActions>
                               )}
                             </CategoriesHeadingTag>
@@ -4640,6 +4726,9 @@ const SurveySpacesRail = ({
                 (including mobile) so any delete path can await it; it renders
                 nothing until a handler opens it. */}
             {confirmDialogElement}
+            {surveyAgentOpen && surveyAgentEnabled && showSurveyPanel && selectedTemplate && (
+              <SurveyAgentPanel mobileMode={mobileMode} onClose={() => setSurveyAgentOpen(false)} />
+            )}
           </>
   );
 };

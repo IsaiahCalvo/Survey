@@ -1,0 +1,39 @@
+{
+  "about": "Survey agent test set (KAL-527). Each case is one thing a person says about the security survey below; expect lists the item state after the turn. Run: GROQ_API_KEY=... node scripts/survey-agent-eval.mjs",
+  "template": {
+    "name": "Security",
+    "answerSet": [{ "value": "Y", "tone": "good" }, { "value": "N", "tone": "bad" }, { "value": "N/A", "tone": "neutral" }],
+    "entities": [{ "id": "ent-complete", "name": "Complete", "color": "#16a34a" }, { "id": "ent-sub", "name": "Subcontractor", "color": "#2563eb" }],
+    "modules": [{ "id": "mod-1", "name": "Level 1", "categories": [
+      { "id": "cat-door", "name": "Door", "checklist": [
+        { "id": "door-installed", "text": "Door installed" },
+        { "id": "cables", "text": "Cables pulled" },
+        { "id": "reader", "text": "Card reader installed" },
+        { "id": "lock", "text": "Lock installed" },
+        { "id": "hardware", "text": "Door hardware installed" }
+      ] },
+      { "id": "cat-camera", "name": "Camera", "checklist": [
+        { "id": "cam-mounted", "text": "Camera mounted" },
+        { "id": "cam-online", "text": "Camera online" }
+      ] }
+    ] }]
+  },
+  "markers": {
+    "m117": { "name": "D-117", "moduleId": "mod-1", "categoryId": "cat-door" },
+    "m118": { "name": "D-118", "moduleId": "mod-1", "categoryId": "cat-door" },
+    "m201": { "name": "D-201", "moduleId": "mod-1", "categoryId": "cat-door" },
+    "c12": { "name": "CAM-12", "moduleId": "mod-1", "categoryId": "cat-camera" }
+  },
+  "cases": [
+    { "say": "D-117, the door is not installed", "expect": { "m117": { "answers": { "door-installed": "N" } } } },
+    { "say": "Door one seventeen card reader is installed", "expect": { "m117": { "answers": { "reader": "Y" } } } },
+    { "say": "D117 cables are pulled but the card reader is missing", "expect": { "m117": { "answers": { "cables": "Y", "reader": "N" } } } },
+    { "say": "D-118 everything's installed but we don't have power", "expect": { "m118": { "answers": { "door-installed": "Y", "cables": "Y", "reader": "Y", "lock": "Y", "hardware": "Y" }, "noteIncludes": ["power"] } } },
+    { "say": "camera twelve is mounted but not online yet", "expect": { "c12": { "answers": { "cam-mounted": "Y", "cam-online": "N" } } } },
+    { "say": "D 201 lock installed, mark it subcontractor", "expect": { "m201": { "answers": { "lock": "Y" }, "entity": "ent-sub" } } },
+    { "say": "Door 36 unicorn, mark it as flying", "expect": { "noChanges": true } },
+    { "say": "uh so like, D-117, hardware's not there, it's just the frame and, um, wires hanging out", "expect": { "m117": { "answers": { "hardware": "N" } } } },
+    { "say": "D-118 add a note: ceiling tile missing above the door", "expect": { "m118": { "noteIncludes": ["ceiling tile"] } } },
+    { "say": "what's the weather today", "expect": { "noChanges": true } }
+  ]
+}
