@@ -21,6 +21,7 @@ import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
+import { clickableProps } from '../utils/keyActivate';
 import useModalFocusTrap from './useModalFocusTrap';
 import { isPhoneLayout } from '../utils/layoutMode.js';
 import useFileDropZone from '../hooks/useFileDropZone';
@@ -345,6 +346,9 @@ export default function DocumentsLedger({
   };
   const onDesktopRowClick = (event, d) => {
     if (docSelectMode) { toggleDocSel(d.id); return; }
+    if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
+      setSelId(d.id); setPreviewOpen(true); clearDesktopSelection(); return;
+    }
     applySelection(selectionModeFromEvent(event), d);
   };
   const clearDesktopSelection = () => { setSelDocs(new Set()); anchorRef.current = null; };
@@ -483,10 +487,11 @@ export default function DocumentsLedger({
       active={mobileSortOpen}
       insideRefs={[mobileSortRef]}
       onDismiss={() => setMobileSortOpen(false)}
+      menu
     />
     <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
       <span className="documents-file-count"><b>{docs.length}</b> {docs.length === 1 ? 'file' : 'files'}</span>
-      <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
+      <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row documents-select-toolbar">
         <span className="documents-mobile-select-main">
           <SectionIconButton
             action="select"
@@ -711,7 +716,7 @@ export default function DocumentsLedger({
             <div>
               <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 <span className="documents-ledger-head-check" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {docs.length > 0 && (
+                  {docSelectMode && docs.length > 0 && (
                     <button
                       type="button"
                       role="checkbox"
@@ -729,10 +734,10 @@ export default function DocumentsLedger({
                   )}
                 </span>
                 <span></span>
-                <span onClick={() => onHeaderClick('name')} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
-                <span onClick={() => onHeaderClick('project')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
-                <span onClick={() => onHeaderClick('edited')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
-                <span onClick={() => onHeaderClick('size')} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
+                <span {...clickableProps(() => onHeaderClick('name'))} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
+                <span {...clickableProps(() => onHeaderClick('project'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
+                <span {...clickableProps(() => onHeaderClick('edited'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
+                <span {...clickableProps(() => onHeaderClick('size'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
                 <span></span>
               </div>
               {docs.length === 0 && (
@@ -764,7 +769,10 @@ export default function DocumentsLedger({
                     key={d.id}
                     data-document-id={d.id}
                     className={`documents-ledger-row${isFilled ? ' is-selected' : ''}${isDragging ? ' is-dragging' : ''}`}
-                    aria-selected={isChecked}
+                    // KAL-66: data-, not aria-selected - a plain div may not
+                    // carry aria-selected (axe aria-allowed-attr); the row's
+                    // checkbox is what announces the state.
+                    data-selected={isChecked ? 'true' : 'false'}
                     draggable={Boolean(onMoveCopy) && !docSelectMode}
                     onDragStart={(event) => onRowDragStart(event, d)}
                     onDragEnd={onRowDragEnd}
@@ -794,7 +802,7 @@ export default function DocumentsLedger({
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
-                      <button
+                      {(docSelectMode || bulkSelected) && <button
                         type="button"
                         role="checkbox"
                         aria-checked={isChecked}
@@ -811,7 +819,7 @@ export default function DocumentsLedger({
                         <span className="documents-row-check__box" aria-hidden="true">
                           {isChecked && <Icon name="check" size={10} color="var(--accent-text)" />}
                         </span>
-                      </button>
+                      </button>}
                     </div>
                     {/* Thumbnail column — its own cell, centred so every
                         thumbnail lines up under the next. A real first-page
@@ -1087,7 +1095,6 @@ export default function DocumentsLedger({
             { label: 'Share', onClick: () => onShare && onShare(selectedRaw()) },
             { label: `Delete ${docMenu.ids.length} documents`, danger: true, onClick: () => archiveSelected(selectedRaw()) },
           ] : [
-            { label: 'Preview & details', onClick: () => showDocumentDetails(doc) },
             { label: 'Rename', onClick: () => setRenameTarget(doc.raw) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },

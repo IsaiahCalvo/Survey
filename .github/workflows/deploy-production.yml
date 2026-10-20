@@ -113,6 +113,7 @@ jobs:
           supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api --jobs 4
           create-checkout-session
           create-portal-session
+          delete-account
           excel-apply-changeset
           send-profile-change-notification
           stripe-webhook

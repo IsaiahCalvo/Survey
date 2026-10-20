@@ -135,13 +135,14 @@ test('Dashboard: document Delete archives without a confirm and offers Undo thro
   assert.doesNotMatch(hub, /\.hub-undo-toast \.undo-toast/);
   assert.match(hub, /\.undo-toast\.hub-undo-toast \{\s*width: max-content;/);
   assert.match(hub, /\.undo-toast\.hub-undo-toast \{\s*bottom: calc\(/);
-  assert.match(read('src/components/collab/UndoToast.jsx'), /className=\{className \? `undo-toast \$\{className\}` : 'undo-toast'\}/);
+  // The host's class lands on the toast itself (it is portalled to <body>).
+  assert.match(read('src/components/collab/UndoToast.jsx'), /className=\{`undo-toast\$\{className \? ` \$\{className\}` : ''\}/);
   // Projects still confirm (a project archives with all its documents).
   const projects = src.slice(end, src.indexOf('const hubRenameProject'));
   assert.match(projects, /askConfirm\(/);
 });
 
-test('DocumentsLedger: desktop rows are checkable, draggable and right-clickable; the phone keeps Select mode', () => {
+test('DocumentsLedger: Documents select mode is explicit; normal clicks preview, and row menus keep supported actions', () => {
   const src = read('src/home/DocumentsLedger.jsx');
   assert.match(src, /role="checkbox"[\s\S]*aria-checked=\{isChecked\}/);
   assert.match(src, /onContextMenu=\{\(event\) => onDesktopRowContextMenu\(event, d\)\}/);
@@ -151,6 +152,13 @@ test('DocumentsLedger: desktop rows are checkable, draggable and right-clickable
   assert.match(src, /<SectionIconButton\s+action="select"/);
   assert.match(src, /<SelectModeButtons\s+phone/);
   const css = read('src/home/hub.css');
-  const desktop = css.split('@media screen and (min-device-width: 600px) and (min-device-height: 600px) {').slice(1).map((b) => b.split('\n}\n')[0]).join('\n');
-  assert.match(desktop, /\.survey-hub\.hub-tab-documents \.documents-mobile-select-main > \.mobile-header-select-button \{\s*display: none;/, 'hidden on the desktop layout only');
+  assert.match(css, /\.documents-select-toolbar \.mobile-header-select-button \{ display: inline-grid/);
+  assert.match(src, /\(docSelectMode \|\| bulkSelected\) && <button/);
+  assert.doesNotMatch(src, /label: 'Preview & details'/);
+
+});
+
+test('Dashboard bulk project upload: a failed row create removes the object it just stored (Bugbot #831)', () => {
+  const src = read('src/Dashboard.jsx');
+  assert.match(src, /doc = await createSupabaseDocument\(\{[\s\S]*?\}\);\s*\} catch \(createErr\) \{[\s\S]{0,240}deleteFromStorage\(filePath\)[\s\S]{0,160}throw createErr;/);
 });

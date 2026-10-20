@@ -51,6 +51,10 @@ export function pageOperationCheckpoint(id, operation, checkpointId, now = new D
 export function inversePageOperation(pdfOperation, { stateBefore = null, deletedEntry = null, pageTransformBefore } = {}) {
   const type = pdfOperation?.type;
   const page = (value) => Number(value);
+  if (type === 'presentation') {
+    const back = { type: 'presentation', page: page(pdfOperation.page), pageTransformation: stateBefore?.pageTransformations?.[pdfOperation.page] ?? null };
+    return { pdfOperation: back, stateOperation: back };
+  }
   if (type === 'rotate') {
     const back = { type: 'rotate', page: page(pdfOperation.page), delta: -Number(pdfOperation.delta || 0) };
     return {

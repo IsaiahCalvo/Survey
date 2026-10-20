@@ -5,11 +5,13 @@
  * highlighter-like stroke) or Smart fill (only while a provider is registered,
  * see markerShapeProviders.js). The last pick is remembered on this device.
  *
- * The tool-bar group (SurveyMarkerModeTools) is the only place a mode is
- * picked. It says so while it is on screen (setMarkerModeToolsShown), and the
- * page layers read the EFFECTIVE mode: while no picker is showing — the phone
- * has none yet — every marker is a rectangle, so a mode remembered on a
- * desktop can never change what a press does where it cannot be seen.
+ * A mode is picked in the desktop tool-bar group (SurveyMarkerModeTools) or,
+ * on the phone, the rail's Survey Marker shape chip (mobile/MobileSurveyRail
+ * MobileMarkerShapeChip, phone survey round 2026-10-13). Each says so while it
+ * is on screen (setMarkerModeToolsShown), and the page layers read the
+ * EFFECTIVE mode: while no picker is showing every marker is a rectangle, so
+ * a remembered mode can never change what a press does where it cannot be
+ * seen.
  */
 import { useSyncExternalStore } from 'react';
 import { MARKER_DRAW_MODES } from './markerShapes.js';

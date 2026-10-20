@@ -52,7 +52,7 @@ export function pickCurrentPage({ pageTops, pageHeights, viewTop, viewBottom, cu
     // Nothing visible (a scroll position inside a gap band taller than the
     // view): fall back to the last page whose top is above the view bottom.
     let last = 0;
-    for (let i = 0; i < count; i += 1) if (pageTops[i] <= viewBottom) last = i;
+    for (let i = 0; i < count; i += 1) if (pageHeights[i] > 0 && pageTops[i] <= viewBottom) last = i;
     return last + 1;
   }
   if (currentFrac >= 0 && currentFrac >= bestFrac - 0.001) return currentPage;

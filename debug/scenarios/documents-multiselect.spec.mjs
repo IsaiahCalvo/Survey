@@ -89,7 +89,7 @@ async function goHomeDesktop(page) {
 
 const rows = (page) => page.locator('.documents-desktop-card [data-document-id]');
 const row = (page, name) => page.locator('.documents-desktop-card [data-document-id]', { hasText: name });
-const checked = (page) => page.locator('.documents-desktop-card [data-document-id][aria-selected="true"]')
+const checked = (page) => page.locator('.documents-desktop-card [data-document-id][data-selected="true"]')
   .evaluateAll((els) => els.map((e) => e.textContent.match(/Sheet A-\d+/)?.[0]));
 const rpcCount = (backend, name) => backend.counts.get(`RPC ${name}`) || 0;
 async function waitFor(fn, { timeout = 15_000, every = 120 } = {}) {

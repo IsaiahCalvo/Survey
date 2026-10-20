@@ -101,13 +101,20 @@
   line-height: 0;
 }
 
-.annotation-dropdown__options > button:hover,
 .annotation-dropdown__options > button:focus-visible,
-.annotation-dropdown__option:hover,
 .annotation-dropdown__option:focus-visible {
   color: var(--text-1);
   background: var(--hover);
   outline: 0;
+}
+
+@media (hover: hover) {
+  .annotation-dropdown__options > button:hover,
+  .annotation-dropdown__option:hover {
+    color: var(--text-1);
+    background: var(--hover);
+    outline: 0;
+  }
 }
 
 /* PASS 7 (board 15, owner ruling): the CURRENT row is gold text and nothing
@@ -120,9 +127,11 @@
   box-shadow: none;
 }
 
-.annotation-dropdown__options > button.is-active:hover,
-.annotation-dropdown__option.is-active:hover {
-  background: var(--hover);
+@media (hover: hover) {
+  .annotation-dropdown__options > button.is-active:hover,
+  .annotation-dropdown__option.is-active:hover {
+    background: var(--hover);
+  }
 }
 
 @keyframes annotation-dropdown-in {

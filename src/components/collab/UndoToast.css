@@ -14,8 +14,10 @@
  * text-primary, accent-primary) for visual consistency with the existing
  * banner family.
  *
- * 160ms ease-out fade-in keeps the entry calm — same Material "expressive
- * deceleration" pattern used elsewhere (see StorageFailureBanner.css fade-in).
+ * Motion (Drawboard shell audit, Chunk A, 2026-10-13): the shared toast
+ * enter / exit on the motion tokens (tokens.css, motion.css): slide up 8px and
+ * fade in over 150 ms, fade out over 120 ms (.undo-toast--leaving, kept in the
+ * page by UndoToast.jsx). Reduced motion: neither.
  */
 
 .undo-toast {
@@ -48,20 +50,21 @@
 
   font-family: var(--font-primary, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif);
 
-  /* UX: 160ms ease-out fade-in keeps the entrance calm. cubic-bezier(0,0,0.2,1)
-     is the canonical ease-out curve (matches StorageFailureBanner annotation
-     fade-in timing). */
-  animation: undo-toast-fade-in 160ms cubic-bezier(0, 0, 0.2, 1);
+  /* UX: the shared toast entrance (motion.css sv-toast-in-up moves the
+     `translate` property, so this box keeps its translateX(-50%) centring). */
+  animation: sv-toast-in-up var(--motion-toast) var(--ease-out);
 }
 
-@keyframes undo-toast-fade-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
+/* Leaving: the shared toast exit, then UndoToast.jsx removes it. */
+.undo-toast--leaving {
+  pointer-events: none;
+  animation: sv-toast-out var(--motion-toast-exit) var(--ease-in) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .undo-toast,
+  .undo-toast--leaving {
+    animation: none;
   }
 }
 

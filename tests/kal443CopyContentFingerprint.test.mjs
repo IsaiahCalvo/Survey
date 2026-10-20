@@ -87,7 +87,7 @@ function seedSource(backend, { bytes = PDF, path, contentSha = sha(bytes), proje
 }
 
 const rowsIn = (backend, projectId) => backend.table('documents').filter((d) => d.project_id === projectId);
-const storedBytes = (backend, path) => backend.storageObjects.get(`documents/${path}`)?.bytes;
+const storedBytes = (backend, path) => backend.objectBytes(path);
 
 test('a copy into another project carries the real fingerprint of its bytes (no fake path)', async () => {
   const backend = new FakeBackend({ documentId: 'unused-doc', ownerId: OWNER, storage: true });
@@ -97,8 +97,8 @@ test('a copy into another project carries the real fingerprint of its bytes (no 
   const copy = await app.copy(source, PROJECT_2, 'op-first');
 
   assert.equal(copy.content_sha256, sha(PDF), 'content_sha256 is the hash of the copied bytes');
-  assert.equal(copy.file_path, copyObjectPath(OWNER, PROJECT_2, 'op-first'));
-  assert.equal(copy.file_path, `${OWNER}/${PROJECT_2}/copy-op-first.pdf`, 'its own object, not a fake content address');
+  assert.equal(copy.file_path, copyObjectPath(OWNER, 'op-first'));
+  assert.equal(copy.file_path, `${OWNER}/op-first.pdf`, 'its own object, named by its row id (not a content address)');
   assert.equal(copy.project_id, PROJECT_2);
   assert.equal(copy.name, 'Site plan (Copy).pdf');
   assert.equal(isReusedCopy(copy), false);
@@ -127,7 +127,7 @@ test('copying the same PDF twice into a project is recognised as a duplicate (sa
   assert.equal(isReusedCopy(second), true);
   assert.equal(rowsIn(backend, PROJECT_2).length, 1, 'no pile-up in the destination');
   assert.equal(app.uploads.length, 2);
-  assert.equal(storedBytes(backend, app.uploads[1]), undefined, "the repeat's unused bytes are removed again");
+  assert.equal(storedBytes(backend, app.uploads[1]), null, "the repeat's unused bytes are removed again");
   assert.equal(backend.storageObjects.size, 2, 'the original and the one copy');
 
   // ...and an UPLOAD of the same bytes into that project lands on the same row.
@@ -152,7 +152,7 @@ test('Duplicate inside the same project still makes a real second copy (own obje
   assert.equal(isReusedCopy(copy), false);
   assert.equal(copy.name, 'Site plan (Copy).pdf');
   assert.equal(copy.content_sha256 ?? null, null, 'the one fingerprinted row per file per project stays the original');
-  assert.equal(copy.file_path, `${OWNER}/${PROJECT_1}/copy-op-dup.pdf`, 'its own object, not a fake content address');
+  assert.equal(copy.file_path, `${OWNER}/op-dup.pdf`, 'its own object, not a fake content address');
   assert.deepEqual(storedBytes(backend, copy.file_path), PDF);
   assert.equal(rowsIn(backend, PROJECT_1).length, 2);
 
@@ -200,7 +200,7 @@ test("an editor copying a teammate's shared document gets their own copy in thei
 
   const copy = await app.copy(source, PROJECT_2, 'op-editor');
   assert.equal(copy.user_id, EDITOR);
-  assert.equal(copy.file_path, `${EDITOR}/${PROJECT_2}/copy-op-editor.pdf`);
+  assert.equal(copy.file_path, `${EDITOR}/op-editor.pdf`);
   assert.equal(copy.content_sha256, sha(PDF));
 });
 
@@ -217,7 +217,7 @@ test("a failed row create hands the copy's own bytes to cleanup, keyed by the st
     createDocument: async () => { throw new Error('reply lost'); },
     computeSha: computeContentSha256,
   }).catch((e) => e);
-  assert.deepEqual(error.recoveryValue, { id: 'op-lost', file_path: `${OWNER}/${PROJECT_2}/copy-op-lost.pdf` });
+  assert.deepEqual(error.recoveryValue, { id: 'op-lost', file_path: `${OWNER}/op-lost.pdf` });
   assert.notEqual(error.recoveryValue.file_path, source.file_path, "the original's object is never offered for deletion");
 });
 

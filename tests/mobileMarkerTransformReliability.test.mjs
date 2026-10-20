@@ -41,10 +41,15 @@ test('annotation watchdog does not remount a healthy SVG layer when all raw obje
 });
 
 test('mobile long-press menu never arms from resize or rotation handles', () => {
+  // Touch audit 2026-10-13: the long press runs on every touch screen and is
+  // driven by utils/touchLongPress.js; the handle test is one helper used by
+  // the finger and the pen paths alike.
   assert.match(
     containerSource,
-    /event\.target\?\.closest\?\.\('\[data-resize-handle\], \[data-rotation-handle\]'\)[\s\S]{0,100}clear\(\);[\s\S]{0,60}return;/,
+    /const onHandle = \(target\) => Boolean\(target\?\.closest\?\.\('\[data-resize-handle\], \[data-rotation-handle\], \[data-handle-hit-pad\]'\)\);/,
   );
+  assert.match(containerSource, /if \(onHandle\(event\.target\)\) \{ press\.cancel\(\); return; \}/);
+  assert.match(containerSource, /if \(event\.button !== 0 \|\| onHandle\(event\.target\)\) \{ penId = null; press\.cancel\(\); return; \}/);
 });
 
 test('SVG transform chrome suppresses native touch callouts and context menus', () => {
