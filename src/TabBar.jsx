@@ -36,6 +36,8 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CALM_STRIP_AUTO_SCROLL } from './reorder/dragAutoScroll.js';
+import { restrictToHorizontalAxis } from './reorder/axisLock.js';
+import { moveItem } from './reorder/flatReorderUtils.js';
 import { CSS } from '@dnd-kit/utilities';
 import Icon from './Icons';
 import { useTooltip } from './components/Tooltip';
@@ -50,7 +52,7 @@ import { useDocsPendingDualWrite } from './hooks/useTabPendingDualWrite.js';
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const TAB_HEIGHT = 32;
 const HOME_TAB_WIDTH = 148;
-const PDF_TAB_MIN_WIDTH = 168;
+const PDF_TAB_MIN_WIDTH = 96;
 const PDF_TAB_MAX_WIDTH = 280;
 const TAB_BAR_BG = 'var(--surface-0)';
 const TAB_IDLE_BG = 'var(--surface-1)';
@@ -66,11 +68,6 @@ const TAB_BORDER = 'var(--border)';
 const TAB_TEXT = 'var(--text-3)';
 const TAB_TEXT_ACTIVE = 'var(--text-1)';
 const TAB_ACCENT = 'var(--accent)';
-
-const restrictTabsToHorizontalAxis = ({ transform }) => ({
-  ...transform,
-  y: 0,
-});
 
 const createTabBoundsModifier = () => ({ active, activeNodeRect, transform }) => {
   const activeIdValue = String(active?.id ?? '');
@@ -105,27 +102,11 @@ const createTabBoundsModifier = () => ({ active, activeNodeRect, transform }) =>
   };
 };
 
-const moveArrayItem = (items, fromIndex, toIndex) => {
-  if (
-    fromIndex === toIndex ||
-    fromIndex < 0 ||
-    toIndex < 0 ||
-    fromIndex >= items.length ||
-    toIndex >= items.length
-  ) {
-    return items;
-  }
-
-  const nextItems = items.slice();
-  const [moved] = nextItems.splice(fromIndex, 1);
-  nextItems.splice(toIndex, 0, moved);
-  return nextItems;
-};
-
 function TabItem({
   tab,
   isActive,
   isHome,
+  compactHome = false,
   isSorting = false,
   isDragging = false,
   hasPendingDualWrite,
@@ -167,12 +148,21 @@ function TabItem({
       {...sortableAttributes}
       {...sortableListeners}
       data-pdf-tab-id={!isHome ? tab.id : undefined}
+      data-app-tab=""
+      aria-label={tab.name}
       data-tab-active={isActive ? 'true' : undefined}
       // Owner 2026-10-01: the held tab takes the app's one picked-up look
       // (states.css [data-drag-lifted]): solid raised surface, soft shadow,
       // no gold edge, fully opaque so no neighbour shows through.
       data-drag-lifted={isDragging ? '' : undefined}
       onClick={() => onTabClick(tab.id)}
+      // KAL-66: a keyboard user can reach and open every tab. The Home tab
+      // has no sortable attributes, so it gets its own role and tab stop.
+      // Enter opens a tab; Space stays the keyboard "pick up to reorder" key
+      // (the KeyboardSensor below starts a drag on Space only).
+      role={isHome ? 'button' : sortableAttributes.role}
+      tabIndex={isHome ? 0 : sortableAttributes.tabIndex}
+      aria-current={isActive ? 'page' : undefined}
       // Chunk C: right-click opens the tab menu at the pointer (Drawboard).
       onContextMenu={isHome ? undefined : (e) => {
         e.preventDefault();
@@ -198,15 +188,22 @@ function TabItem({
           return;
         }
         sortableListeners.onKeyDown?.(e);
+        if (e.defaultPrevented || e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || (isHome && e.key === ' ')) {
+          e.preventDefault();
+          onTabClick(tab.id);
+        }
       }}
       style={{
         ...sortableStyle,
         position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        minWidth: isHome ? `${HOME_TAB_WIDTH}px` : `${PDF_TAB_MIN_WIDTH}px`,
-        maxWidth: isHome ? `${HOME_TAB_WIDTH}px` : `${PDF_TAB_MAX_WIDTH}px`,
-        width: isHome ? `${HOME_TAB_WIDTH}px` : 'auto',
+        minWidth: isHome ? `${compactHome ? 40 : HOME_TAB_WIDTH}px` : `${PDF_TAB_MIN_WIDTH}px`,
+        maxWidth: isHome ? `${compactHome ? 40 : HOME_TAB_WIDTH}px` : `${PDF_TAB_MAX_WIDTH}px`,
+        width: isHome ? `${compactHome ? 40 : HOME_TAB_WIDTH}px` : 'auto',
+        flex: isHome ? '0 0 auto' : '1 1 220px',
+        boxSizing: 'border-box',
         height: `${TAB_HEIGHT}px`,
         padding: '0 10px',
         background: isActive ? TAB_ACTIVE_BG : TAB_IDLE_BG,
@@ -264,7 +261,7 @@ function TabItem({
         <Icon
           name="homeTab"
           size={13}
-          style={{ marginRight: '7px', flexShrink: 0 }}
+          style={{ marginRight: compactHome ? 0 : '7px', flexShrink: 0 }}
         />
       ) : tab.hasUnsavedAnnotations ? (
         <span
@@ -289,6 +286,7 @@ function TabItem({
       <span
         style={{
           flex: 1,
+          display: isHome && compactHome ? 'none' : undefined,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
@@ -598,6 +596,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
   const [menu, setMenu] = useState(null);
   const [listAnchor, setListAnchor] = useState(null);
   const [overflowing, setOverflowing] = useState(false);
+  const [compactHome, setCompactHome] = useState(false);
 
   // Phase 30 — fix 2026-04-29: previously each tab in the .map() loop called
   // useTabPendingDualWrite individually; the hook count changed when a tab
@@ -613,10 +612,14 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    // Space picks a tab up to reorder it; Enter is left free to open the tab.
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: { start: ['Space'], cancel: ['Escape'], end: ['Space', 'Enter'] },
+    })
   );
   const tabModifiers = useMemo(() => [
-    restrictTabsToHorizontalAxis,
+    restrictToHorizontalAxis,
     createTabBoundsModifier(),
   ], []);
 
@@ -625,7 +628,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
 
     const fromIndex = pdfTabs.findIndex((tab) => tab.id === active.id);
     const toIndex = pdfTabs.findIndex((tab) => tab.id === over.id);
-    const reorderedPdfTabs = moveArrayItem(pdfTabs, fromIndex, toIndex);
+    const reorderedPdfTabs = moveItem(pdfTabs, fromIndex, toIndex);
 
     if (reorderedPdfTabs === pdfTabs) return;
 
@@ -652,6 +655,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
     const scroller = scrollerRef.current;
     if (!scroller) return undefined;
     const measure = () => {
+      setCompactHome(pdfTabs.length > 2 && scroller.clientWidth < HOME_TAB_WIDTH + pdfTabs.length * 180);
       const next = scroller.scrollWidth > scroller.clientWidth + 1;
       setOverflowing((prev) => (prev === next ? prev : next));
     };
@@ -727,7 +731,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
           style={{
             display: 'flex',
             minWidth: '100%',
-            width: 'max-content',
+            width: '100%',
             height: `${TAB_HEIGHT}px`
           }}
         >
@@ -736,6 +740,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
               tab={homeTab}
               isActive={homeTab.id === activeTabId}
               isHome
+              compactHome={compactHome}
               hasPendingDualWrite={false}
               onTabClick={onTabClick}
               onTabClose={onTabClose}
@@ -749,7 +754,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
             onDragEnd={handleTabDragEnd}
           >
             <SortableContext items={pdfTabs.map((tab) => tab.id)} strategy={horizontalListSortingStrategy}>
-              <div data-pdf-tab-list style={{ display: 'flex', height: `${TAB_HEIGHT}px` }}>
+              <div data-pdf-tab-list style={{ display: 'flex', flex: '1 1 auto', minWidth: 0, height: `${TAB_HEIGHT}px` }}>
                 {pdfTabs.map((tab) => {
                   // Phase 30 — per-tab dual-write dot. We do NOT call a hook here
                   // (closing a tab would change the hook count and crash render).

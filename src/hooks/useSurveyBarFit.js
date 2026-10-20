@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { SURVEY_BAR_PARTS, planSurveyBar } from '../utils/responsiveToolbar.js';
+import { publishSideRoom } from '../sidebar/panelLayoutStore.js';
 
 /**
  * The survey bar's layout (owner 2026-10-13: "the panel pushes the
@@ -87,6 +88,11 @@ export default function useSurveyBarFit({ enabled, insetLeft = 0, insetRight = 0
     chipRef.current.width = Math.max(chipRef.current.width, SURVEY_BAR_PARTS.chip, ...chips);
     const allText = (count) => Math.ceil(textWidth(`All ${count}`, { font: `600 11px ${ui}`, letterSpacing: '-0.11px' })) + SURVEY_BAR_PARTS.allPadding;
     const emptyEl = bar.querySelector('.survey-subrow__empty');
+    // The swatches' gutter as drawn: a touch-first tablet opens it to the
+    // colour discs' roomier one (touchTargets.css), and the entity row must
+    // be planned with it or its end runs under the Survey panel.
+    const entityRowEl = bar.closest('#chrome-survey-row-slot')?.querySelector('.survey-entitybar__centre');
+    const swatchGap = entityRowEl ? parseFloat(window.getComputedStyle(entityRowEl).columnGap) : NaN;
     const next = planSurveyBar({
       barWidth: barRect.width,
       centre,
@@ -100,12 +106,15 @@ export default function useSurveyBarFit({ enabled, insetLeft = 0, insetRight = 0
       empty: emptyEl ? Math.ceil(emptyEl.getBoundingClientRect().width) : SURVEY_BAR_PARTS.empty,
       entityCount: Number(ents) || 0,
       entityAllChip: allText(Number(ents) || 0),
+      swatchGap: Number.isFinite(swatchGap) ? swatchGap : undefined,
     });
     const centreX = `${Math.round(centre * 2) / 2}px`;
     bar.style.setProperty('--survey-template-room', `${next.templateRoom}px`);
     bar.style.setProperty('--survey-module-short', `${next.moduleShort}px`);
     const slot = bar.closest('#chrome-survey-row-slot') || bar;
     slot.style.setProperty('--survey-centre-x', centreX);
+    // The left panel stops short of this spot (panelLayoutStore.js).
+    publishSideRoom({ surveyCentreX: barRect.left + centre });
     const current = planRef.current;
     if (current.step === next.step && current.template === next.template
       && current.done === next.done && current.stable === next.stable
@@ -133,8 +142,12 @@ export default function useSurveyBarFit({ enabled, insetLeft = 0, insetRight = 0
     const slot = bar.closest('#chrome-survey-row-slot');
     return () => {
       slot?.style.removeProperty('--survey-centre-x');
+      publishSideRoom({ surveyCentreX: null });
     };
   }, [bar]);
+  useEffect(() => {
+    if (!enabled) publishSideRoom({ surveyCentreX: null });
+  }, [enabled]);
 
   // The window changed width (or the tool bar's icons were shifted): re-plan
   // before the next paint, so a narrowing window never shows a frame of

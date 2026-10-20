@@ -3,6 +3,7 @@
 
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const store = new Map();
 globalThis.localStorage = {
@@ -27,7 +28,7 @@ test('register / replace / unregister, with change notices', () => {
   const off = providers.subscribeMarkerShapeProviders(() => { notices += 1; });
   const unregister = providers.registerMarkerShapeProvider({ id: 'smartFill', label: 'Smart fill', onPagePointerDown: async () => null });
   assert.equal(providers.getMarkerShapeProvider('smartFill').label, 'Smart fill');
-  assert.equal(providers.getMarkerShapeProvider('smartFill').icon, 'paintBucket', 'default icon');
+  assert.equal(providers.getMarkerShapeProvider('smartFill').icon, 'smartFillDrop', 'default icon');
   const first = providers.getMarkerShapeProviders();
   assert.equal(first, providers.getMarkerShapeProviders(), 'stable snapshot between changes');
   const unregisterB = providers.registerMarkerShapeProvider({ id: 'smartFill', label: 'B', onPagePointerDown: async () => null });
@@ -120,4 +121,26 @@ test('draw mode: Smart fill only counts while its provider is registered', () =>
   assert.equal(drawMode.getEffectiveMarkerDrawMode(), 'rectangle');
   assert.equal(drawMode.getPickedMarkerDrawMode(), 'smartFill', 'the pick comes back when the provider does');
   drawMode.setMarkerModeToolsShown(false);
+});
+
+// Codex on #817: a Smart fill answer that arrives after the person switched to
+// Rectangle / Freehand, another tool, or another document tab must not add a
+// marker.
+test('a pending Smart fill press stays live only while Smart fill is still what is armed, in the tab in front', () => {
+  const live = (over = {}) => providers.isSmartFillPressLive({
+    activeTool: 'survey-marker', markerDrawMode: 'smartFill', isTabActive: true, ...over,
+  });
+  assert.equal(live(), true);
+  assert.equal(live({ isTabActive: undefined }), true, 'a layer without the prop counts as in front');
+  assert.equal(live({ markerDrawMode: 'rectangle' }), false);
+  assert.equal(live({ markerDrawMode: 'freehand' }), false);
+  assert.equal(live({ activeTool: 'pan' }), false);
+  assert.equal(live({ isTabActive: false }), false);
+
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(layer, /isSmartFillPressLive\(\{ activeTool, markerDrawMode, isTabActive \}\)/);
+  assert.match(layer, /if \(!smartFillLive\) smartFillAbortRef\.current\?\.abort\?\.\(\);/, 'the press is aborted when it stops applying');
+  assert.match(layer, /if \(controller\?\.signal\?\.aborted \|\| !smartFillLiveRef\.current\) return;/, 'a late answer is dropped');
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /<SVGAnnotationLayer[\s\S]{0,300}isTabActive=\{isActive !== false\}/, 'the viewer tells the layer whether its tab is in front');
 });

@@ -16,6 +16,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons';
+import SpaceSelectionDialog from '../components/SpaceSelectionDialog.jsx';
 import { parsePageRangeInput, sanitizePageRangeInput } from '../utils/pageRangeParser';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
@@ -28,6 +29,7 @@ import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
 import SectionIconButton from '../components/SectionIconButton.jsx';
 import { watchLightPopover } from '../components/dismissRules.js';
+import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import AnchoredPopover from '../components/AnchoredPopover';
 import { useConfirmDialog } from '../components/dialogPrompts';
 import {
@@ -58,6 +60,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onAssignPages,
   onRenameRegion,
   onRemovePage,
+  onTransferRegion,
   onNavigateToPage,
   onExitSpace,
   onToggleSpace,
@@ -76,6 +79,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   showSurveyPanel = false,
   selectedModuleId = null,
   mobileMode = false,
+  editMode = false,
 }) {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
@@ -226,7 +230,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           aria-expanded={isExpanded}
           onClick={() => onToggleExpand(space.id)}
         >
-          <DragRearrangeHandle
+          {editMode && <DragRearrangeHandle
             {...dragHandleProps}
             className="space-card__grip"
             data-space-drag-handle
@@ -234,7 +238,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             title="Drag to rearrange"
             onClick={(e) => e.stopPropagation()}
             style={{ width: undefined, height: undefined, color: 'var(--text-3)' }}
-          />
+          />}
 
           {/* The page count, a plain muted figure (no circle). Its name and
               tooltip say "3 pages · 2 areas". */}
@@ -269,10 +273,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               type="text"
               size={1}
               className="space-card__name"
+              readOnly={!editMode}
               defaultValue={space.name}
               key={`${space.id}:${space.name}`}
-              aria-label={`Rename ${spaceName}`}
-              {...tip('Click to rename', 'below')}
+              aria-label={editMode ? `Rename ${spaceName}` : spaceName}
+              {...tip(editMode ? 'Click to rename' : spaceName, 'below')}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
               onInput={(e) => {
@@ -317,7 +322,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             <span className="spaces-switch__knob" />
           </div>
 
-          <button
+          {editMode && <button
             type="button"
             className="space-card__icon space-card__delete"
             data-glyph-only=""
@@ -329,12 +334,12 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             }}
           >
             <Icon name="trash" size={14} color="currentColor" />
-          </button>
+          </button>}
         </div>
 
         {isExpanded && (
           <div className="space-card__body">
-            <div className="space-card__add-line">
+            {editMode && <div className="space-card__add-line">
               <div className="space-card__add">
                 <input
                   type="text"
@@ -367,7 +372,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                   <Icon name="plus" size={14} color="currentColor" />
                 </button>
               </div>
-            </div>
+            </div>}
             {pageError && (
               <div className="space-card__error" role="alert">
                 {pageError}
@@ -396,7 +401,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       : !isActive
                         ? 'Turn the space on to show its outline'
                         : !isOverlayToggleEnabled
-                          ? 'Draw an area first to show its outline'
+                          ? 'Draw a region first to show its outline'
                           : (isOverlayEnabled ? 'Hide the outline' : 'Show the outline');
                     const toggleOverlay = () => {
                       if (!isOverlayToggleEnabled) return;
@@ -412,8 +417,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       activeSpaceId === space.id;
                     const areaCount = Array.isArray(page.regions) ? page.regions.length : 0;
                     const regionEditLabel = isActiveRegionEdit
-                      ? 'Stop editing areas'
-                      : (areaCount > 0 ? `Edit the areas on page ${page.pageId}` : `Draw an area on page ${page.pageId}`);
+                      ? 'Stop editing regions'
+                      : (areaCount > 0 ? `Edit the regions on page ${page.pageId}` : `Draw a region on page ${page.pageId}`);
 
                     // One visible control, separate canvas/survey features in code.
                     const hasVisibility = Boolean(getVisibilityState && onToggleVisibility);
@@ -491,12 +496,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             <button
                               type="button"
                               className="spaces-region__label"
-                              {...tip('Click to rename', 'below')}
-                              aria-label={`Rename ${regionLabel}`}
+                              {...tip(editMode ? 'Click to rename' : `Go to page ${page.pageId}`, 'below')}
+                              aria-label={editMode ? `Rename ${regionLabel}` : regionLabel}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                handleRegionEditClick(page.pageId, regionLabel);
+                                if (editMode) handleRegionEditClick(page.pageId, regionLabel);
+                                else onNavigateToPage?.(page.pageId);
                               }}
                             >
                               {regionLabel}
@@ -504,7 +510,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           )}
                         </div>
 
-                        <button
+                        {editMode && <button
                           type="button"
                           className={`space-card__icon spaces-region__edit${isActiveRegionEdit ? ' is-on' : ''}`}
                           data-glyph-only=""
@@ -522,7 +528,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           }}
                         >
                           <Icon name="regionEdit" size={14} color="currentColor" />
-                        </button>
+                        </button>}
 
                         {hasVisibility && (
                           <button
@@ -548,7 +554,11 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           </button>
                         )}
 
-                        <button
+                        {editMode && onTransferRegion && <>
+                          <button type="button" className="space-card__icon" data-glyph-only="" aria-label={`Move region on page ${page.pageId}`} {...tip('Change page or space', 'below')} onClick={() => onTransferRegion(space.id, page.pageId, false)}><Icon name="moveTo" size={14} color="currentColor" /></button>
+                          <button type="button" className="space-card__icon" data-glyph-only="" aria-label={`Copy region on page ${page.pageId}`} {...tip('Copy region to another page or space', 'below')} onClick={() => onTransferRegion(space.id, page.pageId, true)}><Icon name="copy" size={14} color="currentColor" /></button>
+                        </>}
+                        {editMode && <button
                           type="button"
                           className="space-card__icon space-card__delete"
                           data-glyph-only=""
@@ -561,7 +571,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           }}
                         >
                           <Icon name="trash" size={14} color="currentColor" />
-                        </button>
+                        </button>}
                       </li>
                     );
                   })}
@@ -648,6 +658,7 @@ const SpacesPanel = ({
   onSpaceAssignPages,
   onSpaceRenamePage,
   onSpaceRemovePage,
+  onSpaceTransferRegion,
   onNavigateToPage = null,
   onReorderSpaces,
   onExportSpaceCSV,
@@ -695,6 +706,8 @@ const SpacesPanel = ({
     if (expandedSpacesStoreRef) expandedSpacesStoreRef.current = expandedSpaces;
   }, [expandedSpaces, expandedSpacesStoreRef]);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+  const [transfer, setTransfer] = useState(null);
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
   // Spaces chunk B: the space the Export menu / sheet is open for (null =
@@ -780,6 +793,9 @@ const SpacesPanel = ({
   const spacesDropFrameCaptureRef = useRef(null);
   const spacesExportAnchorRef = useRef(null);
 
+  // KAL-66: keyboard focus goes into this menu as it opens, Up/Down move,
+  // and focus returns to its button when it closes (mouse/touch unchanged).
+  useMenuFocus(spacesExportMenuRef, Boolean(isSpacesExportMenuOpen && !mobileMode));
   React.useEffect(() => {
     // The phone sheet has its own backdrop (a blocking window, R4).
     if (!isSpacesExportMenuOpen || mobileMode) return undefined;
@@ -1010,6 +1026,7 @@ const SpacesPanel = ({
     while (takenNames.has(`space ${counter}`)) counter += 1;
     const name = `Space ${counter}`;
     if (onSpaceCreate) {
+      setEditMode(true);
       onSpaceCreate({
         name,
         assignedPages: []
@@ -1362,17 +1379,15 @@ const SpacesPanel = ({
       onClick={handleCreateSpace}
     />
   );
-  const exitSpaceChip = !mobileMode && activeSpace && (
-    <button
-      type="button"
-      className="spaces-panel__exit-chip"
-      onClick={() => handleExitSpace(activeSpace.id)}
-      {...tip(`Turn off ${activeSpace.name || 'the space'} and show every page`, 'below')}
-      aria-label={`Exit ${activeSpace.name || 'space'}`}
-    >
-      <span>Exit space</span>
-      <Icon name="close" size={10} color="currentColor" />
-    </button>
+  const editControl = canManageSpaces && (
+    <SectionIconButton
+      phone={mobileMode}
+      action="edit"
+      active={editMode}
+      aria-pressed={editMode}
+      label={editMode ? 'Done editing Spaces' : 'Edit Spaces'}
+      onClick={() => setEditMode((current) => !current)}
+    />
   );
 
   return (
@@ -1408,7 +1423,7 @@ const SpacesPanel = ({
         <>
           {exportControl}
           {addControl}
-          {exitSpaceChip}
+          {editControl}
         </>,
         headActionsHost
       ) : (
@@ -1417,7 +1432,7 @@ const SpacesPanel = ({
 
         {!mobileMode && <span className="spaces-panel__head-fill" aria-hidden="true" />}
 
-        {exitSpaceChip}
+        {editControl}
         {exportControl}
         {addControl}
 
@@ -1462,7 +1477,7 @@ const SpacesPanel = ({
                 <SortableRearrangeRow
                   key={space.id}
                   id={space.id}
-                  disabled={!canManageSpaces || !onReorderSpaces}
+                  disabled={!editMode || !canManageSpaces || !onReorderSpaces}
                   animateLayoutChanges={animateSpaceLayoutChanges}
                   draggingOpacity={1}
                   transition={null}
@@ -1470,6 +1485,7 @@ const SpacesPanel = ({
                   {({ attributes, listeners, isDragging }) => (
                     <SpaceSortableCard
                       space={space}
+                      editMode={editMode}
                       dragHandleProps={{ ...attributes, ...listeners }}
                       isDragging={isDragging}
                       isRearranging={isRearrangingSpaces}
@@ -1489,6 +1505,7 @@ const SpacesPanel = ({
                       onAssignPages={handleAssignPages}
                       onRenameRegion={handleRenameRegion}
                       onRemovePage={handleRemovePage}
+                      onTransferRegion={onSpaceTransferRegion ? (sourceSpaceId, sourcePageId, copy) => setTransfer({ sourceSpaceId, sourcePageId, targetSpaceId: sourceSpaceId, targetPageId: String(sourcePageId), copy }) : null}
                       onNavigateToPage={onNavigateToPage}
                       onRequestRegionEdit={handleRequestRegionEdit}
                       onCancelRegionEdit={onCancelRegionEdit}
@@ -1513,6 +1530,19 @@ const SpacesPanel = ({
           </SortableRearrangeList>
         )}
       </div>
+      <SpaceSelectionDialog open={Boolean(transfer)} onClose={() => setTransfer(null)} title={transfer?.copy ? 'Copy region' : 'Move region'}>
+        {transfer && <form onSubmit={(event) => {
+          event.preventDefault();
+          const targetPageId = Number(transfer.targetPageId);
+          if (!Number.isInteger(targetPageId) || targetPageId < 1 || targetPageId > numPages) return;
+          if (onSpaceTransferRegion?.({ ...transfer, targetPageId }) === true) setTransfer(null);
+        }} style={{ display: 'grid', gap: 16 }}>
+          <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 13 }}>{transfer.copy ? 'Copy the region outlines. Marks stay on their current page.' : 'Move the region and its marks together.'}</p>
+          <label style={{ display: 'grid', gap: 6 }}>Space<select aria-label="Destination space" value={transfer.targetSpaceId} onChange={(event) => setTransfer((current) => ({ ...current, targetSpaceId: event.target.value }))}>{spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label>
+          <label style={{ display: 'grid', gap: 6 }}>Page<input aria-label="Destination page" type="number" min={1} max={numPages} required value={transfer.targetPageId} onChange={(event) => setTransfer((current) => ({ ...current, targetPageId: event.target.value }))} /></label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" className="btn btn-default" onClick={() => setTransfer(null)}>Cancel</button><button type="submit" className="btn btn-primary">{transfer.copy ? 'Copy region' : 'Move region'}</button></div>
+        </form>}
+      </SpaceSelectionDialog>
       {/* Rendered on <body>, above the phone sheet (z 6500): inside the sheet a
           fixed overlay is caught by the sheet's transform. */}
       {typeof document !== 'undefined' && createPortal(

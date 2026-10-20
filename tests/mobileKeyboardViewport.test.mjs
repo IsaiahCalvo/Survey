@@ -343,11 +343,15 @@ test('only the bottom sheets spend the keyboard inset; browse panels get scroll 
   assert.match(SHEET_MOTION_SOURCE, /'data-sheet-keyboard': expandable \? 'pad' : 'lift',/);
 });
 
+// 2026-10-13 (Drawboard touch audit K1): the same controller now also runs
+// for the desktop layout on a touch device, in its `desktop` mode; the phone
+// viewer still gets the phone mode (no options). tests/touchDesktopKeyboard
+// covers the desktop mode itself.
 test('the phone viewer mounts the keyboard controller and tears it down', () => {
   assert.match(APP_SHELL_SOURCE, /import \{ createKeyboardViewportController \} from '\.\/mobile\/keyboardViewport'/);
   assert.match(
     APP_SHELL_SOURCE,
-    /if \(!isMobileViewer\) return undefined;\s*\n\s*const controller = createKeyboardViewportController\(\);\s*\n\s*return \(\) => controller\.dispose\(\);/,
+    /if \(!isMobileViewer && !isTouchDesktopViewer\) return undefined;\s*\n\s*const controller = createKeyboardViewportController\(isMobileViewer \? undefined : \{ desktop: true \}\);\s*\n\s*return \(\) => controller\.dispose\(\);/,
   );
 });
 

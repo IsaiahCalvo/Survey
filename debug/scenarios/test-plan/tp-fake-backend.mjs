@@ -17,7 +17,9 @@
 //   * Realtime (WebSocket, Phoenix protocol v2): channel join/leave, heartbeat,
 //     broadcast relay between windows (JSON and binary user pushes), presence,
 //     and postgres_changes INSERT delivery for annotation_updates.
-//   * auth answers 401 (the route has no session), storage/functions answer {}.
+//   * auth answers 401 (the route has no session), storage/functions answer {}
+//     — except a Storage object a test put there with putStorageObject()
+//     (e.g. a project's survey-data sidecar), which a download returns.
 // Two browser contexts that share one FakeBackend behave like two windows on
 // one live document. `counts` records every call for the evidence table.
 //
@@ -53,6 +55,11 @@
 // only into your own folder (first path segment = you); reads your own folder
 // or a file a document you can see points at (20260703030000 + the
 // collaborator read policy). Without the option storage answers {} as before.
+// With the bucket on, the documents rows also follow (2026-10-13, #812 shared-
+// object page edits): file_path immutable for a client UPDATE (20260703020000),
+// the unique fingerprint index on UPDATE too, and public.fork_document_file
+// (20261013211724) in memory; `forkDocumentFile: false` answers that function
+// as missing (PGRST202), like a server without it.
 
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -211,6 +218,7 @@ export class FakeBackend {
     latencyMs = 0,
     storage = false,
     annotationWritePolicy = 'author',
+    forkDocumentFile = true,
   } = {}) {
     this.documentId = documentId;
     this.ownerId = ownerId;
@@ -218,11 +226,15 @@ export class FakeBackend {
     this.latencyMs = latencyMs;
     this.storageObjects = storage ? new Map() : null;
     this.annotationWritePolicy = annotationWritePolicy;
+    this.forkDocumentFile = forkDocumentFile;
     this.tables = new Map();
     this.counts = new Map();
     this.sockets = new Set();
     this.walSeq = 0;
     this.presenceRef = 0;
+    // Files a test put in the 'documents' bucket with putStorageObject() while
+    // the full in-memory bucket (storage: true) is off: path -> { body, contentType }.
+    this.seededDownloads = new Map();
     // The document row: its owner is the dev route's signed-in user (the
     // eraser and History refuse to act without a known owner), already on the
     // live mark store (cutover sealed), not locked.
@@ -401,6 +413,18 @@ export class FakeBackend {
     return row;
   }
 
+  /**
+   * A file in the 'documents' Storage bucket that a download returns, without
+   * turning on the full bucket (every other Storage call still answers {}).
+   * With `storage: true` it goes into that bucket instead.
+   */
+  putStorageObject(path, value, contentType = 'application/json') {
+    const body = typeof value === 'string' || Buffer.isBuffer(value) ? value : json(value);
+    if (this.storageObjects) return this.seedStorageObject(path, Buffer.from(body), { type: contentType });
+    this.seededDownloads.set(path, { body, contentType });
+    return undefined;
+  }
+
   /** Share the document with `userId` as `role` (a document_collaborators row). */
   seedDocumentCollaborator({ userId, role = 'editor', email = null }) {
     const row = { id: fakeUuid(), document_id: this.documentId, user_id: userId, role, email, status: 'active', created_at: nowIso() };
@@ -435,6 +459,15 @@ export class FakeBackend {
 
     if (path.startsWith('/auth/')) { this.count(`${method} ${path}`); return reply(401, { message: 'no session (fake backend)' }); }
     if (path.startsWith('/storage/') && this.storageObjects) return this.handleStorage(route, { method, path, caller, reply, cors });
+    if (path.startsWith('/storage/') && method === 'GET') {
+      const object = path.match(/^\/storage\/v1\/object\/(?:authenticated\/|public\/)?documents\/(.+)$/);
+      const key = object ? decodeURIComponent(object[1]) : null;
+      if (key && this.seededDownloads.has(key)) {
+        this.count(`GET storage object ${key}`);
+        const { body, contentType } = this.seededDownloads.get(key);
+        return route.fulfill({ status: 200, headers: cors, contentType, body });
+      }
+    }
     if (path.startsWith('/storage/') || path.startsWith('/functions/')) { this.count(`${method} ${path}`); return reply(200, {}); }
 
     const rpc = path.match(/^\/rest\/v1\/rpc\/(.+)$/);
@@ -452,7 +485,7 @@ export class FakeBackend {
         }
       }
       const answer = this.rpc(rpc[1], args, caller);
-      if (answer && answer.__rpcError) return reply(400, { code: 'P0001', message: answer.__rpcError });
+      if (answer && answer.__rpcError) return reply(answer.__rpcStatus || 400, { code: answer.__rpcCode || 'P0001', message: answer.__rpcError });
       return reply(200, answer);
     }
     const tableMatch = path.match(/^\/rest\/v1\/([^/]+)$/);
@@ -519,6 +552,14 @@ export class FakeBackend {
     if (method === 'PATCH') {
       const matched = applyFilters(rows.filter((r) => this.canSee(caller, name, r) && this.canUpdate(caller, name, r)), params);
       if (wantsObject && matched.length === 0) return reply(406, { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' });
+      if (name === 'documents' && this.storageObjects) {
+        if (body && 'file_path' in body && matched.some((row) => row.file_path !== body.file_path)) {
+          return reply(400, { code: 'P0001', message: 'documents.file_path is immutable (set once at upload)' });
+        }
+        if (matched.some((row) => this.violatesDocumentShaIndex({ ...row, ...(body || {}) }))) {
+          return reply(409, { code: '23505', message: 'duplicate key value violates unique constraint "documents_user_project_sha_uidx"' });
+        }
+      }
       for (const row of matched) {
         const old = { ...row };
         Object.assign(row, body || {});
@@ -600,7 +641,7 @@ export class FakeBackend {
       this.storageObjects.set(key(objectPath), { bytes, type, owner: caller, updated_at: nowIso(), version: fakeUuid() });
       return reply(200, { Key: key(objectPath), Id: key(objectPath) });
     }
-    if (method === 'GET' && objectPath) {
+    if ((method === 'GET' || method === 'HEAD') && objectPath) {
       const object = this.storageObjects.get(key(objectPath));
       if (!object || !this.canReadObject(caller, objectPath)) {
         return reply(400, { statusCode: '404', error: 'not_found', message: 'Object not found' });
@@ -619,6 +660,32 @@ export class FakeBackend {
       return reply(200, removed);
     }
     return reply(400, { statusCode: '400', error: 'unsupported', message: `fake storage: ${method} ${path}` });
+  }
+
+  /** A stored file's bytes (Buffer), or null. */
+  objectBytes(objectPath, { bucket = 'documents' } = {}) {
+    return this.storageObjects?.get(`${bucket}/${objectPath}`)?.bytes ?? null;
+  }
+
+  /** public.fork_document_file (20261013211724_fork_document_file.sql), in memory. */
+  forkDocumentFileRpc(args, caller) {
+    if (!this.forkDocumentFile) {
+      return { __rpcError: 'Could not find the function public.fork_document_file(p_content_sha256, p_document_id) in the schema cache', __rpcStatus: 404, __rpcCode: 'PGRST202' };
+    }
+    const sha = args.p_content_sha256 ? String(args.p_content_sha256).trim().toLowerCase() : null;
+    if (sha && !/^[0-9a-f]{64}$/.test(sha)) return { __rpcError: 'content_sha256 must be a SHA-256 hex digest', __rpcCode: '22023' };
+    const doc = this.table('documents').find((r) => r.id === args.p_document_id);
+    if (!doc || doc.user_id !== caller) return { __rpcError: 'Document not found', __rpcStatus: 403, __rpcCode: '42501' };
+    const path = `${caller}/${doc.id}.pdf`;
+    if (!this.storageObjects.has(`documents/${path}`)) return { __rpcError: "Upload the document's own copy before moving it", __rpcCode: '22023' };
+    if (this.table('documents').some((r) => r.file_path === path && r.id !== doc.id)) {
+      return { __rpcError: 'That storage object belongs to another document', __rpcStatus: 403, __rpcCode: '42501' };
+    }
+    const old = { ...doc };
+    doc.file_path = path;
+    doc.content_sha256 = this.violatesDocumentShaIndex({ ...doc, content_sha256: sha }) ? null : sha;
+    this.emitChange('documents', 'UPDATE', doc, old);
+    return doc;
   }
 
   /** Put a stored file in the bucket (as its owner had uploaded it). */
@@ -694,7 +761,22 @@ export class FakeBackend {
     if (name === 'store_annotation_snapshot') return this.storeSnapshot(args);
     if (name === 'get_my_document_role') return this.documentRoleFor(caller);
     if (name === 'replace_my_templates') return this.replaceMyTemplates(args.p_templates, caller);
+    if (name === 'restore_document') return this.restoreDocument(args.p_document_id, caller);
+    if (name === 'fork_document_file' && this.storageObjects) return this.forkDocumentFileRpc(args, caller);
     return null;
+  }
+
+  /** public.restore_document (20260802000000_kal426_user_archive_foundation), in memory. */
+  restoreDocument(documentId, caller) {
+    const doc = this.table('documents').find((d) => d.id === documentId);
+    if (!doc || !doc.user_id) return { ok: false, reason: 'not_found' };
+    if (doc.user_id !== caller) return { ok: false, reason: 'not_owner' };
+    if (!doc.user_archived_at) return { ok: true, already: true, document_id: documentId };
+    if (doc.archive_group_id) return { ok: false, reason: 'project_child', archive_group_id: doc.archive_group_id };
+    Object.assign(doc, {
+      user_archived_at: null, user_archive_expires_at: null, user_archived_by: null, archive_group_id: null,
+    });
+    return { ok: true, already: false, document_id: documentId, project_id: doc.project_id ?? null };
   }
 
   /**

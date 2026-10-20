@@ -5,17 +5,17 @@
 // open tab pressed again closes it, another tab swaps the panel in place. And,
 // after two debates, Survey is named by the survey bar itself - its first item
 // is "[glyph] <template> v" (a template menu) and its last is "Done" (Leave
-// Survey) with a "Left Survey / Undo" toast; the floating Survey chip is gone.
+// Survey), without an exit toast; the floating Survey chip is gone.
 // The Survey tab / dock button goes straight back into the template last used
 // on the document (remembered per document on the device); the picker only
 // opens the first time, and closing it without a pick leaves you out. This
 // walks every tab open / close / switch on a 1440x900 desktop and Survey in /
-// out / Undo / back in on the desktop and on a 390x844 touch phone.
+// out / back in on the desktop and on a 390x844 touch phone.
 //
 // Needs a browser, so NOT in the CI shards. Run it by hand:
 //   PLAYWRIGHT_BASE_URL=http://127.0.0.1:5199 npx playwright test \
 //     --config debug/playwright.config.mjs debug/scenarios/rail-drawboard-model.spec.mjs
-// (PW_CHROMIUM_PATH=/path/to/chrome if Playwright's own Chromium is missing).
+// Uses Playwright's bundled headless Chromium.
 // Only local fake data: a test PDF and a template seeded in localStorage;
 // every request that is not to the local dev server is blocked.
 import { test, expect } from '@playwright/test';
@@ -34,11 +34,10 @@ test.use({
   video: 'off',
   screenshot: 'off',
   actionTimeout: 5000,
-  ...(process.env.PW_CHROMIUM_PATH ? { launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH } } : {}),
 });
 test.describe.configure({ timeout: 240_000 });
 
-const button = (page, name) => page.getByRole('button', { name, exact: true }).filter({ visible: true }).first();
+const button = (page, name) => (name === 'Survey' ? page.getByRole('toolbar', { name: 'Survey panel', exact: true }) : page).getByRole('button', { name, exact: true }).filter({ visible: true }).first();
 const visibleCount = (page, selector) => page.locator(selector).filter({ visible: true }).count();
 
 const OTHER_TEMPLATE = {
@@ -88,6 +87,9 @@ test.describe('desktop 1440x900', () => {
       await expect(button(page, name)).toHaveClass(/is-active/);
       expect(await panelTitle(page)).toBe(title);
       expect(await railX(), 'the rail does not move when a panel opens').toBe(x0);
+      // Owner 2026-10-14: one fixed width for every panel, no drag edge.
+      expect(Math.round((await page.locator('#left-rail-panel').filter({ visible: true }).first().boundingBox()).width), `${name} panel width`).toBe(260);
+      expect(await page.locator('.left-rail__resize, [role="separator"][aria-controls="left-rail-panel"]').count()).toBe(0);
       // Open -> closed by the same tab.
       await button(page, name).click();
       await expect(button(page, name)).toHaveAttribute('aria-expanded', 'false');
@@ -136,7 +138,7 @@ test.describe('desktop 1440x900', () => {
     await expect(page.getByRole('heading', { name: 'Choose a survey template' })).toBeVisible();
   });
 
-  test('Survey: in, place a marker, Done, Undo, out, and straight back into the same template', async ({ page, context }) => {
+  test('Survey: in, place a marker, Done without a toast, and straight back into the same template', async ({ page, context }) => {
     await prepare(context);
     await openViewer(page, false);
     const survey = button(page, 'Survey');
@@ -155,7 +157,8 @@ test.describe('desktop 1440x900', () => {
       .map((node) => node.getAttribute('aria-label')));
     expect(order[0]).toMatch(/^Survey template: Rail Model Template/);
     expect(order[order.length - 1]).toBe('Leave Survey');
-    expect((await leave(page).boundingBox()).height).toBeGreaterThanOrEqual(32);
+    // Fractional layout transforms can report 31.99999 for a 32px control.
+    expect((await leave(page).boundingBox()).height).toBeGreaterThanOrEqual(31.99);
 
     // Place a Survey Marker: arm the category, drag on page 1.
     const before = await page.locator('[data-survey-marker-id]').count();
@@ -184,32 +187,31 @@ test.describe('desktop 1440x900', () => {
     await page.mouse.click(box.x + 400, box.y + 500);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
+    // Escape can switch to Pan. Survey still stays on; its main-toolbar
+    // button reopens the shared Survey settings row.
+    const surveyTool = page.locator('#chrome-top-host').getByRole('button', { name: 'Survey', exact: true });
+    await expect(surveyTool).toBeVisible();
+    await surveyTool.click();
     await expect(leave(page)).toBeVisible();
 
-    // Done: out at once (no dialog), with a "Left Survey" toast.
+    // Done leaves Survey at once, without a status or Undo toast.
     await leave(page).click();
     await expect(leave(page)).toHaveCount(0);
     await expect(page.locator('.survey-subrow')).toHaveCount(0);
     await expect(survey).toHaveAttribute('aria-expanded', 'false');
-    await expect(page.locator('.undo-toast')).toContainText('Left Survey');
+    await expect(page.getByText('Left Survey', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
-    // Undo: back in, same template, panel open as it was.
-    await page.locator('.undo-toast').getByRole('button', { name: 'Undo' }).click();
+    // Re-enter with Survey: same template and saved markers. Opening and
+    // closing its panel still keeps Survey armed.
+    await survey.click();
     await expect(templateTrigger(page)).toContainText('Rail Model Template');
     await expect(leave(page)).toBeVisible();
     await expect(survey).toHaveAttribute('aria-expanded', 'true');
     await expect.poll(() => page.locator('[data-survey-marker-id]').count()).toBe(placed);
-
-    // Close the panel (still in Survey), Done, Undo: the panel stays closed.
     await survey.click();
     await expect(survey).toHaveAttribute('aria-expanded', 'false');
     await expect(leave(page)).toBeVisible();
-    await leave(page).click();
-    await page.locator('.undo-toast').getByRole('button', { name: 'Undo' }).click();
-    await expect(leave(page)).toBeVisible();
-    await page.waitForTimeout(600);
-    await expect(survey).toHaveAttribute('aria-expanded', 'false');
 
     // Leave, then the tab again: straight back in, no picker.
     await leave(page).click();
@@ -251,7 +253,7 @@ test.describe('desktop 1440x900', () => {
 test.describe('phone 390x844 touch', () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: IPHONE_UA });
 
-  test('dock buttons toggle their sheets; Survey in with the dock, out with Done, Undo, straight back in', async ({ page, context }) => {
+  test('dock buttons toggle their sheets; Survey in with the dock, out with Done without a toast, straight back in', async ({ page, context }) => {
     await prepare(context);
     await openViewer(page, true);
     await expect(page.getByRole('button', { name: /Collapse sidebar|Collapse Survey panel/ })).toHaveCount(0);
@@ -310,12 +312,14 @@ test.describe('phone 390x844 touch', () => {
     expect(target.wide).toBeGreaterThanOrEqual(44);
     expect(target.right).toBeLessThanOrEqual(390);
 
-    // Done -> toast -> Undo: back in the same template, sheet still closed.
+    // Done leaves without a toast. The dock re-enters the same template;
+    // closing its sheet still leaves Survey mode on.
     await leave(page).tap();
     await expect(leave(page)).toHaveCount(0);
-    await expect(page.locator('.undo-toast')).toContainText('Left Survey');
-    await page.locator('.undo-toast').getByRole('button', { name: 'Undo' }).tap();
+    await expect(page.getByText('Left Survey', { exact: true })).toHaveCount(0);
+    await button(page, 'Open survey').tap();
     await expect(strip.getByRole('button', { name: /^Survey template: Rail Model Template/ })).toBeVisible();
+    await button(page, 'Open survey').tap();
     await page.waitForTimeout(600);
     expect(await visibleCount(page, '.mobile-survey-sheet')).toBe(0);
 

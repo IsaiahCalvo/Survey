@@ -19,12 +19,29 @@
 // useCallback-stable so the external callers that omit the setter from their
 // dependency arrays keep their referential identity.
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import Icon from '../Icons';
+import { useTooltip } from '../components/Tooltip';
+import {
+  layoutContextMenuItems,
+  moveMenuFocus,
+  QUICK_ACTION_ICONS,
+  submenuSide,
+} from '../utils/contextMenuLayout.js';
+import '../styles/annotationContextMenu.css';
 import { appDebug } from '../viewerShared.js';
 import { deepClone } from '../utils/deepClone.js';
 import { zOrderMenuState } from '../utils/disabledActions.js';
 import { watchLightPopover } from '../components/dismissRules.js';
+import { useMenuFocus } from './useMenuFocus.js';
+
+// The menu renders elsewhere (PDFViewer) and is found by its marker.
+const ANNOTATION_MENU_REF = {
+  get current() {
+    return typeof document === 'undefined' ? null : document.querySelector('[data-annotation-context-menu]');
+  },
+};
 import {
   clampFloatingMenuPosition,
   DESKTOP_RIGHT_RAIL_WIDTH,
@@ -40,6 +57,7 @@ import { reorderSelectionInStack } from '../utils/annotationFamilyRules.js';
 import { resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../utils/selectionRemap.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import { PICK_ANY_TOOLS } from '../utils/selectModes.js';
+import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
 import { availableActions, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
 
@@ -110,6 +128,10 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
         // or those in the right-clicked selection ('group' kind).
         surveyMarkerId: surveyMarkerId || null,
         groupMarkerIds: Array.isArray(groupMarkerIds) ? groupMarkerIds.slice() : [],
+        // Touch audit 2026-10-13 (T1/S2): 'touch' | 'pen' | 'mouse' - a menu
+        // opened by a long press (or a touch screen's own contextmenu) takes
+        // 44px rows.
+        input: contextMenuInputOf(event),
       }, pageObjects));
     };
     return () => {
@@ -130,6 +152,9 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
   // still does its job (R1 — select the mark pressed, press the button); a
   // press on the bare page only closes it (R2); Escape closes it and nothing
   // under it (R5). Still capture phase, so descendants cannot stop it.
+  // KAL-66: keyboard focus goes into the annotation menu as it opens, Up/Down move,
+  // and focus returns to its button when it closes (mouse/touch unchanged).
+  useMenuFocus(ANNOTATION_MENU_REF, Boolean(annotationContextMenu));
   useEffect(() => {
     if (!annotationContextMenu) return undefined;
     let stop = null;
@@ -148,6 +173,218 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
   }, [annotationContextMenu]);
 
   return { annotationContextMenu, openAnnotationContextMenu, closeAnnotationContextMenu };
+}
+
+// Drawboard canvas audit chunk 7 (2026-10-13): the body of a mark menu - an
+// icon row for the everyday actions, then the rest as rows, with the four
+// order items folded into "Arrange ▸" (utils/contextMenuLayout.js sorts them).
+// Keyboard: Up / Down between rows, Left / Right along the icon row, Right or
+// Enter on Arrange opens it, Left closes it, Enter runs the focused item,
+// Escape closes the menu (dismissRules). A menu opened by touch keeps 44 px
+// targets (touchTargets.css + annotationContextMenu.css).
+const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
+
+function MarkMenuBody({ layout, touchRows }) {
+  const tip = useTooltip();
+  const rootRef = useRef(null);
+  const arrangeRowRef = useRef(null);
+  const submenuRef = useRef(null);
+  const focusSubmenuOnOpenRef = useRef(false);
+  const [arrangeOpen, setArrangeOpen] = useState(false);
+  // Hover opens / closes Arrange for a real mouse only. A finger's tap also
+  // sends compatibility mouse events (and the browser re-sends them when the
+  // submenu appears), which shut the submenu the tap had just opened.
+  const onMouseHover = (open) => (event) => {
+    if (event.pointerType === 'mouse') setArrangeOpen(open);
+  };
+  const arrange = layout.rows.find((row) => row.submenu) || null;
+
+  const focusEl = (el) => { try { el?.focus({ preventScroll: true }); } catch { /* detached */ } };
+
+  // Place the open submenu beside the Arrange row: to the right, or to the
+  // left when the right side (less the desktop right rail) has no room; kept
+  // above the bottom of the window.
+  useLayoutEffect(() => {
+    if (!arrangeOpen) return;
+    const sub = submenuRef.current;
+    const row = arrangeRowRef.current;
+    const panel = rootRef.current?.closest('[data-annotation-context-menu]');
+    if (!sub || !row || !panel) return;
+    const pr = panel.getBoundingClientRect();
+    const rr = row.getBoundingClientRect();
+    const sr = sub.getBoundingClientRect();
+    const side = submenuSide({
+      menuLeft: pr.left,
+      menuRight: pr.right,
+      submenuWidth: sr.width,
+      boundLeft: 8,
+      boundRight: window.innerWidth - (touchRows ? 8 : DESKTOP_RIGHT_RAIL_WIDTH + 8),
+    });
+    sub.dataset.side = side;
+    sub.style.left = side === 'right' ? 'calc(100% + 2px)' : 'auto';
+    sub.style.right = side === 'left' ? 'calc(100% + 2px)' : 'auto';
+    // Line the first submenu row up with the Arrange row (1px border + 4px pad).
+    const wantTop = rr.top - pr.top - 5;
+    const maxTop = window.innerHeight - 8 - sr.height - pr.top;
+    sub.style.top = `${Math.max(-pr.top + 8, Math.min(wantTop, maxTop))}px`;
+    if (focusSubmenuOnOpenRef.current) {
+      focusSubmenuOnOpenRef.current = false;
+      focusEl(sub.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
+    }
+  }, [arrangeOpen, touchRows]);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (!MENU_KEYS.includes(event.key) || event.ctrlKey || event.metaKey || event.altKey) return;
+      const root = rootRef.current;
+      if (!root) return;
+      const active = document.activeElement;
+      const inMenu = Boolean(active && root.contains(active));
+      const handled = () => { event.preventDefault(); event.stopImmediatePropagation(); };
+      if (event.key === 'Enter') {
+        if (!inMenu) return;
+        handled();
+        if (active.getAttribute('aria-disabled') === 'true') return;
+        if (active.getAttribute('data-menu-key') === 'arrange') {
+          // Enter on Arrange opens it with its first item focused.
+          if (arrangeOpen) focusEl(submenuRef.current?.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
+          else { focusSubmenuOnOpenRef.current = true; setArrangeOpen(true); }
+          return;
+        }
+        active.click();
+        return;
+      }
+      handled();
+      const subKey = inMenu ? active.getAttribute('data-submenu-key') : null;
+      if (subKey) {
+        const subItems = [...(submenuRef.current?.querySelectorAll('[data-submenu-key]:not([aria-disabled="true"])') || [])];
+        const at = subItems.indexOf(active);
+        if (event.key === 'ArrowLeft') {
+          setArrangeOpen(false);
+          focusEl(arrangeRowRef.current);
+        } else if (subItems.length > 0) {
+          const n = subItems.length;
+          const next = event.key === 'ArrowDown' ? (at + 1) % n
+            : event.key === 'ArrowUp' ? (at - 1 + n) % n
+            : event.key === 'Home' ? 0
+            : event.key === 'End' ? n - 1
+            : at;
+          focusEl(subItems[next]);
+        }
+        return;
+      }
+      const activeKey = inMenu ? active.getAttribute('data-menu-key') : null;
+      if (event.key === 'ArrowRight' && activeKey === 'arrange') {
+        if (arrange?.disabled) return;
+        if (arrangeOpen) {
+          focusEl(submenuRef.current?.querySelector('[data-submenu-key]:not([aria-disabled="true"])'));
+        } else {
+          focusSubmenuOnOpenRef.current = true;
+          setArrangeOpen(true);
+        }
+        return;
+      }
+      const stops = [
+        layout.quick.filter((it) => !it.disabled).map((it) => it.key),
+        ...layout.rows.filter((it) => !it.disabled).map((it) => [it.key]),
+      ];
+      let current = null;
+      if (activeKey) {
+        const row = stops.findIndex((keys) => keys.includes(activeKey));
+        if (row >= 0) current = { row, col: stops[row].indexOf(activeKey) };
+      }
+      const next = moveMenuFocus(stops, current, event.key);
+      if (!next) return;
+      const rows = stops.filter((keys) => keys.length > 0);
+      const key = rows[next.row]?.[next.col];
+      if (key !== 'arrange') setArrangeOpen(false);
+      focusEl(root.querySelector(`[data-menu-key="${key}"]`));
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [layout, arrange, arrangeOpen]);
+
+  // The hint sits above the icon row, clear of the rows below it.
+  const tipFor = (label) => (touchRows ? {} : tip(label, 'above'));
+  return (
+    <div ref={rootRef} className="annotation-menu-body">
+      <div role="group" aria-label="Edit" className="annotation-menu-quick">
+        {layout.quick.map((it) => {
+          const hint = tipFor(it.label);
+          return (
+          <button
+            key={it.key}
+            type="button"
+            role="menuitem"
+            tabIndex={-1}
+            data-menu-key={it.key}
+            aria-label={it.label}
+            aria-disabled={it.disabled ? 'true' : undefined}
+            className={`annotation-menu-icon${it.key === 'delete' ? ' annotation-menu-icon--danger' : ''}`}
+            onClick={it.disabled ? undefined : it.onClick}
+            {...hint}
+            onPointerEnter={(e) => { onMouseHover(false)(e); hint.onPointerEnter?.(e); }}
+          >
+            <Icon name={QUICK_ACTION_ICONS[it.key]} size={16} color="currentColor" />
+          </button>
+          );
+        })}
+      </div>
+      {layout.rows.length > 0 && <div role="separator" className="annotation-menu-separator" />}
+      {layout.rows.map((it) => (it.submenu ? (
+        <div key={it.key} className="annotation-menu-subhost">
+          <div
+            ref={arrangeRowRef}
+            role="menuitem"
+            tabIndex={-1}
+            data-menu-key={it.key}
+            aria-haspopup="menu"
+            aria-expanded={arrangeOpen ? 'true' : 'false'}
+            aria-disabled={it.disabled ? 'true' : undefined}
+            className={`annotation-menu-row${arrangeOpen ? ' is-open' : ''}`}
+            // A mouse opens it on hover; a finger or pen taps it.
+            onPointerEnter={it.disabled ? undefined : onMouseHover(true)}
+            onClick={it.disabled ? undefined : () => setArrangeOpen((open) => (touchRows ? !open : true))}
+          >
+            <span>{it.label}</span>
+            <span className="annotation-menu-chevron" aria-hidden="true">
+              <Icon name="chevronRight" size={14} color="currentColor" />
+            </span>
+          </div>
+          {arrangeOpen && (
+            <div ref={submenuRef} role="menu" aria-label={it.label} className="annotation-menu-submenu">
+              {it.submenu.map((sub) => (
+                <div
+                  key={sub.key}
+                  role="menuitem"
+                  tabIndex={-1}
+                  data-submenu-key={sub.key}
+                  aria-disabled={sub.disabled ? 'true' : undefined}
+                  className="annotation-menu-row"
+                  onClick={sub.disabled ? undefined : sub.onClick}
+                >
+                  {sub.label}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          key={it.key}
+          role="menuitem"
+          tabIndex={-1}
+          data-menu-key={it.key}
+          aria-disabled={it.disabled ? 'true' : undefined}
+          className="annotation-menu-row"
+          onPointerEnter={onMouseHover(false)}
+          onClick={it.disabled ? undefined : it.onClick}
+        >
+          {it.label}
+        </div>
+      )))}
+    </div>
+  );
 }
 
 // renderAnnotationContextMenu — the createPortal render builder for the menu.
@@ -932,8 +1169,15 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     // demo per menu type: object menus (annotation / group / callout) = 176px,
     // paste/counter/text-markup = 154px (demo App.tsx:866/897 + styles.ts:861).
     const isMobileMenu = !!mobileMode;
+    // Desktop layout, opened by a finger or a pen (an iPad, a touch laptop):
+    // the same menu with 44px rows (states.css, data-touch-rows).
+    const touchRows = !isMobileMenu && isTouchMenuInput(ctx.input);
     const mobileWidth = pageMenuItems ? 'max-content'
       : (ctx.kind === 'annotation' || ctx.kind === 'group' || ctx.kind === 'callout' || ctx.kind === 'surveyMarker') ? 176 : 154;
+    // Chunk 7: a mark menu on the desktop layout (mouse or touch-opened) gets
+    // the icon row + Arrange submenu; the phone menu and the short menus keep
+    // their plain list.
+    const markLayout = !isMobileMenu && !pageMenuItems ? layoutContextMenuItems(items) : null;
     const mobileTitle = (ctx.kind === 'annotation' || ctx.kind === 'group') ? 'Annotation'
       : ctx.kind === 'surveyMarker' ? 'Survey Marker'
       : ctx.kind === 'callout' ? 'Callout'
@@ -987,6 +1231,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
 
           el.style.left = `${position.left}px`;
           el.style.top = `${position.top}px`;
+          // Chunk 7: it slides in from the pointer's side - down when it
+          // opens below the pointer, up when it flipped above it.
+          el.dataset.side = position.top < ctx.y - 0.5 ? 'top' : 'bottom';
           if (isMobileMenu) {
             // Polish round 6: on the phone the menu stays between the header
             // and the dock (it ran 25px under the dock on a 375x667), and
@@ -1005,8 +1252,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           }
         }}
         role="menu"
+        className="annotation-context-menu"
         aria-label={pageMenuItems ? `Page ${ctx.pageNumber} actions` : `${mobileTitle} actions`}
         data-page-menu={pageMenuItems ? ctx.pageNumber : undefined}
+        data-touch-rows={touchRows ? 'true' : undefined}
         // Polish 3 (2026-10-04): both menus take the one popup corner and
         // shadow (--radius-md / --shadow-popover), and the phone rows are the
         // phone menu row (below). The fills and hover colours are unchanged:
@@ -1071,7 +1320,14 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
             dangerHoverBg={isMobileMenu ? 'var(--surface-2)' : 'var(--surface-3)'}
           />
         )}
-        {!pageMenuItems && items.map((it) => (
+        {!pageMenuItems && markLayout && (
+          <MarkMenuBody
+            key={`${ctx.kind}:${ctx.pageNumber}:${ctx.x}:${ctx.y}`}
+            layout={markLayout}
+            touchRows={touchRows}
+          />
+        )}
+        {!pageMenuItems && !markLayout && items.map((it) => (
           it.separator
             ? <div key={it.key} role="separator" style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             : (

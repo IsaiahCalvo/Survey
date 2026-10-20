@@ -129,6 +129,9 @@ function walker(page, testInfo, label) {
 // ------------------------------------------------------------------- helpers
 
 const button = (page, name) => page.getByRole('button', { name, exact: true }).filter({ visible: true }).first();
+// The account menu's Settings entry is a menuitem since KAL-66 (a plain button before).
+const settingsItem = (page) => page.getByRole('menuitem', { name: 'Settings', exact: true })
+  .or(page.getByRole('button', { name: 'Settings', exact: true })).filter({ visible: true }).first();
 const shown = (page, selector) => page.locator(selector).filter({ visible: true }).count().then((n) => n > 0);
 const hidden = async (page, selector) => !(await shown(page, selector));
 const focusedMatches = (page, selector) => page.evaluate((s) => Boolean(document.activeElement?.matches?.(s)), selector);
@@ -506,10 +509,18 @@ test.describe('desktop 1440x900', () => {
       () => hidden(page, '[role="dialog"][aria-label^="Share"]'));
 
     await step('account menu', () => button(page, 'Open account menu').click({ timeout: 5000 }), () => shown(page, '.profile-menu-popup'));
-    await step('Settings', () => button(page, 'Settings').click({ timeout: 5000 }), () => shown(page, '.account-settings-modal'));
-    for (const tab of ['Connected services', 'Subscription', 'General']) {
+    await step('Settings', () => settingsItem(page).click({ timeout: 5000 }), () => shown(page, '.account-settings-modal'));
+    for (const tab of ['Annotations', 'Connected services', 'Subscription', 'General']) {
       await step(`Settings tab: ${tab}`, () => page.getByRole('tab', { name: tab }).click({ timeout: 5000 }),
         () => page.getByRole('tab', { name: tab }).getAttribute('aria-selected').then((v) => v === 'true'));
+      if (tab === 'Annotations') {
+        // KAL-397: the "Fit text boxes to their text" switch flips and flips back.
+        const fit = page.locator('.account-switch[data-pref="textbox-auto-fit"]');
+        for (const want of ['false', 'true']) {
+          await step(`Annotations: Fit text boxes -> ${want}`, () => fit.click({ timeout: 5000 }),
+            () => fit.getAttribute('aria-checked').then((v) => v === want));
+        }
+      }
     }
     await step('Settings: Close', () => page.locator('.account-settings-close').click({ timeout: 5000 }), () => hidden(page, '.account-settings-modal'));
     await step('Open file opens the viewer', () => page.getByRole('button', { name: 'Open file', exact: true }).filter({ visible: true }).first().click({ timeout: 5000 }),
@@ -689,10 +700,18 @@ test.describe('phone 390x844 touch', () => {
     }
 
     await step('account menu', () => button(page, 'Open account menu').tap({ timeout: 5000 }), () => shown(page, '.profile-menu-popup'));
-    await step('Settings', () => button(page, 'Settings').tap({ timeout: 5000 }), () => shown(page, '.account-settings-modal'));
-    for (const tab of ['Connected services', 'Subscription', 'General']) {
+    await step('Settings', () => settingsItem(page).tap({ timeout: 5000 }), () => shown(page, '.account-settings-modal'));
+    for (const tab of ['Annotations', 'Connected services', 'Subscription', 'General']) {
       await step(`Settings tab: ${tab}`, () => page.getByRole('tab', { name: tab }).tap({ timeout: 5000 }),
         () => page.getByRole('tab', { name: tab }).getAttribute('aria-selected').then((v) => v === 'true'));
+      if (tab === 'Annotations') {
+        // KAL-397: the "Fit text boxes to their text" switch flips and flips back.
+        const fit = page.locator('.account-switch[data-pref="textbox-auto-fit"]');
+        for (const want of ['false', 'true']) {
+          await step(`Annotations: Fit text boxes -> ${want}`, () => fit.tap({ timeout: 5000 }),
+            () => fit.getAttribute('aria-checked').then((v) => v === want));
+        }
+      }
     }
     await step('Settings: Close', () => page.locator('.account-settings-close').tap({ timeout: 5000 }), () => hidden(page, '.account-settings-modal'));
 

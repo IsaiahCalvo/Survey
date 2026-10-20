@@ -10,6 +10,8 @@
 // Interactivity is gated by the caller (text-select tool only) so the layer
 // never intercepts pointer events meant for the drawing canvas, form widgets,
 // links, or pan — it is pointer-events:none unless explicitly interactive.
+// Under Pan (`panHover`) only the glyph boxes take the hover; see
+// utils/panTextSelect.js.
 // ----------------------------------------------------------------------------
 import { memo, useEffect, useRef } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -100,6 +102,17 @@ export function ensureTextLayerStyles() {
     .pdfjsTextLayer.is-interactive :is(span, br) { -webkit-user-select: text !important; user-select: text !important; -webkit-touch-callout: default !important; }
     .pdfjsTextLayer:not(.is-interactive) { pointer-events: none; }
     .pdfjsTextLayer:not(.is-interactive) :is(span, br) { -webkit-user-select: none; user-select: none; }
+    /* Pan over text (utils/panTextSelect.js, owner 2026-10-14): under Pan the
+       glyph boxes take the hover so a resting mouse / pen is seen over text;
+       the layer itself stays see-through, so a press beside the text pans.
+       The scroller's data-pan-text turns on the I-beam ('on') and keeps the
+       text selectable while a Pan selection is live ('keep'). */
+    .pdfjsTextLayer.is-pan-text :is(span, br) { pointer-events: auto; }
+    .pdfjsTextLayer.is-pan-text span[role="img"] { pointer-events: none; }
+    [data-pan-text='on'] .pdfjsTextLayer.is-pan-text { pointer-events: auto; }
+    [data-pan-text='on'] .pdfjsTextLayer.is-pan-text,
+    [data-pan-text='on'] .pdfjsTextLayer.is-pan-text * { cursor: text !important; }
+    :is([data-pan-text='on'], [data-pan-text='keep']) .pdfjsTextLayer.is-pan-text :is(span, br) { -webkit-user-select: text !important; user-select: text !important; }
     .pdfjsTextLayer ::selection { background: rgba(58, 122, 254, 0.45); }
     .pdfjsTextLayer ::-moz-selection { background: rgba(58, 122, 254, 0.45); }
   `;
@@ -108,7 +121,7 @@ export function ensureTextLayerStyles() {
 
 // TextLayer sets data-main-rotation from this viewport. The CSS above applies
 // pdf.js's matching root transform so intrinsic /Rotate pages align with the canvas.
-function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false, onTextAvailability }) {
+function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false, panHover = false, onTextAvailability }) {
   const ref = useRef(null);
   const wasInteractiveRef = useRef(interactive);
 
@@ -238,7 +251,7 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
     return () => { cancelled = true; try { task?.cancel?.(); } catch { /* noop */ } };
   }, [pdf, pageNumber, scale, rotation, onTextAvailability]);
 
-  return <div ref={ref} className={`pdfjsTextLayer${interactive ? ' is-interactive' : ''}`} />;
+  return <div ref={ref} className={`pdfjsTextLayer${interactive ? ' is-interactive' : ''}${panHover ? ' is-pan-text' : ''}`} />;
 }
 
 // memo: the viewer re-renders every live-zoom frame; the text layer only

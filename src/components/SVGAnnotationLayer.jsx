@@ -79,7 +79,7 @@ import { HANDLE_FILL, HANDLE_RING, HANDLE_RING_INVALID, HANDLE_RADIUS, HANDLE_RA
 import { getMarkHitBandWidth, getSvgMatrixMaxScale, resolveHandleHitPadPageSize } from '../utils/handleHitPad.js';
 import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
-import { canToolGrabSelection, isSelectFamilyTool, shouldHideSelectionChrome } from '../utils/selectModes.js';
+import { canToolGrabSelection, isSelectFamilyTool, isSelectionGestureActive } from '../utils/selectModes.js';
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
 import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
@@ -87,6 +87,7 @@ import { useRotateHandleClick } from '../hooks/useRotateHandleClick.js';
 import { useSelectionMoveCursor } from '../hooks/useSelectionMoveCursor.js';
 import { DRAWN_CENTERED_STROKE_CONTRACT } from '../utils/shapeCommitGeometry.js';
 import { useSVGInteraction } from '../hooks/useSVGInteraction';
+import useInputModality from '../hooks/useInputModality.js';
 // Plan 14-03 Task 3 (CREATE-01 callout half): factory for constructing a
 // new callout from the click-drag creation gesture. types.js is the
 // PRESERVED Plan 14-01 shim (ARROWHEAD_STYLES + defaultCalloutStyle +
@@ -185,7 +186,7 @@ import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '
 // Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
 import { buildPolygonMarkerBounds, buildStrokeMarkerBounds, MARKER_STROKE_DEFAULT_WIDTH } from '../survey/markerShapes.js';
 import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
-import { runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
+import { isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
 import {
   MARKER_FREEHAND_PREVIEW_COLOR,
   projectSurveyMarkerEntryShape,
@@ -197,7 +198,7 @@ import { isPalmContact } from '../utils/touchContact.js';
 import { hasPassedShapeDragThreshold } from '../utils/dragThreshold.js';
 import SnapGuidesLayer from './SnapGuidesLayer.jsx';
 import {
-  isSnapFreeModifier, snapThreshold, snapMoveFrame, snapResizePoint, buildSnapGuides, snapRotationDegrees,
+  isSnapFreeModifier, isAnnotationSnapFree, snapThreshold, snapMoveFrame, snapResizePoint, buildSnapGuides, snapRotationDegrees,
 } from '../utils/snapGuides.js';
 
 const svgAnnotationDebug = (...args) => {
@@ -456,11 +457,8 @@ const hoverGlowStrokeInset = (obj) => {
 // On a mouse: the grabber + 4 px, min 20 (w63); 44 pt on a finger. The
 // polygon vertex grabber pioneered this in 2026-09-09 with a touch-only 44 pt
 // disc; the mouse now gets one too. Sizes live in utils/handleHitPad.js.
-const hasCoarsePointer = () => (
-  typeof window !== 'undefined'
-  && typeof window.matchMedia === 'function'
-  && window.matchMedia('(pointer: coarse)').matches
-);
+// Touch audit 2026-10-13: sized from the input IN USE (useInputModality: last
+// press / hover), not the primary pointer media — pen 32, finger 44.
 
 // w53: shared empty selection (stable identity keeps memo deps quiet).
 const EMPTY_SURVEY_MARKER_IDS = new Set();
@@ -503,6 +501,9 @@ const SVGAnnotationLayerBody = memo(({
   // w32: the open document's id — live ink (in-progress strokes) is sent on,
   // and shown from, this document's channel only.
   documentId = null,
+  // False while this document's tab is behind another one (a pending Smart
+  // fill press is then dropped).
+  isTabActive = true,
   selectionMode = 'rectangle', // 'rectangle' | 'lasso'; text uses activeTool='text-select'
   // UX 2026-09-15 (Drawboard parity — Pan is a selection mode):
   // panEditEntryEnabled is set by PDFViewer when the PAN tool is armed. It does
@@ -2273,7 +2274,9 @@ const SVGAnnotationLayerBody = memo(({
         // A freehand Survey Marker: its box plus the stroke it was drawn with
         // (src/survey/markerShapes.js). A press that never moved draws
         // nothing — and, like the rectangle, picks the mark it landed on.
-        const markerBounds = buildStrokeMarkerBounds(points, { width: MARKER_STROKE_DEFAULT_WIDTH });
+        const markerBounds = state.passed === false
+          ? null // never passed the drag threshold: a tap
+          : buildStrokeMarkerBounds(points, { width: MARKER_STROKE_DEFAULT_WIDTH });
         if (markerBounds && typeof onSurveyMarkerCreated === 'function') {
           recordAnnotationCommit({
             surface: 'SVGAnnotationLayer',
@@ -2356,9 +2359,14 @@ const SVGAnnotationLayerBody = memo(({
   const [smartFillPending, setSmartFillPending] = useState(null);
   const smartFillAbortRef = useRef(null);
   useEffect(() => () => smartFillAbortRef.current?.abort?.(), []);
+  // A pending answer is dropped once the press no longer applies: another
+  // tool, Rectangle / Freehand picked, or this document's tab sent behind.
+  const smartFillLive = isSmartFillPressLive({ activeTool, markerDrawMode, isTabActive });
+  const smartFillLiveRef = useRef(smartFillLive);
+  smartFillLiveRef.current = smartFillLive;
   useEffect(() => {
-    if (activeTool !== 'survey-marker') smartFillAbortRef.current?.abort?.();
-  }, [activeTool]);
+    if (!smartFillLive) smartFillAbortRef.current?.abort?.();
+  }, [smartFillLive]);
   const startSmartFill = useCallback((point) => {
     smartFillAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -2373,7 +2381,7 @@ const SVGAnnotationLayerBody = memo(({
       pageCanvas,
       signal: controller?.signal || null,
     }).then((result) => {
-      if (controller?.signal?.aborted) return;
+      if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
       const markerBounds = result ? buildPolygonMarkerBounds(result) : null;
       if (markerBounds && typeof onSurveyMarkerCreated === 'function') {
         recordAnnotationCommit({
@@ -2488,7 +2496,8 @@ const SVGAnnotationLayerBody = memo(({
   // magnet grow (polyDraftHitRadii); the drawn chrome does not change. The
   // same coarse flag gives the committed polygon's vertex grabbers an
   // invisible finger-sized hit disc so "drag one corner" works by touch.
-  const [isCoarsePointer, setIsCoarsePointer] = useState(hasCoarsePointer);
+  const inputKind = useInputModality();
+  const isCoarsePointer = inputKind !== 'mouse';
   // UX 2026-09-16: the transparent band painted along a mark so it can be
   // picked by clicking NEAR its outline rather than exactly on it. 12 on a
   // mouse (unchanged), 24 on a finger — a fingertip covers roughly 9 mm, and
@@ -2501,15 +2510,7 @@ const SVGAnnotationLayerBody = memo(({
   // that stroke is drawn in — never widened by zoom or by an enlarged mark's
   // scale. Hover, click-select and the Pan / tool hit test
   // (annotationHitTest.js) all read these same elements, so they agree.
-  const markHitBand = (inkWidth, unitsPerPx = inverseScale) => getMarkHitBandWidth({ inkWidth, unitsPerPx, isCoarsePointer });
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const coarseQuery = window.matchMedia('(pointer: coarse)');
-    const update = () => setIsCoarsePointer(coarseQuery.matches);
-    update();
-    coarseQuery.addEventListener?.('change', update);
-    return () => coarseQuery.removeEventListener?.('change', update);
-  }, []);
+  const markHitBand = (inkWidth, unitsPerPx = inverseScale) => getMarkHitBandWidth({ inkWidth, unitsPerPx, inputKind });
   const polyDraftRadii = polyDraftHitRadii({ coarsePointer: isCoarsePointer });
   // Touch hit surfaces use the UNdampened inverse scale so they are truly
   // screen-constant (the drawn chrome above now is too). A sqrt dampening,
@@ -2651,9 +2652,15 @@ const SVGAnnotationLayerBody = memo(({
       }
       markAnnotationPreviewFrame(shapeCreation.gestureId, { action });
       if (isFreehand) {
+        // A freehand Survey Marker counts as drawn once it passes the shape
+        // drag threshold (set on the ref at once, so a release in the same
+        // task sees it, and on the state so the mirror keeps it).
+        const passedNow = Boolean(draft && draft.passed === false && draft.startClient
+          && hasPassedShapeDragThreshold(draft.startClient, { x: e.clientX, y: e.clientY }, draft.pointerType));
+        if (passedNow) shapeCreationRef.current = { ...draft, passed: true };
         appendCoalescedPagePoints(e);
         liveStrokeRef.current?.push(freehandPointsRef.current);
-        setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1 } : prev));
+        setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1, ...(passedNow ? { passed: true } : {}) } : prev));
       } else {
         const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
         setShapeCreation((prev) => (prev ? {
@@ -4283,7 +4290,8 @@ const SVGAnnotationLayerBody = memo(({
       startPoint,
       originalBounds,
     };
-    setSurveyMarkerPreviewBounds(null);
+    // dragMode: the marker's own drag is a selection gesture (rule 11).
+    setSurveyMarkerPreviewBounds({ annotationId, bounds: originalBounds, dragMode: 'move' });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
   }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick, isSurveyMarkerFamilyMember, selectedSurveyMarkerIds, familySelectionSize, startFamilyGroupMove, setSelectedSurveyMarkerId]);
 
@@ -4323,7 +4331,7 @@ const SVGAnnotationLayerBody = memo(({
         ? normalizeAngle(Math.atan2(startPoint.y - centerY, startPoint.x - centerX))
         : 0,
     };
-    setSurveyMarkerPreviewBounds({ annotationId: entry.surveyMarker.annotationId, bounds: originalBounds });
+    setSurveyMarkerPreviewBounds({ annotationId: entry.surveyMarker.annotationId, bounds: originalBounds, dragMode: surveyMarkerDragRef.current.mode });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
   }, [isSelectTool, normalizeSurveyMarkerBounds]);
 
@@ -4341,6 +4349,7 @@ const SVGAnnotationLayerBody = memo(({
     // other mark (snapGuides.js); Alt = free.
     const ob = drag.originalBounds;
     const snapFree = isSnapFreeModifier(e);
+    const annotationSnapFree = isAnnotationSnapFree(e);
     if (drag.snapTargets === undefined) {
       drag.snapTargets = collectSnapTargets({ markerIds: [drag.annotationId] });
     }
@@ -4353,7 +4362,7 @@ const SVGAnnotationLayerBody = memo(({
       };
     } else if (drag.mode === 'resize') {
       const upright = Math.abs(normalizeDegreesValue(ob.angle || 0)) < 0.01;
-      const snapped = upright && !snapFree && !e.shiftKey
+      const snapped = upright && !annotationSnapFree && !e.shiftKey
         ? snapResizePoint(point, drag.handleId, drag.snapTargets, snapThreshold(inverseScale))
         : null;
       nextBounds = resizeSurveyMarkerBoundsRotated(ob, drag.handleId, snapped || point);
@@ -4364,7 +4373,7 @@ const SVGAnnotationLayerBody = memo(({
       let mdx = dx;
       let mdy = dy;
       const box = boxWorldBounds({ left: ob.x, top: ob.y, width: ob.width, height: ob.height, angle: ob.angle || 0 });
-      if (box && !snapFree) {
+      if (box && !annotationSnapFree) {
         const frame = snapMoveFrame(box, dx, dy, drag.snapTargets, snapThreshold(inverseScale));
         mdx = frame.dx;
         mdy = frame.dy;
@@ -4389,7 +4398,7 @@ const SVGAnnotationLayerBody = memo(({
         });
       }
     } else {
-      setSurveyMarkerPreviewBounds({ annotationId: drag.annotationId, bounds: nextBounds });
+      setSurveyMarkerPreviewBounds({ annotationId: drag.annotationId, bounds: nextBounds, dragMode: drag.mode });
     }
     return true;
   }, [onUpdateSurveyMarkerBounds, pageNumber, resizeSurveyMarkerBoundsRotated, collectSnapTargets, setSnapGuides, inverseScale]);
@@ -4769,7 +4778,7 @@ const SVGAnnotationLayerBody = memo(({
     // full pad is the right target.
     const calloutHitPad = (isSelected && showHandles)
       ? resolveHandleHitPadPageSize({
-        isCoarsePointer: isCoarsePointer,
+        inputKind,
         inverseScale: clampInverseScale(inverseScale),
         minPadPageUnits: calloutHandleR * 2,
       })
@@ -5020,9 +5029,9 @@ const SVGAnnotationLayerBody = memo(({
         )}
       </g>
     );
-    // isCoarsePointer sizes the invisible grabber pads (grabber + 4 px mouse / 44 pt
-    // finger), so a pointer-kind change has to rebuild the hit targets.
-  }, [isCoarsePointer]);
+    // inputKind sizes the invisible grabber pads (grabber + 4 px mouse / 32 pen /
+    // 44 pt finger), so a pointer-kind change has to rebuild the hit targets.
+  }, [inputKind]);
 
   // ---------------------------------------------------------------------------
   // Filter and render callout annotations
@@ -6805,7 +6814,11 @@ const SVGAnnotationLayerBody = memo(({
         angle: entry.bbox.angle,
       }),
     };
-    setSurveyMarkerPreviewBounds(null);
+    setSurveyMarkerPreviewBounds({
+      annotationId: entry.surveyMarker.annotationId,
+      bounds: surveyMarkerDragRef.current.originalBounds,
+      dragMode: 'move',
+    });
     try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
   };
 
@@ -6889,7 +6902,8 @@ const SVGAnnotationLayerBody = memo(({
       data-pan-interactive={selectionGrabArmed ? 'true' : undefined}
       // Drawboard rule 11: handles hide while the selection is moved,
       // resized or rotated (styles.css), and come back on release.
-      data-selection-gesture={shouldHideSelectionChrome(interactionState) ? 'true' : undefined}
+      // A Survey Marker's own drag counts too (its preview carries dragMode).
+      data-selection-gesture={isSelectionGestureActive(interactionState, surveyMarkerPreviewBounds?.dragMode) ? 'true' : undefined}
       // Owner 2026-10-04: a tool that may not grab the pick presses through
       // its handles (styles.css).
       data-selection-chrome-inert={pageHasSelection && !isSelectTool && !selectionGrabbableByTool ? 'true' : undefined}
@@ -7082,8 +7096,12 @@ const SVGAnnotationLayerBody = memo(({
               });
               freehandPointsRef.current = [];
               appendCoalescedPagePoints(e.nativeEvent);
+              // A marker is an object, not ink (docs/GESTURE-CONTRACT.md D2):
+              // the press must travel past the shape drag threshold (10 px
+              // finger, 6 px mouse / pen) or it is a tap - no marker.
               setShapeCreation({
                 tool: 'survey-marker-freehand', gestureId, pointerId: e.pointerId, tick: 0, pressFallback,
+                startClient: { x: e.clientX, y: e.clientY }, pointerType: e.pointerType, passed: false,
               });
             } else if (point && markerDrawMode === 'smartFill') {
               startSmartFill(point);
@@ -7740,7 +7758,7 @@ const SVGAnnotationLayerBody = memo(({
           // pad and the visible dot because this grabber captures the pointer
           // on whichever element was pressed.
           const counterHitPad = resolveHandleHitPadPageSize({
-            isCoarsePointer,
+            inputKind,
             inverseScale: clampInverseScale(inverseScale),
             minPadPageUnits: handleR * 2,
           });
@@ -7765,14 +7783,9 @@ const SVGAnnotationLayerBody = memo(({
                   if (!drag || drag.annotationIndex !== selectedIndex) return;
                   const svgEl = svgRef.current;
                   if (!svgEl) return;
-                  // Convert client coords to viewBox (page-space) coords.
-                  // The SVG viewBox is "0 0 width height" with preserveAspectRatio:'none',
-                  // so a simple linear mapping works.
-                  const rect = svgEl.getBoundingClientRect();
-                  if (rect.width === 0 || rect.height === 0) return;
-                  const px = ((e.clientX - rect.left) / rect.width) * width;
-                  const py = ((e.clientY - rect.top) / rect.height) * height;
-                  const newAngleDeg = Math.atan2(py - drag.centerY, px - drag.centerX) * 180 / Math.PI;
+                  const point = screenToSVG(svgEl, e.clientX, e.clientY);
+                  if (!point) return;
+                  const newAngleDeg = Math.atan2(point.y - drag.centerY, point.x - drag.centerX) * 180 / Math.PI;
                   const preview = {
                     annotationIndex: selectedIndex,
                     pointerAngle: newAngleDeg,
@@ -8043,7 +8056,7 @@ const SVGAnnotationLayerBody = memo(({
           // grabber never fight over the same press.
           const lineHandleSpan = Math.hypot(ep.x2 - ep.x1, ep.y2 - ep.y1);
           const lineHitPad = resolveHandleHitPadPageSize({
-            isCoarsePointer,
+            inputKind,
             inverseScale: clampInverseScale(inverseScale),
             // Endpoint -> midpoint grabber is half the run, and that is the
             // closest neighbour either end has.
@@ -8065,8 +8078,7 @@ const SVGAnnotationLayerBody = memo(({
             />
           );
           // Phase 15 LINE-01 / ARROW-01 — midpoint curvature handle.
-          // Position: saved data.midpoint if curved (the bezier passes through
-          // it at t=0.5 by construction), geometric midpoint if straight.
+          // Position: the peak of the bend when curved, the chord centre when straight.
           // Offset by the same visual-drag transform (dx, dy) as the endpoints
           // so all three handles move together during a 'move' drag.
           const dataMidpoint = selectionObj.data?.midpoint;
@@ -8217,7 +8229,7 @@ const SVGAnnotationLayerBody = memo(({
             }, Infinity)
             : Infinity;
           const vTouchHitR = resolveHandleHitPadPageSize({
-            isCoarsePointer,
+            inputKind,
             inverseScale: clampInverseScale(inverseScale),
             neighbourSpacingPageUnits: Number.isFinite(vNeighbourSpacing) ? vNeighbourSpacing : undefined,
             minPadPageUnits: vHandleR * 2,
@@ -8261,6 +8273,17 @@ const SVGAnnotationLayerBody = memo(({
                   style={{ pointerEvents: 'none' }}
                 />
               )}
+              {/* Midsegment handles insert one point, then use the normal vertex drag. */}
+              {!modifierMoveActive && worldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? worldPoints.length : -1).map((wp, i) => {
+                const next = worldPoints[(i + 1) % worldPoints.length];
+                const x = (wp.x + next.x) / 2;
+                const y = (wp.y + next.y) / 2;
+                return <g key={`insert-vertex-${i}`} role="button" aria-label="Add vertex" data-add-vertex={i} onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, `insert-vertex-${i}`); }} style={{ cursor: 'crosshair', pointerEvents: 'auto' }}>
+                  <circle cx={x} cy={y} r={vTouchHitR || vHandleR * 2} fill="transparent" />
+                  <circle cx={x} cy={y} r={vHandleR * 0.75} fill={HANDLE_FILL} stroke={HANDLE_RING} strokeWidth={vHandleIs} />
+                  <path d={`M ${x - vHandleR * 0.35} ${y} H ${x + vHandleR * 0.35} M ${x} ${y - vHandleR * 0.35} V ${y + vHandleR * 0.35}`} stroke={HANDLE_RING} strokeWidth={vHandleIs} pointerEvents="none" />
+                </g>;
+              })}
               {/* w58: Cmd / Ctrl held -> corner grabbers hide (move instead). */}
               {!modifierMoveActive && worldPoints.map((wp, i) => (
                 <g key={`vertex-${i}`}>
@@ -8413,7 +8436,8 @@ const SVGAnnotationLayerBody = memo(({
         if (cloudChrome) overlayRotationCenter = cloudChrome.rotationCenter;
 
         return (
-          <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
+          <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform} data-selection-context-index={selectedIndex}>
+            <rect data-selection-context-hitbox="true" x={bbox.left} y={bbox.top} width={bbox.width} height={bbox.height} fill="none" pointerEvents="none" />
             <SVGSelectionOverlay
               key={`selection-${selectedIndex}`}
               bbox={bbox}

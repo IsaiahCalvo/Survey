@@ -55,7 +55,9 @@ test('hover and press are states.css section 5 values: 108% / 92%, 120ms / 80ms'
   assert.match(s5, /:hover > :not\(\[data-anchored-tooltip\]\) \{\s*scale: 1\.08;/);
   assert.match(s5, /:active > :not\(\[data-anchored-tooltip\]\) \{\s*scale: 0\.92;\s*transition-duration: 80ms;/);
   // ...and the section icons on the same numbers.
-  assert.match(s5, /\.section-icon-btn > svg \{\s*transition:\s*scale 120ms cubic-bezier\(0\.33, 1, 0\.68, 1\)/);
+  // The curve is the --ease-out motion token (the same cubic-bezier(0.33, 1, 0.68, 1)) since
+  // the 2026-10-13 motion tokens pass.
+  assert.match(s5, /\.section-icon-btn > svg \{\s*transition:\s*scale 120ms var\(--ease-out\)/);
   assert.match(s5, /\.section-icon-btn:not\(:disabled\):hover > svg \{\s*scale: 1\.08;/);
   assert.match(s5, /\.section-icon-btn:not\(:disabled\):active > svg \{\s*scale: 0\.92;\s*transition-duration: 80ms;/);
   // No separate 112% / 88% transform for them: both older glyph rules skip them.
