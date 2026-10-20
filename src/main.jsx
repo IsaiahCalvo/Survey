@@ -4,6 +4,7 @@ import './utils/blobArrayBuffer';
 import { sanitizeConsoleLogText, shouldCaptureConsoleLine } from './utils/consoleLogFilter';
 import { installSurveyAnalytics } from './utils/surveyAnalytics';
 import { installCrashLog, setCrashLogBuild } from './utils/crashLog';
+import { agentLinkResumeUrl } from './home/agentLinkPending';
 
 installSurveyAnalytics();
 // WebMCP agent tools: loaded only in browsers that offer them.
@@ -532,8 +533,12 @@ if (!devRouteActive && isResetPasswordRoute) {
 }
 
 // `/agent-link`: approve an AI agent's sign-in code (see public/auth.md).
+// Also shown in place (no redirect, so the sign-in data in the URL is used
+// once) when a sign-up email or Google sign-in returns to the front page
+// while an agent code is waiting.
 const isAgentLinkRoute = typeof window !== 'undefined'
-  && /^\/agent-link(?:\/|$)/.test(window.location.pathname || '');
+  && (/^\/agent-link(?:\/|$)/.test(window.location.pathname || '')
+    || (() => { try { return Boolean(agentLinkResumeUrl(window.location, window.localStorage)); } catch { return false; } })());
 
 if (!devRouteActive && isAgentLinkRoute) {
   devRouteActive = true;

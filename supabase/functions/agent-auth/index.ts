@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
       device_code: deviceCode,
       user_code: userCode,
       verification_uri: `${siteUrl()}/agent-link`,
-      verification_uri_complete: `${siteUrl()}/agent-link?code=${userCode}`,
+      verification_uri_complete: `${siteUrl()}/agent-link?user_code=${userCode}`,
       expires_in: 600,
       interval: POLL_INTERVAL_SECONDS,
     });

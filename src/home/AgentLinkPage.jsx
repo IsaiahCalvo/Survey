@@ -6,15 +6,24 @@ import { useCallback, useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { buildAppDestination } from '../utils/accountPlatform';
+import { AuthModal } from '../components/AuthModal';
 import { C } from '../uiPalette';
+import { readPendingAgentCode, savePendingAgentCode, clearPendingAgentCode } from './agentLinkPending';
 
 export function normalizeAgentCode(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 }
 
+// `user_code` is ours. A bare `code` is only ours when it looks like one: on
+// the way back from sign-in, Supabase also uses `code` for its own exchange.
 function codeFromUrl() {
   if (typeof window === 'undefined') return '';
-  return normalizeAgentCode(new URLSearchParams(window.location.search).get('code'));
+  const params = new URLSearchParams(window.location.search);
+  const own = normalizeAgentCode(params.get('user_code'));
+  if (own) return own;
+  const bare = params.get('code') || '';
+  if (/^[A-Za-z0-9]{8}$/.test(bare)) return normalizeAgentCode(bare);
+  return readPendingAgentCode(window.localStorage);
 }
 
 const card = {
@@ -33,6 +42,13 @@ export default function AgentLinkPage() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [links, setLinks] = useState([]);
+  const [authOpen, setAuthOpen] = useState(true);
+
+  // Keep the code through sign-up's email check or a Google sign-in, which
+  // come back to the app's front page (see main.jsx).
+  useEffect(() => {
+    try { if (code && !user) savePendingAgentCode(window.localStorage, code); } catch { /* storage blocked */ }
+  }, [code, user]);
 
   const loadLinks = useCallback(async () => {
     if (!user) return;
@@ -52,7 +68,12 @@ export default function AgentLinkPage() {
     setBusy(false);
     if (error) setMessage('Could not check that code. Try again.');
     else if (!data) setMessage('That code is wrong, used, or more than 10 minutes old. Ask the agent for a new one.');
-    else { setMessage(`Done. "${data}" can now read your Survey data for one hour.`); setCode(''); loadLinks(); }
+    else {
+      setMessage(`Done. "${data}" can now read your Survey data for one hour.`);
+      setCode('');
+      try { clearPendingAgentCode(window.localStorage); } catch { /* storage blocked */ }
+      loadLinks();
+    }
   };
 
   const revoke = async (id) => {
@@ -63,9 +84,13 @@ export default function AgentLinkPage() {
   if (!auth.loading && !user) {
     return (
       <div style={card}>
-        <h2 style={{ marginTop: 0 }}>Sign in to let an agent in</h2>
-        <p style={{ margin: '8px 0 16px', color: C.inkSoft }}>Sign in to Survey, then open this link again.</p>
-        <button style={btn} onClick={() => window.location.assign(buildAppDestination({ params: { signIn: '1' } }))}>Sign in</button>
+        <h2 style={{ marginTop: 0 }}>Sign in or create a free account</h2>
+        <p style={{ margin: '8px 0 16px', color: C.inkSoft }}>
+          An AI agent asked to use Survey for you. The account is yours: it uses your email, starts on the free plan, and only you can pay or change it.
+          {code ? ` After you sign in, you'll press Allow for code ${code}.` : ''}
+        </p>
+        <button style={btn} onClick={() => setAuthOpen(true)}>Sign in or sign up</button>
+        <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
       </div>
     );
   }

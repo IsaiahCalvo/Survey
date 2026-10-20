@@ -35,4 +35,5 @@ test('agent-auth stores only hashes and is wired to deploy', () => {
   assert.match(read('.github/workflows/deploy-production.yml'), /\n\s+agent-auth\n/);
   assert.match(read('src/main.jsx'), /\/agent-link/);
   assert.match(read('public/auth.md'), /functions\/v1\/agent-auth/);
+  assert.match(read('supabase/functions/agent-auth/index.ts'), /agent-link\?user_code=/);
 });
