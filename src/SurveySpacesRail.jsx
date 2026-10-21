@@ -1517,6 +1517,11 @@ const SurveySpacesRail = ({
       || null;
     return { moduleId, category };
   };
+  const documentForThisRail = () => {
+    const doc = activeAgentDocument();
+    if (!doc || (doc.documentId || null) !== (pdfFile?.id || null)) return null;
+    return doc;
+  };
   {
     surveyAgentBridge.current = {
       template: showSurveyPanel ? selectedTemplate || null : null,
@@ -1566,10 +1571,11 @@ const SurveySpacesRail = ({
         setExpandedSurveyMarkers({ [annotationId]: true });
         if (marker.pageNumber && marker.bounds) handleLocateItemOnPDF({ ...marker, id: annotationId });
       },
-      // Phase 2: tags on the plan, and adding them as items (PDFViewer's handle).
-      findOnPlan: (text) => findTagInDocument(activeAgentDocument(), text),
-      getPageSize: (page) => activeAgentDocument()?.getPageSize?.(page) || null,
-      createItem: (spec) => activeAgentDocument()?.createSurveyMarker?.(spec) || null,
+      // Phase 2: tags on the plan, and adding them as items. Use this rail's
+      // document only — the active viewer handle can be another tab.
+      findOnPlan: (text) => findTagInDocument(documentForThisRail(), text),
+      getPageSize: (page) => documentForThisRail()?.getPageSize?.(page) || null,
+      createItem: (spec) => documentForThisRail()?.createSurveyMarker?.(spec) || null,
       deleteMarker: (annotationId) => handleDeleteSurveyMarkerItem(annotationId),
     };
   }

@@ -13,6 +13,22 @@ export { normalizeItemName, scoreItemName };
 // The panel fills this while Survey mode is open (SurveySpacesRail).
 export const surveyAgentBridge = { current: null };
 
+// find_on_plan ids live per document, not per toolbox: the chat builds a new
+// toolbox on every send, and WebMCP keeps one toolbox after the open PDF
+// changes. Keying by document lets a later "yes" reuse plan-1, and stops an
+// old match placing a marker on another plan.
+const planMatchesByDocument = new Map();
+
+function planMatchesFor(documentId) {
+  const key = documentId || '';
+  let store = planMatchesByDocument.get(key);
+  if (!store) {
+    store = new Map();
+    planMatchesByDocument.set(key, store);
+  }
+  return store;
+}
+
 function categoryIndex(template) {
   const byKey = new Map();
   const list = [];
@@ -87,9 +103,6 @@ export function createSurveyAgentToolbox({
     if (b.canEdit === false) throw new ToolError('This person can only view this document, so nothing can be changed.');
   };
   const nameOf = (marker) => marker?.name || 'Unnamed item';
-  // Plan matches from find_on_plan in this chat, so create_item takes an id
-  // instead of coordinates the model could make up.
-  const planMatches = new Map();
 
   const tools = {
     get_survey_context() {
@@ -259,6 +272,7 @@ export function createSurveyAgentToolbox({
       if (typeof b.findOnPlan !== 'function') throw new ToolError('The plan cannot be searched here.');
       const found = await b.findOnPlan(query);
       const markers = Object.entries(b.markers || {});
+      const planMatches = planMatchesFor(b.documentId);
       const matches = (found?.matches || []).map((m) => {
         const id = `plan-${planMatches.size + 1}`;
         planMatches.set(id, m);
@@ -288,7 +302,7 @@ export function createSurveyAgentToolbox({
       if (!entry) throw new ToolError(`No category with id ${categoryId}. Use get_survey_context.`);
       const entity = entityId ? entitiesOf(b.template).find((e) => e.id === entityId) : null;
       if (entityId && !entity) throw new ToolError(`No entity with id ${entityId}.`);
-      const match = planMatches.get(matchId);
+      const match = planMatchesFor(b.documentId).get(matchId);
       if (!match) throw new ToolError(`No plan match ${matchId}. Use find_on_plan first.`);
       const same = Object.entries(b.markers || {}).find(([, m]) => m?.categoryId === categoryId
         && normalizeItemName(m.name) === normalizeItemName(itemName));

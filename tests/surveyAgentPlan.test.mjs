@@ -172,3 +172,24 @@ test('a viewer cannot add items', async () => {
   assert.equal((await box.run('create_item', { name: 'D-119', category_id: 'cat-door', plan_match_id: matches[0].id, entity_id: null })).isError, true);
   assert.equal(created.length, 0);
 });
+
+test('a later toolbox on the same document can create from a prior plan match', async () => {
+  const { bridge, created } = planBridge({ documentId: 'doc-match-lifetime' });
+  const first = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const { matches } = JSON.parse((await first.run('find_on_plan', { text: 'D-119' })).content);
+  const later = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const made = await later.run('create_item', { name: 'D-119', category_id: 'cat-door', plan_match_id: matches[0].id, entity_id: null });
+  assert.equal(made.isError, false);
+  assert.equal(created.length, 1);
+});
+
+test('a plan match from another document cannot place an item', async () => {
+  const { bridge, created } = planBridge({ documentId: 'doc-match-a' });
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const { matches } = JSON.parse((await box.run('find_on_plan', { text: 'D-119' })).content);
+  bridge.documentId = 'doc-match-b';
+  const made = await box.run('create_item', { name: 'D-119', category_id: 'cat-door', plan_match_id: matches[0].id, entity_id: null });
+  assert.equal(made.isError, true);
+  assert.match(made.content, /No plan match/);
+  assert.equal(created.length, 0);
+});
