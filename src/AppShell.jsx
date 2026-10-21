@@ -4699,7 +4699,10 @@ export default function App({ devPreviewReturnTab = null }) {
                   type="button"
                   onClick={() => setIsEditingRailZoom(true)}
                   onDoubleClick={() => setIsEditingRailZoom(true)}
-                  aria-label="Edit zoom percentage"
+                  data-rail-zoom-button
+                  /* Named outright: its text also holds the hidden width
+                     sizer, which screen readers would read as "4000%101%". */
+                  aria-label={`Zoom ${api.zoomInputValue || Math.round((api.manualZoomScale || 1) * 100)}%`}
                   {...chromeTip('Zoom level — click to type a percentage', 'left')}
                   /* UX 2026-09-22 (desktop critic round): a value you can click
                      into is a FIELD, so it is the chrome's field height (20)

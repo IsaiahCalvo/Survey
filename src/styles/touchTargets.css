@@ -150,6 +150,32 @@
     position: absolute;
     inset: calc(50% - 16px);
   }
+
+  /* Touch audit 2026-10-21: the last targets under 36px. */
+  /* Tab close X: 44px rather than the tab-height 32. */
+  .tab-bar button[aria-label^='Close ']::after {
+    inset: calc(50% - 22px);
+  }
+  /* Export's chevron sits 10px from the window edge, right of Export:
+     out to the edge, and 10px toward Export (Export keeps 36). */
+  :is(#chrome-top-host, #chrome-sub-toolbar-host) .chrome-control.chrome-control[data-export-menu-trigger]::after {
+    left: -10px;
+    right: -10px;
+  }
+  /* The Survey panel's close X (title to its left): 37px wide. */
+  .survey-rail__head .section-icon-btn.survey-rail__close::after {
+    left: -8px;
+  }
+  /* Survey rail entity chips and the marker entity picker: 22px drawn,
+     36px to a finger. */
+  .survey-rail :is(.survey-rail__entity-btn, .survey-marker-entity-trigger) {
+    position: relative;
+  }
+  .survey-rail :is(.survey-rail__entity-btn, .survey-marker-entity-trigger)::after {
+    content: '';
+    position: absolute;
+    inset: -7px 0;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -187,6 +213,12 @@
     box-sizing: border-box;
   }
 
+  /* Home sidebar rows (Documents, Projects ...): 29px on a 2px gap leaves
+     no room for a zone, so the rows themselves grow. */
+  .survey-hub .nav button {
+    min-height: 44px;
+  }
+
   /* The colour discs' group takes the roomier colour gutter. */
   :is(#chrome-top-host, #chrome-sub-toolbar-host) .quick-style--colours {
     gap: var(--chrome-colour-gap);
@@ -215,3 +247,4 @@
   align-items: center;
   box-sizing: border-box;
 }
+
