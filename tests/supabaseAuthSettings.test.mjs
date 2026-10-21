@@ -31,6 +31,13 @@ test('changes nothing once applied, and never loosens a tighter rate limit', () 
   assert.deepEqual(planAuthPatch(done), {});
 });
 
+test('never weakens a stricter password rule already in place', () => {
+  const symbols = 'abcdefghijklmnopqrstuvwxyz:ABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789:!@#$%^&*()_+-=[]{};\'\\\\:"|<>?,./`~';
+  const patch = planAuthPatch({ password_min_length: 12, password_required_characters: symbols });
+  assert.equal(patch.password_min_length, undefined);
+  assert.equal(patch.password_required_characters, undefined);
+});
+
 test('prints only the watched settings, never secrets', () => {
   const shown = pick({ password_min_length: 8, smtp_pass: 'secret', external_google_secret: 'x' });
   assert.equal(shown.password_min_length, 8);
