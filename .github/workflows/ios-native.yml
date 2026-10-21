@@ -214,6 +214,8 @@ jobs:
           script: |
             mkdir -p "$OUT"
             adb reverse tcp:54421 tcp:54421
+            # A slow CI emulator pops "Pixel Launcher isn't responding" over the app.
+            adb shell settings put global hide_error_dialogs 1
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
             maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml
       - uses: actions/upload-artifact@v4

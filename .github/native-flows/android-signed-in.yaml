@@ -6,9 +6,15 @@ name: android-signed-in
 ---
 - launchApp:
     clearState: true
+- tapOn:
+    text: "Wait"
+    optional: true
 - extendedWaitUntil:
     visible: "Welcome back"
     timeout: 90000
+- tapOn:
+    text: "Wait"
+    optional: true
 - takeScreenshot: 01-sign-in
 - tapOn: "you@example.com"
 - inputText: "e2e-owner@example.com"
