@@ -19,7 +19,8 @@ import { subscribeLibraryChange, subscribeTemplatesChange } from './libraryChang
 import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
-import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload } from '../services/pdfByteCache.js';
+import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize } from '../services/pdfByteCache.js';
+import { STREAM_SIGNED_URL_SECONDS } from '../services/cloudPdfStream.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
 
 // The device PDF cache follows the signed-in account: emptied on sign-out,
@@ -320,7 +321,7 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
       readLibraryRows(ownedQuery),
       readLibraryRows(() => supabase
         .from('document_collaborators')
-        .select('document_id')
+        .select('document_id, role')
         .eq('user_id', user.id)
         .eq('status', 'active'), { cursorColumn: 'document_id' }),
     ]);
@@ -351,7 +352,14 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
           return collaboratorQuery;
         });
         if (collaboratorResult.error) throw collaboratorResult.error;
-        collaboratorDocuments = collaboratorResult.data || [];
+        // Tag shared rows with the caller's role so the library can grey out
+        // owner-only actions (rename, delete, share) instead of letting them
+        // fail with a raw database error.
+        const roleById = new Map((collaboratorRows.data || []).map((row) => [row.document_id, row.role]));
+        collaboratorDocuments = (collaboratorResult.data || []).map((doc) => ({
+          ...doc,
+          my_role: roleById.get(doc.id) || null,
+        }));
       }
     } else {
       console.warn('Error fetching collaborator documents:', collaboratorRows.error);
@@ -903,6 +911,42 @@ export const useStorage = () => {
     }));
   }, [user?.id]);
 
+  // Open speed: a source pdf.js can stream with range requests
+  // (services/cloudPdfStream.js). Same per-open access check as
+  // downloadDocument; a cached copy is returned as bytes (instant), otherwise
+  // a short-lived signed URL plus onBytes, which keeps the streamed file in
+  // the device cache exactly as a download would. null = use downloadDocument.
+  const openDocumentStream = useCallback(async (filePath) => {
+    if (!isSupabaseAvailable()) return null;
+    const actorId = user?.id ?? null;
+    const cache = pdfByteCache();
+    const since = cache?.generation;
+    const epoch = cache?.pathEpoch?.(filePath);
+    const info = await fetchStoredPdfInfo(filePath);
+    if (info?.error || !info?.data) return null;
+    const stamp = pdfCacheStamp(info.data);
+    const key = pdfCacheKey(actorId, filePath);
+    if (stamp && key && cache && !cache.isDisabled) {
+      const cached = await cache.get(key, stamp);
+      if (cached) return { blob: new Blob([cached], { type: 'application/pdf' }) };
+    }
+    const { data: signed, error } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS);
+    if (error || !signed?.signedUrl) return null;
+    return {
+      url: signed.signedUrl,
+      onBytes: (bytes) => {
+        if (!stamp || !key || !cache || cache.isDisabled) return;
+        if (bytes?.byteLength !== pdfCacheInfoSize(info.data)) return;
+        const buffer = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+          ? bytes.buffer
+          : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        void cache.put({ actorId, path: filePath, stamp, bytes: buffer, since, epoch }).catch(() => {});
+      },
+    };
+  }, [user?.id]);
+
   const deleteDocumentFile = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase not available');
@@ -922,6 +966,7 @@ export const useStorage = () => {
     replaceDocument,
     uploadDataFile,
     downloadDocument,
+    openDocumentStream,
     deleteDocumentFile,
   };
 };

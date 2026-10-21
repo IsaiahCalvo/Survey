@@ -63,12 +63,14 @@ const THING = {
   document_annotations: 'markup', survey_items: 'survey item', documents: 'document', projects: 'project',
   spaces: 'space', templates: 'template', kits: 'kit', document_collaborators: 'sharing', project_collaborators: 'sharing',
   template_collaborators: 'sharing', document_invites: 'invite', project_invites: 'invite', template_invites: 'invite',
-  excel_schema_mapping: 'Excel mapping',
+  excel_schema_mapping: 'Excel mapping', 'send-email': 'email sending', 'send-invite-email': 'invite email',
+  'send-profile-change-notification': 'profile change email', 'excel-apply-changeset': 'Excel sync',
 };
-const DID = { insert: 'added', update: 'changed', delete: 'removed' };
+const DID = { insert: 'added', update: 'changed', delete: 'removed', call: 'used' };
 const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '');
 export function describeActivity(row) {
   const thing = THING[row.table_name] || row.table_name;
+  if (row.action === 'call') return `used ${thing}${row.row_label ? ` (${row.row_label})` : ''}`;
   return `${DID[row.action] || row.action} ${thing}${row.row_label ? ` "${row.row_label}"` : ''}`;
 }
 

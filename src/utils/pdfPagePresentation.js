@@ -1,6 +1,7 @@
 import { normalizePagePresentations } from './pagePresentation.js';
 const TAG = 'SurveyPagePresentation';
 const markerBytes = [...`/${TAG}`].map(character => character.charCodeAt(0));
+export const pdfBytesHavePresentationTag = bytes => hasTag(bytes);
 const hasTag = bytes => {
   const array = new Uint8Array(bytes.buffer || bytes, bytes.byteOffset || 0, bytes.byteLength);
   for (let index = array.indexOf(markerBytes[0]); index >= 0 && index <= array.length - markerBytes.length; index = array.indexOf(markerBytes[0], index + 1)) {
