@@ -97,6 +97,16 @@ test('editor sees the sample document', async ({ page }) => {
 - Need another account or document? Add it to `accounts.mjs` and to `seed()` in
   `scripts/e2e-local-supabase.mjs`, keeping it idempotent (fixed ids, upserts).
 
+## Database load test
+
+With the stack up, `node scripts/db-load-test.mjs` signs in 200 throwaway
+accounts (each with a project, a document and 300 markups), runs them in
+steps of 10, 25, 50, 100 and 200 at once with no pause, writes the report to
+`.e2e/db-load-test.md`, and deletes the accounts. Tune with `LOAD_STAGES`,
+`LOAD_STAGE_SECONDS` and `LOAD_SEED_MARKUPS`. It refuses any host but
+127.0.0.1. The stack's per-IP sign-in limit is raised for this, since every
+test client shares one IP.
+
 ## Tear down
 
 ```bash
