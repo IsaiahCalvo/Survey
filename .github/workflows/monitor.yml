@@ -4,8 +4,9 @@ name: Monitor production
 # something is wrong, so the owner gets one email per problem:
 #   - uptime: every 15 minutes, the site, release.json and Supabase Auth must
 #     answer. Three failed tries in a row count as down.
-#   - deploy: when "Deploy production" fails, or when it succeeds but the
-#     signed-out smoke test (scripts/prod-smoke.mjs) fails against the live site.
+#   - deploy: when "Deploy production" fails or times out, or when it succeeds
+#     but the signed-out smoke test (scripts/prod-smoke.mjs) fails against the
+#     live site.
 # Each kind of problem keeps one open issue; repeats become comments on it, and
 # the issue closes itself on the next healthy check. Runbook: docs/ROLLBACK.md.
 
@@ -33,7 +34,7 @@ jobs:
   uptime:
     if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Check the site, release.json and Supabase Auth
         id: check
@@ -46,7 +47,7 @@ jobs:
             for try in 1 2 3; do
               code="$(curl --silent --output /dev/null --max-time 20 --write-out '%{http_code}' ${3:+-H "$3"} "$2" || true)"
               [ "$code" = 200 ] && { echo "$1 ok"; return 0; }
-              sleep 20
+              [ "$try" -lt 3 ] && sleep 20
             done
             echo "- $1 answered $code three times ($2)" >> problems.md
           }
@@ -119,7 +120,7 @@ jobs:
           gh label create alert --color B60205 --description "Production monitor" 2>/dev/null || true
           open="$(gh issue list --label alert --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
           case "$DEPLOY_RESULT/$SMOKE" in
-            failure/*) problem="The deploy of \`$SHA\` failed: $DEPLOY_URL" ;;
+            failure/*|timed_out/*) problem="The deploy of \`$SHA\` failed: $DEPLOY_URL" ;;
             success/failure) problem="\`$SHA\` deployed, but the smoke test of surveytool.app failed:
           \`\`\`
           $(tail -n 30 smoke.log 2>/dev/null)

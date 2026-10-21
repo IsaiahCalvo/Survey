@@ -5,9 +5,10 @@
 //   node scripts/prod-smoke.mjs [--expect-commit <sha>] [--base https://surveytool.app]
 //
 // Signed out only: it never signs in, never types, never clicks anything that
-// writes. It checks that each page answers 200, the app actually draws (the
-// React root fills in), no uncaught error fires while it loads, and, with
-// --expect-commit, that release.json names the revision that was just shipped.
+// writes. It checks that each page answers 200, the page actually draws (the
+// React root fills in, or the static marketing #main is present), no uncaught
+// error fires while it loads, and, with --expect-commit, that release.json
+// names the revision that was just shipped.
 // Exit 0 = healthy, 1 = a check failed (the reasons are printed).
 
 import { chromium } from '@playwright/test';
@@ -37,6 +38,14 @@ async function checkRelease() {
 
 async function checkPage(browser, path) {
   const context = await browser.newContext();
+  // surveytool.app sends a first-time signed-out visit to `/` to the static
+  // marketing page. Mark the app as seen so `/` still exercises the React
+  // shell; `/welcome` is the marketing check (no #root on that HTML).
+  if (path === '/') {
+    await context.addInitScript(() => {
+      try { localStorage.setItem('survey.seenApp', '1'); } catch (e) {}
+    });
+  }
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -47,10 +56,11 @@ async function checkPage(browser, path) {
       return;
     }
     await page.waitForFunction(
-      () => (document.getElementById('root')?.childElementCount || 0) > 0,
+      () => (document.getElementById('root')?.childElementCount || 0) > 0
+        || !!document.getElementById('main'),
       null,
       { timeout: DRAW_TIMEOUT_MS },
-    ).catch(() => failures.push(`${path} never drew (empty #root after ${DRAW_TIMEOUT_MS / 1000}s)`));
+    ).catch(() => failures.push(`${path} never drew after ${DRAW_TIMEOUT_MS / 1000}s`));
     // Give late scripts a moment to throw before judging the page clean.
     await page.waitForTimeout(3000);
     for (const message of errors) failures.push(`${path} threw: ${message}`);
