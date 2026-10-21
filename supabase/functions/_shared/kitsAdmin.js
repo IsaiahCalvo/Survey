@@ -10,6 +10,15 @@
  *   { action: 'unassign', email, kitId }
  */
 import { publishProblems } from './kitShape.js';
+import { parseBody, s } from './inputSchema.js';
+
+const BODY_SCHEMA = {
+  action: s.enum(['list', 'publish', 'assign', 'unassign']),
+  kit: s.record({ maxBytes: 256 * 1024, optional: true }),
+  email: s.string({ max: 320, optional: true }),
+  kitId: s.string({ max: 100, optional: true }),
+  version: s.string({ max: 50, optional: true }),
+};
 
 const fail = (status, error) => ({ status, body: { error } });
 const ok = (body) => ({ status: 200, body });
@@ -30,11 +39,14 @@ async function userIdByEmail(service, email) {
   return (await allUsers(service)).find((u) => (u.email || '').toLowerCase() === wanted)?.id || null;
 }
 
-export async function handleKitsAdmin(payload, { userClient, service }) {
+export async function handleKitsAdmin(rawBody, { userClient, service }) {
   const { data: isAdmin, error: adminError } = await userClient.rpc('is_feature_flag_admin');
   if (adminError || isAdmin !== true) return fail(403, 'This is only for the people who run Survey.');
 
-  const action = payload?.action;
+  const parsed = parseBody(BODY_SCHEMA, rawBody ?? {});
+  if (!parsed.ok) return fail(400, parsed.error);
+  const payload = parsed.value;
+  const { action } = payload;
   if (action === 'list') {
     const [{ data: kits, error: e1 }, { data: rows, error: e2 }] = await Promise.all([
       service.from('kits').select('id, version, kind, label, created_at').order('id').order('created_at'),
@@ -75,3 +87,4 @@ export async function handleKitsAdmin(payload, { userClient, service }) {
 
   return fail(400, 'Unknown action.');
 }
+

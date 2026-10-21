@@ -3,6 +3,7 @@
 // database with the caller's own token); only then does it use the service role.
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { handleKitsAdmin } from '../_shared/kitsAdmin.js';
+import { readJsonBody } from '../_shared/inputSchema.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,8 +28,7 @@ Deno.serve(async (req) => {
   const { data: { user }, error } = await userClient.auth.getUser(authHeader.replace(/^Bearer\s+/i, ''));
   if (error || !user) return json({ error: 'Unauthorized' }, 401);
 
-  let payload: unknown = null;
-  try { payload = await req.json(); } catch { /* handled as unknown action */ }
+  const payload = await readJsonBody(req);
   const service = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '', { auth: { persistSession: false } });
   try {
     const { status, body } = await handleKitsAdmin(payload, { userClient, service });
