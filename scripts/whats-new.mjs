@@ -4,6 +4,7 @@
 // Work still behind a feature flag stays off this list until it is on for all.
 export const WHATS_NEW = [
   { date: '2026-10-21', items: [
+    'Free PDF tools: 17 more, including OCR (make a scan searchable), compare two PDFs, repair, extract images, grayscale, booklet and pages per sheet. Many tools now take several files at once and give back one ZIP. The tools page has a search box.',
     'A PDF you just uploaded on a phone now opens straight away, without a "Couldn\'t open this PDF" screen.',
     'On small phones, the Survey Marker shape menu (Rectangle, Freehand, Smart fill) can be tapped again, and messages no longer cover Done or Pan.',
     'Tapping away the Smart fill "Check it, then Apply" message now also clears the blue preview outline.',

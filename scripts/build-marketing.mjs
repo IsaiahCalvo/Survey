@@ -102,6 +102,16 @@ const MORE = [
   ['Share with your team', 'Invite viewers and editors to a project.'],
 ];
 
+// Free PDF tools called out on /features.
+const FREE_TOOL_PICKS = [
+  ['ocr-pdf', 'Make scans searchable', 'OCR reads a scanned drawing or letter so you can search it and copy the words.'],
+  ['compare-pdf', 'Compare two PDFs', 'See what changed between two versions, with changed words marked side by side.'],
+  ['merge-pdf', 'Several files at once', 'Add a stack of PDFs to tools like compress, OCR or page numbers and get one ZIP back.'],
+  ['compress-pdf', 'Shrink big sets', 'Make a heavy drawing set small enough to email.'],
+  ['sign-pdf', 'Sign and lock', 'Draw or type a signature, then add a password.'],
+  ['word-to-pdf', 'Word and images to PDF', 'Turn a Word file, photos or a TIFF scan into a PDF.'],
+];
+
 const PLANS = [
   { name: 'Free', price: '$0', per: '/month', note: 'For trying Survey on one project', cta: 'Start free', items: ['1 project', '5 documents', '100MB storage', 'Markup and count tools', 'Works on every device'] },
   { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', cta: 'Start free, upgrade in the app', best: true, items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Survey tools, templates and regions', 'Excel export', 'OneDrive'] },
@@ -299,6 +309,11 @@ ${TOOLS.map((t, i) => `<section class="sec feat${i % 2 ? ' flip' : ''}" id="${t.
 <section class="sec"><div class="wrap">
   <div class="head"><h2>And the rest</h2></div>
   <div class="grid6">${MORE.map(([h, p]) => `<div><h3>${h}</h3><p>${p}</p></div>`).join('')}</div>
+</div></section>
+<section class="sec" id="free-pdf-tools"><div class="wrap">
+  <div class="head"><h2>Free PDF tools, no sign-up</h2><p>${PDF_TOOLS.length} tools that run in your browser. Your files never leave your device.</p></div>
+  <div class="grid6">${FREE_TOOL_PICKS.map(([id, h, p]) => `<div><h3><a href="/tools/${id}">${h}</a></h3><p>${p}</p></div>`).join('')}</div>
+  <p class="more-link"><a href="/tools">All free PDF tools</a></p>
 </div></section>
 ${cta('Try every tool on your own drawings')}`,
 });
@@ -517,7 +532,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [FAQ](${ORIGIN}/faq): common questions
 ${USES.map((u) => `- [${u.name}](${ORIGIN}/use-cases/${u.slug}): ${u.desc}`).join('\n')}
 ${COMPARE.map((c) => `- [Survey vs ${c.them}](${ORIGIN}/compare/${c.slug}): ${c.desc}`).join('\n')}
-- [Free PDF tools](${ORIGIN}/tools): merge, split, compress, rotate and convert PDFs in the browser; no sign-in, files never leave the device
+- [Free PDF tools](${ORIGIN}/tools): ${PDF_TOOLS.length} tools to merge, split, compress, OCR scans, compare two PDFs, sign, lock and convert PDFs in the browser, several files at once; no sign-in, files never leave the device
 ${PDF_TOOLS.map((t) => `- [${t.name}](${ORIGIN}/tools/${t.id}): ${t.short}`).join('\n')}
 
 ## Optional

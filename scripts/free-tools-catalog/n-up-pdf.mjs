@@ -1,7 +1,7 @@
 import { PRIVATE, FREE, LIMIT } from '../free-tools-faq.mjs';
 
 export default {
-  id: 'n-up-pdf', group: 'pages', name: 'Pages per sheet', icon: 'nup',
+  id: 'n-up-pdf', group: 'layout', name: 'Pages per sheet', icon: 'nup',
   iconSvg: '<rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M12 3v18M3 12h18"/>',
   short: 'Put 2, 4, 6 or 9 pages on one sheet.',
   title: 'Put several PDF pages on one sheet free | Survey',

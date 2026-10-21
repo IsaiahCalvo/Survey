@@ -1,7 +1,7 @@
 import { PRIVATE, FREE, LIMIT } from '../free-tools-faq.mjs';
 
 export default {
-  id: 'repair-pdf', group: 'edit', name: 'Repair PDF', icon: 'repair',
+  id: 'repair-pdf', group: 'fix', name: 'Repair PDF', icon: 'repair',
   // A wrench over a page.
   iconSvg: '<path d="M14 3H7a1.5 1.5 0 0 0-1.5 1.5v15A1.5 1.5 0 0 0 7 21h4"/><path d="M14 3l4.5 4.5V10"/><path d="M20.5 14.5a3 3 0 0 1-4 2.8L13.5 20.3a1.1 1.1 0 0 1-1.6-1.6l3-3a3 3 0 0 1 3.6-4l-1.8 1.8.4 1.4 1.4.4z"/>',
   short: 'Fix a PDF that won\'t open or shows errors.',

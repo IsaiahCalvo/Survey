@@ -1,7 +1,7 @@
 import { PRIVATE, FREE, LIMIT } from '../free-tools-faq.mjs';
 
 export default {
-  id: 'booklet-pdf', group: 'pages', name: 'Make a booklet', icon: 'booklet',
+  id: 'booklet-pdf', group: 'layout', name: 'Make a booklet', icon: 'booklet',
   iconSvg: '<path d="M12 6c-2-1.5-5-2-9-2v14c4 0 7 .5 9 2 2-1.5 5-2 9-2V4c-4 0-7 .5-9 2z"/><path d="M12 6v14"/>',
   short: 'Print a PDF as a folded, stapled booklet.',
   title: 'Make a booklet from a PDF free | Survey',
