@@ -34,24 +34,26 @@ migration that was already applied makes `supabase db push` fail on the next
 deploy ("Remote migration versions not found"). In that case keep the file,
 and revert only the app code.
 
-## 3. The site is down right now: Vercel instant rollback
+## 3. The site is down right now: roll back the web app
 
 When there is no time for CI (about 10 minutes), point surveytool.app back at
-the last good deployment:
+the last good deployment. Claude can do this alone:
 
-- Vercel dashboard → project → **Deployments**, pick the last good
-  production deployment, then **Instant Rollback**. Or with a signed-in CLI:
-  `vercel rollback <deployment-url> --scope team_uLSMMTmD4LhtDBm9qJ8DV59v`.
-- This takes seconds and touches only the web files. The database and
-  Supabase functions stay as they are.
-- After a rollback, Vercel stops moving surveytool.app to new deployments by
-  itself. Once the fix has merged and deployed, use **Undo Rollback** or
-  `vercel promote <good-deployment-url>`, and check that
-  https://surveytool.app/release.json shows the new commit.
+- Actions → **Roll back production** → Run workflow. Leave the target empty
+  to go back one production deployment, or paste a deployment id or URL.
+  Run it once with **dry run** ticked to see what will move, then again
+  without it. From a terminal: `gh workflow run rollback-production.yml -f dry_run=false`.
+- It moves the surveytool.app aliases with the CI token, takes seconds and
+  touches only the web files. The database and Supabase functions stay as
+  they are.
+- The next normal production deploy takes surveytool.app back by itself, so
+  there is nothing to undo. Check https://surveytool.app/release.json after.
 - Then do step 2 anyway, so `main` matches what is live.
 
-This needs the owner's Vercel login. The CI token can deploy, but it is not
-meant for hand rollbacks.
+The owner can also use the Vercel dashboard (Deployments → last good one →
+**Instant Rollback**). That one stops later deploys from taking the domain
+until someone presses **Undo Rollback** or runs `vercel promote`, so prefer
+the workflow.
 
 ## 4. The database is wrong
 
