@@ -105,7 +105,7 @@ async function transcribeClip(body, index) {
 }
 
 // A scripted model that reads the newest message the way the real one should.
-function mockServer(page, log, { longVoice = false } = {}) {
+function mockServer(page, log, { longVoice = false, firstClip = 0 } = {}) {
   let clips = 0;
   return page.route('**/functions/v1/survey-agent', async (route) => {
     if (route.request().method() === 'OPTIONS') {
@@ -129,7 +129,7 @@ function mockServer(page, log, { longVoice = false } = {}) {
     }
     if (body.action === 'transcribe') {
       const bytes = Buffer.from(body.audio, 'base64');
-      const text = await transcribeClip(body, clips);
+      const text = await transcribeClip(body, clips + firstClip);
       clips += 1;
       log.clips.push({ mime: body.mime, bytes: bytes.length, ms: body.duration_ms, riff: bytes.subarray(0, 4).toString(), rate: bytes.readUInt32LE(24), hints: body.hints, text });
       return reply({ text });
@@ -230,6 +230,71 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
   expect(await page.evaluate(() => window.__played)).toBe(1);
   expect(await page.evaluate(() => window.__spoken)).toEqual(['Took that back from D 117 and set card reader to Y on D 118.']);
   console.log('HANDSFREE', JSON.stringify(log.clips.map(({ hints: _h, ...c }) => c)));
+});
+
+// The device's own speech to text (a fake engine here; headless Chromium
+// has no speech service) hears each thing said while the mic cuts its clip.
+// What it is sure of skips the server; the unsure second clip goes there.
+test('hands-free: the device hears what it is sure of, and only an unsure clip goes to the server', async ({ page }) => {
+  const log = { clips: [], turns: [], speak: [] };
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+    // Each time the mic stops hearing someone, the engine gives its words
+    // for that, as a real one does a moment after the speech ends.
+    const script = [
+      { text: 'D 117, card reader installed.', confidence: 0.93 },
+      { text: 'no the one eight teen', confidence: 0.35 },
+    ];
+    window.__deviceRecs = 0;
+    class FakeRecognition {
+      start() {
+        window.__deviceRecs += 1;
+        let wasHearing = false;
+        this.timer = setInterval(() => {
+          const hearing = [...document.querySelectorAll('[role="status"]')].some((el) => el.textContent.includes('Hearing you'));
+          if (wasHearing && !hearing && script.length) {
+            const { text, confidence } = script.shift();
+            setTimeout(() => {
+              const r = [{ transcript: text, confidence }];
+              r.isFinal = true;
+              this.onresult?.({ resultIndex: 0, results: [r] });
+            }, 200);
+          }
+          wasHearing = hearing;
+        }, 30);
+      }
+      abort() { clearInterval(this.timer); }
+      stop() { clearInterval(this.timer); }
+    }
+    window.webkitSpeechRecognition = FakeRecognition;
+    window.SpeechRecognition = FakeRecognition;
+  }, { template: TEMPLATE, data });
+  await mockServer(page, log, { firstClip: 1 });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await panel.getByRole('button', { name: 'Hands-free' }).click();
+
+  await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
+  await expect(panel.getByText(/set card reader to Y on D-118/)).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d118')).toBe('Y');
+  await panel.getByRole('button', { name: 'Stop hands-free' }).click();
+
+  // One clip went to the server (the unsure one), not two.
+  expect(log.clips).toHaveLength(1);
+  expect(log.clips[0].text).toBe('No, D1-18.');
+  // The device's words reached the model with the item name put back.
+  const said = log.turns.map((t) => t.messages.filter((m) => m.role === 'user').at(-1).content);
+  expect(said).toEqual(expect.arrayContaining(['D-117, card reader installed.', 'No, D-118.']));
+  expect(await page.evaluate(() => window.__deviceRecs)).toBeGreaterThanOrEqual(1);
 });
 
 test('hands-free: talking over a long spoken reply stops it, and what was said is heard', async ({ page }) => {
