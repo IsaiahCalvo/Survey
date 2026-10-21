@@ -41,7 +41,7 @@ name: android-signed-in
 - takeScreenshot: 03-document-open
 - tapOn: "More document options"
 - takeScreenshot: 04-more-menu
-- tapOn: "Export markup (XFDF)"
+- tapOn: "Export annotated PDF"
 # Android's share sheet (the system chooser) lists apps and a "Share" title.
 - extendedWaitUntil:
     visible: ".*(Share|share|Copy|Nearby|Drive).*"
