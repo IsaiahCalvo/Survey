@@ -379,3 +379,26 @@ test('a range failure after the open reports onStreamBroken and keeps the pdf', 
   assert.deepEqual(broken, ['range 500']);
   assert.equal(lib.destroyed, 0);
 });
+
+test('a range failure after pdf.js resolves but before the open returns falls back', async () => {
+  const lib = fakePdfjs();
+  lib.PDFDataRangeTransport = FakeRangeBase;
+  let releaseTag;
+  const fallbacks = [];
+  const broken = [];
+  const pending = tryOpenCloudPdfStream({
+    pdfjsLib: lib, filePath: 'p', source: async () => ({ url: 'https://x/signed', size: 64 }),
+    probeTag: () => new Promise((r) => { releaseTag = () => r('untagged'); }),
+    fetchImpl: async () => ({ status: 500, arrayBuffer: async () => new ArrayBuffer(0) }),
+    onFallback: (why) => fallbacks.push(why),
+    onStreamBroken: (e) => broken.push(e.message),
+  });
+  while (!lib.calls[0] || !releaseTag) await settle();
+  lib.calls[0].range.requestDataRange(0, 2);
+  await new Promise((r) => setTimeout(r, 2000));
+  releaseTag();
+  assert.equal(await pending, null);
+  assert.deepEqual(fallbacks, ['range 500']);
+  assert.deepEqual(broken, []);
+  assert.ok(lib.destroyed >= 1);
+});

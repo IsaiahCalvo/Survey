@@ -268,14 +268,21 @@ export async function tryOpenCloudPdfStream({
     // forever. Before the open resolves, destroying the task rejects it and
     // the caller downloads instead. After it, the pdf is already on screen:
     // leave it alone and tell the caller to reload by download.
+    // brokenBeforeReturn: a chunk failed before this function handed the pdf
+    // back (even if pdf.js had already resolved); the open must fall back.
     let openSettled = false;
+    let brokenBeforeReturn = null;
     const transport = createCloudRangeTransport({
       pdfjsLib: pdfjs,
       url: opened.url,
       length,
       fetchImpl,
       onError: (error) => {
-        if (!openSettled) { void loadingTask?.destroy?.()?.catch?.(() => {}); return; }
+        if (!openSettled) {
+          brokenBeforeReturn = error;
+          void loadingTask?.destroy?.()?.catch?.(() => {});
+          return;
+        }
         onStreamBroken(error);
       },
     });
@@ -286,6 +293,7 @@ export async function tryOpenCloudPdfStream({
       timer = setTimeout(() => reject(new Error('stream open timed out')), timeoutMs);
     });
     const [pdf] = await Promise.race([Promise.all([loadingTask.promise, tagPromise]), timeout]);
+    if (brokenBeforeReturn) throw brokenBeforeReturn;
     openSettled = true;
     if (typeof pdf?.getData === 'function') {
       // The rest of the file keeps streaming in (disableAutoFetch: false);
