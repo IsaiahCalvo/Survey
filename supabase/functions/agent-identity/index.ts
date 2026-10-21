@@ -11,8 +11,15 @@ import {
   AGENTID_CLIENT_ID, AGENTID_JWKS_URL, AGENTID_REDIRECT_URI, agentIdRecord, verifyAgentIdToken,
 } from '../_shared/agentIdToken.js';
 
+const corsHeaders = {
+  // INTENTIONAL: agents call this from anywhere and auth with their own
+  // Bearer token, never cookies. See CLAUDE.md CORS invariant.
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
-  status, headers: { 'Content-Type': 'application/json' },
+  status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
 });
 
 let jwksCache: { at: number; value: unknown } | null = null;
@@ -25,6 +32,7 @@ async function fetchJwks() {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   const authHeader = req.headers.get('Authorization');
   const clientId = agentClientId(authHeader);
   if (!clientId) return json({ error: 'Only an AI agent signed in to Survey can do this.' }, 401);
