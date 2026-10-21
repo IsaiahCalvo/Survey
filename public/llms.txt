@@ -26,7 +26,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Extract pages](https://surveytool.app/tools/extract-pages): Save chosen pages as a new PDF.
 - [JPG to PDF](https://surveytool.app/tools/jpg-to-pdf): Turn photos into one PDF.
 - [PNG to PDF](https://surveytool.app/tools/png-to-pdf): Turn PNG images into a PDF.
-- [Image to PDF](https://surveytool.app/tools/image-to-pdf): WebP, GIF, BMP, JPG or PNG to PDF.
+- [Image to PDF](https://surveytool.app/tools/image-to-pdf): WebP, GIF, BMP, TIFF, JPG or PNG to PDF.
 - [Text to PDF](https://surveytool.app/tools/txt-to-pdf): Turn a .txt file into a clean PDF.
 - [PDF to JPG](https://surveytool.app/tools/pdf-to-jpg): Save each page as a JPG image.
 - [PDF to PNG](https://surveytool.app/tools/pdf-to-png): Save each page as a sharp PNG.
@@ -38,6 +38,10 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Crop PDF](https://surveytool.app/tools/crop-pdf): Trim the white edges off every page.
 - [Edit PDF details](https://surveytool.app/tools/edit-pdf-details): Change the title, author and keywords.
 - [Remove markups](https://surveytool.app/tools/remove-annotations): Strip comments and markups off a PDF.
+- [TIFF to PDF](https://surveytool.app/tools/tiff-to-pdf): Turn TIFF scans and faxes into a PDF.
+- [Sign PDF](https://surveytool.app/tools/sign-pdf): Draw or type your signature onto a PDF.
+- [Protect PDF](https://surveytool.app/tools/protect-pdf): Lock a PDF with a password.
+- [Unlock PDF](https://surveytool.app/tools/unlock-pdf): Take the password off a PDF you can open.
 
 ## Optional
 

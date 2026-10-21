@@ -182,16 +182,18 @@ export async function addWatermark(bytes, { text = 'DRAFT', size = 0.6, opacity 
 
 export const PAGE_SIZES = { letter: [612, 792], a4: [595.28, 841.89] };
 
-// images: [{ bytes, type: 'jpg' | 'png' }]. pageSize 'fit' makes each page the
-// image's size (at 96 DPI, so a phone photo isn't a metre wide); otherwise the
+// images: [{ bytes, type: 'jpg' | 'png', dpi? }]. pageSize 'fit' makes each page
+// the image's size (at its own DPI when known, like a scan, else 96 DPI so a
+// phone photo isn't a metre wide); otherwise the
 // image is scaled to fit inside the page and its margins.
 export async function imagesToPdf(images, { pageSize = 'fit', orientation = 'auto', margin = 0 } = {}) {
   if (!images.length) throw new ToolError('Add at least one image.');
   const doc = await fresh();
   for (const img of images) {
     const embedded = img.type === 'png' ? await doc.embedPng(img.bytes) : await doc.embedJpg(img.bytes);
-    const iw = embedded.width * 0.75;
-    const ih = embedded.height * 0.75;
+    const k = 72 / (img.dpi > 0 ? img.dpi : 96);
+    const iw = embedded.width * k;
+    const ih = embedded.height * k;
     let pw;
     let ph;
     if (pageSize === 'fit') {
@@ -414,6 +416,34 @@ export async function textToPdf(text, { pageSize = 'letter', font = 'sans', size
         y -= lineH;
       }
     }
+  }
+  return save(doc);
+}
+
+// Put a signature image (PNG) on one page. `box` is where it goes on the page
+// as people see it: fractions of the width and height from the top-left.
+// `date`, when given, is written just under the signature (or above it, when
+// the signature sits on the bottom edge).
+export async function signPdf(bytes, { page: index = 0, image, box, date = '' }) {
+  if (!image) throw new ToolError('Draw or type your signature first.');
+  const doc = await loadPdf(bytes);
+  const page = doc.getPage(Math.min(Math.max(0, index), doc.getPageCount() - 1));
+  const f = visualFrame(page);
+  const png = await doc.embedPng(image);
+  const w = box.w * f.width;
+  const h = box.h * f.height;
+  const vx = box.x * f.width;
+  const vy = f.height - (box.y + box.h) * f.height;
+  const at = f.toPage(vx, vy);
+  page.drawImage(png, { x: at.x, y: at.y, width: w, height: h, rotate: degrees(f.rotation) });
+  if (date) {
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const size = Math.min(14, Math.max(7, h * 0.22));
+    const text = latin1(date);
+    const below = vy - size * 1.3;
+    const ty = below >= 2 ? below : vy + h + size * 0.4;
+    const p = f.toPage(vx, ty);
+    page.drawText(text, { x: p.x, y: p.y, size, font, color: rgb(0.1, 0.1, 0.1), rotate: degrees(f.rotation) });
   }
   return save(doc);
 }
