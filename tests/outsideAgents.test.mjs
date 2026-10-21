@@ -91,9 +91,15 @@ test('survey-mcp exposes only read-only tools, and its role read uses GET', () =
   assert.equal((tools.match(/readOnlyHint: true/g) || []).length, 7);
   // A read-only agent can only reach a STABLE rpc via GET (the #1034 gate).
   assert.match(src, /rpc\('get_my_document_role', \{ doc_id: documentId \}, \{ get: true \}\)/);
-  // get_survey_context describes only THIS document's templates, never the
-  // union of every template the person can see.
-  assert.match(src, /categoryNames\(db, documentId, \{ linkedOnly: true \}\)/);
+  // get_survey_context describes only THIS document's survey — the categories
+  // its linked templates define plus the ones its own items use — never the
+  // union of every template the person can see, and never empty just because
+  // document_templates has no rows (it reads the items too).
+  const ctx = src.slice(src.indexOf("name === 'get_survey_context'"), src.indexOf("throw new ToolError(`Unknown tool"));
+  assert.match(ctx, /surveyItems\(db, documentId\)/);
+  assert.match(ctx, /names\.linkedCats/);
+  assert.match(ctx, /r\.category_id\) cats\.add/);
+  assert.match(ctx, /\.filter\(\(c\) => cats\.has\(c\.id\)\)/);
 });
 
 async function loadAgentSession() {

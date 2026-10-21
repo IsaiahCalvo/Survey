@@ -52,11 +52,15 @@ type Category = { id: string; name: string; checklist: { id: string; text: strin
 // Category and checklist names come from the templates the person can see.
 // Templates linked to the document go first, so when two templates reuse a
 // category id the document's own wins.
-// linkedOnly: keep only the templates linked to this document. The item tools
-// want the union (a marker's category_id can be resolved whichever visible
-// template defines it), but get_survey_context must describe only THIS
-// document's survey, never categories from other visible templates.
-async function categoryNames(db: SupabaseClient, documentId: string, { linkedOnly = false } = {}) {
+// The item tools want this union: a marker's category_id resolves whichever
+// visible template defines it. get_survey_context must instead describe only
+// THIS document's survey, so it filters by `linkedCats`/`linkedEnts` (the ids
+// defined by a linked template) plus the ids the document's own items use —
+// never categories from other visible templates. `linkedCats`/`linkedEnts`
+// alone can be empty, because document_templates is filled as a client-side
+// sharing side effect and many documents (and collaborators' views) have no
+// rows, so the items' own ids are the reliable half.
+async function categoryNames(db: SupabaseClient, documentId: string) {
   const [{ data: all }, { data: links }] = await Promise.all([
     db.from('templates').select('id, name, config').limit(300),
     UUID.test(documentId)
@@ -64,18 +68,21 @@ async function categoryNames(db: SupabaseClient, documentId: string, { linkedOnl
       : Promise.resolve({ data: [] as { template_id: string }[] }),
   ]);
   const linked = new Set((links || []).map((l) => String(l.template_id)));
-  const data = linkedOnly
-    ? (all || []).filter((r) => linked.has(String(r.id)))
-    : [...(all || [])].sort((a, b) => Number(linked.has(String(b.id))) - Number(linked.has(String(a.id))));
+  const data = [...(all || [])].sort((a, b) => Number(linked.has(String(b.id))) - Number(linked.has(String(a.id))));
   const categories = new Map<string, Category>();
   const entities = new Map<string, string>();
+  const linkedCats = new Set<string>();
+  const linkedEnts = new Set<string>();
   for (const row of data || []) {
+    const isLinked = linked.has(String(row.id));
     const config = (row.config && typeof row.config === 'object' ? row.config : {}) as Record<string, unknown>;
     const modules = (config.modules || config.spaces || []) as Record<string, unknown>[];
     for (const module of Array.isArray(modules) ? modules : []) {
       const cats = (module.categories || module.cats || []) as Record<string, unknown>[];
       for (const c of Array.isArray(cats) ? cats : []) {
-        if (!c?.id || categories.has(String(c.id))) continue;
+        if (!c?.id) continue;
+        if (isLinked) linkedCats.add(String(c.id));
+        if (categories.has(String(c.id))) continue;
         const list = (c.checklist || c.items || []) as unknown[];
         categories.set(String(c.id), {
           id: String(c.id),
@@ -88,10 +95,12 @@ async function categoryNames(db: SupabaseClient, documentId: string, { linkedOnl
       }
     }
     for (const e of (config.entities || []) as Record<string, unknown>[]) {
-      if (e?.id && !entities.has(String(e.id))) entities.set(String(e.id), String(e.name || ''));
+      if (!e?.id) continue;
+      if (isLinked) linkedEnts.add(String(e.id));
+      if (!entities.has(String(e.id))) entities.set(String(e.id), String(e.name || ''));
     }
   }
-  return { categories, entities };
+  return { categories, entities, linkedCats, linkedEnts };
 }
 
 const noteText = (notes: unknown) => {
@@ -270,11 +279,21 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
   }
   if (name === 'get_survey_context') {
     if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
-    const names = await categoryNames(db, documentId, { linkedOnly: true });
+    // Describe only THIS document's survey: the categories/entities its linked
+    // templates define, plus the ones its own items actually use (so an
+    // unshared document with no document_templates rows still reports its
+    // structure), and never another visible template's categories.
+    const [names, rows] = await Promise.all([categoryNames(db, documentId), surveyItems(db, documentId)]);
+    const cats = new Set(names.linkedCats);
+    const ents = new Set(names.linkedEnts);
+    for (const r of rows) {
+      if (r.category_id) cats.add(String(r.category_id));
+      if (r.entity_id) ents.add(String(r.entity_id));
+    }
     return text({
       document_id: documentId,
-      categories: [...names.categories.values()].map((c) => ({ id: c.id, name: c.name, checklist: c.checklist })),
-      entities: [...names.entities.entries()].map(([id, name]) => ({ id, name })),
+      categories: [...names.categories.values()].filter((c) => cats.has(c.id)).map((c) => ({ id: c.id, name: c.name, checklist: c.checklist })),
+      entities: [...names.entities.entries()].filter(([id]) => ents.has(id)).map(([id, name]) => ({ id, name })),
     });
   }
   throw new ToolError(`Unknown tool ${name}.`);
