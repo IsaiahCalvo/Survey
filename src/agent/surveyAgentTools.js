@@ -30,18 +30,24 @@ const activeChecklist = (category) => checklistOf(category)
   .map((item, index) => (typeof item === 'string' ? { id: `item-${index}`, text: item } : item))
   .filter((item) => item && item.archived !== true && item.id);
 
-const noteTextOf = (note) => {
-  if (!note) return '';
+// Notes come as { text, media } or, straight from the database, as that object
+// in a JSON string or as plain text.
+const noteObjectOf = (note) => {
+  if (!note) return {};
   if (typeof note === 'string') {
     try {
       const parsed = note.trim().startsWith('{') ? JSON.parse(note) : null;
-      if (parsed && typeof parsed === 'object') return String(parsed.text || '');
+      if (parsed && typeof parsed === 'object') return parsed;
     } catch { /* plain text */ }
-    return note;
+    return { text: note };
   }
-  return String(note.text || '');
+  return typeof note === 'object' ? note : {};
 };
-const mediaCountOf = (note) => (note && typeof note === 'object' && Array.isArray(note.media) ? note.media.length : 0);
+const noteTextOf = (note) => String(noteObjectOf(note).text || '');
+const mediaCountOf = (note) => {
+  const { media } = noteObjectOf(note);
+  return Array.isArray(media) ? media.length : 0;
+};
 
 const clone = (value) => (value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : (value ?? null));
 

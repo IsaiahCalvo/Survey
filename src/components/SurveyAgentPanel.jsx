@@ -53,6 +53,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const [draft, setDraft] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  // One turn at a time; a ref, so a send started from a stale closure still sees it.
+  const turnRef = useRef(false);
   const [listening, setListening] = useState(false);
   const [speakReplies, setSpeakReplies] = useState(readSpeakSetting);
   const speakRef = useRef(speakReplies);
@@ -92,7 +95,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const send = useCallback(async (text) => {
     const said = String(text || '').trim();
     const files = pendingFiles;
-    if ((!said && !files.length) || busy) return;
+    if ((!said && !files.length) || turnRef.current) return;
     const bridge = surveyAgentBridge.current;
     if (!bridge?.template) {
       push({ role: 'error', text: 'Open Survey mode with a template first.' });
@@ -106,6 +109,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     setDraft('');
     setPendingFiles([]);
     push({ role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name) });
+    turnRef.current = true;
     setBusy(true);
     // Bound to this document: if the person opens another one mid-turn, the
     // remaining tools refuse instead of writing there.
@@ -130,9 +134,10 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       toolbox.settle(err?.changes);
       push({ role: 'error', text: err?.message || surveyAgentErrorText(err?.code), changes: err?.changes || [] });
     } finally {
+      turnRef.current = false;
       setBusy(false);
     }
-  }, [busy, call, pendingFiles, toolbox]);
+  }, [call, pendingFiles, toolbox]);
 
   const sendRef = useRef(send);
   sendRef.current = send;
@@ -161,7 +166,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
 
   const recorder = useAudioRecorder({
     onRecorded: async (file, durationMs) => {
-      setBusy(true);
+      setTranscribing(true);
       let text = '';
       try {
         const audio = await blobToBase64(file);
@@ -170,9 +175,12 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       } catch (err) {
         push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.' });
       } finally {
-        setBusy(false);
+        setTranscribing(false);
       }
-      if (text) send(text);
+      if (!text) return;
+      // A typed message is still running: keep the words in the box to send next.
+      if (turnRef.current) setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text));
+      else sendRef.current(text);
     },
   });
 
@@ -289,7 +297,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
             ) : null}
           </div>
         ))}
-        {busy && <div className="survey-agent__msg is-agent"><div className="survey-agent__bubble is-typing">Working...</div></div>}
+        {(busy || transcribing) && <div className="survey-agent__msg is-agent"><div className="survey-agent__bubble is-typing">Working...</div></div>}
       </div>
       {statusText && <p className="survey-agent__status">{statusText}</p>}
       {pendingFiles.length > 0 && (
@@ -337,13 +345,13 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
             className={`survey-agent__icon survey-agent__mic${recording ? ' is-on' : ''}`}
             aria-label={recording ? 'Stop and send' : 'Talk'}
             aria-pressed={recording}
-            disabled={!ready || (busy && !recording)}
+            disabled={!ready || ((busy || transcribing) && !recording)}
             onClick={toggleTalk}
           >
             <Icon name="mic" size={18} color="currentColor" />
           </button>
         )}
-        <button type="submit" className="survey-agent__send" disabled={!ready || busy || (!draft.trim() && !pendingFiles.length)}>
+        <button type="submit" className="survey-agent__send" disabled={!ready || busy || transcribing || (!draft.trim() && !pendingFiles.length)}>
           Send
         </button>
       </form>

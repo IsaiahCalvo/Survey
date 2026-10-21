@@ -164,6 +164,25 @@ test('add_note appends, set_entity checks the entity, both undo', async () => {
   assert.equal(markers.m117.entityId, null);
 });
 
+test('a note stored as a JSON string keeps its photos and still undoes', async () => {
+  const stored = JSON.stringify({ text: 'Existing.', media: [{ id: 'p1', kind: 'image' }] });
+  const { bridge, markers } = fakeBridge({
+    // Like updateSurveyMarkerNote: parse what the database holds, write an object.
+    updateNote: (id, updater) => {
+      const prev = typeof markers[id].note === 'string' ? JSON.parse(markers[id].note) : (markers[id].note || {});
+      markers[id] = { ...markers[id], note: updater(prev) };
+    },
+  });
+  markers.m117 = { ...markers.m117, note: stored };
+  const box = toolboxFor(bridge);
+  const item = JSON.parse((await box.run('get_item', { item_id: 'm117' })).content);
+  assert.equal(item.media_count, 1);
+  const note = await box.run('add_note', { item_id: 'm117', text: 'No power.' });
+  assert.equal(markers.m117.note.media.length, 1);
+  assert.deepEqual(box.undo([note.change]), { reverted: 1, kept: 0 });
+  assert.equal(markers.m117.note, stored);
+});
+
 test('attach_media uploads chat files to the item once', async () => {
   const { bridge, markers } = fakeBridge();
   const attachments = new Map([['a1', { file: { name: 'door.jpg' }, kind: 'photo', name: 'door.jpg' }]]);
