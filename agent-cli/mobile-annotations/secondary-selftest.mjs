@@ -410,20 +410,27 @@ async function runBookmarksAndPages(page, baseUrl) {
   );
 
   await page.getByRole('button', { name: 'Page 3 actions', exact: true }).click();
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+  // The app's own confirm dialog (useConfirmDialog), not window.confirm.
+  await page.getByRole('button', { name: 'Delete page', exact: true }).click();
   await page.waitForFunction((count) => document.querySelectorAll('.mobile-page-card').length === count, initialPageCount + 1);
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+  // The app's own confirm dialog (useConfirmDialog), not window.confirm.
+  await page.getByRole('button', { name: 'Delete page', exact: true }).click();
   await page.waitForFunction((count) => document.querySelectorAll('.mobile-page-card').length === count, initialPageCount);
   snapshot = await persistedSnapshot(page, storageKeys);
   assert(snapshot.sidebar.bookmarks.every((bookmark) => JSON.stringify(bookmark.pageIds) === '[1]'));
 
   await page.locator('.mobile-pdf-hub-tab[aria-label="Bookmarks"]').click();
   // RULED 2026-09-23 (owner: phone bookmarks match desktop) — delete lives in
-  // Edit mode; the panel remounted with the tab switch, so enter it again.
-  await page.getByRole('button', { name: 'Edit bookmarks', exact: true }).click();
+  // Edit mode. The panel's draft (edit mode included) now survives the tab
+  // switch, so enter Edit only if it is not still on.
+  const doneEditing = page.getByRole('button', { name: 'Done editing bookmarks', exact: true });
+  await page.getByRole('button', { name: /^(Edit bookmarks|Done editing bookmarks)$/ }).first().waitFor({ state: 'visible', timeout: 10_000 });
+  if (!await doneEditing.isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: 'Edit bookmarks', exact: true }).click();
+  }
   await page.getByRole('button', { name: 'Delete bookmark Main entrance', exact: true }).click();
   await page.getByRole('button', { name: 'Delete bookmark Roof', exact: true }).click();
   await page.getByText('No bookmarks yet', { exact: true }).waitFor();

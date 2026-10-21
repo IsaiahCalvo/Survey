@@ -672,8 +672,11 @@ async function testMobileHeaderParity(page, baseUrl) {
 
   await gotoHub(page, baseUrl, 'documents');
   const sort = await requiredBox(page.locator('.documents-mobile-filter-visual:visible'), 'mobile Documents sort visual');
-  assertNear(sort.y, reference.select.y, 'mobile: Select and sort share a row');
-  assertNear(sort.x + sort.width, reference.action.x + reference.action.width, 'mobile: sort and Upload right edges align');
+  // c2793c23: Select moved to row 1; on Documents the sort button sits on
+  // row 2 between the search field and Upload.
+  assertNear(sort.y + sort.height / 2, reference.search.y + reference.search.height / 2, 'mobile: sort shares the search row');
+  assert.ok(sort.x >= reference.search.x + reference.search.width - 1, 'mobile: sort sits right of the search field');
+  assert.ok(sort.x + sort.width <= reference.action.x + 1, 'mobile: sort sits left of Upload');
 }
 
 async function testDocuments(page, touch, device) {
@@ -695,14 +698,13 @@ async function testDocuments(page, touch, device) {
     sortControl = page.locator('.documents-desktop-card:visible').getByText(/^File(?: [↑↓])?$/);
     assert.equal(await sortControl.count(), 1, 'desktop: File sort header exposed');
   }
-  // Search still owns focus after clearing. Its first outside gesture must
-  // dismiss only; the following gesture intentionally activates sorting.
+  // Search still owns focus after clearing. On the phone the sort button
+  // passes through Search's dismiss (d9cb10b7), so one tap both dismisses the
+  // search and opens the sort menu. Elsewhere the first gesture dismisses only.
   await activate(sortControl, touch, device);
+  if (device !== 'mobile') await activate(sortControl, touch, device);
   if (device === 'mobile') {
-    assert.equal(await page.locator('.documents-mobile-sort-menu:visible').count(), 0, 'mobile: first sort tap only dismisses document search');
-  }
-  await activate(sortControl, touch, device);
-  if (device === 'mobile') {
+    await page.locator('.documents-mobile-sort-menu:visible').waitFor({ state: 'visible', timeout: 5_000 });
     const menu = page.locator('.documents-mobile-sort-menu:visible');
     const sortBox = await requiredBox(sortControl, 'mobile: open sort control');
     const menuBox = await requiredBox(menu, 'mobile: open sort menu');
