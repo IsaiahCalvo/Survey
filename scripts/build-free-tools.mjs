@@ -6,7 +6,7 @@
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ORIGIN, APP, page, faqList, faqSchema } from './build-marketing.mjs';
+import { ORIGIN, SIGNUP, page, faqList, faqSchema } from './build-marketing.mjs';
 import { GROUPS, TOOLS, POPULAR } from './free-tools-catalog.mjs';
 import { BATCH } from './free-tools-faq.mjs';
 
@@ -88,7 +88,7 @@ const why = () => `<div class="why">${WHY.map(([h, p]) => `<div><h3>${h}</h3><p>
 const APP_PITCH = `<section class="sec"><div class="wrap custom">
   <h2>Need to mark up the PDF too?</h2>
   <p>Survey is a full PDF app for drawings. Add pens, shapes, clouds and count markers, and keep every sheet in sync on your computer, iPad and phone.</p>
-  <a class="btn ghost" href="${APP}">Open Survey free</a>
+  <a class="btn ghost" href="${SIGNUP}">Open Survey free</a>
 </div></section>`;
 
 const PICK = {
