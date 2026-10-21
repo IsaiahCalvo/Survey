@@ -41,8 +41,13 @@ name: ios-signed-in
 - tapOn:
     point: 40%, 40%
 - takeScreenshot: 04-counter-after-arrow
-# #1055: revision cloud and the Measure menu.
-- tapOn: "Shapes"
+# #1055: revision cloud and the Measure menu. Tapping Shapes again would close
+# the strip the Counter pick left open, so only open it if Cloud is hidden.
+- runFlow:
+    when:
+      notVisible: "Cloud"
+    commands:
+      - tapOn: "Shapes"
 - tapOn: "Cloud"
 - swipe:
     start: 30%, 70%
