@@ -56,9 +56,11 @@ const HANDS_FREE_TEXT = {
 let nextId = 1;
 const newId = (prefix) => `${prefix}${nextId++}`;
 
-// No signal, or too weak to finish a call: the message waits and sends later.
-const WAIT_CODES = new Set(['offline', 'network']);
+// No signal, too weak to finish a call, or the per-minute limit (hands-free
+// talk can reach it): the message waits and sends later.
+const WAIT_CODES = new Set(['offline', 'network', 'busy_try_again']);
 const SAVED_FIRST = 'No signal. I saved that and will send it when you are back online.';
+const SAVED_BUSY = 'That was a lot at once. I saved it and will send it in a moment.';
 const SAVED_AGAIN = 'Saved.';
 // Kept on the device, unique across reloads.
 const waitIdOf = () => `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -243,6 +245,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       // message for later. Each call is one model step with no writes on the
       // server, so sending it again later cannot double anything.
       if (WAIT_CODES.has(err?.code) && !err?.changes?.length) {
+        waitReasonRef.current = err.code;
         enqueueRef.current(job);
         return null;
       }
@@ -366,6 +369,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   // sent from there), keeps it on the device, and says so: "saved, will
   // send" once per stretch without signal, then just "Saved."
   const savedNoticeRef = useRef(false);
+  const waitReasonRef = useRef('offline');
   const enqueue = (job, { quiet = false } = {}) => {
     // Back from a send attempt: same place in line, and nothing new to say.
     const retried = Boolean(job.flushing);
@@ -378,9 +382,10 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       keepWaiting({ id: job.waitId, docKey: job.docKey, said: job.said || null, clip: job.clip || null, durationMs: job.durationMs || null });
     }
     if (quiet || retried) return;
+    const busy = waitReasonRef.current === 'busy_try_again';
     const first = !savedNoticeRef.current;
-    savedNoticeRef.current = true;
-    speakOutRef.current(first ? SAVED_FIRST : SAVED_AGAIN, { here: true });
+    if (!busy) savedNoticeRef.current = true;
+    speakOutRef.current(busy ? SAVED_BUSY : first ? SAVED_FIRST : SAVED_AGAIN, { here: true });
   };
   const enqueueRef = useRef(enqueue);
   enqueueRef.current = enqueue;
@@ -442,7 +447,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
       return snapItemNames(cleanTranscript(out?.text), Object.values(b?.markers || {}).map((m) => m?.name));
     } catch (err) {
-      if (WAIT_CODES.has(err?.code)) return null;
+      if (WAIT_CODES.has(err?.code)) { waitReasonRef.current = err.code; return null; }
       push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.', code: err?.code });
       return '';
     } finally {
@@ -650,7 +655,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const ready = status?.enabled && !status?.over_cap;
   const statusText = !status ? 'Connecting...'
     : !status.enabled || status.over_cap ? surveyAgentErrorText(status.reason)
-      : queued ? `No signal. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send when you are back online.`
+      : queued ? (waitReasonRef.current === 'busy_try_again'
+        ? `Busy for a moment. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send shortly.`
+        : `No signal. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send when you are back online.`)
         : usageWarning(usageLeft);
   const livePhase = hearing ? 'hearing' : phase === 'speaking' ? 'speaking' : transcribing || busy || phase === 'working' ? 'working' : 'listening';
   const handsFreeText = handsFree ? HANDS_FREE_TEXT[livePhase] : null;

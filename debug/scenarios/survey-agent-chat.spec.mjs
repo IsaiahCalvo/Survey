@@ -332,6 +332,54 @@ test('With no signal a message is kept on the device: closing the chat keeps it,
   expect(calls.filter((c) => c.action === 'turn')).toHaveLength(3);
 });
 
+test('A message that hits the per-minute limit waits and sends a moment later, instead of being lost', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '1');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+    window.__said = [];
+    if (window.speechSynthesis) {
+      window.speechSynthesis.speak = (u) => { window.__said.push(u.text); setTimeout(() => u.onend?.(), 0); };
+      window.speechSynthesis.cancel = () => {};
+    }
+  }, { template: TEMPLATE, data });
+  await mockModel(page, calls);
+  // The first three model calls hit the per-minute limit (the first try and
+  // both retries); after that the limit has cleared.
+  let refusals = 3;
+  // Registered last, so it answers first.
+  await page.route('**/functions/v1/survey-agent', async (route, request) => {
+    const body = request.method() === 'POST' ? request.postDataJSON() : null;
+    if (body?.action === 'turn' && refusals > 0) {
+      refusals -= 1;
+      await route.fulfill({ status: 429, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'busy_try_again', retry_after: 1 }) });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await input.fill('door 117 has no power');
+  await input.press('Enter');
+
+  await expect(panel.getByText('Waiting for signal')).toBeVisible({ timeout: 20_000 });
+  await expect(panel.getByRole('status')).toContainText('Busy for a moment. 1 message is waiting and will send shortly.');
+  await expect.poll(() => page.evaluate(() => window.__said)).toContain('That was a lot at once. I saved it and will send it in a moment.');
+  await expect(panel.getByText('D-117: power is N and I added a note.')).toBeVisible({ timeout: 40_000 });
+  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
+  expect(refusals).toBe(0);
+});
+
 // Shared markup tools (annotation-agent flag): "put a note by D-117" lands a
 // real text note next to the item, through the same tools WebMCP uses.
 function mockMarkupModel(page, calls) {
