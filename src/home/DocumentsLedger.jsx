@@ -911,10 +911,10 @@ export default function DocumentsLedger({
                 <button type="button" className="hub-menu__item" onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); }}>
                   <Icon name="duplicate" size={15} color="var(--ink-200)" />Duplicate
                 </button>
-                <button type="button" className="hub-menu__item" disabled={Boolean(selectionBlock('share'))} onClick={() => onShare && onShare(selectedRaw())}>
+                <button type="button" className="hub-menu__item" disabled={Boolean(selectionBlock('share'))} {...tip(selectionBlock('share') || '', 'above')} onClick={() => onShare && onShare(selectedRaw())}>
                   <Icon name="share" size={15} color="var(--ink-200)" />Share
                 </button>
-                <button type="button" className="hub-menu__item is-danger" disabled={Boolean(selectionBlock('delete'))} onClick={() => archiveSelected(selectedRaw())}>
+                <button type="button" className="hub-menu__item is-danger" disabled={Boolean(selectionBlock('delete'))} {...tip(selectionBlock('delete') || '', 'above')} onClick={() => archiveSelected(selectedRaw())}>
                   <Icon name="trash" size={15} color="currentColor" />Delete
                 </button>
               </div>
