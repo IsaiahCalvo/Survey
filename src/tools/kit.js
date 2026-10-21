@@ -16,7 +16,7 @@ export const base = (name) => name.replace(/\.[a-z0-9]+$/i, '');
 export const pdfOut = (name, bytes) => ({ name, bytes, type: PDF_TYPE });
 export { ToolError } from './errors.js';
 export {
-  openPdfjs, renderPage, canvasToBytes, releaseCanvas, prepareImage, runQpdf,
+  openPdfjs, renderPage, canvasToBytes, releaseCanvas, prepareImage, runQpdf, MAX_PIXELS,
 } from './browser.js';
 // pdf-lib helpers (ops.js) load on first use.
 export const loadOps = () => import('./ops.js');
