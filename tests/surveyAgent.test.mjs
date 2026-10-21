@@ -394,3 +394,72 @@ test('markup the agent added shows on the change card and Undo deletes it', asyn
   // Already gone (the person deleted it): kept, nothing thrown.
   assert.deepEqual(box.undo([added.change]), { reverted: 0, kept: 1 });
 });
+
+test('markup the agent edited shows on the change card and Undo restores it', async () => {
+  const { bridge } = fakeBridge({ getPageSize: () => ({ width: 612, height: 792 }) });
+  const live = {
+    a1: { text: 'old note' },
+    c1: { data: { legacyCallout: { text: 'old callout', style: { borderColor: '#111111', fillColor: '#eeeeee' } } } },
+    h1: { fill: '#f4d35e', opacity: 0.3 },
+  };
+  const doc = {
+    findAnnotation: (id) => (live[id] ? { obj: live[id] } : null),
+    deleteAnnotation: (id) => {
+      if (!live[id]) return { ok: false, reason: 'not-found' };
+      delete live[id];
+      return { ok: true };
+    },
+    editTextNote: (id, { text }) => { live[id] = { ...live[id], text }; return { ok: true }; },
+    editCallout: (id, { text, strokeColor, fillColor }) => {
+      const style = { ...live[id].data.legacyCallout.style };
+      if (strokeColor) style.borderColor = strokeColor;
+      if (fillColor) style.fillColor = fillColor;
+      live[id] = { data: { legacyCallout: { ...live[id].data.legacyCallout, ...(text != null ? { text } : {}), style } } };
+      return { ok: true };
+    },
+    recolorHighlight: (id, { color, opacity }) => {
+      live[id] = {
+        ...live[id],
+        ...(color ? { fill: color } : {}),
+        ...(opacity != null ? { opacity: Number(opacity) / 100 } : {}),
+      };
+      return { ok: true };
+    },
+  };
+  const box = createSurveyAgentToolbox({
+    getBridge: () => bridge,
+    getDocument: () => doc,
+    extraTools: [
+      { name: 'survey_add_text_note', execute: async () => 'Added a text note on page 2 (id a1).' },
+      { name: 'survey_edit_text_note', execute: async ({ text }) => { live.a1.text = text; return 'Changed the note text.'; } },
+      { name: 'survey_edit_callout', execute: async ({ text }) => { live.c1.data.legacyCallout.text = text; return 'Changed the callout.'; } },
+      { name: 'survey_recolor_highlight', execute: async ({ color }) => { live.h1.fill = color; return 'Changed the highlight.'; } },
+    ],
+  });
+  const added = await box.run('add_text_note', { near_item_id: 'm117', text: 'old note' });
+  const edited = await box.run('edit_text_note', { annotation_id: 'a1', text: 'new note' });
+  assert.deepEqual(edited.change, {
+    annotationId: 'a1',
+    documentId: 'doc-1',
+    label: 'Changed the note text.',
+    kind: 'text',
+    fields: [{ type: 'markup', key: 'text', before: 'old note', after: 'new note' }],
+  });
+  assert.deepEqual(box.undo([edited.change]), { reverted: 1, kept: 0 });
+  assert.equal(live.a1.text, 'old note');
+  assert.ok(live.a1, 'undo after an edit must not delete the mark');
+  live.a1.text = 'tapped';
+  assert.deepEqual(box.undo([edited.change]), { reverted: 0, kept: 1 });
+  assert.equal(live.a1.text, 'tapped');
+  assert.ok(added.change.annotationId, 'the earlier add still has its own card');
+
+  const callout = await box.run('edit_callout', { annotation_id: 'c1', text: 'new callout' });
+  assert.equal(callout.change.kind, 'callout');
+  assert.deepEqual(box.undo([callout.change]), { reverted: 1, kept: 0 });
+  assert.equal(live.c1.data.legacyCallout.text, 'old callout');
+
+  const highlight = await box.run('recolor_highlight', { annotation_id: 'h1', color: '#ff0000' });
+  assert.equal(highlight.change.kind, 'highlight');
+  assert.deepEqual(box.undo([highlight.change]), { reverted: 1, kept: 0 });
+  assert.equal(live.h1.fill, '#f4d35e');
+});

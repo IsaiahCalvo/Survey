@@ -54,6 +54,76 @@ const clone = (value) => (value && typeof value === 'object' ? JSON.parse(JSON.s
 
 const out = (value) => (typeof value === 'string' ? value : JSON.stringify(value));
 
+const MARKUP_EDIT = Object.freeze({
+  edit_text_note: 'text',
+  edit_callout: 'callout',
+  recolor_highlight: 'highlight',
+});
+
+function markupObj(found) {
+  if (!found) return null;
+  if (found.obj) return found.obj;
+  if (found.annotation) return found.annotation;
+  if (found.text != null || found.fill != null || found.data || found.opacity != null) return found;
+  return null;
+}
+
+function markupSnapshot(doc, id) {
+  const obj = id && typeof doc?.findAnnotation === 'function' ? markupObj(doc.findAnnotation(id)) : null;
+  if (!obj) return null;
+  const callout = obj.data?.legacyCallout;
+  const n = Number(obj.opacity);
+  return {
+    text: typeof obj.text === 'string' ? obj.text : (typeof callout?.text === 'string' ? callout.text : null),
+    strokeColor: callout?.style?.borderColor || null,
+    fillColor: callout?.style?.fillColor || null,
+    color: obj.fill || obj.stroke || null,
+    opacity: Number.isFinite(n) ? (n > 1 ? Math.round(n) : Math.round(n * 100)) : null,
+  };
+}
+
+function markupFields(kind, before, input) {
+  const fields = [];
+  const add = (key, after) => {
+    if (after === undefined) return;
+    fields.push({ type: 'markup', key, before: before?.[key] ?? null, after });
+  };
+  if (kind === 'text') add('text', String(input.text ?? ''));
+  if (kind === 'callout') {
+    if (input.text != null) add('text', String(input.text));
+    if (input.stroke_color != null) add('strokeColor', input.stroke_color);
+    if (input.fill_color != null) add('fillColor', input.fill_color);
+  }
+  if (kind === 'highlight') {
+    if (input.color != null) add('color', input.color);
+    if (input.opacity != null) add('opacity', Number(input.opacity));
+  }
+  return fields;
+}
+
+function sameMarkup(key, current, after) {
+  if (key === 'text') return String(current || '').trimEnd() === String(after || '').trimEnd();
+  if (key === 'opacity') return Number(current) === Number(after);
+  if (typeof current === 'string' && typeof after === 'string') return current.toLowerCase() === after.toLowerCase();
+  return (current ?? null) === (after ?? null);
+}
+
+function restoreMarkup(doc, change, patch) {
+  if (!doc || !Object.keys(patch).length) return false;
+  if (change.kind === 'text') return doc.editTextNote?.(change.annotationId, { text: patch.text })?.ok === true;
+  if (change.kind === 'callout') {
+    return doc.editCallout?.(change.annotationId, {
+      text: patch.text,
+      strokeColor: patch.strokeColor,
+      fillColor: patch.fillColor,
+    })?.ok === true;
+  }
+  if (change.kind === 'highlight') {
+    return doc.recolorHighlight?.(change.annotationId, { color: patch.color, opacity: patch.opacity })?.ok === true;
+  }
+  return false;
+}
+
 class ToolError extends Error {}
 
 /**
@@ -68,6 +138,8 @@ class ToolError extends Error {}
  * value before and the value this tool wrote, so undo only reverts a field
  * nobody has changed since. Markup an extra tool added is
  * { annotationId, documentId, label }; undo deletes it through getDocument.
+ * Markup an extra tool edited is { annotationId, documentId, label, kind, fields };
+ * undo restores those fields while they still hold what the agent wrote.
  */
 export function createSurveyAgentToolbox({
   getBridge = () => surveyAgentBridge.current,
@@ -388,15 +460,33 @@ export function createSurveyAgentToolbox({
           if (extra.access?.minRole === 'editor' && getBridge()?.canEdit === false) {
             throw new ToolError('This person can only view this document, so nothing can be changed.');
           }
-          const content = await extra.execute(placeNear(name, input || {}));
+          const placed = placeNear(name, input || {});
+          const kind = MARKUP_EDIT[name];
+          const doc = typeof getDocument === 'function' ? getDocument() : null;
+          const before = kind && placed.annotation_id ? markupSnapshot(doc, placed.annotation_id) : null;
+          const content = await extra.execute(placed);
           const text = typeof content === 'string' ? content : out(content);
           // "Added a text note on page 1 (id abc)." -> Undo can delete it.
           const added = name.startsWith('add_') && text.match(/\s*\(id ([^)\s]+)\)\.?\s*$/);
-          if (!added) return { isError: false, content: text };
+          if (added) {
+            return {
+              isError: false,
+              content: text,
+              change: { annotationId: added[1], documentId: getBridge()?.documentId || null, label: `${text.slice(0, added.index)}.` },
+            };
+          }
+          const fields = before ? markupFields(kind, before, placed) : [];
+          if (!fields.length) return { isError: false, content: text };
           return {
             isError: false,
             content: text,
-            change: { annotationId: added[1], documentId: getBridge()?.documentId || null, label: `${text.slice(0, added.index)}.` },
+            change: {
+              annotationId: placed.annotation_id,
+              documentId: getBridge()?.documentId || null,
+              label: text,
+              kind,
+              fields,
+            },
           };
         } catch (err) {
           return { content: err?.message || 'That failed.', isError: true };
@@ -446,6 +536,17 @@ export function createSurveyAgentToolbox({
         if (change.annotationId) {
           const doc = typeof getDocument === 'function' ? getDocument() : null;
           const sameDoc = (b?.documentId || null) === (change.documentId || null);
+          if (change.fields?.length) {
+            const snap = sameDoc ? markupSnapshot(doc, change.annotationId) : null;
+            const patch = {};
+            for (const field of change.fields) {
+              if (snap && sameMarkup(field.key, snap[field.key], field.after)) patch[field.key] = field.before;
+              else result.kept += 1;
+            }
+            if (Object.keys(patch).length && restoreMarkup(doc, change, patch)) result.reverted += Object.keys(patch).length;
+            else result.kept += Object.keys(patch).length;
+            continue;
+          }
           const res = doc && sameDoc && doc.findAnnotation?.(change.annotationId) ? doc.deleteAnnotation(change.annotationId) : null;
           if (res?.ok) result.reverted += 1; else result.kept += 1;
           continue;
