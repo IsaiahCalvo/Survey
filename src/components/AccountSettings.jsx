@@ -432,9 +432,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
         onProgress: (progress) => setExportProgress(progress),
       });
       if (result.canceled) return;
+      const saved = result.parts > 1 ? `Your data was saved as ${result.parts} ZIP files.` : 'Your data was saved as a ZIP file.';
       setMessage(result.failures.length
-        ? `Your data was saved, but ${result.failures.length} file(s) could not be downloaded. The list is in errors.txt inside the ZIP.`
-        : 'Your data was saved as a ZIP file.');
+        ? `${saved} ${result.failures.length} file(s) could not be downloaded; the list is in errors.txt.`
+        : saved);
     } catch (err) {
       setError(err.message || "Your data couldn't be downloaded.");
     } finally {

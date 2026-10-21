@@ -85,12 +85,23 @@ Survey media/  Photos, video and audio from survey markers, by document.
 Other files/   Anything else stored for your account.
 `;
 
+// Each zip is built in memory before it is saved, so big accounts are split
+// into parts a phone can hold (the native download shim reads a whole file).
+export const EXPORT_PART_BYTES = 250 * 1024 * 1024;
+
+const newZip = () => new JSZip();
+const finish = (zip) => zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+
 /**
- * Build the zip. Files that fail to download are listed in errors.txt rather
- * than stopping the export.
+ * Build the export as one or more zips, handing each to `onPart(bytes, index)`
+ * as soon as it is full. Part 1 holds README.txt and data.json; files that
+ * fail to download are listed in errors.txt in the last part rather than
+ * stopping the export.
  */
-export async function buildAccountExportZip(manifest, { fetchImpl = fetch, onProgress } = {}) {
-  const zip = new JSZip();
+export async function buildAccountExportZips(manifest, {
+  fetchImpl = fetch, onProgress, onPart, partBytes = EXPORT_PART_BYTES,
+} = {}) {
+  let zip = newZip();
   zip.file('README.txt', README(manifest));
   zip.file('data.json', JSON.stringify({
     exported_at: manifest.exported_at,
@@ -98,6 +109,8 @@ export async function buildAccountExportZip(manifest, { fetchImpl = fetch, onPro
     ...manifest.tables,
     files: manifest.files.map(({ bucket, path }) => ({ bucket, path })),
   }, null, 2));
+  let held = 0;
+  let parts = 0;
 
   const planned = planExportPaths(manifest);
   const failures = [];
@@ -107,7 +120,15 @@ export async function buildAccountExportZip(manifest, { fetchImpl = fetch, onPro
       if (!file.url) throw new Error('no download link');
       const res = await fetchImpl(file.url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      zip.file(file.zipPath, new Uint8Array(await res.arrayBuffer()));
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (held > 0 && held + bytes.length > partBytes) {
+        await onPart(await finish(zip), parts);
+        parts += 1;
+        zip = newZip();
+        held = 0;
+      }
+      zip.file(file.zipPath, bytes);
+      held += bytes.length;
     } catch (err) {
       failures.push(`${file.bucket}/${file.path}: ${err?.message || err}`);
     }
@@ -116,25 +137,42 @@ export async function buildAccountExportZip(manifest, { fetchImpl = fetch, onPro
   if (failures.length) {
     zip.file('errors.txt', `These files could not be downloaded. Try the export again.\n\n${failures.join('\n')}\n`);
   }
-  const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-  return { bytes, failures };
+  await onPart(await finish(zip), parts);
+  return { parts: parts + 1, failures };
 }
 
-export function accountExportFileName(now = new Date()) {
-  return `Survey data ${now.toISOString().slice(0, 10)}.zip`;
+/** The whole export as one zip (tests, small accounts). */
+export async function buildAccountExportZip(manifest, options = {}) {
+  const parts = [];
+  const result = await buildAccountExportZips(manifest, {
+    ...options, partBytes: Infinity, onPart: (bytes) => { parts.push(bytes); },
+  });
+  return { bytes: parts[0], failures: result.failures };
+}
+
+export function accountExportFileName(now = new Date(), part = 0) {
+  const day = now.toISOString().slice(0, 10);
+  return part ? `Survey data ${day} part ${part + 1}.zip` : `Survey data ${day}.zip`;
 }
 
 /** Account settings entry point. */
 export async function downloadMyData({ functionsClient, onProgress, deliver = deliverGeneratedFile }) {
   const manifest = await requestAccountExport(functionsClient);
-  const { bytes, failures } = await buildAccountExportZip(manifest, { onProgress });
-  const result = await deliver({
-    data: bytes,
-    fileName: accountExportFileName(),
-    mimeType: 'application/zip',
-    title: 'Save your Survey data',
-    filterName: 'ZIP archive',
-    extensions: ['zip'],
+  const now = new Date();
+  let result = { canceled: false };
+  const { parts, failures } = await buildAccountExportZips(manifest, {
+    onProgress,
+    onPart: async (bytes, index) => {
+      if (result.canceled) return;
+      result = await deliver({
+        data: bytes,
+        fileName: accountExportFileName(now, index),
+        mimeType: 'application/zip',
+        title: 'Save your Survey data',
+        filterName: 'ZIP archive',
+        extensions: ['zip'],
+      });
+    },
   });
-  return { ...result, fileCount: manifest.files.length, failures };
+  return { ...result, parts, fileCount: manifest.files.length, failures };
 }

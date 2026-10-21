@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import JSZip from 'jszip';
 import {
   ACCOUNT_EXPORT_ERROR_TEXT,
+  accountExportFileName,
   buildAccountExportZip,
+  buildAccountExportZips,
   planExportPaths,
   requestAccountExport,
 } from '../src/services/accountExport.js';
@@ -71,4 +73,24 @@ test('export errors map to plain words', async () => {
   await assert.rejects(requestAccountExport(fail(502)), { message: ACCOUNT_EXPORT_ERROR_TEXT[500] });
   const ok = { invoke: async (name, opts) => ({ data: { format: 1, files: [], name, opts }, error: null }) };
   assert.equal((await requestAccountExport(ok)).name, 'export-account');
+});
+
+test('big exports are split into parts, data.json in the first', async () => {
+  const fetchImpl = async () => ({ ok: true, arrayBuffer: async () => new Uint8Array(400).buffer });
+  const parts = [];
+  const { parts: count, failures } = await buildAccountExportZips(manifest(), {
+    fetchImpl, partBytes: 1000, onPart: async (bytes, index) => { parts.push({ bytes, index }); },
+  });
+  assert.equal(count, 2);
+  assert.equal(failures.length, 1, 'the file with no link');
+  assert.deepEqual(parts.map((p) => p.index), [0, 1]);
+  const first = await JSZip.loadAsync(parts[0].bytes);
+  const second = await JSZip.loadAsync(parts[1].bytes);
+  assert.ok(first.file('data.json'));
+  assert.equal(second.file('data.json'), null);
+  assert.equal(Object.values(first.files).filter((f) => !f.dir && f.name.endsWith('.pdf')).length, 2);
+  assert.ok(second.file('Survey media/Plan A/marker-1/m1.jpg'));
+  assert.ok(second.file('errors.txt'));
+  assert.equal(accountExportFileName(new Date('2026-10-21T08:00:00Z'), 1), 'Survey data 2026-10-21 part 2.zip');
+  assert.equal(accountExportFileName(new Date('2026-10-21T08:00:00Z')), 'Survey data 2026-10-21.zip');
 });
