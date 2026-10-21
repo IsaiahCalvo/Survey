@@ -310,6 +310,13 @@ async function oneRun(browser, size) {
   const perPage = box.sh / Math.max(1, box.pages);
   const vp = DEVICES[size].viewport;
   await page.mouse.move(vp.width / 2, vp.height / 2);
+  const panProfile = ZOOM_PROFILE && !profiled[`pan-${size}`] ? ZOOM_PROFILE.replace(/zoom(\.cpuprofile)?$/, '').replace(/\/?$/, '/') + `pan-${size}.cpuprofile` : null;
+  if (panProfile) {
+    profiled[`pan-${size}`] = true;
+    await cdp.send('Profiler.enable');
+    await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
+    await cdp.send('Profiler.start');
+  }
   let start = await page.evaluate(() => { window.__perf.frames = []; window.__perf.recording = true; return performance.now(); });
   const steps = Math.ceil((PAN_PAGES * perPage) / 400);
   await page.evaluate((el) => { window.__perf.maxScroll = 0; el.addEventListener('scroll', () => { window.__perf.maxScroll = Math.max(window.__perf.maxScroll, el.scrollTop); }, { passive: true }); }, sc);
@@ -317,6 +324,7 @@ async function oneRun(browser, size) {
   for (let i = 0; i < steps; i += 1) { await page.mouse.wheel(0, -400); await page.waitForTimeout(16); }
   await page.waitForTimeout(500);
   const pan = await window_(page, start);
+  if (panProfile) fs.writeFileSync(panProfile, JSON.stringify((await cdp.send('Profiler.stop')).profile));
   console.log(size, 'pan slowest frames', JSON.stringify(pan.loafTop));
   pan.maxScroll = await page.evaluate(() => window.__perf.maxScroll || 0);
   await quiet(page);
@@ -341,7 +349,8 @@ async function oneRun(browser, size) {
   if (zoomProfile) fs.writeFileSync(zoomProfile, JSON.stringify((await cdp.send('Profiler.stop')).profile));
   await quiet(page);
   const heapEndMB = await heapMB(cdp);
-  if (HEAP_TOP && !heapTop[size]) heapTop[size] = await heapByConstructor(cdp);
+  // A dense set's snapshot can outgrow a JS string; skip the table then.
+  if (HEAP_TOP && !heapTop[size]) heapTop[size] = await heapByConstructor(cdp).catch((e) => [`heap table skipped: ${e.message}`]);
   const end = await snapshotDom(page);
   await context.close();
   return {

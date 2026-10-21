@@ -116,6 +116,7 @@ async function oneRun(browser, size, { profile = null } = {}) {
     });
   }
   await signIn(page);
+  let cdp = null;
   if (LINK) {
     // Share link: an accepted invite / share email lands on /?docId=<id>.
     await page.waitForTimeout(500);
@@ -124,7 +125,6 @@ async function oneRun(browser, size, { profile = null } = {}) {
   const row = page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first();
   // Desktop selects the row then opens with "Open file"; phone opens on the tap.
   if (size === 'desktop') await row.click();
-  let cdp = null;
   if (profile) {
     cdp = await context.newCDPSession(page);
     await cdp.send('Profiler.enable');
