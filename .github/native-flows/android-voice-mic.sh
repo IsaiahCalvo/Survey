@@ -26,3 +26,22 @@ ev "(() => { const b = document.querySelector('.is-recording'); b && b.click(); 
 sleep 2
 [ "$(ev "!!document.querySelector('.is-recording')")" = false ] || { echo "::error::hands-free mic did not stop"; exit 1; }
 echo "Voice mic check passed."
+# Voice fill: the e2e fake speech plugin (src/mobile/nativeSpeech.js) says one
+# sentence; the fake Groq then sets every line of D-1-17.
+ev "localStorage.setItem('surveyE2EFakeSpeech', '1'); 'ok'" >/dev/null
+tpl() { ev "(() => [...document.querySelectorAll('button')].filter(b => b.offsetParent).map(b => b.getAttribute('aria-label') || '').find(l => l.startsWith('Template: ')) || 'none')()"; }
+if ! tpl | grep -q '^Template: E2E Doors\.'; then
+  echo "switch template: $(click 'Template: ')"; sleep 1
+  echo "pick E2E Doors: $(ev "(() => { const b = [...document.querySelectorAll('button,[role=menuitem]')].find(b => b.offsetParent && b.textContent.trim().startsWith('E2E Doors')); if (!b) return 'missing'; b.click(); return 'ok'; })()")"; sleep 2
+fi
+echo "template: $(tpl)"
+r=$(click "$MIC"); echo "mic tap: $r"; [ "$r" = ok ] || { echo "::error::no hands-free mic for the voice fill"; exit 1; }
+said=no
+for i in $(seq 10); do sleep 1; [ "$(ev "!!globalThis.__surveyNativeSpeechTest")" = true ] && { ev "globalThis.__surveyNativeSpeechTest.say('D-1-17 is installed'); 'ok'" >/dev/null; said=yes; break; }; done
+[ "$said" = yes ] || { adb exec-out screencap -p > "$OUT/18-voice-fill.png"; echo "::error::fake speech never started listening"; exit 1; }
+DONE="(() => [...document.querySelectorAll('.survey-marker-progress')].some(p => (p.getAttribute('aria-label') || '').startsWith('All 3 checklist items answered')))()"
+filled=false
+for i in $(seq 30); do sleep 2; [ "$(ev "$DONE")" = true ] && { filled=true; break; }; done
+adb exec-out screencap -p > "$OUT/18-voice-fill.png"
+[ "$filled" = true ] || { echo "::error::D-1-17 not filled by voice; progress seen: $(ev "[...document.querySelectorAll('.survey-marker-progress')].map(p => p.getAttribute('aria-label')).join(' | ') || 'none'")"; exit 1; }
+echo "Voice fill check passed."
