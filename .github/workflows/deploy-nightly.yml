@@ -36,6 +36,7 @@ jobs:
     outputs:
       key: ${{ steps.day.outputs.key }}
       done: ${{ steps.mark.outputs.cache-hit }}
+      wait: ${{ steps.capwait.outputs.wait }}
     steps:
       - name: Today's mark
         id: day
@@ -48,10 +49,36 @@ jobs:
           path: .nightly-deploy-day
           key: ${{ steps.day.outputs.key }}
           lookup-only: true
+      # Production comes first: while Vercel's daily cap is refusing deploys
+      # (deploy-production.yml leaves a mark), nightly waits too, so the first
+      # free slot goes to surveytool.app.
+      - name: When did Vercel's daily cap last refuse a deploy?
+        id: cap
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/cache/restore@v4
+        with:
+          path: .vercel-capped
+          key: vercel-capped-none
+          restore-keys: vercel-capped-
+          lookup-only: true
+      - name: Wait out the cap
+        id: capwait
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        env:
+          CAP_KEY: ${{ steps.cap.outputs.cache-matched-key }}
+        run: |
+          if [[ "$CAP_KEY" =~ ^vercel-capped-([0-9]{8})([0-9]{2})([0-9]{2})$ ]]; then
+            capped_at=$(date -u -d "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}:${BASH_REMATCH[3]}" +%s)
+            # Two hours: long enough for production to take the next free slot.
+            if [ $(( $(date -u +%s) - capped_at )) -lt 7200 ]; then
+              echo "Vercel's cap refused a deploy recently; nightly waits."; echo "wait=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
 
   deploy:
     needs: due
-    if: needs.due.outputs.done != 'true'
+    if: needs.due.outputs.done != 'true' && needs.due.outputs.wait != 'true'
     # Not cancel-in-progress: with a run started after every production run,
     # a newer run would keep cancelling the one deploying. At most one more
     # waits, so nightly ships at most twice on a busy day.
