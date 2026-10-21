@@ -2021,46 +2021,69 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
     if (list.length === 0) return false;
     if (!user) { showToast('Please sign in to delete projects', 'warn'); return false; }
-    // UX (KAL-432): same as documents — a project and its documents move into
-    // Archive as ONE group and restore together, so the copy promises recovery
-    // rather than warning about permanence.
-    const confirmed = await askConfirm({
-      title: list.length === 1
-        ? 'Move this project and its documents to Archive?'
-        : `Move these ${list.length} projects and their documents to Archive?`,
-      message: 'You can restore the whole project from Archive for the next 30 days.',
-      confirmLabel: list.length === 1 ? 'Move to Archive' : `Move ${list.length} to Archive`,
-    });
-    // Cancelling must still resolve the caller's boolean contract as "not
-    // deleted" — the hub uses this return value to decide whether to clear its
-    // selection.
-    if (!confirmed) return false;
-
+    // UX (KAL-432): a project and its documents move into Archive as ONE group
+    // and restore together. Like documents, no confirm — an Undo toast instead.
     const ids = list.map((project) => project.id).filter(Boolean);
     setDocuments((prev) => prev.filter((doc) => !ids.includes(doc.project_id || doc.projectId)));
+    const archivable = list.filter((project) => project.id);
+    const archiveRun = (async () => {
+      try {
+        const { succeeded, failed } = await archiveItems(
+          archivable.map((project) => ({
+            type: 'project', id: project.id, name: project.name || 'Project',
+          }))
+        );
+        // UX: no success toast — see hubDeleteDocuments. Only failures speak up.
+        if (failed.length) {
+          console.error('[ProjectArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
+          if (!succeeded.length) dismissArchiveUndo();
+          showToast(failed[0].error, 'error');
+        }
+        await refetchProjects();
+        await refetchDocuments();
+        await refetchAllDocuments();
+        notifyLibraryChanged();
+        return succeeded;
+      } catch (err) {
+        console.error('[ProjectArchive] survey-hub:error', serializeError(err));
+        dismissArchiveUndo();
+        showToast('Failed to archive projects: ' + (err.message || 'Unknown error'), 'error');
+        await refetchProjects();
+        await refetchDocuments();
+        return null;
+      }
+    })();
+    if (archivable.length) {
+      enqueueArchiveUndo({
+        kind: archivable.length > 1 ? 'bulk' : 'single',
+        message: archivable.length === 1 ? 'Project moved to Archive' : `Moved ${archivable.length} projects to Archive`,
+        count: archivable.length,
+        onUndo: () => { void undoArchivedProjects(archiveRun); },
+      });
+    }
+    const succeeded = await archiveRun;
+    return succeeded !== null;
+  };
+
+  // Undo for the project toast above: waits for the archive, then restores the
+  // projects (with their documents) and re-reads.
+  const undoArchivedProjects = async (archiveRun) => {
+    const succeeded = await archiveRun;
+    if (!succeeded?.length) return;
     try {
-      const { failed } = await archiveItems(
-        list.filter((project) => project.id).map((project) => ({
-          type: 'project', id: project.id, name: project.name || 'Project',
-        }))
-      );
-      // UX: no success toast — see hubDeleteDocuments. Only failures speak up.
+      const { failed } = await restoreArchiveItems(succeeded);
       if (failed.length) {
-        console.error('[ProjectArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
+        console.error('[ProjectArchive] survey-hub:undo-partial', JSON.stringify(failed.map(f => f.error)));
         showToast(failed[0].error, 'error');
       }
-      await refetchProjects();
-      await refetchDocuments();
-      await refetchAllDocuments();
-      notifyLibraryChanged();
-      return true;
     } catch (err) {
-      console.error('[ProjectArchive] survey-hub:error', serializeError(err));
-      showToast('Failed to archive projects: ' + (err.message || 'Unknown error'), 'error');
-      await refetchProjects();
-      await refetchDocuments();
-      return false;
+      console.error('[ProjectArchive] survey-hub:undo-error', serializeError(err));
+      showToast('Couldn’t restore from Archive: ' + (err.message || 'Unknown error'), 'error');
     }
+    await refetchProjects();
+    await refetchDocuments();
+    await refetchAllDocuments();
+    notifyLibraryChanged();
   };
 
   const hubRenameProject = async (project, nextName) => {
