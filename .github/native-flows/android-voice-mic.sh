@@ -29,9 +29,10 @@ for i in 1 2 3 4 5 6; do sleep 1; [ "$(ev "!!document.querySelector('.is-recordi
 adb exec-out screencap -p > "$OUT/12-voice-mic.png"
 echo "recording: $recording"
 [ "$recording" = true ] || { echo "::error::hands-free mic did not start"; exit 1; }
-ev "(() => { const b = document.querySelector('.is-recording'); b && b.click(); return 'ok'; })()" >/dev/null
-sleep 2
-[ "$(ev "!!document.querySelector('.is-recording')")" = false ] || { echo "::error::hands-free mic did not stop"; exit 1; }
+echo "stop tap: $(click 'Stop hands-free')"
+stopped=false
+for i in $(seq 8); do sleep 1; [ "$(ev "!!document.querySelector('.survey-agent-mic.is-recording')")" = false ] && { stopped=true; break; }; done
+[ "$stopped" = true ] || { echo "::error::hands-free mic did not stop; mic: $(ev "(() => { const b = document.querySelector('.survey-agent-mic'); return b ? b.getAttribute('aria-label') + ' / ' + b.className : 'none'; })()")"; exit 1; }
 echo "Voice mic check passed."
 # Voice fill: the e2e fake speech plugin (src/mobile/nativeSpeech.js) says one
 # sentence; the fake Groq then sets every line of D-1-17.
