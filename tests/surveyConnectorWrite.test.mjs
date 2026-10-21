@@ -211,6 +211,62 @@ test('undo of a create removes just the created marker', () => {
   assert.equal(out.keep.name, 'stay', 'the other marker stays');
 });
 
+// undo_change for set_answers restores ONLY the checklist entries that call
+// set — an answer changed afterwards (or by another request) survives the undo.
+// Mirrors the server's kind:'answers' undo (restore captured keys, leave rest).
+test('undo of set_answers keeps a later change to a different answer', () => {
+  const doc = new Y.Doc();
+  const id = 'surveyMarker-undo-ans';
+  syncSurveyMarkersToDoc(doc, { [id]: { id, name: 'D', categoryId: 'cat', checklistResponses: { a: { selection: 'Y' } } } });
+
+  // The agent sets answer a → N; it captures only { a: <prior> }.
+  let m = docToSurveyMarkers(doc);
+  const capturedKeys = { a: ('a' in m[id].checklistResponses) ? m[id].checklistResponses.a : null };
+  m[id] = { ...m[id], checklistResponses: { ...m[id].checklistResponses, a: { selection: 'N' } } };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  // Afterwards, answer b is set to Y (a different request / the person).
+  m = docToSurveyMarkers(doc);
+  m[id] = { ...m[id], checklistResponses: { ...m[id].checklistResponses, b: { selection: 'Y' } } };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  // Undo the agent's change: restore only key a, leave b.
+  m = docToSurveyMarkers(doc);
+  const responses = { ...m[id].checklistResponses };
+  for (const [clId, prior] of Object.entries(capturedKeys)) {
+    if (prior === null || prior === undefined) delete responses[clId];
+    else responses[clId] = prior;
+  }
+  m[id] = { ...m[id], checklistResponses: responses };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  const after = docToSurveyMarkers(doc)[id].checklistResponses;
+  assert.deepEqual(after.a, { selection: 'Y' }, 'a restored to its prior value');
+  assert.deepEqual(after.b, { selection: 'Y' }, 'the later change to b survived the undo');
+});
+
+// undo_change for add_note strips ONLY the text this call appended, if the note
+// still ends with it, so a note edited afterwards is left as it is.
+test('undo of add_note strips just the appended segment', () => {
+  const doc = new Y.Doc();
+  const id = 'surveyMarker-undo-note';
+  syncSurveyMarkersToDoc(doc, { [id]: { id, note: { text: 'first' } } });
+
+  // add_note appends 'second' → seg = '\nsecond'.
+  const seg = '\nsecond';
+  let m = docToSurveyMarkers(doc);
+  m[id] = { ...m[id], note: { ...m[id].note, text: `first${seg}` } };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  // Undo strips the segment.
+  m = docToSurveyMarkers(doc);
+  const current = String(m[id].note.text || '');
+  if (current.endsWith(seg)) m[id] = { ...m[id], note: { ...m[id].note, text: current.slice(0, current.length - seg.length) } };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  assert.equal(docToSurveyMarkers(doc)[id].note.text, 'first', 'only the appended text was removed');
+});
+
 test('fieldMaps: concurrent writes to different fields of one marker both survive', () => {
   const origin = new Y.Doc();
   const id = 'surveyMarker-merge';

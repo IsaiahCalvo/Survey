@@ -596,14 +596,15 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     // persist a checklist id or answer the template does not define. set_entity
     // needs the same lookup to validate the entity id against this document.
     const names = (name === 'set_answers' || name === 'set_entity') ? await categoryNames(db, documentId) : null;
-    // The fields this change is about to overwrite, captured before the mutate,
-    // so undo_change can put them back. null means "the field was not set".
+    // Captured before the mutate so undo_change can reverse exactly what this
+    // call changed — only the touched sub-fields, never a whole field, so a
+    // later edit to a different answer or to the note survives an undo, and the
+    // change_id token stays as small as the request that made it.
     let undo: Record<string, unknown> | null = null;
     const result = await writeMarkers(db, documentId, (markers) => {
       const marker = markers[itemId];
       if (!marker) throw new ToolError('No item with that id in this document. Use find_survey_items.');
       if (name === 'set_answers') {
-        undo = { v: 1, d: documentId, m: itemId, b: { checklistResponses: (marker.checklistResponses as unknown) ?? {} } };
         const answers = Array.isArray(args.answers) ? args.answers : [];
         if (!answers.length) throw new ToolError('Pass at least one answer.');
         const categoryId = String(marker.categoryId || '');
@@ -611,7 +612,11 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         if (!category) throw new ToolError('This item has no category in the template, so it has no checklist.');
         const checklistIds = new Set(category.checklist.map((c) => c.id));
         const allowed = names!.answerValues.get(categoryId);
-        const responses = { ...((marker.checklistResponses as Record<string, unknown>) || {}) };
+        const original = (marker.checklistResponses as Record<string, unknown>) || {};
+        const responses = { ...original };
+        // Only the checklist entries this call sets, with their prior value
+        // (null = not set), so undo restores just these and leaves the rest.
+        const before: Record<string, unknown> = {};
         for (const a of answers) {
           const row = (a && typeof a === 'object' ? a : {}) as Record<string, unknown>;
           const clId = String(row.checklist_item_id || '');
@@ -622,19 +627,24 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
           if (Array.isArray(allowed) && !allowed.includes(value)) {
             throw new ToolError(`"${value}" is not an allowed answer on ${category.name}. Allowed: ${allowed.join(', ')}.`);
           }
+          if (!(clId in before)) before[clId] = clId in original ? original[clId] : null;
           responses[clId] = { ...((responses[clId] as Record<string, unknown>) || {}), selection: value };
         }
+        undo = { v: 1, d: documentId, m: itemId, kind: 'answers', keys: before };
         markers[itemId] = { ...marker, checklistResponses: responses };
       } else if (name === 'add_note') {
         const add = String(args.text || '').trim();
         if (!add) throw new ToolError('Say what to add to the note with text.');
-        undo = { v: 1, d: documentId, m: itemId, b: { note: (marker.note ?? marker.notes ?? null) as unknown } };
         // Keep the note's shape: append to its `text`, never drop media or
         // other fields, and never write JSON back as raw text. `note` is the
         // field every editor writes (documentSurveyMarkerMapper.js).
         const obj = noteObjectOf(marker.note ?? marker.notes);
         const beforeText = String(obj.text || '').trimEnd();
-        obj.text = beforeText ? `${beforeText}\n${add}` : add;
+        const seg = beforeText ? `\n${add}` : add;
+        obj.text = `${beforeText}${seg}`;
+        // Undo strips just the segment this call appended, if the note still
+        // ends with it — so a note edited afterwards is left as it is.
+        undo = { v: 1, d: documentId, m: itemId, kind: 'note_append', seg };
         markers[itemId] = { ...marker, note: obj };
       } else {
         // set_entity: set or clear the item's entity (status). Accept any entity
@@ -646,7 +656,9 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         // old status after the id changes.
         const raw = args.entity_id;
         const entityId = raw == null || raw === '' ? null : String(raw);
-        undo = { v: 1, d: documentId, m: itemId, b: {
+        // The entity is one logical field (id + its name/colour move together),
+        // so undo restores all three to what they were before this call.
+        undo = { v: 1, d: documentId, m: itemId, kind: 'entity', b: {
           entityId: (marker.entityId ?? null) as unknown,
           entityName: (marker.entityName ?? null) as unknown,
           entityColor: (marker.entityColor ?? null) as unknown,
@@ -713,7 +725,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
       markers[itemId] = marker;
     }, fieldMaps);
     // Undo of a create removes the marker it added.
-    const undo = { v: 1, d: documentId, m: itemId, create: true };
+    const undo = { v: 1, d: documentId, m: itemId, kind: 'create' };
     return text({ ok: true, item_id: itemId, changed: result.changed, change_id: result.changed ? encodeChange(undo) : null });
   }
   if (name === 'undo_change') {
@@ -726,15 +738,40 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     }
     // Same gate as any write; the append RPC's editor RLS is the real backstop.
     const { fieldMaps } = await requireWrite(db);
+    const id = String(u.m);
+    const kind = String(u.kind || '');
     const result = await writeMarkers(db, String(u.d), (markers) => {
-      const id = String(u.m);
-      if (u.create) { delete markers[id]; return; } // the item this change added
+      if (kind === 'create') { delete markers[id]; return; } // the item this change added
       const marker = markers[id];
       if (!marker) return; // already gone — nothing to put back
-      const before = (u.b && typeof u.b === 'object' ? u.b : {}) as Record<string, unknown>;
-      const patch: Record<string, unknown> = {};
-      for (const [k, val] of Object.entries(before)) patch[k] = val === null ? undefined : val;
-      markers[id] = { ...marker, ...patch };
+      if (kind === 'answers') {
+        // Restore ONLY the checklist entries this change set; leave the rest
+        // (an answer changed afterwards survives). null = it was unset before.
+        const keys = (u.keys && typeof u.keys === 'object' ? u.keys : {}) as Record<string, unknown>;
+        const responses = { ...((marker.checklistResponses as Record<string, unknown>) || {}) };
+        for (const [clId, prior] of Object.entries(keys)) {
+          if (prior === null || prior === undefined) delete responses[clId];
+          else responses[clId] = prior;
+        }
+        markers[id] = { ...marker, checklistResponses: responses };
+      } else if (kind === 'note_append') {
+        // Strip just the text this change appended, if the note still ends with
+        // it; a note edited since is left untouched.
+        const seg = String(u.seg || '');
+        const obj = noteObjectOf(marker.note ?? marker.notes);
+        const current = String(obj.text || '');
+        if (seg && current.endsWith(seg)) {
+          obj.text = current.slice(0, current.length - seg.length);
+          markers[id] = { ...marker, note: obj };
+        }
+      } else if (kind === 'entity') {
+        const before = (u.b && typeof u.b === 'object' ? u.b : {}) as Record<string, unknown>;
+        const patch: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(before)) patch[k] = val === null ? undefined : val;
+        markers[id] = { ...marker, ...patch };
+      } else {
+        throw new ToolError('That change_id is not one this connector gave out.');
+      }
     }, fieldMaps);
     return text({ ok: true, changed: result.changed });
   }
