@@ -18,14 +18,15 @@ function kits(...args) {
 }
 const kitFile = (kit) => { const f = join(mkdtempSync(join(tmpdir(), 'kit-')), 'kit.json'); writeFileSync(f, JSON.stringify(kit)); return f; };
 
-const KIT = { id: 'e2e-acme-doors', version: '1.0.0' };
+const KIT = { id: 'e2e-acme-doors', version: '1.1.0' };
 const columns = [
   { field: 'row_id', header: 'Row ID' }, { field: 'changed_by', header: 'Changed By' },
   { field: 'changed_date', header: 'Changed Date' }, { field: 'name', header: 'Door' },
   { field: 'entity_name', header: 'Gateway' }, { field: 'checklist' }, { field: 'notes', header: 'Notes' },
 ];
 
-const GOOD = { ...KIT, kind: 'exportKit', minEngine: 1, label: 'Acme doors (E2E)', columns };
+const PASS_FAIL = [{ value: 'Pass', tone: 'good' }, { value: 'Fail', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }];
+const GOOD = { ...KIT, kind: 'exportKit', minEngine: 1, label: 'Acme doors (E2E)', columns, answerSet: PASS_FAIL };
 
 test.beforeAll(async () => {
   const pub = kits('publish', kitFile(GOOD));
@@ -40,6 +41,7 @@ test.afterAll(async () => {
 
 test('the kits tool refuses bad kits, built-in ids and changed versions', async () => {
   expect(kits('publish', kitFile({ ...GOOD, columns: columns.slice(1) })).out).toMatch(/not valid/);
+  expect(kits('publish', kitFile({ ...GOOD, version: '9.9.9', answerSet: [{ value: 'a,b', tone: 'good' }] })).out).toMatch(/not valid/);
   expect(kits('publish', kitFile({ ...GOOD, id: 'default-survey' })).out).toMatch(/built into the app/);
   expect(kits('publish', kitFile(GOOD)).out).toMatch(/duplicate key/);
   expect(kits('assign', 'nobody@example.com', KIT.id, KIT.version).out).toMatch(/no account/);
@@ -64,6 +66,9 @@ test('the account given a kit sees it in Excel layout; RLS hides it from others'
   expect(rows.data.map((r) => r.id)).toEqual([KIT.id]);
   const layout = await openTemplateEditor(page);
   await expect(layout.locator('option', { hasText: 'Acme doors (E2E)' })).toHaveCount(1);
+  // Picking the kit brings its Pass / Fail / N/A answers with it.
+  await layout.selectOption(KIT.id);
+  await expect(page.getByRole('combobox', { name: 'Checklist answers' }).filter({ visible: true }).first()).toHaveValue('pass-fail-na');
 });
 
 test('an account without the kit does not get it', async ({ page }) => {
