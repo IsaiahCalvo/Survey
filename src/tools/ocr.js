@@ -206,15 +206,25 @@ function fontKey(page, font) {
 
 // Make a scanned PDF searchable. `readPage(index)` renders and reads one page
 // and resolves to { image: { width, height }, lines } or null to leave the page
-// alone (it already has text). Pages are read one at a time to keep memory low.
-export async function ocrPdf(bytes, readPage, progress = () => {}) {
+// alone (it already has text). At most `together` pages are read at once (one
+// by default) to keep memory low; words go onto the pages in order.
+export async function ocrPdf(bytes, readPage, progress = () => {}, { together = 1 } = {}) {
   const doc = await loadPdf(bytes);
   const pages = doc.getPages();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const stats = { pages: pages.length, read: 0, skipped: 0, words: 0 };
+  const reading = new Map();
+  let next = 0;
   for (let i = 0; i < pages.length; i += 1) {
     progress(i, pages.length);
-    const result = await readPage(i);
+    while (next < pages.length && reading.size < Math.max(1, together)) {
+      const p = readPage(next);
+      p.catch(() => {}); // seen when its turn comes; this stops an early "unhandled" warning
+      reading.set(next, p);
+      next += 1;
+    }
+    const result = await reading.get(i);
+    reading.delete(i);
     if (!result) { stats.skipped += 1; continue; }
     stats.read += 1;
     stats.words += addTextLayer(pages[i], result.lines, result.image, font);

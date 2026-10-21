@@ -1,6 +1,6 @@
 // PDF to TIFF: draw each page and put them all in one multi-page TIFF.
 import {
-  SEG, base, renderPage, releaseCanvas, ToolError,
+  SEG, base, releaseCanvas, ToolError,
 } from '../kit.js';
 import { rgbaToTiffPage, writeTiff } from '../imageWriters.js';
 
@@ -13,18 +13,21 @@ export default {
     { key: 'color', label: 'Colors', type: SEG, def: 'color', choices: [['color', 'Color'], ['gray', 'Gray'], ['bw', 'Black and white']] },
   ],
   async run([file], opts, progress) {
-    const pdf = await file.pdfjs();
+    const scans = await file.scans();
     const pick = file.selected.size ? [...file.selected].sort((a, b) => a - b) : [...Array(file.pages).keys()];
     const dpi = Number(opts.dpi);
     const pages = [];
     for (let n = 0; n < pick.length; n += 1) {
       progress(`Page ${n + 1} of ${pick.length}`);
-      const canvas = await renderPage(pdf, pick[n], { scale: dpi / 72 });
+      const canvas = await file.render(pick[n], { scale: dpi / 72 });
       const { width, height } = canvas;
       let rgba = canvas.getContext('2d').getImageData(0, 0, width, height).data;
       releaseCanvas(canvas);
       // A capped render (huge sheets) has fewer pixels per inch than asked.
-      const pageDpi = Math.min(dpi, (width / (await pdf.getPage(pick[n] + 1)).getViewport({ scale: 1 }).width) * 72);
+      const scan = scans[pick[n]];
+      const points = scan ? (scan.rotate % 180 ? scan.box.height : scan.box.width)
+        : (await (await file.pdfjs()).getPage(pick[n] + 1)).getViewport({ scale: 1 }).width;
+      const pageDpi = Math.min(dpi, (width / points) * 72);
       pages.push(await rgbaToTiffPage(rgba, width, height, { color: opts.color, dpi: pageDpi }));
       rgba = null;
     }

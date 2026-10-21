@@ -13,6 +13,7 @@ import {
   N, look, nameOf, numOf, listOf, describeSpace, toGray, streamData, decodePixels, decodeAlpha, Unsupported,
 } from './pdfImages.js';
 import { encodeGrayJpeg, rgbaToGray } from './imageWriters.js';
+import { jpegInfo, jpegToGray } from './jpeg.js';
 import { pageResources } from './extractImages.js';
 
 const COLOR_KINDS = new Set(['rgb', 'cmyk', 'lab']);
@@ -537,14 +538,25 @@ class Grayer {
   async grayImage(img) {
     const ctx = this.ctx;
     const { dict } = img;
-    const { data, codec } = streamData(ctx, img);
+    const { data, codec, parms } = streamData(ctx, img);
     const width = numOf(ctx, dict.get(N('Width')), 0);
     const height = numOf(ctx, dict.get(N('Height')), 0);
     if (codec === 'DCTDecode') {
-      if (!this.decodeJpeg || dict.get(N('Decode'))) return null;
-      const px = await this.decodeJpeg(data);
-      if (!px || px.width !== width || px.height !== height) return null;
-      const jpeg = encodeGrayJpeg(rgbaToGray(px.data, width, height), width, height, this.quality);
+      if (dict.get(N('Decode'))) return null;
+      // Most colour JPEGs can keep their own brightness blocks as they are:
+      // exact, and far quicker than decoding and saving again.
+      // (/ColorTransform 0 says the three parts are red, green and blue.)
+      let jpeg = parms && numOf(ctx, parms.get(N('ColorTransform')), 1) === 0 ? null : jpegToGray(data);
+      if (jpeg) {
+        const info = jpegInfo(jpeg);
+        if (info.width !== width || info.height !== height) jpeg = null;
+      }
+      if (!jpeg) {
+        if (!this.decodeJpeg) return null;
+        const px = await this.decodeJpeg(data);
+        if (!px || px.width !== width || px.height !== height) return null;
+        jpeg = encodeGrayJpeg(rgbaToGray(px.data, width, height), width, height, this.quality);
+      }
       const out = PDFRawStream.of(dict.clone(ctx), jpeg);
       for (const k of ['DecodeParms', 'Length', 'DL']) out.dict.delete(N(k));
       out.dict.set(N('Filter'), N('DCTDecode'));

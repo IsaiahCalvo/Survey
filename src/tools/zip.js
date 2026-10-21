@@ -24,8 +24,9 @@ function dosTime(d) {
   };
 }
 
-// files: [{ name, bytes: Uint8Array }] -> Uint8Array of the whole archive.
-export function makeZip(files, now = new Date()) {
+// The archive as a list of pieces. An entry is { name, bytes: Uint8Array } or,
+// for one already handed to the browser, { name, blob, size, crc }.
+function zipParts(files, now) {
   const enc = new TextEncoder();
   const { time, date } = dosTime(now);
   const chunks = [];
@@ -33,8 +34,8 @@ export function makeZip(files, now = new Date()) {
   let offset = 0;
   for (const f of files) {
     const name = enc.encode(f.name);
-    const crc = crc32(f.bytes);
-    const size = f.bytes.length;
+    const crc = f.blob ? f.crc : crc32(f.bytes);
+    const size = f.blob ? f.size : f.bytes.length;
     const local = new DataView(new ArrayBuffer(30));
     local.setUint32(0, 0x04034b50, true);
     local.setUint16(4, 20, true);
@@ -47,7 +48,7 @@ export function makeZip(files, now = new Date()) {
     local.setUint32(22, size, true);
     local.setUint16(26, name.length, true);
     local.setUint16(28, 0, true);
-    chunks.push(new Uint8Array(local.buffer), name, f.bytes);
+    chunks.push(new Uint8Array(local.buffer), name, f.blob || f.bytes);
 
     const cd = new DataView(new ArrayBuffer(46));
     cd.setUint32(0, 0x02014b50, true);
@@ -72,9 +73,20 @@ export function makeZip(files, now = new Date()) {
   end.setUint16(10, files.length, true);
   end.setUint32(12, cdSize, true);
   end.setUint32(16, offset, true);
-  const all = [...chunks, ...central, new Uint8Array(end.buffer)];
+  return [...chunks, ...central, new Uint8Array(end.buffer)];
+}
+
+// files: [{ name, bytes: Uint8Array }] -> Uint8Array of the whole archive.
+export function makeZip(files, now = new Date()) {
+  const all = zipParts(files, now);
   const out = new Uint8Array(all.reduce((n, c) => n + c.length, 0));
   let p = 0;
   for (const c of all) { out.set(c, p); p += c.length; }
   return out;
+}
+
+// The same archive as a Blob, built from the entries without copying them
+// into one buffer, so a ZIP of big pictures never sits in the page twice.
+export function makeZipBlob(files, now = new Date()) {
+  return new Blob(zipParts(files, now), { type: 'application/zip' });
 }
