@@ -681,11 +681,28 @@ export async function getDocumentCollaborators(documentId) {
  * Owner's display name/email for a document the caller can access
  * (RPC returns nothing otherwise).
  */
+// Set once the RPC is missing or refused (migration 20261022020000 not yet
+// deployed -> 404 PGRST202; no session / anon -> 401/42501). Callers fall back
+// to the collaborator row, so stop retrying for this page session instead of
+// spamming the network log on every dialog open.
+let ownerProfileRpcUnavailable = false;
+const OWNER_PROFILE_UNAVAILABLE_CODES = new Set(['PGRST202', '42883', '42501', 'PGRST301', '401', '403', '404']);
+
 export async function getDocumentOwnerProfile(documentId) {
-  if (!documentId) return null;
-  const { data, error } = await supabase.rpc('get_document_owner_profile', { doc_id: documentId });
-  if (error) return null;
-  return Array.isArray(data) ? data[0] || null : data || null;
+  if (!documentId || ownerProfileRpcUnavailable) return null;
+  try {
+    const { data, error } = await supabase.rpc('get_document_owner_profile', { doc_id: documentId });
+    if (error) {
+      const code = String(error.code ?? error.status ?? '');
+      if (OWNER_PROFILE_UNAVAILABLE_CODES.has(code) || [401, 403, 404].includes(error.status)) {
+        ownerProfileRpcUnavailable = true;
+      }
+      return null;
+    }
+    return Array.isArray(data) ? data[0] || null : data || null;
+  } catch {
+    return null;
+  }
 }
 
 /**

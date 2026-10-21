@@ -47,3 +47,33 @@ export function accessInviteRows(invites, members, now = Date.now()) {
     emails: open.filter((i) => i.target_email),
   };
 }
+
+/**
+ * Display text for one member row (share-dialog fix, 2026-10-21). Never a
+ * raw user id: the owner row often carries no email of its own, so it uses
+ * the owner profile (get_document_owner_profile) or the signed-in user's own
+ * account, and otherwise falls back to a role word.
+ * @returns {{ primary: string, secondary: string, title: string }}
+ */
+export function memberIdentity(member, { owner = null, currentUser = null } = {}) {
+  const m = member || {};
+  const id = m.user_id || m.user?.id || null;
+  const role = norm(m.role);
+  let name = String(m.user?.name || m.name || m.display_name || '').trim();
+  let email = String(m.user?.email || m.email || '').trim();
+  const fill = (n, e) => {
+    if (!name && n) name = String(n).trim();
+    if (!email && e) email = String(e).trim();
+  };
+  if (owner && ((id && owner.user_id === id) || (!owner.user_id && role === 'owner'))) {
+    fill(owner.name, owner.email);
+  }
+  if (currentUser && id && currentUser.id === id) {
+    const meta = currentUser.user_metadata || {};
+    fill(meta.full_name || meta.name, currentUser.email);
+  }
+  const fallback = role === 'owner' ? 'Owner' : 'Collaborator';
+  const primary = name || email || fallback;
+  const secondary = name && email ? email : '';
+  return { primary, secondary, title: [name, email].filter(Boolean).join(' · ') || fallback };
+}
