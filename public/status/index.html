@@ -66,9 +66,11 @@
   function when(s){var d=new Date(s);return d.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});}
   function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
   var now=document.getElementById('st-now'),ver=document.getElementById('st-ver'),list=document.getElementById('st-list');
-  fetch('/release.json?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){
-    if(j&&j.commit)ver.textContent='Live version '+String(j.commit).slice(0,7)+(j.builtAt?', built '+when(j.builtAt):'')+'.';
-  }).catch(function(){});
+  var live=fetch('/release.json?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){
+    if(!j||!j.commit)return false;
+    ver.textContent='Live version '+String(j.commit).slice(0,7)+(j.builtAt?', built '+when(j.builtAt):'')+'.';
+    return true;
+  }).catch(function(){return false});
   // GitHub allows 60 unsigned requests an hour per visitor, so keep the last
   // answer for a few minutes and fall back to it when GitHub says no.
   var KEY='survey-status-v1',cached=null;
@@ -101,8 +103,10 @@
         list.appendChild(li);
       });
     }).catch(function(){
-      now.className='st-now';
-      now.textContent=ver.textContent?'Survey is up. Incident history could not load right now.':'Could not check status right now. Try again in a minute.';
+      live.then(function(up){
+        now.className='st-now';
+        now.textContent=up?'Survey is up. Incident history could not load right now.':'Could not check status right now. Try again in a minute.';
+      });
     });
 })();
 </script>
