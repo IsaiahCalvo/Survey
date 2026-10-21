@@ -181,7 +181,7 @@ test('a write-scope agent sets an answer through the connector, and an open clie
   expect(row?.entity_name).toBe('Installed');
 });
 
-test('the person undoes a recorded connector change from survey-undo, on their own token', async ({ browser }) => {
+test('the person undoes a recorded connector change from survey-undo, on their own token', async ({ page, browser }) => {
   const itemId = `surveyMarker-${RUN}-pundo`;
   const checklistItemId = CHECKLIST_ID;
   await seedTemplate();
@@ -196,6 +196,13 @@ test('the person undoes a recorded connector change from survey-undo, on their o
   } finally {
     await agentCtx.close();
   }
+
+  // The owner has the document open — the concurrently-open client that merges
+  // the WAL updates (both the write and the undo) and re-projects them to the
+  // document_annotations mirror, which the connector write never touches.
+  await signIn(page, E2E_ACCOUNTS.owner);
+  await openSampleDocument(page);
+
   const wrote = await mcp(tok.access_token, 'tools/call', {
     name: 'set_answers',
     arguments: { document_id: E2E_DOCUMENT.id, item_id: itemId, answers: [{ checklist_item_id: checklistItemId, value: 'N' }] },
