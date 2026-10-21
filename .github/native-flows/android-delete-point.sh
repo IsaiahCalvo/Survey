@@ -19,6 +19,7 @@ W=$(adb shell wm size | sed 's/.*: //;s/x.*//' | tr -d '\r'); H=$(adb shell wm s
 # near 74% of the screen height, so 3/4 missed it).
 X=$((W * 3 / 4)); Y=$((H * 13 / 20))
 ( pick Polygon ) || { pick Shapes; pick Polygon; }
+N0=$(ev "document.querySelectorAll('g[data-annotation-index]').length")
 # Four corners, then a tap back on the first one closes the polygon.
 for p in "$((X - 150)) $((Y - 100))" "$((X + 150)) $((Y - 100))" "$((X + 150)) $((Y + 100))" "$((X - 150)) $((Y + 100))" "$((X - 150)) $((Y - 100))"; do
   # A short press, not `tap`, and gaps longer than a double-tap so each
@@ -26,13 +27,21 @@ for p in "$((X - 150)) $((Y - 100))" "$((X + 150)) $((Y - 100))" "$((X + 150)) $
   set -- $p; adb shell input stylus swipe "$1" "$2" "$1" "$2" 120; sleep 1.2
 done
 sleep 1
-echo "after placing: $(ev "document.querySelectorAll('g[data-annotation-index]').length") annotations, polygons: $(ev "document.querySelectorAll('g[data-annotation-index] polygon').length")"
+# If the tap on the first corner did not close it, Enter finishes the draft.
+if [ "$(ev "document.querySelectorAll('g[data-annotation-index]').length")" = "$N0" ]; then
+  echo "draft still open; pressing Enter"
+  ev "(document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), 'ok')" >/dev/null; sleep 1.5
+fi
+N=$(ev "document.querySelectorAll('g[data-annotation-index]').length")
+echo "annotations: $N0 -> $N"
+[ "$N" = "$((N0 + 1))" ] || { echo "::error::Polygon was not committed"; adb exec-out screencap -p > "$OUT/15-delete-point.png"; exit 1; }
+# A finished polygon is selected the instant it lands; select it only if not.
+before=$(count)
+echo "points right after drawing: $before"
+if [ "$before" != "4" ]; then
 pick "Rectangle Select"
-# Use the polygon's real screen box (device px), not the points we aimed at:
-# box-select a margin around it, then fall back to a tap on its top edge.
-bb=$(ev "(() => { const g = [...document.querySelectorAll('g[data-annotation-index]')].filter(g => g.querySelector('polygon')).pop(); if (!g) return 'none'; const r = g.querySelector('polygon').getBoundingClientRect(); const d = window.devicePixelRatio || 1; return [r.left, r.top, r.right, r.bottom].map(v => Math.round(v * d)).join(' '); })()")
+bb=$(ev "(() => { const g = document.querySelector('g[data-annotation-index=\"$N0\"]'); const r = g.getBoundingClientRect(); const d = window.devicePixelRatio || 1; return [r.left, r.top, r.right, r.bottom].map(v => Math.round(v * d)).join(' '); })()")
 echo "polygon box: $bb"
-[ "$bb" != "none" ] || { echo "::error::No polygon drawn"; adb exec-out screencap -p > "$OUT/15-delete-point.png"; exit 1; }
 set -- $bb; L=$1; T=$2; R=$3; B=$4
 adb shell input stylus swipe $((L - 60)) $((T - 60)) $((R + 60)) $((B + 60)) 600
 sleep 1.5
@@ -42,6 +51,7 @@ if [ "$before" != "4" ]; then
   adb shell input stylus swipe $(((L + R) / 2)) "$T" $(((L + R) / 2)) "$T" 80
   sleep 1.5
   before=$(count)
+fi
 fi
 echo "points before: $before"
 [ "$before" = "4" ] || { echo "::error::Polygon not selected with 4 points (got $before)"; adb exec-out screencap -p > "$OUT/15-delete-point.png"; exit 1; }
