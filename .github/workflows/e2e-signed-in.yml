@@ -23,6 +23,9 @@ on:
       perf_pages:
         description: 'Sheets in the seeded big drawing set (perf runs only)'
         default: '240'
+      perf_flags:
+        description: 'Feature flags to turn on for the perf run, comma-separated (perf runs only)'
+        default: ''
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -104,6 +107,7 @@ jobs:
         if: ${{ inputs.perf }}
         env:
           BIG_DOC_PAGES: ${{ inputs.perf_pages }}
+          FLAGS: ${{ inputs.perf_flags }}
           BASE: http://127.0.0.1:5241
         run: |
           node scripts/e2e-local-supabase.mjs seed

@@ -198,6 +198,8 @@ async function oneRun(browser, size) {
   const context = await browser.newContext(DEVICES[size]);
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
   await context.addInitScript(PROBE);
+  // FLAGS=a,b turns those feature flags on for the run (src/featureFlags.js).
+  if (process.env.FLAGS) await context.addInitScript((keys) => { for (const k of keys) localStorage.setItem(`survey.flag.${k}`, '1'); }, process.env.FLAGS.split(','));
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
   await cdp.send('Performance.enable');
