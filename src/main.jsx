@@ -557,7 +557,7 @@ if (!devRouteActive && isResetPasswordRoute) {
 // sign-up email or Google sign-in returns to the front page while an agent
 // code or consent request is waiting.
 const isAgentLinkRoute = typeof window !== 'undefined'
-  && (/^\/(?:agent-link|oauth\/consent)(?:\/|$)/.test(window.location.pathname || '')
+  && (/^\/(?:agent-link|oauth\/consent|agentid\/callback)(?:\/|$)/.test(window.location.pathname || '')
     || (() => { try { return Boolean(agentLinkResumeUrl(window.location, window.localStorage)); } catch { return false; } })());
 
 if (!devRouteActive && isAgentLinkRoute) {
