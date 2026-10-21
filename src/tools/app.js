@@ -7,7 +7,7 @@ import { parsePageSet, parseRangeGroups, formatPageSet, everyN } from './ranges.
 import { makeZip } from './zip.js';
 import { noteFreeToolStep } from './funnel.js';
 import {
-  canvasCodec, openPdfjs, renderPage, prepareImage, saveFile, canvasToBytes, releaseCanvas, runQpdf, loadDocFont,
+  canvasCodec, openPdfjs, renderPage, prepareImage, gifToImages, saveFile, canvasToBytes, releaseCanvas, runQpdf,
 } from './browser.js';
 import { makeSign } from './sign.js';
 
@@ -29,8 +29,12 @@ const MULTIPLE = root.hasAttribute('data-multiple');
 // the same options, and the results come back in one ZIP.
 const BATCH = root.hasAttribute('data-batch');
 const batching = () => BATCH && S.files.length > 1;
+// Tools a finished PDF can go on to ("id:Name|id:Name"), from the page build.
+const NEXT = (root.dataset.next || '').split('|').filter(Boolean).map((p) => p.split(':'));
 
-import { PDF_TYPE, base, pdfOut, SEG } from './kit.js';
+import {
+  PDF_TYPE, base, pdfOut, SEG, DOC_OPTIONS, blocksToPdf, docNotice,
+} from './kit.js';
 
 function fmtSize(n) {
   if (n < 1024) return `${n} B`;
@@ -86,17 +90,32 @@ async function toImages(file, opts, progress, format) {
   return out;
 }
 
+const isGif = (b) => b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46;
+
 async function fromImages(files, opts, progress) {
   const images = [];
   for (let n = 0; n < files.length; n += 1) {
     progress(`Image ${n + 1} of ${files.length}`);
-    images.push(...await prepareImage(files[n].bytes, files[n].mime));
+    const f = files[n];
+    if (opts.frames === 'all' && isGif(f.bytes)) {
+      images.push(...await gifToImages(f.bytes, (i, total) => progress(`Image ${n + 1} of ${files.length}: frame ${i + 1} of ${total}`)));
+    } else images.push(...await prepareImage(f.bytes, f.mime));
   }
   progress('Making the PDF');
   if (!images.length) throw new ToolError('Add at least one image.');
   const name = files.length === 1 ? `${base(files[0].name)}.pdf` : 'images.pdf';
   return [pdfOut(name, await imagesToPdf(images, { pageSize: opts.pageSize, orientation: opts.orientation, margin: Number(opts.margin) }))];
 }
+
+// Shared by the tools that write on pages.
+const FONT_CHOICES = [['helvetica', 'Helvetica'], ['times', 'Times'], ['courier', 'Courier']];
+const STAMP_PAGES = { label: 'Pages', type: 'text', more: true, def: '', placeholder: 'All pages', help: 'Leave it empty for every page, or type pages like 2-10, 15.' };
+const STAMP_TEXT = (size) => [
+  { key: 'font', label: 'Font', type: SEG, more: true, def: 'helvetica', choices: FONT_CHOICES },
+  { key: 'bold', label: 'Bold', type: 'check', more: true, def: false },
+  { key: 'size', label: 'Text size', type: 'select', more: true, def: size, choices: ['8', '9', '10', '11', '12', '14', '16', '18', '24', '32', '48'].map((n) => [n, `${n} pt`]) },
+  { key: 'color', label: 'Color', type: 'color', more: true, def: '#1a1a1a' },
+];
 
 const TOOLS = {
   'merge-pdf': {
@@ -138,9 +157,13 @@ const TOOLS = {
   },
   'rotate-pdf': {
     view: 'pages', rotate: true,
-    async run([file]) {
-      const turns = Object.fromEntries(file.turns);
-      if (![...file.turns.values()].some((q) => q % 4)) throw new ToolError('Turn at least one page first.');
+    // With several files there are no page tiles, so one choice turns every
+    // page of every file (on top of any page turned by hand before).
+    options: [{ key: 'turnAll', label: 'Turn every page', type: SEG, def: '1', show: (o, files) => files.length > 1, choices: [['-1', 'Left'], ['1', 'Right'], ['2', 'Upside down']] }],
+    async run([file], o, progress, { batch } = {}) {
+      const extra = batch ? Number(o.turnAll) || 0 : 0;
+      const turns = Object.fromEntries(Array.from({ length: file.pages }, (_, i) => [i, (file.turns.get(i) || 0) + extra]));
+      if (!Object.values(turns).some((q) => q % 4)) throw new ToolError('Turn at least one page first.');
       return [pdfOut(`${base(file.name)}-rotated.pdf`, await rotatePages(file.bytes, turns))];
     },
   },
@@ -183,27 +206,56 @@ const TOOLS = {
     view: 'pages',
     options: [
       { key: 'position', label: 'Where', type: 'select', def: 'bottom-center', choices: [['bottom-center', 'Bottom middle'], ['bottom-right', 'Bottom right'], ['bottom-left', 'Bottom left'], ['top-center', 'Top middle'], ['top-right', 'Top right'], ['top-left', 'Top left']] },
-      { key: 'format', label: 'Style', type: 'select', def: 'n', choices: [['n', '1'], ['page', 'Page 1'], ['of', 'Page 1 of 10'], ['slash', '1 / 10']] },
+      { key: 'format', label: 'Style', type: 'select', def: 'n', choices: [['n', '1'], ['page', 'Page 1'], ['of', 'Page 1 of 10'], ['nof', '1 of 10'], ['slash', '1 / 10'], ['dash', '- 1 -'], ['custom', 'Your own words']] },
+      { key: 'custom', label: 'Your words', type: 'text', def: 'Sheet {n} of {p}', show: (o) => o.format === 'custom', help: '{n} becomes the number and {p} the last number.' },
       { key: 'start', label: 'First number', type: 'number', def: '1', min: 0 },
-      { key: 'size', label: 'Size', type: SEG, def: '11', choices: [['9', 'Small'], ['11', 'Medium'], ['14', 'Large']] },
       { key: 'skipFirst', label: 'Skip the first page', type: 'check', def: false },
+      { key: 'style', label: 'Number type', type: 'select', more: true, def: '1', choices: [['1', '1, 2, 3'], ['i', 'i, ii, iii'], ['I', 'I, II, III'], ['a', 'a, b, c'], ['A', 'A, B, C'], ['bates', 'Bates: 000001']] },
+      { key: 'prefix', label: 'Before the number', type: 'text', more: true, def: '', placeholder: 'ABC-', show: (o) => o.style === 'bates' },
+      { key: 'suffix', label: 'After the number', type: 'text', more: true, def: '', show: (o) => o.style === 'bates' },
+      { key: 'pages', ...STAMP_PAGES },
+      { key: 'margin', label: 'Space from the edge', type: SEG, more: true, def: 'auto', choices: [['auto', 'Auto'], ['18', '¼ in'], ['36', '½ in'], ['72', '1 in']] },
+      ...STAMP_TEXT('11'),
     ],
     async run([file], o) {
-      const bytes = await addPageNumbers(file.bytes, { position: o.position, format: o.format, start: Math.floor(Number(o.start) || 0), size: Number(o.size), skipFirst: o.skipFirst });
+      const bytes = await addPageNumbers(file.bytes, {
+        position: o.position, format: o.format, custom: o.custom, start: Math.floor(Number(o.start) || 0), skipFirst: o.skipFirst,
+        style: o.style, prefix: o.prefix, suffix: o.suffix, pages: o.pages, margin: o.margin, font: o.font, bold: o.bold, size: Number(o.size), color: o.color,
+      });
       return [pdfOut(`${base(file.name)}-numbered.pdf`, bytes)];
     },
   },
   'watermark-pdf': {
     view: 'pages',
     options: [
-      { key: 'text', label: 'Words', type: 'text', def: 'DRAFT', placeholder: 'DRAFT' },
-      { key: 'color', label: 'Color', type: SEG, def: 'red', choices: [['red', 'Red'], ['gray', 'Gray'], ['blue', 'Blue'], ['black', 'Black']] },
+      { key: 'kind', label: 'Watermark', type: SEG, def: 'text', choices: [['text', 'Words'], ['image', 'Image']] },
+      { key: 'text', label: 'Words', type: 'text', def: 'DRAFT', placeholder: 'DRAFT', show: (o) => o.kind !== 'image' },
+      { key: 'image', label: 'Image', type: 'file', accept: 'image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp', button: 'Choose an image', show: (o) => o.kind === 'image', help: 'A PNG or JPG, like a logo or a stamp.' },
+      { key: 'color', label: 'Color', type: 'color', def: '#c7382b', show: (o) => o.kind !== 'image' },
       { key: 'size', label: 'Size', type: SEG, def: '0.6', choices: [['0.35', 'Small'], ['0.6', 'Medium'], ['0.9', 'Large']] },
-      { key: 'opacity', label: 'See-through', type: SEG, def: '0.25', choices: [['0.15', 'Faint'], ['0.25', 'Light'], ['0.5', 'Strong']] },
-      { key: 'diagonal', label: 'Across the page corner to corner', type: 'check', def: true },
+      { key: 'opacity', label: 'See-through', type: SEG, def: '0.25', choices: [['0.15', 'Faint'], ['0.25', 'Light'], ['0.5', 'Strong'], ['1', 'Solid']] },
+      { key: 'position', label: 'Where', type: SEG, grid: true, def: 'center', show: (o) => !o.tile, choices: [['top-left', 'Top left'], ['top', 'Top'], ['top-right', 'Top right'], ['left', 'Left'], ['center', 'Middle'], ['right', 'Right'], ['bottom-left', 'Bottom left'], ['bottom', 'Bottom'], ['bottom-right', 'Bottom right']] },
+      { key: 'angle', label: 'Angle', type: SEG, more: true, def: 'diag', choices: [['diag', 'Corner to corner'], ['0', 'Level'], ['45', '45°'], ['custom', 'Other']] },
+      { key: 'angleCustom', label: 'Degrees', type: 'number', more: true, def: '30', show: (o) => o.angle === 'custom', help: 'Turns it to the left. Use a minus number to turn it right.' },
+      { key: 'tile', label: 'Repeat it across the page', type: 'check', more: true, def: false, rerender: true },
+      { key: 'behind', label: 'Put it behind the page', type: 'check', more: true, def: false, help: 'Scans and filled shapes will cover it.' },
+      { key: 'font', label: 'Font', type: SEG, more: true, def: 'helvetica', choices: FONT_CHOICES, show: (o) => o.kind !== 'image' },
+      { key: 'bold', label: 'Bold', type: 'check', more: true, def: true, show: (o) => o.kind !== 'image' },
+      { key: 'pages', ...STAMP_PAGES },
     ],
     async run([file], o) {
-      const bytes = await addWatermark(file.bytes, { text: o.text, color: o.color, size: Number(o.size), opacity: Number(o.opacity), diagonal: o.diagonal });
+      let image = null;
+      if (o.kind === 'image') {
+        if (!o.image) throw new ToolError('Choose an image for the watermark first.');
+        // Made once, then reused for every file in a batch.
+        o.image.ready ||= (await prepareImage(o.image.bytes, o.image.mime))[0];
+        image = o.image.ready;
+      }
+      const angle = o.angle === 'custom' ? Number(o.angleCustom) || 0 : o.angle;
+      const bytes = await addWatermark(file.bytes, {
+        text: o.text, image, color: o.color, size: Number(o.size), opacity: Number(o.opacity), angle, position: o.position,
+        tile: o.tile, behind: o.behind, font: o.font, bold: o.bold, pages: o.pages,
+      });
       return [pdfOut(`${base(file.name)}-watermarked.pdf`, bytes)];
     },
   },
@@ -250,29 +302,18 @@ const TOOLS = {
   },
   'word-to-pdf': {
     view: 'files',
-    options: [
-      { key: 'pageSize', label: 'Page size', type: SEG, def: 'letter', choices: [['letter', 'Letter'], ['a4', 'A4']] },
-      { key: 'font', label: 'Font', type: SEG, def: 'sans', choices: [['sans', 'Clean (Helvetica)'], ['serif', 'Classic (Times)']] },
-    ],
+    options: DOC_OPTIONS,
     async prepare(item) {
       const { inspectDocx } = await import('./docx.js');
       item.notes = await inspectDocx(item.bytes);
     },
-    notice(files) {
-      const notes = [...new Set(files.flatMap((f) => f.notes || []))];
-      if (!notes.length) return null;
-      const list = notes.length > 1 ? `${notes.slice(0, -1).join(', ')} and ${notes[notes.length - 1]}` : notes[0];
-      return `Heads up: this document has ${list}, which won't look the same in the PDF. This tool is best for simple documents like letters, reports and specs.`;
-    },
+    notice: docNotice,
     async run([file], o, progress) {
-      const { readDocx, docxBlocksToPdf } = await import('./docx.js');
+      const { readDocx } = await import('./docx.js');
       progress('Reading the document');
       const blocks = await readDocx(file.bytes);
       progress('Making the PDF');
-      const { bytes, skippedImages } = await docxBlocksToPdf(blocks, { pageSize: o.pageSize, font: o.font, loadFont: loadDocFont, loadFontkit: async () => (await import('@pdf-lib/fontkit')).default });
-      const out = pdfOut(`${base(file.name)}.pdf`, bytes);
-      if (skippedImages) out.note = `${skippedImages} picture${skippedImages === 1 ? ' was' : 's were'} left out because ${skippedImages === 1 ? 'it uses' : 'they use'} a type a browser can't draw (like WMF or EMF).`;
-      return [out];
+      return [await blocksToPdf(blocks, file.name, o)];
     },
   },
   'tiff-to-pdf': { view: 'files', hint: 'Every page of a multi-page TIFF is kept. Drag files to set the order.', options: IMAGE_OPTIONS, run: fromImages },
@@ -281,7 +322,7 @@ const TOOLS = {
     options: [
       { key: 'password', label: 'Password', type: 'password', def: '', autocomplete: 'new-password' },
       { key: 'again', label: 'Type it again', type: 'password', def: '', autocomplete: 'new-password' },
-      { key: 'show', label: 'Show password', type: 'check', def: false, rerender: true },
+      { key: 'show', label: 'Show password', type: 'check', def: false, rerender: true, forget: true },
       { key: 'allowPrint', label: 'Let people print it', type: 'check', def: true },
       { key: 'allowCopy', label: 'Let people copy text from it', type: 'check', def: true },
     ],
@@ -296,7 +337,7 @@ const TOOLS = {
     view: 'files', keepLock: true,
     options: [
       { key: 'password', label: 'Password', type: 'password', def: '', autocomplete: 'current-password', help: 'Leave it blank if the PDF opens without one and only blocks printing or copying.' },
-      { key: 'show', label: 'Show password', type: 'check', def: false, rerender: true },
+      { key: 'show', label: 'Show password', type: 'check', def: false, rerender: true, forget: true },
     ],
     async run([file], o) {
       return [pdfOut(`${base(file.name)}-unlocked.pdf`, await unlockPdf(runQpdf, file.bytes, { password: o.password }))];
@@ -318,14 +359,26 @@ const TOOLS = {
   'add-header-footer': {
     view: 'pages',
     options: [
-      { key: 'header', label: 'Header', type: 'text', def: '', placeholder: 'Project name' },
-      { key: 'footer', label: 'Footer', type: 'text', def: 'Page {page} of {total}', placeholder: 'Page {page} of {total}', help: 'Use {page}, {total}, {date} or {file} to fill those in.' },
-      { key: 'align', label: 'Line up', type: SEG, def: 'center', choices: [['left', 'Left'], ['center', 'Middle'], ['right', 'Right']] },
-      { key: 'size', label: 'Size', type: SEG, def: '10', choices: [['8', 'Small'], ['10', 'Medium'], ['13', 'Large']] },
-      { key: 'skipFirst', label: 'Skip the first page', type: 'check', def: false },
+      { key: 'tl', label: 'Header left', type: 'text', def: '', placeholder: 'Project name' },
+      { key: 'tc', label: 'Header middle', type: 'text', def: '' },
+      { key: 'tr', label: 'Header right', type: 'text', def: '' },
+      { key: 'bl', label: 'Footer left', type: 'text', def: '' },
+      { key: 'bc', label: 'Footer middle', type: 'text', def: 'Page {page} of {total}' },
+      { key: 'br', label: 'Footer right', type: 'text', def: '' },
+      { key: 'insert', label: 'Add to the box you are typing in', type: 'insert', target: 'bc', choices: [['{page}', 'Page number'], ['{total}', 'Page count'], ['{date}', 'Date'], ['{file}', 'File name']] },
+      { key: 'dateFormat', label: 'Date', type: 'select', more: true, def: 'long', choices: [['mdy', '10/21/2026'], ['dmy', '21/10/2026'], ['ymd', '2026-10-21'], ['long', 'Oct 21, 2026']] },
+      { key: 'pages', ...STAMP_PAGES },
+      { key: 'skipFirst', label: 'Skip the first page', type: 'check', more: true, def: false },
+      { key: 'marginY', label: 'Space from top and bottom', type: SEG, more: true, def: '36', choices: [['18', '¼ in'], ['36', '½ in'], ['72', '1 in']] },
+      { key: 'marginX', label: 'Space from the sides', type: SEG, more: true, def: '72', choices: [['36', '½ in'], ['72', '1 in'], ['108', '1½ in']] },
+      ...STAMP_TEXT('12'),
     ],
     async run([file], o) {
-      const bytes = await addHeaderFooter(file.bytes, { header: o.header, footer: o.footer, align: o.align, size: Number(o.size), skipFirst: o.skipFirst, fileName: file.name });
+      const boxes = Object.fromEntries(['tl', 'tc', 'tr', 'bl', 'bc', 'br'].map((k) => [k, o[k]]));
+      const bytes = await addHeaderFooter(file.bytes, {
+        boxes, dateFormat: o.dateFormat, pages: o.pages, skipFirst: o.skipFirst, marginY: Number(o.marginY), marginX: Number(o.marginX),
+        font: o.font, bold: o.bold, size: Number(o.size), color: o.color, fileName: file.name,
+      });
       return [pdfOut(`${base(file.name)}-header-footer.pdf`, bytes)];
     },
   },
@@ -354,24 +407,64 @@ const TOOLS = {
   },
 };
 
+// Pages of their own for searches like "DOCX to PDF", sharing a tool above.
+TOOLS['docx-to-pdf'] = TOOLS['word-to-pdf'];
+TOOLS['bmp-to-pdf'] = TOOLS['image-to-pdf'];
+TOOLS['gif-to-pdf'] = {
+  ...TOOLS['image-to-pdf'],
+  options: [
+    { key: 'frames', label: 'Moving GIFs', type: SEG, def: 'first', choices: [['first', 'First frame'], ['all', 'Every frame']], help: 'Every frame puts each frame of a moving GIF on its own page.' },
+    ...IMAGE_OPTIONS,
+  ],
+};
+
 // Tools added later live in their own module under defs/ (see kit.js for
 // what they get to use), so a page only loads its own tool's code.
 const T = TOOLS[TOOL_ID] || (await import(`./defs/${TOOL_ID}.js`)).default;
 // Only the sign tool uses it; made lazily since it needs render() below.
 let sign;
+// A tool with a view of its own (the viewer) builds it with these.
+const custom = T.makeView?.({ h });
 
 // ---------------------------------------------------------------- state
 
-const S = { files: [], opts: {}, busy: false, error: '', result: null };
+const S = { files: [], opts: {}, busy: false, error: '', result: null, moreOpen: false };
 let keySeq = 0;
+// The text box an 'insert' option types into.
+let lastText = null;
+
+// Settings from the last time this tool made a file, kept in this browser
+// only. Passwords, files and per-file defaults are never kept.
+const MEMORY = `surveyTool.${TOOL_ID}`;
+const keepable = (opt) => !['password', 'file', 'pages', 'insert'].includes(opt.type) && typeof opt.def !== 'function' && !opt.forget;
+function recall() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MEMORY) || '{}');
+    return saved && typeof saved === 'object' ? saved : {};
+  } catch {
+    return {};
+  }
+}
+function remember() {
+  try {
+    const keep = {};
+    for (const opt of T.options || []) if (keepable(opt)) keep[opt.key] = S.opts[opt.key];
+    localStorage.setItem(MEMORY, JSON.stringify(keep));
+  } catch { /* storage can be off, full or blocked; nothing to keep then */ }
+}
 
 function defaults(file) {
   const o = {};
+  const saved = recall();
   for (const opt of T.options || []) {
     if (opt.type === 'pages') continue;
     // A picked extra file (type 'file') stays when the main file changes.
-    if (opt.type === 'file') o[opt.key] = S.opts[opt.key] || null;
-    else o[opt.key] = typeof opt.def === 'function' ? opt.def(file) : opt.def;
+    if (opt.type === 'file') { o[opt.key] = S.opts[opt.key] || null; continue; }
+    o[opt.key] = typeof opt.def === 'function' ? opt.def(file) : opt.def;
+    const v = saved[opt.key];
+    if (!keepable(opt) || v === undefined || typeof v !== typeof opt.def) continue;
+    if (opt.choices && !opt.choices.some(([c]) => c === v)) continue;
+    o[opt.key] = v;
   }
   return o;
 }
@@ -385,6 +478,8 @@ const ACCEPTS = {
   image: { test: isImage, input: 'image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff', wrong: 'Choose JPG, PNG, WebP, GIF, BMP or TIFF images.' },
   docx: { test: (f) => /\.(docx|doc)$/i.test(f.name) || f.type.includes('wordprocessingml'), input: '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document', wrong: 'Choose a Word file that ends in .docx.' },
   tiff: { test: isTiffFile, input: 'image/tiff,.tif,.tiff', wrong: 'Choose TIFF images, ones that end in .tif or .tiff.' },
+  rtf: { test: (f) => /\.rtf$/i.test(f.name) || /rtf/i.test(f.type), input: '.rtf,application/rtf,text/rtf', wrong: 'Choose an RTF file, one that ends in .rtf.' },
+  html: { test: (f) => /\.x?html?$/i.test(f.name) || /html/i.test(f.type), input: '.html,.htm,.xhtml,text/html', wrong: 'Choose a web page file, one that ends in .html or .htm.' },
   text: { test: isText, input: 'text/plain,.txt,.text,.md,.csv,.log', wrong: 'Choose a plain text file, like one that ends in .txt.' },
 }[ACCEPT];
 
@@ -448,6 +543,7 @@ async function addFiles(list) {
 
 function dispose(item) {
   if (item.url) URL.revokeObjectURL(item.url);
+  item.release?.();
   // pdf.js 6 moved destroy() from the document to its loading task.
   item.doc?.then((d) => (d.loadingTask || d).destroy?.()).catch(() => {});
   item.thumbs.forEach(releaseCanvas);
@@ -525,6 +621,7 @@ function fileRow(file, i) {
   };
   const preview = file.url ? h('div', { class: 'thumb' }, h('img', { src: file.url, alt: '' }))
     : ACCEPT === 'pdf' && !file.locked ? thumbSlot(file, 0) : h('div', { class: 'thumb ext' }, file.name.split('.').pop().slice(0, 4).toUpperCase());
+  if (T.rotate) preview.style.setProperty('--turn', `${((file.turns.get(0) || 0) + (Number(S.opts.turnAll) || 0)) * 90}deg`);
   const row = h('li', { class: 'frow', draggable: n > 1 ? 'true' : null, 'data-index': String(i) },
     preview,
     h('div', { class: 'fmeta' }, h('span', { class: 'fname' }, file.name), h('span', { class: 'fsub' }, `${file.locked ? 'Locked · ' : ''}${file.broken ? 'Damaged · ' : ''}${file.pages ? `${file.pages} page${file.pages === 1 ? '' : 's'} · ` : ''}${fmtSize(file.size)}`)),
@@ -645,7 +742,7 @@ function optionsView() {
       h('span', { class: 'ohelp' }, `${file.order.length} of ${file.pages} pages${removed ? `, ${removed} removed` : ''}`),
       h('div', { class: 'seg' }, h('button', { type: 'button', onclick: () => { file.order = null; render(); } }, 'Undo all changes'))));
   }
-  if (T.rotate) {
+  if (T.rotate && !batching()) {
     const all = (d) => () => {
       for (let i = 0; i < file.pages; i += 1) file.turns.set(i, (file.turns.get(i) || 0) + d);
       root.querySelectorAll('.pgrid .thumb').forEach((el) => el.style.setProperty('--turn', `${file.turns.get(Number(el.dataset.page)) * 90}deg`));
@@ -654,13 +751,18 @@ function optionsView() {
       h('button', { type: 'button', onclick: all(-1), html: `${ICON.left}<span>Turn left</span>` }),
       h('button', { type: 'button', onclick: all(1), html: `${ICON.right}<span>Turn right</span>` }))));
   }
+  // Options marked `more` sit in a closed "More options" section, so the
+  // defaults stay one click away and the rest is there when wanted.
+  const more = [];
+  const main = fields;
   for (const opt of T.options || []) {
-    if (opt.show && !opt.show(S.opts)) continue;
+    if (opt.show && !opt.show(S.opts, S.files)) continue;
+    const fields = opt.more ? more : main;
     const id = `opt-${opt.key}`;
     const set = (v, rerender) => { S.opts[opt.key] = v; opt.onChange?.(v, S.files); if (rerender || opt.onChange) render(); };
     let control;
     if (opt.type === SEG) {
-      control = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': opt.label }, opt.choices.map(([v, l]) => h('button', {
+      control = h('div', { class: `seg${opt.grid ? ' grid3' : ''}`, role: 'radiogroup', 'aria-label': opt.label }, opt.choices.map(([v, l]) => h('button', {
         type: 'button', role: 'radio', 'aria-checked': String(S.opts[opt.key] === v), onclick: () => set(v, true),
       }, l)));
       fields.push(h('div', { class: 'opt' }, h('span', { class: 'olabel' }, opt.label), control));
@@ -671,11 +773,27 @@ function optionsView() {
       continue;
     }
     if (opt.type === 'check') {
-      fields.push(h('label', { class: 'opt check' }, h('input', { type: 'checkbox', checked: S.opts[opt.key], onchange: (e) => set(e.target.checked, opt.rerender) }), h('span', {}, opt.label)));
+      fields.push(h('label', { class: 'opt check' }, h('input', { type: 'checkbox', checked: S.opts[opt.key], onchange: (e) => set(e.target.checked, opt.rerender) }),
+        h('span', {}, opt.label, opt.help && h('small', { class: 'ohelp' }, opt.help))));
+      continue;
+    }
+    if (opt.type === 'insert') {
+      // Buttons that type a token like {page} into the text box last used.
+      const add = (token) => {
+        const input = root.querySelector(`#opt-${lastText || opt.target}`) || root.querySelector(`#opt-${opt.target}`);
+        if (!input) return;
+        const key = input.id.slice(4);
+        input.setRangeText(token, input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length, 'end');
+        S.opts[key] = input.value;
+        input.focus();
+      };
+      fields.push(h('div', { class: 'opt' }, h('span', { class: 'olabel' }, opt.label), h('div', { class: 'seg' }, opt.choices.map(([token, l]) => h('button', {
+        type: 'button', onmousedown: (e) => e.preventDefault(), onclick: () => add(token),
+      }, l)))));
       continue;
     }
     if (opt.type === 'select') {
-      control = h('select', { id, onchange: (e) => set(e.target.value) }, opt.choices.map(([v, l]) => h('option', { value: v, selected: S.opts[opt.key] === v }, l)));
+      control = h('select', { id, onchange: (e) => set(e.target.value, true) }, opt.choices.map(([v, l]) => h('option', { value: v, selected: S.opts[opt.key] === v }, l)));
     } else if (opt.type === 'pages') {
       control = h('input', {
         id, type: 'text', inputmode: 'numeric', autocomplete: 'off', placeholder: opt.placeholder, 'data-pages-input': true,
@@ -700,10 +818,14 @@ function optionsView() {
       control = h('input', {
         id, type: opt.type === 'password' && S.opts.show ? 'text' : opt.type, value: S.opts[opt.key], placeholder: opt.placeholder, min: opt.min,
         inputmode: opt.type === 'number' ? 'numeric' : null, autocomplete: opt.autocomplete, spellcheck: opt.type === 'password' ? 'false' : null,
-        oninput: (e) => set(e.target.value),
+        oninput: (e) => set(e.target.value), onfocus: opt.type === 'text' ? () => { lastText = opt.key; } : null,
       });
     }
     fields.push(h('div', { class: 'opt' }, h('label', { class: 'olabel', for: id }, opt.label), control, opt.help && h('span', { class: 'ohelp' }, opt.help)));
+  }
+  if (more.length) {
+    const box = h('details', { class: 'omore', open: S.moreOpen, ontoggle: (e) => { S.moreOpen = e.target.open; } }, h('summary', {}, 'More options'), ...more);
+    main.push(box);
   }
   if (T.select && !(T.options || []).some((o) => o.type === 'pages')) {
     fields.push(h('div', { class: 'opt' }, h('span', { class: 'olabel' }, 'Pages'), h('span', { class: 'ohelp', 'data-pick-count': true }, pickCount(file))));
@@ -712,7 +834,8 @@ function optionsView() {
 }
 
 // An option that takes a second file, like the image for Add image to PDF.
-// Its value is { name, bytes, type, url } or null.
+// Its value is { name, bytes, type, mime, url } or null (type and mime
+// are the same; both names are in use).
 function extraFileField(opt, set) {
   const id = `opt-${opt.key}`;
   const now = S.opts[opt.key];
@@ -722,12 +845,13 @@ function extraFileField(opt, set) {
       const f = e.target.files[0];
       if (!f) return;
       if (now?.url) URL.revokeObjectURL(now.url);
-      set({ name: f.name, type: f.type, bytes: new Uint8Array(await f.arrayBuffer()), url: URL.createObjectURL(f) }, true);
+      set({ name: f.name, type: f.type, mime: f.type, bytes: new Uint8Array(await f.arrayBuffer()), url: URL.createObjectURL(f) }, true);
     },
   });
   return h('div', { class: 'opt' }, h('span', { class: 'olabel' }, opt.label),
     now && h('div', { class: 'opick' }, h('img', { src: now.url, alt: '' }), h('span', {}, now.name)),
-    h('label', { class: 'btn ghost', for: id }, now ? 'Change' : (opt.pick || 'Choose a file')), input,
+    h('label', { class: 'btn ghost', for: id }, now ? 'Change' : (opt.pick || opt.button || 'Choose a file')), input,
+    now && h('button', { type: 'button', class: 'btn ghost', 'aria-label': `Remove ${now.name}`, onclick: () => { URL.revokeObjectURL(now.url); set(null, true); } }, 'Remove'),
     opt.help && h('span', { class: 'ohelp' }, opt.help));
 }
 
@@ -757,7 +881,7 @@ async function run() {
       for (let n = 0; n < S.files.length; n += 1) {
         const tag = `File ${n + 1} of ${S.files.length}`;
         progress(tag);
-        outputs.push(...await T.run([S.files[n]], S.opts, (msg) => progress(`${tag}: ${msg}`)));
+        outputs.push(...await T.run([S.files[n]], S.opts, (msg) => progress(`${tag}: ${msg}`), { batch: true }));
       }
       // Two inputs with the same name would overwrite each other in the ZIP.
       const seen = new Map();
@@ -767,7 +891,7 @@ async function run() {
         if (n) o.name = o.name.replace(/(\.[a-z0-9]+)?$/i, ` (${n + 1})$1`);
       }
     } else {
-      outputs = await T.run(S.files, S.opts, progress);
+      outputs = await T.run(S.files, S.opts, progress, { batch: false });
     }
     if (outputs.length > 1) {
       progress('Packing the ZIP');
@@ -776,6 +900,7 @@ async function run() {
       outputs = [{ name: zipName, bytes: makeZip(outputs), type: 'application/zip', count: outputs.length, parts: outputs, note: outputs.find((o) => o.note)?.note }];
     }
     S.result = outputs[0];
+    remember();
     noteFreeToolStep('result', TOOL_ID);
   } catch (err) {
     if (!(err instanceof ToolError)) console.error(err);
@@ -811,7 +936,36 @@ function resultView() {
       ? h('div', { class: 'rapp' },
         h('p', {}, 'Want to mark it up? Survey adds pens, shapes, clouds and counts, free.'),
         h('button', { type: 'button', class: 'btn ghost', onclick: () => openInSurvey(r) }, 'Open in Survey'))
-      : h('p', { class: 'fine' }, 'Want to mark up PDFs? ', h('a', { href: '/?open=app' }, 'Open Survey free'), '.'));
+      : h('p', { class: 'fine' }, 'Want to mark up PDFs? ', h('a', { href: '/?open=app' }, 'Open Survey free'), '.'),
+    r.type === PDF_TYPE && NEXT.length
+      ? h('div', { class: 'rnext' }, h('p', {}, 'Continue with'),
+        h('div', { class: 'rnext-btns' }, NEXT.map(([id, name]) => h('button', { type: 'button', class: 'btn ghost', onclick: () => continueWith(r, id) }, name))))
+      : '');
+}
+
+// Send the result straight to another tool page, no download and pick again.
+// It waits in this browser's storage and the next page takes it on load.
+async function continueWith(r, id) {
+  try {
+    const { putHandoff, NEXT_TOOL } = await import('./handoff.js');
+    await putHandoff(r.bytes, r.name, NEXT_TOOL);
+    window.location.assign(`/tools/${id}?from=handoff`);
+  } catch {
+    S.error = 'This browser blocked passing the file on. Download it, then choose it on the next tool.';
+    S.result = null;
+    render();
+  }
+}
+
+// A file handed on by "Continue with" on another tool page.
+async function takeHandedFile() {
+  window.history.replaceState(null, '', window.location.pathname);
+  try {
+    const { takeHandoff, NEXT_TOOL } = await import('./handoff.js');
+    const file = await takeHandoff(NEXT_TOOL);
+    if (file) return addFiles([file]);
+  } catch { /* fall through to an empty tool */ }
+  render();
 }
 
 // Hand the PDF to the app on this site; it stays in this browser throughout.
@@ -852,13 +1006,13 @@ function render() {
     return;
   }
   const kind = batching() ? 'files' : T.view;
-  const view = kind === 'files' ? filesView() : kind === 'organize' ? organizeView() : kind === 'sign' ? sign.view(S.files[0]) : pagesView();
+  const view = kind === 'files' ? filesView() : kind === 'organize' ? organizeView() : kind === 'sign' ? sign.view(S.files[0]) : custom ? custom.view(S.files[0]) : pagesView();
   const head = h('div', { class: 'thead' },
-    h('p', { class: 'ttitle' }, kind === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, kind === 'pages' && h('span', {}, ` · ${S.files[0].pages} pages`)),
+    h('p', { class: 'ttitle' }, kind === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, (kind === 'pages' || custom) && h('span', {}, ` · ${S.files[0].pages} pages`)),
     h('button', { type: 'button', class: 'btn ghost', onclick: pickFiles, disabled: !!S.busy }, MULTIPLE ? 'Add more' : 'Change file'));
   const hint = T.hint && h('p', { class: 'thint' }, T.hint);
   const action = h('div', { class: 'tbar' },
-    h('button', { type: 'button', class: 'btn primary lg', onclick: run, disabled: !!S.busy }, S.busy ? 'Working…' : root.dataset.action),
+    h('button', { type: 'button', class: 'btn primary lg', onclick: T.act ? () => T.act(S.files[0], { openInSurvey }) : run, disabled: !!S.busy }, S.busy ? 'Working…' : root.dataset.action),
     h('span', { class: 'tprog', 'data-progress': true, 'aria-live': 'polite' }, S.busy && S.busy !== 'Working…' ? S.busy : ''));
   root.replaceChildren(h('div', { class: 'work' }, head, hint || '', h('div', { class: 'wbody' }, h('div', { class: 'wview' }, view), optionsView() || ''), err || '', action));
 }
@@ -886,4 +1040,5 @@ const early = root.querySelector('[data-early]');
 pickLabel = root.querySelector('[data-pick]')?.textContent;
 early?.addEventListener('change', () => addFiles(early.files));
 if (early?.files.length) addFiles(early.files);
+else if (new URLSearchParams(window.location.search).get('from') === 'handoff') takeHandedFile();
 else render();
