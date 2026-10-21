@@ -3,6 +3,6 @@
 // above today's times so only a big slowdown fails: shared runners are noisy.
 // Today's times are printed on every run's summary page.
 export const SPEED_BUDGET_MS = {
-  home: 5_000,
-  firstPage: 6_000,
+  home: 3_000,
+  firstPage: 4_000,
 };
