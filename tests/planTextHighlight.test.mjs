@@ -71,6 +71,8 @@ test('a word the PDF split across items (abutting boxes) still matches as writte
   ];
   const res = findHighlightQuads(words, 'General Notes');
   assert.ok(res, 'split word should still match');
+  // The stored text rejoins the split word with no space, keeping real gaps.
+  assert.equal(res.text, 'General Notes');
   // All three fragments are on one line → one continuous quad.
   assert.equal(res.quads.length, 1);
   assert.equal(res.quads[0].x1, 50);

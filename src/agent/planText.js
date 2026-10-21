@@ -260,5 +260,15 @@ export function findHighlightQuads(words, query, { occurrence = 1 } = {}) {
     x3: left, y3: bottom,
     x4: right, y4: bottom,
   }));
-  return { quads, text: hit.map((s) => s.text).join(' ') };
+  // Rebuild the matched text with the same spacing rule as the haystack, so a
+  // word the PDF split across items reads "General", not "Gen eral", in the
+  // stored selectedText (copy, listing, Excel).
+  let text = '';
+  let prevHit = null;
+  for (const s of hit) {
+    if (prevHit && !abuts(prevHit.box, s.box)) text += ' ';
+    text += s.text;
+    prevHit = s;
+  }
+  return { quads, text };
 }
