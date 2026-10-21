@@ -383,7 +383,10 @@ export function createSurveyAgentToolbox({
       const extra = extras.get(name);
       if (extra) {
         try {
-          if (extra.access?.minRole === 'editor' && getBridge()?.canEdit === false) {
+          // Same document bind as the item tools: a mid-turn PDF switch must
+          // refuse notes/shapes/deletes, not write on the newly opened file.
+          const b = bridge();
+          if (extra.access?.minRole === 'editor' && b.canEdit === false) {
             throw new ToolError('This person can only view this document, so nothing can be changed.');
           }
           const content = await extra.execute(placeNear(name, input || {}));

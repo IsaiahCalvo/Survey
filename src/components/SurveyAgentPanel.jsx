@@ -55,9 +55,12 @@ let nextId = 1;
 const newId = (prefix) => `${prefix}${nextId++}`;
 
 
-const openDocument = () => {
+const openDocument = (expectedId) => {
   const doc = activeAgentDocument();
   if (!doc) throw new Error('No document is open.');
+  if (expectedId !== undefined && (doc.documentId || null) !== (expectedId || null)) {
+    throw new Error('The person opened another document, so this request stopped. Tell them to ask again.');
+  }
   return doc;
 };
 
@@ -161,7 +164,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       attachments: attachmentsRef.current,
       documentId: bridge.documentId || null,
       undoLastTurn: () => undoLastRef.current(),
-      extraTools: annotations ? buildAnnotationTools({ getDocument: openDocument, text: (v) => (typeof v === 'string' ? v : JSON.stringify(v)) }) : [],
+      extraTools: annotations ? buildAnnotationTools({ getDocument: () => openDocument(bridge.documentId || null), text: (v) => (typeof v === 'string' ? v : JSON.stringify(v)) }) : [],
     });
     try {
       const result = await runSurveyAgentTurn({
