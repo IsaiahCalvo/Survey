@@ -24,10 +24,12 @@ const root = document.getElementById('tool');
 const TOOL_ID = root.dataset.tool;
 const ACCEPT = root.dataset.accept;
 const MULTIPLE = root.hasAttribute('data-multiple');
+// Batch tools work on one file but take many: each file runs on its own with
+// the same options, and the results come back in one ZIP.
+const BATCH = root.hasAttribute('data-batch');
+const batching = () => BATCH && S.files.length > 1;
 
-const PDF_TYPE = 'application/pdf';
-const base = (name) => name.replace(/\.[a-z0-9]+$/i, '');
-const pdfOut = (name, bytes) => ({ name, bytes, type: PDF_TYPE });
+import { PDF_TYPE, base, pdfOut, SEG } from './kit.js';
 
 function fmtSize(n) {
   if (n < 1024) return `${n} B`;
@@ -60,7 +62,6 @@ const ICON = {
 
 // ---------------------------------------------------------------- options
 
-const SEG = 'seg';
 const IMAGE_OPTIONS = [
   { key: 'pageSize', label: 'Page size', type: SEG, def: 'fit', choices: [['fit', 'Same as image'], ['a4', 'A4'], ['letter', 'Letter']] },
   { key: 'orientation', label: 'Orientation', type: SEG, def: 'auto', choices: [['auto', 'Auto'], ['portrait', 'Portrait'], ['landscape', 'Landscape']], show: (o) => o.pageSize !== 'fit' },
@@ -352,7 +353,9 @@ const TOOLS = {
   },
 };
 
-const T = TOOLS[TOOL_ID];
+// Tools added later live in their own module under defs/ (see kit.js for
+// what they get to use), so a page only loads its own tool's code.
+const T = TOOLS[TOOL_ID] || (await import(`./defs/${TOOL_ID}.js`)).default;
 // Only the sign tool uses it; made lazily since it needs render() below.
 let sign;
 
@@ -410,6 +413,10 @@ async function addFiles(list) {
         if (locked && T.keepLock) {
           item.locked = true;
           item.doc = null;
+        } else if (!locked && T.openAnyway) {
+          // Repair takes files pdf.js can't read; the tool tries other readers.
+          item.broken = true;
+          item.doc = null;
         } else {
           S.error = locked
             ? [`"${file.name}" is locked with a password. `, h('a', { href: '/tools/unlock-pdf' }, 'Unlock it'), ' first, then try again.']
@@ -428,7 +435,7 @@ async function addFiles(list) {
     } else if (ACCEPT === 'image' && !isTiffFile(file)) {
       item.url = URL.createObjectURL(file);
     }
-    if (T.prepare) await T.prepare(item);
+    if (T.prepare) await T.prepare(item, setBusy);
     S.files.push(item);
   }
   if (S.files.length && (!MULTIPLE || !Object.keys(S.opts).length)) S.opts = defaults(S.files[0]);
@@ -437,7 +444,8 @@ async function addFiles(list) {
 
 function dispose(item) {
   if (item.url) URL.revokeObjectURL(item.url);
-  item.doc?.then((d) => d.destroy()).catch(() => {});
+  // pdf.js 6 moved destroy() from the document to its loading task.
+  item.doc?.then((d) => (d.loadingTask || d).destroy?.()).catch(() => {});
   item.thumbs.forEach(releaseCanvas);
 }
 
@@ -515,7 +523,7 @@ function fileRow(file, i) {
     : ACCEPT === 'pdf' && !file.locked ? thumbSlot(file, 0) : h('div', { class: 'thumb ext' }, file.name.split('.').pop().slice(0, 4).toUpperCase());
   const row = h('li', { class: 'frow', draggable: n > 1 ? 'true' : null, 'data-index': String(i) },
     preview,
-    h('div', { class: 'fmeta' }, h('span', { class: 'fname' }, file.name), h('span', { class: 'fsub' }, `${file.locked ? 'Locked · ' : ''}${file.pages ? `${file.pages} page${file.pages === 1 ? '' : 's'} · ` : ''}${fmtSize(file.size)}`)),
+    h('div', { class: 'fmeta' }, h('span', { class: 'fname' }, file.name), h('span', { class: 'fsub' }, `${file.locked ? 'Locked · ' : ''}${file.broken ? 'Damaged · ' : ''}${file.pages ? `${file.pages} page${file.pages === 1 ? '' : 's'} · ` : ''}${fmtSize(file.size)}`)),
     h('div', { class: 'facts' },
       n > 1 && h('button', { type: 'button', class: 'ibtn', 'aria-label': `Move ${file.name} up`, disabled: i === 0, onclick: move(-1), html: ICON.up }),
       n > 1 && h('button', { type: 'button', class: 'ibtn', 'aria-label': `Move ${file.name} down`, disabled: i === n - 1, onclick: move(1), html: ICON.down }),
@@ -625,7 +633,7 @@ function organizeView() {
 function optionsView() {
   const file = S.files[0];
   const fields = T.view === 'sign' ? sign.fields(file) : [];
-  const notice = T.notice?.(S.files);
+  const notice = T.notice?.(S.files, S.opts);
   if (notice) fields.push(h('p', { class: 'tnote', role: 'note' }, notice));
   if (T.view === 'organize') {
     const removed = file.pages - file.order.length;
@@ -645,7 +653,7 @@ function optionsView() {
   for (const opt of T.options || []) {
     if (opt.show && !opt.show(S.opts)) continue;
     const id = `opt-${opt.key}`;
-    const set = (v, rerender) => { S.opts[opt.key] = v; if (rerender) render(); };
+    const set = (v, rerender) => { S.opts[opt.key] = v; opt.onChange?.(v, S.files); if (rerender || opt.onChange) render(); };
     let control;
     if (opt.type === SEG) {
       control = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': opt.label }, opt.choices.map(([v, l]) => h('button', {
@@ -715,7 +723,24 @@ async function run() {
     if (el) el.textContent = msg;
   };
   try {
-    let outputs = await T.run(S.files, S.opts, progress);
+    let outputs;
+    if (batching()) {
+      outputs = [];
+      for (let n = 0; n < S.files.length; n += 1) {
+        const tag = `File ${n + 1} of ${S.files.length}`;
+        progress(tag);
+        outputs.push(...await T.run([S.files[n]], S.opts, (msg) => progress(`${tag}: ${msg}`)));
+      }
+      // Two inputs with the same name would overwrite each other in the ZIP.
+      const seen = new Map();
+      for (const o of outputs) {
+        const n = seen.get(o.name) || 0;
+        seen.set(o.name, n + 1);
+        if (n) o.name = o.name.replace(/(\.[a-z0-9]+)?$/i, ` (${n + 1})$1`);
+      }
+    } else {
+      outputs = await T.run(S.files, S.opts, progress);
+    }
     if (outputs.length > 1) {
       progress('Packing the ZIP');
       const first = S.files[0];
@@ -795,9 +820,10 @@ function render() {
     root.replaceChildren(zone, err || '');
     return;
   }
-  const view = T.view === 'files' ? filesView() : T.view === 'organize' ? organizeView() : T.view === 'sign' ? sign.view(S.files[0]) : pagesView();
+  const kind = batching() ? 'files' : T.view;
+  const view = kind === 'files' ? filesView() : kind === 'organize' ? organizeView() : kind === 'sign' ? sign.view(S.files[0]) : pagesView();
   const head = h('div', { class: 'thead' },
-    h('p', { class: 'ttitle' }, T.view === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, T.view === 'pages' && h('span', {}, ` · ${S.files[0].pages} pages`)),
+    h('p', { class: 'ttitle' }, kind === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, kind === 'pages' && h('span', {}, ` · ${S.files[0].pages} pages`)),
     h('button', { type: 'button', class: 'btn ghost', onclick: pickFiles, disabled: !!S.busy }, MULTIPLE ? 'Add more' : 'Change file'));
   const hint = T.hint && h('p', { class: 'thint' }, T.hint);
   const action = h('div', { class: 'tbar' },

@@ -43,6 +43,22 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Sign PDF](https://surveytool.app/tools/sign-pdf): Draw or type your signature onto a PDF.
 - [Protect PDF](https://surveytool.app/tools/protect-pdf): Lock a PDF with a password.
 - [Unlock PDF](https://surveytool.app/tools/unlock-pdf): Take the password off a PDF you can open.
+- [OCR PDF](https://surveytool.app/tools/ocr-pdf): Make a scanned PDF searchable.
+- [Compare PDFs](https://surveytool.app/tools/compare-pdf): See what changed between two versions of a PDF.
+- [Resize PDF pages](https://surveytool.app/tools/resize-pdf): Change the page size to Letter, A4, A3 or ARCH D.
+- [Pages per sheet](https://surveytool.app/tools/n-up-pdf): Put 2, 4, 6 or 9 pages on one sheet.
+- [Make a booklet](https://surveytool.app/tools/booklet-pdf): Print a PDF as a folded, stapled booklet.
+- [Reverse PDF](https://surveytool.app/tools/reverse-pdf): Flip the page order so the last page comes first.
+- [Insert blank pages](https://surveytool.app/tools/add-blank-pages): Add empty pages after every page or where you choose.
+- [Repair PDF](https://surveytool.app/tools/repair-pdf): Fix a PDF that won't open or shows errors.
+- [Split by bookmarks](https://surveytool.app/tools/split-by-bookmarks): One PDF per chapter or sheet, from its bookmarks.
+- [Remove hidden data](https://surveytool.app/tools/sanitize-pdf): Strip metadata, scripts and attachments from a PDF.
+- [Fast web view](https://surveytool.app/tools/fast-web-view): Make a big PDF open fast online, page 1 first.
+- [Extract images](https://surveytool.app/tools/extract-images): Save every picture inside a PDF.
+- [Remove blank pages](https://surveytool.app/tools/remove-blank-pages): Find empty pages and take them out.
+- [PDF to TIFF](https://surveytool.app/tools/pdf-to-tiff): Save a PDF as one multi-page TIFF.
+- [PDF to BMP](https://surveytool.app/tools/pdf-to-bmp): Save each page as a BMP picture.
+- [Grayscale PDF](https://surveytool.app/tools/grayscale-pdf): Make a PDF black and white.
 
 ## Optional
 
