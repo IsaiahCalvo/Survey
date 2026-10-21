@@ -178,3 +178,28 @@ test('deleting an account removes everything the person owns, and only that', as
     sidecar(filed.project_id, friendInLeaverProject.id)]);
   await admin.storage.from('survey-media').remove([leaverMediaOnShared]);
 });
+
+test('a retry after the rows went still moves a shared file\'s survey data', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const leaver = await makeUser(admin, 'retry-leaver');
+  const friend = await makeUser(admin, 'retry-friend');
+  const project = crypto.randomUUID();
+  await must('project', admin.from('projects').insert({ id: project, user_id: leaver.id, name: `Retry project ${RUN}` }));
+  const filed = await addDocument(admin, friend, { projectId: project, name: `Retry filed ${RUN}` });
+  const oldSidecar = `${project}/${filed.id}_data.json`;
+  await must('sidecar', admin.storage.from('documents').upload(oldSidecar, PDF, { contentType: 'application/pdf' }));
+
+  // A first attempt that committed the rows and then failed on storage.
+  await must('rows only', admin.rpc('delete_account_owned_rows', { target_user_id: leaver.id }));
+
+  const res = await deleteAccount(await signInToken(leaver));
+  expect(res.status, await res.clone().text()).toBe(200);
+  const [row] = await must('filed doc', admin.from('documents').select('project_id').eq('id', filed.id));
+  expect(row.project_id).not.toBe(project);
+  expect(await exists(admin, 'documents', `${row.project_id}/${filed.id}_data.json`), 'survey data followed the file').toBe(true);
+  expect(await exists(admin, 'documents', oldSidecar)).toBe(false);
+
+  await admin.auth.admin.deleteUser(friend.id);
+  await admin.storage.from('documents').remove([filed.filePath, `${row.project_id}/${filed.id}_data.json`]);
+});

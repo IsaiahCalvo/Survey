@@ -11,7 +11,8 @@
 --    document id; if storage removal then fails, archive-purge-sweep removes
 --    the orphaned media and a retry still finds every <uid>/ object. It also
 --    names the survey JSON sidecars (documents/<project_id>/<doc_id>_data.json)
---    of the person's documents and anything else under their projects.
+--    of the person's documents and anything else under their projects, except
+--    the sidecars of other people's documents (see sidecar moves below).
 -- 2. delete_account_owned_rows(uid) now also:
 --    - hands the person's markup on other people's documents to each
 --      document's owner (document_annotations.user_id cascades, so it would
@@ -53,13 +54,6 @@ begin
     select p.id::text as project_id
     from public.projects p
     where p.user_id = target_user_id
-  ),
-  others_filed as (
-    select d.id::text as doc_id
-    from public.documents d
-    join public.projects p on p.id = d.project_id
-    where p.user_id = target_user_id
-      and d.user_id <> target_user_id
   )
   select o.bucket_id, o.name
   from storage.objects o
@@ -77,7 +71,11 @@ begin
       or (
         o.bucket_id = 'documents'
         and split_part(o.name, '/', 1) in (select project_id from owned_projects)
-        and split_part(o.name, '/', 2) not in (select doc_id || '_data.json' from others_filed)
+        and not exists (
+          select 1 from public.documents other
+          where split_part(o.name, '/', 2) = other.id::text || '_data.json'
+            and other.user_id <> target_user_id
+        )
       )
       or (
         o.bucket_id = 'documents'
@@ -95,10 +93,13 @@ $$;
 revoke all on function public.account_deletion_storage_objects(uuid) from public, anon, authenticated;
 grant execute on function public.account_deletion_storage_objects(uuid) to service_role;
 
--- Sidecars of other people's documents filed in the person's projects. Those
+-- Sidecars of other people's documents under the person's projects. Those
 -- documents move to a new project (below), and the app reads the sidecar at
 -- <project_id>/<document_id>_data.json, so the edge function moves each one to
--- the document's new project once the rows have changed. Called before them.
+-- the document's current project. Matching on the path prefix, not on
+-- documents.project_id, finds them before and after the rows change, so a
+-- retry still finds any the last attempt did not move: the person's projects
+-- stay until the edge function deletes them just before the auth user.
 create or replace function public.account_deletion_sidecar_moves(target_user_id uuid)
 returns table (name text, document_id uuid)
 language plpgsql
@@ -113,13 +114,14 @@ begin
 
   return query
   select o.name, d.id
-  from public.documents d
-  join public.projects p on p.id = d.project_id
-  join storage.objects o
-    on o.bucket_id = 'documents'
-   and o.name = d.project_id::text || '/' || d.id::text || '_data.json'
-  where p.user_id = target_user_id
-    and d.user_id <> target_user_id
+  from storage.objects o
+  join public.projects p
+    on p.id::text = split_part(o.name, '/', 1)
+   and p.user_id = target_user_id
+  join public.documents d
+    on split_part(o.name, '/', 2) = d.id::text || '_data.json'
+   and d.user_id <> target_user_id
+  where o.bucket_id = 'documents'
   order by o.name;
 end;
 $$;
@@ -180,8 +182,9 @@ begin
 
   delete from public.email_send_events where user_id = target_user_id;
 
+  -- The person's projects, now empty, stay until the edge function's last
+  -- stage; account_deletion_sidecar_moves keys on them.
   delete from public.documents where user_id = target_user_id;
-  delete from public.projects where user_id = target_user_id;
   delete from public.templates where user_id = target_user_id;
 end;
 $$;

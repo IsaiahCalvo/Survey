@@ -149,6 +149,12 @@ Deno.serve(async (req) => {
         await removeOwnedStorage(admin, storedObjects);
       },
       deleteAuthUser: async () => {
+        // The emptied projects outlive the rows stage so a retry can still
+        // find unmoved sidecars. Delete them here: left to cascade from the
+        // auth user, their metric trigger writes a usage row for the user
+        // being deleted and the delete fails.
+        const { error: projectsError } = await admin.from('projects').delete().eq('user_id', user.id);
+        if (projectsError) throw new Error(`Could not remove projects: ${projectsError.message}`);
         const { error } = await admin.auth.admin.deleteUser(user.id);
         if (error) throw error;
       },
