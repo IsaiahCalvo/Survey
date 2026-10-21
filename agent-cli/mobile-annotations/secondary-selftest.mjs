@@ -88,11 +88,13 @@ async function reloadViewer(page, baseUrl) {
 async function openHubTab(page, name) {
   const opener = page.getByRole('button', { name: 'Open pages, search, and bookmarks', exact: true });
   if (await opener.isVisible().catch(() => false)) await opener.click();
-  await page.getByTitle(name, { exact: true }).click();
+  // The hub's tabs are named by aria-label now (no title tooltip).
+  await page.locator(`.mobile-pdf-hub-tab[aria-label="${name}"]`).click();
 }
 
 async function visiblePageContextAction(page, label) {
-  const candidates = page.getByRole('button', { name: label, exact: true }).filter({ visible: true });
+  // Page menu entries are role="menuitem" (PageActionsMenu).
+  const candidates = page.getByRole('menuitem', { name: label, exact: true }).filter({ visible: true });
   const indexes = await candidates.evaluateAll((nodes) => nodes.flatMap((node, index) => (
     node.closest('[role="toolbar"][aria-label="Page actions"]') ? [] : [index]
   )));
@@ -105,10 +107,15 @@ async function groupMenuPoint(page) {
   await group.waitFor({ state: 'visible', timeout: 10_000 });
   return group.evaluate((node) => {
     const box = node.getBoundingClientRect();
+    // A hollow mark's inside is not in elementsFromPoint, but the app's hit
+    // test still picks it (and opens that mark's own menu), so stay outside
+    // every mark's box, not just its painted pixels.
+    const marks = [...document.querySelectorAll('g[data-anno-id], [data-callout-id]')].map((m) => m.getBoundingClientRect());
+    const inMark = (x, y) => marks.some((r) => x >= r.left - 8 && x <= r.right + 8 && y >= r.top - 8 && y <= r.bottom + 8);
     for (let y = box.top + 4; y < box.bottom - 4; y += 6) {
       for (let x = box.left + 4; x < box.right - 4; x += 6) {
         const stack = document.elementsFromPoint(x, y);
-        if (!stack.some((candidate) => candidate.closest?.('[data-anno-id], [data-callout-id]'))) return { x, y };
+        if (!inMark(x, y) && !stack.some((candidate) => candidate.closest?.('[data-anno-id], [data-callout-id]'))) return { x, y };
       }
     }
     return { x: box.left + 3, y: box.top + 3 };
@@ -123,7 +130,22 @@ async function openGroupMenu(page, touch) {
 }
 
 async function selectPairWithMarquee(page, touch, ids) {
-  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await page.getByRole('button', { name: 'Rectangle Select', exact: true }).click();
+  // The last mark drawn stays selected, and its finger-sized handle pads can
+  // cover where the marquee starts, turning the drag into a resize. Tap blank
+  // page first so the drag starts on bare SVG.
+  const blank = await page.locator('[data-svg-annotation-layer="1"]').first().evaluate((svg) => {
+    const box = svg.getBoundingClientRect();
+    for (let y = box.bottom - 20; y > box.top + 20; y -= 15) {
+      for (let x = box.left + 20; x < box.right - 20; x += 15) {
+        if (document.elementFromPoint(x, y) === svg) return { x, y };
+      }
+    }
+    return null;
+  });
+  assert(blank, 'blank page point required to clear the selection');
+  await touch.tap(blank);
+  await page.locator('.svg-selection-overlay').first().waitFor({ state: 'detached', timeout: 10_000 });
   const boxes = [];
   for (const id of ids) {
     const box = await page.locator(`g[data-anno-id="${id}"]`).boundingBox();
@@ -170,33 +192,37 @@ async function runMultiSelectClipboardAndZOrder(page, touch, baseUrl) {
   const pastedIds = afterCopyPaste.filter((id) => !prePasteIds.has(id));
   assert.equal(pastedIds.length, 2, 'group paste must create two new annotations');
 
+  // A paste selects what it created (w53), so the group menu now acts on the
+  // pasted pair, which lands on top. Send it to the back first so every
+  // reorder below actually moves it.
+  const subject = pastedIds;
   menu = await openGroupMenu(page, touch);
-  await menu.getByText('Bring to front', { exact: true }).click();
+  await menu.getByText('Send to back', { exact: true }).click();
   let snapshot = await persistedSnapshot(page, storageKeys);
   let order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
-  assert.deepEqual(order.slice(-2), [rectangle.id, ellipse.id], 'group Bring to front must move the selected pair above pasted copies');
-
-  menu = await openGroupMenu(page, touch);
-  await menu.getByText('Send backward', { exact: true }).click();
-  snapshot = await persistedSnapshot(page, storageKeys);
-  order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
-  assert(!order.slice(-2).includes(rectangle.id), 'group Send backward must move the selection down one layer');
+  assert.deepEqual(order.slice(0, 2), subject, 'group Send to back must move the selected pair below the originals');
 
   menu = await openGroupMenu(page, touch);
   await menu.getByText('Bring forward', { exact: true }).click();
   snapshot = await persistedSnapshot(page, storageKeys);
   order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
-  assert.deepEqual(order.slice(-2), [rectangle.id, ellipse.id], 'group Bring forward must restore the pair one layer up');
+  assert.notDeepEqual(order.slice(0, 2), subject, 'group Bring forward must move the selection up one layer');
 
   menu = await openGroupMenu(page, touch);
-  await menu.getByText('Send to back', { exact: true }).click();
+  await menu.getByText('Bring to front', { exact: true }).click();
   snapshot = await persistedSnapshot(page, storageKeys);
   order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
-  assert.deepEqual(order.slice(0, 2), [rectangle.id, ellipse.id], 'group Send to back must move the selected pair below pasted copies');
+  assert.deepEqual(order.slice(-2), subject, 'group Bring to front must move the selected pair above the originals');
+
+  menu = await openGroupMenu(page, touch);
+  await menu.getByText('Send backward', { exact: true }).click();
+  snapshot = await persistedSnapshot(page, storageKeys);
+  order = snapshot.annotationObjects.map((object) => object.id || object.data?.id);
+  assert(!order.slice(-2).includes(subject[0]), 'group Send backward must move the selection down one layer');
 
   menu = await openGroupMenu(page, touch);
   await menu.getByText('Cut', { exact: true }).click();
-  await page.waitForFunction((ids) => ids.every((id) => !document.querySelector(`g[data-anno-id="${id}"]`)), [rectangle.id, ellipse.id]);
+  await page.waitForFunction((ids) => ids.every((id) => !document.querySelector(`g[data-anno-id="${id}"]`)), subject);
 
   // Paste the cut group from an empty point inside the page.
   const pageBox = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
@@ -213,6 +239,10 @@ async function runMultiSelectClipboardAndZOrder(page, touch, baseUrl) {
   const reloaded = await persistedSnapshot(page, storageKeys);
   assert.deepEqual(reloaded.annotationObjects.map((object) => object.id || object.data?.id), stableIds, 'clipboard/z-order result must persist after reload');
   return { created: [rectangle.id, ellipse.id], persistedCount: stableIds.length };
+}
+
+async function expectText(locator, text) {
+  await locator.filter({ hasText: text }).waitFor({ state: 'visible', timeout: 10_000 });
 }
 
 async function runCounterSeries(page, touch, baseUrl) {
@@ -254,12 +284,17 @@ async function runCounterSeries(page, touch, baseUrl) {
   const before = new Set(await annotationIds(page));
   const first = await createCounterAt(before, 0.3, 0.28);
   before.add(first.id);
-  await page.getByRole('button', { name: /Count 1|Counter Series/ }).click();
-  await page.getByRole('button', { name: '+ New Count', exact: true }).click();
+  // Count picker (#837): the strip's "Counter series" pill opens the Counts
+  // menu - New count, or Continue an existing count.
+  const seriesPill = page.locator('[data-mobile-tool-properties="true"]').getByRole('button', { name: 'Counter series', exact: true });
+  await expectText(seriesPill, 'Count 1');
+  await seriesPill.click();
+  await page.getByRole('button', { name: 'New count', exact: true }).click();
   const second = await createCounterAt(before, 0.34, 0.68);
   before.add(second.id);
-  await page.getByRole('button', { name: 'Count 2', exact: true }).click();
-  await page.locator('.mobile-pdf-properties__menu').getByRole('button', { name: /^Count 1\b/ }).click();
+  await expectText(seriesPill, 'Count 2');
+  await seriesPill.click();
+  await page.locator('.counter-series-menu').getByRole('button', { name: /^Continue Count 1,/ }).click();
   const third = await createCounterAt(before, 0.7, 0.7);
   const ids = [first.id, second.id, third.id];
   const snapshot = await persistedSnapshot(page, storageKeys);
@@ -278,6 +313,15 @@ async function runCounterSeries(page, touch, baseUrl) {
   return { ids, series: [...new Set(counters.map((counter) => counter.data.seriesId))] };
 }
 
+// Bookmarks Edit mode is a toggle and the panel can come back with it still
+// on (its draft survives a remount), so turn it on only when it is off.
+async function ensureBookmarkEditMode(page) {
+  const toggle = page.getByRole('button', { name: /^(Edit bookmarks|Done editing bookmarks)$/ }).filter({ visible: true }).first();
+  await toggle.waitFor({ state: 'visible', timeout: 10_000 });
+  if (await toggle.getAttribute('aria-label') === 'Edit bookmarks') await toggle.click();
+  await page.getByRole('button', { name: 'Done editing bookmarks', exact: true }).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 10_000 });
+}
+
 async function runBookmarksAndPages(page, baseUrl) {
   await openHubTab(page, 'Bookmarks');
   await page.getByRole('button', { name: 'Add bookmark', exact: true }).click();
@@ -286,7 +330,7 @@ async function runBookmarksAndPages(page, baseUrl) {
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   // RULED 2026-09-23 (owner: phone bookmarks match desktop) — a row's rename
   // and delete glyphs show in Edit mode only, as on desktop, so enter it first.
-  await page.getByRole('button', { name: 'Edit bookmarks', exact: true }).click();
+  await ensureBookmarkEditMode(page);
   await page.getByRole('button', { name: 'Edit bookmark Field entrance', exact: true }).click();
   await page.getByRole('textbox', { name: 'Bookmark name', exact: true }).fill('Main entrance');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -303,6 +347,7 @@ async function runBookmarksAndPages(page, baseUrl) {
   assert.equal(snapshot.sidebar.bookmarks[0].name, 'Main entrance', 'invalid combined edit must not commit the name');
   assert.deepEqual(snapshot.sidebar.bookmarks[0].pageIds, [1], 'invalid combined edit must not commit the page');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.locator('input[aria-label="Bookmark name"]').waitFor({ state: 'detached', timeout: 10_000 });
 
   await page.getByRole('button', { name: 'Add bookmark', exact: true }).click();
   await page.getByRole('textbox', { name: 'Bookmark name', exact: true }).fill('Roof');
@@ -319,14 +364,14 @@ async function runBookmarksAndPages(page, baseUrl) {
   ], 'conflicting combined edit must leave name and page unchanged');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
 
-  await page.getByTitle('Pages', { exact: true }).click();
+  await page.locator('.mobile-pdf-hub-tab[aria-label="Pages"]').click();
   await page.getByRole('toolbar', { name: 'Page actions' }).getByRole('button', { name: 'Add', exact: true }).click();
   await page.waitForFunction(
     (count) => document.querySelectorAll('.mobile-page-card').length === count,
     initialPageCount + 1,
   );
   await page.getByRole('button', { name: 'Page 2 actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Rotate', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Rotate right', exact: true }).click();
   await page.getByRole('button', { name: 'Page 2 actions', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
   snapshot = await persistedSnapshot(page, storageKeys);
   assert.deepEqual(snapshot.sidebar.pageTransformations, {}, 'physical rotation must not leave a second CSS rotation');
@@ -334,7 +379,9 @@ async function runBookmarksAndPages(page, baseUrl) {
   // Physical move: both bookmarks belong to the original page 1, so moving
   // that page down must move both durable associations to page 2.
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Move down', exact: true }).click();
+  // Phone page menu (compact): Move up/down live behind More.
+  await page.getByRole('menuitem', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Move down', exact: true }).click();
   await page.waitForFunction((key) => {
     try {
       return JSON.parse(localStorage.getItem(key) || '{}')?.bookmarks
@@ -346,9 +393,9 @@ async function runBookmarksAndPages(page, baseUrl) {
   // page count. Copy page 2 and paste it after page 1: the original shifts to
   // page 3 and the clone occupies page 2, so both bookmark targets survive.
   await page.getByRole('button', { name: 'Page 2 actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Copy', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Copy', exact: true }).click();
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
-  await (await visiblePageContextAction(page, 'Paste')).click();
+  await (await visiblePageContextAction(page, 'Paste below')).click();
   await page.waitForFunction(
     (count) => document.querySelectorAll('.mobile-page-card').length === count,
     initialPageCount + 2,
@@ -362,9 +409,9 @@ async function runBookmarksAndPages(page, baseUrl) {
 
   // Cut/paste moves identity rather than cloning it and consumes the clipboard.
   await page.getByRole('button', { name: 'Page 3 actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Cut', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Cut', exact: true }).click();
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
-  await (await visiblePageContextAction(page, 'Paste')).click();
+  await (await visiblePageContextAction(page, 'Paste below')).click();
   await page.waitForFunction(() => !document.querySelector('.mobile-page-clipboard-badge'));
   await page.waitForFunction(
     (count) => document.querySelectorAll('.mobile-page-card').length === count,
@@ -372,20 +419,23 @@ async function runBookmarksAndPages(page, baseUrl) {
   );
 
   await page.getByRole('button', { name: 'Page 3 actions', exact: true }).click();
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+  // The app's own confirm dialog (useConfirmDialog), not window.confirm.
+  await page.getByRole('button', { name: 'Delete page', exact: true }).click();
   await page.waitForFunction((count) => document.querySelectorAll('.mobile-page-card').length === count, initialPageCount + 1);
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
-  page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+  // The app's own confirm dialog (useConfirmDialog), not window.confirm.
+  await page.getByRole('button', { name: 'Delete page', exact: true }).click();
   await page.waitForFunction((count) => document.querySelectorAll('.mobile-page-card').length === count, initialPageCount);
   snapshot = await persistedSnapshot(page, storageKeys);
   assert(snapshot.sidebar.bookmarks.every((bookmark) => JSON.stringify(bookmark.pageIds) === '[1]'));
 
-  await page.getByTitle('Bookmarks', { exact: true }).click();
+  await page.locator('.mobile-pdf-hub-tab[aria-label="Bookmarks"]').click();
   // RULED 2026-09-23 (owner: phone bookmarks match desktop) — delete lives in
-  // Edit mode; the panel remounted with the tab switch, so enter it again.
-  await page.getByRole('button', { name: 'Edit bookmarks', exact: true }).click();
+  // Edit mode. The panel's draft (edit mode included) now survives the tab
+  // switch, so enter Edit only if it is not still on.
+  await ensureBookmarkEditMode(page);
   await page.getByRole('button', { name: 'Delete bookmark Main entrance', exact: true }).click();
   await page.getByRole('button', { name: 'Delete bookmark Roof', exact: true }).click();
   await page.getByText('No bookmarks yet', { exact: true }).waitFor();

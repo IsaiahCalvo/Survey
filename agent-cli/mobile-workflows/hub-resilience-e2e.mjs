@@ -177,19 +177,21 @@ async function switchTab(page, touch, device, tab) {
 async function testContentTypeIconColors(page, baseUrl, device) {
   await gotoHub(page, baseUrl, 'documents');
   const nav = visibleNav(page, device);
-  const expected = {
-    Documents: 'rgb(122, 183, 230)',
-    Projects: 'rgb(216, 168, 78)',
-    Templates: 'rgb(194, 147, 230)',
-  };
-  for (const [label, color] of Object.entries(expected)) {
-    const icon = nav.getByRole('button', { name: label, exact: true }).locator('svg');
-    assert.equal(await icon.count(), 1, `${device}: ${label} has one identity icon`);
-    assert.equal(
-      await icon.evaluate((node) => getComputedStyle(node).stroke),
-      color,
-      `${device}: ${label} keeps its identity color`,
-    );
+  // UX 2026-09-16 / owner 2026-10-02: the nav tabs are one icon set drawn in
+  // currentColor, so each glyph follows its tab's own (selected or not)
+  // colour; the content-type brand colours belong to rows, not the tab strip.
+  for (const label of ['Documents', 'Projects', 'Templates']) {
+    const button = nav.getByRole('button', { name: label, exact: true });
+    const icon = button.locator('svg');
+    assert.equal(await icon.count(), 1, `${device}: ${label} has one tab icon`);
+    const paint = await button.evaluate((node) => {
+      const painted = [...node.querySelector('svg').querySelectorAll('path, rect, circle, line, polyline, polygon, ellipse')]
+        .map((el) => getComputedStyle(el))
+        .map((st) => (st.stroke && st.stroke !== 'none' ? st.stroke : st.fill))
+        .filter((c) => c && c !== 'none' && c !== 'rgba(0, 0, 0, 0)');
+      return { color: getComputedStyle(node).color, painted: [...new Set(painted)] };
+    });
+    assert.deepEqual(paint.painted, [paint.color], `${device}: ${label} icon follows its tab's colour`);
   }
 }
 
@@ -415,8 +417,9 @@ async function testMobileTemplateCategoryRowAlignment(page, baseUrl, touch) {
         handle: centerY(row.querySelector(':scope > [data-drag-rearrange-handle]')),
         toggle: centerY(row.querySelector(':scope > .templates-mobile-category-toggle')),
         toggleIcon: centerY(row.querySelector(':scope > .templates-mobile-category-toggle > svg')),
-        input: centerY(row.querySelector(':scope > input')),
-        count: centerY(row.querySelector(':scope > span')),
+        // The name input sits in an auto-width wrapper (hub-autowidth) now.
+        input: centerY(row.querySelector(':scope > .templates-mobile-category-name > input')),
+        count: centerY(row.querySelector(':scope > .templates-mobile-category-count')),
       };
     }));
     assert.ok(measurements.length >= 2, `mobile: ${state} template exposes multiple category rows`);
@@ -454,7 +457,7 @@ async function testTemplateDisclosureIconParity(page, baseUrl, touch, device) {
   assert.equal(rendered.hasSvg, true, `${device}: category disclosure uses the shared desktop/web SVG chevron`);
   assert.equal(rendered.glyphWidth, 18, `${device}: shared category chevron is large enough to read`);
   assert.equal(rendered.glyphHeight, 18, `${device}: shared category chevron stays square`);
-  assert.equal(rendered.strokeWidth, '2', `${device}: shared category chevron keeps readable weight`);
+  assert.equal(rendered.strokeWidth, '1.5', `${device}: shared category chevron keeps readable weight`);
   await activate(toggle, touch, device);
   if (device === 'mobile') {
     const expandedToggle = page.locator('.templates-mobile-category-toggle[aria-label^="Collapse"]:visible').first();
@@ -521,7 +524,12 @@ async function testMobileEntitiesModalCentering(page, baseUrl, touch) {
   await assertCentered('short-list');
   const addEntity = modal.getByRole('button', { name: 'Add entity', exact: true });
   const entityRows = modal.locator('.templates-mobile-entity-row');
-  for (let index = 0; index < 8; index += 1) {
+  const panel = modal.locator('.templates-mobile-entity-panel');
+  // Rows are 44px now (owner 2026-10-02), so eight extra no longer always
+  // fill the sheet; keep adding (at least eight, at most twenty) until the
+  // list is genuinely longer than the panel.
+  for (let index = 0; index < 20; index += 1) {
+    if (index >= 8 && await panel.evaluate((element) => element.scrollHeight > element.clientHeight + 44)) break;
     const previousCount = await entityRows.count();
     await activate(addEntity, touch, 'mobile');
     await page.waitForFunction(
@@ -534,7 +542,6 @@ async function testMobileEntitiesModalCentering(page, baseUrl, touch) {
       await colorPanel.waitFor({ state: 'hidden' });
     }
   }
-  const panel = modal.locator('.templates-mobile-entity-panel');
   const overflow = await panel.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
@@ -568,6 +575,16 @@ async function measureMobileHeader(page, tab) {
       scrollWidth: element.scrollWidth,
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight,
+      // The 44px tap pad is an absolute ::after that pokes out of the 28px
+      // button (c2793c23) and counts toward scrollHeight, so vertical
+      // clipping is measured on the label's own glyph box instead.
+      textFits: (() => {
+        const box = element.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        return text.top >= box.top - 0.5 && text.bottom <= box.bottom + 0.5;
+      })(),
     };
   });
   return {
@@ -622,34 +639,44 @@ async function testMobileHeaderParity(page, baseUrl) {
   const reference = metrics.documents;
   for (const tab of EDGE_TABS.slice(1)) {
     const candidate = metrics[tab];
-    for (const key of ['row', 'action', 'search']) {
-      for (const field of ['x', 'y', 'width', 'height']) {
-        assertNear(candidate[key][field], reference[key][field], `mobile: ${tab} ${key} ${field} matches Documents`);
-      }
+    for (const field of ['x', 'y', 'width', 'height']) {
+      assertNear(candidate.row[field], reference.row[field], `mobile: ${tab} row ${field} matches Documents`);
     }
+    // The gold action is as wide as its own label since c2793c23 ("Upload" vs
+    // "New project"), pinned to the row's right edge; the search field takes
+    // what is left. So compare the edges that are shared, not the widths.
+    for (const field of ['y', 'height']) {
+      assertNear(candidate.action[field], reference.action[field], `mobile: ${tab} action ${field} matches Documents`);
+      assertNear(candidate.search[field], reference.search[field], `mobile: ${tab} search ${field} matches Documents`);
+    }
+    assertNear(candidate.action.x + candidate.action.width, reference.action.x + reference.action.width, `mobile: ${tab} action right edge matches Documents`);
+    assertNear(candidate.search.x, reference.search.x, `mobile: ${tab} search left edge matches Documents`);
     assert.equal(candidate.actionTypography.fontSize, reference.actionTypography.fontSize, `mobile: ${tab} primary-action font size matches Documents`);
     assertNear(candidate.select.x, reference.select.x, `mobile: ${tab} Select left alignment`);
     assertNear(candidate.select.y, reference.select.y, `mobile: ${tab} Select row alignment`);
   }
   for (const tab of EDGE_TABS) {
     const typography = metrics[tab].actionTypography;
-    assert.equal(typography.fontSize, '11.5px', `mobile: ${tab} primary action uses the shared font token`);
+    assert.equal(typography.fontSize, '11px', `mobile: ${tab} primary action uses the shared font token`);
     assert.equal(typography.whiteSpace, 'nowrap', `mobile: ${tab} primary action cannot wrap`);
     assert.ok(typography.scrollWidth <= typography.clientWidth, `mobile: ${tab} primary action text is not horizontally clipped`);
-    assert.ok(typography.scrollHeight <= typography.clientHeight, `mobile: ${tab} primary action text is not vertically clipped`);
+    assert.ok(typography.textFits, `mobile: ${tab} primary action text is not vertically clipped`);
   }
-  assertNear(reference.action.width, 112, 'mobile: shared primary-action width');
   for (const tab of EDGE_TABS) {
     assertNear(metrics[tab].card.y - metrics[tab].body.y, 8, `mobile: ${tab} first card has the shared top gap`);
-    assertNear(metrics[tab].card.width, 370, `mobile: ${tab} card uses the shared width`);
+    // Rows sit inside the shared list panel's 1px border (THE PANEL in hub.css).
+    assertNear(metrics[tab].card.width, 370 - 2, `mobile: ${tab} card uses the shared width`);
     assertNear(metrics[tab].card.height, 64, `mobile: ${tab} card uses the slimmer shared height`);
     assert.ok(metrics[tab].card.scrollHeight <= metrics[tab].card.clientHeight, `mobile: ${tab} card content is not vertically clipped`);
   }
 
   await gotoHub(page, baseUrl, 'documents');
   const sort = await requiredBox(page.locator('.documents-mobile-filter-visual:visible'), 'mobile Documents sort visual');
-  assertNear(sort.y, reference.select.y, 'mobile: Select and sort share a row');
-  assertNear(sort.x + sort.width, reference.action.x + reference.action.width, 'mobile: sort and Upload right edges align');
+  // c2793c23: Select moved to row 1; on Documents the sort button sits on
+  // row 2 between the search field and Upload.
+  assertNear(sort.y + sort.height / 2, reference.search.y + reference.search.height / 2, 'mobile: sort shares the search row');
+  assert.ok(sort.x >= reference.search.x + reference.search.width - 1, 'mobile: sort sits right of the search field');
+  assert.ok(sort.x + sort.width <= reference.action.x + 1, 'mobile: sort sits left of Upload');
 }
 
 async function testDocuments(page, touch, device) {
@@ -671,14 +698,13 @@ async function testDocuments(page, touch, device) {
     sortControl = page.locator('.documents-desktop-card:visible').getByText(/^File(?: [↑↓])?$/);
     assert.equal(await sortControl.count(), 1, 'desktop: File sort header exposed');
   }
-  // Search still owns focus after clearing. Its first outside gesture must
-  // dismiss only; the following gesture intentionally activates sorting.
+  // Search still owns focus after clearing. On the phone the sort button
+  // passes through Search's dismiss (d9cb10b7), so one tap both dismisses the
+  // search and opens the sort menu. Elsewhere the first gesture dismisses only.
   await activate(sortControl, touch, device);
+  if (device !== 'mobile') await activate(sortControl, touch, device);
   if (device === 'mobile') {
-    assert.equal(await page.locator('.documents-mobile-sort-menu:visible').count(), 0, 'mobile: first sort tap only dismisses document search');
-  }
-  await activate(sortControl, touch, device);
-  if (device === 'mobile') {
+    await page.locator('.documents-mobile-sort-menu:visible').waitFor({ state: 'visible', timeout: 5_000 });
     const menu = page.locator('.documents-mobile-sort-menu:visible');
     const sortBox = await requiredBox(sortControl, 'mobile: open sort control');
     const menuBox = await requiredBox(menu, 'mobile: open sort menu');
@@ -700,10 +726,6 @@ async function testDocuments(page, touch, device) {
   const desc = await visibleRowIds(page, '[data-document-id]:visible');
   assert.notEqual(asc[0], desc[0], `${device}: exposed File sort reverses row order`);
 
-  const stableMobileSortBox = device === 'mobile'
-    ? await requiredBox(sortControl, 'mobile: sort before expanded selection')
-    : null;
-
   const select = page.locator('.header-subtitle:visible .mobile-header-select-button');
   assert.equal(await select.count(), 1, `${device}: document Select control`);
   await activate(select, touch, device);
@@ -711,29 +733,34 @@ async function testDocuments(page, touch, device) {
   assert.equal(await target.count(), 1, `${device}: selection target visible`);
   await activate(target, touch, device);
   const duplicate = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Duplicate', exact: true });
-  const moveCopy = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Move/Copy', exact: true });
+  // Move/Copy is two actions now (SELECT_MODE_ACTIONS: Move, Copy).
+  const move = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Move', exact: true });
+  const copy = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Copy', exact: true });
   assert.equal(await duplicate.isEnabled(), true, `${device}: Duplicate enables after selection`);
-  assert.equal(await moveCopy.isEnabled(), true, `${device}: Move/Copy enables after selection`);
+  assert.equal(await move.isEnabled(), true, `${device}: Move enables after selection`);
+  assert.equal(await copy.isEnabled(), true, `${device}: Copy enables after selection`);
   if (device === 'mobile') {
-    const selectionStrip = page.locator('.documents-mobile-select-main:visible');
-    const expandedSortBox = await requiredBox(sortControl, 'mobile: sort after expanded selection');
-    assertNear(expandedSortBox.x, stableMobileSortBox.x, 'mobile: sort remains fixed while Select expands');
-    assertNear(expandedSortBox.y, stableMobileSortBox.y, 'mobile: sort stays on Select row while Select expands');
+    // The bulk actions live in .documents-select-actions beside Select.
+    const selectionStrip = page.locator('.header-subtitle:visible .documents-select-actions');
+    // c2793c23: Select turns row 2 (search, sort, Upload) into the pick row,
+    // so the sort control steps aside while selecting.
+    assert.equal(await sortControl.count(), 0, 'mobile: sort steps aside while Select is on');
     await artifacts.screenshot(page, 'mobile-documents-selection-expanded-start');
     const stripState = await selectionStrip.evaluate((element) => {
       element.scrollLeft = element.scrollWidth;
       return { clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
     });
-    assert.ok(stripState.scrollWidth > stripState.clientWidth, 'mobile: expanded bulk controls use bounded horizontal scrolling');
+    // The bulk actions are icon buttons now (owner 2026-10-02), so they may
+    // fit without scrolling; either way the strip stays bounded and every
+    // action, Delete last, must be reachable inside it (checked below).
+    assert.ok(stripState.clientWidth > 0 && stripState.clientWidth <= page.viewportSize().width, 'mobile: expanded bulk controls stay in a bounded strip');
     await page.waitForTimeout(50);
     const stripBox = await requiredBox(selectionStrip, 'mobile: expanded selection strip');
     const deleteBox = await requiredBox(
-      page.locator('.documents-mobile-select-main:visible').getByRole('button', { name: 'Delete', exact: true }),
+      page.locator('.header-subtitle:visible .documents-select-actions').getByRole('button', { name: 'Delete', exact: true }),
       'mobile: scrolled Delete action',
     );
     assert.ok(deleteBox.x >= stripBox.x - 1 && deleteBox.x + deleteBox.width <= stripBox.x + stripBox.width + 1, 'mobile: every bulk action can scroll into the left control area');
-    const scrolledSortBox = await requiredBox(sortControl, 'mobile: sort after bulk-control scroll');
-    assertNear(scrolledSortBox.x, stableMobileSortBox.x, 'mobile: bulk scrolling does not move sort');
     await artifacts.screenshot(page, 'mobile-documents-selection-expanded-end');
   }
   const done = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Done', exact: true });
@@ -754,9 +781,10 @@ async function testProjects(page, touch, device) {
   // without activating the underlying control. Prove that contract before
   // the second gesture enters selection mode.
   await activate(select, touch, device);
-  assert.equal(await select.textContent(), 'Select', `${device}: first outside tap only dismisses project search`);
+  // Select is an icon button (owner 2026-10-02); its name is the aria-label.
+  assert.equal(await select.getAttribute('aria-label'), 'Select', `${device}: first outside tap only dismisses project search`);
   await activate(select, touch, device);
-  assert.equal(await select.textContent(), 'Done', `${device}: second tap enters project selection`);
+  assert.equal(await select.getAttribute('aria-label'), 'Done', `${device}: second tap enters project selection`);
   const target = page.locator('[data-project-id="p1"]:visible');
   assert.equal(await target.count(), 1, `${device}: project selection target visible`);
   await activate(target, touch, device);
@@ -803,8 +831,12 @@ async function testEdgeFixtures(page, baseUrl, touch, device) {
     await artifacts.screenshot(page, `${device}-empty-${tab}`);
 
     await gotoHub(page, baseUrl, tab, { hubLoading: tab });
-    const status = page.getByRole('status', { name: `Loading ${tab}`, exact: true });
+    // #887: a shaped skeleton (role=status, appears after 300 ms) whose
+    // visually hidden text names what is loading.
+    const status = page.locator('.hub-loading-region [data-skeleton][role="status"]');
+    await status.first().waitFor({ state: 'attached', timeout: 5_000 });
     assert.equal(await status.count(), 1, `${device}: one real ${tab} skeleton region`);
+    assert.equal(await status.locator('.sk-visually-hidden').textContent(), `Loading ${tab}…`, `${device}: ${tab} skeleton says what is loading`);
     assert.equal(await status.getAttribute('aria-busy'), 'true', `${device}: ${tab} skeleton is busy`);
   }
 
