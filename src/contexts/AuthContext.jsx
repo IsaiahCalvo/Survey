@@ -372,6 +372,7 @@ export const AuthProvider = ({ children }) => {
   const fetchSubscriptionTier = async (userId, { coalesce = false } = {}) => {
     if (!userId || !isSupabaseAvailable()) {
       setSubscriptionTier('free');
+      setTierUserId(userId || null);
       setLoadingTier(false);
       return;
     }
@@ -529,6 +530,7 @@ export const AuthProvider = ({ children }) => {
         fetchSubscriptionTier(session.user.id, { coalesce: true });
       } else {
         setSubscriptionTier('free');
+        setTierUserId(null);
         setLoadingTier(false);
       }
     });
