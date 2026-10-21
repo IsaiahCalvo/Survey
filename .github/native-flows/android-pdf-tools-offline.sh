@@ -59,11 +59,12 @@ pick "Run"
 wait_button "Save as new document" 120
 adb exec-out screencap -p > "$OUT/21-offline-rotated.png"
 pick "Save as new document"
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   msg=$(ev "(() => document.querySelector('.pdft-error')?.textContent || '')()")
   [ -n "$msg" ] && break; sleep 1
 done
 echo "save offline: $msg"
+[ -n "$msg" ] || { echo "dialog: $(ev "(() => document.querySelector('.pdft-card')?.innerText || '')()")"; adb logcat -d | grep -i "PdfTools\|chromium" | tail -40; }
 case "$msg" in *"Not saved. Download it instead"*) ;; *) echo "::error::Save offline did not say 'Not saved. Download it instead' ($msg)"; exit 1 ;; esac
 adb exec-out screencap -p > "$OUT/22-offline-save-refused.png"
 pick "Download"
