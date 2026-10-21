@@ -23,3 +23,21 @@ test('every inline script in index.html is allowed by hash in the CSP', () => {
   }
 });
 
+
+// Marketing pages have their own inline scripts (and /status calls GitHub), so
+// the full app policy must skip every one of them or it blocks them.
+test('the full app policy skips every marketing page', () => {
+  const rule = vercel.headers.find((r) => r.headers.some((h) => h.key === 'Content-Security-Policy' && h.value.includes('script-src')));
+  assert.ok(rule, 'the full policy is enforced');
+  const appPaths = new RegExp(`^${rule.source.replace(/\(\.\*\)$/, '(.*)')}$`);
+  const marketing = vercel.rewrites
+    .map((r) => r.destination.match(/^\/([^/:]+)\/(?:[^/]+\/)?index\.html$/)?.[1])
+    .filter(Boolean);
+  assert.ok(marketing.includes('whats-new') && marketing.includes('status'));
+  for (const page of [...marketing, 'privacy.html', 'terms.html', '404.html']) {
+    assert.ok(!appPaths.test(`/${page}`), `/${page} must be left out of the app policy`);
+  }
+  for (const page of ['', 'app', 'agent-link', 'flags', 'kits']) {
+    assert.ok(appPaths.test(`/${page}`), `/${page} must get the app policy`);
+  }
+});

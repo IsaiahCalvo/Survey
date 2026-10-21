@@ -15,22 +15,33 @@ export const WATCHED = [
 ];
 
 const LOWER_UPPER_DIGITS = 'abcdefghijklmnopqrstuvwxyz:ABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789';
+// Supabase's password rule options, weakest first. A stronger rule is kept.
+const CHARACTER_RULES = [
+  '',
+  'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789',
+  LOWER_UPPER_DIGITS,
+];
+const MIN_LENGTH = 8;
 // Sign-ins/sign-ups and token checks per 5 minutes per IP; emails per hour.
 const RATE_CAP = 30;
 // Today's fixed 10 auth connections of the 60 a Micro database allows.
 const POOL_PERCENT = 17;
 
-// Only the fields that change. Rate limits are only ever lowered to the cap.
+// Only the fields that change. Nothing is ever loosened: a longer minimum,
+// a stricter character rule or a lower rate limit already in place is kept.
 export function planAuthPatch(current) {
   const want = {
     password_hibp_enabled: true,
-    password_min_length: 8,
-    password_required_characters: LOWER_UPPER_DIGITS,
     mailer_autoconfirm: false,
     mfa_totp_enroll_enabled: true,
     mfa_totp_verify_enabled: true,
     security_update_password_require_current_password: true,
   };
+  if (!(Number(current.password_min_length) >= MIN_LENGTH)) want.password_min_length = MIN_LENGTH;
+  const rule = current.password_required_characters ?? '';
+  if (CHARACTER_RULES.includes(rule) && CHARACTER_RULES.indexOf(rule) < CHARACTER_RULES.indexOf(LOWER_UPPER_DIGITS)) {
+    want.password_required_characters = LOWER_UPPER_DIGITS;
+  }
   for (const key of ['rate_limit_otp', 'rate_limit_verify', 'rate_limit_email_sent']) {
     if (!(Number(current[key]) <= RATE_CAP)) want[key] = RATE_CAP;
   }
@@ -70,6 +81,6 @@ async function main() {
   if (missed.length) throw new Error(`Not applied: ${missed.join(', ')}`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => { console.error(err.message); process.exit(1); });
 }
