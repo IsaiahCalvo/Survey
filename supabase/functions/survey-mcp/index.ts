@@ -52,7 +52,11 @@ type Category = { id: string; name: string; checklist: { id: string; text: strin
 // Category and checklist names come from the templates the person can see.
 // Templates linked to the document go first, so when two templates reuse a
 // category id the document's own wins.
-async function categoryNames(db: SupabaseClient, documentId: string) {
+// linkedOnly: keep only the templates linked to this document. The item tools
+// want the union (a marker's category_id can be resolved whichever visible
+// template defines it), but get_survey_context must describe only THIS
+// document's survey, never categories from other visible templates.
+async function categoryNames(db: SupabaseClient, documentId: string, { linkedOnly = false } = {}) {
   const [{ data: all }, { data: links }] = await Promise.all([
     db.from('templates').select('id, name, config').limit(300),
     UUID.test(documentId)
@@ -60,7 +64,9 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
       : Promise.resolve({ data: [] as { template_id: string }[] }),
   ]);
   const linked = new Set((links || []).map((l) => String(l.template_id)));
-  const data = [...(all || [])].sort((a, b) => Number(linked.has(String(b.id))) - Number(linked.has(String(a.id))));
+  const data = linkedOnly
+    ? (all || []).filter((r) => linked.has(String(r.id)))
+    : [...(all || [])].sort((a, b) => Number(linked.has(String(b.id))) - Number(linked.has(String(a.id))));
   const categories = new Map<string, Category>();
   const entities = new Map<string, string>();
   for (const row of data || []) {
@@ -264,7 +270,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
   }
   if (name === 'get_survey_context') {
     if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
-    const names = await categoryNames(db, documentId);
+    const names = await categoryNames(db, documentId, { linkedOnly: true });
     return text({
       document_id: documentId,
       categories: [...names.categories.values()].map((c) => ({ id: c.id, name: c.name, checklist: c.checklist })),
