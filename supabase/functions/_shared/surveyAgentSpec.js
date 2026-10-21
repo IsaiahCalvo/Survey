@@ -87,7 +87,7 @@ function voiceAnnotationTools() {
 // from the open template's answer set, so the model cannot send an answer
 // the template does not have. annotations: add the markup tools (only for
 // people with the annotation-agent flag).
-export function buildSurveyAgentTools(answerValues, { annotations = false } = {}) {
+export function buildSurveyAgentTools(answerValues, { annotations = false, webmcp = false } = {}) {
   const answers = cleanAnswerValues(answerValues);
   const tool = (name, description, properties = {}, required = []) => ({
     type: 'function',
@@ -163,6 +163,17 @@ export function buildSurveyAgentTools(answerValues, { annotations = false } = {}
       'Show the item to the person: open it in the survey list and go to it on the plan.',
       { item_id: id('The item id.') },
       ['item_id']),
+    ...(webmcp ? [
+      tool('add_photo',
+        'Attach a photo to an item from image data (editor). Pass the image as base64 (a data: URL is fine); the limit is 20MB. The photo is added to the item\'s note, and one Undo takes it back.',
+        {
+          item_id: id('The item id.'),
+          image_base64: { type: 'string', description: 'The image bytes as base64, or a data:image/...;base64, URL.' },
+        },
+        ['item_id', 'image_base64']),
+      tool('export_summary',
+        'A plain-text summary of the survey counts to hand to the person: each category with how many items it has, and the breakdown by status. Read-only.'),
+    ] : []),
     ...(annotations ? voiceAnnotationTools() : []),
   ];
 }

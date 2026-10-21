@@ -56,6 +56,52 @@ const out = (value) => (typeof value === 'string' ? value : JSON.stringify(value
 
 class ToolError extends Error {}
 
+// A browser agent has no file to drop, so survey_add_photo takes the image as
+// base64 (optionally a data: URL). Decode it to a Blob the upload path accepts,
+// and cap the size so a huge paste can't be forced through.
+const PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+// Sniff the real image type from the first bytes. The declared MIME (from a
+// data: URL) is not trusted — a caller could label any bytes image/jpeg — so
+// the content itself decides, and anything we don't recognise is refused.
+function sniffImageMime(b) {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
+    && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return 'image/png';
+  if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46
+    && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  // ISO-BMFF (HEIC/HEIF, iPhone photos): "....ftyp<brand>".
+  if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+    const brand = String.fromCharCode(b[8], b[9], b[10], b[11]).toLowerCase();
+    if (['heic', 'heix', 'hevc', 'heif', 'mif1', 'msf1'].includes(brand)) return 'image/heic';
+  }
+  return null;
+}
+
+function decodePhotoBase64(input) {
+  const raw = String(input || '').trim();
+  if (!raw) throw new ToolError('No image data given.');
+  // Drop a data: URL prefix if present; what follows the first comma is the
+  // base64 payload. A bare base64 string is taken whole.
+  const comma = raw.startsWith('data:') ? raw.indexOf(',') : -1;
+  const b64 = (comma >= 0 ? raw.slice(comma + 1) : raw).replace(/\s+/g, '');
+  let bytes;
+  try {
+    const bin = atob(b64);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  } catch {
+    throw new ToolError('The image data is not valid base64.');
+  }
+  if (!bytes.length) throw new ToolError('The image data is empty.');
+  if (bytes.length > PHOTO_MAX_BYTES) {
+    throw new ToolError(`The photo is too large (${Math.round(bytes.length / (1024 * 1024))}MB). The limit is ${PHOTO_MAX_BYTES / (1024 * 1024)}MB.`);
+  }
+  const mime = sniffImageMime(bytes);
+  if (!mime) throw new ToolError('That is not a supported image (JPEG, PNG, GIF, WebP or HEIC).');
+  return new Blob([bytes], { type: mime });
+}
+
 /**
  * attachments: Map of attachment id -> { file, kind, name } the person added
  * in this chat. documentId: the document the turn started on; once the person
@@ -300,6 +346,44 @@ export function createSurveyAgentToolbox({
         content: `Attached ${refs.length} file${refs.length === 1 ? '' : 's'} to ${nameOf(marker)}.`,
         change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${refs.length} file${refs.length === 1 ? '' : 's'} attached`, fields: [field] },
       };
+    },
+
+    async add_photo({ item_id: itemId, image_base64: imageBase64 } = {}) {
+      const b = bridge();
+      writable(b);
+      const marker = markerOf(b, itemId);
+      const blob = decodePhotoBase64(imageBase64);
+      const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
+      const ref = await b.uploadMedia(itemId, blob, 'photo');
+      b.addMediaRefs(itemId, [ref]);
+      field.afterMedia = mediaCountOf(marker.note) + 1;
+      return {
+        content: `Added a photo to ${nameOf(marker)}.`,
+        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: photo added`, fields: [field] },
+      };
+    },
+
+    export_summary() {
+      const b = bridge();
+      const { list } = categoryIndex(b.template);
+      const markers = Object.values(b.markers || {});
+      const catCounts = new Map();
+      const entCounts = new Map();
+      for (const marker of markers) {
+        if (marker?.categoryId) catCounts.set(marker.categoryId, (catCounts.get(marker.categoryId) || 0) + 1);
+        const key = marker?.entityId || null;
+        entCounts.set(key, (entCounts.get(key) || 0) + 1);
+      }
+      const entities = entitiesOf(b.template);
+      const lines = [`${b.template.name || 'Survey'} — ${markers.length} item${markers.length === 1 ? '' : 's'}`, '', 'By category:'];
+      for (const { category } of list) lines.push(`- ${category.name}: ${catCounts.get(category.id) || 0}`);
+      if (entities.length) {
+        lines.push('', 'By status:');
+        for (const entity of entities) lines.push(`- ${entity.name}: ${entCounts.get(entity.id) || 0}`);
+        const none = entCounts.get(null) || 0;
+        if (none) lines.push(`- (no status): ${none}`);
+      }
+      return { content: lines.join('\n') };
     },
 
     async find_on_plan({ text } = {}) {
