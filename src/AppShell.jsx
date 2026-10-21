@@ -1469,6 +1469,18 @@ export default function App({ devPreviewReturnTab = null }) {
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A free tool (/tools) used before signing in or signing up: report which
+  // one, once, now that analytics can take the event (src/tools/funnel.js).
+  useEffect(() => {
+    if (!user?.id) return;
+    Promise.all([import('./tools/funnel.js'), import('./utils/surveyAnalytics')])
+      .then(([{ takeFreeToolFunnel }, { trackSurveyAnalyticsEvent }]) => {
+        const report = takeFreeToolFunnel(user);
+        if (report) trackSurveyAnalyticsEvent(report.event, report.properties);
+      })
+      .catch(() => {});
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Someone who opened an invite link while signed out comes back here after
   // signing in; send them on to the invite page so the invite is accepted.
   useEffect(() => {
@@ -1957,7 +1969,9 @@ export default function App({ devPreviewReturnTab = null }) {
   // stored copy for the tools to read, so Dashboard explains that instead.
   const openPdfToolsForActiveTab = () => {
     const file = tabs.find((t) => t.id === activeTabId)?.file;
-    dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null }]);
+    // The open tab already holds the PDF, so the tools work offline too.
+    const blob = file instanceof Blob && file.size > 0 ? file : null;
+    dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null, blob }]);
   };
   const openPdfToolsRef = useRef(openPdfToolsForActiveTab);
   openPdfToolsRef.current = openPdfToolsForActiveTab;

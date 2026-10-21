@@ -5,6 +5,7 @@ import { ToolError } from './errors.js';
 import { protectPdf, unlockPdf, looksEncrypted } from './qpdf.js';
 import { parsePageSet, parseRangeGroups, formatPageSet, everyN } from './ranges.js';
 import { makeZip } from './zip.js';
+import { noteFreeToolStep } from './funnel.js';
 import {
   canvasCodec, openPdfjs, renderPage, prepareImage, saveFile, canvasToBytes, releaseCanvas, runQpdf, loadDocFont,
 } from './browser.js';
@@ -748,6 +749,7 @@ async function run() {
       outputs = [{ name: zipName, bytes: makeZip(outputs), type: 'application/zip', count: outputs.length, parts: outputs }];
     }
     S.result = outputs[0];
+    noteFreeToolStep('result', TOOL_ID);
   } catch (err) {
     if (!(err instanceof ToolError)) console.error(err);
     S.error = err instanceof ToolError ? err.message : 'Something went wrong with this file. Try again, or try a different file.';
@@ -789,6 +791,7 @@ async function openInSurvey(r) {
   try {
     const { putHandoff } = await import('./handoff.js');
     await putHandoff(r.bytes, r.name);
+    noteFreeToolStep('opened', TOOL_ID);
     window.location.assign('/?open=tools');
   } catch {
     // Private windows can block storage; the app still opens, just empty.
