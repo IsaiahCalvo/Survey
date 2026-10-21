@@ -32784,6 +32784,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       return null;
     };
+    // Resolve a callout by id from the synchronous source. calloutsRef only
+    // syncs on render, so a callout added then deleted/edited in the SAME turn
+    // is missing there; deriveCalloutsFromByPage reads annotationsByPageRef,
+    // which the save path writes immediately (the same source
+    // commitCalloutMutation itself derives from). Mirror resolveCalloutPageNumber:
+    // cheap post-render ref first, derive as the fallback.
+    const resolveLiveCallout = (wantedId) => {
+      if (!wantedId) return null;
+      const fromRef = (calloutsRef.current || []).find((c) => c?.id === wantedId);
+      if (fromRef) return fromRef;
+      const derived = deriveCalloutsFromByPage(annotationsByPageRef.current || {});
+      return derived.find((c) => c?.id === wantedId) || null;
+    };
     return registerAgentDocument({
       documentId: pdfFile?.id || null,
       surveyReady: () => agentMarkerStateRef.current.surveyReady,
@@ -33145,12 +33158,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
         return { ok: true };
       },
-      // Delete any normal annotation by id. Gated like a human delete.
+      // Delete any normal annotation by id (shapes, text notes, highlights and
+      // callouts). Gated like a human delete.
       deleteAnnotation: (id) => {
         const { viewerId, documentOwnerId: ownerId, saveAnnotations, getAnnotationsByPage } = agentMarkerStateRef.current;
         const found = findAnnotationById(id);
         if (!found) return { ok: false, reason: 'not-found' };
         const { page, index, obj } = found;
+        // Callouts keep their own list and commit through commitCalloutMutation,
+        // which carries no lock/permission guard of its own — so gate here, the
+        // same way handleCutCallout does, and remove by id from that list.
+        if (obj?.data?.type === 'callout') {
+          const callout = resolveLiveCallout(id);
+          if (!callout) return { ok: false, reason: 'not-found' };
+          if (isUserLocked(callout)) return { ok: false, reason: 'locked' };
+          if (!canModify({ annotation: callout, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
+          const calloutPage = Number(callout.pageNumber ?? resolveCalloutPageNumber(id) ?? page);
+          recordAnnotationCommit({ surface: 'webmcp', source: 'callout:delete', action: 'callout-agent-delete', pageNumber: calloutPage });
+          commitCalloutMutation(calloutPage, (prev) => prev.filter((c) => c.id !== id), { source: 'webmcp:callout:delete', action: 'delete' });
+          return { ok: true };
+        }
         if (!canDelete({ annotation: obj, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
         const pageJson = getAnnotationsByPage()[page] || { objects: [] };
         const objects = (pageJson.objects || []).filter((_, i) => i !== index);
@@ -33158,6 +33185,81 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const result = saveAnnotations(page, { ...pageJson, objects },
           { source: 'webmcp:annotation:delete', action: 'fabric:delete', finalDeletedAnnotationIds: [id] });
         if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
+        return { ok: true };
+      },
+      // Edit a callout's text and/or colors (editor/owner). A text change
+      // re-fits the box, like addCallout, since this path never opens the
+      // editor. Gated and committed the same way a human callout edit is.
+      editCallout: (id, { text, strokeColor, fillColor } = {}) => {
+        const { viewerId, documentOwnerId: ownerId, pageSizes } = agentMarkerStateRef.current;
+        const callout = resolveLiveCallout(id);
+        if (!callout) return { ok: false, reason: 'not-found' };
+        if (isUserLocked(callout)) return { ok: false, reason: 'locked' };
+        if (!canModify({ annotation: callout, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
+        const hasText = text != null && String(text).trim() !== '';
+        const hasStyle = Boolean(strokeColor) || Boolean(fillColor);
+        if (!hasText && !hasStyle) return { ok: false, reason: 'empty' };
+        const page = Number(callout.pageNumber ?? resolveCalloutPageNumber(id));
+        const size = pageSizes?.[page];
+        recordAnnotationCommit({ surface: 'webmcp', source: 'callout:edit', action: 'callout-agent-edit', pageNumber: page });
+        commitCalloutMutation(page, (prev) => prev.map((c) => {
+          if (c.id !== id) return c;
+          let next = { ...c };
+          if (hasStyle) {
+            next.style = {
+              ...c.style,
+              ...(strokeColor ? { borderColor: strokeColor } : {}),
+              ...(fillColor ? { fillColor } : {}),
+            };
+          }
+          if (hasText) {
+            next.text = String(text);
+            if (size) {
+              const fitted = refitCalloutToText(next, size, measureTextLayoutHeight);
+              if (fitted) {
+                next.textBoxWidth = fitted.textBoxWidth;
+                next.textBoxHeight = fitted.textBoxHeight;
+                next.textBoxPosition = fitted.textBoxPosition;
+              }
+            }
+          }
+          return next;
+        }), { source: 'webmcp:callout:edit', action: 'callout-edit-commit' });
+        return { ok: true };
+      },
+      // Recolor a highlight (editor/owner): a hex color and/or opacity (0-100).
+      // Recolours every mark that shares the selection, through the same
+      // text-markup paint transaction a human recolour uses.
+      recolorHighlight: (id, { color, opacity } = {}) => {
+        const { viewerId, documentOwnerId: ownerId, getAnnotationsByPage } = agentMarkerStateRef.current;
+        if (color == null && opacity == null) return { ok: false, reason: 'empty' };
+        const found = findAnnotationById(id);
+        if (!found) return { ok: false, reason: 'not-found' };
+        const { obj } = found;
+        // Underline/strikeout/squiggly/link/redact all store data.type
+        // 'text-markup' too, so match the markupType, not just the family, or
+        // this highlight-only tool would silently restyle them.
+        if (obj?.data?.markupType !== 'highlight') return { ok: false, reason: 'not-a-highlight' };
+        if (!canModify({ annotation: obj, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
+        const currentOpacity = Number.isFinite(Number(obj.opacity)) ? Number(obj.opacity) : 0.3;
+        const nextColor = color || obj.fill || obj.stroke || '#f4d35e';
+        const nextOpacity = Number.isFinite(Number(opacity))
+          ? Math.max(0.05, Math.min(1, Number(opacity) / 100))
+          : currentOpacity;
+        const tx = buildTextMarkupPaintEditTransaction({
+          annotationsByPage: getAnnotationsByPage(),
+          annotation: obj,
+          color: nextColor,
+          opacity: nextOpacity,
+        });
+        if (!tx) return { ok: false, reason: 'no-change' };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'text-markup:recolor', action: 'highlight-agent-recolor', pageNumber: obj.data?.pageNumber });
+        const committed = commitTextMarkupDocumentTransactionRef.current?.(tx, {
+          source: 'webmcp:highlight:recolor',
+          action: 'text-markup-update',
+          selectionGroupId: obj.data?.selectionGroupId,
+        });
+        if (!committed) return { ok: false, reason: 'locked' };
         return { ok: true };
       },
     });

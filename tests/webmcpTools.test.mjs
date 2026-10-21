@@ -276,6 +276,8 @@ const fakeAnnoDoc = () => {
     addPolygon: (args) => { addedShapes.push({ kind: 'poly', ...args }); return { ok: true, id: 'p1' }; },
     addCallout: (args) => { addedShapes.push({ kind: 'callout', ...args }); return { ok: true, id: 'c1' }; },
     addHighlight: async (args) => { addedShapes.push({ kind: 'highlight', ...args }); return { ok: true, id: 'h1' }; },
+    editCallout: (id, patch) => { editedNotes.push({ kind: 'callout', id, ...patch }); return { ok: true }; },
+    recolorHighlight: (id, patch) => { editedNotes.push({ kind: 'highlight', id, ...patch }); return { ok: true }; },
   };
 };
 const annoTools = (role, doc) => {
@@ -450,6 +452,37 @@ test('highlight tool: flag, role, empty text, passes through, and reason codes',
   await assert.rejects(annoTool('editor', noText, 'survey_add_highlight').execute({ page: 1, search_text: 'x' }), /no readable text/);
   const locked = { ...fakeAnnoDoc(), addHighlight: async () => ({ ok: false, reason: 'locked' }) };
   await assert.rejects(annoTool('editor', locked, 'survey_add_highlight').execute({ page: 1, search_text: 'x' }), /locked annotation on that page blocked/);
+});
+
+test('callout edit tool: flag, role, requires a field, passes through, reason codes', async () => {
+  assert.equal(tool(buildAgentTools({ getDocument: () => fakeAnnoDoc(), readAccess: open }), 'survey_edit_callout'), undefined);
+  const doc = fakeAnnoDoc();
+  assert.match(await annoTool('editor', doc, 'survey_edit_callout').execute({ annotation_id: 'c1', text: 'new text' }), /Changed the callout/);
+  assert.equal(doc.editedNotes.at(-1).kind, 'callout');
+  assert.equal(doc.editedNotes.at(-1).text, 'new text');
+  await annoTool('editor', doc, 'survey_edit_callout').execute({ annotation_id: 'c1', stroke_color: '#111111', fill_color: '#eeeeee' });
+  assert.equal(doc.editedNotes.at(-1).strokeColor, '#111111');
+  assert.equal(doc.editedNotes.at(-1).fillColor, '#eeeeee');
+  await assert.rejects(annoTool('editor', doc, 'survey_edit_callout').execute({ annotation_id: 'c1' }), /give the new text/i);
+  await assert.rejects(annoTool('viewer', doc, 'survey_edit_callout').execute({ annotation_id: 'c1', text: 'x' }), /viewer.*needs editor/);
+  const notFound = { ...fakeAnnoDoc(), editCallout: () => ({ ok: false, reason: 'not-found' }) };
+  await assert.rejects(annoTool('editor', notFound, 'survey_edit_callout').execute({ annotation_id: 'zzz', text: 'x' }), /No callout/);
+  const locked = { ...fakeAnnoDoc(), editCallout: () => ({ ok: false, reason: 'locked' }) };
+  await assert.rejects(annoTool('editor', locked, 'survey_edit_callout').execute({ annotation_id: 'c1', text: 'x' }), /locked/);
+});
+
+test('highlight recolor tool: flag, role, requires a field, passes through, reason codes', async () => {
+  assert.equal(tool(buildAgentTools({ getDocument: () => fakeAnnoDoc(), readAccess: open }), 'survey_recolor_highlight'), undefined);
+  const doc = fakeAnnoDoc();
+  assert.match(await annoTool('editor', doc, 'survey_recolor_highlight').execute({ annotation_id: 'h1', color: '#ff0000' }), /Changed the highlight/);
+  assert.equal(doc.editedNotes.at(-1).kind, 'highlight');
+  assert.equal(doc.editedNotes.at(-1).color, '#ff0000');
+  await annoTool('editor', doc, 'survey_recolor_highlight').execute({ annotation_id: 'h1', opacity: 50 });
+  assert.equal(doc.editedNotes.at(-1).opacity, 50);
+  await assert.rejects(annoTool('editor', doc, 'survey_recolor_highlight').execute({ annotation_id: 'h1' }), /color or an opacity/);
+  await assert.rejects(annoTool('viewer', doc, 'survey_recolor_highlight').execute({ annotation_id: 'h1', color: '#fff' }), /viewer.*needs editor/);
+  const notHl = { ...fakeAnnoDoc(), recolorHighlight: () => ({ ok: false, reason: 'not-a-highlight' }) };
+  await assert.rejects(annoTool('editor', notHl, 'survey_recolor_highlight').execute({ annotation_id: 'a1', color: '#fff' }), /not a highlight/);
 });
 
 test('a save blocked by a locked sibling is reported, not a false success', async () => {
