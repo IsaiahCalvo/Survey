@@ -9,6 +9,7 @@
 import { readFile } from 'node:fs/promises';
 import { createSurveyAgentToolbox } from '../src/agent/surveyAgentTools.js';
 import { runSurveyAgentTurn } from '../src/agent/surveyAgentClient.js';
+import { evalProblems, memoryBridge } from './surveyAgentEvalShared.mjs';
 import {
   SURVEY_AGENT_DEFAULT_PROVIDER,
   SURVEY_AGENT_LIMITS,
@@ -31,23 +32,6 @@ const baseUrl = (process.env.SURVEY_AGENT_BASE_URL || SURVEY_AGENT_DEFAULT_PROVI
 const model = process.env.SURVEY_AGENT_MODEL || SURVEY_AGENT_DEFAULT_PROVIDER.model;
 const fixture = JSON.parse(await readFile(new URL('../tests/fixtures/survey-agent-eval.json', import.meta.url), 'utf8'));
 const answerValues = fixture.template.answerSet.map((a) => a.value);
-
-function memoryBridge() {
-  const markers = JSON.parse(JSON.stringify(fixture.markers));
-  for (const m of Object.values(markers)) m.checklistResponses = {};
-  return {
-    template: fixture.template,
-    markers,
-    canEdit: true,
-    setAnswers: (id, list) => { for (const a of list) markers[id].checklistResponses[a.checklistItemId] = { selection: a.value }; },
-    setEntity: (id, entityId) => { markers[id].entityId = entityId; },
-    updateNote: (id, updater) => { markers[id].note = updater(markers[id].note || {}); },
-    uploadMedia: async () => { throw new Error('no media in the test set'); },
-    addMediaRefs: () => {},
-    restoreMarker: () => {},
-    showMarker: () => {},
-  };
-}
 
 async function callFunction(payload) {
   const res = await fetch(functionUrl, {
@@ -85,32 +69,14 @@ async function call(payload) {
   return { message: { content: message.content || '', tool_calls: message.tool_calls || [] } };
 }
 
-function check(bridge, changes, expect) {
-  const problems = [];
-  if (expect.noChanges && changes.length) problems.push(`expected no changes, got: ${changes.map((c) => c.label).join(' | ')}`);
-  for (const [id, want] of Object.entries(expect)) {
-    if (id === 'noChanges') continue;
-    const m = bridge.markers[id];
-    for (const [item, value] of Object.entries(want.answers || {})) {
-      const got = m.checklistResponses[item]?.selection || null;
-      if (got !== value) problems.push(`${m.name} ${item}: want ${value}, got ${got}`);
-    }
-    for (const text of want.noteIncludes || []) {
-      if (!String(m.note?.text || '').toLowerCase().includes(text.toLowerCase())) problems.push(`${m.name} note missing "${text}"`);
-    }
-    if (want.entity && m.entityId !== want.entity) problems.push(`${m.name} entity: want ${want.entity}, got ${m.entityId || null}`);
-  }
-  return problems;
-}
-
 let passed = 0;
 for (const c of fixture.cases) {
-  const bridge = memoryBridge();
+  const bridge = memoryBridge(fixture);
   const toolbox = createSurveyAgentToolbox({ getBridge: () => bridge });
   const started = Date.now();
   try {
     const out = await runSurveyAgentTurn({ userText: c.say, call, toolbox, answerValues });
-    const problems = check(bridge, out.changes, c.expect);
+    const problems = evalProblems(bridge, out.changes, c.expect);
     if (!problems.length) passed += 1;
     console.log(`${problems.length ? 'FAIL' : 'pass'}  ${((Date.now() - started) / 1000).toFixed(1)}s  "${c.say}"`);
     for (const p of problems) console.log(`        ${p}`);

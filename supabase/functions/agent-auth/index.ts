@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 const corsHeaders = {
   // INTENTIONAL: agents call this from anywhere and auth with their own
@@ -54,6 +55,13 @@ async function newKeys() {
   };
 }
 
+const BODY_SCHEMA = {
+  action: s.string({ max: 40, optional: true }),
+  agent_name: s.string({ max: 400, optional: true }),
+  device_code: s.string({ max: 200, optional: true }),
+  refresh_token: s.string({ max: 200, optional: true }),
+};
+
 const siteUrl = () => (Deno.env.get('SITE_URL') || 'https://surveytool.app').replace(/\/$/, '');
 
 Deno.serve(async (req) => {
@@ -66,8 +74,11 @@ Deno.serve(async (req) => {
     { auth: { persistSession: false } },
   );
 
-  let body: Record<string, unknown> = {};
-  try { body = await req.json(); } catch { /* empty body */ }
+  let raw: unknown = {};
+  try { raw = await req.json(); } catch { /* empty body */ }
+  const parsed = parseBody(BODY_SCHEMA, raw ?? {});
+  if (!parsed.ok) return json(400, { error: 'invalid_request', detail: parsed.error });
+  const body = parsed.value;
   const action = String(body.action || '');
 
   if (action === 'start') {

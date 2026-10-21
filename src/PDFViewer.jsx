@@ -329,6 +329,7 @@ import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
 import { registerAgentDocument } from './agent/webmcp';
+import { ocrWordsToWords, textItemsToWords } from './agent/planText';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { watchLightPopover } from './components/dismissRules.js';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
@@ -32537,7 +32538,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const moduleId = surveyMarker.moduleId || selectedModuleId;
     const categoryName = getCategoryName(selectedTemplate, moduleId, categoryId);
     const existingSurveyMarkers = Object.values(surveyMarkers).filter(h => h.categoryId === categoryId);
-    const defaultName = generateDefaultSurveyMarkerName(categoryName, existingSurveyMarkers);
+    // The Survey agent passes the tag it found on the plan as the name.
+    const defaultName = String(surveyMarker.name || '').trim() || generateDefaultSurveyMarkerName(categoryName, existingSurveyMarkers);
     const highlightColor = surveyMarker.entityColor
       ? (normalizeSurveyMarkerColor(surveyMarker.entityColor) || surveyMarker.entityColor)
       : null; // No Entity yet — render as needs-Entity (dashed)
@@ -32869,6 +32871,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     getMarkers: () => surveyMarkersRef.current || {},
     viewerId: user?.id ?? null,
     documentOwnerId,
+    pdfDoc,
+    ocrStateByPage,
+    commitMobileSurveyMarker,
+    addHistoryCheckpoint,
+    getPageSurveyRegionId,
+    selectedTemplate,
+    userId: user?.id || null,
   };
   useEffect(() => {
     if (isActive === false) return undefined;
@@ -32887,6 +32896,41 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       addSurveyMarker: (page, bounds) => {
         recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:create', action: 'survey-marker-agent', pageNumber: page });
         agentMarkerStateRef.current.handleSurveyMarkerCreated(page, bounds);
+      },
+      // Survey agent (find_on_plan): a page's words with boxes, from the
+      // text layer, else from text recognition the person already ran.
+      getPageWords: async (page) => {
+        const state = agentMarkerStateRef.current;
+        const ocrWords = state.ocrStateByPage?.[page]?.result?.words;
+        if (!state.pdfDoc) return { words: [], source: 'none' };
+        const pdfPage = await state.pdfDoc.getPage(page);
+        const content = await pdfPage.getTextContent();
+        const words = textItemsToWords(content.items, pdfPage.getViewport({ scale: 1 }));
+        if (words.length) return { words, source: 'text' };
+        if (ocrWords?.length) return { words: ocrWordsToWords(ocrWords), source: 'ocr' };
+        return { words: [], source: 'none' };
+      },
+      getPageCount: () => agentMarkerStateRef.current.pdfDoc?.numPages || 0,
+      // Survey agent (create_item): a named marker in a given category, the
+      // same commit a placed marker gets. Returns the new id.
+      createSurveyMarker: ({ page, bounds, moduleId, categoryId, name, entityId }) => {
+        const state = agentMarkerStateRef.current;
+        if (!state.surveyReady || !state.selectedTemplate) return null;
+        const id = `surveyMarker-${crypto.randomUUID()}`;
+        const entity = (state.selectedTemplate.entities || []).find((e) => e.id === entityId) || null;
+        recordAnnotationCommit({ surface: 'agent', source: 'survey-marker:create', action: 'survey-marker-agent', pageNumber: page });
+        state.addHistoryCheckpoint('highlight:create', { pageNumber: page, selectedCategoryId: categoryId, annotationId: id });
+        state.commitMobileSurveyMarker({
+          id,
+          ...(state.userId ? { userId: state.userId } : {}),
+          name,
+          pageNumber: page,
+          bounds,
+          moduleId,
+          regionId: state.getPageSurveyRegionId(page),
+          ...(entity ? { entityId: entity.id, entityName: entity.name, entityColor: entity.color } : {}),
+        }, categoryId, { openPanel: false });
+        return id;
       },
       // Read the markers now on the open plan, so an agent can target one.
       listSurveyMarkers: () => Object.entries(agentMarkerStateRef.current.getMarkers())

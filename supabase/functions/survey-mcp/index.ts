@@ -15,6 +15,7 @@
 // GET .../survey-mcp/.well-known/oauth-protected-resource is RFC 9728 metadata.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { normalizeItemName, scoreItemName } from '../_shared/surveyAgentSpec.js';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 const corsHeaders = {
   // INTENTIONAL: agents call from anywhere with a Bearer token, never
@@ -238,8 +239,25 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
 const rpcResult = (id: unknown, result: unknown) => ({ jsonrpc: '2.0', id, result });
 const rpcError = (id: unknown, code: number, message: string) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 
-async function handle(db: SupabaseClient, msg: Record<string, unknown>) {
-  const { id, method } = msg;
+// One JSON-RPC message: shape and size only; callTool checks the arguments.
+const MESSAGE_SCHEMA = {
+  jsonrpc: s.string({ max: 10, optional: true }),
+  id: s.any({ maxBytes: 256 }),
+  method: s.string({ max: 100 }),
+  params: s.record({ maxBytes: 64 * 1024, optional: true }),
+};
+// More than this many messages in one batch is refused, so one request cannot
+// fan out into hundreds of database reads.
+const MAX_BATCH = 20;
+
+async function handle(db: SupabaseClient, raw: Record<string, unknown>) {
+  const parsed = parseBody(MESSAGE_SCHEMA, raw);
+  if (!parsed.ok) return rpcError((raw as Record<string, unknown>)?.id, -32600, `Invalid request: ${parsed.error}`);
+  const msg = parsed.value;
+  // parseBody drops null fields, but a null id is still a request, not a
+  // notification, so read id straight from the message.
+  const id = raw.id;
+  const { method } = msg;
   const params = (msg.params && typeof msg.params === 'object' ? msg.params : {}) as Record<string, unknown>;
   const isNotification = id === undefined;
   if (method === 'initialize') {
@@ -296,6 +314,7 @@ Deno.serve(async (req) => {
   let body: unknown;
   try { body = await req.json(); } catch { return jsonResponse(400, rpcError(null, -32700, 'Parse error')); }
   if (Array.isArray(body)) {
+    if (body.length === 0 || body.length > MAX_BATCH) return jsonResponse(400, rpcError(null, -32600, 'Invalid request'));
     const out = (await Promise.all(body.map((m) => handle(db, m as Record<string, unknown>)))).filter(Boolean);
     return out.length ? jsonResponse(200, out) : new Response(null, { status: 202, headers: corsHeaders });
   }

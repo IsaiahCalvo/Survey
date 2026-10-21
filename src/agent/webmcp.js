@@ -20,6 +20,8 @@ const SURVEY_ITEM_TOOLS = {
   add_note: { name: 'survey_add_note', access: { signIn: true, minRole: 'editor' } },
   set_entity: { name: 'survey_set_entity', access: { signIn: true, minRole: 'editor' } },
   show_item: { name: 'survey_show_item', access: { minRole: 'viewer' }, readOnly: true },
+  find_on_plan: { name: 'survey_find_on_plan', access: { minRole: 'viewer' }, readOnly: true },
+  create_item: { name: 'survey_create_item', access: { signIn: true, minRole: 'editor' } },
 };
 
 // A browser agent cannot know the open template's answers up front, so the
@@ -77,6 +79,9 @@ function activeDocument() {
   for (const d of documents) last = d;
   return last;
 }
+
+// The open document's handle (the last one registered), for the Survey agent.
+export const activeAgentDocument = activeDocument;
 
 function text(value) {
   return typeof value === 'string' ? value : JSON.stringify(value);

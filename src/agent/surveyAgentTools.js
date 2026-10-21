@@ -6,6 +6,7 @@
 import { answerSetFor } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
 import { normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
+import { boundsCover, markerBoxAroundTag } from './planText.js';
 
 export { normalizeItemName, scoreItemName };
 
@@ -86,6 +87,9 @@ export function createSurveyAgentToolbox({
     if (b.canEdit === false) throw new ToolError('This person can only view this document, so nothing can be changed.');
   };
   const nameOf = (marker) => marker?.name || 'Unnamed item';
+  // Plan matches from find_on_plan in this chat, so create_item takes an id
+  // instead of coordinates the model could make up.
+  const planMatches = new Map();
 
   const tools = {
     get_survey_context() {
@@ -248,6 +252,68 @@ export function createSurveyAgentToolbox({
       };
     },
 
+    async find_on_plan({ text } = {}) {
+      const b = bridge();
+      const query = String(text || '').trim();
+      if (query.replace(/[^a-z0-9]/gi, '').length < 2) throw new ToolError('Say the tag to look for, for example D-117.');
+      if (typeof b.findOnPlan !== 'function') throw new ToolError('The plan cannot be searched here.');
+      const found = await b.findOnPlan(query);
+      const markers = Object.entries(b.markers || {});
+      const matches = (found?.matches || []).map((m) => {
+        const id = `plan-${planMatches.size + 1}`;
+        planMatches.set(id, m);
+        const covering = markers.find(([, marker]) => marker?.pageNumber === m.page && boundsCover(marker.bounds, m.box));
+        return {
+          id,
+          page: m.page,
+          text: m.text,
+          ...(covering ? { already_item: { id: covering[0], name: nameOf(covering[1]) } } : {}),
+        };
+      });
+      return {
+        content: out({
+          matches,
+          ...(found?.unreadPages?.length ? { pages_without_text: found.unreadPages.length } : {}),
+        }),
+      };
+    },
+
+    create_item({ name, category_id: categoryId, plan_match_id: matchId, entity_id: entityId = null } = {}) {
+      const b = bridge();
+      writable(b);
+      if (typeof b.createItem !== 'function') throw new ToolError('Items cannot be added here.');
+      const itemName = String(name || '').trim().slice(0, 120);
+      if (!itemName) throw new ToolError('Give the item a name.');
+      const entry = categoryIndex(b.template).list.find(({ category }) => category.id === categoryId);
+      if (!entry) throw new ToolError(`No category with id ${categoryId}. Use get_survey_context.`);
+      const entity = entityId ? entitiesOf(b.template).find((e) => e.id === entityId) : null;
+      if (entityId && !entity) throw new ToolError(`No entity with id ${entityId}.`);
+      const match = planMatches.get(matchId);
+      if (!match) throw new ToolError(`No plan match ${matchId}. Use find_on_plan first.`);
+      const same = Object.entries(b.markers || {}).find(([, m]) => m?.categoryId === categoryId
+        && normalizeItemName(m.name) === normalizeItemName(itemName));
+      if (same) throw new ToolError(`${nameOf(same[1])} already exists (id ${same[0]}).`);
+      const bounds = markerBoxAroundTag(match.box, b.getPageSize?.(match.page) || null);
+      const itemId = b.createItem({
+        name: itemName,
+        moduleId: entry.module.id,
+        categoryId,
+        entityId: entity?.id || null,
+        page: match.page,
+        bounds,
+      });
+      if (!itemId) throw new ToolError('The item could not be added. Is Survey mode open on this document?');
+      return {
+        content: `Added ${itemName} (${entry.category.name}) on page ${match.page}, id ${itemId}.`,
+        change: {
+          itemId,
+          documentId: b.documentId || null,
+          label: `Added ${itemName} (${entry.category.name}) on page ${match.page}`,
+          fields: [{ type: 'create' }],
+        },
+      };
+    },
+
     show_item({ item_id: itemId } = {}) {
       const b = bridge();
       const marker = markerOf(b, itemId);
@@ -297,6 +363,7 @@ export function createSurveyAgentToolbox({
       // One working copy per item, newest change first, written once: the
       // bridge's markers only refresh after the app re-renders.
       const work = new Map();
+      const removed = new Set();
       for (const change of [...list].reverse()) {
         const marker = b?.markers?.[change.itemId];
         if (!marker || (b.documentId || null) !== (change.documentId || null)) {
@@ -332,10 +399,18 @@ export function createSurveyAgentToolbox({
             const same = noteTextOf(item.note).trimEnd() === String(field.afterText || '').trimEnd()
               && (field.afterMedia == null || mediaCountOf(item.note) === field.afterMedia);
             if (same) { item.note = clone(field.before); result.reverted += 1; } else result.kept += 1;
+          } else if (field.type === 'create') {
+            // Remove an added item only while nobody has filled anything in.
+            const untouched = !Object.values(item.checklistResponses || {}).some((r) => r?.selection)
+              && !noteTextOf(item.note).trim() && !mediaCountOf(item.note);
+            if (untouched && typeof b.deleteMarker === 'function') { removed.add(change.itemId); result.reverted += 1; } else result.kept += 1;
           }
         }
       }
-      for (const [itemId, snapshot] of work) b.restoreMarker(itemId, snapshot);
+      for (const [itemId, snapshot] of work) {
+        if (removed.has(itemId)) b.deleteMarker(itemId);
+        else b.restoreMarker(itemId, snapshot);
+      }
       return result;
     },
   };

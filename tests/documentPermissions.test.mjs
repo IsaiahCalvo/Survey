@@ -21,3 +21,14 @@ test('a selection is blocked when any document is not manageable', () => {
   assert.equal(manageSelectionBlock([mine, sharedViewer], 'u1', 'delete'), 'Only the owner can delete some of these');
   assert.equal(manageSelectionBlock([sharedEditor], 'u1', 'share'), 'Only the owner can share this');
 });
+
+test('desktop bulk pane shows the block reason on greyed Share / Delete', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/home/DocumentsLedger.jsx', import.meta.url), 'utf8');
+  for (const verb of ['share', 'delete']) {
+    assert.ok(
+      src.includes(`disabled={Boolean(selectionBlock('${verb}'))} {...tip(selectionBlock('${verb}') || '', 'above')}`),
+      `bulk pane ${verb} button carries the reason tooltip`,
+    );
+  }
+});
