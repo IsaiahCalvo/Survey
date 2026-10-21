@@ -24,7 +24,8 @@ import { isFeatureOn } from '../featureFlags.js';
 import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
 import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
-import { startHandsFreeMic } from '../agent/handsFreeMic.js';
+import { letGoOfWarmMic, startHandsFreeMic } from '../agent/handsFreeMic.js';
+import { createTurnJoiner, joinTurnText, joinWavs } from '../agent/turnJoiner.js';
 import { createVoiceLog, loggedCaller, sendVoiceLog } from '../agent/voiceLog.js';
 import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
@@ -563,13 +564,17 @@ export default function SurveyAgentPanel({
   // Hands-free: each clip the mic cuts is heard, answered and (with voice
   // on) spoken, then the mic listens again. While the agent speaks the mic
   // is guarded: speaking up clearly cuts the agent off and is heard next.
+  const joinerRef = useRef(null);
   const stopHandsFree = useCallback(() => {
     if (handsFreeRef.current) voiceLogRef.current?.event('hands_free_stop');
+    // Words still held for joining are dropped with hands-free.
+    joinerRef.current?.clear();
     handsFreeRef.current = false;
     setHandsFree(false);
     setHearing(false);
     micRef.current?.stop();
     micRef.current = null;
+    letGoOfWarmMic();
     deviceHearingRef.current?.stop();
     deviceHearingRef.current = null;
     awakeRef.current?.release();
@@ -591,10 +596,10 @@ export default function SurveyAgentPanel({
   const handsFreeChainRef = useRef(Promise.resolve());
   const lastSpokenRef = useRef('');
   const handsFreePendingRef = useRef(0);
-  const handleHandsFreeClip = async (clip, durationMs, { cutIn = false, endedAt = Date.now() } = {}) => {
+  const handleHandsFreeClip = async (clip, durationMs, { cutIn = false, endedAt = Date.now(), warm = false } = {}) => {
     if (!handsFreeRef.current) return;
     if (queueRef.current.length) { queueClip(clip, durationMs); return; }
-    const text = await hear(clip, durationMs, endedAt);
+    const text = await hear(clip, durationMs, endedAt, warm ? null : undefined);
     if (text === null) { queueClip(clip, durationMs); return; }
     await handleHandsFreeText(text, { cutIn });
   };
@@ -624,19 +629,54 @@ export default function SurveyAgentPanel({
       return;
     }
   };
-  const onHandsFreeClip = (clip, durationMs, info) => {
-    const endedAt = Date.now();
-    voiceLog.event('clip', { ms: durationMs, cut_in: Boolean(info?.cutIn), camera: Boolean(cameraRef.current) });
-    if (cameraRef.current) { handleCameraClip(clip, durationMs, endedAt).catch(() => {}); return; }
+  // In order, one turn at a time.
+  const runHandsFree = (job) => {
     handsFreePendingRef.current += 1;
     setPhase('working');
     handsFreeChainRef.current = handsFreeChainRef.current
-      .then(() => handleHandsFreeClipRef.current(clip, durationMs, { ...info, endedAt }))
+      .then(job)
       .catch(() => {})
       .finally(() => {
         handsFreePendingRef.current -= 1;
         if (!handsFreePendingRef.current && handsFreeRef.current) setPhase('listening');
       });
+  };
+  // Clips cut at short pauses are one turn: heard together, sent once.
+  const onJoinedTurn = (parts) => {
+    const clips = parts.filter((p) => p.clip);
+    const cutIn = parts.some((p) => p.cutIn);
+    const warm = clips.some((p) => p.warm);
+    if (!clips.length) {
+      const text = joinTurnText(parts);
+      if (text) runHandsFree(() => handleHandsFreeTextRef.current(text, { cutIn }));
+      return;
+    }
+    const first = clips[0];
+    const last = clips[clips.length - 1];
+    // From the first clip's start to the last one's end.
+    const spanMs = Math.max(last.endedAt - (first.endedAt - first.durationMs), last.durationMs);
+    runHandsFree(async () => {
+      const clip = await joinWavs(clips.map((p) => p.clip));
+      await handleHandsFreeClipRef.current(clip, spanMs, { cutIn, endedAt: last.endedAt, warm });
+    });
+  };
+  const onJoinedTurnRef = useRef(onJoinedTurn);
+  onJoinedTurnRef.current = onJoinedTurn;
+  if (!joinerRef.current) joinerRef.current = createTurnJoiner({ onTurn: (parts) => onJoinedTurnRef.current(parts) });
+  const onHearingChange = (on) => {
+    setHearing(on);
+    // A new log turn only when nothing is held for joining: clips joined
+    // into one message stay in one log turn.
+    if (!on) voiceLog.event('speech_end');
+    else if (joinerRef.current.holding) voiceLog.event('speech_start');
+    else voiceLog.turn('speech_start');
+    joinerRef.current.hearing(on);
+  };
+  const onHandsFreeClip = (clip, durationMs, info) => {
+    const endedAt = Date.now();
+    voiceLog.event('clip', { ms: durationMs, cut_in: Boolean(info?.cutIn), warm: Boolean(info?.warm), camera: Boolean(cameraRef.current) });
+    if (cameraRef.current) { handleCameraClip(clip, durationMs, endedAt).catch(() => {}); return; }
+    joinerRef.current.add({ clip, durationMs, endedAt, cutIn: Boolean(info?.cutIn), warm: Boolean(info?.warm) });
   };
   const handleHandsFreeClipRef = useRef(handleHandsFreeClip);
   handleHandsFreeClipRef.current = handleHandsFreeClip;
@@ -654,15 +694,7 @@ export default function SurveyAgentPanel({
       if (speakRef.current) speak(agentSays(langRef.current, 'sayAgain')).catch(() => {});
       return;
     }
-    handsFreePendingRef.current += 1;
-    setPhase('working');
-    handsFreeChainRef.current = handsFreeChainRef.current
-      .then(() => handleHandsFreeTextRef.current(text, { cutIn }))
-      .catch(() => {})
-      .finally(() => {
-        handsFreePendingRef.current -= 1;
-        if (!handsFreePendingRef.current && handsFreeRef.current) setPhase('listening');
-      });
+    joinerRef.current.add({ text, cutIn: Boolean(cutIn) });
   };
   const handleHandsFreeTextRef = useRef(null);
   handleHandsFreeTextRef.current = handleHandsFreeText;
@@ -685,7 +717,7 @@ export default function SurveyAgentPanel({
           speech,
           lang: agentLocale(langRef.current),
           onText: (text, info) => onNativeTextRef.current(text, info),
-          onHearing: (on) => { setHearing(on); if (on) voiceLog.turn('speech_start'); else voiceLog.event('speech_end'); },
+          onHearing: (on) => onHearingChange(on),
           onBargeIn: () => stopSpeaking(),
           spokenNow: () => lastSpokenRef.current,
           onFatal: () => { if (handsFreeRef.current) restartHandsFreeRef.current(); },
@@ -693,7 +725,7 @@ export default function SurveyAgentPanel({
         : null;
       micRef.current = micRef.current || await startHandsFreeMic({
         onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
-        onHearing: (on) => { setHearing(on); if (on) voiceLog.turn('speech_start'); else voiceLog.event('speech_end'); },
+        onHearing: (on) => onHearingChange(on),
         onBargeIn: () => stopSpeaking(),
       });
       voiceLog.event('mic_started', { native: Boolean(micRef.current.native) });
@@ -719,7 +751,7 @@ export default function SurveyAgentPanel({
     try {
       micRef.current = await startHandsFreeMic({
         onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
-        onHearing: (on) => { setHearing(on); if (on) voiceLog.turn('speech_start'); else voiceLog.event('speech_end'); },
+        onHearing: (on) => onHearingChange(on),
         onBargeIn: () => stopSpeaking(),
       });
     } catch {
@@ -840,9 +872,9 @@ export default function SurveyAgentPanel({
   useEffect(() => {
     if (!status || handsFreeAsk <= askHandledRef.current) return;
     askHandledRef.current = handsFreeAsk;
-    if (handsFreeRef.current) { stopHandsFree(); return; }
+    if (handsFreeRef.current) { stopHandsFree(); letGoOfWarmMic(); return; }
     if (ready && status.transcription && canHandsFree()) startHandsFreeRef.current();
-    else onShowChatRef.current();
+    else { letGoOfWarmMic(); onShowChatRef.current(); }
   }, [handsFreeAsk, status, ready, stopHandsFree]);
 
   // A tap anywhere outside the chat goes back to the Survey panel.

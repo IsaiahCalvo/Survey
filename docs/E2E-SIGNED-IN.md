@@ -55,6 +55,30 @@ bytes from `debug/fixtures/clickable-link-test.pdf`, stored at
 `project_collaborators`. Everything is defined once in
 `tests/e2e-signed-in/accounts.mjs`.
 
+### Survey agent: seeded survey and fake Groq
+
+For voice and agent walks (browser, iOS, Android) the owner also has:
+
+- drawing **E2E Survey Agent Drawing.pdf** (`e2e00000-0000-4000-8000-000000000102`) in the same project,
+- template **E2E Doors** (`e2e00000-0000-4000-8000-000000000301`), linked to that drawing: module
+  **Installation** (`e2e-mod-install`), category **Door** (`e2e-cat-door`), lines Cables Pulled,
+  Frame Installed & Prepped, Door Installed & Prepped,
+- item **D-1-17** (`surveyMarker-e2e-d117`) on page 1, every line blank (reset on each seed).
+
+The `survey-agent` flag is on for the owner. Every Groq call goes to a fake
+(`scripts/e2e-fake-groq.mjs`, served by the stack as the `e2e-fake-groq`
+function in its own workdir, never deployed; `GROQ_BASE_URL` points at it):
+hearing always returns "D-1-17 is installed", and the model sets every line of
+the item named, then says "Done." So a walk that opens the drawing, picks
+E2E Doors, taps the mic and speaks anything should see D-1-17 filled in.
+`survey-agent-fake-groq.spec.mjs` checks the function reaches the fake.
+
+With `E2E_EDGE_RUNTIME=off`, run the fake on the host
+(`node scripts/e2e-fake-groq.mjs 54399`) and serve survey-agent with
+`GROQ_API_KEY=e2e-fake-no-calls GROQ_BASE_URL=http://127.0.0.1:54399
+SURVEY_AGENT_TESTERS=e2e-owner@example.com SURVEY_AGENT_TTS=off` through
+`scripts/e2e-serve-functions.ts survey-agent` (with `--config supabase/functions/deno.json`).
+
 ## Run the specs
 
 ```bash

@@ -23,6 +23,15 @@ on:
       perf_pages:
         description: 'Sheets in the seeded big drawing set (perf runs only)'
         default: '240'
+      perf_base:
+        description: 'Also profile this git ref (branch or sha) on the same runner, for a before/after (perf runs only)'
+        default: ''
+      perf_sheet_kb:
+        description: 'KB of raster per seeded sheet, for a realistic file size (perf runs only; 0 = vector only, ~0.8 MB)'
+        default: '0'
+      perf_net:
+        description: 'Throttle the profiled page, <latency ms>/<down Mbps>, e.g. 150/9 (perf runs only)'
+        default: ''
       perf_flags:
         description: 'Feature flags to turn on for the perf run, comma-separated (perf runs only)'
         default: ''
@@ -33,6 +42,7 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/config.toml'
       - 'scripts/e2e-local-supabase.mjs'
+      - 'scripts/e2e-fake-groq.mjs'
       - 'tests/e2e-signed-in/**'
       - 'playwright.e2e-signed-in.config.mjs'
       - 'tests/e2e-speed/**'
@@ -107,18 +117,34 @@ jobs:
         if: ${{ inputs.perf }}
         env:
           BIG_DOC_PAGES: ${{ inputs.perf_pages }}
+          BIG_DOC_SHEET_KB: ${{ inputs.perf_sheet_kb }}
+          NET: ${{ inputs.perf_net }}
           FLAGS: ${{ inputs.perf_flags }}
+          PERF_BASE: ${{ inputs.perf_base }}
           BASE: http://127.0.0.1:5241
         run: |
           node scripts/e2e-local-supabase.mjs seed
           node scripts/perf/big-doc-seed.mjs
+          mkdir -p perf-out
+          # Runners differ by up to ~40% in open time, so a before/after is
+          # only meaningful from one runner: profile the base ref first.
+          if [ -n "$PERF_BASE" ]; then
+            git fetch --no-tags --depth=1 origin "$PERF_BASE"
+            git worktree add --detach "$RUNNER_TEMP/perf-base" FETCH_HEAD
+            ln -s "$PWD/node_modules" "$RUNNER_TEMP/perf-base/node_modules"
+            cp .env.e2e "$RUNNER_TEMP/perf-base/.env.e2e"
+            (cd "$RUNNER_TEMP/perf-base" && npx vite build --mode e2e --outDir "$PWD/dist-base")
+            (npx vite preview --mode e2e --outDir "$RUNNER_TEMP/perf-base/dist-base" --host 127.0.0.1 --port 5242 --strictPort &)
+            npx wait-on -t 60000 http://127.0.0.1:5242
+            BASE=http://127.0.0.1:5242 RUNS=3 SIZES=desktop,phone node scripts/perf/big-doc-open.mjs | tee perf-out/base-open.txt
+            BASE=http://127.0.0.1:5242 RUNS=3 node scripts/perf/big-doc-memory.mjs | tee perf-out/base-memory.txt
+          fi
           npx vite build --mode e2e --outDir dist-perf --sourcemap
           (npx vite preview --mode e2e --outDir dist-perf --host 127.0.0.1 --port 5241 --strictPort &)
           npx wait-on -t 60000 http://127.0.0.1:5241
-          mkdir -p perf-out
           RUNS=3 SIZES=desktop,phone node scripts/perf/big-doc-open.mjs | tee perf-out/open.txt
           RUNS=3 HEAP_TOP=40 ZOOM_PROFILE=perf-out/zoom OUT=perf-out/memory.json node scripts/perf/big-doc-memory.mjs | tee perf-out/memory.txt
-          PROFILE=perf-out/open SIZES=phone node scripts/perf/big-doc-open.mjs || true
+          PROFILE=perf-out/open SIZES=phone,tablet node scripts/perf/big-doc-open.mjs || true
           for f in perf-out/*.cpuprofile; do echo "== $f"; DIST=dist-perf TOP=40 node scripts/perf/cpuprofile-top.mjs "$f" || true; done
           { echo '### Big drawing set'; echo '```'; grep MEDIANS perf-out/*.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 

@@ -42,3 +42,25 @@ export const E2E_DOCUMENT = {
   fixture: 'debug/fixtures/clickable-link-test.pdf',
   pageCount: 1,
 };
+
+// A survey for voice and agent walks, on its own drawing so no other spec sees
+// its marker: template "E2E Doors" with one Installation module, and item
+// D-1-17 on page 1. The fake Groq (scripts/e2e-fake-groq.mjs) hears
+// "D-1-17 is installed" and sets every line of it.
+export const E2E_SURVEY = {
+  documentId: 'e2e00000-0000-4000-8000-000000000102',
+  documentName: 'E2E Survey Agent Drawing.pdf',
+  templateId: 'e2e00000-0000-4000-8000-000000000301',
+  templateName: 'E2E Doors',
+  moduleId: 'e2e-mod-install',
+  moduleName: 'Installation',
+  categoryId: 'e2e-cat-door',
+  categoryName: 'Door',
+  checklist: [
+    { id: 'e2e-cl-cable', text: 'Cables Pulled' },
+    { id: 'e2e-cl-frame', text: 'Frame Installed & Prepped' },
+    { id: 'e2e-cl-door', text: 'Door Installed & Prepped' },
+  ],
+  markerId: 'surveyMarker-e2e-d117',
+  itemName: 'D-1-17',
+};

@@ -46,12 +46,14 @@ const ANSWER_WORDS = Object.freeze({
   damaged: 'damaged, busted, broken, cracked, bent, smashed, beat up, hanging off (there, but broken)',
   works: 'works, working, good, tested, passed, online, checks out',
   'not working': 'not working, doesn\'t work, dead, failed, offline, no power, won\'t release',
+  open: 'still open, not fixed, still a problem, needs work',
+  done: 'done, fixed, closed, taken care of, finished, sorted',
   'n/a': 'doesn\'t apply, not here, no such part, not part of this job',
 });
 
 const KNOWN_TONE = Object.freeze({
-  y: 'good', yes: 'good', pass: 'good', good: 'good', installed: 'good', works: 'good',
-  n: 'bad', no: 'bad', fail: 'bad', poor: 'bad', missing: 'bad', damaged: 'bad', 'not working': 'bad',
+  y: 'good', yes: 'good', pass: 'good', good: 'good', installed: 'good', works: 'good', done: 'good',
+  open: 'bad', n: 'bad', no: 'bad', fail: 'bad', poor: 'bad', missing: 'bad', damaged: 'bad', 'not working': 'bad',
 });
 
 const isDefaultSet = (values) => values.length === 3 && values[0] === 'Y' && values[1] === 'N' && values[2] === 'N/A';

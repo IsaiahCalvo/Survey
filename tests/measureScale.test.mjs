@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   applyPageScale,
   buildMeasureLabel,
+  layoutMeasureLabel,
   formatMeasureLength,
   pageScaleFromObjects,
   polygonAreaPt,
@@ -56,4 +57,36 @@ test('page scale is saved on measurements and re-stamped on change', () => {
   assert.equal(page.objects[1].data.measure.scale.ptPerUnit, 9, 'input not mutated');
   assert.equal(buildMeasureLabel(next.objects[1], pageScaleFromObjects(next.objects)).text, '5\' 0"');
   assert.equal(pageScaleFromObjects([plain]), null);
+});
+
+test('length label pill: fixed screen size, above the midpoint, clear of handles', () => {
+  const json = stampMeasure(line({ x: 10, y: 100 }, { x: 210, y: 100 }), 'length', scaleFromPreset('1/4'));
+  const label = buildMeasureLabel(json, scaleFromPreset('1/4'));
+  const at1 = layoutMeasureLabel(label, 1);
+  assert.equal(at1.fontSize, 12);
+  assert.equal(at1.cx, 110);
+  assert.ok(at1.cy + at1.height / 2 <= 100 - 8, 'pill bottom sits >= 8 px above the line');
+  // Zoomed out 2x (2 page units per px): same 12 px on screen, so 24 page units.
+  const at2 = layoutMeasureLabel(label, 2);
+  assert.equal(at2.fontSize, 24);
+  assert.ok(Math.abs((100 - at2.cy) - 2 * (100 - at1.cy)) < 1e-9);
+});
+
+test('length label on a vertical / diagonal line offsets perpendicular', () => {
+  const vert = buildMeasureLabel(stampMeasure(line({ x: 50, y: 0 }, { x: 50, y: 100 }), 'length', null), null);
+  const v = layoutMeasureLabel(vert, 1);
+  assert.ok(Math.abs(v.cy - 50) < 1e-9 && Math.abs(v.cx - 50) > 8);
+  const diag = buildMeasureLabel(stampMeasure(line({ x: 0, y: 100 }, { x: 100, y: 0 }), 'length', null), null);
+  const d = layoutMeasureLabel(diag, 1);
+  assert.ok(d.cy < 50, 'diagonal label goes screen-up');
+  const along = (d.cx - 50) * Math.SQRT1_2 - (d.cy - 50) * Math.SQRT1_2;
+  assert.ok(Math.abs(along) < 1e-9, 'offset is purely perpendicular');
+});
+
+test('area label pill stays on the centroid', () => {
+  const pts = [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }, { x: 0, y: 40 }];
+  const json = stampMeasure(buildPolyShapeCommitJSON({ tool: 'polygon', id: 'p', points: pts, strokeColor: '#000', strokeOpacity: 100, fillColor: '#000', fillOpacity: 0, strokeWidth: 2 }), 'area', null);
+  const box = layoutMeasureLabel(buildMeasureLabel(json, null), 1);
+  assert.equal(box.cx, 20);
+  assert.equal(box.cy, 20);
 });

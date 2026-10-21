@@ -101,6 +101,6 @@ test('select-mode buttons and Select toggles use the shared rules', () => {
   assert.match(src, /onClick=\{\(\) => \{ if \(state\.enabled \|\| reasoned\) activateOrExplain\(reasoned \? state\.tooltip : null, handlers\[handler\]\); \}\}/, 'a disabled action never runs its handler');
   assert.match(src, /nothingToSelect/);
   // Projects and templates share ONE item at a time.
-  assert.match(read('src/home/ProjectsFolderTree.jsx'), /can=\{\{ share: selCount > 1 \? 'Share one project at a time' : true \}\}/);
+  assert.match(read('src/home/ProjectsFolderTree.jsx'), /can=\{projectSelectionCan\(filtered\.filter\(\(p\) => selProj\.has\(p\.id\)\), user\?\.id\)\}/);
   assert.match(read('src/home/TemplatesEditor.jsx'), /can=\{\{ share: visibleSelCount > 1 \? 'Share one template at a time' : true \}\}/);
 });

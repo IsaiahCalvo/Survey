@@ -4401,12 +4401,14 @@ export default function App({ devPreviewReturnTab = null }) {
               aria-hidden="true"
               data-viewer-top-reserve="true"
               style={{
-                display: isViewerVisible && !isMobileViewer ? 'block' : 'none',
+                display: isViewerVisible ? 'block' : 'none',
                 position: 'absolute',
                 top: 0,
                 left: 0,
                 right: 0,
-                height: 'calc(var(--chrome-bar-h) + 1px)',
+                // Phone: the tool settings strip (.mobile-pdf-properties, 44px)
+                // drops into this room instead of pushing the sheet down.
+                height: isMobileViewer ? '44px' : 'calc(var(--chrome-bar-h) + 1px)',
                 pointerEvents: 'none',
                 visibility: 'hidden',
               }}

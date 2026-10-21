@@ -80,15 +80,43 @@ test('agents cannot pay, open billing, delete the account, or export it', () => 
   }
 });
 
-test('survey-mcp exposes only read-only tools, and its role read uses GET', () => {
+test('survey-mcp read tools stay read-only; write tools are gated by flag + write scope', () => {
   const src = read('supabase/functions/survey-mcp/index.ts');
   for (const name of ['list_projects', 'list_documents', 'list_survey_items', 'find_survey_items', 'get_survey_item', 'get_document_role', 'get_survey_context']) {
     assert.match(src, new RegExp(`name: '${name}'`), name);
   }
-  // Every declared tool is read-only — the connector must not gain a write
-  // tool here until the server-side write path (KAL-531) lands.
-  const tools = src.slice(src.indexOf('const TOOLS'), src.indexOf('async function callTool'));
-  assert.equal((tools.match(/readOnlyHint: true/g) || []).length, 7);
+  // READ_TOOLS are all read-only and contain no write tool.
+  const readTools = src.slice(src.indexOf('const READ_TOOLS'), src.indexOf('const WRITE_TOOLS'));
+  assert.equal((readTools.match(/readOnlyHint: true/g) || []).length, 7);
+  assert.doesNotMatch(readTools, /readOnlyHint: false/);
+  assert.doesNotMatch(readTools, /set_answers|add_note/);
+  // WRITE_TOOLS exist, are the two expected writes, and are not read-only.
+  const writeTools = src.slice(src.indexOf('const WRITE_TOOLS'), src.indexOf('async function gunzip'));
+  assert.match(writeTools, /name: 'set_answers'/);
+  assert.match(writeTools, /name: 'add_note'/);
+  assert.equal((writeTools.match(/readOnlyHint: false/g) || []).length, 2);
+  // tools/list offers writes only when the flag is on AND the token may write.
+  assert.match(src, /const CONNECTOR_WRITES_FLAG = 'survey-connector-writes'/);
+  const list = src.slice(src.indexOf("method === 'tools/list'"), src.indexOf("method === 'tools/call'"));
+  assert.match(list, /get_my_feature_flags/);
+  assert.match(list, /access !== 'read'/);
+  assert.match(list, /\[\.\.\.READ_TOOLS, \.\.\.WRITE_TOOLS\]/);
+  // Each write call gate: the feature flag on AND not a read-scoped agent.
+  const guard = src.slice(src.indexOf('async function requireWrite'), src.indexOf('async function callTool'));
+  assert.match(guard, /get_my_feature_flags/);
+  assert.match(guard, /access === 'read'/);
+  // Writes go through the shared CRDT marker sync + the append RPC on the
+  // person's token, never a service-role or a document_annotations write.
+  assert.match(src, /syncSurveyMarkersToDoc\(doc, markers, \{ origin: 'agent', fieldMaps \}\)/);
+  // The connector writes the same per-field or whole-value marker shape the app
+  // writes, keyed on the person's survey-marker-fields flag, so it never
+  // downgrades a per-field marker or loses a concurrent field edit.
+  assert.match(src, /MARKER_FIELDS_FLAG = 'survey-marker-fields'/);
+  assert.match(guard, /fieldMaps: flagMap\[MARKER_FIELDS_FLAG\] === true/);
+  assert.match(src, /rpc\('append_annotation_update'/);
+  // The off-by-default flag is declared in a migration and the client registry.
+  assert.match(read('supabase/migrations/20261022170000_survey_connector_writes_flag.sql'), /'survey-connector-writes', 'off'/);
+  assert.match(read('src/featureFlags.js'), /'survey-connector-writes'/);
   // A read-only agent can only reach a STABLE rpc via GET (the #1034 gate).
   assert.match(src, /rpc\('get_my_document_role', \{ doc_id: documentId \}, \{ get: true \}\)/);
   // get_survey_context describes only THIS document's survey — the categories
