@@ -21,7 +21,7 @@ X=$((W * 3 / 4)); Y=$((H * 13 / 20))
 ( pick Polygon ) || { pick Shapes; pick Polygon; }
 N0=$(ev "document.querySelectorAll('g[data-annotation-index]').length")
 # Four corners, then a tap back on the first one closes the polygon.
-for p in "$((X - 150)) $((Y - 100))" "$((X + 150)) $((Y - 100))" "$((X + 150)) $((Y + 100))" "$((X - 150)) $((Y + 100))" "$((X - 150)) $((Y - 100))"; do
+for p in "$((X - 150)) $((Y - 170))" "$((X + 150)) $((Y - 170))" "$((X + 150)) $((Y - 30))" "$((X - 150)) $((Y - 30))" "$((X - 150)) $((Y - 170))"; do
   # A short press, not `tap`, and gaps longer than a double-tap so each
   # press lands as one point.
   set -- $p; adb shell input stylus swipe "$1" "$2" "$1" "$2" 120; sleep 1.2
