@@ -22,7 +22,8 @@
  */
 import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
+import { canRemovePolyVertex, removePolyVertex } from '../utils/polyVertices.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
@@ -189,6 +190,7 @@ import '../survey/smartFillBeta.js';
 import { findSimilarOnPage } from '../survey/smartFillProvider.js';
 import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
 import { SMART_FILL_CLEAR_MATCHES_EVENT, shouldClearSmartFillMatches } from '../survey/smartFillMatchEvents.js';
+import { offeredSmartFillMatches as filterOfferedSmartFillMatches, isSmartFillMatchSourceGone } from '../utils/smartFillMatches.js';
 import { markerShapeHitTest } from '../survey/markerShapes.js';
 import { showToast, dismissToast, TOAST_USER_DISMISS_EVENT } from '../utils/toast';
 // The toast store renames a toast whose id is still showing, so a later
@@ -477,37 +479,50 @@ const EMPTY_SURVEY_MARKER_IDS = new Set();
 
 import {
   buildMeasureLabel,
+  layoutMeasureLabel,
   measureLineEndpoints,
   pageScaleFromObjects,
   stampMeasure,
 } from '../utils/measure/measureScale.js';
 
-// Measure label (Length / Area): a page-space text with a white halo so it
-// reads over drawings. Page units, so it scales with the viewBox like the mark.
-function renderMeasureLabel(label, key) {
-  if (!label) return null;
+// Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
+// text). Sizes are page units multiplied by inverseScale, so the viewBox still
+// owns zoom; the pill sits off the line's midpoint, never under its handles.
+function renderMeasureLabel(label, key, unitsPerPx) {
+  const box = layoutMeasureLabel(label, unitsPerPx);
+  if (!box) return null;
   return (
-    <text
+    <g
       key={key}
       className="measure-label"
       data-measure-kind={label.kind}
-      x={label.x}
-      y={label.y}
-      dy={label.kind === 'length' ? -4 : 0}
-      transform={label.angle ? `rotate(${label.angle} ${label.x} ${label.y})` : undefined}
-      textAnchor="middle"
-      dominantBaseline={label.kind === 'length' ? 'auto' : 'middle'}
-      fontSize={10}
-      fontFamily="Helvetica"
-      fontWeight="600"
-      fill="#1f2937"
-      stroke="#ffffff"
-      strokeWidth={2.5}
-      paintOrder="stroke"
+      transform={box.angle ? `rotate(${box.angle} ${box.cx} ${box.cy})` : undefined}
       style={{ pointerEvents: 'none', userSelect: 'none' }}
     >
-      {label.text}
-    </text>
+      <rect
+        x={box.cx - box.width / 2}
+        y={box.cy - box.height / 2}
+        width={box.width}
+        height={box.height}
+        rx={box.radius}
+        fill="#ffffff"
+        fillOpacity={0.95}
+        stroke="#d1d5db"
+        strokeWidth={box.fontSize / 12}
+      />
+      <text
+        x={box.cx}
+        y={box.cy}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={box.fontSize}
+        fontFamily="Helvetica"
+        fontWeight="600"
+        fill="#1f2937"
+      >
+        {label.text}
+      </text>
+    </g>
   );
 }
 
@@ -1644,6 +1659,73 @@ const SVGAnnotationLayerBody = memo(({
     };
   }, [onDeleteSelectedCallouts]);
 
+  // Vertex removal (Drawboard parity): a corner pressed on a selected polygon /
+  // polyline becomes the focused corner; Delete/Backspace removes it, as do
+  // Alt/Option-click, right-click > Delete point and a touch long-press menu.
+  // One save per removal = one undo step; measure labels re-derive on render.
+  const [focusedPolyVertex, setFocusedPolyVertex] = useState(null);
+  const [polyVertexMenu, setPolyVertexMenu] = useState(null);
+  const polyVertexLongPressRef = useRef(null);
+  const removeFocusablePolyVertex = useCallback((annotationIndex, vertexIndex) => {
+    if (typeof onSaveAnnotations !== 'function') return false;
+    if (document.body.getAttribute('data-readonly') === 'true') return false;
+    const obj = annotations?.objects?.[annotationIndex];
+    if (!obj || isUserLocked(obj)) return false;
+    const next = removePolyVertex(obj, vertexIndex);
+    if (!next) return false;
+    const updated = deepClone(annotations);
+    updated.objects[annotationIndex] = next;
+    onSaveAnnotations(updated, { source: 'object:modified', action: 'vertex-remove', checkpointPolicy: 'normal' });
+    setFocusedPolyVertex(null);
+    return true;
+  }, [annotations, onSaveAnnotations]);
+  const selectedPolyIndex = selectedIds.size === 1 ? Array.from(selectedIds)[0] : null;
+  useEffect(() => {
+    if (focusedPolyVertex && focusedPolyVertex.annotationIndex !== selectedPolyIndex) setFocusedPolyVertex(null);
+    if (polyVertexMenu && polyVertexMenu.annotationIndex !== selectedPolyIndex) setPolyVertexMenu(null);
+  }, [selectedPolyIndex, focusedPolyVertex, polyVertexMenu]);
+  useEffect(() => {
+    if (!focusedPolyVertex) return undefined;
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (isTypingTarget(document.activeElement)) return;
+      // Capture phase on window runs before the whole-mark Delete handler.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      // At the minimum the press only drops the corner focus, so pressing
+      // again deletes the whole mark (OpenTakeoff does the same).
+      if (!removeFocusablePolyVertex(focusedPolyVertex.annotationIndex, focusedPolyVertex.vertexIndex)) {
+        setFocusedPolyVertex(null);
+      }
+    };
+    // Any press that is not on a corner grabber drops the corner focus, so a
+    // later Delete removes the whole mark as before.
+    const handlePointerDown = (e) => {
+      if (e.target?.closest?.('[data-poly-vertex-index], [data-poly-vertex-menu]')) return;
+      setFocusedPolyVertex(null);
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+    };
+  }, [focusedPolyVertex, removeFocusablePolyVertex]);
+  useEffect(() => {
+    if (!polyVertexMenu) return undefined;
+    const close = (e) => {
+      if (e.type === 'keydown' && e.key !== 'Escape') return;
+      if (e.type === 'pointerdown' && e.target?.closest?.('[data-poly-vertex-menu]')) return;
+      setPolyVertexMenu(null);
+    };
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', close, true);
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', close, true);
+    };
+  }, [polyVertexMenu]);
+
   useEffect(() => {
     // UX: KBD-01 — Delete/Backspace removes selected annotation OR callout.
     // Early-return when neither selection has entries. Matches combined-tools
@@ -2599,15 +2681,19 @@ const SVGAnnotationLayerBody = memo(({
   // A tap on a found match adds it; returns true when the tap was used.
   // A match stays offered until a Survey marker actually lands on it, so a
   // tap whose "Categorize Survey Marker" dialog is cancelled keeps it.
-  const offeredSmartFillMatches = useMemo(() => {
-    if (!smartFillMatches.length) return smartFillMatches;
-    const markers = (surveyMarkers || []).filter(Boolean);
-    if (!markers.length) return smartFillMatches;
-    return smartFillMatches.filter((b) => {
-      const cx = b.x + b.width / 2;
-      const cy = b.y + b.height / 2;
-      return !markers.some((m) => cx >= m.x && cx <= m.x + m.width && cy >= m.y && cy <= m.y + m.height);
-    });
+  const offeredSmartFillMatches = useMemo(
+    () => filterOfferedSmartFillMatches(smartFillMatches, surveyMarkers),
+    [smartFillMatches, surveyMarkers],
+  );
+  // Matches found from a marker leave with it (its category deleted, or the
+  // marker itself), so no blue outline outlives its source.
+  useEffect(() => {
+    if (!smartFillMatches.length) return;
+    if (!isSmartFillMatchSourceGone(smartFillMatchSourceRef.current, surveyMarkers)) return;
+    smartFillMatchSourceRef.current = null;
+    smartFillScanAbortRef.current?.abort?.();
+    setSmartFillMatches([]);
+    dismissToast('smart-fill-find');
   }, [smartFillMatches, surveyMarkers]);
   const applySmartFillMatchAt = useCallback((point) => {
     const hit = offeredSmartFillMatches.find((b) => markerShapeHitTest(b.shape, point, 0));
@@ -7690,7 +7776,7 @@ const SVGAnnotationLayerBody = memo(({
           vertex. */}
       {measureLabels.length > 0 && (
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
-          {measureLabels.map(({ key, label }) => renderMeasureLabel(label, key))}
+          {measureLabels.map(({ key, label }) => renderMeasureLabel(label, key, clampInverseScale(inverseScale)))}
         </g>
       )}
       {measureMode && shapeCreation && shapeCreation.tool === 'line' && shapeCreation.start && shapeCreation.current
@@ -7701,12 +7787,12 @@ const SVGAnnotationLayerBody = memo(({
           y1: shapeCreation.start.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
           x2: shapeCreation.current.x - (shapeCreation.start.x + shapeCreation.current.x) / 2,
           y2: shapeCreation.current.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
-        }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length')}
+        }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length', clampInverseScale(inverseScale))}
       {measureMode === 'area' && polyDraft && polyDraft.tool === 'polygon' && polyDraft.points.length >= 2
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
           type: 'polygon',
           points: polyDraft.preview ? [...polyDraft.points, polyDraft.preview] : polyDraft.points,
-        }, 'area', null), effectiveMeasureScale), 'measure-draft-area')}
+        }, 'area', null), effectiveMeasureScale), 'measure-draft-area', clampInverseScale(inverseScale))}
       {polyDraft && polyDraft.points.length > 0 && (() => {
         const runPoints = polyDraft.preview
           ? [...polyDraft.points, polyDraft.preview]
@@ -8512,10 +8598,51 @@ const SVGAnnotationLayerBody = memo(({
             cursor: 'grab',
             pointerEvents: 'auto',
           };
+          const clearVertexLongPress = () => {
+            clearTimeout(polyVertexLongPressRef.current?.timer);
+            polyVertexLongPressRef.current = null;
+          };
           const onVertexPointerDown = (i) => (e) => {
             e.stopPropagation();
+            // Right button: leave it to onContextMenu (no drag).
+            if (e.button === 2) return;
+            if (e.altKey && e.pointerType === 'mouse') {
+              e.preventDefault();
+              removeFocusablePolyVertex(selectedIndex, i);
+              return;
+            }
+            setFocusedPolyVertex({ annotationIndex: selectedIndex, vertexIndex: i });
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+              clearVertexLongPress();
+              const start = { x: e.clientX, y: e.clientY };
+              const onMove = (ev) => {
+                if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 8) cleanup();
+              };
+              const cleanup = () => {
+                clearVertexLongPress();
+                window.removeEventListener('pointermove', onMove, true);
+                window.removeEventListener('pointerup', cleanup, true);
+                window.removeEventListener('pointercancel', cleanup, true);
+              };
+              window.addEventListener('pointermove', onMove, true);
+              window.addEventListener('pointerup', cleanup, true);
+              window.addEventListener('pointercancel', cleanup, true);
+              polyVertexLongPressRef.current = {
+                timer: setTimeout(() => {
+                  cleanup();
+                  setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: start.x, y: start.y });
+                }, 500),
+              };
+            }
             handleHandlePointerDown(e, `vertex-${i}`);
           };
+          const onVertexContextMenu = (i) => (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setFocusedPolyVertex({ annotationIndex: selectedIndex, vertexIndex: i });
+            setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: e.clientX, y: e.clientY });
+          };
+          const vertexFocused = (i) => focusedPolyVertex?.annotationIndex === selectedIndex && focusedPolyVertex.vertexIndex === i;
           // UX 2026-09-09 (Drawboard PDF, defect 4): a polygon / polyline
           // CLOUD shows its padded dashed frame on single click too, on top of
           // the vertex dots — without it the selected cloud gave no sign of
@@ -8573,22 +8700,29 @@ const SVGAnnotationLayerBody = memo(({
                       r={vTouchHitR}
                       fill="transparent"
                       stroke="none"
+                      data-poly-vertex-index={i}
                       style={{ pointerEvents: 'auto', cursor: 'grab' }}
                       onPointerDown={onVertexPointerDown(i)}
+                      onContextMenu={onVertexContextMenu(i)}
                     />
                   )}
                   <circle
                     data-resize-handle={`vertex-${i}`}
                     cx={wp.x}
                     cy={wp.y}
+                    data-poly-vertex-index={i}
+                    data-poly-vertex-focused={vertexFocused(i) ? 'true' : undefined}
                     r={vHandleR}
-                    fill="#ffffff"
+                    fill={vertexFocused(i) ? '#4a90e2' : '#ffffff'}
                     stroke="#4a90e2"
                     strokeWidth={1.5}
                     vectorEffect="non-scaling-stroke"
                     style={vHandleStyle}
                     onPointerDown={onVertexPointerDown(i)}
-                  />
+                    onContextMenu={onVertexContextMenu(i)}
+                  >
+                    <title>{canRemovePolyVertex(obj) ? 'Drag to move. Alt/Option-click or Delete to remove.' : 'Drag to move'}</title>
+                  </circle>
                 </g>
               ))}
             </g>
@@ -9073,6 +9207,40 @@ const SVGAnnotationLayerBody = memo(({
       onCancel={handleRotationInputCancel}
       onHoverChange={handleRotationInputHoverChange}
     />
+    {polyVertexMenu && typeof document !== 'undefined' && createPortal((() => {
+      const menuObj = annotations?.objects?.[polyVertexMenu.annotationIndex];
+      const canDelete = canRemovePolyVertex(menuObj);
+      return (
+        <div
+          data-poly-vertex-menu="true"
+          role="menu"
+          onContextMenu={(e) => e.preventDefault()}
+          style={{
+            position: 'fixed', left: polyVertexMenu.x, top: polyVertexMenu.y, zIndex: 10000,
+            background: 'var(--surface, #fff)', color: 'var(--text, #1f2328)', border: '1px solid rgba(0,0,0,0.15)',
+            borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', padding: 4, minWidth: 140, font: '13px system-ui, sans-serif',
+          }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            data-poly-vertex-delete="true"
+            disabled={!canDelete}
+            title={canDelete ? undefined : `A ${String(menuObj?.type || '').toLowerCase() === 'polygon' ? 'polygon needs at least 3' : 'polyline needs at least 2'} points`}
+            onClick={() => {
+              removeFocusablePolyVertex(polyVertexMenu.annotationIndex, polyVertexMenu.vertexIndex);
+              setPolyVertexMenu(null);
+            }}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', minHeight: 36, border: 0, borderRadius: 6,
+              background: 'transparent', color: 'inherit', font: 'inherit', cursor: canDelete ? 'pointer' : 'default', opacity: canDelete ? 1 : 0.45,
+            }}
+          >
+            Delete point
+          </button>
+        </div>
+      );
+    })(), document.body)}
     </>
   );
 }, (prev, next) => {

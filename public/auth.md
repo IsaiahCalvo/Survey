@@ -164,11 +164,22 @@ For agents that speak MCP (Claude and ChatGPT connectors, scripts):
   with `WWW-Authenticate: Bearer resource_metadata="<server URL>/.well-known/oauth-protected-resource"`,
   which points to Survey's authorization server, so MCP clients find the sign-in
   on their own. Dynamic client registration is on.
-- Tools (read-only for now): `list_projects`, `list_documents`,
+- Read tools (always): `list_projects`, `list_documents`,
   `list_survey_items`, `find_survey_items`, `get_survey_item`,
   `get_document_role` (this person's role on a document) and
   `get_survey_context` (a document's survey template: categories, checklist
   items and entities).
+- Write tools (`set_answers`, `add_note`) appear only when the person turned on
+  survey changes for the connector and let this agent make changes (otherwise
+  the connector is read-only). They act as the person with the person's role:
+  - `set_answers` — set checklist answers on one item (editor or owner). Pass
+    the item id and a list of `{ checklist_item_id, value }`; only the items you
+    list change. Use the checklist item ids from `get_survey_context` and the
+    template's own answer values.
+  - `add_note` — add text to the end of one item's note (editor or owner). It
+    never removes what is already there, and one Undo in the app takes it back.
+  Both write through the document's live collaboration state, so an open app
+  converges to the change. A viewer's agent, or a read-only agent, cannot write.
 - Every call runs as the person, so the agent sees exactly their documents.
 
 In Claude: Settings > Connectors > Add custom connector, paste the server URL.

@@ -67,7 +67,7 @@ export async function openPdfjs(bytes) {
 }
 
 // Safari stops drawing canvases past ~16.7M pixels, so cap every render there.
-const MAX_PIXELS = 16_000_000;
+export const MAX_PIXELS = 16_000_000;
 
 export async function renderPage(pdf, index, { width, scale, extraRotation = 0 } = {}) {
   const page = await pdf.getPage(index + 1);
@@ -133,6 +133,19 @@ export async function tiffToImages(bytes, onPage) {
     c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(p.rgba.buffer, p.rgba.byteOffset, p.rgba.byteLength), p.width, p.height), 0, 0);
     p.rgba = null;
     out.push({ bytes: await canvasToBytes(c, 'image/png'), type: 'png', dpi: p.dpi });
+    releaseCanvas(c);
+  }
+  return out;
+}
+
+// Every frame of a moving GIF as a PNG. The decoder loads only when needed.
+export async function gifToImages(bytes, onFrame) {
+  const { decodeGifFrames } = await import('./gif.js');
+  const out = [];
+  for (const f of decodeGifFrames(bytes, onFrame)) {
+    const c = makeCanvas(f.width, f.height);
+    c.getContext('2d').putImageData(new ImageData(f.rgba, f.width, f.height), 0, 0);
+    out.push({ bytes: await canvasToBytes(c, 'image/png'), type: 'png' });
     releaseCanvas(c);
   }
   return out;

@@ -477,6 +477,7 @@ export async function openAnnotationDoc({
   const state = {
     documentId,
     registryKey,
+    stagedDocRaw: null,    // see defineLazyStagedDoc
     ownsRegistryDoc,
     supabase,
     clientId,
@@ -489,7 +490,6 @@ export async function openAnnotationDoc({
     // The checkpoint worker's copy of acceptedDoc (null: no worker, or no
     // cloud to checkpoint to). See applyAcceptedUpdate.
     checkpointMirror: supabase ? createCheckpointMirror() : null,
-    stagedDoc: createDetachedYDoc(`staged:${documentId}:${activeWriterId}`),
     persistedDoc: createDetachedYDoc(`persisted:${documentId}:${activeWriterId}`),
     stagedSeeded: false,   // w29: stagedDoc is seeded from acceptedDoc late in the open
     localPersistenceDoc: null,
@@ -679,7 +679,8 @@ export async function openAnnotationDoc({
     legacyClearDocument: null,
     legacyRecoveryPending: false,
     legacyUnresolvedEntries: 0,
-  };
+  };  defineLazyStagedDoc(state);
+
 
   // Everything below can fail (network, storage). A partially-opened state must
   // not outlive the failure: the update observer would keep appending ops from a
@@ -798,13 +799,10 @@ export async function openAnnotationDoc({
     // The accepted shadow is populated only by backend snapshot/WAL bytes.
     // Never seed it from activeDoc: activeDoc may already contain optimistic
     // IndexedDB state that the backend has never authorized.
-    // (w29: reuse the encoding loadFromBackend just made of acceptedDoc.)
-    Y.applyUpdate(
-      state.stagedDoc,
-      takeAcceptedEncoding(state) || encodeSnapshot(state.acceptedDoc),
-      HYDRATE_ORIGIN,
-    );
-    state.stagedSeeded = true;
+    // stagedDoc is now acceptedDoc plus nothing pending, so it stays unbuilt
+    // until something reads or writes it (defineLazyStagedDoc); a doc that is
+    // only viewed never pays for a third full copy of its marks.
+    seedStagedFromAccepted(state);
     if (supabase) {
       await yieldToMain();
       await loadLegacyPersistenceCandidate(state);
@@ -873,7 +871,7 @@ export async function openAnnotationDoc({
       }
       if (origin === HYDRATE_ORIGIN) {
         applyAcceptedUpdate(state, update);
-        Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+        if (state.stagedDocRaw) Y.applyUpdate(state.stagedDocRaw, update, HYDRATE_ORIGIN);
         if (state.persistedDoc) Y.applyUpdate(state.persistedDoc, update, HYDRATE_ORIGIN);
         return;
       }
@@ -984,7 +982,7 @@ export async function openAnnotationDoc({
     try { await state.outbox?.close?.(); } catch { /* */ }
     try { state.acceptedDoc.destroy(); } catch { /* */ }
     breakCheckpointMirror(state.checkpointMirror);
-    try { state.stagedDoc.destroy(); } catch { /* */ }
+    try { state.stagedDocRaw?.destroy(); } catch { /* */ }
     releasePersistedCandidate(state);
     try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
     if (ownsRegistryDoc) releaseYDoc(registryKey);
@@ -1271,7 +1269,7 @@ async function reconcileLegacyLocalState(state) {
       const accepted = state.acceptedDoc.getMap(mapName);
       const legacy = legacyDoc.getMap(mapName);
       const merged = mergedDoc.getMap(mapName);
-      const staged = state.stagedDoc.getMap(mapName);
+      const staged = stagedView(state).getMap(mapName);
       const stagedConflicts = new Set();
       for (const [key, value] of legacy.entries()) {
         if (accepted.has(key) && !mapValueEqual(accepted.get(key), value)) {
@@ -1528,7 +1526,8 @@ function applyAuthoritativeCloudUpdate(state, update) {
   applyToLocalPersistence(state, update);
   // Before the open seeds stagedDoc from acceptedDoc (which then holds this
   // row), rows would only sit there as pending structs (w29 review A).
-  if (state.stagedSeeded) Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  // An unbuilt staged doc is built from acceptedDoc, which holds this row.
+  if (state.stagedSeeded && state.stagedDocRaw) Y.applyUpdate(state.stagedDocRaw, update, HYDRATE_ORIGIN);
   return liveChanged;
 }
 
@@ -2904,12 +2903,62 @@ function mapValueEqual(left, right) {
 }
 
 function resetStagedToAccepted(state) {
-  try { state.stagedDoc.destroy(); } catch { /* */ }
-  state.stagedDoc = createDetachedYDoc(
-    `staged:${state.documentId}:${state.writerId}:${state.localMutationOrdinal}`,
-  );
-  Y.applyUpdate(state.stagedDoc, encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+  try { state.stagedDocRaw?.destroy(); } catch { /* */ }
+  state.stagedDocRaw = null;
+  seedStagedFromAccepted(state);
+}
+
+// stagedDoc = acceptedDoc + every pending local update. Until the open seeds
+// it, and again whenever it is reset to acceptedDoc, nothing is pending, so
+// it is not built: the first read or write of state.stagedDoc builds it from
+// acceptedDoc as of that moment, which by then holds every row the built copy
+// would have been given. On a big set that is one full copy of the marks
+// (~26 MB at 4,000 marks) a view-only session never needs. Code that only
+// compares against the staged state reads stagedView instead.
+let stagedBuilds = 0;
+function defineLazyStagedDoc(state) {
+  Object.defineProperty(state, 'stagedDoc', {
+    enumerable: true,
+    configurable: true,
+    get() {
+      if (!state.stagedDocRaw) {
+        stagedBuilds += 1;
+        const doc = createDetachedYDoc(
+          `staged:${state.documentId}:${state.writerId}:${state.localMutationOrdinal || 0}`,
+        );
+        if (state.stagedSeeded) {
+          // w29: the encoding of acceptedDoc the open just made, when unchanged.
+          Y.applyUpdate(doc, takeAcceptedEncoding(state) || encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+        }
+        state.stagedDocRaw = doc;
+      }
+      return state.stagedDocRaw;
+    },
+    set(doc) {
+      state.stagedDocRaw = doc;
+    },
+  });
+}
+
+function seedStagedFromAccepted(state) {
+  // Built before the seed (not in the current open order, kept as before):
+  // give it the accepted state now.
+  if (state.stagedDocRaw && !state.stagedSeeded) {
+    Y.applyUpdate(
+      state.stagedDocRaw,
+      takeAcceptedEncoding(state) || encodeSnapshot(state.acceptedDoc),
+      HYDRATE_ORIGIN,
+    );
+  }
   state.stagedSeeded = true;
+  // The held encoding only feeds a build; don't keep ~20 MB alive for one.
+  if (!state.stagedDocRaw) state.acceptedEncoding = null;
+}
+
+// The staged state for reading: the built doc, or acceptedDoc while it is
+// unbuilt (they are equal then). Never write through this.
+function stagedView(state) {
+  return state.stagedDocRaw || (state.stagedSeeded ? state.acceptedDoc : state.stagedDoc);
 }
 
 function setRepairCheckpoint(state, checkpointUpdate, editEpoch) {
@@ -3063,7 +3112,7 @@ function stagePersistedLocalDifferences(state) {
   if (!state.persistedDoc) return null;
   const localOnly = Y.encodeStateAsUpdate(
     state.persistedDoc,
-    Y.encodeStateVector(state.stagedDoc),
+    Y.encodeStateVector(stagedView(state)),
   );
   const decodedLocalOnly = Y.decodeUpdate(localOnly);
   if (
@@ -3077,16 +3126,16 @@ function stagePersistedLocalDifferences(state) {
   // change nothing, which is what the probe below would conclude.
   if (
     decodedLocalOnly.structs.length === 0
-    && deleteSetCoveredBy(decodedLocalOnly.ds, Y.createDeleteSetFromStructStore(state.stagedDoc.store))
+    && deleteSetCoveredBy(decodedLocalOnly.ds, Y.createDeleteSetFromStructStore(stagedView(state).store))
   ) return null;
   const probe = createDetachedYDoc(
     `persisted-probe:${state.documentId}:${state.writerId}:${randomClientId()}`,
   );
-  Y.applyUpdate(probe, encodeSnapshot(state.stagedDoc), HYDRATE_ORIGIN);
+  Y.applyUpdate(probe, encodeSnapshot(stagedView(state)), HYDRATE_ORIGIN);
   Y.applyUpdate(probe, localOnly, HYDRATE_ORIGIN);
   let hasRecoverableChange = false;
   for (const mapName of DURABLE_MAP_NAMES) {
-    const staged = state.stagedDoc.getMap(mapName);
+    const staged = stagedView(state).getMap(mapName);
     const projected = probe.getMap(mapName);
     const keys = new Set([...staged.keys(), ...projected.keys()]);
     for (const key of keys) {
@@ -4614,7 +4663,7 @@ async function refreshAfterSnapshotConflict(state, localSnapshotUpdate) {
     // Publish only cloud-acknowledged bytes before the retry. The local
     // candidate remains staged until the snapshot CAS accepts it.
     applyAcceptedUpdate(state, latest.update);
-    Y.applyUpdate(state.stagedDoc, latest.update, HYDRATE_ORIGIN);
+    if (state.stagedDocRaw) Y.applyUpdate(state.stagedDocRaw, latest.update, HYDRATE_ORIGIN);
     // w35 review B: through the same path as a row, so marks the stored
     // checkpoint changes refresh their live-edit arrival copies (w33's
     // routine "rebase" takes a checkpoint in without its rows).
@@ -7281,7 +7330,7 @@ function makeHandle(state) {
       try { await state.outbox?.close?.(); } catch { /* */ }
       try { state.acceptedDoc.destroy(); } catch { /* */ }
       breakCheckpointMirror(state.checkpointMirror);
-      try { state.stagedDoc.destroy(); } catch { /* */ }
+      try { state.stagedDocRaw?.destroy(); } catch { /* */ }
       releasePersistedCandidate(state);
       try { state.legacyPersistenceDoc?.destroy(); } catch { /* */ }
       // Release the registry doc (the registry never destroys — keeps undo/state
@@ -7440,6 +7489,7 @@ export async function purgeAnnotationDoc(documentId) {
 export const __test = {
   causalDependenciesForUpdate,
   clockRangeDecodeCount: () => clockRangeDecodes,
+  stagedBuildCount: () => stagedBuilds,
   bytesToPgHex,
   pgHexToBytes,
   emitHistoryQuarantine,

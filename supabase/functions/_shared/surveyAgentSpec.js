@@ -309,11 +309,21 @@ export function sanitizeAgentMessages(messages) {
   return { messages: out };
 }
 
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const cachedOf = (usage) => Math.min(num(usage?.prompt_tokens), num(usage?.prompt_tokens_details?.cached_tokens));
+
 // The cost of one model call, in millionths of a dollar, from prices in
-// USD per million tokens (both 0 on a free tier).
+// USD per million tokens (both 0 on a free tier). Groq bills a prompt
+// prefix it has seen before (cached) at half the input price.
 export function surveyAgentCostMicros(usage = {}, prices = { input: 0, output: 0 }) {
-  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  return Math.ceil(n(usage.prompt_tokens) * n(prices.input) + n(usage.completion_tokens) * n(prices.output));
+  const cached = cachedOf(usage);
+  return Math.ceil((num(usage.prompt_tokens) - cached / 2) * num(prices.input) + num(usage.completion_tokens) * num(prices.output));
+}
+
+// The tokens one call spends from Groq's per-minute and per-day caps:
+// cached prompt tokens do not count against them.
+export function surveyAgentCappedTokens(usage = {}) {
+  return Math.max(0, num(usage.prompt_tokens) - cachedOf(usage)) + num(usage.completion_tokens);
 }
 
 // Item names the way people say them (shared by the app's tools and the

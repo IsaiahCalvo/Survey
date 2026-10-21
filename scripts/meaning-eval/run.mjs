@@ -13,7 +13,7 @@ import { createSurveyAgentToolbox } from '../../src/agent/surveyAgentTools.js';
 import { runSurveyAgentTurn } from '../../src/agent/surveyAgentClient.js';
 import { answerSetFor } from '../../src/services/answerSets.js';
 import {
-  SURVEY_AGENT_LIMITS, buildSurveyAgentTools, markupOpenInTurn, sanitizeAgentMessages, surveyAgentSystemMessages,
+  SURVEY_AGENT_LIMITS, buildSurveyAgentTools, markupOpenInTurn, sanitizeAgentMessages, surveyAgentCappedTokens, surveyAgentSystemMessages,
 } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { CASES, grade, startMarkers, templateFor } from './cases.mjs';
 
@@ -31,6 +31,7 @@ if (!dry && !key) { console.error('Set GROQ_API_KEY (for example: set -a; . ./.e
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let calls = 0;
 let tokens = 0;
+let allTokens = 0;
 class OutOfBudget extends Error {}
 
 async function groq(body) {
@@ -62,7 +63,9 @@ async function groq(body) {
     calls += 1;
     const data = await res.json();
     if (!res.ok) throw new Error(`Groq ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);
-    tokens += data.usage?.total_tokens || 0;
+    // Groq's caps skip a cached prompt prefix, so the budget does too.
+    tokens += surveyAgentCappedTokens(data.usage);
+    allTokens += data.usage?.total_tokens || 0;
     return { message: data.choices?.[0]?.message || {} };
   }
   throw new Error('kept hitting the per-minute limit');
@@ -131,4 +134,4 @@ for (const c of CASES) {
   console.log(`${row.ok ? 'PASS' : 'FAIL'} ${c.id}: "${c.said}"${row.ok ? '' : `\n    ${row.fails.join('\n    ')}\n    reply: ${row.reply}`}`);
 }
 const passed = results.filter((r) => r.ok).length;
-console.log(`\n${passed}/${results.length} right, ${calls} model calls, ${tokens} tokens, model ${dry ? 'scripted' : model}. Saved ${out}.`);
+console.log(`\n${passed}/${results.length} right, ${calls} model calls, ${tokens} capped tokens (${allTokens} with cached), model ${dry ? 'scripted' : model}. Saved ${out}.`);

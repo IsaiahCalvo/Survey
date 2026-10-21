@@ -17,7 +17,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [As-builts](https://surveytool.app/use-cases/as-builts): Red-line the drawings with what was really built: moved walls, rerouted runs, added fixtures. Keep it with the project.
 - [Survey vs Bluebeam Revu](https://surveytool.app/compare/bluebeam): An honest look at Survey and Bluebeam Revu for marking up and counting on construction drawings: what each does best and who each one fits.
 - [Survey vs Drawboard Projects](https://surveytool.app/compare/drawboard): An honest look at Survey and Drawboard Projects for marking up construction drawings: what each does best and who each one fits.
-- [Free PDF tools](https://surveytool.app/tools): 42 tools to merge, split, compress, OCR scans, compare two PDFs, sign, lock and convert PDFs in the browser, several files at once; no sign-in, files never leave the device
+- [Free PDF tools](https://surveytool.app/tools): 58 tools to merge, split, compress, OCR scans, compare two PDFs, sign, lock and convert PDFs in the browser, several files at once; no sign-in, files never leave the device
 - [Merge PDF](https://surveytool.app/tools/merge-pdf): Combine several PDFs into one file.
 - [Split PDF](https://surveytool.app/tools/split-pdf): Break one PDF into several files.
 - [Compress PDF](https://surveytool.app/tools/compress-pdf): Make a PDF smaller to email or upload.
@@ -33,8 +33,8 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [PDF to PNG](https://surveytool.app/tools/pdf-to-png): Save each page as a sharp PNG.
 - [PDF to text](https://surveytool.app/tools/pdf-to-txt): Copy all the words out of a PDF.
 - [Add page numbers](https://surveytool.app/tools/add-page-numbers): Number the pages of a PDF.
-- [Add watermark](https://surveytool.app/tools/watermark-pdf): Stamp text like DRAFT across pages.
-- [Headers and footers](https://surveytool.app/tools/add-header-footer): Add a line of text to the top or bottom of every page.
+- [Add watermark](https://surveytool.app/tools/watermark-pdf): Stamp words like DRAFT, or a logo, across pages.
+- [Headers and footers](https://surveytool.app/tools/add-header-footer): Add text to the top or bottom corners of every page.
 - [Flatten PDF](https://surveytool.app/tools/flatten-pdf): Lock markups and form answers into the page.
 - [Crop PDF](https://surveytool.app/tools/crop-pdf): Trim the white edges off every page.
 - [Edit PDF details](https://surveytool.app/tools/edit-pdf-details): Change the title, author and keywords.
@@ -60,6 +60,22 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [PDF to TIFF](https://surveytool.app/tools/pdf-to-tiff): Save a PDF as one multi-page TIFF.
 - [PDF to BMP](https://surveytool.app/tools/pdf-to-bmp): Save each page as a BMP picture.
 - [Grayscale PDF](https://surveytool.app/tools/grayscale-pdf): Make a PDF black and white.
+- [PDF to Word](https://surveytool.app/tools/pdf-to-word): Turn a PDF into a Word file you can edit.
+- [PDF to Markdown](https://surveytool.app/tools/pdf-to-markdown): Turn a PDF into Markdown for AI tools and notes.
+- [PDF to DOCX](https://surveytool.app/tools/pdf-to-docx): Save a PDF as a .docx file.
+- [Split PDF by size](https://surveytool.app/tools/split-by-size): Split a big PDF into parts under a size, like 10 MB.
+- [PDF page sizes](https://surveytool.app/tools/pdf-page-sizes): See every page's size and the facts about a PDF.
+- [Add image to PDF](https://surveytool.app/tools/add-image-to-pdf): Put a logo, stamp or signature on PDF pages.
+- [RTF to PDF](https://surveytool.app/tools/rtf-to-pdf): Turn an .rtf document into a PDF.
+- [HTML to PDF](https://surveytool.app/tools/html-to-pdf): Turn a saved web page (.html) into a PDF.
+- [DOCX to PDF](https://surveytool.app/tools/docx-to-pdf): Turn a .docx file into a PDF.
+- [BMP to PDF](https://surveytool.app/tools/bmp-to-pdf): Turn BMP images into a PDF.
+- [GIF to PDF](https://surveytool.app/tools/gif-to-pdf): Turn GIF images into a PDF.
+- [PDF to GIF](https://surveytool.app/tools/pdf-to-gif): Save each page as a GIF picture.
+- [PDF to HTML](https://surveytool.app/tools/pdf-to-html): Turn a PDF into a web page.
+- [PDF to RTF](https://surveytool.app/tools/pdf-to-rtf): Get the words of a PDF in an RTF file.
+- [View PDF](https://surveytool.app/tools/pdf-viewer): Open and read a PDF in your browser.
+- [PDF to PDF/A](https://surveytool.app/tools/pdf-to-pdfa): Make a PDF/A copy for long-term keeping.
 
 ## Optional
 

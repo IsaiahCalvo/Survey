@@ -32,6 +32,8 @@
  *                                  down) sit under one "More" row, so the menu
  *                                  fits a 375x667 iPhone SE with 44px rows.
  *                                  That row is { key: 'more', more: [...] }.
+ * @param {boolean} [o.readOnly]   read-only document / viewer role: no
+ *                                  page operation is offered
  * @returns {Array<{key:string,label?:string,icon?:string,disabled?:boolean,danger?:boolean,separator?:boolean,header?:boolean}>}
  */
 export function buildPageMenuItems({
@@ -45,8 +47,10 @@ export function buildPageMenuItems({
   select = false,
   available = {},
   compact = false,
+  readOnly = false,
 } = {}) {
-  const has = (key) => available[key] !== false;
+  // Read-only / viewer role: every page operation edits the document.
+  const has = (key) => !readOnly && available[key] !== false;
   // The clipboard holds one page number or several (an array).
   const hasClipboard = Array.isArray(clipboardPage) ? clipboardPage.length > 0 : Boolean(clipboardPage);
   const many = Array.isArray(pageNumbers) && pageNumbers.length > 1 ? pageNumbers.length : 0;
@@ -146,6 +150,25 @@ export function buildPageMenuItems({
   ]);
 }
 
+/**
+ * The viewer's extra rows for a right-click on bare page space (Drawboard
+ * gap #16), put above the page operations: Select all markups on this page,
+ * Paste in place (the copied marks at their original spot), Set page scale
+ * (the measure scale dialog). Read-only keeps only Select all.
+ * @param {object} o
+ * @param {object} [o.available]        { [handler]: false } as above
+ * @param {boolean} [o.canPasteInPlace] something is on the marks clipboard
+ * @param {boolean} [o.readOnly]
+ */
+export function buildCanvasPageItems({ available = {}, canPasteInPlace = false, readOnly = false } = {}) {
+  const has = (key) => available[key] !== false;
+  return joinGroups([[
+    has('selectAll') && { key: 'selectAllMarks', label: 'Select all markups on this page', icon: 'selectGroup' },
+    !readOnly && has('pasteInPlace') && { key: 'pasteInPlace', label: 'Paste in place', icon: 'paste', disabled: !canPasteInPlace },
+    !readOnly && has('setScale') && { key: 'setScale', label: 'Set page scale', icon: 'measureScale' },
+  ]]);
+}
+
 function joinGroups(rawGroups) {
   const groups = rawGroups.map((group) => group.filter(Boolean)).filter((group) => group.length > 0);
   const items = [];
@@ -163,6 +186,7 @@ function joinGroups(rawGroups) {
  *   cut(page) copy(page) paste(targetPage, position) duplicate(page)
  *   insertBlank(afterPage) rotate(page, delta) mirror(page, direction)
  *   reset(page) delete(page) move(page, offset)
+ *   selectAll(page) pasteInPlace(page) setScale(page)  (viewer page menu)
  * Returns true when it ran something.
  */
 export function runPageMenuAction(key, pageNumber, handlers = {}) {
@@ -191,6 +215,9 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
     case 'mirrorV': return call('mirror', pageNumber, 'vertical');
     case 'reset': return call('reset', pageNumber);
     case 'delete': return call('delete', pageNumber);
+    case 'selectAllMarks': return call('selectAll', pageNumber);
+    case 'pasteInPlace': return call('pasteInPlace', pageNumber);
+    case 'setScale': return call('setScale', pageNumber);
     default: return false;
   }
 }
@@ -198,7 +225,7 @@ export function runPageMenuAction(key, pageNumber, handlers = {}) {
 /** { [handler name]: boolean } for buildPageMenuItems' `available`. */
 export function availableActions(handlers = {}) {
   return Object.fromEntries(
-    ['cut', 'copy', 'paste', 'duplicate', 'insertBlank', 'rotate', 'mirror', 'reset', 'delete']
+    ['cut', 'copy', 'paste', 'duplicate', 'insertBlank', 'rotate', 'mirror', 'reset', 'delete', 'selectAll', 'pasteInPlace', 'setScale']
       .map((name) => [name, typeof handlers[name] === 'function']),
   );
 }

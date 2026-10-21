@@ -16,6 +16,22 @@ import removeBlankPages from './remove-blank-pages.mjs';
 import pdfToTiff from './pdf-to-tiff.mjs';
 import pdfToBmp from './pdf-to-bmp.mjs';
 import grayscalePdf from './grayscale-pdf.mjs';
+import pdfToWord from './pdf-to-word.mjs';
+import pdfToMarkdown from './pdf-to-markdown.mjs';
+import pdfToDocx from './pdf-to-docx.mjs';
+import splitBySize from './split-by-size.mjs';
+import pdfPageSizes from './pdf-page-sizes.mjs';
+import addImageToPdf from './add-image-to-pdf.mjs';
+import rtfToPdf from './rtf-to-pdf.mjs';
+import htmlToPdf from './html-to-pdf.mjs';
+import docxToPdf from './docx-to-pdf.mjs';
+import bmpToPdf from './bmp-to-pdf.mjs';
+import gifToPdf from './gif-to-pdf.mjs';
+import pdfToGif from './pdf-to-gif.mjs';
+import pdfToHtml from './pdf-to-html.mjs';
+import pdfToRtf from './pdf-to-rtf.mjs';
+import pdfViewer from './pdf-viewer.mjs';
+import pdfToPdfa from './pdf-to-pdfa.mjs';
 
 export default [
   ocrPdf,
@@ -34,4 +50,20 @@ export default [
   pdfToTiff,
   pdfToBmp,
   grayscalePdf,
+  pdfToWord,
+  pdfToMarkdown,
+  pdfToDocx,
+  splitBySize,
+  pdfPageSizes,
+  addImageToPdf,
+  rtfToPdf,
+  htmlToPdf,
+  docxToPdf,
+  bmpToPdf,
+  gifToPdf,
+  pdfToGif,
+  pdfToHtml,
+  pdfToRtf,
+  pdfViewer,
+  pdfToPdfa,
 ];

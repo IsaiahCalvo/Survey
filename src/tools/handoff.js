@@ -4,6 +4,8 @@
 const DB = 'survey-tools-handoff';
 const STORE = 'files';
 const KEY = 'latest';
+// "Continue with" on a tool's result passes the file to the next tool page.
+export const NEXT_TOOL = 'next-tool';
 // A file left behind (the app never loaded) isn't opened by surprise later.
 const MAX_AGE_MS = 10 * 60 * 1000;
 
@@ -25,18 +27,18 @@ function run(mode, fn) {
   }));
 }
 
-export function putHandoff(bytes, name) {
+export function putHandoff(bytes, name, key = KEY) {
   const blob = new Blob([bytes], { type: 'application/pdf' });
-  return run('readwrite', (s) => s.put({ blob, name, at: Date.now() }, KEY));
+  return run('readwrite', (s) => s.put({ blob, name, at: Date.now() }, key));
 }
 
 // The waiting file as a File, or null. Taking it removes it.
-export async function takeHandoff() {
+export async function takeHandoff(key = KEY) {
   let entry;
   try {
     entry = await run('readwrite', (s) => {
-      const req = s.get(KEY);
-      s.delete(KEY);
+      const req = s.get(key);
+      s.delete(key);
       return req;
     });
   } catch {
