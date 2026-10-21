@@ -116,6 +116,49 @@ test('a fieldMaps write converges on an already-open client', () => {
   assert.equal(after.name, 'D-9', 'other fields untouched');
 });
 
+// set_entity (connector): set or clear marker.entityId, keeping other fields —
+// the same whole-dict mutate the connector runs inside writeMarkers.
+test('set_entity sets and clears the entity, keeping other fields', () => {
+  const doc = new Y.Doc();
+  const id = 'surveyMarker-ent';
+  syncSurveyMarkersToDoc(doc, { [id]: { id, name: 'D-9', categoryId: 'cat', checklistResponses: { c1: { selection: 'Y' } } } });
+
+  let markers = docToSurveyMarkers(doc);
+  markers[id] = { ...markers[id], entityId: 'ent-1' };
+  syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  let after = docToSurveyMarkers(doc)[id];
+  assert.equal(after.entityId, 'ent-1');
+  assert.equal(after.name, 'D-9');
+  assert.deepEqual(after.checklistResponses, { c1: { selection: 'Y' } });
+
+  markers = docToSurveyMarkers(doc);
+  markers[id] = { ...markers[id], entityId: null };
+  syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  after = docToSurveyMarkers(doc)[id];
+  assert.equal(after.entityId, null);
+  assert.equal(after.name, 'D-9');
+});
+
+// create_item (connector): add a brand-new marker and append it without
+// touching the markers already there.
+test('create_item adds a new marker with category, page, bounds, leaving others', () => {
+  const doc = new Y.Doc();
+  syncSurveyMarkersToDoc(doc, { existing: { id: 'existing', name: 'keep', categoryId: 'cat' } });
+
+  const markers = docToSurveyMarkers(doc);
+  const newId = 'surveyMarker-new';
+  markers[newId] = { id: newId, pageNumber: 2, bounds: { x: 5, y: 6, width: 7, height: 8 }, categoryId: 'cat', name: 'D-200', entityId: null, checklistResponses: {} };
+  const res = syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  assert.deepEqual([res.added, res.updated, res.removed], [1, 0, 0]);
+
+  const out = docToSurveyMarkers(doc);
+  assert.equal(out.existing.name, 'keep', 'the existing marker stays');
+  assert.deepEqual(out[newId].bounds, { x: 5, y: 6, width: 7, height: 8 });
+  assert.equal(out[newId].categoryId, 'cat');
+  assert.equal(out[newId].pageNumber, 2);
+  assert.deepEqual(out[newId].checklistResponses, {});
+});
+
 test('fieldMaps: concurrent writes to different fields of one marker both survive', () => {
   const origin = new Y.Doc();
   const id = 'surveyMarker-merge';

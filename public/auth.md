@@ -169,16 +169,22 @@ For agents that speak MCP (Claude and ChatGPT connectors, scripts):
   `get_document_role` (this person's role on a document) and
   `get_survey_context` (a document's survey template: categories, checklist
   items and entities).
-- Write tools (`set_answers`, `add_note`) appear only when the person turned on
-  survey changes for the connector and let this agent make changes (otherwise
-  the connector is read-only). They act as the person with the person's role:
+- Write tools (`set_answers`, `add_note`, `set_entity`, `create_item`) appear
+  only when the person turned on survey changes for the connector and let this
+  agent make changes (otherwise the connector is read-only). They act as the
+  person with the person's role:
   - `set_answers` — set checklist answers on one item (editor or owner). Pass
     the item id and a list of `{ checklist_item_id, value }`; only the items you
     list change. Use the checklist item ids from `get_survey_context` and the
     template's own answer values.
   - `add_note` — add text to the end of one item's note (editor or owner). It
     never removes what is already there, and one Undo in the app takes it back.
-  Both write through the document's live collaboration state, so an open app
+  - `set_entity` — set or clear one item's entity (status), using an entity id
+    from `get_survey_context`, or `null` to clear it.
+  - `create_item` — add one item in a category from `get_survey_context`, on a
+    page, at a box (`bounds`, PDF points from the page top-left), with an
+    optional entity. Returns the new item's id.
+  All write through the document's live collaboration state, so an open app
   converges to the change. A viewer's agent, or a read-only agent, cannot write.
 - Every call runs as the person, so the agent sees exactly their documents.
 
