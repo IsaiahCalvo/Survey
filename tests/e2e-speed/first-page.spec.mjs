@@ -10,6 +10,22 @@ import { SPEED_BUDGET_MS } from './budget.mjs';
 const RUNS = 3;
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost']);
 
+// True once page 1's canvas holds a drawn (non-white, non-clear) pixel.
+function pageOneHasInk() {
+  const canvas = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"] canvas');
+  if (!canvas || !canvas.width || !canvas.height) return false;
+  const probe = document.createElement('canvas');
+  probe.width = 200;
+  probe.height = Math.max(1, Math.round((200 * canvas.height) / canvas.width));
+  const ctx = probe.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(canvas, 0, 0, probe.width, probe.height);
+  const { data } = ctx.getImageData(0, 0, probe.width, probe.height);
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] > 0 && (data[i] < 200 || data[i + 1] < 200 || data[i + 2] < 200)) return true;
+  }
+  return false;
+}
+
 test('Home and the first page open within the speed budget', async ({ browser, page }) => {
   const account = E2E_ACCOUNTS.owner;
   await signIn(page, account);
@@ -29,7 +45,8 @@ test('Home and the first page open within the speed budget', async ({ browser, p
     times.home.push(Date.now() - start);
     start = Date.now();
     await openSampleDocument(cold);
-    await expect(cold.locator('.survey-pdfjs-page-div[data-page-number="1"] canvas').first()).toBeVisible({ timeout: 60_000 });
+    // The canvas mounts blank before pdf.js draws into it, so wait for ink.
+    await expect.poll(() => cold.evaluate(pageOneHasInk), { timeout: 60_000, intervals: [50] }).toBe(true);
     times.firstPage.push(Date.now() - start);
     await context.close();
   }
