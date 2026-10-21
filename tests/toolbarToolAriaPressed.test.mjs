@@ -28,7 +28,7 @@ test('tool bar buttons render aria-pressed', () => {
   }
   assert.match(shell, /className=\{`btn chrome-control \$\{isActive \? 'btn-active' : 'btn-default'\}`\}\s*aria-pressed=\{isActive\}/);
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
-  const subrow = viewer.match(/className=\{`btn chrome-subcontrol \$\{(isActive|activeTool === t\.id) \? 'btn-active' : 'btn-ghost'\}`\}\s*\n\s*aria-pressed=\{\1\}/g) || [];
+  const subrow = viewer.match(/className=\{`btn chrome-subcontrol \$\{(isActive|activeTool === t\.id|isActive && !measureMode) \? 'btn-active' : 'btn-ghost'\}`\}\s*\n\s*aria-pressed=\{\1\}/g) || [];
   assert.equal(subrow.length, 3, 'Draw, Shapes and Text sub-row tools set aria-pressed');
 });
 

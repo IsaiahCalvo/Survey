@@ -37,6 +37,7 @@ import { getOrCreateYDoc, releaseYDoc } from '../../lib/collab/ydocRegistry.js';
 import { resolveDocumentMetadata } from '../../services/documentMetadataResolver.js';
 import { attachLifecycle } from '../../lib/collab/ydocLifecycle.js';
 import { isCRDTEnabled } from '../../lib/collab/crdtFeatureFlag.js';
+import { isFeatureOn } from '../../featureFlags.js';
 import StorageFailureBanner from './StorageFailureBanner.jsx';
 import ReSignInModal from './ReSignInModal.jsx';
 import ReadOnlyGate from './ReadOnlyGate.jsx';
@@ -212,6 +213,10 @@ export function YDocProvider({ docId, children, closeDocument, isActive = true }
 }
 
 function YDocProviderInner({ docId, children, closeDocument, isActive }) {
+  // legacy-collab-retired (ships off): marks live in annotationDocSync, so this
+  // doc's legacy-row import, dedupe, residue audit and remote-delete Restore
+  // toast only do work nobody reads. Read once per mount, like every flag.
+  const [legacyCollabRetired] = useState(() => isFeatureOn('legacy-collab-retired'));
   // Borrow the Y.Doc from the module-scoped registry. Stable across re-renders for
   // a given docId; HMR-safe because the registry survives module reloads.
   const ydoc = useMemo(() => getOrCreateYDoc(docId), [docId]);
@@ -718,7 +723,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // tags or absent / null origin) fall through and are evaluated against the
   // local interaction binding.
   useEffect(() => {
-    if (!ydoc) return undefined;
+    if (!ydoc || legacyCollabRetired) return undefined;
     const yMap = ydoc.getMap('annotations');
 
     const handler = (event, transaction) => {
@@ -780,7 +785,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     return () => {
       yMap.unobserve(handler);
     };
-  }, [ydoc]);
+  }, [ydoc, legacyCollabRetired]);
 
   // Phase 29 — Plan 29-06: Restore handler.
   //
@@ -899,6 +904,10 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       willRun: !!(ydoc && docId && userId && backfillRanRef.current !== `${docId}::${userId}`),
     }));
     if (!ydoc || !docId || !userId) return undefined;
+    if (legacyCollabRetired) {
+      if (typeof window !== 'undefined') window.__crdtBackfillDone = true;
+      return undefined;
+    }
     // Per-mount run-once gate. Track the (docId, userId) pair so a user-switch
     // (rare in this app but possible via re-auth) re-runs the backfill check.
     const runKey = `${docId}::${userId}`;
@@ -1044,7 +1053,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
     return () => {
       cancelled = true;
     };
-  }, [ydoc, docId, undoState?.undoCtx?.userId, sessionId]);
+  }, [ydoc, docId, undoState?.undoCtx?.userId, sessionId, legacyCollabRetired]);
 
   // Phase 30 — drainQueue tick (1Hz).
   //
@@ -1147,6 +1156,10 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
   // form of deferred-delete tracking.
   useEffect(() => {
     if (!ydoc || !docId) return undefined;
+    if (legacyCollabRetired) {
+      setCleanupResidueIds([]);
+      return undefined;
+    }
     let cancelled = false;
     (async () => {
       // Resolve viewer identity. Audit silently skips when no session.
@@ -1291,7 +1304,7 @@ function YDocProviderInner({ docId, children, closeDocument, isActive }) {
       setCleanupResidueIds(auditResult.residueIds);
     })();
     return () => { cancelled = true; };
-  }, [ydoc, docId]);
+  }, [ydoc, docId, legacyCollabRetired]);
 
   // Phase 35 Plan 05 — banner action handlers.
 
