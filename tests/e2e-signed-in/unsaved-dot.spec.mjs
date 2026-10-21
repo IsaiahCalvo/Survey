@@ -16,9 +16,9 @@ function upToDate(page) {
 }
 
 async function updateIds(admin) {
-  const { data, error } = await admin.from('annotation_updates').select('id').eq('document_id', E2E_DOCUMENT.id);
+  const { data, error } = await admin.from('annotation_updates').select('seq').eq('document_id', E2E_DOCUMENT.id);
   if (error) throw new Error(`[E2E_SIGNED_IN] annotation_updates: ${error.message}`);
-  return new Set((data || []).map((row) => row.id));
+  return new Set((data || []).map((row) => row.seq));
 }
 
 test('the tab unsaved dot clears when cloud sync is up to date', async ({ page }) => {
@@ -59,6 +59,6 @@ test('the tab unsaved dot clears when cloud sync is up to date', async ({ page }
   } finally {
     // Leave the shared seed document as it was.
     const added = [...(await updateIds(admin))].filter((id) => !before.has(id));
-    if (added.length) await admin.from('annotation_updates').delete().in('id', added);
+    if (added.length) await admin.from('annotation_updates').delete().in('seq', added);
   }
 });
