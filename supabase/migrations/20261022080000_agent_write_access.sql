@@ -167,3 +167,19 @@ begin
   end if;
 end;
 $$;
+
+-- These only read, but were never marked STABLE, so PostgREST ran them in a
+-- read-write transaction and the gate above would refuse a read-only agent
+-- its revision history, plan limits and Excel sync reads.
+alter function public.get_current_usage(uuid, character varying) stable;
+alter function public.get_document_limit(uuid) stable;
+alter function public.get_project_limit(uuid) stable;
+alter function public.get_storage_limit(uuid) stable;
+alter function public.get_user_tier(uuid) stable;
+alter function public.has_feature_access(uuid, text) stable;
+alter function public.is_project_accessible(uuid, uuid) stable;
+alter function public.kal308a_get_signing_secret(uuid) stable;
+alter function public.kal308a_has_server_key(uuid) stable;
+alter function public.kal309_fetch_since(uuid, text, bigint) stable;
+alter function public.kal48_get_revision(uuid) stable;
+alter function public.kal48_list_revisions(uuid) stable;

@@ -57,6 +57,9 @@ test('a read-only agent can read but every change is refused, and Remove forgets
   // Reads work, by GET and by POST to a read-only function.
   expect(await (await a.get(`documents?id=eq.${E2E_DOCUMENT.id}&select=id`)).json()).toHaveLength(1);
   expect(await (await a.rpc('get_my_document_role', { doc_id: E2E_DOCUMENT.id })).json()).toBe('owner');
+  // Read-only functions that were once left VOLATILE (revision history, plan).
+  expect((await a.rpc('kal48_list_revisions', { p_document_id: E2E_DOCUMENT.id })).status).toBe(200);
+  expect((await a.rpc('get_user_tier', { p_user_id: userId })).status).toBe(200);
   // Its own hourly counter still works.
   expect(await (await a.rpc('agent_rate_hit', { p_fn: 'send-profile-change-notification', p_limit: 5 })).json()).toBe(true);
 
