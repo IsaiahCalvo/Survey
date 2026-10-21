@@ -313,6 +313,15 @@ async function runCounterSeries(page, touch, baseUrl) {
   return { ids, series: [...new Set(counters.map((counter) => counter.data.seriesId))] };
 }
 
+// Bookmarks Edit mode is a toggle and the panel can come back with it still
+// on (its draft survives a remount), so turn it on only when it is off.
+async function ensureBookmarkEditMode(page) {
+  const toggle = page.getByRole('button', { name: /^(Edit bookmarks|Done editing bookmarks)$/ }).filter({ visible: true }).first();
+  await toggle.waitFor({ state: 'visible', timeout: 10_000 });
+  if (await toggle.getAttribute('aria-label') === 'Edit bookmarks') await toggle.click();
+  await page.getByRole('button', { name: 'Done editing bookmarks', exact: true }).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 10_000 });
+}
+
 async function runBookmarksAndPages(page, baseUrl) {
   await openHubTab(page, 'Bookmarks');
   await page.getByRole('button', { name: 'Add bookmark', exact: true }).click();
@@ -321,7 +330,7 @@ async function runBookmarksAndPages(page, baseUrl) {
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   // RULED 2026-09-23 (owner: phone bookmarks match desktop) — a row's rename
   // and delete glyphs show in Edit mode only, as on desktop, so enter it first.
-  await page.getByRole('button', { name: 'Edit bookmarks', exact: true }).click();
+  await ensureBookmarkEditMode(page);
   await page.getByRole('button', { name: 'Edit bookmark Field entrance', exact: true }).click();
   await page.getByRole('textbox', { name: 'Bookmark name', exact: true }).fill('Main entrance');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -426,11 +435,7 @@ async function runBookmarksAndPages(page, baseUrl) {
   // RULED 2026-09-23 (owner: phone bookmarks match desktop) — delete lives in
   // Edit mode. The panel's draft (edit mode included) now survives the tab
   // switch, so enter Edit only if it is not still on.
-  const doneEditing = page.getByRole('button', { name: 'Done editing bookmarks', exact: true });
-  await page.getByRole('button', { name: /^(Edit bookmarks|Done editing bookmarks)$/ }).first().waitFor({ state: 'visible', timeout: 10_000 });
-  if (!await doneEditing.isVisible().catch(() => false)) {
-    await page.getByRole('button', { name: 'Edit bookmarks', exact: true }).click();
-  }
+  await ensureBookmarkEditMode(page);
   await page.getByRole('button', { name: 'Delete bookmark Main entrance', exact: true }).click();
   await page.getByRole('button', { name: 'Delete bookmark Roof', exact: true }).click();
   await page.getByText('No bookmarks yet', { exact: true }).waitFor();

@@ -290,7 +290,7 @@ async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnos
     } else {
       record('clickable PDF link safely intercepted', VIEWER_AUXILIARY_FIXTURES.interactive, 'failed', {
         expectedFixtureAnnotation: 'Link https://claude.com/',
-        reason: `link layers exposed ${linkCount} matching links`,
+        reason: `real PdfjsLinkLayer exposed ${linkCount} matching anchors (or link marks)`,
       });
     }
 
