@@ -21,12 +21,16 @@
 // row is gone, so collaborators' photos / videos / recordings - and the media
 // of documents this sweep purged - are removed here.
 //
+// Last, stored PDFs older than a day that no document or template row points
+// at (documentFileSweep.js, listed by `public.list_orphaned_document_files`).
+//
 // This function is MACHINE-invoked (Supabase Cron / pg_cron). It is not part of
 // any user flow: it authenticates a shared secret, never an end user, and holds
 // no per-user session. See docs/KAL-431-archive-auto-cleanup.md before enabling.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { sweepOrphanedSurveyMedia, MEDIA_SWEEP_LIMIT } from './surveyMediaSweep.js';
+import { sweepOrphanedDocumentFiles, DOCUMENT_FILE_SWEEP_LIMIT } from './documentFileSweep.js';
 
 const corsHeaders = {
   // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -250,6 +254,25 @@ Deno.serve(async (req) => {
     errors: media.errors.length,
   });
 
+  // ── Remove stored PDFs no row points at ────────────────────────────────
+  // Files older than a day that no document or template references (a failed
+  // insert after upload, a lost client unlink). Same best-effort rule; a dry
+  // run only counts them.
+  const files = await sweepOrphanedDocumentFiles(supabase, {
+    dryRun,
+    limit: DOCUMENT_FILE_SWEEP_LIMIT,
+    log,
+  });
+  log('files_sweep_done', {
+    run_id: result.run_id,
+    found: files.found,
+    bytes: files.bytes,
+    removed: files.removed,
+    failed: files.failed,
+    skipped_live: files.skipped_live,
+    errors: files.errors.length,
+  });
+
   log('sweep_done', {
     run_id: result.run_id,
     unlinked,
@@ -257,6 +280,8 @@ Deno.serve(async (req) => {
     stranded: failedPaths.length,
     media_removed: media.removed,
     media_failed: media.failed,
+    files_removed: files.removed,
+    files_failed: files.failed,
     duration_ms: Date.now() - startedAt,
   });
 
@@ -279,6 +304,12 @@ Deno.serve(async (req) => {
     media_failed: media.failed,
     media_skipped_live: media.skipped_live,
     media_errors: media.errors,
+    file_orphans_found: files.found,
+    file_orphan_bytes: files.bytes,
+    files_removed: files.removed,
+    files_failed: files.failed,
+    files_skipped_live: files.skipped_live,
+    file_errors: files.errors,
     dry_run: dryRun,
     duration_ms: Date.now() - startedAt,
   });
