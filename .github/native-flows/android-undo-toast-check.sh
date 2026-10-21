@@ -18,6 +18,13 @@ maestro test --test-output-dir "$OUT" "$TMP/a.yaml"
 PID=$(adb shell pidof com.kalvoe.survey | tr -d '\r')
 adb forward tcp:9222 "localabstract:webview_devtools_remote_$PID"
 ev() { node .github/native-flows/webview-storage.mjs --eval "$1"; }
+m=$(ev "(() => { const t = [...document.querySelectorAll('*')].filter(e => e.offsetParent && e.children.length === 0 && /E2E Sample Project/.test(e.textContent)); for (const e of t) { let r = e; for (let i = 0; i < 8 && r; i++, r = r.parentElement) { const b = r.querySelector('button[aria-label=\"More\"]'); if (b) { b.click(); return 'ok'; } } } return 'missing'; })()")
+echo "row More: $m"; [ "$m" = ok ] || { echo "::error::no More button on the E2E Sample Project row"; exit 1; }
+sleep 1
+d=$(ev "(() => { const b = [...document.querySelectorAll('button,[role=menuitem]')].find(b => b.offsetParent && b.textContent.trim() === 'Delete'); if (!b) return 'missing'; b.click(); return 'ok'; })()")
+echo "Delete: $d"; [ "$d" = ok ] || { echo "::error::no Delete in the project menu"; exit 1; }
+for i in $(seq 10); do sleep 0.5; [ "$(ev "!!document.querySelector('.undo-toast')")" = true ] && break; done
+adb exec-out screencap -p > "$OUT/16-undo-toast.png"
 r=$(ev "(() => {
   const t = [...document.querySelectorAll('.undo-toast')].find(e => e.offsetParent || getComputedStyle(e).position === 'fixed');
   if (!t) return 'FAIL no .undo-toast in the page';

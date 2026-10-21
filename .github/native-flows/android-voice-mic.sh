@@ -41,12 +41,11 @@ r=$(click "$MIC"); echo "mic tap: $r"; [ "$r" = ok ] || { echo "::error::no hand
 said=no
 for i in $(seq 10); do sleep 1; [ "$(ev "!!globalThis.__surveyNativeSpeechTest")" = true ] && { ev "globalThis.__surveyNativeSpeechTest.say('D-1-17 is installed'); 'ok'" >/dev/null; said=yes; break; }; done
 [ "$said" = yes ] || { adb exec-out screencap -p > "$OUT/18-voice-fill.png"; echo "::error::fake speech never started listening"; exit 1; }
-DONE="(() => [...document.querySelectorAll('.survey-marker-progress')].some(p => (p.getAttribute('aria-label') || '').startsWith('All 3 checklist items answered')))()"
+# The agent posts what it set ("D-1-17: Cables Pulled = Y; ...").
+DONE="(() => /D-1-17: Cables Pulled = Y; Frame Installed & Prepped = Y; Door Installed & Prepped = Y/.test(document.querySelector('.survey-agent')?.textContent || ''))()"
 filled=false
 for i in $(seq 30); do sleep 2; [ "$(ev "$DONE")" = true ] && { filled=true; break; }; done
 adb exec-out screencap -p > "$OUT/18-voice-fill.png"
-# Not yet gating: the fake speech starts but the fill has not been seen in CI.
-if [ "$filled" = true ]; then echo "Voice fill check passed."; else
-  echo "::warning::D-1-17 not filled by voice; progress seen: $(ev "[...document.querySelectorAll('.survey-marker-progress')].map(p => p.getAttribute('aria-label')).join(' | ') || 'none'"); agent log: $(ev "[...document.querySelectorAll('.survey-agent [class*=msg], .survey-agent li')].slice(-6).map(e => e.textContent.trim().slice(0, 120)).join(' | ') || 'none'")"
-  ev "(() => { const b = document.querySelector('.survey-agent-mic.is-recording'); b && b.click(); return 'ok'; })()" >/dev/null
-fi
+[ "$filled" = true ] || { echo "::error::D-1-17 not filled by voice; agent log: $(ev "(document.querySelector('.survey-agent')?.textContent || 'none').slice(-400)")"; exit 1; }
+echo "Voice fill check passed."
+ev "(() => { const b = document.querySelector('.survey-agent-mic.is-recording'); b && b.click(); return 'ok'; })()" >/dev/null

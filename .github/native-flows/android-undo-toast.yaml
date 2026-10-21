@@ -16,17 +16,8 @@ name: android-undo-toast
 - extendedWaitUntil:
     visible: ".*E2E Sample Project.*"
     timeout: 60000
-- tapOn:
-    text: "More"
-    rightOf: ".*E2E Sample Project.*"
-- extendedWaitUntil:
-    visible: "Delete"
-    timeout: 30000
-- tapOn: "Delete"
-- extendedWaitUntil:
-    visible: "Undo"
-    timeout: 15000
-- takeScreenshot: 16-undo-toast
+# The row's "More" button is found and tapped in the web view by
+# android-undo-toast-check.sh (Maestro's rightOf missed it on the phone row).
 # --- split: toast up ---
 - tapOn: "Undo"
 # --- split: after undo ---
