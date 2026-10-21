@@ -47,7 +47,7 @@ const base64ToBytes = (value) => {
 };
 
 // Errors that mean the server voice will not work this session.
-const SERVER_VOICE_OFF = new Set(['speech_not_set_up', 'speech_unavailable', 'not_enabled_for_you', 'monthly_cap_reached']);
+const SERVER_VOICE_OFF = new Set(['speech_not_set_up', 'speech_unavailable', 'speech_limit_reached', 'not_enabled_for_you', 'monthly_cap_reached']);
 
 /**
  * call: the survey-agent caller (no retries: a slow voice is worse than the
