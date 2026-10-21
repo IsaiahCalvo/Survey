@@ -570,3 +570,91 @@ test('With markup tools on, the agent puts a text note next to an item', async (
     return activeAgentDocument().listAnnotations().some((a) => /Ceiling tile missing/.test(a.text || ''));
   })).toBe(false);
 });
+
+// Voice markup: "circle D-117", then "cloud this area" (what is on screen).
+test('With markup tools on, the agent circles an item and clouds the area on screen, and Undo takes them back', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.flag.annotation-agent', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await page.route('**/functions/v1/survey-agent', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+      return;
+    }
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    const reply = (json) => route.fulfill({
+      status: 200,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+      body: JSON.stringify(json),
+    });
+    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
+    const said = [...body.messages].reverse().find((m) => m.role === 'user')?.content || '';
+    const tools = body.messages.slice(body.messages.findLastIndex((m) => m.role === 'user')).filter((m) => m.role === 'tool');
+    const call = (id, name, args) => reply({ message: { content: '', tool_calls: [
+      { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
+    ] } });
+    if (/circle/.test(said)) {
+      if (tools.length === 0) return call('c1', 'find_items', { query: 'D-117', category_id: null });
+      if (tools.length === 1) {
+        const id = JSON.parse(tools[0].content).matches[0].id;
+        return call('c2', 'mark_on_plan', { shape: 'circle', item_id: id, plan_match_id: null, on_screen: false, color: null });
+      }
+      return reply({ message: { content: 'Circled D-117.', tool_calls: [] } });
+    }
+    if (tools.length === 0) return call('k1', 'mark_on_plan', { shape: 'cloud', item_id: null, plan_match_id: null, on_screen: true, color: 'blue' });
+    return reply({ message: { content: 'Clouded that area.', tool_calls: [] } });
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  const shapes = () => page.evaluate(async () => {
+    const { activeAgentDocument } = await import('/src/agent/webmcp.js');
+    return activeAgentDocument().listAnnotations();
+  });
+
+  await input.fill('circle D-117');
+  await input.press('Enter');
+  await expect(panel.getByText('Circled D-117.')).toBeVisible();
+  let results = calls.filter((c) => c.action === 'turn').at(-1).messages.filter((m) => m.role === 'tool');
+  expect(results.at(-1).content).toMatch(/^Drew a circle around D-117 on page 1 \(id [^)]+\)\.$/);
+  const circleId = results.at(-1).content.match(/\(id ([^)]+)\)/)[1];
+  // Around D-117's box (x 330..480, y 600..680 on page 1), holding it.
+  const circle = (await shapes()).find((a) => a.id === circleId);
+  expect(circle).toBeTruthy();
+  expect(circle.page).toBe(1);
+  expect(circle.bounds.x).toBeLessThan(330);
+  expect(circle.bounds.y).toBeLessThan(600);
+  expect(circle.bounds.x + circle.bounds.width).toBeGreaterThan(480);
+  expect(circle.bounds.y + circle.bounds.height).toBeGreaterThan(680);
+
+  await input.fill('cloud this area');
+  await input.press('Enter');
+  await expect(panel.getByText('Clouded that area.')).toBeVisible();
+  results = calls.filter((c) => c.action === 'turn').at(-1).messages.filter((m) => m.role === 'tool');
+  expect(results.at(-1).content).toMatch(/^Drew a cloud around the area on screen on page 1 \(id [^)]+\)\.$/);
+  const cloudId = results.at(-1).content.match(/\(id ([^)]+)\)/)[1];
+  const cloud = (await shapes()).find((a) => a.id === cloudId);
+  expect(cloud).toBeTruthy();
+  console.log('MARKS', JSON.stringify({ circle, cloud }));
+  await page.screenshot({ path: 'test-results/voice-markup.png' });
+
+  // Each change card's Undo takes its own mark away.
+  const cards = panel.getByTestId('survey-agent-changes');
+  await cards.last().getByRole('button', { name: /Undo/ }).click();
+  await expect.poll(async () => (await shapes()).some((a) => a.id === cloudId)).toBe(false);
+  await cards.first().getByRole('button', { name: /Undo/ }).click();
+  await expect.poll(async () => (await shapes()).some((a) => a.id === circleId)).toBe(false);
+});

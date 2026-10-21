@@ -5,7 +5,8 @@
 // as if the person had tapped. Every write returns a change with an undo.
 import { answerSetFor } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
-import { normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
+import { MARK_COLOR_HEX, normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
+import { markBox, visiblePageBox } from './planView.js';
 import { boundsCover, markerBoxAroundTag, tagShape } from './planText.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
 
@@ -589,6 +590,59 @@ export function createSurveyAgentToolbox({
           })),
         }),
         summary: { title, text: summaryText(summary, { title }) },
+      };
+    },
+
+    // "Circle D-117", "cloud this area": a shape around an item, a plan tag
+    // or what is on screen, drawn the way the person's own tools draw it.
+    mark_on_plan({ shape, item_id: itemId, plan_match_id: matchId, on_screen: onScreen, color } = {}) {
+      const b = bridge();
+      if (b.canEdit === false) throw new ToolError('This person can only view this document, so nothing can be drawn.');
+      const doc = typeof getDocument === 'function' ? getDocument() : null;
+      if (!doc?.addShape) throw new ToolError('Drawing on the plan is not available here.');
+      const kind = ['circle', 'box', 'cloud'].includes(shape) ? shape : 'circle';
+      const picked = [itemId, matchId, onScreen === true].filter(Boolean).length;
+      if (picked !== 1) throw new ToolError('Say what to mark: one item, one plan tag, or what is on screen.');
+      let page;
+      let box;
+      let what;
+      if (itemId) {
+        const marker = markerOf(b, itemId);
+        if (!marker.pageNumber || !marker.bounds) throw new ToolError(`${nameOf(marker)} is not placed on the plan, so there is nothing to mark.`);
+        page = marker.pageNumber;
+        box = marker.bounds;
+        what = nameOf(marker);
+      } else if (matchId) {
+        const match = planMatches.get(matchId);
+        if (!match) throw new ToolError(`No plan match ${matchId}. Use find_on_plan first.`);
+        page = match.page;
+        box = match.box;
+        what = match.text ? `"${match.text}"` : 'that tag';
+      } else {
+        page = b.getCurrentPage?.() || null;
+        const size = page && (doc.getPageSize?.(page) || b.getPageSize?.(page));
+        box = size ? visiblePageBox(page, size) : null;
+        if (!box) throw new ToolError('Could not tell which part of the plan is on screen. Name an item to mark instead.');
+        what = 'the area on screen';
+      }
+      const size = doc.getPageSize?.(page) || b.getPageSize?.(page);
+      if (!size) throw new ToolError('That page is not in the open document.');
+      const at = markBox(box, size, { shape: kind, inset: !itemId && !matchId });
+      const res = doc.addShape({
+        page,
+        shape: kind === 'circle' ? 'ellipse' : 'rect',
+        ...at,
+        strokeColor: MARK_COLOR_HEX[color] || MARK_COLOR_HEX.red,
+        strokeWidth: 2,
+        ...(kind === 'cloud' ? { borderStyle: 'cloud' } : {}),
+      });
+      if (res?.reason === 'locked') throw new ToolError('A locked markup on that page blocked the save, so nothing was drawn.');
+      if (!res?.ok) throw new ToolError('Could not draw that on the plan.');
+      const word = { circle: 'a circle', box: 'a box', cloud: 'a cloud' }[kind];
+      const label = `Drew ${word} around ${what} on page ${page}.`;
+      return {
+        content: res.id ? `${label.slice(0, -1)} (id ${res.id}).` : label,
+        ...(res.id ? { change: { annotationId: res.id, documentId: b.documentId || null, label } } : {}),
       };
     },
 
