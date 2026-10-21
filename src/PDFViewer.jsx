@@ -17,6 +17,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { jsonEqual } from './utils/jsonEqual.js';
+import { isCloudSaveConfirmed } from './utils/cloudSaveBaseline.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
@@ -23300,6 +23301,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!pdfId) return;
 
+    // Cloud documents are saved by sync: once it reports "Up to date", the
+    // current marks are the saved copy, so the tab's unsaved dot clears.
+    if (isCloudSaveConfirmed({
+      isCloudDocument: !!pdfFile?.id,
+      cloudSyncEnabled,
+      status: cloudSyncStatus,
+      queueSize: cloudSyncQueueSize,
+    })) {
+      savedAnnotationsByPageRef.current = annotationsByPage;
+    }
+
     // Compare current with saved to detect changes. jsonEqual answers exactly
     // like comparing the two JSON.stringify strings, without building them
     // (w29: ~70 ms per change on a 3,000-mark document).
@@ -23317,7 +23329,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onUnsavedAnnotationsChange(false);
       }
     }
-  }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange]);
+  }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange, pdfFile?.id, cloudSyncEnabled, cloudSyncStatus, cloudSyncQueueSize]);
 
   // Hardening (audit 2026-04-30 #3): notify the App-level beforeunload guard
   // whenever this PDFViewer's annotation count flips between empty and
