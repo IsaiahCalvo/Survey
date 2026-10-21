@@ -1,4 +1,0 @@
-# Taps a toolbar button by its label: maestro test -e TOOL=Arrow ...
-appId: com.kalvoe.survey
----
-- tapOn: ${TOOL}

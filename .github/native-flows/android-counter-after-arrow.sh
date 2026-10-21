@@ -4,8 +4,15 @@
 # (draw mode is Pencil only, so page input goes through the stylus).
 set -euo pipefail
 OUT="$1"
+PID=$(adb shell pidof com.kalvoe.survey | tr -d '\r')
+adb forward tcp:9222 "localabstract:webview_devtools_remote_$PID"
 ev() { node .github/native-flows/webview-storage.mjs --eval "$1"; }
-pick() { maestro test -e TOOL="$1" .github/native-flows/android-pick-tool.yaml >/dev/null; }
+# Click a toolbar button by its label in the web view (the rail buttons are
+# icon-only, so Maestro cannot always see their names). Lists labels on a miss.
+pick() {
+  r=$(ev "(() => { const want = '$1'; const bs = [...document.querySelectorAll('button,[role=button],[role=menuitem]')].filter(b => b.offsetParent); const name = b => (b.getAttribute('aria-label') || b.title || b.textContent || '').trim(); const b = bs.find(b => name(b) === want) || bs.find(b => name(b).startsWith(want)); if (!b) return 'missing: ' + bs.map(name).filter(Boolean).join(' | '); b.click(); return 'ok'; })()")
+  echo "pick $1: $r"; [ "$r" = "ok" ] || exit 1; sleep 1
+}
 W=$(adb shell wm size | sed 's/.*: //;s/x.*//' | tr -d '\r'); H=$(adb shell wm size | sed 's/.*x//' | tr -d '\r')
 X=$((W / 2)); Y=$((H / 2))
 pick Shapes
