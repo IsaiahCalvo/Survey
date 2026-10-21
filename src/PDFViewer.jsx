@@ -171,6 +171,7 @@ import {
   refitTextboxToText,
   resolveTextStyleWrite,
 } from './utils/selectedTextFormatting.js';
+import { buildNewTextCommitJSON, TEXT_PADDING } from './utils/textEditCommit.js';
 import {
   applyRestyleChange,
   applyRestyleChangeToPage,
@@ -32872,6 +32873,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     getPageSurveyRegionId,
     selectedTemplate,
     userId: user?.id || null,
+    // Normal (non-survey-marker) annotations: an agent reads/creates/edits/
+    // deletes them through the same whole-page save seam a human edit uses.
+    getAnnotationsByPage: () => annotationsByPageRef.current || {},
+    saveAnnotations: handleSaveAnnotationsWithTextMarkupAtomicity,
+    // The survey/region scope a mark created on `page` takes — the same helper
+    // every creation surface uses, so an agent note is not hidden by the
+    // clean-slate rule inside an open survey module.
+    textNoteScope: currentPasteScope,
   };
   useEffect(() => {
     if (isActive === false) return undefined;
@@ -32883,6 +32892,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? { x: m.bounds.x, y: m.bounds.y, width: m.bounds.width, height: m.bounds.height }
         : null,
     } : null);
+    // Find one normal annotation across pages: { page, index, obj } or null.
+    // A local helper so the bridge method and the mutation callbacks share it
+    // (agentMarkerStateRef.current holds only state, not these methods).
+    const findAnnotationById = (wantedId) => {
+      const byPage = agentMarkerStateRef.current.getAnnotationsByPage();
+      for (const [page, pageJson] of Object.entries(byPage)) {
+        const objects = pageJson?.objects || [];
+        const index = objects.findIndex((o) => (o.id || o.data?.id) === wantedId);
+        if (index >= 0) return { page: Number(page), index, obj: objects[index] };
+      }
+      return null;
+    };
     return registerAgentDocument({
       documentId: pdfFile?.id || null,
       surveyReady: () => agentMarkerStateRef.current.surveyReady,
@@ -32961,6 +32982,93 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
         recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:delete', action: 'survey-marker-agent-delete', pageNumber: marker.pageNumber });
         agentMarkerStateRef.current.handleDeleteSurveyMarker(id);
+        return { ok: true };
+      },
+
+      // --- Normal annotations (text notes first; shapes/callouts later) ---
+      // These are the objects in annotationsByPage, NOT survey markers. An
+      // agent targets one by id; writes go through the whole-page save seam
+      // (handleSaveAnnotationsWithTextMarkupAtomicity), which records the undo
+      // step from the page diff and runs the save-time lock guard.
+      annotationIdOf: (obj) => (obj && (obj.id || obj.data?.id)) || null,
+      // Find one annotation across pages: { page, index, obj } or null.
+      findAnnotation: findAnnotationById,
+      listAnnotations: () => {
+        const byPage = agentMarkerStateRef.current.getAnnotationsByPage();
+        const out = [];
+        for (const [page, pageJson] of Object.entries(byPage)) {
+          for (const obj of pageJson?.objects || []) {
+            const id = obj.id || obj.data?.id;
+            if (!id) continue;
+            out.push({
+              id,
+              page: Number(page),
+              type: obj.data?.markupType || obj.type || null,
+              text: typeof obj.text === 'string' ? obj.text : null,
+              bounds: Number.isFinite(obj.left) && Number.isFinite(obj.top)
+                ? { x: obj.left, y: obj.top, width: obj.width ?? null, height: obj.height ?? null }
+                : null,
+            });
+          }
+        }
+        return out;
+      },
+      // Add a text note (fabric Textbox) at a point. Height is fitted to the
+      // text by the app's own measurer, so an agent note renders like a drawn
+      // one. Author is stamped so the ownership/lock gate works on later edits.
+      addTextNote: ({ page, x, y, width, text, color }) => {
+        const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage, textNoteScope } = agentMarkerStateRef.current;
+        const size = sizes?.[page];
+        if (!size) return { ok: false, reason: 'not-found' };
+        const wrapWidth = Math.max(24, Number(width) || 160);
+        if (x < 0 || y < 0 || y >= size.height || x + wrapWidth > size.width) return { ok: false, reason: 'off-page' };
+        let obj = buildNewTextCommitJSON({
+          text, left: x, top: y, innerWrapWidth: wrapWidth - 2 * TEXT_PADDING, autoFit: false,
+          fill: color || '#111827', stroke: 'transparent', strokeWidth: 0,
+          ...textNoteScope(page),
+        });
+        if (!obj) return { ok: false, reason: 'empty' };
+        obj = refitTextboxToText(obj, measureTextLayoutHeight) || obj;
+        if (viewerId) obj = { ...obj, meta: { ...(obj.meta || {}), authorId: viewerId } };
+        const pageJson = getAnnotationsByPage()[page] || { objects: [] };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'text-note:create', action: 'text-note-agent-create', pageNumber: page });
+        const result = saveAnnotations(page, { ...pageJson, objects: [...(pageJson.objects || []), obj] },
+          { source: 'webmcp:text-note:create', action: 'fabric:create' });
+        if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
+        return { ok: true, id: obj.id || obj.data?.id };
+      },
+      // Replace a text note's text (height re-fits). Gated like a human edit.
+      editTextNote: (id, { text }) => {
+        const { viewerId, documentOwnerId: ownerId, saveAnnotations, getAnnotationsByPage } = agentMarkerStateRef.current;
+        const found = findAnnotationById(id);
+        if (!found) return { ok: false, reason: 'not-found' };
+        const { page, index, obj } = found;
+        if (!(obj.type === 'Textbox' || obj.type === 'textbox' || obj.type === 'i-text' || obj.type === 'text')) {
+          return { ok: false, reason: 'not-a-text-note' };
+        }
+        if (!canModify({ annotation: obj, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
+        const next = refitTextboxToText({ ...obj, text: String(text) }, measureTextLayoutHeight) || { ...obj, text: String(text) };
+        const pageJson = getAnnotationsByPage()[page] || { objects: [] };
+        const objects = [...(pageJson.objects || [])];
+        objects[index] = next;
+        recordAnnotationCommit({ surface: 'webmcp', source: 'text-note:edit', action: 'text-note-agent-edit', pageNumber: page });
+        const result = saveAnnotations(page, { ...pageJson, objects }, { source: 'webmcp:text-note:edit', action: 'fabric:edit' });
+        if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
+        return { ok: true };
+      },
+      // Delete any normal annotation by id. Gated like a human delete.
+      deleteAnnotation: (id) => {
+        const { viewerId, documentOwnerId: ownerId, saveAnnotations, getAnnotationsByPage } = agentMarkerStateRef.current;
+        const found = findAnnotationById(id);
+        if (!found) return { ok: false, reason: 'not-found' };
+        const { page, index, obj } = found;
+        if (!canDelete({ annotation: obj, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
+        const pageJson = getAnnotationsByPage()[page] || { objects: [] };
+        const objects = (pageJson.objects || []).filter((_, i) => i !== index);
+        recordAnnotationCommit({ surface: 'webmcp', source: 'annotation:delete', action: 'annotation-agent-delete', pageNumber: page });
+        const result = saveAnnotations(page, { ...pageJson, objects },
+          { source: 'webmcp:annotation:delete', action: 'fabric:delete', finalDeletedAnnotationIds: [id] });
+        if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
         return { ok: true };
       },
     });

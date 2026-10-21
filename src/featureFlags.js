@@ -23,6 +23,10 @@ export const FEATURE_FLAGS = Object.freeze({
     legacyKey: 'SURVEY_AGENT_BETA',
     env: 'VITE_ENABLE_SURVEY_AGENT',
   }),
+  'annotation-agent': Object.freeze({
+    label: 'Agent annotation writes',
+    env: 'VITE_ENABLE_ANNOTATION_AGENT',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

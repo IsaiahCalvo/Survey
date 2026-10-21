@@ -38,6 +38,22 @@ With a PDF open in Survey mode and a template chosen:
 Marker and item ids are shared: an id from `survey_find_items` or
 `survey_list_markers` works with the edit, delete and item tools alike.
 
+Behind the `annotation-agent` flag (off until the tools are proven), the agent
+can also write normal annotations — text notes, with shapes and callouts to
+come. These write through the same path as a human edit, so sync, Excel and the
+user's role all apply, and one Undo takes a change back:
+
+- `survey_list_annotations` — list the normal annotations on the open PDF (text
+  notes, shapes, highlights — not Survey markers): id, page, type, text and box.
+- `survey_add_text_note` — add a text note at a page point (editor/owner). Give
+  the page, the top-left corner in PDF points, the text, and optionally a wrap
+  width and hex color. The box fits its text.
+- `survey_edit_text_note` — change a text note's text by id (editor/owner). Only
+  a note the person could edit by hand changes.
+- `survey_delete_annotation` — delete a normal annotation by id (editor/owner).
+  It does nothing unless you pass `confirm: true`, which you should set only
+  after the person has agreed; one Undo restores it.
+
 ## Outside the browser: user-claimed flow
 
 Supported flows: `user_claimed` (the user confirms a code). Agent-verified

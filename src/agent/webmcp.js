@@ -8,6 +8,11 @@
 import { checkAgentAccess, planFeatures } from './agentAccess.js';
 import { buildSurveyAgentTools } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { createSurveyAgentToolbox } from './surveyAgentTools.js';
+import { isFeatureOn } from '../featureFlags.js';
+
+// General-annotation agent write tools (text notes, later shapes/callouts) ship
+// behind this flag, off by default; see src/featureFlags.js and the migration.
+export const ANNOTATION_AGENT_FLAG = 'annotation-agent';
 
 // The Survey agent's item tools (KAL-527), offered to browser agents too:
 // same names with a survey_ prefix, same writes as the in-app agent chat.
@@ -109,7 +114,7 @@ export function makeAccessReader(supabase, tierLimits) {
   };
 }
 
-export function buildAgentTools({ getViewer = activeViewer, getDocument = activeDocument, supabase = null, readAccess = async () => ({ signedIn: false }), surveyToolbox = createSurveyAgentToolbox() } = {}) {
+export function buildAgentTools({ getViewer = activeViewer, getDocument = activeDocument, supabase = null, readAccess = async () => ({ signedIn: false }), surveyToolbox = createSurveyAgentToolbox(), includeAnnotationTools = false } = {}) {
   const need = () => {
     const viewer = getViewer();
     if (!viewer) throw new Error('No document is open in Survey.');
@@ -307,6 +312,105 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
         return `Deleted ${label}. It is in the trash for 30 days, and the last change can be undone.`;
       },
     },
+    ...(includeAnnotationTools ? [
+      {
+        name: 'survey_list_annotations',
+        description: 'List the normal annotations on the open PDF (text notes, shapes, highlights — not Survey markers): id, page, type, text and box. Use an id with survey_edit_text_note or survey_delete_annotation.',
+        inputSchema: { type: 'object', properties: {} },
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
+        access: { minRole: 'viewer' },
+        documentScoped: true,
+        execute: async () => {
+          const doc = getDocument();
+          return text(typeof doc.listAnnotations === 'function' ? doc.listAnnotations() : []);
+        },
+      },
+      {
+        name: 'survey_add_text_note',
+        description: 'Add a text note (a text box) to the open PDF. Give the page, the top-left corner (PDF points from the top-left of the page), the text, and optionally a wrap width and hex color. The box fits its text. Needs editor or owner access.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            page: { type: 'integer', minimum: 1 },
+            x: { type: 'number', minimum: 0 },
+            y: { type: 'number', minimum: 0 },
+            text: { type: 'string', description: 'The note text.' },
+            width: { type: 'number', minimum: 24, description: 'Wrap width in PDF points (default 160).' },
+            color: { type: 'string', description: 'Hex text color like #111827 (optional).' },
+          },
+          required: ['page', 'x', 'y', 'text'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ page, x, y, text: noteText, width, color }) => {
+          const doc = getDocument();
+          if (!String(noteText || '').trim()) throw new Error('The note text is empty.');
+          const size = doc.getPageSize(Number(page));
+          if (!size) throw new Error('That page is not in the open document.');
+          if (Number(x) < 0 || Number(y) < 0 || Number(x) >= size.width || Number(y) >= size.height) {
+            throw new Error(`The note must start inside the page (${size.width} x ${size.height} points).`);
+          }
+          const res = doc.addTextNote({ page: Number(page), x: Number(x), y: Number(y), width: width == null ? undefined : Number(width), text: String(noteText), color });
+          if (res?.reason === 'off-page') throw new Error(`The note must start inside the page (${size.width} x ${size.height} points).`);
+          if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the note was not added.');
+          if (!res?.ok) throw new Error('Could not add the note.');
+          return `Added a text note on page ${page}.`;
+        },
+      },
+      {
+        name: 'survey_edit_text_note',
+        description: 'Change the text of a text note by id (from survey_list_annotations). The box re-fits to the new text. Needs editor or owner access, and only a note the person could edit by hand changes.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            annotation_id: { type: 'string' },
+            text: { type: 'string', description: 'The new text.' },
+          },
+          required: ['annotation_id', 'text'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ annotation_id: annotationId, text: noteText }) => {
+          const doc = getDocument();
+          if (!String(noteText || '').trim()) throw new Error('The note text is empty.');
+          const res = doc.editTextNote(annotationId, { text: String(noteText) });
+          if (res?.reason === 'not-found') throw new Error(`No annotation with id ${annotationId}. Use survey_list_annotations.`);
+          if (res?.reason === 'not-a-text-note') throw new Error('That annotation is not a text note, so its text cannot be changed.');
+          if (res?.reason === 'not-allowed') throw new Error('This person cannot change that note (it belongs to someone else or is locked), so nothing changed.');
+          if (res?.reason === 'locked') throw new Error('A locked annotation blocked the change, so nothing changed.');
+          if (!res?.ok) throw new Error('Could not edit that note.');
+          return 'Changed the note text.';
+        },
+      },
+      {
+        name: 'survey_delete_annotation',
+        description: 'Delete a normal annotation (text note, shape or highlight — not a Survey marker, which has survey_delete_marker) by id. Because this is hard to take back, it does NOTHING unless confirm is true, which the agent should set only after the person has agreed. One Undo restores it. Needs editor or owner access.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            annotation_id: { type: 'string' },
+            confirm: { type: 'boolean', description: 'Leave false (or unset) to check first; set true only after the person has agreed to delete.' },
+          },
+          required: ['annotation_id'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ annotation_id: annotationId, confirm }) => {
+          const doc = getDocument();
+          const found = typeof doc.findAnnotation === 'function' ? doc.findAnnotation(annotationId) : null;
+          if (!found) throw new Error(`No annotation with id ${annotationId}. Use survey_list_annotations.`);
+          if (confirm !== true) {
+            return `Not deleted. Ask the person to confirm, then call again with confirm: true to remove annotation ${annotationId}.`;
+          }
+          const res = doc.deleteAnnotation(annotationId);
+          if (res?.reason === 'not-found') throw new Error(`No annotation with id ${annotationId}.`);
+          if (res?.reason === 'not-allowed') throw new Error('This person cannot delete that annotation (it belongs to someone else or is locked), so nothing was deleted.');
+          if (res?.reason === 'locked') throw new Error('A locked annotation blocked the delete, so nothing was removed.');
+          if (!res?.ok) throw new Error('Could not delete that annotation.');
+          return `Deleted annotation ${annotationId}. One Undo restores it.`;
+        },
+      },
+    ] : []),
     ...surveyItemTools(surveyToolbox),
   ];
   return tools.map((tool) => ({
@@ -335,7 +439,8 @@ export function installWebMcp(win = typeof window !== 'undefined' ? window : und
   } catch { /* storage blocked: stay on */ }
   const readAccess = deps.supabase ? makeAccessReader(deps.supabase, deps.tierLimits) : undefined;
   const controller = new AbortController();
-  for (const { access: _access, documentScoped: _scoped, ...tool } of buildAgentTools({ supabase: deps.supabase, readAccess })) {
+  const includeAnnotationTools = isFeatureOn(ANNOTATION_AGENT_FLAG);
+  for (const { access: _access, documentScoped: _scoped, ...tool } of buildAgentTools({ supabase: deps.supabase, readAccess, includeAnnotationTools })) {
     Promise.resolve(modelContext.registerTool(tool, { signal: controller.signal }))
       .catch((err) => console.warn('[webmcp] could not add tool', tool.name, err));
   }
