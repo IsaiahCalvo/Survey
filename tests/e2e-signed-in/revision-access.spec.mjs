@@ -46,7 +46,7 @@ test('document history follows the document\'s own access rule', async () => {
     for (const who of ['owner', 'friend', 'member']) {
       const { data, error } = await list(who);
       expect(error, `${who}: ${JSON.stringify(error)}`).toBeNull();
-      expect(data.map((r) => r.id), who).toEqual([revision.id]);
+      expect(data.map((r) => r.revision_id), who).toEqual([revision.id]);
       expect((await rows(who)).length, who).toBe(1);
       const markups = await clients[who].from('document_annotations').select('id').eq('document_id', doc.id);
       expect(markups.data.length, `${who} markups`).toBe(1);
