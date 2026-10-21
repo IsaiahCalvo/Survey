@@ -54,7 +54,7 @@ begin
     lower(tg_op),
     tg_table_name,
     v_row ->> 'id',
-    left(coalesce(v_row ->> 'name', v_row ->> 'title', v_row ->> 'annotation_type', v_row ->> 'email'), 120)
+    left(coalesce(v_row ->> 'name', v_row ->> 'title', v_row ->> 'annotation_type', v_row ->> 'email', v_row ->> 'target_email', v_row ->> 'sheet_name'), 120)
   );
   delete from public.agent_activity
    where user_id = v_uid and created_at < now() - interval '90 days';

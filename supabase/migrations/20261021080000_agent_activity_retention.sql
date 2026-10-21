@@ -49,7 +49,7 @@ begin
     lower(tg_op),
     tg_table_name,
     v_row ->> 'id',
-    left(coalesce(v_row ->> 'name', v_row ->> 'title', v_row ->> 'annotation_type', v_row ->> 'email'), 120)
+    left(coalesce(v_row ->> 'name', v_row ->> 'title', v_row ->> 'annotation_type', v_row ->> 'email', v_row ->> 'target_email', v_row ->> 'sheet_name'), 120)
   );
   perform public.prune_agent_activity();
   return null;
