@@ -248,6 +248,42 @@ test('an agent cannot change the password or email, or let in another agent', as
   const consent = await authCall(token, `oauth/authorizations/${authorizationId}/consent`, 'POST', { action: 'approve' });
   const answer = await consent.json().catch(() => ({}));
   expect(String(answer.redirect_url || '')).not.toContain('code=');
+
+  // The person's own ask names the agent they are letting in, so the first
+  // agent cannot spend it on the child.
+  const human = (await (await fetch(`${API()}/auth/v1/token?grant_type=password`, {
+    method: 'POST', headers: { apikey: KEY(), 'content-type': 'application/json' },
+    body: JSON.stringify({ email: account.email, password: account.password }),
+  })).json()).access_token;
+  const otherId = await registerAgent(`Other agent ${RUN}`);
+  expect((await agentApi(human).rpc('begin_auth_change', { p_action: 'consent', p_target: otherId })).status).toBeLessThan(300);
+  const stolen = await authCall(token, `oauth/authorizations/${authorizationId}/consent`, 'POST', { action: 'approve' });
+  expect(String((await stolen.json().catch(() => ({}))).redirect_url || '')).not.toContain('code=');
+});
+
+test('an agent cannot let a removed agent back in', async ({ page, browser }) => {
+  const account = E2E_ACCOUNTS.owner;
+  const { clientId: removedId } = await agentSignIn(page, account, `Removed agent ${RUN}`);
+  const fresh = await browser.newContext();
+  const { tok } = await agentSignIn(await fresh.newPage(), account, `Live agent ${RUN}`);
+  await fresh.close();
+  const human = (await (await fetch(`${API()}/auth/v1/token?grant_type=password`, {
+    method: 'POST', headers: { apikey: KEY(), 'content-type': 'application/json' },
+    body: JSON.stringify({ email: account.email, password: account.password }),
+  })).json()).access_token;
+  expect((await authCall(human, `user/oauth/grants?client_id=${removedId}`, 'DELETE')).status).toBeLessThan(300);
+
+  // The removed agent asks again; the live agent presses Allow on it. Auth
+  // takes the update path here (the old consent row), not an insert.
+  const challenge = crypto.createHash('sha256').update(crypto.randomBytes(48).toString('base64url')).digest('base64url');
+  const authorize = await fetch(`${API()}/auth/v1/oauth/authorize?${new URLSearchParams({
+    response_type: 'code', client_id: removedId, redirect_uri: REDIRECT,
+    code_challenge: challenge, code_challenge_method: 'S256', state: 's', scope: 'email',
+  })}`, { redirect: 'manual', headers: { apikey: KEY() } });
+  const authorizationId = new URL(authorize.headers.get('location')).searchParams.get('authorization_id');
+  await authCall(tok.access_token, `oauth/authorizations/${authorizationId}`);
+  const consent = await authCall(tok.access_token, `oauth/authorizations/${authorizationId}/consent`, 'POST', { action: 'approve' });
+  expect(String((await consent.json().catch(() => ({}))).redirect_url || '')).not.toContain('code=');
 });
 
 test('the person still changes their own password, from Settings or a reset link', async () => {

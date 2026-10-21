@@ -18,15 +18,18 @@
 create table if not exists public.auth_change_intents (
   user_id uuid not null references auth.users(id) on delete cascade,
   action text not null check (action in ('password', 'email', 'consent')),
+  -- For 'consent': the agent (OAuth client id) the person is letting in, so
+  -- another agent cannot spend the ask on itself. '' for the others.
+  target text not null default '',
   created_at timestamptz not null default now(),
-  primary key (user_id, action)
+  primary key (user_id, action, target)
 );
 
 alter table public.auth_change_intents enable row level security;
 revoke all on table public.auth_change_intents from public, anon, authenticated;
 grant all on table public.auth_change_intents to service_role;
 
-create or replace function public.begin_auth_change(p_action text, p_user_id uuid default null)
+create or replace function public.begin_auth_change(p_action text, p_user_id uuid default null, p_target text default '')
 returns void
 language plpgsql
 security definer
@@ -38,6 +41,9 @@ begin
   if p_action not in ('password', 'email', 'consent') then
     raise exception 'unknown account change' using errcode = '22023';
   end if;
+  if (p_action = 'consent') <> (coalesce(p_target, '') <> '') then
+    raise exception 'a consent names its agent; nothing else does' using errcode = '22023';
+  end if;
   if auth.role() = 'service_role' and p_user_id is not null then
     v_user := p_user_id;
   elsif v_user is null then
@@ -45,17 +51,17 @@ begin
   elsif public.is_agent_session() then
     raise exception 'agents cannot change the account' using errcode = '42501';
   end if;
-  insert into public.auth_change_intents (user_id, action, created_at)
-  values (v_user, p_action, now())
-  on conflict (user_id, action) do update set created_at = excluded.created_at;
+  insert into public.auth_change_intents (user_id, action, target, created_at)
+  values (v_user, p_action, coalesce(p_target, ''), now())
+  on conflict (user_id, action, target) do update set created_at = excluded.created_at;
 end;
 $$;
 
-revoke all on function public.begin_auth_change(text, uuid) from public, anon;
-grant execute on function public.begin_auth_change(text, uuid) to authenticated, service_role;
+revoke all on function public.begin_auth_change(text, uuid, text) from public, anon;
+grant execute on function public.begin_auth_change(text, uuid, text) to authenticated, service_role;
 
 -- True (and used up) when the person asked for this change in the last 2 minutes.
-create or replace function public.take_auth_change_intent(p_user_id uuid, p_action text)
+create or replace function public.take_auth_change_intent(p_user_id uuid, p_action text, p_target text default '')
 returns boolean
 language sql
 security definer
@@ -63,14 +69,14 @@ set search_path = ''
 as $$
   with used as (
     delete from public.auth_change_intents
-     where user_id = p_user_id and action = p_action
+     where user_id = p_user_id and action = p_action and target = p_target
        and created_at > now() - interval '2 minutes'
     returning 1
   )
   select exists (select 1 from used);
 $$;
 
-revoke all on function public.take_auth_change_intent(uuid, text) from public, anon, authenticated;
+revoke all on function public.take_auth_change_intent(uuid, text, text) from public, anon, authenticated;
 
 create or replace function public.guard_account_change()
 returns trigger
@@ -119,8 +125,11 @@ begin
 end;
 $$;
 
--- Letting an agent in. Auth upserts the consent in the same transaction that
--- approves the request, so refusing here refuses the approval.
+-- Letting an agent in. Auth writes the consent in the same transaction that
+-- approves the request, so refusing here refuses the approval. It inserts a
+-- new consent, or updates the old row (new granted_at, revoked_at cleared)
+-- when that agent was let in before, so both are guarded. Revoking only
+-- sets revoked_at and passes.
 create or replace function public.guard_oauth_consent()
 returns trigger
 language plpgsql
@@ -128,7 +137,13 @@ security definer
 set search_path = ''
 as $$
 begin
-  if not public.take_auth_change_intent(new.user_id, 'consent') then
+  if tg_op = 'UPDATE'
+     and new.granted_at is not distinct from old.granted_at
+     and new.scopes is not distinct from old.scopes
+     and not (old.revoked_at is not null and new.revoked_at is null) then
+    return new;
+  end if;
+  if not public.take_auth_change_intent(new.user_id, 'consent', new.client_id::text) then
     raise exception 'account_change_needs_the_person' using errcode = '42501',
       hint = 'Call begin_auth_change(''consent'') with the person''s own session first.';
   end if;
@@ -142,7 +157,7 @@ do $$
 begin
   if not exists (select 1 from pg_trigger where tgname = 'guard_oauth_consent' and tgrelid = 'auth.oauth_consents'::regclass) then
     create trigger guard_oauth_consent
-      before insert on auth.oauth_consents
+      before insert or update on auth.oauth_consents
       for each row execute function public.guard_oauth_consent();
   end if;
 end;
