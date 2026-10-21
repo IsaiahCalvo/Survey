@@ -124,7 +124,46 @@ async function heapByConstructor(cdp) {
     v[0] += snap.nodes[i + iSize]; v[1] += 1;
     by.set(key, v);
   }
-  return [...by].sort((a, b) => b[1][0] - a[1][0]).slice(0, HEAP_TOP).map(([k, [b, n]]) => `${(b / 1e6).toFixed(2)}MB x${n} ${k}`);
+  const rows = [...by].sort((a, b) => b[1][0] - a[1][0]).slice(0, HEAP_TOP).map(([k, [b, n]]) => `${(b / 1e6).toFixed(2)}MB x${n} ${k}`);
+  // Retainer chains of the biggest groups: a sample of nodes from each of the
+  // top 4 rows, each walked up its first strong retainer, then counted.
+  const ef = snap.snapshot.meta.edge_fields;
+  const edgeTypes = snap.snapshot.meta.edge_types[0];
+  const iEdgeCount = f.indexOf('edge_count');
+  const iEType = ef.indexOf('type'); const iEName = ef.indexOf('name_or_index'); const iTo = ef.indexOf('to_node');
+  const retainer = new Int32Array(snap.nodes.length / f.length).fill(-1);
+  const retEdge = new Array(retainer.length);
+  for (let n = 0, e = 0; n < snap.nodes.length; n += f.length) {
+    const count = snap.nodes[n + iEdgeCount];
+    for (let k = 0; k < count; k += 1, e += ef.length) {
+      const type = edgeTypes[snap.edges[e + iEType]];
+      if (type === 'weak' || type === 'shortcut') continue;
+      const to = snap.edges[e + iTo] / f.length;
+      if (retainer[to] === -1) {
+        retainer[to] = n / f.length;
+        const nm = snap.edges[e + iEName];
+        retEdge[to] = type === 'element' || type === 'hidden' ? `[${type === 'element' ? 'i' : 'h'}]` : snap.strings[nm];
+      }
+    }
+  }
+  const nodeName = (i) => `${types[snap.nodes[i * f.length + iType]]}:${snap.strings[snap.nodes[i * f.length + iName]].slice(0, 30)}`;
+  const topKeys = [...by].sort((a, b) => b[1][0] - a[1][0]).slice(0, 4).map(([k]) => k);
+  for (const key of topKeys) {
+    const chains = new Map();
+    let seen = 0;
+    for (let i = 0; i < retainer.length && seen < 3000; i += 1) {
+      if (nodeName(i) !== key.slice(0, key.indexOf(':') + 31) && `${types[snap.nodes[i * f.length + iType]]}:${snap.strings[snap.nodes[i * f.length + iName]].slice(0, 60)}` !== key) continue;
+      if ((i * 7919) % 13 !== 0) continue; // spread the sample
+      seen += 1;
+      const parts = [];
+      for (let cur = i, d = 0; cur >= 0 && d < 9; cur = retainer[cur], d += 1) parts.push(`${retEdge[cur] ?? ''}<${nodeName(cur)}`);
+      const chain = parts.slice(1).join(' ');
+      chains.set(chain, (chains.get(chain) || 0) + 1);
+    }
+    rows.push(`RETAINERS of ${key} (sample ${seen})`);
+    for (const [c, n] of [...chains].sort((a, b) => b[1] - a[1]).slice(0, 6)) rows.push(`   ${n} ${c}`);
+  }
+  return rows;
 }
 
 async function snapshotDom(page) {
