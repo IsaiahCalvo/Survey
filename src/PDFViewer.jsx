@@ -24233,6 +24233,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 })
                 .catch(() => {});
             },
+            // A range chunk failed for good after the streamed open: reload
+            // this file once through the full download.
+            onStreamBroken: () => {
+              streamNeedsBytesPathsRef.current.add(streamPath);
+              if (!isCancelled && latestPdfFileRef.current === pdfFile) setLoadRetryToken((t) => t + 1);
+            },
             onAllBytes: (bytes) => {
               if (!pdfBytesHavePresentationTag(bytes)) return;
               streamNeedsBytesPathsRef.current.add(streamPath);
