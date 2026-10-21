@@ -14,10 +14,33 @@ import { bytesToPgHex } from '../../supabase/functions/_shared/pgBytea.js';
 
 const FLAG = 'survey-connector-writes';
 const RUN = crypto.randomBytes(3).toString('hex');
+// set_answers validates against the item's template category, so the seeded
+// marker must point at a real category + checklist, linked to the document.
+const TEMPLATE_ID = `e2e00000-0000-4000-8000-0000000c${RUN}`;
+const CATEGORY_ID = `e2e-cat-${RUN}`;
+const CHECKLIST_ID = `e2e-chk-${RUN}`;
 
 async function setFlag(mode) {
   const { error } = await adminClient().from('feature_flags').upsert({ key: FLAG, mode });
   if (error) throw new Error(`set flag ${mode}: ${error.message}`);
+}
+
+// Seed a one-category template (default Y / N / N/A answers) owned by the owner
+// and link it to the document, so the marker's category resolves.
+async function seedTemplate() {
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const { data: { user } } = await owner.auth.getUser();
+  const admin = adminClient();
+  const config = {
+    modules: [{ id: `mod-${RUN}`, name: 'General', categories: [
+      { id: CATEGORY_ID, name: 'Door', checklist: [{ id: CHECKLIST_ID, text: 'Locked?' }] },
+    ] }],
+    entities: [],
+  };
+  const tpl = await admin.from('templates').upsert({ id: TEMPLATE_ID, user_id: user.id, name: `E2E ${RUN}`, config });
+  if (tpl.error) throw new Error(`seed template: ${tpl.error.message}`);
+  const link = await admin.from('document_templates').upsert({ document_id: E2E_DOCUMENT.id, template_id: TEMPLATE_ID, linked_by: user.id });
+  if (link.error) throw new Error(`link template: ${link.error.message}`);
 }
 
 // Seed one survey marker into the document's Yjs annotation doc through the
@@ -26,7 +49,7 @@ async function seedMarker(itemId) {
   const owner = await apiClientFor(E2E_ACCOUNTS.owner);
   const doc = new Y.Doc();
   syncSurveyMarkersToDoc(doc, {
-    [itemId]: { id: itemId, pageNumber: 1, bounds: { x: 10, y: 10, width: 40, height: 30 }, categoryId: `cat-${RUN}`, name: `E2E ${itemId}`, checklistResponses: {} },
+    [itemId]: { id: itemId, pageNumber: 1, bounds: { x: 10, y: 10, width: 40, height: 30 }, categoryId: CATEGORY_ID, name: `E2E ${itemId}`, checklistResponses: {} },
   });
   const { error } = await owner.rpc('append_annotation_update', {
     p_document_id: E2E_DOCUMENT.id, p_client_id: `seed-${itemId}`, p_client_seq: 1, p_data: bytesToPgHex(Y.encodeStateAsUpdate(doc)),
@@ -46,11 +69,16 @@ async function mcp(token, method, params) {
 const toolText = (reply) => String(reply?.result?.content?.[0]?.text ?? '');
 const toolNames = (reply) => (reply?.result?.tools || []).map((t) => t.name);
 
-test.afterEach(async () => { await setFlag('off'); });
+test.afterEach(async () => {
+  await setFlag('off');
+  // Cascades the document_templates link.
+  await adminClient().from('templates').delete().eq('id', TEMPLATE_ID);
+});
 
 test('a write-scope agent sets an answer through the connector, and an open client converges', async ({ page, browser }) => {
   const itemId = `surveyMarker-${RUN}-ok`;
-  const checklistItemId = `cl-${RUN}`;
+  const checklistItemId = CHECKLIST_ID;
+  await seedTemplate();
   await seedMarker(itemId);
   await setFlag('on');
 

@@ -85,9 +85,15 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
   const entities = new Map<string, string>();
   const linkedCats = new Set<string>();
   const linkedEnts = new Set<string>();
+  // The answer values a category's checklist items may take, from the owning
+  // template's answer set (else Y / N / N/A). null means "cannot tell" — the
+  // template leans on an export kit whose set this function does not resolve —
+  // so set_answers does not restrict the value in that case.
+  const answerValues = new Map<string, string[] | null>();
   for (const row of data || []) {
     const isLinked = linked.has(String(row.id));
     const config = (row.config && typeof row.config === 'object' ? row.config : {}) as Record<string, unknown>;
+    const tplValues = answerValuesOf(config);
     const modules = (config.modules || config.spaces || []) as Record<string, unknown>[];
     for (const module of Array.isArray(modules) ? modules : []) {
       const cats = (module.categories || module.cats || []) as Record<string, unknown>[];
@@ -95,6 +101,7 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
         if (!c?.id) continue;
         if (isLinked) linkedCats.add(String(c.id));
         if (categories.has(String(c.id))) continue;
+        answerValues.set(String(c.id), tplValues);
         const list = (c.checklist || c.items || []) as unknown[];
         categories.set(String(c.id), {
           id: String(c.id),
@@ -112,8 +119,38 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
       if (!entities.has(String(e.id))) entities.set(String(e.id), String(e.name || ''));
     }
   }
-  return { categories, entities, linkedCats, linkedEnts };
+  return { categories, entities, linkedCats, linkedEnts, answerValues };
 }
+
+// A template's allowed answer values (answerSets.js: template.answerSet wins,
+// else Y / N / N/A). Returns null when the template names an export kit but no
+// own set — that kit's values are not resolved here, so do not restrict.
+const DEFAULT_ANSWER_VALUES = ['Y', 'N', 'N/A'];
+function answerValuesOf(config: Record<string, unknown>): string[] | null {
+  const set = config.answerSet;
+  if (Array.isArray(set) && set.length >= 2 && set.length <= 6) {
+    const values = set
+      .map((a) => (a && typeof a === 'object' ? String((a as Record<string, unknown>).value ?? '').trim() : ''))
+      .filter((v) => v);
+    if (values.length === set.length) return values;
+  }
+  if (config.exportKitId) return null;
+  return DEFAULT_ANSWER_VALUES;
+}
+
+// A note can be a plain string, an object { text, media, ... }, or that object
+// as a JSON string (document_annotations.notes is TEXT). Return it as an object
+// so add_note can append to `text` while keeping media and other fields.
+const noteObjectOf = (note: unknown): Record<string, unknown> => {
+  if (note && typeof note === 'object') return { ...(note as Record<string, unknown>) };
+  if (typeof note === 'string' && note.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(note);
+      if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
+    } catch { /* plain text */ }
+  }
+  return typeof note === 'string' && note ? { text: note } : {};
+};
 
 const noteText = (notes: unknown) => {
   if (!notes) return '';
@@ -452,29 +489,45 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     const itemId = String(args.item_id || '');
     if (!itemId) throw new ToolError('Say which item to change with item_id.');
     await requireWrite(db);
+    // set_answers validates each id and value against the item's own category,
+    // the way the in-app agent does (surveyAgentTools.js), so an agent cannot
+    // persist a checklist id or answer the template does not define.
+    const names = name === 'set_answers' ? await categoryNames(db, documentId) : null;
     const result = await writeMarkers(db, documentId, (markers) => {
       const marker = markers[itemId];
       if (!marker) throw new ToolError('No item with that id in this document. Use find_survey_items.');
       if (name === 'set_answers') {
         const answers = Array.isArray(args.answers) ? args.answers : [];
         if (!answers.length) throw new ToolError('Pass at least one answer.');
+        const categoryId = String(marker.categoryId || '');
+        const category = categoryId ? names!.categories.get(categoryId) : undefined;
+        if (!category) throw new ToolError('This item has no category in the template, so it has no checklist.');
+        const checklistIds = new Set(category.checklist.map((c) => c.id));
+        const allowed = names!.answerValues.get(categoryId);
         const responses = { ...((marker.checklistResponses as Record<string, unknown>) || {}) };
         for (const a of answers) {
           const row = (a && typeof a === 'object' ? a : {}) as Record<string, unknown>;
           const clId = String(row.checklist_item_id || '');
           if (!clId) throw new ToolError('Each answer needs a checklist_item_id from get_survey_context.');
+          if (!checklistIds.has(clId)) throw new ToolError(`${clId} is not on the ${category.name} checklist. Use get_survey_context for its checklist ids.`);
           const value = String(row.value ?? '');
+          if (!value) throw new ToolError('Each answer needs a value.');
+          if (Array.isArray(allowed) && !allowed.includes(value)) {
+            throw new ToolError(`"${value}" is not an allowed answer on ${category.name}. Allowed: ${allowed.join(', ')}.`);
+          }
           responses[clId] = { ...((responses[clId] as Record<string, unknown>) || {}), selection: value };
         }
         markers[itemId] = { ...marker, checklistResponses: responses };
       } else {
         const add = String(args.text || '').trim();
         if (!add) throw new ToolError('Say what to add to the note with text.');
-        const prev = (typeof marker.note === 'string' && marker.note)
-          ? marker.note
-          : (typeof marker.notes === 'string' ? marker.notes : '');
-        const next = prev ? `${prev}\n${add}` : add;
-        markers[itemId] = { ...marker, note: next, notes: next };
+        // Keep the note's shape: append to its `text`, never drop media or
+        // other fields, and never write JSON back as raw text. `note` is the
+        // field every editor writes (documentSurveyMarkerMapper.js).
+        const obj = noteObjectOf(marker.note ?? marker.notes);
+        const beforeText = String(obj.text || '').trimEnd();
+        obj.text = beforeText ? `${beforeText}\n${add}` : add;
+        markers[itemId] = { ...marker, note: obj };
       }
     });
     return text({ ok: true, item_id: itemId, changed: result.changed });

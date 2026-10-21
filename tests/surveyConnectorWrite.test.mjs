@@ -52,15 +52,42 @@ test('re-writing identical marker state produces no update (idempotent)', () => 
   assert.deepEqual([res.added, res.updated, res.removed], [0, 0, 0]);
 });
 
-test('add_note appends and never deletes the other markers', () => {
+// Mirrors the connector's add_note: parse the note to an object, append to its
+// text, keep media and other fields, and never touch the other marker.
+const noteObjectOf = (note) => {
+  if (note && typeof note === 'object') return { ...note };
+  if (typeof note === 'string' && note.trim().startsWith('{')) {
+    try { const p = JSON.parse(note); if (p && typeof p === 'object') return p; } catch { /* plain */ }
+  }
+  return typeof note === 'string' && note ? { text: note } : {};
+};
+
+test('add_note appends to the note text, keeps media, and leaves other markers', () => {
   const doc = new Y.Doc();
-  syncSurveyMarkersToDoc(doc, { a: { id: 'a', note: 'first' }, b: { id: 'b', note: 'keep' } });
+  syncSurveyMarkersToDoc(doc, {
+    a: { id: 'a', note: { text: 'first', media: [{ id: 'm1', kind: 'photo', path: 'p/1.jpg' }] } },
+    b: { id: 'b', note: 'keep' },
+  });
   const markers = docToSurveyMarkers(doc);
-  const prev = (typeof markers.a.note === 'string' && markers.a.note) ? markers.a.note : (markers.a.notes || '');
-  markers.a = { ...markers.a, note: `${prev}\nsecond`, notes: `${prev}\nsecond` };
+  const obj = noteObjectOf(markers.a.note);
+  const before = String(obj.text || '').trimEnd();
+  obj.text = before ? `${before}\nsecond` : 'second';
+  markers.a = { ...markers.a, note: obj };
   const res = syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
   assert.deepEqual([res.added, res.updated, res.removed], [0, 1, 0]);
   const out = docToSurveyMarkers(doc);
-  assert.equal(out.a.note, 'first\nsecond');
+  assert.equal(out.a.note.text, 'first\nsecond');
+  assert.deepEqual(out.a.note.media, [{ id: 'm1', kind: 'photo', path: 'p/1.jpg' }], 'media is kept');
   assert.equal(out.b.note, 'keep', 'the untouched marker stays');
+});
+
+test('add_note on a plain-string note turns it into { text } without losing text', () => {
+  const doc = new Y.Doc();
+  syncSurveyMarkersToDoc(doc, { a: { id: 'a', note: 'hello' } });
+  const markers = docToSurveyMarkers(doc);
+  const obj = noteObjectOf(markers.a.note);
+  obj.text = `${String(obj.text || '').trimEnd()}\nworld`;
+  markers.a = { ...markers.a, note: obj };
+  syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  assert.equal(docToSurveyMarkers(doc).a.note.text, 'hello\nworld');
 });
