@@ -8,9 +8,16 @@ name: Daily crash summary
 # Supabase Management API with the same token the production deploy uses;
 # the table itself is closed to browsers.
 
+# GitHub runs this repo's cron schedules only now and then (one scheduled run
+# of any workflow on 2026-10-21 while ~350 others ran), so every finished
+# "Build and tests" run also starts it. The first such run after 07:00 UTC
+# each day posts; the rest of that day skip (a day-keyed cache entry marks it).
 on:
   schedule:
     - cron: '15 7 * * *'
+  workflow_run:
+    workflows: ["Build and tests"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -22,7 +29,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  due:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      key: ${{ steps.when.outputs.key }}
+      checked: ${{ steps.mark.outputs.cache-hit }}
+      early: ${{ steps.when.outputs.early }}
+    steps:
+      - name: This day's mark
+        id: when
+        run: |
+          echo "key=crash-summary-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          [ "$(date -u +%H)" -lt 7 ] && echo "early=true" >> "$GITHUB_OUTPUT" || true
+      - name: Already done this day?
+        id: mark
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/cache/restore@v4
+        with:
+          path: .crash-summary-mark
+          key: ${{ steps.when.outputs.key }}
+          lookup-only: true
+
   summary:
+    needs: due
+    # Not before 07:00 UTC, so the day's summary still covers the night.
+    if: needs.due.outputs.checked != 'true' && (github.event_name != 'workflow_run' || needs.due.outputs.early != 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -59,3 +91,10 @@ jobs:
           open="$(gh issue list --label crash-report --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
           if [ -n "$open" ]; then gh issue comment "$open" --body "$body"
           else gh issue create --title "$title" --label crash-report --body "$body"; fi
+
+      - name: Mark today done
+        run: mkdir -p .crash-summary-mark && date -u +%FT%TZ > .crash-summary-mark/at
+      - uses: actions/cache/save@v4
+        with:
+          path: .crash-summary-mark
+          key: ${{ needs.due.outputs.key }}

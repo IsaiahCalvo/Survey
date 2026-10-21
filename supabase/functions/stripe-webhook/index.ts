@@ -271,6 +271,7 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
             } else {
                 console.log('SUCCESS: Created new subscription record');
                 console.log('Inserted data:', insertData);
+                if (tier !== 'free') await restoreAfterUpgrade(supabase, userId);
             }
             console.log('=== handleCheckoutCompleted END ===');
             return;
@@ -310,6 +311,9 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
         console.log('Updated rows:', data);
         console.log('Number of rows updated:', data?.length || 0);
     }
+
+    // Both branches above either wrote the paid tier or threw.
+    if (tier !== 'free') await restoreAfterUpgrade(supabase, userId);
 
     console.log('=== handleCheckoutCompleted END ===');
 }
@@ -354,6 +358,8 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
         if (isDowngradeToFree) {
             console.log(`Detected downgrade for user ${actualUserId}`);
         }
+        const isUpgradeFromFree = oldTier === 'free' && tier !== 'free'
+            && (subscription.status === 'active' || subscription.status === 'trialing');
 
         // Update subscription with null-safe date handling
         const period = subscriptionPeriod(subscription);
@@ -426,7 +432,28 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
                     console.log(`Archived ${archiveResult?.projects_archived_count || 0} projects and ${archiveResult?.documents_archived_count || 0} documents`);
                 }
             }
+            if (isUpgradeFromFree && actualUserId) {
+                await restoreAfterUpgrade(supabase, actualUserId);
+            }
         }
+    }
+}
+
+// Back on a paid tier: un-archive what a downgrade to Free archived (only rows
+// the downgrade marked, never ones the person archived). Never fails the
+// webhook: the tier is already written, and Stripe retrying would not help.
+async function restoreAfterUpgrade(supabase: any, userId: string) {
+    try {
+        const { data: restoreResult, error: restoreError } = await supabase.rpc('restore_after_upgrade', {
+            p_user_id: userId
+        });
+        if (restoreError) {
+            console.error('Error restoring archived items after upgrade:', restoreError);
+        } else {
+            console.log(`Restored ${restoreResult?.projects_restored_count || 0} projects and ${restoreResult?.documents_restored_count || 0} documents after upgrade`);
+        }
+    } catch (restoreErr) {
+        console.error('Error restoring archived items after upgrade:', restoreErr);
     }
 }
 
