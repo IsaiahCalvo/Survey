@@ -33354,7 +33354,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const found = findAnnotationById(id);
         if (!found) return { ok: false, reason: 'not-found' };
         const { obj } = found;
-        if (obj?.data?.type !== 'text-markup') return { ok: false, reason: 'not-a-highlight' };
+        // Underline/strikeout/squiggly/link/redact all store data.type
+        // 'text-markup' too, so match the markupType, not just the family, or
+        // this highlight-only tool would silently restyle them.
+        if (obj?.data?.markupType !== 'highlight') return { ok: false, reason: 'not-a-highlight' };
         if (!canModify({ annotation: obj, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
         const currentOpacity = Number.isFinite(Number(obj.opacity)) ? Number(obj.opacity) : 0.3;
         const nextColor = color || obj.fill || obj.stroke || '#f4d35e';
