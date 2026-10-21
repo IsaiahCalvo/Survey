@@ -28,12 +28,13 @@ function startProCheckout() {
 }
 
 export function useProLock() {
-  const { tier, loadingTier } = useAuth();
+  const { user, tier, loadingTier, tierUserId } = useAuth();
   return useCallback((feature) => {
-    // While the plan is still loading every account reads as Free: stop the
+    // While the plan is still loading (at start-up, or just after a sign-in
+    // when `tier` is still the default) every account reads as Free: stop the
     // action without a prompt, so a paying user never sees an upgrade ask and
     // a Free user can't slip through (e.g. start OneDrive sign-in) meanwhile.
-    if (loadingTier) return isFeatureOn(PRO_LOCK_FLAG);
+    if (loadingTier || (user?.id && tierUserId !== user.id)) return isFeatureOn(PRO_LOCK_FLAG);
     return blockIfProLocked(feature, tier, { onUpgrade: startProCheckout });
-  }, [tier, loadingTier]);
+  }, [user?.id, tier, loadingTier, tierUserId]);
 }
