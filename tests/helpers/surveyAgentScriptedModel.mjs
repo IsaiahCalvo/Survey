@@ -25,6 +25,11 @@ export const PLANS = {
   "uh so like, D-117, hardware's not there, it's just the frame and, um, wires hanging out": { find: 'D-117', answers: { hardware: 'N' } },
   'D-118 add a note: ceiling tile missing above the door': { find: 'D-118', note: 'Ceiling tile missing above the door.' },
   "what's the weather today": {},
+  // On the plan but not in the survey: offer, or add when asked.
+  'D-119 cables are pulled': { find: 'D-119', onPlan: { tag: 'D-119', categoryName: 'Door' } },
+  'Add door D-119 from the plan, the lock is installed': {
+    find: 'D-119', onPlan: { tag: 'D-119', category: 'cat-door', add: true }, answers: { lock: 'Y' },
+  },
 };
 
 const reply = (content, calls = []) => ({ content, tool_calls: calls });
@@ -39,25 +44,44 @@ export function scriptedReply(messages) {
   const plan = PLANS[said];
   if (!plan) throw new Error(`no plan for "${said}"`);
   const turn = messages.slice(messages.lastIndexOf(messages.findLast((m) => m.role === 'user')) + 1);
-  const toolResults = turn.filter((m) => m.role === 'tool');
   if (!plan.find) return reply('I can only help with survey items.');
-  if (!toolResults.length) return reply('', [callTool(1, 'find_items', { query: plan.find, category_id: null })]);
-  if (toolResults.length > 1 || turn.at(-2)?.tool_calls?.[0]?.function?.name !== 'find_items') return reply('Done.');
-  const { matches } = JSON.parse(toolResults[0].content);
-  const top = matches[0];
-  if (plan.tryBad) {
-    if (!top) return reply('I could not find that item, so I changed nothing.');
-    return reply('', [callTool(2, 'set_answers', { item_id: top.id, answers: [{ checklist_item_id: 'flying', value: 'flying' }] })]);
+  const lastCall = turn.filter((m) => m.role === 'assistant').at(-1)?.tool_calls?.[0]?.function?.name;
+  const lastResult = turn.filter((m) => m.role === 'tool').at(-1)?.content;
+  const writesOn = (itemId) => {
+    const calls = [];
+    if (plan.answers) {
+      calls.push(callTool(2, 'set_answers', {
+        item_id: itemId,
+        answers: Object.entries(plan.answers).map(([id, value]) => ({ checklist_item_id: id, value })),
+      }));
+    }
+    if (plan.note) calls.push(callTool(3, 'add_note', { item_id: itemId, text: plan.note }));
+    if (plan.entity) calls.push(callTool(4, 'set_entity', { item_id: itemId, entity_id: plan.entity }));
+    return calls.length ? reply('', calls) : reply('Done.');
+  };
+  if (!lastCall) return reply('', [callTool(1, 'find_items', { query: plan.find, category_id: null })]);
+  if (lastCall === 'find_items') {
+    const top = JSON.parse(lastResult).matches[0];
+    if (!top && plan.onPlan) return reply('', [callTool(5, 'find_on_plan', { text: plan.onPlan.tag })]);
+    if (plan.tryBad) {
+      if (!top) return reply('I could not find that item, so I changed nothing.');
+      return reply('', [callTool(2, 'set_answers', { item_id: top.id, answers: [{ checklist_item_id: 'flying', value: 'flying' }] })]);
+    }
+    if (!top) throw new Error(`no match for "${plan.find}"`);
+    return writesOn(top.id);
   }
-  if (!top) throw new Error(`no match for "${plan.find}"`);
-  const calls = [];
-  if (plan.answers) {
-    calls.push(callTool(2, 'set_answers', {
-      item_id: top.id,
-      answers: Object.entries(plan.answers).map(([id, value]) => ({ checklist_item_id: id, value })),
-    }));
+  if (lastCall === 'find_on_plan') {
+    const spot = JSON.parse(lastResult).matches[0];
+    if (!spot) return reply(`${plan.onPlan.tag} is not in the survey or on the plan.`);
+    if (!plan.onPlan.add) return reply(`${plan.onPlan.tag} is not in the survey yet, but it is on page ${spot.page}. Add it as a ${plan.onPlan.categoryName}?`);
+    return reply('', [callTool(6, 'create_item', {
+      name: plan.onPlan.tag, category_id: plan.onPlan.category, plan_match_id: spot.id, entity_id: null,
+    })]);
   }
-  if (plan.note) calls.push(callTool(3, 'add_note', { item_id: top.id, text: plan.note }));
-  if (plan.entity) calls.push(callTool(4, 'set_entity', { item_id: top.id, entity_id: plan.entity }));
-  return reply('', calls);
+  if (lastCall === 'create_item') {
+    const created = /id (\S+?)\.$/.exec(lastResult)?.[1];
+    if (!created) throw new Error(`create_item failed: ${lastResult}`);
+    return writesOn(created);
+  }
+  return reply('Done.');
 }
