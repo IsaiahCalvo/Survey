@@ -2,7 +2,7 @@
 // Each tool in TOOLS below says which view it uses, its options, and how it
 // turns the chosen files into output files.
 import {
-  ToolError, addHeaderFooter, organizePages, flattenPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
+  ToolError, addHeaderFooter, organizePages, flattenPdf, joinPdfTextItems, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
 } from './ops.js';
 import { compressPdf } from './compress.js';
 import { parsePageSet, parseRangeGroups, formatPageSet, everyN } from './ranges.js';
@@ -230,7 +230,7 @@ const TOOLS = {
         progress(`Page ${i} of ${file.pages}`);
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        out.push(content.items.map((it) => (it.str ?? '') + (it.hasEOL ? '\n' : '')).join('').trim());
+        out.push(joinPdfTextItems(content.items));
         page.cleanup();
       }
       const text = out.join('\n\n\f');

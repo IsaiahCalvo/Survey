@@ -249,6 +249,20 @@ export async function organizePages(bytes, order) {
 
 const N = (n) => PDFName.of(n);
 const num = (v) => (v instanceof PDFNumber ? v.asNumber() : 0);
+const clamp01 = (n) => Math.max(0, Math.min(1, n));
+
+// pdf.js hands each text run over as its own item. Spaces usually live in the
+// gap between items, not inside `str`, so joining on '' glued words together.
+export function joinPdfTextItems(items) {
+  let text = '';
+  for (const it of items || []) {
+    const str = it.str ?? '';
+    if (text && !/[\s]$/.test(text) && str && !/^\s/.test(str)) text += ' ';
+    text += str;
+    if (it.hasEOL) text += '\n';
+  }
+  return text.trim();
+}
 
 function appearanceOf(annot, context) {
   const ap = annot.lookup(N('AP'));
@@ -256,11 +270,78 @@ function appearanceOf(annot, context) {
   let normal = ap.get(N('N'));
   let resolved = context.lookup(normal);
   if (resolved instanceof PDFDict && !(resolved instanceof PDFStream)) {
-    const state = annot.get(N('AS'));
-    normal = state ? resolved.get(state) : undefined;
+    // PDF 32000 12.5.5: with no AS, use the default appearance state.
+    const as = annot.get(N('AS'));
+    const keys = resolved.keys();
+    const state = (as && resolved.has(as) && as)
+      || keys.find((k) => k === N('N') || k === N('On') || k === N('Yes'))
+      || keys.find((k) => k !== N('Off'))
+      || keys[0];
+    normal = state && resolved.get(state);
     resolved = context.lookup(normal);
   }
   return resolved instanceof PDFStream ? normal : null;
+}
+
+function asNums(value) {
+  return value instanceof PDFArray ? value.asArray().map(num) : [];
+}
+
+function annotColor(annot) {
+  const c = asNums(annot.lookup(N('C')));
+  if (!c.length) return rgb(1, 0.84, 0);
+  if (c.length === 1) return rgb(clamp01(c[0]), clamp01(c[0]), clamp01(c[0]));
+  if (c.length === 3) return rgb(clamp01(c[0]), clamp01(c[1]), clamp01(c[2]));
+  const [cc, m, y, k] = c;
+  return rgb(clamp01((1 - cc) * (1 - k)), clamp01((1 - m) * (1 - k)), clamp01((1 - y) * (1 - k)));
+}
+
+// Preview and several CAD writers omit /AP and let the viewer paint from
+// /Rect, /C, /QuadPoints or /InkList. Burn that geometry into the page so
+// flatten cannot drop a visible markup.
+function drawMarkupFallback(page, annot, context) {
+  const subtype = annot.get(N('Subtype'));
+  if (subtype === N('Popup')) return true;
+  const color = annotColor(annot);
+  const ca = annot.lookup(N('CA'));
+  const opacity = ca instanceof PDFNumber ? clamp01(ca.asNumber()) : subtype === N('Highlight') ? 0.4 : 1;
+  const line = subtype === N('Underline') || subtype === N('StrikeOut');
+  const box = (x, y, w, h) => {
+    if (line) {
+      const mid = subtype === N('StrikeOut') ? y + h / 2 : y;
+      page.drawLine({ start: { x, y: mid }, end: { x: x + w, y: mid }, thickness: 1, color, opacity });
+      return;
+    }
+    page.drawRectangle({
+      x, y, width: Math.max(w, 0.5), height: Math.max(h, 0.5),
+      color, opacity, borderWidth: 0,
+    });
+  };
+  const quads = asNums(annot.lookup(N('QuadPoints')));
+  if (quads.length >= 8) {
+    for (let i = 0; i + 7 < quads.length; i += 8) {
+      const xs = [quads[i], quads[i + 2], quads[i + 4], quads[i + 6]];
+      const ys = [quads[i + 1], quads[i + 3], quads[i + 5], quads[i + 7]];
+      box(Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    }
+    return true;
+  }
+  const ink = annot.lookup(N('InkList'));
+  if (ink instanceof PDFArray) {
+    let drew = false;
+    for (const entry of ink.asArray()) {
+      const pts = asNums(context.lookup(entry));
+      for (let i = 0; i + 3 < pts.length; i += 2) {
+        page.drawLine({ start: { x: pts[i], y: pts[i + 1] }, end: { x: pts[i + 2], y: pts[i + 3] }, thickness: 1.5, color, opacity });
+        drew = true;
+      }
+    }
+    if (drew) return true;
+  }
+  const rect = asNums(annot.lookup(N('Rect')));
+  if (rect.length < 4) return false;
+  box(Math.min(rect[0], rect[2]), Math.min(rect[1], rect[3]), Math.abs(rect[2] - rect[0]), Math.abs(rect[3] - rect[1]));
+  return true;
 }
 
 // Where an appearance stream lands on the page: its BBox, run through its own
@@ -302,17 +383,21 @@ export async function flattenPdf(bytes) {
       const annot = context.lookup(ref);
       if (!(annot instanceof PDFDict)) return;
       if (annot.get(N('Subtype')) === N('Link')) { keep.push(ref); return; }
-      changed += 1;
       const flags = num(annot.lookup(N('F')));
       const hidden = flags & 2 || flags & 32;
-      const apRef = !hidden && appearanceOf(annot, context);
       const rect = annot.lookup(N('Rect'), PDFArray)?.asArray().map(num);
-      if (!apRef || !rect) return;
-      const stream = context.lookup(apRef);
-      if (!stream.dict.get(N('Subtype'))) stream.dict.set(N('Subtype'), N('Form'));
-      if (!stream.dict.get(N('Type'))) stream.dict.set(N('Type'), N('XObject'));
-      const name = page.node.newXObject(`Flat${p}_${k}`, apRef);
-      page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...appearanceMatrix(stream, rect)), drawObject(name), popGraphicsState());
+      const apRef = !hidden && appearanceOf(annot, context);
+      if (apRef && rect) {
+        const stream = context.lookup(apRef);
+        if (!stream.dict.get(N('Subtype'))) stream.dict.set(N('Subtype'), N('Form'));
+        if (!stream.dict.get(N('Type'))) stream.dict.set(N('Type'), N('XObject'));
+        const name = page.node.newXObject(`Flat${p}_${k}`, apRef);
+        page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...appearanceMatrix(stream, rect)), drawObject(name), popGraphicsState());
+        changed += 1;
+        return;
+      }
+      if (hidden || drawMarkupFallback(page, annot, context)) { changed += 1; return; }
+      keep.push(ref);
     });
     if (keep.length) page.node.set(N('Annots'), context.obj(keep));
     else page.node.delete(N('Annots'));

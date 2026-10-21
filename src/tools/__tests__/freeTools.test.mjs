@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, PDFName, PDFRawStream, degrees } from 'pdf-lib';
 import {
-  addHeaderFooter, organizePages, flattenPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf, visualFrame, loadPdf,
+  addHeaderFooter, organizePages, flattenPdf, joinPdfTextItems, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf, visualFrame, loadPdf,
 } from '../ops.js';
 import { ToolError } from '../errors.js';
 import { compressPdf, deflate, inflate } from '../compress.js';
@@ -196,4 +196,34 @@ test('flatten draws form fields and markups into the page and keeps links', asyn
   assert.ok(xobjects.keys().length >= 2, `xobjects: ${xobjects.keys().length}`);
 
   await assert.rejects(flattenPdf(await samplePdf(1)), (e) => e instanceof ToolError && /nothing|no form/i.test(e.message));
+});
+
+test('flatten burns markups that have no appearance, or only a state dict', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([300, 300]);
+  const ctx = doc.context;
+  const highlight = ctx.register(ctx.obj({
+    Type: 'Annot', Subtype: 'Highlight', Rect: [40, 80, 160, 110],
+    QuadPoints: [40, 110, 160, 110, 40, 80, 160, 80], C: [1, 1, 0],
+  }));
+  const note = ctx.register(ctx.obj({
+    Type: 'Annot', Subtype: 'Text', Rect: [20, 200, 40, 220], Contents: 'hello', C: [1, 0.8, 0],
+  }));
+  const ap = ctx.register(ctx.stream('1 0 0 RG 2 w 1 1 48 48 re S', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 50, 50] }));
+  const stamp = ctx.register(ctx.obj({
+    Type: 'Annot', Subtype: 'Stamp', Rect: [180, 180, 240, 240], AP: { N: ctx.obj({ On: ap }) },
+  }));
+  page.node.addAnnot(highlight);
+  page.node.addAnnot(note);
+  page.node.addAnnot(stamp);
+  const out = await PDFDocument.load(await flattenPdf(await doc.save()));
+  assert.equal(out.getPage(0).node.Annots(), undefined);
+  const xobjects = out.getPage(0).node.Resources()?.lookup(PDFName.of('XObject'));
+  assert.ok(xobjects && xobjects.keys().length >= 1, 'state-dict appearance is drawn');
+});
+
+test('joinPdfTextItems inserts the spaces pdf.js leaves between items', () => {
+  assert.equal(joinPdfTextItems([{ str: 'Hello' }, { str: 'World', hasEOL: true }, { str: 'Next' }, { str: 'line' }]), 'Hello World\nNext line');
+  assert.equal(joinPdfTextItems([{ str: 'Hello ' }, { str: 'World' }]), 'Hello World');
+  assert.equal(joinPdfTextItems([{ str: 'already spaced' }]), 'already spaced');
 });
