@@ -125,6 +125,9 @@ async function cleanup({ url, serviceKey }) {
       await must('drop documents', admin.from('documents').delete().in('id', docIds));
     }
     await must('drop projects', admin.from('projects').delete().in('user_id', batch));
+    await must('drop subscriptions', admin.from('user_subscriptions').delete().in('user_id', batch));
+    // handle_new_user() adds a profile row with no cascade from auth.users.
+    await must('drop profiles', admin.from('users').delete().in('id', batch));
   }
   for (const id of ids) await must(`delete user ${id}`, admin.auth.admin.deleteUser(id));
   return ids.length;
