@@ -21,6 +21,7 @@ import {
   getDocumentCollaborators,
   updateCollaboratorRole,
   removeDocumentCollaborator,
+  getDocumentOwnerProfile,
 } from '../services/documentAnnotationService';
 import {
   listDocumentInvites,
@@ -35,7 +36,7 @@ import {
 import { copyTextToClipboard } from '../utils/clipboard';
 import { grantRememberedDocumentTemplates } from '../services/sharedTemplates.js';
 import { supabase } from '../supabaseClient';
-import { accessInviteRows } from './accessRows';
+import { accessInviteRows, memberIdentity } from './accessRows';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { Icon } from './HubShell';
@@ -84,6 +85,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   const [inviteOpen, setInviteOpen] = useState(false);
   const [members, setMembers] = useState([]);   // real collaborator rows
   const [invites, setInvites] = useState([]);   // real invite rows
+  const [ownerProfile, setOwnerProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -103,12 +105,14 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
     setLoading(true);
     setError('');
     try {
-      const [colRes, invRes] = await Promise.all([
+      const [colRes, invRes, owner] = await Promise.all([
         getDocumentCollaborators(documentId),
         listDocumentInvites(documentId),
+        getDocumentOwnerProfile(documentId).catch(() => null),
       ]);
       setMembers(Array.isArray(colRes?.data) ? colRes.data : []);
       setInvites(Array.isArray(invRes?.data) ? invRes.data : []);
+      setOwnerProfile(owner || null);
     } catch (err) {
       console.error('[KAL-31] AccessManagementModal load failed:', err);
       setError(err?.message || 'Could not load access list.');
@@ -255,14 +259,15 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
             {/* Active collaborators. */}
             {members.map((m) => {
               const rl = String(m.role || '').toLowerCase();
-              const initials = initialsOf(m.user?.email || m.email || 'U');
+              const ident = memberIdentity(m, { owner: ownerProfile, currentUser });
+              const initials = initialsOf(ident.primary);
               const isLastOwner = rl === 'owner' && ownerCount <= 1;
               return (
-                <div key={m.id || `${m.user_id}-${m.document_id}`} data-kal31-row="member" data-kal31-role={rl} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box' }}>
+                <div key={m.id || `${m.user_id}-${m.document_id}`} data-kal31-row="member" data-kal31-role={rl} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 56, boxSizing: 'border-box' }}>
                   <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: '50%', background: colorFor(m.user_id || m.user?.email || m.email), color: USER_INITIALS_INK, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, flex: 'none' }}>{initials}</div>
                   <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user?.email || m.email || 'Unknown'}</div>
-                    <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.user_id}</div>
+                    <div {...tip(ident.title)} style={{ fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere', lineHeight: 1.25 }}>{ident.primary}</div>
+                    {ident.secondary ? <div {...tip(ident.secondary)} style={{ fontSize: 11, color: C.muted, overflowWrap: 'anywhere', lineHeight: 1.25 }}>{ident.secondary}</div> : null}
                   </div>
                   <select
                     value={roleLabel(rl)}
@@ -291,10 +296,10 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
             {/* Pending email invites. */}
             {emailPending.map((inv) => (
-              <div key={inv.id} data-kal31-row="invite" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box', background: 'var(--surface-2)' }}>
+              <div key={inv.id} data-kal31-row="invite" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 56, boxSizing: 'border-box', background: 'var(--surface-2)' }}>
                 <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--text-3)', color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initialsOf(inv.target_email)}</div>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{inv.target_email}</div>
+                  <div {...tip(inv.target_email)} style={{ fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere', lineHeight: 1.25 }}>{inv.target_email}</div>
                   <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted }}>expires {new Date(inv.expires_at).toLocaleDateString()}</div>
                 </div>
                 <div style={{ fontSize: 12, color: C.inkSoft }}>{roleLabel(inv.intended_role)}</div>
