@@ -338,3 +338,35 @@ test('shared tools run through the toolbox, placed next to an item when asked', 
   assert.match((await box.run('add_text_note', { near_plan_match_id: 'plan-9', text: 'z' })).content, /No plan match plan-9/);
   assert.deepEqual(await box.run('add_highlight', { page: 1 }), { isError: true, content: 'That page is not in the open document.' });
 });
+
+test('a callout by an item points at it; a highlight by an item gets its page; viewers cannot add', async () => {
+  const { bridge } = fakeBridge({ getPageSize: () => ({ width: 612, height: 792 }) });
+  const seen = {};
+  const tool = (name, access) => ({ name, access, execute: async (args) => { seen[name] = args; return 'ok'; } });
+  const box = createSurveyAgentToolbox({
+    getBridge: () => bridge,
+    extraTools: [tool('survey_add_callout', { minRole: 'editor' }), tool('survey_add_highlight', { minRole: 'editor' }), tool('survey_list_annotations', { minRole: 'viewer' })],
+  });
+  await box.run('add_callout', { near_item_id: 'm117', text: 'No power' });
+  assert.deepEqual(seen.survey_add_callout, { text: 'No power', page: 2, arrow_x: 3.5, arrow_y: 3.5, box_x: 14, box_y: 1 });
+  await box.run('add_highlight', { near_item_id: 'm117', search_text: 'D-117' });
+  assert.deepEqual(seen.survey_add_highlight, { search_text: 'D-117', page: 2 });
+  bridge.canEdit = false;
+  assert.match((await box.run('add_callout', { page: 1, text: 'x' })).content, /can only view/);
+  assert.deepEqual(await box.run('list_annotations', {}), { isError: false, content: 'ok' });
+});
+
+test('the voice agent gets the markup tools only when asked, anchored where they place things', async () => {
+  const plain = buildSurveyAgentTools(['Y', 'N']).map((t) => t.function.name);
+  const all = buildSurveyAgentTools(['Y', 'N'], { annotations: true });
+  assert.ok(!plain.includes('add_text_note'));
+  const byName = Object.fromEntries(all.map((t) => [t.function.name, t.function]));
+  for (const name of ['list_annotations', 'add_text_note', 'add_callout', 'add_highlight', 'delete_annotation', 'add_rectangle']) assert.ok(byName[name], name);
+  assert.deepEqual(byName.add_text_note.parameters.required, ['text']);
+  assert.deepEqual(byName.add_callout.parameters.required, ['text']);
+  assert.deepEqual(byName.add_highlight.parameters.required, ['search_text']);
+  assert.ok(byName.add_text_note.parameters.properties.near_item_id);
+  assert.deepEqual(byName.add_rectangle.parameters.required, ['page', 'x', 'y', 'width', 'height']);
+  assert.ok(!/survey_/.test(byName.list_annotations.description));
+  assert.equal(new Set(all.map((t) => t.function.name)).size, all.length, 'no name clashes with the item tools');
+});

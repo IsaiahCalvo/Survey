@@ -102,7 +102,7 @@ export function createSurveyAgentToolbox({
   // by D-117". PDF points from the page's top-left, like the plan boxes.
   const GAP = 8;
   const NOTE_ROOM = 160;
-  const placeNear = (input) => {
+  const placeNear = (tool, input) => {
     const { near_item_id: itemId, near_plan_match_id: matchId, ...rest } = input;
     if (!itemId && !matchId) return rest;
     let page;
@@ -123,6 +123,19 @@ export function createSurveyAgentToolbox({
     const fitsRight = !size || right + NOTE_ROOM <= size.width;
     const x = fitsRight ? right : Math.max(0, box.x - GAP - NOTE_ROOM);
     const y = Math.max(0, size ? Math.min(box.y, size.height - 1) : box.y);
+    // A highlight only needs the page; it finds its words there.
+    if (tool === 'add_highlight') return { ...rest, page: rest.page ?? page };
+    // A callout's box goes beside the item, its arrow at the item's middle.
+    if (tool === 'add_callout') {
+      return {
+        ...rest,
+        page: rest.page ?? page,
+        arrow_x: rest.arrow_x ?? box.x + box.width / 2,
+        arrow_y: rest.arrow_y ?? box.y + box.height / 2,
+        box_x: rest.box_x ?? x,
+        box_y: rest.box_y ?? y,
+      };
+    }
     return { ...rest, page: rest.page ?? page, x: rest.x ?? x, y: rest.y ?? y };
   };
 
@@ -370,7 +383,10 @@ export function createSurveyAgentToolbox({
       const extra = extras.get(name);
       if (extra) {
         try {
-          const content = await extra.execute(placeNear(input || {}));
+          if (extra.access?.minRole === 'editor' && getBridge()?.canEdit === false) {
+            throw new ToolError('This person can only view this document, so nothing can be changed.');
+          }
+          const content = await extra.execute(placeNear(name, input || {}));
           return { isError: false, content: typeof content === 'string' ? content : out(content) };
         } catch (err) {
           return { content: err?.message || 'That failed.', isError: true };
