@@ -1,6 +1,5 @@
 // Sign PDF: draw or type a signature, drag it into place on a page, save.
 // The signature becomes a transparent PNG drawn onto the page by signPdf.
-import { signPdf } from './ops.js';
 import { renderPage, canvasToBytes } from './browser.js';
 import { ToolError } from './errors.js';
 
@@ -272,6 +271,7 @@ export function makeSign({ h, rerender, root }) {
     if (!art || !sig.box) throw new ToolError('Draw or type your signature first.');
     const image = await canvasToBytes(art, 'image/png');
     const date = sig.date ? new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()) : '';
+    const { signPdf } = await import('./ops.js');
     return signPdf(file.bytes, { page: sig.page, image, box: sig.box, date });
   }
 

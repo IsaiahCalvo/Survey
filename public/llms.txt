@@ -38,6 +38,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Crop PDF](https://surveytool.app/tools/crop-pdf): Trim the white edges off every page.
 - [Edit PDF details](https://surveytool.app/tools/edit-pdf-details): Change the title, author and keywords.
 - [Remove markups](https://surveytool.app/tools/remove-annotations): Strip comments and markups off a PDF.
+- [Word to PDF](https://surveytool.app/tools/word-to-pdf): Turn a Word .docx file into a PDF.
 - [TIFF to PDF](https://surveytool.app/tools/tiff-to-pdf): Turn TIFF scans and faxes into a PDF.
 - [Sign PDF](https://surveytool.app/tools/sign-pdf): Draw or type your signature onto a PDF.
 - [Protect PDF](https://surveytool.app/tools/protect-pdf): Lock a PDF with a password.

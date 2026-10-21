@@ -76,6 +76,10 @@ const PACKAGE_VERSION_WAIVERS = new Set([
   // Verified MIT via upstream LICENSE file (2011 substack utility, transitive
   // dep of unzip-stream → exceljs → xlsx codepath).
   'buffers@0.1.1',
+  // `duck@0.1.12` declares plain 'BSD'. Its LICENSE file is the BSD-2-Clause
+  // text word for word (Michael Williamson, 2013). Transitive dep of
+  // mammoth → lop, used by the Word to PDF free tool.
+  'duck@0.1.12',
 ]);
 
 function isLicenseAllowed(licenseString) {

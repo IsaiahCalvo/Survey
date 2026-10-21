@@ -249,6 +249,17 @@ export const TOOLS = [
     faq: [['Why are some marks still there?', 'Marks that were flattened, or drawn by the app that made the PDF, are part of the page itself, not separate markups.'], PRIVATE, FREE, OFFLINE],
   },
   {
+    id: 'word-to-pdf', group: 'to-pdf', name: 'Word to PDF', icon: 'word',
+    short: 'Turn a Word .docx file into a PDF.',
+    title: 'Word to PDF converter free, no upload (DOCX) | Survey',
+    desc: 'Convert a Word document (.docx) to PDF right in your browser. Keeps headings, lists, tables, links and pictures. Free, no sign-up, no upload.',
+    h1: 'Convert Word to PDF',
+    lede: 'Turn a Word document into a PDF without uploading it. Best for letters, reports and specs.',
+    accept: 'docx', multiple: false, action: 'Make PDF',
+    steps: ['Choose a Word file (.docx).', 'Pick the page size and font.', 'Press Make PDF and save it.'],
+    faq: [['Will it look exactly like Word?', 'Close for simple documents: headings, bold and italic text, lists, tables, links and pictures carry over. Text boxes, columns, shapes, charts and headers or footers don\'t, and the tool tells you when a file has them.'], ['Can it open old .doc files?', 'Not yet. Open the file in Word, Pages or Google Docs and save it as .docx, then try again.'], ['Why not upload it to a server like other sites?', 'Keeping the file on your device means nobody else ever sees it. For complex layouts, Word\'s own "Save as PDF" gives the most exact result.'], PRIVATE, FREE],
+  },
+  {
     id: 'tiff-to-pdf', group: 'to-pdf', name: 'TIFF to PDF', icon: 'image',
     short: 'Turn TIFF scans and faxes into a PDF.',
     title: 'Convert TIFF to PDF free, multi-page too | Survey',

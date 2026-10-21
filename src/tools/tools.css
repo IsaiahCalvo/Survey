@@ -96,6 +96,11 @@ button.ptile:hover{border-color:var(--rule)}
 .organize .ptile.dragging{opacity:.4}
 .organize .ptile.over{border-color:var(--blue)}
 
+.tnote{margin:0;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--blue) 10%,transparent);border:1px solid color-mix(in srgb,var(--blue) 30%,transparent);font-size:14px;color:var(--ink)}
+.rapp{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:8px;padding-top:20px;border-top:1px solid var(--rule)}
+.rapp p{margin:0;color:var(--soft)}
+.result .tnote{max-width:520px;margin:0 auto 8px}
+
 /* sign */
 .sview{display:flex;flex-direction:column;gap:12px;align-items:center}
 .spager{display:flex;align-items:center;gap:12px}

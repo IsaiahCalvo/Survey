@@ -1,17 +1,24 @@
 // The free tool UI: drop zone, file list or page grid, options, run, save.
 // Each tool in TOOLS below says which view it uses, its options, and how it
 // turns the chosen files into output files.
-import {
-  ToolError, addHeaderFooter, organizePages, flattenPdf, cropPdf, readDetails, editDetails, removeAnnotations, textToPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
-} from './ops.js';
-import { compressPdf } from './compress.js';
+import { ToolError } from './errors.js';
 import { protectPdf, unlockPdf, looksEncrypted } from './qpdf.js';
 import { parsePageSet, parseRangeGroups, formatPageSet, everyN } from './ranges.js';
 import { makeZip } from './zip.js';
 import {
-  canvasCodec, openPdfjs, renderPage, prepareImage, saveFile, canvasToBytes, releaseCanvas, runQpdf,
+  canvasCodec, openPdfjs, renderPage, prepareImage, saveFile, canvasToBytes, releaseCanvas, runQpdf, loadDocFont,
 } from './browser.js';
 import { makeSign } from './sign.js';
+
+// The PDF engine (pdf-lib, ~430 KB) loads when a file is chosen, not with the
+// page, so a phone shows the drop zone sooner. Each name below stands in for
+// the real function until then.
+const loadOps = () => import('./ops.js');
+const lazy = (load, name) => async (...args) => (await load())[name](...args);
+const [
+  addHeaderFooter, organizePages, flattenPdf, cropPdf, readDetails, editDetails, removeAnnotations, textToPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
+] = ['addHeaderFooter', 'organizePages', 'flattenPdf', 'cropPdf', 'readDetails', 'editDetails', 'removeAnnotations', 'textToPdf', 'mergePdfs', 'pickPages', 'deletePages', 'splitPdf', 'rotatePages', 'addPageNumbers', 'addWatermark', 'imagesToPdf'].map((n) => lazy(loadOps, n));
+const compressPdf = lazy(() => import('./compress.js'), 'compressPdf');
 
 const root = document.getElementById('tool');
 const TOOL_ID = root.dataset.tool;
@@ -239,6 +246,33 @@ const TOOLS = {
       return [pdfOut(`${base(file.name)}.pdf`, await textToPdf(text, { font: o.font, size: Number(o.size), pageSize: o.pageSize }))];
     },
   },
+  'word-to-pdf': {
+    view: 'files',
+    options: [
+      { key: 'pageSize', label: 'Page size', type: SEG, def: 'letter', choices: [['letter', 'Letter'], ['a4', 'A4']] },
+      { key: 'font', label: 'Font', type: SEG, def: 'sans', choices: [['sans', 'Clean (Helvetica)'], ['serif', 'Classic (Times)']] },
+    ],
+    async prepare(item) {
+      const { inspectDocx } = await import('./docx.js');
+      item.notes = await inspectDocx(item.bytes);
+    },
+    notice(files) {
+      const notes = [...new Set(files.flatMap((f) => f.notes || []))];
+      if (!notes.length) return null;
+      const list = notes.length > 1 ? `${notes.slice(0, -1).join(', ')} and ${notes[notes.length - 1]}` : notes[0];
+      return `Heads up: this document has ${list}, which won't look the same in the PDF. This tool is best for simple documents like letters, reports and specs.`;
+    },
+    async run([file], o, progress) {
+      const { readDocx, docxBlocksToPdf } = await import('./docx.js');
+      progress('Reading the document');
+      const blocks = await readDocx(file.bytes);
+      progress('Making the PDF');
+      const { bytes, skippedImages } = await docxBlocksToPdf(blocks, { pageSize: o.pageSize, font: o.font, loadFont: loadDocFont, loadFontkit: async () => (await import('@pdf-lib/fontkit')).default });
+      const out = pdfOut(`${base(file.name)}.pdf`, bytes);
+      if (skippedImages) out.note = `${skippedImages} picture${skippedImages === 1 ? ' was' : 's were'} left out because ${skippedImages === 1 ? 'it uses' : 'they use'} a type a browser can't draw (like WMF or EMF).`;
+      return [out];
+    },
+  },
   'tiff-to-pdf': { view: 'files', hint: 'Every page of a multi-page TIFF is kept. Drag files to set the order.', options: IMAGE_OPTIONS, run: fromImages },
   'protect-pdf': {
     view: 'files',
@@ -343,6 +377,7 @@ const isText = (f) => f.type.startsWith('text/') || /\.(txt|text|md|csv|log)$/i.
 const ACCEPTS = {
   pdf: { test: isPdf, input: 'application/pdf,.pdf', wrong: 'That isn\'t a PDF. Choose a file that ends in .pdf.' },
   image: { test: isImage, input: 'image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff', wrong: 'Choose JPG, PNG, WebP, GIF, BMP or TIFF images.' },
+  docx: { test: (f) => /\.(docx|doc)$/i.test(f.name) || f.type.includes('wordprocessingml'), input: '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document', wrong: 'Choose a Word file that ends in .docx.' },
   tiff: { test: isTiffFile, input: 'image/tiff,.tif,.tiff', wrong: 'Choose TIFF images, ones that end in .tif or .tiff.' },
   text: { test: isText, input: 'text/plain,.txt,.text,.md,.csv,.log', wrong: 'Choose a plain text file, like one that ends in .txt.' },
 }[ACCEPT];
@@ -357,6 +392,7 @@ async function addFiles(list) {
   S.error = '';
   S.result = null;
   const picked = MULTIPLE ? wanted : wanted.slice(0, 1);
+  loadOps().catch(() => {});
   if (!MULTIPLE) disposeAll();
   setBusy('Opening…');
   for (const file of picked) {
@@ -589,6 +625,8 @@ function organizeView() {
 function optionsView() {
   const file = S.files[0];
   const fields = T.view === 'sign' ? sign.fields(file) : [];
+  const notice = T.notice?.(S.files);
+  if (notice) fields.push(h('p', { class: 'tnote', role: 'note' }, notice));
   if (T.view === 'organize') {
     const removed = file.pages - file.order.length;
     fields.push(h('div', { class: 'opt' }, h('span', { class: 'olabel' }, 'Pages'),
@@ -705,6 +743,7 @@ function resultView() {
       : h('p', { class: 'rbig' }, 'This file is already about as small as it gets.'));
   }
   if (r.count) lines.push(h('p', {}, `${r.count} files in one ZIP.`));
+  if (r.note) lines.push(h('p', { class: 'tnote' }, r.note));
   return h('div', { class: 'result', role: 'status' },
     h('h2', {}, 'Your file is ready'),
     ...lines,
@@ -713,7 +752,23 @@ function resultView() {
       h('button', { type: 'button', class: 'btn primary lg', onclick: () => saveFile(r.bytes, r.name, r.type) }, 'Download'),
       h('button', { type: 'button', class: 'btn ghost lg', onclick: () => { S.result = null; render(); } }, 'Back'),
       h('button', { type: 'button', class: 'btn ghost lg', onclick: () => { disposeAll(); S.result = null; render(); } }, 'Start over')),
-    h('p', { class: 'fine' }, 'Want to mark it up? ', h('a', { href: '/?signin=1' }, 'Open it in Survey free'), '.'));
+    r.type === PDF_TYPE
+      ? h('div', { class: 'rapp' },
+        h('p', {}, 'Want to mark it up? Survey adds pens, shapes, clouds and counts, free.'),
+        h('button', { type: 'button', class: 'btn ghost', onclick: () => openInSurvey(r) }, 'Open in Survey'))
+      : h('p', { class: 'fine' }, 'Want to mark up PDFs? ', h('a', { href: '/?open=app' }, 'Open Survey free'), '.'));
+}
+
+// Hand the PDF to the app on this site; it stays in this browser throughout.
+async function openInSurvey(r) {
+  try {
+    const { putHandoff } = await import('./handoff.js');
+    await putHandoff(r.bytes, r.name);
+    window.location.assign('/?open=tools');
+  } catch {
+    // Private windows can block storage; the app still opens, just empty.
+    window.location.assign('/?open=app');
+  }
 }
 
 function dropzone() {

@@ -77,6 +77,8 @@
     "electron-updater": "^6.8.3",
     "exceljs": "^4.4.0",
     "fabric": "7.4.0",
+    "jszip": "3.10.1",
+    "mammoth": "1.13.0",
     "martinez-polygon-clipping": "^0.7.4",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.2.108",

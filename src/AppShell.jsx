@@ -1450,6 +1450,20 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The free PDF tools (/tools) hand their result over as ?open=tools: the
+  // file waits in this browser's IndexedDB (src/tools/handoff.js) and opens
+  // in a tab here, signed in or not.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('open') !== 'tools') return;
+    url.searchParams.delete('open');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    import('./tools/handoff.js')
+      .then(({ takeHandoff }) => takeHandoff())
+      .then((file) => { if (file) handleDocumentSelect(file); })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Existing-user share emails and accepted invites land on ?docId=<id>.
   // Wait for the authenticated document list, then use the exact same open
   // path as clicking that document in the dashboard.

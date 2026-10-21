@@ -184,3 +184,15 @@ export const runQpdf = qpdfRunner(async () => {
     throw new ToolError('The password tool couldn\'t load. Check your connection and try again.');
   }
 });
+
+// Fonts for Word to PDF when a document has letters the standard PDF fonts
+// lack: Noto Sans for most scripts, Droid Sans Fallback for Chinese, Japanese
+// and Korean. Both already ship with the app.
+export async function loadDocFont(kind) {
+  const { default: url } = kind === 'cjk'
+    ? await import('../assets/fonts/DroidSansFallback.ttf?url')
+    : await import('../assets/fonts/NotoSans-Regular.ttf?url');
+  const res = await fetch(url);
+  if (!res.ok) throw new ToolError('A font for this document couldn\'t load. Check your connection and try again.');
+  return new Uint8Array(await res.arrayBuffer());
+}
