@@ -649,6 +649,7 @@ export {
   SURVEY_MARKERS_MAP,
   docToSurveyMarkers,
   getSurveyMarkersMap,
+  readSurveyMarkerValue,
   syncSurveyMarkersToDoc,
 } from '../../supabase/functions/_shared/surveyMarkerDocSync.js';
 
