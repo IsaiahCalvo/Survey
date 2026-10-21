@@ -24,6 +24,8 @@ on:
       - 'scripts/e2e-local-supabase.mjs'
       - 'tests/e2e-signed-in/**'
       - 'playwright.e2e-signed-in.config.mjs'
+      - 'tests/e2e-speed/**'
+      - 'playwright.speed.config.mjs'
       - 'vite.config.js'
       - 'viteEnvConfig.mjs'
       - 'index.html'

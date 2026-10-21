@@ -26,14 +26,14 @@ function pageOneHasInk() {
   return false;
 }
 
-test('Home and the first page open within the speed budget', async ({ browser, page }) => {
+test('Home and the first page open within the speed budget', async ({ browser, page, baseURL }) => {
   const account = E2E_ACCOUNTS.owner;
   await signIn(page, account);
   const storageState = await page.context().storageState();
 
   const times = { home: [], firstPage: [] };
   for (let run = 0; run < RUNS; run += 1) {
-    const context = await browser.newContext({ storageState, viewport: { width: 1400, height: 900 } });
+    const context = await browser.newContext({ baseURL, storageState, viewport: { width: 1400, height: 900 } });
     await context.route(
       (url) => !['data:', 'blob:'].includes(url.protocol) && !LOCAL_HOSTS.has(url.hostname),
       (route) => route.abort('blockedbyclient'),
