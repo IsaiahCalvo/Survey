@@ -7,6 +7,8 @@ import {
   downsample,
   encodeWav,
   frameLevel,
+  heardOwnVoice,
+  BARGE_IN_GATE,
   spokenReply,
   transcriptionHints,
 } from '../src/agent/voiceLoop.js';
@@ -34,10 +36,10 @@ const readWav = (name) => {
 };
 
 // Feeds a clip through the gate the way the mic does: 20 ms frames.
-function clipsIn(name) {
+function clipsIn(name, options = {}) {
   const { samples, rate } = readWav(name);
   const frame = Math.round(rate * 0.02);
-  const gate = createSpeechGate({ frameMs: 20 });
+  const gate = createSpeechGate({ frameMs: 20, ...options });
   const events = [];
   for (let i = 0; i + frame <= samples.length; i += frame) {
     const e = gate.push(frameLevel(samples.subarray(i, i + frame)));
@@ -64,6 +66,41 @@ for (const name of ['hammer_001', 'gen_034', 'hammer_040', 'gen_050', 'hammer_06
     assert.ok(Number(events[1].at) - Number(events[0].at) >= 2, `kept the whole tag: ${JSON.stringify(events)}`);
   });
 }
+
+// While the agent speaks, a stricter gate: real people still cut in over
+// site noise, and the agent's own voice, faint after echo cancellation, does
+// not.
+for (const name of ['edacc/hammer_001', 'edacc/gen_034', 'edacc/hammer_040', 'edacc/gen_050', 'edacc/hammer_063', 'edacc/gen_067', 'd117', 'no118']) {
+  test(`cutting in while the agent speaks is heard: ${name}`, () => {
+    assert.equal(clipsIn(`${name}.wav`, BARGE_IN_GATE)[0]?.e, 'start');
+  });
+}
+
+for (const noiseClip of [null, 'edacc/gen_050', 'edacc/hammer_063']) {
+  test(`the agent's own voice, faint in the mic, does not cut it off (${noiseClip || 'quiet room'})`, () => {
+    const voice = readWav('d117.wav').samples;
+    // Site noise from before anyone talks in a real clip.
+    const noise = noiseClip ? readWav(`${noiseClip}.wav`).samples.subarray(0, 14_400) : null;
+    const gate = createSpeechGate({ frameMs: 20, ...BARGE_IN_GATE });
+    const events = [];
+    const frame = new Float32Array(320);
+    for (let i = 0; i + 320 <= voice.length; i += 320) {
+      // What echo cancellation leaves of the agent's voice: a tenth of it.
+      for (let j = 0; j < 320; j += 1) frame[j] = voice[i + j] * 0.1 + (noise ? noise[(i + j) % noise.length] : 0);
+      const e = gate.push(frameLevel(frame));
+      if (e) events.push(e);
+    }
+    assert.deepEqual(events, []);
+  });
+}
+
+test('a transcript of the agent\'s own reply is not taken as the person', () => {
+  const spoken = 'D 117: card reader is Y.';
+  assert.equal(heardOwnVoice('D117 card reader is Y', spoken), true);
+  assert.equal(heardOwnVoice('No, D-118.', spoken), false);
+  assert.equal(heardOwnVoice('card reader is missing on D 119', spoken), false);
+  assert.equal(heardOwnVoice('anything', ''), false);
+});
 
 test('two things said with a pause are two clips', () => {
   assert.deepEqual(clipsIn('two_turns.wav').map((x) => x.e), ['start', 'end', 'start', 'end']);
