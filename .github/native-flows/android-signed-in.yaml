@@ -31,9 +31,12 @@ name: android-signed-in
     timeout: 60000
 - takeScreenshot: 02-documents
 - tapOn: ".*E2E Sample Drawing.*"
-- tapOn: "Open file"
+# On a phone, tapping the row opens the document straight away.
+- tapOn:
+    text: "Open file"
+    optional: true
 - extendedWaitUntil:
-    visible: "Type your name in the box:"
+    visible: "Pages"
     timeout: 90000
 - takeScreenshot: 03-document-open
 - tapOn: "More document options"
