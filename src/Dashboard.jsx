@@ -190,7 +190,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     refetch: refetchTemplates
   } = useTemplates({ listCache: true });
 
-  const { uploadDocument: uploadToStorage, uploadDataFile, deleteDocumentFile: deleteFromStorage, downloadDocument: downloadFromStorage } = useStorage();
+  const { uploadDocument: uploadToStorage, deleteDocumentFile: deleteFromStorage, downloadDocument: downloadFromStorage } = useStorage();
 
   // Subscription limits and usage tracking
   const {

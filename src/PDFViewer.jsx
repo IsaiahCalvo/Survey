@@ -16,7 +16,6 @@ import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
-import { mergeLegacyEntities } from './utils/mergeLegacyEntities.js';
 import { jsonEqual } from './utils/jsonEqual.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
@@ -1104,7 +1103,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
-  const { uploadDataFile, downloadDocument: downloadFromStorage, openDocumentStream } = useStorage();
+  const { downloadDocument: downloadFromStorage, openDocumentStream } = useStorage();
   const { updateDocument: updateSupabaseDocument } = useDocuments(null, { enabled: false });
   const { features } = useAuth();
 
@@ -23378,35 +23377,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     );
   }, [pdfId, pdfFile?.id, pdfFile?.cutoverCompletedAt, annotationsByPage]);
 
-  // Save survey data to Supabase Storage
+  // Survey data (marks, spaces, callouts) persists through the Y.Doc
+  // (cloudSyncForceFlush); only the document row's view metadata is saved here.
+  // No <doc>_data.json sidecar: the documents bucket accepts PDF/Excel only.
   const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {
     if (!pdfFile || !pdfFile.projectId || !pdfId) {
       return;
     }
 
     try {
-      const data = {
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        pdfId,
-        annotations: currentAnnotations, // surveyMarkers
-        annotationsByPage: annotationsByPage,
-        callouts: callouts, // Callout annotations
-        spaces: currentSpaces,
-        entities: entities,
-        templateId: currentTemplate?.id || null,
-        zoomLevel: scale,
-        currentPage: pageNum
-      };
-
-      const jsonString = JSON.stringify(data);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const file = new File([blob], `${pdfFile.id}_data.json`, { type: 'application/json' });
-
-      // Upload to storage: {projectId}/{documentId}_data.json
-      const filePath = `${pdfFile.projectId}/${pdfFile.id}_data.json`;
-      await uploadDataFile(file, filePath);
-
       // Update document metadata
       await updateSupabaseDocument(pdfFile.id, {
         current_page: pageNum,
@@ -23418,93 +23397,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.error('Error saving survey data to Supabase:', error);
       // Don't alert here to avoid interrupting the user flow, just log
     }
-  }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
-
-  // Legacy reads may finish after a tab switch. Keep their definitions local
-  // until this viewer is active, then add missing ids without replacing edits.
-  const sidecarEntitiesRef = useRef(entities);
-  sidecarEntitiesRef.current = entities;
-  const [pendingLegacyEntities, setPendingLegacyEntities] = useState(null);
-  useEffect(() => {
-    if (!isActive || !pendingLegacyEntities || typeof setEntities !== 'function') return;
-    setEntities((current) => mergeLegacyEntities(current, pendingLegacyEntities.definitions, pendingLegacyEntities.initialIds));
-    setPendingLegacyEntities(null);
-  }, [isActive, pendingLegacyEntities, setEntities]);
-
-  // Load survey data from Supabase Storage
-  const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob, { restoreViewState = true, isCurrent = () => true, initialEntityIds = (sidecarEntitiesRef.current || []).map((entity) => entity?.id).filter((id) => id != null) } = {}) => {
-    if (!doc || !doc.projectId) return;
-
-    try {
-      const filePath = `${doc.projectId}/${doc.id}_data.json`;
-
-      // Check if file exists by trying to get URL (or just try download and catch error)
-      // We'll just try to download. Open speed (2026-10-04): the PDF load starts
-      // this same download alongside the PDF's own and hands its promise in,
-      // so local restores overlap the PDF read. Cloud documents apply this
-      // optional legacy data in the background without holding the first page.
-      const dataBlob = prefetchedDataBlob !== undefined
-        ? await prefetchedDataBlob
-        : await downloadFromStorage(filePath);
-      if (!dataBlob) return;
-
-      const text = await dataBlob.text();
-      const data = JSON.parse(text);
-      if (!isCurrent()) return;
-
-      // Verify it matches this PDF
-      if (data.pdfId && data.pdfId !== getPDFId(pdfFile)) {
-        console.warn('Loaded data PDF ID mismatch. Ignoring.');
-        // return; // Optional: decide whether to load anyway or warn
-      }
-
-      // Restore state. Supabase Storage is an older sidecar snapshot. For cloud
-      // documents, highlights now come from the durable Y.Doc — restoring the
-      // sidecar would let a stale blob fight the authoritative copy, so this only
-      // runs for local-only documents (no cloud id), mirroring the spaces +
-      // annotations guards below.
-      // KAL-275: no empty-snapshot guard here. The old one only acted for a
-      // cloud document, which never reaches this line (gated on !doc.id).
-      if (data.annotations && !doc.id) {
-        setSurveyMarkers(data.annotations);
-      }
-      // Cloud-sync documents source editable annotations from Y.Doc/Supabase
-      // rows, not this older Supabase Storage survey-data JSON blob. That
-      // blob can hold a pre-cutover annotationsByPage snapshot; restoring it
-      // after Y.Doc hydrate causes the visible 3644 -> 3058 shrink and the
-      // temporary jagged/duplicate annotation state.
-      const shouldRestoreLegacyAnnotationBlob = !doc.id;
-      if (data.annotationsByPage && shouldRestoreLegacyAnnotationBlob) {
-        setAnnotationsByPage(data.annotationsByPage);
-        savedAnnotationsByPageRef.current = data.annotationsByPage;
-      }
-      if (data.callouts && shouldRestoreLegacyAnnotationBlob) {
-        setCallouts(data.callouts);
-      }
-      // Cloud-sync documents now source spaces (and their region polygons) from
-      // the Y.Doc, not this older Storage survey-data JSON blob. Restoring the
-      // sidecar's spaces after Y.Doc hydrate would let a stale blob overwrite the
-      // authoritative durable copy — same hazard the annotationsByPage/callouts
-      // restores above already guard against via shouldRestoreLegacyAnnotationBlob.
-      if (data.spaces && shouldRestoreLegacyAnnotationBlob) {
-        setSpaces(Array.isArray(data.spaces) ? data.spaces : []);
-      }
-      if (Array.isArray(data.entities)) setPendingLegacyEntities({ definitions: data.entities, initialIds: initialEntityIds });
-
-      // Restore view state if available
-      if (restoreViewState) {
-        if (data.zoomLevel) setScale(data.zoomLevel);
-        const restoredPage = coercePageNumber(data.currentPage, numPages || Number.POSITIVE_INFINITY);
-        if (restoredPage) setPageNum(restoredPage);
-      }
-
-      // Template restoration is handled by the document's template_id usually, 
-      // but we can fallback to data.templateId if needed.
-
-    } catch (error) {
-      // It's normal for new documents to not have data yet
-    }
-  }, [downloadFromStorage, pdfFile, numPages]);
+  }, [pdfFile, pdfId, scale, pageNum, updateSupabaseDocument]);
 
   // UX 2026-04-22: File menu → "Export" — prompts for a new
   // file path and writes the currently-open PDF with annotations baked in.
@@ -24174,18 +24067,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const pdfjsReadyPromise = loadPdfjs();
         pdfjsReadyPromise.catch(() => {});
 
-        // Open speed (2026-10-04): the project sidecar read below used to start
-        // only after the PDF was downloaded and parsed, holding the first page
-        // back by one more round trip. Start it now, alongside the PDF download
-        // (the same read, just earlier). Local imports await its restore; cloud
-        // documents apply optional entities in the background.
-        const initialSidecarEntityIds = (sidecarEntitiesRef.current || []).map((entity) => entity?.id).filter((id) => id != null);
-        const surveyDataBlobPromise = pdfFile.projectId
-          ? Promise.resolve()
-            .then(() => downloadFromStorage(`${pdfFile.projectId}/${pdfFile.id}_data.json`))
-            .catch(() => null)
-          : undefined;
-
         // UX: the unsupported-annotations toast is once-per-document-open —
         // clear both pieces on every load so a document without unsupported
         // types never inherits the previous document's notice.
@@ -24392,18 +24273,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setNumPages(pdf.numPages);
         setPageNum(1);
 
-        // Load project data from Supabase if available
-        if (pdfFile.projectId) {
-          // Cloud marks/spaces come from Y.Doc. Keep custom legacy entities,
-          // but do not hold page paint behind this optional sidecar request or
-          // let its old zoom/page override this document's current view.
-          const sidecarRestore = loadSurveyDataFromSupabase(pdfFile, surveyDataBlobPromise, {
-            restoreViewState: !pdfFile.id,
-            initialEntityIds: initialSidecarEntityIds,
-            isCurrent: () => !isCancelled,
-          });
-          if (!pdfFile.id) await sidecarRestore;
-        }
         if (isCancelled) return;
 
         // Calculate page sizes progressively so the first page can render immediately.

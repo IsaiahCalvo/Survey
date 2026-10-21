@@ -866,25 +866,6 @@ export const useStorage = () => {
     return filePath;
   }, [user]);
 
-  const uploadDataFile = useCallback(async (data, filePath, onProgress) => {
-    if (!user || !isSupabaseAvailable()) {
-      throw new Error('User not authenticated or Supabase not available');
-    }
-
-    const { data: result, error } = await supabase.storage
-      .from('documents')
-      .upload(filePath, data, {
-        upsert: true,
-        contentType: 'application/json',
-        onUploadProgress: onProgress,
-      });
-
-    if (error) throw error;
-    storageDownloads(supabase).invalidate(filePath);
-    void pdfByteCache().removePath(filePath);
-    return filePath;
-  }, [user]);
-
   // Page edits: never overwrite an object another document still reads, and
   // keep the row's content_sha256 equal to its bytes (documentFileReplace.js).
   // Returns { filePath, contentSha256, forked }.
@@ -993,7 +974,6 @@ export const useStorage = () => {
   return {
     uploadDocument,
     replaceDocument,
-    uploadDataFile,
     downloadDocument,
     openDocumentStream,
     deleteDocumentFile,
