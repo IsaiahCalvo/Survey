@@ -11,6 +11,7 @@ import {
   BARGE_IN_GATE,
   spokenReply,
   transcriptionHints,
+  snapItemNames,
 } from '../src/agent/voiceLoop.js';
 import { SurveyAgentError, usageWarning, withRetries } from '../src/agent/surveyAgentClient.js';
 import { createSurveyAgentToolbox } from '../src/agent/surveyAgentTools.js';
@@ -159,6 +160,24 @@ test('speech to text hints: template words first, item names last', () => {
   });
   assert.deepEqual(hints, ['Door', 'Card reader', 'Subcontractor', 'D-117', 'D-118']);
   assert.deepEqual(transcriptionHints(null), []);
+});
+
+test('speech to text hints end with the likeliest names: recent items, then the selected one', () => {
+  const markers = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`m${i}`, { name: `D-${100 + i}` }]));
+  const hints = transcriptionHints({ markers, selectedMarkerId: 'm59' }, { maxNames: 10, recent: ['m50', 'm3', 'm7'] });
+  assert.equal(hints.length, 10);
+  assert.deepEqual(hints.slice(-4), ['D-150', 'D-103', 'D-107', 'D-159']);
+});
+
+test('item names misheard by speech to text are put back the way they are written', () => {
+  const names = ['D-117', 'D-118', 'CAM-12', 'Room 4', '7'];
+  assert.equal(snapItemNames('No, D1-18.', names), 'No, D-118.');
+  assert.equal(snapItemNames('d one eighteen card reader in', names), 'D-118 card reader in');
+  assert.equal(snapItemNames('D 117 has power, cam 12 is up', names), 'D-117 has power, CAM-12 is up');
+  // Ordinary words and bare numbers stay as they are.
+  assert.equal(snapItemNames('the door is open, set seven to yes', names), 'the door is open, set seven to yes');
+  assert.equal(snapItemNames('Set 118 to yes', names), 'Set 118 to yes');
+  assert.equal(snapItemNames('anything', []), 'anything');
 });
 
 test('a dropped or busy call is tried again; no signal and refusals are not', async () => {

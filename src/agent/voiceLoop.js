@@ -1,6 +1,7 @@
 // Hands-free talk for the Survey agent: the parts with no browser in them, so
 // node tests can drive them with recorded clips. handsFreeMic.js feeds these
 // from the microphone; SurveyAgentPanel runs the talk, answer, listen loop.
+import { normalizeItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 
 /**
  * Tells when someone starts and stops talking, from one loudness value per
@@ -188,10 +189,11 @@ export function spokenReply(text) {
 /**
  * Words for speech to text to expect: the template's checklist and entity
  * words, then the item names (most likely to be misheard: "D1-18" for
- * "D-118"). Whisper keeps only the end of a long hint, so names go last and
- * the list stays short.
+ * "D-118"). Whisper keeps only the end of a long hint, so names go last, the
+ * likeliest at the very end: the items worked on in this chat (recent, oldest
+ * first) and then the selected item. The list stays short.
  */
-export function transcriptionHints(bridge, { maxNames = 40, maxWords = 16 } = {}) {
+export function transcriptionHints(bridge, { maxNames = 40, maxWords = 16, recent = [] } = {}) {
   const seen = new Set();
   const take = (list, max) => {
     const out = [];
@@ -212,8 +214,52 @@ export function transcriptionHints(bridge, { maxNames = 40, maxWords = 16 } = {}
     ...categories.flatMap((c) => (c?.checklist || []).map((item) => item?.text)),
     ...(template.entities || []).map((e) => e?.name),
   ], maxWords);
-  const names = take(Object.values(bridge?.markers || {}).map((m) => m?.name), maxNames);
-  return [...words, ...names];
+  const markers = bridge?.markers || {};
+  const nameOf = (id) => markers[id]?.name;
+  // Likeliest first, so the cap drops the least likely; then reversed so the
+  // likeliest end up last.
+  const likely = [bridge?.selectedMarkerId, ...[...recent].reverse()].filter(Boolean).map(nameOf);
+  const names = take([...likely, ...Object.values(markers).map((m) => m?.name)], maxNames);
+  const keep = new Set(likely.filter(Boolean).map((n) => String(n).trim().toLowerCase()));
+  const rest = names.filter((n) => !keep.has(n.toLowerCase()));
+  const top = names.filter((n) => keep.has(n.toLowerCase())).reverse();
+  return [...words, ...rest, ...top];
+}
+
+/**
+ * Puts item names back the way they are written when speech to text split or
+ * spelled them differently ("D1-18", "D 118", "d one eighteen" -> "D-118").
+ * Only names with a letter and a digit, and only an exact match once spaces, dashes and
+ * number words are set aside, so ordinary words are never touched.
+ */
+export function snapItemNames(text, names) {
+  const known = new Map();
+  for (const name of names || []) {
+    const key = normalizeItemName(name);
+    if (key && /\d/.test(key) && /[a-z]/.test(key) && !known.has(key)) known.set(key, String(name));
+  }
+  const words = String(text || '').split(/(\s+)/);
+  if (!known.size) return String(text || '');
+  const out = [];
+  for (let i = 0; i < words.length;) {
+    if (/^\s+$/.test(words[i]) || !words[i]) { out.push(words[i]); i += 1; continue; }
+    let hit = null;
+    // Up to four words ("d one eighteen", "door D 1 18"), longest first.
+    for (let n = 4; n >= 1 && !hit; n -= 1) {
+      const end = i + (n - 1) * 2;
+      if (end >= words.length) continue;
+      const span = words.slice(i, end + 1).join('');
+      const core = span.replace(/^[^\w]+|[^\w]+$/g, '');
+      const name = known.get(normalizeItemName(core));
+      if (name) {
+        const lead = span.slice(0, span.indexOf(core));
+        const tail = span.slice(span.indexOf(core) + core.length);
+        hit = { text: `${lead}${name}${tail}`, next: end + 1 };
+      }
+    }
+    if (hit) { out.push(hit.text); i = hit.next; } else { out.push(words[i]); i += 1; }
+  }
+  return out.join('');
 }
 
 /**
