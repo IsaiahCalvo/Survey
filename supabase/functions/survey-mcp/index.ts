@@ -266,7 +266,7 @@ const WRITE_TOOLS = [
   {
     name: 'set_answers',
     title: 'Set checklist answers on an item',
-    description: 'Set checklist answers on one survey item (editor or owner only). Only the checklist items you list change; the rest keep their answers. Use the checklist item ids from get_survey_context and the template\'s own answer values. One Undo in the app takes the change back.',
+    description: 'Set checklist answers on one survey item (editor or owner only). Only the checklist items you list change; the rest keep their answers. Use the checklist item ids from get_survey_context and the template\'s own answer values. Returns a change_id you can pass to undo_change to take it back.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -292,7 +292,7 @@ const WRITE_TOOLS = [
   {
     name: 'add_note',
     title: 'Add to an item\'s note',
-    description: 'Add cleanly written text to the end of one survey item\'s note (editor or owner only). Never removes what is already there. One Undo in the app takes it back.',
+    description: 'Add cleanly written text to the end of one survey item\'s note (editor or owner only). Never removes what is already there. Returns a change_id you can pass to undo_change to take it back.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -307,7 +307,7 @@ const WRITE_TOOLS = [
   {
     name: 'set_entity',
     title: 'Set or clear an item\'s entity',
-    description: 'Set or clear the entity (status) on one survey item (editor or owner only). The entity must be one of the document\'s entities from get_survey_context. Pass entity_id null to clear it. One Undo in the app takes it back.',
+    description: 'Set or clear the entity (status) on one survey item (editor or owner only). The entity must be one of the document\'s entities from get_survey_context. Pass entity_id null to clear it. Returns a change_id you can pass to undo_change to take it back.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -322,7 +322,7 @@ const WRITE_TOOLS = [
   {
     name: 'create_item',
     title: 'Add a survey item',
-    description: 'Add one survey item to a document (editor or owner only), in a category from get_survey_context, on a page, at a box on that page (PDF points from the page top-left). One Undo in the app takes it back.',
+    description: 'Add one survey item to a document (editor or owner only), in a category from get_survey_context, on a page, at a box on that page (PDF points from the page top-left). Returns a change_id you can pass to undo_change to remove it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -342,7 +342,41 @@ const WRITE_TOOLS = [
     },
     annotations: { readOnlyHint: false },
   },
+  {
+    name: 'undo_change',
+    title: 'Undo a change',
+    description: 'Reverse one change you made, using the change_id a write tool returned (editor or owner only). It puts the item back the way it was before that change; if the change created the item, the item is removed. Make the change and undo it if it was wrong — you do not need to ask before each change.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        change_id: { type: 'string', description: 'The change_id a write tool returned.' },
+      },
+      required: ['change_id'],
+    },
+    annotations: { readOnlyHint: false },
+  },
 ];
+
+// A change_id is an opaque, self-contained token the write tools hand back: the
+// document, the marker, and the fields' values from BEFORE the change (or a
+// create flag). undo_change decodes it and writes those values back, so no
+// server state is kept. The token grants no authority — undo_change still runs
+// through requireWrite and the append RPC's editor RLS, so it can only reverse a
+// change on a document the agent could write anyway. base64url over UTF-8 bytes,
+// so note text in any language survives.
+function encodeChange(obj: Record<string, unknown>): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function decodeChange(token: string): Record<string, unknown> {
+  const b64 = token.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
 
 // gunzip a snapshot stored with encoding_version = 2.
 async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
@@ -562,10 +596,14 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     // persist a checklist id or answer the template does not define. set_entity
     // needs the same lookup to validate the entity id against this document.
     const names = (name === 'set_answers' || name === 'set_entity') ? await categoryNames(db, documentId) : null;
+    // The fields this change is about to overwrite, captured before the mutate,
+    // so undo_change can put them back. null means "the field was not set".
+    let undo: Record<string, unknown> | null = null;
     const result = await writeMarkers(db, documentId, (markers) => {
       const marker = markers[itemId];
       if (!marker) throw new ToolError('No item with that id in this document. Use find_survey_items.');
       if (name === 'set_answers') {
+        undo = { v: 1, d: documentId, m: itemId, b: { checklistResponses: (marker.checklistResponses as unknown) ?? {} } };
         const answers = Array.isArray(args.answers) ? args.answers : [];
         if (!answers.length) throw new ToolError('Pass at least one answer.');
         const categoryId = String(marker.categoryId || '');
@@ -590,6 +628,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
       } else if (name === 'add_note') {
         const add = String(args.text || '').trim();
         if (!add) throw new ToolError('Say what to add to the note with text.');
+        undo = { v: 1, d: documentId, m: itemId, b: { note: (marker.note ?? marker.notes ?? null) as unknown } };
         // Keep the note's shape: append to its `text`, never drop media or
         // other fields, and never write JSON back as raw text. `note` is the
         // field every editor writes (documentSurveyMarkerMapper.js).
@@ -607,6 +646,11 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         // old status after the id changes.
         const raw = args.entity_id;
         const entityId = raw == null || raw === '' ? null : String(raw);
+        undo = { v: 1, d: documentId, m: itemId, b: {
+          entityId: (marker.entityId ?? null) as unknown,
+          entityName: (marker.entityName ?? null) as unknown,
+          entityColor: (marker.entityColor ?? null) as unknown,
+        } };
         if (entityId) {
           const used = documentEntityIds(markers);
           const known = names!.entities.get(entityId);
@@ -619,7 +663,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         }
       }
     }, fieldMaps);
-    return text({ ok: true, item_id: itemId, changed: result.changed });
+    return text({ ok: true, item_id: itemId, changed: result.changed, change_id: result.changed && undo ? encodeChange(undo) : null });
   }
   if (name === 'create_item') {
     if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
@@ -668,7 +712,31 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
       }
       markers[itemId] = marker;
     }, fieldMaps);
-    return text({ ok: true, item_id: itemId, changed: result.changed });
+    // Undo of a create removes the marker it added.
+    const undo = { v: 1, d: documentId, m: itemId, create: true };
+    return text({ ok: true, item_id: itemId, changed: result.changed, change_id: result.changed ? encodeChange(undo) : null });
+  }
+  if (name === 'undo_change') {
+    const token = String(args.change_id || '');
+    if (!token) throw new ToolError('Pass the change_id a write tool returned.');
+    let u: Record<string, unknown>;
+    try { u = decodeChange(token); } catch { throw new ToolError('That change_id is not one this connector gave out.'); }
+    if (!u || u.v !== 1 || !UUID.test(String(u.d || '')) || !u.m) {
+      throw new ToolError('That change_id is not one this connector gave out.');
+    }
+    // Same gate as any write; the append RPC's editor RLS is the real backstop.
+    const { fieldMaps } = await requireWrite(db);
+    const result = await writeMarkers(db, String(u.d), (markers) => {
+      const id = String(u.m);
+      if (u.create) { delete markers[id]; return; } // the item this change added
+      const marker = markers[id];
+      if (!marker) return; // already gone — nothing to put back
+      const before = (u.b && typeof u.b === 'object' ? u.b : {}) as Record<string, unknown>;
+      const patch: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(before)) patch[k] = val === null ? undefined : val;
+      markers[id] = { ...marker, ...patch };
+    }, fieldMaps);
+    return text({ ok: true, changed: result.changed });
   }
   throw new ToolError(`Unknown tool ${name}.`);
 }
