@@ -39,6 +39,8 @@ import './mobile/mobileSurveyPanel.css';
 // .survey-rail, which only the desktop rail carries.
 import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
+import { watchSurveyBackdropInset } from './mobile/surveyBackdropInset.js';
+import { subscribeViewerTopOverlays } from './utils/viewerTopOverlay.js';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { answerSetFor, answerTone } from './services/answerSets.js';
@@ -752,6 +754,17 @@ const SurveySpacesRail = ({
     requestSurveySheetClose,
     surveySheetProps.ref,
   );
+  const surveyBackdropRef = useRef(null);
+  // Keep the dim under the survey strip. The strip is committed by
+  // MobileToolProperties, often after this rail, and it can appear or move
+  // after the backdrop mounts — a one-shot query leaves top empty and
+  // Reuse/Done eat the first tap as "close sheet".
+  useLayoutEffect(() => {
+    if (!mobileMode || isSurveyPanelCollapsed) return undefined;
+    return watchSurveyBackdropInset(surveyBackdropRef.current, {
+      subscribeOverlays: subscribeViewerTopOverlays,
+    });
+  }, [mobileMode, isSurveyPanelCollapsed]);
 
   // Close everything in the phone accordion (the "Categories" back button).
   const collapseMobileAccordion = () => {
@@ -1937,11 +1950,7 @@ const SurveySpacesRail = ({
                 // Starts under the survey strip (template / module / Reuse /
                 // Done), so those stay usable on the first tap while the
                 // sheet is open instead of the tap only closing the sheet.
-                ref={(el) => {
-                  if (!el) return;
-                  const strip = document.querySelector('.mobile-pdf-properties--survey');
-                  el.style.top = strip ? `${Math.round(strip.getBoundingClientRect().bottom)}px` : '';
-                }}
+                ref={surveyBackdropRef}
               />
             )}
             {/* Desktop: the Survey tab's rail - always on screen, the right-hand
