@@ -188,6 +188,7 @@ import { buildPolygonMarkerBounds, buildStrokeMarkerBounds, MARKER_STROKE_DEFAUL
 import '../survey/smartFillBeta.js';
 import { findSimilarOnPage } from '../survey/smartFillProvider.js';
 import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
+import { SMART_FILL_CLEAR_MATCHES_EVENT, shouldClearSmartFillMatches } from '../survey/smartFillMatchEvents.js';
 import { markerShapeHitTest } from '../survey/markerShapes.js';
 import { showToast, dismissToast } from '../utils/toast';
 // The toast store renames a toast whose id is still showing, so a later
@@ -2456,6 +2457,7 @@ const SVGAnnotationLayerBody = memo(({
   }, [clearSmartFillPreview, height, onSurveyMarkerCreated, pageNumber, width]);
 
   const findMoreLikeThisRef = useRef(null);
+  const smartFillMatchSourceRef = useRef(null);
   const surveyMarkersRef = useRef(surveyMarkers);
   surveyMarkersRef.current = surveyMarkers;
   findMoreLikeThisRef.current = (sample, skipBounds = null, { quietIfNone = false } = {}) => {
@@ -2482,6 +2484,10 @@ const SVGAnnotationLayerBody = memo(({
         // A tag that already has a marker here is not "more" (the tool-bar
         // search has no skipBounds, so it re-offered the tag just applied).
         .filter((b) => !(surveyMarkersRef.current || []).some((m) => m && inside(centre(b), m)));
+      const sourceAt = skipBounds ? centre(skipBounds) : null;
+      smartFillMatchSourceRef.current = sourceAt
+        ? ((surveyMarkersRef.current || []).find((m) => m && inside(sourceAt, m))?.annotationId ?? null)
+        : null;
       setSmartFillMatches(matches);
       // From the tool bar every page in view looks; only pages with matches speak.
       if (quietIfNone && !matches.length) return;
@@ -2490,6 +2496,17 @@ const SVGAnnotationLayerBody = memo(({
         : 'No other tags like it on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
     });
   };
+  // A deleted category takes the matches found from its marker with it.
+  useEffect(() => {
+    const onClear = (event) => {
+      if (!shouldClearSmartFillMatches(smartFillMatchSourceRef.current, event?.detail?.markerIds || [])) return;
+      smartFillScanAbortRef.current?.abort?.();
+      setSmartFillMatches([]);
+      dismissToast('smart-fill-find');
+    };
+    window.addEventListener(SMART_FILL_CLEAR_MATCHES_EVENT, onClear);
+    return () => window.removeEventListener(SMART_FILL_CLEAR_MATCHES_EVENT, onClear);
+  }, []);
   // "Find tags like my sample" from the tool bar (any page in view, any drawing).
   useEffect(() => {
     const onFind = () => {
