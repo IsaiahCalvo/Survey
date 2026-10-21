@@ -91,3 +91,60 @@ test('add_note on a plain-string note turns it into { text } without losing text
   syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
   assert.equal(docToSurveyMarkers(doc).a.note.text, 'hello\nworld');
 });
+
+// With the person's survey-marker-fields flag on, the connector must write the
+// SAME per-field shape the app writes (fieldMaps: true). Two things to prove:
+// a fieldMaps write still converges on an open client, and two connector writes
+// to DIFFERENT fields of the SAME marker now MERGE instead of clobbering — the
+// pre-existing whole-marker LWW the review flagged, fixed by the flag.
+test('a fieldMaps write converges on an already-open client', () => {
+  const clientA = new Y.Doc();
+  const id = 'surveyMarker-fm';
+  syncSurveyMarkersToDoc(clientA, { [id]: { id, name: 'D-9', checklistResponses: {} } }, { fieldMaps: true });
+  const snapshot = Y.encodeStateAsUpdate(clientA);
+
+  const server = new Y.Doc();
+  Y.applyUpdate(server, pgHexToBytes(bytesToPgHex(snapshot)));
+  const markers = docToSurveyMarkers(server);
+  const before = Y.encodeStateVector(server);
+  markers[id] = { ...markers[id], checklistResponses: { c1: { selection: 'N' } } };
+  syncSurveyMarkersToDoc(server, markers, { origin: 'agent', fieldMaps: true });
+  Y.applyUpdate(clientA, pgHexToBytes(bytesToPgHex(Y.encodeStateAsUpdate(server, before))));
+
+  const after = docToSurveyMarkers(clientA)[id];
+  assert.deepEqual(after.checklistResponses, { c1: { selection: 'N' } });
+  assert.equal(after.name, 'D-9', 'other fields untouched');
+});
+
+test('fieldMaps: concurrent writes to different fields of one marker both survive', () => {
+  const origin = new Y.Doc();
+  const id = 'surveyMarker-merge';
+  syncSurveyMarkersToDoc(origin, { [id]: { id, name: 'D-9', note: { text: '' }, checklistResponses: {} } }, { fieldMaps: true });
+  const snapshot = Y.encodeStateAsUpdate(origin);
+
+  // Two connector calls load the same state and each change a DIFFERENT field.
+  const a = new Y.Doc(); Y.applyUpdate(a, snapshot);
+  const b = new Y.Doc(); Y.applyUpdate(b, snapshot);
+
+  const beforeA = Y.encodeStateVector(a);
+  const ma = docToSurveyMarkers(a);
+  ma[id] = { ...ma[id], checklistResponses: { c1: { selection: 'Y' } } };
+  syncSurveyMarkersToDoc(a, ma, { origin: 'agent', fieldMaps: true });
+  const updateA = Y.encodeStateAsUpdate(a, beforeA);
+
+  const beforeB = Y.encodeStateVector(b);
+  const mb = docToSurveyMarkers(b);
+  mb[id] = { ...mb[id], note: { text: 'checked on site' } };
+  syncSurveyMarkersToDoc(b, mb, { origin: 'agent', fieldMaps: true });
+  const updateB = Y.encodeStateAsUpdate(b, beforeB);
+
+  // A client that merges both WAL rows keeps BOTH field edits.
+  const client = new Y.Doc();
+  Y.applyUpdate(client, snapshot);
+  Y.applyUpdate(client, pgHexToBytes(bytesToPgHex(updateA)));
+  Y.applyUpdate(client, pgHexToBytes(bytesToPgHex(updateB)));
+  const merged = docToSurveyMarkers(client)[id];
+  assert.deepEqual(merged.checklistResponses, { c1: { selection: 'Y' } }, 'A survived');
+  assert.deepEqual(merged.note, { text: 'checked on site' }, 'B survived');
+  assert.equal(merged.name, 'D-9');
+});

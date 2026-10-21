@@ -107,7 +107,12 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   assert.match(guard, /access === 'read'/);
   // Writes go through the shared CRDT marker sync + the append RPC on the
   // person's token, never a service-role or a document_annotations write.
-  assert.match(src, /syncSurveyMarkersToDoc\(doc, markers, \{ origin: 'agent' \}\)/);
+  assert.match(src, /syncSurveyMarkersToDoc\(doc, markers, \{ origin: 'agent', fieldMaps \}\)/);
+  // The connector writes the same per-field or whole-value marker shape the app
+  // writes, keyed on the person's survey-marker-fields flag, so it never
+  // downgrades a per-field marker or loses a concurrent field edit.
+  assert.match(src, /MARKER_FIELDS_FLAG = 'survey-marker-fields'/);
+  assert.match(guard, /fieldMaps: flagMap\[MARKER_FIELDS_FLAG\] === true/);
   assert.match(src, /rpc\('append_annotation_update'/);
   // The off-by-default flag is declared in a migration and the client registry.
   assert.match(read('supabase/migrations/20261022170000_survey_connector_writes_flag.sql'), /'survey-connector-writes', 'off'/);

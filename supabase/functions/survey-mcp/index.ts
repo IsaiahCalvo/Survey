@@ -27,6 +27,11 @@ import { bytesToPgHex, pgHexToBytes } from '../_shared/pgBytea.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
 
 const CONNECTOR_WRITES_FLAG = 'survey-connector-writes';
+// When the person has this on, the app stores each marker as one Y.Map entry
+// per field so concurrent edits to different fields merge (annotationDocSync.js).
+// The connector must write the SAME shape, or a whole-value write would downgrade
+// a per-field marker back and lose that merge.
+const MARKER_FIELDS_FLAG = 'survey-marker-fields';
 const SNAPSHOT_ENC_GZIP = 2;
 
 const corsHeaders = {
@@ -355,12 +360,15 @@ async function writeMarkers(
   db: SupabaseClient,
   documentId: string,
   mutate: (markers: Record<string, Record<string, unknown>>) => void,
+  fieldMaps = false,
 ): Promise<{ changed: boolean }> {
   const doc = await loadAnnotationDoc(db, documentId);
   const markers = docToSurveyMarkers(doc) as Record<string, Record<string, unknown>>;
   mutate(markers);
   const before = Y.encodeStateVector(doc);
-  const res = syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  // `fieldMaps` mirrors the person's survey-marker-fields flag, so the connector
+  // writes the same per-field or whole-value shape the app does and converges.
+  const res = syncSurveyMarkersToDoc(doc, markers, { origin: 'agent', fieldMaps });
   if (!res.added && !res.updated && !res.removed) return { changed: false };
   const update = Y.encodeStateAsUpdate(doc, before);
   const { error } = await db.rpc('append_annotation_update', {
@@ -377,15 +385,18 @@ async function writeMarkers(
 // may write (a read-scoped agent is 'read'; a person's own token is 'person').
 // The database enforces the same (check_agent_request, and editor RLS in the
 // append RPC) regardless, so this is the early, friendly refusal.
-async function requireWrite(db: SupabaseClient) {
+async function requireWrite(db: SupabaseClient): Promise<{ fieldMaps: boolean }> {
   const { data: flags } = await db.rpc('get_my_feature_flags', {}, { get: true });
-  if (!flags || (flags as Record<string, boolean>)[CONNECTOR_WRITES_FLAG] !== true) {
+  const flagMap = (flags || {}) as Record<string, boolean>;
+  if (flagMap[CONNECTOR_WRITES_FLAG] !== true) {
     throw new ToolError('Survey changes from the connector are not turned on.');
   }
   const { data: access } = await db.rpc('my_agent_access', {}, { get: true });
   if (access === 'read') {
     throw new ToolError('This AI agent can only read. The person can let it make changes at surveytool.app/agent-link.');
   }
+  // Write the marker shape the person's app writes (per-field when on).
+  return { fieldMaps: flagMap[MARKER_FIELDS_FLAG] === true };
 }
 
 async function callTool(db: SupabaseClient, name: string, args: Record<string, unknown>) {
@@ -488,7 +499,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
     const itemId = String(args.item_id || '');
     if (!itemId) throw new ToolError('Say which item to change with item_id.');
-    await requireWrite(db);
+    const { fieldMaps } = await requireWrite(db);
     // set_answers validates each id and value against the item's own category,
     // the way the in-app agent does (surveyAgentTools.js), so an agent cannot
     // persist a checklist id or answer the template does not define.
@@ -529,7 +540,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         obj.text = beforeText ? `${beforeText}\n${add}` : add;
         markers[itemId] = { ...marker, note: obj };
       }
-    });
+    }, fieldMaps);
     return text({ ok: true, item_id: itemId, changed: result.changed });
   }
   throw new ToolError(`Unknown tool ${name}.`);
