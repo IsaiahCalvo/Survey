@@ -366,7 +366,8 @@ export default function RevisionsPanel({
   }, []);
 
   // Resolve ownership once per (documentId, user) — matches the open-coded
-  // owner check in _kal48_can_access: project owner OR document creator.
+  // owner rule in user_can_access_document (which _kal48_can_access now
+  // calls): project owner OR document creator.
   useEffect(() => {
     let cancelled = false;
     setIsOwner(false);
