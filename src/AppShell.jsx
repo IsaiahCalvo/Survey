@@ -1451,6 +1451,20 @@ export default function App({ devPreviewReturnTab = null }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The free PDF tools (/tools) hand their result over as ?open=tools: the
+  // file waits in this browser's IndexedDB (src/tools/handoff.js) and opens
+  // in a tab here, signed in or not.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('open') !== 'tools') return;
+    url.searchParams.delete('open');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    import('./tools/handoff.js')
+      .then(({ takeHandoff }) => takeHandoff())
+      .then((file) => { if (file) handleDocumentSelect(file); })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Someone who opened an invite link while signed out comes back here after
   // signing in; send them on to the invite page so the invite is accepted.
   useEffect(() => {

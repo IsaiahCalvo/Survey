@@ -10,6 +10,9 @@ import UTIF from 'utif2';
 import createQpdf from '@neslinesli93/qpdf-wasm';
 import { qpdfRunner, protectPdf, unlockPdf, looksEncrypted } from '../qpdf.js';
 import { decodeTiff, isTiff } from '../tiff.js';
+import fontkit from '@pdf-lib/fontkit';
+import { readDocx, docxBlocksToPdf, inspectDocx, htmlToBlocks } from '../docx.js';
+import { makeDocx, para, listItem, table, run } from './makeDocx.mjs';
 import { ToolError } from '../errors.js';
 import { compressPdf, deflate, inflate } from '../compress.js';
 import { parseRangeGroups, parsePageSet, formatPageSet, everyN } from '../ranges.js';
@@ -302,4 +305,50 @@ test('sign draws the image on the chosen page, upright on rotated pages', async 
     assert.ok(!doc.getPage(0).node.Resources()?.lookup(PDFName.of('XObject')), 'page 1 untouched');
   }
   await assert.rejects(signPdf(await samplePdf(1), { image: null, box: {} }), ToolError);
+});
+
+test('word: HTML becomes headings, styled runs, lists, tables and images', () => {
+  const blocks = htmlToBlocks('<h1>Title &amp; more</h1><p><strong>B</strong> <em>I</em> <a href="https://x.test">link</a></p><ul><li>One<ul><li>Inner</li></ul></li><li>Two</li></ul><table><tr><th>H</th><td colspan="2">wide</td></tr></table><p><img src="data:image/png;base64,AAAA" /></p>');
+  assert.deepEqual(blocks.map((b) => b.kind), ['para', 'para', 'para', 'para', 'para', 'table', 'image']);
+  assert.equal(blocks[0].style, 'h1');
+  assert.equal(blocks[0].runs[0].text, 'Title & more');
+  assert.equal(blocks[1].runs.find((r) => r.text === 'link').href, 'https://x.test');
+  assert.deepEqual(blocks.slice(2, 5).map((b) => [b.list.depth, b.list.n]), [[0, 1], [1, 1], [0, 2]]);
+  assert.equal(blocks[5].rows[0][1].span, 2);
+  assert.equal(blocks[5].rows[0][0].blocks[0].runs[0].b, true);
+});
+
+test('word to PDF: a real .docx lays out over pages with links', async () => {
+  const body = para('Report', 'Heading1') + para([run('Bold ', { b: true }), run('text', { i: true })]) + listItem('First') + listItem('Second')
+    + table([['A', 'B'], ['1', '2']]) + para('Word '.repeat(2000));
+  const blocks = await readDocx(await makeDocx(body));
+  assert.equal(blocks[0].style, 'h1');
+  assert.ok(blocks.some((b) => b.list?.ordered));
+  const { bytes } = await docxBlocksToPdf(blocks, { pageSize: 'a4' });
+  const doc = await PDFDocument.load(bytes);
+  assert.ok(doc.getPageCount() >= 3, `pages ${doc.getPageCount()}`);
+  assert.equal(Math.round(doc.getPage(0).getWidth()), 595);
+  const linked = await docxBlocksToPdf(htmlToBlocks('<p><a href="https://surveytool.app">site</a></p>'));
+  assert.ok((await PDFDocument.load(linked.bytes)).getPage(0).node.Annots());
+});
+
+test('word to PDF: other alphabets embed a font only when needed', async () => {
+  const fontsDir = new URL('../../assets/fonts/', import.meta.url);
+  let loads = 0;
+  const loadFont = async (kind) => { loads += 1; return readFileSync(new URL(kind === 'cjk' ? 'DroidSansFallback.ttf' : 'NotoSans-Regular.ttf', fontsDir)); };
+  const loadFontkit = async () => fontkit;
+  await docxBlocksToPdf(htmlToBlocks('<p>Café – “quotes” €5</p>'), { loadFont, loadFontkit });
+  assert.equal(loads, 0);
+  const { bytes } = await docxBlocksToPdf(htmlToBlocks('<p>Привет 你好 <strong>Γειά</strong></p>'), { loadFont, loadFontkit });
+  assert.equal(loads, 2);
+  assert.ok((await PDFDocument.load(bytes)).getPageCount() === 1);
+  await assert.rejects(docxBlocksToPdf(htmlToBlocks('<p>Привет</p>')), ToolError);
+});
+
+test('word: complex parts are listed; non-docx and empty files are refused', async () => {
+  const boxed = await makeDocx(`${para('x')}<w:p><w:r><w:txbxContent><w:p/></w:txbxContent></w:r></w:p><w:sectPr><w:cols w:num="2"/></w:sectPr>`, { extra: { 'word/footer1.xml': '<x/>' } });
+  assert.deepEqual(await inspectDocx(boxed), ['text boxes', 'columns', 'headers or footers']);
+  assert.deepEqual(await inspectDocx(await makeDocx(para('plain'))), []);
+  await assert.rejects(readDocx(new TextEncoder().encode('{\\rtf1 old doc')), /\.docx/);
+  await assert.rejects(readDocx(await makeDocx('')), /empty/);
 });
