@@ -8,6 +8,7 @@
 // pdfjs worker is configured once at App.jsx module load; pdfjsLib is a shared
 // singleton in the Vite module graph, so no re-init is needed here.
 
+import { formatLibraryDocument } from './services/linkedDocumentRow.js';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './utils/incomingFileResolver';
 import DuplicateUploadModal from './components/DuplicateUploadModal';
@@ -495,17 +496,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // files; the old mapping dropped it (kept only camelCase projectId),
     // so files never showed inside their project. The camelCase keys below
     // are legacy aliases the pre-redesign UI still reads.
-    const formattedDocs = supabaseDocuments.map(doc => ({
-      ...doc,
-      id: doc.id,
-      name: doc.name,
-      size: doc.file_size || 0,
-      uploadedAt: doc.created_at || doc.updated_at,
-      type: 'application/pdf',
-      filePath: doc.file_path,
-      projectId: doc.project_id,
-      cutoverCompletedAt: doc.cutover_completed_at || null
-    }));
+    const formattedDocs = supabaseDocuments.map(formatLibraryDocument);
     setDocuments(prev => {
       // Keep temporary documents that haven't been replaced by real ones yet
       const tempDocs = prev.filter(d =>

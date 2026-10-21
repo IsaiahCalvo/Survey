@@ -74,6 +74,8 @@ import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
+import { fetchLinkedDocumentRow } from './services/linkedDocumentRow.js';
+import { supabase } from './supabaseClient';
 import { useAuth } from './contexts/AuthContext';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
@@ -1518,6 +1520,28 @@ export default function App({ devPreviewReturnTab = null }) {
     url.searchParams.delete('docId');
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   }, [documents]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Perf (2026-10-21): a share link opens from its own row as soon as the user
+  // is known, instead of after the whole library list has loaded. When the
+  // row is not one the library would list, the list path above still decides.
+  const handleDocumentSelectRef = useRef(null);
+  handleDocumentSelectRef.current = handleDocumentSelect;
+  useEffect(() => {
+    const documentId = deepLinkDocumentIdRef.current;
+    if (!documentId || !user?.id || !supabase) return undefined;
+    let cancelled = false;
+    fetchLinkedDocumentRow(supabase, { userId: user.id, documentId })
+      .then((row) => {
+        if (cancelled || !row || deepLinkDocumentIdRef.current !== documentId) return;
+        deepLinkDocumentIdRef.current = null;
+        handleDocumentSelectRef.current?.(row, row.filePath || null);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('docId');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   const returnToDevHubPreview = () => {
     if (!import.meta.env.DEV || !devPreviewReturnTab) return false;
