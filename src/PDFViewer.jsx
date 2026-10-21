@@ -4051,6 +4051,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [familyClipboard, setFamilyClipboard] = useState(null);
   const familyClipboardRef = useRef(null);
   familyClipboardRef.current = familyClipboard;
+  // Every annotation Copy writes the family clipboard (the one the page
+  // menu's Paste / Paste in place read); copyFamilySelection is declared
+  // further down, so the early Copy handlers reach it through this ref.
+  const copyFamilySelectionRef = useRef(null);
   const pasteFamilyAtRef = useRef(null);
   // UX: shared paste-anchor memory for the "repeat paste at the same spot"
   // rule (Bluebeam/tldraw convention): the FIRST paste lands exactly at the
@@ -4856,6 +4860,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleCopyCallout = useCallback((calloutId) => {
     const callout = callouts.find(c => c.id === calloutId);
+    const calloutPage = callout ? Number(callout.pageNumber ?? resolveCalloutPageNumber(calloutId)) : NaN;
+    if (callout && Number.isFinite(calloutPage)
+      && copyFamilySelectionRef.current?.(calloutPage, { calloutIds: [calloutId] }, 'copy')) return;
     if (callout) {
       setClipboardCallout(callout);
       setClipboardCalloutType('copy');
@@ -4864,7 +4871,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setClipboardAnnotation(null);
       setFamilyClipboard(null);
     }
-  }, [callouts]);
+  }, [callouts, resolveCalloutPageNumber]);
 
   // UX: paste a copied callout. Two placement modes:
   //   1. cursorPosition = { clientX, clientY } (Cmd+V at the pointer, or the
@@ -30072,6 +30079,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const page = annotationsByPageRef.current?.[pageNumber];
     const obj = page?.objects?.[annotationIndex];
     if (!obj) return;
+    if (copyFamilySelectionRef.current?.(pageNumber, { indices: [annotationIndex] }, 'copy')) return;
     setClipboardAnnotation({
       object: deepClone(obj),
       sourcePageNumber: pageNumber,
@@ -32266,6 +32274,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return done;
   }, [commitFamilyPaste, resolvePasteRepeatCount]);
   pasteFamilyAtRef.current = pasteFamilyAt;
+  copyFamilySelectionRef.current = copyFamilySelection;
 
   // Duplicate (Cmd+D, right-click Duplicate): a copy of the selection 16
   // page units down-right of it; the clipboard is left alone.
