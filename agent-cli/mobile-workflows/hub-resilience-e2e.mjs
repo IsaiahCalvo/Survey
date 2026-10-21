@@ -831,8 +831,12 @@ async function testEdgeFixtures(page, baseUrl, touch, device) {
     await artifacts.screenshot(page, `${device}-empty-${tab}`);
 
     await gotoHub(page, baseUrl, tab, { hubLoading: tab });
-    const status = page.getByRole('status', { name: `Loading ${tab}`, exact: true });
+    // #887: a shaped skeleton (role=status, appears after 300 ms) whose
+    // visually hidden text names what is loading.
+    const status = page.locator('.hub-loading-region [data-skeleton][role="status"]');
+    await status.first().waitFor({ state: 'attached', timeout: 5_000 });
     assert.equal(await status.count(), 1, `${device}: one real ${tab} skeleton region`);
+    assert.equal(await status.locator('.sk-visually-hidden').textContent(), `Loading ${tab}…`, `${device}: ${tab} skeleton says what is loading`);
     assert.equal(await status.getAttribute('aria-busy'), 'true', `${device}: ${tab} skeleton is busy`);
   }
 
