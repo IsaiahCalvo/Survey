@@ -48,6 +48,7 @@ import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
 import { addedToProjectMessage, asPdfFile, isUploadableProjectId, rejectedFilesMessage, splitDroppedFiles } from './utils/fileDrop.js';
 import { freeDocumentName } from './tools/inApp.js';
+import { ToolError } from './tools/errors.js';
 import { FONT_FAMILY, hexToRgba, hasNameConflict } from './viewerShared.js';
 
 // --- helpers --------------------------------------------------------------
@@ -2102,15 +2103,30 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // Documents list menus and from the viewer (AppShell, through the ref). The
   // result is saved like an upload, next to the original.
   const [pdfTools, setPdfTools] = useState(null); // { docs, initialTool }
+  // A document open in a tab brings its bytes (blob), so tools on it work
+  // offline; the others are fetched, which needs a connection.
   const pdfToolSource = (doc) => ({
-    id: doc.id,
+    id: doc.id || 'open-tab',
     name: doc.name,
-    getBytes: async () => new Uint8Array(await (await downloadFromStorage(doc.file_path)).arrayBuffer()),
+    getBytes: async () => {
+      if (doc.blob) return new Uint8Array(await doc.blob.arrayBuffer());
+      try {
+        return new Uint8Array(await (await downloadFromStorage(doc.file_path)).arrayBuffer());
+      } catch (err) {
+        console.error('[PdfTools] download failed', err);
+        throw new ToolError(globalThis.navigator?.onLine === false
+          ? 'You’re offline. Open the document first, then use PDF tools from its menu.'
+          : 'Couldn’t get this document. Check your connection and try again.');
+      }
+    },
   });
   const openPdfTools = (docs, initialTool = null) => {
     const rows = (docs || [])
-      .map((doc) => (allDocuments || []).find((candidate) => candidate.id === doc?.id) || doc)
-      .filter((doc) => doc?.file_path);
+      .map((doc) => {
+        const row = (allDocuments || []).find((candidate) => candidate.id === doc?.id);
+        return row ? { ...row, blob: doc.blob || null } : doc;
+      })
+      .filter((doc) => doc?.file_path || doc?.blob);
     if (!rows.length || rows.length < (docs || []).length) {
       showToast(rows.length ? 'Some of these documents aren’t saved to your account yet. Save them first, then try again.' : 'Save this document to your account first, then try again.', 'info');
       return;

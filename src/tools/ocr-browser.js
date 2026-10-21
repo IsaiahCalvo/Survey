@@ -13,10 +13,14 @@ async function ocrAssets() {
     import('tesseract.js-core/tesseract-core-lstm.wasm.js?url'),
   ]);
   const here = globalThis.location.href;
+  // The desktop app loads from file://, where "/ocr" is the disk's root; there
+  // the data sits next to the app's index.html. The iOS and Android apps serve
+  // from capacitor://localhost and https://localhost, so "/ocr" works offline.
+  const root = globalThis.location.protocol === 'file:' ? new URL('.', here) : new URL('/', here);
   return {
     workerPath: new URL(workerAsset, here).href,
     corePath: new URL(coreAsset, here).href,
-    langPath: new URL('/ocr', here).href,
+    langPath: new URL('ocr', root).href,
   };
 }
 

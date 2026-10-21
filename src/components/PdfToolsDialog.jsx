@@ -15,6 +15,7 @@ import MotionPresence from './MotionPresence.jsx';
 import { C } from '../uiPalette';
 import { IN_APP_TOOLS, runInAppTool } from '../tools/inApp.js';
 import { ToolError } from '../tools/errors.js';
+import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import './PdfToolsDialog.css';
 
 const fmtSize = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1e3))} KB`);
@@ -168,7 +169,10 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
       if (tool === 'split') o = { mode: 'ranges', ...opts, ranges: opts.ranges ?? '' };
       const files = await runInAppTool(tool, withBytes, o, (m) => setBusy(m));
       setResult(files);
+      // Counts only: which tool and how it went, never names or content.
+      trackSurveyAnalyticsEvent('pdf_tool_run', { tool, where: 'app', ok: true, inputs: withBytes.length, outputs: files.length });
     } catch (err) {
+      trackSurveyAnalyticsEvent('pdf_tool_run', { tool, where: 'app', ok: false, expected: err instanceof ToolError });
       console.error('[PdfTools] run failed', err);
       setError(err instanceof ToolError ? err.message : 'Something went wrong. The file may be damaged or locked. Try again.');
     } finally {
@@ -182,6 +186,7 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
     try {
       await onSave(asFiles());
       setSaved(true);
+      trackSurveyAnalyticsEvent('pdf_tool_saved', { tool, outputs: result.length });
     } catch (err) {
       setError(err?.message || 'Saving failed. Try again.');
     } finally {
@@ -191,6 +196,7 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
   const download = async () => {
     const { saveFile } = await import('../tools/browser.js');
     result.forEach((r) => saveFile(r.bytes, r.name, 'application/pdf'));
+    trackSurveyAnalyticsEvent('pdf_tool_downloaded', { tool, outputs: result.length });
   };
 
   const options = () => {
