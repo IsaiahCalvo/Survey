@@ -191,24 +191,42 @@ const READ_TOOLS = [
   {
     name: 'list_projects',
     title: 'List projects',
-    description: 'The Survey projects this person can see (their own and shared), newest first.',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'The Survey projects this person can see (their own and shared), newest first. Paged: pass limit (default 100, max 200) and offset; next_offset is set when more remain.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', description: 'How many to return (default 100, max 200).' },
+        offset: { type: 'integer', description: 'How many to skip, for the next page (default 0).' },
+      },
+    },
     annotations: { readOnlyHint: true },
   },
   {
     name: 'list_documents',
     title: 'List documents',
-    description: 'The PDFs (plans, drawings) this person can see, newest first, optionally only one project.',
-    inputSchema: { type: 'object', properties: { project_id: { type: 'string', description: 'Only documents in this project.' } } },
+    description: 'The PDFs (plans, drawings) this person can see, newest first, optionally only one project. Paged: pass limit (default 100, max 200) and offset; next_offset is set when more remain.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'Only documents in this project.' },
+        limit: { type: 'integer', description: 'How many to return (default 100, max 200).' },
+        offset: { type: 'integer', description: 'How many to skip, for the next page (default 0).' },
+      },
+    },
     annotations: { readOnlyHint: true },
   },
   {
     name: 'list_survey_items',
     title: 'List survey items',
-    description: 'The surveyed items in one document (doors, cameras, ...): name, category, entity (status/owner), how many checklist items are answered and how many are No, and whether it has a note. Optionally only one category by name.',
+    description: 'The surveyed items in one document (doors, cameras, ...): name, category, entity (status/owner), how many checklist items are answered and how many are No, and whether it has a note. Optionally only one category by name. Paged: pass limit (default 100, max 500) and offset; count is the full total, next_offset is set when more remain.',
     inputSchema: {
       type: 'object',
-      properties: { document_id: { type: 'string' }, category: { type: 'string', description: 'Category name, e.g. Door.' } },
+      properties: {
+        document_id: { type: 'string' },
+        category: { type: 'string', description: 'Category name, e.g. Door.' },
+        limit: { type: 'integer', description: 'How many items to return (default 100, max 500).' },
+        offset: { type: 'integer', description: 'How many items to skip, for the next page (default 0).' },
+      },
       required: ['document_id'],
     },
     annotations: { readOnlyHint: true },
@@ -490,23 +508,38 @@ async function requireWrite(db: SupabaseClient): Promise<{ fieldMaps: boolean }>
   return { fieldMaps: flagMap[MARKER_FIELDS_FLAG] === true };
 }
 
+// Clamp the limit/offset a list tool takes, so a reply stays bounded and an
+// agent can page instead of pulling everything into its context at once.
+function pageArgs(args: Record<string, unknown>, def: number, max: number): { limit: number; offset: number } {
+  const rawLimit = Number(args.limit);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), max) : def;
+  const rawOffset = Number(args.offset);
+  const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+  return { limit, offset };
+}
+
 async function callTool(db: SupabaseClient, name: string, args: Record<string, unknown>) {
   if (name === 'list_projects') {
+    const { limit, offset } = pageArgs(args, 100, 200);
     const { data, error } = await db.from('projects').select('id, name, updated_at')
-      .eq('archived', false).is('user_archived_at', null).order('updated_at', { ascending: false }).limit(200);
+      .eq('archived', false).is('user_archived_at', null).order('updated_at', { ascending: false })
+      .range(offset, offset + limit - 1);
     if (error) throw new ToolError('Could not list projects.');
-    return text(data || []);
+    const rows = data || [];
+    return text({ count: rows.length, offset, next_offset: rows.length === limit ? offset + limit : null, items: rows });
   }
   if (name === 'list_documents') {
+    const { limit, offset } = pageArgs(args, 100, 200);
     let q = db.from('documents').select('id, name, project_id, page_count, updated_at')
       .eq('archived', false).is('user_archived_at', null);
     if (args.project_id) {
       if (!UUID.test(String(args.project_id))) throw new ToolError('project_id must be a project id from list_projects.');
       q = q.eq('project_id', String(args.project_id));
     }
-    const { data, error } = await q.order('updated_at', { ascending: false }).limit(200);
+    const { data, error } = await q.order('updated_at', { ascending: false }).range(offset, offset + limit - 1);
     if (error) throw new ToolError('Could not list documents.');
-    return text(data || []);
+    const rows = data || [];
+    return text({ count: rows.length, offset, next_offset: rows.length === limit ? offset + limit : null, items: rows });
   }
   const documentId = String(args.document_id || '');
   if (name === 'list_survey_items' || name === 'find_survey_items') {
@@ -537,10 +570,21 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         .filter((i) => i.score >= 0.5)
         .sort((a, b) => b.score - a.score)
         .slice(0, 5);
-    } else {
-      items.sort((a, b) => String(a.category).localeCompare(String(b.category)) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+      return text({ document_id: documentId, count: items.length, items });
     }
-    return text({ document_id: documentId, count: items.length, items });
+    items.sort((a, b) => String(a.category).localeCompare(String(b.category)) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+    // Page the full matched set so a big document doesn't return thousands of
+    // rows at once; count is the full total, next_offset pages the rest.
+    const { limit, offset } = pageArgs(args, 100, 500);
+    const page = items.slice(offset, offset + limit);
+    return text({
+      document_id: documentId,
+      count: items.length,
+      returned: page.length,
+      offset,
+      next_offset: offset + page.length < items.length ? offset + page.length : null,
+      items: page,
+    });
   }
   if (name === 'get_survey_item') {
     const [rows, names] = await Promise.all([surveyItems(db, documentId), categoryNames(db, documentId)]);

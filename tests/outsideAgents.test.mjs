@@ -134,6 +134,18 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   assert.match(ctx, /names\.linkedCats/);
   assert.match(ctx, /r\.category_id\) cats\.add/);
   assert.match(ctx, /\.filter\(\(c\) => cats\.has\(c\.id\)\)/);
+  // The list tools are paged so a reply stays bounded: limit+offset in the
+  // schema, a clamp helper, DB .range() for the row lists, a slice for items,
+  // and next_offset to page the rest.
+  const readSchemas = src.slice(src.indexOf('const READ_TOOLS'), src.indexOf('const WRITE_TOOLS'));
+  for (const t of ['list_projects', 'list_documents', 'list_survey_items']) {
+    const tool = readSchemas.slice(readSchemas.indexOf(`name: '${t}'`), readSchemas.indexOf(`name: '${t}'`) + 1500);
+    assert.match(tool, /limit:/, `${t} takes limit`);
+    assert.match(tool, /offset:/, `${t} takes offset`);
+  }
+  assert.match(src, /function pageArgs/);
+  assert.match(src, /\.range\(offset, offset \+ limit - 1\)/);
+  assert.match(src, /next_offset:/);
 });
 
 async function loadAgentSession() {
