@@ -86,13 +86,16 @@ export function createAgentVoice({ call, serverVoice = false } = {}) {
     get usesServer() { return useServer; },
     setServerVoice(on) { useServer = Boolean(on); },
     stop,
-    /** Resolves when the reply has been spoken (or could not be). */
-    async speak(text) {
+    /**
+     * Resolves when the reply has been spoken (or could not be). here: use
+     * the device's own voice, for words that must come out with no signal.
+     */
+    async speak(text, { here = false } = {}) {
       const words = spokenReply(text);
       if (!words) return;
       stop();
       const mine = turn;
-      if (useServer && playback && playback.state === 'running') {
+      if (!here && useServer && playback && playback.state === 'running') {
         try {
           await playServer(words, mine);
           return;

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSurveyAgentToolbox, normalizeItemName, scoreItemName } from '../src/agent/surveyAgentTools.js';
-import { runSurveyAgentTurn } from '../src/agent/surveyAgentClient.js';
+import { makeSurveyAgentCaller, runSurveyAgentTurn } from '../src/agent/surveyAgentClient.js';
+import { keepWaiting, loadWaiting } from '../src/agent/waitingStore.js';
 import { buildAgentTools } from '../src/agent/webmcp.js';
 import {
   SURVEY_AGENT_TOOL_NAMES,
@@ -477,4 +478,24 @@ test('survey_status says what is done and what is left, on a page or the whole s
   assert.equal(all.done, 1, 'archived checklist lines do not count');
   assert.equal(JSON.parse((await box.run('survey_status', { page: 3, all_pages: false })).content).done, 1);
   assert.ok(SURVEY_AGENT_TOOL_NAMES.includes('survey_status'));
+});
+
+test('the caller gives up on a hanging call, and tells a weak signal from a failing server', async () => {
+  const seen = [];
+  const fake = (result) => ({ functions: { invoke: async (name, opts) => { seen.push(opts); return result; } } });
+  await makeSurveyAgentCaller(fake({ data: { ok: true }, error: null }))({ action: 'transcribe' });
+  assert.equal(seen[0].timeout, 30_000);
+  await makeSurveyAgentCaller(fake({ data: {}, error: null }))({ action: 'turn' });
+  assert.equal(seen[1].timeout, 45_000);
+  const dropped = makeSurveyAgentCaller(fake({ data: null, error: Object.assign(new Error('fetch failed'), { context: new TypeError('Failed to fetch') }) }));
+  await assert.rejects(dropped({ action: 'turn' }), (err) => err.code === 'network');
+  const broken = makeSurveyAgentCaller(fake({ data: null, error: Object.assign(new Error('500'), { context: { status: 500, json: async () => { throw new Error('not json'); } } }) }));
+  await assert.rejects(broken({ action: 'turn' }), (err) => err.code === 'server_error');
+  const coded = makeSurveyAgentCaller(fake({ data: null, error: Object.assign(new Error('429'), { context: { status: 429, json: async () => ({ error: 'monthly_cap_reached' }) } }) }));
+  await assert.rejects(coded({ action: 'turn' }), (err) => err.code === 'monthly_cap_reached');
+});
+
+test('with no IndexedDB, waiting messages live for the session only', async () => {
+  assert.equal(await keepWaiting({ id: 'w1', docKey: 'doc-1', said: 'D-117 lock installed' }), null);
+  assert.deepEqual(await loadWaiting('doc-1'), []);
 });

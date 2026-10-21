@@ -43,7 +43,7 @@ import './mobile/mobileSurveyPanel.css';
 // Desktop Survey panel look (one list, divided). Every rule in it is scoped to
 // .survey-rail, which only the desktop rail carries.
 import './surveyRailPanel.css';
-import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
+import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { answerSetFor, answerTone } from './services/answerSets.js';
@@ -1525,6 +1525,9 @@ const SurveySpacesRail = ({
       template: showSurveyPanel ? selectedTemplate || null : null,
       markers: surveyMarkers || {},
       documentId: pdfFile?.id || null,
+      // Which document a message waiting for signal belongs to: the cloud
+      // id, or name and size for a local file (as its markers are kept).
+      waitKey: pdfFile ? (pdfFile.id || getPDFId(pdfFile)) : null,
       canEdit: canEditSurveyMarkers !== false,
       selectedMarkerId: Object.keys(expandedSurveyMarkers || {}).find((id) => expandedSurveyMarkers[id] && surveyMarkers?.[id]) || null,
       setAnswers: (annotationId, answers) => {

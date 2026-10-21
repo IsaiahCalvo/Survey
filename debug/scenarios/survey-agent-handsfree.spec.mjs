@@ -268,3 +268,53 @@ test('hands-free: talking over a long spoken reply stops it, and what was said i
   expect(log.clips.length).toBe(2);
   await panel.getByRole('button', { name: 'Stop hands-free' }).click();
 });
+
+test('hands-free with no signal: what is said is saved, said back as saved, and sent in order once back online', async ({ page, context }) => {
+  const log = { clips: [], turns: [], speak: [] };
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '1');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+    window.__spoken = [];
+    class Utterance { constructor(text) { this.text = text; } }
+    window.SpeechSynthesisUtterance = Utterance;
+    Object.defineProperty(window, 'speechSynthesis', {
+      configurable: true,
+      value: {
+        speak(u) { window.__spoken.push(u.text); setTimeout(() => u.onend?.(), 200); },
+        cancel() {},
+      },
+    });
+  }, { template: TEMPLATE, data });
+  await mockServer(page, log);
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await expect(panel.getByRole('button', { name: 'Hands-free' })).toBeEnabled();
+
+  await context.setOffline(true);
+  await panel.getByRole('button', { name: 'Hands-free' }).click();
+  // Both things said wait as voice messages; the first is said back in full.
+  await expect(panel.getByText('Voice message')).toHaveCount(2, { timeout: 30_000 });
+  await expect.poll(() => page.evaluate(() => window.__spoken)).toEqual([
+    'No signal. I saved that and will send it when you are back online.',
+    'Saved.',
+  ]);
+  expect(log.clips).toHaveLength(0);
+  expect(log.turns).toHaveLength(0);
+
+  await context.setOffline(false);
+  // In order: D-117 first, then the correction moves the answer to D-118.
+  await expect(panel.getByText(/set card reader to Y on D-118/)).toBeVisible({ timeout: 40_000 });
+  await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d118')).toBe('Y');
+  await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d117')).toBe(null);
+  await expect(panel.getByText('D-117, card reader installed.')).toBeVisible();
+  await expect(panel.getByText('Voice message')).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Stop hands-free' }).click();
+});

@@ -271,6 +271,67 @@ test('With no signal a message waits, then sends when the signal is back; the al
   await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
 });
 
+test('With no signal a message is kept on the device: closing the chat keeps it, and it sends once back online', async ({ page, context }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '1');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+    // The device voice, silent: keep what would be said.
+    window.__said = [];
+    if (window.speechSynthesis) {
+      window.speechSynthesis.speak = (u) => { window.__said.push(u.text); setTimeout(() => u.onend?.(), 0); };
+      window.speechSynthesis.cancel = () => {};
+    }
+  }, { template: TEMPLATE, data });
+  await mockModel(page, calls);
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  const open = page.getByRole('button', { name: 'Survey agent: talk or type to fill items' });
+  await open.click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+
+  await context.setOffline(true);
+  await input.fill('door 117 has no power');
+  await input.press('Enter');
+  await expect(panel.getByText('Waiting for signal')).toBeVisible();
+  // Said out loud, in the device's own voice (no signal for the server's).
+  await expect.poll(() => page.evaluate(() => window.__said)).toContain('No signal. I saved that and will send it when you are back online.');
+
+  // Closing the chat keeps the message on the device.
+  await panel.getByRole('button', { name: 'Close Survey agent' }).click();
+  await expect(panel).toHaveCount(0);
+  await open.click();
+  await expect(panel.getByText('door 117 has no power')).toBeVisible();
+  await expect(panel.getByText('Waiting for signal')).toBeVisible();
+  expect(calls.filter((c) => c.action === 'turn')).toHaveLength(0);
+
+  await context.setOffline(false);
+  await expect(panel.getByText('D-117: power is N and I added a note.')).toBeVisible({ timeout: 40_000 });
+  await expect(panel.getByText('Waiting for signal')).toHaveCount(0);
+  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
+  // Each said once: the retries while offline stay quiet.
+  await expect.poll(() => page.evaluate(() => window.__said)).toEqual([
+    'No signal. I saved that and will send it when you are back online.',
+    'D 117: power is N and I added a note.',
+  ]);
+
+  // Sent once: opening the chat again does not send it again.
+  await panel.getByRole('button', { name: 'Close Survey agent' }).click();
+  await open.click();
+  await expect(panel.getByRole('textbox', { name: 'Message the Survey agent' })).toBeEnabled();
+  await page.waitForTimeout(1500);
+  await expect(panel.getByText('door 117 has no power')).toHaveCount(0);
+  expect(calls.filter((c) => c.action === 'turn')).toHaveLength(3);
+});
+
 // Shared markup tools (annotation-agent flag): "put a note by D-117" lands a
 // real text note next to the item, through the same tools WebMCP uses.
 function mockMarkupModel(page, calls) {
