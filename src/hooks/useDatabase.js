@@ -21,12 +21,16 @@ import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
 import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize } from '../services/pdfByteCache.js';
 import { STREAM_SIGNED_URL_SECONDS } from '../services/cloudPdfStream.js';
+import { bindLibraryListCacheToAuth } from './libraryListCache.js';
+import { useLibraryListCache } from './useLibraryListCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
 
 // The device PDF cache follows the signed-in account: emptied on sign-out,
 // other accounts' entries dropped on sign-in. Bound once at startup so a
 // signed-out start clears it even before anything is downloaded.
 if (supabase) bindPdfCacheToAuth(supabase, pdfByteCache());
+// Same rule for the home lists' device copy (libraryListCache.js).
+if (supabase) bindLibraryListCacheToAuth(supabase);
 
 // Storage's metadata for one stored PDF, always from the server: the browser's
 // HTTP cache must never answer the per-open access check (uploads are stored
@@ -74,7 +78,7 @@ const isSupabaseNotFoundError = (error) => {
 // PROJECTS HOOKS
 // ============================================
 
-export const useProjects = () => {
+export const useProjects = ({ listCache = false } = {}) => {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +89,10 @@ export const useProjects = () => {
   const projectRequestRef = useRef(0);
   projectScopeKeyRef.current = projectScopeKey;
   const [error, setError] = useState(null);
+  const showingCached = useLibraryListCache({
+    enabled: listCache, userId: user?.id, kind: 'projects', scopeKey: projectScopeKey,
+    loadedScopeKey: loadedProjectScopeKey, rows: projects, setRows: setProjects,
+  });
 
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) {
@@ -237,6 +245,7 @@ export const useProjects = () => {
     projects,
     loading,
     initialLoading,
+    showingCached,
     error,
     createProject,
     updateProject,
@@ -251,7 +260,7 @@ export const useProjects = () => {
 
 // Mutation-only consumers can opt out of library reads and invalidation events.
 // Existing callers retain the full query behavior by default.
-export const useDocuments = (projectId = null, { enabled = true } = {}) => {
+export const useDocuments = (projectId = null, { enabled = true, listCache = false } = {}) => {
   const { user, tier } = useAuth();
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(enabled);
@@ -262,7 +271,11 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
   const documentRequestRef = useRef(0);
   documentScopeKeyRef.current = documentScopeKey;
   const [error, setError] = useState(null);
-
+  const showingCached = useLibraryListCache({
+    enabled: enabled && listCache, userId: user?.id, kind: `documents:${projectId ?? 'all'}`,
+    scopeKey: documentScopeKey, loadedScopeKey: loadedDocumentScopeKey,
+    rows: documents, setRows: setDocuments,
+  });
 
   useEffect(() => {
     if (!enabled || !user || !isSupabaseAvailable()) {
@@ -494,6 +507,7 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
     documents,
     loading,
     initialLoading,
+    showingCached,
     error,
     createDocument,
     updateDocument,
@@ -507,7 +521,7 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
 // TEMPLATES HOOKS
 // ============================================
 
-export const useTemplates = () => {
+export const useTemplates = ({ listCache = false } = {}) => {
   const { user } = useAuth();
   const [templates, setTemplates] = useState([]);
   const templatesStateRef = useRef(templates);
@@ -520,6 +534,10 @@ export const useTemplates = () => {
   const templateRequestRef = useRef(0);
   templateScopeKeyRef.current = templateScopeKey;
   const [error, setError] = useState(null);
+  const showingCached = useLibraryListCache({
+    enabled: listCache, userId: user?.id, kind: 'templates', scopeKey: templateScopeKey,
+    loadedScopeKey: loadedTemplateScopeKey, rows: templates, setRows: setTemplates,
+  });
 
   useEffect(() => {
     if (!user || !isSupabaseAvailable()) {
@@ -716,6 +734,7 @@ export const useTemplates = () => {
     templates,
     loading,
     initialLoading,
+    showingCached,
     error,
     createTemplate,
     updateTemplate,
