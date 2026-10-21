@@ -125,7 +125,7 @@ test('native shell accepts only trusted Survey links and remounts the WebView', 
   const protocol = read('mobile-expo/src/nativeShellProtocol.js');
   assert.match(source, /BackHandler, Linking, Platform/);
   assert.match(protocol, /incoming\.origin !== surveyOrigin/);
-  assert.match(protocol, /incoming\.protocol !== 'com\.kalvoe\.survey:'/);
+  assert.match(protocol, /incoming\.protocol !== 'com\.kalvoe\.survey\.expo:'/);
   assert.match(source, /Linking\.getInitialURL\(\)/);
   assert.match(source, /Linking\.addEventListener\('url'/);
   assert.match(source, /surveyLaunchUrlRef\.current = withLaunchCacheBust\(target, launchId\)/);
