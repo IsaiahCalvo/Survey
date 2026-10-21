@@ -189,6 +189,7 @@ import '../survey/smartFillBeta.js';
 import { findSimilarOnPage } from '../survey/smartFillProvider.js';
 import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
 import { SMART_FILL_CLEAR_MATCHES_EVENT, shouldClearSmartFillMatches } from '../survey/smartFillMatchEvents.js';
+import { offeredSmartFillMatches as filterOfferedSmartFillMatches, isSmartFillMatchSourceGone } from '../utils/smartFillMatches.js';
 import { markerShapeHitTest } from '../survey/markerShapes.js';
 import { showToast, dismissToast, TOAST_USER_DISMISS_EVENT } from '../utils/toast';
 // The toast store renames a toast whose id is still showing, so a later
@@ -2599,15 +2600,19 @@ const SVGAnnotationLayerBody = memo(({
   // A tap on a found match adds it; returns true when the tap was used.
   // A match stays offered until a Survey marker actually lands on it, so a
   // tap whose "Categorize Survey Marker" dialog is cancelled keeps it.
-  const offeredSmartFillMatches = useMemo(() => {
-    if (!smartFillMatches.length) return smartFillMatches;
-    const markers = (surveyMarkers || []).filter(Boolean);
-    if (!markers.length) return smartFillMatches;
-    return smartFillMatches.filter((b) => {
-      const cx = b.x + b.width / 2;
-      const cy = b.y + b.height / 2;
-      return !markers.some((m) => cx >= m.x && cx <= m.x + m.width && cy >= m.y && cy <= m.y + m.height);
-    });
+  const offeredSmartFillMatches = useMemo(
+    () => filterOfferedSmartFillMatches(smartFillMatches, surveyMarkers),
+    [smartFillMatches, surveyMarkers],
+  );
+  // Matches found from a marker leave with it (its category deleted, or the
+  // marker itself), so no blue outline outlives its source.
+  useEffect(() => {
+    if (!smartFillMatches.length) return;
+    if (!isSmartFillMatchSourceGone(smartFillMatchSourceRef.current, surveyMarkers)) return;
+    smartFillMatchSourceRef.current = null;
+    smartFillScanAbortRef.current?.abort?.();
+    setSmartFillMatches([]);
+    dismissToast('smart-fill-find');
   }, [smartFillMatches, surveyMarkers]);
   const applySmartFillMatchAt = useCallback((point) => {
     const hit = offeredSmartFillMatches.find((b) => markerShapeHitTest(b.shape, point, 0));
