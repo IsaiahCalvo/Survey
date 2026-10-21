@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { QUERIES, THRESHOLDS, problemsFrom } from '../scripts/backend-alerts.mjs';
+import { CRASH_SPIKE_SQL, QUERIES, THRESHOLDS, problemsFrom } from '../scripts/backend-alerts.mjs';
 
 const quiet = { failedSignIns: 2, edge5xx: [], agentCalls: 10 };
 
@@ -35,4 +35,11 @@ test('crash groups: a new crash 10+ times or any crash 100+ times raises an aler
   assert.equal(problems.length, 2);
   assert.match(problems[0], /^- New crash: 12 times .*web-phone; build 2\.0\.1\): x is undefined$/);
   assert.match(problems[1], /^- Crash spike: 140 times .*request; ios-app/);
+});
+
+test('crash query applies the thresholds before its row limit', () => {
+  // Otherwise 20 busy known crashes could push a new one out of the list.
+  const filter = CRASH_SPIKE_SQL.indexOf(`times >= ${THRESHOLDS.anyCrashPerHour}`);
+  assert.ok(CRASH_SPIKE_SQL.includes(`having sum(repeats) >= ${THRESHOLDS.newCrashPerHour}`));
+  assert.ok(filter > 0 && filter < CRASH_SPIKE_SQL.indexOf('limit 20'));
 });

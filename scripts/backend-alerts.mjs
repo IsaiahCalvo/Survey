@@ -47,13 +47,20 @@ export const CRASH_SPIKE_SQL = `with recent as (
       string_agg(distinct coalesce(platform, '?'), ', ') as platforms,
       max(build) as build
     from public.client_errors where received_at > now() - interval '1 hour'
-    group by 1, 2)
-  select r.*, exists (
-      select 1 from public.client_errors o
-      where o.kind = r.kind and left(o.message, 160) = r.message
-        and o.received_at <= now() - interval '1 hour'
-        and o.received_at > now() - interval '7 days') as seen_before
-  from recent r order by times desc limit 20`;
+    group by 1, 2
+    having sum(repeats) >= ${THRESHOLDS.newCrashPerHour}),
+  marked as (
+    select r.*, exists (
+        select 1 from public.client_errors o
+        where o.kind = r.kind and left(o.message, 160) = r.message
+          and o.received_at <= now() - interval '1 hour'
+          and o.received_at > now() - interval '7 days') as seen_before
+    from recent r)
+  -- Keep only groups that pass a threshold before the limit, so busy known
+  -- crashes can't push a new one out of the list.
+  select * from marked
+  where not seen_before or times >= ${THRESHOLDS.anyCrashPerHour}
+  order by times desc limit 20`;
 
 /** Problems as Markdown bullet lines, given the counts the queries returned. */
 export function problemsFrom({ failedSignIns, edge5xx, agentCalls, crashGroups = [] }, limits = THRESHOLDS) {
@@ -116,7 +123,7 @@ async function main() {
     agentCalls: Number(agent[0]?.n || 0),
     crashGroups: (Array.isArray(crashes) ? crashes : []).map((row) => ({ ...row, times: Number(row.times) })),
   };
-  console.log(`failed sign-ins/hour ${counts.failedSignIns}, edge 5xx/hour ${counts.edge5xx.reduce((s, r) => s + r.n, 0)}, voice agent calls/24h ${counts.agentCalls}, crashes/hour ${counts.crashGroups.reduce((s, r) => s + r.times, 0)}`);
+  console.log(`failed sign-ins/hour ${counts.failedSignIns}, edge 5xx/hour ${counts.edge5xx.reduce((s, r) => s + r.n, 0)}, voice agent calls/24h ${counts.agentCalls}, crash groups over threshold ${counts.crashGroups.length}`);
   const problems = problemsFrom(counts);
   if (out) fs.writeFileSync(out, problems.length ? `${problems.join('\n')}\n` : '');
   if (problems.length) console.log(problems.join('\n'));
