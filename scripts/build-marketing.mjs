@@ -81,13 +81,13 @@ const FAQ = [
 ];
 
 const TOOLS = [
-  { id: 'count', name: 'Count markers', img: 'app-counts.webp', w: 680, h: 440, alt: 'Numbered count markers on desks in a floor plan',
+  { id: 'count', name: 'Count markers', img: 'app-counts.webp', w: 960, h: 600, alt: 'Numbered count markers on desks in an open office floor plan',
     lead: 'Tap each item on the plan and Survey numbers it and keeps the total.',
     body: 'Make a category for each thing you count: desks, outlets, sprinklers, doors. Every tap adds a numbered marker, and the totals for each category stay in view. Send them to Excel in one step.' },
-  { id: 'pen', name: 'Pen and highlighter', img: 'app-pen.webp', w: 850, h: 400, alt: 'A highlighted room name and a pen line on a plan',
+  { id: 'pen', name: 'Pen and highlighter', img: 'app-pen.webp', w: 960, h: 600, alt: 'A highlighted room name and a hand-drawn pen circle on a plan',
     lead: 'Write on drawings the way you would on paper.',
     body: 'Smooth ink that follows Apple Pencil, a mouse or a finger. The highlighter sits behind the linework so the drawing stays readable. The eraser takes off just what you rub out.' },
-  { id: 'shapes', name: 'Shapes, clouds and arrows', img: 'app-shapes.webp', w: 880, h: 400, alt: 'A box drawn around a conference room',
+  { id: 'shapes', name: 'Shapes, clouds and arrows', img: 'app-shapes.webp', w: 960, h: 600, alt: 'A revision cloud around a meeting room table and an arrow pointing at a fire door',
     lead: 'Box it, cloud it, point at it.',
     body: 'Rectangles, ellipses, revision clouds, lines, polylines and arrows, each with its own color and line weight. Select one to move it, resize it or change its style.' },
   { id: 'plan', name: 'The whole drawing set', img: 'app-markup.webp', w: 1600, h: 1000, alt: 'A full floor plan with markups in Survey', srcset: '/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w',
@@ -153,7 +153,7 @@ export function page({ path, title, desc, body, schema = [], crumb, crumbs, scri
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}" />
 <link rel="canonical" href="${url}" />
-<meta name="theme-color" content="#ffffff" />
+<meta name="theme-color" content="#141a2b" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Survey" />
 <meta property="og:title" content="${esc(title)}" />
@@ -167,7 +167,7 @@ export function page({ path, title, desc, body, schema = [], crumb, crumbs, scri
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" media="print" onload="this.media='all'" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
 <style>${CSS}</style>
 <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph })}</script>
@@ -240,19 +240,10 @@ const home = page({
     <h1>Mark up the plans. Count what's on them.</h1>
     <p class="lede">Survey is a PDF markup app for construction drawings. Redline sheets, tap to count fixtures and send the totals to Excel, on your desk, your iPad or your phone.</p>
     <div class="cta"><a class="btn primary lg" href="${SIGNUP}">Open Survey free</a><a class="btn ghost lg" href="/features">See the tools</a></div>
-    <p class="fine">No card. No install. Works in Chrome, Edge and Safari.</p>
+    <p class="fine">No card. No install. Mac · Windows · iPad · Android · iPhone</p>
   </div>
   <div class="hero-stage">
-    <div class="frame">
-      <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>surveytool.app</span></div>
-      <video autoplay muted loop playsinline preload="metadata" poster="/welcome/hero-poster.webp" width="1280" height="800" aria-label="Screen recording of Survey: count markers dropped on desks, then a highlighter and a box drawn on a floor plan">
-        <source src="/welcome/hero.webm" type="video/webm" />
-        <source src="/welcome/hero.mp4" type="video/mp4" />
-      </video>
-    </div>
-    <svg class="cloud" viewBox="0 0 600 400" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M60 70c10-40 70-40 80-10 10-36 80-36 90 0 12-34 84-34 92 0 14-32 82-30 90 4 30-12 66 18 52 52 34 10 34 64 4 76 18 34-14 70-48 58-8 36-76 40-90 8-16 32-84 32-96 0-16 30-82 28-90-6-34 10-66-24-50-58-34-14-30-70 6-74-10-34 26-62 60-50z"/></svg>
-    <p class="tag t1"><b>10</b> desks counted</p>
-    <p class="tag t2">Synced to iPad</p>
+    <div class="frame"><img src="/welcome/hero.webp" srcset="/welcome/hero.webp 1280w, /welcome/hero@2x.webp 2560w" sizes="(max-width: 980px) 92vw, 760px" width="1280" height="800" fetchpriority="high" decoding="async" alt="Survey showing a marked-up office floor plan: numbered count markers on desks, a revision cloud, a highlight and a callout" /></div>
   </div>
 </div></section>
 
@@ -269,15 +260,15 @@ const home = page({
   <p class="more-link"><a href="/features">All features</a></p>
 </div></section>
 
-<section class="sec split"><div class="wrap split-grid">
+<section class="sec"><div class="wrap"><div class="panel cool split-grid">
   <div>
     <h2>Does it work on my iPad and phone?</h2>
     <p>Yes. The same project and the same markups follow you from your desk to the job site. On iPad, Apple Pencil draws and your fingers move the sheet.</p>
     <ul class="ticks"><li>Mac and Windows in the browser</li><li>iPad and Android tablets</li><li>iPhone and Android phones</li></ul>
     <a class="btn ghost" href="/devices">How it works on each device</a>
   </div>
-  <div class="devices"><figure class="dev-tab"><img src="/welcome/app-markup-800.webp" width="800" height="500" loading="lazy" decoding="async" alt="Survey on a tablet showing a marked-up floor plan" /></figure><figure class="dev-ph"><img src="/welcome/app-phone.webp" width="390" height="844" loading="lazy" decoding="async" alt="Survey on a phone showing a floor plan" /></figure></div>
-</div></section>
+  <div class="devices"><figure class="dev-tab"><img src="/welcome/app-markup-800.webp" width="800" height="500" loading="lazy" decoding="async" alt="Survey on a tablet showing a marked-up floor plan" /></figure><figure class="dev-ph"><img src="/welcome/app-phone.webp" width="780" height="1688" loading="lazy" decoding="async" alt="Survey on a phone showing a floor plan" /></figure></div>
+</div></div></section>
 
 <section class="sec"><div class="wrap">
   <div class="head"><h2>How much does Survey cost?</h2><p>Free for one project. Pro is $9.99 a month for everything else.</p></div>
@@ -334,7 +325,7 @@ const devices = page({
   <article><h2>On an iPad or Android tablet</h2><p>Apple Pencil or a stylus draws, and your fingers pan and zoom, so you never mark a sheet by mistake. Add Survey to your home screen to open it like an app.</p></article>
   <article><h2>On your phone</h2><p>Check a sheet, drop a count marker or read a note on site. The tools fit a small screen.</p></article>
 </div></section>
-<section class="sec"><div class="wrap devices wide"><figure class="dev-tab"><img src="/welcome/app-markup.webp" srcset="/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w" sizes="(max-width: 900px) 80vw, 760px" width="1600" height="1000" loading="lazy" decoding="async" alt="Survey on a tablet showing a marked-up floor plan" /></figure><figure class="dev-ph"><img src="/welcome/app-phone.webp" width="390" height="844" loading="lazy" decoding="async" alt="Survey on a phone showing a floor plan" /></figure></div></section>
+<section class="sec"><div class="wrap devices wide"><figure class="dev-tab"><img src="/welcome/app-markup.webp" srcset="/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w" sizes="(max-width: 900px) 80vw, 760px" width="1600" height="1000" loading="lazy" decoding="async" alt="Survey on a tablet showing a marked-up floor plan" /></figure><figure class="dev-ph"><img src="/welcome/app-phone.webp" width="780" height="1688" loading="lazy" decoding="async" alt="Survey on a phone showing a floor plan" /></figure></div></section>
 <section class="sec"><div class="wrap head">
   <h2>Are there apps to download?</h2>
   <p>Not yet. iPhone, iPad and Android apps, and Mac and Windows apps, are on the way. Until then the browser version does everything.</p>

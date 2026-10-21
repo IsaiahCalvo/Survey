@@ -45,7 +45,4 @@
     menu.setAttribute('aria-expanded', String(open));
   });
 
-  // Reduced motion: no autoplay, give the viewer controls instead.
-  var v = document.querySelector('.frame video');
-  if (v && reduce) { v.removeAttribute('autoplay'); v.pause(); v.controls = true; }
 })();
