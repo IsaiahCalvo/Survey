@@ -217,6 +217,7 @@ export default function DocumentsLedger({
   onRename,
   onMoveCopy,
   onLockDocument,
+  onPdfTools,
 }) {
   const tip = useTooltip();
   const [selId, setSelId] = useState(null);
@@ -945,6 +946,11 @@ export default function DocumentsLedger({
                 <button type="button" className="hub-menu__item" onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); }}>
                   <Icon name="duplicate" size={15} color="var(--ink-200)" />Duplicate
                 </button>
+                {onPdfTools && (
+                  <button type="button" className="hub-menu__item" onClick={() => onPdfTools(selectedRaw(), 'merge')}>
+                    <Icon name="copy" size={15} color="var(--ink-200)" />Merge into one PDF
+                  </button>
+                )}
                 <button type="button" className="hub-menu__item" aria-disabled={selectionBlock('share') ? true : undefined} {...tip(selectionBlock('share') || '', 'above')} onClick={() => activateOrExplain(selectionBlock('share'), () => onShare && onShare(selectedRaw()))}>
                   <Icon name="share" size={15} color="var(--ink-200)" />Share
                 </button>
@@ -1136,12 +1142,14 @@ export default function DocumentsLedger({
             { label: 'Move to project…', onClick: () => { setMoveMode('move'); setMoveOpen(true); } },
             { label: 'Copy to project…', onClick: () => { setMoveMode('copy'); setMoveOpen(true); } },
             { label: 'Duplicate', onClick: () => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); } },
+            ...(onPdfTools ? [{ label: 'Merge into one PDF', onClick: () => onPdfTools(selectedRaw(), 'merge') }] : []),
             { label: 'Share', reason: selectionBlock('share'), onClick: () => onShare && onShare(selectedRaw()) },
             { label: `Delete ${docMenu.ids.length} documents`, danger: true, reason: selectionBlock('delete'), onClick: () => archiveSelected(selectedRaw()) },
           ] : [
             { label: 'Rename', reason: manageSelectionBlock([doc.raw], user?.id, 'rename'), onClick: () => setRenameTarget(doc.raw) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
+            ...(onPdfTools ? [{ label: 'PDF tools…', onClick: () => onPdfTools([doc.raw]) }] : []),
             { label: 'Delete', danger: true, reason: manageSelectionBlock([doc.raw], user?.id, 'delete'), onClick: () => onDelete && onDelete([doc.raw]) },
             { label: 'Share', reason: manageSelectionBlock([doc.raw], user?.id, 'share'), onClick: () => onShare && onShare([doc.raw]) },
             {

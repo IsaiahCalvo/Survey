@@ -3096,6 +3096,18 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 <Icon name="download" size={16} color="currentColor" />
                 Export review package
               </button>
+              {/* Merge, split, compress, OCR... on this document; AppShell
+                  listens and opens the Documents dialog (PdfToolsDialog). */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMoreOpen(false);
+                  window.dispatchEvent(new CustomEvent('survey-open-pdf-tools'));
+                }}
+              >
+                <Icon name="document" size={16} color="currentColor" />
+                PDF tools…
+              </button>
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the
                   menu on web mobile held ONE row and the ruling's second item

@@ -206,6 +206,7 @@ export default function ProjectsFolderTree({
   onProjectPreferencesChange,
   onDeleteDocuments,
   onLockDocument,
+  onPdfTools,
   onShare,
   onShareDocument,
 }) {
@@ -2059,6 +2060,7 @@ export default function ProjectsFolderTree({
               { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
+              ...(onPdfTools ? [{ label: 'PDF tools…', onClick: () => onPdfTools([f]) }] : []),
               { label: 'Delete', danger: true, reason: canManage ? null : noManageTitle, onClick: () => deleteFiles([fileMenu.id]) },
               { label: 'Share', reason: canManage ? null : noManageTitle, onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
               {
