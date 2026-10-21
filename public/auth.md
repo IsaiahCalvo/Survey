@@ -53,6 +53,10 @@ user's role all apply, and one Undo takes a change back:
 - `survey_delete_annotation` — delete a normal annotation by id (editor/owner).
   It does nothing unless you pass `confirm: true`, which you should set only
   after the person has agreed; one Undo restores it.
+- `survey_add_rectangle` / `survey_add_ellipse` — draw a shape from a page box
+  (top-left corner in PDF points, a width and a height), with an optional hex
+  stroke color, hex fill color and stroke width (editor/owner). `survey_delete_annotation`
+  removes a shape too.
 
 ## Outside the browser: user-claimed flow
 

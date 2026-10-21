@@ -253,7 +253,7 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
-import { applyScope as applyAnnotationCreationScope, applyPasteScope } from './utils/annotationCreationCommit';
+import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON } from './utils/annotationCreationCommit';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
@@ -32878,9 +32878,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     getAnnotationsByPage: () => annotationsByPageRef.current || {},
     saveAnnotations: handleSaveAnnotationsWithTextMarkupAtomicity,
     // The survey/region scope a mark created on `page` takes — the same helper
-    // every creation surface uses, so an agent note is not hidden by the
-    // clean-slate rule inside an open survey module.
-    textNoteScope: currentPasteScope,
+    // every creation surface uses, so an agent note or shape is not hidden by
+    // the clean-slate rule inside an open survey module.
+    annotationScope: currentPasteScope,
   };
   useEffect(() => {
     if (isActive === false) return undefined;
@@ -33017,7 +33017,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // text by the app's own measurer, so an agent note renders like a drawn
       // one. Author is stamped so the ownership/lock gate works on later edits.
       addTextNote: ({ page, x, y, width, text, color }) => {
-        const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage, textNoteScope } = agentMarkerStateRef.current;
+        const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage, annotationScope } = agentMarkerStateRef.current;
         const size = sizes?.[page];
         if (!size) return { ok: false, reason: 'not-found' };
         const wrapWidth = Math.max(24, Number(width) || 160);
@@ -33025,7 +33025,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         let obj = buildNewTextCommitJSON({
           text, left: x, top: y, innerWrapWidth: wrapWidth - 2 * TEXT_PADDING, autoFit: false,
           fill: color || '#111827', stroke: 'transparent', strokeWidth: 0,
-          ...textNoteScope(page),
+          ...annotationScope(page),
         });
         if (!obj) return { ok: false, reason: 'empty' };
         obj = refitTextboxToText(obj, measureTextLayoutHeight) || obj;
@@ -33034,6 +33034,42 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         recordAnnotationCommit({ surface: 'webmcp', source: 'text-note:create', action: 'text-note-agent-create', pageNumber: page });
         const result = saveAnnotations(page, { ...pageJson, objects: [...(pageJson.objects || []), obj] },
           { source: 'webmcp:text-note:create', action: 'fabric:create' });
+        if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
+        return { ok: true, id: obj.id || obj.data?.id };
+      },
+      // Add a rectangle or ellipse from a page box (PDF points, top-left
+      // origin). Uses the same boundary-shape builder a drawn shape uses, so
+      // geometry, scope and author identity match a hand-drawn one.
+      addShape: ({ page, shape, x, y, width, height, strokeColor, fillColor, strokeWidth }) => {
+        const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage, annotationScope } = agentMarkerStateRef.current;
+        const size = sizes?.[page];
+        if (!size) return { ok: false, reason: 'not-found' };
+        const w = Number(width);
+        const h = Number(height);
+        if (!(w > 0) || !(h > 0) || x < 0 || y < 0 || x + w > size.width || y + h > size.height) {
+          return { ok: false, reason: 'off-page' };
+        }
+        const tool = shape === 'ellipse' ? 'ellipse' : 'rect';
+        let obj = buildBoundaryShapeCommitJSON({
+          tool,
+          id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `anno-${Date.now()}`,
+          start: { x, y },
+          end: { x: x + w, y: y + h },
+          strokeColor: strokeColor || '#111827',
+          strokeOpacity: 100,
+          fillColor: fillColor || null,
+          fillOpacity: fillColor ? 100 : 0,
+          strokeWidth: Number(strokeWidth) > 0 ? Number(strokeWidth) : 2,
+          lineBorderStyle: 'solid',
+          cloudIntensity: null,
+          ...annotationScope(page),
+        });
+        if (!obj) return { ok: false, reason: 'too-small' };
+        obj = stampAnnotationCreationIdentity(obj, { authorId: viewerId });
+        const pageJson = getAnnotationsByPage()[page] || { objects: [] };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'shape:create', action: `shape-agent-create-${tool}`, pageNumber: page });
+        const result = saveAnnotations(page, { ...pageJson, objects: [...(pageJson.objects || []), obj] },
+          { source: 'webmcp:shape:create', action: 'fabric:create' });
         if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
         return { ok: true, id: obj.id || obj.data?.id };
       },
