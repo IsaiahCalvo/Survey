@@ -21,6 +21,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseAvailable } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { coalesceRead } from './requestCoalescer.js';
+import { withUpgradeHint } from '../utils/accountPlatform';
 
 /**
  * Subscription tier limits
@@ -164,7 +165,7 @@ export const useSubscriptionLimits = () => {
     }
     return {
       allowed: false,
-      reason: `You've reached the limit of ${limits.projects} project${limits.projects > 1 ? 's' : ''} for your ${userTier || 'free'} tier. Upgrade to Pro for unlimited projects.`,
+      reason: withUpgradeHint(`You've reached the limit of ${limits.projects} project${limits.projects > 1 ? 's' : ''} for your ${userTier || 'free'} tier.`, 'Upgrade to Pro for unlimited projects.'),
     };
   }, [usage.projects, limits.projects, userTier]);
 
@@ -178,7 +179,7 @@ export const useSubscriptionLimits = () => {
     if (usage.documents >= limits.documents) {
       return {
         allowed: false,
-        reason: `You've reached the limit of ${limits.documents} document${limits.documents > 1 ? 's' : ''} for your ${userTier || 'free'} tier. Upgrade to Pro for unlimited documents.`,
+        reason: withUpgradeHint(`You've reached the limit of ${limits.documents} document${limits.documents > 1 ? 's' : ''} for your ${userTier || 'free'} tier.`, 'Upgrade to Pro for unlimited documents.'),
       };
     }
 
@@ -191,7 +192,7 @@ export const useSubscriptionLimits = () => {
 
       return {
         allowed: false,
-        reason: `Not enough storage. You're using ${usedMB}MB of ${limitMB}MB. This file (${fileMB}MB) would exceed your limit. Upgrade to Pro for 10GB of storage.`,
+        reason: withUpgradeHint(`Not enough storage. You're using ${usedMB}MB of ${limitMB}MB. This file (${fileMB}MB) would exceed your limit.`, 'Upgrade to Pro for 10GB of storage.'),
       };
     }
 
@@ -208,7 +209,7 @@ export const useSubscriptionLimits = () => {
     }
     return {
       allowed: false,
-      reason: `Templates are a Pro feature. Upgrade to Pro to create custom survey templates.`,
+      reason: withUpgradeHint('Custom survey templates are part of the Pro plan.', 'Upgrade to Pro to create them.'),
     };
   }, [limits.features]);
 
@@ -222,7 +223,7 @@ export const useSubscriptionLimits = () => {
     }
     return {
       allowed: false,
-      reason: `Regions are a Pro feature. Upgrade to Pro to use advanced survey regions.`,
+      reason: withUpgradeHint('Survey regions are part of the Pro plan.', 'Upgrade to Pro to use them.'),
     };
   }, [limits.features]);
 

@@ -17,6 +17,7 @@
      --ink-400 #3a4252  --ink-300 #5a6473  --ink-200 #8d96a6
      --bone-100 #f4f1ea --bone-200 #e8e2d4 --gold #d8a84e
 */
+import { withUpgradeHint } from '../utils/accountPlatform.js';
 import React from 'react';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
@@ -197,7 +198,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
   const projectId = project?.id || null;
   const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || null;
   const blockedReason = !canInvite
-    ? 'Free plan accounts cannot create invite links. Upgrade to Pro or higher to share.'
+    ? withUpgradeHint('Free plan accounts cannot create invite links.', 'Upgrade to Pro or higher to share.')
     : (!projectId ? 'This project has no id yet — save it before inviting.' : '');
 
   // Honest placeholder until a real token is minted — never show a fake URL

@@ -18,6 +18,7 @@
  *
  * UI structure is preserved from the approved design — do not redesign.
  */
+import { withUpgradeHint } from '../utils/accountPlatform.js';
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import { createDocumentInvite, buildInviteUrl, resendDocumentInvite } from '../services/documentInviteService';
@@ -154,7 +155,7 @@ export default function ShareModal({
   if (!open) return null;
 
   const blockedReason = !canInvite
-    ? 'Free plan accounts cannot create invite links. Upgrade to Pro or higher to share.'
+    ? withUpgradeHint('Free plan accounts cannot create invite links.', 'Upgrade to Pro or higher to share.')
     : (!targetId
         ? `This share dialog needs a target ${noun} id. Select the ${noun} and share from there.`
         : '');
