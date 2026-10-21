@@ -380,6 +380,12 @@ verify_jwt = false
 [functions.send-invite-email]
 verify_jwt = false
 
+# Kits admin (/kits). Browser-invoked: answers the CORS preflight, then does its
+# own auth (auth.getUser on the Bearer JWT + is_feature_flag_admin with the
+# caller's token) before using the service role.
+[functions.kits-admin]
+verify_jwt = false
+
 # KAL-431 Archive auto-cleanup. Machine-invoked by the scheduler, never by a
 # user: the gateway JWT check would reject a cron call that carries the shared
 # cron secret instead of a user JWT. The function does its OWN auth — it accepts

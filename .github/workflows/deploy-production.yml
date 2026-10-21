@@ -126,6 +126,7 @@ jobs:
           delete-account
           export-account
           excel-apply-changeset
+          kits-admin
           send-profile-change-notification
           stripe-webhook
           survey-agent

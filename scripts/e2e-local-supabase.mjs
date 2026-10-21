@@ -289,6 +289,10 @@ export async function seed({ url, serviceKey }) {
     ));
   }
 
+  // Local stack only (assertLocal above): the owner test account is an app
+  // admin here so the /flags and /kits pages can be tested signed in.
+  assertLocal(url);
+  await must('local test admin', admin.from('feature_flag_admins').upsert({ user_id: ownerId }));
   // The app shows the Survey agent button to the owner, as /flags does for testers.
   await must('survey-agent flag', admin.from('feature_flags').upsert({
     key: 'survey-agent',

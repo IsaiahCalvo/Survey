@@ -27,40 +27,8 @@ import wirelessLockScheduleKit from './kits/wirelessLockSchedule.js';
 
 export const EXPORT_ENGINE_VERSION = 1;
 
-// Fields the engine knows how to fill. `checklist` expands to one column per item.
-export const EXPORT_KIT_FIELDS = Object.freeze([
-  'row_id', 'changed_by', 'changed_date', 'name', 'checklist', 'entity_name', 'notes',
-]);
-
-const SEMVER = /^\d+\.\d+\.\d+$/;
-
-/** Returns a list of problems; empty means the kit is valid. */
-export function validateExportKit(kit) {
-  const errors = [];
-  if (!kit || typeof kit !== 'object') return ['kit must be an object'];
-  if (typeof kit.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(kit.id)) errors.push('id must be lower-case-kebab');
-  if (kit.kind !== 'exportKit') errors.push('kind must be "exportKit"');
-  if (typeof kit.version !== 'string' || !SEMVER.test(kit.version)) errors.push('version must be x.y.z');
-  if (!Number.isInteger(kit.minEngine) || kit.minEngine < 1) errors.push('minEngine must be a positive integer');
-  if (!Array.isArray(kit.columns) || kit.columns.length === 0) {
-    errors.push('columns must be a non-empty array');
-  } else {
-    const seen = new Set();
-    kit.columns.forEach((col, i) => {
-      if (!col || !EXPORT_KIT_FIELDS.includes(col.field)) errors.push(`columns[${i}].field unknown`);
-      else if (seen.has(col.field)) errors.push(`columns[${i}].field "${col.field}" repeated`);
-      else seen.add(col.field);
-      if (col?.field !== 'checklist' && typeof col?.header !== 'string') errors.push(`columns[${i}].header required`);
-    });
-    // The export engine and two-way sync need every field once, with the
-    // sync identity columns first (Row ID is hidden; import matches on it).
-    EXPORT_KIT_FIELDS.forEach((f) => { if (!seen.has(f)) errors.push(`columns missing "${f}"`); });
-    if (kit.columns.slice(0, 3).map((c) => c?.field).join() !== 'row_id,changed_by,changed_date') {
-      errors.push('columns must start with row_id, changed_by, changed_date');
-    }
-  }
-  return errors;
-}
+export { EXPORT_KIT_FIELDS, validateExportKit } from '../../../supabase/functions/_shared/kitShape.js';
+import { validateExportKit } from '../../../supabase/functions/_shared/kitShape.js';
 
 const kits = new Map();
 const listeners = new Set();
