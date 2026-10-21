@@ -33184,6 +33184,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           ...(strokeColor ? { borderColor: strokeColor } : {}),
           ...(fillColor ? { fillColor } : {}),
         };
+        // Grow the box to its text before committing. A hand-drawn callout
+        // fits itself in the editor; this path never opens one, so without
+        // this a multi-line note commits at the default 32pt height and the
+        // renderer clips it (overflow:hidden) while reporting success.
+        const fitted = refitCalloutToText(callout, size, measureTextLayoutHeight);
+        if (fitted) {
+          callout.textBoxWidth = fitted.textBoxWidth;
+          callout.textBoxHeight = fitted.textBoxHeight;
+          callout.textBoxPosition = fitted.textBoxPosition;
+        }
         const scope = annotationScope(page);
         if (scope.selectedModuleId) callout.moduleId = scope.selectedModuleId;
         if (scope.stampRegionId) callout.regionId = scope.activeRegionId;
