@@ -274,6 +274,7 @@ const fakeAnnoDoc = () => {
     addShape: (args) => { addedShapes.push(args); return { ok: true, id: 's1' }; },
     addLine: (args) => { addedShapes.push({ kind: 'line', ...args }); return { ok: true, id: 'l1' }; },
     addPolygon: (args) => { addedShapes.push({ kind: 'poly', ...args }); return { ok: true, id: 'p1' }; },
+    addCallout: (args) => { addedShapes.push({ kind: 'callout', ...args }); return { ok: true, id: 'c1' }; },
   };
 };
 const annoTools = (role, doc) => {
@@ -413,6 +414,19 @@ test('polygon tool: flag, role, point bounds, min points, and open/closed', asyn
   await assert.rejects(annoTool('editor', doc, 'survey_add_polygon').execute({ page: 1, points: [{ x: 10, y: 10 }, { x: 100, y: 10 }] }), /at least 3/);
   await assert.rejects(annoTool('editor', doc, 'survey_add_polygon').execute({ page: 1, points: [{ x: 10, y: 10 }, { x: 9000, y: 10 }, { x: 50, y: 90 }] }), /inside the page/);
   await assert.rejects(annoTool('viewer', doc, 'survey_add_polygon').execute({ page: 1, points: tri }), /viewer.*needs editor/);
+});
+
+test('callout tool: flag, role, empty text, and page bounds', async () => {
+  assert.equal(tool(buildAgentTools({ getDocument: () => fakeAnnoDoc(), readAccess: open }), 'survey_add_callout'), undefined);
+  const doc = fakeAnnoDoc();
+  const args = { page: 1, text: 'see here', arrow_x: 100, arrow_y: 100, box_x: 160, box_y: 60 };
+  assert.match(await annoTool('editor', doc, 'survey_add_callout').execute(args), /Added a callout/);
+  assert.equal(doc.addedShapes.at(-1).kind, 'callout');
+  assert.equal(doc.addedShapes.at(-1).text, 'see here');
+  await assert.rejects(annoTool('editor', doc, 'survey_add_callout').execute({ ...args, text: '  ' }), /empty/);
+  await assert.rejects(annoTool('editor', doc, 'survey_add_callout').execute({ ...args, arrow_x: 9000 }), /inside the page/);
+  await assert.rejects(annoTool('editor', doc, 'survey_add_callout').execute({ ...args, page: 2 }), /not in the open document/);
+  await assert.rejects(annoTool('viewer', doc, 'survey_add_callout').execute(args), /viewer.*needs editor/);
 });
 
 test('a save blocked by a locked sibling is reported, not a false success', async () => {
