@@ -105,10 +105,15 @@ async function groupMenuPoint(page) {
   await group.waitFor({ state: 'visible', timeout: 10_000 });
   return group.evaluate((node) => {
     const box = node.getBoundingClientRect();
+    // A hollow mark's inside is not in elementsFromPoint, but the app's hit
+    // test still picks it (and opens that mark's own menu), so stay outside
+    // every mark's box, not just its painted pixels.
+    const marks = [...document.querySelectorAll('g[data-anno-id], [data-callout-id]')].map((m) => m.getBoundingClientRect());
+    const inMark = (x, y) => marks.some((r) => x >= r.left - 8 && x <= r.right + 8 && y >= r.top - 8 && y <= r.bottom + 8);
     for (let y = box.top + 4; y < box.bottom - 4; y += 6) {
       for (let x = box.left + 4; x < box.right - 4; x += 6) {
         const stack = document.elementsFromPoint(x, y);
-        if (!stack.some((candidate) => candidate.closest?.('[data-anno-id], [data-callout-id]'))) return { x, y };
+        if (!inMark(x, y) && !stack.some((candidate) => candidate.closest?.('[data-anno-id], [data-callout-id]'))) return { x, y };
       }
     }
     return { x: box.left + 3, y: box.top + 3 };

@@ -177,19 +177,21 @@ async function switchTab(page, touch, device, tab) {
 async function testContentTypeIconColors(page, baseUrl, device) {
   await gotoHub(page, baseUrl, 'documents');
   const nav = visibleNav(page, device);
-  const expected = {
-    Documents: 'rgb(122, 183, 230)',
-    Projects: 'rgb(216, 168, 78)',
-    Templates: 'rgb(194, 147, 230)',
-  };
-  for (const [label, color] of Object.entries(expected)) {
-    const icon = nav.getByRole('button', { name: label, exact: true }).locator('svg');
-    assert.equal(await icon.count(), 1, `${device}: ${label} has one identity icon`);
-    assert.equal(
-      await icon.evaluate((node) => getComputedStyle(node).stroke),
-      color,
-      `${device}: ${label} keeps its identity color`,
-    );
+  // UX 2026-09-16 / owner 2026-10-02: the nav tabs are one icon set drawn in
+  // currentColor, so each glyph follows its tab's own (selected or not)
+  // colour; the content-type brand colours belong to rows, not the tab strip.
+  for (const label of ['Documents', 'Projects', 'Templates']) {
+    const button = nav.getByRole('button', { name: label, exact: true });
+    const icon = button.locator('svg');
+    assert.equal(await icon.count(), 1, `${device}: ${label} has one tab icon`);
+    const paint = await button.evaluate((node) => {
+      const painted = [...node.querySelector('svg').querySelectorAll('path, rect, circle, line, polyline, polygon, ellipse')]
+        .map((el) => getComputedStyle(el))
+        .map((st) => (st.stroke && st.stroke !== 'none' ? st.stroke : st.fill))
+        .filter((c) => c && c !== 'none' && c !== 'rgba(0, 0, 0, 0)');
+      return { color: getComputedStyle(node).color, painted: [...new Set(painted)] };
+    });
+    assert.deepEqual(paint.painted, [paint.color], `${device}: ${label} icon follows its tab's colour`);
   }
 }
 
@@ -415,8 +417,9 @@ async function testMobileTemplateCategoryRowAlignment(page, baseUrl, touch) {
         handle: centerY(row.querySelector(':scope > [data-drag-rearrange-handle]')),
         toggle: centerY(row.querySelector(':scope > .templates-mobile-category-toggle')),
         toggleIcon: centerY(row.querySelector(':scope > .templates-mobile-category-toggle > svg')),
-        input: centerY(row.querySelector(':scope > input')),
-        count: centerY(row.querySelector(':scope > span')),
+        // The name input sits in an auto-width wrapper (hub-autowidth) now.
+        input: centerY(row.querySelector(':scope > .templates-mobile-category-name > input')),
+        count: centerY(row.querySelector(':scope > .templates-mobile-category-count')),
       };
     }));
     assert.ok(measurements.length >= 2, `mobile: ${state} template exposes multiple category rows`);

@@ -271,7 +271,9 @@ async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnos
       });
     }
 
-    const link = page.locator('[data-pdfjs-link-layer="1"] a[href="https://claude.com/"]');
+    // The fixture's Link annotation is imported as an owned link mark, so it is
+    // drawn by TextMarkupLinkLayer (PdfjsLinkLayer skips imported Link ids).
+    const link = page.locator('[data-pdfjs-link-layer="1"] a[href="https://claude.com/"], button[data-text-markup-link][aria-label="Open link https://claude.com/"]');
     const linkCount = await link.count();
     if (linkCount === 1) {
       const beforeUrl = page.url();
@@ -288,7 +290,7 @@ async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnos
     } else {
       record('clickable PDF link safely intercepted', VIEWER_AUXILIARY_FIXTURES.interactive, 'failed', {
         expectedFixtureAnnotation: 'Link https://claude.com/',
-        reason: `real PdfjsLinkLayer exposed ${linkCount} matching anchors`,
+        reason: `link layers exposed ${linkCount} matching links`,
       });
     }
 
@@ -353,7 +355,10 @@ async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnos
     await waitForPdf(page, 3);
     if (device === 'mobile') {
       await activateOne(page.getByRole('button', { name: 'Open pages, search, and bookmarks', exact: true }), 'mobile open document hub', touch, device);
+      await page.locator('.mobile-pdf-hub-tab').first().waitFor({ state: 'visible', timeout: 15_000 });
+      await page.waitForTimeout(400); // let the sheet finish sliding in before the tab tap
       await activateOne(page.getByRole('button', { name: 'Search', exact: true }), 'mobile search tab', touch, device);
+      await page.locator('.mobile-pdf-hub-tab[aria-label="Search"][aria-pressed="true"]').waitFor({ state: 'visible', timeout: 15_000 });
     } else {
       await activateOne(page.getByRole('button', { name: 'Search text', exact: true }), 'desktop search tab', touch, device);
     }
@@ -362,6 +367,8 @@ async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnos
     await typeTrusted(page, searchBox, 'Small Sync Test Fresh', `${device} PDF text search`, touch, device);
     const nextMatch = page.getByRole('button', { name: 'Next match (Enter)', exact: true });
     await nextMatch.waitFor({ state: 'visible', timeout: 15_000 });
+    // Results stream in page by page; step only once the search has finished.
+    await page.locator('.search-text-panel__status[data-search-status="results"]:visible').waitFor({ state: 'visible', timeout: 15_000 });
     await activateOne(nextMatch, `${device} next search match`, touch, device);
     await waitForPageOrdinal(page, device, 3);
     assert.equal(await pageOrdinal(page, device), 3, `${device}: search result navigates to page 3`);
