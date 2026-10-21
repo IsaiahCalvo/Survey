@@ -89,12 +89,13 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   const readTools = src.slice(src.indexOf('const READ_TOOLS'), src.indexOf('const WRITE_TOOLS'));
   assert.equal((readTools.match(/readOnlyHint: true/g) || []).length, 7);
   assert.doesNotMatch(readTools, /readOnlyHint: false/);
-  assert.doesNotMatch(readTools, /set_answers|add_note/);
-  // WRITE_TOOLS exist, are the two expected writes, and are not read-only.
+  assert.doesNotMatch(readTools, /set_answers|add_note|set_entity|create_item/);
+  // WRITE_TOOLS exist, are the four expected writes, and are not read-only.
   const writeTools = src.slice(src.indexOf('const WRITE_TOOLS'), src.indexOf('async function gunzip'));
-  assert.match(writeTools, /name: 'set_answers'/);
-  assert.match(writeTools, /name: 'add_note'/);
-  assert.equal((writeTools.match(/readOnlyHint: false/g) || []).length, 2);
+  for (const name of ['set_answers', 'add_note', 'set_entity', 'create_item']) {
+    assert.match(writeTools, new RegExp(`name: '${name}'`), name);
+  }
+  assert.equal((writeTools.match(/readOnlyHint: false/g) || []).length, 4);
   // tools/list offers writes only when the flag is on AND the token may write.
   assert.match(src, /const CONNECTOR_WRITES_FLAG = 'survey-connector-writes'/);
   const list = src.slice(src.indexOf("method === 'tools/list'"), src.indexOf("method === 'tools/call'"));
