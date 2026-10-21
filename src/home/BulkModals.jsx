@@ -126,11 +126,11 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
           </div>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button disabled={submitting} onClick={onClose} className="hub-btn">Cancel</button>
+          <button disabled={submitting} onClick={onClose} className="hub-btn dialog-touch-pad">Cancel</button>
           <button
             disabled={!destId || submitting}
             onClick={handleConfirm}
-            className="hub-btn hub-btn--primary"
+            className="hub-btn hub-btn--primary dialog-touch-pad"
           >
             {/* KAL-73: ring to the left of the participle label while the batch runs. */}
             {submitting && <Spinner size={14} color="currentColor" />}
