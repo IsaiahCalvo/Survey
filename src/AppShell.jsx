@@ -96,6 +96,7 @@ import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, shows
 import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
+import { pendingInviteRedirect } from './utils/pendingInvite.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -1463,6 +1464,16 @@ export default function App({ devPreviewReturnTab = null }) {
       .then((file) => { if (file) handleDocumentSelect(file); })
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Someone who opened an invite link while signed out comes back here after
+  // signing in; send them on to the invite page so the invite is accepted.
+  useEffect(() => {
+    if (!user?.id) return;
+    let storage = null;
+    try { storage = window.localStorage; } catch (_e) { /* private mode */ }
+    const destination = pendingInviteRedirect(window.location, storage);
+    if (destination) window.location.replace(destination);
+  }, [user?.id]);
 
   // Existing-user share emails and accepted invites land on ?docId=<id>.
   // Wait for the authenticated document list, then use the exact same open

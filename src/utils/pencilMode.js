@@ -10,7 +10,9 @@
  *   finger pans, two fingers pan/pinch, a finger tap does nothing on the page,
  *   and a finger resting on the glass while the pen is down is ignored.
  * - The setting is offered only once a pen has been used on this device
- *   (`penSeen`, remembered). Using a pen never switches the mode by itself.
+ *   (`penSeen`, remembered). The first pen press on the page also switches
+ *   to Pencil only (remembered like a hand-picked mode) unless a mode was
+ *   already stored; that press still draws. Pen-less devices keep touch.
  *
  * How the finger is kept away from the tools: one window/capture pointer
  * gate, installed at module load. Every tool layer (SVG creation, selection
@@ -29,6 +31,7 @@ import { isLiveFormWidgetTarget } from './formWidgetPointerTargets.js';
 
 export const DRAW_MODE_STORAGE_KEY = 'surveyDrawMode';
 export const PEN_SEEN_STORAGE_KEY = 'surveyPenSeen';
+export const PEN_AUTO_SWITCH_STORAGE_KEY = 'surveyPenAutoSwitched';
 export const DRAW_MODES = Object.freeze({ TOUCH: 'touch', PEN: 'pen' });
 export const DRAW_MODE_OPTIONS = Object.freeze([
   Object.freeze({ mode: DRAW_MODES.TOUCH, label: 'Annotate with Pencil or Touch', short: 'Pencil or Touch', icon: 'touchDraw' }),
@@ -40,15 +43,17 @@ const isDrawMode = (mode) => mode === DRAW_MODES.TOUCH || mode === DRAW_MODES.PE
 export function loadPencilModeState(storage = globalThis?.localStorage) {
   let drawMode = DRAW_MODES.TOUCH;
   let penSeen = false;
+  let autoSwitchDone = false;
   try {
     const stored = storage?.getItem?.(DRAW_MODE_STORAGE_KEY);
     if (isDrawMode(stored)) drawMode = stored;
     penSeen = storage?.getItem?.(PEN_SEEN_STORAGE_KEY) === 'true';
+    autoSwitchDone = storage?.getItem?.(PEN_AUTO_SWITCH_STORAGE_KEY) === 'true';
   } catch (_) { /* storage blocked: defaults */ }
   // A device that never showed a pen has no way to turn Pencil-only off
   // again, so the mode only holds where the control is offered.
   if (!penSeen) drawMode = DRAW_MODES.TOUCH;
-  return { drawMode, penSeen };
+  return { drawMode, penSeen, autoSwitchDone };
 }
 
 const write = (key, value, storage = globalThis?.localStorage) => {
@@ -75,11 +80,30 @@ export function setDrawMode(mode) {
   emit();
 }
 
-/** The first pen press on this device reveals the setting (never switches it). */
-export function notePenSeen() {
-  if (state.penSeen) return;
-  state = { ...state, penSeen: true };
+const hasStoredDrawMode = (storage = globalThis?.localStorage) => {
+  try { return isDrawMode(storage?.getItem?.(DRAW_MODE_STORAGE_KEY)); } catch (_) { return false; }
+};
+
+/**
+ * The first pen press on this device reveals the setting. On the page
+ * (`onPage`) it also switches to Pencil only, unless a mode is already stored
+ * (a hand-made choice is never overwritten). Rule P4.
+ */
+export function notePenSeen({ onPage = false } = {}) {
+  // A first pen press off the page (toolbar, menus) only reveals the setting;
+  // the switch still happens on the first pen press that lands on the page.
+  const switchNow = onPage && !state.autoSwitchDone;
+  if (state.penSeen && !switchNow) return;
+  const autoPen = switchNow && !hasStoredDrawMode();
+  state = {
+    ...state,
+    penSeen: true,
+    ...(switchNow ? { autoSwitchDone: true } : {}),
+    ...(autoPen ? { drawMode: DRAW_MODES.PEN } : {}),
+  };
   write(PEN_SEEN_STORAGE_KEY, 'true');
+  if (switchNow) write(PEN_AUTO_SWITCH_STORAGE_KEY, 'true');
+  if (autoPen) write(DRAW_MODE_STORAGE_KEY, DRAW_MODES.PEN);
   emit();
 }
 
@@ -193,7 +217,8 @@ function onPointer(event) {
   if (event.pointerType === 'pen') {
     if (type === 'pointerdown') {
       penPointers.add(event.pointerId);
-      notePenSeen();
+      const el = elementOf(event.target);
+      notePenSeen({ onPage: Boolean(el?.closest?.(VIEWER_SELECTOR)) });
       tellGated(event, 'pen-down');
     } else if (type === 'pointerup' || type === 'pointercancel') {
       penPointers.delete(event.pointerId);

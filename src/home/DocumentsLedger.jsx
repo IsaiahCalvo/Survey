@@ -19,7 +19,7 @@ import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
-import { getDocumentCollaborators } from '../services/documentAnnotationService';
+import { getDocumentCollaborators, getDocumentOwnerProfile } from '../services/documentAnnotationService';
 import { documentTeamRows } from './documentTeam.js';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
@@ -346,16 +346,21 @@ export default function DocumentsLedger({
   // Team for the open preview (desktop panel or phone detail): owner + collaborators.
   const teamDocRaw = (mobileDetailDoc || previewDoc)?.raw || null;
   const teamDocId = teamDocRaw?.id || null;
-  const [teamCollab, setTeamCollab] = useState({ id: null, rows: [] });
+  const [teamCollab, setTeamCollab] = useState({ id: null, rows: [], owner: null });
+  const teamOwnerIsMe = Boolean(user?.id && teamDocRaw?.user_id === user.id);
   useEffect(() => {
     if (!teamDocId) return undefined;
     let live = true;
-    getDocumentCollaborators(teamDocId)
-      .then((res) => { if (live) setTeamCollab({ id: teamDocId, rows: res?.data || [] }); })
+    Promise.all([
+      getDocumentCollaborators(teamDocId),
+      teamOwnerIsMe ? null : getDocumentOwnerProfile(teamDocId).catch(() => null),
+    ])
+      .then(([res, owner]) => { if (live) setTeamCollab({ id: teamDocId, rows: res?.data || [], owner }); })
       .catch(() => {});
     return () => { live = false; };
-  }, [teamDocId]);
-  const teamRows = documentTeamRows(teamDocRaw, teamCollab.id === teamDocId ? teamCollab.rows : [], user);
+  }, [teamDocId, teamOwnerIsMe]);
+  const teamFresh = teamCollab.id === teamDocId;
+  const teamRows = documentTeamRows(teamDocRaw, teamFresh ? teamCollab.rows : [], user, teamFresh ? teamCollab.owner : null);
   const renderTeam = (nameStyle) => teamRows.map((p) => (
     <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <Avatar initials={initialsOf(p.name)} id={p.id} size={22} />
