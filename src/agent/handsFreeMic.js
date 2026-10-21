@@ -2,7 +2,9 @@
 // time the person says something and pauses, and hands it over as a 16 kHz
 // WAV file. While the agent speaks it listens with a stricter gate (guard),
 // so the person can cut in but the agent's own voice, mostly removed by echo
-// cancellation, does not count. The speech gate itself is in voiceLoop.js.
+// cancellation, does not count. A knock that starts and later discards does
+// not stop the reply: onBargeIn waits until the clip is confirmed speech.
+// The speech gate itself is in voiceLoop.js.
 import { BARGE_IN_GATE, createSpeechGate, downsample, encodeWav, frameLevel } from './voiceLoop.js';
 
 const PRE_ROLL_MS = 350;
@@ -46,12 +48,14 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
       clip = preRoll.splice(0);
       onHearing?.(true);
       cutIn = guarded;
-      if (guarded) { guarded = false; onBargeIn?.(); }
     } else if (result === 'end' || result === 'discard') {
       const parts = clip || [];
       clip = null;
       onHearing?.(false);
-      // A cut-in clip is finished with the strict gate; then back to normal.
+      // Stop the reply only when the cut-in is real speech. A knock that
+      // starts and then discards must not call onBargeIn, and must stay on
+      // the guard so the agent's voice does not open the looser gate.
+      if (result === 'end' && cutIn && guarded) { guarded = false; onBargeIn?.(); }
       if (!guarded && gate === bargeGate) { gate = mainGate; mainGate.reset(); }
       if (result === 'discard') return;
       const total = parts.reduce((n, p) => n + p.length, 0);
@@ -60,6 +64,9 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
       for (const p of parts) { all.set(p, at); at += p.length; }
       const wav = encodeWav(downsample(all, ctx.sampleRate, 16_000), 16_000);
       onClip?.(new Blob([wav], { type: 'audio/wav' }), Math.round((total / ctx.sampleRate) * 1000), { cutIn });
+    } else if (clip && cutIn && guarded && gate.confirmed) {
+      guarded = false;
+      onBargeIn?.();
     }
   };
   source.connect(node);

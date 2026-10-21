@@ -99,6 +99,9 @@ test('a transcript of the agent\'s own reply is not taken as the person', () => 
   assert.equal(heardOwnVoice('D117 card reader is Y', spoken), true);
   assert.equal(heardOwnVoice('No, D-118.', spoken), false);
   assert.equal(heardOwnVoice('card reader is missing on D 119', spoken), false);
+  assert.equal(heardOwnVoice('card reader is N', spoken), false);
+  assert.equal(heardOwnVoice('card reader is N', 'card reader is Y.'), false);
+  assert.equal(heardOwnVoice('Y', spoken), false);
   assert.equal(heardOwnVoice('anything', ''), false);
 });
 
@@ -117,6 +120,32 @@ test('a short bang is not speech; steady noise raises the bar', () => {
   // A generator now runs at 0.05: that is the new quiet, not speech.
   for (let i = 0; i < 200; i += 1) assert.equal(gate.push(0.05), null);
   assert.ok(gate.floor > 0.04);
+});
+
+test('a short bang while the agent speaks is never a confirmed cut-in', () => {
+  const gate = createSpeechGate({ frameMs: 20, ...BARGE_IN_GATE });
+  for (let i = 0; i < 50; i += 1) gate.push(0.02);
+  const events = [];
+  for (let i = 0; i < 8; i += 1) {
+    events.push(gate.push(0.4));
+    assert.equal(gate.confirmed, false);
+  }
+  for (let i = 0; i < 80; i += 1) {
+    events.push(gate.push(0.02));
+    assert.equal(gate.confirmed, false);
+  }
+  assert.deepEqual(events.filter(Boolean), ['start', 'discard']);
+});
+
+test('a cut-in is confirmed only once it is long enough to keep', () => {
+  const gate = createSpeechGate({ frameMs: 20, ...BARGE_IN_GATE });
+  for (let i = 0; i < 50; i += 1) gate.push(0.02);
+  for (let i = 0; i < 17; i += 1) {
+    gate.push(0.4);
+    assert.equal(gate.confirmed, false);
+  }
+  assert.equal(gate.push(0.4), null);
+  assert.equal(gate.confirmed, true);
 });
 
 test('a clip never runs past the longest allowed', () => {

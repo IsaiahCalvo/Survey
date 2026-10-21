@@ -48,6 +48,9 @@ export function createSpeechGate({
   return {
     get talking() { return talking; },
     get floor() { return floor; },
+    // True once this clip has enough speech that end will keep it. A knock
+    // can still `start` and later `discard`; it is never confirmed.
+    get confirmed() { return talking && speechFrames >= minSpeechFrames; },
     reset() {
       talking = false; loudRun = 0; quietRun = 0; length = 0; speechFrames = 0; pendingLoud = 0;
     },
@@ -100,16 +103,23 @@ export function createSpeechGate({
 export const BARGE_IN_GATE = { ratio: 3, minLevel: 0.035 };
 
 /**
- * True when what was heard is mostly the agent's own spoken reply (its voice
- * leaked back into the mic), so it must not be taken as the person talking.
+ * True when what was heard is the agent's own spoken reply (its voice leaked
+ * back into the mic), so it must not be taken as the person talking. Both
+ * sides have to match: a short correction that reuses reply words ("card
+ * reader is N", "Y") only overlaps one way.
  */
 export function heardOwnVoice(heard, spoken) {
-  const words = (t) => String(t || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+  // Split "D117" / "D 117" the same way so an echo of the spoken reply still
+  // matches after speech-to-text glues the tag together.
+  const words = (t) => String(t || '').toLowerCase().replace(/([a-z])(\d)/g, '$1 $2').replace(/(\d)([a-z])/g, '$1 $2').match(/[a-z0-9]+/g) || [];
   const h = words(heard);
   if (!h.length) return false;
-  const said = new Set(words(spoken));
-  if (!said.size) return false;
-  return h.filter((w) => said.has(w)).length / h.length >= 0.7;
+  const s = words(spoken);
+  if (!s.length) return false;
+  const said = new Set(s);
+  const shared = h.filter((w) => said.has(w)).length;
+  // A new word is the person (Y→N). A short fragment ("Y") is not the reply.
+  return shared === h.length && shared / s.length >= 0.7;
 }
 
 /** Loudness of one frame of samples (root mean square, 0 to 1). */
