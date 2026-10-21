@@ -58,9 +58,15 @@ meant for hand rollbacks.
 - **Bad schema change:** write a new migration with a later timestamp that
   puts it back (CI's migration-order check enforces the timestamp). Never edit
   or delete a migration that production has applied.
-- **Lost or damaged data:** Supabase keeps backups. Restoring one means
-  dashboard → Database → Backups and needs the owner. A restore rewinds every
-  table, so prefer fixing the rows by hand when the damage is small.
+- **Lost or damaged data:** the project is on Supabase's Pro plan, which
+  takes one backup a day and keeps the last 7. Restoring one means dashboard →
+  Database → Backups and needs the owner. A restore rewinds every table to
+  that day's snapshot, so anything written since is lost; prefer fixing the
+  rows by hand when the damage is small.
+- **Point-in-time restore** (rewind to any minute, not just the daily copy)
+  is a paid add-on the owner turns on in the dashboard. It was not confirmed
+  as on when this page was written; check Database → Backups before relying
+  on it.
 
 ## 5. The phone apps
 
