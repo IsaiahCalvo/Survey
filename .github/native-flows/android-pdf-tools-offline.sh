@@ -47,7 +47,7 @@ wait_button "Turn every page" 60
 pick "Turn every page"
 pick "Run"
 wait_button "Save as new document" 120
-adb exec-out screencap -p > "$OUT/10-offline-rotated.png"
+adb exec-out screencap -p > "$OUT/21-offline-rotated.png"
 pick "Save as new document"
 for _ in $(seq 1 30); do
   msg=$(ev "(() => document.querySelector('.pdft-error')?.textContent || '')()")
@@ -55,15 +55,15 @@ for _ in $(seq 1 30); do
 done
 echo "save offline: $msg"
 case "$msg" in *"Not saved. Download it instead"*) ;; *) echo "::error::Save offline did not say 'Not saved. Download it instead' ($msg)"; exit 1 ;; esac
-adb exec-out screencap -p > "$OUT/11-offline-save-refused.png"
+adb exec-out screencap -p > "$OUT/22-offline-save-refused.png"
 pick "Download"
-share_sheet 12-offline-rotate-share
+share_sheet 23-offline-rotate-share
 pick "Close"
 open_tools
 pick "Compress"
 pick "Run"
 wait_button "Download" 120
-adb exec-out screencap -p > "$OUT/13-offline-compressed.png"
+adb exec-out screencap -p > "$OUT/24-offline-compressed.png"
 pick "Download"
-share_sheet 14-offline-compress-share
+share_sheet 25-offline-compress-share
 echo "Offline PDF tools check passed."

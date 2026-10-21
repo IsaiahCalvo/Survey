@@ -10,4 +10,4 @@ name: android-pdf-tools-offline
 - extendedWaitUntil:
     visible: "More document options"
     timeout: 90000
-- takeScreenshot: 09-offline-document-open
+- takeScreenshot: 20-offline-document-open
