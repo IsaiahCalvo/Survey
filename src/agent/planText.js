@@ -183,3 +183,50 @@ export async function findTagInDocument(doc, query) {
   }
   return { matches: findTagOnPages(query, pages), unreadPages };
 }
+
+/**
+ * Per-word highlight quads for a search phrase among a page's words (from
+ * textItemsToWords / ocrWordsToWords, so boxes are page points, top-left
+ * origin). Case-insensitive and whitespace-insensitive; a phrase that spans
+ * words or wraps across lines matches, and a whole word is covered when the
+ * phrase lands inside it. `occurrence` (1-based) picks which match when the
+ * phrase repeats on the page. Returns { quads, text } in page points, or null
+ * when there is no match.
+ *
+ * Quads are { x1,y1 (top-left), x2,y2 (top-right), x3,y3 (bottom-left),
+ * x4,y4 (bottom-right) } — the layout createTextMarkupAnnotation expects; it
+ * runs mergeLineQuads to coalesce the per-word quads into per-line spans.
+ */
+export function findHighlightQuads(words, query, { occurrence = 1 } = {}) {
+  const tokens = (words || []).filter((w) => String(w?.text || '').trim() && w?.box);
+  const needle = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!needle || !tokens.length) return null;
+  // One haystack of the word texts joined by single spaces, each word's span
+  // kept, so a match that crosses a space (or a line) still finds its words.
+  let hay = '';
+  const spans = [];
+  for (const w of tokens) {
+    const start = hay.length;
+    hay += String(w.text).toLowerCase();
+    spans.push({ start, end: hay.length, box: w.box, text: w.text });
+    hay += ' ';
+  }
+  const want = Math.max(1, Math.trunc(Number(occurrence) || 1));
+  let at = -1;
+  let from = 0;
+  for (let n = 0; n < want; n += 1) {
+    at = hay.indexOf(needle, from);
+    if (at < 0) return null;
+    from = at + 1;
+  }
+  const matchEnd = at + needle.length;
+  const hit = spans.filter((s) => s.start < matchEnd && s.end > at);
+  if (!hit.length) return null;
+  const quads = hit.map(({ box }) => ({
+    x1: box.x, y1: box.y,
+    x2: box.x + box.width, y2: box.y,
+    x3: box.x, y3: box.y + box.height,
+    x4: box.x + box.width, y4: box.y + box.height,
+  }));
+  return { quads, text: hit.map((s) => s.text).join(' ') };
+}

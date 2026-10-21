@@ -557,6 +557,36 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           return `Added a callout on page ${page}.`;
         },
       },
+      {
+        name: 'survey_add_highlight',
+        description: 'Highlight a run of text on a page. Give the page and the exact words to highlight (search_text); Survey finds them in the page text and highlights them. Matching ignores case and extra spaces, and a phrase that wraps across lines still matches. Optionally a hex color and an opacity (0-100). If the same words appear more than once, occurrence (1-based) picks which one. Needs editor or owner access.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            page: { type: 'integer', minimum: 1 },
+            search_text: { type: 'string', description: 'The words to highlight, as they read on the page.' },
+            color: { type: 'string', description: 'Hex highlight color like #f4d35e (optional).' },
+            opacity: { type: 'number', minimum: 0, maximum: 100, description: 'Highlight opacity, 0-100 (optional).' },
+            occurrence: { type: 'integer', minimum: 1, description: 'Which match to highlight when the text repeats, 1-based (default 1).' },
+          },
+          required: ['page', 'search_text'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ page, search_text: searchText, color, opacity, occurrence }) => {
+          const doc = getDocument();
+          if (!String(searchText || '').trim()) throw new Error('The text to highlight is empty.');
+          const size = doc.getPageSize(Number(page));
+          if (!size) throw new Error('That page is not in the open document.');
+          const res = await doc.addHighlight({ page: Number(page), searchText: String(searchText), color, opacity: opacity == null ? undefined : Number(opacity), occurrence: occurrence == null ? undefined : Number(occurrence) });
+          if (res?.reason === 'empty') throw new Error('The text to highlight is empty.');
+          if (res?.reason === 'no-text') throw new Error('That page has no readable text to highlight. A scanned page needs text recognition run on it first.');
+          if (res?.reason === 'no-match') throw new Error('Could not find that text on the page. Check the words and the page number.');
+          if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the highlight was not added.');
+          if (!res?.ok) throw new Error('Could not add the highlight.');
+          return `Highlighted "${searchText}" on page ${page}.`;
+        },
+      },
     ] : []),
     ...surveyItemTools(surveyToolbox),
   ];

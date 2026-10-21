@@ -331,7 +331,7 @@ import { loadTrace } from './utils/loadTrace';
 import { preserveExistingCountersOnPage, shouldRenumberCountersForSave, summarizeCounterRenumberEffect } from './utils/counterRenumberSavePolicy';
 import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoRedo } from './utils/annotationPreviewDiag';
 import { registerAgentDocument } from './agent/webmcp';
-import { ocrWordsToWords, textItemsToWords } from './agent/planText';
+import { findHighlightQuads, ocrWordsToWords, textItemsToWords } from './agent/planText';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
 import { watchLightPopover } from './components/dismissRules.js';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
@@ -33202,6 +33202,60 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         commitCalloutMutation(Number(page), (list) => [...list, callout],
           { source: 'webmcp:callout:create', action: 'callout-create' });
         return { ok: true, id: callout.id };
+      },
+      // Highlight a run of text (editor/owner). The agent has no mouse
+      // selection, so it names the text; we find it in the page's text layer
+      // (or recognised text), turn the matched words into quads, and commit
+      // through the same text-markup transaction a drawn highlight uses — so
+      // scope, author, sync, Excel and one-Undo all match a hand-made one.
+      addHighlight: async ({ page, searchText, color, opacity, occurrence }) => {
+        const state = agentMarkerStateRef.current;
+        const size = state.pageSizes?.[page];
+        if (!size) return { ok: false, reason: 'not-found' };
+        if (!String(searchText || '').trim()) return { ok: false, reason: 'empty' };
+        if (!state.pdfDoc) return { ok: false, reason: 'no-text' };
+        let words = [];
+        try {
+          const pdfPage = await state.pdfDoc.getPage(page);
+          const content = await pdfPage.getTextContent();
+          words = textItemsToWords(content.items, pdfPage.getViewport({ scale: 1 }));
+          if (!words.length) {
+            const ocr = state.ocrStateByPage?.[page]?.result?.words;
+            if (ocr?.length) words = ocrWordsToWords(ocr);
+          }
+        } catch {
+          words = [];
+        }
+        if (!words.length) return { ok: false, reason: 'no-text' };
+        const match = findHighlightQuads(words, searchText, { occurrence });
+        if (!match) return { ok: false, reason: 'no-match' };
+        const selectionGroupId = generateUUID();
+        let mark = createTextMarkupAnnotation({
+          id: generateUUID(),
+          pageNumber: Number(page),
+          selectionGroupId,
+          markupType: 'highlight',
+          selectedText: match.text,
+          quads: match.quads,
+          color: color || '#f4d35e',
+          opacity: Number.isFinite(Number(opacity))
+            ? Math.max(0.05, Math.min(1, Number(opacity) / 100))
+            : undefined,
+          overlapMode: 'layered',
+          authorId: state.viewerId || null,
+        });
+        if (!mark) return { ok: false, reason: 'no-match' };
+        mark = applyAnnotationCreationScope(mark, state.annotationScope(page));
+        const tx = buildTextMarkupGroupCreateTransaction(state.getAnnotationsByPage(), [mark]);
+        if (!tx) return { ok: false, reason: 'no-match' };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'text-markup:create', action: 'highlight-agent-create', pageNumber: page });
+        const committed = commitTextMarkupDocumentTransactionRef.current?.(tx, {
+          source: 'webmcp:highlight:create',
+          action: 'text-markup-create',
+          selectionGroupId,
+        });
+        if (!committed) return { ok: false, reason: 'locked' };
+        return { ok: true, id: mark.id };
       },
       // Replace a text note's text (height re-fits). Gated like a human edit.
       editTextNote: (id, { text }) => {

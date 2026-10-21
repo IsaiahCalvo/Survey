@@ -1,0 +1,66 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { findHighlightQuads } from '../src/agent/planText.js';
+
+// Words as textItemsToWords / ocrWordsToWords return them: page points,
+// top-left origin, { text, box:{x,y,width,height} }.
+const line = (texts, y = 100) => texts.map((text, i) => ({
+  text,
+  box: { x: 50 + i * 60, y, width: 50, height: 12 },
+}));
+
+test('finds a one-word phrase and returns its quad in page points', () => {
+  const words = line(['General', 'Notes']);
+  const res = findHighlightQuads(words, 'Notes');
+  assert.ok(res);
+  assert.equal(res.text, 'Notes');
+  assert.equal(res.quads.length, 1);
+  // The word box at index 1: x=110,y=100,w=50,h=12. Quad corners:
+  assert.deepEqual(res.quads[0], {
+    x1: 110, y1: 100, x2: 160, y2: 100, x3: 110, y3: 112, x4: 160, y4: 112,
+  });
+});
+
+test('a multi-word phrase covers every word it spans', () => {
+  const res = findHighlightQuads(line(['General', 'Notes', 'apply']), 'general notes');
+  assert.equal(res.quads.length, 2);
+  assert.equal(res.text, 'General Notes');
+});
+
+test('matching ignores case and extra whitespace', () => {
+  const res = findHighlightQuads(line(['General', 'Notes']), '  GENERAL   notes ');
+  assert.ok(res);
+  assert.equal(res.quads.length, 2);
+});
+
+test('a phrase inside one word covers the whole word', () => {
+  const res = findHighlightQuads(line(['Introduction']), 'duct');
+  assert.ok(res);
+  assert.equal(res.quads.length, 1);
+});
+
+test('occurrence picks which match when the text repeats', () => {
+  const words = [...line(['see', 'note'], 100), ...line(['see', 'note'], 200)];
+  const first = findHighlightQuads(words, 'note', { occurrence: 1 });
+  const second = findHighlightQuads(words, 'note', { occurrence: 2 });
+  assert.equal(first.quads[0].y1, 100);
+  assert.equal(second.quads[0].y1, 200);
+  // Past the last occurrence: no match.
+  assert.equal(findHighlightQuads(words, 'note', { occurrence: 3 }), null);
+});
+
+test('a phrase that wraps across lines still matches both lines', () => {
+  const words = [...line(['the', 'quick'], 100), ...line(['brown', 'fox'], 120)];
+  const res = findHighlightQuads(words, 'quick brown');
+  assert.ok(res);
+  assert.equal(res.quads.length, 2);
+  assert.equal(res.quads[0].y1, 100);
+  assert.equal(res.quads[1].y1, 120);
+});
+
+test('no match, empty query and no words all return null', () => {
+  assert.equal(findHighlightQuads(line(['hello']), 'goodbye'), null);
+  assert.equal(findHighlightQuads(line(['hello']), '   '), null);
+  assert.equal(findHighlightQuads([], 'hello'), null);
+  assert.equal(findHighlightQuads(null, 'hello'), null);
+});
