@@ -16,7 +16,8 @@ const FLAG = 'survey-connector-writes';
 const RUN = crypto.randomBytes(3).toString('hex');
 // set_answers validates against the item's template category, so the seeded
 // marker must point at a real category + checklist, linked to the document.
-const TEMPLATE_ID = `e2e00000-0000-4000-8000-0000000c${RUN}`;
+// RUN is 6 hex chars; the UUID's final group must be exactly 12, so prefix 6.
+const TEMPLATE_ID = `e2e00000-0000-4000-8000-00000c${RUN}`;
 const CATEGORY_ID = `e2e-cat-${RUN}`;
 const CHECKLIST_ID = `e2e-chk-${RUN}`;
 

@@ -110,7 +110,7 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   assert.match(src, /syncSurveyMarkersToDoc\(doc, markers, \{ origin: 'agent' \}\)/);
   assert.match(src, /rpc\('append_annotation_update'/);
   // The off-by-default flag is declared in a migration and the client registry.
-  assert.match(read('supabase/migrations/20261022130000_survey_connector_writes_flag.sql'), /'survey-connector-writes', 'off'/);
+  assert.match(read('supabase/migrations/20261022160000_survey_connector_writes_flag.sql'), /'survey-connector-writes', 'off'/);
   assert.match(read('src/featureFlags.js'), /'survey-connector-writes'/);
   // A read-only agent can only reach a STABLE rpc via GET (the #1034 gate).
   assert.match(src, /rpc\('get_my_document_role', \{ doc_id: documentId \}, \{ get: true \}\)/);
