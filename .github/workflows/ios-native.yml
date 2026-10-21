@@ -223,6 +223,7 @@ jobs:
             adb shell settings put global hide_error_dialogs 1
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
             maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml
+            bash .github/native-flows/android-pen-mode.sh "$OUT"
             adb reverse --remove-all
             maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml
       - uses: actions/upload-artifact@v4
