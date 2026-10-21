@@ -83,6 +83,7 @@ export function identityNote(id) {
 }
 
 const ghost = { ...btn, background: 'transparent', color: C.dangerText, border: `1px solid ${C.rule}`, padding: '4px 10px', fontSize: 12, fontWeight: 400 };
+const undoBtn = { ...btn, background: 'transparent', color: C.ink, border: `1px solid ${C.ruleStrong}`, padding: '4px 10px', fontSize: 12, fontWeight: 400, minHeight: 32 };
 
 function Consent({ authorizationId }) {
   const [details, setDetails] = useState(null);
@@ -180,6 +181,8 @@ function AgentLinkScreen() {
   const [links, setLinks] = useState([]);
   const [grants, setGrants] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [changes, setChanges] = useState([]);
+  const [undoing, setUndoing] = useState({});
   const [lastActive, setLastActive] = useState({});
   const [identities, setIdentities] = useState({});
   // Closed at first so the person reads why they're here before signing in.
@@ -210,14 +213,19 @@ function AgentLinkScreen() {
     // Fails quietly while the project's OAuth server is off.
     const grantResult = await supabase.auth.oauth.listGrants().catch(() => null);
     setGrants(Array.isArray(grantResult?.data) ? grantResult.data : []);
-    const [{ data: log }, { data: seen }, { data: ids }] = await Promise.all([
+    const [{ data: log }, { data: seen }, { data: ids }, { data: undoable }] = await Promise.all([
       supabase.from('agent_activity').select('id, client_id, action, table_name, row_label, created_at')
         .order('created_at', { ascending: false }).limit(50),
       supabase.rpc('my_agent_last_active'),
       supabase.from('agent_identities').select('client_id, agentid_sub, agent_email, agent_name, owner_email, owner_human_verified'),
+      // The recorded survey changes the person can take back (agent_change);
+      // fails quietly to [] while the feature was never used. Undone rows drop off.
+      supabase.from('agent_change').select('id, client_id, summary, created_at, undone_at')
+        .is('undone_at', null).order('created_at', { ascending: false }).limit(50).then((r) => r, () => ({ data: [] })),
     ]);
     setIdentities(Object.fromEntries((ids || []).map((r) => [r.client_id, r])));
     setActivity(log || []);
+    setChanges(undoable || []);
     setLastActive(Object.fromEntries((seen || []).map((r) => [r.client_id, r.last_active])));
   }, [user]);
 
@@ -246,6 +254,20 @@ function AgentLinkScreen() {
   const revokeGrant = async (clientId) => {
     await supabase.auth.oauth.revokeGrant({ clientId });
     loadLinks();
+  };
+
+  // Take back one change an agent made. survey-undo reverses it on the person's
+  // own token (their action, so no connector flag) and marks the row undone.
+  const undoChange = async (id) => {
+    setUndoing((u) => ({ ...u, [id]: true }));
+    const { data, error } = await supabase.functions.invoke('survey-undo', { body: { change_id: id } });
+    if (error || !data?.ok) {
+      setUndoing((u) => ({ ...u, [id]: false }));
+      setMessage(error ? 'Could not undo that change. Try again.' : 'That change could not be undone — you may no longer have edit access to the document.');
+      return;
+    }
+    // Drop it from the list; the reversal is in the document's history now.
+    setChanges((rows) => rows.filter((r) => r.id !== id));
   };
 
   // Until sign-in is known, show neither form: a consent return must not
@@ -310,6 +332,22 @@ function AgentLinkScreen() {
               <button style={ghost} onClick={a.remove}>Remove</button>
             </div>
           ))}
+        </>
+      )}
+      {changes.length > 0 && (
+        <>
+          <h3 style={{ fontSize: 15, marginTop: 24 }}>Changes you can undo</h3>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: 13 }}>
+            {changes.map((r) => (
+              <li key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderTop: `1px solid ${C.rule}` }}>
+                <span>
+                  {r.summary || 'A change'}
+                  <span style={{ display: 'block', fontSize: 12, color: C.inkSoft }}>{agentName(r.client_id)} · {when(r.created_at)}</span>
+                </span>
+                <button style={undoBtn} disabled={undoing[r.id]} onClick={() => undoChange(r.id)}>{undoing[r.id] ? 'Undoing…' : 'Undo'}</button>
+              </li>
+            ))}
+          </ul>
         </>
       )}
       {(agents.length > 0 || activity.length > 0) && (

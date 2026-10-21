@@ -24,6 +24,7 @@ import * as Y from 'npm:yjs@13.6.30';
 import { normalizeItemName, scoreItemName } from '../_shared/surveyAgentSpec.js';
 import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../_shared/surveyMarkerDocSync.js';
 import { bytesToPgHex, pgHexToBytes } from '../_shared/pgBytea.js';
+import { applyUndoDescriptor, noteObjectOf, UNDO_KINDS } from '../_shared/surveyUndoApply.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
 import { agentClientId } from '../_shared/agentSession.ts';
 
@@ -149,19 +150,8 @@ function answerValuesOf(config: Record<string, unknown>): string[] | null {
   return DEFAULT_ANSWER_VALUES;
 }
 
-// A note can be a plain string, an object { text, media, ... }, or that object
-// as a JSON string (document_annotations.notes is TEXT). Return it as an object
-// so add_note can append to `text` while keeping media and other fields.
-const noteObjectOf = (note: unknown): Record<string, unknown> => {
-  if (note && typeof note === 'object') return { ...(note as Record<string, unknown>) };
-  if (typeof note === 'string' && note.trim().startsWith('{')) {
-    try {
-      const parsed = JSON.parse(note);
-      if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
-    } catch { /* plain text */ }
-  }
-  return typeof note === 'string' && note ? { text: note } : {};
-};
+// `noteObjectOf` (normalise a note to an editable object, keeping media) is
+// shared with the undo-apply module so add_note and the two undo paths agree.
 
 const noteText = (notes: unknown) => {
   if (!notes) return '';
@@ -824,43 +814,14 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     if (!u || u.v !== 1 || !UUID.test(String(u.d || '')) || !u.m) {
       throw new ToolError('That change_id is not one this connector gave out.');
     }
+    if (!UNDO_KINDS.has(String(u.kind || ''))) {
+      throw new ToolError('That change_id is not one this connector gave out.');
+    }
     // Same gate as any write; the append RPC's editor RLS is the real backstop.
     const { fieldMaps } = await requireWrite(db);
-    const id = String(u.m);
-    const kind = String(u.kind || '');
-    const result = await writeMarkers(db, String(u.d), (markers) => {
-      if (kind === 'create') { delete markers[id]; return; } // the item this change added
-      const marker = markers[id];
-      if (!marker) return; // already gone — nothing to put back
-      if (kind === 'answers') {
-        // Restore ONLY the checklist entries this change set; leave the rest
-        // (an answer changed afterwards survives). null = it was unset before.
-        const keys = (u.keys && typeof u.keys === 'object' ? u.keys : {}) as Record<string, unknown>;
-        const responses = { ...((marker.checklistResponses as Record<string, unknown>) || {}) };
-        for (const [clId, prior] of Object.entries(keys)) {
-          if (prior === null || prior === undefined) delete responses[clId];
-          else responses[clId] = prior;
-        }
-        markers[id] = { ...marker, checklistResponses: responses };
-      } else if (kind === 'note_append') {
-        // Strip just the text this change appended, if the note still ends with
-        // it; a note edited since is left untouched.
-        const seg = String(u.seg || '');
-        const obj = noteObjectOf(marker.note ?? marker.notes);
-        const current = String(obj.text || '');
-        if (seg && current.endsWith(seg)) {
-          obj.text = current.slice(0, current.length - seg.length);
-          markers[id] = { ...marker, note: obj };
-        }
-      } else if (kind === 'entity') {
-        const before = (u.b && typeof u.b === 'object' ? u.b : {}) as Record<string, unknown>;
-        const patch: Record<string, unknown> = {};
-        for (const [k, val] of Object.entries(before)) patch[k] = val === null ? undefined : val;
-        markers[id] = { ...marker, ...patch };
-      } else {
-        throw new ToolError('That change_id is not one this connector gave out.');
-      }
-    }, fieldMaps);
+    // The reversal itself is the shared surgical apply, so the agent's undo_change
+    // and the person's /agent-link Undo button can never drift apart.
+    const result = await writeMarkers(db, String(u.d), (markers) => applyUndoDescriptor(markers, u), fieldMaps);
     return text({ ok: true, changed: result.changed });
   }
   throw new ToolError(`Unknown tool ${name}.`);

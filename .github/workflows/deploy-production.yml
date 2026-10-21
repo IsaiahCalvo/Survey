@@ -131,6 +131,7 @@ jobs:
           stripe-webhook
           survey-agent
           survey-mcp
+          survey-undo
 
       - name: Verify database, functions, Stripe, and endpoint health
         run: node scripts/release-integrity.mjs --remote

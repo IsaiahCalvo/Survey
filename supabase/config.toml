@@ -423,3 +423,9 @@ verify_jwt = false
 # itself.
 [functions.survey-mcp]
 verify_jwt = false
+
+# The person's "Undo" on /agent-link, reversing one recorded connector write on
+# their own token. Answers a CORS preflight without a token and checks the
+# person's Bearer token itself, like survey-mcp.
+[functions.survey-undo]
+verify_jwt = false
