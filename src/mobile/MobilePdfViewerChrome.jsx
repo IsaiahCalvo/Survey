@@ -36,6 +36,7 @@ import {
   useMobileSurveyRailSlots,
 } from './MobileSurveyRail.jsx';
 import { railButtonPressed } from '../utils/toolbarToolPressed.js';
+import { formatPageTotal } from '../utils/pageTotalLabel.js';
 import './mobilePdfViewer.css';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
@@ -1093,7 +1094,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                   setPageEditing(false);
                 }}
               />
-              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.numPages || 1)}</span>
+              <span className="mobile-pdf-header__page-total">/ {formatPageTotal(bottomToolbarApi?.numPages, bottomToolbarApi?.activeSpaceHasNoPages)}</span>
             </span>
           ) : (
             /* UX: the WHOLE "n / N" fraction is the page-jump tap zone (owner
@@ -1106,7 +1107,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
               onClick={openPageEdit}
             >
               {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.pageNum || 1)}
-              <span className="mobile-pdf-header__page-total">/ {bottomToolbarApi?.activeSpaceHasNoPages ? 0 : (bottomToolbarApi?.numPages || 1)}</span>
+              <span className="mobile-pdf-header__page-total">/ {formatPageTotal(bottomToolbarApi?.numPages, bottomToolbarApi?.activeSpaceHasNoPages)}</span>
             </button>
           )}
           {/* Owner 2026-10-02 (second verdict: "Put the chevron back"): the

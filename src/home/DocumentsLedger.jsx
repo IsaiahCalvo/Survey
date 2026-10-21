@@ -1020,6 +1020,8 @@ export default function DocumentsLedger({
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(previewDoc.raw)}>Open file</button>
                 <button className="btn documents-preview-share" aria-disabled={canManageDoc(previewDoc.raw) ? undefined : true} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([previewDoc.raw], user?.id, 'share'), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
               </div>
+              {/* The row's double-click opens the file too; say so (mouse only). */}
+              <div className="documents-preview-open-hint">Double-click a row to open it</div>
             </aside>
           )}
         </div>

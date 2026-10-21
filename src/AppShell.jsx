@@ -99,6 +99,7 @@ import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
+import { formatPageTotal } from './utils/pageTotalLabel.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -4883,7 +4884,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         midpoint of the two numbers by construction. */}
                     <span aria-hidden="true" data-rail-page-dot style={RAIL_PAGE_DOT_STYLE} />
                     <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 'var(--chrome-field-h)', color: 'var(--text-3)', fontSize: '10px', fontFamily: FONT_FAMILY, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                      {api.activeSpaceHasNoPages ? 0 : api.numPages}
+                      {formatPageTotal(api.numPages, api.activeSpaceHasNoPages)}
                     </span>
                     <span {...chromeTip(atLastPage ? 'Already on the last page' : 'Next page', 'left')} style={{ display: 'inline-flex' }}>
                       <button
