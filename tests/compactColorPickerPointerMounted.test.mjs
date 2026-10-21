@@ -27,6 +27,10 @@ async function loadPicker() {
     .replace(
       "from '../utils/quickStylePresets'",
       `from ${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src/utils/quickStylePresets.js')).href)}`,
+    )
+    .replace(
+      "from '../utils/recentColors'",
+      `from ${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src/utils/recentColors.js')).href)}`,
     );
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
