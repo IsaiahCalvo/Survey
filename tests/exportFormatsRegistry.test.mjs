@@ -163,3 +163,13 @@ test('account kits from the database register, skip bad rows and built-ins, and 
   const noop = await loadAccountExportKits(failing);
   noop();
 });
+
+test('the server and the app agree on which kits are built in', async () => {
+  const { BUILT_IN_EXPORT_KIT_IDS } = await import('../src/services/exportFormats/registry.js');
+  const { BUILT_IN_KIT_IDS, publishProblems } = await import('../supabase/functions/_shared/kitShape.js');
+  assert.deepEqual([...BUILT_IN_KIT_IDS].sort(), [...BUILT_IN_EXPORT_KIT_IDS].sort());
+  const lock = getExportKit('wireless-lock-schedule');
+  assert.deepEqual(publishProblems({ ...lock, id: 'acme' }), []);
+  assert.ok(publishProblems({ ...lock }).some((e) => e.includes('built into the app')));
+  assert.ok(publishProblems({ ...lock, id: 'acme', answerSet: [{ value: 'x', tone: 'odd' }] }).length);
+});

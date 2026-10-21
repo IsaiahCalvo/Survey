@@ -3,7 +3,7 @@
 // WAV file. While the agent speaks it listens with a stricter gate (guard),
 // so the person can cut in but the agent's own voice, mostly removed by echo
 // cancellation, does not count. The speech gate itself is in voiceLoop.js.
-import { BARGE_IN_GATE, createSpeechGate, downsample, encodeWav, frameLevel } from './voiceLoop.js';
+import { BARGE_IN_GATE, MAIN_GATE, createBandLevel, createSpeechGate, downsample, encodeWav } from './voiceLoop.js';
 
 const PRE_ROLL_MS = 350;
 
@@ -22,7 +22,8 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
   const bufferSize = 1024;
   const node = ctx.createScriptProcessor(bufferSize, 1, 1);
   const frameMs = (bufferSize / ctx.sampleRate) * 1000;
-  const mainGate = createSpeechGate({ frameMs, ...gateOptions });
+  const mainGate = createSpeechGate({ frameMs, ...MAIN_GATE, ...gateOptions });
+  const level = createBandLevel(ctx.sampleRate);
   const bargeGate = createSpeechGate({ frameMs, ...BARGE_IN_GATE });
   let gate = mainGate;
   let guarded = false;
@@ -36,7 +37,7 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
   node.onaudioprocess = (event) => {
     if (paused || stopped) return;
     const samples = new Float32Array(event.inputBuffer.getChannelData(0));
-    const result = gate.push(frameLevel(samples));
+    const result = gate.push(level(samples));
     if (clip) clip.push(samples);
     else {
       preRoll.push(samples);

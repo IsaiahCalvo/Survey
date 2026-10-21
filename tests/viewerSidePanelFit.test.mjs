@@ -138,7 +138,10 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
   // KAL-66 (2026-10-13): the ref moved after the phone sheet's prop spread -
   // on the phone it is the sheet focus ref (which also feeds the sheet
   // motion's ref); the desktop rail still registers its side occluder.
-  assert.match(rail, /data-viewer-occluder=\{isSurveyPanelCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}[\s\S]{0,240}ref=\{mobileMode \? surveySheetFocusRef : sideOccluderRef\}/);
+  // 2026-10-21: one combined ref also keeps the panel's element, so the
+  // Survey agent chat can be drawn inside it.
+  assert.match(rail, /data-viewer-occluder=\{isSurveyPanelCollapsed \? undefined : \(mobileMode \? 'sheet' : 'side'\)\}[\s\S]{0,240}ref=\{surveyRailRef\}/);
+  assert.match(rail, /const surveyRailRef = useCallback\(\(el\) => \{\s*\(mobileMode \? surveySheetFocusRef : sideOccluderRef\)\(el\);/);
   const sidebar = read('../src/PDFSidebar.jsx');
   // Chunk D (2026-10-13): a side occluder while the desktop panel is laid out
   // (open, or still sliding closed). 2026-10-14: the panel is one fixed width

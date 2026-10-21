@@ -110,8 +110,8 @@ test('Survey agent fills an item from a typed message and undoes it', async ({ p
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
 
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   await expect(panel).toBeVisible();
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
@@ -174,8 +174,8 @@ test('Survey agent sets an answer by item name with no separate search', async (
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('D one seventeen power no');
@@ -186,6 +186,73 @@ test('Survey agent sets an answer by item name with no separate search', async (
   await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
   // Two model calls (write, words) instead of three (find, write, words).
   expect(calls.filter((c) => c.action === 'turn')).toHaveLength(2);
+});
+
+// Spanish: picked in the chat, sent with each turn so the model answers in
+// Spanish, and spoken by the device in a Spanish voice (the server voice
+// speaks English only).
+test('Survey agent in Spanish: the reply is asked for in Spanish and spoken in a Spanish voice', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '1');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+    window.__spoken = [];
+    class Utterance { constructor(text) { this.text = text; } }
+    window.SpeechSynthesisUtterance = Utterance;
+    Object.defineProperty(window, 'speechSynthesis', {
+      configurable: true,
+      value: { speak(u) { window.__spoken.push([u.text, u.lang]); setTimeout(() => u.onend?.(), 50); }, cancel() {} },
+    });
+  }, { template: TEMPLATE, data });
+  await page.route('**/functions/v1/survey-agent', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+      return;
+    }
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    const reply = (json) => route.fulfill({
+      status: 200,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+      body: JSON.stringify(json),
+    });
+    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, speech: true, over_cap: false });
+    if (body.action === 'speak') return reply({ audio: '', mime: 'audio/wav' });
+    const tools = body.messages.filter((m) => m.role === 'tool');
+    if (!tools.length) {
+      return reply({ message: { content: '', tool_calls: [
+        { id: 's1', type: 'function', function: { name: 'set_answers', arguments: JSON.stringify({ item_name: 'D-117', answers: [{ checklist_item_id: 'cl-power', value: 'N' }] }) } },
+      ] } });
+    }
+    return reply({ message: { content: 'D-117: sin energía, marqué N.', tool_calls: [] } });
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
+  await panel.getByRole('button', { name: 'Language: English' }).click();
+  await expect(panel.getByRole('button', { name: 'Language: Español' })).toHaveText('ES');
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await input.fill('D-117 no tiene energía');
+  await input.press('Enter');
+
+  await expect(panel.getByText('D-117: sin energía, marqué N.')).toBeVisible();
+  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
+  const turns = calls.filter((c) => c.action === 'turn');
+  expect(turns.length).toBe(2);
+  expect(turns.every((t) => t.lang === 'es')).toBe(true);
+  // Spoken by the device in Spanish; the English server voice is not asked.
+  await expect.poll(() => page.evaluate(() => window.__spoken)).toEqual([['D 117: sin energía, marqué N.', 'es-US']]);
+  expect(calls.filter((c) => c.action === 'speak')).toHaveLength(0);
+  // Remembered for next time.
+  expect(await page.evaluate(() => localStorage.getItem('survey.agent.lang'))).toBe('es');
 });
 
 // Phase 2 (KAL-528): the model finds a tag on the plan and adds it as an item.
@@ -234,8 +301,8 @@ test('Survey agent adds an item from a tag on a rotated plan page, and Undo remo
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('add ROTATION from page 2 as a door');
@@ -303,8 +370,8 @@ test('With no signal a message waits, then sends when the signal is back; the al
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   await expect(panel.getByRole('status')).toContainText('about 40 requests left');
 
   await context.setOffline(true);
@@ -342,9 +409,9 @@ test('With no signal a message is kept on the device: closing the chat keeps it,
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  const open = page.getByRole('button', { name: 'Survey agent: talk or type to fill items' });
+  const open = page.getByRole('button', { name: 'Open Survey agent chat' });
   await open.click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
 
@@ -355,9 +422,9 @@ test('With no signal a message is kept on the device: closing the chat keeps it,
   // Said out loud, in the device's own voice (no signal for the server's).
   await expect.poll(() => page.evaluate(() => window.__said)).toContain('No signal. I saved that and will send it when you are back online.');
 
-  // Closing the chat keeps the message on the device.
-  await panel.getByRole('button', { name: 'Close Survey agent' }).click();
-  await expect(panel).toHaveCount(0);
+  // Going back to the Survey panel keeps the message waiting.
+  await panel.getByRole('button', { name: 'Back to Survey' }).click();
+  await expect(panel).toBeHidden();
   await open.click();
   await expect(panel.getByText('door 117 has no power')).toBeVisible();
   await expect(panel.getByText('Waiting for signal')).toBeVisible();
@@ -374,11 +441,11 @@ test('With no signal a message is kept on the device: closing the chat keeps it,
   ]);
 
   // Sent once: opening the chat again does not send it again.
-  await panel.getByRole('button', { name: 'Close Survey agent' }).click();
+  await panel.getByRole('button', { name: 'Back to Survey' }).click();
   await open.click();
   await expect(panel.getByRole('textbox', { name: 'Message the Survey agent' })).toBeEnabled();
   await page.waitForTimeout(1500);
-  await expect(panel.getByText('door 117 has no power')).toHaveCount(0);
+  await expect(panel.getByText('Waiting for signal')).toHaveCount(0);
   expect(calls.filter((c) => c.action === 'turn')).toHaveLength(3);
 });
 
@@ -415,8 +482,8 @@ test('A message that hits the per-minute limit waits and sends a moment later, i
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('door 117 has no power');
@@ -476,8 +543,8 @@ test('With markup tools on, the agent puts a text note next to an item', async (
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('put a note by D-117: ceiling tile missing');
@@ -502,4 +569,92 @@ test('With markup tools on, the agent puts a text note next to an item', async (
     const { activeAgentDocument } = await import('/src/agent/webmcp.js');
     return activeAgentDocument().listAnnotations().some((a) => /Ceiling tile missing/.test(a.text || ''));
   })).toBe(false);
+});
+
+// Voice markup: "circle D-117", then "cloud this area" (what is on screen).
+test('With markup tools on, the agent circles an item and clouds the area on screen, and Undo takes them back', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.flag.annotation-agent', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await page.route('**/functions/v1/survey-agent', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+      return;
+    }
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    const reply = (json) => route.fulfill({
+      status: 200,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+      body: JSON.stringify(json),
+    });
+    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
+    const said = [...body.messages].reverse().find((m) => m.role === 'user')?.content || '';
+    const tools = body.messages.slice(body.messages.findLastIndex((m) => m.role === 'user')).filter((m) => m.role === 'tool');
+    const call = (id, name, args) => reply({ message: { content: '', tool_calls: [
+      { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
+    ] } });
+    if (/circle/.test(said)) {
+      if (tools.length === 0) return call('c1', 'find_items', { query: 'D-117', category_id: null });
+      if (tools.length === 1) {
+        const id = JSON.parse(tools[0].content).matches[0].id;
+        return call('c2', 'mark_on_plan', { shape: 'circle', item_id: id, plan_match_id: null, on_screen: false, color: null });
+      }
+      return reply({ message: { content: 'Circled D-117.', tool_calls: [] } });
+    }
+    if (tools.length === 0) return call('k1', 'mark_on_plan', { shape: 'cloud', item_id: null, plan_match_id: null, on_screen: true, color: 'blue' });
+    return reply({ message: { content: 'Clouded that area.', tool_calls: [] } });
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  const shapes = () => page.evaluate(async () => {
+    const { activeAgentDocument } = await import('/src/agent/webmcp.js');
+    return activeAgentDocument().listAnnotations();
+  });
+
+  await input.fill('circle D-117');
+  await input.press('Enter');
+  await expect(panel.getByText('Circled D-117.')).toBeVisible();
+  let results = calls.filter((c) => c.action === 'turn').at(-1).messages.filter((m) => m.role === 'tool');
+  expect(results.at(-1).content).toMatch(/^Drew a circle around D-117 on page 1 \(id [^)]+\)\.$/);
+  const circleId = results.at(-1).content.match(/\(id ([^)]+)\)/)[1];
+  // Around D-117's box (x 330..480, y 600..680 on page 1), holding it.
+  const circle = (await shapes()).find((a) => a.id === circleId);
+  expect(circle).toBeTruthy();
+  expect(circle.page).toBe(1);
+  expect(circle.bounds.x).toBeLessThan(330);
+  expect(circle.bounds.y).toBeLessThan(600);
+  expect(circle.bounds.x + circle.bounds.width).toBeGreaterThan(480);
+  expect(circle.bounds.y + circle.bounds.height).toBeGreaterThan(680);
+
+  await input.fill('cloud this area');
+  await input.press('Enter');
+  await expect(panel.getByText('Clouded that area.')).toBeVisible();
+  results = calls.filter((c) => c.action === 'turn').at(-1).messages.filter((m) => m.role === 'tool');
+  expect(results.at(-1).content).toMatch(/^Drew a cloud around the area on screen on page 1 \(id [^)]+\)\.$/);
+  const cloudId = results.at(-1).content.match(/\(id ([^)]+)\)/)[1];
+  const cloud = (await shapes()).find((a) => a.id === cloudId);
+  expect(cloud).toBeTruthy();
+  console.log('MARKS', JSON.stringify({ circle, cloud }));
+  await page.screenshot({ path: 'test-results/voice-markup.png' });
+
+  // Each change card's Undo takes its own mark away.
+  const cards = panel.getByTestId('survey-agent-changes');
+  await cards.last().getByRole('button', { name: /Undo/ }).click();
+  await expect.poll(async () => (await shapes()).some((a) => a.id === cloudId)).toBe(false);
+  await cards.first().getByRole('button', { name: /Undo/ }).click();
+  await expect.poll(async () => (await shapes()).some((a) => a.id === circleId)).toBe(false);
 });

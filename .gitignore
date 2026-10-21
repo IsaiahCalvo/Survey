@@ -110,5 +110,6 @@ debug/crash-hunt/runs/
 # Signed-in E2E local Supabase stack (scripts/e2e-local-supabase.mjs)
 /.e2e/
 .env.e2e
+.env.eval
 /playwright-report-e2e/
 /dist-speed

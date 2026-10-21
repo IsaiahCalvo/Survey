@@ -22,7 +22,7 @@ export function unlockPlayback() {
 const canDeviceSpeak = () => typeof window !== 'undefined'
   && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function';
 
-function deviceSpeak(words) {
+function deviceSpeak(words, locale) {
   return new Promise((resolve) => {
     if (!canDeviceSpeak() || !words) { resolve(); return; }
     let done = false;
@@ -32,6 +32,7 @@ function deviceSpeak(words) {
     try {
       window.speechSynthesis.cancel();
       const utterance = new window.SpeechSynthesisUtterance(words);
+      if (locale) utterance.lang = locale;
       utterance.onend = finish;
       utterance.onerror = finish;
       window.speechSynthesis.speak(utterance);
@@ -89,13 +90,16 @@ export function createAgentVoice({ call, serverVoice = false } = {}) {
     /**
      * Resolves when the reply has been spoken (or could not be). here: use
      * the device's own voice, for words that must come out with no signal.
+     * locale: a language other than English is spoken by the device voice
+     * (the server voice speaks English only).
      */
-    async speak(text, { here = false } = {}) {
+    async speak(text, { here = false, locale = null } = {}) {
       const words = spokenReply(text);
       if (!words) return;
       stop();
       const mine = turn;
-      if (!here && useServer && playback && playback.state === 'running') {
+      const english = !locale || /^en\b/i.test(locale);
+      if (!here && english && useServer && playback && playback.state === 'running') {
         try {
           await playServer(words, mine);
           return;
@@ -104,7 +108,7 @@ export function createAgentVoice({ call, serverVoice = false } = {}) {
           if (mine !== turn) return;
         }
       }
-      await deviceSpeak(words);
+      await deviceSpeak(words, locale);
     },
   };
 }

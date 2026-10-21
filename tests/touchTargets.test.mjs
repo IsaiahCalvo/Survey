@@ -141,3 +141,13 @@ test('hover paints in the chrome sheets are behind @media (hover: hover), so a t
   assert.match(read('src/TabBar.css'), /\.tab-strip-overflow\[aria-expanded='true'\] \{/);
   assert.match(read('src/components/AnnotationSizeControl.css'), /\.annotation-size-control__trigger\[data-state='open'\] \{/);
 });
+
+test('the Move / Copy dialog\'s mode buttons take the 44px dialog-touch-pad on a touch screen (28px painted)', () => {
+  const src = read('src/home/BulkModals.jsx');
+  const modeBtn = src.slice(src.indexOf('const modeBtn'), src.indexOf('return (', src.indexOf('const modeBtn')));
+  assert.match(modeBtn, /onClick=\{\(\) => setMode\(val\)\}/);
+  assert.match(modeBtn, /className="dialog-touch-pad"/);
+  assert.match(modeBtn, /height: 28/);
+  const hub = stripComments(read('src/home/hub.css'));
+  assert.match(hub, /@media \(pointer: coarse\)[\s\S]*\.dialog-touch-pad::after\s*\{[^}]*inset:\s*-9px 0/);
+});

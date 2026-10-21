@@ -9,8 +9,11 @@ import {
   frameLevel,
   heardOwnVoice,
   BARGE_IN_GATE,
+  MAIN_GATE,
+  createBandLevel,
   spokenReply,
   transcriptionHints,
+  nameRanges,
   snapItemNames,
 } from '../src/agent/voiceLoop.js';
 import { SurveyAgentError, usageWarning, withRetries } from '../src/agent/surveyAgentClient.js';
@@ -37,13 +40,14 @@ const readWav = (name) => {
 };
 
 // Feeds a clip through the gate the way the mic does: 20 ms frames.
-function clipsIn(name, options = {}) {
+function clipsIn(name, options = {}, levelOf = () => frameLevel) {
   const { samples, rate } = readWav(name);
   const frame = Math.round(rate * 0.02);
   const gate = createSpeechGate({ frameMs: 20, ...options });
+  const level = levelOf(rate);
   const events = [];
   for (let i = 0; i + frame <= samples.length; i += frame) {
-    const e = gate.push(frameLevel(samples.subarray(i, i + frame)));
+    const e = gate.push(level(samples.subarray(i, i + frame)));
     if (e) events.push({ e, at: (i / rate).toFixed(2) });
   }
   return events;
@@ -55,7 +59,29 @@ for (const name of ['d117.wav', 'd119.wav', 'cam12.wav', 'no118.wav', 'undo.wav'
     assert.deepEqual(events.map((x) => x.e), ['start', 'end'], JSON.stringify(events));
     assert.ok(Number(events[0].at) >= 0.7, `started in the noise before the words: ${events[0].at}`);
   });
+
+  test(`the mic's speech-band gate also cuts one clip from ${name}`, () => {
+    const events = clipsIn(name, MAIN_GATE, (rate) => createBandLevel(rate));
+    assert.deepEqual(events.map((x) => x.e), ['start', 'end'], JSON.stringify(events));
+    assert.ok(Number(events[0].at) >= 0.7, `started in the noise before the words: ${events[0].at}`);
+  });
 }
+
+test('speech-band loudness leaves out a generator hum but keeps a voice-range tone', () => {
+  const rate = 16000;
+  const tone = (hz) => Float32Array.from({ length: rate }, (_, i) => 0.3 * Math.sin((2 * Math.PI * hz * i) / rate));
+  const levelOf = (hz) => {
+    const level = createBandLevel(rate);
+    const s = tone(hz);
+    level(s.subarray(0, rate / 2)); // let the filters settle
+    return level(s.subarray(rate / 2));
+  };
+  const full = frameLevel(tone(1000));
+  assert.ok(levelOf(60) < full * 0.05, `hum let through: ${levelOf(60)}`);
+  assert.ok(levelOf(1000) > full * 0.9, `voice range cut: ${levelOf(1000)}`);
+  assert.ok(levelOf(7000) < full * 0.2, `hiss let through: ${levelOf(7000)}`);
+  assert.equal(createBandLevel(rate)(new Float32Array(0)), 0);
+});
 
 // Real people with varied accents (tests/fixtures/voice/edacc, CC BY-SA),
 // over generator hum or hammer bursts.
@@ -164,9 +190,19 @@ test('speech to text hints: template words first, item names last', () => {
 
 test('speech to text hints end with the likeliest names: recent items, then the selected one', () => {
   const markers = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`m${i}`, { name: `D-${100 + i}` }]));
-  const hints = transcriptionHints({ markers, selectedMarkerId: 'm59' }, { maxNames: 10, recent: ['m50', 'm3', 'm7'] });
-  assert.equal(hints.length, 10);
-  assert.deepEqual(hints.slice(-4), ['D-150', 'D-103', 'D-107', 'D-159']);
+  const hints = transcriptionHints({ markers, selectedMarkerId: 'm59' }, { recent: ['m50', 'm3', 'm7'] });
+  // The rest as one range: a long list of names makes Whisper repeat them.
+  assert.deepEqual(hints, ['D-100 to D-159', 'D-150', 'D-103', 'D-107', 'D-159']);
+  const many = transcriptionHints({ markers, selectedMarkerId: 'm59' }, { maxLikely: 2, recent: ['m50', 'm3', 'm7'] });
+  assert.deepEqual(many, ['D-100 to D-159', 'D-107', 'D-159']);
+});
+
+test('names that run in order become ranges for speech to text', () => {
+  assert.deepEqual(
+    nameRanges(['D-101', 'D-102', 'D-103', 'D-105', 'CAM-9', 'CAM-10', 'CAM-11', 'Lobby', 'A-01', 'A-02', 'A-03', 'A-1']),
+    ['D-101 to D-103', 'D-105', 'CAM-9 to CAM-11', 'Lobby', 'A-01 to A-03', 'A-1'],
+  );
+  assert.deepEqual(nameRanges([]), []);
 });
 
 test('item names misheard by speech to text are put back the way they are written', () => {
@@ -178,6 +214,15 @@ test('item names misheard by speech to text are put back the way they are writte
   assert.equal(snapItemNames('the door is open, set seven to yes', names), 'the door is open, set seven to yes');
   assert.equal(snapItemNames('Set 118 to yes', names), 'Set 118 to yes');
   assert.equal(snapItemNames('anything', []), 'anything');
+  const site = ['D-129', 'CAM-12', 'CAM-5', 'AP-3', 'FA-204'];
+  assert.equal(snapItemNames('Camera 12 is mounted.', site), 'CAM-12 is mounted.');
+  assert.equal(snapItemNames('camera twelve and cam 5', site), 'CAM-12 and CAM-5');
+  assert.equal(snapItemNames('fire alarm two oh four, horn strobe missing', site), 'FA-204, horn strobe missing');
+  assert.equal(snapItemNames('access point three cable pulled', site), 'AP-3 cable pulled');
+  assert.equal(snapItemNames('D one twenty nine, lock yes.', site), 'D-129, lock yes.');
+  assert.equal(snapItemNames('EFA 204, horn strobe missing.', site), 'FA-204, horn strobe missing.');
+  assert.equal(snapItemNames('es 12', ['S-12']), 'es 12');
+  for (const plain of ['Day 12 was fine', 'fix all 204 now', 'the camera is mounted']) assert.equal(snapItemNames(plain, site), plain);
 });
 
 test('a dropped or busy call is tried again; no signal and refusals are not', async () => {
@@ -227,4 +272,15 @@ test('a looping transcript keeps one copy', () => {
   assert.equal(cleanTranscript('Card reader is in. Card reader is in. Card reader is in.'), 'Card reader is in');
   assert.equal(cleanTranscript('D-117 and D-118 both have power'), 'D-117 and D-118 both have power');
   assert.equal(cleanTranscript(null), '');
+});
+
+test('snapItemNames: eighteen heard as eighty, and letters that rhyme with "ee", only when one listed name fits', () => {
+  const names = ['D-117', 'D-118', 'D-129', 'D-107', 'CAM-12'];
+  assert.equal(snapItemNames('D-180, no power.', names), 'D-118, no power.');
+  assert.equal(snapItemNames('V-118, no power.', names), 'D-118, no power.');
+  assert.equal(snapItemNames('B-1-29, lock yes.', names), 'D-129, lock yes.');
+  assert.equal(snapItemNames('B-107, closer broken.', names), 'D-107, closer broken.');
+  // A listed name is kept as heard; two fits means no guess.
+  assert.equal(snapItemNames('D-117 done', [...names, 'B-117']), 'D-117 done');
+  assert.equal(snapItemNames('V-5 done', ['D-5', 'B-5']), 'V-5 done');
 });

@@ -77,8 +77,8 @@ async function openAgent(page) {
   }
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('take a photo for D-117');
