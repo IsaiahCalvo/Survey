@@ -18,7 +18,8 @@ const COMPLETE_FLAG_KEYS = ['isComplete', 'complete'];
  * The template's Complete entity, or null. A flag wins (an entity marked
  * `isComplete: true`, or with id / key 'complete'); then the entity whose name
  * IS "Complete" (any case, trimmed); then one whose name contains the word
- * "complete" ("100% Complete") but not as "incomplete" / "not complete".
+ * "complete" ("100% Complete") but not a negated / waiting one ("incomplete",
+ * "not yet complete", "Pending - complete later").
  */
 export function findCompleteEntity(entities) {
   const list = Array.isArray(entities) ? entities.filter(Boolean) : [];
@@ -33,7 +34,8 @@ export function findCompleteEntity(entities) {
   if (exact) return exact;
   return list.find((entity) => {
     const name = nameOf(entity);
-    return /\bcomplete\b/.test(name) && !/\b(in|not|un)[\s-]?complete\b/.test(name);
+    return /\bcomplete\b/.test(name)
+      && !/\b(in|un)[\s-]?complete\b|\b(not|pending|awaiting)\b/.test(name);
   }) || null;
 }
 
