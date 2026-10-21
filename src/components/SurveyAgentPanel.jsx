@@ -810,6 +810,10 @@ export default function SurveyAgentPanel({
     });
   }
   const holdable = Boolean(status?.transcription);
+  // Only the finger that started the press counts: a second touch must not
+  // take over (and send what the first was cancelling).
+  const holdPointerRef = useRef(null);
+  const ownPointer = (e) => e.pointerId === holdPointerRef.current;
 
   const addFiles = (fileList) => {
     const added = [];
@@ -1035,13 +1039,23 @@ export default function SurveyAgentPanel({
             onPointerDown={holdable ? (e) => {
               if (e.button !== 0) return;
               e.preventDefault();
-              e.currentTarget.setPointerCapture?.(e.pointerId);
+              if (holdPointerRef.current !== null) return;
+              holdPointerRef.current = e.pointerId;
+              try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* pointer already gone */ }
               unlockPlayback();
               holdRef.current.down(e.clientX, e.clientY, e.timeStamp);
             } : undefined}
-            onPointerMove={holdable ? (e) => holdRef.current.move(e.clientX, e.clientY, e.timeStamp) : undefined}
-            onPointerUp={holdable ? (e) => holdRef.current.up(e.timeStamp) : undefined}
-            onPointerCancel={holdable ? () => holdRef.current.abort() : undefined}
+            onPointerMove={holdable ? (e) => { if (ownPointer(e)) holdRef.current.move(e.clientX, e.clientY, e.timeStamp); } : undefined}
+            onPointerUp={holdable ? (e) => {
+              if (!ownPointer(e)) return;
+              holdPointerRef.current = null;
+              holdRef.current.up(e.timeStamp);
+            } : undefined}
+            onPointerCancel={holdable ? (e) => {
+              if (!ownPointer(e)) return;
+              holdPointerRef.current = null;
+              holdRef.current.abort();
+            } : undefined}
             onContextMenu={holdable ? (e) => e.preventDefault() : undefined}
             // A pointer press is handled above; a keyboard press (detail 0)
             // or the browser's own speech still toggles here.

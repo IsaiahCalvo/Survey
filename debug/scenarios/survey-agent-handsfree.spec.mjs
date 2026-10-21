@@ -515,6 +515,24 @@ test('chat mic: hold to talk, slide away to cancel, tap still toggles', async ({
   await page.waitForTimeout(1500);
   expect(log.clips).toHaveLength(1);
 
+  // Two fingers: the first slides away to cancel; a second finger's tap
+  // must not take over and send.
+  const touch = (type, pointerId, x, y) => mic.dispatchEvent(type, {
+    pointerId, pointerType: 'touch', isPrimary: pointerId === 7, button: type === 'pointermove' ? -1 : 0, clientX: x, clientY: y, bubbles: true,
+  });
+  await touch('pointerdown', 7, cx, cy);
+  await expect(mic).toHaveAttribute('aria-pressed', 'true');
+  await page.waitForTimeout(600);
+  await touch('pointermove', 7, cx, cy - 120);
+  await expect(mic).toHaveClass(/is-cancel/);
+  await touch('pointerdown', 8, cx, cy);
+  await touch('pointerup', 8, cx, cy);
+  await expect(mic).toHaveClass(/is-cancel/);
+  await touch('pointerup', 7, cx, cy - 120);
+  await expect(mic).toHaveAttribute('aria-pressed', 'false');
+  await page.waitForTimeout(1500);
+  expect(log.clips).toHaveLength(1);
+
   // Tap to start, tap again to send.
   await mic.click();
   await expect(mic).toHaveAttribute('aria-pressed', 'true');
