@@ -35,6 +35,7 @@ import {
   E2E_BASE_URL,
   E2E_DOCUMENT,
   E2E_PROJECT,
+  E2E_SURVEY,
 } from '../tests/e2e-signed-in/accounts.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -104,8 +105,16 @@ export function buildStackConfig(source) {
       return `additional_redirect_urls = ["${E2E_BASE_URL}", "${E2E_BASE_URL.replace('127.0.0.1', 'localhost')}"]`;
     }
     return line;
-  }).join('\n');
+  }).join('\n') + FAKE_GROQ_CONFIG;
 }
+
+// The fake Groq (scripts/e2e-fake-groq.mjs) runs as one more edge function in
+// the stack's own workdir, never in supabase/functions, so it is never
+// deployed. survey-agent reaches it inside the Docker network through Kong,
+// with the fake key as its bearer, so the function must not check for a JWT.
+const FAKE_GROQ_FUNCTION = 'e2e-fake-groq';
+const FAKE_GROQ_CONFIG = `\n[functions.${FAKE_GROQ_FUNCTION}]\nverify_jwt = false\n`;
+export const FAKE_GROQ_BASE_URL = `http://kong:8000/functions/v1/${FAKE_GROQ_FUNCTION}`;
 
 function prepareWorkdir() {
   const supabaseDir = path.join(STACK_DIR, 'supabase');
@@ -127,10 +136,20 @@ function prepareWorkdir() {
     filter: (source) => !source.includes(`${path.sep}node_modules`),
   });
   // The Survey agent answers "enabled" for the seeded owner, so app walks can
-  // open it and start hands-free. The key is fake: nothing reaches Groq, and
-  // a model call would fail, never cost.
+  // open it and start hands-free. The key is fake and every Groq call goes to
+  // the fake Groq below: hearing returns "D-1-17 is installed" and the model
+  // sets every line of D-1-17 in the seeded survey. Nothing reaches Groq.
+  const fakeDir = path.join(functionsDir, FAKE_GROQ_FUNCTION);
+  fs.mkdirSync(fakeDir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'scripts/e2e-fake-groq.mjs'), path.join(fakeDir, 'fake.mjs'));
+  fs.writeFileSync(path.join(fakeDir, 'index.ts'), [
+    "import { fakeGroqHandler } from './fake.mjs';",
+    'Deno.serve(fakeGroqHandler);',
+    '',
+  ].join('\n'));
   fs.writeFileSync(path.join(functionsDir, '.env'), [
     'GROQ_API_KEY=e2e-fake-no-calls',
+    `GROQ_BASE_URL=${FAKE_GROQ_BASE_URL}`,
     `SURVEY_AGENT_TESTERS=${E2E_ACCOUNTS.owner.email}`,
     'SURVEY_AGENT_TTS=off',
     '',
@@ -214,7 +233,7 @@ async function must(label, promise) {
   return data;
 }
 
-export async function seed({ url, serviceKey }) {
+export async function seed({ url, anonKey, serviceKey }) {
   assertLocal(url);
   const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
@@ -303,11 +322,92 @@ export async function seed({ url, serviceKey }) {
     description: 'Seeded by scripts/e2e-local-supabase.mjs',
   }, { onConflict: 'key' }));
 
+  await seedSurvey({ admin, url, anonKey, ownerId, pdfBytes });
+
   log('seeded:');
   for (const [key, account] of Object.entries(E2E_ACCOUNTS)) {
     log(`  ${key.padEnd(6)} ${account.email.padEnd(28)} tier=${account.tier}${account.role ? ` role=${account.role}` : ''}`);
   }
   log(`  project "${E2E_PROJECT.name}" (${E2E_PROJECT.id}), document "${E2E_DOCUMENT.name}" (${E2E_DOCUMENT.id})`);
+  log(`  survey: document "${E2E_SURVEY.documentName}" (${E2E_SURVEY.documentId}), template "${E2E_SURVEY.templateName}" (${E2E_SURVEY.templateId}),`);
+  log(`    module "${E2E_SURVEY.moduleName}", category "${E2E_SURVEY.categoryName}", item ${E2E_SURVEY.itemName} (${E2E_SURVEY.markerId}), all lines blank`);
+}
+
+// The survey for voice walks: its own drawing, the owner's template linked to
+// it, and D-1-17 with every line blank (reset on each seed, so a walk always
+// starts from blank). The marker lives in the annotation doc, written the way
+// the app writes it, signed in as the owner.
+async function seedSurvey({ admin, url, anonKey, ownerId, pdfBytes }) {
+  const filePath = `${ownerId}/${E2E_SURVEY.documentId}.pdf`;
+  await must('survey pdf', admin.storage.from('documents').upload(
+    filePath,
+    new Blob([pdfBytes], { type: 'application/pdf' }),
+    { contentType: 'application/pdf', upsert: true },
+  ));
+  await must('survey document', admin.from('documents').upsert({
+    id: E2E_SURVEY.documentId,
+    user_id: ownerId,
+    project_id: E2E_PROJECT.id,
+    name: E2E_SURVEY.documentName,
+    file_path: filePath,
+    file_size: pdfBytes.length,
+    page_count: E2E_DOCUMENT.pageCount,
+    // No content_sha256: it is the same PDF as the sample drawing, and one
+    // project holds a given file once (documents_user_project_sha_uidx).
+  }, { onConflict: 'id', ignoreDuplicates: true }));
+  await must('survey template', admin.from('templates').upsert({
+    id: E2E_SURVEY.templateId,
+    user_id: ownerId,
+    name: E2E_SURVEY.templateName,
+    description: 'Seeded by scripts/e2e-local-supabase.mjs',
+    config: {
+      modules: [{
+        id: E2E_SURVEY.moduleId,
+        name: E2E_SURVEY.moduleName,
+        categories: [{ id: E2E_SURVEY.categoryId, name: E2E_SURVEY.categoryName, checklist: E2E_SURVEY.checklist }],
+      }],
+      entities: [],
+    },
+  }, { onConflict: 'id' }));
+  await must('survey template link', admin.from('document_templates').upsert({
+    document_id: E2E_SURVEY.documentId,
+    template_id: E2E_SURVEY.templateId,
+    linked_by: ownerId,
+  }, { onConflict: 'document_id,template_id' }));
+
+  const owner = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error: signInError } = await owner.auth.signInWithPassword({
+    email: E2E_ACCOUNTS.owner.email,
+    password: E2E_ACCOUNTS.owner.password,
+  });
+  if (signInError) fail(`survey marker: owner sign-in failed: ${signInError.message}`);
+  const { openAnnotationDoc } = await import('../src/services/annotationDocSync.js');
+  const handle = await openAnnotationDoc({
+    documentId: E2E_SURVEY.documentId,
+    supabase: owner,
+    actorUserId: ownerId,
+    enableLocal: false,
+    enableRealtime: false,
+  });
+  try {
+    handle.applySurveyMarkers({
+      [E2E_SURVEY.markerId]: {
+        id: E2E_SURVEY.markerId,
+        pageNumber: 1,
+        bounds: { x: 120, y: 160, width: 150, height: 80 },
+        moduleId: E2E_SURVEY.moduleId,
+        regionId: null,
+        categoryId: E2E_SURVEY.categoryId,
+        name: E2E_SURVEY.itemName,
+        checklistResponses: {},
+        color: null,
+      },
+    });
+    await handle.drain();
+  } finally {
+    handle.destroy();
+    await owner.auth.signOut();
+  }
 }
 
 function ensureDocker() {
