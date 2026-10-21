@@ -78,3 +78,24 @@ test('the owner can still archive and restore their own document', async ({ page
   expect(restored.error).toBeNull();
   expect(restored.data.ok).toBe(true);
 });
+
+// Migration 20261021190000_plan_rpcs_own_user_only: plan and usage RPCs answer
+// for the caller, whatever id is passed.
+test('a signed-in user only ever gets their own plan and counts', async ({ page }) => {
+  const free = await signedIn(page, E2E_ACCOUNTS.free);
+  const ownerId = await userId(E2E_ACCOUNTS.owner);
+  const tier = await free.rpc('get_user_tier', { p_user_id: ownerId });
+  expect(tier.error).toBeNull();
+  expect(tier.data).toBe('free');
+  const feature = await free.rpc('has_feature_access', { p_user_id: ownerId, p_feature: 'templates' });
+  expect(feature.data).toBe(false);
+  const ownCount = await free.rpc('get_current_usage', { p_user_id: await userId(E2E_ACCOUNTS.free), p_metric_name: 'documents_count' });
+  const ownerCount = await free.rpc('get_current_usage', { p_user_id: ownerId, p_metric_name: 'documents_count' });
+  expect(ownerCount.data).toBe(ownCount.data);
+});
+
+test('a signed-out caller cannot read anyone\'s plan', async () => {
+  const ownerId = await userId(E2E_ACCOUNTS.owner);
+  const { error } = await anonClient().rpc('get_user_tier', { p_user_id: ownerId });
+  expect(isPermissionDenied(error), JSON.stringify(error)).toBe(true);
+});

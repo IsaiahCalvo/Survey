@@ -62,6 +62,15 @@ const BODY_SCHEMA = {
   refresh_token: s.string({ max: 200, optional: true }),
 };
 
+// Prefer the headers the edge proxy sets itself over x-forwarded-for, whose
+// first entry a caller can write.
+function callerIp(req: Request) {
+  return (req.headers.get('cf-connecting-ip')
+    || req.headers.get('x-real-ip')
+    || (req.headers.get('x-forwarded-for') || '').split(',')[0]
+    || '').trim();
+}
+
 const siteUrl = () => (Deno.env.get('SITE_URL') || 'https://surveytool.app').replace(/\/$/, '');
 
 Deno.serve(async (req) => {
@@ -87,13 +96,19 @@ Deno.serve(async (req) => {
     // Old unclaimed codes are useless; drop them so the table stays small.
     await admin.from('agent_links').delete()
       .eq('status', 'pending').lt('code_expires_at', new Date().toISOString());
+    const ip = callerIp(req);
+    const ipHash = ip ? await sha256(`agent-start:${ip}`) : null;
     const deviceCode = randomSecret('sdc_');
     const userCode = randomCode(8);
     const { error } = await admin.from('agent_links').insert({
       agent_name: agentName,
       user_code: userCode,
       device_code_hash: await sha256(deviceCode),
+      client_ip_hash: ipHash,
     });
+    // A trigger allows five unclaimed codes per address (agent_link_ip_limit
+    // migration); it locks per address, so parallel calls cannot slip past.
+    if (error?.message?.includes('agent_link_ip_limit')) return json(429, { error: 'slow_down' });
     if (error) return json(500, { error: 'could_not_start' });
     return json(200, {
       device_code: deviceCode,
