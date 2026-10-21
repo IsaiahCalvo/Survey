@@ -106,25 +106,26 @@ npm run e2e:stack:down
 Stops the containers and deletes their data volumes. The next `up` starts from
 a fresh database.
 
-## How the fresh database is built (and what it revealed)
+## How the fresh database is built
 
 The stack runs from `.e2e/supabase-stack/` (git-ignored), not `supabase/`:
 its config is `supabase/config.toml` with its own `project_id`, ports and unused
-services off (studio, mail, analytics, edge runtime, pooler). Its migrations are:
+services off (studio, mail, analytics, edge runtime, pooler). Its migrations are
+a plain copy of `supabase/migrations/`; that folder alone builds the database:
 
-1. `scripts/e2e/baseline-schema.sql` first. The repo's chain cannot replay on a
-   blank database: `projects`, `documents`, `templates`, `spaces`,
-   `user_settings`, the legacy `annotations` table, the `documents` bucket and a
-   few hand-made functions predate it. The baseline also restores the old
-   default table grants that production has (newer Supabase images no longer
-   grant new tables to `anon` / `authenticated` / `service_role`).
-2. Every file in `supabase/migrations/`, unchanged.
-3. `scripts/e2e/post-chain-fixups.sql` last: `20260211224035_fix_function_search_path.sql`
-   sets `search_path = ''` on functions whose repo bodies use unqualified table
-   names, so on a fresh database sign-up and every project/document insert fail
-   (`relation "user_subscriptions" does not exist`). Production must have
-   qualified bodies edited outside the chain. Locally, the fixup gives every
-   public function still on the empty search path `public, extensions, pg_temp`.
+1. `20241220000000_baseline.sql` sorts first and recreates what production had
+   before the chain began: `projects`, `documents`, `templates`, `spaces`,
+   `users` (and the auth.users triggers that fill it), the `documents` and
+   `brand` buckets, a few hand-made functions and the old default table grants.
+   Production already has all of it; the version was recorded as applied there
+   by hand, and `scripts/check-migration-order.mjs` allows this one file to sort
+   before the newest migration.
+2. Every other migration, unchanged.
+3. `20261021093000_fresh_database_parity.sql` records changes production got by
+   hand: it puts `search_path = public` back on the functions
+   `20260211224035_fix_function_search_path.sql` emptied (with `''` sign-up and
+   every project/document insert fail), drops the legacy tables production
+   dropped, and codifies the hand-applied `supabase/proposed/` w36 / w54 / w55
+   schema changes. On production every statement is a no-op.
 
-These files never go into `supabase/migrations/`, so `supabase db push` never
-sees them.
+Not reproduced: production's pg_cron jobs (no pg_cron locally).

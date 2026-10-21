@@ -9,17 +9,14 @@
 //   node scripts/e2e-local-supabase.mjs down    # stop stack and drop its data
 //
 // The stack runs from a throwaway workdir (.e2e/supabase-stack, git-ignored)
-// instead of the repo's supabase/ folder, for three reasons:
-//   1. The migration chain cannot replay on a blank database (projects /
-//      documents / templates predate it), so the workdir gets
-//      scripts/e2e/baseline-schema.sql as its first migration. That file must
-//      never sit in supabase/migrations/, where `supabase db push` would see it.
-//      scripts/e2e/post-chain-fixups.sql runs last to repair functions the
-//      chain leaves broken on a fresh database (see that file).
-//   2. Its own project_id and ports (544xx) keep it from colliding with a dev
+// instead of the repo's supabase/ folder, for two reasons:
+//   1. Its own project_id and ports (544xx) keep it from colliding with a dev
 //      `supabase start` run from the repo (543xx).
-//   3. Services the suite does not use (studio, mail, analytics, edge runtime,
+//   2. Services the suite does not use (studio, mail, analytics, edge runtime,
 //      image proxy, pooler) are switched off so it starts fast.
+// Its migrations are a straight copy of supabase/migrations/: that folder
+// alone builds the database (20241220000000_baseline.sql recreates what
+// production had before the chain began).
 //
 // Everything here talks to 127.0.0.1 only. It refuses to seed any other host.
 
@@ -39,10 +36,6 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STACK_DIR = path.resolve(ROOT, process.env.E2E_STACK_DIR || '.e2e/supabase-stack');
 const ENV_FILE = path.join(ROOT, '.env.e2e');
-const BASELINE = path.join(ROOT, 'scripts/e2e/baseline-schema.sql');
-const BASELINE_VERSION = '20241201000000_e2e_baseline_schema.sql';
-const FIXUPS = path.join(ROOT, 'scripts/e2e/post-chain-fixups.sql');
-const FIXUPS_VERSION = '99991231000000_e2e_post_chain_fixups.sql';
 const CLI_VERSION = '2.111.0'; // same pin as .github/workflows/deploy-production.yml
 const PROJECT_ID = 'survey-e2e';
 const EXCLUDED = [
@@ -109,18 +102,13 @@ function prepareWorkdir() {
   fs.mkdirSync(migrationsDir, { recursive: true });
   const config = buildStackConfig(fs.readFileSync(path.join(ROOT, 'supabase/config.toml'), 'utf8'));
   fs.writeFileSync(path.join(supabaseDir, 'config.toml'), config);
-  fs.copyFileSync(BASELINE, path.join(migrationsDir, BASELINE_VERSION));
   const repoMigrations = fs.readdirSync(path.join(ROOT, 'supabase/migrations'))
     .filter((name) => name.endsWith('.sql'))
     .sort();
-  if (repoMigrations[0] <= BASELINE_VERSION) {
-    fail(`baseline ${BASELINE_VERSION} must sort before the first real migration ${repoMigrations[0]}`);
-  }
   for (const name of repoMigrations) {
     fs.copyFileSync(path.join(ROOT, 'supabase/migrations', name), path.join(migrationsDir, name));
   }
-  fs.copyFileSync(FIXUPS, path.join(migrationsDir, FIXUPS_VERSION));
-  log(`workdir ${path.relative(ROOT, STACK_DIR)}: baseline + ${repoMigrations.length} migrations + fixups`);
+  log(`workdir ${path.relative(ROOT, STACK_DIR)}: ${repoMigrations.length} migrations`);
 }
 
 function readStatus() {
