@@ -45,6 +45,7 @@ test('ranges: groups, sets, formatting and every-N', () => {
 
 test('zip: stored entries round-trip with the right CRC', () => {
   assert.equal(crc32(new TextEncoder().encode('hello')), 0x3610a686);
+  assert.equal(crc32(new TextEncoder().encode('llo'), crc32(new TextEncoder().encode('he'))), 0x3610a686);
   const a = new TextEncoder().encode('first');
   const zip = makeZip([{ name: 'a.txt', bytes: a }, { name: 'b é.txt', bytes: new Uint8Array([1, 2, 3]) }]);
   const v = new DataView(zip.buffer);

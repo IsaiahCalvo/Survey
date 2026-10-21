@@ -24,6 +24,7 @@ async function scanPdf(pages) {
     page.node.set(PDFName.of('Resources'), doc.context.obj({ XObject: { Im0: ref } }));
     page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.flateStream(enc(p.content || 'q 1 0 0 1 0 0 cm 144 0 0 96 0 0 cm /Im0 Do Q'))));
     if (p.rotate) page.setRotation(degrees(p.rotate));
+    if (p.userUnit) page.node.set(PDFName.of('UserUnit'), doc.context.obj(p.userUnit));
     if (p.text) page.drawText('Hello', { x: 10, y: 10, size: 10, font: await doc.embedFont(StandardFonts.Helvetica) });
     if (p.markup) page.node.set(PDFName.of('Annots'), doc.context.obj([doc.context.obj({ Type: 'Annot', Subtype: 'Square', Rect: [0, 0, 10, 10] })]));
   }
@@ -57,8 +58,9 @@ test('anything more on the page leaves it to pdf.js', async () => {
     { dict: { Decode: [1, 0, 1, 0, 1, 0] } },
     { dict: { ColorSpace: 'DeviceCMYK' } },
     { dict: { Width: 301 } }, // doesn't match the JPEG
+    { userUnit: 2 }, // the page is twice the size its box says
   ]);
-  assert.deepEqual(findScans(doc), Array(10).fill(null));
+  assert.deepEqual(findScans(doc), Array(11).fill(null));
 });
 
 test('mightBeScans wants about a JPEG a page', async () => {

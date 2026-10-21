@@ -85,6 +85,8 @@ function resourcesOf(node) {
 export function findScan(doc, page) {
   const ctx = doc.context;
   const node = page.node;
+  // A /UserUnit page is bigger than its numbers say; leave it to pdf.js.
+  if (numOf(ctx, node.get(N('UserUnit')), 1) !== 1) return null;
   // Markups are drawn by pdf.js on top of the page; links draw nothing.
   for (const a of listOf(ctx, node.get(N('Annots')))) {
     if (!(a instanceof PDFDict) || nameOf(look(ctx, a.get(N('Subtype')))) !== 'Link') return null;

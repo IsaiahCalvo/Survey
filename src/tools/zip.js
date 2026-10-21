@@ -11,8 +11,9 @@ const CRC_TABLE = (() => {
   return t;
 })();
 
-export function crc32(bytes) {
-  let c = 0xffffffff;
+// prev: the CRC of the bytes before these, to checksum a file in pieces.
+export function crc32(bytes, prev = 0) {
+  let c = (prev ^ 0xffffffff) >>> 0;
   for (let i = 0; i < bytes.length; i += 1) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }

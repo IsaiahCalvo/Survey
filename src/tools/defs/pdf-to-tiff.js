@@ -3,6 +3,7 @@ import {
   SEG, base, releaseCanvas, ToolError,
 } from '../kit.js';
 import { rgbaToTiffPage, tiffParts } from '../imageWriters.js';
+import { crc32 } from '../zip.js';
 
 export default {
   view: 'pages',
@@ -39,7 +40,11 @@ export default {
     const size = pages.reduce((n, p) => n + p.strips.reduce((m, s) => m + s.size, 0), 0);
     if (size > 4_000_000_000) throw new ToolError('This TIFF would be too big. Pick fewer pages or a lower quality.');
     progress('Writing the TIFF');
-    const blob = new Blob(tiffParts(pages), { type: 'image/tiff' });
-    return [{ name: `${base(file.name)}.tif`, blob, size: blob.size, type: 'image/tiff' }];
+    const parts = tiffParts(pages);
+    // A batch packs this into a ZIP, which needs the file's checksum.
+    let crc = 0;
+    for (const part of parts) crc = crc32(part instanceof Blob ? new Uint8Array(await part.arrayBuffer()) : part, crc);
+    const blob = new Blob(parts, { type: 'image/tiff' });
+    return [{ name: `${base(file.name)}.tif`, blob, size: blob.size, crc, type: 'image/tiff' }];
   },
 };
