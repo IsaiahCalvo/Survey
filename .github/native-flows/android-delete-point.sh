@@ -82,7 +82,9 @@ echo "side point at: $xy"
 [ "$xy" != "none" ] || { echo "::error::No spot on side 0-1 hits the side (handles cover it)"; adb exec-out screencap -p > "$OUT/19-add-point.png"; exit 1; }
 set -- $xy
 ev "(() => { window.__pd = []; const log = n => e => window.__pd.push(n + ':' + e.pointerType + '@' + (e.target.getAttribute?.('data-poly-edge-hit') ? 'edge' : e.target.tagName + '.' + (e.target.getAttribute?.('class') || '').slice(0, 30))); ['pointerdown', 'pointerup', 'pointercancel', 'contextmenu'].forEach(t => document.addEventListener(t, log(t), true)); return 'ok'; })()" >/dev/null
-adb shell input stylus swipe "$1" "$2" "$1" "$2" 900
+# A finger, not the stylus: in Pen mode the stylus goes to the armed tool's
+# layer (pointer target svg.tool-crosshair), not to the side.
+adb shell input touchscreen swipe "$1" "$2" "$1" "$2" 900
 sleep 1
 r=$(ev "(() => { const b = document.querySelector('[data-poly-vertex-insert]'); if (!b) return 'no menu'; if (b.disabled) return 'disabled'; b.click(); return 'ok'; })()")
 echo "add point: $r"
