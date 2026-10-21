@@ -2769,6 +2769,11 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
       const more = el.scrollTop + el.clientHeight < el.scrollHeight - 2;
       if (more) el.setAttribute('data-more-below', 'true');
       else el.removeAttribute('data-more-below');
+      // Scroll room under the last tool so it can clear the fade and the
+      // footer's "more" button (see .mobile-pdf-tools__main[data-overflows]).
+      const room = el.hasAttribute('data-overflows') ? 20 : 0;
+      if (el.scrollHeight - room > el.clientHeight + 2) el.setAttribute('data-overflows', 'true');
+      else el.removeAttribute('data-overflows');
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
     update();

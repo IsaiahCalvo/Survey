@@ -475,6 +475,42 @@ const hoverGlowStrokeInset = (obj) => {
 // w53: shared empty selection (stable identity keeps memo deps quiet).
 const EMPTY_SURVEY_MARKER_IDS = new Set();
 
+import {
+  buildMeasureLabel,
+  measureLineEndpoints,
+  pageScaleFromObjects,
+  stampMeasure,
+} from '../utils/measure/measureScale.js';
+
+// Measure label (Length / Area): a page-space text with a white halo so it
+// reads over drawings. Page units, so it scales with the viewBox like the mark.
+function renderMeasureLabel(label, key) {
+  if (!label) return null;
+  return (
+    <text
+      key={key}
+      className="measure-label"
+      data-measure-kind={label.kind}
+      x={label.x}
+      y={label.y}
+      dy={label.kind === 'length' ? -4 : 0}
+      transform={label.angle ? `rotate(${label.angle} ${label.x} ${label.y})` : undefined}
+      textAnchor="middle"
+      dominantBaseline={label.kind === 'length' ? 'auto' : 'middle'}
+      fontSize={10}
+      fontFamily="Helvetica"
+      fontWeight="600"
+      fill="#1f2937"
+      stroke="#ffffff"
+      strokeWidth={2.5}
+      paintOrder="stroke"
+      style={{ pointerEvents: 'none', userSelect: 'none' }}
+    >
+      {label.text}
+    </text>
+  );
+}
+
 const SVGAnnotationLayerBody = memo(({
   pageNumber,
   width,          // unscaled PDF page width (e.g., 612)
@@ -705,6 +741,12 @@ const SVGAnnotationLayerBody = memo(({
   zoomGenerationSignal = null,
   // Survey-marker drag-out routes through the marker store, not page objects.
   onSurveyMarkerCreated,
+  // Measure tools: 'length' | 'area' | 'calibrate' | null. The armed tool is
+  // still 'line' / 'polygon'; this only stamps data.measure on the commit
+  // (or, for 'calibrate', hands the drawn line to onMeasureCalibrate).
+  measureMode = null,
+  measureScale = null,
+  onMeasureCalibrate,
   // w53 (2026-09-28) — Survey Markers in the one annotation family.
   // isSurveyMarkerFamilyMember(id): true for a SAVED marker (one still being
   // placed / named is not a family member and keeps its own single path).
@@ -732,6 +774,24 @@ const SVGAnnotationLayerBody = memo(({
   const [counterHandlePreview, setCounterHandlePreview] = useState(null);
   const counterHandlePreviewRef = useRef(null);
   const annotationsRef = useRef(annotations);
+  // Page scale for measurements: the scale saved on this page's measurements
+  // (so undo/redo of a re-scale follows the marks), else one set this session
+  // on a page with no measurements yet. Labels always read the PAGE scale,
+  // so re-calibrating relabels every measurement at once.
+  const effectiveMeasureScale = useMemo(
+    () => pageScaleFromObjects(annotations?.objects) || measureScale,
+    [annotations, measureScale],
+  );
+  const measureLabels = useMemo(() => {
+    const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
+    const labels = [];
+    objects.forEach((obj, index) => {
+      if (!obj?.data?.measure || obj.visible === false) return;
+      const label = buildMeasureLabel(obj, effectiveMeasureScale);
+      if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, label });
+    });
+    return labels;
+  }, [annotations, effectiveMeasureScale]);
   const renderedAnnotationEntriesRef = useRef([]);
   // w52: ids of the callouts this page shows AND lets the user pick (visible
   // in context + interactive for the active space). Null until the first
@@ -2354,11 +2414,20 @@ const SVGAnnotationLayerBody = memo(({
       stampRegionId,
       activeRegionId,
     };
-    const json = (tool === 'line' || tool === 'arrow')
+    let json = (tool === 'line' || tool === 'arrow')
       ? buildLineCommitJSON({ ...shared, tool, arrowheadStyle, arrowStartStyle })
       : buildBoundaryShapeCommitJSON({ ...shared, tool, fillColor, fillOpacity });
+    if (json && tool === 'line' && measureMode === 'calibrate') {
+      const [a, b] = measureLineEndpoints(json);
+      onMeasureCalibrate?.(pageNumber, Math.hypot(b.x - a.x, b.y - a.y), stampAnnotationCreationIdentity(stampMeasure(json, 'length', null), { authorId: viewerId }));
+      return;
+    }
+    if (json && tool === 'line' && measureMode === 'length') {
+      json = stampMeasure(json, 'length', effectiveMeasureScale);
+    }
     if (json) dispatchCommit(json);
   }, [
+    effectiveMeasureScale, measureMode, onMeasureCalibrate,
     activeRegionId, activeTool, arrowheadStyle, arrowStartStyle, cloudIntensity, fillColor, fillOpacity,
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
     onSurveyMarkerCreated, pageNumber, selectAnnotation, selectedModuleId, selectedSpaceId,
@@ -2587,7 +2656,7 @@ const SVGAnnotationLayerBody = memo(({
       ? crypto.randomUUID()
       : `anno-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    const rawJson = buildPolyShapeCommitJSON({
+    const builtJson = buildPolyShapeCommitJSON({
       tool,
       id,
       points: resolved.points,
@@ -2602,7 +2671,10 @@ const SVGAnnotationLayerBody = memo(({
       stampRegionId,
       activeRegionId,
     });
-    if (!rawJson) return false;
+    if (!builtJson) return false;
+    const rawJson = (tool === 'polygon' && measureMode === 'area')
+      ? stampMeasure(builtJson, 'area', effectiveMeasureScale)
+      : builtJson;
 
     const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
     updateAnnotationGesture(draft.gestureId, { annotationId: id });
@@ -2625,6 +2697,7 @@ const SVGAnnotationLayerBody = memo(({
     });
     return true;
   }, [
+    effectiveMeasureScale, measureMode,
     activeRegionId, activeTool, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
     lineBorderStyle, onSaveAnnotations, pageNumber, selectAnnotation, selectedModuleId,
     selectedSpaceId, spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
@@ -7615,6 +7688,25 @@ const SVGAnnotationLayerBody = memo(({
           draft only — are the only interactive parts; everything else is
           pointer-transparent so a click in the middle of the run still drops a
           vertex. */}
+      {measureLabels.length > 0 && (
+        <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
+          {measureLabels.map(({ key, label }) => renderMeasureLabel(label, key))}
+        </g>
+      )}
+      {measureMode && shapeCreation && shapeCreation.tool === 'line' && shapeCreation.start && shapeCreation.current
+        && renderMeasureLabel(buildMeasureLabel(stampMeasure({
+          type: 'Line', left: Math.min(shapeCreation.start.x, shapeCreation.current.x), top: Math.min(shapeCreation.start.y, shapeCreation.current.y),
+          width: Math.abs(shapeCreation.current.x - shapeCreation.start.x), height: Math.abs(shapeCreation.current.y - shapeCreation.start.y),
+          x1: shapeCreation.start.x - (shapeCreation.start.x + shapeCreation.current.x) / 2,
+          y1: shapeCreation.start.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
+          x2: shapeCreation.current.x - (shapeCreation.start.x + shapeCreation.current.x) / 2,
+          y2: shapeCreation.current.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
+        }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length')}
+      {measureMode === 'area' && polyDraft && polyDraft.tool === 'polygon' && polyDraft.points.length >= 2
+        && renderMeasureLabel(buildMeasureLabel(stampMeasure({
+          type: 'polygon',
+          points: polyDraft.preview ? [...polyDraft.points, polyDraft.preview] : polyDraft.points,
+        }, 'area', null), effectiveMeasureScale), 'measure-draft-area')}
       {polyDraft && polyDraft.points.length > 0 && (() => {
         const runPoints = polyDraft.preview
           ? [...polyDraft.points, polyDraft.preview]

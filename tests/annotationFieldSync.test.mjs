@@ -530,6 +530,27 @@ test('two tabs: rB handed to A\'s screen (read) but not painted yet; A deletes r
   for (const p of [A, B]) assert.ok(p.stored('rB') && p.find('rB'), `rB kept on ${p.name}`);
 });
 
+// 2026-10-21: B deleted A's mark and undid it. A's screen painted the delete,
+// but before A's capture of that paint ran, B's restore landed in A's
+// document. The capture saw a mark A had at its previous capture missing from
+// the screen and deleted it again as if A had: the restore never reached A
+// and was lost after reload. A mark the document handed the screen as gone is
+// not the user's delete.
+test('two tabs: B deletes and undoes while A has painted the delete but not captured it; the mark comes back everywhere', () => {
+  const [A, B] = setup([]);
+  draw(A, sameAccount('rA'));
+  flush([A, B]);
+  B.remove('rA');
+  flush([A, B], { repaint: false });
+  A.screen = preserveTransientPagePresentationState(A.screen, A.read()); // painted, not captured
+  B.undo();
+  flush([A, B], { repaint: false });
+  A.capture();
+  assert.ok(A.stored('rA'), 'A\'s capture of the painted delete does not delete the restored mark');
+  flush([A, B]);
+  for (const p of [A, B]) assert.ok(p.stored('rA') && p.find('rA'), `rA back on ${p.name}`);
+});
+
 test('two tabs: both delete their own mark at the same moment; a third mark stays', () => {
   const [A, B] = setup([sameAccount('keep')]);
   draw(A, sameAccount('rA'));

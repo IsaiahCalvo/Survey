@@ -1,12 +1,20 @@
 name: storage-cors-probe
 # Read-only header probe of Supabase Storage CORS/Range behaviour.
-# Manual only; sends OPTIONS and a 1-byte ranged GET to a made-up path.
+# probe: manual only; sends OPTIONS and a 1-byte ranged GET to a made-up prod path.
+# local-range: uploads a test PDF to a throwaway local Supabase stack (same
+# Storage server as prod) and checks a ranged GET on its signed URL is a 206.
+# Note: runs titled with a commit message and no jobs come from old branches
+# that still carry the pre-#932 broken copy of this file; they are not real runs.
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/storage-cors-probe.yml'
 permissions:
   contents: read
 jobs:
   probe:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -24,3 +32,42 @@ jobs:
       - name: Ranged GET (signed path, bogus token)
         run: |
           curl -sS -X GET "$BASE/storage/v1/object/sign/documents/__probe__.pdf?token=x" -H 'Origin: https://surveytool.app' -H 'Range: bytes=0-0' -o /dev/null -D - || true
+
+  local-range:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm install --include=optional --no-audit --no-fund
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.111.0
+      - name: Start local Supabase
+        run: npm run e2e:stack:up
+        env:
+          E2E_EDGE_RUNTIME: 'off'
+      - name: Ranged GET on a signed URL for a test PDF
+        run: |
+          set -euo pipefail
+          set -a; . ./.env.e2e; set +a
+          URL="$VITE_SUPABASE_URL"; KEY="$SUPABASE_SERVICE_ROLE_KEY"
+          AUTH=(-H "Authorization: Bearer $KEY" -H "apikey: $KEY")
+          curl -sS "${AUTH[@]}" -H 'Content-Type: application/json' -X POST "$URL/storage/v1/bucket" -d '{"id":"range-probe","name":"range-probe","public":false}' || true
+          head -c 300000 /dev/urandom > probe.pdf
+          curl -sSf "${AUTH[@]}" -H 'Content-Type: application/pdf' -X POST "$URL/storage/v1/object/range-probe/probe.pdf" --data-binary @probe.pdf >/dev/null
+          SIGNED=$(curl -sSf "${AUTH[@]}" -H 'Content-Type: application/json' -X POST "$URL/storage/v1/object/sign/range-probe/probe.pdf" -d '{"expiresIn":600}' | jq -r .signedURL)
+          echo "--- ranged GET bytes=0-65535"
+          curl -sS -o body.bin -D headers.txt -H 'Origin: https://surveytool.app' -H 'Range: bytes=0-65535' "$URL/storage/v1$SIGNED"
+          cat headers.txt
+          STATUS=$(head -1 headers.txt | awk '{print $2}')
+          BYTES=$(stat -c %s body.bin)
+          echo "status=$STATUS body_bytes=$BYTES"
+          echo "### Range probe: HTTP $STATUS, $BYTES bytes for bytes=0-65535" >> "$GITHUB_STEP_SUMMARY"
+          grep -i '^access-control-expose-headers' headers.txt >> "$GITHUB_STEP_SUMMARY" || echo "No Access-Control-Expose-Headers" >> "$GITHUB_STEP_SUMMARY"
+          [ "$STATUS" = 206 ] && [ "$BYTES" = 65536 ]
+      - if: always()
+        run: npm run e2e:stack:down || true

@@ -97,9 +97,9 @@ test('the survey bar\'s "All N" chips and Reuse take a finger: the bar\'s height
 
 test('the tool bar plan keeps the wider loadout clear of Export', () => {
   assert.equal(widestSubtoolsWidth(), WIDEST_SUBTOOLS_WIDTH);
-  assert.equal(widestSubtoolsWidth(6), 249);
-  assert.equal(widestSubtoolsWidth(12), 7 * 28 + 6 * 12 + 17);
-  assert.equal(widestSubtoolsWidth(Number.NaN), 249);
+  assert.equal(widestSubtoolsWidth(6), 283);
+  assert.equal(widestSubtoolsWidth(12), 8 * 28 + 7 * 12 + 17);
+  assert.equal(widestSubtoolsWidth(Number.NaN), 283);
   // An iPad mini (744px) with the 12px gutter: Undo/Redo end at 78, Pan /
   // Select 85px, the icons 108px, Export at 706.
   const reserve = widestSubtoolsWidth(12) + 28 + 12;

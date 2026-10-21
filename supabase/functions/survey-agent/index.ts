@@ -21,6 +21,10 @@
 //     the device's own voice). SURVEY_AGENT_TTS_MODEL / _VOICE pick the
 //     voice (Groq Orpheus by default); SURVEY_AGENT_TTS_PRICE is USD per
 //     million characters (default 0, free tier; Orpheus lists 22).
+//   SURVEY_AGENT_FALLBACK_MODELS: comma list of models to move to when the
+//     main one is near or past its daily cap ('' turns it off). On the
+//     default Groq provider it defaults to the free models in
+//     surveyAgentModels.js.
 // Actions: status | turn | transcribe | speak.
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import {
@@ -33,6 +37,12 @@ import {
 } from '../_shared/surveyAgentSpec.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
 import { ANNOTATION_AGENT_FLAG } from '../_shared/annotationAgentSpec.js';
+import {
+  createModelRest,
+  modelChain,
+  restAfterRefusal,
+  restWhenNearCap,
+} from '../_shared/surveyAgentModels.js';
 
 const corsHeaders = {
   // INTENTIONAL: web, Electron (file://) and Capacitor all call this with a
@@ -69,13 +79,22 @@ function modelProvider() {
   const key = Deno.env.get('SURVEY_AGENT_API_KEY') || Deno.env.get('GROQ_API_KEY');
   if (!key) return null;
   const custom = Boolean(Deno.env.get('SURVEY_AGENT_API_KEY'));
+  const baseUrl = (Deno.env.get('SURVEY_AGENT_BASE_URL') || (custom ? '' : SURVEY_AGENT_DEFAULT_PROVIDER.baseUrl)).replace(/\/$/, '');
+  const model = Deno.env.get('SURVEY_AGENT_MODEL') || SURVEY_AGENT_DEFAULT_PROVIDER.model;
   return {
     key,
-    baseUrl: (Deno.env.get('SURVEY_AGENT_BASE_URL') || (custom ? '' : SURVEY_AGENT_DEFAULT_PROVIDER.baseUrl)).replace(/\/$/, ''),
-    model: Deno.env.get('SURVEY_AGENT_MODEL') || SURVEY_AGENT_DEFAULT_PROVIDER.model,
+    baseUrl,
+    model,
+    models: modelChain(model, {
+      fallbackEnv: Deno.env.get('SURVEY_AGENT_FALLBACK_MODELS') ?? null,
+      groqDefault: baseUrl === SURVEY_AGENT_DEFAULT_PROVIDER.baseUrl,
+    }),
     prices: { input: envNumber('SURVEY_AGENT_PRICE_IN', 0), output: envNumber('SURVEY_AGENT_PRICE_OUT', 0) },
   };
 }
+
+// Models resting after hitting (or nearly hitting) a cap, per instance.
+const modelRest = createModelRest();
 
 function transcriber() {
   const groq = Deno.env.get('GROQ_API_KEY');
@@ -209,15 +228,20 @@ Deno.serve(async (req) => {
       .select('cost_micros, requests').eq('user_id', user.id).eq('month', month).maybeSingle();
     const monthly = Number(now?.cost_micros || 0) >= capMicros()
       || Number(now?.requests || 0) >= envNumber('SURVEY_AGENT_MONTHLY_REQUEST_CAP', 3000);
-    return json(429, { error: monthly ? 'monthly_cap_reached' : 'busy_try_again' });
+    // The per-minute limit clears within a minute: the app waits and sends again.
+    return monthly
+      ? json(429, { error: 'monthly_cap_reached', usage_left: usageLeft() })
+      : json(429, { error: 'busy_try_again', retry_after: 20 });
   };
 
   // Groq's free caps are per model per day across everyone; the hourly alert
   // job reads these counts (survey_agent_daily_usage). A failed count never
   // fails the request.
-  const countDaily = async (kind: string, tokens: number, audioSeconds = 0) => {
+  // With each count, what the call would cost at paid prices: the day's spend.
+  const countDaily = async (kind: string, tokens: number, audioSeconds = 0, costMicros = 0) => {
     const { error } = await admin.rpc('record_survey_agent_daily', {
       p_kind: kind, p_tokens: Math.max(0, Math.round(tokens)), p_audio_seconds: audioSeconds,
+      p_cost_micros: Math.max(0, Math.round(costMicros)),
     });
     if (error) console.warn('[survey-agent] daily count failed', error.message);
   };
@@ -227,7 +251,7 @@ Deno.serve(async (req) => {
     if (!v) return json(501, { error: 'speech_not_set_up' });
     const input = speechText(body.text);
     if (!input) return json(400, { error: 'bad_request' });
-    if (!(await reserve())) return json(429, { error: 'monthly_cap_reached', usage_left: usageLeft() });
+    if (!(await reserve())) return refused();
     let res: Response;
     try {
       res = await fetch(v.url, {
@@ -248,10 +272,11 @@ Deno.serve(async (req) => {
       return json(502, { error: 'speech_unavailable' });
     }
     const audio = new Uint8Array(await res.arrayBuffer());
+    const speakCost = Math.ceil(input.length * v.microsPerChar);
     await admin.rpc('record_survey_agent_usage', {
-      p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: Math.ceil(input.length * v.microsPerChar),
+      p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: speakCost,
     });
-    await countDaily('speak', input.length);
+    await countDaily('speak', input.length, 0, speakCost);
     return json(200, { audio: encodeBase64(audio), mime: res.headers.get('content-type') || 'audio/wav', usage_left: usageLeft(1) });
   }
 
@@ -281,10 +306,11 @@ Deno.serve(async (req) => {
     }
     const out = await res.json();
     const seconds = Math.min(600, Math.max(1, Number(body.duration_ms || 0) / 1000 || bytes.length / 4000));
+    const heardCost = Math.ceil(seconds * t.microsPerSecond);
     await admin.rpc('record_survey_agent_usage', {
-      p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: Math.ceil(seconds * t.microsPerSecond),
+      p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: heardCost,
     });
-    await countDaily('transcribe', 0, seconds);
+    await countDaily('transcribe', 0, seconds, heardCost);
     return json(200, { text: String(out?.text || '').trim(), usage_left: usageLeft(1) });
   }
 
@@ -302,29 +328,44 @@ Deno.serve(async (req) => {
       annotations = flag?.mode === 'on'
         || (flag?.mode === 'testers' && Boolean(email) && (flag.tester_emails || []).includes(email));
     }
-    let res: Response;
-    try {
-      res = await fetch(`${provider.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: provider.model,
-          messages: [{ role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT }, ...(clean.messages || [])],
-          tools: buildSurveyAgentTools(body.answer_values, { annotations }),
-          tool_choice: 'auto',
-          temperature: 0.2,
-          max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,
-        }),
-      });
-    } catch (err) {
-      console.error('[survey-agent] model call failed', err);
-      return json(502, { error: 'model_unavailable' });
+    const request = {
+      messages: [{ role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT }, ...(clean.messages || [])],
+      tools: buildSurveyAgentTools(body.answer_values, { annotations }),
+      tool_choice: 'auto',
+      temperature: 0.2,
+      max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,
+    };
+    let res: Response | null = null;
+    for (const model of modelRest.available(provider.models)) {
+      try {
+        res = await fetch(`${provider.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${provider.key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, ...request }),
+        });
+      } catch (err) {
+        console.error('[survey-agent] model call failed', err);
+        return json(502, { error: 'model_unavailable' });
+      }
+      if (res.status !== 429) {
+        const nearCap = restWhenNearCap({
+          remaining: res.headers.get('x-ratelimit-remaining-requests'),
+          resetIn: res.headers.get('x-ratelimit-reset-requests'),
+        });
+        if (nearCap && provider.models.length > 1) {
+          modelRest.rest(model, nearCap);
+          console.info('[survey-agent] model near its daily cap, resting', model, Math.round(nearCap / 1000));
+        }
+        break;
+      }
+      // A cap on this model: rest it and try the next one in the same turn.
+      const refusal = restAfterRefusal({ retryAfter: res.headers.get('retry-after'), message: await res.text() });
+      modelRest.rest(model, refusal.ms);
+      console.info('[survey-agent] model refused, moving on', model, refusal.daily ? 'daily' : 'per minute', Math.round(refusal.ms / 1000));
+      res = null;
     }
-    // The free tier's per-minute limit: say how long to wait when it says.
-    if (res.status === 429) {
-      const wait = Number(res.headers.get('retry-after'));
-      return json(429, { error: 'busy_try_again', retry_after: Number.isFinite(wait) && wait > 0 ? Math.min(wait, 60) : null });
-    }
+    // Every model is resting: say how long until the first is free.
+    if (!res) return json(429, { error: 'busy_try_again', retry_after: Math.min(modelRest.soonest(provider.models), 60) });
     if (!res.ok) {
       console.error('[survey-agent] model error', res.status, (await res.text()).slice(0, 500));
       return json(502, { error: 'model_unavailable' });
@@ -332,13 +373,14 @@ Deno.serve(async (req) => {
     const out = await res.json();
     const choice = out?.choices?.[0] || {};
     const message = choice.message || {};
+    const turnCost = surveyAgentCostMicros(out?.usage, provider.prices);
     await admin.rpc('record_survey_agent_usage', {
       p_user_id: user.id,
       p_input_tokens: Number(out?.usage?.prompt_tokens || 0),
       p_output_tokens: Number(out?.usage?.completion_tokens || 0),
-      p_cost_micros: surveyAgentCostMicros(out?.usage, provider.prices),
+      p_cost_micros: turnCost,
     });
-    await countDaily('turn', Number(out?.usage?.prompt_tokens || 0) + Number(out?.usage?.completion_tokens || 0));
+    await countDaily('turn', Number(out?.usage?.prompt_tokens || 0) + Number(out?.usage?.completion_tokens || 0), 0, turnCost);
     return json(200, {
       message: {
         content: typeof message.content === 'string' ? message.content : '',

@@ -20,6 +20,7 @@ import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageW
 import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
+import { isSureHearing, startDeviceHearing } from '../agent/deviceHearing.js';
 import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
 import SurveyAgentCamera from './SurveyAgentCamera';
@@ -56,9 +57,11 @@ const HANDS_FREE_TEXT = {
 let nextId = 1;
 const newId = (prefix) => `${prefix}${nextId++}`;
 
-// No signal, or too weak to finish a call: the message waits and sends later.
-const WAIT_CODES = new Set(['offline', 'network']);
+// No signal, too weak to finish a call, or the per-minute limit (hands-free
+// talk can reach it): the message waits and sends later.
+const WAIT_CODES = new Set(['offline', 'network', 'busy_try_again']);
 const SAVED_FIRST = 'No signal. I saved that and will send it when you are back online.';
+const SAVED_BUSY = 'That was a lot at once. I saved it and will send it in a moment.';
 const SAVED_AGAIN = 'Saved.';
 // Kept on the device, unique across reloads.
 const waitIdOf = () => `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -173,6 +176,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     try { speechRef.current?.abort?.(); } catch { /* already stopped */ }
     handsFreeRef.current = false;
     micRef.current?.stop();
+    deviceHearingRef.current?.stop();
+    pttHearingRef.current?.stop();
     stopSpeaking();
     // A turn waiting on the camera gets "no photo" rather than hanging.
     photoResolveRef.current?.(null);
@@ -243,6 +248,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       // message for later. Each call is one model step with no writes on the
       // server, so sending it again later cannot double anything.
       if (WAIT_CODES.has(err?.code) && !err?.changes?.length) {
+        waitReasonRef.current = err.code;
         enqueueRef.current(job);
         return null;
       }
@@ -366,6 +372,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   // sent from there), keeps it on the device, and says so: "saved, will
   // send" once per stretch without signal, then just "Saved."
   const savedNoticeRef = useRef(false);
+  const waitReasonRef = useRef('offline');
   const enqueue = (job, { quiet = false } = {}) => {
     // Back from a send attempt: same place in line, and nothing new to say.
     const retried = Boolean(job.flushing);
@@ -378,9 +385,10 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       keepWaiting({ id: job.waitId, docKey: job.docKey, said: job.said || null, clip: job.clip || null, durationMs: job.durationMs || null });
     }
     if (quiet || retried) return;
+    const busy = waitReasonRef.current === 'busy_try_again';
     const first = !savedNoticeRef.current;
-    savedNoticeRef.current = true;
-    speakOutRef.current(first ? SAVED_FIRST : SAVED_AGAIN, { here: true });
+    if (!busy) savedNoticeRef.current = true;
+    speakOutRef.current(busy ? SAVED_BUSY : first ? SAVED_FIRST : SAVED_AGAIN, { here: true });
   };
   const enqueueRef = useRef(enqueue);
   enqueueRef.current = enqueue;
@@ -442,7 +450,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
       return snapItemNames(cleanTranscript(out?.text), Object.values(b?.markers || {}).map((m) => m?.name));
     } catch (err) {
-      if (WAIT_CODES.has(err?.code)) return null;
+      if (WAIT_CODES.has(err?.code)) { waitReasonRef.current = err.code; return null; }
       push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.', code: err?.code });
       return '';
     } finally {
@@ -452,6 +460,21 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const transcribeRef = useRef(transcribe);
   transcribeRef.current = transcribe;
 
+  // The device's own hearing first (free); the server only when the device
+  // heard nothing or was unsure. Same return values as transcribe.
+  const deviceHearingRef = useRef(null);
+  const pttHearingRef = useRef(null);
+  const hear = async (clip, durationMs, endedAt, hearing = deviceHearingRef.current) => {
+    if (hearing?.available) {
+      const heard = await hearing.heardFor(endedAt, durationMs);
+      if (isSureHearing(heard)) {
+        const b = surveyAgentBridge.current;
+        return snapItemNames(cleanTranscript(heard.text), Object.values(b?.markers || {}).map((m) => m?.name));
+      }
+    }
+    return transcribe(clip, durationMs);
+  };
+
   const queueClip = (clip, durationMs) => {
     const entryId = newId('e');
     setEntries((list) => [...list, { id: entryId, role: 'user', text: 'Voice message' }]);
@@ -460,8 +483,12 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
 
   const recorder = useAudioRecorder({
     onRecorded: async (file, durationMs) => {
-      if (queueRef.current.length) { queueClip(file, durationMs); return; }
-      const text = await transcribe(file, durationMs);
+      const hearing = pttHearingRef.current;
+      pttHearingRef.current = null;
+      const endedAt = Date.now();
+      if (queueRef.current.length) { hearing?.stop(); queueClip(file, durationMs); return; }
+      const text = await hear(file, durationMs, endedAt, hearing);
+      hearing?.stop();
       if (text === null) { queueClip(file, durationMs); return; }
       if (!text) return;
       // A typed message is still running: keep the words in the box to send next.
@@ -479,6 +506,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     setHearing(false);
     micRef.current?.stop();
     micRef.current = null;
+    deviceHearingRef.current?.stop();
+    deviceHearingRef.current = null;
     stopSpeaking();
   }, []);
 
@@ -486,8 +515,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   // the turn that opened it is still waiting on the photo.
   const SHUTTER = /\b(take it|snap( it)?|cheese|shoot|take (the |a )?(photo|picture|pic))\b/i;
   const CANCEL = /\b(cancel|never ?mind|no photo|close( the)? camera)\b/i;
-  const handleCameraClip = async (clip, durationMs) => {
-    const text = await transcribe(clip, durationMs);
+  const handleCameraClip = async (clip, durationMs, endedAt) => {
+    const text = await hear(clip, durationMs, endedAt);
     if (!text || !cameraRef.current) return;
     if (CANCEL.test(text)) cameraRef.current.cancel();
     else if (SHUTTER.test(text)) await cameraRef.current.capture();
@@ -498,10 +527,10 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const handsFreeChainRef = useRef(Promise.resolve());
   const lastSpokenRef = useRef('');
   const handsFreePendingRef = useRef(0);
-  const handleHandsFreeClip = async (clip, durationMs, { cutIn = false } = {}) => {
+  const handleHandsFreeClip = async (clip, durationMs, { cutIn = false, endedAt = Date.now() } = {}) => {
     if (!handsFreeRef.current) return;
     if (queueRef.current.length) { queueClip(clip, durationMs); return; }
-    const text = await transcribe(clip, durationMs);
+    const text = await hear(clip, durationMs, endedAt);
     if (text === null) { queueClip(clip, durationMs); return; }
     if (!text || !handsFreeRef.current) return;
     // Cut in on the agent, but it was the agent's own voice leaking back in.
@@ -526,11 +555,12 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     }
   };
   const onHandsFreeClip = (clip, durationMs, info) => {
-    if (cameraRef.current) { handleCameraClip(clip, durationMs).catch(() => {}); return; }
+    const endedAt = Date.now();
+    if (cameraRef.current) { handleCameraClip(clip, durationMs, endedAt).catch(() => {}); return; }
     handsFreePendingRef.current += 1;
     setPhase('working');
     handsFreeChainRef.current = handsFreeChainRef.current
-      .then(() => handleHandsFreeClipRef.current(clip, durationMs, info))
+      .then(() => handleHandsFreeClipRef.current(clip, durationMs, { ...info, endedAt }))
       .catch(() => {})
       .finally(() => {
         handsFreePendingRef.current -= 1;
@@ -552,6 +582,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
         onHearing: (on) => setHearing(on),
         onBargeIn: () => stopSpeaking(),
       });
+      deviceHearingRef.current = startDeviceHearing();
       handsFreeRef.current = true;
       setHandsFree(true);
       setPhase('listening');
@@ -600,7 +631,11 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     unlockPlayback();
     if (status?.transcription) {
       if (recorder.state === 'recording') recorder.stop();
-      else if (recorder.state === 'idle') recorder.start();
+      else if (recorder.state === 'idle') {
+        pttHearingRef.current?.stop();
+        pttHearingRef.current = startDeviceHearing();
+        recorder.start();
+      }
     } else {
       toggleBrowserSpeech();
     }
@@ -650,7 +685,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const ready = status?.enabled && !status?.over_cap;
   const statusText = !status ? 'Connecting...'
     : !status.enabled || status.over_cap ? surveyAgentErrorText(status.reason)
-      : queued ? `No signal. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send when you are back online.`
+      : queued ? (waitReasonRef.current === 'busy_try_again'
+        ? `Busy for a moment. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send shortly.`
+        : `No signal. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send when you are back online.`)
         : usageWarning(usageLeft);
   const livePhase = hearing ? 'hearing' : phase === 'speaking' ? 'speaking' : transcribing || busy || phase === 'working' ? 'working' : 'listening';
   const handsFreeText = handsFree ? HANDS_FREE_TEXT[livePhase] : null;

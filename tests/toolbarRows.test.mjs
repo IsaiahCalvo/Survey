@@ -142,8 +142,10 @@ test('AppShell: tools up top, settings in row 2, the Aa bar in row 3', () => {
   assert.ok(slots.indexOf('data-chrome-format-row="true"') < slots.indexOf('data-chrome-text-format-row="true"'),
     'row 2 comes before row 3');
   assert.match(slots, /height: 'var\(--chrome-bar-h\)'/);
-  // Row 3: the Aa bar drops into its own slot under row 2.
-  assert.match(appShell, /\{showTextFormatting && !surveyRowShown && textFormatRowEl && createPortal\(/);
+  // DELIBERATE ASSERTION CHANGE — first run walk 2026-10-21 (#10): the Aa
+  // bar's controls sit inside row 2 (inline, no portal into row 3), so the
+  // Text tool shows one settings row instead of two stacked over the page.
+  assert.match(appShell, /\{showTextFormatting && !surveyRowShown && \([\s\S]{0,4000}?<div data-rich-text-toolbar ref=\{setTextBarEl\}/);
   // Both slots are always drawn (never re-added after the Survey row or the
   // text-selection bar); the phone keeps row 2 hidden (formatRowShown is false
   // there) and row 3 empty.
@@ -254,7 +256,8 @@ test('RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3 d
   // Was w48 (rows 2 and 3 glide when they re-centre); the glide is gone.
   assert.doesNotMatch(appShell, /useRowSlide\(/);
   assert.match(appShell, /useRowCrossfade\(formatHolderEl, formatGhostLayerEl, chromeMotion\);/);
-  assert.match(appShell, /useDropInRow\(textBarEl, textFormatRowEl, chromeMotion\);/);
+  // #10 (2026-10-21): the text controls ride row 2's crossfade, no drop-in of their own.
+  assert.match(appShell, /useDropInRow\(textBarEl, textFormatRowEl, false\);/);
   assert.match(appShell, /<div data-rich-text-toolbar ref=\{setTextBarEl\}/);
   const motion = readFileSync(new URL('../src/utils/loadoutTransition.js', import.meta.url), 'utf8');
   assert.doesNotMatch(motion, /slideRow|swapSharedNothing|ROW_SLIDE_MS/);
@@ -299,14 +302,14 @@ test('w47: the loadout and row 2 crossfade through ghost layers; row 2 fades out
   assert.match(hook, /running\.reverse\(\);/);
 });
 
-test('w47: the room kept for the widest loadout matches the Shapes group\'s seven tools', () => {
+test('w47: the room kept for the widest loadout matches the Shapes group\'s eight tools', () => {
   // RULED 2026-09-26 owner: fixed centred groups + animated loadouts. The
   // icons keep WIDEST_SUBTOOLS_WIDTH clear on their right for the loadout; a
   // new tool in the widest group must raise it, or that loadout would run
   // into Export in a narrow window.
   const shapes = pdfViewer.slice(pdfViewer.indexOf("{subRowCategory === 'shape' && "), pdfViewer.indexOf("{subRowCategory === 'review' && "));
   const listed = shapes.slice(0, shapes.indexOf('].map(')).match(/\{ id: '[a-z-]+', label: /g) || [];
-  assert.equal(listed.length, 7);
+  assert.equal(listed.length, 8);
   assert.equal(WIDEST_SUBTOOLS_WIDTH, listed.length * 28 + (listed.length - 1) * 6 + 17);
 });
 

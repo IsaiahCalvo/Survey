@@ -911,6 +911,14 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
 }
 
+/* An overflowing column gets 20px of extra scroll room at its foot so the last
+   tool (Counter under an open Shapes group on an iPhone SE) scrolls fully clear
+   of the 18px fade and the footer's "more" button instead of stopping half
+   inside them. Only while it overflows, so a column that fits keeps its pitch. */
+.mobile-pdf-tools__main[data-overflows='true'] {
+  padding-block-end: 23px;
+}
+
 /* The chip token, never a hard pixel width: the rail is 40 wide with a 1px right
    border, so its content box is 39. A 44px button put every chip past that edge,
    which is what clipped the active tool's gold outline and made the column
