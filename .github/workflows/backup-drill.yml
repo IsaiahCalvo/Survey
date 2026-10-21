@@ -63,18 +63,25 @@ jobs:
           fi
 
       - name: Link production database
+        id: link
+        continue-on-error: true
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Restore a fresh dump into a throwaway stack
         id: drill
+        if: steps.link.outcome == 'success'
         continue-on-error: true
         run: node scripts/backup-drill.mjs --linked 2>&1 | tee drill.log; exit "${PIPESTATUS[0]}"
         shell: bash
 
+      # Runs even when a step above failed outright, so a bad token or a
+      # missing project id still raises the issue.
       - name: Raise or clear the backup issue
+        if: always()
         shell: bash
         env:
           BACKUPS: ${{ steps.backups.outcome }}
+          LINK: ${{ steps.link.outcome }}
           DRILL: ${{ steps.drill.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -83,7 +90,8 @@ jobs:
           open="$(gh issue list --label alert --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
           problems=""
           [ "$BACKUPS" = success ] || problems="- Supabase's daily backup list is missing or stale."
-          [ "$DRILL" = success ] || problems="$(printf '%s\n- The dump did not restore cleanly:\n```\n%s\n```' "$problems" "$(grep '\[backup-drill\]' drill.log 2>/dev/null | tail -n 15)")"
+          [ "$LINK" = success ] || problems="$(printf '%s\n- Could not link the production database (token or project id).' "$problems")"
+          [ "$LINK" != success ] || [ "$DRILL" = success ] || problems="$(printf '%s\n- The dump did not restore cleanly:\n```\n%s\n```' "$problems" "$(grep '\[backup-drill\]' drill.log 2>/dev/null | tail -n 15)")"
           if [ -n "$problems" ]; then
             body="$(printf '%s\n\nRun: %s\nWhat to do: docs/ROLLBACK.md (Restoring the database)' "$problems" "$RUN_URL")"
             if [ -n "$open" ]; then gh issue comment "$open" --body "$body"
