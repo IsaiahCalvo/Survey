@@ -104,7 +104,13 @@ export function makeSign({ h, rerender, root }) {
     }
     fitBox(file);
     if (!el) {
-      rerender();
+      const stage = root.querySelector('.sstage');
+      if (!stage) {
+        rerender();
+        return;
+      }
+      stage.append(boxEl(file));
+      root.querySelector('.sview > .ohelp')?.remove();
       return;
     }
     place(el);
@@ -114,6 +120,16 @@ export function makeSign({ h, rerender, root }) {
   function place(el) {
     const b = sig.box;
     Object.assign(el.style, { left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` });
+  }
+
+  function boxEl(file) {
+    const el = h('div', { class: 'sbox', tabindex: '0', role: 'group', 'aria-label': 'Signature. Drag to move it, or use the arrow keys.', onkeydown: (e) => nudge(e, file) },
+      h('img', { src: sig.art.toDataURL('image/png'), alt: '' }),
+      h('span', { class: 'shandle', 'aria-hidden': 'true' }));
+    place(el);
+    drag(el, file, 'move');
+    drag(el.querySelector('.shandle'), file, 'size');
+    return el;
   }
 
   // ---- the page with the signature on it
@@ -183,15 +199,7 @@ export function makeSign({ h, rerender, root }) {
     const d = file.dims[sig.page];
     stage.style.aspectRatio = `${d.width} / ${d.height}`;
     pageCanvas(file, sig.page).then((c) => stage.prepend(c)).catch(() => {});
-    if (sig.art && sig.box) {
-      const box = h('div', { class: 'sbox', tabindex: '0', role: 'group', 'aria-label': 'Signature. Drag to move it, or use the arrow keys.', onkeydown: (e) => nudge(e, file) },
-        h('img', { src: sig.art.toDataURL('image/png'), alt: '' }),
-        h('span', { class: 'shandle', 'aria-hidden': 'true' }));
-      place(box);
-      drag(box, file, 'move');
-      drag(box.querySelector('.shandle'), file, 'size');
-      stage.append(box);
-    }
+    if (sig.art && sig.box) stage.append(boxEl(file));
     return h('div', { class: 'sview' },
       h('div', { class: 'spager' },
         h('button', { type: 'button', class: 'ibtn', 'aria-label': 'Previous page', disabled: sig.page === 0, onclick: go(-1), html: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>' }),
