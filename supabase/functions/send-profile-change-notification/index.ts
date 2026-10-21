@@ -89,6 +89,22 @@ Deno.serve(async (req) => {
 
     // Get user's email and name
     const userEmail = user.email
+
+    // Same per-person email ledger as send-email: 30 an hour overall and 5
+    // profile-change notices an hour, so one account cannot spend the shared
+    // Brevo quota.
+    const { data: claim, error: claimError } = await supabaseClient.rpc('claim_email_send', {
+      p_template: 'profile-change',
+      p_recipient: userEmail ?? '',
+      p_is_invite: false,
+    })
+    if (claimError || claim !== 'allowed') {
+      if (claimError) console.error('[send-profile-change-notification] claim_email_send failed:', claimError.message)
+      return new Response(JSON.stringify({ error: claim === 'rate_limited' ? 'Too many emails, try again later' : 'Could not send' }), {
+        status: claim === 'rate_limited' ? 429 : 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
     const userName = user.user_metadata?.full_name || user.email
 
     // Create field list for email

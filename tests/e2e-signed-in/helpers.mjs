@@ -72,3 +72,18 @@ export function adminClient() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
+
+/**
+ * A Supabase client signed in as a seeded local-stack account through the
+ * auth API, for database-level probes that need no browser (RLS sweeps).
+ * Pass null for a signed-out client.
+ */
+export async function apiClientFor(account) {
+  const client = createClient(process.env.E2E_SUPABASE_URL, process.env.E2E_SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  if (!account) return client;
+  const { error } = await client.auth.signInWithPassword({ email: account.email, password: account.password });
+  if (error) throw new Error(`[E2E_SIGNED_IN] sign-in ${account.email}: ${error.message}`);
+  return client;
+}

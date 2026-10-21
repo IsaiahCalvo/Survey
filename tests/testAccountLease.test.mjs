@@ -395,6 +395,11 @@ test('all official real-account entry points use the verified lease loader', () 
     'tests/authAccountFlows.test.mjs',
     'tests/supabaseAuthRecovery.test.mjs',
   ]);
+  // Seeded fake accounts on the local Docker stack only: the signed-in E2E
+  // config refuses any non-local Supabase host before a spec can run.
+  const localStackHelpers = new Set(['tests/e2e-signed-in/helpers.mjs']);
+  const signedInConfig = readFileSync(join(root, 'playwright.e2e-signed-in.config.mjs'), 'utf8');
+  assert.match(signedInConfig, /refusing non-local Supabase host/);
   const credentialMarker =
     /VITE_DEV_AUTO_LOGIN_(?:EMAIL|PASSWORD)|auth\.signInWithPassword|\.bot-credentials\.json|makeClient\(['"]user['"]\)|dev auto-login|auto-login as (?:the )?(?:dev|document owner)|harvest(?:s|ing)? (?:the )?browser'?s? dev auto-login/i;
   const protectedClient = readFileSync(join(root, 'agent-cli/lib/client.mjs'), 'utf8');
@@ -431,6 +436,7 @@ test('all official real-account entry points use the verified lease loader', () 
       continue;
     }
     if (coordinatorOnly.has(relativePath)) continue;
+    if (localStackHelpers.has(relativePath) && source.includes('process.env.E2E_SUPABASE_URL')) continue;
     if (disposableOrIsolatedTestProject.has(relativePath)) continue;
     if (inactiveScaffolds.has(relativePath) && source.includes('test.fixme')) continue;
     if (relativePath === 'scripts/kal44-verify.mjs' && source.includes('hubPreview=1')) continue;
