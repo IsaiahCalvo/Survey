@@ -1,6 +1,6 @@
 /**
  * crashReporter.js — sends each crash recorded by crashLog.js to the
- * client_errors table (supabase/migrations/20261021100000_client_errors.sql),
+ * client_errors table (supabase/migrations/20261021141000_client_errors.sql),
  * so crashes can be counted across everyone, not only seen on one device.
  *
  * No personal data leaves the device: no user id, no email, and no typed

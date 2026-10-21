@@ -102,10 +102,10 @@ test('crash reporter: database rules', { skip: isRoot || !tool('initdb') || !too
     execFileSync(tool('pg_ctl'), ['-D', data, '-l', join(cluster, 'pg.log'), '-o', `-F -k ${socket} -p ${port}`, '-w', 'start'], { stdio: 'ignore', env: pgEnv });
     started = true;
     psql('create role anon; create role authenticated;');
-    psql(readFileSync(new URL('../supabase/migrations/20261021100000_client_errors.sql', import.meta.url), 'utf8'));
+    psql(readFileSync(new URL('../supabase/migrations/20261021141000_client_errors.sql', import.meta.url), 'utf8'));
     // Mimic Supabase's default grants, which the migration must take back.
     psql('grant select, insert, update, delete on public.client_errors to anon, authenticated;');
-    psql(readFileSync(new URL('../supabase/migrations/20261021100000_client_errors.sql', import.meta.url), 'utf8'));
+    psql(readFileSync(new URL('../supabase/migrations/20261021141000_client_errors.sql', import.meta.url), 'utf8'));
 
     assert.equal(psql(`set role anon; select public.report_client_error('error', '${'m'.repeat(500)}', null, '/app', 'b', 'web-desktop', 'Chrome 1', null, 5000);`), 't');
     assert.equal(psql(`set role authenticated; select public.report_client_error('nonsense', 'x');`), 'f');
