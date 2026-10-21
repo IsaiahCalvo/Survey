@@ -26,3 +26,9 @@ name: android-undo-toast
     timeout: 30000
 - assertNotVisible: "Project moved to Archive"
 - takeScreenshot: 17-undo-restored
+# Back to the Documents tab: the offline relaunch next expects the document
+# list, and the app reopens on the last tab.
+- tapOn: "Documents"
+- extendedWaitUntil:
+    visible: ".*E2E Sample Drawing.*"
+    timeout: 30000
