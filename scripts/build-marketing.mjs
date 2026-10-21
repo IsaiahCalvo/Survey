@@ -470,43 +470,44 @@ const whatsNew = page({
 const MCP_URL = 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp';
 const AI_FAQ = [
   ['Which AI tools can use Survey?',
-    `Any that speak the open connector standard (MCP). Claude and ChatGPT both let you add a custom connector. Survey also offers tools to an AI running inside your own browser. All three act for you, with your plan and your role on each document.`],
+    `Any that speak the open connector standard (MCP). Claude and ChatGPT both let you add a custom connector, which reads your drawings. An AI running inside your own browser can also mark them up. Both act for you, with your plan and your role on each drawing.`],
   ['Does the AI get its own account?',
     `No. An agent always acts for a signed-in person and never has an account of its own. It has exactly your rights: the same role on each drawing (a viewer's agent can only read) and the same plan.`],
-  ['What can an agent <em>not</em> do?',
-    `It cannot pay, change your plan, delete your account, use your linked sign-ins, let other agents in, or change your email or password. Those stay with you.`],
-  ['Can it change my drawings without asking?',
-    `Reading your projects and documents is always allowed. Writing markup is off until you turn it on, and before it deletes anything it asks you to confirm. One Undo takes any change back.`],
+  ['Can Claude or ChatGPT change my drawings?',
+    `No. The Claude or ChatGPT connector only reads: it finds your projects and drawings and reads the survey items on a plan. Marking a drawing up happens with an agent running in your own browser, not through the connector.`],
+  ['Can a browser agent change my drawings without asking?',
+    `Only if you can. A browser agent has your role, so if you can only view a drawing, so can it. If you can edit, it can record answers and notes and drop count markers, as you would. Drawing-markup tools (notes, shapes, highlights) stay off until you switch them on. Before anything is deleted the agent asks you to confirm, and one Undo takes a change back.`],
+  ['What can no agent ever do?',
+    `Pay, change your plan, delete your account, use your linked sign-ins, let other agents in, or change your email or password. Those stay with you.`],
   ['How do I stop an agent?',
-    `Go to <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>. You see every agent you let in and can remove any of them. Removal is instant: the agent's next request is refused.`],
+    `A Claude or ChatGPT connector, or any agent you let in with a sign-in, you remove at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>; removal is instant. An agent in your own browser runs inside your signed-in session, so it stops when you sign out of Survey, and you can switch its tools off entirely.`],
   ['Where do my files go?',
     `Nowhere new. The agent reads and writes the same Survey account you already use. An agent in your browser needs no extra sign-in at all.`],
 ];
 const AI_STEPS = [
   ['Open your AI tool\'s connector settings', 'In Claude: Settings, then Connectors, then Add custom connector. ChatGPT has the same kind of setting.'],
   ['Paste Survey\'s address', `Use <code>${MCP_URL}</code> as the server URL.`],
-  ['Sign in to Survey', 'Your AI tool sends you to Survey to sign in and press Allow. Make a free account there first if you have none. The agent now acts as you.'],
-  ['Remove it whenever you like', `Manage and remove agents at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>.`],
+  ['Sign in to Survey', 'Your AI tool sends you to Survey to sign in and press Allow. Make a free account there first if you have none. The connector now reads your drawings as you.'],
+  ['Remove it whenever you like', `Manage and remove connectors and other signed-in agents at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>.`],
 ];
 const useWithAi = page({
   path: '/use-with-ai', crumb: 'Use with AI',
   title: 'Use Survey with your AI | Survey',
-  desc: 'Let Claude, ChatGPT or a browser agent use Survey for you: read your drawings and mark them up, with your plan and your role. What it can and cannot do, and how to turn it off.',
+  desc: 'Let Claude or ChatGPT read your drawings, or an agent in your browser mark them up, all as you, with your plan and your role. What each can and cannot do, and how to turn it off.',
   schema: [
-    { '@type': 'HowTo', name: 'How to connect your AI to Survey', step: AI_STEPS.map(([n, t], i) => ({ '@type': 'HowToStep', position: i + 1, name: n, text: strip(t) })) },
+    { '@type': 'HowTo', name: 'How to connect Claude or ChatGPT to Survey', step: AI_STEPS.map(([n, t], i) => ({ '@type': 'HowToStep', position: i + 1, name: n, text: strip(t) })) },
     faqSchema(AI_FAQ),
   ],
   body: `<section class="page-head"><div class="wrap narrow">
   <h1>Use Survey with your AI</h1>
-  <p class="lede">Let an AI assistant work in Survey for you: find your drawings, read the markup and, when you let it, add markup of its own. It acts as you, with your plan and your role on each document.</p>
+  <p class="lede">Let an AI assistant work in Survey for you. It acts as you, with your plan and your role on each drawing. Reading your drawings works through a Claude or ChatGPT connector; marking them up happens with an agent running in your own browser.</p>
 </div></section>
 
 <section class="sec tight"><div class="wrap narrow">
-  <h2>Three ways to connect</h2>
+  <h2>Two ways to connect</h2>
   <div class="dev-rows">
-    <article><h3>Claude</h3><p>Add Survey as a custom connector in Claude's settings (steps below). Claude signs you in to Survey once, then can list your projects and drawings and open an item for you.</p></article>
-    <article><h3>ChatGPT</h3><p>ChatGPT connects the same way, through its own connector setting. Paste the same Survey address and sign in.</p></article>
-    <article><h3>An agent in your browser</h3><p>If your agent runs inside your browser while you are signed in to Survey, Survey offers it tools with no extra sign-in. It acts as you on the drawing on screen.</p></article>
+    <article><h3>Claude or ChatGPT — reads your drawings</h3><p>Add Survey as a custom connector (steps below). It signs you in to Survey once, then finds your projects and drawings and reads the survey items on a plan. It is read-only: it does not change anything. Remove it any time at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>.</p></article>
+    <article><h3>An agent in your browser — reads and marks up</h3><p>If your agent runs inside your browser while you are signed in to Survey, Survey gives it tools with no extra sign-in. It acts as you, with your role: it reads the drawing, and if you can edit it, records answers and notes and drops count markers. The drawing-markup tools (notes, shapes, highlights) stay off until you switch them on. It stops when you sign out.</p></article>
   </div>
 </div></section>
 
@@ -516,15 +517,24 @@ const useWithAi = page({
 </div></section>
 
 <section class="sec tight"><div class="wrap narrow feat-grid"><div>
-  <h2>What it can do</h2>
+  <h2>Through a Claude or ChatGPT connector</h2>
+  <p class="fine">Read-only.</p>
   <ul class="ticks">
     <li>See the projects and drawings you can see</li>
-    <li>Open a drawing and go to a page</li>
-    <li>Read the markup and survey items on a plan</li>
-    <li>When you turn writing on: add notes, shapes, callouts, highlights and counts, and set survey answers</li>
+    <li>Read the survey items on a plan</li>
   </ul>
 </div><div>
-  <h2>What it can't do</h2>
+  <h2>With an agent in your browser</h2>
+  <p class="fine">Acts with your role; needs edit rights to write.</p>
+  <ul class="ticks">
+    <li>Everything the connector can read, plus the open drawing and its markup</li>
+    <li>If you can edit: set survey answers, add notes and drop count markers</li>
+    <li>Once you switch them on: add drawing markup — notes, shapes, callouts and highlights</li>
+  </ul>
+</div></div></section>
+
+<section class="sec tight"><div class="wrap narrow">
+  <h2>What no agent can ever do</h2>
   <ul class="ticks">
     <li>Pay or change your plan</li>
     <li>Delete your account</li>
@@ -532,11 +542,12 @@ const useWithAi = page({
     <li>Let other agents in</li>
     <li>Change your email or password</li>
   </ul>
-</div></div></section>
+</div></section>
 
 <section class="sec tight"><div class="wrap narrow">
   <h2>You are always in charge</h2>
-  <p>An agent only ever has your rights. If you can only view a drawing, so can its agent. Writing markup is off until you turn it on, and before anything is deleted the agent asks you to confirm; one Undo takes a change back. You can see and remove every agent at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>, and removal takes effect at once.</p>
+  <p>An agent only ever has your rights. If you can only view a drawing, so can its agent. A browser agent needs edit rights to change anything, the drawing-markup tools stay off until you switch them on, and before anything is deleted the agent asks you to confirm; one Undo takes a change back.</p>
+  <p>To stop an agent: remove a Claude or ChatGPT connector, or any agent you let in with a sign-in, at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a> — removal takes effect at once. An agent in your own browser runs inside your signed-in session, so sign out of Survey to stop it; you can also switch its tools off for good.</p>
 </div></section>
 
 <section class="sec tight"><div class="wrap narrow"><h2>Questions</h2>${faqList(AI_FAQ)}</div></section>
