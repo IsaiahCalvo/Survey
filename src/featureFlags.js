@@ -27,6 +27,9 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Agent annotation writes',
     env: 'VITE_ENABLE_ANNOTATION_AGENT',
   }),
+  'pro-lock': Object.freeze({
+    label: 'Lock Pro features for Free plan',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

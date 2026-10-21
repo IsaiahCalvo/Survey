@@ -97,6 +97,7 @@ import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOp
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
 import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
+import { useProLock } from './hooks/useProLock.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -1322,6 +1323,7 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Authentication state
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const proLocked = useProLock();
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
   // Template refetch for PDFViewer
@@ -2157,6 +2159,7 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [mobileDocumentPanelState.activePanel, openMobileDocumentPanel]);
 
   const openMobileSurveyPanel = useCallback(() => {
+    if (!mobileSurveyPanelOpen && !rightRailApi?.showSurveyPanel && proLocked('survey')) return;
     // The dock is visible while PDFViewer still loads. Keep that tap for this
     // document only; a second tap cancels it before the viewer registers.
     if (rightRailApi?.pdfFile !== activeTab?.file || typeof rightRailApi?.handleSurveyToggle !== 'function') {
@@ -2180,7 +2183,7 @@ export default function App({ devPreviewReturnTab = null }) {
     if (!rightRailApi?.showSurveyPanel) {
       rightRailApi?.handleSurveyToggle?.();
     }
-  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi, activeTabId, activeTab?.file]);
+  }, [leftRailApi, mobileSurveyPanelOpen, rightRailApi, activeTabId, activeTab?.file, proLocked]);
 
   useEffect(() => {
     const pending = pendingMobilePanelRequestRef.current;

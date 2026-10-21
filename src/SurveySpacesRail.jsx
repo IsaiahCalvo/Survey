@@ -55,6 +55,7 @@ import { removeSurveyMarkersFromPages } from './utils/surveyMarkerPageRemoval.js
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
 import { publishSideRoom } from './sidebar/panelLayoutStore.js';
+import { useProLock } from './hooks/useProLock.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -586,6 +587,7 @@ const SurveySpacesRail = ({
   // title= (the OS tooltip takes ~1.5s and is styled by the OS, so mixing the
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
+  const proLocked = useProLock();
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
   // band between panels): the open desktop panel covers the right ~272px of the
   // PDF, so it registers as a side panel. Fits then size and centre the page in
@@ -966,6 +968,7 @@ const SurveySpacesRail = ({
   // Survey - the template picker - if it is off). Open: close it. Like every
   // rail tab (Drawboard model, owner 2026-10-07).
   const toggleDesktopSurveyPanel = () => {
+    if (isSurveyPanelCollapsed && !showSurveyPanel && proLocked('survey')) return;
     setRailIconHover(null);
     if (!isSurveyPanelCollapsed) {
       setIsSurveyPanelCollapsed(true);
@@ -4156,7 +4159,7 @@ const SurveySpacesRail = ({
                       <button
                         type="button"
                         className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
-                        onClick={() => { if (surveyHasItems) handleExportSurveyToExcel(); }}
+                        onClick={() => { if (proLocked('excel')) return; if (surveyHasItems) handleExportSurveyToExcel(); }}
                         disabled={isExporting || !surveyHasItems}
                         {...(mobileMode ? {} : tip(surveyHasItems ? 'Create an Excel workbook from this survey' : 'Add a survey item to export', 'above'))}
                       >
@@ -4175,7 +4178,7 @@ const SurveySpacesRail = ({
                               aria-haspopup="menu"
                               aria-expanded={isMobileExportMenuOpen}
                               disabled={isExporting}
-                              onClick={() => setIsMobileExportMenuOpen((open) => !open)}
+                              onClick={() => { if (proLocked('excel')) return; setIsMobileExportMenuOpen((open) => !open); }}
                             >
                               <Icon name="moreHorizontal" size={18} color="currentColor" />
                             </button>
@@ -4202,7 +4205,7 @@ const SurveySpacesRail = ({
                           {(selectedTemplate.linkedExcelPath && linkedExcelExists === true) && (
                             <button
                               type="button"
-                              onClick={() => !isExporting && setShowExportMenu(!showExportMenu)}
+                              onClick={() => { if (proLocked('excel')) return; if (!isExporting) setShowExportMenu(!showExportMenu); }}
                               disabled={isExporting}
                               className="survey-rail__foot-more"
                               aria-label="Linked workbook actions"

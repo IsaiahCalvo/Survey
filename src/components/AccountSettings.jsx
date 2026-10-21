@@ -13,6 +13,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
 import { useMSGraph } from '../contexts/MSGraphContext';
 import { getSupabaseSession, supabase } from '../supabaseClient';
 import StripeCheckout from './StripeCheckout';
+import { useProLock } from '../hooks/useProLock.js';
 import UsageIndicator from './UsageIndicator';
 import './AccountSettings.css';
 import PasswordRequirements from './PasswordRequirements';
@@ -53,6 +54,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     refreshSubscriptionTier,
   } = useAuth();
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
+  const proLocked = useProLock();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -1132,6 +1134,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       <button
                         className={msNeedsReconnect ? "account-btn-primary" : "account-btn-primary"}
                         onClick={async () => {
+                          if (proLocked('onedrive')) return;
                           try {
                             await msLogin();
                           } catch (err) {

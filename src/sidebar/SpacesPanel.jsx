@@ -32,6 +32,7 @@ import { watchLightPopover } from '../components/dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import AnchoredPopover from '../components/AnchoredPopover';
 import { useConfirmDialog } from '../components/dialogPrompts';
+import { useProLock } from '../hooks/useProLock.js';
 import {
   buildDeleteSpaceConfirm,
   buildRemovePageConfirm,
@@ -698,6 +699,7 @@ const SpacesPanel = ({
 }) => {
   const tip = useTooltip();
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
+  const proLocked = useProLock();
   const [expandedSpaces, setExpandedSpaces] = useState(() => new Set([
     ...(expandedSpacesStoreRef?.current || []),
     ...(initiallyExpandedSpaceId ? [initiallyExpandedSpaceId] : []),
@@ -1310,12 +1312,13 @@ const SpacesPanel = ({
   // menu lets you pick another.
   const openSpacesExport = useCallback((spaceId) => {
     if (!spaceId) return;
+    if (proLocked('excel')) return;
     if (!features?.excelExport) {
       showToast('Exporting spaces is a Pro feature.', 'error');
       return;
     }
     setExportSpaceId(spaceId);
-  }, [features?.excelExport]);
+  }, [features?.excelExport, proLocked]);
   const runSpacesExport = (kind, spaceId) => {
     setExportSpaceId(null);
     if (kind === 'csv') onExportSpaceCSV?.(spaceId);
@@ -1376,7 +1379,7 @@ const SpacesPanel = ({
       action="add"
       className="spaces-panel__head-icon spaces-panel__head-icon--add"
       label={createSpaceLabel}
-      onClick={handleCreateSpace}
+      onClick={() => { if (proLocked('regions')) return; handleCreateSpace(); }}
     />
   );
   const editControl = canManageSpaces && (
