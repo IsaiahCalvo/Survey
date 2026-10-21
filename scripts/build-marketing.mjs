@@ -136,9 +136,7 @@ function page({ path, title, desc, body, schema = [], crumb }) {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}" />
 <link rel="canonical" href="${url}" />
-<meta name="color-scheme" content="light dark" />
-<meta name="theme-color" content="#f4f1e8" media="(prefers-color-scheme: light)" />
-<meta name="theme-color" content="#121821" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#ffffff" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Survey" />
 <meta property="og:title" content="${esc(title)}" />
