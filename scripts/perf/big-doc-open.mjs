@@ -152,7 +152,11 @@ async function oneRun(browser, size, { profile = null } = {}) {
     const interactive = ready;
     const blocking = s.longTasks.filter(([st]) => st >= s.t0 && st < interactive).reduce((sum, [, d]) => sum + Math.max(0, d - 50), 0);
     const longest = s.longTasks.filter(([st]) => st >= s.t0).reduce((m, [, d]) => Math.max(m, d), 0);
-    return { ev: s.ev.join(' | '), tasks: s.longTasks.filter(([st]) => st >= s.t0).map(([st, d]) => `${Math.round(st - s.t0)}+${Math.round(d)}`).join(' '), firstPage: s.firstPage - s.t0, marks: s.marks - s.t0, interactive: interactive - s.t0, blocking, longest };
+    const res = performance.getEntriesByType('resource')
+      .filter((e) => e.responseEnd - e.startTime > 150 && e.startTime >= s.t0)
+      .sort((a, b) => a.startTime - b.startTime)
+      .map((e) => `${Math.round(e.startTime - s.t0)}-${Math.round(e.responseEnd - s.t0)} ${e.initiatorType} ${e.name.replace(location.origin, '').slice(0, 70)}`);
+    return { res: res.join(' | '), ev: s.ev.join(' | '), tasks: s.longTasks.filter(([st]) => st >= s.t0).map(([st, d]) => `${Math.round(st - s.t0)}+${Math.round(d)}`).join(' '), firstPage: s.firstPage - s.t0, marks: s.marks - s.t0, interactive: interactive - s.t0, blocking, longest };
   }, QUIET_MS, { timeout: 180_000, polling: 250 }).then((h) => h.jsonValue());
   if (cdp) {
     const { profile: cpu } = await cdp.send('Profiler.stop');
@@ -177,7 +181,8 @@ for (const size of SIZES) {
   for (let i = 0; i < RUNS; i += 1) {
     const r = await oneRun(browser, size);
     runs.push(r);
-    if (process.env.TASKS) console.log('  long tasks', r.tasks, '\n  ev\n   ', r.ev.split(' | ').join('\n    '));
+    if (process.env.TASKS) console.log('  long tasks', r.tasks, '\n  resources >150ms\n   ', r.res.split(' | ').join('\n    '), '\n  ev\n   ', r.ev.split(' | ').join('\n    '));
+    delete r.res;
     delete r.ev;
     delete r.tasks;
     console.log(size, `run ${i + 1}`, Object.entries(r).map(([k, v]) => `${k}=${Math.round(v)}`).join(' '));
