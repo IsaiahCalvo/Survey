@@ -23298,12 +23298,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const savedAnnotationsByPageRef = useRef({});
 
   // Mark annotations as dirty when they change
+  const cloudSyncKeyRef = useRef(null);
   useEffect(() => {
     if (!pdfId) return;
 
-    // Cloud documents are saved by sync: once it reports "Up to date", the
-    // current marks are the saved copy, so the tab's unsaved dot clears.
-    if (isCloudSaveConfirmed({
+    // Cloud documents are saved by sync: when sync newly reports "Up to date",
+    // the current marks are the saved copy, so the tab's unsaved dot clears.
+    // Only a change in sync state counts; an edit that lands while the status
+    // still reads "Up to date" from before it is not saved yet.
+    const syncKey = `${cloudSyncStatus}|${cloudSyncQueueSize}`;
+    const syncChanged = cloudSyncKeyRef.current !== syncKey;
+    cloudSyncKeyRef.current = syncKey;
+    if (syncChanged && isCloudSaveConfirmed({
       isCloudDocument: !!pdfFile?.id,
       cloudSyncEnabled,
       status: cloudSyncStatus,
