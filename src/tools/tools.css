@@ -126,3 +126,4 @@ button.ptile:hover{border-color:var(--rule)}
   .tprog:empty{display:none}
   .ract .btn{width:100%}
 }
+.thumb.ext{display:grid;place-items:center;font:500 13px var(--mono);color:var(--soft)}

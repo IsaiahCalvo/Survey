@@ -25,6 +25,10 @@ const ICONS = {
   organize: '<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M18 14.5l3 3-3 3"/>',
   text: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 8h6M12 8v9"/>',
   header: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M8 6.5h8M8 17.5h8"/>',
+  crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14"/>',
+  details: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/>',
+  clean: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 10l6 6M15 10l-6 6"/>',
+  txt: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
   flatten: '<path d="M4 15l8 4 8-4M4 11l8 4 8-4M12 3l8 4-8 4-8-4z"/>',
 };
 const icon = (k) => `<svg class="ticon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${ICONS[k]}</svg>`;
@@ -44,6 +48,12 @@ const APP_PITCH = `<section class="sec"><div class="wrap custom">
   <p>Survey is a full PDF app for drawings. Add pens, shapes, clouds and count markers, and keep every sheet in sync on your computer, iPad and phone.</p>
   <a class="btn ghost" href="${APP}">Open Survey free</a>
 </div></section>`;
+
+const PICK = {
+  pdf: ['Choose a PDF', 'Choose PDF files', 'application/pdf,.pdf'],
+  image: ['Choose an image', 'Choose images', 'image/*'],
+  text: ['Choose a text file', 'Choose text files', 'text/plain,.txt,.text,.md,.csv,.log'],
+};
 
 const SCRIPT = '\n<script type="module" src="/src/tools/main.js"></script>';
 
@@ -74,7 +84,7 @@ function toolPage(t) {
   <div class="tool" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}"${t.multiple ? ' data-multiple' : ''}>
     <div class="dz" data-dz>
       ${icon(t.icon)}
-      <p class="dz-main"><label class="btn primary lg"><span data-pick>Choose ${t.accept === 'pdf' ? (t.multiple ? 'PDF files' : 'a PDF') : 'images'}</span><input type="file" hidden data-early accept="${t.accept === 'pdf' ? 'application/pdf,.pdf' : 'image/*'}"${t.multiple ? ' multiple' : ''} /></label></p>
+      <p class="dz-main"><label class="btn primary lg"><span data-pick>${PICK[t.accept][t.multiple ? 1 : 0]}</span><input type="file" hidden data-early accept="${PICK[t.accept][2]}"${t.multiple ? ' multiple' : ''} /></label></p>
       <p class="dz-or">or drop ${t.multiple ? 'them' : 'it'} here</p>
       <p class="dz-safe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your files stay on this device</p>
       <noscript><p>This tool needs JavaScript turned on.</p></noscript>

@@ -2,7 +2,7 @@
 // Each tool in TOOLS below says which view it uses, its options, and how it
 // turns the chosen files into output files.
 import {
-  ToolError, addHeaderFooter, organizePages, flattenPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
+  ToolError, addHeaderFooter, organizePages, flattenPdf, cropPdf, readDetails, editDetails, removeAnnotations, textToPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
 } from './ops.js';
 import { compressPdf } from './compress.js';
 import { parsePageSet, parseRangeGroups, formatPageSet, everyN } from './ranges.js';
@@ -195,6 +195,47 @@ const TOOLS = {
       return [pdfOut(`${base(file.name)}-watermarked.pdf`, bytes)];
     },
   },
+  'crop-pdf': {
+    view: 'pages',
+    options: [{ key: 'trim', label: 'Trim from every edge', type: SEG, def: '36', choices: [['18', '¼ inch'], ['36', '½ inch'], ['72', '1 inch'], ['108', '1½ inch']] }],
+    async run([file], o) {
+      return [pdfOut(`${base(file.name)}-cropped.pdf`, await cropPdf(file.bytes, { trim: Number(o.trim) }))];
+    },
+  },
+  'edit-pdf-details': {
+    view: 'pages',
+    async prepare(item) {
+      item.details = await readDetails(item.bytes).catch(() => ({}));
+    },
+    options: [
+      { key: 'title', label: 'Title', type: 'text', def: (f) => f.details?.title || '' },
+      { key: 'author', label: 'Author', type: 'text', def: (f) => f.details?.author || '' },
+      { key: 'subject', label: 'Subject', type: 'text', def: (f) => f.details?.subject || '' },
+      { key: 'keywords', label: 'Keywords', type: 'text', def: (f) => (f.details?.keywords || '').split(/\s+/).filter(Boolean).join(', '), help: 'Put commas between them.' },
+    ],
+    async run([file], o) {
+      return [pdfOut(file.name, await editDetails(file.bytes, o))];
+    },
+  },
+  'remove-annotations': {
+    view: 'pages',
+    options: [{ key: 'keepLinks', label: 'Keep links working', type: 'check', def: true }],
+    async run([file], o) {
+      return [pdfOut(`${base(file.name)}-clean.pdf`, await removeAnnotations(file.bytes, { keepLinks: o.keepLinks }))];
+    },
+  },
+  'txt-to-pdf': {
+    view: 'files',
+    options: [
+      { key: 'font', label: 'Font', type: SEG, def: 'sans', choices: [['sans', 'Helvetica'], ['serif', 'Times'], ['mono', 'Courier']] },
+      { key: 'size', label: 'Text size', type: SEG, def: '11', choices: [['9', 'Small'], ['11', 'Medium'], ['14', 'Large']] },
+      { key: 'pageSize', label: 'Page size', type: SEG, def: 'letter', choices: [['letter', 'Letter'], ['a4', 'A4']] },
+    ],
+    async run([file], o) {
+      const text = new TextDecoder().decode(file.bytes);
+      return [pdfOut(`${base(file.name)}.pdf`, await textToPdf(text, { font: o.font, size: Number(o.size), pageSize: o.pageSize }))];
+    },
+  },
   'organize-pdf': {
     view: 'organize', hint: 'Drag pages, or use the arrows, to change the order. Turn or remove any page.',
     async run([file]) {
@@ -258,11 +299,17 @@ function defaults(file) {
 
 const isPdf = (f) => f.type === PDF_TYPE || /\.pdf$/i.test(f.name);
 const isImage = (f) => f.type.startsWith('image/') || /\.(jpe?g|png|gif|bmp|webp)$/i.test(f.name);
+const isText = (f) => f.type.startsWith('text/') || /\.(txt|text|md|csv|log)$/i.test(f.name);
+const ACCEPTS = {
+  pdf: { test: isPdf, input: 'application/pdf,.pdf', wrong: 'That isn\'t a PDF. Choose a file that ends in .pdf.' },
+  image: { test: isImage, input: 'image/jpeg,image/png,image/webp,image/gif,image/bmp,.jpg,.jpeg,.png,.webp,.gif,.bmp', wrong: 'Choose JPG, PNG, WebP, GIF or BMP images.' },
+  text: { test: isText, input: 'text/plain,.txt,.text,.md,.csv,.log', wrong: 'Choose a plain text file, like one that ends in .txt.' },
+}[ACCEPT];
 
 async function addFiles(list) {
-  const wanted = [...list].filter(ACCEPT === 'pdf' ? isPdf : isImage);
+  const wanted = [...list].filter(ACCEPTS.test);
   if (!wanted.length) {
-    S.error = ACCEPT === 'pdf' ? 'That isn\'t a PDF. Choose a file that ends in .pdf.' : 'Choose JPG, PNG, WebP, GIF or BMP images.';
+    S.error = ACCEPTS.wrong;
     render();
     return;
   }
@@ -287,9 +334,10 @@ async function addFiles(list) {
           : `"${file.name}" could not be opened. It may be damaged.`;
         continue;
       }
-    } else {
+    } else if (ACCEPT === 'image') {
       item.url = URL.createObjectURL(file);
     }
+    if (T.prepare) await T.prepare(item);
     S.files.push(item);
   }
   if (S.files.length && (!MULTIPLE || !Object.keys(S.opts).length)) S.opts = defaults(S.files[0]);
@@ -372,7 +420,8 @@ function fileRow(file, i) {
     S.files.splice(i, 1);
     render();
   };
-  const preview = file.url ? h('div', { class: 'thumb' }, h('img', { src: file.url, alt: '' })) : thumbSlot(file, 0);
+  const preview = file.url ? h('div', { class: 'thumb' }, h('img', { src: file.url, alt: '' }))
+    : ACCEPT === 'pdf' ? thumbSlot(file, 0) : h('div', { class: 'thumb ext' }, file.name.split('.').pop().slice(0, 4).toUpperCase());
   const row = h('li', { class: 'frow', draggable: n > 1 ? 'true' : null, 'data-index': String(i) },
     preview,
     h('div', { class: 'fmeta' }, h('span', { class: 'fname' }, file.name), h('span', { class: 'fsub' }, `${file.pages ? `${file.pages} page${file.pages === 1 ? '' : 's'} · ` : ''}${fmtSize(file.size)}`)),
@@ -557,7 +606,7 @@ function pickFiles() {
   picker?.remove();
   picker = h('input', {
     type: 'file', hidden: true, multiple: MULTIPLE,
-    accept: ACCEPT === 'pdf' ? 'application/pdf,.pdf' : 'image/jpeg,image/png,image/webp,image/gif,image/bmp,.jpg,.jpeg,.png,.webp,.gif,.bmp',
+    accept: ACCEPTS.input,
     onchange: (e) => { addFiles(e.target.files); picker.remove(); },
   });
   document.body.append(picker);

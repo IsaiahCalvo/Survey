@@ -321,3 +321,99 @@ export async function flattenPdf(bytes) {
   doc.catalog.delete(N('AcroForm'));
   return save(doc);
 }
+
+// Trim the same amount (in points) off every edge of every page.
+export async function cropPdf(bytes, { trim = 36 } = {}) {
+  const doc = await loadPdf(bytes);
+  for (const page of doc.getPages()) {
+    const box = page.getCropBox();
+    const t = Math.min(trim, box.width / 2 - 36, box.height / 2 - 36);
+    if (t <= 0) throw new ToolError('These pages are too small to trim that much.');
+    page.setCropBox(box.x + t, box.y + t, box.width - 2 * t, box.height - 2 * t);
+  }
+  return save(doc);
+}
+
+export async function readDetails(bytes) {
+  const doc = await loadPdf(bytes);
+  return {
+    title: doc.getTitle() || '', author: doc.getAuthor() || '', subject: doc.getSubject() || '', keywords: doc.getKeywords() || '',
+  };
+}
+
+export async function editDetails(bytes, { title = '', author = '', subject = '', keywords = '' } = {}) {
+  const doc = await loadPdf(bytes);
+  doc.setTitle(title.trim(), { showInWindowTitleBar: !!title.trim() });
+  doc.setAuthor(author.trim());
+  doc.setSubject(subject.trim());
+  doc.setKeywords(keywords.split(',').map((k) => k.trim()).filter(Boolean));
+  doc.setModificationDate(new Date());
+  return save(doc);
+}
+
+// Remove comments and markups. Form fields stay; links stay unless asked.
+export async function removeAnnotations(bytes, { keepLinks = true } = {}) {
+  const doc = await loadPdf(bytes);
+  let removed = 0;
+  for (const page of doc.getPages()) {
+    const annots = page.node.Annots();
+    if (!annots) continue;
+    const keep = annots.asArray().filter((ref) => {
+      const sub = doc.context.lookup(ref)?.get?.(N('Subtype'));
+      const stay = sub === N('Widget') || (keepLinks && sub === N('Link'));
+      if (!stay) removed += 1;
+      return stay;
+    });
+    if (keep.length) page.node.set(N('Annots'), doc.context.obj(keep));
+    else page.node.delete(N('Annots'));
+  }
+  if (!removed) throw new ToolError('This PDF has no markups or comments to remove.');
+  return save(doc);
+}
+
+const TEXT_FONTS = { sans: StandardFonts.Helvetica, serif: StandardFonts.TimesRoman, mono: StandardFonts.Courier };
+
+// Plain text to PDF: wraps long lines, starts new pages as needed, keeps
+// blank lines and form feeds (a form feed starts a new page).
+export async function textToPdf(text, { pageSize = 'letter', font = 'sans', size = 11, margin = 54 } = {}) {
+  const body = String(text).replace(/\r\n?/g, '\n').replace(/\t/g, '    ');
+  if (!body.trim()) throw new ToolError('This text file is empty.');
+  const doc = await fresh();
+  const f = await doc.embedFont(TEXT_FONTS[font] || TEXT_FONTS.sans);
+  const [pw, ph] = PAGE_SIZES[pageSize] || PAGE_SIZES.letter;
+  const lineH = size * 1.35;
+  const maxW = pw - margin * 2;
+  let page = null;
+  let y = 0;
+  const newPage = () => { page = doc.addPage([pw, ph]); y = ph - margin - size; };
+  const wrap = (line) => {
+    if (f.widthOfTextAtSize(line, size) <= maxW) return [line];
+    const out = [];
+    let cur = '';
+    for (const word of line.split(/(\s+)/)) {
+      if (f.widthOfTextAtSize(cur + word, size) <= maxW) { cur += word; continue; }
+      if (cur.trim()) out.push(cur.trimEnd());
+      cur = word.trimStart();
+      while (f.widthOfTextAtSize(cur, size) > maxW) {
+        let n = cur.length;
+        while (n > 1 && f.widthOfTextAtSize(cur.slice(0, n), size) > maxW) n -= 1;
+        out.push(cur.slice(0, n));
+        cur = cur.slice(n);
+      }
+    }
+    out.push(cur);
+    return out;
+  };
+  newPage();
+  for (const block of body.split('\f')) {
+    if (y < ph - margin - size) newPage();
+    for (const raw of block.split('\n')) {
+      for (const line of wrap(latin1(raw))) {
+        if (y < margin) newPage();
+        if (line) page.drawText(line, { x: margin, y, size, font: f, color: rgb(0.08, 0.08, 0.08) });
+        y -= lineH;
+      }
+    }
+  }
+  return save(doc);
+}
