@@ -44,6 +44,8 @@ security definer
 set search_path = public
 as $$
 begin
+  -- The server's time, so a back-dated row can't slip past the count.
+  new.created_at := now();
   if (select count(*) from public.survey_agent_voice_logs
       where user_id = new.user_id and created_at > now() - interval '1 day') >= 50 then
     raise exception 'voice_log_limit' using errcode = 'P0001';

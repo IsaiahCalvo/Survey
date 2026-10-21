@@ -65,6 +65,7 @@ async function seedOwnerRows(admin, ids) {
   await replace('agent_activity', 'user_id', owner, { user_id: owner, client_id: 'rls', action: 'insert', table_name: 'projects' });
   await replace('agent_identities', 'user_id', owner, { user_id: owner, client_id: 'rls', agentid_sub: 'rls' });
   await replace('survey_agent_usage', 'user_id', owner, { user_id: owner, month: new Date().toISOString().slice(0, 8) + '01' });
+  await replace('survey_agent_voice_logs', 'user_id', owner, { user_id: owner, log: { turns: [] } });
   await must('kit', admin.from('kits').upsert({ id: KIT, version: '1.0.0', kind: 'toolKit', definition: {} }, { onConflict: 'id,version', ignoreDuplicates: true }));
   await replace('account_kits', 'user_id', owner, { user_id: owner, kit_id: KIT, kit_version: '1.0.0' });
 }
@@ -101,6 +102,7 @@ const ownerRows = (ids) => ({
   agent_activity: ['user_id', ids.owner],
   agent_identities: ['user_id', ids.owner],
   survey_agent_usage: ['user_id', ids.owner],
+  survey_agent_voice_logs: ['user_id', ids.owner],
   account_kits: ['user_id', ids.owner],
   kits: ['id', KIT],
 });

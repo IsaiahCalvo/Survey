@@ -1,5 +1,6 @@
 // Short-window limits on paid calls (migration 20261022010100): the voice
-// agent's per-minute burst cap and the profile-change email cap.
+// agent's per-minute burst cap and the profile-change email cap; and the
+// daily cap on voice logs (20261022190000).
 import { E2E_ACCOUNTS } from './accounts.mjs';
 import { adminClient, apiClientFor, expect, test } from './helpers.mjs';
 
@@ -49,5 +50,24 @@ test('one person can send at most 5 profile-change emails an hour', async () => 
     expect(other).toBe('allowed');
   } finally {
     await admin.from('email_send_events').delete().eq('user_id', userId);
+  }
+});
+
+test('one person can send at most 50 voice logs a day, and back-dating does not get round it', async () => {
+  const admin = adminClient();
+  const { client, userId } = await signedIn(E2E_ACCOUNTS.pro);
+  await admin.from('survey_agent_voice_logs').delete().eq('user_id', userId);
+  try {
+    const old = new Date(Date.now() - 3 * 864e5).toISOString();
+    for (let i = 0; i < 50; i += 1) {
+      const { error } = await client.from('survey_agent_voice_logs').insert({ log: { turns: [] }, created_at: old });
+      expect(error).toBeNull();
+    }
+    const { data: rows } = await admin.from('survey_agent_voice_logs').select('created_at').eq('user_id', userId);
+    expect(rows.every((r) => Date.parse(r.created_at) > Date.now() - 3600e3)).toBe(true);
+    const over = await client.from('survey_agent_voice_logs').insert({ log: { turns: [] }, created_at: old });
+    expect(over.error?.message).toContain('voice_log_limit');
+  } finally {
+    await admin.from('survey_agent_voice_logs').delete().eq('user_id', userId);
   }
 });

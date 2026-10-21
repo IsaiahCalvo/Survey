@@ -399,6 +399,8 @@ export default function SurveyAgentPanel({
   // Typed or tapped-mic messages: answer aloud too when voice is on (not in
   // hands-free mode, which speaks for itself and must not hear it).
   const sendAndSpeak = useCallback(async (text) => {
+    // A typed message is its own turn, so the log keeps only the recent ones.
+    voiceLog.turn('typed', { chars: String(text || '').length });
     const reply = await send(text);
     if (reply && speakRef.current && !handsFreeRef.current) speak(reply);
     return reply;
