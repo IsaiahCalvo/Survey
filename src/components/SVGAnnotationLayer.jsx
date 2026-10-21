@@ -8654,6 +8654,13 @@ const SVGAnnotationLayerBody = memo(({
             }
             setFocusedPolyVertex({ annotationIndex: selectedIndex, vertexIndex: i });
             if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+              startPolyLongPress(e, { vertexIndex: i });
+            }
+            handleHandlePointerDown(e, `vertex-${i}`);
+          };
+          // Touch/pen hold still 500 ms on a corner (Delete point) or a side
+          // (Add point here); moving more than 8 px or lifting cancels it.
+          const startPolyLongPress = (e, target) => {
               clearVertexLongPress();
               const start = { x: e.clientX, y: e.clientY };
               const onMove = (ev) => {
@@ -8671,11 +8678,9 @@ const SVGAnnotationLayerBody = memo(({
               polyVertexLongPressRef.current = {
                 timer: setTimeout(() => {
                   cleanup();
-                  setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: start.x, y: start.y, touch: true });
+                  setPolyVertexMenu({ annotationIndex: selectedIndex, ...target, x: start.x, y: start.y, touch: true });
                 }, 500),
               };
-            }
-            handleHandlePointerDown(e, `vertex-${i}`);
           };
           const onVertexContextMenu = (i) => (e) => {
             e.preventDefault();
@@ -8683,7 +8688,7 @@ const SVGAnnotationLayerBody = memo(({
             setFocusedPolyVertex({ annotationIndex: selectedIndex, vertexIndex: i });
             setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: e.clientX, y: e.clientY, touch: isTouchMenuInput(contextMenuInputOf(e)) });
           };
-          // Mouse/pen only: a finger on the canvas stays pan-only.
+          // Double-click is mouse/pen; a finger long-presses the side instead.
           const edgeHit = (e) => {
             const ctm = e.currentTarget.getScreenCTM?.();
             if (!ctm) return null;
@@ -8702,7 +8707,18 @@ const SVGAnnotationLayerBody = memo(({
             if (!hit) return;
             e.preventDefault();
             e.stopPropagation();
-            setPolyVertexMenu({ annotationIndex: selectedIndex, edge: { segmentIndex: hit.segmentIndex, t: hit.t }, x: e.clientX, y: e.clientY });
+            const touch = polyEdgePointerTypeRef.current === 'touch' || isTouchMenuInput(contextMenuInputOf(e));
+            // A touch long-press already opened (or is about to open) the menu.
+            if (touch && polyVertexLongPressRef.current) return;
+            setPolyVertexMenu({ annotationIndex: selectedIndex, edge: { segmentIndex: hit.segmentIndex, t: hit.t }, x: e.clientX, y: e.clientY, touch });
+          };
+          const onEdgePointerDown = (e) => {
+            polyEdgePointerTypeRef.current = e.pointerType;
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+              const hit = edgeHit(e);
+              if (hit) startPolyLongPress(e, { edge: { segmentIndex: hit.segmentIndex, t: hit.t } });
+            }
+            handleAnnotationPointerDown(e, selectedIndex);
           };
           const vertexFocused = (i) => focusedPolyVertex?.annotationIndex === selectedIndex && focusedPolyVertex.vertexIndex === i;
           // UX 2026-09-09 (Drawboard PDF, defect 4): a polygon / polyline
@@ -8743,7 +8759,7 @@ const SVGAnnotationLayerBody = memo(({
                   stroke="transparent"
                   strokeWidth={(vTouchHitR || vHandleR * 2) * 2}
                   style={{ pointerEvents: 'stroke', cursor: 'copy' }}
-                  onPointerDown={(e) => { polyEdgePointerTypeRef.current = e.pointerType; handleAnnotationPointerDown(e, selectedIndex); }}
+                  onPointerDown={onEdgePointerDown}
                   onDoubleClick={onEdgeDoubleClick}
                   onContextMenu={onEdgeContextMenu}
                 />
@@ -9308,7 +9324,7 @@ const SVGAnnotationLayerBody = memo(({
               setPolyVertexMenu(null);
             }}
             style={{
-              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', minHeight: 36, border: 0, borderRadius: 6,
+              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', minHeight: menuLayout.rowHeight, boxSizing: 'border-box', border: 0, borderRadius: 6,
               background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer',
             }}
           >

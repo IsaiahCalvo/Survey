@@ -27,3 +27,20 @@ test('the page menu labels stay short enough for a 320px phone menu', () => {
   assert.ok(labels.includes('Select all on page'));
   for (const label of labels) assert.ok(label.length <= 18, label);
 });
+
+test('a long-press Add point here menu on a side keeps a 44px row on every phone size', async () => {
+  const { readFileSync } = await import('node:fs');
+  for (const [w, h] of [[320, 568], [375, 667], [390, 844]]) {
+    const m = polyVertexMenuLayout({ x: w - 4, y: h - 4, touch: true, viewportWidth: w, viewportHeight: h });
+    assert.equal(m.rowHeight, 44);
+    assert.ok(m.left >= 8 && m.left + m.width <= w - 8);
+    assert.ok(m.top >= 8 && m.top + m.rowHeight + 10 <= h - 8);
+  }
+  const src = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  // The side's touch long-press opens the edge menu, and its row uses the layout height.
+  assert.match(src, /startPolyLongPress\(e, \{ edge: \{ segmentIndex: hit\.segmentIndex, t: hit\.t \} \}\)/);
+  assert.match(src, /data-poly-vertex-insert="true"[\s\S]{0,400}minHeight: menuLayout\.rowHeight/);
+  // The page/mark long-press menu stays off a selected poly's side.
+  const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /const onHandle = [^\n]*\[data-poly-edge-hit\]/);
+});
