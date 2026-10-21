@@ -18,7 +18,7 @@ const template = (id, name) => ({
   id, name, entities: ENTITIES,
   modules: [{ id: `${id}-m`, name: 'Doors', categories: [{ id: `${id}-c`, name: 'Level 1', checklist: CHECKLIST }] }],
 });
-const TEMPLATES = [template('std', 'Standard Survey'), template('lock', 'Lock Survey')];
+const TEMPLATES = [template('std', 'Standard Survey'), template('lock', 'Lock Survey'), { ...template('gone', 'Customer Survey'), exportKitId: 'customer-kit-not-loaded' }];
 
 test.use({
   video: 'off',
@@ -48,7 +48,7 @@ async function pickInEditor(page) {
 }
 
 // Open the viewer on `templateName`, place one marker on GW-1, answer both items, export.
-async function surveyAndExport(page, templateName, answers) {
+async function surveyAndExport(page, templateName, answers, { downloadTimeout = 30_000 } = {}) {
   await page.goto('/?testPdf=clickable-link-test.pdf&surveyTemplateWorkflowE2E=1');
   await page.getByRole('toolbar', { name: 'Survey panel', exact: true }).getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: new RegExp(templateName) }).click();
@@ -71,7 +71,7 @@ async function surveyAndExport(page, templateName, answers) {
     await marker.getByRole('group', { name: itemText }).getByRole('button', { name: value, exact: true }).click();
   }
   const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 30_000 }),
+    page.waitForEvent('download', { timeout: downloadTimeout }),
     rail.getByRole('button', { name: 'Export to Excel' }).click(),
   ]);
   const wb = new ExcelJS.Workbook();
@@ -119,4 +119,10 @@ test('editor-picked lock layout and Pass / Fail answers reach the workbook', asy
   expect(ws.getColumn(1).hidden).toBe(true);
   // Import maps the renamed headers back: tests/exportFormatsRegistry.test.mjs (toStandardHeaders).
   expect(errors).toEqual([]);
+});
+
+test('a template whose customer layout is not loaded refuses to export the standard layout', async ({ page, context }) => {
+  await seed(context);
+  await expect(surveyAndExport(page, 'Customer Survey', [['Lock type ok', 'Y']], { downloadTimeout: 2_000 })).rejects.toThrow(/download/);
+  await expect(page.getByText(/Excel layout is not loaded on this account/)).toBeVisible();
 });

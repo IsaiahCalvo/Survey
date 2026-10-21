@@ -15684,6 +15684,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!silent) showToast('Please select a survey template before exporting.', 'warn');
       return;
     }
+    // A customer's Excel layout loads after sign-in. Never write the standard
+    // layout over it: wait until it is there (or it was taken off the account).
+    if (selectedTemplate.exportKitId && !getExportKit(selectedTemplate.exportKitId)) {
+      if (selectedTemplate.linkedExcelPath) setHasPendingExcelSyncChanges(true);
+      if (!silent) showToast('This template\'s Excel layout is not loaded on this account. Check your connection and sign-in, then try again.', 'warn');
+      return;
+    }
 
     // Stage 0 safety switch: block all AUTOMATIC (silent) whole-workbook writeback
     // until the safe patch-writer ships. Record the survey as "not synced to Excel
