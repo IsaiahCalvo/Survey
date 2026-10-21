@@ -861,6 +861,11 @@
     padding: 0;
   }
 
+  /* Delete account measured 34px tall on a phone; a finger needs 44. */
+  .account-btn-danger {
+    min-height: 44px;
+  }
+
   .account-settings-modal {
     width: 100%;
     height: 100%;
