@@ -11,6 +11,7 @@ import {
     EMAIL_LIST_STYLE as LIST,
 } from '../_shared/emailLayout.ts';
 import { resolveBrevoApiKey } from './config.ts';
+import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
 import {
     authorizeUserSend,
     escapeLikePattern,
@@ -201,6 +202,12 @@ Deno.serve(async (req) => {
         // (stripe-webhook) are trusted infrastructure and skip this.
         let recipient = String(to);
         if (caller.type === 'user') {
+            if (await agentOverLimit(caller.authHeader, 'send-email', callerScopedClient(caller.authHeader))) {
+                return new Response(
+                    JSON.stringify({ error: AGENT_RATE_LIMITED_MESSAGE }),
+                    { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+            }
             const verdict = await authorizeUserSend(
                 { template: String(template), to: String(to) },
                 policyDeps(caller.authHeader),

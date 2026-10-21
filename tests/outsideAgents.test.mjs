@@ -80,16 +80,40 @@ test('agents cannot pay, open billing, or delete the account', () => {
   }
 });
 
+async function loadAgentSession() {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const js = stripTypeScriptTypes(read('supabase/functions/_shared/agentSession.ts'));
+  return import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+}
+const agentToken = (claims) => `Bearer h.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.s`;
+
 test('isAgentSession reads client_id from the token', async () => {
-  const src = read('supabase/functions/_shared/agentSession.ts')
-    .replace(/export /g, '').replace(/\(authHeader: string \| null\): boolean/, '(authHeader)');
-  const isAgentSession = new Function(`${src}; return isAgentSession;`)();
-  const tok = (claims) => `Bearer h.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.s`;
-  assert.equal(isAgentSession(tok({ sub: 'u', client_id: 'c1' })), true);
-  assert.equal(isAgentSession(tok({ sub: 'u' })), false);
-  assert.equal(isAgentSession(tok({ sub: 'u', client_id: '' })), false);
+  const { isAgentSession, agentClientId } = await loadAgentSession();
+  assert.equal(isAgentSession(agentToken({ sub: 'u', client_id: 'c1' })), true);
+  assert.equal(agentClientId(agentToken({ sub: 'u', client_id: 'c1' })), 'c1');
+  assert.equal(isAgentSession(agentToken({ sub: 'u' })), false);
+  assert.equal(isAgentSession(agentToken({ sub: 'u', client_id: '' })), false);
   assert.equal(isAgentSession(null), false);
   assert.equal(isAgentSession('Bearer garbage'), false);
+});
+
+test('agent hourly limits: people pass untouched, agents are counted and fail closed', async () => {
+  const { agentOverLimit, AGENT_HOURLY_LIMITS } = await loadAgentSession();
+  const calls = [];
+  const client = (result) => ({ rpc: async (name, args) => { calls.push([name, args]); return result; } });
+  assert.equal(await agentOverLimit(agentToken({ sub: 'u' }), 'send-email', client({ data: false })), false);
+  assert.equal(calls.length, 0, 'a person never touches the counter');
+  const agent = agentToken({ sub: 'u', client_id: 'c1' });
+  assert.equal(await agentOverLimit(agent, 'send-email', client({ data: true, error: null })), false);
+  assert.deepEqual(calls.at(-1), ['agent_rate_hit', { p_fn: 'send-email', p_limit: AGENT_HOURLY_LIMITS['send-email'] }]);
+  assert.equal(await agentOverLimit(agent, 'send-email', client({ data: false, error: null })), true);
+  assert.equal(await agentOverLimit(agent, 'send-email', client({ data: null, error: { message: 'down' } })), true, 'fails closed');
+  for (const fn of Object.keys(AGENT_HOURLY_LIMITS)) {
+    const src = read(`supabase/functions/${fn}/index.ts`);
+    assert.match(src, new RegExp(`agentOverLimit\\([^)]*'${fn}'`), `${fn} checks its agent limit`);
+    assert.match(src, /status: 429|, 429\)/, `${fn} answers 429`);
+    assert.match(read('supabase/migrations/20261021060000_agent_rate_limits.sql'), new RegExp(`'${fn}'`));
+  }
 });
 
 test('agent activity log: agents\' writes are recorded, people read their own log, agents read none', () => {
@@ -101,4 +125,52 @@ test('agent activity log: agents\' writes are recorded, people read their own lo
   const page = read('src/home/AgentLinkPage.jsx');
   assert.match(page, /from\('agent_activity'\)/);
   assert.match(page, /rpc\('my_agent_last_active'\)/);
+});
+
+test('AgentID tokens: only a fresh ES256 token from AgentID, for Survey, naming an agent', async () => {
+  const mod = await import('../supabase/functions/_shared/agentIdToken.js');
+  const { publicKey, privateKey } = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const jwk = { ...(await crypto.subtle.exportKey('jwk', publicKey)), kid: 'k1' };
+  const fetchJwks = async () => ({ keys: [jwk] });
+  const now = Date.UTC(2026, 9, 21);
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const sign = async (claims, header = { alg: 'ES256', kid: 'k1' }, key = privateKey) => {
+    const data = `${b64(header)}.${b64(claims)}`;
+    const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(data));
+    return `${data}.${Buffer.from(sig).toString('base64url')}`;
+  };
+  const good = {
+    iss: 'https://auth.agentid.com', aud: 'https://surveytool.app', sub: 'agt_1', actor_type: 'agent',
+    iat: now / 1000, exp: now / 1000 + 600, email: 'bot@agentmail.to', owner_email: 'isaiah@example.com', owner_human_verified: true,
+  };
+  const claims = await mod.verifyAgentIdToken(await sign(good), { fetchJwks, now });
+  assert.deepEqual(mod.agentIdRecord(claims), {
+    agentid_sub: 'agt_1', agent_email: 'bot@agentmail.to', agent_name: null,
+    owner_sub: null, owner_email: 'isaiah@example.com', owner_human_verified: true,
+  });
+  const refused = async (token, why) => assert.rejects(mod.verifyAgentIdToken(token, { fetchJwks, now }), why);
+  await refused(await sign({ ...good, iss: 'https://evil.example' }), /wrong issuer/);
+  await refused(await sign({ ...good, aud: 'https://other.app' }), /not meant for Survey/);
+  await refused(await sign({ ...good, exp: now / 1000 - 3600 }), /expired/);
+  await refused(await sign({ ...good, actor_type: 'human' }), /not an agent/);
+  await refused(await sign(good, { alg: 'HS256', kid: 'k1' }), /wrong signing method/);
+  await refused(await sign(good, { alg: 'ES256', kid: 'other' }), /unknown signing key/);
+  const { privateKey: stranger } = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+  await refused(await sign(good, undefined, stranger), /bad signature/);
+  const [h, p, s] = (await sign(good)).split('.');
+  await refused(`${h}.${b64({ ...good, sub: 'agt_2' })}.${s}`, /bad signature/);
+  await refused('garbage', /not a token/);
+
+  const fn = read('supabase/functions/agent-identity/index.ts');
+  assert.ok(fn.indexOf('agentClientId(authHeader)') < fn.indexOf('await verifyAgentIdToken('), 'only signed-in agents get as far as the check');
+  assert.match(fn, /onConflict: 'user_id,client_id'/);
+  assert.match(read('.github/workflows/deploy-production.yml'), /\n\s+agent-identity\n/);
+  assert.match(read('supabase/migrations/20261021070000_agent_identities.sql'), /using \(user_id = auth\.uid\(\) and not public\.is_agent_session\(\)\)/);
+});
+
+test('agent log keeps 90 days for everyone, without a scheduler', () => {
+  const sql = read('supabase/migrations/20261021080000_agent_activity_retention.sql');
+  assert.match(sql, /created_at > now\(\) - interval '90 days'\);/);
+  assert.match(sql, /perform public\.prune_agent_activity\(\);/);
+  assert.doesNotMatch(sql.slice(sql.indexOf('function public.prune_agent_activity')), /where user_id = v_uid/);
 });

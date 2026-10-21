@@ -63,13 +63,23 @@ const THING = {
   document_annotations: 'markup', survey_items: 'survey item', documents: 'document', projects: 'project',
   spaces: 'space', templates: 'template', kits: 'kit', document_collaborators: 'sharing', project_collaborators: 'sharing',
   template_collaborators: 'sharing', document_invites: 'invite', project_invites: 'invite', template_invites: 'invite',
-  excel_schema_mapping: 'Excel mapping',
+  excel_schema_mapping: 'Excel mapping', 'send-email': 'email sending', 'send-invite-email': 'invite email',
+  'send-profile-change-notification': 'profile change email', 'excel-apply-changeset': 'Excel sync',
 };
-const DID = { insert: 'added', update: 'changed', delete: 'removed' };
+const DID = { insert: 'added', update: 'changed', delete: 'removed', call: 'used' };
 const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '');
 export function describeActivity(row) {
   const thing = THING[row.table_name] || row.table_name;
+  if (row.action === 'call') return `used ${thing}${row.row_label ? ` (${row.row_label})` : ''}`;
   return `${DID[row.action] || row.action} ${thing}${row.row_label ? ` "${row.row_label}"` : ''}`;
+}
+
+// A checked AgentID says which agent this is and who answers for it.
+export function identityNote(id) {
+  if (!id) return '';
+  const agent = id.agent_email || id.agent_name || id.agentid_sub;
+  const owner = id.owner_email ? `, owned by ${id.owner_email}${id.owner_human_verified ? ' (verified human)' : ''}` : '';
+  return `AgentID ${agent}${owner}`;
 }
 
 const ghost = { ...btn, background: 'transparent', color: C.dangerText, border: `1px solid ${C.rule}`, padding: '4px 10px', fontSize: 12, fontWeight: 400 };
@@ -125,7 +135,24 @@ function Consent({ authorizationId }) {
   );
 }
 
+// AgentID (AgentMail) sends the agent's own browser back here after it signs
+// in to AgentID; the agent reads the code from the address and finishes on its
+// side (see /auth.md). Nothing for the person to do.
+function AgentIdCallback() {
+  return (
+    <div style={card}>
+      <h2 style={{ marginTop: 0 }}>Agent sign-in received</h2>
+      <p style={{ color: C.inkSoft }}>An AI agent is proving who it is to Survey. It reads what it needs from this page's address. You can close this tab.</p>
+    </div>
+  );
+}
+
 export default function AgentLinkPage() {
+  if (typeof window !== 'undefined' && /^\/agentid\/callback(?:\/|$)/.test(window.location.pathname)) return <AgentIdCallback />;
+  return <AgentLinkScreen />;
+}
+
+function AgentLinkScreen() {
   const auth = useContext(AuthContext) || {};
   const user = auth.user || null;
   const [consentId] = useState(consentIdFromUrl);
@@ -136,6 +163,7 @@ export default function AgentLinkPage() {
   const [grants, setGrants] = useState([]);
   const [activity, setActivity] = useState([]);
   const [lastActive, setLastActive] = useState({});
+  const [identities, setIdentities] = useState({});
   // Closed at first so the person reads why they're here before signing in.
   const [authOpen, setAuthOpen] = useState(false);
 
@@ -164,11 +192,13 @@ export default function AgentLinkPage() {
     // Fails quietly while the project's OAuth server is off.
     const grantResult = await supabase.auth.oauth.listGrants().catch(() => null);
     setGrants(Array.isArray(grantResult?.data) ? grantResult.data : []);
-    const [{ data: log }, { data: seen }] = await Promise.all([
+    const [{ data: log }, { data: seen }, { data: ids }] = await Promise.all([
       supabase.from('agent_activity').select('id, client_id, action, table_name, row_label, created_at')
         .order('created_at', { ascending: false }).limit(50),
       supabase.rpc('my_agent_last_active'),
+      supabase.from('agent_identities').select('client_id, agentid_sub, agent_email, agent_name, owner_email, owner_human_verified'),
     ]);
+    setIdentities(Object.fromEntries((ids || []).map((r) => [r.client_id, r])));
     setActivity(log || []);
     setLastActive(Object.fromEntries((seen || []).map((r) => [r.client_id, r.last_active])));
   }, [user]);
@@ -222,7 +252,11 @@ export default function AgentLinkPage() {
   const agents = [
     ...grants.map((g) => ({
       key: `g:${g.client?.id}`, name: g.client?.name || 'AI agent', remove: () => revokeGrant(g.client?.id),
-      note: [g.granted_at && `allowed ${when(g.granted_at)}`, lastActive[g.client?.id] && `last active ${when(lastActive[g.client?.id])}`].filter(Boolean).join(', '),
+      note: [
+        identityNote(identities[g.client?.id]),
+        g.granted_at && `allowed ${when(g.granted_at)}`,
+        lastActive[g.client?.id] && `last active ${when(lastActive[g.client?.id])}`,
+      ].filter(Boolean).join(', '),
     })),
     ...links.map((l) => ({ key: `l:${l.id}`, name: l.agent_name, remove: () => revoke(l.id), note: l.approved_at ? `allowed ${when(l.approved_at)}, read only` : 'read only' })),
   ];
