@@ -101,6 +101,8 @@ async function journey(page, userId) {
   await chooser.setFiles(FIXTURE);
   const pageDiv = page.locator('.survey-pdfjs-page-div[data-page-number="1"]').first();
   await pageDiv.locator('canvas').first().waitFor({ timeout: STEP_TIMEOUT_MS });
+  // The drag lands on the markup layer, which mounts after the page canvas.
+  await page.locator('[data-svg-annotation-layer="1"]').first().waitFor({ timeout: STEP_TIMEOUT_MS });
   let documentId = null;
   await waitFor('the upload never reached the database', async () => {
     const { data } = await admin.from('documents').select('id').eq('user_id', userId).eq('name', FILE_NAME);
