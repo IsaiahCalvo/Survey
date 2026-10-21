@@ -451,7 +451,11 @@ export function projectCalloutsIntoByPage(byPage, calloutsList, pageSizes, { pre
       // Per-page unscaled PDF dims; fall back to US-Letter if not yet measured.
       const pageSize = sizes[page] || { width: 612, height: 792 };
       if (!Number.isFinite(pageSize.width) || !Number.isFinite(pageSize.height)) continue;
-      const obj = calloutToAnnotationObject(callout, pageSize);
+      const projected = calloutToAnnotationObject(callout, pageSize);
+      // Layers panel: the callout's layer rides the stored object.
+      const obj = callout.layerId != null && callout.layerId !== ''
+        ? { ...projected, layerId: callout.layerId }
+        : projected;
       const pageKey = String(page);
       if (!projectedByPage.has(pageKey)) projectedByPage.set(pageKey, new Map());
       projectedByPage.get(pageKey).set(id != null ? String(id) : Symbol('callout'), obj);
@@ -662,6 +666,14 @@ const FALLBACK_PAGE_SIZE = { width: 612, height: 792 };
  * @returns {object|null} normalized callout, or null when unrecoverable
  */
 function deriveOneCalloutFromObject(obj, pageNumber) {
+  const callout = deriveOneCalloutFromObjectBody(obj, pageNumber);
+  // Layers panel: the stored object's layer is the callout's layer.
+  const layerId = obj?.layerId;
+  if (!callout || layerId == null || layerId === '' || callout.layerId === layerId) return callout;
+  return { ...callout, layerId };
+}
+
+function deriveOneCalloutFromObjectBody(obj, pageNumber) {
   const data = obj?.data || {};
   const lc = data.legacyCallout;
   if (lc && typeof lc === 'object') {

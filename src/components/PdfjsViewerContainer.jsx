@@ -955,6 +955,7 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     <div ref={hostRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       <canvas
         ref={canvasRef}
+        className="survey-pdfjs-detail-tile"
         style={{ position: 'absolute', left: tileStyle.left, top: tileStyle.top, width: tileStyle.width, height: tileStyle.height, display: tileStyle.display }}
       />
     </div>

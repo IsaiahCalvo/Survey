@@ -110,6 +110,7 @@ const LightweightAnnotationOverlay = memo(({
   getSurveyAnnotationVisibilityState = null,
   isRegionOverlayEnabled = null,
   layerVisibility = null,
+  hiddenLayerIds = null,
   annotationRevision = null,
   calloutRevision = null,
   onRenderReady = null,
@@ -148,7 +149,9 @@ const LightweightAnnotationOverlay = memo(({
     getSurveyAnnotationVisibilityState,
     isRegionOverlayEnabled,
     layerVisibility,
+    hiddenLayerIds,
   }), [
+    hiddenLayerIds,
     activeRegionId,
     activeRegions,
     activeSpaceId,
