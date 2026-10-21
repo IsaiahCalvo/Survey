@@ -6,7 +6,7 @@ const source = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'u
 
 test('PDF open starts pdf.js loading before the cloud download and awaits it afterwards', () => {
   const start = source.indexOf('const pdfjsReadyPromise = loadPdfjs();');
-  const download = source.indexOf('const blob = await downloadFromStorage(pdfFile.filePath);');
+  const download = source.indexOf('const blob = streamed?.blob || await downloadFromStorage(pdfFile.filePath);');
   const awaitReady = source.indexOf('await pdfjsReadyPromise;');
   assert.ok(start > 0 && download > 0 && awaitReady > 0);
   assert.ok(start < download, 'loadPdfjs must start before the download');

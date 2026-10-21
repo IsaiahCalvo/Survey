@@ -355,7 +355,8 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
-import { normalizePresentationPdf } from './utils/pdfPagePresentation.js';
+import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
+import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
 import { getAnnotationBBox, getGroupBBox } from './utils/svgBoundingBox.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
@@ -1099,7 +1100,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
-  const { uploadDataFile, downloadDocument: downloadFromStorage } = useStorage();
+  const { uploadDataFile, downloadDocument: downloadFromStorage, openDocumentStream } = useStorage();
   const { updateDocument: updateSupabaseDocument } = useDocuments(null, { enabled: false });
   const { features } = useAuth();
 
@@ -24114,6 +24115,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   latestPdfFileRef.current = pdfFile;
   const latestLoadRetryTokenRef = useRef(loadRetryToken);
   latestLoadRetryTokenRef.current = loadRetryToken;
+  // Cloud paths whose streamed bytes carried a page-presentation tag: these
+  // open through the full download, which applies it (services/cloudPdfStream).
+  const streamNeedsBytesPathsRef = useRef(new Set());
+  // Bumped when a stream falls back: re-arms the load watchdog for the download.
+  const [streamFallbackCount, setStreamFallbackCount] = useState(0);
   // Load PDF
   useEffect(() => {
     if (!pdfFile) {
@@ -24143,6 +24149,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Hoisted so the outer catch's rewrite-and-retry path can reuse
       // bytes we've already fetched instead of re-downloading.
       let arrayBuffer;
+      // Set once a streamed (range-request) open succeeds: a later range
+      // failure (page 1, sizing) reloads through the full download instead.
+      let openedByStream = false;
       try {
         // Note: verbosity cannot be set directly on imports in ES modules
         // PDF.js will use default verbosity level
@@ -24172,22 +24181,78 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setUnsupportedAnnotationCounts(null);
         setShowUnsupportedNotice(false);
 
+        let streamedPdf = null;
+        let byteSizeBucket = 'streamed';
+        let pdf = null;
         if (typeof pdfFile.arrayBuffer === 'function') {
           // Local file
           arrayBuffer = await pdfFile.arrayBuffer();
           perfLoad.mark(docName, 'Local file to ArrayBuffer');
         } else if (pdfFile.filePath) {
+          // Open speed: stream with range requests so page 1 shows before the
+          // whole file is here; any failure falls back to the download below.
+          const openPath = chooseCloudPdfOpenPath({
+            pdfFile,
+            hasDurablePresentation: pagePresentationMetaGetRef.current?.(PAGE_PRESENTATION_META_KEY) != null,
+            forceDownload: streamNeedsBytesPathsRef.current.has(pdfFile.filePath),
+            streamSupported: typeof openDocumentStream === 'function',
+          });
+          const streamPath = pdfFile.filePath;
+          const streamed = openPath.path === 'stream' ? await tryOpenCloudPdfStream({
+            pdfjsReady: pdfjsReadyPromise,
+            filePath: streamPath,
+            source: openDocumentStream,
+            isCancelled: () => isCancelled,
+            onFallback: (why) => {
+              loadTrace('stream open fell back to download: ' + why);
+              // Never stream this path again this session (no stream loops),
+              // and give the download a fresh watchdog window.
+              streamNeedsBytesPathsRef.current.add(streamPath);
+              if (!isCancelled) setStreamFallbackCount((n) => n + 1);
+            },
+            // The streamed file never fully arrived: open it by download from
+            // now on, and quietly download it once (fills the device cache,
+            // then the same mirror-tag check below).
+            onBytesFailed: () => {
+              streamNeedsBytesPathsRef.current.add(streamPath);
+              Promise.resolve()
+                .then(() => downloadFromStorage(streamPath))
+                .then((blob) => blob?.arrayBuffer())
+                .then((bytes) => {
+                  if (!bytes || !pdfBytesHavePresentationTag(bytes)) return;
+                  if (!isCancelled && latestPdfFileRef.current === pdfFile) setLoadRetryToken((t) => t + 1);
+                })
+                .catch(() => {});
+            },
+            onAllBytes: (bytes) => {
+              if (!pdfBytesHavePresentationTag(bytes)) return;
+              streamNeedsBytesPathsRef.current.add(streamPath);
+              // Not after cleanup, nor once a page view replaced this file.
+              if (!isCancelled && latestPdfFileRef.current === pdfFile) setLoadRetryToken((t) => t + 1);
+            },
+          }) : null;
+          if (isCancelled) { try { await streamed?.pdf?.destroy(); } catch { /* noop */ } return; }
+          if (streamed?.pdf) {
+            streamedPdf = streamed.pdf;
+            openedByStream = true;
+            perfLoad.mark(docName, 'PDF.js document opened (streamed)');
+          } else {
           // Supabase file - download it
           perfLoad.mark(docName, 'Starting Supabase download');
-          const blob = await downloadFromStorage(pdfFile.filePath);
+          const blob = streamed?.blob || await downloadFromStorage(pdfFile.filePath);
           if (!blob) throw new Error('Failed to download PDF');
           perfLoad.mark(docName, 'Supabase download complete');
           arrayBuffer = await blob.arrayBuffer();
           perfLoad.mark(docName, 'Blob to ArrayBuffer');
+          }
         } else {
           throw new Error('Invalid file object: missing arrayBuffer and filePath');
         }
 
+        if (streamedPdf) {
+          pdf = streamedPdf;
+          firstPagePaintAnalyticsRef.current.byteSizeBucket = byteSizeBucket;
+        } else {
         const presentationSource = await normalizePresentationPdf(arrayBuffer);
         if (presentationSource.presentations) {
           arrayBuffer = presentationSource.bytes.buffer.slice(presentationSource.bytes.byteOffset, presentationSource.bytes.byteOffset + presentationSource.bytes.byteLength);
@@ -24198,7 +24263,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           if (durablePresentation == null) pagePresentationMetaSetRef.current?.(PAGE_PRESENTATION_META_KEY, nextPresentation, 'local');
         }
         const loadedByteLength = arrayBuffer.byteLength;
-        const byteSizeBucket = loadedByteLength < 1024 * 1024
+        byteSizeBucket = loadedByteLength < 1024 * 1024
           ? 'under-1mb'
           : loadedByteLength < 10 * 1024 * 1024
             ? '1-10mb'
@@ -24222,7 +24287,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           }
         } catch (e) { console.error('Error checking header', e); }
 
-        let pdf;
         // Ensure the pdf.js worker is configured (no longer set globally at boot).
         loadTrace('configuring pdf.js worker (loadPdfjs)');
         await pdfjsReadyPromise;
@@ -24301,6 +24365,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               throw firstError;
             }
           }
+        }
         }
         if (isCancelled) {
           try { await pdf.destroy(); } catch { /* noop */ }
@@ -24693,6 +24758,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         perfLoad.end(docName);
         loadTrace('❌ LOAD ERROR', String(error?.message || error));
         if (isCancelled) return;
+        if (shouldRetryStreamedOpenWithDownload({ openedByStream, filePath: pdfFile?.filePath, forced: streamNeedsBytesPathsRef.current, stillCurrent: latestPdfFileRef.current === pdfFile })) {
+          streamNeedsBytesPathsRef.current.add(pdfFile.filePath);
+          setLoadRetryToken((t) => t + 1);
+          return;
+        }
         // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed object
         // streams that pdf.js trips on at parse or page-load time ("bad
         // ObjStm stream"). Re-save via pdf-lib with plain xref and retry
@@ -24814,7 +24884,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             loadWatchdogRetryCountRef.current + '/' + MAX_AUTO_RETRIES + ') ' +
             '[wake-recover]');
         } catch (_e) { /* swallow */ }
-        // Re-run the loadPDF effect with a fresh download/parse.
+        // Re-run the loadPDF effect with a fresh download/parse (a full
+        // download, never another stream attempt).
+        if (pdfFile?.filePath) streamNeedsBytesPathsRef.current.add(pdfFile.filePath);
         setLoadRetryToken((t) => t + 1);
       } else {
         try {
@@ -24832,7 +24904,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }, HANG_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [isLoadingPDF, pdfFile, loadRetryToken]);
+  }, [isLoadingPDF, pdfFile, loadRetryToken, streamFallbackCount]);
 
   // KAL-token-refresh — the former focus/online/visibilitychange "wake-kick"
   // that bumped loadRetryToken to re-run loadPDF on wake was REMOVED here.
