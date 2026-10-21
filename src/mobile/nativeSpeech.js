@@ -112,6 +112,20 @@ export async function start({ lang = 'en-US', onFinal, onPartial, onSpeechStart,
     listen();
   }));
 
+  // CI walks (vite --mode e2e only): emulators have no voice, so let the walk
+  // hand in one heard sentence while listening.
+  if (import.meta.env?.MODE === 'e2e') {
+    globalThis.__surveyNativeSpeechTest = {
+      say(said) {
+        if (stopped) return false;
+        onSpeechStart?.();
+        onFinal?.({ text: String(said), confidence: 0 });
+        onSpeechEnd?.();
+        return true;
+      },
+    };
+  }
+
   await listen();
   if (stopped && handles.length) {
     // start() failed with a fatal error before anything was heard.
