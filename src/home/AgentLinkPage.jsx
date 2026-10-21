@@ -88,6 +88,7 @@ function Consent({ authorizationId }) {
   const [details, setDetails] = useState(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [canWrite, setCanWrite] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -113,6 +114,8 @@ function Consent({ authorizationId }) {
     if (allow) {
       const { error: askError } = await supabase.rpc('begin_auth_change', { p_action: 'consent', p_target: String(details?.client?.id || '') });
       if (askError) { setBusy(false); setMessage('Could not finish. Start again from your agent.'); return; }
+      const { error: accessError } = await supabase.rpc('set_agent_access', { p_client_id: details?.client?.id, p_write: canWrite });
+      if (accessError) { setBusy(false); setMessage('Could not finish. Start again from your agent.'); return; }
     }
     const { data, error } = allow
       ? await supabase.auth.oauth.approveAuthorization(authorizationId, { skipBrowserRedirect: true })
@@ -131,6 +134,15 @@ function Consent({ authorizationId }) {
       <ul style={{ fontSize: 14, paddingLeft: 18, color: C.inkSoft, margin: '8px 0 16px' }}>
         {AGENT_RULES.map((rule) => <li key={rule} style={{ margin: '4px 0' }}>{rule}</li>)}
       </ul>
+      <fieldset style={{ border: 0, padding: 0, margin: '0 0 12px', fontSize: 14 }}>
+        <legend style={{ fontWeight: 600, marginBottom: 4 }}>What may it do?</legend>
+        <label style={{ display: 'block', margin: '4px 0' }}>
+          <input type="radio" name="agent-access" checked={!canWrite} onChange={() => setCanWrite(false)} /> Read only
+        </label>
+        <label style={{ display: 'block', margin: '4px 0' }}>
+          <input type="radio" name="agent-access" checked={canWrite} onChange={() => setCanWrite(true)} /> Read and make changes
+        </label>
+      </fieldset>
       <p style={{ fontSize: 13, color: C.inkSoft }}>Only allow agents you started. You can remove it here at any time.</p>
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
         <button style={btn} disabled={busy} onClick={() => decide(true)}>Allow</button>
