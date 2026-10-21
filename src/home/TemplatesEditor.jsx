@@ -40,7 +40,7 @@
    scrollbars.
 */
 import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
-import { ANSWER_SET_PRESETS, DEFAULT_ANSWER_SET } from '../services/answerSets.js';
+import { ANSWER_SET_PRESETS } from '../services/answerSets.js';
 import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
@@ -2464,7 +2464,8 @@ export default function TemplatesEditor({
                     const preset = ANSWER_SET_PRESETS.find((p) => p.id === e.target.value);
                     mutateTpl(tpl.id, (t) => {
                       const { answerSet: _a, ...rest } = t;
-                      return !preset || preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
+                      // Keep Y / N / N/A on the template so a kit's set cannot snap it back.
+                      return !preset ? rest : { ...rest, answerSet: preset.answers };
                     });
                   }}
                   {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
@@ -3190,7 +3191,8 @@ export default function TemplatesEditor({
                       const preset = ANSWER_SET_PRESETS.find((p) => p.id === e.target.value);
                       mutateTpl(tpl.id, (t) => {
                         const { answerSet: _a, ...rest } = t;
-                        return !preset || preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
+                        // Keep Y / N / N/A on the template so a kit's set cannot snap it back.
+                        return !preset ? rest : { ...rest, answerSet: preset.answers };
                       });
                     }}
                   >

@@ -57,6 +57,7 @@ test('a kit can carry the answer set; the template\'s own set still wins', async
   assert.deepEqual(answerSetFor({ exportKitId: 'kit-answers-test' }).map((a) => a.value), ['Pass', 'Fail']);
   const own = [{ value: 'Ok', tone: 'good' }, { value: 'Bad', tone: 'bad' }];
   assert.equal(answerSetFor({ exportKitId: 'kit-answers-test', answerSet: own }), own);
+  assert.equal(answerSetFor({ exportKitId: 'kit-answers-test', answerSet: DEFAULT_ANSWER_SET }), DEFAULT_ANSWER_SET);
   assert.equal(answerSetFor({ exportKitId: 'wireless-lock-schedule' }), DEFAULT_ANSWER_SET);
   off();
   const offBad = registerExportKit({ ...getExportKit('wireless-lock-schedule'), id: 'kit-answers-bad', answerSet: [{ value: 'a,b', tone: 'good' }] });
