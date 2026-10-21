@@ -76,8 +76,8 @@ test.describe('on a phone', () => {
     await page.getByRole('menuitem', { name: 'PDF tools…' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('button', { name: /Split/ })).toBeVisible();
-    const box = await dialog.boundingBox();
-    expect(Math.round(box.width)).toBe(390);
+    // Polled: the dialog opens with a short scale-up (styles/motion.css).
+    await expect.poll(async () => Math.round((await dialog.boundingBox()).width)).toBe(390);
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(scrollWidth).toBeLessThanOrEqual(390);
     await dialog.getByRole('button', { name: 'Close' }).click();
