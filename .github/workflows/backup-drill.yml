@@ -1,0 +1,102 @@
+name: Backup restore drill
+
+# Once a week, proves production can be restored:
+#   1. Supabase's own daily backups exist (Pro plan keeps 7 days; Management
+#      API lists them) and the newest is under 36 hours old.
+#   2. A fresh dump of the production database (roles, schema, data) restores
+#      into a throwaway local Supabase stack on this runner, every table comes
+#      back with its row count, and RLS and its policies are back on
+#      (scripts/backup-drill.mjs).
+# The repo is public, so the log shows counts only and the dump never leaves
+# the runner (no artifacts). On failure it raises one `alert` issue; the next
+# good run closes it. Steps for a real restore: docs/ROLLBACK.md.
+
+on:
+  schedule:
+    - cron: '40 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: backup-drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.111.0
+
+      - name: Check Supabase's daily backups
+        id: backups
+        continue-on-error: true
+        shell: bash
+        run: |
+          curl --fail-with-body --silent --show-error -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/backups" > backups.json
+          jq -r '"PITR on: \(.pitr_enabled), backups kept: \(.backups | length), newest: \([.backups[].inserted_at] | max // "none")"' backups.json
+          newest="$(jq -r '[.backups[] | select(.status == "COMPLETED") | .inserted_at] | max // empty' backups.json)"
+          pitr="$(jq -r '.pitr_enabled' backups.json)"
+          if [ "$pitr" != true ]; then
+            [ -n "$newest" ] || { echo "No completed daily backup listed."; exit 1; }
+            age=$(( $(date -u +%s) - $(date -u -d "$newest" +%s) ))
+            [ "$age" -lt 129600 ] || { echo "Newest daily backup is $((age / 3600)) hours old."; exit 1; }
+          fi
+
+      - name: Link production database
+        id: link
+        continue-on-error: true
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Restore a fresh dump into a throwaway stack
+        id: drill
+        if: steps.link.outcome == 'success'
+        continue-on-error: true
+        run: node scripts/backup-drill.mjs --linked 2>&1 | tee drill.log; exit "${PIPESTATUS[0]}"
+        shell: bash
+
+      # Runs even when a step above failed outright, so a bad token or a
+      # missing project id still raises the issue.
+      - name: Raise or clear the backup issue
+        if: always()
+        shell: bash
+        env:
+          BACKUPS: ${{ steps.backups.outcome }}
+          LINK: ${{ steps.link.outcome }}
+          DRILL: ${{ steps.drill.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Alert: backup restore drill failed"
+          gh label create alert --color B60205 --description "Production monitor" 2>/dev/null || true
+          open="$(gh issue list --label alert --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          problems=""
+          [ "$BACKUPS" = success ] || problems="- Supabase's daily backup list is missing or stale."
+          [ "$LINK" = success ] || problems="$(printf '%s\n- Could not link the production database (token or project id).' "$problems")"
+          [ "$LINK" != success ] || [ "$DRILL" = success ] || problems="$(printf '%s\n- The dump did not restore cleanly:\n```\n%s\n```' "$problems" "$(grep '\[backup-drill\]' drill.log 2>/dev/null | tail -n 15)")"
+          if [ -n "$problems" ]; then
+            body="$(printf '%s\n\nRun: %s\nWhat to do: docs/ROLLBACK.md (Restoring the database)' "$problems" "$RUN_URL")"
+            if [ -n "$open" ]; then gh issue comment "$open" --body "$body"
+            else gh issue create --title "$title" --label alert --body "$body"; fi
+            exit 1
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --comment "Drill passed at $(date -u +%FT%TZ): backups are fresh and the dump restored."
+          fi

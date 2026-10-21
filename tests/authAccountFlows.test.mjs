@@ -227,7 +227,15 @@ test('AccountSettings verifies the current password server-side before updating'
   assert.match(ACCOUNT_SETTINGS_SOURCE, /await signIn\(user\.email, currentPassword, captchaToken\)/);
   assert.match(ACCOUNT_SETTINGS_SOURCE, /Current password is incorrect/);
   const verifyIndex = ACCOUNT_SETTINGS_SOURCE.indexOf('signIn(user.email, currentPassword');
-  const updateIndex = ACCOUNT_SETTINGS_SOURCE.indexOf('updatePassword(newPassword)');
+  const updateIndex = ACCOUNT_SETTINGS_SOURCE.indexOf('updatePassword(newPassword, { currentPassword })');
   assert.ok(verifyIndex > -1 && updateIndex > -1 && verifyIndex < updateIndex,
     'current-password verification must run before updatePassword');
+});
+
+test('updatePassword asks the database first, so only the person can change it', () => {
+  // migration 20261022020200: auth.users refuses a new password without begin_auth_change.
+  const body = AUTH_CONTEXT_SOURCE.slice(AUTH_CONTEXT_SOURCE.indexOf('const updatePassword = async'));
+  const ask = body.indexOf("rpc('begin_auth_change', { p_action: 'password' })");
+  const update = body.indexOf('supabase.auth.updateUser(');
+  assert.ok(ask > -1 && update > -1 && ask < update, 'begin_auth_change must run before updateUser');
 });

@@ -124,6 +124,9 @@ async function ensureBot(adminClient, index) {
   if (existing) {
     // Update password so the credentials file matches what's in Supabase.
     // (Idempotent re-run path — we want fresh credentials on every provision run.)
+    // A password change needs an ask first (migration 20261022020200).
+    const { error: askErr } = await adminClient.rpc('begin_auth_change', { p_action: 'password', p_user_id: existing.id });
+    if (askErr) throw new Error(`begin_auth_change(${email}) failed: ${askErr.message}`);
     const { data: updated, error: updateErr } = await adminClient.auth.admin.updateUserById(
       existing.id,
       {

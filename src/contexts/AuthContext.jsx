@@ -801,14 +801,21 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  // Update password
-  const updatePassword = async (newPassword) => {
+  // Update password. The database refuses a password change the person's own
+  // session did not ask for first (begin_auth_change), so an outside agent's
+  // token cannot change it (migration 20261022020200). `currentPassword` is
+  // sent when known, for Auth's "require current password" setting; reset
+  // links have none and Auth does not ask for one there.
+  const updatePassword = async (newPassword, { currentPassword } = {}) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase is not configured');
     }
 
+    const { error: askError } = await supabase.rpc('begin_auth_change', { p_action: 'password' });
+    if (askError) throw askError;
     const { data, error } = await supabase.auth.updateUser({
       password: newPassword,
+      ...(currentPassword ? { current_password: currentPassword } : {}),
     });
 
     if (error) throw error;

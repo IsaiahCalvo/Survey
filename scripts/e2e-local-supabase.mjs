@@ -174,6 +174,9 @@ async function ensureUser(admin, account, existingByEmail) {
   };
   const existing = existingByEmail.get(account.email);
   if (existing) {
+    // A password change needs an ask first (migration 20261022020200).
+    const { error: askError } = await admin.rpc('begin_auth_change', { p_action: 'password', p_user_id: existing.id });
+    if (askError) throw new Error(`begin_auth_change ${account.email}: ${askError.message}`);
     const { data, error } = await admin.auth.admin.updateUserById(existing.id, attrs);
     if (error) throw new Error(`update user ${account.email}: ${error.message}`);
     return data.user;
