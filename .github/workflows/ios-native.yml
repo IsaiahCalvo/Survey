@@ -240,3 +240,74 @@ jobs:
           name: android-signed-in-results
           path: android-flow-out
           retention-days: 7
+
+  ios-signed-in:
+    name: iOS signed-in walk (local Supabase, export to share sheet)
+    # Intel runner: the local Supabase needs Docker, which runs here through
+    # Colima; Apple-silicon runners cannot nest a VM for it.
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    env:
+      OUT: ${{ github.workspace }}/ios-flow-out
+      DEVICE: iPhone 16
+      BUNDLE_ID: com.kalvoe.survey
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Start Docker (Colima)
+        run: |
+          brew install colima docker
+          colima start --cpu 3 --memory 8 --disk 40
+          echo "DOCKER_HOST=unix://$HOME/.colima/default/docker.sock" >> "$GITHUB_ENV"
+      - run: npm run e2e:stack:up
+      - name: Build web bundle against the local stack
+        run: npx vite build --mode e2e
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+      - run: npx cap sync ios
+      - name: Build app for the simulator
+        run: |
+          mkdir -p "$OUT"
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build 2>&1 \
+            | tee "$OUT/xcodebuild.log" | grep -E "error:|BUILD (SUCCEEDED|FAILED)"
+          test "${PIPESTATUS[0]}" = 0
+      - name: Install Maestro
+        run: |
+          curl -fsSL https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Boot the simulator and install the app
+        run: |
+          UDID=$(xcrun simctl list devices available -j | node -e '
+            const d=JSON.parse(require("fs").readFileSync(0)).devices;
+            const all=Object.entries(d).filter(([r])=>r.includes("iOS")).flatMap(([,l])=>l);
+            const m=all.reverse().find(x=>x.name===process.env.DEVICE)||all.find(x=>x.name.startsWith("iPhone"));
+            console.log(m.udid)')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$(find build/ios/Build/Products -maxdepth 2 -name 'App.app' | head -1)"
+      - name: Walk the app (signed in, Counter after Arrow, export)
+        run: maestro --device "$UDID" test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/ios-signed-in.yaml
+      - name: Relaunch with the API stopped (offline)
+        run: |
+          docker ps -q | xargs docker pause
+          maestro --device "$UDID" test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/ios-offline-relaunch.yaml
+      - name: Save logs
+        if: always()
+        run: xcrun simctl spawn booted log show --last 10m --predicate 'process == "App"' > "$OUT/app.log" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-signed-in-results
+          path: ios-flow-out
+          retention-days: 7
