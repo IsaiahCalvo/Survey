@@ -11,6 +11,11 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Devices](https://surveytool.app/devices): desktop, tablet and phone
 - [Pricing](https://surveytool.app/pricing): Free, Pro and Enterprise plans
 - [FAQ](https://surveytool.app/faq): common questions
+- [Field surveys](https://surveytool.app/use-cases/field-surveys): Walk a site with the plans on your iPad, count what is there, tag what needs work and send the totals to Excel.
+- [Punch lists](https://surveytool.app/use-cases/punch-lists): Mark punch items right on the floor plan with numbered markers and notes, then share the marked-up set with your team.
+- [As-builts](https://surveytool.app/use-cases/as-builts): Red-line the drawings with what was really built: moved walls, rerouted runs, added fixtures. Keep it with the project.
+- [Survey vs Bluebeam Revu](https://surveytool.app/compare/bluebeam): An honest look at Survey and Bluebeam Revu for marking up and counting on construction drawings: what each does best and who each one fits.
+- [Survey vs Drawboard Projects](https://surveytool.app/compare/drawboard): An honest look at Survey and Drawboard Projects for marking up construction drawings: what each does best and who each one fits.
 
 ## Optional
 

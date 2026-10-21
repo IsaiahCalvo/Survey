@@ -1,21 +1,60 @@
 // Builds the static marketing pages (welcome, features, pricing, devices, faq)
 // into public/. Run `node scripts/build-marketing.mjs` after editing copy here;
 // the output HTML is committed so Vite just copies it to dist.
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const ORIGIN = 'https://surveytool.app';
+// Inlined so first paint doesn't wait on a stylesheet request.
+const CSS = readFileSync(join(root, 'welcome', 'site.css'), 'utf8').replace(/\/\*[^]*?\*\//g, '').replace(/\n+/g, '');
 const TODAY = new Date().toISOString().slice(0, 10);
 const APP = '/?signin=1';
 const MAIL = 'mailto:isaiahcalvo123@gmail.com';
 
+// Free PDF tools live at /tools/* (built separately). Add entries here once
+// they ship; the nav link and footer column appear when the list is non-empty.
+const TOOL_LINKS = [];
+
 const NAV = [
   ['/features', 'Features'],
-  ['/devices', 'Devices'],
+  ['/use-cases', 'Use cases'],
   ['/pricing', 'Pricing'],
+  ...(TOOL_LINKS.length ? [['/tools', 'Free PDF tools']] : []),
   ['/faq', 'FAQ'],
+];
+
+const USES = [
+  { slug: 'field-surveys', name: 'Field surveys', title: 'Field surveys on drawings',
+    desc: 'Walk a site with the plans on your iPad, count what is there, tag what needs work and send the totals to Excel.',
+    lead: 'Take the drawing set to site on an iPad or phone, mark what you find and count it as you go.',
+    steps: [['Load the plans', 'Upload the PDF set once. It is on every device you sign in on.'], ['Walk and tap', 'Make a category for each thing you check, like outlets or fire doors, and tap each one on the plan. Survey numbers them and keeps the totals.'], ['Note what you see', 'Add a callout or a cloud where something is wrong, right on the sheet.'], ['Send the results', 'Export the counts to Excel for the report or the estimate.']] },
+  { slug: 'punch-lists', name: 'Punch lists', title: 'Punch lists on the floor plan',
+    desc: 'Mark punch items right on the floor plan with numbered markers and notes, then share the marked-up set with your team.',
+    lead: 'Put every punch item where it is on the plan, numbered, so nobody hunts for it.',
+    steps: [['Open the floor plan', 'Bring up the sheet for the area you are walking.'], ['Drop a marker per item', 'Use a count category for punch items. Each tap adds the next number.'], ['Say what is wrong', 'Add a text callout next to the marker: the trade, the fix, the room.'], ['Share it', 'Invite the trades as viewers or editors so they see the same marked-up set.']] },
+  { slug: 'as-builts', name: 'As-builts', title: 'As-built markups',
+    desc: 'Red-line the drawings with what was really built: moved walls, rerouted runs, added fixtures. Keep it with the project.',
+    lead: 'Red-line what changed in the field so the drawings match what was built.',
+    steps: [['Open the issued set', 'Start from the drawings the work was built to.'], ['Red-line the changes', 'Use the pen, clouds and arrows to show what moved, what was added and what was left out.'], ['Count what was installed', 'Tap fixtures or devices to get real installed counts for closeout.'], ['Keep it together', 'The marked-up set stays in the project for the next person who needs it.']] },
+];
+
+// Honest side-by-side. Only claims we can stand behind; competitor details
+// point readers to the competitor's own site for current facts.
+const COMPARE = [
+  { slug: 'bluebeam', them: 'Bluebeam Revu',
+    desc: 'An honest look at Survey and Bluebeam Revu for marking up and counting on construction drawings: what each does best and who each one fits.',
+    intro: 'Bluebeam Revu is the long-time standard for PDF markup in construction, with deep measurement, takeoff and document tools. Survey is a simpler app that runs in the browser and focuses on markup and counting.',
+    themBest: ['Full measurement and quantity takeoff tools', 'A large set of document tools: compare sheets, batch edits, forms', 'Wide use across big general contractors'],
+    usBest: ['Runs in any browser, nothing to install', 'A free plan, and Pro at $9.99 a month', 'Tap-to-count markers with running totals and Excel export', 'Made to work with Apple Pencil and touch'],
+    pick: 'Pick Bluebeam if you need full takeoff and measurement, or your company already runs on it. Pick Survey if you want quick markup and counting on any device without installing anything or paying much.' },
+  { slug: 'drawboard', them: 'Drawboard Projects',
+    desc: 'An honest look at Survey and Drawboard Projects for marking up construction drawings: what each does best and who each one fits.',
+    intro: 'Drawboard Projects is a markup and team review app for architecture, engineering and construction, built around shared projects and issue tracking. Survey focuses on markup and counting, with a free plan.',
+    themBest: ['Team review built around projects and issues', 'Polished pen experience on Windows and iPad', 'Made for design teams reviewing drawing sets together'],
+    usBest: ['Runs in any browser, nothing to install', 'A free plan, and Pro at $9.99 a month', 'Tap-to-count markers with running totals and Excel export', 'Custom builds for your company: Excel formats, templates, symbol sets'],
+    pick: 'Pick Drawboard if your design team wants structured review and issue tracking. Pick Survey if counting on the plan and a low price matter more to you.' },
 ];
 
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -113,8 +152,8 @@ function page({ path, title, desc, body, schema = [], crumb }) {
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" />
-<link rel="stylesheet" href="/welcome/site.css" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" media="print" onload="this.media='all'" />
+<style>${CSS}</style>
 <script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@graph': graph })}</script>
 </head>
@@ -139,6 +178,9 @@ ${body}
   <div class="fgrid">
     <div><a class="brand" href="/welcome"><img src="/logo192.png" alt="" width="28" height="28" />Survey</a><p>PDF markup and counting for construction and engineering drawings.</p></div>
     <div><h2 class="fh">Product</h2><a href="/features">Features</a><a href="/devices">Devices</a><a href="/pricing">Pricing</a><a href="/faq">FAQ</a></div>
+    <div><h2 class="fh">Use cases</h2>${USES.map((u) => `<a href="/use-cases/${u.slug}">${u.name}</a>`).join('')}</div>
+    <div><h2 class="fh">Compare</h2>${COMPARE.map((c) => `<a href="/compare/${c.slug}">Survey vs ${c.them.split(' ')[0]}</a>`).join('')}</div>${TOOL_LINKS.length ? `
+    <div><h2 class="fh">Free PDF tools</h2>${TOOL_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}</div>` : ''}
     <div><h2 class="fh">Get started</h2><a href="${APP}">Log in</a><a href="${APP}">Start free</a><a href="${MAIL}">Contact</a></div>
     <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
   </div>
@@ -333,14 +375,43 @@ const notFound = page({
   body: `<section class="page-head"><div class="wrap narrow"><h1>We can't find that page</h1><p class="lede">The link may be old. Try the <a href="/welcome">home page</a> or <a href="${APP}">open Survey</a>.</p></div></section>`,
 }).replace('<link rel="canonical" href="https://surveytool.app/404" />', '<meta name="robots" content="noindex" />');
 
-const out = { '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq };
+const useIndex = page({
+  path: '/use-cases', crumb: 'Use cases',
+  title: 'Use cases: field surveys, punch lists and as-builts | Survey',
+  desc: 'How teams use Survey on construction drawings: field surveys, punch lists and as-built markups.',
+  body: `<section class="page-head"><div class="wrap"><h1>What do people use Survey for?</h1><p class="lede">Most teams use Survey for one of three jobs on the drawing set.</p></div></section>
+<section class="sec tight"><div class="wrap dev-rows">${USES.map((u) => `<article><h2><a href="/use-cases/${u.slug}">${u.name}</a></h2><p>${u.desc}</p></article>`).join('')}</div></section>
+${cta()}`,
+});
+const usePages = Object.fromEntries(USES.map((u) => [`use-cases/${u.slug}/index.html`, page({
+  path: `/use-cases/${u.slug}`, crumb: u.name,
+  title: `${u.title} | Survey`, desc: u.desc,
+  schema: [{ '@type': 'HowTo', name: `How to do ${u.name.toLowerCase()} with Survey`, step: u.steps.map(([n, t], i) => ({ '@type': 'HowToStep', position: i + 1, name: n, text: t })) }],
+  body: `<section class="page-head"><div class="wrap"><p class="kicker"><a href="/use-cases">Use cases</a></p><h1>${u.title}</h1><p class="lede">${u.lead}</p></div></section>
+<section class="sec tight"><div class="wrap"><h2>How does it work?</h2><ol class="steps">${u.steps.map(([n, t]) => `<li><h3>${n}</h3><p>${t}</p></li>`).join('')}</ol></div></section>
+<section class="sec tight"><div class="wrap feat-grid"><div><h2>The tools you'll use</h2><p>Count markers, the pen and highlighter, clouds and arrows, and text callouts. All of them are on the Free plan.</p><a class="btn ghost" href="/features">See every tool</a></div>${shot(TOOLS[0])}</div></section>
+${cta()}`,
+})]));
+const comparePages = Object.fromEntries(COMPARE.map((c) => [`compare/${c.slug}/index.html`, page({
+  path: `/compare/${c.slug}`, crumb: `Survey vs ${c.them}`,
+  title: `Survey vs ${c.them}: an honest comparison | Survey`, desc: c.desc,
+  body: `<section class="page-head"><div class="wrap narrow"><h1>Survey vs ${c.them}</h1><p class="lede">${c.intro}</p></div></section>
+<section class="sec tight"><div class="wrap vs">
+  <article><h2>Where ${c.them} is stronger</h2><ul class="ticks">${c.themBest.map((x) => `<li>${x}</li>`).join('')}</ul></article>
+  <article><h2>Where Survey is stronger</h2><ul class="ticks">${c.usBest.map((x) => `<li>${x}</li>`).join('')}</ul></article>
+</div></section>
+<section class="sec tight"><div class="wrap narrow"><h2>Which one should you pick?</h2><p>${c.pick}</p><p class="fine">We make Survey, so read this with that in mind. Check ${c.them}'s own site for its current features and prices.</p></div></section>
+${cta('Try Survey free on your own drawings')}`,
+})]));
+
+const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq };
 for (const [p, html] of Object.entries(out)) {
   const f = join(root, p);
   mkdirSync(dirname(f), { recursive: true });
   writeFileSync(f, html);
 }
 
-const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/privacy.html', '/terms.html'];
+const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), '/privacy.html', '/terms.html'];
 writeFileSync(join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></url>`).join('\n')}
@@ -360,6 +431,8 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Devices](${ORIGIN}/devices): desktop, tablet and phone
 - [Pricing](${ORIGIN}/pricing): Free, Pro and Enterprise plans
 - [FAQ](${ORIGIN}/faq): common questions
+${USES.map((u) => `- [${u.name}](${ORIGIN}/use-cases/${u.slug}): ${u.desc}`).join('\n')}
+${COMPARE.map((c) => `- [Survey vs ${c.them}](${ORIGIN}/compare/${c.slug}): ${c.desc}`).join('\n')}
 
 ## Optional
 
