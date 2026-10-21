@@ -5,6 +5,7 @@
 export const WHATS_NEW = [
   { date: '2026-10-21', items: [
     'Free PDF tools: PDF to Word (also as PDF to DOCX) and PDF to Markdown. They get the text out with its paragraphs, headings and lists, ready to edit or to paste into an AI tool.',
+    'Free PDF tools: split a PDF into parts under a size like 10 MB, check every page\'s size (ARCH D, 11x17, A1), and add a logo or stamp image to pages.',
     'PDF tools inside the app: from a document\'s menu in Documents, the viewer\'s Export menu or the phone More menu. Pick several documents to merge them into one PDF. Results save as a new document.',
     'Documents shows "–" for the page count while a file is still loading, and hints that a double-click opens it.',
     'Account settings has a "Download my data" button that gives you a ZIP of your files and work.',

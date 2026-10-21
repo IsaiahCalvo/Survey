@@ -19,6 +19,9 @@ import grayscalePdf from './grayscale-pdf.mjs';
 import pdfToWord from './pdf-to-word.mjs';
 import pdfToMarkdown from './pdf-to-markdown.mjs';
 import pdfToDocx from './pdf-to-docx.mjs';
+import splitBySize from './split-by-size.mjs';
+import pdfPageSizes from './pdf-page-sizes.mjs';
+import addImageToPdf from './add-image-to-pdf.mjs';
 
 export default [
   ocrPdf,
@@ -40,4 +43,7 @@ export default [
   pdfToWord,
   pdfToMarkdown,
   pdfToDocx,
+  splitBySize,
+  pdfPageSizes,
+  addImageToPdf,
 ];

@@ -369,7 +369,9 @@ function defaults(file) {
   const o = {};
   for (const opt of T.options || []) {
     if (opt.type === 'pages') continue;
-    o[opt.key] = typeof opt.def === 'function' ? opt.def(file) : opt.def;
+    // A picked extra file (type 'file') stays when the main file changes.
+    if (opt.type === 'file') o[opt.key] = S.opts[opt.key] || null;
+    else o[opt.key] = typeof opt.def === 'function' ? opt.def(file) : opt.def;
   }
   return o;
 }
@@ -441,6 +443,7 @@ async function addFiles(list) {
   }
   if (S.files.length && (!MULTIPLE || !Object.keys(S.opts).length)) S.opts = defaults(S.files[0]);
   setBusy(null);
+  if (T.auto && S.files.length && !S.error) run();
 }
 
 function dispose(item) {
@@ -663,6 +666,10 @@ function optionsView() {
       fields.push(h('div', { class: 'opt' }, h('span', { class: 'olabel' }, opt.label), control));
       continue;
     }
+    if (opt.type === 'file') {
+      fields.push(extraFileField(opt, set));
+      continue;
+    }
     if (opt.type === 'check') {
       fields.push(h('label', { class: 'opt check' }, h('input', { type: 'checkbox', checked: S.opts[opt.key], onchange: (e) => set(e.target.checked, opt.rerender) }), h('span', {}, opt.label)));
       continue;
@@ -702,6 +709,26 @@ function optionsView() {
     fields.push(h('div', { class: 'opt' }, h('span', { class: 'olabel' }, 'Pages'), h('span', { class: 'ohelp', 'data-pick-count': true }, pickCount(file))));
   }
   return fields.length ? h('div', { class: 'opts' }, fields) : null;
+}
+
+// An option that takes a second file, like the image for Add image to PDF.
+// Its value is { name, bytes, type, url } or null.
+function extraFileField(opt, set) {
+  const id = `opt-${opt.key}`;
+  const now = S.opts[opt.key];
+  const input = h('input', {
+    id, type: 'file', accept: opt.accept, class: 'ofile',
+    onchange: async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      if (now?.url) URL.revokeObjectURL(now.url);
+      set({ name: f.name, type: f.type, bytes: new Uint8Array(await f.arrayBuffer()), url: URL.createObjectURL(f) }, true);
+    },
+  });
+  return h('div', { class: 'opt' }, h('span', { class: 'olabel' }, opt.label),
+    now && h('div', { class: 'opick' }, h('img', { src: now.url, alt: '' }), h('span', {}, now.name)),
+    h('label', { class: 'btn ghost', for: id }, now ? 'Change' : (opt.pick || 'Choose a file')), input,
+    opt.help && h('span', { class: 'ohelp' }, opt.help));
 }
 
 let picker;
@@ -746,7 +773,7 @@ async function run() {
       progress('Packing the ZIP');
       const first = S.files[0];
       const zipName = `${S.files.length === 1 ? base(first.name) : 'files'}-${TOOL_ID}.zip`;
-      outputs = [{ name: zipName, bytes: makeZip(outputs), type: 'application/zip', count: outputs.length, parts: outputs }];
+      outputs = [{ name: zipName, bytes: makeZip(outputs), type: 'application/zip', count: outputs.length, parts: outputs, note: outputs.find((o) => o.note)?.note }];
     }
     S.result = outputs[0];
     noteFreeToolStep('result', TOOL_ID);
@@ -771,12 +798,13 @@ function resultView() {
   }
   if (r.count) lines.push(h('p', {}, `${r.count} files in one ZIP.`));
   if (r.note) lines.push(h('p', { class: 'tnote' }, r.note));
+  if (r.view) lines.push(r.view(h));
   return h('div', { class: 'result', role: 'status' },
-    h('h2', {}, 'Your file is ready'),
+    h('h2', {}, r.title || 'Your file is ready'),
     ...lines,
     h('p', { class: 'rname' }, r.name, h('span', {}, ` · ${fmtSize(r.bytes.length)}`)),
     h('div', { class: 'ract' },
-      h('button', { type: 'button', class: 'btn primary lg', onclick: () => saveFile(r.bytes, r.name, r.type) }, 'Download'),
+      h('button', { type: 'button', class: 'btn primary lg', onclick: () => saveFile(r.bytes, r.name, r.type) }, r.saveLabel || 'Download'),
       h('button', { type: 'button', class: 'btn ghost lg', onclick: () => { S.result = null; render(); } }, 'Back'),
       h('button', { type: 'button', class: 'btn ghost lg', onclick: () => { disposeAll(); S.result = null; render(); } }, 'Start over')),
     r.type === PDF_TYPE
