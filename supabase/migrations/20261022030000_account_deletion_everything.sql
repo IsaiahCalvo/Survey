@@ -9,7 +9,9 @@
 --    else's document is keyed by that document, so it stays with its owner.
 --    The edge function calls this BEFORE the rows go, because media is keyed by
 --    document id; if storage removal then fails, archive-purge-sweep removes
---    the orphaned media and a retry still finds every <uid>/ object.
+--    the orphaned media and a retry still finds every <uid>/ object. It also
+--    names the survey JSON sidecars (documents/<project_id>/<doc_id>_data.json)
+--    of the person's documents and anything else under their projects.
 -- 2. delete_account_owned_rows(uid) now also:
 --    - hands the person's markup on other people's documents to each
 --      document's owner (document_annotations.user_id cascades, so it would
@@ -46,6 +48,18 @@ begin
     select d.id::text as doc_id, d.file_path
     from public.documents d
     where d.user_id = target_user_id
+  ),
+  owned_projects as (
+    select p.id::text as project_id
+    from public.projects p
+    where p.user_id = target_user_id
+  ),
+  others_filed as (
+    select d.id::text as doc_id
+    from public.documents d
+    join public.projects p on p.id = d.project_id
+    where p.user_id = target_user_id
+      and d.user_id <> target_user_id
   )
   select o.bucket_id, o.name
   from storage.objects o
@@ -53,6 +67,18 @@ begin
     and (
       split_part(o.name, '/', 1) = target_user_id::text
       or split_part(o.name, '/', 1) in (select doc_id from owned_docs)
+      -- Survey JSON sidecars: documents/<project_id>/<document_id>_data.json.
+      or (
+        o.bucket_id = 'documents'
+        and split_part(o.name, '/', 2) in (select doc_id || '_data.json' from owned_docs)
+      )
+      -- Anything else under the person's projects, except the sidecars of
+      -- other people's documents, which account_deletion_sidecar_moves keeps.
+      or (
+        o.bucket_id = 'documents'
+        and split_part(o.name, '/', 1) in (select project_id from owned_projects)
+        and split_part(o.name, '/', 2) not in (select doc_id || '_data.json' from others_filed)
+      )
       or (
         o.bucket_id = 'documents'
         and o.name in (select file_path from owned_docs where file_path is not null)
@@ -68,6 +94,38 @@ $$;
 
 revoke all on function public.account_deletion_storage_objects(uuid) from public, anon, authenticated;
 grant execute on function public.account_deletion_storage_objects(uuid) to service_role;
+
+-- Sidecars of other people's documents filed in the person's projects. Those
+-- documents move to a new project (below), and the app reads the sidecar at
+-- <project_id>/<document_id>_data.json, so the edge function moves each one to
+-- the document's new project once the rows have changed. Called before them.
+create or replace function public.account_deletion_sidecar_moves(target_user_id uuid)
+returns table (name text, document_id uuid)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.role() is distinct from 'service_role' then
+    raise exception 'service role required';
+  end if;
+
+  return query
+  select o.name, d.id
+  from public.documents d
+  join public.projects p on p.id = d.project_id
+  join storage.objects o
+    on o.bucket_id = 'documents'
+   and o.name = d.project_id::text || '/' || d.id::text || '_data.json'
+  where p.user_id = target_user_id
+    and d.user_id <> target_user_id
+  order by o.name;
+end;
+$$;
+
+revoke all on function public.account_deletion_sidecar_moves(uuid) from public, anon, authenticated;
+grant execute on function public.account_deletion_sidecar_moves(uuid) to service_role;
 
 create or replace function public.delete_account_owned_rows(target_user_id uuid)
 returns void

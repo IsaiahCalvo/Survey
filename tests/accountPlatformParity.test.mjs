@@ -94,9 +94,11 @@ test('delete-account function verifies caller and performs retry-safe ordered de
   assert.match(source, /body\?\.confirmation !== 'DELETE'/);
   assert.match(source, /caller\.auth\.getUser\(\)/);
   assert.match(source, /deleteStripeCustomer\(stripe, subscription\?\.stripe_customer_id\)/);
-  assert.match(source, /\.rpc\('account_deletion_storage_objects'[\s\S]*\.range\(/);
+  assert.match(source, /\.rpc\(fn, \{ target_user_id: userId \}\)\s*\.range\(/);
+  assert.match(source, /'account_deletion_storage_objects'/);
+  assert.match(source, /'account_deletion_sidecar_moves'/);
   // Media is keyed by document id, so the file list is taken before the rows go.
-  assert.match(source, /storedObjects = await listOwnedStorage\(admin, user\.id\);\s*await deleteOwnedRows/);
+  assert.match(source, /storedObjects = await listOwnedStorage\(admin, user\.id\);\s*sidecarMoves = await listSidecarMoves\(admin, user\.id\);\s*await deleteOwnedRows/);
   assert.match(source, /storage\.from\(bucket\)\.remove\(paths\.slice/);
   assert.match(source, /admin\.rpc\('delete_account_owned_rows'/);
   assert.match(source, /deleteDatabaseRows:[\s\S]*removeStorage:[\s\S]*deleteAuthUser:/);

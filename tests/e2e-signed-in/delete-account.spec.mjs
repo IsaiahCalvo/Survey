@@ -109,6 +109,14 @@ test('deleting an account removes everything the person owns, and only that', as
   const friendLoose = await addDocument(admin, friend, { name: `Friend loose ${RUN}`, sha });
   const friendInLeaverProject = await addDocument(admin, friend, { projectId: project, name: `Friend filed ${RUN}`, sha });
 
+  // Survey JSON sidecars live at <project>/<document>_data.json.
+  const sidecar = (projectId, documentId) => `${projectId}/${documentId}_data.json`;
+  // The bucket only takes PDF and Excel types, so stand one in; the path is
+  // what deletion keys on.
+  for (const docId of [own.id, friendInLeaverProject.id]) {
+    await must('sidecar', admin.storage.from('documents').upload(sidecar(project, docId), PDF, { contentType: 'application/pdf' }));
+  }
+
   await must('email log', admin.from('email_send_events').insert({ user_id: leaver.id, template: 'invite', recipient: friend.email }));
 
   // An outside AI agent the leaver let in.
@@ -131,7 +139,8 @@ test('deleting an account removes everything the person owns, and only that', as
   expect(await must('markup', admin.from('document_annotations').select('id').eq('annotation_id', ownMarkup))).toEqual([]);
   expect(await must('email log', admin.from('email_send_events').select('id').eq('user_id', leaver.id))).toEqual([]);
   expect(await must('shares', admin.from('document_collaborators').select('id').eq('document_id', own.id))).toEqual([]);
-  for (const [bucket, path] of [['documents', own.filePath], ['documents', nested], ['survey-media', ownMedia], ['survey-media', friendMediaOnOwn]]) {
+  for (const [bucket, path] of [['documents', own.filePath], ['documents', nested], ['documents', sidecar(project, own.id)],
+    ['documents', sidecar(project, friendInLeaverProject.id)], ['survey-media', ownMedia], ['survey-media', friendMediaOnOwn]]) {
     expect(await exists(admin, bucket, path), `${bucket}/${path} removed`).toBe(false);
   }
 
@@ -146,6 +155,7 @@ test('deleting an account removes everything the person owns, and only that', as
   const newProject = await must('new project', admin.from('projects').select('user_id, name').eq('id', filed.project_id));
   expect(newProject).toEqual([{ user_id: friend.id, name: `Leaver project ${RUN}` }]);
   expect(await exists(admin, 'documents', friendLoose.filePath)).toBe(true);
+  expect(await exists(admin, 'documents', sidecar(filed.project_id, friendInLeaverProject.id)), 'friend survey data moved').toBe(true);
   // Filing it in the leaver's project made the leaver its owner; the friend is now.
   const filedPeople = await must('filed people', admin.from('document_collaborators')
     .select('user_id, role').eq('document_id', friendInLeaverProject.id));
@@ -164,6 +174,7 @@ test('deleting an account removes everything the person owns, and only that', as
   expect(refresh.ok, 'agent refresh refused').toBe(false);
 
   await admin.auth.admin.deleteUser(friend.id);
-  await admin.storage.from('documents').remove([shared.filePath, friendInLeaverProject.filePath, friendLoose.filePath]);
+  await admin.storage.from('documents').remove([shared.filePath, friendInLeaverProject.filePath, friendLoose.filePath,
+    sidecar(filed.project_id, friendInLeaverProject.id)]);
   await admin.storage.from('survey-media').remove([leaverMediaOnShared]);
 });
