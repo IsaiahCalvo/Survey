@@ -131,7 +131,7 @@ const run = async () => {
     await page.click(`${TOP} [data-select-tool]`); await settle();
 
     const zoomTo = async (percent) => {
-      await page.click('[aria-label="Edit zoom percentage"]');
+      await page.click('[data-rail-zoom-button]');
       const input = await page.waitForSelector('[aria-label="Zoom percentage"]');
       await input.fill(String(percent)); await input.press('Enter'); await settle(1500);
       pb = await pageBox();

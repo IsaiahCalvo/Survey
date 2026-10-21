@@ -76,7 +76,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   // state. Even when "Up to date", a user typing rapidly may want to manually
   // confirm a flush rather than wait for the auto-debounce.
   const canRetry = typeof onRetry === 'function';
-  const accessibleLabel = `${label}. ${detail} ${retryLabel}`.trim();
+  const accessibleLabel = `${String(label).replace(/(\.\.\.|…)$/, '')}. ${detail} ${retryLabel}`.trim();
 
   // UX: retry for up to ~6 seconds with exponential backoff (immediate, +1s, +2s,
   // +3s = max 4 attempts). Spinner stays orange the whole time. On success the

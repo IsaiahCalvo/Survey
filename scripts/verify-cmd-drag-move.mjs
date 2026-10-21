@@ -139,7 +139,7 @@ const run = async () => {
     const lineIndex = st.marks.find((m) => m.index !== rectIndex).index;
 
     // Zoom out to 25 %.
-    await page.click('[aria-label="Edit zoom percentage"]');
+    await page.click('[data-rail-zoom-button]');
     const zoomInput = await page.waitForSelector('[aria-label="Zoom percentage"]');
     await zoomInput.fill('25');
     await zoomInput.press('Enter');
