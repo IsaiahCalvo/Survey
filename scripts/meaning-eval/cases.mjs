@@ -30,6 +30,15 @@ export const TEMPLATE = {
   ],
 };
 
+// The answer sets templates can carry instead of Y / N / N/A (answerSets.js).
+export const ANSWER_SETS = {
+  imd: [{ value: 'Installed', tone: 'good' }, { value: 'Missing', tone: 'bad' }, { value: 'Damaged', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }],
+  works: [{ value: 'Works', tone: 'good' }, { value: 'Not working', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }],
+};
+
+/** The template a case runs on: TEMPLATE, with the case's answer set if it has one. */
+export const templateFor = (c) => (c.answerSet ? { ...TEMPLATE, answerSet: ANSWER_SETS[c.answerSet] } : TEMPLATE);
+
 const MODULE_OF = { i: 'mod-inst', c: 'mod-cx', e: 'mod-ex' };
 const LINES = Object.fromEntries(TEMPLATE.modules.map((m) => [m.id, m.categories[0].checklist.map((c) => c.id)]));
 
@@ -75,6 +84,14 @@ export const CASES = [
   { id: 'ex-mixed', module: 'mod-ex', said: "D-1-17 door's there, the hardware is beat up, and there's no sign", expect: { e117: { present: 'Y', hardware: 'N', sign: 'N' } } },
   { id: 'ex-all-good', module: 'mod-ex', said: 'D-1-17 all good', expect: { e117: all('e117', 'Y') } },
   { id: 'ex-no-sign', module: 'mod-ex', said: 'D-1-17 no signage', expect: { e117: { sign: 'N', present: 'not-N', hardware: 'not-N' } } },
+  // Templates with their own answers.
+  { id: 'imd-installed', module: 'mod-inst', answerSet: 'imd', said: 'D-1-17 is installed', expect: { i117: all('i117', 'Installed') }, note: false },
+  { id: 'imd-busted', module: 'mod-inst', answerSet: 'imd', said: "D-1-17's all in but the door is busted", expect: { i117: { cable: 'Installed', frame: 'Installed', door: 'Damaged', stub: 'Installed' } } },
+  { id: 'imd-missing', module: 'mod-inst', answerSet: 'imd', said: "D-1-17's missing the frame", expect: { i117: { frame: 'Missing' } } },
+  { id: 'imd-two-bad', module: 'mod-inst', answerSet: 'imd', said: 'D-1-17 frame is cracked and there are no stub ups', expect: { i117: { frame: 'Damaged', stub: 'Missing' } } },
+  { id: 'wnw-works', module: 'mod-cx', answerSet: 'works', said: 'D-1-17 works', expect: { c117: all('c117', 'Works') } },
+  { id: 'wnw-dead', module: 'mod-cx', answerSet: 'works', said: 'D-1-17 is dead', expect: { c117: all('c117', 'Not working') } },
+  { id: 'wnw-rex', module: 'mod-cx', answerSet: 'works', said: "D-1-17 reader's good but the REX won't release", expect: { c117: { reader: 'Works', rex: 'Not working' } } },
   // Unclear: ask, change nothing.
   { id: 'ask-name-only', module: 'mod-inst', said: 'D-1-17', ask: true },
   { id: 'ask-no-item', module: 'mod-inst', said: "it's installed", ask: true },

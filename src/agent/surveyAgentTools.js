@@ -7,7 +7,7 @@ import { answerSetFor } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
 import { MARK_COLOR_HEX, normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { markBox, visiblePageBox } from './planView.js';
-import { moduleKind, moduleMeaning } from '../../supabase/functions/_shared/surveyAgentMeaning.js';
+import { answerSetMeaning, moduleKind, moduleMeaning } from '../../supabase/functions/_shared/surveyAgentMeaning.js';
 import { boundsCover, markerBoxAroundTag, tagShape } from './planText.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
 
@@ -274,6 +274,7 @@ export function createSurveyAgentToolbox({
         content: out({
           template: b.template.name || null,
           answers: answerSetFor(b.template).map((a) => a.value),
+          ...(answerSetMeaning(answerSetFor(b.template)) ? { answer_meaning: answerSetMeaning(answerSetFor(b.template)) } : {}),
           categories: list.map(({ module, category }) => ({
             id: category.id,
             name: category.name,

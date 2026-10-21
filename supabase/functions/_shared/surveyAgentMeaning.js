@@ -25,3 +25,53 @@ export const MODULE_MEANING = Object.freeze({
 });
 
 export const moduleMeaning = (name) => MODULE_MEANING[moduleKind(name)];
+
+// What site talk each common answer stands for. The module rules say Y and N;
+// a template with its own answer set (Installed / Missing / Damaged / N/A,
+// Works / Not working / N/A, ...) needs those mapped onto its own words, and
+// a set with two "no" answers needs telling apart ("busted" is Damaged, not
+// Missing).
+const ANSWER_WORDS = Object.freeze({
+  y: 'yes, done, good',
+  yes: 'yes, done, good',
+  n: 'no, not done, missing',
+  no: 'no, not done, missing',
+  pass: 'passed, works, good, checks out',
+  fail: 'failed, doesn\'t work, dead',
+  good: 'good, fine, solid, like new',
+  fair: 'okay, so-so, some wear, could be better',
+  poor: 'bad, rough, beat up, falling apart, broken',
+  installed: 'installed, in, done, mounted, pulled, run, set, prepped',
+  missing: 'missing, not there, not in, not installed, not in yet, gone, never put in',
+  damaged: 'damaged, busted, broken, cracked, bent, smashed, beat up, hanging off (there, but broken)',
+  works: 'works, working, good, tested, passed, online, checks out',
+  'not working': 'not working, doesn\'t work, dead, failed, offline, no power, won\'t release',
+  'n/a': 'doesn\'t apply, not here, no such part, not part of this job',
+});
+
+const KNOWN_TONE = Object.freeze({
+  y: 'good', yes: 'good', pass: 'good', good: 'good', installed: 'good', works: 'good',
+  n: 'bad', no: 'bad', fail: 'bad', poor: 'bad', missing: 'bad', damaged: 'bad', 'not working': 'bad',
+});
+
+const isDefaultSet = (values) => values.length === 3 && values[0] === 'Y' && values[1] === 'N' && values[2] === 'N/A';
+
+/**
+ * How to map the module rules' Y and N onto the template's own answers, or
+ * null for the plain Y / N / N/A set. `set` is [{ value, tone }] or values.
+ */
+export function answerSetMeaning(set) {
+  const list = (Array.isArray(set) ? set : []).map((a) => (typeof a === 'string' ? { value: a } : a)).filter((a) => a?.value);
+  const values = list.map((a) => a.value);
+  if (!values.length || isDefaultSet(values)) return null;
+  const words = list.map((a) => {
+    const hint = ANSWER_WORDS[String(a.value).toLowerCase()];
+    return hint ? `"${a.value}" for ${hint}` : `"${a.value}"`;
+  });
+  const tone = (a) => a.tone || KNOWN_TONE[String(a.value).toLowerCase()];
+  const good = list.find((a) => tone(a) === 'good')?.value || values[0];
+  const bad = list.filter((a) => tone(a) === 'bad').map((a) => a.value);
+  const mapping = `Where the rules say Y, use "${good}"${bad.length ? `; where they say N, use ${bad.map((v) => `"${v}"`).join(' or ')}` : ''}.`;
+  const pick = bad.length > 1 ? ` Pick between ${bad.map((v) => `"${v}"`).join(' and ')} by their words, not by order.` : '';
+  return `This survey answers with ${values.join(' / ')}: ${words.join('; ')}. ${mapping}${pick}`;
+}
