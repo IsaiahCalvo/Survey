@@ -5,4 +5,6 @@
 export const SPEED_BUDGET_MS = {
   home: 3_000,
   firstPage: 4_000,
+  bigFirstPage: 5_000,
+  bigMarks: 6_000,
 };

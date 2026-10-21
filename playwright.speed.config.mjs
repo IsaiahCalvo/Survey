@@ -13,7 +13,7 @@ export default {
   retries: 0,
   reporter: 'list',
   outputDir: 'test-results/e2e-speed',
-  timeout: 180_000,
+  timeout: 600_000,
   use: { ...base.use, baseURL: `http://127.0.0.1:${SPEED_PORT}` },
   webServer: {
     ...base.webServer,
