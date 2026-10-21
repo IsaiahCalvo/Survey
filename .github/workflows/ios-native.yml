@@ -251,6 +251,10 @@ jobs:
       OUT: ${{ github.workspace }}/ios-flow-out
       DEVICE: iPhone 16
       BUNDLE_ID: com.kalvoe.survey
+      # The Intel runner also hosts the Colima VM, so Maestro's iOS driver
+      # starts slowly; its default wait is too short there.
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '600000'
+      MAESTRO_CLI_NO_ANALYTICS: '1'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
