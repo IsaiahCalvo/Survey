@@ -90,6 +90,10 @@ export function buildStackConfig(source) {
     if (/^project_id\s*=/.test(line)) return `project_id = "${PROJECT_ID}"`;
     if (disable.has(section) && /^enabled\s*=/.test(line)) return 'enabled = false';
     if (/^(shadow_)?port\s*=\s*543\d\d\s*$/.test(line)) return line.replace(/543(\d\d)/, '544$1');
+    // Production runs the OAuth server for outside AI agents (public/auth.md).
+    if (section === 'auth.oauth_server' && /^(enabled|allow_dynamic_registration)\s*=/.test(line)) {
+      return line.replace(/=.*/, '= true');
+    }
     if (section === 'auth' && /^site_url\s*=/.test(line)) return `site_url = "${E2E_BASE_URL}"`;
     if (section === 'auth' && /^additional_redirect_urls\s*=/.test(line)) {
       return `additional_redirect_urls = ["${E2E_BASE_URL}", "${E2E_BASE_URL.replace('127.0.0.1', 'localhost')}"]`;

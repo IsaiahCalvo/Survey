@@ -91,3 +91,14 @@ test('isAgentSession reads client_id from the token', async () => {
   assert.equal(isAgentSession(null), false);
   assert.equal(isAgentSession('Bearer garbage'), false);
 });
+
+test('agent activity log: agents\' writes are recorded, people read their own log, agents read none', () => {
+  const sql = read('supabase/migrations/20261021050000_agent_activity_log.sql');
+  assert.match(sql, /using \(user_id = auth\.uid\(\) and not public\.is_agent_session\(\)\)/);
+  assert.match(sql, /if v_uid is null or not public\.is_agent_session\(\) then\s+return null;/);
+  for (const table of ['projects', 'documents', 'document_annotations', 'survey_items']) assert.match(sql, new RegExp(`'${table}'`));
+  assert.match(sql, /interval '90 days'/);
+  const page = read('src/home/AgentLinkPage.jsx');
+  assert.match(page, /from\('agent_activity'\)/);
+  assert.match(page, /rpc\('my_agent_last_active'\)/);
+});
