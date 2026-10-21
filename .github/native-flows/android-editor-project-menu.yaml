@@ -38,11 +38,10 @@ name: android-editor-project-menu
 - extendedWaitUntil:
     visible: ".*E2E Sample Project.*"
     timeout: 60000
-# Each project row ends in a "More" button (aria-label="More") that opens
-# its menu.
-- tapOn:
-    text: "More"
-    rightOf: ".*E2E Sample Project.*"
+# Each project row ends in a "More" button (aria-label="More").
+# android-editor-project-menu.sh taps it in the web view between the two
+# parts split at this marker (Maestro's rightOf missed it on the phone row).
+# --- split: open menu ---
 - extendedWaitUntil:
     visible: "Add member"
     timeout: 30000

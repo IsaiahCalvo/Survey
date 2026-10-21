@@ -250,7 +250,7 @@ jobs:
             timeout 300 bash .github/native-flows/android-delete-point.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-voice-mic.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-undo-toast-check.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            maestro test --format junit --output "$OUT/report-editor.xml" --test-output-dir "$OUT" .github/native-flows/android-editor-project-menu.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            timeout 400 bash .github/native-flows/android-editor-project-menu.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             adb reverse --remove-all
             maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-pdf-tools-offline.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
