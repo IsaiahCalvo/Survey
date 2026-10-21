@@ -261,8 +261,13 @@ const WRITE_TOOLS = [
 
 // gunzip a snapshot stored with encoding_version = 2.
 async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
-  const stream = new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')));
-  return new Uint8Array(await stream.arrayBuffer());
+  const ds = new DecompressionStream('gzip');
+  const writer = ds.writable.getWriter();
+  const chunk = new Uint8Array(bytes.length); // a plain ArrayBuffer-backed view
+  chunk.set(bytes);
+  writer.write(chunk);
+  writer.close();
+  return new Uint8Array(await new Response(ds.readable).arrayBuffer());
 }
 
 // Rebuild the document's Yjs annotation doc from its snapshot + WAL tail — the
