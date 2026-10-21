@@ -75,3 +75,20 @@ test('a negated or pending status is never taken for Complete', () => {
   assert.equal(findCompleteEntity(pending), null);
   assert.equal(findCompleteEntity([...pending, { id: 'c', name: '100% Complete' }]).id, 'c');
 });
+
+test('every preset answer set: good and neutral answers count toward Complete, bad ones never do', async () => {
+  const { ANSWER_SET_PRESETS } = await import('../src/services/answerSets.js');
+  const checklist = [{ id: 'a' }, { id: 'b' }];
+  for (const preset of ANSWER_SET_PRESETS) {
+    for (const answer of preset.answers) {
+      const responses = { a: { selection: answer.value }, b: { selection: answer.value } };
+      assert.equal(
+        isChecklistAllYesOrNA(checklist, responses, preset.answers),
+        answer.tone !== 'bad',
+        `${preset.label}: "${answer.value}" (${answer.tone})`,
+      );
+    }
+  }
+  assert.ok(ANSWER_SET_PRESETS.some((p) => p.id === 'installed-missing-damaged-na'));
+  assert.ok(ANSWER_SET_PRESETS.some((p) => p.id === 'works-not-working-na'));
+});
