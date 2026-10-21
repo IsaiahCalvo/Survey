@@ -9,6 +9,7 @@
 // free model while testing, no Anthropic). Secrets:
 //   GROQ_API_KEY: free Groq tier, used for the model and for Whisper speech
 //     to text unless the SURVEY_AGENT_* values below say otherwise.
+//   GROQ_BASE_URL: test only; sends Groq calls to a fake (E2E stack).
 //   SURVEY_AGENT_BASE_URL / SURVEY_AGENT_API_KEY / SURVEY_AGENT_MODEL: any
 //     other provider (Cloudflare Workers AI, OpenRouter, a paid model later).
 //   SURVEY_AGENT_PRICE_IN / SURVEY_AGENT_PRICE_OUT: USD per million tokens
@@ -78,11 +79,17 @@ function capMicros() {
   return Math.round(envNumber('SURVEY_AGENT_MONTHLY_CAP_USD', 5) * 1_000_000);
 }
 
+// GROQ_BASE_URL points every Groq call (chat, hearing, voice) somewhere
+// else; only the signed-in E2E stack sets it, to a fake Groq on the host.
+function groqBase() {
+  return (Deno.env.get('GROQ_BASE_URL') || SURVEY_AGENT_DEFAULT_PROVIDER.baseUrl).replace(/\/$/, '');
+}
+
 function modelProvider() {
   const key = Deno.env.get('SURVEY_AGENT_API_KEY') || Deno.env.get('GROQ_API_KEY');
   if (!key) return null;
   const custom = Boolean(Deno.env.get('SURVEY_AGENT_API_KEY'));
-  const baseUrl = (Deno.env.get('SURVEY_AGENT_BASE_URL') || (custom ? '' : SURVEY_AGENT_DEFAULT_PROVIDER.baseUrl)).replace(/\/$/, '');
+  const baseUrl = (Deno.env.get('SURVEY_AGENT_BASE_URL') || (custom ? '' : groqBase())).replace(/\/$/, '');
   const model = Deno.env.get('SURVEY_AGENT_MODEL') || SURVEY_AGENT_DEFAULT_PROVIDER.model;
   return {
     key,
@@ -90,7 +97,7 @@ function modelProvider() {
     model,
     models: modelChain(model, {
       fallbackEnv: Deno.env.get('SURVEY_AGENT_FALLBACK_MODELS') ?? null,
-      groqDefault: baseUrl === SURVEY_AGENT_DEFAULT_PROVIDER.baseUrl,
+      groqDefault: baseUrl === groqBase(),
     }),
     prices: { input: envNumber('SURVEY_AGENT_PRICE_IN', 0), output: envNumber('SURVEY_AGENT_PRICE_OUT', 0) },
   };
@@ -104,7 +111,7 @@ const modelRest = createModelRest();
 
 function transcriber() {
   const groq = Deno.env.get('GROQ_API_KEY');
-  if (groq) return { url: 'https://api.groq.com/openai/v1/audio/transcriptions', key: groq, model: 'whisper-large-v3-turbo', microsPerSecond: 12 };
+  if (groq) return { url: `${groqBase()}/audio/transcriptions`, key: groq, model: 'whisper-large-v3-turbo', microsPerSecond: 12 };
   const openai = Deno.env.get('OPENAI_API_KEY');
   if (openai) return { url: 'https://api.openai.com/v1/audio/transcriptions', key: openai, model: 'gpt-4o-mini-transcribe', microsPerSecond: 50 };
   return null;
@@ -114,7 +121,7 @@ function speaker() {
   const groq = Deno.env.get('GROQ_API_KEY');
   if (!groq || Deno.env.get('SURVEY_AGENT_TTS') === 'off') return null;
   return {
-    url: 'https://api.groq.com/openai/v1/audio/speech',
+    url: `${groqBase()}/audio/speech`,
     key: groq,
     model: Deno.env.get('SURVEY_AGENT_TTS_MODEL') || 'canopylabs/orpheus-v1-english',
     voice: Deno.env.get('SURVEY_AGENT_TTS_VOICE') || 'hannah',

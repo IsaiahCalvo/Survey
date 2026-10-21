@@ -401,6 +401,9 @@ test('all official real-account entry points use the verified lease loader', () 
   // Big-document open profiler seed: the same seeded local-stack accounts,
   // and it refuses any Supabase URL but 127.0.0.1 / localhost.
   const localStackPerfSeeds = new Set(['scripts/perf/big-doc-seed.mjs']);
+  // The signed-in E2E stack's own seeder: signs in as its seeded owner to
+  // write the voice-walk survey, and refuses any host but 127.0.0.1 / localhost.
+  const localStackSeeders = new Set(['scripts/e2e-local-supabase.mjs']);
   const signedInConfig = readFileSync(join(root, 'playwright.e2e-signed-in.config.mjs'), 'utf8');
   assert.match(signedInConfig, /refusing non-local Supabase host/);
   const credentialMarker =
@@ -445,6 +448,13 @@ test('all official real-account entry points use the verified lease loader', () 
       localStackPerfSeeds.has(relativePath)
       && source.includes('refusing non-local Supabase URL')
       && source.includes('(127\\.0\\.0\\.1|localhost)')
+    ) {
+      continue;
+    }
+    if (
+      localStackSeeders.has(relativePath)
+      && source.includes('refusing to seed non-local Supabase host')
+      && source.includes("['127.0.0.1', 'localhost'].includes(host)")
     ) {
       continue;
     }
