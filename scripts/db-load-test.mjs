@@ -5,6 +5,7 @@
 //
 //   node scripts/db-load-test.mjs                      # defaults below
 //   LOAD_STAGES=10,50,100 LOAD_STAGE_SECONDS=30 node scripts/db-load-test.mjs
+//   LOAD_KEEP=1 ...   # leave the accounts and rows behind to EXPLAIN queries
 //
 // Each virtual user is a real signed-in account with its own project, document
 // and seeded markups. With no pause between requests it loops over what the app
@@ -134,12 +135,20 @@ async function cleanup({ url, serviceKey }) {
 }
 
 // Same keyset paging as loadPagedAnnotationRows() in annotationCloudSync.js.
+// LOAD_READ=table reads through the table (RLS per row), the path before
+// get_document_annotation_page(); the default matches the app.
+const READ_VIA_TABLE = process.env.LOAD_READ === 'table';
 async function openMarkups(account) {
   let cursor = null;
   for (;;) {
-    let query = account.client.from('document_annotations')
-      .select(READ_COLUMNS).eq('document_id', account.documentId).order('id', { ascending: true }).limit(1000);
-    if (cursor !== null) query = query.gt('id', cursor);
+    let query;
+    if (READ_VIA_TABLE) {
+      query = account.client.from('document_annotations')
+        .select(READ_COLUMNS).eq('document_id', account.documentId).order('id', { ascending: true }).limit(1000);
+      if (cursor !== null) query = query.gt('id', cursor);
+    } else {
+      query = account.client.rpc('get_document_annotation_page', { p_document_id: account.documentId, p_after_id: cursor, p_limit: 1000 });
+    }
     const { data, error } = await query;
     if (error || data.length < 1000) return { error };
     cursor = data[data.length - 1].id;
@@ -229,7 +238,8 @@ async function main() {
     for (const op of r.ops) lines.push(`| ${op.name} | ${op.count} | ${ms(op.p50)} | ${ms(op.p95)} | ${op.errors}${op.sample ? ` (${op.sample.slice(0, 80)})` : ''} |`);
     lines.push('');
   }
-  console.log(`[db-load] removed ${await cleanup(env)} load accounts`);
+  if (process.env.LOAD_KEEP === '1') console.log('[db-load] LOAD_KEEP=1: load accounts left in place');
+  else console.log(`[db-load] removed ${await cleanup(env)} load accounts`);
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, lines.join('\n'));
   console.log(`[db-load] report written to ${path.relative(ROOT, OUT)}`);

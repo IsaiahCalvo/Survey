@@ -93,10 +93,30 @@ function isAllTypesOwnedRow(row) {
 // loop is sequential because each page depends on the previous page's last id;
 // the primary key is unique + non-null, so the cursor can never skip or duplicate
 // a row.
-async function loadPagedAnnotationRows(documentId, applyFilters) {
+//
+// get_document_annotation_page() runs the same access check once per page
+// instead of once per row (about a third less database time per open in
+// scripts/db-load-test.mjs). Until that migration is on the database the app
+// talks to, fall back to the table read.
+let annotationPageRpcMissing = false;
+const isMissingFunctionError = (error) =>
+  error?.code === 'PGRST202' || error?.code === '42883';
+
+async function loadPagedAnnotationRows(documentId, rpcFilter, applyFilters) {
   return collectKeysetRows({
     pageSize: SUPABASE_PAGE_SIZE,
     fetchPage: async (cursorId) => {
+      if (!annotationPageRpcMissing) {
+        const { data, error } = await supabase.rpc('get_document_annotation_page', {
+          p_document_id: documentId,
+          p_after_id: cursorId,
+          p_limit: SUPABASE_PAGE_SIZE,
+          p_types: rpcFilter?.types ?? null,
+          p_fabric_types: rpcFilter?.fabricTypes ?? null,
+        });
+        if (!isMissingFunctionError(error)) return { data, error };
+        annotationPageRpcMissing = true;
+      }
       let query = supabase
         .from('document_annotations')
         .select(ANNOTATION_READ_COLUMNS)
@@ -127,6 +147,7 @@ const ALL_TYPES_OWNED_OR_FILTER = [
 async function loadAllTypesOwnedRowsForDocument(documentId) {
   const owned = await loadPagedAnnotationRows(
     documentId,
+    { types: NON_HIGHLIGHT_TYPES, fabricTypes: SURVEY_MARKER_TYPE_VALUES },
     (query) => query.or(ALL_TYPES_OWNED_OR_FILTER)
   );
   if (owned.error) return owned;
