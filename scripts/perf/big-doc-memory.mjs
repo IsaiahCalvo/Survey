@@ -313,7 +313,7 @@ async function oneRun(browser, size) {
   const perPage = box.sh / Math.max(1, box.pages);
   const vp = DEVICES[size].viewport;
   await page.mouse.move(vp.width / 2, vp.height / 2);
-  const panProfile = ZOOM_PROFILE && !profiled[`pan-${size}`] ? ZOOM_PROFILE.replace(/zoom(\.cpuprofile)?$/, '').replace(/\/?$/, '/') + `pan-${size}.cpuprofile` : null;
+  const panProfile = ZOOM_PROFILE && !profiled[`pan-${size}`] ? ZOOM_PROFILE.replace(/(\.cpuprofile)?$/, `-pan-${size}.cpuprofile`) : null;
   if (panProfile) {
     profiled[`pan-${size}`] = true;
     await cdp.send('Profiler.enable');

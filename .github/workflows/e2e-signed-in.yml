@@ -159,7 +159,7 @@ jobs:
           if want memory; then RUNS=3 SIZES=phone,tablet,desktop HEAP_TOP=40 ZOOM_PROFILE=perf-out/zoom OUT=perf-out/memory.json node scripts/perf/big-doc-memory.mjs | tee perf-out/memory.txt; fi
           if want profile; then PROFILE=perf-out/open SIZES=phone,tablet node scripts/perf/big-doc-open.mjs || true; fi
           for f in perf-out/*.cpuprofile; do echo "== $f"; DIST=dist-perf TOP=40 node scripts/perf/cpuprofile-top.mjs "$f" || true; done
-          { echo '### Big drawing set'; echo '```'; grep MEDIANS perf-out/*.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### Big drawing set'; echo '```'; grep MEDIANS perf-out/*.txt 2>/dev/null || echo 'no timing suites in this run'; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload perf results
         if: ${{ inputs.perf && always() }}
