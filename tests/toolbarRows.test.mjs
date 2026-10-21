@@ -142,8 +142,10 @@ test('AppShell: tools up top, settings in row 2, the Aa bar in row 3', () => {
   assert.ok(slots.indexOf('data-chrome-format-row="true"') < slots.indexOf('data-chrome-text-format-row="true"'),
     'row 2 comes before row 3');
   assert.match(slots, /height: 'var\(--chrome-bar-h\)'/);
-  // Row 3: the Aa bar drops into its own slot under row 2.
-  assert.match(appShell, /\{showTextFormatting && !surveyRowShown && textFormatRowEl && createPortal\(/);
+  // DELIBERATE ASSERTION CHANGE — first run walk 2026-10-21 (#10): the Aa
+  // bar's controls sit inside row 2 (inline, no portal into row 3), so the
+  // Text tool shows one settings row instead of two stacked over the page.
+  assert.match(appShell, /\{showTextFormatting && !surveyRowShown && \([\s\S]{0,4000}?<div data-rich-text-toolbar ref=\{setTextBarEl\}/);
   // Both slots are always drawn (never re-added after the Survey row or the
   // text-selection bar); the phone keeps row 2 hidden (formatRowShown is false
   // there) and row 3 empty.
@@ -254,7 +256,8 @@ test('RULED 2026-09-28 owner: one motion for row 2 (in-place crossfade), row 3 d
   // Was w48 (rows 2 and 3 glide when they re-centre); the glide is gone.
   assert.doesNotMatch(appShell, /useRowSlide\(/);
   assert.match(appShell, /useRowCrossfade\(formatHolderEl, formatGhostLayerEl, chromeMotion\);/);
-  assert.match(appShell, /useDropInRow\(textBarEl, textFormatRowEl, chromeMotion\);/);
+  // #10 (2026-10-21): the text controls ride row 2's crossfade, no drop-in of their own.
+  assert.match(appShell, /useDropInRow\(textBarEl, textFormatRowEl, false\);/);
   assert.match(appShell, /<div data-rich-text-toolbar ref=\{setTextBarEl\}/);
   const motion = readFileSync(new URL('../src/utils/loadoutTransition.js', import.meta.url), 'utf8');
   assert.doesNotMatch(motion, /slideRow|swapSharedNothing|ROW_SLIDE_MS/);
