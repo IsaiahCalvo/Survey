@@ -254,6 +254,7 @@ import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVi
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
 import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON } from './utils/annotationCreationCommit';
+import { createCallout as makeCalloutDraft, defaultCalloutStyle } from './components/Callout/types';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
@@ -33147,6 +33148,60 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           { source: 'webmcp:poly:create', action: 'fabric:create' });
         if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
         return { ok: true, id: obj.id || obj.data?.id };
+      },
+      // Add a callout: a text box with a leader that points at a page spot.
+      // Coordinates come in PDF points; callouts store them normalized to the
+      // page, so convert here. The knee (leader bend) is placed the same way
+      // the drawn callout does. Commits through the shared callout pipeline.
+      addCallout: ({ page, text, arrowX, arrowY, boxX, boxY, boxWidth, strokeColor, fillColor }) => {
+        const { pageSizes: sizes, viewerId, annotationScope } = agentMarkerStateRef.current;
+        const size = sizes?.[page];
+        if (!size) return { ok: false, reason: 'not-found' };
+        if (!String(text || '').trim()) return { ok: false, reason: 'empty' };
+        const W = size.width;
+        const H = size.height;
+        const inPage = (px, py) => px >= 0 && py >= 0 && px <= W && py <= H;
+        if (!inPage(arrowX, arrowY) || !inPage(boxX, boxY)) return { ok: false, reason: 'off-page' };
+        const boxW = Math.max(40, Number(boxWidth) || 120);
+        // Knee sits 40 page-points out from the arrow toward the box centre,
+        // mirroring the creation gesture in SVGAnnotationLayer.
+        const tbCenter = { x: boxX + boxW / 2, y: boxY + 16 };
+        const kneeDx = tbCenter.x - arrowX;
+        const kneeDy = tbCenter.y - arrowY;
+        const kneeDist = Math.hypot(kneeDx, kneeDy) || 1;
+        const callout = makeCalloutDraft(
+          Number(page),
+          { x: arrowX / W, y: arrowY / H },
+          { x: (arrowX + (kneeDx / kneeDist) * 40) / W, y: (arrowY + (kneeDy / kneeDist) * 40) / H },
+          { x: boxX / W, y: boxY / H },
+          boxW / W,
+          32 / H,
+        );
+        callout.text = String(text);
+        callout.isSelected = false;
+        callout.style = {
+          ...defaultCalloutStyle,
+          ...(strokeColor ? { borderColor: strokeColor } : {}),
+          ...(fillColor ? { fillColor } : {}),
+        };
+        // Grow the box to its text before committing. A hand-drawn callout
+        // fits itself in the editor; this path never opens one, so without
+        // this a multi-line note commits at the default 32pt height and the
+        // renderer clips it (overflow:hidden) while reporting success.
+        const fitted = refitCalloutToText(callout, size, measureTextLayoutHeight);
+        if (fitted) {
+          callout.textBoxWidth = fitted.textBoxWidth;
+          callout.textBoxHeight = fitted.textBoxHeight;
+          callout.textBoxPosition = fitted.textBoxPosition;
+        }
+        const scope = annotationScope(page);
+        if (scope.selectedModuleId) callout.moduleId = scope.selectedModuleId;
+        if (scope.stampRegionId) callout.regionId = scope.activeRegionId;
+        if (viewerId) callout.meta = { ...(callout.meta || {}), authorId: viewerId };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'callout:create', action: 'callout-agent-create', pageNumber: page });
+        commitCalloutMutation(Number(page), (list) => [...list, callout],
+          { source: 'webmcp:callout:create', action: 'callout-create' });
+        return { ok: true, id: callout.id };
       },
       // Replace a text note's text (height re-fits). Gated like a human edit.
       editTextNote: (id, { text }) => {
