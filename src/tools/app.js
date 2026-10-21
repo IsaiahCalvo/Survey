@@ -5,11 +5,13 @@ import {
   ToolError, addHeaderFooter, organizePages, flattenPdf, cropPdf, readDetails, editDetails, removeAnnotations, textToPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
 } from './ops.js';
 import { compressPdf } from './compress.js';
+import { protectPdf, unlockPdf, looksEncrypted } from './qpdf.js';
 import { parsePageSet, parseRangeGroups, formatPageSet, everyN } from './ranges.js';
 import { makeZip } from './zip.js';
 import {
-  canvasCodec, openPdfjs, renderPage, prepareImage, saveFile, canvasToBytes, releaseCanvas,
+  canvasCodec, openPdfjs, renderPage, prepareImage, saveFile, canvasToBytes, releaseCanvas, runQpdf,
 } from './browser.js';
+import { makeSign } from './sign.js';
 
 const root = document.getElementById('tool');
 const TOOL_ID = root.dataset.tool;
@@ -79,9 +81,10 @@ async function fromImages(files, opts, progress) {
   const images = [];
   for (let n = 0; n < files.length; n += 1) {
     progress(`Image ${n + 1} of ${files.length}`);
-    images.push(await prepareImage(files[n].bytes, files[n].mime));
+    images.push(...await prepareImage(files[n].bytes, files[n].mime));
   }
   progress('Making the PDF');
+  if (!images.length) throw new ToolError('Add at least one image.');
   const name = files.length === 1 ? `${base(files[0].name)}.pdf` : 'images.pdf';
   return [pdfOut(name, await imagesToPdf(images, { pageSize: opts.pageSize, orientation: opts.orientation, margin: Number(opts.margin) }))];
 }
@@ -236,6 +239,40 @@ const TOOLS = {
       return [pdfOut(`${base(file.name)}.pdf`, await textToPdf(text, { font: o.font, size: Number(o.size), pageSize: o.pageSize }))];
     },
   },
+  'tiff-to-pdf': { view: 'files', hint: 'Every page of a multi-page TIFF is kept. Drag files to set the order.', options: IMAGE_OPTIONS, run: fromImages },
+  'protect-pdf': {
+    view: 'files',
+    options: [
+      { key: 'password', label: 'Password', type: 'password', def: '', autocomplete: 'new-password' },
+      { key: 'again', label: 'Type it again', type: 'password', def: '', autocomplete: 'new-password' },
+      { key: 'show', label: 'Show password', type: 'check', def: false, rerender: true },
+      { key: 'allowPrint', label: 'Let people print it', type: 'check', def: true },
+      { key: 'allowCopy', label: 'Let people copy text from it', type: 'check', def: true },
+    ],
+    async run([file], o) {
+      if (!o.password) throw new ToolError('Type a password first.');
+      if (o.password !== o.again) throw new ToolError('The two passwords don\'t match.');
+      const bytes = await protectPdf(runQpdf, file.bytes, { password: o.password, allowPrint: o.allowPrint, allowCopy: o.allowCopy });
+      return [pdfOut(`${base(file.name)}-protected.pdf`, bytes)];
+    },
+  },
+  'unlock-pdf': {
+    view: 'files', keepLock: true,
+    options: [
+      { key: 'password', label: 'Password', type: 'password', def: '', autocomplete: 'current-password', help: 'Leave it blank if the PDF opens without one and only blocks printing or copying.' },
+      { key: 'show', label: 'Show password', type: 'check', def: false, rerender: true },
+    ],
+    async run([file], o) {
+      return [pdfOut(`${base(file.name)}-unlocked.pdf`, await unlockPdf(runQpdf, file.bytes, { password: o.password }))];
+    },
+  },
+  'sign-pdf': {
+    view: 'sign',
+    prepare: (item) => sign.prepare(item),
+    async run([file]) {
+      return [pdfOut(`${base(file.name)}-signed.pdf`, await sign.run(file))];
+    },
+  },
   'organize-pdf': {
     view: 'organize', hint: 'Drag pages, or use the arrows, to change the order. Turn or remove any page.',
     async run([file]) {
@@ -282,6 +319,8 @@ const TOOLS = {
 };
 
 const T = TOOLS[TOOL_ID];
+// Only the sign tool uses it; made lazily since it needs render() below.
+let sign;
 
 // ---------------------------------------------------------------- state
 
@@ -298,11 +337,13 @@ function defaults(file) {
 }
 
 const isPdf = (f) => f.type === PDF_TYPE || /\.pdf$/i.test(f.name);
-const isImage = (f) => f.type.startsWith('image/') || /\.(jpe?g|png|gif|bmp|webp)$/i.test(f.name);
+const isImage = (f) => f.type.startsWith('image/') || /\.(jpe?g|png|gif|bmp|webp|tiff?)$/i.test(f.name);
+const isTiffFile = (f) => f.type === 'image/tiff' || /\.tiff?$/i.test(f.name);
 const isText = (f) => f.type.startsWith('text/') || /\.(txt|text|md|csv|log)$/i.test(f.name);
 const ACCEPTS = {
   pdf: { test: isPdf, input: 'application/pdf,.pdf', wrong: 'That isn\'t a PDF. Choose a file that ends in .pdf.' },
-  image: { test: isImage, input: 'image/jpeg,image/png,image/webp,image/gif,image/bmp,.jpg,.jpeg,.png,.webp,.gif,.bmp', wrong: 'Choose JPG, PNG, WebP, GIF or BMP images.' },
+  image: { test: isImage, input: 'image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff', wrong: 'Choose JPG, PNG, WebP, GIF, BMP or TIFF images.' },
+  tiff: { test: isTiffFile, input: 'image/tiff,.tif,.tiff', wrong: 'Choose TIFF images, ones that end in .tif or .tiff.' },
   text: { test: isText, input: 'text/plain,.txt,.text,.md,.csv,.log', wrong: 'Choose a plain text file, like one that ends in .txt.' },
 }[ACCEPT];
 
@@ -329,12 +370,26 @@ async function addFiles(list) {
       try {
         item.pages = (await item.pdfjs()).numPages;
       } catch (err) {
-        S.error = err?.name === 'PasswordException'
-          ? `"${file.name}" is locked with a password. Unlock it first, then try again.`
-          : `"${file.name}" could not be opened. It may be damaged.`;
-        continue;
+        const locked = err?.name === 'PasswordException';
+        if (locked && T.keepLock) {
+          item.locked = true;
+          item.doc = null;
+        } else {
+          S.error = locked
+            ? [`"${file.name}" is locked with a password. `, h('a', { href: '/tools/unlock-pdf' }, 'Unlock it'), ' first, then try again.']
+            : `"${file.name}" could not be opened. It may be damaged.`;
+          continue;
+        }
       }
-    } else if (ACCEPT === 'image') {
+      // A PDF that opens without a password but blocks printing or copying is
+      // still encrypted, which the page tools can't edit. Take the lock off
+      // first; it needs no password, so nothing is lost.
+      if (!T.keepLock && looksEncrypted(bytes)) {
+        try {
+          item.bytes = await unlockPdf(runQpdf, bytes);
+        } catch { /* the tool will explain if it can't read the file */ }
+      }
+    } else if (ACCEPT === 'image' && !isTiffFile(file)) {
       item.url = URL.createObjectURL(file);
     }
     if (T.prepare) await T.prepare(item);
@@ -421,10 +476,10 @@ function fileRow(file, i) {
     render();
   };
   const preview = file.url ? h('div', { class: 'thumb' }, h('img', { src: file.url, alt: '' }))
-    : ACCEPT === 'pdf' ? thumbSlot(file, 0) : h('div', { class: 'thumb ext' }, file.name.split('.').pop().slice(0, 4).toUpperCase());
+    : ACCEPT === 'pdf' && !file.locked ? thumbSlot(file, 0) : h('div', { class: 'thumb ext' }, file.name.split('.').pop().slice(0, 4).toUpperCase());
   const row = h('li', { class: 'frow', draggable: n > 1 ? 'true' : null, 'data-index': String(i) },
     preview,
-    h('div', { class: 'fmeta' }, h('span', { class: 'fname' }, file.name), h('span', { class: 'fsub' }, `${file.pages ? `${file.pages} page${file.pages === 1 ? '' : 's'} · ` : ''}${fmtSize(file.size)}`)),
+    h('div', { class: 'fmeta' }, h('span', { class: 'fname' }, file.name), h('span', { class: 'fsub' }, `${file.locked ? 'Locked · ' : ''}${file.pages ? `${file.pages} page${file.pages === 1 ? '' : 's'} · ` : ''}${fmtSize(file.size)}`)),
     h('div', { class: 'facts' },
       n > 1 && h('button', { type: 'button', class: 'ibtn', 'aria-label': `Move ${file.name} up`, disabled: i === 0, onclick: move(-1), html: ICON.up }),
       n > 1 && h('button', { type: 'button', class: 'ibtn', 'aria-label': `Move ${file.name} down`, disabled: i === n - 1, onclick: move(1), html: ICON.down }),
@@ -533,7 +588,7 @@ function organizeView() {
 
 function optionsView() {
   const file = S.files[0];
-  const fields = [];
+  const fields = T.view === 'sign' ? sign.fields(file) : [];
   if (T.view === 'organize') {
     const removed = file.pages - file.order.length;
     fields.push(h('div', { class: 'opt' }, h('span', { class: 'olabel' }, 'Pages'),
@@ -562,7 +617,7 @@ function optionsView() {
       continue;
     }
     if (opt.type === 'check') {
-      fields.push(h('label', { class: 'opt check' }, h('input', { type: 'checkbox', checked: S.opts[opt.key], onchange: (e) => set(e.target.checked) }), h('span', {}, opt.label)));
+      fields.push(h('label', { class: 'opt check' }, h('input', { type: 'checkbox', checked: S.opts[opt.key], onchange: (e) => set(e.target.checked, opt.rerender) }), h('span', {}, opt.label)));
       continue;
     }
     if (opt.type === 'select') {
@@ -589,7 +644,8 @@ function optionsView() {
       continue;
     } else {
       control = h('input', {
-        id, type: opt.type, value: S.opts[opt.key], placeholder: opt.placeholder, min: opt.min, inputmode: opt.type === 'number' ? 'numeric' : null,
+        id, type: opt.type === 'password' && S.opts.show ? 'text' : opt.type, value: S.opts[opt.key], placeholder: opt.placeholder, min: opt.min,
+        inputmode: opt.type === 'number' ? 'numeric' : null, autocomplete: opt.autocomplete, spellcheck: opt.type === 'password' ? 'false' : null,
         oninput: (e) => set(e.target.value),
       });
     }
@@ -684,7 +740,7 @@ function render() {
     root.replaceChildren(zone, err || '');
     return;
   }
-  const view = T.view === 'files' ? filesView() : T.view === 'organize' ? organizeView() : pagesView();
+  const view = T.view === 'files' ? filesView() : T.view === 'organize' ? organizeView() : T.view === 'sign' ? sign.view(S.files[0]) : pagesView();
   const head = h('div', { class: 'thead' },
     h('p', { class: 'ttitle' }, T.view === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, T.view === 'pages' && h('span', {}, ` · ${S.files[0].pages} pages`)),
     h('button', { type: 'button', class: 'btn ghost', onclick: pickFiles, disabled: !!S.busy }, MULTIPLE ? 'Add more' : 'Change file'));
@@ -713,6 +769,7 @@ document.addEventListener('drop', (e) => {
 
 // The page's own picker works before this script loads (it is a plain label
 // and input). Take any files chosen through it, then or later.
+if (T.view === 'sign') sign = makeSign({ h, rerender: () => render(), root });
 const early = root.querySelector('[data-early]');
 pickLabel = root.querySelector('[data-pick]')?.textContent;
 early?.addEventListener('change', () => addFiles(early.files));

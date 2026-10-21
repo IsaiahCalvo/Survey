@@ -2,8 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, PDFName, PDFRawStream, degrees } from 'pdf-lib';
 import {
-  addHeaderFooter, organizePages, flattenPdf, cropPdf, readDetails, editDetails, removeAnnotations, textToPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf, visualFrame, loadPdf,
+  addHeaderFooter, organizePages, flattenPdf, cropPdf, readDetails, editDetails, removeAnnotations, textToPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf, visualFrame, loadPdf, signPdf,
 } from '../ops.js';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import UTIF from 'utif2';
+import createQpdf from '@neslinesli93/qpdf-wasm';
+import { qpdfRunner, protectPdf, unlockPdf, looksEncrypted } from '../qpdf.js';
+import { decodeTiff, isTiff } from '../tiff.js';
 import { ToolError } from '../errors.js';
 import { compressPdf, deflate, inflate } from '../compress.js';
 import { parseRangeGroups, parsePageSet, formatPageSet, everyN } from '../ranges.js';
@@ -239,4 +245,61 @@ test('text to PDF wraps long lines and breaks pages', async () => {
   assert.ok(out.getPageCount() >= 4, `pages: ${out.getPageCount()}`);
   assert.equal(Math.round(out.getPage(0).getWidth()), 595);
   await assert.rejects(textToPdf('  \n '), ToolError);
+});
+
+const wasmPath = createRequire(import.meta.url).resolve('@neslinesli93/qpdf-wasm/dist/qpdf.wasm');
+const runQpdf = qpdfRunner(() => createQpdf({ wasmBinary: readFileSync(wasmPath), noInitialRun: true }));
+
+test('protect then unlock round-trips; a wrong password says so', async () => {
+  const plain = await samplePdf(3);
+  assert.equal(looksEncrypted(plain), false);
+  const locked = await protectPdf(runQpdf, plain, { password: '-pässword 1' });
+  assert.equal(looksEncrypted(locked), true);
+  await assert.rejects(loadPdf(locked), /password/);
+  await assert.rejects(unlockPdf(runQpdf, locked, { password: 'nope' }), (e) => e instanceof ToolError && /isn't right/.test(e.message));
+  await assert.rejects(unlockPdf(runQpdf, locked), (e) => e instanceof ToolError && /needs its password/.test(e.message));
+  await assert.rejects(protectPdf(runQpdf, locked, { password: 'x' }), /already has a password/);
+  const open = await unlockPdf(runQpdf, locked, { password: '-pässword 1' });
+  assert.deepEqual(await widths(open), [100, 101, 102]);
+  await assert.rejects(protectPdf(runQpdf, plain, { password: '' }), ToolError);
+  await assert.rejects(unlockPdf(runQpdf, new TextEncoder().encode('not a pdf')), /damaged/);
+});
+
+test('print/copy limits use a separate owner password; empty-password unlock lifts them', async () => {
+  const limited = await protectPdf(runQpdf, await samplePdf(1), { password: 'abc', allowPrint: false, allowCopy: false });
+  // Print and copy limits are advisory in PDF: the open password still unlocks.
+  assert.equal(looksEncrypted(limited), true);
+  assert.ok((await unlockPdf(runQpdf, limited, { password: 'abc' })).length > 0);
+  const openOnly = await runQpdf(await samplePdf(2), ['--encrypt', '', 'owner', '256', '--print=none', '--']);
+  const freed = await unlockPdf(runQpdf, openOnly.out);
+  assert.equal(looksEncrypted(freed), false);
+  assert.deepEqual(await widths(freed), [100, 101]);
+});
+
+test('TIFF: every page decodes, DPI comes from the resolution tags', () => {
+  const page = (w, h, v) => new Uint8Array(UTIF.encodeImage(new Uint8Array(w * h * 4).fill(v), w, h, { t282: [[300, 1]], t283: [[300, 1]], t296: [2] }));
+  const one = page(4, 3, 200);
+  assert.ok(isTiff(one));
+  const [p] = decodeTiff(one);
+  assert.deepEqual([p.width, p.height, p.dpi, p.rgba.length], [4, 3, 300, 48]);
+  assert.throws(() => decodeTiff(PNG), ToolError);
+});
+
+test('images to PDF uses the image DPI for "same as image"', async () => {
+  const at300 = await imagesToPdf([{ bytes: PNG, type: 'png', dpi: 300 }], { pageSize: 'fit' });
+  const at96 = await imagesToPdf([{ bytes: PNG, type: 'png' }], { pageSize: 'fit' });
+  assert.equal((await PDFDocument.load(at300)).getPage(0).getWidth(), 72 / 300);
+  assert.equal((await PDFDocument.load(at96)).getPage(0).getWidth(), 0.75);
+});
+
+test('sign draws the image on the chosen page, upright on rotated pages', async () => {
+  for (const rot of [0, 90]) {
+    const out = await signPdf(await samplePdf(2, rot), { page: 1, image: PNG, box: { x: 0.5, y: 0.5, w: 0.25, h: 0.1 }, date: '2026-10-21' });
+    const doc = await PDFDocument.load(out);
+    const res = doc.getPage(1).node.Resources();
+    const xobj = res.lookup(PDFName.of('XObject'));
+    assert.ok(xobj && xobj.keys().length === 1, `rotation ${rot}: one image on page 2`);
+    assert.ok(!doc.getPage(0).node.Resources()?.lookup(PDFName.of('XObject')), 'page 1 untouched');
+  }
+  await assert.rejects(signPdf(await samplePdf(1), { image: null, box: {} }), ToolError);
 });

@@ -30,6 +30,9 @@ const ICONS = {
   clean: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 10l6 6M15 10l-6 6"/>',
   txt: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
   flatten: '<path d="M4 15l8 4 8-4M4 11l8 4 8-4M12 3l8 4-8 4-8-4z"/>',
+  sign: '<path d="M3 19c3-1 4-8 6-8s0 7 2 7 2-4 4-4 1 3 3 3 2-1 3-1"/><path d="M14 4l4 4-7 7H7v-4z"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  unlock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>',
 };
 const icon = (k) => `<svg class="ticon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${ICONS[k]}</svg>`;
 
@@ -53,6 +56,7 @@ const PICK = {
   pdf: ['Choose a PDF', 'Choose PDF files', 'application/pdf,.pdf'],
   image: ['Choose an image', 'Choose images', 'image/*'],
   text: ['Choose a text file', 'Choose text files', 'text/plain,.txt,.text,.md,.csv,.log'],
+  tiff: ['Choose a TIFF', 'Choose TIFF files', 'image/tiff,.tif,.tiff'],
 };
 
 const SCRIPT = '\n<script type="module" src="/src/tools/main.js"></script>';
@@ -116,12 +120,12 @@ const HUB_FAQ = [
 const hub = page({
   path: '/tools', crumb: 'Free PDF tools',
   title: 'Free PDF tools: merge, split, compress, convert | Survey',
-  desc: 'Free PDF tools that run in your browser: merge, split, compress, rotate, delete and extract pages, convert to and from JPG and PNG. No sign-up, no upload.',
+  desc: 'Free PDF tools that run in your browser: merge, split, compress, sign, password protect and convert PDFs to and from JPG, PNG and TIFF. No sign-up, no upload.',
   schema: [{ '@type': 'ItemList', name: 'Free PDF tools', itemListElement: TOOLS.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: t.name, url: `${ORIGIN}/tools/${t.id}` })) }, faqSchema(HUB_FAQ)],
   body: `<section class="page-head"><div class="wrap">
   <p class="kicker">Free PDF tools</p>
   <h1>Every PDF tool you need, free</h1>
-  <p class="lede">Merge, split, shrink, turn and convert PDFs right in your browser. No sign-up, and your files never leave your device.</p>
+  <p class="lede">Merge, split, shrink, sign, lock and convert PDFs right in your browser. No sign-up, and your files never leave your device.</p>
 </div></section>
 ${GROUPS.map(([g, label]) => `<section class="sec tight tgroup"><div class="wrap">
   <h2>${label}</h2>

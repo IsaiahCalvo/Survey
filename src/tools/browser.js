@@ -2,6 +2,7 @@
 // rendering, image preparation and saving files.
 import { loadPdfjs } from '../utils/pdfWorkerConfig.js';
 import { ToolError } from './errors.js';
+import { qpdfRunner } from './qpdf.js';
 
 function makeCanvas(w, h) {
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
@@ -92,6 +93,7 @@ export { releaseCanvas };
 export function sniffImage(bytes) {
   if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'jpg';
   if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'png';
+  if ((bytes[0] === 0x49 && bytes[1] === 0x49) || (bytes[0] === 0x4d && bytes[1] === 0x4d)) return 'tiff';
   return 'other';
 }
 
@@ -121,8 +123,29 @@ export function jpegOrientation(bytes) {
   return 1;
 }
 
-// Make any image something pdf-lib can embed: JPEG or PNG, upright.
+// Each page of a TIFF as a PNG pdf-lib can embed, keeping the scan's DPI. The
+// decoder loads only when a TIFF turns up.
+export async function tiffToImages(bytes, onPage) {
+  const { decodeTiff } = await import('./tiff.js');
+  const out = [];
+  for (const p of decodeTiff(bytes, onPage)) {
+    const c = makeCanvas(p.width, p.height);
+    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(p.rgba.buffer, p.rgba.byteOffset, p.rgba.byteLength), p.width, p.height), 0, 0);
+    p.rgba = null;
+    out.push({ bytes: await canvasToBytes(c, 'image/png'), type: 'png', dpi: p.dpi });
+    releaseCanvas(c);
+  }
+  return out;
+}
+
+// Make any image something pdf-lib can embed: JPEG or PNG, upright. Returns a
+// list, since one TIFF can hold many pages.
 export async function prepareImage(bytes, mime) {
+  if (sniffImage(bytes) === 'tiff') return tiffToImages(bytes);
+  return [await prepareOne(bytes, mime)];
+}
+
+async function prepareOne(bytes, mime) {
   const kind = sniffImage(bytes);
   if (kind === 'png') return { bytes, type: 'png' };
   if (kind === 'jpg' && jpegOrientation(bytes) === 1) return { bytes, type: 'jpg' };
@@ -148,3 +171,16 @@ export function saveFile(bytes, name, type) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+// qpdf for the password tools; the wasm file is fetched on first use only.
+export const runQpdf = qpdfRunner(async () => {
+  const [{ default: create }, { default: wasmUrl }] = await Promise.all([
+    import('@neslinesli93/qpdf-wasm'),
+    import('@neslinesli93/qpdf-wasm/dist/qpdf.wasm?url'),
+  ]);
+  try {
+    return await create({ locateFile: () => wasmUrl, noInitialRun: true });
+  } catch {
+    throw new ToolError('The password tool couldn\'t load. Check your connection and try again.');
+  }
+});

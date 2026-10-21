@@ -96,6 +96,20 @@ button.ptile:hover{border-color:var(--rule)}
 .organize .ptile.dragging{opacity:.4}
 .organize .ptile.over{border-color:var(--blue)}
 
+/* sign */
+.sview{display:flex;flex-direction:column;gap:12px;align-items:center}
+.spager{display:flex;align-items:center;gap:12px}
+.sstage{position:relative;width:100%;max-width:720px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.sstage canvas{display:block;width:100%;height:100%}
+/* Only the signature takes touch drags; the rest of the page still scrolls. */
+.sbox{position:absolute;cursor:move;touch-action:none;outline:1.5px dashed var(--blue);outline-offset:2px;border-radius:2px}
+.sbox:focus-visible{outline-style:solid;outline-width:2px}
+.sbox img{display:block;width:100%;height:100%;pointer-events:none;user-select:none}
+.shandle{position:absolute;right:-22px;bottom:-22px;width:22px;height:22px;border-radius:50%;background:var(--blue);border:2px solid #fff;cursor:nwse-resize;touch-action:none}
+.shandle::before{content:"";position:absolute;inset:-8px -8px -8px -4px}
+.spad{width:100%;aspect-ratio:3;border:1px dashed var(--rule);border-radius:8px;touch-action:none;cursor:crosshair;background:#fff}
+.scenter{text-align:center}
+
 .result{padding:40px 24px;text-align:center}
 .result h2{font-size:30px}
 .rbig{font:700 26px/1.2 var(--display);margin:0 0 8px}
