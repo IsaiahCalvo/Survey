@@ -21,6 +21,7 @@ import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
 import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize } from '../services/pdfByteCache.js';
 import { STREAM_SIGNED_URL_SECONDS } from '../services/cloudPdfStream.js';
+import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.js';
 import { bindLibraryListCacheToAuth } from './libraryListCache.js';
 import { useLibraryListCache } from './useLibraryListCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
@@ -941,18 +942,22 @@ export const useStorage = () => {
     const cache = pdfByteCache();
     const since = cache?.generation;
     const epoch = cache?.pathEpoch?.(filePath);
-    const info = await fetchStoredPdfInfo(filePath);
-    if (info?.error || !info?.data) return null;
-    const stamp = pdfCacheStamp(info.data);
     const key = pdfCacheKey(actorId, filePath);
-    if (stamp && key && cache && !cache.isDisabled) {
-      const cached = await cache.get(key, stamp);
-      if (cached) return { blob: new Blob([cached], { type: 'application/pdf' }) };
-    }
-    const { data: signed, error } = await supabase.storage
-      .from('documents')
-      .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS);
-    if (error || !signed?.signedUrl) return null;
+    const source = await resolveOpenDocumentSource({
+      fetchInfo: () => fetchStoredPdfInfo(filePath),
+      readCached: async (data) => {
+        const stamp = pdfCacheStamp(data);
+        return (stamp && key && cache && !cache.isDisabled) ? cache.get(key, stamp) : null;
+      },
+      sign: () => supabase.storage
+        .from('documents')
+        .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS),
+    });
+    if (!source) return null;
+    const info = { data: source.info };
+    const stamp = pdfCacheStamp(info.data);
+    if (source.cached) return { blob: new Blob([source.cached], { type: 'application/pdf' }) };
+    const signed = { signedUrl: source.signedUrl };
     return {
       url: signed.signedUrl,
       size: pdfCacheInfoSize(info.data),
