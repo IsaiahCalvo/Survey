@@ -53,7 +53,8 @@
     "test:mobile-zoomout-native": "MOBILE_PINCH_FIXTURE=se011.pdf MOBILE_PINCH_ONLY=AppNativePinchUITests/NativePinchUITests/testSlowZoomOutFromDeepScaleDoesNotTerminateWebContentProcess node scripts/test-ios-native-pinch.mjs",
     "mobile:phone": "node scripts/publish-phone-update.mjs",
     "mobile:android": "npx cap open android",
-    "test:e2e:speed": "node scripts/e2e-local-supabase.mjs seed && node scripts/perf/big-doc-seed.mjs && playwright test --config playwright.speed.config.mjs"
+    "test:e2e:speed": "node scripts/e2e-local-supabase.mjs seed && node scripts/perf/big-doc-seed.mjs && playwright test --config playwright.speed.config.mjs",
+    "native:version": "node scripts/native-version.mjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.26.2",

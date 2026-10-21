@@ -1,5 +1,24 @@
 apply plugin: 'com.android.application'
 
+// Release signing: env vars (CI) override android/keystore.properties (local,
+// git-ignored). Keys: storeFile (relative to android/), storePassword, keyAlias,
+// keyPassword. Env: SURVEY_UPLOAD_STORE_FILE, SURVEY_UPLOAD_STORE_PASSWORD,
+// SURVEY_UPLOAD_KEY_ALIAS, SURVEY_UPLOAD_KEY_PASSWORD. With none set, release
+// builds stay unsigned (as before).
+def releaseSigning = [:]
+def keystorePropsFile = rootProject.file('keystore.properties')
+if (keystorePropsFile.exists()) {
+    def props = new Properties()
+    keystorePropsFile.withInputStream { props.load(it) }
+    props.each { k, v -> releaseSigning[k] = v }
+}
+['storeFile': 'SURVEY_UPLOAD_STORE_FILE', 'storePassword': 'SURVEY_UPLOAD_STORE_PASSWORD',
+ 'keyAlias': 'SURVEY_UPLOAD_KEY_ALIAS', 'keyPassword': 'SURVEY_UPLOAD_KEY_PASSWORD'].each { k, envName ->
+    def v = System.getenv(envName)
+    if (v) releaseSigning[k] = v
+}
+def hasReleaseSigning = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].every { releaseSigning[it] }
+
 android {
     namespace = "com.kalvoe.survey"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,6 +26,7 @@ android {
         applicationId "com.kalvoe.survey"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // versionCode/versionName are set by `npm run native:version` from package.json.
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -16,8 +36,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile rootProject.file(releaseSigning.storeFile)
+                storePassword releaseSigning.storePassword
+                keyAlias releaseSigning.keyAlias
+                keyPassword releaseSigning.keyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
