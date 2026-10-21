@@ -111,3 +111,4 @@ debug/crash-hunt/runs/
 /.e2e/
 .env.e2e
 /playwright-report-e2e/
+/dist-speed

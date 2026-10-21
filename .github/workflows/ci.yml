@@ -426,6 +426,11 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_SYNCFUSION_LICENSE_KEY: ${{ secrets.VITE_SYNCFUSION_LICENSE_KEY }}
 
+      # Fails on a big jump in app size (scripts/bundle-budget.mjs says how
+      # big, and how to raise the budget when the growth is intended).
+      - name: Check the app's size budget
+        run: node scripts/bundle-budget.mjs
+
       - name: Explain this run in plain English
         # Written before the gate step below fails, so the run page (linked from
         # every failure email) opens on a readable explanation rather than on
