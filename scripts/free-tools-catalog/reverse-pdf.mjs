@@ -10,6 +10,11 @@ export default {
   lede: 'Turn the page order around in one step, so the last page comes first.',
   accept: 'pdf', multiple: false, batch: true, action: 'Reverse pages',
   steps: ['Choose a PDF.', 'Check the pages.', 'Press Reverse pages and save the new file.'],
+  trade: {
+    h2: 'Fix sheets scanned in backwards',
+    text: 'If a stack of field reports or sheets went through the scanner last page first, flip the order in one step instead of moving each page.',
+    keys: 'scanned backwards field reports sheets',
+  },
   faq: [
     ['When would I need this?', 'When a scanner or printer put the pages in backwards, like a stack fed in from the last page.'],
     ['Is anything else changed?', 'No. Each page keeps its text, markups, links and form fields. Only the order changes.'],

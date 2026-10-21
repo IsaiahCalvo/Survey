@@ -11,6 +11,11 @@ export default {
   lede: 'Set up a PDF so a browser shows the first page right away, while the rest is still downloading. Also called linearizing.',
   accept: 'pdf', multiple: false, batch: true, action: 'Optimize PDF',
   steps: ['Choose one or more PDFs.', 'Press Optimize PDF.', 'Save the new file and put it on your website or share it.'],
+  trade: {
+    h2: 'Post a drawing set online',
+    text: 'If you post plans or specs on a project or bid website, set them up for fast web view so bidders see the first sheet while the rest loads.',
+    keys: 'bid website plan room drawing set online',
+  },
   faq: [
     ['What is fast web view?', 'A PDF set up so its first page and a map of the other pages come first in the file. A browser can show page 1 straight away instead of waiting for the whole file.'],
     ['Does it make the file smaller?', 'Not really. It changes the order inside the file, not what is in it. To make it smaller, use Compress PDF.'],
