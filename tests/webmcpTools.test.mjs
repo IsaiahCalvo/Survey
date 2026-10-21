@@ -275,6 +275,7 @@ const fakeAnnoDoc = () => {
     addLine: (args) => { addedShapes.push({ kind: 'line', ...args }); return { ok: true, id: 'l1' }; },
     addPolygon: (args) => { addedShapes.push({ kind: 'poly', ...args }); return { ok: true, id: 'p1' }; },
     addCallout: (args) => { addedShapes.push({ kind: 'callout', ...args }); return { ok: true, id: 'c1' }; },
+    addHighlight: async (args) => { addedShapes.push({ kind: 'highlight', ...args }); return { ok: true, id: 'h1' }; },
   };
 };
 const annoTools = (role, doc) => {
@@ -427,6 +428,28 @@ test('callout tool: flag, role, empty text, and page bounds', async () => {
   await assert.rejects(annoTool('editor', doc, 'survey_add_callout').execute({ ...args, arrow_x: 9000 }), /inside the page/);
   await assert.rejects(annoTool('editor', doc, 'survey_add_callout').execute({ ...args, page: 2 }), /not in the open document/);
   await assert.rejects(annoTool('viewer', doc, 'survey_add_callout').execute(args), /viewer.*needs editor/);
+});
+
+test('highlight tool: flag, role, empty text, passes through, and reason codes', async () => {
+  assert.equal(tool(buildAgentTools({ getDocument: () => fakeAnnoDoc(), readAccess: open }), 'survey_add_highlight'), undefined);
+  const doc = fakeAnnoDoc();
+  assert.match(await annoTool('editor', doc, 'survey_add_highlight').execute({ page: 1, search_text: 'General Notes' }), /Highlighted "General Notes" on page 1/);
+  assert.equal(doc.addedShapes.at(-1).kind, 'highlight');
+  assert.equal(doc.addedShapes.at(-1).searchText, 'General Notes');
+  // Optional color/opacity/occurrence reach the bridge.
+  await annoTool('editor', doc, 'survey_add_highlight').execute({ page: 1, search_text: 'x', color: '#abcdef', opacity: 40, occurrence: 2 });
+  assert.equal(doc.addedShapes.at(-1).color, '#abcdef');
+  assert.equal(doc.addedShapes.at(-1).opacity, 40);
+  assert.equal(doc.addedShapes.at(-1).occurrence, 2);
+  await assert.rejects(annoTool('editor', doc, 'survey_add_highlight').execute({ page: 1, search_text: '  ' }), /empty/);
+  await assert.rejects(annoTool('editor', doc, 'survey_add_highlight').execute({ page: 2, search_text: 'x' }), /not in the open document/);
+  await assert.rejects(annoTool('viewer', doc, 'survey_add_highlight').execute({ page: 1, search_text: 'x' }), /viewer.*needs editor/);
+  const noMatch = { ...fakeAnnoDoc(), addHighlight: async () => ({ ok: false, reason: 'no-match' }) };
+  await assert.rejects(annoTool('editor', noMatch, 'survey_add_highlight').execute({ page: 1, search_text: 'nope' }), /Could not find that text/);
+  const noText = { ...fakeAnnoDoc(), addHighlight: async () => ({ ok: false, reason: 'no-text' }) };
+  await assert.rejects(annoTool('editor', noText, 'survey_add_highlight').execute({ page: 1, search_text: 'x' }), /no readable text/);
+  const locked = { ...fakeAnnoDoc(), addHighlight: async () => ({ ok: false, reason: 'locked' }) };
+  await assert.rejects(annoTool('editor', locked, 'survey_add_highlight').execute({ page: 1, search_text: 'x' }), /locked annotation on that page blocked/);
 });
 
 test('a save blocked by a locked sibling is reported, not a false success', async () => {

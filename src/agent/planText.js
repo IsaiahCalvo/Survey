@@ -183,3 +183,92 @@ export async function findTagInDocument(doc, query) {
   }
   return { matches: findTagOnPages(query, pages), unreadPages };
 }
+
+/**
+ * Per-word highlight quads for a search phrase among a page's words (from
+ * textItemsToWords / ocrWordsToWords, so boxes are page points, top-left
+ * origin). Case-insensitive and whitespace-insensitive; a phrase that spans
+ * words or wraps across lines matches, and a whole word is covered when the
+ * phrase lands inside it. `occurrence` (1-based) picks which match when the
+ * phrase repeats on the page. Returns { quads, text } in page points, or null
+ * when there is no match.
+ *
+ * Quads are { x1,y1 (top-left), x2,y2 (top-right), x3,y3 (bottom-left),
+ * x4,y4 (bottom-right) } — the layout createTextMarkupAnnotation expects; it
+ * runs mergeLineQuads to coalesce the per-word quads into per-line spans.
+ */
+// Two word boxes that abut on one line — no real space between them. A PDF
+// that changes font mid-word splits the visible word across text items, so
+// textItemsToWords hands back fragments ("Gen", "eral") that must join into
+// one searchable word; a genuine space between words leaves a clear gap.
+const abuts = (a, b) => {
+  const h = Math.max(a.height, b.height, 1);
+  const sameLine = Math.abs((a.y + a.height / 2) - (b.y + b.height / 2)) < h * 0.6;
+  const gap = b.x - (a.x + a.width);
+  return sameLine && gap < h * 0.2 && gap > -h;
+};
+
+export function findHighlightQuads(words, query, { occurrence = 1 } = {}) {
+  const tokens = (words || []).filter((w) => String(w?.text || '').trim() && w?.box);
+  const needle = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!needle || !tokens.length) return null;
+  // One haystack of the word texts, each word's span kept, so a match that
+  // crosses a space (or a line) still finds its words. Fragments of one word
+  // the PDF split across items are joined with no space, so the word still
+  // matches as written; real word and line gaps keep their single space.
+  let hay = '';
+  const spans = [];
+  let prev = null;
+  for (const w of tokens) {
+    if (prev && !abuts(prev.box, w.box)) hay += ' ';
+    const start = hay.length;
+    hay += String(w.text).toLowerCase();
+    spans.push({ start, end: hay.length, box: w.box, text: w.text });
+    prev = w;
+  }
+  const want = Math.max(1, Math.trunc(Number(occurrence) || 1));
+  let at = -1;
+  let from = 0;
+  for (let n = 0; n < want; n += 1) {
+    at = hay.indexOf(needle, from);
+    if (at < 0) return null;
+    from = at + 1;
+  }
+  const matchEnd = at + needle.length;
+  const hit = spans.filter((s) => s.start < matchEnd && s.end > at);
+  if (!hit.length) return null;
+  // One continuous quad per line, spanning the first to the last matched word
+  // on it (so the inter-word spaces are covered, like a dragged selection).
+  // A per-word quad would leave the gaps unpainted, since mergeLineQuads only
+  // stitches quads that nearly touch.
+  const lines = [];
+  for (const { box } of hit) {
+    const line = lines.find((l) => Math.abs((l.cy) - (box.y + box.height / 2)) < Math.max(l.h, box.height, 1) * 0.6);
+    if (line) {
+      line.left = Math.min(line.left, box.x);
+      line.top = Math.min(line.top, box.y);
+      line.right = Math.max(line.right, box.x + box.width);
+      line.bottom = Math.max(line.bottom, box.y + box.height);
+      line.h = Math.max(line.h, box.height);
+    } else {
+      lines.push({ left: box.x, top: box.y, right: box.x + box.width, bottom: box.y + box.height, h: box.height, cy: box.y + box.height / 2 });
+    }
+  }
+  const quads = lines.map(({ left, top, right, bottom }) => ({
+    x1: left, y1: top,
+    x2: right, y2: top,
+    x3: left, y3: bottom,
+    x4: right, y4: bottom,
+  }));
+  // Rebuild the matched text with the same spacing rule as the haystack, so a
+  // word the PDF split across items reads "General", not "Gen eral", in the
+  // stored selectedText (copy, listing, Excel).
+  let text = '';
+  let prevHit = null;
+  for (const s of hit) {
+    if (prevHit && !abuts(prevHit.box, s.box)) text += ' ';
+    text += s.text;
+    prevHit = s;
+  }
+  return { quads, text };
+}

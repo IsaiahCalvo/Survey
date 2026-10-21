@@ -39,9 +39,9 @@ Marker and item ids are shared: an id from `survey_find_items` or
 `survey_list_markers` works with the edit, delete and item tools alike.
 
 Behind the `annotation-agent` flag (off until the tools are proven), the agent
-can also write normal annotations — text notes, with shapes and callouts to
-come. These write through the same path as a human edit, so sync, Excel and the
-user's role all apply, and one Undo takes a change back:
+can also write normal annotations — text notes, shapes, callouts and
+highlights. These write through the same path as a human edit, so sync, Excel
+and the user's role all apply, and one Undo takes a change back:
 
 - `survey_list_annotations` — list the normal annotations on the open PDF (text
   notes, shapes, highlights — not Survey markers): id, page, type, text and box.
@@ -63,8 +63,14 @@ user's role all apply, and one Undo takes a change back:
 - `survey_add_callout` — add a text box with a leader line pointing at a page
   spot: the text, the arrow point and the box corner, with optional box width
   and colors (editor/owner).
+- `survey_add_highlight` — highlight a run of text on a page (editor/owner).
+  Give the page and the words to highlight; Survey finds them in the page text
+  (matching ignores case and extra spaces, and a phrase that wraps across lines
+  still matches) and highlights them, with an optional hex color and opacity. If
+  the words repeat, `occurrence` picks which one. A scanned page needs text
+  recognition run on it first.
 - `survey_delete_annotation` removes the rectangle/ellipse/line/polygon shapes
-  too (not callouts, which have their own structure).
+  too (not callouts or highlights, which have their own structure).
 
 ## Outside the browser: user-claimed flow
 
