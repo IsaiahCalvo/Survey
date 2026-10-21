@@ -190,7 +190,7 @@ ${body}
 <footer class="foot"><div class="wrap">
   <div class="fgrid">
     <div><a class="brand" href="/welcome"><img src="/logo192.png" alt="" width="28" height="28" />Survey</a><p>PDF markup and counting for construction and engineering drawings.</p></div>
-    <div><h2 class="fh">Product</h2><a href="/features">Features</a><a href="/devices">Devices</a><a href="/pricing">Pricing</a><a href="/faq">FAQ</a><a href="/whats-new">What's new</a></div>
+    <div><h2 class="fh">Product</h2><a href="/features">Features</a><a href="/devices">Devices</a><a href="/pricing">Pricing</a><a href="/faq">FAQ</a><a href="/use-with-ai">Use with AI</a><a href="/whats-new">What's new</a></div>
     <div><h2 class="fh">Use cases</h2>${USES.map((u) => `<a href="/use-cases/${u.slug}">${u.name}</a>`).join('')}</div>
     <div><h2 class="fh">Compare</h2>${COMPARE.map((c) => `<a href="/compare/${c.slug}">Survey vs ${c.them.split(' ')[0]}</a>`).join('')}</div>${TOOL_LINKS.length ? `
     <div><h2 class="fh">Free PDF tools</h2>${TOOL_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}</div>` : ''}
@@ -466,6 +466,83 @@ const whatsNew = page({
 <p class="fine">Something not working? <a href="/status">Check the status page</a> or <a href="${MAIL}">tell us</a>.</p></div></section>`,
 });
 
+// ---------- Use Survey with your AI ----------
+const MCP_URL = 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp';
+const AI_FAQ = [
+  ['Which AI tools can use Survey?',
+    `Any that speak the open connector standard (MCP). Claude and ChatGPT both let you add a custom connector. Survey also offers tools to an AI running inside your own browser. All three act for you, with your plan and your role on each document.`],
+  ['Does the AI get its own account?',
+    `No. An agent always acts for a signed-in person and never has an account of its own. It has exactly your rights: the same role on each drawing (a viewer's agent can only read) and the same plan.`],
+  ['What can an agent <em>not</em> do?',
+    `It cannot pay, change your plan, delete your account, use your linked sign-ins, let other agents in, or change your email or password. Those stay with you.`],
+  ['Can it change my drawings without asking?',
+    `Reading your projects and documents is always allowed. Writing markup is off until you turn it on, and before it deletes anything it asks you to confirm. One Undo takes any change back.`],
+  ['How do I stop an agent?',
+    `Go to <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>. You see every agent you let in and can remove any of them. Removal is instant: the agent's next request is refused.`],
+  ['Where do my files go?',
+    `Nowhere new. The agent reads and writes the same Survey account you already use. An agent in your browser needs no extra sign-in at all.`],
+];
+const AI_STEPS = [
+  ['Open your AI tool\'s connector settings', 'In Claude: Settings, then Connectors, then Add custom connector. ChatGPT has the same kind of setting.'],
+  ['Paste Survey\'s address', `Use <code>${MCP_URL}</code> as the server URL.`],
+  ['Sign in to Survey', 'Your AI tool sends you to Survey to sign in and press Allow. Make a free account there first if you have none. The agent now acts as you.'],
+  ['Remove it whenever you like', `Manage and remove agents at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>.`],
+];
+const useWithAi = page({
+  path: '/use-with-ai', crumb: 'Use with AI',
+  title: 'Use Survey with your AI | Survey',
+  desc: 'Let Claude, ChatGPT or a browser agent use Survey for you: read your drawings and mark them up, with your plan and your role. What it can and cannot do, and how to turn it off.',
+  schema: [
+    { '@type': 'HowTo', name: 'How to connect your AI to Survey', step: AI_STEPS.map(([n, t], i) => ({ '@type': 'HowToStep', position: i + 1, name: n, text: strip(t) })) },
+    faqSchema(AI_FAQ),
+  ],
+  body: `<section class="page-head"><div class="wrap narrow">
+  <h1>Use Survey with your AI</h1>
+  <p class="lede">Let an AI assistant work in Survey for you: find your drawings, read the markup and, when you let it, add markup of its own. It acts as you, with your plan and your role on each document.</p>
+</div></section>
+
+<section class="sec tight"><div class="wrap narrow">
+  <h2>Three ways to connect</h2>
+  <div class="dev-rows">
+    <article><h3>Claude</h3><p>Add Survey as a custom connector in Claude's settings (steps below). Claude signs you in to Survey once, then can list your projects and drawings and open an item for you.</p></article>
+    <article><h3>ChatGPT</h3><p>ChatGPT connects the same way, through its own connector setting. Paste the same Survey address and sign in.</p></article>
+    <article><h3>An agent in your browser</h3><p>If your agent runs inside your browser while you are signed in to Survey, Survey offers it tools with no extra sign-in. It acts as you on the drawing on screen.</p></article>
+  </div>
+</div></section>
+
+<section class="sec tight"><div class="wrap narrow">
+  <h2>Connect Claude or ChatGPT</h2>
+  <ol class="steps">${AI_STEPS.map(([n, t]) => `<li><h3>${n}</h3><p>${t}</p></li>`).join('')}</ol>
+</div></section>
+
+<section class="sec tight"><div class="wrap narrow feat-grid"><div>
+  <h2>What it can do</h2>
+  <ul class="ticks">
+    <li>See the projects and drawings you can see</li>
+    <li>Open a drawing and go to a page</li>
+    <li>Read the markup and survey items on a plan</li>
+    <li>When you turn writing on: add notes, shapes, callouts, highlights and counts, and set survey answers</li>
+  </ul>
+</div><div>
+  <h2>What it can't do</h2>
+  <ul class="ticks">
+    <li>Pay or change your plan</li>
+    <li>Delete your account</li>
+    <li>Use your linked sign-ins</li>
+    <li>Let other agents in</li>
+    <li>Change your email or password</li>
+  </ul>
+</div></div></section>
+
+<section class="sec tight"><div class="wrap narrow">
+  <h2>You are always in charge</h2>
+  <p>An agent only ever has your rights. If you can only view a drawing, so can its agent. Writing markup is off until you turn it on, and before anything is deleted the agent asks you to confirm; one Undo takes a change back. You can see and remove every agent at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>, and removal takes effect at once.</p>
+</div></section>
+
+<section class="sec tight"><div class="wrap narrow"><h2>Questions</h2>${faqList(AI_FAQ)}</div></section>
+${cta('Connect your AI and try it on a drawing')}`,
+});
+
 const notFound = page({
   path: '/404', title: 'Page not found | Survey', desc: 'This page does not exist.',
   body: `<section class="page-head"><div class="wrap narrow"><h1>We can't find that page</h1><p class="lede">The link may be old. Try the <a href="/welcome">home page</a> or <a href="${APP}">open Survey</a>.</p></div></section>`,
@@ -503,14 +580,14 @@ ${cta('Try Survey free on your own drawings')}`,
 // Importing this file (build-free-tools.mjs does, for the layout) must not
 // rewrite the pages, so the writes only run when it is the script itself.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq, 'status/index.html': status, 'whats-new/index.html': whatsNew };
+  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq, 'status/index.html': status, 'whats-new/index.html': whatsNew, 'use-with-ai/index.html': useWithAi };
   for (const [p, html] of Object.entries(out)) {
     const f = join(root, p);
     mkdirSync(dirname(f), { recursive: true });
     writeFileSync(f, html);
   }
 
-  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', '/status', '/whats-new', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
+  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', '/use-with-ai', '/status', '/whats-new', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
   writeFileSync(join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></url>`).join('\n')}
@@ -530,6 +607,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Devices](${ORIGIN}/devices): desktop, tablet and phone
 - [Pricing](${ORIGIN}/pricing): Free, Pro and Enterprise plans
 - [FAQ](${ORIGIN}/faq): common questions
+- [Use Survey with your AI](${ORIGIN}/use-with-ai): connect Claude, ChatGPT or a browser agent to act for you with your plan and role; what it can and cannot do, and how to turn it off. MCP server: ${MCP_URL}
 ${USES.map((u) => `- [${u.name}](${ORIGIN}/use-cases/${u.slug}): ${u.desc}`).join('\n')}
 ${COMPARE.map((c) => `- [Survey vs ${c.them}](${ORIGIN}/compare/${c.slug}): ${c.desc}`).join('\n')}
 - [Free PDF tools](${ORIGIN}/tools): ${PDF_TOOLS.length} tools to merge, split, compress, OCR scans, compare two PDFs, sign, lock and convert PDFs in the browser, several files at once; no sign-in, files never leave the device
