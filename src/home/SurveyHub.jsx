@@ -75,6 +75,7 @@ export default function SurveyHub({
   onMoveCopyDocuments,
   onProjectPreferencesChange,
   onLockDocument,
+  onPdfTools,
   onSettings,
   onSignOut,
   onSignIn,
@@ -191,6 +192,7 @@ export default function SurveyHub({
           onRename={onRenameDocument}
           onMoveCopy={onMoveCopyDocuments}
           onLockDocument={onLockDocument}
+          onPdfTools={onPdfTools}
           />
         )
       )}
@@ -220,6 +222,7 @@ export default function SurveyHub({
             onDeleteDocuments={onDeleteDocuments}
             onRenameDocument={onRenameDocument}
             onLockDocument={onLockDocument}
+            onPdfTools={onPdfTools}
             onShare={shareProject}
             onShareDocument={shareDocuments}
           />

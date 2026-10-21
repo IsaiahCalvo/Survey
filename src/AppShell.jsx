@@ -1949,6 +1949,21 @@ export default function App({ devPreviewReturnTab = null }) {
   // Determine what to render based on active tab. Keep this before any
   // conditional return because hooks below depend on it.
   const activeTab = tabs.find(t => t.id === activeTabId);
+  // "PDF tools…" in the viewer's export menus: the Documents dialog (Dashboard)
+  // on the open document. A file that isn't saved to the account yet has no
+  // stored copy for the tools to read, so Dashboard explains that instead.
+  const openPdfToolsForActiveTab = () => {
+    const file = tabs.find((t) => t.id === activeTabId)?.file;
+    dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null }]);
+  };
+  const openPdfToolsRef = useRef(openPdfToolsForActiveTab);
+  openPdfToolsRef.current = openPdfToolsForActiveTab;
+  // The phone viewer's More menu asks for it with an event.
+  useEffect(() => {
+    const open = () => openPdfToolsRef.current();
+    window.addEventListener('survey-open-pdf-tools', open);
+    return () => window.removeEventListener('survey-open-pdf-tools', open);
+  }, []);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   // PDFs dragged in from the computer onto an open document (owner request
@@ -2700,6 +2715,11 @@ export default function App({ devPreviewReturnTab = null }) {
                     label: 'Review package (ZIP)',
                     title: 'Your marks, a log of changes and page pictures in one ZIP file. Your PDF stays the same.',
                     onSelect: bottomToolbarApi.exportReviewBundle,
+                  },
+                  {
+                    label: 'PDF tools…',
+                    title: 'Merge, split, compress, make searchable and more. The result is saved as a new document.',
+                    onSelect: openPdfToolsForActiveTab,
                   },
                 ]}
               />

@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react';
 import SurveyHub from './SurveyHub';
 import CreateProjectModal from './CreateProjectModal';
+import PdfToolsDialog from '../components/PdfToolsDialog';
 import ToastHost from '../components/ToastHost';
 import { TooltipProvider } from '../components/Tooltip';
 import { AuthContext } from '../contexts/AuthContext';
@@ -306,6 +307,20 @@ export default function HubPreview() {
     setDocuments((prev) => prev.filter((d) => !ids.has(d.id)));
   };
 
+  // PDF tools on mock documents: each gets a small generated PDF.
+  const [pdfTools, setPdfTools] = useState(null);
+  const mockPdfSource = (doc) => ({
+    id: doc.id,
+    name: doc.name,
+    getBytes: async () => {
+      const { PDFDocument, StandardFonts } = await import('pdf-lib');
+      const pdf = await PDFDocument.create();
+      const font = await pdf.embedFont(StandardFonts.Helvetica);
+      for (let i = 0; i < 4; i += 1) pdf.addPage([612, 792]).drawText(`${doc.name} page ${i + 1}`, { x: 60, y: 700, size: 24, font });
+      return pdf.save();
+    },
+  });
+
   const handleMoveCopy = (docs, projectId, mode) => {
     const ids = new Set(docs.map((d) => d.id));
     if (mode === 'move') {
@@ -434,6 +449,14 @@ export default function HubPreview() {
         {/* KAL-65: same shared tooltip host the real hub gets in AppShell. */}
         <TooltipProvider>
         <div style={{ width: '100vw', height: '100vh' }}>
+          <PdfToolsDialog
+            open={Boolean(pdfTools)}
+            onClose={() => setPdfTools(null)}
+            sources={pdfTools ? pdfTools.docs.map(mockPdfSource) : []}
+            others={pdfTools && pdfTools.docs.length === 1 ? documents.filter((d) => d.id !== pdfTools.docs[0].id).slice(0, 5).map(mockPdfSource) : []}
+            initialTool={pdfTools?.initialTool || null}
+            onSave={async (files) => console.log('[hub preview] save', files.map((f) => `${f.name} ${f.size}`).join(', '))}
+          />
           <SurveyHub
             documents={documents}
             projects={projects}
@@ -464,6 +487,7 @@ export default function HubPreview() {
             onDeleteDocuments={handleDelete}
             onRenameDocument={handleRenameDocument}
             onMoveCopyDocuments={handleMoveCopy}
+            onPdfTools={(docs, initialTool) => setPdfTools({ docs, initialTool })}
             projectPreferences={projectPreferences}
             onProjectPreferencesChange={handleProjectPreferencesChange}
             onSettings={() => console.log('[hub preview] open settings page')}

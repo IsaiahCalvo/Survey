@@ -16,6 +16,8 @@ import DismissBarrier from './components/DismissBarrier';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
 import CreateProjectModal from './home/CreateProjectModal';
+import PdfToolsDialog from './components/PdfToolsDialog';
+import BodyPortal from './components/BodyPortal';
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
@@ -1765,6 +1767,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // The tab strip's "Rename document" (AppShell) renames through the same
     // path as the home's Rename. Resolves true when it saved.
     renameDocument: hubRenameDocument,
+    // The viewer's "PDF tools…" (AppShell) opens the same dialog.
+    openPdfTools,
   }));
 
   /* --- Survey Hub (home redesign) wiring -------------------------------
@@ -2087,6 +2091,40 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       await refetchDocuments();
       return false;
     }
+  };
+
+  // PDF tools (merge, split, compress, OCR...) on stored documents, from the
+  // Documents list menus and from the viewer (AppShell, through the ref). The
+  // result is saved like an upload, next to the original.
+  const [pdfTools, setPdfTools] = useState(null); // { docs, initialTool }
+  const pdfToolSource = (doc) => ({
+    id: doc.id,
+    name: doc.name,
+    getBytes: async () => new Uint8Array(await (await downloadFromStorage(doc.file_path)).arrayBuffer()),
+  });
+  const openPdfTools = (docs, initialTool = null) => {
+    const rows = (docs || [])
+      .map((doc) => (allDocuments || []).find((candidate) => candidate.id === doc?.id) || doc)
+      .filter((doc) => doc?.file_path);
+    if (!rows.length) {
+      showToast('Save this document to your account first, then try again.', 'info');
+      return;
+    }
+    setPdfTools({ docs: rows, initialTool });
+  };
+  const pdfToolOthers = pdfTools && pdfTools.docs.length === 1
+    ? (allDocuments || [])
+      .filter((doc) => doc.id !== pdfTools.docs[0].id && doc.file_path && (doc.project_id || null) === (pdfTools.docs[0].project_id || null))
+      .map(pdfToolSource)
+    : [];
+  const savePdfToolResults = async (files) => {
+    const projectId = pdfTools?.docs[0]?.project_id || null;
+    await handleDroppedFiles(files, {
+      projectId,
+      projectName: (projects || []).find((p) => p.id === projectId)?.name || null,
+      open: false,
+    });
+    refetchAllDocuments();
   };
 
   // KAL-443: a copy carries the real fingerprint of its bytes and goes through
@@ -2487,10 +2525,21 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         onMoveCopyDocuments={hubMoveCopyDocuments}
         onProjectPreferencesChange={hubProjectPreferencesChange}
         onLockDocument={hubToggleDocumentLock}
+        onPdfTools={openPdfTools}
         onSettings={() => setShowAccountSettings(true)}
         onSignOut={signOut}
         onSignIn={onShowAuthModal}
       />
+      <BodyPortal>
+        <PdfToolsDialog
+          open={Boolean(pdfTools)}
+          onClose={() => setPdfTools(null)}
+          sources={pdfTools ? pdfTools.docs.map(pdfToolSource) : []}
+          others={pdfToolOthers}
+          initialTool={pdfTools?.initialTool || null}
+          onSave={user ? savePdfToolResults : null}
+        />
+      </BodyPortal>
       <CreateProjectModal
         open={isProjectModalOpen}
         name={projectName}
