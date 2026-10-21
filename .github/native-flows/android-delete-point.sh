@@ -21,9 +21,12 @@ X=$((W * 3 / 4)); Y=$((H * 13 / 20))
 ( pick Polygon ) || { pick Shapes; pick Polygon; }
 # Four corners, then a tap back on the first one closes the polygon.
 for p in "$((X - 150)) $((Y - 100))" "$((X + 150)) $((Y - 100))" "$((X + 150)) $((Y + 100))" "$((X - 150)) $((Y + 100))" "$((X - 150)) $((Y - 100))"; do
-  adb shell input stylus tap $p; sleep 0.6
+  # A short press, not `tap`, and gaps longer than a double-tap so each
+  # press lands as one point.
+  set -- $p; adb shell input stylus swipe "$1" "$2" "$1" "$2" 120; sleep 1.2
 done
 sleep 1
+echo "after placing: $(ev "document.querySelectorAll('g[data-annotation-index]').length") annotations, polygons: $(ev "document.querySelectorAll('g[data-annotation-index] polygon').length")"
 pick "Rectangle Select"
 adb shell input stylus tap "$X" $((Y - 100))   # top edge midpoint
 sleep 1.5
