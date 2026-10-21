@@ -62,6 +62,15 @@ export function validateExportKit(kit) {
 }
 
 const kits = new Map();
+const listeners = new Set();
+let snapshot = null;
+const notify = () => { snapshot = null; listeners.forEach((fn) => fn()); };
+
+/** Call `fn` whenever the kit list changes; returns an unsubscribe function. */
+export function subscribeExportKits(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
 
 /** Register a kit; returns a function that removes it again. Throws if invalid. */
 export function registerExportKit(kit) {
@@ -69,14 +78,17 @@ export function registerExportKit(kit) {
   if (errors.length) throw new TypeError(`registerExportKit(${kit?.id}): ${errors.join('; ')}`);
   const entry = Object.freeze({ ...kit, columns: Object.freeze(kit.columns.map((c) => Object.freeze({ ...c }))) });
   kits.set(entry.id, entry);
+  notify();
   return () => {
-    if (kits.get(entry.id) === entry) kits.delete(entry.id);
+    if (kits.get(entry.id) === entry) { kits.delete(entry.id); notify(); }
   };
 }
 
 /** Kits this app build can draw (minEngine not newer than the engine). */
+// Same array until the list changes, so React's useSyncExternalStore can use it.
 export function listExportKits() {
-  return [...kits.values()].filter((k) => k.minEngine <= EXPORT_ENGINE_VERSION);
+  if (!snapshot) snapshot = Object.freeze([...kits.values()].filter((k) => k.minEngine <= EXPORT_ENGINE_VERSION));
+  return snapshot;
 }
 
 export function getExportKit(id) {
@@ -85,5 +97,7 @@ export function getExportKit(id) {
 }
 
 export const DEFAULT_EXPORT_KIT_ID = defaultSurveyKit.id;
+// Kits shipped in the app; an account's kits from the database may not replace them.
+export const BUILT_IN_EXPORT_KIT_IDS = Object.freeze([defaultSurveyKit.id, wirelessLockScheduleKit.id]);
 registerExportKit(defaultSurveyKit);
 registerExportKit(wirelessLockScheduleKit);
