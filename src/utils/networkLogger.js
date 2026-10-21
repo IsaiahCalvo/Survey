@@ -11,9 +11,19 @@ const RING_CAPACITY = 200;
 const ring = [];
 let installed = false;
 
+const entryListeners = new Set();
+
 function pushEntry(entry) {
   ring.push(entry);
   if (ring.length > RING_CAPACITY) ring.shift();
+  entryListeners.forEach((fn) => { try { fn(entry); } catch { /* listener */ } });
+}
+
+// Called with each finished request (requestErrorLog.js turns server errors
+// into crash records). Returns an unsubscribe function.
+export function onNetworkEntry(listener) {
+  entryListeners.add(listener);
+  return () => entryListeners.delete(listener);
 }
 
 function safeUrl(input) {

@@ -16,6 +16,8 @@
  *                  kills a page that uses too much memory; seen at next start)
  *   shell-reload   the phone app (Expo shell) saw the page's process die and
  *                  reloaded it (the shell's own note, merged into "closed")
+ *   request        Survey's own server answered 5xx or not at all while
+ *                  online (requestErrorLog.js)
  *
  * Each record: when, what (message + top of the stack), where (route without
  * query secrets), the last few things the person pressed (button names and
@@ -219,6 +221,7 @@ const KIND_LABEL = {
   freeze: 'Froze',
   closed: 'Page closed by itself',
   'shell-reload': 'Phone app reloaded the page',
+  request: 'Server request failed',
 };
 export const crashKindLabel = (kind) => KIND_LABEL[kind] || kind;
 

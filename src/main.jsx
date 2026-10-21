@@ -48,6 +48,10 @@ if (typeof window !== 'undefined') {
   Promise.all([import('./utils/crashReporter'), import('./supabaseClient')])
     .then(([{ installCrashReporter }, { supabase }]) => installCrashReporter(supabase))
     .catch(() => {});
+  // Failed requests to Survey's own servers count as crashes too.
+  import('./utils/requestErrorLog')
+    .then(({ installRequestErrorLog }) => installRequestErrorLog({ supabaseUrl: import.meta.env.VITE_SUPABASE_URL }))
+    .catch(() => {});
 }
 
 // Stale-deploy recovery: when a lazy-loaded code chunk fails to load (usually a
