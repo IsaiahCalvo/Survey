@@ -26,9 +26,11 @@ permissions:
 
 jobs:
   rollback:
-    # Same group as the deploy job, so a rollback never races a deploy.
+    # Its own group: sharing production-deploy would let a later queued deploy
+    # cancel a waiting rollback (GitHub keeps one pending run per group). A
+    # deploy that finishes after a rollback takes the domain back, as it should.
     concurrency:
-      group: production-deploy
+      group: production-rollback
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
