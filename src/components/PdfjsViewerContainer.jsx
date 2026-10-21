@@ -5363,6 +5363,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           top,
           width: dim.w * scale,
           height: dim.h * scale,
+          // Page grid overlay (src/styles/pageGrid.css) sizes its cells by this.
+          '--survey-page-scale': scale,
           background: '#fff',
           transform: pageTransformations[i + 1]?.mirrorH || pageTransformations[i + 1]?.mirrorV
             ? `scale(${pageTransformations[i + 1]?.mirrorH ? -1 : 1}, ${pageTransformations[i + 1]?.mirrorV ? -1 : 1})`
