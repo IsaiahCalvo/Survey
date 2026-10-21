@@ -5,6 +5,10 @@
   },
   "rewrites": [
     { "source": "/welcome", "destination": "/welcome/index.html" },
+    { "source": "/features", "destination": "/features/index.html" },
+    { "source": "/devices", "destination": "/devices/index.html" },
+    { "source": "/pricing", "destination": "/pricing/index.html" },
+    { "source": "/faq", "destination": "/faq/index.html" },
     { "source": "/(.*)/assets/(.*)", "destination": "/assets/$2" },
     { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
   ],

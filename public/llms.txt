@@ -1,0 +1,18 @@
+# Survey
+
+> Survey is a PDF markup and counting app for construction and engineering drawings. It runs in the browser on Mac, Windows, iPad, Android tablets and phones at https://surveytool.app.
+
+People use Survey to redline drawing sets, tap to count items on a plan (each category keeps a running total), and export the counts to Excel. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, survey tools, templates and regions, Excel export, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
+
+## Pages
+
+- [Home](https://surveytool.app/welcome): what Survey is and who it is for
+- [Features](https://surveytool.app/features): count markers, pen and highlighter, shapes, clouds and arrows, large drawing sets
+- [Devices](https://surveytool.app/devices): desktop, tablet and phone
+- [Pricing](https://surveytool.app/pricing): Free, Pro and Enterprise plans
+- [FAQ](https://surveytool.app/faq): common questions
+
+## Optional
+
+- [Privacy policy](https://surveytool.app/privacy.html)
+- [Terms of service](https://surveytool.app/terms.html)
