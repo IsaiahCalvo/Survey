@@ -32915,6 +32915,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       return null;
     };
+    // Resolve a callout by id from the synchronous source. calloutsRef only
+    // syncs on render, so a callout added then deleted/edited in the SAME turn
+    // is missing there; deriveCalloutsFromByPage reads annotationsByPageRef,
+    // which the save path writes immediately (the same source
+    // commitCalloutMutation itself derives from). Mirror resolveCalloutPageNumber:
+    // cheap post-render ref first, derive as the fallback.
+    const resolveLiveCallout = (wantedId) => {
+      if (!wantedId) return null;
+      const fromRef = (calloutsRef.current || []).find((c) => c?.id === wantedId);
+      if (fromRef) return fromRef;
+      const derived = deriveCalloutsFromByPage(annotationsByPageRef.current || {});
+      return derived.find((c) => c?.id === wantedId) || null;
+    };
     return registerAgentDocument({
       documentId: pdfFile?.id || null,
       surveyReady: () => agentMarkerStateRef.current.surveyReady,
@@ -33287,7 +33300,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // which carries no lock/permission guard of its own — so gate here, the
         // same way handleCutCallout does, and remove by id from that list.
         if (obj?.data?.type === 'callout') {
-          const callout = (calloutsRef.current || []).find((c) => c?.id === id);
+          const callout = resolveLiveCallout(id);
           if (!callout) return { ok: false, reason: 'not-found' };
           if (isUserLocked(callout)) return { ok: false, reason: 'locked' };
           if (!canModify({ annotation: callout, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
@@ -33310,7 +33323,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // editor. Gated and committed the same way a human callout edit is.
       editCallout: (id, { text, strokeColor, fillColor } = {}) => {
         const { viewerId, documentOwnerId: ownerId, pageSizes } = agentMarkerStateRef.current;
-        const callout = (calloutsRef.current || []).find((c) => c?.id === id);
+        const callout = resolveLiveCallout(id);
         if (!callout) return { ok: false, reason: 'not-found' };
         if (isUserLocked(callout)) return { ok: false, reason: 'locked' };
         if (!canModify({ annotation: callout, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
