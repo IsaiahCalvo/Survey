@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import UTIF from 'utif2';
-import { rgbaToTiffPage, writeTiff, grayToBits } from '../imageWriters.js';
+import { rgbaToTiffPage, writeTiff, tiffParts, grayToBits } from '../imageWriters.js';
 import { decodeTiff } from '../tiff.js';
 
 // A small "rendered page": a red band, a black line and white elsewhere.
@@ -69,4 +69,16 @@ test('tall pages are split into several strips', async () => {
 test('black and white packs eight pixels a byte, 1 for dark', () => {
   const g = Uint8Array.of(0, 255, 0, 255, 0, 255, 0, 255, 0);
   assert.deepEqual([...grayToBits(g, 9, 1)], [0b10101010, 0b10000000]);
+});
+
+test('Blob strips (big sets) make the same file as byte strips', async () => {
+  const make = async () => [
+    await rgbaToTiffPage(pageRgba(30, 20), 30, 20, { color: 'color', dpi: 150 }),
+    await rgbaToTiffPage(pageRgba(33, 22), 33, 22, { color: 'bw', dpi: 300 }),
+  ];
+  const bytes = writeTiff(await make());
+  const pages = await make();
+  for (const p of pages) p.strips = p.strips.map((s) => new Blob([s]));
+  const viaBlobs = new Uint8Array(await new Blob(tiffParts(pages)).arrayBuffer());
+  assert.deepEqual(viaBlobs, bytes);
 });

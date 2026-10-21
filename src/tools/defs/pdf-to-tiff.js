@@ -2,7 +2,7 @@
 import {
   SEG, base, releaseCanvas, ToolError,
 } from '../kit.js';
-import { rgbaToTiffPage, writeTiff } from '../imageWriters.js';
+import { rgbaToTiffPage, tiffParts } from '../imageWriters.js';
 
 export default {
   view: 'pages',
@@ -28,13 +28,18 @@ export default {
       const points = scan ? (scan.rotate % 180 ? scan.box.height : scan.box.width)
         : (await (await file.pdfjs()).getPage(pick[n] + 1)).getViewport({ scale: 1 }).width;
       const pageDpi = Math.min(dpi, (width / points) * 72);
-      pages.push(await rgbaToTiffPage(rgba, width, height, { color: opts.color, dpi: pageDpi }));
+      const page = await rgbaToTiffPage(rgba, width, height, { color: opts.color, dpi: pageDpi });
       rgba = null;
+      // Hand each strip to the browser now, so a big set's TIFF isn't held twice
+      // (strips, then the joined file) in the page.
+      page.strips = page.strips.map((s) => new Blob([s]));
+      pages.push(page);
     }
     // TIFF offsets are 32-bit, so a file can't pass 4 GB.
-    const size = pages.reduce((n, p) => n + p.strips.reduce((m, s) => m + s.length, 0), 0);
+    const size = pages.reduce((n, p) => n + p.strips.reduce((m, s) => m + s.size, 0), 0);
     if (size > 4_000_000_000) throw new ToolError('This TIFF would be too big. Pick fewer pages or a lower quality.');
     progress('Writing the TIFF');
-    return [{ name: `${base(file.name)}.tif`, bytes: writeTiff(pages), type: 'image/tiff' }];
+    const blob = new Blob(tiffParts(pages), { type: 'image/tiff' });
+    return [{ name: `${base(file.name)}.tif`, blob, size: blob.size, type: 'image/tiff' }];
   },
 };
