@@ -12,6 +12,8 @@ export { normalizeItemName, scoreItemName };
 
 // One add_all_from_plan call adds at most this many; the rest on asking again.
 const MAX_BULK_ITEMS = 60;
+// survey_status names at most this many items per group; the counts are whole.
+const STATUS_LIST_MAX = 20;
 
 // The panel fills this while Survey mode is open (SurveySpacesRail).
 export const surveyAgentBridge = { current: null };
@@ -504,6 +506,40 @@ export function createSurveyAgentToolbox({
       if (already) parts.push(already === 1 ? '1 was already an item.' : `${already} were already items.`);
       if (fresh.length > added.length) parts.push(`${fresh.length - added.length} more not added; ask again to add the rest.`);
       return { content: parts.join(' '), changes };
+    },
+
+    // "What's left on this sheet?": each item's checklist progress on one
+    // page (default the page on screen) or the whole survey.
+    survey_status({ page = null, all_pages: allPages = false } = {}) {
+      const b = bridge();
+      const onPage = allPages ? null : (Number(page) || b.getCurrentPage?.() || null);
+      const index = categoryIndex(b.template);
+      const items = Object.entries(b.markers || {})
+        .filter(([, m]) => m && (onPage == null || m.pageNumber === onPage))
+        .map(([id, m]) => {
+          const entry = index.find(m.moduleId, m.categoryId);
+          const checklist = entry ? activeChecklist(entry.category) : [];
+          const responses = m.checklistResponses || {};
+          const missing = checklist.filter((c) => !responses[c.id]?.selection).map(itemText);
+          return { id, name: nameOf(m), total: checklist.length, missing };
+        })
+        .sort((x, y) => x.name.localeCompare(y.name, undefined, { numeric: true }));
+      const done = items.filter((i) => !i.missing.length);
+      const notStarted = items.filter((i) => i.total && i.missing.length === i.total);
+      const partly = items.filter((i) => i.missing.length && i.missing.length < i.total);
+      const names = (list) => list.slice(0, STATUS_LIST_MAX).map((i) => i.name);
+      return {
+        content: out({
+          scope: onPage == null ? 'whole survey' : `page ${onPage}`,
+          items: items.length,
+          done: done.length,
+          not_started: { count: notStarted.length, names: names(notStarted) },
+          partly_done: {
+            count: partly.length,
+            items: partly.slice(0, STATUS_LIST_MAX).map((i) => ({ name: i.name, missing: i.missing.slice(0, 6) })),
+          },
+        }),
+      };
     },
 
     show_item({ item_id: itemId } = {}) {
