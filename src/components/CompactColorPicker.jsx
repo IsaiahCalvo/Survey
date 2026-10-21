@@ -30,6 +30,7 @@
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import DismissBarrier from './DismissBarrier';
+import { loadRecentColors, rememberRecentColor } from '../utils/recentColors';
 import { swatchCheckInk, swatchRingColour, needsSwatchHairline, normaliseQuickColour } from '../utils/quickStylePresets';
 
 /*
@@ -313,6 +314,14 @@ const CompactColorPicker = ({
     const SV_HANDLE_INSET = 8;
     const columns = isPhone ? 12 : 8;
     const presets = PRESET_COLORS;
+    // Recent colours (Drawboard gap #7): the last colours picked on this
+    // device, shown under the presets. Presets are not recorded — they are
+    // always on screen already.
+    const [recentColors, setRecentColors] = useState(() => loadRecentColors());
+    const noteRecent = (hex) => {
+        if (!hex || presets.some((p) => sameColour(p, hex))) return;
+        setRecentColors(rememberRecentColor(hex));
+    };
     const grid = useMemo(() => buildGrid(columns), [columns]);
     // RULED 2026-09-22 (owner): switching grid <-> spectrum must not change the
     // sheet's height or move the Opacity row and the bottom row. The spectrum
@@ -562,7 +571,10 @@ const CompactColorPicker = ({
         clearTimeout(state.heartbeat);
         if (state.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(state.frame);
         state.frame = 0;
-        if (state.latest) emitNow(state.latest, 'commit');
+        if (state.latest) {
+            emitNow(state.latest, 'commit');
+            noteRecent(state.latest[0]);
+        }
     };
     // A release heard outside the track also drops the track's own pointer
     // bookkeeping, so a stray later move is never taken for a drag.
@@ -736,6 +748,7 @@ const CompactColorPicker = ({
         const alpha = Math.max(minOpacity, localOpacity / 100);
         if (alpha !== localOpacity / 100) setLocalOpacity(alpha * 100);
         onChange(hex, alpha);
+        noteRecent(hex);
     };
 
     const pickFromScreen = async () => {
@@ -933,15 +946,7 @@ const CompactColorPicker = ({
     // stops answering (see `locked`).
     const lockedStyle = locked ? { opacity: 0.4, pointerEvents: 'none' } : null;
 
-    const presetsRow = (
-        <div style={isDesktop
-            /* Desktop: the presets sit on the grid's own eight columns, one
-               disc centred over each column, so the two blocks line up. The
-               phone (dense or not) spreads the same eight edge to edge - its
-               grid has twelve columns, so they cannot sit on it. */
-            ? { display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '4px', justifyItems: 'center', ...lockedStyle }
-            : { display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...lockedStyle }}>
-            {presets.map((preset) => {
+    const renderSwatch = (preset) => {
                 const isSelected = !transparentMode && sameColour(localHex, preset);
                 return (
                     <button
@@ -987,7 +992,17 @@ const CompactColorPicker = ({
                         </span>
                     </button>
                 );
-            })}
+    };
+
+    const presetsRow = (
+        <div style={isDesktop
+            /* Desktop: the presets sit on the grid's own eight columns, one
+               disc centred over each column, so the two blocks line up. The
+               phone (dense or not) spreads the same eight edge to edge - its
+               grid has twelve columns, so they cannot sit on it. */
+            ? { display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '4px', justifyItems: 'center', ...lockedStyle }
+            : { display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...lockedStyle }}>
+            {presets.map((preset) => renderSwatch(preset))}
         </div>
     );
 
@@ -1373,6 +1388,17 @@ const CompactColorPicker = ({
             )}
 
             {presetsRow}
+
+            {recentColors.length > 0 && (
+                <div data-recent-colors="true" style={{ display: 'grid', gap: isDesktop ? '3px' : '6px', ...lockedStyle }}>
+                    <div style={{ color: 'var(--text-3)', font: `${isDesktop ? 400 : 600} ${(dense || isDesktop) ? '10.5px' : '11px'}/1 ${FONT}` }}>Recent</div>
+                    <div style={isDesktop
+                        ? { display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '4px', justifyItems: 'center' }
+                        : { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {recentColors.map((c) => renderSwatch(c))}
+                    </div>
+                </div>
+            )}
 
             {(mode === 'grid' || locked) ? gridView : gradientView}
 
