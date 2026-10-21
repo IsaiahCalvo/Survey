@@ -25,6 +25,7 @@ import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageW
 import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
+import { createVoiceLog, loggedCaller, sendVoiceLog } from '../agent/voiceLog.js';
 import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
 import { isSureHearing, startDeviceHearing } from '../agent/deviceHearing.js';
@@ -104,7 +105,13 @@ export default function SurveyAgentPanel({
   onActivity = () => {},
 }) {
   const [usageLeft, setUsageLeft] = useState(null);
-  const rawCall = useMemo(() => makeSurveyAgentCaller(supabase, { onUsage: setUsageLeft }), []);
+  // The last few spoken turns with times, for "Send voice log"; sent by
+  // itself once a session when hearing or the model fails.
+  const voiceLogRef = useRef(null);
+  const sendLogRef = useRef(() => {});
+  if (!voiceLogRef.current) voiceLogRef.current = createVoiceLog({ onError: () => sendLogRef.current('error') });
+  const voiceLog = voiceLogRef.current;
+  const rawCall = useMemo(() => loggedCaller(makeSurveyAgentCaller(supabase, { onUsage: setUsageLeft }), () => voiceLogRef.current), []);
   const call = useMemo(() => withRetries(rawCall), [rawCall]);
   // Spoken replies: the server's natural voice when it has one, else the
   // device's own voice.
@@ -231,6 +238,14 @@ export default function SurveyAgentPanel({
   };
 
   const push = (entry) => setEntries((list) => [...list, { id: newId('e'), ...entry }]);
+  // 'sending' | 'sent' | 'failed' | null, for the Send voice log button.
+  const [logState, setLogState] = useState(null);
+  sendLogRef.current = async (reason = 'manual') => {
+    if (reason === 'manual') setLogState('sending');
+    const release = typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : null;
+    const ok = await sendVoiceLog(supabase, voiceLogRef.current, { reason, release }).catch(() => false);
+    if (reason === 'manual') setLogState(ok ? 'sent' : 'failed');
+  };
 
   const markEntry = (id, patch) => setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
 
@@ -282,6 +297,7 @@ export default function SurveyAgentPanel({
       historyRef.current = result.history;
       if (job.entryId) markEntry(job.entryId, { waiting: false });
       push({ role: 'agent', text: result.reply, changes: result.changes, summary: result.summary || null });
+      voiceLog.event('turn_done', { reply: result.reply, changes: result.changes.map((c) => c.label || c.type || '') });
       return result.reply;
     } catch (err) {
       // No signal (or too weak to finish) before anything changed: keep the
@@ -488,7 +504,9 @@ export default function SurveyAgentPanel({
       const audio = await blobToBase64(file);
       const b = surveyAgentBridge.current;
       const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, lang: langRef.current, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
-      return snapItemNames(cleanTranscript(out?.text), Object.values(b?.markers || {}).map((m) => m?.name));
+      const heard = snapItemNames(cleanTranscript(out?.text), Object.values(b?.markers || {}).map((m) => m?.name));
+      voiceLog.event('heard', { source: 'server', text: heard });
+      return heard;
     } catch (err) {
       if (WAIT_CODES.has(err?.code)) { waitReasonRef.current = err.code; return null; }
       push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.', code: err?.code });
@@ -508,6 +526,7 @@ export default function SurveyAgentPanel({
   const hear = async (clip, durationMs, endedAt, hearing = deviceHearingRef.current) => {
     if (hearing?.available) {
       const heard = await hearing.heardFor(endedAt, durationMs);
+      voiceLog.event('device_heard', { text: heard?.text || '', sure: isSureHearing(heard) });
       if (isSureHearing(heard)) {
         const b = surveyAgentBridge.current;
         return snapItemNames(cleanTranscript(heard.text), Object.values(b?.markers || {}).map((m) => m?.name));
@@ -524,6 +543,7 @@ export default function SurveyAgentPanel({
 
   const recorder = useAudioRecorder({
     onRecorded: async (file, durationMs) => {
+      voiceLog.turn('recorded', { ms: durationMs });
       const hearing = pttHearingRef.current;
       pttHearingRef.current = null;
       const endedAt = Date.now();
@@ -542,6 +562,7 @@ export default function SurveyAgentPanel({
   // on) spoken, then the mic listens again. While the agent speaks the mic
   // is guarded: speaking up clearly cuts the agent off and is heard next.
   const stopHandsFree = useCallback(() => {
+    if (handsFreeRef.current) voiceLogRef.current?.event('hands_free_stop');
     handsFreeRef.current = false;
     setHandsFree(false);
     setHearing(false);
@@ -587,7 +608,9 @@ export default function SurveyAgentPanel({
     if (reply && speakRef.current && handsFreeRef.current && mic?.guard() !== false) {
       lastSpokenRef.current = spokenReply(reply);
       setPhase('speaking');
+      voiceLog.event('speaking', { chars: reply.length });
       await speak(reply);
+      voiceLog.event('spoke');
       setPhase('working');
       mic?.unguard();
     }
@@ -601,6 +624,7 @@ export default function SurveyAgentPanel({
   };
   const onHandsFreeClip = (clip, durationMs, info) => {
     const endedAt = Date.now();
+    voiceLog.event('clip', { ms: durationMs, cut_in: Boolean(info?.cutIn), camera: Boolean(cameraRef.current) });
     if (cameraRef.current) { handleCameraClip(clip, durationMs, endedAt).catch(() => {}); return; }
     handsFreePendingRef.current += 1;
     setPhase('working');
@@ -618,6 +642,7 @@ export default function SurveyAgentPanel({
   const onNativeText = (raw, { cutIn, unsure }) => {
     const b = surveyAgentBridge.current;
     const text = snapItemNames(cleanTranscript(raw), Object.values(b?.markers || {}).map((m) => m?.name));
+    voiceLog.event('native_heard', { raw, text, unsure: Boolean(unsure), cut_in: Boolean(cutIn) });
     if (cameraRef.current) {
       if (CANCEL_WORDS.test(text)) cameraRef.current.cancel();
       else if (SHUTTER_WORDS.test(text)) cameraRef.current.capture().catch(() => {});
@@ -645,6 +670,7 @@ export default function SurveyAgentPanel({
   onHandsFreeClipRef.current = onHandsFreeClip;
 
   const startHandsFree = async () => {
+    voiceLog.tap('hands_free_tap');
     unlockPlayback();
     if (recorder.state !== 'idle') recorder.stop();
     if (speechRef.current) speechRef.current.stop();
@@ -657,7 +683,7 @@ export default function SurveyAgentPanel({
           speech,
           lang: agentLocale(langRef.current),
           onText: (text, info) => onNativeTextRef.current(text, info),
-          onHearing: (on) => setHearing(on),
+          onHearing: (on) => { setHearing(on); if (on) voiceLog.turn('speech_start'); else voiceLog.event('speech_end'); },
           onBargeIn: () => stopSpeaking(),
           spokenNow: () => lastSpokenRef.current,
           onFatal: () => { if (handsFreeRef.current) restartHandsFreeRef.current(); },
@@ -665,9 +691,10 @@ export default function SurveyAgentPanel({
         : null;
       micRef.current = micRef.current || await startHandsFreeMic({
         onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
-        onHearing: (on) => setHearing(on),
+        onHearing: (on) => { setHearing(on); if (on) voiceLog.turn('speech_start'); else voiceLog.event('speech_end'); },
         onBargeIn: () => stopSpeaking(),
       });
+      voiceLog.event('mic_started', { native: Boolean(micRef.current.native) });
       if (!micRef.current.native) deviceHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
       awakeRef.current?.release();
       awakeRef.current = keepScreenAwake();
@@ -675,6 +702,7 @@ export default function SurveyAgentPanel({
       setHandsFree(true);
       setPhase('listening');
     } catch (err) {
+      voiceLog.error('mic_failed', { name: err?.name || null, message: err?.message || null });
       push({ role: 'error', text: err?.name === 'NotAllowedError' ? 'Allow the microphone to talk hands-free.' : 'The microphone could not start.' });
     }
   };
@@ -689,7 +717,7 @@ export default function SurveyAgentPanel({
     try {
       micRef.current = await startHandsFreeMic({
         onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
-        onHearing: (on) => setHearing(on),
+        onHearing: (on) => { setHearing(on); if (on) voiceLog.turn('speech_start'); else voiceLog.event('speech_end'); },
         onBargeIn: () => stopSpeaking(),
       });
     } catch {
@@ -922,6 +950,16 @@ export default function SurveyAgentPanel({
         />
       )}
       {statusText && <p className="survey-agent__status" role="status">{statusText}</p>}
+      {entries.length > 0 && (
+        <button
+          type="button"
+          className="survey-agent__log"
+          disabled={logState === 'sending'}
+          onClick={() => sendLogRef.current('manual')}
+        >
+          {logState === 'sent' ? 'Voice log sent' : logState === 'failed' ? 'Could not send. Try again' : logState === 'sending' ? 'Sending…' : 'Send voice log'}
+        </button>
+      )}
       {pendingFiles.length > 0 && (
         <div className="survey-agent__pending">
           {pendingFiles.map((f) => (

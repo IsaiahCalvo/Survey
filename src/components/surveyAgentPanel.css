@@ -89,6 +89,18 @@
   line-height: 1.4;
 }
 .survey-agent__status { padding: 6px 12px; border-top: 1px solid var(--border); }
+.survey-agent__log {
+  align-self: flex-start;
+  margin: 2px 12px;
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.survey-agent__log:disabled { opacity: 0.6; cursor: default; }
 .survey-agent__msg { display: flex; flex-direction: column; gap: 6px; }
 .survey-agent__msg.is-user { align-items: flex-end; }
 .survey-agent__bubble {
