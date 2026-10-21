@@ -22,7 +22,7 @@ for p in "$((X - 150)) $((Y - 100))" "$((X + 150)) $((Y - 100))" "$((X + 150)) $
   adb shell input stylus tap $p; sleep 0.6
 done
 sleep 1
-pick Select
+pick "Rectangle Select"
 adb shell input stylus tap "$X" $((Y - 100))   # top edge midpoint
 sleep 1.5
 before=$(count)
