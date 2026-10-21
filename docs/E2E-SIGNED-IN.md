@@ -121,7 +121,7 @@ a plain copy of `supabase/migrations/`; that folder alone builds the database:
    by hand, and `scripts/check-migration-order.mjs` allows this one file to sort
    before the newest migration.
 2. Every other migration, unchanged.
-3. `20261021093000_fresh_database_parity.sql` records changes production got by
+3. `20261021140000_fresh_database_parity.sql` records changes production got by
    hand: it puts `search_path = public` back on the functions
    `20260211224035_fix_function_search_path.sql` emptied (with `''` sign-up and
    every project/document insert fail), drops the legacy tables production
