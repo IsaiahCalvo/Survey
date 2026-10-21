@@ -7,9 +7,26 @@
 
 export const AGENTID_ISSUER = 'https://auth.agentid.com';
 export const AGENTID_JWKS_URL = `${AGENTID_ISSUER}/v0/jwks.json`;
-// An open AgentID client is identified by an https origin we own.
-export const AGENTID_CLIENT_ID = 'https://surveytool.app';
 export const AGENTID_REDIRECT_URI = 'https://surveytool.app/agentid/callback';
+// Owner claims (owner_email, owner_human_verified) need a registered AgentID
+// application. An https origin is an open client, and AgentID refuses
+// owner_email / owner_profile on it (invalid_scope). Set AGENTID_CLIENT_ID to
+// the registered Client ID so GET advertises those scopes and tokens carry them.
+function envText(name) {
+  try {
+    const fromDeno = globalThis.Deno?.env?.get?.(name);
+    if (typeof fromDeno === 'string' && fromDeno) return fromDeno;
+  } catch { /* Deno.env may throw without permission */ }
+  const fromNode = globalThis.process?.env?.[name];
+  return typeof fromNode === 'string' && fromNode ? fromNode : '';
+}
+export const AGENTID_CLIENT_ID = envText('AGENTID_CLIENT_ID') || 'https://surveytool.app';
+export function agentIdScope(clientId = AGENTID_CLIENT_ID) {
+  return String(clientId).startsWith('https:')
+    ? 'openid email profile'
+    : 'openid email profile owner_email owner_profile';
+}
+export const AGENTID_SCOPE = agentIdScope(AGENTID_CLIENT_ID);
 
 const CLOCK_SKEW_SECONDS = 60;
 

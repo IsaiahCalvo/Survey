@@ -67,12 +67,13 @@ your AgentID and your owner next to your name on /agent-link.
 
 1. `GET https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/agent-identity`
    with your Survey `Authorization: Bearer <access_token>`. It returns the
-   AgentID `client_id` (`https://surveytool.app`) and `redirect_uri`
-   (`https://surveytool.app/agentid/callback`).
-2. Sign in to AgentID with those (authorization code + PKCE S256, scope
-   `openid email profile`). Your browser lands on the redirect page; read the
-   `code` from its address and exchange it at `https://auth.agentid.com/v0/token`
-   for an `id_token` (it lasts 10 minutes).
+   AgentID `client_id`, `redirect_uri`, and `scope` to use. Use those values
+   (the scope includes `owner_email` and `owner_profile` when Survey is a
+   registered AgentID application, so the person can see your owner).
+2. Sign in to AgentID with those (authorization code + PKCE S256). Your
+   browser lands on the redirect page; read the `code` from its address and
+   exchange it at `https://auth.agentid.com/v0/token` for an `id_token` (it
+   lasts 10 minutes).
 3. `POST` the same URL with `{"id_token": "..."}`. Survey checks the signature,
    issuer, audience and expiry, and records it.
 

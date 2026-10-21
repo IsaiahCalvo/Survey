@@ -158,6 +158,12 @@ test('AgentID tokens: only a fresh ES256 token from AgentID, for Survey, naming 
     agentid_sub: 'agt_1', agent_email: 'bot@agentmail.to', agent_name: null,
     owner_sub: null, owner_email: 'isaiah@example.com', owner_human_verified: true,
   });
+  // Open clients cannot ask for owner scopes (AgentID returns invalid_scope).
+  assert.equal(mod.agentIdScope('https://surveytool.app'), 'openid email profile');
+  assert.equal(
+    mod.agentIdScope('b7d41e0a-2c65-4f8b-9d31-0a5e7c2f4b18'),
+    'openid email profile owner_email owner_profile',
+  );
   const refused = async (token, why) => assert.rejects(mod.verifyAgentIdToken(token, { fetchJwks, now }), why);
   await refused(await sign({ ...good, iss: 'https://evil.example' }), /wrong issuer/);
   await refused(await sign({ ...good, aud: 'https://other.app' }), /not meant for Survey/);
@@ -174,6 +180,7 @@ test('AgentID tokens: only a fresh ES256 token from AgentID, for Survey, naming 
   const fn = read('supabase/functions/agent-identity/index.ts');
   assert.ok(fn.indexOf('agentClientId(authHeader)') < fn.indexOf('await verifyAgentIdToken('), 'only signed-in agents get as far as the check');
   assert.match(fn, /onConflict: 'user_id,client_id'/);
+  assert.match(fn, /scope: AGENTID_SCOPE/);
   assert.match(read('.github/workflows/deploy-production.yml'), /\n\s+agent-identity\n/);
   assert.match(read('supabase/migrations/20261021070000_agent_identities.sql'), /using \(user_id = auth\.uid\(\) and not public\.is_agent_session\(\)\)/);
 });
