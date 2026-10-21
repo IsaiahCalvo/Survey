@@ -321,7 +321,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   {linksOpen ? '▾' : '▸'} Active share links ({activeLinks.length})
                 </button>
                 {linksOpen && activeLinks.map((inv) => (
-                  <div key={inv.id} data-kal31-row="link" className="access-grid" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box' }}>
+                  <div key={inv.id} data-kal31-row="link" className="access-grid" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 56, boxSizing: 'border-box' }}>
                     <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--surface-3)', color: C.ink, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>L</div>
                     <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>Link invite</div>
