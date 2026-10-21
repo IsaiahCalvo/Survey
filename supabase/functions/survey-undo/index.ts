@@ -21,6 +21,7 @@ import * as Y from 'npm:yjs@13.6.30';
 import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../_shared/surveyMarkerDocSync.js';
 import { bytesToPgHex, pgHexToBytes } from '../_shared/pgBytea.js';
 import { applyUndoDescriptor, UNDO_KINDS } from '../_shared/surveyUndoApply.js';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 const MARKER_FIELDS_FLAG = 'survey-marker-fields';
 const SNAPSHOT_ENC_GZIP = 2;
@@ -128,9 +129,11 @@ Deno.serve(async (req) => {
   const { data: userData, error: userError } = await db.auth.getUser(token);
   if (userError || !userData?.user) return json(401, { error: 'sign_in_required' });
 
-  let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return json(400, { error: 'bad_request' }); }
-  const changeId = String(body?.change_id || '');
+  let raw: unknown;
+  try { raw = await req.json(); } catch { return json(400, { error: 'bad_request' }); }
+  const parsed = parseBody({ change_id: s.string({ max: 64 }) }, raw as Record<string, unknown>);
+  if (!parsed.ok) return json(400, { error: 'bad_request' });
+  const changeId = String(parsed.value.change_id || '');
   if (!UUID.test(changeId)) return json(400, { error: 'bad_change_id' });
 
   // Read the recorded change. RLS lets the person read only their OWN rows, and
