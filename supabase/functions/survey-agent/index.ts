@@ -160,6 +160,15 @@ Deno.serve(async (req) => {
     if (error) console.error('[survey-agent] reserve failed', error.message);
     return data === true;
   };
+  // A refused reservation is either the monthly cap or the per-minute burst
+  // limit (reserve_survey_agent_request); read the row again to tell which.
+  const refused = async () => {
+    const { data: now } = await admin.from('survey_agent_usage')
+      .select('cost_micros, requests').eq('user_id', user.id).eq('month', month).maybeSingle();
+    const monthly = Number(now?.cost_micros || 0) >= capMicros()
+      || Number(now?.requests || 0) >= envNumber('SURVEY_AGENT_MONTHLY_REQUEST_CAP', 3000);
+    return json(429, { error: monthly ? 'monthly_cap_reached' : 'busy_try_again' });
+  };
 
   if (action === 'transcribe') {
     const t = transcriber();
@@ -169,7 +178,7 @@ Deno.serve(async (req) => {
     let bytes: Uint8Array<ArrayBuffer>;
     try { bytes = decodeBase64(String(body.audio || '')); } catch { return json(400, { error: 'bad_audio' }); }
     if (!bytes.length || bytes.length > MAX_AUDIO_BYTES) return json(413, { error: 'audio_too_large' });
-    if (!(await reserve())) return json(429, { error: 'monthly_cap_reached' });
+    if (!(await reserve())) return refused();
     const hints = (Array.isArray(body.hints) ? body.hints : [])
       .filter((h) => typeof h === 'string').map((h) => h.slice(0, 40)).slice(0, 60).join(', ');
     const form = new FormData();
@@ -195,7 +204,7 @@ Deno.serve(async (req) => {
     if (!provider?.baseUrl) return json(503, { error: 'not_set_up' });
     const clean = sanitizeAgentMessages(body.messages);
     if (clean.error) return json(400, { error: clean.error });
-    if (!(await reserve())) return json(429, { error: 'monthly_cap_reached' });
+    if (!(await reserve())) return refused();
     let res: Response;
     try {
       res = await fetch(`${provider.baseUrl}/chat/completions`, {
