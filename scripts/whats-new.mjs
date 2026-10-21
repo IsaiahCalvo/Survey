@@ -4,6 +4,13 @@
 // Work still behind a feature flag stays off this list until it is on for all.
 export const WHATS_NEW = [
   { date: '2026-10-21', items: [
+    'Color pickers have a "Recent" row with the last custom colors you used.',
+    'Delete account in Account settings works again and removes your files. Work you shared stays with the people you shared it with.',
+    'Survey photos no longer keep the GPS location they were taken at.',
+    'An optional half-inch grid over the page, from the right rail on desktop and tablet or the zoom menu on phones.',
+    'The Share dialog shows the owner\'s name and full email addresses, and the access list fits small phones.',
+    'Bigger buttons to tap on tablets and in the phone Delete account dialog.',
+    'The free tools page has categories, puts the most used tools first and links related tools.',
     'Free PDF tools: 17 more, including OCR (make a scan searchable), compare two PDFs, repair, extract images, grayscale, booklet and pages per sheet. Many tools now take several files at once and give back one ZIP. The tools page has a search box.',
     'A PDF you just uploaded on a phone now opens straight away, without a "Couldn\'t open this PDF" screen.',
     'On small phones, the Survey Marker shape menu (Rectangle, Freehand, Smart fill) can be tapped again, and messages no longer cover Done or Pan.',
