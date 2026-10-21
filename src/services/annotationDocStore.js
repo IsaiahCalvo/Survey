@@ -1159,6 +1159,7 @@ export function createViewerCaptureState() {
     nested: new WeakMap(),    // nested object/array -> { key, object } newest copy holding it
     pageOrders: new Map(),    // pageKey -> [keys] bottom → top at the previous capture (w52)
     deliveredPageOrders: new Map(), // pageKey -> [[keys]] handed out since the previous capture (w52)
+    deliveredGone: new Set(), // keys the viewer had, handed out as gone since the previous capture
   };
 }
 
@@ -1223,6 +1224,15 @@ export function recordViewerDelivery(viewer, byPage) {
       recordDeliveredObject(viewer, key, pageKey, object);
     }
     recordDeliveredPageOrder(viewer, pageKey, order);
+  }
+  // A mark the viewer had that this delivery leaves out was removed by
+  // someone else; the screen painting that removal is not the user's delete,
+  // even if the mark is back in the document by the next capture.
+  for (const key of viewer.had) {
+    if (!seen.has(key)) {
+      if (!viewer.deliveredGone) viewer.deliveredGone = new Set();
+      viewer.deliveredGone.add(key);
+    }
   }
   // Every delivery is the whole document: a mark missing from it is gone.
   for (const key of [...viewer.lastDelivered.keys()]) {
@@ -1419,6 +1429,7 @@ export function syncByPageToDoc(doc, byPage, {
       : [...viewer.had];
     for (const key of candidates) {
       if (present.has(key) || isLaneProtected(key) || !map.has(key)) continue;
+      if (viewer.deliveredGone?.has(key)) continue;
       toDelete.push(key);
     }
   } else {
@@ -1684,6 +1695,7 @@ function commitViewerCapture(viewer, {
   // Everything handed out so far has now been painted or superseded.
   viewer.deliveries.clear();
   viewer.deliveredPageOrders?.clear();
+  viewer.deliveredGone?.clear();
 }
 
 /** Tell the capture state the viewer now holds `object` for `key` (a reconcile swap). */
