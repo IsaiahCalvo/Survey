@@ -21,7 +21,7 @@
    clip them or force a scrollbar. Because the portal renders OUTSIDE the
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
-import { canManageProjectFile } from './projectFilePermissions.js';
+import { canManageProject, canManageProjectFile } from './projectFilePermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
@@ -2011,6 +2011,7 @@ export default function ProjectsFolderTree({
         const proj = filtered.find((p) => p.id === teamMenu.id);
         if (!proj) return null;
         const projPinned = pinnedIds.has(proj.id);
+        const ownerOnly = canManageProject(proj, user?.id) ? null : 'Only the project owner can do this';
         return (
           <PopupMenu
             anchorRect={teamMenu.rect}
@@ -2020,9 +2021,9 @@ export default function ProjectsFolderTree({
               // "Add member" opens the invite/share popup — same flow as
               // "Get link to project". Only "Manage project" opens the modal.
               { label: 'Duplicate', onClick: () => duplicateProjects([proj.id]) },
-              { label: 'Share', onClick: () => onShare?.(proj) },
-              { label: 'Delete', danger: true, onClick: () => { void deleteProjects([proj.id]); } },
-              { icon: 'users', label: 'Add member', onClick: () => onShare && onShare(proj) },
+              { label: 'Share', reason: ownerOnly, onClick: () => onShare?.(proj) },
+              { label: 'Delete', danger: true, reason: ownerOnly, onClick: () => { void deleteProjects([proj.id]); } },
+              { icon: 'users', label: 'Add member', reason: ownerOnly, onClick: () => onShare && onShare(proj) },
               { icon: 'arrow-r', label: 'Get link to project', onClick: () => onShare && onShare(proj) },
               { icon: 'upload', label: 'Upload files', onClick: () => { setOpenId(proj.id); addFiles(proj); } },
               {

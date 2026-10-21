@@ -26,3 +26,16 @@ test('file menu wires Delete and Share to the check', () => {
   // Select bar uses the same rule.
   assert.match(src, /can=\{manageCan\(selectedFiles, open, user\?\.id\)\}/);
 });
+
+test('project menu: Share/Delete/Add member are owner-only', async () => {
+  const { canManageProject } = await import('../src/home/projectFilePermissions.js');
+  assert.equal(canManageProject(owned, 'owner'), true);
+  assert.equal(canManageProject({ user_id: 'x', my_role: 'owner' }, 'me'), true);
+  assert.equal(canManageProject(owned, 'me'), false);
+  assert.equal(canManageProject(owned, null), false);
+  const src = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
+  assert.match(src, /canManageProject\(proj, user\?\.id\)/);
+  assert.match(src, /label: 'Share', reason: ownerOnly/);
+  assert.match(src, /label: 'Delete', danger: true, reason: ownerOnly/);
+  assert.match(src, /label: 'Add member', reason: ownerOnly/);
+});
