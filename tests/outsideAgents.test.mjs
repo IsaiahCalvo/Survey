@@ -151,7 +151,7 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   assert.match(src, /function recordChange/);
   assert.match(src, /from\('agent_change'\)\.insert/);
   assert.match(src, /if \(!actor\?\.clientId \|\| !actor\.userId\) return;/);
-  const mig = read('supabase/migrations/20261023130000_agent_change.sql');
+  const mig = read('supabase/migrations/20261023150000_agent_change.sql');
   assert.match(mig, /create table if not exists public\.agent_change/);
   // Agent inserts its own; person reads + marks undone; agent can't read.
   assert.match(mig, /for insert\s+to authenticated\s+with check \(user_id = auth\.uid\(\) and public\.is_agent_session\(\)\)/);

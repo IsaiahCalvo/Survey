@@ -1,0 +1,13 @@
+# Opens the cached sample drawing with the local API cut off. Run after
+# android-offline-relaunch.yaml; android-pdf-tools-offline.sh runs this first.
+appId: com.kalvoe.survey
+name: android-pdf-tools-offline
+---
+- tapOn: ".*E2E Sample Drawing.*"
+- tapOn:
+    text: "Open file"
+    optional: true
+- extendedWaitUntil:
+    visible: "More document options"
+    timeout: 90000
+- takeScreenshot: 20-offline-document-open

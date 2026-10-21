@@ -142,3 +142,17 @@
     padding: 0 12px;
   }
 }
+
+/* TABLET + DESKTOP (PR #1106 follow-up, 768-1366px check): the toast is
+   centred on the window, so with the Survey panel open (320px + the 48px rail
+   on the right) its left half reaches over the panel's 40px Export footer
+   (Export to Excel / "...") at iPad widths, and a long message (a bookmark
+   name, the kept-copy delete notice) does at any width. Lift it clear of that
+   footer while the panel is up. The left Pages panel has no bottom buttons and
+   the zoom / page / fit controls live in the 48px rail, which the centred
+   toast never reaches. Phones keep their own placement above. */
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) {
+  html:has(.survey-rail__foot) .undo-toast {
+    bottom: 48px;
+  }
+}

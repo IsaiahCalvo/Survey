@@ -2,7 +2,7 @@
 // "Turn pages into pictures" draws each page in grey instead, which catches
 // everything but makes text unselectable.
 import {
-  SEG, base, pdfOut, renderPage, releaseCanvas, ToolError,
+  SEG, base, pdfOut, canvasToBytes, releaseCanvas, ToolError,
 } from '../kit.js';
 
 // Photos stored as JPEG need a decoder; the browser has one.
@@ -35,20 +35,41 @@ async function sharp(file, opts, progress) {
   return out;
 }
 
+// A drawn page as a grey JPEG. The browser saves the colour JPEG quickly and
+// its brightness part is the grey picture (jpeg.js); the slower all-JavaScript
+// encoder is only for a browser whose JPEGs jpeg.js can't read.
+async function grayJpeg(canvas) {
+  const [{ jpegToGray }, { encodeGrayJpeg, rgbaToGray }] = await Promise.all([import('../jpeg.js'), import('../imageWriters.js')]);
+  const gray = jpegToGray(await canvasToBytes(canvas, 'image/jpeg', 0.85));
+  if (gray) return gray;
+  const { width, height } = canvas;
+  return encodeGrayJpeg(rgbaToGray(canvas.getContext('2d').getImageData(0, 0, width, height).data, width, height), width, height, 85);
+}
+
 async function pictures(file, opts, progress) {
-  const [{ pagesToGrayPdf }, { encodeGrayJpeg, rgbaToGray }] = await Promise.all([import('../grayscale.js'), import('../imageWriters.js')]);
-  const pdf = await file.pdfjs();
+  const [{ pagesToGrayPdf }, { jpegToGray }] = await Promise.all([import('../grayscale.js'), import('../jpeg.js')]);
   const dpi = Number(opts.dpi);
+  const scans = await file.scans();
   const pages = [];
   for (let i = 0; i < file.pages; i += 1) {
     progress(`Page ${i + 1} of ${file.pages}`);
-    const canvas = await renderPage(pdf, i, { scale: dpi / 72 });
-    const { width, height } = canvas;
-    const gray = rgbaToGray(canvas.getContext('2d').getImageData(0, 0, width, height).data, width, height);
+    const scan = scans[i];
+    let size;
+    if (scan) {
+      size = scan.rotate % 180 ? { width: scan.box.height, height: scan.box.width } : scan.box;
+    } else {
+      const vp = (await (await file.pdfjs()).getPage(i + 1)).getViewport({ scale: 1 });
+      size = { width: vp.width, height: vp.height };
+    }
+    // An upright scan at about this many dots per inch keeps its own pixels.
+    const own = scan && !scan.rotate && Math.abs((scan.width / scan.box.width) * 72 / dpi - 1) < 0.03 && (scan.gray ? scan.jpeg : jpegToGray(scan.jpeg));
+    if (own) {
+      pages.push({ jpeg: own, ...size });
+      continue;
+    }
+    const canvas = await file.render(i, { scale: dpi / 72 });
+    pages.push({ jpeg: await grayJpeg(canvas), ...size });
     releaseCanvas(canvas);
-    const page = await pdf.getPage(i + 1);
-    const vp = page.getViewport({ scale: 1 });
-    pages.push({ jpeg: encodeGrayJpeg(gray, width, height, 85), width: vp.width, height: vp.height });
   }
   progress('Making the PDF');
   return pdfOut(`${base(file.name)}-grayscale.pdf`, await pagesToGrayPdf(pages));

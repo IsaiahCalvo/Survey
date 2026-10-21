@@ -135,3 +135,11 @@ html[data-undo-toast-open] .app-toast-host {
     transition: none;
   }
 }
+
+/* ...and when the Undo toast is lifted over the Survey panel's footer
+   (UndoToast.css, tablet + desktop) the stack stands above it again. */
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) {
+  html[data-undo-toast-open]:has(.survey-rail__foot) .app-toast-host {
+    bottom: 108px;
+  }
+}

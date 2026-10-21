@@ -2,7 +2,7 @@
 // tested) in Node as well as the browser. Every function takes and returns
 // bytes; nothing is uploaded anywhere.
 import {
-  PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFStream, StandardFonts, concatTransformationMatrix, degrees, drawObject,
+  PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFObjectParser, PDFRawStream, PDFStream, StandardFonts, concatTransformationMatrix, degrees, drawObject,
   popGraphicsState, pushGraphicsState, rgb,
 } from 'pdf-lib';
 
@@ -12,6 +12,21 @@ import { parsePageSet } from './ranges.js';
 export { ToolError };
 
 const CREATOR = 'Survey free PDF tools (surveytool.app/tools)';
+
+// pdf-lib copies every stream out of the file as it reads it, and again when
+// pages move to another document, so a 100 MB scan set sat in memory three
+// times before saving. After this call those copies point at the bytes they
+// came from instead. pdf-lib never writes into a stream's bytes, but whoever
+// calls this must never hand a loaded file's buffer to pdf.js (which detaches
+// it): the /tools pages give pdf.js copies, so they turn this on; the app does not.
+let sharing = false;
+export function shareStreamBytes() {
+  if (sharing) return;
+  sharing = true;
+  const byteStream = Object.getPrototypeOf(PDFObjectParser.forBytes(new Uint8Array(0)).bytes);
+  byteStream.slice = function slice(start, end) { return this.bytes.subarray(start, end); };
+  PDFRawStream.prototype.clone = function clone(context) { return PDFRawStream.of(this.dict.clone(context), this.contents); };
+}
 
 export async function loadPdf(bytes) {
   let doc;

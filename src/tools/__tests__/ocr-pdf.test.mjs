@@ -188,3 +188,28 @@ test('ocrPdf: plain messages when there is nothing to do or nothing found', asyn
   await assert.rejects(ocrPdf(bytes, async () => ({ image: { width: 10, height: 10 }, lines: [] })), (e) => e instanceof ToolError && /No words were found/.test(e.message));
   await assert.rejects(ocrPdf(new Uint8Array([1, 2, 3]), async () => null), (e) => e instanceof ToolError);
 });
+
+test('ocrPdf: reads a few pages at once when asked, and lays words on in order', async () => {
+  const doc = await PDFDocument.create();
+  for (let i = 0; i < 5; i += 1) doc.addPage([300, 300]);
+  const bytes = await doc.save();
+  let inFlight = 0;
+  let most = 0;
+  const read = async (i) => {
+    inFlight += 1;
+    most = Math.max(most, inFlight);
+    // Later pages finish first, to show the order doesn't depend on it.
+    await new Promise((r) => setTimeout(r, (5 - i) * 3));
+    inFlight -= 1;
+    return { image: { width: 600, height: 600 }, lines: [line([[`Page${i + 1}`, 20, 300]])] };
+  };
+  const result = await ocrPdf(bytes, read, () => {}, { together: 2 });
+  assert.equal(most, 2);
+  assert.equal(result.words, 5);
+  const task = pdfjsLib.getDocument({ data: result.bytes, disableWorker: true, verbosity: 0 });
+  const pdf = await task.promise;
+  const texts = [];
+  for (let n = 1; n <= 5; n += 1) texts.push((await (await pdf.getPage(n)).getTextContent()).items.map((it) => it.str).join(''));
+  await task.destroy();
+  assert.deepEqual(texts, ['Page1', 'Page2', 'Page3', 'Page4', 'Page5']);
+});

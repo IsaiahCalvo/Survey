@@ -164,12 +164,15 @@ export function rgbaToTiffPage(rgba, width, height, { color = 'color', dpi = 150
   return tiffPage({ width, height, kind: 'bw', data: grayToBits(gray, width, height), dpi }, zip);
 }
 
+// A strip is bytes, or a Blob once a long run has handed it to the browser.
+const stripLength = (s) => s.size ?? s.length;
+
 function ifd(page, index, total, at) {
   const offsets = [];
   let pos = at;
   for (const s of page.strips) {
     offsets.push(pos);
-    pos += s.length + (s.length & 1);
+    pos += stripLength(s) + (stripLength(s) & 1);
   }
   const entries = [
     [254, LONG, [0]],
@@ -181,7 +184,7 @@ function ifd(page, index, total, at) {
     [273, LONG, offsets],
     [277, SHORT, [page.bitsPerSample.length]],
     [278, LONG, [page.rowsPerStrip]],
-    [279, LONG, page.strips.map((s) => s.length)],
+    [279, LONG, page.strips.map(stripLength)],
     [282, RATIONAL, [[Math.round(page.dpi), 1]]],
     [283, RATIONAL, [[Math.round(page.dpi), 1]]],
     [284, SHORT, [1]],
@@ -221,7 +224,8 @@ function ifd(page, index, total, at) {
 }
 
 // pages from tiffPage (or hand-made, like a fax strip) -> one TIFF file.
-export function writeTiff(pages) {
+// The file's pieces in order, for new Blob(pieces) when the strips are Blobs.
+export function tiffParts(pages) {
   const head = Uint8Array.of(0x49, 0x49, 42, 0, 0, 0, 0, 0);
   const parts = [head];
   let pos = 8;
@@ -230,7 +234,7 @@ export function writeTiff(pages) {
     const d = ifd(page, i, pages.length, pos);
     for (const s of page.strips) {
       parts.push(s);
-      if (s.length & 1) parts.push(new Uint8Array(1));
+      if (stripLength(s) & 1) parts.push(new Uint8Array(1));
     }
     parts.push(d.buf);
     if (prev) new DataView(prev.buf.buffer).setUint32(prev.next, d.ifdAt, true);
@@ -238,8 +242,10 @@ export function writeTiff(pages) {
     prev = d;
     pos = d.end;
   });
-  return concat(parts);
+  return parts;
 }
+
+export const writeTiff = (pages) => concat(tiffParts(pages));
 
 // ---------------------------------------------------------------- BMP
 

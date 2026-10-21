@@ -14,25 +14,11 @@
  * utils/toolPressRouting.js) — desktop and phone alike. Keep every
  * tool -> group and mark -> tool answer here.
  */
+import { ANNOTATION_TOOL_CATALOG, toolGroupByTool } from '../annotation/toolCatalog.js';
 
-/** The group each drawing tool (or picked mark's tool) belongs to. */
-export const TOOL_GROUP_BY_TOOL = Object.freeze({
-  pen: 'draw',
-  highlighter: 'draw',
-  'text-highlight': 'draw',
-  eraser: 'draw',
-  rect: 'shape',
-  ellipse: 'shape',
-  polygon: 'shape',
-  polyline: 'shape',
-  line: 'shape',
-  arrow: 'shape',
-  counter: 'shape',
-  text: 'review',
-  callout: 'review',
-  // KAL-407: the Symbols tool sits in the Text group's row.
-  symbol: 'review',
-});
+/** The group each drawing tool (or picked mark's tool) belongs to — derived
+ * from the one markup tool list (annotation/toolCatalog.js). */
+export const TOOL_GROUP_BY_TOOL = Object.freeze(toolGroupByTool(ANNOTATION_TOOL_CATALOG));
 
 /** Survey Markers: placed by their own tool, picked by it and by Select / Pan. */
 export const SURVEY_MARKER_GROUP = 'survey-marker';

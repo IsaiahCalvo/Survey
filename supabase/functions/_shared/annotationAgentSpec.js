@@ -9,6 +9,8 @@
 // writes through the same path a human tap uses, so sync, Excel and the
 // person's role all apply, and one Undo takes a change back.
 
+import { agentToolNamesForTools } from './annotationToolCatalog.js';
+
 // Feature flag that gates the whole set. Ships off; the single source of
 // truth for both the app and the voice server.
 export const ANNOTATION_AGENT_FLAG = 'annotation-agent';
@@ -38,7 +40,7 @@ export function buildAnnotationToolSpecs() {
     access: { signIn: true, minRole: 'editor' },
     documentScoped: true,
   });
-  return [
+  const specs = [
     {
       name: 'survey_list_annotations',
       description: 'List the normal annotations on the open PDF (text notes, shapes, highlights — not Survey markers): id, page, type, text and box. Use an id with survey_edit_text_note or survey_delete_annotation.',
@@ -211,6 +213,14 @@ export function buildAnnotationToolSpecs() {
       documentScoped: true,
     },
   ];
+  // The tool list itself comes from the markup tool catalog: these specs only
+  // supply each named tool's schema and wording.
+  const byName = new Map(specs.map((spec) => [spec.name, spec]));
+  return agentToolNamesForTools().map((name) => {
+    const spec = byName.get(name);
+    if (!spec) throw new Error(`annotationAgentSpec: no schema for catalog agent tool ${name}`);
+    return spec;
+  });
 }
 
 export const ANNOTATION_TOOL_SPECS = Object.freeze(buildAnnotationToolSpecs());

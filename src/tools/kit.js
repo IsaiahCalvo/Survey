@@ -11,7 +11,9 @@
 //   select: 'keep' | 'delete'              pages view: tap pages to pick them
 //   keepLock: true                         take password-locked PDFs as they are (item.locked)
 //   openAnyway: true                       take PDFs pdf.js can't open (item.broken, item.pages 0)
-//   prepare(item, busy)                    once per added file (item.bytes, item.name, item.pages, item.pdfjs());
+//   prepare(item, busy)                    once per added file (item.bytes, item.name, item.pages, item.pdfjs(),
+//                                          item.render(index, { width | scale }) -> canvas, quick for scanned pages,
+//                                          item.scans() -> per page, the page's JPEG when it is a plain scan);
 //                                          busy(text) shows progress while it runs
 //   notice(files, opts) -> string | null   a note shown above the options
 //   auto: true                             run as soon as a file is added (no options to set first)
@@ -19,12 +21,20 @@
 //                                          (the first note shows on the ZIP). A single output may
 //                                          also carry title (result heading), view(h) -> Node shown
 //                                          on the result, and saveLabel (the Download button text)
-//                                          batch is true when several files run one at a time
+//                                          batch is true when several files run one at a time.
+//                                          One of many outputs may be blobOut() instead, to leave the page's memory
 // Throw ToolError with a plain message for anything the person should read.
+import { crc32 } from './zip.js';
+
 export const PDF_TYPE = 'application/pdf';
 export const SEG = 'seg';
 export const base = (name) => name.replace(/\.[a-z0-9]+$/i, '');
 export const pdfOut = (name, bytes) => ({ name, bytes, type: PDF_TYPE });
+// One of many outputs (a page as a picture): handed to the browser as a Blob
+// right away, so 60 big pictures don't pile up in the page while the rest are made.
+export const blobOut = (name, bytes, type) => ({
+  name, type, blob: new Blob([bytes], { type }), size: bytes.length, crc: crc32(bytes),
+});
 export { ToolError } from './errors.js';
 export {
   openPdfjs, renderPage, canvasToBytes, releaseCanvas, prepareImage, runQpdf, MAX_PIXELS,
@@ -33,8 +43,12 @@ import { loadDocFont } from './browser.js';
 
 export { loadDocFont };
 export const loadFontkit = async () => (await import('@pdf-lib/fontkit')).default;
-// pdf-lib helpers (ops.js) load on first use.
-export const loadOps = () => import('./ops.js');
+// pdf-lib helpers (ops.js) load on first use. On these pages pdf.js only ever
+// gets copies of a file's bytes, so pdf-lib may share them (see ops.js).
+export const loadOps = () => import('./ops.js').then((ops) => {
+  ops.shareStreamBytes();
+  return ops;
+});
 
 // Word, RTF and HTML to PDF: the same page options and layout (docLayout.js).
 export const DOC_OPTIONS = [

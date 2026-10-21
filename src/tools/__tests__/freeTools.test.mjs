@@ -16,7 +16,7 @@ import { makeDocx, para, listItem, table, run } from './makeDocx.mjs';
 import { ToolError } from '../errors.js';
 import { compressPdf, deflate, inflate } from '../compress.js';
 import { parseRangeGroups, parsePageSet, formatPageSet, everyN } from '../ranges.js';
-import { makeZip, crc32 } from '../zip.js';
+import { makeZip, makeZipBlob, crc32 } from '../zip.js';
 
 // A PDF whose pages say which one they are, by size: page i is (100 + i) wide.
 async function samplePdf(n, rotate = 0) {
@@ -45,6 +45,7 @@ test('ranges: groups, sets, formatting and every-N', () => {
 
 test('zip: stored entries round-trip with the right CRC', () => {
   assert.equal(crc32(new TextEncoder().encode('hello')), 0x3610a686);
+  assert.equal(crc32(new TextEncoder().encode('llo'), crc32(new TextEncoder().encode('he'))), 0x3610a686);
   const a = new TextEncoder().encode('first');
   const zip = makeZip([{ name: 'a.txt', bytes: a }, { name: 'b é.txt', bytes: new Uint8Array([1, 2, 3]) }]);
   const v = new DataView(zip.buffer);
@@ -55,6 +56,19 @@ test('zip: stored entries round-trip with the right CRC', () => {
   assert.equal(v.getUint16(end + 10, true), 2);
   // Central directory offset points at the first central entry.
   assert.equal(v.getUint32(v.getUint32(end + 16, true), true), 0x02014b50);
+});
+
+test('zip: a ZIP Blob made from Blob entries matches the byte one', async () => {
+  const a = new TextEncoder().encode('first');
+  const b = new Uint8Array([1, 2, 3]);
+  const now = new Date(2026, 0, 2, 3, 4, 6);
+  const bytes = makeZip([{ name: 'a.txt', bytes: a }, { name: 'b.bin', bytes: b }], now);
+  const blob = makeZipBlob([
+    { name: 'a.txt', blob: new Blob([a]), size: a.length, crc: crc32(a) },
+    { name: 'b.bin', bytes: b },
+  ], now);
+  assert.equal(blob.type, 'application/zip');
+  assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), bytes);
 });
 
 test('merge keeps every page in file order', async () => {
