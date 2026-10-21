@@ -37,6 +37,13 @@ test('one person can send at most 5 profile-change emails an hour', async () => 
       results.push(data);
     }
     expect(results).toEqual(['allowed', 'allowed', 'allowed', 'allowed', 'allowed', 'rate_limited']);
+    // Parallel claims cannot all read the same count and all pass.
+    await admin.from('email_send_events').delete().eq('user_id', userId);
+    const parallel = await Promise.all(Array.from({ length: 12 }, () => client.rpc('claim_email_send', {
+      p_template: 'profile-change', p_recipient: E2E_ACCOUNTS.editor.email, p_is_invite: false,
+    })));
+    expect(parallel.filter((r) => r.data === 'allowed')).toHaveLength(5);
+    await admin.from('email_send_events').delete().eq('user_id', userId);
     // Other mail from the same person still has its own room under the hourly cap.
     const { data: other } = await client.rpc('claim_email_send', { p_template: 'document-invite', p_recipient: 'someone@example.com', p_is_invite: false });
     expect(other).toBe('allowed');

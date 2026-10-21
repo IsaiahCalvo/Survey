@@ -64,14 +64,17 @@ BEGIN
         RETURN 'error';
     END IF;
 
+    -- One claim per person at a time, so parallel calls cannot all read the
+    -- same count and all pass.
+    PERFORM pg_advisory_xact_lock(hashtextextended('email_send:' || v_uid::text, 0));
+
     -- KAL-31 locked spec: free users cannot create invites. Enforced here so
     -- a direct function call cannot dodge the UI gate.
     IF p_is_invite AND public.get_user_tier(v_uid)::text = 'free' THEN
         RETURN 'invite_blocked_free_tier';
     END IF;
 
-    -- Rolling-hour cap. The count+insert pair runs inside one function call;
-    -- worst-case interleaving overshoots by a handful, never unbounded.
+    -- Rolling-hour cap.
     SELECT COUNT(*) INTO v_recent
     FROM public.email_send_events
     WHERE user_id = v_uid
