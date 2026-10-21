@@ -533,6 +533,7 @@ import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/re
 import { buildSheetLayout, buildSheetRow, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
 import { answerSetFor, excelAnswerListFormula, DEFAULT_ANSWER_SET } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
+import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,
@@ -31751,6 +31752,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const templateId = selectedTemplate.supabaseId || selectedTemplate.id;
     setSelectedTemplate(updatedTemplate);
     setSelectedCategoryId((current) => categoryIds.includes(current) ? null : current);
+    notifySmartFillCategoriesDeleted(categoryIds, Object.entries(surveyMarkersRef.current || {})
+      .filter(([, marker]) => marker?.moduleId === moduleId && categoryIds.includes(marker?.categoryId))
+      .map(([annotationId]) => annotationId));
 
     if (handleTemplatesChange && appTemplates) {
       handleTemplatesChange(appTemplates.map((template) => (
@@ -38660,6 +38664,7 @@ ${pageBlocks}
                       // (34x32) and the shared 18px glyph, so the row matches
                       // the top bar instead of being 40x32 with a 20px glyph.
                       className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                      aria-pressed={isActive}
                       style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip.
                       // A native title= here would fade the OS tooltip in on top
@@ -38881,6 +38886,7 @@ ${pageBlocks}
                       // Draw row. (The split-menu chevron this button used to
                       // size itself around is dead — showCaret is false.)
                       className={`btn chrome-subcontrol ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
+                      aria-pressed={activeTool === t.id}
                       style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip;
                       // a native title= would stack the OS tooltip on top of it.
@@ -39299,6 +39305,7 @@ ${pageBlocks}
                       // .chrome-subcontrol box + shared 18px glyph, as the
                       // Draw and Shapes rows.
                       className={`btn chrome-subcontrol ${isActive ? 'btn-active' : 'btn-ghost'}`}
+                      aria-pressed={isActive}
                       style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip;
                       // a native title= would stack the OS tooltip on top of it.
