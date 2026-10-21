@@ -165,7 +165,10 @@ For agents that speak MCP (Claude and ChatGPT connectors, scripts):
   which points to Survey's authorization server, so MCP clients find the sign-in
   on their own. Dynamic client registration is on.
 - Tools (read-only for now): `list_projects`, `list_documents`,
-  `list_survey_items`, `find_survey_items`, `get_survey_item`.
+  `list_survey_items`, `find_survey_items`, `get_survey_item`,
+  `get_document_role` (this person's role on a document) and
+  `get_survey_context` (a document's survey template: categories, checklist
+  items and entities).
 - Every call runs as the person, so the agent sees exactly their documents.
 
 In Claude: Settings > Connectors > Add custom connector, paste the server URL.

@@ -80,6 +80,19 @@ test('agents cannot pay, open billing, delete the account, or export it', () => 
   }
 });
 
+test('survey-mcp exposes only read-only tools, and its role read uses GET', () => {
+  const src = read('supabase/functions/survey-mcp/index.ts');
+  for (const name of ['list_projects', 'list_documents', 'list_survey_items', 'find_survey_items', 'get_survey_item', 'get_document_role', 'get_survey_context']) {
+    assert.match(src, new RegExp(`name: '${name}'`), name);
+  }
+  // Every declared tool is read-only — the connector must not gain a write
+  // tool here until the server-side write path (KAL-531) lands.
+  const tools = src.slice(src.indexOf('const TOOLS'), src.indexOf('async function callTool'));
+  assert.equal((tools.match(/readOnlyHint: true/g) || []).length, 7);
+  // A read-only agent can only reach a STABLE rpc via GET (the #1034 gate).
+  assert.match(src, /rpc\('get_my_document_role', \{ doc_id: documentId \}, \{ get: true \}\)/);
+});
+
 async function loadAgentSession() {
   const { stripTypeScriptTypes } = await import('node:module');
   const js = stripTypeScriptTypes(read('supabase/functions/_shared/agentSession.ts'));

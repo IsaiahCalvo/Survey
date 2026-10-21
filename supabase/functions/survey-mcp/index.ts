@@ -161,6 +161,28 @@ const TOOLS = [
     },
     annotations: { readOnlyHint: true },
   },
+  {
+    name: 'get_document_role',
+    title: 'Get this person\'s role on a document',
+    description: 'This person\'s role on one document: owner, editor or viewer (null if they cannot see it). An agent has exactly this role, so an editor\'s agent could change the document while a viewer\'s can only read.',
+    inputSchema: {
+      type: 'object',
+      properties: { document_id: { type: 'string' } },
+      required: ['document_id'],
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: 'get_survey_context',
+    title: 'Get a document\'s survey template',
+    description: 'The survey structure for one document: each category with its checklist item ids and text, and the entities (colored statuses or owners). Use it to make sense of the answers that list_survey_items and get_survey_item return.',
+    inputSchema: {
+      type: 'object',
+      properties: { document_id: { type: 'string' } },
+      required: ['document_id'],
+    },
+    annotations: { readOnlyHint: true },
+  },
 ];
 
 async function callTool(db: SupabaseClient, name: string, args: Record<string, unknown>) {
@@ -231,6 +253,22 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
       files: mediaCount(r.notes),
       on_plan: !(r.annotation_data as Record<string, unknown> | null)?.unplaced,
       page: (r.annotation_data as Record<string, unknown> | null)?.unplaced ? null : r.page_number,
+    });
+  }
+  if (name === 'get_document_role') {
+    if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
+    // STABLE function, so a GET keeps a read-only agent inside its scope.
+    const { data, error } = await db.rpc('get_my_document_role', { doc_id: documentId }, { get: true });
+    if (error) throw new ToolError('Could not read the role for that document.');
+    return text({ document_id: documentId, role: (data as string | null) || null });
+  }
+  if (name === 'get_survey_context') {
+    if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
+    const names = await categoryNames(db, documentId);
+    return text({
+      document_id: documentId,
+      categories: [...names.categories.values()].map((c) => ({ id: c.id, name: c.name, checklist: c.checklist })),
+      entities: [...names.entities.entries()].map(([id, name]) => ({ id, name })),
     });
   }
   throw new ToolError(`Unknown tool ${name}.`);
