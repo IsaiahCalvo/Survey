@@ -48,18 +48,24 @@ export function pdfjsWords(items, viewport, height) {
 }
 
 function fontKey(page, font, keys) {
-  if (!keys.has(page)) keys.set(page, page.node.newFontDictionary(font.name, font.ref));
-  return keys.get(page);
+  if (!keys.has(page)) keys.set(page, new Map());
+  const names = keys.get(page);
+  if (!names.has(font)) names.set(font, page.node.newFontDictionary(font.name, font.ref));
+  return names.get(font);
 }
 
 // Draw words from pdfjsWords as invisible text (render mode 3).
-function addWords(page, words, font, keys) {
-  const charset = new Set(font.getCharacterSet());
-  const hasChar = (cp) => charset.has(cp);
+// fonts: [{ font, has(codePoint) }] in order of choice; each word uses the
+// first that has all its letters (else the first), so no letter is drawn
+// with the empty glyph 0, which PDF/A forbids.
+function addWords(page, words, fonts, keys) {
   const r = (n) => Math.round(n * 1e4) / 1e4;
   const ops = [];
   for (const w of words) {
-    const text = safeText(w.text, hasChar);
+    const cps = [...w.text].filter((ch) => !/\s/.test(ch)).map((ch) => ch.codePointAt(0));
+    const pick = fonts.find((f) => cps.every(f.has)) || fonts[0];
+    const { font } = pick;
+    const text = safeText(w.text, pick.has);
     const natural = font.widthOfTextAtSize(text, 1);
     if (!(natural > 0)) continue;
     // A space after each piece keeps words apart when the text is copied.
@@ -119,9 +125,36 @@ const uuid = () => {
 // addPage({ jpeg, width, height, words?, ocr? }): width/height in points (the
 // page as seen); words from pdfjsWords; ocr is { lines, image } from the OCR
 // reader. finish() returns the bytes.
-export async function startPdfA({ title = 'Document', date = new Date() } = {}) {
+// loadFont(kind) -> font file bytes and loadFontkit() -> fontkit are only used
+// when a page has letters Helvetica lacks (Greek, Cyrillic, CJK...), so the
+// hidden text keeps the real letters instead of question marks.
+export async function startPdfA({ title = 'Document', date = new Date(), loadFont, loadFontkit } = {}) {
   const doc = await PDFDocument.create({ updateMetadata: false });
   const font = await doc.embedFont(StandardFonts.Helvetica);
+  const latin = new Set(font.getCharacterSet());
+  const extra = new Map();
+  const embedExtra = async (kind) => {
+    if (!extra.has(kind)) {
+      extra.set(kind, (async () => {
+        doc.registerFontkit(await loadFontkit());
+        return doc.embedFont(await loadFont(kind), { subset: true });
+      })());
+    }
+    return extra.get(kind);
+  };
+  // The fonts one page's words may need: Helvetica, plus Noto Sans (Greek,
+  // Cyrillic...) and the CJK fallback when some word has letters Helvetica lacks.
+  const withSet = (font) => { const set = new Set(font.getCharacterSet()); return { font, has: (c) => set.has(c) }; };
+  const base = withSet(font);
+  const fontsFor = async (words) => {
+    const missing = words.some((w) => [...w.text].some((ch) => !/\s/.test(ch) && !latin.has(ch.codePointAt(0))));
+    if (!missing || !loadFont || !loadFontkit) return [base];
+    try {
+      return [base, withSet(await embedExtra('noto')), withSet(await embedExtra('cjk'))];
+    } catch {
+      return [base]; // the fonts didn't load: keep going with what Helvetica can show
+    }
+  };
   const keys = new Map();
   const stats = { pages: 0, textPages: 0, ocrPages: 0, searchable: 0, words: 0 };
   const when = new Date(Math.floor(date.getTime() / 1000) * 1000);
@@ -132,7 +165,7 @@ export async function startPdfA({ title = 'Document', date = new Date() } = {}) 
       const image = await doc.embedJpg(jpeg);
       page.drawImage(image, { x: 0, y: 0, width, height });
       stats.pages += 1;
-      let n = words?.length ? addWords(page, words, font, keys) : 0;
+      let n = words?.length ? addWords(page, words, await fontsFor(words), keys) : 0;
       if (n) stats.textPages += 1;
       if (ocr?.lines?.length) {
         const read = addTextLayer(page, ocr.lines, ocr.image, font);

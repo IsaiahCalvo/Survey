@@ -30,6 +30,9 @@ export {
   openPdfjs, renderPage, canvasToBytes, releaseCanvas, prepareImage, runQpdf, MAX_PIXELS,
 } from './browser.js';
 import { loadDocFont } from './browser.js';
+
+export { loadDocFont };
+export const loadFontkit = async () => (await import('@pdf-lib/fontkit')).default;
 // pdf-lib helpers (ops.js) load on first use.
 export const loadOps = () => import('./ops.js');
 
@@ -51,7 +54,7 @@ const CANT_DRAW = (one) => `${one ? 'it uses' : 'they use'} a type a browser can
 export async function blocksToPdf(blocks, name, opts, { left = 0, why = CANT_DRAW } = {}) {
   const { docxBlocksToPdf } = await import('./docLayout.js');
   const { bytes, skippedImages } = await docxBlocksToPdf(blocks, {
-    pageSize: opts.pageSize, font: opts.font, loadFont: loadDocFont, loadFontkit: async () => (await import('@pdf-lib/fontkit')).default,
+    pageSize: opts.pageSize, font: opts.font, loadFont: loadDocFont, loadFontkit,
   });
   const out = pdfOut(`${base(name)}.pdf`, bytes);
   const n = skippedImages + left;

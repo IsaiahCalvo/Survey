@@ -112,3 +112,23 @@ test('pdfa: XMP escapes the title', () => {
   const xmp = pdfaXmp({ title: '<A&B>', date: new Date(0), documentId: 'x', instanceId: 'y' });
   assert.match(xmp, /&lt;A&amp;B&gt;/);
 });
+
+test('pdfa: letters Helvetica lacks keep their real text', async () => {
+  const { readFileSync } = await import('node:fs');
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
+  const fonts = { noto: 'NotoSans-Regular.ttf', cjk: 'DroidSansFallback.ttf' };
+  const writer = await startPdfA({
+    title: 'Plans',
+    loadFont: async (kind) => readFileSync(new URL(`../../assets/fonts/${fonts[kind]}`, import.meta.url)),
+    loadFontkit: async () => fontkit,
+  });
+  const word = (text, y) => ({ text, m: [12, 0, 0, 12, 72, y], width: text.length * 0.6, eol: false });
+  await writer.addPage({ jpeg: JPEG, width: 612, height: 792, words: [word('Привет', 700), word('Ωμέγα', 650)] });
+  await writer.addPage({ jpeg: JPEG, width: 612, height: 792, words: [word('Plain', 700)] });
+  const out = await open(await writer.finish());
+  const text = async (n) => (await (await out.pdf.getPage(n)).getTextContent()).items.map((i) => i.str).join(' ');
+  assert.match(await text(1), /Привет/);
+  assert.match(await text(1), /Ωμέγα/);
+  assert.match(await text(2), /Plain/);
+  await out.task.destroy();
+});

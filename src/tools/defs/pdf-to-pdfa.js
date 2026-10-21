@@ -2,13 +2,13 @@
 // its words laid on top as hidden text. Words come from the page itself when
 // it has them, otherwise (scans) from the OCR reader.
 import {
-  SEG, base, pdfOut, renderPage, releaseCanvas, canvasToBytes, ToolError,
+  SEG, base, pdfOut, renderPage, releaseCanvas, canvasToBytes, ToolError, loadDocFont, loadFontkit,
 } from '../kit.js';
 
 async function convert(file, opts, progress) {
   const [{ startPdfA, pdfjsWords }, { hasRealText }] = await Promise.all([import('../pdfa.js'), import('../ocr.js')]);
   const pdf = await file.pdfjs();
-  const writer = await startPdfA({ title: base(file.name) });
+  const writer = await startPdfA({ title: base(file.name), loadFont: (kind) => loadDocFont(kind === 'cjk' ? 'cjk' : 'latin'), loadFontkit });
   let reader = null;
   try {
     for (let i = 0; i < file.pages; i += 1) {
