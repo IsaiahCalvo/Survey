@@ -631,7 +631,11 @@ export function useSVGInteraction({
 
     // The first measurement comes from the ResizeObserver's initial callback
     // below (its size needs no forced layout), not a clientWidth read on mount.
+    // Both the first measurement and every retune use the ResizeObserver's
+    // width, so they agree to the sub-pixel (a clientWidth read rounds, which
+    // made the two disagree and re-render the layer) and never force a layout.
     let measured = false;
+    let latestWidth = 0;
 
     // Owner 2026-10-07 (smooth zoom): a zoom commit resizes every mounted
     // page's svg at once, and this update re-renders each whole layer (every
@@ -651,7 +655,7 @@ export function useSVGInteraction({
     const apply = () => {
       waitTimer = 0;
       if (!svgEl.isConnected) return;
-      const next = getInverseScale(svgEl, pageWidth);
+      const next = latestWidth > 0 ? inverseScaleFromWidth(latestWidth, pageWidth) : getInverseScale(svgEl, pageWidth);
       lastInverseScaleByPageWidth.set(pageWidth, next);
       startTransition(() => setInverseScale(next));
     };
@@ -682,9 +686,10 @@ export function useSVGInteraction({
       apply();
     };
     const observer = new ResizeObserver((entries) => {
+      const width = entries[entries.length - 1]?.contentRect?.width || 0;
+      if (width > 0) latestWidth = width;
       if (!measured) {
         measured = true;
-        const width = Math.round(entries[entries.length - 1]?.contentRect?.width || 0);
         if (width > 0) {
           const next = inverseScaleFromWidth(width, pageWidth);
           lastInverseScaleByPageWidth.set(pageWidth, next);

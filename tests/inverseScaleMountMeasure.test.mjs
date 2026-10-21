@@ -15,7 +15,8 @@ test('inverse scale from a width matches the clientWidth reading', () => {
 test('a mounting page layer starts from the last measured value and measures from the ResizeObserver, not clientWidth', () => {
   assert.match(SRC, /useState\(\(\) => lastInverseScaleByPageWidth\.get\(pageWidth\) \?\? 1\)/);
   assert.doesNotMatch(SRC, /setInverseScale\(getInverseScale\(svgEl, pageWidth\)\)/);
-  assert.match(SRC, /entries\[entries\.length - 1\]\?\.contentRect\?\.width/);
+  assert.match(SRC, /const width = entries\[entries\.length - 1\]\?\.contentRect\?\.width \|\| 0;/);
+  assert.match(SRC, /latestWidth > 0 \? inverseScaleFromWidth\(latestWidth, pageWidth\)/);
   // The deferred retune keeps the cache current.
   assert.match(SRC, /lastInverseScaleByPageWidth\.set\(pageWidth, next\);\n\s+startTransition\(\(\) => setInverseScale\(next\)\);/);
 });
