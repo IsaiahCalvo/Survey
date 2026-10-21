@@ -1531,6 +1531,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // scrollTop taken just before a room change (resolveRoomCompensationBase).
   const roomScrollSnapshotRef = useRef(null);
   const topInsetRef = useRef(0);
+  // #10 (first run walk 2026-10-21): the desktop shell keeps a see-through
+  // strip the height of its settings row over the viewer (data-viewer-top-
+  // reserve). The room it makes when a document opens is not compensated -
+  // the page has not been seen yet - so the page opens below the row and a
+  // tool's settings row later drops into that room without covering it.
+  const topReserveRef = useRef(false);
+  const firstTopRoomAppliedRef = useRef(false);
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the band
   // between panels). Side panels (desktop Pages, Survey) float over the left /
   // right of this scroller. sideInsetRef is their live measured width; sideRoom
@@ -2154,6 +2161,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       raf = 0;
       if (!el.clientWidth || !el.clientHeight) return;
       const strips = getViewerTopOverlays().filter((node) => node?.isConnected);
+      topReserveRef.current = strips.some((node) => node.getAttribute?.('data-viewer-top-reserve') === 'true');
       const inset = computeTopOverlayInset(
         el.getBoundingClientRect(),
         strips.map((node) => node.getBoundingClientRect()),
@@ -2204,6 +2212,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (previous === topRoom) return;
     const el = scrollerRef.current;
     if (!el) return;
+    const firstRoom = !firstTopRoomAppliedRef.current;
+    firstTopRoomAppliedRef.current = true;
+    if (firstRoom && previous === 0 && topReserveRef.current && el.scrollTop === 0) return;
     // At the end of the document the browser has already clamped scrollTop
     // for the shorter content; compensate from the offset before the change.
     const base = resolveRoomCompensationBase({
