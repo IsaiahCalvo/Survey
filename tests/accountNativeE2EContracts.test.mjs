@@ -262,18 +262,21 @@ test('Stripe success/cancel returns preserve the Expo route and reject open redi
 
 test('native shell deep links and Android bridge messages are strict and platform-neutral', () => {
   const expoConfig = JSON.parse(read('mobile-expo/app.json'));
-  assert.equal(expoConfig.expo.android.package, 'com.kalvoe.survey');
+  // The Expo shell must never share the Capacitor app's store id.
+  assert.equal(expoConfig.expo.android.package, 'com.kalvoe.survey.expo');
+  assert.equal(expoConfig.expo.ios.bundleIdentifier, 'com.kalvoe.survey.expo');
+  assert.ok(!expoConfig.expo.scheme.includes('com.kalvoe.survey'));
 
   assert.equal(
     resolveSurveyDeepLink('https://surveytool.app/mobile?docId=abc'),
     'https://surveytool.app/mobile?docId=abc&mobileNav=tabs&nativeShell=expo',
   );
   assert.equal(
-    resolveSurveyDeepLink('com.kalvoe.survey:?path=%2Fmobile%3FdocId%3Dabc'),
+    resolveSurveyDeepLink('com.kalvoe.survey.expo:?path=%2Fmobile%3FdocId%3Dabc'),
     'https://surveytool.app/mobile?docId=abc&mobileNav=tabs&nativeShell=expo',
   );
   assert.equal(resolveSurveyDeepLink('https://evil.example/mobile'), null);
-  assert.equal(resolveSurveyDeepLink('com.kalvoe.survey:?path=//evil.example'), null);
+  assert.equal(resolveSurveyDeepLink('com.kalvoe.survey.expo:?path=//evil.example'), null);
   assert.deepEqual(parseNativeShellMessage('{"type":"survey:shell-ready"}'), { type: 'survey:shell-ready' });
   assert.deepEqual(parseNativeShellMessage('{"type":"survey:diagnostic","area":"pdf-zoom"}'), {
     type: 'survey:diagnostic', area: 'pdf-zoom',
