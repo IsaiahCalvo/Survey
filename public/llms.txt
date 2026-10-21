@@ -16,6 +16,20 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [As-builts](https://surveytool.app/use-cases/as-builts): Red-line the drawings with what was really built: moved walls, rerouted runs, added fixtures. Keep it with the project.
 - [Survey vs Bluebeam Revu](https://surveytool.app/compare/bluebeam): An honest look at Survey and Bluebeam Revu for marking up and counting on construction drawings: what each does best and who each one fits.
 - [Survey vs Drawboard Projects](https://surveytool.app/compare/drawboard): An honest look at Survey and Drawboard Projects for marking up construction drawings: what each does best and who each one fits.
+- [Free PDF tools](https://surveytool.app/tools): merge, split, compress, rotate and convert PDFs in the browser; no sign-in, files never leave the device
+- [Merge PDF](https://surveytool.app/tools/merge-pdf): Combine several PDFs into one file.
+- [Split PDF](https://surveytool.app/tools/split-pdf): Break one PDF into several files.
+- [Compress PDF](https://surveytool.app/tools/compress-pdf): Make a PDF smaller to email or upload.
+- [Rotate PDF](https://surveytool.app/tools/rotate-pdf): Turn some or all pages the right way up.
+- [Delete pages](https://surveytool.app/tools/delete-pages): Take pages out of a PDF.
+- [Extract pages](https://surveytool.app/tools/extract-pages): Save chosen pages as a new PDF.
+- [JPG to PDF](https://surveytool.app/tools/jpg-to-pdf): Turn photos into one PDF.
+- [PNG to PDF](https://surveytool.app/tools/png-to-pdf): Turn PNG images into a PDF.
+- [Image to PDF](https://surveytool.app/tools/image-to-pdf): WebP, GIF, BMP, JPG or PNG to PDF.
+- [PDF to JPG](https://surveytool.app/tools/pdf-to-jpg): Save each page as a JPG image.
+- [PDF to PNG](https://surveytool.app/tools/pdf-to-png): Save each page as a sharp PNG.
+- [Add page numbers](https://surveytool.app/tools/add-page-numbers): Number the pages of a PDF.
+- [Add watermark](https://surveytool.app/tools/watermark-pdf): Stamp text like DRAFT across pages.
 
 ## Optional
 

@@ -3,19 +3,23 @@
 // the output HTML is committed so Vite just copies it to dist.
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { TOOLS as PDF_TOOLS, TOOL_PATHS } from './free-tools-catalog.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
-const ORIGIN = 'https://surveytool.app';
+export const ORIGIN = 'https://surveytool.app';
 // Inlined so first paint doesn't wait on a stylesheet request.
 const CSS = readFileSync(join(root, 'welcome', 'site.css'), 'utf8').replace(/\/\*[^]*?\*\//g, '').replace(/\n+/g, '');
 const TODAY = new Date().toISOString().slice(0, 10);
-const APP = '/?signin=1';
+export const APP = '/?signin=1';
 const MAIL = 'mailto:isaiahcalvo123@gmail.com';
 
-// Free PDF tools live at /tools/* (built separately). Add entries here once
-// they ship; the nav link and footer column appear when the list is non-empty.
-const TOOL_LINKS = [];
+// Free PDF tools live at /tools/* (scripts/build-free-tools.mjs builds them).
+// The footer lists the most used ones; the nav links the /tools hub.
+const TOOL_LINKS = [
+  ...['merge-pdf', 'split-pdf', 'compress-pdf', 'jpg-to-pdf', 'pdf-to-jpg'].map((id) => [`/tools/${id}`, PDF_TOOLS.find((t) => t.id === id).name]),
+  ['/tools', 'All free tools'],
+];
 
 const NAV = [
   ['/features', 'Features'],
@@ -57,8 +61,8 @@ const COMPARE = [
     pick: 'Pick Drawboard if your design team wants structured review and issue tracking. Pick Survey if counting on the plan and a low price matter more to you.' },
 ];
 
-const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const strip = (s) => s.replace(/<[^>]+>/g, '');
+export const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+export const strip = (s) => s.replace(/<[^>]+>/g, '');
 
 // One list feeds the visible FAQ and the FAQPage schema, so they never drift.
 const FAQ = [
@@ -106,7 +110,7 @@ const PLANS = [
 const ICON_SUN = '<svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>';
 const ICON_MOON = '<svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>';
 
-const ORG = { '@type': 'Organization', '@id': ORIGIN + '/#org', name: 'Survey', url: ORIGIN + '/welcome', logo: ORIGIN + '/logo512.png', email: 'isaiahcalvo123@gmail.com' };
+export const ORG = { '@type': 'Organization', '@id': ORIGIN + '/#org', name: 'Survey', url: ORIGIN + '/welcome', logo: ORIGIN + '/logo512.png', email: 'isaiahcalvo123@gmail.com' };
 const SOFTWARE = {
   '@type': 'SoftwareApplication', '@id': ORIGIN + '/#app', name: 'Survey', url: ORIGIN + '/',
   applicationCategory: 'BusinessApplication', operatingSystem: 'Web browser, macOS, Windows, iPadOS, Android',
@@ -120,14 +124,14 @@ const SOFTWARE = {
   ],
 };
 
-function page({ path, title, desc, body, schema = [], crumb }) {
+export function page({ path, title, desc, body, schema = [], crumb, crumbs, scripts = '' }) {
   const url = ORIGIN + path;
   const graph = [ORG, ...schema];
-  if (crumb) graph.push({ '@type': 'BreadcrumbList', itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Home', item: ORIGIN + '/welcome' },
-    { '@type': 'ListItem', position: 2, name: crumb, item: url },
-  ] });
-  const nav = NAV.map(([h, l]) => `<a href="${h}"${h === path ? ' aria-current="page"' : ''}>${l}</a>`).join('');
+  const trail = crumbs || (crumb ? [[crumb, path]] : null);
+  if (trail) graph.push({ '@type': 'BreadcrumbList', itemListElement: [['Home', '/welcome'], ...trail].map(([name, p], i) => (
+    { '@type': 'ListItem', position: i + 1, name, item: ORIGIN + p }
+  )) });
+  const nav = NAV.map(([h, l]) => `<a href="${h}"${h === path || path.startsWith(h + '/') ? ' aria-current="page"' : ''}>${l}</a>`).join('');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -186,7 +190,7 @@ ${body}
   </div>
   <p class="copy">© <span class="yr">2026</span> Survey</p>
 </div></footer>
-<script src="/welcome/site.js" defer></script>
+<script src="/welcome/site.js" defer></script>${scripts}
 </body>
 </html>
 `;
@@ -204,10 +208,10 @@ const plans = () => `<div class="plans">${PLANS.map((p) => `
   </article>`).join('')}
 </div>`;
 
-const faqList = (items) => `<div class="faq">${items.map(([q, a]) => `<details><summary><h3>${q}</h3></summary><p>${a}</p></details>`).join('')}</div>`;
-const faqSchema = (items) => ({ '@type': 'FAQPage', mainEntity: items.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: strip(a) } })) });
+export const faqList = (items) => `<div class="faq">${items.map(([q, a]) => `<details><summary><h3>${q}</h3></summary><p>${a}</p></details>`).join('')}</div>`;
+export const faqSchema = (items) => ({ '@type': 'FAQPage', mainEntity: items.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: strip(a) } })) });
 
-const cta = (h = 'Bring your next drawing set') => `<section class="band"><div class="wrap cta-band">
+export const cta = (h = 'Bring your next drawing set') => `<section class="band"><div class="wrap cta-band">
   <h2>${h}</h2>
   <p>Free to start. Nothing to install.</p>
   <a class="btn primary lg" href="${APP}">Open Survey free</a>
@@ -404,21 +408,24 @@ const comparePages = Object.fromEntries(COMPARE.map((c) => [`compare/${c.slug}/i
 ${cta('Try Survey free on your own drawings')}`,
 })]));
 
-const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq };
-for (const [p, html] of Object.entries(out)) {
-  const f = join(root, p);
-  mkdirSync(dirname(f), { recursive: true });
-  writeFileSync(f, html);
-}
+// Importing this file (build-free-tools.mjs does, for the layout) must not
+// rewrite the pages, so the writes only run when it is the script itself.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq };
+  for (const [p, html] of Object.entries(out)) {
+    const f = join(root, p);
+    mkdirSync(dirname(f), { recursive: true });
+    writeFileSync(f, html);
+  }
 
-const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), '/privacy.html', '/terms.html'];
-writeFileSync(join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
+  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
+  writeFileSync(join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></url>`).join('\n')}
 </urlset>
 `);
 
-writeFileSync(join(root, 'llms.txt'), `# Survey
+  writeFileSync(join(root, 'llms.txt'), `# Survey
 
 > Survey is a PDF markup and counting app for construction and engineering drawings. It runs in the browser on Mac, Windows, iPad, Android tablets and phones at ${ORIGIN}.
 
@@ -433,10 +440,13 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [FAQ](${ORIGIN}/faq): common questions
 ${USES.map((u) => `- [${u.name}](${ORIGIN}/use-cases/${u.slug}): ${u.desc}`).join('\n')}
 ${COMPARE.map((c) => `- [Survey vs ${c.them}](${ORIGIN}/compare/${c.slug}): ${c.desc}`).join('\n')}
+- [Free PDF tools](${ORIGIN}/tools): merge, split, compress, rotate and convert PDFs in the browser; no sign-in, files never leave the device
+${PDF_TOOLS.map((t) => `- [${t.name}](${ORIGIN}/tools/${t.id}): ${t.short}`).join('\n')}
 
 ## Optional
 
 - [Privacy policy](${ORIGIN}/privacy.html)
 - [Terms of service](${ORIGIN}/terms.html)
 `);
-console.log('built', Object.keys(out).length, 'pages');
+  console.log('built', Object.keys(out).length, 'pages');
+}
