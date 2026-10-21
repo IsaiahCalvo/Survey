@@ -7,9 +7,12 @@
 -- each one and removes it through the Storage API (deleting storage.objects
 -- rows in SQL would strand the bytes).
 --
--- Safety: only files older than p_min_age_hours (an upload lands before its
--- row insert), and only names that no documents.file_path or templates
--- file_path / linked_excel_path points at, archived rows included.
+-- Safety: only PDFs (the bucket also holds {projectId}/{documentId}_data.json
+-- survey-data sidecars whose paths are derived, not stored, so a missing row
+-- reference proves nothing for them), only files older than p_min_age_hours
+-- (an upload lands before its row insert), and only names that no
+-- documents.file_path or templates file_path / linked_excel_path points at,
+-- archived rows included.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.list_orphaned_document_files(
@@ -25,6 +28,7 @@ AS $$
   SELECT o.name, (o.metadata->>'size')::bigint, o.created_at
     FROM storage.objects o
    WHERE o.bucket_id = 'documents'
+     AND lower(o.name) LIKE '%.pdf'
      AND o.created_at < now() - make_interval(hours => GREATEST(COALESCE(p_min_age_hours, 24), 24))
      AND NOT EXISTS (SELECT 1 FROM public.documents d WHERE d.file_path = o.name)
      AND NOT EXISTS (SELECT 1 FROM public.templates t
@@ -34,7 +38,7 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.list_orphaned_document_files(integer, integer) IS
-  'Stored PDFs in the documents bucket older than p_min_age_hours (never under 24) that no document or template row points at. service_role only; archive-purge-sweep removes them through the Storage API.';
+  'Stored PDFs (.pdf only; never the _data.json sidecars) in the documents bucket older than p_min_age_hours (never under 24) that no document or template row points at. service_role only; archive-purge-sweep removes them through the Storage API.';
 
 REVOKE ALL ON FUNCTION public.list_orphaned_document_files(integer, integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.list_orphaned_document_files(integer, integer) TO service_role;

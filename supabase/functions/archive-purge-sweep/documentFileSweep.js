@@ -20,6 +20,11 @@ export const DOCUMENT_FILE_REMOVE_CHUNK = 100;
 // The SQL never lists anything younger than this either.
 export const DOCUMENT_FILE_MIN_AGE_HOURS = 24;
 
+// Only PDFs are ever removed. The bucket also holds survey-data sidecars
+// ({projectId}/{documentId}_data.json) whose paths no column stores, so "no row
+// points at it" says nothing about them. The SQL filters the same way.
+export const isSweepablePdf = (name) => typeof name === 'string' && /\.pdf$/i.test(name);
+
 const messageOf = (err) => (err && typeof err === 'object' && 'message' in err ? String(err.message) : String(err));
 
 async function referencedPaths(supabase, chunk) {
@@ -64,7 +69,7 @@ export async function sweepOrphanedDocumentFiles(supabase, { dryRun = false, lim
 
   const byName = new Map();
   for (const row of rows) {
-    if (row && typeof row.name === 'string' && row.name.length > 0) byName.set(row.name, Number(row.size) || 0);
+    if (row && isSweepablePdf(row.name)) byName.set(row.name, Number(row.size) || 0);
   }
   const names = [...byName.keys()];
   summary.found = names.length;

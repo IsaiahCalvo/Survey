@@ -65,6 +65,14 @@ describe('sweepOrphanedDocumentFiles', () => {
     assert.deepEqual({ found: out.found, bytes: out.bytes, removed: out.removed }, { found: 2, bytes: 20, removed: 2 });
   });
 
+  it('never touches survey-data sidecars or anything that is not a PDF', async () => {
+    const sidecar = 'project-1/doc-1_data.json';
+    const { client, calls } = stubClient({ orphans: [sidecar, 'x/y.txt', path(1)] });
+    const out = await sweepOrphanedDocumentFiles(client);
+    assert.deepEqual(calls.remove, [[path(1)]]);
+    assert.equal(out.found, 1);
+  });
+
   it('a dry run counts and removes nothing', async () => {
     const { client, calls } = stubClient({ orphans: [path(1)] });
     const out = await sweepOrphanedDocumentFiles(client, { dryRun: true });
@@ -118,5 +126,6 @@ describe('wiring', () => {
     assert.match(sql, /REVOKE ALL ON FUNCTION public\.list_orphaned_document_files\(integer, integer\) FROM PUBLIC, anon, authenticated/);
     assert.match(sql, /GREATEST\(COALESCE\(p_min_age_hours, 24\), 24\)/);
     assert.match(sql, /public\.templates/);
+    assert.match(sql, /lower\(o\.name\) LIKE '%\.pdf'/);
   });
 });
