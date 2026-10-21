@@ -17,7 +17,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [As-builts](https://surveytool.app/use-cases/as-builts): Red-line the drawings with what was really built: moved walls, rerouted runs, added fixtures. Keep it with the project.
 - [Survey vs Bluebeam Revu](https://surveytool.app/compare/bluebeam): An honest look at Survey and Bluebeam Revu for marking up and counting on construction drawings: what each does best and who each one fits.
 - [Survey vs Drawboard Projects](https://surveytool.app/compare/drawboard): An honest look at Survey and Drawboard Projects for marking up construction drawings: what each does best and who each one fits.
-- [Free PDF tools](https://surveytool.app/tools): 42 tools to merge, split, compress, OCR scans, compare two PDFs, sign, lock and convert PDFs in the browser, several files at once; no sign-in, files never leave the device
+- [Free PDF tools](https://surveytool.app/tools): 45 tools to merge, split, compress, OCR scans, compare two PDFs, sign, lock and convert PDFs in the browser, several files at once; no sign-in, files never leave the device
 - [Merge PDF](https://surveytool.app/tools/merge-pdf): Combine several PDFs into one file.
 - [Split PDF](https://surveytool.app/tools/split-pdf): Break one PDF into several files.
 - [Compress PDF](https://surveytool.app/tools/compress-pdf): Make a PDF smaller to email or upload.
@@ -60,6 +60,9 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [PDF to TIFF](https://surveytool.app/tools/pdf-to-tiff): Save a PDF as one multi-page TIFF.
 - [PDF to BMP](https://surveytool.app/tools/pdf-to-bmp): Save each page as a BMP picture.
 - [Grayscale PDF](https://surveytool.app/tools/grayscale-pdf): Make a PDF black and white.
+- [PDF to Word](https://surveytool.app/tools/pdf-to-word): Turn a PDF into a Word file you can edit.
+- [PDF to Markdown](https://surveytool.app/tools/pdf-to-markdown): Turn a PDF into Markdown for AI tools and notes.
+- [PDF to DOCX](https://surveytool.app/tools/pdf-to-docx): Save a PDF as a .docx file.
 
 ## Optional
 

@@ -16,6 +16,9 @@ import removeBlankPages from './remove-blank-pages.mjs';
 import pdfToTiff from './pdf-to-tiff.mjs';
 import pdfToBmp from './pdf-to-bmp.mjs';
 import grayscalePdf from './grayscale-pdf.mjs';
+import pdfToWord from './pdf-to-word.mjs';
+import pdfToMarkdown from './pdf-to-markdown.mjs';
+import pdfToDocx from './pdf-to-docx.mjs';
 
 export default [
   ocrPdf,
@@ -34,4 +37,7 @@ export default [
   pdfToTiff,
   pdfToBmp,
   grayscalePdf,
+  pdfToWord,
+  pdfToMarkdown,
+  pdfToDocx,
 ];
