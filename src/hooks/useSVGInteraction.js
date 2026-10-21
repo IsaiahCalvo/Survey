@@ -893,6 +893,13 @@ export function useSVGInteraction({
     const z = screenToSVG(svg, rr, b);
     return { left: Math.min(a.x, z.x), top: Math.min(a.y, z.y), width: Math.abs(z.x - a.x), height: Math.abs(z.y - a.y) };
   }, [svgRef]);
+  // Marks the user can see (hidden layers / other scopes left out); null =
+  // no filter known, so every mark stays a snap target.
+  const visibleSnapIndexSet = useCallback(() => {
+    const env = snapEnvRef.current || {};
+    if (typeof env.getSelectableAnnotationIndices !== 'function') return null;
+    return new Set((env.getSelectableAnnotationIndices() || []).map(Number));
+  }, []);
   // The other marks a drag can snap to (boxes in page units), gathered once
   // per drag. `indices` / `calloutIds` / `markerIds` = what is being dragged.
   const collectSnapTargets = useCallback(({ indices = [], calloutIds = [], markerIds = [] } = {}) => {
@@ -5910,7 +5917,7 @@ export function useSVGInteraction({
           // annotation until pointerup.
           originalPoints: obj.points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 })),
           isPolygon: String(obj.type || '').toLowerCase() === 'polygon',
-          snapEndpoints: collectEndpointCandidates(annotations?.objects, { own: { index: selectedIndex, skip: new Set([vertexIndex]) } }),
+          snapEndpoints: collectEndpointCandidates(annotations?.objects, { own: { index: selectedIndex, skip: new Set([vertexIndex]) }, include: visibleSnapIndexSet() }),
           originalProps: {
             left: obj.left ?? 0,
             top: obj.top ?? 0,
@@ -5947,7 +5954,7 @@ export function useSVGInteraction({
         mode: 'endpoint',
         handleId,
         startSVGPoint: svgPoint,
-        snapEndpoints: collectEndpointCandidates(annotations?.objects, { excludeIndex: selectedIndex }),
+        snapEndpoints: collectEndpointCandidates(annotations?.objects, { excludeIndex: selectedIndex, include: visibleSnapIndexSet() }),
         originalProps: {
           left: obj.left ?? 0,
           top: obj.top ?? 0,

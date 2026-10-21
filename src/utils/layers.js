@@ -152,11 +152,16 @@ export function stampNewObjectsOnLayer(previousObjects, nextObjects, activeLayer
 // when nothing new needed a layer.
 export function stampNewMarksByPage(previousByPage, nextByPage, activeLayerId) {
   if (!nextByPage || typeof nextByPage !== 'object' || !activeLayerId || activeLayerId === DEFAULT_LAYER_ID) return nextByPage;
+  // A mark moved from another page is not new: compare against every page.
+  const before = [];
+  for (const data of Object.values(previousByPage || {})) {
+    if (Array.isArray(data?.objects)) before.push(...data.objects);
+  }
   let out = nextByPage;
   for (const pageKey of Object.keys(nextByPage)) {
     const page = nextByPage[pageKey];
     if (!Array.isArray(page?.objects)) continue;
-    const stamped = stampNewObjectsOnLayer(previousByPage?.[pageKey]?.objects, page.objects, activeLayerId);
+    const stamped = stampNewObjectsOnLayer(before, page.objects, activeLayerId);
     if (stamped === page.objects) continue;
     if (out === nextByPage) out = { ...nextByPage };
     out[pageKey] = { ...page, objects: stamped };

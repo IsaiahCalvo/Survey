@@ -63,3 +63,14 @@ test('resolveDrawSnap: endpoint wins over Shift; Alt/off falls back to angle loc
   const raw = resolveDrawSnap({ x: 0, y: 0 }, { x: 30, y: 3 }, { candidates, tolPage: 2 });
   assert.deepEqual(raw, { point: { x: 30, y: 3 }, endpoint: null });
 });
+
+test('collectEndpointCandidates skips marks outside `include` but keeps the edited mark', async () => {
+  const { collectEndpointCandidates } = await import('../src/utils/drawSnap.js');
+  const line = (x) => ({ type: 'line', left: 0, top: 0, x1: x, y1: 0, x2: x + 10, y2: 0 });
+  const objs = [line(0), line(100), { type: 'polyline', left: 0, top: 0, points: [{ x: 200, y: 0 }, { x: 210, y: 0 }] }];
+  const all = collectEndpointCandidates(objs);
+  const visible = collectEndpointCandidates(objs, { include: new Set([0]) });
+  assert.ok(visible.length > 0 && visible.length < all.length);
+  const own = collectEndpointCandidates(objs, { include: new Set([0]), own: { index: 2, skip: new Set([0]) } });
+  assert.equal(own.length, visible.length + 1);
+});

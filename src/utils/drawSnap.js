@@ -86,13 +86,15 @@ export function lineWorldEndpoints(obj) {
  * Snap targets on a page: every line/arrow end and polygon/polyline corner.
  * `exclude(obj, index)` drops marks (e.g. the one being edited); for the mark
  * being edited, pass `own: { index, skip: Set<pointIndex> }` to keep its other
- * corners as targets but not the dragged one.
+ * corners as targets but not the dragged one. `include` (a Set of indices)
+ * limits targets to marks the user can see (hidden layers, other scopes).
  */
-export function collectEndpointCandidates(objects, { excludeIndex = -1, own = null } = {}) {
+export function collectEndpointCandidates(objects, { excludeIndex = -1, own = null, include = null } = {}) {
   const out = [];
   if (!Array.isArray(objects)) return out;
   objects.forEach((obj, index) => {
     if (!obj || index === excludeIndex) return;
+    if (include && !include.has(index) && !(own && own.index === index)) return;
     const type = String(obj.type || '').toLowerCase();
     let pts = null;
     if (type === 'line') pts = lineWorldEndpoints(obj);
