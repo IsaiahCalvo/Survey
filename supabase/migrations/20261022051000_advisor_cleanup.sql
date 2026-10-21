@@ -8,8 +8,10 @@
 --    signed out. Kept for anon on purpose: user_can_access_document/project/
 --    template, _kal48_can_access and kal49_document_is_locked (used by
 --    policies that apply to every role, so anon must be able to run them and
---    get false), get_my_feature_flags (read before sign-in) and
---    report_client_error (error reports from signed-out pages).
+--    get false), get_my_feature_flags (read before sign-in),
+--    report_client_error (error reports from signed-out pages) and
+--    agent_session_ok (check_agent_request, PostgREST's pre-request hook,
+--    calls it as the caller's role on every request, signed out too).
 -- 3. doc_yjs_state had two permissive SELECT policies (viewer SELECT plus the
 --    editor FOR ALL), so every read ran both. The editor policy now covers
 --    INSERT, UPDATE and DELETE only; the viewer policy alone covers reads,
@@ -44,7 +46,6 @@ begin
         'complete_invite_email_delivery',
         'release_invite_email_delivery',
         'rotate_invite_email_delivery',
-        'agent_session_ok',
         'is_feature_flag_admin'
       )
   loop

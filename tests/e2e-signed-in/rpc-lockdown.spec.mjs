@@ -113,11 +113,14 @@ test('trigger functions and signed-in-only helpers are not callable from outside
   }
   for (const [fn, args] of [
     ['is_feature_flag_admin', {}],
-    ['agent_session_ok', {}],
     ['complete_invite_email_delivery', { p_claim_id: '00000000-0000-4000-8000-000000000000' }],
   ]) {
     const { error } = await anonClient().rpc(fn, args);
     expect(notCallable(error), `${fn}: ${JSON.stringify(error)}`).toBe(true);
   }
   expect((await free.rpc('is_feature_flag_admin')).error).toBeNull();
+  // Every request runs the agent pre-request hook as the caller, so signed-out
+  // calls must still get through it.
+  const { error: flagsError } = await anonClient().rpc('get_my_feature_flags');
+  expect(flagsError, JSON.stringify(flagsError)).toBeNull();
 });
