@@ -41,7 +41,9 @@ Marker and item ids are shared: an id from `survey_find_items` or
 Behind the `annotation-agent` flag (off until the tools are proven), the agent
 can also write normal annotations — text notes, shapes, callouts and
 highlights. These write through the same path as a human edit, so sync, Excel
-and the user's role all apply, and one Undo takes a change back:
+and the user's role all apply, and one Undo takes a change back. Each add tool
+returns the new annotation's id, so `survey_delete_annotation` can take an add
+back:
 
 - `survey_list_annotations` — list the normal annotations on the open PDF (text
   notes, shapes, highlights — not Survey markers): id, page, type, text and box.

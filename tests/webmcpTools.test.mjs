@@ -268,7 +268,7 @@ const fakeAnnoDoc = () => {
     addedShapes,
     listAnnotations: () => Object.values(notes).map(({ id, page, type, text, box }) => ({ id, page, type, text, box })),
     findAnnotation: (id) => (notes[id] ? { page: notes[id].page, index: 0, obj: notes[id] } : null),
-    addTextNote: (args) => { addedNotes.push(args); return { ok: true }; },
+    addTextNote: (args) => { addedNotes.push(args); return { ok: true, id: 't1' }; },
     editTextNote: (id, patch) => { if (!notes[id]) return { ok: false, reason: 'not-found' }; editedNotes.push({ id, ...patch }); return { ok: true }; },
     deleteAnnotation: (id) => { if (!notes[id]) return { ok: false, reason: 'not-found' }; deletedNotes.push(id); return { ok: true }; },
     addShape: (args) => { addedShapes.push(args); return { ok: true, id: 's1' }; },
@@ -306,7 +306,9 @@ test('any role can list annotations; it is read-only', async () => {
 test('editor and owner agents can add a text note; viewer cannot', async () => {
   for (const role of ['editor', 'owner']) {
     const doc = fakeAnnoDoc();
-    assert.match(await annoTool(role, doc, 'survey_add_text_note').execute({ page: 1, x: 10, y: 20, text: 'note' }), /Added a text note/);
+    // The add surfaces the new annotation's id so a caller can undo it with
+    // survey_delete_annotation.
+    assert.match(await annoTool(role, doc, 'survey_add_text_note').execute({ page: 1, x: 10, y: 20, text: 'note' }), /Added a text note on page 1 \(id t1\)\./);
     assert.equal(doc.addedNotes.length, 1);
     assert.equal(doc.addedNotes[0].text, 'note');
   }
