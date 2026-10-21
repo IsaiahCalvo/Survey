@@ -1,15 +1,19 @@
 /*
  * Page grid overlay (Drawboard gap #10). Drawn as a pseudo-element on each
- * pdf.js page div, sized in PDF points times the page's own --survey-page-scale,
+ * pdf.js page's deep-zoom detail-tile host (the inset-0 div rendered right
+ * after the page canvas), so it paints over the page image — base canvas and
+ * the crisp tile — but beneath the text layer and every markup overlay, which
+ * come later in the page div in the same stacking context (like Drawboard).
+ * Pinned to the page div's own pseudo-element it painted over the markup.
+ * Sized in PDF points times the page's own --survey-page-scale,
  * so it follows zoom with no JavaScript and is never part of an export or the
  * saved PDF. 36pt (half-inch) cells; pointer-events off so it never takes input.
  */
-html[data-page-grid="on"] .survey-pdfjs-page-div::after {
+html[data-page-grid="on"] .survey-pdfjs-page-div > .survey-pdfjs-page-canvas + div::after {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
-    z-index: 1;
     --page-grid-step: calc(var(--survey-page-scale, 1) * 36px);
     background-image:
         linear-gradient(to right, rgba(37, 99, 235, 0.16) 1px, transparent 1px),
@@ -18,5 +22,5 @@ html[data-page-grid="on"] .survey-pdfjs-page-div::after {
 }
 
 @media print {
-    html[data-page-grid="on"] .survey-pdfjs-page-div::after { display: none; }
+    html[data-page-grid="on"] .survey-pdfjs-page-div > .survey-pdfjs-page-canvas + div::after { display: none; }
 }

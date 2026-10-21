@@ -35,7 +35,7 @@ test('setPageGrid flips the html attribute the CSS keys on', () => {
 
 test('grid is CSS on the page div, scaled by the page scale, not in the SVG layer', () => {
     const css = readFileSync(new URL('../src/styles/pageGrid.css', import.meta.url), 'utf8');
-    assert.match(css, /html\[data-page-grid="on"\] \.survey-pdfjs-page-div::after/);
+    assert.match(css, /html\[data-page-grid="on"\] \.survey-pdfjs-page-div > \.survey-pdfjs-page-canvas \+ div::after/);
     assert.match(css, /var\(--survey-page-scale, 1\) \* 36px/);
     assert.match(css, /pointer-events: none/);
     const container = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
