@@ -16,14 +16,11 @@ name: android-signed-in
     text: "Wait"
     optional: true
 - takeScreenshot: 01-sign-in
-- tapOn: "you@example.com"
+- tapOn:
+    id: "email"
 - inputText: "e2e-owner@example.com"
 - tapOn:
     id: "password"
-    optional: true
-- tapOn:
-    below: "Password"
-    optional: true
 - inputText: "E2e-local-only-123!"
 - hideKeyboard
 - tapOn:
