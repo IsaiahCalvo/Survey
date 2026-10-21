@@ -23,6 +23,9 @@ const BASE = process.env.BASE || 'http://127.0.0.1:5241';
 const RUNS = Number(process.env.RUNS || 5);
 const QUIET_MS = Number(process.env.QUIET_MS || 5000);
 const SIZES = (process.env.SIZES || 'desktop,phone').split(',');
+// LINK=1 opens by share link (/?docId=) instead of from Home.
+const LINK = process.env.LINK === '1';
+const DOC_ID = process.env.BIG_DOC_ID || 'e2eb1600-0000-4000-8000-000000000201';
 const DOC_NAME = process.env.BIG_DOC_NAME || 'Big Drawing Set.pdf';
 const PROFILE = process.env.PROFILE || null;
 const NET = process.env.NET || null;
@@ -38,6 +41,8 @@ const DEVICES = {
 const PROBE = () => {
   const w = window;
   w.__bigOpen = { ev: [], t0: null, firstPage: null, marks: null, longTasks: [] };
+  // A share-link open (?docId=) is timed from navigation start.
+  if (new URLSearchParams(location.search).has('docId')) w.__bigOpen.t0 = 0;
   const origLog = console.log;
   console.log = (...args) => {
     const text = String(args[0] ?? '');
@@ -111,10 +116,15 @@ async function oneRun(browser, size, { profile = null } = {}) {
     });
   }
   await signIn(page);
+  let cdp = null;
+  if (LINK) {
+    // Share link: an accepted invite / share email lands on /?docId=<id>.
+    await page.waitForTimeout(500);
+    await page.goto(`${BASE}/?docId=${DOC_ID}`);
+  } else {
   const row = page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first();
   // Desktop selects the row then opens with "Open file"; phone opens on the tap.
   if (size === 'desktop') await row.click();
-  let cdp = null;
   if (profile) {
     cdp = await context.newCDPSession(page);
     await cdp.send('Profiler.enable');
@@ -130,6 +140,7 @@ async function oneRun(browser, size, { profile = null } = {}) {
     await page.evaluate(() => { window.__bigOpen.t0 = performance.now(); });
     await openBtn.tap();
   } else { await page.evaluate(() => { window.__bigOpen.t0 = performance.now(); }); await row.tap(); }
+  }
   await page.waitForFunction(() => window.__bigOpen?.marks != null && window.__bigOpen?.firstPage != null, null, { timeout: 120_000, polling: 100 });
   // Wait until QUIET_MS passes with no long task after the marks are up.
   const result = await page.waitForFunction((quiet) => {

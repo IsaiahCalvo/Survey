@@ -955,6 +955,7 @@ const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, l
     <div ref={hostRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       <canvas
         ref={canvasRef}
+        className="survey-pdfjs-detail-tile"
         style={{ position: 'absolute', left: tileStyle.left, top: tileStyle.top, width: tileStyle.width, height: tileStyle.height, display: tileStyle.display }}
       />
     </div>
@@ -4619,7 +4620,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // the grabber for this rule. Without it a finger that landed on the pad
     // (which is the normal way to grab a handle by touch) armed the
     // long-press menu underneath instead of starting the transform.
-    const onHandle = (target) => Boolean(target?.closest?.('[data-resize-handle], [data-rotation-handle], [data-handle-hit-pad]'));
+    // A selected poly's side has its own long-press "Add point here" menu.
+    const onHandle = (target) => Boolean(target?.closest?.('[data-resize-handle], [data-rotation-handle], [data-handle-hit-pad], [data-poly-edge-hit]'));
 
     const onStart = (event) => {
       if (event.touches.length !== 1) { press.cancel(); return; }

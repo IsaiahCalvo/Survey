@@ -4,6 +4,10 @@
 // Work still behind a feature flag stays off this list until it is on for all.
 export const WHATS_NEW = [
   { date: '2026-10-21', items: [
+    'Phones: Revision cloud and Measure are in the Shapes row, and the scale dialog has bigger buttons.',
+    'In a project\'s menu, only the owner sees Share, Delete and Add member.',
+    'Answer sets have two new ready-made choices: Installed / Missing / Damaged and Works / Not working.',
+    'Big drawing sets use less memory.',
     'Two new tools: Revision cloud, in the Shapes row, and Measure, which sets a page scale and shows lengths as you draw.',
     'The Move and Copy buttons are easier to tap on touch screens.',
     'If checkout can\'t start, you now see "Could not open checkout. Please try again." instead of nothing.',

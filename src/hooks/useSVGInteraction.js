@@ -42,6 +42,7 @@ import {
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
+import { collectEndpointCandidates, resolveDrawSnap, DRAW_SNAP_SCREEN_PX } from '../utils/drawSnap.js';
 // UX 2026-09-09: a cloud polygon/polyline vertex drag replays the approved
 // studio's moveVertex(): only the dragged vertex's corner is re-fitted and the
 // resulting per-vertex memory rides on the annotation (data.pdfCloudVertexState)
@@ -398,6 +399,19 @@ export function useSVGInteraction({
     snapGuidesRef.current = value;
     setSnapGuidesState(value);
   }, []);
+  // Endpoint / corner drag snapping (drawSnap.js): Shift locks the segment
+  // from `anchor` to 45° steps; the point locks onto another line end or
+  // corner within 8 screen px unless Alt / the snapping preference is off.
+  const snapDraggedPoint = (ds, anchor, point, e) => {
+    const r = resolveDrawSnap(anchor, point, {
+      shiftKey: !!e?.shiftKey,
+      endpointSnap: !isAnnotationSnapFree(e),
+      candidates: ds.snapEndpoints || [],
+      tolPage: snapThreshold(inverseScale, DRAW_SNAP_SCREEN_PX),
+    });
+    applySnapGuides(r.endpoint ? { lines: [], points: [], endpoint: r.endpoint } : null);
+    return r.point;
+  };
 
   // Mutable refs for drag state
   const dragStateRef = useRef({
@@ -3096,8 +3110,23 @@ export function useSVGInteraction({
       if (!ds.startLocal) ds.startLocal = toLocal(ds.startSVGPoint);
       const pointerLocal = toLocal(svgPoint);
       const grabbed = ds.originalPoints[ds.vertexIndex];
-      const localX = grabbed.x + pointerLocal.x - ds.startLocal.x;
-      const localY = grabbed.y + pointerLocal.y - ds.startLocal.y;
+      let localX = grabbed.x + pointerLocal.x - ds.startLocal.x;
+      let localY = grabbed.y + pointerLocal.y - ds.startLocal.y;
+      {
+        // Snap in page space: forward-map local -> world, snap, map back.
+        const toWorld = (p) => {
+          const ox = scaleX * (p.x - pathOffsetX) - oldRotCx;
+          const oy = scaleY * (p.y - pathOffsetY) - oldRotCy;
+          return { x: left + oldRotCx + ox * cosA - oy * sinA, y: top + oldRotCy + ox * sinA + oy * cosA };
+        };
+        const pts = ds.originalPoints;
+        const vi = ds.vertexIndex;
+        const neighbour = vi > 0 ? pts[vi - 1] : (ds.isPolygon ? pts[pts.length - 1] : pts[1]);
+        const snapped = snapDraggedPoint(ds, neighbour ? toWorld(neighbour) : null, toWorld({ x: localX, y: localY }), e);
+        const back = toLocal(snapped);
+        localX = back.x;
+        localY = back.y;
+      }
 
       // One definition of "move a single vertex", shared with the polygon /
       // polyline draft module: the dragged point is replaced, every other
@@ -3201,6 +3230,8 @@ export function useSVGInteraction({
       const dyW_ep = svgPoint.y - ds.startSVGPoint.y;
       let W1target = movingP1 ? { x: W1old.x + dxW_ep, y: W1old.y + dyW_ep } : W1old;
       let W2target = movingP1 ? W2old : { x: W2old.x + dxW_ep, y: W2old.y + dyW_ep };
+      if (movingP1) W1target = snapDraggedPoint(ds, W2old, W1target, e);
+      else W2target = snapDraggedPoint(ds, W1old, W2target, e);
       // w63: an end dragged onto (or through) the other end passes freely,
       // but a line is never shorter than 4 page units (or its own starting
       // length) — dropping one end on the other no longer leaves a zero-length
@@ -5878,6 +5909,8 @@ export function useSVGInteraction({
           // it on each tick. We copy obj.points so we don't mutate the real
           // annotation until pointerup.
           originalPoints: obj.points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 })),
+          isPolygon: String(obj.type || '').toLowerCase() === 'polygon',
+          snapEndpoints: collectEndpointCandidates(annotations?.objects, { own: { index: selectedIndex, skip: new Set([vertexIndex]) } }),
           originalProps: {
             left: obj.left ?? 0,
             top: obj.top ?? 0,
@@ -5914,6 +5947,7 @@ export function useSVGInteraction({
         mode: 'endpoint',
         handleId,
         startSVGPoint: svgPoint,
+        snapEndpoints: collectEndpointCandidates(annotations?.objects, { excludeIndex: selectedIndex }),
         originalProps: {
           left: obj.left ?? 0,
           top: obj.top ?? 0,

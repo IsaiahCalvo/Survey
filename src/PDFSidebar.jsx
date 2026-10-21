@@ -17,6 +17,7 @@ import PagesPanel from './sidebar/PagesPanel';
 const SearchTextPanel = lazy(() => import('./sidebar/SearchTextPanel'));
 import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
+import LayersPanel from './sidebar/LayersPanel';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import { withDevFakePresence } from './components/presenceIdentity.js';
@@ -141,6 +142,7 @@ const PANEL_TITLES = {
   bookmarks: 'Bookmarks',
   spaces: 'Spaces',
   history: 'History',
+  layers: 'Layers',
 };
 
 const PDFSidebar = React.forwardRef(({
@@ -239,6 +241,13 @@ const PDFSidebar = React.forwardRef(({
   focusHistoryMark = null,
   mobileMode = false,
   onPanelStateChange = null,
+  // Layers panel ('layers' flag). layersEnabled false = no tab, no panel.
+  layersEnabled = false,
+  layerState = null,
+  activeLayerId = null,
+  onLayersChange = null,
+  onActiveLayerChange = null,
+  canEditLayers = true,
 }, ref) => {
   // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
   // which panel and whether it was open - per user
@@ -248,7 +257,7 @@ const PDFSidebar = React.forwardRef(({
   const initialLayoutRef = React.useRef(null);
   if (initialLayoutRef.current === null) {
     const stored = mobileMode ? DEFAULT_PANEL_LAYOUT : readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
-    initialLayoutRef.current = stored.panel === 'history' && !documentId
+    initialLayoutRef.current = (stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled)
       ? { ...stored, panel: 'pages' }
       : stored;
   }
@@ -315,7 +324,7 @@ const PDFSidebar = React.forwardRef(({
     const stored = readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
     if (!userTouchedLayoutRef.current) {
       setIsCollapsed(!stored.open);
-      setActiveTab(stored.panel === 'history' && !documentId ? 'pages' : stored.panel);
+      setActiveTab((stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled) ? 'pages' : stored.panel);
     }
     // documentId is read once, as the stored layout lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -371,6 +380,7 @@ const PDFSidebar = React.forwardRef(({
 
   const openPanel = useCallback((panelId = 'pages', { focus = panelId === 'search', select = true } = {}) => {
     const validPanel = ['pages', 'search', 'bookmarks', 'spaces', 'history'].includes(panelId)
+      || (panelId === 'layers' && layersEnabled)
       ? panelId
       : 'pages';
     userTouchedLayoutRef.current = true;
@@ -380,7 +390,7 @@ const PDFSidebar = React.forwardRef(({
       setSearchSelectOnFocus(Boolean(select));
       setSearchFocusRequestToken((prev) => prev + 1);
     }
-  }, []);
+  }, [layersEnabled]);
 
   const closePanel = useCallback(() => {
     userTouchedLayoutRef.current = true;
@@ -464,7 +474,8 @@ const PDFSidebar = React.forwardRef(({
     { id: 'pages', label: 'Pages', icon: 'pages' },
     { id: 'search', label: mobileMode ? 'Search' : 'Search text', icon: 'search' },
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
-    { id: 'spaces', label: 'Spaces', icon: 'layers' }
+    { id: 'spaces', label: 'Spaces', icon: 'layers' },
+    ...(layersEnabled ? [{ id: 'layers', label: 'Layers', icon: 'shapes' }] : []),
   ];
 
   const toggleHistoryPanel = useCallback(() => {
@@ -1039,6 +1050,18 @@ const PDFSidebar = React.forwardRef(({
               />
               </Suspense>
             </div>
+
+            {layersEnabled && (
+              <div style={{ display: activeTab === 'layers' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <LayersPanel
+                  layerState={layerState}
+                  activeLayerId={activeLayerId}
+                  onLayersChange={onLayersChange}
+                  onActiveLayerChange={onActiveLayerChange}
+                  readOnly={!canEditLayers}
+                />
+              </div>
+            )}
 
             {/* Bookmarks Panel */}
             <div style={{ display: activeTab === 'bookmarks' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>

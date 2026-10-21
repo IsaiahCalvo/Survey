@@ -21,9 +21,11 @@
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
 import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
+import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { canRemovePolyVertex, removePolyVertex } from '../utils/polyVertices.js';
+import { canRemovePolyVertex, insertPolyVertex, insertVertexOnNearestEdge, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
+import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
@@ -116,6 +118,7 @@ import {
   resolvePolyDraftFinish,
   updatePolyDraftPreview,
 } from '../utils/polyDraft.js';
+import { collectEndpointCandidates, resolveDrawSnap, DRAW_SNAP_SCREEN_PX } from '../utils/drawSnap.js';
 import {
   getAnnotationRenderIdentity,
   stampAnnotationCreationIdentity,
@@ -554,8 +557,12 @@ const SVGAnnotationLayerBody = memo(({
   getSurveyAnnotationVisibilityState,
   isRegionOverlayEnabled,
   layerVisibility,
+  // Layers panel ('layers' flag): Set of hidden layer ids (null = all show)
+  // and the layer new marks go on (null / default = leave marks untagged).
+  hiddenLayerIds = null,
+  activeLayerId = null,
   // Selection / interaction props (Phase 9)
-  onSaveAnnotations,   // (updatedJSON, saveContext) => void
+  onSaveAnnotations: onSaveAnnotationsProp,   // (updatedJSON, saveContext) => void
   // Owner after Test 46: a picked mark dragged onto another page moves there
   // (utils/crossPageMove.js). ({ toPage, marks }) => true when saved.
   onMoveMarksToPage = null,
@@ -777,6 +784,17 @@ const SVGAnnotationLayerBody = memo(({
   onDuplicateFamily = null,
 }) => {
 
+  // Layers: a mark whose id was not on this page before a save is new, so it
+  // goes on the active layer. One wrapper covers every save this layer makes.
+  const layerSaveStateRef = useRef({ annotations, activeLayerId });
+  layerSaveStateRef.current = { annotations, activeLayerId };
+  const onSaveAnnotations = useCallback((updated, ...rest) => {
+    const { annotations: before, activeLayerId: layerId } = layerSaveStateRef.current;
+    if (!layerId || !updated || !Array.isArray(updated.objects)) return onSaveAnnotationsProp?.(updated, ...rest);
+    const objects = stampNewObjectsOnLayer(before?.objects, updated.objects, layerId);
+    return onSaveAnnotationsProp?.(objects === updated.objects ? updated : { ...updated, objects }, ...rest);
+  }, [onSaveAnnotationsProp]);
+
   // ---------------------------------------------------------------------------
   // Refs
   // ---------------------------------------------------------------------------
@@ -801,12 +819,12 @@ const SVGAnnotationLayerBody = memo(({
     const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
     const labels = [];
     objects.forEach((obj, index) => {
-      if (!obj?.data?.measure || obj.visible === false) return;
+      if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
       const label = buildMeasureLabel(obj, effectiveMeasureScale);
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, label });
     });
     return labels;
-  }, [annotations, effectiveMeasureScale]);
+  }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
   const renderedAnnotationEntriesRef = useRef([]);
   // w52: ids of the callouts this page shows AND lets the user pick (visible
   // in context + interactive for the active space). Null until the first
@@ -1352,6 +1370,28 @@ const SVGAnnotationLayerBody = memo(({
   const [shapeCreation, setShapeCreation] = useState(null);
   const shapeCreationRef = useRef(null);
   useEffect(() => { shapeCreationRef.current = shapeCreation; }, [shapeCreation]);
+  // Line / arrow / polyline / polygon / measure drawing snaps (drawSnap.js):
+  // Shift locks the new segment to 45° steps; the point locks onto another
+  // line end or corner on this page within 8 screen px (Alt or the snapping
+  // preference off disables that pull). `drawSnapEndpoint` is the indicator.
+  const [drawSnapEndpoint, setDrawSnapEndpoint] = useState(null);
+  const drawSnapObjects = annotations?.objects;
+  const resolveCreationSnap = useCallback((anchor, point, e) => {
+    if (!point) return point;
+    const endpointSnap = !isAnnotationSnapFree(e);
+    const r = resolveDrawSnap(anchor, point, {
+      shiftKey: !!e?.shiftKey,
+      endpointSnap,
+      candidates: endpointSnap ? collectEndpointCandidates(drawSnapObjects) : [],
+      tolPage: snapThreshold(inverseScale, DRAW_SNAP_SCREEN_PX),
+    });
+    setDrawSnapEndpoint((prev) => {
+      const next = r.endpoint;
+      if (prev === next || (prev && next && prev.x === next.x && prev.y === next.y)) return prev;
+      return next;
+    });
+    return r.point;
+  }, [drawSnapObjects, inverseScale]);
   const freehandPointsRef = useRef([]);
   // w32: the in-progress stroke streamed to other screens (ghost ink there,
   // annotationLiveStrokes.js); ended on commit or cancel.
@@ -1666,6 +1706,7 @@ const SVGAnnotationLayerBody = memo(({
   const [focusedPolyVertex, setFocusedPolyVertex] = useState(null);
   const [polyVertexMenu, setPolyVertexMenu] = useState(null);
   const polyVertexLongPressRef = useRef(null);
+  const polyEdgePointerTypeRef = useRef(null);
   const removeFocusablePolyVertex = useCallback((annotationIndex, vertexIndex) => {
     if (typeof onSaveAnnotations !== 'function') return false;
     if (document.body.getAttribute('data-readonly') === 'true') return false;
@@ -1677,6 +1718,21 @@ const SVGAnnotationLayerBody = memo(({
     updated.objects[annotationIndex] = next;
     onSaveAnnotations(updated, { source: 'object:modified', action: 'vertex-remove', checkpointPolicy: 'normal' });
     setFocusedPolyVertex(null);
+    return true;
+  }, [annotations, onSaveAnnotations]);
+  // Edge insertion (OpenTakeoff / Drawboard): double-click or right-click >
+  // Add point here on a side of the selected poly. One save = one undo step.
+  const insertPolyVertexOnEdge = useCallback((annotationIndex, segmentIndex, t) => {
+    if (typeof onSaveAnnotations !== 'function') return false;
+    if (document.body.getAttribute('data-readonly') === 'true') return false;
+    const obj = annotations?.objects?.[annotationIndex];
+    if (!obj || isUserLocked(obj)) return false;
+    const next = insertPolyVertex(obj, segmentIndex, t);
+    if (!next) return false;
+    const updated = deepClone(annotations);
+    updated.objects[annotationIndex] = next;
+    onSaveAnnotations(updated, { source: 'object:modified', action: 'vertex-insert', checkpointPolicy: 'normal' });
+    setFocusedPolyVertex({ annotationIndex, vertexIndex: segmentIndex + 1 });
     return true;
   }, [annotations, onSaveAnnotations]);
   const selectedPolyIndex = selectedIds.size === 1 ? Array.from(selectedIds)[0] : null;
@@ -2461,10 +2517,13 @@ const SVGAnnotationLayerBody = memo(({
       return;
     }
 
-    const end = (finalClientPoint && svgRef.current)
+    let end = (finalClientPoint && svgRef.current)
       ? screenToSVG(svgRef.current, finalClientPoint.x, finalClientPoint.y)
       : state.current;
     if (!end) return;
+    if ((tool === 'line' || tool === 'arrow') && finalClientPoint && state.start) {
+      end = resolveCreationSnap(state.start, end, finalClientPoint);
+    }
 
     if (tool === 'survey-marker') {
       const left = Math.min(state.start.x, end.x);
@@ -2513,7 +2572,7 @@ const SVGAnnotationLayerBody = memo(({
     activeRegionId, activeTool, arrowheadStyle, arrowStartStyle, cloudIntensity, fillColor, fillOpacity,
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
     onSurveyMarkerCreated, pageNumber, selectAnnotation, selectedModuleId, selectedSpaceId,
-    spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
+    spaces, strokeColor, strokeOpacity, strokeWidth, viewerId, resolveCreationSnap,
   ]);
 
   // Owner 2026-10-13: Smart fill. A press asks the registered provider
@@ -2846,17 +2905,23 @@ const SVGAnnotationLayerBody = memo(({
       if (!point) return;
       setPolyDraft((prev) => {
         if (!prev) return prev;
-        const next = updatePolyDraftPreview(prev, point, {
+        let next = updatePolyDraftPreview(prev, point, {
           shiftKey: e.shiftKey,
           snapRadius: polyFirstPointSnapRadius,
         });
+        if (!next.snapToFirst) {
+          next = { ...next, preview: resolveCreationSnap(prev.points?.[prev.points.length - 1] || null, point, e) };
+        }
         polyDraftRef.current = next;
         return next;
       });
     };
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
-  }, [polyDraftActive, polyFirstPointSnapRadius]);
+  }, [polyDraftActive, polyFirstPointSnapRadius, resolveCreationSnap]);
+  useEffect(() => {
+    if (!shapeCreation && !polyDraftActive) setDrawSnapEndpoint(null);
+  }, [shapeCreation, polyDraftActive]);
 
   // Enter finishes, Escape cancels. Capture phase + stopPropagation so an
   // in-progress draft consumes Escape before the viewer's "clear selection"
@@ -2975,7 +3040,10 @@ const SVGAnnotationLayerBody = memo(({
         liveStrokeRef.current?.push(freehandPointsRef.current);
         setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1, ...(passedNow ? { passed: true } : {}) } : prev));
       } else {
-        const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+        let point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+        if (point && draft && (draft.tool === 'line' || draft.tool === 'arrow') && draft.start) {
+          point = resolveCreationSnap(draft.start, point, e);
+        }
         setShapeCreation((prev) => (prev ? {
           ...prev,
           ...(point ? { current: point } : {}),
@@ -3007,14 +3075,14 @@ const SVGAnnotationLayerBody = memo(({
         cancelDraft();
         return;
       }
-      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey });
     };
     const onUp = (e) => {
       const placing = clickPlace();
       if (placing) {
         // The second click's release sets the end.
         if (placing.endPointerId == null || e.pointerId !== placing.endPointerId) return;
-        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey });
         return;
       }
       if (!isGesturePointer(e)) return;
@@ -3065,7 +3133,7 @@ const SVGAnnotationLayerBody = memo(({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [shapeCreation, appendCoalescedPagePoints, endLiveStroke]);
+  }, [shapeCreation, appendCoalescedPagePoints, endLiveStroke, resolveCreationSnap]);
 
   // Escape abandons a drag-out / click-placed shape draft (freehand ink has
   // its own rules). Capture phase + stopPropagation, like the polygon draft's
@@ -3900,6 +3968,12 @@ const SVGAnnotationLayerBody = memo(({
         dropReasons.layerHidden.push({ i, layer });
         continue;
       }
+      // Layers panel: marks on a hidden layer neither draw nor hit-test (the
+      // selectable set is built from these rendered entries).
+      if (isOnHiddenLayer(obj, hiddenLayerIds)) {
+        dropReasons.layerHidden.push({ i, layer: obj.layerId || 'default' });
+        continue;
+      }
 
       // --- Three-layer filtering (ported from PAL lines 8625-8840) ---
       const visibilityScope = getAnnotationVisibilityScope({
@@ -4104,6 +4178,7 @@ const SVGAnnotationLayerBody = memo(({
     getSurveyAnnotationVisibilityState,
     isRegionOverlayEnabled,
     layerVisibility,
+    hiddenLayerIds,
     getSpaceIdForRegion,
     activeTool,
     editingAnnotationIndex,
@@ -5423,6 +5498,7 @@ const SVGAnnotationLayerBody = memo(({
         getSurveyAnnotationVisibilityState,
         isRegionOverlayEnabled,
         layerVisibility,
+        hiddenLayerIds,
       })) {
         continue;
       }
@@ -5649,7 +5725,7 @@ const SVGAnnotationLayerBody = memo(({
     // "1 callout + 1 annotation selected" multi-select glow never updated).
     // Per-hover recompute of this loop is cheap (callouts are few per page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted, getSpaceIdForRegion, modifierMoveActive]);
+  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, hiddenLayerIds, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted, getSpaceIdForRegion, modifierMoveActive]);
 
   // w52: publish which callouts this page lets the user pick, for the
   // interaction hook's click / marquee / lasso gates (isCalloutSelectable).
@@ -7380,12 +7456,13 @@ const SVGAnnotationLayerBody = memo(({
                   pointerDown: true,
                   pageNumber,
                 });
-                const created = createPolyDraft(activeTool, point);
+                const created = createPolyDraft(activeTool, resolveCreationSnap(null, point, e));
                 const next = created ? { ...created, gestureId } : null;
                 polyDraftRef.current = next;
                 setPolyDraft(next);
               } else {
-                const next = addPolyDraftPoint(draft, point, { shiftKey: e.shiftKey });
+                const last = draft.points?.[draft.points.length - 1] || null;
+                const next = addPolyDraftPoint(draft, resolveCreationSnap(last, point, e));
                 polyDraftRef.current = next;
                 setPolyDraft(next);
               }
@@ -7462,11 +7539,12 @@ const SVGAnnotationLayerBody = memo(({
                 });
                 setShapeCreation({ tool, gestureId, pointerId: e.pointerId, tick: 0, liveId });
               } else {
+                const start = (tool === 'line' || tool === 'arrow') ? resolveCreationSnap(null, point, e) : point;
                 setShapeCreation({
                   tool,
                   gestureId,
-                  start: point,
-                  current: point,
+                  start,
+                  current: start,
                   pointerId: e.pointerId,
                   pointerType: e.pointerType,
                   // screen point of the press: a release within
@@ -8024,6 +8102,9 @@ const SVGAnnotationLayerBody = memo(({
         />
       )}
       <SnapGuidesLayer guides={snapGuides} inverseScale={inverseScale} />
+      {drawSnapEndpoint && (
+        <SnapGuidesLayer guides={{ lines: [], points: [], endpoint: drawSnapEndpoint }} inverseScale={inverseScale} />
+      )}
       {lassoPoints?.length > 0 && (
         <g data-lasso-selection-preview="true" pointerEvents="none">
           <path
@@ -8613,6 +8694,13 @@ const SVGAnnotationLayerBody = memo(({
             }
             setFocusedPolyVertex({ annotationIndex: selectedIndex, vertexIndex: i });
             if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+              startPolyLongPress(e, { vertexIndex: i });
+            }
+            handleHandlePointerDown(e, `vertex-${i}`);
+          };
+          // Touch/pen hold still 500 ms on a corner (Delete point) or a side
+          // (Add point here); moving more than 8 px or lifting cancels it.
+          const startPolyLongPress = (e, target) => {
               clearVertexLongPress();
               const start = { x: e.clientX, y: e.clientY };
               const onMove = (ev) => {
@@ -8630,17 +8718,47 @@ const SVGAnnotationLayerBody = memo(({
               polyVertexLongPressRef.current = {
                 timer: setTimeout(() => {
                   cleanup();
-                  setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: start.x, y: start.y });
+                  setPolyVertexMenu({ annotationIndex: selectedIndex, ...target, x: start.x, y: start.y, touch: true });
                 }, 500),
               };
-            }
-            handleHandlePointerDown(e, `vertex-${i}`);
           };
           const onVertexContextMenu = (i) => (e) => {
             e.preventDefault();
             e.stopPropagation();
             setFocusedPolyVertex({ annotationIndex: selectedIndex, vertexIndex: i });
-            setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: e.clientX, y: e.clientY });
+            setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: e.clientX, y: e.clientY, touch: isTouchMenuInput(contextMenuInputOf(e)) });
+          };
+          // Double-click is mouse/pen; a finger long-presses the side instead.
+          const edgeHit = (e) => {
+            const ctm = e.currentTarget.getScreenCTM?.();
+            if (!ctm) return null;
+            const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+            return insertVertexOnNearestEdge(worldPoints, pt, vTouchHitR || vHandleR * 2, { closed: String(obj.type).toLowerCase() === 'polygon' });
+          };
+          const onEdgeDoubleClick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            if (polyEdgePointerTypeRef.current === 'touch') return;
+            const hit = edgeHit(e);
+            if (hit) insertPolyVertexOnEdge(selectedIndex, hit.segmentIndex, hit.t);
+          };
+          const onEdgeContextMenu = (e) => {
+            const hit = edgeHit(e);
+            if (!hit) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const touch = polyEdgePointerTypeRef.current === 'touch' || isTouchMenuInput(contextMenuInputOf(e));
+            // A touch long-press already opened (or is about to open) the menu.
+            if (touch && polyVertexLongPressRef.current) return;
+            setPolyVertexMenu({ annotationIndex: selectedIndex, edge: { segmentIndex: hit.segmentIndex, t: hit.t }, x: e.clientX, y: e.clientY, touch });
+          };
+          const onEdgePointerDown = (e) => {
+            polyEdgePointerTypeRef.current = e.pointerType;
+            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+              const hit = edgeHit(e);
+              if (hit) startPolyLongPress(e, { edge: { segmentIndex: hit.segmentIndex, t: hit.t } });
+            }
+            handleAnnotationPointerDown(e, selectedIndex);
           };
           const vertexFocused = (i) => focusedPolyVertex?.annotationIndex === selectedIndex && focusedPolyVertex.vertexIndex === i;
           // UX 2026-09-09 (Drawboard PDF, defect 4): a polygon / polyline
@@ -8671,6 +8789,19 @@ const SVGAnnotationLayerBody = memo(({
                     ? `rotate(${polyCloudChrome.angle}, ${polyCloudChrome.rotationCenter.x}, ${polyCloudChrome.rotationCenter.y})`
                     : undefined}
                   style={{ pointerEvents: 'none' }}
+                />
+              )}
+              {!modifierMoveActive && interactionState === 'idle' && worldPoints.length > 1 && (
+                <polyline
+                  data-poly-edge-hit="true"
+                  points={[...worldPoints, ...(String(obj.type).toLowerCase() === 'polygon' ? [worldPoints[0]] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={(vTouchHitR || vHandleR * 2) * 2}
+                  style={{ pointerEvents: 'stroke', cursor: 'copy' }}
+                  onPointerDown={onEdgePointerDown}
+                  onDoubleClick={onEdgeDoubleClick}
+                  onContextMenu={onEdgeContextMenu}
                 />
               )}
               {/* Midsegment handles insert one point, then use the normal vertex drag.
@@ -9210,17 +9341,36 @@ const SVGAnnotationLayerBody = memo(({
     {polyVertexMenu && typeof document !== 'undefined' && createPortal((() => {
       const menuObj = annotations?.objects?.[polyVertexMenu.annotationIndex];
       const canDelete = canRemovePolyVertex(menuObj);
+      const menuLayout = polyVertexMenuLayout({ ...polyVertexMenu, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight });
+      const edge = polyVertexMenu.edge;
       return (
         <div
           data-poly-vertex-menu="true"
           role="menu"
           onContextMenu={(e) => e.preventDefault()}
           style={{
-            position: 'fixed', left: polyVertexMenu.x, top: polyVertexMenu.y, zIndex: 10000,
+            position: 'fixed', left: menuLayout.left, top: menuLayout.top, zIndex: 10000, boxSizing: 'border-box',
             background: 'var(--surface, #fff)', color: 'var(--text, #1f2328)', border: '1px solid rgba(0,0,0,0.15)',
-            borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', padding: 4, minWidth: 140, font: '13px system-ui, sans-serif',
+            borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', padding: 4, minWidth: menuLayout.width, font: '13px system-ui, sans-serif',
           }}
         >
+          {edge ? (
+          <button
+            type="button"
+            role="menuitem"
+            data-poly-vertex-insert="true"
+            onClick={() => {
+              insertPolyVertexOnEdge(polyVertexMenu.annotationIndex, edge.segmentIndex, edge.t);
+              setPolyVertexMenu(null);
+            }}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', minHeight: menuLayout.rowHeight, boxSizing: 'border-box', border: 0, borderRadius: 6,
+              background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer',
+            }}
+          >
+            Add point here
+          </button>
+          ) : (
           <button
             type="button"
             role="menuitem"
@@ -9232,12 +9382,13 @@ const SVGAnnotationLayerBody = memo(({
               setPolyVertexMenu(null);
             }}
             style={{
-              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', minHeight: 36, border: 0, borderRadius: 6,
+              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', minHeight: menuLayout.rowHeight, boxSizing: 'border-box', border: 0, borderRadius: 6,
               background: 'transparent', color: 'inherit', font: 'inherit', cursor: canDelete ? 'pointer' : 'default', opacity: canDelete ? 1 : 0.45,
             }}
           >
             Delete point
           </button>
+          )}
         </div>
       );
     })(), document.body)}

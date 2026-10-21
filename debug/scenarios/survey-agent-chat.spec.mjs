@@ -658,3 +658,51 @@ test('With markup tools on, the agent circles an item and clouds the area on scr
   await cards.first().getByRole('button', { name: /Undo/ }).click();
   await expect.poll(async () => (await shapes()).some((a) => a.id === circleId)).toBe(false);
 });
+
+test('Send voice log stores the turn timeline, with no audio or keys', async ({ page }) => {
+  const calls = [];
+  const logs = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await mockModel(page, calls);
+  await page.route('**/rest/v1/survey_agent_voice_logs*', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+      return;
+    }
+    logs.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: '' });
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await input.fill('door 117 has no power');
+  await input.press('Enter');
+  await expect(panel.getByText('D-117: power is N and I added a note.')).toBeVisible();
+
+  // The fixture's "Redactions are not applied" notice sits over the panel's
+  // foot. Dismissing it is a tap outside the chat, so open the chat again.
+  await page.getByRole('button', { name: 'Dismiss' }).first().click({ timeout: 5_000 }).catch(() => {});
+  if (!(await panel.isVisible())) await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  await panel.getByRole('button', { name: 'Send voice log' }).click();
+  await expect(panel.getByRole('button', { name: 'Voice log sent' })).toBeVisible();
+  expect(logs).toHaveLength(1);
+  const row = Array.isArray(logs[0]) ? logs[0][0] : logs[0];
+  expect(row.reason).toBe('manual');
+  const events = row.log.turns.flatMap((t) => t.events);
+  const tools = events.filter((e) => e.type === 'model_done').flatMap((e) => e.data.tools.map((t) => t.name));
+  expect(tools).toEqual(['find_items', 'set_answers', 'add_note']);
+  expect(events.some((e) => e.type === 'turn_done')).toBe(true);
+  expect(JSON.stringify(row)).not.toMatch(/apikey|Bearer|audio/i);
+});

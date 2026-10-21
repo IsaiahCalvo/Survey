@@ -28,8 +28,19 @@ export const SNAP_GUIDE_COLOR = HANDLE_RING;
 const fmt = (n) => (Math.round(n * 1000) / 1000);
 
 export default function SnapGuidesLayer({ guides, inverseScale = 1 }) {
-  if (!guides?.lines?.length) return null;
   const k = clampInverseScale(inverseScale);
+  // Endpoint snap (drawSnap.js): a small ring on the line end / corner the
+  // drawn or dragged point locked onto.
+  const endpoint = guides?.endpoint || null;
+  if (!guides?.lines?.length) {
+    if (!endpoint) return null;
+    return (
+      <g data-snap-guides="true" pointerEvents="none" style={{ pointerEvents: 'none' }}>
+        <circle cx={endpoint.x} cy={endpoint.y} r={5 * k} fill="none" stroke="#ffffff" strokeWidth={3 * k} />
+        <circle data-snap-endpoint="true" cx={endpoint.x} cy={endpoint.y} r={5 * k} fill="none" stroke={SNAP_GUIDE_COLOR} strokeWidth={1.5 * k} />
+      </g>
+    );
+  }
   const overhang = SNAP_GUIDE_OVERHANG_PX * k;
   const half = SNAP_MARK_HALF_PX * k;
   const marks = (guides.points || []).map(({ x, y }) => (

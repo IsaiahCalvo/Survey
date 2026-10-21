@@ -89,12 +89,18 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   const readTools = src.slice(src.indexOf('const READ_TOOLS'), src.indexOf('const WRITE_TOOLS'));
   assert.equal((readTools.match(/readOnlyHint: true/g) || []).length, 7);
   assert.doesNotMatch(readTools, /readOnlyHint: false/);
-  assert.doesNotMatch(readTools, /set_answers|add_note/);
-  // WRITE_TOOLS exist, are the two expected writes, and are not read-only.
+  assert.doesNotMatch(readTools, /set_answers|add_note|set_entity|create_item|undo_change/);
+  // WRITE_TOOLS exist, are the five expected writes, and are not read-only.
   const writeTools = src.slice(src.indexOf('const WRITE_TOOLS'), src.indexOf('async function gunzip'));
-  assert.match(writeTools, /name: 'set_answers'/);
-  assert.match(writeTools, /name: 'add_note'/);
-  assert.equal((writeTools.match(/readOnlyHint: false/g) || []).length, 2);
+  for (const name of ['set_answers', 'add_note', 'set_entity', 'create_item', 'undo_change']) {
+    assert.match(writeTools, new RegExp(`name: '${name}'`), name);
+  }
+  assert.equal((writeTools.match(/readOnlyHint: false/g) || []).length, 5);
+  // Every write returns an opaque change_id, and undo_change reverses it on the
+  // same gated write path (no server state kept).
+  assert.match(src, /name === 'undo_change'/);
+  assert.match(src, /change_id: result\.changed/);
+  assert.match(src, /function decodeChange/);
   // tools/list offers writes only when the flag is on AND the token may write.
   assert.match(src, /const CONNECTOR_WRITES_FLAG = 'survey-connector-writes'/);
   const list = src.slice(src.indexOf("method === 'tools/list'"), src.indexOf("method === 'tools/call'"));
@@ -128,6 +134,30 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   assert.match(ctx, /names\.linkedCats/);
   assert.match(ctx, /r\.category_id\) cats\.add/);
   assert.match(ctx, /\.filter\(\(c\) => cats\.has\(c\.id\)\)/);
+  // The list tools are paged so a reply stays bounded: limit+offset in the
+  // schema, a clamp helper, DB .range() for the row lists, a slice for items,
+  // and next_offset to page the rest.
+  const readSchemas = src.slice(src.indexOf('const READ_TOOLS'), src.indexOf('const WRITE_TOOLS'));
+  for (const t of ['list_projects', 'list_documents', 'list_survey_items']) {
+    const tool = readSchemas.slice(readSchemas.indexOf(`name: '${t}'`), readSchemas.indexOf(`name: '${t}'`) + 1500);
+    assert.match(tool, /limit:/, `${t} takes limit`);
+    assert.match(tool, /offset:/, `${t} takes offset`);
+  }
+  assert.match(src, /function pageArgs/);
+  assert.match(src, /\.range\(offset, offset \+ limit - 1\)/);
+  assert.match(src, /next_offset:/);
+  // Each connector write records its before-state in agent_change (best effort,
+  // agent-session only) so the person can undo it from /agent-link.
+  assert.match(src, /function recordChange/);
+  assert.match(src, /from\('agent_change'\)\.insert/);
+  assert.match(src, /if \(!actor\?\.clientId \|\| !actor\.userId\) return;/);
+  const mig = read('supabase/migrations/20261023150000_agent_change.sql');
+  assert.match(mig, /create table if not exists public\.agent_change/);
+  // Agent inserts its own; person reads + marks undone; agent can't read.
+  assert.match(mig, /for insert\s+to authenticated\s+with check \(user_id = auth\.uid\(\) and public\.is_agent_session\(\)\)/);
+  assert.match(mig, /for select\s+to authenticated\s+using \(user_id = auth\.uid\(\) and not public\.is_agent_session\(\)\)/);
+  assert.match(mig, /for update/);
+  assert.match(mig, /interval '90 days'/);
 });
 
 async function loadAgentSession() {

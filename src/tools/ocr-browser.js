@@ -1,6 +1,7 @@
-// OCR PDF, the browser side: render a page with pdf.js and read it with
-// Tesseract. One Tesseract worker reads every page; call close() at the end.
-import { renderPage, releaseCanvas } from './browser.js';
+// OCR PDF, the browser side: draw a page (from its JPEG when it is a plain
+// scan, else with pdf.js) and read it with Tesseract. A few Tesseract workers
+// read the pages; call close() at the end.
+import { renderPage, renderScan, releaseCanvas } from './browser.js';
 import { ToolError } from './errors.js';
 import { hasRealText, ocrScale, tesseractLines } from './ocr.js';
 
@@ -38,40 +39,93 @@ async function startWorker() {
   }
 }
 
-// Returns { readPage(index), close() } for one pdf.js document.
-export function makePageReader(pdf, { skipText = true, progress = () => {} } = {}) {
-  let worker = null;
-  const ensureWorker = async (index) => {
-    if (!worker) {
-      progress('Loading the text reader');
-      worker = await startWorker();
-      progress(`Page ${index + 1} of ${pdf.numPages}`);
+// How many pages to read at once. Each reader holds a page picture and
+// Tesseract's own memory (a few hundred MB on a big sheet), so phones and
+// browsers that don't say how much memory they have read one page at a time.
+export function readerCount() {
+  const cores = globalThis.navigator?.hardwareConcurrency || 1;
+  const memory = globalThis.navigator?.deviceMemory || 0;
+  if (memory >= 8) return Math.max(1, Math.min(3, Math.floor(cores / 2)));
+  if (memory >= 4) return Math.max(1, Math.min(2, Math.floor(cores / 2)));
+  return 1;
+}
+
+// A drawn page as a grey PGM file, which Tesseract reads as it is: much
+// quicker than the PNG it makes of a canvas, and a quarter of the bytes.
+function canvasToPgm(canvas) {
+  const { width, height } = canvas;
+  const rgba = canvas.getContext('2d').getImageData(0, 0, width, height).data;
+  const head = new TextEncoder().encode(`P5\n${width} ${height}\n255\n`);
+  const out = new Uint8Array(head.length + width * height);
+  out.set(head);
+  for (let i = 0, j = 0, o = head.length; i < width * height; i += 1, j += 4) {
+    out[o + i] = (rgba[j] * 299 + rgba[j + 1] * 587 + rgba[j + 2] * 114 + 500) / 1000;
+  }
+  return out;
+}
+
+// Returns { readPage(index), close() } for one pdf.js document (or a function
+// that opens it). `scans` (see scanPages.js) lets plain scanned pages skip
+// pdf.js: they are drawn from their JPEGs and have no text to check for.
+// Up to `readers` pages are read at once, each by its own Tesseract worker.
+export function makePageReader(pdf, { skipText = true, progress = () => {}, scans = [], readers = 1 } = {}) {
+  const doc = () => (typeof pdf === 'function' ? pdf() : pdf);
+  const idle = [];
+  const all = [];
+  const waiting = [];
+  let made = 0;
+  let closed = false;
+  const take = async () => {
+    if (idle.length) return idle.pop();
+    if (made < readers) {
+      made += 1;
+      if (made === 1) progress('Loading the text reader');
+      const w = await startWorker();
+      if (closed) { w.terminate().catch(() => {}); throw new ToolError('Stopped.'); }
+      all.push(w);
+      return w;
     }
-    return worker;
+    return new Promise((resolve) => waiting.push(resolve));
+  };
+  const give = (w) => {
+    const next = waiting.shift();
+    if (next) next(w); else idle.push(w);
   };
   return {
     async readPage(index) {
-      if (skipText) {
-        const page = await pdf.getPage(index + 1);
+      const scan = scans[index];
+      if (skipText && !scan) {
+        const page = await (await doc()).getPage(index + 1);
         const text = await page.getTextContent().catch(() => null);
         page.cleanup();
         if (hasRealText(text)) return null;
       }
-      const w = await ensureWorker(index);
-      const page = await pdf.getPage(index + 1);
-      const vp = page.getViewport({ scale: 1, rotation: page.rotate });
-      const canvas = await renderPage(pdf, index, { scale: ocrScale(vp.width, vp.height) });
+      const w = await take();
+      let canvas;
       try {
-        const { data } = await w.recognize(canvas, {}, { blocks: true, text: false });
-        return { image: { width: canvas.width, height: canvas.height }, lines: tesseractLines(data) };
-      } finally {
+        if (scan) canvas = await renderScan(scan, { scale: ocrScale(scan.box.width, scan.box.height) });
+        if (!canvas) {
+          const pdfDoc = await doc();
+          const page = await pdfDoc.getPage(index + 1);
+          const vp = page.getViewport({ scale: 1, rotation: page.rotate });
+          canvas = await renderPage(pdfDoc, index, { scale: ocrScale(vp.width, vp.height) });
+        }
+        const image = { width: canvas.width, height: canvas.height };
+        const pgm = canvasToPgm(canvas);
         releaseCanvas(canvas);
+        canvas = null;
+        const { data } = await w.recognize(pgm, {}, { blocks: true, text: false });
+        return { image, lines: tesseractLines(data) };
+      } finally {
+        if (canvas) releaseCanvas(canvas);
+        give(w);
       }
     },
     async close() {
-      const w = worker;
-      worker = null;
-      if (w) await w.terminate().catch(() => {});
+      closed = true;
+      const list = all.splice(0);
+      idle.length = 0;
+      await Promise.all(list.map((w) => w.terminate().catch(() => {})));
     },
   };
 }

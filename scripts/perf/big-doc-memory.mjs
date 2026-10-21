@@ -47,6 +47,26 @@ const PROBE = () => {
       for (const e of list.getEntries()) w.__perf.longTasks.push([e.startTime, e.duration]);
     }).observe({ type: 'longtask', buffered: true });
   } catch { /* no longtask support */ }
+  // Long animation frames (Chromium LoAF): where a slow frame's time went.
+  w.__perf.loaf = [];
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        w.__perf.lastLoafEnd = Math.max(w.__perf.lastLoafEnd || 0, e.startTime + e.duration);
+        if (!w.__perf.recording) continue;
+        const scripts = (e.scripts || []).map((sc) => ({ d: Math.round(sc.duration), inv: sc.invoker || '', src: `${(sc.sourceURL || '').split('/').pop()}:${sc.sourceCharPosition}`, fn: sc.sourceFunctionName || '' }));
+        w.__perf.loaf.push({ d: Math.round(e.duration), script: Math.round(scripts.reduce((n, sc) => n + sc.d, 0)), render: Math.round(e.renderStart ? e.startTime + e.duration - e.renderStart : 0), layout: Math.round(e.styleAndLayoutStart ? e.startTime + e.duration - e.styleAndLayoutStart : 0), scripts });
+      }
+    }).observe({ type: 'long-animation-frame', buffered: false });
+  } catch { /* no LoAF support */ }
+  // Page-div style writes (one per page per page-list re-render that changes it).
+  w.__perf.pageStyleWrites = 0;
+  try {
+    new MutationObserver((records) => {
+      if (!w.__perf.recording) return;
+      for (const r of records) if (r.target.classList?.contains('survey-pdfjs-page-div')) w.__perf.pageStyleWrites += 1;
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['style'] });
+  } catch { /* none */ }
   let last = 0;
   const frame = (t) => {
     const s = w.__perf;
@@ -75,11 +95,13 @@ async function signIn(page) {
   await dialog.waitFor({ state: 'hidden', timeout: 60_000 });
 }
 
-const quiet = (page, ms = 2000) => page.waitForFunction((q) => {
+// Quiet: no long task and no long animation frame (background sync, e.g. an
+// IndexedDB compaction, shows as the latter) for `ms`.
+const quiet = (page, ms = 3000) => page.waitForFunction((q) => {
   const s = window.__perf;
-  const lastEnd = s.longTasks.reduce((m, [st, d]) => Math.max(m, st + d), 0);
+  const lastEnd = Math.max(s.lastLoafEnd || 0, s.longTasks.reduce((m, [st, d]) => Math.max(m, st + d), 0));
   return performance.now() - lastEnd > q;
-}, ms, { timeout: 120_000, polling: 250 });
+}, ms, { timeout: 180_000, polling: 250 });
 
 async function heapMB(cdp) {
   await cdp.send('HeapProfiler.collectGarbage');
@@ -99,8 +121,17 @@ async function window_(page, start) {
       longest: tasks.reduce((m, [, d]) => Math.max(m, d), 0),
       dropped,
       frames: s.frames.length,
+      pageStyleWrites: s.pageStyleWrites,
+      loafCount: s.loaf.length,
+      loafMs: s.loaf.reduce((n, f) => n + f.d, 0),
+      loafScriptMs: s.loaf.reduce((n, f) => n + f.script, 0),
+      loafRenderMs: s.loaf.reduce((n, f) => n + f.render, 0),
+      loafLayoutMs: s.loaf.reduce((n, f) => n + f.layout, 0),
+      loafTop: [...s.loaf].sort((a, b) => b.d - a.d).slice(0, 5),
     };
     s.frames = [];
+    s.loaf = [];
+    s.pageStyleWrites = 0;
     s.recording = false;
     return r;
   }, start);
@@ -282,6 +313,13 @@ async function oneRun(browser, size) {
   const perPage = box.sh / Math.max(1, box.pages);
   const vp = DEVICES[size].viewport;
   await page.mouse.move(vp.width / 2, vp.height / 2);
+  const panProfile = ZOOM_PROFILE && !profiled[`pan-${size}`] ? ZOOM_PROFILE.replace(/(\.cpuprofile)?$/, `-pan-${size}.cpuprofile`) : null;
+  if (panProfile) {
+    profiled[`pan-${size}`] = true;
+    await cdp.send('Profiler.enable');
+    await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
+    await cdp.send('Profiler.start');
+  }
   let start = await page.evaluate(() => { window.__perf.frames = []; window.__perf.recording = true; return performance.now(); });
   const steps = Math.ceil((PAN_PAGES * perPage) / 400);
   await page.evaluate((el) => { window.__perf.maxScroll = 0; el.addEventListener('scroll', () => { window.__perf.maxScroll = Math.max(window.__perf.maxScroll, el.scrollTop); }, { passive: true }); }, sc);
@@ -289,6 +327,8 @@ async function oneRun(browser, size) {
   for (let i = 0; i < steps; i += 1) { await page.mouse.wheel(0, -400); await page.waitForTimeout(16); }
   await page.waitForTimeout(500);
   const pan = await window_(page, start);
+  if (panProfile) fs.writeFileSync(panProfile, JSON.stringify((await cdp.send('Profiler.stop')).profile));
+  console.log(size, 'pan slowest frames', JSON.stringify(pan.loafTop));
   pan.maxScroll = await page.evaluate(() => window.__perf.maxScroll || 0);
   await quiet(page);
 
@@ -308,16 +348,22 @@ async function oneRun(browser, size) {
   await page.keyboard.up('Control');
   await page.waitForTimeout(800);
   const zoom = await window_(page, start);
+  console.log(size, 'zoom slowest frames', JSON.stringify(zoom.loafTop));
   if (zoomProfile) fs.writeFileSync(zoomProfile, JSON.stringify((await cdp.send('Profiler.stop')).profile));
   await quiet(page);
   const heapEndMB = await heapMB(cdp);
-  if (HEAP_TOP && !heapTop[size]) heapTop[size] = await heapByConstructor(cdp);
+  // A dense set's snapshot can outgrow a JS string; skip the table then.
+  if (HEAP_TOP && !heapTop[size]) heapTop[size] = await heapByConstructor(cdp).catch((e) => [`heap table skipped: ${e.message}`]);
   const end = await snapshotDom(page);
   await context.close();
   return {
     firstPage, heapOpenMB, canvasOpenMB: open.canvasMB, pagesDrawnOpen: open.pagesDrawn,
     panBlocking: pan.blocking, panLongest: pan.longest, panDropped: pan.dropped,
     zoomBlocking: zoom.blocking, zoomLongest: zoom.longest, zoomDropped: zoom.dropped,
+    zoomPageStyleWrites: zoom.pageStyleWrites, zoomLoafCount: zoom.loafCount, zoomLoafMs: zoom.loafMs,
+    zoomLoafScriptMs: zoom.loafScriptMs, zoomLoafRenderMs: zoom.loafRenderMs, zoomLoafLayoutMs: zoom.loafLayoutMs,
+    panPageStyleWrites: pan.pageStyleWrites, panLoafCount: pan.loafCount, panLoafMs: pan.loafMs,
+    panLoafScriptMs: pan.loafScriptMs, panLoafRenderMs: pan.loafRenderMs,
     panScrolledPages: pan.maxScroll / perPage,
     heapEndMB, canvasMB: end.canvasMB, canvases: end.canvases, pagesDrawn: end.pagesDrawn, overlays: end.overlays, domNodes: end.domNodes,
   };

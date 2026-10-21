@@ -1572,34 +1572,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       const filePath = doc.filePath || doc.file_path;
 
       if (filePath) {
-        // Download from Supabase storage
-        // Note: onDocumentSelect will handle tab switching if file is already open
-        // We need to reconstruct the File object to match what onDocumentSelect expects
-
-        // First check if this document is already open in a tab to avoid re-downloading
-        // We can't easily check tabs here without the file object, but onDocumentSelect does it.
-        // So we'll proceed with download. Optimization: Check tabs by name/size if possible?
-        // For now, let's download. The browser cache might help.
-
-        // 2026-10-07 (phone loading): the screen answers the tap at once with
-        // the one quiet "Opening <file>…" while the PDF downloads. Before, the
-        // home sat unchanged for the whole download (seconds on a phone
-        // connection, ~30 s for a large drawing set), so a tap looked ignored.
-        onDocumentOpenStart?.(doc);
-        const blob = await downloadFromStorage(filePath);
-        const file = new File([blob], doc.name, { type: 'application/pdf' });
-
-        // CRITICAL: Attach Supabase document metadata for real-time sync
-        // Without this, pdfFile.id is undefined and sync won't work
-        file.id = doc.id;  // Supabase document ID
-        file.projectId = doc.projectId || doc.project_id;  // Project ID
-        file.supabaseFilePath = filePath;  // Storage path
-        file.contentSha256 = doc.content_sha256 ?? null; // thumbnail cache key
-        // Phase 35 Plan 03 — owner identity for the per-user delete authority
-        // gate (resolved in PDFViewer's documentOwnerId useMemo).
-        file.user_id = doc.user_id || doc.userId || null;
-
-        onDocumentSelect(file);
+        // Open speed: hand the viewer the library row, as a share link and a
+        // restored tab do. It streams the file with range requests so page 1
+        // draws from the first chunks (services/cloudPdfStream.js), answers
+        // from the device's byte cache when it has the file, and falls back to
+        // the full download itself. Downloading here first held a big drawing
+        // set's first page until the whole file had arrived (tens of seconds
+        // on a phone connection).
+        onDocumentSelect({
+          ...doc,
+          filePath,
+          supabaseFilePath: filePath,
+          projectId: doc.projectId || doc.project_id,
+          // Phase 35 Plan 03 — owner identity for the per-user delete
+          // authority gate (resolved in PDFViewer's documentOwnerId useMemo).
+          user_id: doc.user_id || doc.userId || null,
+          contentSha256: doc.content_sha256 ?? doc.contentSha256 ?? null, // thumbnail cache key
+        }, filePath);
       } else if (doc.dataUrl) {
         // Legacy: Convert dataUrl back to blob, then to File
         const response = await fetch(doc.dataUrl);

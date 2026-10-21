@@ -120,4 +120,39 @@
     z-index: 100000;
     max-width: calc(100vw - 32px);
   }
+  /* PR #1098 phone check: an open sheet (Pages, Survey) ends at the dock, so
+     dock + 8px landed on its bottom action row (the Pages sheet's Add / Paste /
+     Select). Lift the toast clear of that row while a sheet is up. */
+  html.survey-viewer-open:has(.mobile-pdf-sheet:not(.is-collapsed)) .undo-toast {
+    bottom: calc(var(--mobile-viewer-dock-height, 62px) + 64px);
+  }
+  /* Size to the words (a left:50% box only gets half the screen, so at 320px
+     "Deleted page 2" wrapped), and give Undo a full 44px touch target now
+     that page delete / project archive / revision restore have no confirm. */
+  .undo-toast {
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
+    gap: 4px;
+    padding: 4px 4px 4px 16px;
+  }
+  .undo-toast__action {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 12px;
+  }
+}
+
+/* TABLET + DESKTOP (PR #1106 follow-up, 768-1366px check): the toast is
+   centred on the window, so with the Survey panel open (320px + the 48px rail
+   on the right) its left half reaches over the panel's 40px Export footer
+   (Export to Excel / "...") at iPad widths, and a long message (a bookmark
+   name, the kept-copy delete notice) does at any width. Lift it clear of that
+   footer while the panel is up. The left Pages panel has no bottom buttons and
+   the zoom / page / fit controls live in the 48px rail, which the centred
+   toast never reaches. Phones keep their own placement above. */
+@media screen and (min-device-width: 600px) and (min-device-height: 600px) {
+  html:has(.survey-rail__foot) .undo-toast {
+    bottom: 48px;
+  }
 }

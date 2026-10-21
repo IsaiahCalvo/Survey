@@ -24,6 +24,8 @@ export const BIG_DOC = {
 };
 const PAGES = Number(process.env.BIG_DOC_PAGES || 240);
 const MARKUPS = Number(process.env.BIG_DOC_MARKUPS || 4000);
+// BIG_DOC_HOT_PAGES=N puts every markup on the first N sheets (dense sheets).
+const HOT_PAGES = Math.min(PAGES, Number(process.env.BIG_DOC_HOT_PAGES) || PAGES);
 // BIG_DOC_SHEET_KB=<n> adds an n-KB raster (a scanned detail) to every sheet.
 // Generated vector sheets compress to almost nothing (240 sheets = 0.8 MB);
 // real drawing sets run 20-100 MB, which is what a phone has to download.
@@ -94,7 +96,7 @@ async function buildPdf() {
 }
 
 function markup(i, docId, userId) {
-  const pageNumber = (i % PAGES) + 1;
+  const pageNumber = (i % HOT_PAGES) + 1;
   const id = `bigdoc-${i}`;
   const left = 80 + ((i * 37) % 2200);
   const top = 80 + ((i * 61) % 1400);
@@ -178,7 +180,7 @@ async function main() {
     p_writer_id: clientId, p_writer_epoch: 1, p_expected_at_seq: null, p_expected_writer_id: null, p_expected_writer_epoch: 0,
   }));
   for (let t = 0; t < 12; t += 1) {
-    const obj = byPage[(t % PAGES) + 1].objects[0];
+    const obj = byPage[(t % HOT_PAGES) + 1].objects[0];
     obj.left += 5;
     pending = [];
     syncByPageToDoc(doc, byPage);

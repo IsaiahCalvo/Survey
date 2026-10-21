@@ -64,6 +64,7 @@ import {
   recordAtomicEraseDiagnostic,
   updateAtomicEraseDiagnostic,
 } from '../utils/atomicEraseDiagnostics.js';
+import { isOnHiddenLayer } from '../utils/layers.js';
 import {
   getSurveyMarkerEraserHitIds,
   surveyMarkerToEraserObject,
@@ -345,6 +346,9 @@ const FabricEraserCanvas = memo(({
   // hides, the eraser must not touch (see getEraseBlockReason).
   showSurveyPanel = false,
   selectedModuleId = null,
+  // Layers panel: Set of hidden layer ids (null = all show). Ink on a
+  // hidden layer is not on screen, so the eraser must not touch it.
+  hiddenLayerIds = null,
   zoomGeneration,
   // Parent-owned lifecycle reason. `cancel` is reserved for authorization
   // loss/read-only transitions; ordinary tool/page unmounts keep `commit`.
@@ -419,6 +423,7 @@ const FabricEraserCanvas = memo(({
   const activeSpaceIdRef = useRef(activeSpaceId);
   const spacesRef = useRef(spaces);
   const showSurveyPanelRef = useRef(showSurveyPanel);
+  const hiddenLayerIdsRef = useRef(hiddenLayerIds);
   const selectedModuleIdRef = useRef(selectedModuleId);
   const viewerIdRef = useRef(viewerId);
   const documentOwnerIdRef = useRef(documentOwnerId);
@@ -579,6 +584,7 @@ const FabricEraserCanvas = memo(({
   activeSpaceIdRef.current = activeSpaceId;
   spacesRef.current = spaces;
   showSurveyPanelRef.current = showSurveyPanel;
+  hiddenLayerIdsRef.current = hiddenLayerIds;
   selectedModuleIdRef.current = selectedModuleId;
   viewerIdRef.current = viewerId;
   documentOwnerIdRef.current = documentOwnerId;
@@ -1834,6 +1840,8 @@ const FabricEraserCanvas = memo(({
       showSurveyPanel: showSurveyPanelRef.current,
       selectedModuleId: selectedModuleIdRef.current,
     })) return 'survey-scope';
+
+    if (isOnHiddenLayer(object, hiddenLayerIdsRef.current)) return 'hidden-layer';
 
     if (isOutsideEraseSpaceScope(object)) return 'space-scope';
     return null;

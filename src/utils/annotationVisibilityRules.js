@@ -1,3 +1,4 @@
+import { isOnHiddenLayer } from './layers.js';
 /**
  * Source of truth for annotation visibility and page-level visibility controls.
  *
@@ -243,9 +244,11 @@ export function isAnnotationVisibleInContext({
   getCanvasAnnotationVisibilityState = null,
   getSurveyAnnotationVisibilityState = null,
   isRegionOverlayEnabled = null,
-  layerVisibility = null
+  layerVisibility = null,
+  hiddenLayerIds = null
 } = {}) {
   if (!annotation) return false;
+  if (isOnHiddenLayer(annotation, hiddenLayerIds)) return false;
 
   const layer = annotation.layer || 'native';
   if (layerVisibility && layerVisibility[layer] === false) {

@@ -116,6 +116,157 @@ test('a fieldMaps write converges on an already-open client', () => {
   assert.equal(after.name, 'D-9', 'other fields untouched');
 });
 
+// set_entity (connector): set or clear marker.entityId, keeping other fields —
+// the same whole-dict mutate the connector runs inside writeMarkers.
+test('set_entity sets and clears the entity, keeping other fields', () => {
+  const doc = new Y.Doc();
+  const id = 'surveyMarker-ent';
+  syncSurveyMarkersToDoc(doc, { [id]: { id, name: 'D-9', categoryId: 'cat', checklistResponses: { c1: { selection: 'Y' } } } });
+
+  let markers = docToSurveyMarkers(doc);
+  markers[id] = { ...markers[id], entityId: 'ent-1' };
+  syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  let after = docToSurveyMarkers(doc)[id];
+  assert.equal(after.entityId, 'ent-1');
+  assert.equal(after.name, 'D-9');
+  assert.deepEqual(after.checklistResponses, { c1: { selection: 'Y' } });
+
+  markers = docToSurveyMarkers(doc);
+  markers[id] = { ...markers[id], entityId: null };
+  syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  after = docToSurveyMarkers(doc)[id];
+  assert.equal(after.entityId, null);
+  assert.equal(after.name, 'D-9');
+});
+
+// create_item (connector): add a brand-new marker and append it without
+// touching the markers already there.
+test('create_item adds a new marker with category, page, bounds, leaving others', () => {
+  const doc = new Y.Doc();
+  syncSurveyMarkersToDoc(doc, { existing: { id: 'existing', name: 'keep', categoryId: 'cat' } });
+
+  const markers = docToSurveyMarkers(doc);
+  const newId = 'surveyMarker-new';
+  markers[newId] = { id: newId, pageNumber: 2, bounds: { x: 5, y: 6, width: 7, height: 8 }, categoryId: 'cat', name: 'D-200', entityId: null, checklistResponses: {} };
+  const res = syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  assert.deepEqual([res.added, res.updated, res.removed], [1, 0, 0]);
+
+  const out = docToSurveyMarkers(doc);
+  assert.equal(out.existing.name, 'keep', 'the existing marker stays');
+  assert.deepEqual(out[newId].bounds, { x: 5, y: 6, width: 7, height: 8 });
+  assert.equal(out[newId].categoryId, 'cat');
+  assert.equal(out[newId].pageNumber, 2);
+  assert.deepEqual(out[newId].checklistResponses, {});
+});
+
+// undo_change mechanics: the connector captures the touched fields' BEFORE
+// values, then re-applies them (null → cleared). Here: set an entity on a
+// marker that had none, then undo restores it to no entity, keeping other
+// fields. Mirrors the server's applyUndo (null means "the field was not set").
+test('undo restores an item to its state before set_entity', () => {
+  const doc = new Y.Doc();
+  const id = 'surveyMarker-undo-ent';
+  syncSurveyMarkersToDoc(doc, { [id]: { id, name: 'D-9', categoryId: 'cat', checklistResponses: { c1: { selection: 'Y' } } } });
+
+  // set_entity captures before = { entityId:null, entityName:null, entityColor:null }.
+  const before = { entityId: null, entityName: null, entityColor: null };
+  let markers = docToSurveyMarkers(doc);
+  markers[id] = { ...markers[id], entityId: 'ent-1', entityName: 'Installed', entityColor: '#22aa55' };
+  syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  assert.equal(docToSurveyMarkers(doc)[id].entityId, 'ent-1');
+
+  // undo_change re-applies the before fields; null clears.
+  markers = docToSurveyMarkers(doc);
+  const patch = {};
+  for (const [k, v] of Object.entries(before)) patch[k] = v === null ? undefined : v;
+  markers[id] = { ...markers[id], ...patch };
+  syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+
+  const after = docToSurveyMarkers(doc)[id];
+  assert.equal(after.entityId ?? null, null, 'entity cleared');
+  assert.equal(after.entityName ?? null, null);
+  assert.equal(after.name, 'D-9', 'other fields untouched');
+  assert.deepEqual(after.checklistResponses, { c1: { selection: 'Y' } });
+});
+
+// undo of a create_item removes the marker it added (origin 'agent' allows the
+// key to be dropped), leaving every other marker in place.
+test('undo of a create removes just the created marker', () => {
+  const doc = new Y.Doc();
+  syncSurveyMarkersToDoc(doc, { keep: { id: 'keep', name: 'stay', categoryId: 'cat' } });
+  const newId = 'surveyMarker-undo-new';
+
+  let markers = docToSurveyMarkers(doc);
+  markers[newId] = { id: newId, pageNumber: 1, bounds: { x: 1, y: 2, width: 3, height: 4 }, categoryId: 'cat', name: 'D-200', checklistResponses: {} };
+  syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  assert.ok(docToSurveyMarkers(doc)[newId], 'created');
+
+  // undo_change for a create deletes the key.
+  markers = docToSurveyMarkers(doc);
+  delete markers[newId];
+  const res = syncSurveyMarkersToDoc(doc, markers, { origin: 'agent' });
+  assert.equal(res.removed, 1);
+  const out = docToSurveyMarkers(doc);
+  assert.equal(out[newId], undefined, 'created marker removed');
+  assert.equal(out.keep.name, 'stay', 'the other marker stays');
+});
+
+// undo_change for set_answers restores ONLY the checklist entries that call
+// set — an answer changed afterwards (or by another request) survives the undo.
+// Mirrors the server's kind:'answers' undo (restore captured keys, leave rest).
+test('undo of set_answers keeps a later change to a different answer', () => {
+  const doc = new Y.Doc();
+  const id = 'surveyMarker-undo-ans';
+  syncSurveyMarkersToDoc(doc, { [id]: { id, name: 'D', categoryId: 'cat', checklistResponses: { a: { selection: 'Y' } } } });
+
+  // The agent sets answer a → N; it captures only { a: <prior> }.
+  let m = docToSurveyMarkers(doc);
+  const capturedKeys = { a: ('a' in m[id].checklistResponses) ? m[id].checklistResponses.a : null };
+  m[id] = { ...m[id], checklistResponses: { ...m[id].checklistResponses, a: { selection: 'N' } } };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  // Afterwards, answer b is set to Y (a different request / the person).
+  m = docToSurveyMarkers(doc);
+  m[id] = { ...m[id], checklistResponses: { ...m[id].checklistResponses, b: { selection: 'Y' } } };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  // Undo the agent's change: restore only key a, leave b.
+  m = docToSurveyMarkers(doc);
+  const responses = { ...m[id].checklistResponses };
+  for (const [clId, prior] of Object.entries(capturedKeys)) {
+    if (prior === null || prior === undefined) delete responses[clId];
+    else responses[clId] = prior;
+  }
+  m[id] = { ...m[id], checklistResponses: responses };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  const after = docToSurveyMarkers(doc)[id].checklistResponses;
+  assert.deepEqual(after.a, { selection: 'Y' }, 'a restored to its prior value');
+  assert.deepEqual(after.b, { selection: 'Y' }, 'the later change to b survived the undo');
+});
+
+// undo_change for add_note strips ONLY the text this call appended, if the note
+// still ends with it, so a note edited afterwards is left as it is.
+test('undo of add_note strips just the appended segment', () => {
+  const doc = new Y.Doc();
+  const id = 'surveyMarker-undo-note';
+  syncSurveyMarkersToDoc(doc, { [id]: { id, note: { text: 'first' } } });
+
+  // add_note appends 'second' → seg = '\nsecond'.
+  const seg = '\nsecond';
+  let m = docToSurveyMarkers(doc);
+  m[id] = { ...m[id], note: { ...m[id].note, text: `first${seg}` } };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  // Undo strips the segment.
+  m = docToSurveyMarkers(doc);
+  const current = String(m[id].note.text || '');
+  if (current.endsWith(seg)) m[id] = { ...m[id], note: { ...m[id].note, text: current.slice(0, current.length - seg.length) } };
+  syncSurveyMarkersToDoc(doc, m, { origin: 'agent' });
+
+  assert.equal(docToSurveyMarkers(doc)[id].note.text, 'first', 'only the appended text was removed');
+});
+
 test('fieldMaps: concurrent writes to different fields of one marker both survive', () => {
   const origin = new Y.Doc();
   const id = 'surveyMarker-merge';
