@@ -27,10 +27,10 @@ name: android-signed-in
     text: "Sign in"
     index: 1
 - extendedWaitUntil:
-    visible: "E2E Sample Drawing.pdf"
+    visible: ".*E2E Sample Drawing.*"
     timeout: 60000
 - takeScreenshot: 02-documents
-- tapOn: "E2E Sample Drawing.pdf"
+- tapOn: ".*E2E Sample Drawing.*"
 - tapOn: "Open file"
 - extendedWaitUntil:
     visible: "Type your name in the box:"
