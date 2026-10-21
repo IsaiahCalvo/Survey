@@ -370,3 +370,27 @@ test('the voice agent gets the markup tools only when asked, anchored where they
   assert.ok(!/survey_/.test(byName.list_annotations.description));
   assert.equal(new Set(all.map((t) => t.function.name)).size, all.length, 'no name clashes with the item tools');
 });
+
+test('markup the agent added shows on the change card and Undo deletes it', async () => {
+  const { bridge } = fakeBridge({ getPageSize: () => ({ width: 612, height: 792 }) });
+  const live = new Set();
+  const doc = {
+    findAnnotation: (id) => (live.has(id) ? { id } : null),
+    deleteAnnotation: (id) => (live.delete(id) ? { ok: true } : { ok: false, reason: 'not-found' }),
+  };
+  const box = createSurveyAgentToolbox({
+    getBridge: () => bridge,
+    getDocument: () => doc,
+    extraTools: [
+      { name: 'survey_add_text_note', execute: async () => { live.add('a1'); return 'Added a text note on page 2 (id a1).'; } },
+      { name: 'survey_add_line', execute: async () => 'Added a line on page 2.' },
+    ],
+  });
+  const added = await box.run('add_text_note', { near_item_id: 'm117', text: 'x' });
+  assert.deepEqual(added.change, { annotationId: 'a1', documentId: 'doc-1', label: 'Added a text note on page 2.' });
+  assert.equal((await box.run('add_line', { page: 2, x1: 0, y1: 0, x2: 1, y2: 1 })).change, undefined, 'no id, nothing to undo');
+  assert.deepEqual(box.undo([added.change]), { reverted: 1, kept: 0 });
+  assert.equal(live.has('a1'), false);
+  // Already gone (the person deleted it): kept, nothing thrown.
+  assert.deepEqual(box.undo([added.change]), { reverted: 0, kept: 1 });
+});

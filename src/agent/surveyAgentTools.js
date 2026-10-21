@@ -66,7 +66,8 @@ class ToolError extends Error {}
  * Returns { run(name, input) -> { content, isError, change }, undo(changes) }.
  * A change is { itemId, documentId, label, fields }: each field holds the
  * value before and the value this tool wrote, so undo only reverts a field
- * nobody has changed since.
+ * nobody has changed since. Markup an extra tool added is
+ * { annotationId, documentId, label }; undo deletes it through getDocument.
  */
 export function createSurveyAgentToolbox({
   getBridge = () => surveyAgentBridge.current,
@@ -74,6 +75,7 @@ export function createSurveyAgentToolbox({
   documentId,
   undoLastTurn = null,
   extraTools = [],
+  getDocument = null,
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -387,7 +389,15 @@ export function createSurveyAgentToolbox({
             throw new ToolError('This person can only view this document, so nothing can be changed.');
           }
           const content = await extra.execute(placeNear(name, input || {}));
-          return { isError: false, content: typeof content === 'string' ? content : out(content) };
+          const text = typeof content === 'string' ? content : out(content);
+          // "Added a text note on page 1 (id abc)." -> Undo can delete it.
+          const added = name.startsWith('add_') && text.match(/\s*\(id ([^)\s]+)\)\.?\s*$/);
+          if (!added) return { isError: false, content: text };
+          return {
+            isError: false,
+            content: text,
+            change: { annotationId: added[1], documentId: getBridge()?.documentId || null, label: `${text.slice(0, added.index)}.` },
+          };
         } catch (err) {
           return { content: err?.message || 'That failed.', isError: true };
         }
@@ -433,6 +443,13 @@ export function createSurveyAgentToolbox({
       const work = new Map();
       const removed = new Set();
       for (const change of [...list].reverse()) {
+        if (change.annotationId) {
+          const doc = typeof getDocument === 'function' ? getDocument() : null;
+          const sameDoc = (b?.documentId || null) === (change.documentId || null);
+          const res = doc && sameDoc && doc.findAnnotation?.(change.annotationId) ? doc.deleteAnnotation(change.annotationId) : null;
+          if (res?.ok) result.reverted += 1; else result.kept += 1;
+          continue;
+        }
         const marker = b?.markers?.[change.itemId];
         if (!marker || (b.documentId || null) !== (change.documentId || null)) {
           result.kept += change.fields?.length || 0;

@@ -328,10 +328,19 @@ test('With markup tools on, the agent puts a text note next to an item', async (
   const turns = calls.filter((c) => c.action === 'turn');
   expect(turns.every((t) => t.annotations === true)).toBe(true);
   const results = turns.at(-1).messages.filter((m) => m.role === 'tool');
-  expect(results[1].content).toBe('Added a text note on page 1.');
+  expect(results[1].content).toMatch(/^Added a text note on page 1 \(id [^)]+\)\.$/);
   // The note is on page 1 beside D-117's box (x 330..480 on a 612 pt wide
   // page): no room on the right for a 160 pt note, so on the left, top-aligned.
   const listed = JSON.parse(results[2].content);
   const note = listed.find((a) => /Ceiling tile missing/.test(a.text || ''));
   expect(note).toMatchObject({ page: 1, type: 'Textbox', bounds: { x: 330 - 8 - 160, y: 600 } });
+
+  // The change card lists the note, and its Undo takes the note away.
+  const card = panel.getByTestId('survey-agent-changes');
+  await expect(card).toContainText('Added a text note on page 1.');
+  await card.getByRole('button', { name: /Undo/ }).click();
+  await expect.poll(() => page.evaluate(async () => {
+    const { activeAgentDocument } = await import('/src/agent/webmcp.js');
+    return activeAgentDocument().listAnnotations().some((a) => /Ceiling tile missing/.test(a.text || ''));
+  })).toBe(false);
 });
