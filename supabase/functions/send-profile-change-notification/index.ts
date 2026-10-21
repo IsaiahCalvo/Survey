@@ -72,9 +72,14 @@ Deno.serve(async (req) => {
     }
 
     // Get request body
-    const { changedFields } = await req.json()
+    // Only the fields AccountSettings can change; anything else would put
+    // caller-chosen text into the email subject.
+    const body = await req.json().catch(() => ({}))
+    const changedFields = Array.isArray(body?.changedFields)
+      ? [...new Set(body.changedFields)].filter((field) => field === 'name' || field === 'password')
+      : []
 
-    if (!changedFields || changedFields.length === 0) {
+    if (changedFields.length === 0) {
       return new Response(JSON.stringify({ error: 'No changed fields provided' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
