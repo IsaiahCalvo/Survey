@@ -158,7 +158,9 @@ const TOOLS = {
       for (let n = 0; n < files.length; n += 1) {
         const f = files[n];
         const bytes = await compressPdf(f.bytes, opts.level, canvasCodec, (i, total) => progress(`${files.length > 1 ? `File ${n + 1} of ${files.length}: ` : ''}${Math.round((i / total) * 100)}%`));
-        out.push({ ...pdfOut(`${base(f.name)}-compressed.pdf`, bytes), before: f.size });
+        const name = `${base(f.name)}-compressed.pdf`;
+        // Several files end up in a ZIP, so each one can leave the page's memory now.
+        out.push({ ...(files.length > 1 ? blobOut(name, bytes, PDF_TYPE) : pdfOut(name, bytes)), before: f.size });
       }
       return out;
     },
@@ -926,7 +928,9 @@ async function run() {
       for (let n = 0; n < S.files.length; n += 1) {
         const tag = `File ${n + 1} of ${S.files.length}`;
         progress(tag);
-        outputs.push(...await T.run([S.files[n]], S.opts, (msg) => progress(`${tag}: ${msg}`), { batch: true }));
+        const got = await T.run([S.files[n]], S.opts, (msg) => progress(`${tag}: ${msg}`), { batch: true });
+        // These all go in one ZIP, so hand each to the browser as it's made.
+        outputs.push(...got.map(({ bytes, ...o }) => (bytes ? { ...o, ...blobOut(o.name, bytes, o.type) } : o)));
       }
       // Two inputs with the same name would overwrite each other in the ZIP.
       const seen = new Map();
