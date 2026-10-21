@@ -3,10 +3,9 @@
  *
  * Owner 2026-10-07: "the app keeps crashing ... I don't know if you're
  * detecting any of that". Nothing was kept. This keeps the last
- * CRASH_LOG_MAX crashes in this browser's localStorage (never sent anywhere —
- * a later "send to us" step can subscribe with onCrashRecorded; see
- * PROPOSED-CRASH-TABLE.md in the crash hunt notes) and Settings → Crash
- * reports shows them with a Copy button.
+ * CRASH_LOG_MAX crashes in this browser's localStorage, and Settings → Crash
+ * reports shows them with a Copy button. crashReporter.js sends a scrubbed
+ * copy (no breadcrumbs, no user id) to the client_errors table.
  *
  * What counts as a crash:
  *   react          the "Something went wrong" screen (ErrorBoundary)
@@ -129,6 +128,20 @@ export function clearCrashReports(storage = store()) {
 export function onCrashRecorded(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** Stamp records as sent (crashReporter.js) so a reload doesn't send them again. */
+export function markCrashReportsSent(ids, { storage = store(), now = Date.now() } = {}) {
+  const wanted = new Set(ids);
+  const list = readCrashReports(storage);
+  let changed = false;
+  for (const record of list) {
+    if (wanted.has(record.id) && !record.sentAt) {
+      record.sentAt = new Date(now).toISOString();
+      changed = true;
+    }
+  }
+  if (changed) writeJson(storage, CRASH_LOG_KEY, list);
 }
 
 export function noteAction(label) {

@@ -1,0 +1,59 @@
+name: Daily crash summary
+
+# Once a day, counts the crashes browsers and the phone apps sent to the
+# client_errors table (src/utils/crashReporter.js) in the last 24 hours and
+# posts them as one comment on a single open issue labelled crash-report, so
+# the owner gets at most one email a day, and none on a day with no crashes.
+# It also deletes reports older than 30 days. Reads the table through the
+# Supabase Management API with the same token the production deploy uses;
+# the table itself is closed to browsers.
+
+on:
+  schedule:
+    - cron: '15 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: crash-summary
+  cancel-in-progress: false
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+    steps:
+      - name: Count yesterday's crashes and drop old ones
+        shell: bash
+        run: |
+          query() {
+            jq -n --arg q "$1" '{query: $q}' | curl --fail-with-body --silent --show-error -X POST \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H 'Content-Type: application/json' \
+              --data @- "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_ID/database/query"
+          }
+          query "select kind, platform, build, left(message, 160) as message, sum(repeats)::int as times, count(*)::int as reports
+                 from public.client_errors where received_at > now() - interval '24 hours'
+                 group by 1, 2, 3, 4 order by times desc limit 25" > rows.json
+          query "delete from public.client_errors where received_at < now() - interval '30 days'" > /dev/null
+          jq length rows.json
+
+      - name: Post the summary
+        shell: bash
+        run: |
+          [ "$(jq length rows.json)" = 0 ] && { echo "No crashes in the last 24 hours."; exit 0; }
+          total="$(jq '[.[].times] | add' rows.json)"
+          table="$(jq -r '.[] | "| \(.times) | \(.kind) | \(.platform // "") | \(.build // "") | \(.message | gsub("\\|"; "/") | gsub("\n"; " ")) |"' rows.json)"
+          body="$(printf '**%s crashes in the 24 hours to %s**\n\n| Times | Kind | Platform | Build | Message |\n|---|---|---|---|---|\n%s\n\nTop 25 groups. Full records stay in each person'\''s Settings → Crash reports.' "$total" "$(date -u +%FT%TZ)" "$table")"
+          title="Daily crash summary"
+          gh label create crash-report --color D93F0B --description "Daily crash summary" 2>/dev/null || true
+          open="$(gh issue list --label crash-report --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          if [ -n "$open" ]; then gh issue comment "$open" --body "$body"
+          else gh issue create --title "$title" --label crash-report --body "$body"; fi
