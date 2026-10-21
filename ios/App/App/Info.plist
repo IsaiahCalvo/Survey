@@ -27,7 +27,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Survey uses the camera to take photos and videos you attach to a survey.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Survey uses the microphone to record audio notes and video sound you attach to a survey.</string>
+	<string>Survey uses the microphone to record audio notes and video sound you attach to a survey, and to hear you when you talk to the Survey agent.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Survey turns what you say to the Survey agent into text on your device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Survey lets you pick photos and videos from your library to attach to a survey.</string>
 	<key>LSRequiresIPhoneOS</key>
