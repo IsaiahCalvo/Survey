@@ -79,6 +79,7 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
     import { useState, useEffect, useCallback, useRef } from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};
     import { coalesceRead } from ${JSON.stringify(new URL('../src/hooks/requestCoalescer.js', import.meta.url).href)};
     import { isScopedRequestCurrent } from ${JSON.stringify(new URL('../src/hooks/scopedRequestGuard.js', import.meta.url).href)};
+    import { useLibraryListCache } from ${JSON.stringify(new URL('../src/hooks/useLibraryListCache.js', import.meta.url).href)};
     import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from ${JSON.stringify(new URL('../src/hooks/libraryPagination.js', import.meta.url).href)};
     import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from ${JSON.stringify(new URL('../src/services/sharedTemplates.js', import.meta.url).href)};
     const state = globalThis[${JSON.stringify(key)}];
