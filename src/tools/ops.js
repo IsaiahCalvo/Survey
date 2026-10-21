@@ -1,7 +1,10 @@
 // The PDF work behind the free tools. Pure pdf-lib, no DOM, so it runs (and is
 // tested) in Node as well as the browser. Every function takes and returns
 // bytes; nothing is uploaded anywhere.
-import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
+import {
+  PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFStream, StandardFonts, concatTransformationMatrix, degrees, drawObject,
+  popGraphicsState, pushGraphicsState, rgb,
+} from 'pdf-lib';
 
 import { ToolError } from './errors.js';
 
@@ -31,6 +34,9 @@ function fresh() {
 }
 
 const save = (doc) => doc.save({ useObjectStreams: true });
+
+// The standard PDF fonts only cover Latin-1; anything else would throw.
+const latin1 = (text) => String(text).replace(/[^\x20-\x7e\u00a0-\u00ff]/g, '?');
 
 export async function pageCount(bytes) {
   return (await loadPdf(bytes)).getPageCount();
@@ -162,8 +168,7 @@ export async function addWatermark(bytes, { text = 'DRAFT', size = 0.6, opacity 
   if (!words) throw new ToolError('Type the words for the watermark.');
   const doc = await loadPdf(bytes);
   const font = await doc.embedFont(StandardFonts.HelveticaBold);
-  // The standard fonts only cover Latin-1; anything else would throw.
-  const clean = words.replace(/[^\x20-\x7e\u00a0-\u00ff]/g, '?');
+  const clean = latin1(words);
   const unit = font.widthOfTextAtSize(clean, 1);
   for (const page of doc.getPages()) {
     const f = visualFrame(page);
@@ -203,5 +208,116 @@ export async function imagesToPdf(images, { pageSize = 'fit', orientation = 'aut
     const page = doc.addPage([pw, ph]);
     page.drawImage(embedded, { x: (pw - w) / 2, y: (ph - h) / 2, width: w, height: h });
   }
+  return save(doc);
+}
+
+// Header and footer text. {page}, {total}, {date} and {file} are filled in.
+export async function addHeaderFooter(bytes, { header = '', footer = '', align = 'center', size = 10, skipFirst = false, fileName = '', date = new Date() } = {}) {
+  if (!header.trim() && !footer.trim()) throw new ToolError('Type a header, a footer, or both.');
+  const doc = await loadPdf(bytes);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const pages = doc.getPages();
+  const day = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  pages.forEach((page, i) => {
+    if (skipFirst && i === 0) return;
+    const f = visualFrame(page);
+    const margin = Math.max(18, Math.min(f.width, f.height) * 0.04);
+    for (const [template, top] of [[header, true], [footer, false]]) {
+      if (!template.trim()) continue;
+      const text = latin1(template.replace(/\{page\}/g, i + 1).replace(/\{total\}/g, pages.length).replace(/\{date\}/g, day).replace(/\{file\}/g, fileName));
+      const w = font.widthOfTextAtSize(text, size);
+      const cx = align === 'left' ? margin + w / 2 : align === 'right' ? f.width - margin - w / 2 : f.width / 2;
+      drawCentered(page, text, { font, size, cx, cy: top ? f.height - margin : margin, color: rgb(0.1, 0.1, 0.1) });
+    }
+  });
+  return save(doc);
+}
+
+// New order of pages: [{ index, turns }]. The same index may appear twice.
+export async function organizePages(bytes, order) {
+  if (!order.length) throw new ToolError('Keep at least one page.');
+  const src = await loadPdf(bytes);
+  const out = await fresh();
+  const pages = await out.copyPages(src, order.map((o) => o.index));
+  pages.forEach((p, k) => {
+    const q = order[k].turns || 0;
+    if (q % 4) p.setRotation(degrees((((p.getRotation().angle + q * 90) % 360) + 360) % 360));
+    out.addPage(p);
+  });
+  return save(out);
+}
+
+const N = (n) => PDFName.of(n);
+const num = (v) => (v instanceof PDFNumber ? v.asNumber() : 0);
+
+function appearanceOf(annot, context) {
+  const ap = annot.lookup(N('AP'));
+  if (!(ap instanceof PDFDict)) return null;
+  let normal = ap.get(N('N'));
+  let resolved = context.lookup(normal);
+  if (resolved instanceof PDFDict && !(resolved instanceof PDFStream)) {
+    const state = annot.get(N('AS'));
+    normal = state ? resolved.get(state) : undefined;
+    resolved = context.lookup(normal);
+  }
+  return resolved instanceof PDFStream ? normal : null;
+}
+
+// Where an appearance stream lands on the page: its BBox, run through its own
+// Matrix, is scaled onto the annotation's Rect (PDF 32000 12.5.5).
+function appearanceMatrix(stream, rect) {
+  const bbox = stream.dict.lookup(N('BBox'), PDFArray)?.asArray().map(num) || [0, 0, 1, 1];
+  const m = stream.dict.lookup(N('Matrix'))?.asArray?.().map(num) || [1, 0, 0, 1, 0, 0];
+  const pts = [[bbox[0], bbox[1]], [bbox[2], bbox[1]], [bbox[0], bbox[3]], [bbox[2], bbox[3]]]
+    .map(([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const [bx0, by0, bx1, by1] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  const [rx0, ry0, rx1, ry1] = [Math.min(rect[0], rect[2]), Math.min(rect[1], rect[3]), Math.max(rect[0], rect[2]), Math.max(rect[1], rect[3])];
+  const sx = bx1 - bx0 ? (rx1 - rx0) / (bx1 - bx0) : 1;
+  const sy = by1 - by0 ? (ry1 - ry0) / (by1 - by0) : 1;
+  return [sx, 0, 0, sy, rx0 - bx0 * sx, ry0 - by0 * sy];
+}
+
+// Flatten: form fields and markups become part of the page, so they print and
+// show everywhere and can no longer be edited. Links keep working.
+export async function flattenPdf(bytes) {
+  const doc = await loadPdf(bytes);
+  const { context } = doc;
+  let changed = 0;
+  try {
+    const form = doc.getForm();
+    if (form.getFields().length) {
+      form.flatten({ updateFieldAppearances: true });
+      changed += 1;
+    }
+  } catch {
+    // A broken form still has its markups flattened below.
+  }
+  doc.getPages().forEach((page, p) => {
+    const annots = page.node.Annots();
+    if (!annots) return;
+    const keep = [];
+    annots.asArray().forEach((ref, k) => {
+      const annot = context.lookup(ref);
+      if (!(annot instanceof PDFDict)) return;
+      if (annot.get(N('Subtype')) === N('Link')) { keep.push(ref); return; }
+      changed += 1;
+      const flags = num(annot.lookup(N('F')));
+      const hidden = flags & 2 || flags & 32;
+      const apRef = !hidden && appearanceOf(annot, context);
+      const rect = annot.lookup(N('Rect'), PDFArray)?.asArray().map(num);
+      if (!apRef || !rect) return;
+      const stream = context.lookup(apRef);
+      if (!stream.dict.get(N('Subtype'))) stream.dict.set(N('Subtype'), N('Form'));
+      if (!stream.dict.get(N('Type'))) stream.dict.set(N('Type'), N('XObject'));
+      const name = page.node.newXObject(`Flat${p}_${k}`, apRef);
+      page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...appearanceMatrix(stream, rect)), drawObject(name), popGraphicsState());
+    });
+    if (keep.length) page.node.set(N('Annots'), context.obj(keep));
+    else page.node.delete(N('Annots'));
+  });
+  if (!changed) throw new ToolError('This PDF has no form fields or markups to flatten.');
+  doc.catalog.delete(N('AcroForm'));
   return save(doc);
 }

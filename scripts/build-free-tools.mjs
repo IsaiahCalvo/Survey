@@ -22,6 +22,10 @@ const ICONS = {
   photo: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 3v4h6V3"/><path d="M8 17l3-4 2 2 3-4"/>',
   numbers: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M10 16h4M12 16v-5l-1.5 1"/>',
   watermark: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M8 16l8-8"/>',
+  organize: '<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M18 14.5l3 3-3 3"/>',
+  text: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 8h6M12 8v9"/>',
+  header: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M8 6.5h8M8 17.5h8"/>',
+  flatten: '<path d="M4 15l8 4 8-4M4 11l8 4 8-4M12 3l8 4-8 4-8-4z"/>',
 };
 const icon = (k) => `<svg class="ticon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${ICONS[k]}</svg>`;
 
@@ -70,7 +74,7 @@ function toolPage(t) {
   <div class="tool" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}"${t.multiple ? ' data-multiple' : ''}>
     <div class="dz" data-dz>
       ${icon(t.icon)}
-      <p class="dz-main"><button class="btn primary lg" type="button" data-pick>Choose ${t.accept === 'pdf' ? (t.multiple ? 'PDF files' : 'a PDF') : 'images'}</button></p>
+      <p class="dz-main"><label class="btn primary lg"><span data-pick>Choose ${t.accept === 'pdf' ? (t.multiple ? 'PDF files' : 'a PDF') : 'images'}</span><input type="file" hidden data-early accept="${t.accept === 'pdf' ? 'application/pdf,.pdf' : 'image/*'}"${t.multiple ? ' multiple' : ''} /></label></p>
       <p class="dz-or">or drop ${t.multiple ? 'them' : 'it'} here</p>
       <p class="dz-safe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your files stay on this device</p>
       <noscript><p>This tool needs JavaScript turned on.</p></noscript>
