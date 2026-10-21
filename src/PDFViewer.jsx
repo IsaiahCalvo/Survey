@@ -13,6 +13,7 @@ import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 // NO-GO banners in the code below — never relocate or rewrite them.
 // HIGH-RISK FILE: keep diffs minimal and run `npm test` after every change.
 
+import { readOriginalPdfBytes } from './services/embeddedImportBytes.js';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
@@ -28738,9 +28739,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let cancelled = false;
     (async () => {
       try {
-        const rawPdfBytes = typeof pdfFile.arrayBuffer === 'function'
-          ? await pdfFile.arrayBuffer()
-          : null;
+        const rawPdfBytes = await readOriginalPdfBytes(pdfFile, pdfDoc);
         const { annotationsByPage: importedWithSource, nativeLayerPolicyByPage } =
           await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes });
         if (cancelled) return;
