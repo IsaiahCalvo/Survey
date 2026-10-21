@@ -73,6 +73,12 @@ test('export errors map to plain words', async () => {
   await assert.rejects(requestAccountExport(fail(502)), { message: ACCOUNT_EXPORT_ERROR_TEXT[500] });
   const ok = { invoke: async (name, opts) => ({ data: { format: 1, files: [], name, opts }, error: null }) };
   assert.equal((await requestAccountExport(ok)).name, 'export-account');
+  // Links come back on the app's own Supabase host.
+  const internal = {
+    url: 'https://abc.supabase.co/functions/v1',
+    invoke: async () => ({ data: { format: 1, files: [{ bucket: 'documents', path: 'u/a.pdf', url: 'http://kong:8000/storage/v1/object/sign/documents/u/a.pdf?token=t' }] }, error: null }),
+  };
+  assert.equal((await requestAccountExport(internal)).files[0].url, 'https://abc.supabase.co/storage/v1/object/sign/documents/u/a.pdf?token=t');
 });
 
 test('big exports are split into parts, data.json in the first', async () => {

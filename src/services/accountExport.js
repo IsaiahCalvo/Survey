@@ -11,6 +11,18 @@ export const ACCOUNT_EXPORT_ERROR_TEXT = {
 };
 export const ACCOUNT_EXPORT_NETWORK_ERROR_TEXT = "We couldn't reach the server. Check your connection and try again.";
 
+// The function signs links with the host it sees Supabase at, which on a
+// local stack is the internal one; the app fetches them from its own.
+export function rebaseStorageLink(url, base) {
+  if (!url || !base) return url;
+  try {
+    const link = new URL(url);
+    return new URL(`${link.pathname}${link.search}`, base).href;
+  } catch {
+    return url;
+  }
+}
+
 export async function requestAccountExport(functionsClient) {
   const { data, error } = await functionsClient.invoke('export-account', { body: {} });
   if (error) {
@@ -24,7 +36,8 @@ export async function requestAccountExport(functionsClient) {
     throw new Error(ACCOUNT_EXPORT_NETWORK_ERROR_TEXT);
   }
   if (!data || data.format !== 1 || !Array.isArray(data.files)) throw new Error(ACCOUNT_EXPORT_ERROR_TEXT[500]);
-  return data;
+  const base = String(functionsClient.url || '').replace(/\/functions\/v1\/?$/, '');
+  return { ...data, files: data.files.map((file) => ({ ...file, url: rebaseStorageLink(file.url, base) })) };
 }
 
 // Windows and macOS refuse some characters in file names; zips keep "/" as a folder.

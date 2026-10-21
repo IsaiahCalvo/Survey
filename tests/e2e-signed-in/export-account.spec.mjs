@@ -60,7 +60,9 @@ test('the export holds the person\'s rows and files, and nobody else\'s', async 
   expect(files).not.toContain(`documents/${shared.filePath}`);
   expect(files).not.toContain(`survey-media/${friendMedia}`);
   const pdf = body.files.find((f) => f.path === own.filePath);
-  const download = await fetch(pdf.url);
+  // Signed with the host the function sees; fetch through the stack's public one.
+  const signed = new URL(pdf.url);
+  const download = await fetch(new URL(`${signed.pathname}${signed.search}`, process.env.E2E_SUPABASE_URL));
   expect(download.ok).toBe(true);
   expect((await download.text()).startsWith('%PDF')).toBe(true);
 
