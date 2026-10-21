@@ -137,3 +137,19 @@ test('the person sees what the agent changed, and Remove cuts it off at once', a
   const renewed = await tokenRequest({ grant_type: 'refresh_token', refresh_token: tok.refresh_token, client_id: clientId });
   expect(renewed.access_token).toBeFalsy();
 });
+
+test('each agent has an hourly limit on email and Excel calls, and it shows in the log', async ({ page }) => {
+  const name = `Busy agent ${RUN}`;
+  const { tok } = await agentSignIn(page, E2E_ACCOUNTS.pro, name);
+  const a = agentApi(tok.access_token);
+  const hit = async () => (await (await a.rpc('agent_rate_hit', { p_fn: 'send-profile-change-notification', p_limit: 5 })).json());
+  for (let i = 0; i < 5; i += 1) expect(await hit()).toBe(true);
+  expect(await hit()).toBe(false);
+  // Only the functions with limits can be counted.
+  expect((await a.rpc('agent_rate_hit', { p_fn: 'anything', p_limit: 5 })).status).toBeGreaterThanOrEqual(400);
+
+  await page.goto('/agent-link');
+  const row = page.locator('li', { hasText: name });
+  await expect(row.filter({ hasText: 'used profile change email (refused: over the hourly limit)' })).toHaveCount(1, { timeout: 30_000 });
+  await expect(row.filter({ hasText: /used profile change email$/ })).toHaveCount(5);
+});
