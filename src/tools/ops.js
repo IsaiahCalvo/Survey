@@ -327,9 +327,9 @@ export async function cropPdf(bytes, { trim = 36 } = {}) {
   const doc = await loadPdf(bytes);
   for (const page of doc.getPages()) {
     const box = page.getCropBox();
-    const t = Math.min(trim, box.width / 2 - 36, box.height / 2 - 36);
-    if (t <= 0) throw new ToolError('These pages are too small to trim that much.');
-    page.setCropBox(box.x + t, box.y + t, box.width - 2 * t, box.height - 2 * t);
+    const max = Math.min(box.width / 2 - 36, box.height / 2 - 36);
+    if (trim > max) throw new ToolError('These pages are too small to trim that much.');
+    page.setCropBox(box.x + trim, box.y + trim, box.width - 2 * trim, box.height - 2 * trim);
   }
   return save(doc);
 }
@@ -346,7 +346,8 @@ export async function editDetails(bytes, { title = '', author = '', subject = ''
   doc.setTitle(title.trim(), { showInWindowTitleBar: !!title.trim() });
   doc.setAuthor(author.trim());
   doc.setSubject(subject.trim());
-  doc.setKeywords(keywords.split(',').map((k) => k.trim()).filter(Boolean));
+  const tags = keywords.split(',').map((k) => k.trim()).filter(Boolean);
+  doc.setKeywords(tags.length ? [tags.join(', ')] : []);
   doc.setModificationDate(new Date());
   return save(doc);
 }

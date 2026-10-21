@@ -207,6 +207,10 @@ test('crop trims every edge by the same amount', async () => {
   const tiny = await PDFDocument.create();
   tiny.addPage([60, 60]);
   await assert.rejects(cropPdf(await tiny.save(), { trim: 18 }), ToolError);
+  // A7 can leave 1 inch of page, but not a 1-inch trim from every edge.
+  const a7 = await PDFDocument.create();
+  a7.addPage([210, 298]);
+  await assert.rejects(cropPdf(await a7.save(), { trim: 72 }), ToolError);
 });
 
 test('details round-trip; keywords split on commas', async () => {
@@ -214,7 +218,10 @@ test('details round-trip; keywords split on commas', async () => {
   const d = await readDetails(out);
   assert.equal(d.title, 'Level 2 plan');
   assert.equal(d.author, 'Isaiah');
-  assert.equal(d.keywords, 'plan level 2');
+  assert.equal(d.keywords, 'plan, level 2');
+  const prefill = (d.keywords || '').split(',').map((k) => k.trim()).filter(Boolean).join(', ');
+  const again = await editDetails(out, { title: 'Other', keywords: prefill });
+  assert.equal((await readDetails(again)).keywords, 'plan, level 2');
 });
 
 test('remove markups keeps form fields and, by default, links', async () => {

@@ -211,7 +211,7 @@ const TOOLS = {
       { key: 'title', label: 'Title', type: 'text', def: (f) => f.details?.title || '' },
       { key: 'author', label: 'Author', type: 'text', def: (f) => f.details?.author || '' },
       { key: 'subject', label: 'Subject', type: 'text', def: (f) => f.details?.subject || '' },
-      { key: 'keywords', label: 'Keywords', type: 'text', def: (f) => (f.details?.keywords || '').split(/\s+/).filter(Boolean).join(', '), help: 'Put commas between them.' },
+      { key: 'keywords', label: 'Keywords', type: 'text', def: (f) => (f.details?.keywords || '').split(',').map((k) => k.trim()).filter(Boolean).join(', '), help: 'Put commas between them.' },
     ],
     async run([file], o) {
       return [pdfOut(file.name, await editDetails(file.bytes, o))];
