@@ -11,9 +11,16 @@ name: Live journey check
 # The script never creates an account and deletes every document the account
 # owns before and after each run.
 
+# GitHub runs this repo's cron schedules only now and then (one scheduled run
+# of any workflow on 2026-10-21 while ~350 others ran), so every finished
+# "Build and tests" run also starts it. The first run in each UTC hour walks
+# the path; the rest of that hour skip (an hour-keyed cache entry marks it).
 on:
   schedule:
     - cron: '23 * * * *'
+  workflow_run:
+    workflows: ["Build and tests"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -29,8 +36,28 @@ env:
   GH_REPO: ${{ github.repository }}
 
 jobs:
+  due:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      key: ${{ steps.when.outputs.key }}
+      checked: ${{ steps.mark.outputs.cache-hit }}
+    steps:
+      - name: This hour's mark
+        id: when
+        run: echo "key=live-journey-$(date -u +%Y%m%d%H)" >> "$GITHUB_OUTPUT"
+      - name: Already done this hour?
+        id: mark
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/cache/restore@v4
+        with:
+          path: .live-journey-check-mark
+          key: ${{ steps.when.outputs.key }}
+          lookup-only: true
+
   journey:
-    if: vars.LIVE_JOURNEY_ENABLED == 'true'
+    needs: due
+    if: vars.LIVE_JOURNEY_ENABLED == 'true' && needs.due.outputs.checked != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -90,3 +117,14 @@ jobs:
           elif [ -n "$open" ]; then
             gh issue close "$open" --comment "Passed again at $(date -u +%FT%TZ)."
           fi
+
+      # Marked even on a failure, so one bad hour raises one comment, not one
+      # per CI run.
+      - name: Mark this hour done
+        if: always()
+        run: mkdir -p .live-journey-check-mark && date -u +%FT%TZ > .live-journey-check-mark/at
+      - if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .live-journey-check-mark
+          key: ${{ needs.due.outputs.key }}

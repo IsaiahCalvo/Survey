@@ -1572,34 +1572,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       const filePath = doc.filePath || doc.file_path;
 
       if (filePath) {
-        // Download from Supabase storage
-        // Note: onDocumentSelect will handle tab switching if file is already open
-        // We need to reconstruct the File object to match what onDocumentSelect expects
-
-        // First check if this document is already open in a tab to avoid re-downloading
-        // We can't easily check tabs here without the file object, but onDocumentSelect does it.
-        // So we'll proceed with download. Optimization: Check tabs by name/size if possible?
-        // For now, let's download. The browser cache might help.
-
-        // 2026-10-07 (phone loading): the screen answers the tap at once with
-        // the one quiet "Opening <file>…" while the PDF downloads. Before, the
-        // home sat unchanged for the whole download (seconds on a phone
-        // connection, ~30 s for a large drawing set), so a tap looked ignored.
-        onDocumentOpenStart?.(doc);
-        const blob = await downloadFromStorage(filePath);
-        const file = new File([blob], doc.name, { type: 'application/pdf' });
-
-        // CRITICAL: Attach Supabase document metadata for real-time sync
-        // Without this, pdfFile.id is undefined and sync won't work
-        file.id = doc.id;  // Supabase document ID
-        file.projectId = doc.projectId || doc.project_id;  // Project ID
-        file.supabaseFilePath = filePath;  // Storage path
-        file.contentSha256 = doc.content_sha256 ?? null; // thumbnail cache key
-        // Phase 35 Plan 03 — owner identity for the per-user delete authority
-        // gate (resolved in PDFViewer's documentOwnerId useMemo).
-        file.user_id = doc.user_id || doc.userId || null;
-
-        onDocumentSelect(file);
+        // Open speed: hand the viewer the library row, as a share link and a
+        // restored tab do. It streams the file with range requests so page 1
+        // draws from the first chunks (services/cloudPdfStream.js), answers
+        // from the device's byte cache when it has the file, and falls back to
+        // the full download itself. Downloading here first held a big drawing
+        // set's first page until the whole file had arrived (tens of seconds
+        // on a phone connection).
+        onDocumentSelect({
+          ...doc,
+          filePath,
+          supabaseFilePath: filePath,
+          projectId: doc.projectId || doc.project_id,
+          // Phase 35 Plan 03 — owner identity for the per-user delete
+          // authority gate (resolved in PDFViewer's documentOwnerId useMemo).
+          user_id: doc.user_id || doc.userId || null,
+          contentSha256: doc.content_sha256 ?? doc.contentSha256 ?? null, // thumbnail cache key
+        }, filePath);
       } else if (doc.dataUrl) {
         // Legacy: Convert dataUrl back to blob, then to File
         const response = await fetch(doc.dataUrl);
@@ -2021,46 +2010,69 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
     if (list.length === 0) return false;
     if (!user) { showToast('Please sign in to delete projects', 'warn'); return false; }
-    // UX (KAL-432): same as documents — a project and its documents move into
-    // Archive as ONE group and restore together, so the copy promises recovery
-    // rather than warning about permanence.
-    const confirmed = await askConfirm({
-      title: list.length === 1
-        ? 'Move this project and its documents to Archive?'
-        : `Move these ${list.length} projects and their documents to Archive?`,
-      message: 'You can restore the whole project from Archive for the next 30 days.',
-      confirmLabel: list.length === 1 ? 'Move to Archive' : `Move ${list.length} to Archive`,
-    });
-    // Cancelling must still resolve the caller's boolean contract as "not
-    // deleted" — the hub uses this return value to decide whether to clear its
-    // selection.
-    if (!confirmed) return false;
-
+    // UX (KAL-432): a project and its documents move into Archive as ONE group
+    // and restore together. Like documents, no confirm — an Undo toast instead.
     const ids = list.map((project) => project.id).filter(Boolean);
     setDocuments((prev) => prev.filter((doc) => !ids.includes(doc.project_id || doc.projectId)));
+    const archivable = list.filter((project) => project.id);
+    const archiveRun = (async () => {
+      try {
+        const { succeeded, failed } = await archiveItems(
+          archivable.map((project) => ({
+            type: 'project', id: project.id, name: project.name || 'Project',
+          }))
+        );
+        // UX: no success toast — see hubDeleteDocuments. Only failures speak up.
+        if (failed.length) {
+          console.error('[ProjectArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
+          if (!succeeded.length) dismissArchiveUndo();
+          showToast(failed[0].error, 'error');
+        }
+        await refetchProjects();
+        await refetchDocuments();
+        await refetchAllDocuments();
+        notifyLibraryChanged();
+        return succeeded;
+      } catch (err) {
+        console.error('[ProjectArchive] survey-hub:error', serializeError(err));
+        dismissArchiveUndo();
+        showToast('Failed to archive projects: ' + (err.message || 'Unknown error'), 'error');
+        await refetchProjects();
+        await refetchDocuments();
+        return null;
+      }
+    })();
+    if (archivable.length) {
+      enqueueArchiveUndo({
+        kind: archivable.length > 1 ? 'bulk' : 'single',
+        message: archivable.length === 1 ? 'Project moved to Archive' : `Moved ${archivable.length} projects to Archive`,
+        count: archivable.length,
+        onUndo: () => { void undoArchivedProjects(archiveRun); },
+      });
+    }
+    const succeeded = await archiveRun;
+    return succeeded !== null;
+  };
+
+  // Undo for the project toast above: waits for the archive, then restores the
+  // projects (with their documents) and re-reads.
+  const undoArchivedProjects = async (archiveRun) => {
+    const succeeded = await archiveRun;
+    if (!succeeded?.length) return;
     try {
-      const { failed } = await archiveItems(
-        list.filter((project) => project.id).map((project) => ({
-          type: 'project', id: project.id, name: project.name || 'Project',
-        }))
-      );
-      // UX: no success toast — see hubDeleteDocuments. Only failures speak up.
+      const { failed } = await restoreArchiveItems(succeeded);
       if (failed.length) {
-        console.error('[ProjectArchive] survey-hub:partial', JSON.stringify(failed.map(f => f.error)));
+        console.error('[ProjectArchive] survey-hub:undo-partial', JSON.stringify(failed.map(f => f.error)));
         showToast(failed[0].error, 'error');
       }
-      await refetchProjects();
-      await refetchDocuments();
-      await refetchAllDocuments();
-      notifyLibraryChanged();
-      return true;
     } catch (err) {
-      console.error('[ProjectArchive] survey-hub:error', serializeError(err));
-      showToast('Failed to archive projects: ' + (err.message || 'Unknown error'), 'error');
-      await refetchProjects();
-      await refetchDocuments();
-      return false;
+      console.error('[ProjectArchive] survey-hub:undo-error', serializeError(err));
+      showToast('Couldn’t restore from Archive: ' + (err.message || 'Unknown error'), 'error');
     }
+    await refetchProjects();
+    await refetchDocuments();
+    await refetchAllDocuments();
+    notifyLibraryChanged();
   };
 
   const hubRenameProject = async (project, nextName) => {

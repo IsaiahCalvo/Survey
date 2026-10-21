@@ -35,7 +35,6 @@ import { restrictToVerticalAxis } from '../reorder/axisLock.js';
 import { pageHasTransform } from '../utils/disabledActions.js';
 import Icon from '../Icons';
 import { PageThumbsSkeleton } from '../components/Skeleton';
-import { useConfirmDialog } from '../components/dialogPrompts';
 import { useTooltip } from '../components/Tooltip';
 import { watchLightPopover } from '../components/dismissRules.js';
 import { placeAnchoredMenu } from '../utils/floatingUiGeometry.js';
@@ -213,7 +212,6 @@ const PagesPanel = ({
   const contextMenuRef = useRef(null);
   const thumbnailRefs = useRef({});
   const observerRef = useRef(null);
-  const [askConfirm, confirmDialog] = useConfirmDialog();
   const containerRef = useRef(null);
   const isMountedRef = useRef(true);
   const thumbnailsRef = useRef(thumbnails);
@@ -1300,12 +1298,9 @@ const PagesPanel = ({
     rotate: onRotatePage,
     mirror: onMirrorPage,
     reset: onResetPage,
-    delete: onDeletePage
-      ? async (pageNumber) => {
-        if (await askConfirm({ title: `Delete page ${pageNumber}?`, message: 'You can restore it with Undo.', confirmLabel: 'Delete page', danger: true })) onDeletePage(pageNumber);
-      }
-      : undefined,
-  }), [askConfirm, cardKeys, mobileMode, movePageByOffset, onReorderPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onInsertBlankPage, onRotatePage, onMirrorPage, onResetPage, onDeletePage]);
+    // No confirm: the viewer deletes at once and offers an Undo toast.
+    delete: onDeletePage ? (pageNumber) => onDeletePage(pageNumber) : undefined,
+  }), [cardKeys, mobileMode, movePageByOffset, onReorderPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onInsertBlankPage, onRotatePage, onMirrorPage, onResetPage, onDeletePage]);
 
   // The same items on a selection of several pages: each is ONE change and
   // ONE Undo step for all of them (hooks/usePageOperations.js).
@@ -1319,12 +1314,8 @@ const PagesPanel = ({
       ? (pages) => actOnPages(() => onDuplicatePage(pages), duplicatePages(numPages, pages).selection)
       : undefined,
     rotate: onRotatePage ? (pages, delta) => actOnPages(() => onRotatePage(pages, delta)) : undefined,
-    delete: onDeletePage
-      ? async (pages) => {
-        if (await askConfirm({ title: `Delete ${pages.length} pages?`, message: 'You can restore them with Undo.', confirmLabel: 'Delete pages', danger: true })) actOnPages(() => onDeletePage(pages));
-      }
-      : undefined,
-  }), [askConfirm, actOnPages, numPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onRotatePage, onDeletePage]);
+    delete: onDeletePage ? (pages) => actOnPages(() => onDeletePage(pages)) : undefined,
+  }), [actOnPages, numPages, onCutPage, onCopyPage, onPastePage, pasteAt, onDuplicatePage, onRotatePage, onDeletePage]);
 
   const pickPageMenuItem = useCallback((key) => {
     const menu = contextMenu;
@@ -2059,7 +2050,6 @@ const PagesPanel = ({
         </>,
         document.body,
       )}
-      {confirmDialog}
     </div>
   );
 };

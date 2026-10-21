@@ -24,6 +24,8 @@ async function loadPanel() {
     .replace("from 'react-dom'", `from ${JSON.stringify(pathToFileURL(require.resolve('react-dom')).href)}`)
     .replace("import { supabase } from '../../supabaseClient';", 'const supabase = null;')
     .replace("import Icon from '../../Icons';", 'const Icon = () => null;')
+    .replace("import { UndoToast } from '../collab/UndoToast.jsx';", 'const UndoToast = () => null;')
+    .replace("from '../../hooks/useUndoToast.js'", `from ${JSON.stringify(new URL('../src/hooks/useUndoToast.js', import.meta.url).href)}`)
     .replace(/import \{[^}]+\} from '\.\.\/\.\.\/services\/documentRevisionService';/, 'const { createRevision, listRevisions, getRevision, restoreRevision } = globalThis.__historyPollingService;')
     .replace("import { listDocumentHistoryEvents, findDeletedSpaceHistoryEvent, isTrashHistoryEvent } from '../../services/documentHistoryService';", 'const { listDocumentHistoryEvents } = globalThis.__historyPollingService; const findDeletedSpaceHistoryEvent = async () => null; const isTrashHistoryEvent = (e) => [\'annotation_deleted\', \'survey_marker_deleted\'].includes(e?.event_type);')
     .replace("import { resolveRegionRestoreCascade, describeHistoryEventSubject } from '../../services/annotationTrashHistory';", 'const resolveRegionRestoreCascade = () => null; const describeHistoryEventSubject = () => null;')

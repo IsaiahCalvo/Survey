@@ -87,7 +87,8 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
   const linked = new Set((links || []).map((l) => String(l.template_id)));
   const data = [...(all || [])].sort((a, b) => Number(linked.has(String(b.id))) - Number(linked.has(String(a.id))));
   const categories = new Map<string, Category>();
-  const entities = new Map<string, string>();
+  const entities = new Map<string, { name: string; color: string | null }>();
+  const categoryModule = new Map<string, string>();
   const linkedCats = new Set<string>();
   const linkedEnts = new Set<string>();
   // The answer values a category's checklist items may take, from the owning
@@ -101,10 +102,14 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
     const tplValues = answerValuesOf(config);
     const modules = (config.modules || config.spaces || []) as Record<string, unknown>[];
     for (const module of Array.isArray(modules) ? modules : []) {
+      const moduleId = String(module.id || '');
       const cats = (module.categories || module.cats || []) as Record<string, unknown>[];
       for (const c of Array.isArray(cats) ? cats : []) {
         if (!c?.id) continue;
         if (isLinked) linkedCats.add(String(c.id));
+        // The category's owning module — stored on a new marker so create_item
+        // items show in the sidebar and export, which filter by moduleId.
+        if (moduleId && !categoryModule.has(String(c.id))) categoryModule.set(String(c.id), moduleId);
         if (categories.has(String(c.id))) continue;
         answerValues.set(String(c.id), tplValues);
         const list = (c.checklist || c.items || []) as unknown[];
@@ -121,10 +126,10 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
     for (const e of (config.entities || []) as Record<string, unknown>[]) {
       if (!e?.id) continue;
       if (isLinked) linkedEnts.add(String(e.id));
-      if (!entities.has(String(e.id))) entities.set(String(e.id), String(e.name || ''));
+      if (!entities.has(String(e.id))) entities.set(String(e.id), { name: String(e.name || ''), color: e.color != null ? String(e.color) : null });
     }
   }
-  return { categories, entities, linkedCats, linkedEnts, answerValues };
+  return { categories, entities, categoryModule, linkedCats, linkedEnts, answerValues };
 }
 
 // A template's allowed answer values (answerSets.js: template.answerSet wins,
@@ -299,6 +304,44 @@ const WRITE_TOOLS = [
     },
     annotations: { readOnlyHint: false },
   },
+  {
+    name: 'set_entity',
+    title: 'Set or clear an item\'s entity',
+    description: 'Set or clear the entity (status) on one survey item (editor or owner only). The entity must be one of the document\'s entities from get_survey_context. Pass entity_id null to clear it. One Undo in the app takes it back.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        document_id: { type: 'string' },
+        item_id: { type: 'string', description: 'The item id from list_survey_items or find_survey_items.' },
+        entity_id: { description: 'An entity id from get_survey_context, or null to clear the entity.' },
+      },
+      required: ['document_id', 'item_id'],
+    },
+    annotations: { readOnlyHint: false },
+  },
+  {
+    name: 'create_item',
+    title: 'Add a survey item',
+    description: 'Add one survey item to a document (editor or owner only), in a category from get_survey_context, on a page, at a box on that page (PDF points from the page top-left). One Undo in the app takes it back.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        document_id: { type: 'string' },
+        name: { type: 'string', description: 'The item name, e.g. D-117.' },
+        category_id: { type: 'string', description: 'A category id from get_survey_context (one linked to this document).' },
+        page_number: { type: 'integer', description: 'The 1-based page the item sits on.' },
+        bounds: {
+          type: 'object',
+          description: 'The item box on the page, in PDF points from the top-left.',
+          properties: { x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' } },
+          required: ['x', 'y', 'width', 'height'],
+        },
+        entity_id: { description: 'Optional entity id from get_survey_context.' },
+      },
+      required: ['document_id', 'name', 'category_id', 'page_number', 'bounds'],
+    },
+    annotations: { readOnlyHint: false },
+  },
 ];
 
 // gunzip a snapshot stored with encoding_version = 2.
@@ -348,6 +391,20 @@ function writeError(error: { code?: string; message?: string } | null): ToolErro
   if (/can only read/i.test(msg)) return new ToolError('This AI agent can only read. The person can let it make changes at surveytool.app/agent-link.');
   if (error?.code === '42501' || /not permitted|editor|locked/i.test(msg)) return new ToolError('You cannot change this document — you need editor access and it must not be locked.');
   return new ToolError('Could not save that change. Try again.');
+}
+
+// Entity / category ids the document's own markers already use — get_survey_context
+// advertises these alongside a linked template's, so writes accept them too (an
+// unlinked document has no document_templates rows, so linked* alone is empty).
+function documentEntityIds(markers: Record<string, Record<string, unknown>>): Set<string> {
+  const out = new Set<string>();
+  for (const m of Object.values(markers)) { const id = m?.entityId; if (id) out.add(String(id)); }
+  return out;
+}
+function documentCategoryIds(markers: Record<string, Record<string, unknown>>): Set<string> {
+  const out = new Set<string>();
+  for (const m of Object.values(markers)) { const id = m?.categoryId; if (id) out.add(String(id)); }
+  return out;
 }
 
 // Apply a change to the survey markers and append the diff to the WAL as the
@@ -429,7 +486,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         id: r.annotation_id,
         name: r.name || 'Unnamed item',
         category: category?.name || null,
-        entity: r.entity_name || names.entities.get(String(r.entity_id || '')) || null,
+        entity: r.entity_name || names.entities.get(String(r.entity_id || ''))?.name || null,
         answered: checklist.filter((c) => responses[c.id]?.selection).length,
         total: checklist.length,
         no: checklist.filter((c) => responses[c.id]?.selection === 'N').length,
@@ -461,7 +518,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
       id: r.annotation_id,
       name: r.name || 'Unnamed item',
       category: category?.name || null,
-      entity: r.entity_name || names.entities.get(String(r.entity_id || '')) || null,
+      entity: r.entity_name || names.entities.get(String(r.entity_id || ''))?.name || null,
       checklist: (category?.checklist || []).map((c) => ({ item: c.text, answer: responses[c.id]?.selection || null })),
       note: noteText(r.notes),
       files: mediaCount(r.notes),
@@ -492,18 +549,19 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     return text({
       document_id: documentId,
       categories: [...names.categories.values()].filter((c) => cats.has(c.id)).map((c) => ({ id: c.id, name: c.name, checklist: c.checklist })),
-      entities: [...names.entities.entries()].filter(([id]) => ents.has(id)).map(([id, name]) => ({ id, name })),
+      entities: [...names.entities.entries()].filter(([id]) => ents.has(id)).map(([id, e]) => ({ id, name: e.name })),
     });
   }
-  if (name === 'set_answers' || name === 'add_note') {
+  if (name === 'set_answers' || name === 'add_note' || name === 'set_entity') {
     if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
     const itemId = String(args.item_id || '');
     if (!itemId) throw new ToolError('Say which item to change with item_id.');
     const { fieldMaps } = await requireWrite(db);
     // set_answers validates each id and value against the item's own category,
     // the way the in-app agent does (surveyAgentTools.js), so an agent cannot
-    // persist a checklist id or answer the template does not define.
-    const names = name === 'set_answers' ? await categoryNames(db, documentId) : null;
+    // persist a checklist id or answer the template does not define. set_entity
+    // needs the same lookup to validate the entity id against this document.
+    const names = (name === 'set_answers' || name === 'set_entity') ? await categoryNames(db, documentId) : null;
     const result = await writeMarkers(db, documentId, (markers) => {
       const marker = markers[itemId];
       if (!marker) throw new ToolError('No item with that id in this document. Use find_survey_items.');
@@ -529,7 +587,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
           responses[clId] = { ...((responses[clId] as Record<string, unknown>) || {}), selection: value };
         }
         markers[itemId] = { ...marker, checklistResponses: responses };
-      } else {
+      } else if (name === 'add_note') {
         const add = String(args.text || '').trim();
         if (!add) throw new ToolError('Say what to add to the note with text.');
         // Keep the note's shape: append to its `text`, never drop media or
@@ -539,7 +597,76 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         const beforeText = String(obj.text || '').trimEnd();
         obj.text = beforeText ? `${beforeText}\n${add}` : add;
         markers[itemId] = { ...marker, note: obj };
+      } else {
+        // set_entity: set or clear the item's entity (status). Accept any entity
+        // get_survey_context advertises for this document — one its linked
+        // templates define OR one the document's own markers already use (an
+        // unlinked document has no document_templates rows). Update id, name and
+        // colour together, the way the app does (applyEntitySelectionForMarker in
+        // SurveySpacesRail.jsx): a retained name/colour renders and reports the
+        // old status after the id changes.
+        const raw = args.entity_id;
+        const entityId = raw == null || raw === '' ? null : String(raw);
+        if (entityId) {
+          const used = documentEntityIds(markers);
+          const known = names!.entities.get(entityId);
+          if (!known || !(names!.linkedEnts.has(entityId) || used.has(entityId))) {
+            throw new ToolError(`${entityId} is not one of this document's entities. Use get_survey_context.`);
+          }
+          markers[itemId] = { ...marker, entityId, entityName: known.name, entityColor: known.color };
+        } else {
+          markers[itemId] = { ...marker, entityId: undefined, entityName: undefined, entityColor: undefined };
+        }
       }
+    }, fieldMaps);
+    return text({ ok: true, item_id: itemId, changed: result.changed });
+  }
+  if (name === 'create_item') {
+    if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
+    const { fieldMaps } = await requireWrite(db);
+    const itemName = String(args.name || '').trim().slice(0, 120);
+    if (!itemName) throw new ToolError('Give the item a name.');
+    const categoryId = String(args.category_id || '');
+    const page = Number(args.page_number);
+    if (!Number.isInteger(page) || page < 1) throw new ToolError('page_number must be a 1-based page number.');
+    const b = (args.bounds && typeof args.bounds === 'object' ? args.bounds : null) as Record<string, unknown> | null;
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
+    const bounds = b ? { x: num(b.x), y: num(b.y), width: num(b.width), height: num(b.height) } : null;
+    if (!bounds || Object.values(bounds).some((n) => Number.isNaN(n)) || bounds.width <= 0 || bounds.height <= 0) {
+      throw new ToolError('bounds needs numeric x, y, width and height (width and height > 0), in PDF points.');
+    }
+    // The in-app create_item takes a plan-search match so the model can't invent
+    // coordinates; the connector has no plan-search session, so it takes an
+    // explicit page + box, validated here. The category and any entity must be
+    // ones get_survey_context advertises for THIS document — defined by a linked
+    // template OR already used by the document's own markers (an unlinked
+    // document has no document_templates rows). The new marker carries its
+    // category's module (sidebar + export filter by moduleId) and, for an
+    // entity, its name and colour (the app stores all three).
+    const names = await categoryNames(db, documentId);
+    const rawEnt = args.entity_id;
+    const wantEntity = rawEnt == null || rawEnt === '' ? null : String(rawEnt);
+    const itemId = `surveyMarker-${crypto.randomUUID()}`;
+    const result = await writeMarkers(db, documentId, (markers) => {
+      if (markers[itemId]) throw new ToolError('Could not create the item, please try again.');
+      const usedCats = documentCategoryIds(markers);
+      if (!names.categories.has(categoryId) || !(names.linkedCats.has(categoryId) || usedCats.has(categoryId))) {
+        throw new ToolError(`${categoryId} is not a category for this document. Use get_survey_context.`);
+      }
+      const marker: Record<string, unknown> = { id: itemId, pageNumber: page, bounds, categoryId, name: itemName, checklistResponses: {} };
+      const moduleId = names.categoryModule.get(categoryId);
+      if (moduleId) marker.moduleId = moduleId;
+      if (wantEntity) {
+        const used = documentEntityIds(markers);
+        const known = names.entities.get(wantEntity);
+        if (!known || !(names.linkedEnts.has(wantEntity) || used.has(wantEntity))) {
+          throw new ToolError(`${wantEntity} is not one of this document's entities. Use get_survey_context.`);
+        }
+        marker.entityId = wantEntity;
+        marker.entityName = known.name;
+        marker.entityColor = known.color;
+      }
+      markers[itemId] = marker;
     }, fieldMaps);
     return text({ ok: true, item_id: itemId, changed: result.changed });
   }
