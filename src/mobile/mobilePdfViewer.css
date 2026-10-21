@@ -942,6 +942,12 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* The phone tool rail — the control the owner pointed at. Same as desktop's
    .btn-active: gold glyph on the plain rail, the resting 1px transparent border
    kept so the 30px chip never changes size when a tool is picked. */
+/* The Pencil-mode switch is used mid-stroke with a pen hand on the glass:
+   keep its chip the rail's size but give it a full 44px target. */
+.mobile-pdf-tools__footer > .mobile-pdf-tools__button[data-pencil-mode-toggle]::after {
+  inset: calc((var(--mobile-rail-chip) - 44px) / 2);
+}
+
 .mobile-pdf-tools__button.is-active {
   color: var(--accent);
 }

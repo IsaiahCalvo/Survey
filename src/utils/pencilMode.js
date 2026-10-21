@@ -31,6 +31,7 @@ import { isLiveFormWidgetTarget } from './formWidgetPointerTargets.js';
 
 export const DRAW_MODE_STORAGE_KEY = 'surveyDrawMode';
 export const PEN_SEEN_STORAGE_KEY = 'surveyPenSeen';
+export const PEN_AUTO_SWITCH_STORAGE_KEY = 'surveyPenAutoSwitched';
 export const DRAW_MODES = Object.freeze({ TOUCH: 'touch', PEN: 'pen' });
 export const DRAW_MODE_OPTIONS = Object.freeze([
   Object.freeze({ mode: DRAW_MODES.TOUCH, label: 'Annotate with Pencil or Touch', short: 'Pencil or Touch', icon: 'touchDraw' }),
@@ -42,15 +43,17 @@ const isDrawMode = (mode) => mode === DRAW_MODES.TOUCH || mode === DRAW_MODES.PE
 export function loadPencilModeState(storage = globalThis?.localStorage) {
   let drawMode = DRAW_MODES.TOUCH;
   let penSeen = false;
+  let autoSwitchDone = false;
   try {
     const stored = storage?.getItem?.(DRAW_MODE_STORAGE_KEY);
     if (isDrawMode(stored)) drawMode = stored;
     penSeen = storage?.getItem?.(PEN_SEEN_STORAGE_KEY) === 'true';
+    autoSwitchDone = storage?.getItem?.(PEN_AUTO_SWITCH_STORAGE_KEY) === 'true';
   } catch (_) { /* storage blocked: defaults */ }
   // A device that never showed a pen has no way to turn Pencil-only off
   // again, so the mode only holds where the control is offered.
   if (!penSeen) drawMode = DRAW_MODES.TOUCH;
-  return { drawMode, penSeen };
+  return { drawMode, penSeen, autoSwitchDone };
 }
 
 const write = (key, value, storage = globalThis?.localStorage) => {
@@ -87,10 +90,19 @@ const hasStoredDrawMode = (storage = globalThis?.localStorage) => {
  * (a hand-made choice is never overwritten). Rule P4.
  */
 export function notePenSeen({ onPage = false } = {}) {
-  if (state.penSeen) return;
-  const autoPen = onPage && !hasStoredDrawMode();
-  state = { ...state, penSeen: true, ...(autoPen ? { drawMode: DRAW_MODES.PEN } : {}) };
+  // A first pen press off the page (toolbar, menus) only reveals the setting;
+  // the switch still happens on the first pen press that lands on the page.
+  const switchNow = onPage && !state.autoSwitchDone;
+  if (state.penSeen && !switchNow) return;
+  const autoPen = switchNow && !hasStoredDrawMode();
+  state = {
+    ...state,
+    penSeen: true,
+    ...(switchNow ? { autoSwitchDone: true } : {}),
+    ...(autoPen ? { drawMode: DRAW_MODES.PEN } : {}),
+  };
   write(PEN_SEEN_STORAGE_KEY, 'true');
+  if (switchNow) write(PEN_AUTO_SWITCH_STORAGE_KEY, 'true');
   if (autoPen) write(DRAW_MODE_STORAGE_KEY, DRAW_MODES.PEN);
   emit();
 }

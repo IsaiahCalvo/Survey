@@ -68,8 +68,9 @@ lifts. A pen landing next to a resting finger still draws.
 **P4 The first pen switches to Pencil only.** Every device starts in
 "Pencil or Touch", so pen-less tablets, touch laptops and phones keep finger
 drawing. The first `pointerType: 'pen'` press on the device reveals the
-control (localStorage `surveyPenSeen`) and, when it lands on the page, also
-switches to "Pencil only" (Drawboard behaviour: from then on a finger
+control (localStorage `surveyPenSeen`). The first pen press that lands on
+the page (even after earlier pen presses on the toolbar; `surveyPenAutoSwitched`
+records that it happened) switches to "Pencil only" (Drawboard behaviour: from then on a finger
 navigates, the pen draws). That press still draws its own mark. The switch
 is remembered per device in the same key as the setting (`surveyDrawMode`),
 and it never overrides a mode already stored there (a hand-made choice);
