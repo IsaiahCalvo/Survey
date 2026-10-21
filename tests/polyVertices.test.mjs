@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { canRemovePolyVertex, polyVertexMinimum, removePolyVertex } from '../src/utils/polyVertices.js';
+import {
+  canRemovePolyVertex, insertPolyVertex, insertVertexOnNearestEdge, polyVertexMinimum, removePolyVertex,
+} from '../src/utils/polyVertices.js';
 
 const square = (extra = {}) => ({
   type: 'polygon', left: 10, top: 20, angle: 0, scaleX: 1, scaleY: 1,
@@ -65,4 +67,44 @@ test('rotated + scaled shape: surviving corners keep their world positions', () 
 test('drops stored cloud per-vertex state, keeps other data', () => {
   const next = removePolyVertex(square({ data: { measure: { kind: 'area' }, pdfCloudVertexState: { a: 1 } } }), 0);
   assert.deepEqual(next.data, { measure: { kind: 'area' } });
+});
+
+const sq = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }];
+
+test('insertVertexOnNearestEdge projects onto the nearest side', () => {
+  const r = insertVertexOnNearestEdge(sq, { x: 40, y: 3 }, 5);
+  assert.equal(r.index, 1);
+  assert.equal(r.segmentIndex, 0);
+  assert.deepEqual(r.points[1], { x: 40, y: 0 });
+  assert.equal(r.points.length, 5);
+});
+
+test('insertVertexOnNearestEdge uses the closing side only when closed', () => {
+  const closed = insertVertexOnNearestEdge(sq, { x: 2, y: 50 }, 5);
+  assert.equal(closed.index, 4);
+  assert.deepEqual(closed.points[4], { x: 0, y: 50 });
+  assert.equal(insertVertexOnNearestEdge(sq, { x: 2, y: 50 }, 5, { closed: false }), null);
+});
+
+test('insertVertexOnNearestEdge rejects far points and corners', () => {
+  assert.equal(insertVertexOnNearestEdge(sq, { x: 50, y: 50 }, 5), null);
+  assert.equal(insertVertexOnNearestEdge(sq, { x: -3, y: -3 }, 10), null);
+  assert.equal(insertVertexOnNearestEdge([{ x: 0, y: 0 }], { x: 0, y: 0 }), null);
+});
+
+test('insertPolyVertex keeps the shape and world positions', () => {
+  const obj = square({ angle: 30, scaleX: 2, data: { pdfCloudVertexState: [1], keep: 1 } });
+  const next = insertPolyVertex(obj, 3, 0.25);
+  assert.equal(next.points.length, 5);
+  assert.deepEqual(next.points[4], { x: 0, y: 75 });
+  assert.equal(next.left, obj.left);
+  assert.equal(next.top, obj.top);
+  assert.deepEqual(next.data, { keep: 1 });
+  const before = world(obj);
+  const after = world(next);
+  for (const [i, j] of [[0, 0], [1, 1], [2, 2], [3, 3]]) {
+    assert.ok(Math.abs(before[i].x - after[j].x) < 1e-9 && Math.abs(before[i].y - after[j].y) < 1e-9);
+  }
+  assert.equal(insertPolyVertex({ ...obj, type: 'polyline' }, 3, 0.5), null);
+  assert.equal(insertPolyVertex(obj, 0, 1), null);
 });

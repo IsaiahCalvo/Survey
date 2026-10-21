@@ -24,7 +24,7 @@ import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { canRemovePolyVertex, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
+import { canRemovePolyVertex, insertPolyVertex, insertVertexOnNearestEdge, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
@@ -1683,6 +1683,7 @@ const SVGAnnotationLayerBody = memo(({
   const [focusedPolyVertex, setFocusedPolyVertex] = useState(null);
   const [polyVertexMenu, setPolyVertexMenu] = useState(null);
   const polyVertexLongPressRef = useRef(null);
+  const polyEdgePointerTypeRef = useRef(null);
   const removeFocusablePolyVertex = useCallback((annotationIndex, vertexIndex) => {
     if (typeof onSaveAnnotations !== 'function') return false;
     if (document.body.getAttribute('data-readonly') === 'true') return false;
@@ -1694,6 +1695,21 @@ const SVGAnnotationLayerBody = memo(({
     updated.objects[annotationIndex] = next;
     onSaveAnnotations(updated, { source: 'object:modified', action: 'vertex-remove', checkpointPolicy: 'normal' });
     setFocusedPolyVertex(null);
+    return true;
+  }, [annotations, onSaveAnnotations]);
+  // Edge insertion (OpenTakeoff / Drawboard): double-click or right-click >
+  // Add point here on a side of the selected poly. One save = one undo step.
+  const insertPolyVertexOnEdge = useCallback((annotationIndex, segmentIndex, t) => {
+    if (typeof onSaveAnnotations !== 'function') return false;
+    if (document.body.getAttribute('data-readonly') === 'true') return false;
+    const obj = annotations?.objects?.[annotationIndex];
+    if (!obj || isUserLocked(obj)) return false;
+    const next = insertPolyVertex(obj, segmentIndex, t);
+    if (!next) return false;
+    const updated = deepClone(annotations);
+    updated.objects[annotationIndex] = next;
+    onSaveAnnotations(updated, { source: 'object:modified', action: 'vertex-insert', checkpointPolicy: 'normal' });
+    setFocusedPolyVertex({ annotationIndex, vertexIndex: segmentIndex + 1 });
     return true;
   }, [annotations, onSaveAnnotations]);
   const selectedPolyIndex = selectedIds.size === 1 ? Array.from(selectedIds)[0] : null;
@@ -8667,6 +8683,27 @@ const SVGAnnotationLayerBody = memo(({
             setFocusedPolyVertex({ annotationIndex: selectedIndex, vertexIndex: i });
             setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: e.clientX, y: e.clientY, touch: isTouchMenuInput(contextMenuInputOf(e)) });
           };
+          // Mouse/pen only: a finger on the canvas stays pan-only.
+          const edgeHit = (e) => {
+            const ctm = e.currentTarget.getScreenCTM?.();
+            if (!ctm) return null;
+            const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+            return insertVertexOnNearestEdge(worldPoints, pt, vTouchHitR || vHandleR * 2, { closed: String(obj.type).toLowerCase() === 'polygon' });
+          };
+          const onEdgeDoubleClick = (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            if (polyEdgePointerTypeRef.current === 'touch') return;
+            const hit = edgeHit(e);
+            if (hit) insertPolyVertexOnEdge(selectedIndex, hit.segmentIndex, hit.t);
+          };
+          const onEdgeContextMenu = (e) => {
+            const hit = edgeHit(e);
+            if (!hit) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setPolyVertexMenu({ annotationIndex: selectedIndex, edge: { segmentIndex: hit.segmentIndex, t: hit.t }, x: e.clientX, y: e.clientY });
+          };
           const vertexFocused = (i) => focusedPolyVertex?.annotationIndex === selectedIndex && focusedPolyVertex.vertexIndex === i;
           // UX 2026-09-09 (Drawboard PDF, defect 4): a polygon / polyline
           // CLOUD shows its padded dashed frame on single click too, on top of
@@ -8696,6 +8733,19 @@ const SVGAnnotationLayerBody = memo(({
                     ? `rotate(${polyCloudChrome.angle}, ${polyCloudChrome.rotationCenter.x}, ${polyCloudChrome.rotationCenter.y})`
                     : undefined}
                   style={{ pointerEvents: 'none' }}
+                />
+              )}
+              {!modifierMoveActive && interactionState === 'idle' && worldPoints.length > 1 && (
+                <polyline
+                  data-poly-edge-hit="true"
+                  points={[...worldPoints, ...(String(obj.type).toLowerCase() === 'polygon' ? [worldPoints[0]] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={(vTouchHitR || vHandleR * 2) * 2}
+                  style={{ pointerEvents: 'stroke', cursor: 'copy' }}
+                  onPointerDown={(e) => { polyEdgePointerTypeRef.current = e.pointerType; handleAnnotationPointerDown(e, selectedIndex); }}
+                  onDoubleClick={onEdgeDoubleClick}
+                  onContextMenu={onEdgeContextMenu}
                 />
               )}
               {/* Midsegment handles insert one point, then use the normal vertex drag.
@@ -9236,6 +9286,7 @@ const SVGAnnotationLayerBody = memo(({
       const menuObj = annotations?.objects?.[polyVertexMenu.annotationIndex];
       const canDelete = canRemovePolyVertex(menuObj);
       const menuLayout = polyVertexMenuLayout({ ...polyVertexMenu, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight });
+      const edge = polyVertexMenu.edge;
       return (
         <div
           data-poly-vertex-menu="true"
@@ -9247,6 +9298,23 @@ const SVGAnnotationLayerBody = memo(({
             borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', padding: 4, minWidth: menuLayout.width, font: '13px system-ui, sans-serif',
           }}
         >
+          {edge ? (
+          <button
+            type="button"
+            role="menuitem"
+            data-poly-vertex-insert="true"
+            onClick={() => {
+              insertPolyVertexOnEdge(polyVertexMenu.annotationIndex, edge.segmentIndex, edge.t);
+              setPolyVertexMenu(null);
+            }}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', minHeight: 36, border: 0, borderRadius: 6,
+              background: 'transparent', color: 'inherit', font: 'inherit', cursor: 'pointer',
+            }}
+          >
+            Add point here
+          </button>
+          ) : (
           <button
             type="button"
             role="menuitem"
@@ -9264,6 +9332,7 @@ const SVGAnnotationLayerBody = memo(({
           >
             Delete point
           </button>
+          )}
         </div>
       );
     })(), document.body)}

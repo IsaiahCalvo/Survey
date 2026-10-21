@@ -763,6 +763,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           const page = annotationsByPageRef.current?.[ctx.pageNumber];
           const obj = page?.objects?.[ctx.annotationIndex];
           if (!obj) return;
+          // One clipboard: the family clipboard Paste / Paste in place read.
+          if (typeof copyFamilySelection === 'function'
+            && copyFamilySelection(ctx.pageNumber, { indices: [ctx.annotationIndex] }, 'copy')) return;
           setClipboardAnnotation({
             object: deepClone(obj),
             sourcePageNumber: ctx.pageNumber,
