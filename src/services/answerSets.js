@@ -40,6 +40,25 @@ export const ANSWER_SET_PRESETS = Object.freeze([
       Object.freeze({ value: 'N/A', tone: 'neutral' }),
     ]),
   }),
+  Object.freeze({
+    id: 'installed-missing-damaged-na',
+    label: 'Installed / Missing / Damaged / N/A',
+    answers: Object.freeze([
+      Object.freeze({ value: 'Installed', tone: 'good' }),
+      Object.freeze({ value: 'Missing', tone: 'bad' }),
+      Object.freeze({ value: 'Damaged', tone: 'bad' }),
+      Object.freeze({ value: 'N/A', tone: 'neutral' }),
+    ]),
+  }),
+  Object.freeze({
+    id: 'works-not-working-na',
+    label: 'Works / Not working / N/A',
+    answers: Object.freeze([
+      Object.freeze({ value: 'Works', tone: 'good' }),
+      Object.freeze({ value: 'Not working', tone: 'bad' }),
+      Object.freeze({ value: 'N/A', tone: 'neutral' }),
+    ]),
+  }),
 ]);
 
 const usable = (set) => Boolean(set) && validateAnswerSet(set).length === 0;
