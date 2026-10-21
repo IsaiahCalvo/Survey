@@ -108,6 +108,12 @@ function Consent({ authorizationId }) {
 
   const decide = async (allow) => {
     setBusy(true);
+    // The database lets a consent through only after the person's own session
+    // asks (begin_auth_change), so an agent cannot let in another agent.
+    if (allow) {
+      const { error: askError } = await supabase.rpc('begin_auth_change', { p_action: 'consent' });
+      if (askError) { setBusy(false); setMessage('Could not finish. Start again from your agent.'); return; }
+    }
     const { data, error } = allow
       ? await supabase.auth.oauth.approveAuthorization(authorizationId, { skipBrowserRedirect: true })
       : await supabase.auth.oauth.denyAuthorization(authorizationId, { skipBrowserRedirect: true });

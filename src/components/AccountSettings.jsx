@@ -303,7 +303,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
       // Update password if changing
       if (passwordChanging) {
-        await updatePassword(newPassword);
+        await updatePassword(newPassword, { currentPassword });
         changedFields.push('password');
       }
 

@@ -206,3 +206,74 @@ test('an agent cannot raise its own hourly cap from REST', async ({ page }) => {
   }
   expect(refused).toBeGreaterThan(0);
 });
+
+// Supabase Auth takes an agent's token on its own account endpoints too. The
+// database refuses these changes unless the person's own session asked first
+// (migration 20261022020200_human_only_account_changes).
+const authCall = (token, path, method = 'GET', body) => fetch(`${API()}/auth/v1/${path}`, {
+  method, headers: { apikey: KEY(), authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+  body: body && JSON.stringify(body),
+});
+const passwordWorks = async (email, password) => (await fetch(`${API()}/auth/v1/token?grant_type=password`, {
+  method: 'POST', headers: { apikey: KEY(), 'content-type': 'application/json' }, body: JSON.stringify({ email, password }),
+})).ok;
+
+test('an agent cannot change the password or email, or let in another agent', async ({ page }) => {
+  const account = E2E_ACCOUNTS.editor;
+  const { tok } = await agentSignIn(page, account, `Takeover probe ${RUN}`);
+  const token = tok.access_token;
+
+  const ask = await agentApi(token).rpc('begin_auth_change', { p_action: 'password' });
+  expect(ask.status).toBeGreaterThanOrEqual(400);
+
+  const pw = await authCall(token, 'user', 'PUT', { password: `Agent-${RUN}-Takeover1!` });
+  expect(pw.status).toBeGreaterThanOrEqual(400);
+  expect(await passwordWorks(account.email, account.password)).toBe(true);
+
+  const email = await authCall(token, 'user', 'PUT', { email: `agent-${RUN}@example.com` });
+  expect(email.status).toBeGreaterThanOrEqual(400);
+  const { data: { users } } = await adminClient().auth.admin.listUsers();
+  const person = users.find((u) => u.email === account.email);
+  expect(person.new_email || null).toBeNull();
+
+  // A second agent asks to be let in; the first one tries to press Allow.
+  const childId = await registerAgent(`Child agent ${RUN}`);
+  const challenge = crypto.createHash('sha256').update(crypto.randomBytes(48).toString('base64url')).digest('base64url');
+  const authorize = await fetch(`${API()}/auth/v1/oauth/authorize?${new URLSearchParams({
+    response_type: 'code', client_id: childId, redirect_uri: REDIRECT,
+    code_challenge: challenge, code_challenge_method: 'S256', state: 's', scope: 'email',
+  })}`, { redirect: 'manual', headers: { apikey: KEY() } });
+  const authorizationId = new URL(authorize.headers.get('location')).searchParams.get('authorization_id');
+  await authCall(token, `oauth/authorizations/${authorizationId}`);
+  const consent = await authCall(token, `oauth/authorizations/${authorizationId}/consent`, 'POST', { action: 'approve' });
+  const answer = await consent.json().catch(() => ({}));
+  expect(String(answer.redirect_url || '')).not.toContain('code=');
+});
+
+test('the person still changes their own password, from Settings or a reset link', async () => {
+  const account = E2E_ACCOUNTS.viewer;
+  const next = `Viewer-${RUN}-Changed1!`;
+  const signIn = async (password) => (await fetch(`${API()}/auth/v1/token?grant_type=password`, {
+    method: 'POST', headers: { apikey: KEY(), 'content-type': 'application/json' }, body: JSON.stringify({ email: account.email, password }),
+  })).json();
+  const human = (await signIn(account.password)).access_token;
+
+  // Without the ask first, even the person's own session is refused.
+  expect((await authCall(human, 'user', 'PUT', { password: next })).status).toBeGreaterThanOrEqual(400);
+
+  expect((await agentApi(human).rpc('begin_auth_change', { p_action: 'password' })).status).toBeLessThan(300);
+  expect((await authCall(human, 'user', 'PUT', { password: next })).status).toBe(200);
+  expect(await passwordWorks(account.email, next)).toBe(true);
+
+  // Reset link: the recovery session asks, then sets the old password back.
+  const { data: link, error } = await adminClient().auth.admin.generateLink({ type: 'recovery', email: account.email });
+  expect(error).toBeNull();
+  const verified = await (await fetch(`${API()}/auth/v1/verify`, {
+    method: 'POST', headers: { apikey: KEY(), 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'recovery', token_hash: link.properties.hashed_token }),
+  })).json();
+  expect(verified.access_token, JSON.stringify(verified).slice(0, 200)).toBeTruthy();
+  expect((await agentApi(verified.access_token).rpc('begin_auth_change', { p_action: 'password' })).status).toBeLessThan(300);
+  expect((await authCall(verified.access_token, 'user', 'PUT', { password: account.password })).status).toBe(200);
+  expect(await passwordWorks(account.email, account.password)).toBe(true);
+});
