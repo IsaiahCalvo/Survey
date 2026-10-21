@@ -1,0 +1,49 @@
+# Signed-in walk through the real Android app against the throwaway local
+# Supabase (docs/E2E-SIGNED-IN.md): sign in as the seeded owner, open the
+# sample drawing, export it and check the share sheet opens.
+appId: com.kalvoe.survey
+name: android-signed-in
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    text: "Wait"
+    optional: true
+- extendedWaitUntil:
+    visible: "Welcome back"
+    timeout: 90000
+- tapOn:
+    text: "Wait"
+    optional: true
+- takeScreenshot: 01-sign-in
+- tapOn:
+    id: "email"
+- inputText: "e2e-owner@example.com"
+- tapOn:
+    id: "password"
+- inputText: "E2e-local-only-123!"
+- hideKeyboard
+- tapOn:
+    text: "Sign in"
+    index: 1
+- extendedWaitUntil:
+    visible: ".*E2E Sample Drawing.*"
+    timeout: 60000
+- takeScreenshot: 02-documents
+- tapOn: ".*E2E Sample Drawing.*"
+# On a phone, tapping the row opens the document straight away.
+- tapOn:
+    text: "Open file"
+    optional: true
+- extendedWaitUntil:
+    visible: "More document options"
+    timeout: 90000
+- takeScreenshot: 03-document-open
+- tapOn: "More document options"
+- takeScreenshot: 04-more-menu
+- tapOn: "Export annotated PDF"
+# Android's share sheet (the system chooser) lists apps and a "Share" title.
+- extendedWaitUntil:
+    visible: ".*(Share|share|Copy|Nearby|Drive).*"
+    timeout: 30000
+- takeScreenshot: 05-share-sheet

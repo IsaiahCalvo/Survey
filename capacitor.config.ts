@@ -6,6 +6,10 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // `appId` is the permanent store identifier — do not change after submission.
 const env = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
 const liveReloadUrl = env.CAPACITOR_SERVER_URL?.trim();
+// CI-only: the signed-in Android walk talks to a local Supabase over plain
+// http (127.0.0.1 via adb reverse). Serving the app from http://localhost
+// avoids mixed-content blocking there. Never set for a store build.
+const e2eLocalHttp = env.CAPACITOR_E2E_LOCAL_HTTP === '1';
 
 const config: CapacitorConfig = {
   appId: 'com.kalvoe.survey',
@@ -21,6 +25,7 @@ const config: CapacitorConfig = {
         }
       }
     : {}),
+  ...(e2eLocalHttp && !liveReloadUrl ? { server: { androidScheme: 'http', cleartext: true } } : {}),
   ios: {
     // UX 2026-04-22: Let the web view fill the whole screen edge-to-edge;
     // CSS safe-area insets inside the app handle the content padding. With

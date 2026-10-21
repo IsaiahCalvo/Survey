@@ -1,0 +1,15 @@
+# Run after android-signed-in.yaml with the local API cut off (adb reverse
+# removed): relaunch the app and check the Documents list still shows from the
+# per-user device cache (#906).
+appId: com.kalvoe.survey
+name: android-offline-relaunch
+---
+- stopApp
+- launchApp
+- tapOn:
+    text: "Wait"
+    optional: true
+- extendedWaitUntil:
+    visible: ".*E2E Sample Drawing.*"
+    timeout: 60000
+- takeScreenshot: 06-offline-relaunch-documents
