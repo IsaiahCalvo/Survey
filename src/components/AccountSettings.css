@@ -966,6 +966,29 @@
   }
 }
 
+/* Narrow phones (iPhone SE, 320pt): five equal fifths are 64px, too narrow for
+   "Annotations" / "Subscription", which were clipped mid-word. Size each tab
+   to its label and let the strip scroll sideways instead. */
+@media (max-width: 400px) {
+  .account-settings-sidebar {
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .account-settings-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .account-sidebar-btn {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 0 12px;
+    white-space: nowrap;
+  }
+}
+
 /* Crash reports (crash hunt 2026-10-07): a calm list, newest first. */
 .crash-reports-actions {
   display: flex;
