@@ -196,7 +196,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);
       // Items worked on lately: speech to text expects these names most.
-      const touched = result.changes.map((c) => c.itemId).filter(Boolean);
+      const touched = [...new Set(result.changes.map((c) => c.itemId).filter(Boolean))];
       if (touched.length) recentItemsRef.current = [...recentItemsRef.current.filter((id) => !touched.includes(id)), ...touched].slice(-8);
       historyRef.current = result.history;
       if (job.entryId) markEntry(job.entryId, { waiting: false });
