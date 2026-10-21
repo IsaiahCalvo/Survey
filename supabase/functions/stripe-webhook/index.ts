@@ -37,29 +37,51 @@ function invoiceSubscriptionId(invoice: Stripe.Invoice) {
 }
 
 // Helper function to send email notifications
+// A dropped email is not worth failing the webhook (Stripe would resend the
+// whole event), so it gets a few quick tries of its own: network errors, 429
+// and 5xx only, with doubling waits, capped at EMAIL_ATTEMPTS.
+const EMAIL_ATTEMPTS = 3;
+const EMAIL_BACKOFF_MS = 500;
+
 async function sendEmail(template: string, to: string, subject: string, data: any) {
-    try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-        const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseServiceKey}`,
-            },
-            body: JSON.stringify({ to, subject, template, data }),
-        });
+    for (let attempt = 1; attempt <= EMAIL_ATTEMPTS; attempt += 1) {
+        let retryable = true;
+        try {
+            const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({ to, subject, template, data }),
+            });
 
-        if (!response.ok) {
-            const error = await response.json();
-            console.error('Failed to send email:', error);
-        } else {
-            console.log(`Email sent: ${template} to ${to}`);
+            if (response.ok) {
+                console.log(`Email sent: ${template}`);
+                return;
+            }
+            retryable = response.status === 429 || response.status >= 500;
+            const error = await response.json().catch(() => ({}));
+            console.error(`Failed to send email (attempt ${attempt}, status ${response.status}):`, error);
+        } catch (error) {
+            console.error(`Error sending email (attempt ${attempt}):`, error);
         }
-    } catch (error) {
-        console.error('Error sending email:', error);
+        if (!retryable || attempt === EMAIL_ATTEMPTS) return;
+        await new Promise((resolve) => setTimeout(resolve, EMAIL_BACKOFF_MS * 2 ** (attempt - 1)));
     }
+}
+
+// Thrown when a database write fails. The handler answers 500 so Stripe sends
+// the event again; Stripe's own retries are capped (about three days) with
+// growing waits, so a short outage never loses a paid upgrade.
+class WebhookWriteError extends Error {}
+
+function failWrite(what: string, error: unknown): never {
+    console.error(`ERROR ${what}:`, error);
+    throw new WebhookWriteError(what);
 }
 
 Deno.serve(async (req) => {
@@ -158,11 +180,13 @@ Deno.serve(async (req) => {
         console.error('Error type:', parsedError.constructor.name);
         console.error('Error message:', parsedError.message);
         console.error('Error stack:', parsedError.stack);
+        // 400 for a bad signature or payload, 500 when our own write failed.
+        // Stripe resends on either; 500 keeps the two apart in its dashboard.
         return new Response(
             JSON.stringify({ error: parsedError.message }),
             {
                 headers: { 'Content-Type': 'application/json' },
-                status: 400,
+                status: error instanceof WebhookWriteError ? 500 : 400,
             }
         );
     }
@@ -243,8 +267,7 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
                 .select();
 
             if (insertError) {
-                console.error('ERROR inserting new subscription:', insertError);
-                console.error('Insert error details:', JSON.stringify(insertError, null, 2));
+                failWrite('inserting new subscription', insertError);
             } else {
                 console.log('SUCCESS: Created new subscription record');
                 console.log('Inserted data:', insertData);
@@ -277,8 +300,7 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
             .select();
 
         if (fallbackError) {
-            console.error('FALLBACK ALSO FAILED:', fallbackError);
-            console.error('Fallback error details:', JSON.stringify(fallbackError, null, 2));
+            failWrite('updating subscription by customer id', fallbackError);
         } else {
             console.log('Fallback success! Updated via customer_id');
             console.log('Updated rows:', fallbackData);
@@ -356,6 +378,7 @@ async function handleSubscriptionUpdate(supabase: any, subscription: Stripe.Subs
                 metadata: mergedMetadata,
             })
             .eq('stripe_subscription_id', subscription.id);
+        if (error) failWrite('updating subscription', error);
 
         // Confirmation email the moment cancellation is SCHEDULED. Stripe's
         // previous_attributes lists only fields this event changed, so keying
@@ -441,8 +464,7 @@ async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Sub
         .select();
 
     if (error) {
-        console.error('Error handling subscription deletion:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
+        failWrite('handling subscription deletion', error);
     } else {
         console.log('Update result:', updatedData);
         console.log('Number of rows updated:', updatedData?.length || 0);
@@ -530,6 +552,7 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
             status: 'active',
         })
         .eq('stripe_subscription_id', subscriptionId);
+    if (error) failWrite('marking subscription active', error);
 
     if (!error) {
         console.log(`Payment succeeded for subscription ${subscriptionId}`);
@@ -574,6 +597,7 @@ async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
             status: 'past_due',
         })
         .eq('stripe_subscription_id', subscriptionId);
+    if (error) failWrite('marking subscription past due', error);
 
     if (!error) {
         console.log(`Payment failed for subscription ${subscriptionId}`);
