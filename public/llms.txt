@@ -44,6 +44,11 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Protect PDF](https://surveytool.app/tools/protect-pdf): Lock a PDF with a password.
 - [Unlock PDF](https://surveytool.app/tools/unlock-pdf): Take the password off a PDF you can open.
 - [OCR PDF](https://surveytool.app/tools/ocr-pdf): Make a scanned PDF searchable.
+- [Resize PDF pages](https://surveytool.app/tools/resize-pdf): Change the page size to Letter, A4, A3 or ARCH D.
+- [Pages per sheet](https://surveytool.app/tools/n-up-pdf): Put 2, 4, 6 or 9 pages on one sheet.
+- [Make a booklet](https://surveytool.app/tools/booklet-pdf): Print a PDF as a folded, stapled booklet.
+- [Reverse PDF](https://surveytool.app/tools/reverse-pdf): Flip the page order so the last page comes first.
+- [Insert blank pages](https://surveytool.app/tools/add-blank-pages): Add empty pages after every page or where you choose.
 
 ## Optional
 
