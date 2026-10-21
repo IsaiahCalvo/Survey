@@ -31,6 +31,7 @@ test('in-app split makes one document per range, every few pages or every page',
   assert.deepEqual(parts.map((p) => p.name), ['Set (pages 1-2).pdf', 'Set (pages 3-5).pdf']);
   assert.deepEqual(await widths(parts[1].bytes), [302, 303, 304]);
   assert.equal((await runInAppTool('split', [{ name: 'Set.pdf', bytes }], { mode: 'every', every: '2' })).length, 3);
+  assert.equal((await runInAppTool('split', [{ name: 'Set.pdf', bytes }], { mode: 'every' })).length, 3, 'defaults to the 2 the field shows');
   assert.equal((await runInAppTool('split', [{ name: 'Set.pdf', bytes }], { mode: 'each' })).length, 5);
   await assert.rejects(runInAppTool('split', [{ name: 'Set.pdf', bytes }], { mode: 'ranges', ranges: '1-5' }), /every page in one file/);
   await assert.rejects(runInAppTool('split', [{ name: 'Set.pdf', bytes }], { mode: 'ranges', ranges: '9' }), /has 5 pages/);

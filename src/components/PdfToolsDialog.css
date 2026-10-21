@@ -1,7 +1,8 @@
 /* PDF tools dialog (PdfToolsDialog.jsx). A centred card on desktop and
    tablet, a full-screen sheet on phones. Tap targets: 36px on tablet and
-   desktop, 44px on phones. */
-.pdft-overlay{position:fixed;inset:0;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:1300;font-family:var(--font-ui)}
+   desktop, 44px on phones. Sits above the viewer chrome (5000-6500) since it opens
+   from the viewer too; the duplicate-name ask (Z_INDEX.modalOverlay, 10000) and toasts stay on top. */
+.pdft-overlay{position:fixed;inset:0;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;z-index:9000;font-family:var(--font-ui)}
 .pdft-card{width:560px;max-width:94vw;max-height:88vh;display:flex;flex-direction:column;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-dialog);box-shadow:var(--shadow-dialog);color:var(--text-1);overflow:hidden}
 .pdft-head{display:flex;align-items:center;gap:10px;padding:14px 14px 12px 18px;border-bottom:1px solid var(--border)}
 .pdft-title{flex:1;min-width:0}

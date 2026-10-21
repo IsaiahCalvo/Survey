@@ -774,7 +774,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // file-input bookkeeping stays in handleFileUpload. Resolves to what
   // happened: 'added' | 'existing' (deduped to a document already there) |
   // 'skipped' (the user canceled the duplicate ask) | 'failed'.
-  const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true } = {}) => {
+  const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true, waitForStorage = false } = {}) => {
     if (!user) {
       setDashboardError('Please sign in to upload documents.');
       onShowAuthModal();
@@ -881,8 +881,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     setDocuments(prev => [tempDoc, ...prev.filter(d => d.id !== tempDoc.id)]);
 
     // Background: store the bytes at the row's own file_path (idempotent) and
-    // correct the page count once parsed.
-    (async () => {
+    // correct the page count once parsed. waitForStorage callers (PDF tools)
+    // hold the only copy of the bytes, so they wait for the stored result.
+    const stored = (async () => {
       setActiveUploads((count) => count + 1);
       try {
         const uploadPromise = uploadToStorage(file, projectId || 'general', undefined, contentSha, { objectPath: resolvedDoc.file_path });
@@ -906,13 +907,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         }).catch(() => {});
 
         refetchAllDocuments();
+        return true;
       } catch (err) {
         console.error('Error uploading file in background:', err);
         setDashboardError('Couldn’t save the document to the cloud: ' + (err.message || 'Unknown error') + '. Your file is still on disk — try uploading again or check your connection.');
+        return false;
       } finally {
         setActiveUploads((count) => count - 1);
       }
     })();
+    if (waitForStorage && !(await stored)) return 'failed';
     return 'added';
   };
 
@@ -2117,14 +2121,23 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       .filter((doc) => doc.id !== pdfTools.docs[0].id && doc.file_path && (doc.project_id || null) === (pdfTools.docs[0].project_id || null))
       .map(pdfToolSource)
     : [];
+  // Throws unless every file is stored, so the dialog keeps its Download and
+  // Save buttons when a save fails.
   const savePdfToolResults = async (files) => {
     const projectId = pdfTools?.docs[0]?.project_id || null;
-    await handleDroppedFiles(files, {
-      projectId,
-      projectName: (projects || []).find((p) => p.id === projectId)?.name || null,
-      open: false,
-    });
-    refetchAllDocuments();
+    const targetProjectId = isUploadableProjectId(projectId) ? projectId : null;
+    let notSaved = 0;
+    setActiveUploads((count) => count + 1);
+    try {
+      for (const file of files) {
+        const status = await uploadBrowserPdf(file, { projectId: targetProjectId, openAfterUpload: false, waitForStorage: true });
+        if (status !== 'added' && status !== 'existing') notSaved += 1;
+      }
+    } finally {
+      setActiveUploads((count) => count - 1);
+      refetchAllDocuments();
+    }
+    if (notSaved) throw new Error(notSaved === files.length ? 'Not saved. Download it instead, or try again.' : `${notSaved} of ${files.length} files weren't saved. Download them instead, or try again.`);
   };
 
   // KAL-443: a copy carries the real fingerprint of its bytes and goes through

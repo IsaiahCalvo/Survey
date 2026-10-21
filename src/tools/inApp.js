@@ -38,7 +38,7 @@ export async function runInAppTool(id, sources, opts = {}, progress = () => {}) 
       const pages = await pageCount(first.bytes);
       let groups;
       if (opts.mode === 'each') groups = everyN(pages, 1);
-      else if (opts.mode === 'every') groups = everyN(pages, Math.max(1, Math.floor(Number(opts.every) || 1)));
+      else if (opts.mode === 'every') groups = everyN(pages, Math.max(1, Math.floor(Number(opts.every ?? 2) || 1)));
       else groups = parseRangeGroups(opts.ranges || '', pages);
       if (groups.length < 2 && groups[0]?.length === pages) throw new ToolError('That keeps every page in one file. Type two or more ranges, like 1-3, 4-10.');
       const parts = await splitPdf(first.bytes, groups, (g, n) => progress(`Making part ${g + 1} of ${n}`));
