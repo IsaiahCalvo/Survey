@@ -267,10 +267,12 @@ jobs:
           brew install colima docker
           colima start --cpu 4 --memory 10 --disk 40
           echo "DOCKER_HOST=unix://$HOME/.colima/default/docker.sock" >> "$GITHUB_ENV"
-      # The Colima VM is slow, so realtime/storage can miss the first health
-      # check; one more start picks up the containers already pulled.
+      # The Colima VM is slow: realtime never passes its health check there
+      # (the walk does not need it), and storage can miss the first one.
       - name: Start the local Supabase
         run: npm run e2e:stack:up || { sleep 30; npm run e2e:stack:up; }
+        env:
+          E2E_REALTIME: 'off'
       - name: Build web bundle against the local stack
         run: npx vite build --mode e2e
         env:

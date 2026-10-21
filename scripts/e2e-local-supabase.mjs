@@ -46,6 +46,8 @@ const EXCLUDED = [
   'studio', 'imgproxy', 'mailpit', 'postgres-meta',
   'logflare', 'vector', 'supavisor',
   ...(process.env.E2E_EDGE_RUNTIME === 'off' ? ['edge-runtime'] : []),
+  // The iOS job's Colima VM is too slow for realtime's health check; the walk does not use it.
+  ...(process.env.E2E_REALTIME === 'off' ? ['realtime'] : []),
 ];
 
 const log = (...args) => console.log('[e2e-stack]', ...args);
