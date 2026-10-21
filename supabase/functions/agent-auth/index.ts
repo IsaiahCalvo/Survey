@@ -17,10 +17,6 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const TOKEN_TTL_SECONDS = 3600;
 const REFRESH_TTL_SECONDS = 30 * 24 * 3600;
 const POLL_INTERVAL_SECONDS = 5;
-// Unclaimed codes one address may hold at once. A code lives 10 minutes, so a
-// real agent never needs more than a few; a flood stops here instead of
-// filling the table. Per address, so one caller cannot lock everyone out.
-const MAX_PENDING_PER_IP = 5;
 
 function randomCode(length: number) {
   // 32 letters divide 256 evenly, so every letter is equally likely.
@@ -102,13 +98,6 @@ Deno.serve(async (req) => {
       .eq('status', 'pending').lt('code_expires_at', new Date().toISOString());
     const ip = callerIp(req);
     const ipHash = ip ? await sha256(`agent-start:${ip}`) : null;
-    if (ipHash) {
-      const { count, error: countError } = await admin.from('agent_links')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending').eq('client_ip_hash', ipHash);
-      if (countError) return json(500, { error: 'could_not_start' });
-      if ((count ?? 0) >= MAX_PENDING_PER_IP) return json(429, { error: 'slow_down' });
-    }
     const deviceCode = randomSecret('sdc_');
     const userCode = randomCode(8);
     const { error } = await admin.from('agent_links').insert({
@@ -117,6 +106,9 @@ Deno.serve(async (req) => {
       device_code_hash: await sha256(deviceCode),
       client_ip_hash: ipHash,
     });
+    // A trigger allows five unclaimed codes per address (agent_link_ip_limit
+    // migration); it locks per address, so parallel calls cannot slip past.
+    if (error?.message?.includes('agent_link_ip_limit')) return json(429, { error: 'slow_down' });
     if (error) return json(500, { error: 'could_not_start' });
     return json(200, {
       device_code: deviceCode,

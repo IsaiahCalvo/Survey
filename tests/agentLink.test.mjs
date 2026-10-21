@@ -50,10 +50,12 @@ test('refresh keys: hashed, one use, cleared on remove', () => {
 
 test('agent-auth start caps pending codes per caller address, storing only a hash', () => {
   const fn = read('supabase/functions/agent-auth/index.ts');
-  assert.match(fn, /const MAX_PENDING_PER_IP = \d+;/);
-  assert.match(fn, /\.eq\('status', 'pending'\)\.eq\('client_ip_hash', ipHash\)/);
-  assert.match(fn, /json\(429, \{ error: 'slow_down' \}\)/);
+  assert.match(fn, /includes\('agent_link_ip_limit'\)\) return json\(429, \{ error: 'slow_down' \}\)/);
   assert.match(fn, /client_ip_hash: ipHash/);
   assert.doesNotMatch(fn, /client_ip:/);
-  assert.match(read('supabase/migrations/20261021190100_agent_link_ip_limit.sql'), /ADD COLUMN IF NOT EXISTS client_ip_hash text/);
+  const sql = read('supabase/migrations/20261021190100_agent_link_ip_limit.sql');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS client_ip_hash text/);
+  // Count and insert are serialized per address, so parallel calls cannot all pass.
+  assert.match(sql, /pg_advisory_xact_lock\(hashtextextended\('agent_links_ip:' \|\| NEW\.client_ip_hash/);
+  assert.match(sql, /BEFORE INSERT ON public\.agent_links/);
 });
