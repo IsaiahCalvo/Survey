@@ -101,13 +101,13 @@ const parseArgs = (raw) => {
  * tool_calls, tool), not changed on error. Returns { history, reply, changes }
  * where changes are the writes this turn made, oldest first.
  */
-export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
+export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, annotations = false, maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
   const messages = [...history, { role: 'user', content: userText }];
   const changes = [];
   for (let step = 0; step < maxSteps; step += 1) {
     let response;
     try {
-      response = await call({ action: 'turn', messages, answer_values: answerValues });
+      response = await call({ action: 'turn', messages, answer_values: answerValues, ...(annotations ? { annotations: true } : {}) });
     } catch (err) {
       // The caller keeps its old history; it still needs this turn's writes for Undo.
       err.changes = changes;

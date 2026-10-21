@@ -12,6 +12,10 @@ import { supabase } from '../supabaseClient';
 import { classifyMediaFile } from '../services/surveyMediaService';
 import { answerSetFor } from '../services/answerSets.js';
 import { createSurveyAgentToolbox, surveyAgentBridge } from '../agent/surveyAgentTools.js';
+import { buildAnnotationTools } from '../agent/annotationTools.js';
+import { ANNOTATION_AGENT_FLAG } from '../../supabase/functions/_shared/annotationAgentSpec.js';
+import { activeAgentDocument } from '../agent/webmcp.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
 import { cleanTranscript, heardOwnVoice, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
@@ -49,6 +53,13 @@ const HANDS_FREE_TEXT = {
 
 let nextId = 1;
 const newId = (prefix) => `${prefix}${nextId++}`;
+
+
+const openDocument = () => {
+  const doc = activeAgentDocument();
+  if (!doc) throw new Error('No document is open.');
+  return doc;
+};
 
 export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const [usageLeft, setUsageLeft] = useState(null);
@@ -143,10 +154,14 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     setBusy(true);
     // Bound to this document: if the person opens another one mid-turn, the
     // remaining tools refuse instead of writing there.
+    // Markup tools (notes, shapes, callouts, highlights), shared with
+    // WebMCP, for people with the annotation-agent flag.
+    const annotations = isFeatureOn(ANNOTATION_AGENT_FLAG);
     const turnToolbox = createSurveyAgentToolbox({
       attachments: attachmentsRef.current,
       documentId: bridge.documentId || null,
       undoLastTurn: () => undoLastRef.current(),
+      extraTools: annotations ? buildAnnotationTools({ getDocument: openDocument, text: (v) => (typeof v === 'string' ? v : JSON.stringify(v)) }) : [],
     });
     try {
       const result = await runSurveyAgentTurn({
@@ -155,6 +170,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
         call,
         toolbox: turnToolbox,
         answerValues: answerSetFor(bridge.template).map((a) => a.value),
+        annotations,
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);

@@ -270,3 +270,68 @@ test('With no signal a message waits, then sends when the signal is back; the al
   await expect(panel.getByText('Waiting for signal')).toHaveCount(0);
   await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
 });
+
+// Shared markup tools (annotation-agent flag): "put a note by D-117" lands a
+// real text note next to the item, through the same tools WebMCP uses.
+function mockMarkupModel(page, calls) {
+  return page.route('**/functions/v1/survey-agent', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+      return;
+    }
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    const reply = (json) => route.fulfill({
+      status: 200,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+      body: JSON.stringify(json),
+    });
+    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
+    const tools = body.messages.filter((m) => m.role === 'tool');
+    const call = (id, name, args) => reply({ message: { content: '', tool_calls: [
+      { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
+    ] } });
+    if (tools.length === 0) return call('m1', 'find_items', { query: 'D-117', category_id: null });
+    if (tools.length === 1) {
+      const id = JSON.parse(tools[0].content).matches[0].id;
+      return call('m2', 'add_text_note', { near_item_id: id, text: 'Ceiling tile missing' });
+    }
+    if (tools.length === 2) return call('m3', 'list_annotations', {});
+    return reply({ message: { content: 'Added a note next to D-117.', tool_calls: [] } });
+  });
+}
+
+test('With markup tools on, the agent puts a text note next to an item', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.flag.annotation-agent', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await mockMarkupModel(page, calls);
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await input.fill('put a note by D-117: ceiling tile missing');
+  await input.press('Enter');
+  await expect(panel.getByText('Added a note next to D-117.')).toBeVisible();
+
+  const turns = calls.filter((c) => c.action === 'turn');
+  expect(turns.every((t) => t.annotations === true)).toBe(true);
+  const results = turns.at(-1).messages.filter((m) => m.role === 'tool');
+  expect(results[1].content).toBe('Added a text note on page 1.');
+  // The note is on page 1 beside D-117's box (x 330..480 on a 612 pt wide
+  // page): no room on the right for a 160 pt note, so on the left, top-aligned.
+  const listed = JSON.parse(results[2].content);
+  const note = listed.find((a) => /Ceiling tile missing/.test(a.text || ''));
+  expect(note).toMatchObject({ page: 1, type: 'Textbox', bounds: { x: 330 - 8 - 160, y: 600 } });
+});

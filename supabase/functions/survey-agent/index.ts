@@ -32,6 +32,7 @@ import {
   surveyAgentCostMicros,
 } from '../_shared/surveyAgentSpec.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { ANNOTATION_AGENT_FLAG } from '../_shared/annotationAgentSpec.js';
 
 const corsHeaders = {
   // INTENTIONAL: web, Electron (file://) and Capacitor all call this with a
@@ -135,6 +136,7 @@ Deno.serve(async (req) => {
     duration_ms: s.any({ maxBytes: 64 }),
     messages: s.array(s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }), { max: SURVEY_AGENT_LIMITS.maxMessages * 2, optional: true }),
     answer_values: s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }),
+    annotations: s.boolean({ optional: true }),
   }, parsedJson);
   if (!parsed.ok) return json(400, { error: 'bad_request', detail: parsed.error });
   const body: Record<string, unknown> = parsed.value;
@@ -291,6 +293,15 @@ Deno.serve(async (req) => {
     const clean = sanitizeAgentMessages(body.messages);
     if (clean.error) return json(400, { error: clean.error });
     if (!(await reserve())) return refused();
+    // The markup tools, when the app has them and the annotation-agent flag
+    // is on for this person (the same feature_flags row the app reads).
+    let annotations = false;
+    if (body.annotations === true) {
+      const { data: flag } = await admin.from('feature_flags')
+        .select('mode, tester_emails').eq('key', ANNOTATION_AGENT_FLAG).maybeSingle();
+      annotations = flag?.mode === 'on'
+        || (flag?.mode === 'testers' && Boolean(email) && (flag.tester_emails || []).includes(email));
+    }
     let res: Response;
     try {
       res = await fetch(`${provider.baseUrl}/chat/completions`, {
@@ -299,7 +310,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           model: provider.model,
           messages: [{ role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT }, ...(clean.messages || [])],
-          tools: buildSurveyAgentTools(body.answer_values),
+          tools: buildSurveyAgentTools(body.answer_values, { annotations }),
           tool_choice: 'auto',
           temperature: 0.2,
           max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,
