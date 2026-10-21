@@ -177,7 +177,7 @@ test('the server and the app agree on which kits are built in', async () => {
 test('starter kits are valid, carry an answer set, and templates pick it up', async () => {
   const { getExportKit } = await import('../src/services/exportFormats/registry.js');
   const { publishProblems, validateAnswerSet } = await import('../supabase/functions/_shared/kitShape.js');
-  const { answerSetFor } = await import('../src/services/answerSets.js');
+  const { answerSetFor, isDoneAnswer } = await import('../src/services/answerSets.js');
   for (const id of ['fire-alarm-devices', 'cctv-cameras', 'access-control-commissioning', 'punch-list']) {
     const kit = getExportKit(id);
     assert.ok(kit, id);
@@ -185,4 +185,11 @@ test('starter kits are valid, carry an answer set, and templates pick it up', as
     assert.deepEqual(publishProblems({ ...kit, id: `${id}-copy` }), [], id);
     assert.deepEqual(answerSetFor({ exportKitId: id }), kit.answerSet, id);
   }
+  // Auto-complete counts good and neutral answers as done.
+  const punch = getExportKit('punch-list').answerSet;
+  assert.equal(isDoneAnswer(punch, 'Done'), true);
+  assert.equal(isDoneAnswer(punch, 'N/A'), true);
+  assert.equal(isDoneAnswer(punch, 'Open'), false);
+  const cctv = getExportKit('cctv-cameras').answerSet;
+  assert.equal(isDoneAnswer(cctv, 'Not working'), false);
 });
