@@ -173,3 +173,16 @@ test('the server and the app agree on which kits are built in', async () => {
   assert.ok(publishProblems({ ...lock }).some((e) => e.includes('built into the app')));
   assert.ok(publishProblems({ ...lock, id: 'acme', answerSet: [{ value: 'x', tone: 'odd' }] }).length);
 });
+
+test('starter kits are valid, carry an answer set, and templates pick it up', async () => {
+  const { getExportKit } = await import('../src/services/exportFormats/registry.js');
+  const { publishProblems, validateAnswerSet } = await import('../supabase/functions/_shared/kitShape.js');
+  const { answerSetFor } = await import('../src/services/answerSets.js');
+  for (const id of ['fire-alarm-devices', 'cctv-cameras', 'access-control-commissioning', 'punch-list']) {
+    const kit = getExportKit(id);
+    assert.ok(kit, id);
+    assert.deepEqual(validateAnswerSet(kit.answerSet), [], id);
+    assert.deepEqual(publishProblems({ ...kit, id: `${id}-copy` }), [], id);
+    assert.deepEqual(answerSetFor({ exportKitId: id }), kit.answerSet, id);
+  }
+});
