@@ -59,7 +59,7 @@ import { pageHasTransform } from '../utils/disabledActions.js';
 import { PICK_ANY_TOOLS } from '../utils/selectModes.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
-import { availableActions, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
+import { availableActions, buildCanvasPageItems, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -1138,15 +1138,23 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
 
     // The page menu: a bare page under Pan / Select (any Select mode). A
     // drawing tool keeps the plain Paste menu (its press is for drawing).
+    const pageMenuReadOnly = Boolean(pageMenu?.readOnly);
     const pageMenuItems = ctx.kind === 'page'
       && pageMenu && PICK_ANY_TOOLS.includes(pageMenu.activeTool)
       && Number.isInteger(ctx.pageNumber) && ctx.pageNumber >= 1
       ? [
         // Marks on the clipboard still paste here first, at the press point.
-        ...(hasAnyClipboard ? [
+        ...(hasAnyClipboard && !pageMenuReadOnly ? [
           { key: 'pasteMarks', label: 'Paste', icon: 'paste' },
-          { key: 'sep-marks', separator: true },
         ] : []),
+        ...buildCanvasPageItems({
+          available: availableActions(pageMenu.handlers),
+          canPasteInPlace: Boolean(familyClipboard),
+          readOnly: pageMenuReadOnly,
+        }),
+        // Read-only / viewer: no page operation (they all edit).
+        ...(pageMenuReadOnly ? [] : [
+        { key: 'sep-marks', separator: true },
         ...buildPageMenuItems({
           pageNumber: ctx.pageNumber,
           pageCount: pageMenu.pageCount,
@@ -1157,6 +1165,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           // Phone: the same compact rows as the Pages tab's menu.
           compact: Boolean(mobileMode),
         }),
+        ]),
       ]
       : null;
     const pickPageMenuItem = (key) => {
