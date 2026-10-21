@@ -317,10 +317,15 @@ export function createSurveyAgentToolbox({
       matches.sort((a, b2) => b2.score - a.score || a.name.localeCompare(b2.name));
       // The same tag in several modules (D-117 in Installation and in
       // Commissioning): the person means the one in the module open on
-      // screen, so only those are listed and the model doesn't ask which.
-      const here = matches.filter((m) => m.here);
-      const shown = (here.length ? here : matches).slice(0, 5).map(({ here: _, ...m }) => m);
-      const otherModules = here.length ? [...new Set(matches.filter((m) => !m.here).map((m) => m.module).filter(Boolean))] : [];
+      // screen, so of the best matches only those are listed and the model
+      // doesn't ask which. A weaker match here never hides a better one
+      // elsewhere.
+      const top = matches[0]?.score;
+      const best = matches.filter((m) => m.score === top);
+      const bestHere = best.filter((m) => m.here);
+      const kept = bestHere.length ? [...bestHere, ...matches.filter((m) => m.score < top)] : matches;
+      const shown = kept.slice(0, 5).map(({ here: _, ...m }) => m);
+      const otherModules = bestHere.length ? [...new Set(best.filter((m) => !m.here).map((m) => m.module).filter(Boolean))] : [];
       return {
         content: out({
           matches: shown,

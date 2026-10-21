@@ -115,3 +115,13 @@ test('find_items lists only the open module\'s D-1-17, so the agent does not ask
   const all = JSON.parse((await createSurveyAgentToolbox({ getBridge: () => ({ ...bridgeFor(), currentModuleId: null }) }).run('find_items', { query: 'D-1-17' })).content);
   assert.deepEqual(all.matches.map((m) => m.module).sort(), ['Commissioning', 'Installation']);
 });
+
+test('find_items: a fuzzy match in the open module never hides an exact match in another', async () => {
+  const b = bridgeFor({ currentModuleId: 'mod-inst' });
+  b.markers.cam = { name: 'CAM-117', moduleId: 'mod-inst', categoryId: 'cat-door', checklistResponses: {}, note: {} };
+  b.markers.c117 = { ...b.markers.c117, name: 'D-117' };
+  delete b.markers.i117;
+  const found = JSON.parse((await createSurveyAgentToolbox({ getBridge: () => b }).run('find_items', { query: 'D-117' })).content);
+  assert.equal(found.matches[0].id, 'c117');
+  assert.equal(found.open_module_only, undefined);
+});

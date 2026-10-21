@@ -37,3 +37,14 @@ test('a mark has room around its item, a circle more, and stays on the page', ()
   // On screen: shrunk so the whole cloud shows.
   assert.deepEqual(markBox({ x: 0, y: 0, width: 300, height: 400 }, size, { inset: true }), { x: 36, y: 48, width: 228, height: 304 });
 });
+
+test('visiblePageBox: a hidden PDF tab\'s page of the same number is skipped', () => {
+  const rect = (w, h) => ({ left: 0, top: 0, right: w, bottom: h, width: w, height: h });
+  const hidden = { getBoundingClientRect: () => rect(0, 0), parentElement: null };
+  const shown = { getBoundingClientRect: () => rect(612, 792), parentElement: null };
+  const box = visiblePageBox(1, { width: 612, height: 792 }, {
+    doc: { querySelector: () => hidden, querySelectorAll: (sel) => (sel.startsWith('.survey') ? [hidden, shown] : []) },
+    win: { innerWidth: 2000, innerHeight: 2000, getComputedStyle: () => ({}) },
+  });
+  assert.deepEqual(box, { x: 0, y: 0, width: 612, height: 792 });
+});

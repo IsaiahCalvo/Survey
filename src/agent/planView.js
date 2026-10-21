@@ -4,11 +4,14 @@
 // differ from what the viewer reports.
 export function visiblePageBox(page, pageSize, { doc = globalThis.document, win = globalThis.window } = {}) {
   if (!doc?.querySelector || !win || !(pageSize?.width > 0) || !(pageSize?.height > 0)) return null;
-  const el = doc.querySelector(`.survey-pdfjs-page-div[data-page-number="${Number(page)}"]`)
-    || doc.querySelector(`[data-page-number="${Number(page)}"]`);
+  // Other open PDF tabs stay mounted but hidden (display: none, so no size):
+  // the page on screen is the one that is laid out.
+  const all = (sel) => (doc.querySelectorAll ? Array.from(doc.querySelectorAll(sel)) : [doc.querySelector(sel)].filter(Boolean));
+  const shown = (els) => els.find((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.height > 0; });
+  const el = shown(all(`.survey-pdfjs-page-div[data-page-number="${Number(page)}"]`))
+    || shown(all(`[data-page-number="${Number(page)}"]`));
   if (!el) return null;
   const r = el.getBoundingClientRect();
-  if (!(r.width > 0) || !(r.height > 0)) return null;
   // A turned page (90 or 270 degrees) would need its corners swapped; leave it.
   if (Math.abs(r.width / r.height - pageSize.width / pageSize.height) > 0.05) return null;
   let view = { left: 0, top: 0, right: win.innerWidth, bottom: win.innerHeight };
