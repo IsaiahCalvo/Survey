@@ -1,7 +1,22 @@
 // Custom builds library: an export kit assigned to one account in the
 // database (kits + account_kits, RLS) reaches only that account's template editor.
 import { E2E_ACCOUNTS } from './accounts.mjs';
-import { adminClient, clientFromPageSession, expect, signIn, test } from './helpers.mjs';
+import { clientFromPageSession, expect, signIn, test } from './helpers.mjs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// Run scripts/kits.mjs, the same tool used for real customers, on the local stack.
+function kits(...args) {
+  try {
+    return { ok: true, out: execFileSync('node', ['scripts/kits.mjs', ...args], {
+      encoding: 'utf8', stdio: 'pipe',
+      env: { ...process.env, SUPABASE_URL: process.env.E2E_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: process.env.E2E_SUPABASE_SERVICE_ROLE_KEY },
+    }) };
+  } catch (err) { return { ok: false, out: String(err.stderr) }; }
+}
+const kitFile = (kit) => { const f = join(mkdtempSync(join(tmpdir(), 'kit-')), 'kit.json'); writeFileSync(f, JSON.stringify(kit)); return f; };
 
 const KIT = { id: 'e2e-acme-doors', version: '1.0.0' };
 const columns = [
@@ -10,22 +25,27 @@ const columns = [
   { field: 'entity_name', header: 'Gateway' }, { field: 'checklist' }, { field: 'notes', header: 'Notes' },
 ];
 
-async function userId(admin, email) {
-  const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
-  return data.users.find((u) => u.email === email).id;
-}
+const GOOD = { ...KIT, kind: 'exportKit', minEngine: 1, label: 'Acme doors (E2E)', columns };
 
 test.beforeAll(async () => {
-  const admin = adminClient();
-  await admin.from('kits').upsert({ ...KIT, kind: 'exportKit', label: 'Acme doors (E2E)', definition: { minEngine: 1, columns } }, { ignoreDuplicates: true });
-  const pro = await userId(admin, E2E_ACCOUNTS.pro.email);
-  const { error } = await admin.from('account_kits').upsert({ user_id: pro, kit_id: KIT.id, kit_version: KIT.version });
-  if (error) throw error;
+  const pub = kits('publish', kitFile(GOOD));
+  if (!pub.ok && !/duplicate key/.test(pub.out)) throw new Error(pub.out);
+  const as = kits('assign', E2E_ACCOUNTS.pro.email, KIT.id, KIT.version);
+  if (!as.ok) throw new Error(as.out);
 });
 
 test.afterAll(async () => {
-  const admin = adminClient();
-  await admin.from('account_kits').delete().eq('kit_id', KIT.id);
+  kits('unassign', E2E_ACCOUNTS.pro.email, KIT.id);
+});
+
+test('the kits tool refuses bad kits, built-in ids and changed versions', async () => {
+  expect(kits('publish', kitFile({ ...GOOD, columns: columns.slice(1) })).out).toMatch(/not valid/);
+  expect(kits('publish', kitFile({ ...GOOD, id: 'default-survey' })).out).toMatch(/built into the app/);
+  expect(kits('publish', kitFile(GOOD)).out).toMatch(/duplicate key/);
+  expect(kits('assign', 'nobody@example.com', KIT.id, KIT.version).out).toMatch(/no account/);
+  const list = kits('list');
+  expect(list.ok).toBe(true);
+  expect(list.out).toContain(`${E2E_ACCOUNTS.pro.email}\t${KIT.id}@${KIT.version}`);
 });
 
 async function openTemplateEditor(page) {
