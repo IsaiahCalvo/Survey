@@ -945,7 +945,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 /* The Pencil-mode switch is used mid-stroke with a pen hand on the glass:
    keep its chip the rail's size but give it a full 44px target. */
 .mobile-pdf-tools__footer > .mobile-pdf-tools__button[data-pencil-mode-toggle]::after {
-  inset: calc((var(--mobile-rail-chip) - 44px) / 2);
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  z-index: 1;
 }
 
 .mobile-pdf-tools__button.is-active {
