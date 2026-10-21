@@ -222,3 +222,38 @@ test(
     if (handle && typeof handle.disconnect === 'function') handle.disconnect();
   }
 );
+
+test(
+  'SupabaseYjsProvider: the legacy-row import (crdt-backfill origin) is not broadcast; local edits still are',
+  { skip: !existsSync(TARGET) ? 'src/lib/collab/SupabaseYjsProvider.js not yet present' : !YJS_INSTALLED ? 'yjs not installed yet' : false },
+  async () => {
+    const Y = await import('yjs');
+    const { connect } = await import(TARGET);
+    const doc = new Y.Doc();
+    const sent = [];
+    const fakeChannel = {
+      on: () => fakeChannel,
+      subscribe: (cb) => { if (cb) cb('SUBSCRIBED'); return fakeChannel; },
+      send: (msg) => { sent.push(msg); return Promise.resolve(); },
+      unsubscribe: () => Promise.resolve(),
+    };
+    const fakeSupabase = {
+      channel: () => fakeChannel,
+      removeChannel: () => Promise.resolve(),
+      auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) },
+      realtime: { setAuth: () => {} },
+    };
+    const handle = connect('test-doc-id', doc, { supabase: fakeSupabase });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const syncFrames = () => sent.filter((m) => m?.event === 'sync').length;
+    const before = syncFrames();
+
+    doc.transact(() => doc.getMap('annotations').set('imported', 'x'), Object.freeze({ source: 'crdt-backfill' }));
+    strictEqual(syncFrames(), before, 'import transactions must not go out over realtime');
+
+    doc.transact(() => doc.getMap('annotations').set('drawn', 'y'), Object.freeze({ source: 'local' }));
+    strictEqual(syncFrames(), before + 1, 'a local edit is still broadcast');
+
+    if (handle && typeof handle.disconnect === 'function') handle.disconnect();
+  }
+);

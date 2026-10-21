@@ -41,6 +41,9 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { REMOTE_REALTIME_ORIGIN, REMOTE_BC_ORIGIN } from './originBuilder.js';
 
+// Same tag crdtBackfill.js puts on its import transactions.
+const BACKFILL_ORIGIN_SOURCE = 'crdt-backfill';
+
 // y-protocols sync v1 message types — locked by the y-protocols/sync source.
 // messageType byte 0 = sync messages (sub-types step1 / step2 / update inside).
 // messageType byte 1 = awareness messages.
@@ -206,6 +209,12 @@ export function connect(documentId, ydoc, options = {}) {
     if (detached) return;
     if (origin === REMOTE_REALTIME_ORIGIN) return;
     if (origin && typeof origin === 'object' && origin.source === REMOTE_BC_ORIGIN.source) return;
+    // The legacy-row import (crdtBackfill) is not news to anyone: every peer
+    // runs the same import from the same rows when it opens the document, and
+    // a peer joining later gets this doc's state through the sync handshake.
+    // Broadcasting it sent the whole document over realtime, batch by batch,
+    // on every cold open (~40% of the import's main-thread time).
+    if (origin && typeof origin === 'object' && origin.source === BACKFILL_ORIGIN_SOURCE) return;
 
     const frameBytes = encodeUpdate(update);
     if (frameBytes.byteLength > SOFT_PAYLOAD_CAP_BYTES) {
