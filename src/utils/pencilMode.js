@@ -10,7 +10,9 @@
  *   finger pans, two fingers pan/pinch, a finger tap does nothing on the page,
  *   and a finger resting on the glass while the pen is down is ignored.
  * - The setting is offered only once a pen has been used on this device
- *   (`penSeen`, remembered). Using a pen never switches the mode by itself.
+ *   (`penSeen`, remembered). The first pen press on the page also switches
+ *   to Pencil only (remembered like a hand-picked mode) unless a mode was
+ *   already stored; that press still draws. Pen-less devices keep touch.
  *
  * How the finger is kept away from the tools: one window/capture pointer
  * gate, installed at module load. Every tool layer (SVG creation, selection
@@ -75,11 +77,21 @@ export function setDrawMode(mode) {
   emit();
 }
 
-/** The first pen press on this device reveals the setting (never switches it). */
-export function notePenSeen() {
+const hasStoredDrawMode = (storage = globalThis?.localStorage) => {
+  try { return isDrawMode(storage?.getItem?.(DRAW_MODE_STORAGE_KEY)); } catch (_) { return false; }
+};
+
+/**
+ * The first pen press on this device reveals the setting. On the page
+ * (`onPage`) it also switches to Pencil only, unless a mode is already stored
+ * (a hand-made choice is never overwritten). Rule P4.
+ */
+export function notePenSeen({ onPage = false } = {}) {
   if (state.penSeen) return;
-  state = { ...state, penSeen: true };
+  const autoPen = onPage && !hasStoredDrawMode();
+  state = { ...state, penSeen: true, ...(autoPen ? { drawMode: DRAW_MODES.PEN } : {}) };
   write(PEN_SEEN_STORAGE_KEY, 'true');
+  if (autoPen) write(DRAW_MODE_STORAGE_KEY, DRAW_MODES.PEN);
   emit();
 }
 
@@ -193,7 +205,8 @@ function onPointer(event) {
   if (event.pointerType === 'pen') {
     if (type === 'pointerdown') {
       penPointers.add(event.pointerId);
-      notePenSeen();
+      const el = elementOf(event.target);
+      notePenSeen({ onPage: Boolean(el?.closest?.(VIEWER_SELECTOR)) });
       tellGated(event, 'pen-down');
     } else if (type === 'pointerup' || type === 'pointercancel') {
       penPointers.delete(event.pointerId);

@@ -76,26 +76,51 @@ test('P0: the setting is offered only after a pen was used; Pencil-only never st
   assert.deepEqual(loadPencilModeState(throwing), { drawMode: 'touch', penSeen: false }, 'blocked storage falls back');
 });
 
-test('P0: the first pen press reveals the setting and remembers it, but does not switch the mode', () => {
+test('P4: the first pen press on the page reveals the setting and switches to Pencil only; the pen still reaches the tool', () => {
   storage.clear();
   __resetPencilModeForTests({ drawMode: 'touch', penSeen: false });
   let calls = 0;
   const unsubscribe = subscribePencilMode(() => { calls += 1; });
+  const spy = toolSpy();
   pointer('pointerdown', $('anno'), { pointerType: 'pen', pointerId: 3 });
+  spy.stop();
+  assert.deepEqual(spy.seen, ['pointerdown:pen'], 'the switching pen press still draws');
   assert.equal(getPencilModeState().penSeen, true);
-  assert.equal(getPencilModeState().drawMode, 'touch');
+  assert.equal(getPencilModeState().drawMode, 'pen');
   assert.equal(storage.get(PEN_SEEN_STORAGE_KEY), 'true');
+  assert.equal(storage.get(DRAW_MODE_STORAGE_KEY), 'pen', 'remembered per device');
+  assert.deepEqual(loadPencilModeState(fakeStorage), { drawMode: 'pen', penSeen: true }, 'survives reload');
   assert.equal(isPenDown(), true);
   pointer('pointerup', $('anno'), { pointerType: 'pen', pointerId: 3 });
   assert.equal(isPenDown(), false);
-  notePenSeen();
+  notePenSeen({ onPage: true });
   assert.equal(calls, 1, 'one change notification');
+  setDrawMode('touch');
+  assert.equal(storage.get(DRAW_MODE_STORAGE_KEY), 'touch', 'manual switch back sticks');
+  pointer('pointerdown', $('anno'), { pointerType: 'pen', pointerId: 4 });
+  pointer('pointerup', $('anno'), { pointerType: 'pen', pointerId: 4 });
+  assert.equal(isPencilOnly(), false, 'a later pen never flips it again');
   setDrawMode('pen');
-  assert.equal(storage.get(DRAW_MODE_STORAGE_KEY), 'pen');
   assert.equal(isPencilOnly(), true);
   setDrawMode('nonsense');
   assert.equal(getPencilModeState().drawMode, 'pen');
   unsubscribe();
+});
+
+test('P4: a stored hand-made choice is never overwritten; a pen off the page only reveals', () => {
+  storage.clear();
+  storage.set(DRAW_MODE_STORAGE_KEY, 'touch');
+  __resetPencilModeForTests({ drawMode: 'touch', penSeen: false });
+  pointer('pointerdown', $('anno'), { pointerType: 'pen', pointerId: 5 });
+  pointer('pointerup', $('anno'), { pointerType: 'pen', pointerId: 5 });
+  assert.equal(getPencilModeState().drawMode, 'touch');
+  assert.equal(getPencilModeState().penSeen, true);
+  storage.clear();
+  __resetPencilModeForTests({ drawMode: 'touch', penSeen: false });
+  pointer('pointerdown', document.body, { pointerType: 'pen', pointerId: 6 });
+  pointer('pointerup', document.body, { pointerType: 'pen', pointerId: 6 });
+  assert.equal(getPencilModeState().penSeen, true);
+  assert.equal(getPencilModeState().drawMode, 'touch', 'pen outside the page does not switch');
 });
 
 test('P1: the pointer type decides who may use the tool, never the tool itself', () => {

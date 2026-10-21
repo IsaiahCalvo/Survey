@@ -47,7 +47,7 @@ claims the press owns it until every pointer lifts.
 
 **P1 The pointer type decides who may use the tool — never which tool.**
 Mouse and pen always may. A finger may in "Pencil or Touch" mode (the
-default) and may not in "Pencil only" mode. (`utils/pencilMode.js`
+starting mode, P4) and may not in "Pencil only" mode. (`utils/pencilMode.js`
 `pointerMayUseTool`.)
 
 **P2 Pencil only: a finger always navigates.** One finger pans (flick and
@@ -65,11 +65,16 @@ not pan, pinch or mark, and the stroke is kept. A finger that was panning
 when the pen lands stops where it is (no glide) and is set aside until it
 lifts. A pen landing next to a resting finger still draws.
 
-**P4 The setting appears once a pen has been used.** The first
-`pointerType: 'pen'` press on the device reveals the control and remembers
-that (localStorage `surveyPenSeen`). Using a pen never switches the mode by
-itself; the mode is remembered per device (`surveyDrawMode`, default
-`touch`). Storage blocked = defaults, the in-memory switch still works.
+**P4 The first pen switches to Pencil only.** Every device starts in
+"Pencil or Touch", so pen-less tablets, touch laptops and phones keep finger
+drawing. The first `pointerType: 'pen'` press on the device reveals the
+control (localStorage `surveyPenSeen`) and, when it lands on the page, also
+switches to "Pencil only" (Drawboard behaviour: from then on a finger
+navigates, the pen draws). That press still draws its own mark. The switch
+is remembered per device in the same key as the setting (`surveyDrawMode`),
+and it never overrides a mode already stored there (a hand-made choice);
+later pens never switch again, so a manual switch back to "Pencil or Touch"
+sticks. Storage blocked = defaults, the in-memory switch still works.
 
 **P5 Where the control is.** Drawboard keeps it in its bottom utility bar,
 beside the page controls. Survey's equivalent spot is the utility end of each
@@ -79,8 +84,8 @@ foot of the phone tool rail (above More). One icon button (a pointing finger
 "Annotate with Pencil or Touch" / "Annotate with Pencil only", a check on the
 chosen row. `components/PencilModeControl.jsx`.
 
-**P6 Pencil or Touch (default) is today's behaviour.** One finger runs the
-tool, exactly like a pen.
+**P6 Pencil or Touch (the starting mode until a pen is used, P4).** One
+finger runs the tool, exactly like a pen.
 
 ### Navigating without changing the tool
 
