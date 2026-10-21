@@ -22,6 +22,7 @@ import { replaceDocumentFile } from '../services/documentFileReplace.js';
 import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize } from '../services/pdfByteCache.js';
 import { STREAM_SIGNED_URL_SECONDS } from '../services/cloudPdfStream.js';
 import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.js';
+import { trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
 import { bindLibraryListCacheToAuth } from './libraryListCache.js';
 import { useLibraryListCache } from './useLibraryListCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
@@ -836,12 +837,13 @@ export const useStorage = () => {
       filePath = `${user.id}/${projectId}/${fileName}`;
     }
 
-    const { data, error } = await supabase.storage
+    // Opens of this path wait for these bytes (services/pendingPdfUploads.js).
+    const { data, error } = await trackPdfUpload(filePath, supabase.storage
       .from('documents')
       .upload(filePath, file, {
         upsert,
         onUploadProgress: onProgress,
-      });
+      }));
 
     if (error) throw error;
     storageDownloads(supabase).invalidate(filePath);
@@ -913,6 +915,7 @@ export const useStorage = () => {
     // may still read it and that it is the cached version. See
     // services/pdfByteCache.js for why that keeps the #802 "every open passes
     // the server's access check" rule.
+    await waitForPdfUpload(filePath);
     const actorId = user?.id ?? null;
     return storageDownloads(supabase).read(actorId, filePath, () => readPdfThroughCache({
       cache: pdfByteCache(),
@@ -938,6 +941,7 @@ export const useStorage = () => {
   // the device cache exactly as a download would. null = use downloadDocument.
   const openDocumentStream = useCallback(async (filePath) => {
     if (!isSupabaseAvailable()) return null;
+    await waitForPdfUpload(filePath);
     const actorId = user?.id ?? null;
     const cache = pdfByteCache();
     const since = cache?.generation;
