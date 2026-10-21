@@ -132,9 +132,7 @@ test('PDFViewer wiring: shared cascade rule, remove-page checkpoint, empty-space
   assert.match(src, /openPanel\?\.\('spaces'\)/);
   // The counters stop claiming a page that is not shown.
   assert.match(read('src/AppShell.jsx'), /api\.activeSpaceHasNoPages \? 0 : api\.pageNum/);
-  // The phone pill reads its numbers through getMobilePageCounterLabels (first-run walk #13).
-  assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /getMobilePageCounterLabels\(bottomToolbarApi\)/);
-  assert.match(read('src/mobile/mobilePageCounter.js'), /if \(api\?\.activeSpaceHasNoPages\) return \{ current: 0, total: 0/);
+  assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /bottomToolbarApi\?\.activeSpaceHasNoPages \? 0 : \(bottomToolbarApi\?\.pageNum \|\| 1\)/);
 });
 
 test('SpacesPanel: themed confirms, blocked switch, region rename reaches the keyboard lift', () => {
