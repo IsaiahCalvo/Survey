@@ -16,6 +16,8 @@ import { pathToFileURL } from 'node:url';
 export const BACKUP_BUCKET = 'storage-backup';
 export const RETAIN_DAYS = 30;
 const REMOVED = '_removed/';
+// A refreshed copy lands here first, so a failed copy never costs the old one.
+const STAGING = '_staging/';
 const PAGE = 1000;
 const BATCH = 100;
 
@@ -39,7 +41,10 @@ export function planBackup(inventory, today = new Date()) {
   const retire = [];
   const purge = [];
   for (const name of backups.keys()) {
-    if (name.startsWith(REMOVED)) {
+    // Leftover from a run that stopped mid-refresh; that file is refreshed again.
+    if (name.startsWith(STAGING)) {
+      purge.push(name);
+    } else if (name.startsWith(REMOVED)) {
       const removedOn = name.slice(REMOVED.length, REMOVED.length + 10);
       if (removedOn < cutoff) purge.push(name);
     } else if (!wanted.has(name)) {
@@ -75,10 +80,20 @@ export async function runBackup(admin, { dryRun = false, today = new Date(), log
   if (dryRun) return { ...plan, failed: 0 };
 
   const backup = admin.storage.from(BACKUP_BUCKET);
-  let failed = await removeAll(backup, plan.copy.filter((c) => c.replace).map((c) => c.key));
+  let failed = 0;
   for (const item of plan.copy) {
-    const { error } = await admin.storage.from(item.bucket).copy(item.name, item.key, { destinationBucket: BACKUP_BUCKET });
-    if (error) failed += 1;
+    const target = item.replace ? `${STAGING}${item.key}` : item.key;
+    if (item.replace) await backup.remove([target]);
+    const { error } = await admin.storage.from(item.bucket).copy(item.name, target, { destinationBucket: BACKUP_BUCKET });
+    if (error) {
+      failed += 1;
+      continue;
+    }
+    if (item.replace) {
+      await backup.remove([item.key]);
+      const { error: moveError } = await backup.move(target, item.key);
+      if (moveError) failed += 1;
+    }
   }
   for (const { from, to } of plan.retire) {
     // A file removed twice in one day: the newer copy wins.
@@ -97,6 +112,10 @@ export async function runBackup(admin, { dryRun = false, today = new Date(), log
  * there now are left alone.
  */
 export async function restoreBackup(admin, prefix, { log = console.log } = {}) {
+  // An empty or bucket-only prefix would bring back every deleted account's files.
+  if (!/^(_removed\/\d{4}-\d{2}-\d{2}\/)?[^/_][^/]*\/[^/]+/.test(String(prefix || ''))) {
+    throw new Error('--restore needs <bucket>/<folder or file>, e.g. documents/<user id>/');
+  }
   const inventory = await readInventory(admin);
   const present = new Set(inventory.filter((o) => o.bucket_id !== BACKUP_BUCKET).map((o) => `${o.bucket_id}/${o.name}`));
   let restored = 0;

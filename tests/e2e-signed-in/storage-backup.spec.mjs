@@ -29,6 +29,7 @@ test('the storage backup copies, refreshes, retires and purges', async () => {
   const refreshed = await runBackup(admin, { log: quiet });
   expect(refreshed.failed).toBe(0);
   expect(await read(BACKUP_BUCKET, key)).toContain('second version');
+  expect(await exists(admin, BACKUP_BUCKET, `_staging/${key}`), 'staged copy moved into place').toBe(false);
 
   await must('remove', admin.storage.from('documents').remove([path]));
   const today = new Date();
@@ -37,6 +38,10 @@ test('the storage backup copies, refreshes, retires and purges', async () => {
   expect(await exists(admin, BACKUP_BUCKET, key)).toBe(false);
   expect(await read(BACKUP_BUCKET, removedKey)).toContain('second version');
 
+  // A bare or bucket-wide restore would bring back deleted accounts' files.
+  for (const prefix of ['', 'documents', 'documents/', '_removed/']) {
+    await expect(restoreBackup(admin, prefix, { log: quiet })).rejects.toThrow(/--restore needs/);
+  }
   // A removed file can be put back from _removed/.
   expect((await restoreBackup(admin, removedKey, { log: quiet })).restored).toBe(1);
   expect(await read('documents', path)).toContain('second version');

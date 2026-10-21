@@ -33,3 +33,9 @@ test('storage backup: removed files are kept 30 days, then purged', () => {
   assert.deepEqual(plan.purge, ['_removed/2026-09-20/documents/u1/older.pdf']);
   assert.deepEqual(plan.copy, []);
 });
+
+test('storage backup: leftovers from a stopped refresh are cleared', () => {
+  const plan = planBackup([row(BACKUP_BUCKET, '_staging/documents/u1/a.pdf', 1, '2026-10-20T00:00:00Z')], today);
+  assert.deepEqual(plan.purge, ['_staging/documents/u1/a.pdf']);
+  assert.deepEqual(plan.retire, []);
+});
