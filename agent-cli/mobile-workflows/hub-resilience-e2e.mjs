@@ -726,10 +726,6 @@ async function testDocuments(page, touch, device) {
   const desc = await visibleRowIds(page, '[data-document-id]:visible');
   assert.notEqual(asc[0], desc[0], `${device}: exposed File sort reverses row order`);
 
-  const stableMobileSortBox = device === 'mobile'
-    ? await requiredBox(sortControl, 'mobile: sort before expanded selection')
-    : null;
-
   const select = page.locator('.header-subtitle:visible .mobile-header-select-button');
   assert.equal(await select.count(), 1, `${device}: document Select control`);
   await activate(select, touch, device);
@@ -737,29 +733,34 @@ async function testDocuments(page, touch, device) {
   assert.equal(await target.count(), 1, `${device}: selection target visible`);
   await activate(target, touch, device);
   const duplicate = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Duplicate', exact: true });
-  const moveCopy = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Move/Copy', exact: true });
+  // Move/Copy is two actions now (SELECT_MODE_ACTIONS: Move, Copy).
+  const move = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Move', exact: true });
+  const copy = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Copy', exact: true });
   assert.equal(await duplicate.isEnabled(), true, `${device}: Duplicate enables after selection`);
-  assert.equal(await moveCopy.isEnabled(), true, `${device}: Move/Copy enables after selection`);
+  assert.equal(await move.isEnabled(), true, `${device}: Move enables after selection`);
+  assert.equal(await copy.isEnabled(), true, `${device}: Copy enables after selection`);
   if (device === 'mobile') {
-    const selectionStrip = page.locator('.documents-mobile-select-main:visible');
-    const expandedSortBox = await requiredBox(sortControl, 'mobile: sort after expanded selection');
-    assertNear(expandedSortBox.x, stableMobileSortBox.x, 'mobile: sort remains fixed while Select expands');
-    assertNear(expandedSortBox.y, stableMobileSortBox.y, 'mobile: sort stays on Select row while Select expands');
+    // The bulk actions live in .documents-select-actions beside Select.
+    const selectionStrip = page.locator('.header-subtitle:visible .documents-select-actions');
+    // c2793c23: Select turns row 2 (search, sort, Upload) into the pick row,
+    // so the sort control steps aside while selecting.
+    assert.equal(await sortControl.count(), 0, 'mobile: sort steps aside while Select is on');
     await artifacts.screenshot(page, 'mobile-documents-selection-expanded-start');
     const stripState = await selectionStrip.evaluate((element) => {
       element.scrollLeft = element.scrollWidth;
       return { clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
     });
-    assert.ok(stripState.scrollWidth > stripState.clientWidth, 'mobile: expanded bulk controls use bounded horizontal scrolling');
+    // The bulk actions are icon buttons now (owner 2026-10-02), so they may
+    // fit without scrolling; either way the strip stays bounded and every
+    // action, Delete last, must be reachable inside it (checked below).
+    assert.ok(stripState.clientWidth > 0 && stripState.clientWidth <= page.viewportSize().width, 'mobile: expanded bulk controls stay in a bounded strip');
     await page.waitForTimeout(50);
     const stripBox = await requiredBox(selectionStrip, 'mobile: expanded selection strip');
     const deleteBox = await requiredBox(
-      page.locator('.documents-mobile-select-main:visible').getByRole('button', { name: 'Delete', exact: true }),
+      page.locator('.header-subtitle:visible .documents-select-actions').getByRole('button', { name: 'Delete', exact: true }),
       'mobile: scrolled Delete action',
     );
     assert.ok(deleteBox.x >= stripBox.x - 1 && deleteBox.x + deleteBox.width <= stripBox.x + stripBox.width + 1, 'mobile: every bulk action can scroll into the left control area');
-    const scrolledSortBox = await requiredBox(sortControl, 'mobile: sort after bulk-control scroll');
-    assertNear(scrolledSortBox.x, stableMobileSortBox.x, 'mobile: bulk scrolling does not move sort');
     await artifacts.screenshot(page, 'mobile-documents-selection-expanded-end');
   }
   const done = page.locator('.header-subtitle:visible').getByRole('button', { name: 'Done', exact: true });
