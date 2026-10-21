@@ -573,10 +573,10 @@ export default function SurveyAgentPanel({
   const handsFreeChainRef = useRef(Promise.resolve());
   const lastSpokenRef = useRef('');
   const handsFreePendingRef = useRef(0);
-  const handleHandsFreeClip = async (clip, durationMs, { cutIn = false, endedAt = Date.now() } = {}) => {
+  const handleHandsFreeClip = async (clip, durationMs, { cutIn = false, endedAt = Date.now(), warm = false } = {}) => {
     if (!handsFreeRef.current) return;
     if (queueRef.current.length) { queueClip(clip, durationMs); return; }
-    const text = await hear(clip, durationMs, endedAt);
+    const text = await hear(clip, durationMs, endedAt, warm ? null : undefined);
     if (text === null) { queueClip(clip, durationMs); return; }
     await handleHandsFreeText(text, { cutIn });
   };
@@ -620,6 +620,7 @@ export default function SurveyAgentPanel({
   const onJoinedTurn = (parts) => {
     const clips = parts.filter((p) => p.clip);
     const cutIn = parts.some((p) => p.cutIn);
+    const warm = clips.some((p) => p.warm);
     if (!clips.length) {
       const text = joinTurnText(parts);
       if (text) runHandsFree(() => handleHandsFreeTextRef.current(text, { cutIn }));
@@ -631,7 +632,7 @@ export default function SurveyAgentPanel({
     const spanMs = Math.max(last.endedAt - (first.endedAt - first.durationMs), last.durationMs);
     runHandsFree(async () => {
       const clip = await joinWavs(clips.map((p) => p.clip));
-      await handleHandsFreeClipRef.current(clip, spanMs, { cutIn, endedAt: last.endedAt });
+      await handleHandsFreeClipRef.current(clip, spanMs, { cutIn, endedAt: last.endedAt, warm });
     });
   };
   const onJoinedTurnRef = useRef(onJoinedTurn);
@@ -644,7 +645,7 @@ export default function SurveyAgentPanel({
   const onHandsFreeClip = (clip, durationMs, info) => {
     const endedAt = Date.now();
     if (cameraRef.current) { handleCameraClip(clip, durationMs, endedAt).catch(() => {}); return; }
-    joinerRef.current.add({ clip, durationMs, endedAt, cutIn: Boolean(info?.cutIn) });
+    joinerRef.current.add({ clip, durationMs, endedAt, cutIn: Boolean(info?.cutIn), warm: Boolean(info?.warm) });
   };
   const handleHandsFreeClipRef = useRef(handleHandsFreeClip);
   handleHandsFreeClipRef.current = handleHandsFreeClip;

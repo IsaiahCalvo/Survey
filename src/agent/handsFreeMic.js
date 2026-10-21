@@ -99,6 +99,9 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
     mic = openMic(await media.getUserMedia({ audio: AUDIO }));
   }
   const { ctx, node } = mic;
+  // Audio from before device hearing started: those clips must go to the
+  // server to be heard, since the device never heard their start.
+  const warmFrames = new Set(taken?.frames || []);
   const frameMs = (BUFFER_SIZE / ctx.sampleRate) * 1000;
   const mainGate = createSpeechGate({ frameMs, ...MAIN_GATE, ...gateOptions });
   const level = createBandLevel(ctx.sampleRate);
@@ -137,7 +140,8 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
       let at = 0;
       for (const p of parts) { all.set(p, at); at += p.length; }
       const wav = encodeWav(downsample(all, ctx.sampleRate, 16_000), 16_000);
-      onClip?.(new Blob([wav], { type: 'audio/wav' }), Math.round((total / ctx.sampleRate) * 1000), { cutIn });
+      const warm = parts.some((p) => warmFrames.has(p));
+      onClip?.(new Blob([wav], { type: 'audio/wav' }), Math.round((total / ctx.sampleRate) * 1000), { cutIn, warm });
     }
   };
   node.onaudioprocess = (event) => hear(new Float32Array(event.inputBuffer.getChannelData(0)));

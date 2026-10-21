@@ -7,11 +7,15 @@
 
 export const TURN_GRACE_MS = 1000;
 
+// Under the survey-agent function's 4 MiB audio limit (about 110 s of
+// 16 kHz speech): a turn this big goes out before the next clip joins it.
+export const TURN_MAX_BYTES = 3_500_000;
+
 /**
  * onTurn(parts) gets the parts of one turn, in order, each what add() was
  * given with its `text` promise settled.
  */
-export function createTurnJoiner({ onTurn, graceMs = TURN_GRACE_MS, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+export function createTurnJoiner({ onTurn, graceMs = TURN_GRACE_MS, maxBytes = TURN_MAX_BYTES, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
   let parts = [];
   let timer = null;
   let hearing = false;
@@ -30,7 +34,12 @@ export function createTurnJoiner({ onTurn, graceMs = TURN_GRACE_MS, setTimer = s
   };
   return {
     /** A clip was cut (or words came in): { text: string | Promise, ... }. */
-    add(part) { parts.push(part); wait(); },
+    add(part) {
+      const size = (p) => p.clip?.size || 0;
+      if (size(part) && parts.reduce((n, p) => n + size(p), size(part)) > maxBytes) flush();
+      parts.push(part);
+      wait();
+    },
     /** The person started (true) or stopped (false) talking. */
     hearing(on) { hearing = Boolean(on); if (hearing) stopTimer(); else wait(); },
     /** Send what is held now (the person stopped hands-free). */

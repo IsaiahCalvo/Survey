@@ -50,6 +50,19 @@ test('a quiet moment after a clip sends it; empty and failed clips add nothing',
   assert.equal(turns.length, 2);
 });
 
+test('a turn too big for the server goes out before the next clip joins it', async () => {
+  const t = fakeTimers();
+  const turns = [];
+  const j = createTurnJoiner({ onTurn: (parts) => turns.push(parts.map((p) => p.clip.name)), maxBytes: 100, ...t });
+  j.add({ clip: { name: 'a', size: 60 } });
+  j.add({ clip: { name: 'b', size: 30 } });
+  j.add({ clip: { name: 'c', size: 30 } });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(turns, [['a', 'b']]);
+  await t.fire();
+  assert.deepEqual(turns, [['a', 'b'], ['c']]);
+});
+
 test('clips join into one WAV with a short gap between them', async () => {
   const { encodeWav } = await import('../src/agent/voiceLoop.js');
   const { joinWavs } = await import('../src/agent/turnJoiner.js');
