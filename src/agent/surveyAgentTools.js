@@ -69,6 +69,7 @@ export function createSurveyAgentToolbox({
   getBridge = () => surveyAgentBridge.current,
   attachments = new Map(),
   documentId,
+  undoLastTurn = null,
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -319,6 +320,14 @@ export function createSurveyAgentToolbox({
       const marker = markerOf(b, itemId);
       b.showMarker(itemId);
       return { content: `Showing ${nameOf(marker)}.` };
+    },
+    // The chat's own Undo, by voice: "no, that was D-118" or "undo that".
+    undo_last_turn() {
+      bridge();
+      const result = undoLastTurn?.();
+      if (!result) throw new ToolError('There is nothing of yours to take back in this chat.');
+      const kept = result.kept ? `, ${result.kept} kept because they were changed again since` : '';
+      return { content: `Took back the last changes: ${result.reverted} reverted${kept}.` };
     },
   };
 

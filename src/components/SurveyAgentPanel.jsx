@@ -3,6 +3,8 @@
 // power") and can add photos; the agent fills that item's checklist, note,
 // entity and media through the Survey panel's own writes. Every reply that
 // changed something lists the changes with one Undo for the whole turn.
+// Hands-free mode keeps the mic open: talk, hear a short spoken reply, talk
+// again, with no taps. With no signal, messages wait and send once it is back.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -10,7 +12,9 @@ import { supabase } from '../supabaseClient';
 import { classifyMediaFile } from '../services/surveyMediaService';
 import { answerSetFor } from '../services/answerSets.js';
 import { createSurveyAgentToolbox, surveyAgentBridge } from '../agent/surveyAgentTools.js';
-import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText } from '../agent/surveyAgentClient.js';
+import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
+import { cleanTranscript, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
+import { startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
 import './surveyAgentPanel.css';
 
@@ -32,24 +36,56 @@ const readSpeakSetting = () => {
   try { return window.localStorage.getItem(SPEAK_KEY) !== '0'; } catch { return true; }
 };
 const canSpeak = () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function';
-const speak = (text) => {
-  if (!canSpeak() || !text) return;
+// Resolves when the voice has finished (or could not start), so hands-free
+// mode only listens again once the device is quiet.
+const speak = (text) => new Promise((resolve) => {
+  const words = spokenReply(text);
+  if (!canSpeak() || !words) { resolve(); return; }
+  let done = false;
+  const finish = () => { if (!done) { done = true; clearTimeout(timer); resolve(); } };
+  // Some devices never fire onend; give up after a generous reading time.
+  const timer = setTimeout(finish, 2500 + words.length * 90);
   try {
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(new window.SpeechSynthesisUtterance(text));
-  } catch { /* no voice on this device */ }
-};
+    const utterance = new window.SpeechSynthesisUtterance(words);
+    utterance.onend = finish;
+    utterance.onerror = finish;
+    window.speechSynthesis.speak(utterance);
+  } catch { finish(); }
+});
 const stopSpeaking = () => { try { if (canSpeak()) window.speechSynthesis.cancel(); } catch { /* nothing playing */ } };
+const canHandsFree = () => typeof window !== 'undefined'
+  && Boolean(navigator.mediaDevices?.getUserMedia)
+  && Boolean(window.AudioContext || window.webkitAudioContext);
+
+const HANDS_FREE_TEXT = {
+  listening: 'Listening. Just talk.',
+  hearing: 'Hearing you...',
+  working: 'Working...',
+  speaking: 'Speaking...',
+};
 
 let nextId = 1;
 const newId = (prefix) => `${prefix}${nextId++}`;
 
 export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
-  const call = useMemo(() => makeSurveyAgentCaller(supabase), []);
+  const [usageLeft, setUsageLeft] = useState(null);
+  const call = useMemo(() => withRetries(makeSurveyAgentCaller(supabase, { onUsage: setUsageLeft })), []);
   const attachmentsRef = useRef(new Map());
-  const toolbox = useMemo(() => createSurveyAgentToolbox({ attachments: attachmentsRef.current }), []);
   const [status, setStatus] = useState(null);
   const [entries, setEntries] = useState([]);
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const undoLastRef = useRef(() => null);
+  const toolbox = useMemo(() => createSurveyAgentToolbox({ attachments: attachmentsRef.current, undoLastTurn: () => undoLastRef.current() }), []);
+  // Messages said or typed with no signal, sent in order once it is back.
+  const queueRef = useRef([]);
+  const [queued, setQueued] = useState(0);
+  const [handsFree, setHandsFree] = useState(false);
+  const [phase, setPhase] = useState('listening');
+  const [hearing, setHearing] = useState(false);
+  const micRef = useRef(null);
+  const handsFreeRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -68,7 +104,11 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   useEffect(() => {
     let live = true;
     call({ action: 'status' })
-      .then((s) => { if (live) setStatus(s || { enabled: false, reason: 'network' }); })
+      .then((s) => {
+        if (!live) return;
+        setStatus(s || { enabled: false, reason: 'network' });
+        if (s?.usage_left) setUsageLeft(s.usage_left);
+      })
       .catch((err) => { if (live) setStatus({ enabled: false, reason: err?.code || 'network' }); });
     return () => { live = false; };
   }, [call]);
@@ -80,6 +120,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
 
   useEffect(() => () => {
     try { speechRef.current?.abort?.(); } catch { /* already stopped */ }
+    handsFreeRef.current = false;
+    micRef.current?.stop();
     stopSpeaking();
   }, []);
 
@@ -92,32 +134,34 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
 
   const push = (entry) => setEntries((list) => [...list, { id: newId('e'), ...entry }]);
 
-  const send = useCallback(async (text) => {
-    const said = String(text || '').trim();
-    const files = pendingFiles;
-    if ((!said && !files.length) || turnRef.current) return;
+  const markEntry = (id, patch) => setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+
+  // Runs one message through the agent. Returns the reply text, or null when
+  // nothing was answered (error, or queued for lack of signal).
+  const runJob = useCallback(async (job) => {
     const bridge = surveyAgentBridge.current;
     if (!bridge?.template) {
       push({ role: 'error', text: 'Open Survey mode with a template first.' });
-      return;
+      return null;
     }
-    const fileNote = files.length
-      ? `\n[Attached in this chat: ${files.map((f) => `${f.id} (${f.kind}, ${f.name})`).join('; ')}]`
+    const fileNote = job.files.length
+      ? `\n[Attached in this chat: ${job.files.map((f) => `${f.id} (${f.kind}, ${f.name})`).join('; ')}]`
       : '';
     const selected = bridge.selectedMarkerId && bridge.markers?.[bridge.selectedMarkerId];
     const selectedNote = selected ? `\n[Selected item: ${selected.name || 'Unnamed'} (id ${bridge.selectedMarkerId})]` : '';
-    setDraft('');
-    setPendingFiles([]);
-    push({ role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name) });
     turnRef.current = true;
     setBusy(true);
     // Bound to this document: if the person opens another one mid-turn, the
     // remaining tools refuse instead of writing there.
-    const turnToolbox = createSurveyAgentToolbox({ attachments: attachmentsRef.current, documentId: bridge.documentId || null });
+    const turnToolbox = createSurveyAgentToolbox({
+      attachments: attachmentsRef.current,
+      documentId: bridge.documentId || null,
+      undoLastTurn: () => undoLastRef.current(),
+    });
     try {
       const result = await runSurveyAgentTurn({
         history: historyRef.current,
-        userText: `${said || 'Attach these files.'}${fileNote}${selectedNote}`,
+        userText: `${job.said || 'Attach these files.'}${fileNote}${selectedNote}`,
         call,
         toolbox: turnToolbox,
         answerValues: answerSetFor(bridge.template).map((a) => a.value),
@@ -125,29 +169,116 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);
       historyRef.current = result.history;
+      if (job.entryId) markEntry(job.entryId, { waiting: false });
       push({ role: 'agent', text: result.reply, changes: result.changes });
-      if (speakRef.current) speak(result.reply);
+      return result.reply;
     } catch (err) {
+      // No signal before anything changed: keep the message for later.
+      if (err?.code === 'offline' && !err?.changes?.length) {
+        queueRef.current.push(job);
+        setQueued(queueRef.current.length);
+        if (job.entryId) markEntry(job.entryId, { waiting: true });
+        return null;
+      }
       // The server refused the stored chat: start over rather than repeat it.
       if (err?.code === 'bad_message' || err?.code === 'bad_message_order' || err?.code === 'conversation_too_long') historyRef.current = [];
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(err?.changes);
-      push({ role: 'error', text: err?.message || surveyAgentErrorText(err?.code), changes: err?.changes || [] });
+      if (job.entryId) markEntry(job.entryId, { waiting: false });
+      push({ role: 'error', text: err?.message || surveyAgentErrorText(err?.code), changes: err?.changes || [], code: err?.code });
+      return null;
     } finally {
       turnRef.current = false;
       setBusy(false);
     }
-  }, [call, pendingFiles, toolbox]);
+  }, [call, toolbox]);
 
-  const sendRef = useRef(send);
-  sendRef.current = send;
+  const send = useCallback(async (text) => {
+    const said = String(text || '').trim();
+    const files = pendingFiles;
+    if ((!said && !files.length) || turnRef.current) return null;
+    if (!surveyAgentBridge.current?.template) {
+      push({ role: 'error', text: 'Open Survey mode with a template first.' });
+      return null;
+    }
+    setDraft('');
+    setPendingFiles([]);
+    const entryId = newId('e');
+    setEntries((list) => [...list, { id: entryId, role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name) }]);
+    // Messages wait their turn behind ones still waiting for signal.
+    const job = { said, files, entryId };
+    if (queueRef.current.length) {
+      queueRef.current.push(job);
+      setQueued(queueRef.current.length);
+      markEntry(entryId, { waiting: true });
+      return null;
+    }
+    return runJob(job);
+  }, [pendingFiles, runJob]);
+
+  // Signal back: send what waited, oldest first, and stop at the first
+  // message that has to wait again.
+  const flushingRef = useRef(false);
+  const flushQueue = useCallback(async () => {
+    if (flushingRef.current || turnRef.current) return;
+    flushingRef.current = true;
+    try {
+      while (queueRef.current.length) {
+        const job = queueRef.current.shift();
+        setQueued(queueRef.current.length);
+        let reply;
+        if (job.clip) {
+          const text = await transcribeRef.current(job.clip, job.durationMs);
+          if (text === null) { queueRef.current.unshift(job); setQueued(queueRef.current.length); break; }
+          if (!text) continue;
+          const entryId = newId('e');
+          setEntries((list) => [...list, { id: entryId, role: 'user', text }]);
+          reply = await runJob({ said: text, files: [], entryId });
+        } else {
+          reply = await runJob(job);
+        }
+        if (queueRef.current.includes(job)) break;
+        if (reply && speakRef.current && !handsFreeRef.current) speak(reply);
+      }
+    } finally {
+      flushingRef.current = false;
+    }
+  }, [runJob]);
+
+  useEffect(() => {
+    const online = () => { flushQueue(); };
+    window.addEventListener('online', online);
+    // Also try now and then: phones report "online" on a dead connection.
+    const timer = setInterval(() => { if (queueRef.current.length) flushQueue(); }, 20_000);
+    return () => { window.removeEventListener('online', online); clearInterval(timer); };
+  }, [flushQueue]);
+
+  // Typed or tapped-mic messages: answer aloud too when voice is on (not in
+  // hands-free mode, which speaks for itself and must not hear it).
+  const sendAndSpeak = useCallback(async (text) => {
+    const reply = await send(text);
+    if (reply && speakRef.current && !handsFreeRef.current) speak(reply);
+    return reply;
+  }, [send]);
+  const sendRef = useRef(sendAndSpeak);
+  sendRef.current = sendAndSpeak;
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
-  const undoEntry = (entry) => {
-    const { reverted, kept } = toolbox.undo(entry.changes || []);
-    const undone = kept ? 'partly' : true;
+  const applyUndo = (entry) => {
+    const result = toolbox.undo(entry.changes || []);
+    const undone = result.kept ? 'partly' : true;
     setEntries((list) => list.map((e) => (e.id === entry.id ? { ...e, undone } : e)));
+    return result;
+  };
+  // The agent's undo_last_turn: the newest reply with changes not yet undone.
+  undoLastRef.current = () => {
+    const entry = [...entriesRef.current].reverse().find((e) => e.role === 'agent' && e.changes?.length && !e.undone);
+    return entry ? applyUndo(entry) : null;
+  };
+
+  const undoEntry = (entry) => {
+    const { reverted, kept } = applyUndo(entry);
     // Tell the agent, so it does not build on what was taken back.
     const note = kept
       ? `[The person pressed Undo on those changes: ${reverted} reverted, ${kept} kept because they were changed again since.]`
@@ -159,30 +290,114 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       : historyRef.current;
   };
 
-  const transcriptionHints = () => {
-    const bridge = surveyAgentBridge.current;
-    return Object.values(bridge?.markers || {}).map((m) => m?.name).filter(Boolean).slice(0, 60);
+
+  // Speech to text on the server. Returns the words, '' when nothing was
+  // heard, or null when there is no signal (the caller keeps the clip).
+  const transcribe = async (file, durationMs) => {
+    setTranscribing(true);
+    try {
+      const audio = await blobToBase64(file);
+      const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(surveyAgentBridge.current) });
+      return cleanTranscript(out?.text);
+    } catch (err) {
+      if (err?.code === 'offline') return null;
+      push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.', code: err?.code });
+      return '';
+    } finally {
+      setTranscribing(false);
+    }
+  };
+  const transcribeRef = useRef(transcribe);
+  transcribeRef.current = transcribe;
+
+  const queueClip = (clip, durationMs) => {
+    queueRef.current.push({ clip, durationMs });
+    setQueued(queueRef.current.length);
   };
 
   const recorder = useAudioRecorder({
     onRecorded: async (file, durationMs) => {
-      setTranscribing(true);
-      let text = '';
-      try {
-        const audio = await blobToBase64(file);
-        const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints() });
-        text = String(out?.text || '').trim();
-      } catch (err) {
-        push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.' });
-      } finally {
-        setTranscribing(false);
-      }
+      if (queueRef.current.length) { queueClip(file, durationMs); return; }
+      const text = await transcribe(file, durationMs);
+      if (text === null) { queueClip(file, durationMs); return; }
       if (!text) return;
       // A typed message is still running: keep the words in the box to send next.
       if (turnRef.current) setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text));
       else sendRef.current(text);
     },
   });
+
+  // Hands-free: each clip the mic cuts is heard, answered and (with voice
+  // on) spoken, then the mic listens again. The mic is paused meanwhile so
+  // it never hears the agent's own voice.
+  const stopHandsFree = useCallback(() => {
+    handsFreeRef.current = false;
+    setHandsFree(false);
+    setHearing(false);
+    micRef.current?.stop();
+    micRef.current = null;
+    stopSpeaking();
+  }, []);
+
+  // One clip at a time, in order. The mic keeps listening while the agent
+  // works (people talk on), and pauses only while the agent speaks.
+  const handsFreeChainRef = useRef(Promise.resolve());
+  const handsFreePendingRef = useRef(0);
+  const handleHandsFreeClip = async (clip, durationMs) => {
+    if (!handsFreeRef.current) return;
+    if (queueRef.current.length) { queueClip(clip, durationMs); return; }
+    const text = await transcribe(clip, durationMs);
+    if (text === null) { queueClip(clip, durationMs); return; }
+    if (!text || !handsFreeRef.current) return;
+    if (turnRef.current) { setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text)); return; }
+    const reply = await send(text);
+    const mic = micRef.current;
+    if (reply && speakRef.current && handsFreeRef.current) {
+      mic?.pause();
+      setPhase('speaking');
+      await speak(reply);
+      setPhase('working');
+    }
+    const last = entriesRef.current[entriesRef.current.length - 1];
+    // Out of allowance: stop listening and say why.
+    if (last?.code === 'monthly_cap_reached' || last?.code === 'not_enabled_for_you') {
+      if (speakRef.current) await speak(last.text);
+      stopHandsFree();
+      return;
+    }
+    if (handsFreeRef.current && micRef.current === mic) mic?.resume();
+  };
+  const onHandsFreeClip = (clip, durationMs) => {
+    handsFreePendingRef.current += 1;
+    setPhase('working');
+    handsFreeChainRef.current = handsFreeChainRef.current
+      .then(() => handleHandsFreeClipRef.current(clip, durationMs))
+      .catch(() => {})
+      .finally(() => {
+        handsFreePendingRef.current -= 1;
+        if (!handsFreePendingRef.current && handsFreeRef.current) setPhase('listening');
+      });
+  };
+  const handleHandsFreeClipRef = useRef(handleHandsFreeClip);
+  handleHandsFreeClipRef.current = handleHandsFreeClip;
+  const onHandsFreeClipRef = useRef(onHandsFreeClip);
+  onHandsFreeClipRef.current = onHandsFreeClip;
+
+  const startHandsFree = async () => {
+    if (recorder.state !== 'idle') recorder.stop();
+    if (speechRef.current) speechRef.current.stop();
+    try {
+      micRef.current = await startHandsFreeMic({
+        onClip: (clip, ms) => onHandsFreeClipRef.current(clip, ms),
+        onHearing: (on) => setHearing(on),
+      });
+      handsFreeRef.current = true;
+      setHandsFree(true);
+      setPhase('listening');
+    } catch (err) {
+      push({ role: 'error', text: err?.name === 'NotAllowedError' ? 'Allow the microphone to talk hands-free.' : 'The microphone could not start.' });
+    }
+  };
 
   const toggleBrowserSpeech = () => {
     const Recognition = browserSpeech();
@@ -248,7 +463,11 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
 
   const ready = status?.enabled && !status?.over_cap;
   const statusText = !status ? 'Connecting...'
-    : !status.enabled || status.over_cap ? surveyAgentErrorText(status.reason) : null;
+    : !status.enabled || status.over_cap ? surveyAgentErrorText(status.reason)
+      : queued ? `No signal. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send when you are back online.`
+        : usageWarning(usageLeft);
+  const livePhase = hearing ? 'hearing' : phase === 'speaking' ? 'speaking' : transcribing || busy || phase === 'working' ? 'working' : 'listening';
+  const handsFreeText = handsFree ? HANDS_FREE_TEXT[livePhase] : null;
 
   const panel = (
     <section
@@ -259,6 +478,18 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     >
       <header className="survey-agent__head">
         <span className="survey-agent__title">Survey agent <span className="survey-agent__beta">Beta</span></span>
+        {status?.transcription && canHandsFree() && (
+          <button
+            type="button"
+            className="survey-agent__voice survey-agent__handsfree"
+            aria-pressed={handsFree}
+            aria-label={handsFree ? 'Stop hands-free' : 'Hands-free'}
+            disabled={!ready && !handsFree}
+            onClick={handsFree ? stopHandsFree : startHandsFree}
+          >
+            {handsFree ? (mobileMode ? 'Stop' : 'Stop hands-free') : 'Hands-free'}
+          </button>
+        )}
         {canSpeak() && (
           <button
             type="button"
@@ -283,6 +514,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
           <div key={entry.id} className={`survey-agent__msg is-${entry.role}`}>
             <div className="survey-agent__bubble">
               {entry.text}
+              {entry.waiting ? <div className="survey-agent__files">Waiting for signal</div> : null}
               {entry.files?.length ? <div className="survey-agent__files">{entry.files.join(', ')}</div> : null}
             </div>
             {entry.changes?.length ? (
@@ -299,7 +531,13 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
         ))}
         {(busy || transcribing) && <div className="survey-agent__msg is-agent"><div className="survey-agent__bubble is-typing">Working...</div></div>}
       </div>
-      {statusText && <p className="survey-agent__status">{statusText}</p>}
+      {handsFreeText && (
+        <p className={`survey-agent__live is-${livePhase}`} role="status">
+          <span className="survey-agent__dot" aria-hidden="true" />
+          {handsFreeText}
+        </p>
+      )}
+      {statusText && <p className="survey-agent__status" role="status">{statusText}</p>}
       {pendingFiles.length > 0 && (
         <div className="survey-agent__pending">
           {pendingFiles.map((f) => (
@@ -314,7 +552,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       )}
       <form
         className="survey-agent__composer"
-        onSubmit={(e) => { e.preventDefault(); send(draft); }}
+        onSubmit={(e) => { e.preventDefault(); sendAndSpeak(draft); }}
       >
         <input
           ref={fileInputRef}
@@ -336,7 +574,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
           disabled={!ready}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(draft); }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAndSpeak(draft); }
           }}
         />
         {canTalk && (
@@ -345,7 +583,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
             className={`survey-agent__icon survey-agent__mic${recording ? ' is-on' : ''}`}
             aria-label={recording ? 'Stop and send' : 'Talk'}
             aria-pressed={recording}
-            disabled={!ready || ((busy || transcribing) && !recording)}
+            disabled={!ready || handsFree || ((busy || transcribing) && !recording)}
             onClick={toggleTalk}
           >
             <Icon name="mic" size={18} color="currentColor" />

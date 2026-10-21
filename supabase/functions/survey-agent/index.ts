@@ -132,8 +132,15 @@ Deno.serve(async (req) => {
   const month = new Date().toISOString().slice(0, 7) + '-01';
   const { data: usage } = await admin.from('survey_agent_usage')
     .select('cost_micros, requests').eq('user_id', user.id).eq('month', month).maybeSingle();
+  const requestCap = envNumber('SURVEY_AGENT_MONTHLY_REQUEST_CAP', 3000);
   const overCap = Number(usage?.cost_micros || 0) >= capMicros()
-    || Number(usage?.requests || 0) >= envNumber('SURVEY_AGENT_MONTHLY_REQUEST_CAP', 3000);
+    || Number(usage?.requests || 0) >= requestCap;
+  // What is left this month after `used` more requests, so the app can warn
+  // before the cap instead of stopping mid-walk.
+  const usageLeft = (used = 0) => ({
+    requests: Math.max(0, Math.floor(requestCap - Number(usage?.requests || 0) - used)),
+    cost_share: capMicros() > 0 ? Math.max(0, 1 - Number(usage?.cost_micros || 0) / capMicros()) : 0,
+  });
   const provider = modelProvider();
   const modelReady = Boolean(provider?.baseUrl);
 
@@ -143,10 +150,11 @@ Deno.serve(async (req) => {
       reason: !allowed ? 'not_enabled_for_you' : !modelReady ? 'not_set_up' : overCap ? 'monthly_cap_reached' : null,
       transcription: Boolean(transcriber()),
       over_cap: overCap,
+      usage_left: allowed ? usageLeft() : null,
     });
   }
   if (!allowed) return json(403, { error: 'not_enabled_for_you' });
-  if (overCap) return json(429, { error: 'monthly_cap_reached' });
+  if (overCap) return json(429, { error: 'monthly_cap_reached', usage_left: usageLeft() });
 
   // Count this request before any paid call, atomically under both caps, so
   // parallel requests cannot all pass the read above. The cost cap can still
@@ -186,8 +194,10 @@ Deno.serve(async (req) => {
     form.append('file', new Blob([bytes], { type: mime }), `clip.${ext}`);
     form.append('model', t.model);
     form.append('response_format', 'json');
-    if (hints) form.append('prompt', `Construction site survey. Names: ${hints}.`);
+    form.append('temperature', '0');
+    if (hints) form.append('prompt', `Construction site survey. Words and item names: ${hints}.`);
     const res = await fetch(t.url, { method: 'POST', headers: { Authorization: `Bearer ${t.key}` }, body: form });
+    if (res.status === 429) return json(429, { error: 'busy_try_again', retry_after: null });
     if (!res.ok) {
       console.error('[survey-agent] transcription failed', res.status, (await res.text()).slice(0, 300));
       return json(502, { error: 'transcription_failed' });
@@ -197,7 +207,7 @@ Deno.serve(async (req) => {
     await admin.rpc('record_survey_agent_usage', {
       p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: Math.ceil(seconds * t.microsPerSecond),
     });
-    return json(200, { text: String(out?.text || '').trim() });
+    return json(200, { text: String(out?.text || '').trim(), usage_left: usageLeft(1) });
   }
 
   if (action === 'turn') {
@@ -223,7 +233,11 @@ Deno.serve(async (req) => {
       console.error('[survey-agent] model call failed', err);
       return json(502, { error: 'model_unavailable' });
     }
-    if (res.status === 429) return json(429, { error: 'busy_try_again' });
+    // The free tier's per-minute limit: say how long to wait when it says.
+    if (res.status === 429) {
+      const wait = Number(res.headers.get('retry-after'));
+      return json(429, { error: 'busy_try_again', retry_after: Number.isFinite(wait) && wait > 0 ? Math.min(wait, 60) : null });
+    }
     if (!res.ok) {
       console.error('[survey-agent] model error', res.status, (await res.text()).slice(0, 500));
       return json(502, { error: 'model_unavailable' });
@@ -243,6 +257,7 @@ Deno.serve(async (req) => {
         tool_calls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
       },
       finish_reason: choice.finish_reason || null,
+      usage_left: usageLeft(1),
     });
   }
 
