@@ -6,10 +6,13 @@ import { installSurveyAnalytics } from './utils/surveyAnalytics';
 import { installCrashLog, setCrashLogBuild } from './utils/crashLog';
 import { agentLinkResumeUrl } from './home/agentLinkPending';
 import { installNativeDownloadShim } from './mobile/nativeDownloadShim';
+import { installNativeDeepLinks } from './mobile/nativeDeepLinks';
 
 installSurveyAnalytics();
 // Exports in the iOS/Android app go to the share sheet (no-op elsewhere).
 installNativeDownloadShim();
+// Tapped surveytool.app invite links open in the app (no-op elsewhere).
+installNativeDeepLinks();
 // WebMCP agent tools: loaded only in browsers that offer them.
 if (typeof document !== 'undefined' && document.modelContext) {
   Promise.all([
