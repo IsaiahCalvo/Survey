@@ -1,13 +1,13 @@
 # Survey
 
-> Survey is a PDF markup and counting app for construction and engineering drawings. It runs in the browser on Mac, Windows, iPad, Android tablets and phones at https://surveytool.app.
+> Survey is a PDF markup app for construction and engineering drawings. It runs in the browser on Mac, Windows, iPad, Android tablets and phones at https://surveytool.app.
 
-People use Survey to redline drawing sets, tap to count items on a plan (each category keeps a running total), and export the counts to Excel. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, survey tools, templates and regions, Excel export, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
+Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, symbols, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export to Excel, one sheet per category plus a summary, and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys to Excel and back, spaces and regions, templates, sharing with viewers and editors, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
 
 ## Pages
 
 - [Home](https://surveytool.app/welcome): what Survey is and who it is for
-- [Features](https://surveytool.app/features): count markers, pen and highlighter, shapes, clouds and arrows, large drawing sets
+- [Features](https://surveytool.app/features): site surveys to Excel and back, spaces and regions, templates, every markup tool free, count markers, Survey vs Drawboard PDF
 - [Devices](https://surveytool.app/devices): desktop, tablet and phone
 - [Pricing](https://surveytool.app/pricing): Free, Pro and Enterprise plans
 - [FAQ](https://surveytool.app/faq): common questions
@@ -16,7 +16,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Punch lists](https://surveytool.app/use-cases/punch-lists): Mark punch items right on the floor plan with numbered markers and notes, then share the marked-up set with your team.
 - [As-builts](https://surveytool.app/use-cases/as-builts): Red-line the drawings with what was really built: moved walls, rerouted runs, added fixtures. Keep it with the project.
 - [Survey vs Bluebeam Revu](https://surveytool.app/compare/bluebeam): An honest look at Survey and Bluebeam Revu for marking up and counting on construction drawings: what each does best and who each one fits.
-- [Survey vs Drawboard Projects](https://surveytool.app/compare/drawboard): An honest look at Survey and Drawboard Projects for marking up construction drawings: what each does best and who each one fits.
+- [Survey vs Drawboard PDF](https://surveytool.app/compare/drawboard): Survey and Drawboard PDF side by side: the same markup tools, which ones cost money in each, and what Survey does that Drawboard does not.
 - [Free PDF tools](https://surveytool.app/tools): 58 tools to merge, split, compress, OCR scans, compare two PDFs, sign, lock and convert PDFs in the browser, several files at once; no sign-in, files never leave the device
 - [Merge PDF](https://surveytool.app/tools/merge-pdf): Combine several PDFs into one file.
 - [Split PDF](https://surveytool.app/tools/split-pdf): Break one PDF into several files.
