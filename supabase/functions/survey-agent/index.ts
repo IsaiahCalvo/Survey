@@ -135,6 +135,19 @@ Deno.serve(async (req) => {
   if (!allowed) return json(403, { error: 'not_enabled_for_you' });
   if (overCap) return json(429, { error: 'monthly_cap_reached' });
 
+  // Count this request before any paid call, atomically under both caps, so
+  // parallel requests cannot all pass the read above. The cost cap can still
+  // be passed by the requests already in flight when it is reached.
+  const reserve = async () => {
+    const { data, error } = await admin.rpc('reserve_survey_agent_request', {
+      p_user_id: user.id,
+      p_request_cap: Math.floor(envNumber('SURVEY_AGENT_MONTHLY_REQUEST_CAP', 3000)),
+      p_cost_cap_micros: capMicros(),
+    });
+    if (error) console.error('[survey-agent] reserve failed', error.message);
+    return data === true;
+  };
+
   if (action === 'transcribe') {
     const t = transcriber();
     if (!t) return json(501, { error: 'transcription_not_set_up' });
@@ -143,6 +156,7 @@ Deno.serve(async (req) => {
     let bytes: Uint8Array<ArrayBuffer>;
     try { bytes = decodeBase64(String(body.audio || '')); } catch { return json(400, { error: 'bad_audio' }); }
     if (!bytes.length || bytes.length > MAX_AUDIO_BYTES) return json(413, { error: 'audio_too_large' });
+    if (!(await reserve())) return json(429, { error: 'monthly_cap_reached' });
     const hints = (Array.isArray(body.hints) ? body.hints : [])
       .filter((h) => typeof h === 'string').map((h) => h.slice(0, 40)).slice(0, 60).join(', ');
     const form = new FormData();
@@ -168,6 +182,7 @@ Deno.serve(async (req) => {
     if (!provider?.baseUrl) return json(503, { error: 'not_set_up' });
     const clean = sanitizeAgentMessages(body.messages);
     if (clean.error) return json(400, { error: clean.error });
+    if (!(await reserve())) return json(429, { error: 'monthly_cap_reached' });
     let res: Response;
     try {
       res = await fetch(`${provider.baseUrl}/chat/completions`, {

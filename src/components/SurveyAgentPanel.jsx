@@ -107,18 +107,25 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     setPendingFiles([]);
     push({ role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name) });
     setBusy(true);
+    // Bound to this document: if the person opens another one mid-turn, the
+    // remaining tools refuse instead of writing there.
+    const turnToolbox = createSurveyAgentToolbox({ attachments: attachmentsRef.current, documentId: bridge.documentId || null });
     try {
       const result = await runSurveyAgentTurn({
         history: historyRef.current,
         userText: `${said || 'Attach these files.'}${fileNote}${selectedNote}`,
         call,
-        toolbox,
+        toolbox: turnToolbox,
         answerValues: answerSetFor(bridge.template).map((a) => a.value),
       });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      toolbox.settle(result.changes);
       historyRef.current = result.history;
       push({ role: 'agent', text: result.reply, changes: result.changes });
       if (speakRef.current) speak(result.reply);
     } catch (err) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      toolbox.settle(err?.changes);
       push({ role: 'error', text: err?.message || surveyAgentErrorText(err?.code), changes: err?.changes || [] });
     } finally {
       setBusy(false);
@@ -129,14 +136,17 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   sendRef.current = send;
 
   const undoEntry = (entry) => {
-    const changes = [...(entry.changes || [])].reverse();
-    changes.forEach((change) => toolbox.undo(change));
-    setEntries((list) => list.map((e) => (e.id === entry.id ? { ...e, undone: true } : e)));
+    const { reverted, kept } = toolbox.undo(entry.changes || []);
+    const undone = kept ? 'partly' : true;
+    setEntries((list) => list.map((e) => (e.id === entry.id ? { ...e, undone } : e)));
     // Tell the agent, so it does not build on what was taken back.
+    const note = kept
+      ? `[The person pressed Undo on those changes: ${reverted} reverted, ${kept} kept because they were changed again since.]`
+      : '[The person pressed Undo on those changes; they are reverted.]';
     historyRef.current = historyRef.current.length
       ? [...historyRef.current,
-        { role: 'user', content: '[The person pressed Undo on your last changes; they are reverted.]' },
-        { role: 'assistant', content: 'Understood, those changes are undone.' }]
+        { role: 'user', content: note },
+        { role: 'assistant', content: 'Understood.' }]
       : historyRef.current;
   };
 
@@ -267,7 +277,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
                   {entry.changes.map((change, i) => <li key={i}>{change.label}</li>)}
                 </ul>
                 {entry.undone
-                  ? <span className="survey-agent__undone">Undone</span>
+                  ? <span className="survey-agent__undone">{entry.undone === 'partly' ? 'Undone, later edits kept' : 'Undone'}</span>
                   : <button type="button" className="survey-agent__undo" onClick={() => undoEntry(entry)}>Undo</button>}
               </div>
             ) : null}

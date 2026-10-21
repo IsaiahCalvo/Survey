@@ -43,11 +43,7 @@ const noteTextOf = (note) => {
 };
 const mediaCountOf = (note) => (note && typeof note === 'object' && Array.isArray(note.media) ? note.media.length : 0);
 
-const snapshotOf = (marker) => ({
-  checklistResponses: marker?.checklistResponses ? JSON.parse(JSON.stringify(marker.checklistResponses)) : {},
-  note: marker?.note && typeof marker.note === 'object' ? JSON.parse(JSON.stringify(marker.note)) : (marker?.note ?? null),
-  entityId: marker?.entityId || null,
-});
+const clone = (value) => (value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : (value ?? null));
 
 const out = (value) => (typeof value === 'string' ? value : JSON.stringify(value));
 
@@ -55,13 +51,24 @@ class ToolError extends Error {}
 
 /**
  * attachments: Map of attachment id -> { file, kind, name } the person added
- * in this chat. Returns { run(name, input) -> { content, isError, change } }.
- * A change is { itemId, label, snapshot } and undo(change) restores it.
+ * in this chat. documentId: the document the turn started on; once the person
+ * opens another one, every tool refuses, so a slow reply cannot land there.
+ * Returns { run(name, input) -> { content, isError, change }, undo(changes) }.
+ * A change is { itemId, documentId, label, fields }: each field holds the
+ * value before and the value this tool wrote, so undo only reverts a field
+ * nobody has changed since.
  */
-export function createSurveyAgentToolbox({ getBridge = () => surveyAgentBridge.current, attachments = new Map() } = {}) {
+export function createSurveyAgentToolbox({
+  getBridge = () => surveyAgentBridge.current,
+  attachments = new Map(),
+  documentId,
+} = {}) {
   const bridge = () => {
     const b = getBridge();
     if (!b || !b.template) throw new ToolError('Survey mode is not open with a template. Ask the person to open Survey mode first.');
+    if (documentId !== undefined && (b.documentId || null) !== (documentId || null)) {
+      throw new ToolError('The person opened another document, so this request stopped. Tell them to ask again.');
+    }
     return b;
   };
   const markerOf = (b, itemId) => {
@@ -164,12 +171,16 @@ export function createSurveyAgentToolbox({ getBridge = () => surveyAgentBridge.c
         if (!checklist.has(a?.checklist_item_id)) throw new ToolError(`${a?.checklist_item_id} is not on the ${entry.category.name} checklist. Use get_item for its checklist ids.`);
         if (!allowed.includes(a?.value)) throw new ToolError(`"${a?.value}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);
       }
-      const snapshot = snapshotOf(marker);
+      const responses = marker.checklistResponses || {};
+      const fields = list.map((a) => ({ type: 'answer', id: a.checklist_item_id, before: clone(responses[a.checklist_item_id]), after: a.value }));
+      // A tap's answer can move the entity (auto-entity rule). What it moved
+      // to is only known once the app re-renders: settle() fills `after`.
+      fields.push({ type: 'autoEntity', before: marker.entityId || null, after: undefined });
       b.setAnswers(itemId, list.map((a) => ({ checklistItemId: a.checklist_item_id, value: a.value })));
       const label = list.map((a) => `${itemText(checklist.get(a.checklist_item_id))} = ${a.value}`).join('; ');
       return {
         content: `Set ${list.length} answer${list.length === 1 ? '' : 's'} on ${nameOf(marker)}.`,
-        change: { itemId, label: `${nameOf(marker)}: ${label}`, snapshot },
+        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${label}`, fields },
       };
     },
 
@@ -179,14 +190,20 @@ export function createSurveyAgentToolbox({ getBridge = () => surveyAgentBridge.c
       const marker = markerOf(b, itemId);
       const addition = String(text || '').trim();
       if (!addition) throw new ToolError('The note text is empty.');
-      const snapshot = snapshotOf(marker);
+      const beforeText = noteTextOf(marker.note).trimEnd();
+      const field = {
+        type: 'note',
+        before: clone(marker.note),
+        afterText: beforeText ? `${beforeText}\n${addition}` : addition,
+        afterMedia: mediaCountOf(marker.note),
+      };
       b.updateNote(itemId, (prev) => {
         const before = String(prev?.text || '').trimEnd();
         return { ...prev, text: before ? `${before}\n${addition}` : addition };
       });
       return {
         content: `Added to the note on ${nameOf(marker)}.`,
-        change: { itemId, label: `${nameOf(marker)}: note "${addition.length > 80 ? `${addition.slice(0, 77)}...` : addition}"`, snapshot },
+        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: note "${addition.length > 80 ? `${addition.slice(0, 77)}...` : addition}"`, fields: [field] },
       };
     },
 
@@ -196,11 +213,11 @@ export function createSurveyAgentToolbox({ getBridge = () => surveyAgentBridge.c
       const marker = markerOf(b, itemId);
       const entity = entityId ? entitiesOf(b.template).find((e) => e.id === entityId) : null;
       if (entityId && !entity) throw new ToolError(`${entityId} is not one of this template's entities.`);
-      const snapshot = snapshotOf(marker);
+      const field = { type: 'entity', before: marker.entityId || null, after: entity?.id || null };
       b.setEntity(itemId, entity?.id || null);
       return {
         content: entity ? `Set ${nameOf(marker)} to ${entity.name}.` : `Cleared the entity on ${nameOf(marker)}.`,
-        change: { itemId, label: `${nameOf(marker)}: entity ${entity ? entity.name : 'cleared'}`, snapshot },
+        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: entity ${entity ? entity.name : 'cleared'}`, fields: [field] },
       };
     },
 
@@ -211,16 +228,17 @@ export function createSurveyAgentToolbox({ getBridge = () => surveyAgentBridge.c
       const list = (Array.isArray(ids) ? ids : []).map((id) => [id, attachments.get(id)]);
       const missing = list.filter(([, a]) => !a || a.attachedTo).map(([id]) => id);
       if (!list.length || missing.length) throw new ToolError(`No unattached file with id ${missing.join(', ') || '(none)'} in this chat.`);
-      const snapshot = snapshotOf(marker);
+      const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
       const refs = [];
       for (const [, a] of list) {
         refs.push(await b.uploadMedia(itemId, a.file, a.kind));
       }
       b.addMediaRefs(itemId, refs);
       for (const [, a] of list) a.attachedTo = itemId;
+      field.afterMedia = mediaCountOf(marker.note) + refs.length;
       return {
         content: `Attached ${refs.length} file${refs.length === 1 ? '' : 's'} to ${nameOf(marker)}.`,
-        change: { itemId, label: `${nameOf(marker)}: ${refs.length} file${refs.length === 1 ? '' : 's'} attached`, snapshot },
+        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${refs.length} file${refs.length === 1 ? '' : 's'} attached`, fields: [field] },
       };
     },
 
@@ -244,14 +262,67 @@ export function createSurveyAgentToolbox({ getBridge = () => surveyAgentBridge.c
         return { content: err?.message ? `That failed: ${err.message}` : 'That failed.', isError: true };
       }
     },
-    // Puts the item back the way it was before `change`. For several changes
-    // of one turn, undo the newest first.
-    undo(change) {
+    // Records what the auto-entity rule did, once the app has re-rendered
+    // after a turn.
+    settle(changes) {
       const b = getBridge();
-      if (!b || !change) return false;
-      if (!b.markers?.[change.itemId]) return false;
-      b.restoreMarker(change.itemId, change.snapshot);
-      return true;
+      for (const change of changes || []) {
+        const marker = b?.markers?.[change.itemId];
+        for (const field of change.fields || []) {
+          if (field.type === 'autoEntity' && field.after === undefined && marker) field.after = marker.entityId || null;
+        }
+      }
+    },
+    // Takes back `changes` (one turn's, oldest first). A field goes back only
+    // while it still holds what the agent wrote, so a later tap or a later
+    // agent turn is kept. Returns { reverted, kept } field counts.
+    undo(changes) {
+      const b = getBridge();
+      const result = { reverted: 0, kept: 0 };
+      const list = (Array.isArray(changes) ? changes : [changes]).filter(Boolean);
+      // One working copy per item, newest change first, written once: the
+      // bridge's markers only refresh after the app re-renders.
+      const work = new Map();
+      for (const change of [...list].reverse()) {
+        const marker = b?.markers?.[change.itemId];
+        if (!marker || (b.documentId || null) !== (change.documentId || null)) {
+          result.kept += change.fields?.length || 0;
+          continue;
+        }
+        if (!work.has(change.itemId)) {
+          work.set(change.itemId, {
+            checklistResponses: clone(marker.checklistResponses) || {},
+            note: clone(marker.note),
+            entityId: marker.entityId || null,
+          });
+        }
+        const item = work.get(change.itemId);
+        let answersIntact = true;
+        for (const field of change.fields || []) {
+          if (field.type === 'answer') {
+            if ((item.checklistResponses[field.id]?.selection ?? null) === field.after) {
+              if (field.before) item.checklistResponses[field.id] = clone(field.before);
+              else delete item.checklistResponses[field.id];
+              result.reverted += 1;
+            } else {
+              answersIntact = false;
+              result.kept += 1;
+            }
+          } else if (field.type === 'autoEntity') {
+            if (answersIntact && field.after !== undefined && field.after !== field.before && item.entityId === field.after) {
+              item.entityId = field.before;
+            }
+          } else if (field.type === 'entity') {
+            if (item.entityId === field.after) { item.entityId = field.before; result.reverted += 1; } else result.kept += 1;
+          } else if (field.type === 'note') {
+            const same = noteTextOf(item.note).trimEnd() === String(field.afterText || '').trimEnd()
+              && (field.afterMedia == null || mediaCountOf(item.note) === field.afterMedia);
+            if (same) { item.note = clone(field.before); result.reverted += 1; } else result.kept += 1;
+          }
+        }
+      }
+      for (const [itemId, snapshot] of work) b.restoreMarker(itemId, snapshot);
+      return result;
     },
   };
 }

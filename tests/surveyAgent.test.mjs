@@ -100,8 +100,36 @@ test('set_answers writes once through the panel and can be undone', async () => 
   assert.deepEqual(calls[0], ['setAnswers', 'm117', [{ checklistItemId: 'chk-cable', value: 'Y' }, { checklistItemId: 'chk-reader', value: 'N' }]]);
   assert.match(result.change.label, /Cables pulled = Y; Card reader installed = N/);
   assert.equal(markers.m117.checklistResponses['chk-reader'].selection, 'N');
-  assert.equal(box.undo(result.change), true);
+  assert.deepEqual(box.undo([result.change]), { reverted: 2, kept: 0 });
   assert.deepEqual(markers.m117.checklistResponses, {});
+});
+
+test('undo keeps what changed after the agent and takes back one turn in one write', async () => {
+  const { bridge, markers } = fakeBridge({ restoreMarker(id, snap) {
+    this.restores = (this.restores || 0) + 1;
+    markers[id] = { ...markers[id], ...snap };
+  } });
+  const box = toolboxFor(bridge);
+  const answers = await box.run('set_answers', { item_id: 'm117', answers: [{ checklist_item_id: 'chk-cable', value: 'Y' }, { checklist_item_id: 'chk-reader', value: 'N' }] });
+  const note = await box.run('add_note', { item_id: 'm117', text: 'No power.' });
+  // The person taps a different answer for the reader afterwards.
+  markers.m117 = { ...markers.m117, checklistResponses: { ...markers.m117.checklistResponses, 'chk-reader': { selection: 'Y' } } };
+  assert.deepEqual(box.undo([answers.change, note.change]), { reverted: 2, kept: 1 });
+  assert.equal(bridge.restores, 1, 'one write per item');
+  assert.equal(markers.m117.checklistResponses['chk-cable'], undefined);
+  assert.equal(markers.m117.checklistResponses['chk-reader'].selection, 'Y', 'the later tap stays');
+  assert.equal(markers.m117.note.text, 'Existing.');
+});
+
+test('a turn bound to one document refuses once another is open', async () => {
+  const { bridge, calls } = fakeBridge();
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge, documentId: 'doc-1' });
+  assert.equal((await box.run('find_items', { query: 'D-117' })).isError, false);
+  bridge.documentId = 'doc-2';
+  const late = await box.run('set_answers', { item_id: 'm117', answers: [{ checklist_item_id: 'chk-cable', value: 'Y' }] });
+  assert.equal(late.isError, true);
+  assert.match(late.content, /another document/);
+  assert.equal(calls.length, 0);
 });
 
 test('invalid answers, unknown checklist items and viewers change nothing', async () => {
@@ -131,8 +159,7 @@ test('add_note appends, set_entity checks the entity, both undo', async () => {
   const entity = await box.run('set_entity', { item_id: 'm117', entity_id: 'ent-sub' });
   assert.equal(markers.m117.entityId, 'ent-sub');
   assert.equal((await box.run('set_entity', { item_id: 'm117', entity_id: 'ent-nope' })).isError, true);
-  box.undo(entity.change);
-  box.undo(note.change);
+  box.undo([note.change, entity.change]);
   assert.equal(markers.m117.note.text, 'Existing.');
   assert.equal(markers.m117.entityId, null);
 });
