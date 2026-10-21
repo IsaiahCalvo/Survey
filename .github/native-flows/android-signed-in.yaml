@@ -47,3 +47,17 @@ name: android-signed-in
     visible: ".*(Share|share|Copy|Nearby|Drive).*"
     timeout: 30000
 - takeScreenshot: 05-share-sheet
+# #1006: the phone top bar's Export button goes to the same share sheet.
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "Export"
+    timeout: 30000
+- tapOn: "Export"
+- extendedWaitUntil:
+    visible: ".*(Share|share|Copy|Nearby|Drive).*"
+    timeout: 30000
+- takeScreenshot: 06-share-sheet-top-bar
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "More document options"
+    timeout: 30000
