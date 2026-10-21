@@ -183,7 +183,7 @@ ${body}
     <div><h2 class="fh">Use cases</h2>${USES.map((u) => `<a href="/use-cases/${u.slug}">${u.name}</a>`).join('')}</div>
     <div><h2 class="fh">Compare</h2>${COMPARE.map((c) => `<a href="/compare/${c.slug}">Survey vs ${c.them.split(' ')[0]}</a>`).join('')}</div>${TOOL_LINKS.length ? `
     <div><h2 class="fh">Free PDF tools</h2>${TOOL_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}</div>` : ''}
-    <div><h2 class="fh">Get started</h2><a href="${APP}">Log in</a><a href="${APP}">Start free</a><a href="${MAIL}">Contact</a></div>
+    <div><h2 class="fh">Get started</h2><a href="${APP}">Log in</a><a href="${APP}">Start free</a><a href="${MAIL}">Contact</a><a href="/status">Status</a></div>
     <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
   </div>
   <p class="copy">© <span class="yr">2026</span> Survey</p>
@@ -372,6 +372,64 @@ const faq = page({
 ${cta()}`,
 });
 
+// Status: read in the visitor's browser from the live release marker and the
+// production monitor's GitHub issues (.github/workflows/monitor.yml opens an
+// `alert` issue when the site is down or a deploy fails, and closes it when
+// fixed), so it needs no status service account.
+const STATUS_SCRIPT = `<script>
+(function(){
+  var REPO='IsaiahCalvo/Survey';
+  var KINDS=[[/is down/i,'Outage','Survey could not be reached.'],[/deploy/i,'Update problem','An update failed to go out. The site kept running.']];
+  function kind(t){for(var i=0;i<KINDS.length;i++)if(KINDS[i][0].test(t))return KINDS[i];return [null,'Problem',''];}
+  function when(s){var d=new Date(s);return d.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});}
+  function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
+  var now=document.getElementById('st-now'),ver=document.getElementById('st-ver'),list=document.getElementById('st-list');
+  fetch('/release.json?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){
+    if(j&&j.commit)ver.textContent='Live version '+String(j.commit).slice(0,7)+(j.builtAt?', built '+when(j.builtAt):'')+'.';
+  }).catch(function(){});
+  // GitHub allows 60 unsigned requests an hour per visitor, so keep the last
+  // answer for a few minutes and fall back to it when GitHub says no.
+  var KEY='survey-status-v1',cached=null;
+  try{cached=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
+  var fresh=cached&&Date.now()-cached.t<180000;
+  (fresh?Promise.resolve(cached.items):fetch('https://api.github.com/repos/'+REPO+'/issues?labels=alert&state=all&per_page=15',{headers:{Accept:'application/vnd.github+json'}})
+    .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()}).then(function(items){
+      items=items.filter(function(i){return !i.pull_request}).map(function(i){return {title:i.title,state:i.state,created_at:i.created_at,closed_at:i.closed_at}});
+      try{localStorage.setItem(KEY,JSON.stringify({t:Date.now(),items:items}))}catch(e){}
+      return items;
+    },function(err){if(cached)return cached.items;throw err;}))
+    .then(function(items){
+      var open=items.filter(function(i){return i.state==='open'});
+      var down=open.some(function(i){return kind(i.title)[1]==='Outage'});
+      now.className='st-now '+(down?'bad':open.length?'warn':'ok');
+      now.textContent=down?'Survey is having problems. We are on it.':open.length?'Survey is working. An update is delayed.':'All systems working.';
+      list.textContent='';
+      if(!items.length){list.appendChild(el('li','fine','No problems recorded.'));return;}
+      items.forEach(function(i){
+        var k=kind(i.title),li=el('li');
+        li.appendChild(el('strong',null,k[1]));
+        li.appendChild(el('span',null,' '+(k[2]||i.title)));
+        li.appendChild(el('span','fine',' Started '+when(i.created_at)+(i.closed_at?'. Fixed '+when(i.closed_at)+'.':'. Still open.')));
+        list.appendChild(li);
+      });
+    }).catch(function(){
+      now.className='st-now';
+      now.textContent=ver.textContent?'Survey is up. Incident history could not load right now.':'Could not check status right now. Try again in a minute.';
+    });
+})();
+</script>`;
+const status = page({
+  path: '/status', crumb: 'Status',
+  title: 'Status | Survey',
+  desc: 'Whether Survey is up right now, and recent problems.',
+  body: `<style>.st-now{font:600 20px/1.3 var(--body);padding:18px 20px;border:1px solid var(--rule);border-radius:12px;background:var(--sheet)}.st-now.ok{border-color:#2e8b57}.st-now.warn{border-color:#c98a00}.st-now.bad{border-color:var(--red)}.st-list{list-style:none;padding:0;margin:0}.st-list li{padding:12px 0;border-top:1px solid var(--rule);display:flex;flex-wrap:wrap;gap:6px}</style>
+<section class="page-head"><div class="wrap narrow"><h1>Survey status</h1><p class="lede">We check Survey every 15 minutes. If something breaks, it shows here.</p></div></section>
+<section class="sec tight"><div class="wrap narrow"><p class="st-now" id="st-now" role="status">Checking…</p><p class="fine" id="st-ver"></p>
+<h2>Recent problems</h2><ul class="st-list" id="st-list"><li class="fine">Loading…</li></ul>
+<p class="fine">Something wrong that isn't listed? <a href="${MAIL}">Tell us</a>.</p></div></section>`,
+  scripts: STATUS_SCRIPT,
+});
+
 const notFound = page({
   path: '/404', title: 'Page not found | Survey', desc: 'This page does not exist.',
   body: `<section class="page-head"><div class="wrap narrow"><h1>We can't find that page</h1><p class="lede">The link may be old. Try the <a href="/welcome">home page</a> or <a href="${APP}">open Survey</a>.</p></div></section>`,
@@ -409,14 +467,14 @@ ${cta('Try Survey free on your own drawings')}`,
 // Importing this file (build-free-tools.mjs does, for the layout) must not
 // rewrite the pages, so the writes only run when it is the script itself.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq };
+  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq, 'status/index.html': status };
   for (const [p, html] of Object.entries(out)) {
     const f = join(root, p);
     mkdirSync(dirname(f), { recursive: true });
     writeFileSync(f, html);
   }
 
-  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
+  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', '/status', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
   writeFileSync(join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></url>`).join('\n')}
