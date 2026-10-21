@@ -6,13 +6,37 @@ Survey (https://surveytool.app) lets AI agents act for a signed-in user.
 
 If your agent runs inside the user's browser and the browser supports WebMCP,
 Survey offers tools through `document.modelContext` while the user is signed in.
-No extra sign-in is needed: tools act as that user.
+No extra sign-in is needed: tools act as that user, with that user's plan and
+that user's role on each document. Every write goes through the same path as a
+human tap (so sync, Excel rows, auto-entity and role checks all apply), and a
+viewer's agent can read but not write. (The user can turn WebMCP off with
+`localStorage['survey.webmcp'] = 'off'`.)
 
-With Survey mode open and a template chosen, the survey item tools are there
-too: `survey_get_context` (categories, checklists, answers, entities),
-`survey_find_items`, `survey_get_item`, `survey_set_answers`,
-`survey_add_note`, `survey_set_entity` and `survey_show_item`. Writing needs
-editor or owner access to the document.
+Always there:
+
+- `survey_whoami` — whether the agent is signed in, and the user's plan.
+- `survey_list_projects` — the projects this user can see.
+- `survey_list_documents` — the PDFs this user can see (optionally one project).
+- `survey_get_document_role` — this user's role on a document (owner/editor/viewer).
+- `survey_get_open_document` — the open PDF's page count and the page on screen.
+- `survey_go_to_page` — scroll the open PDF to a page.
+
+With a PDF open in Survey mode and a template chosen:
+
+- `survey_add_marker` — add a Survey marker box (editor/owner).
+- `survey_list_markers` — list the markers on the plan: id, page, name, box.
+- `survey_edit_marker` — move or resize a marker's box by id (editor/owner).
+- `survey_delete_marker` — delete a marker and its item answers by id
+  (editor/owner). It does nothing unless you pass `confirm: true`, which you
+  should set only after the person has agreed; the marker is kept in trash for
+  30 days and the last change can be undone.
+- Survey item tools: `survey_get_context` (categories, checklists, answers,
+  entities), `survey_find_items`, `survey_get_item` (all read),
+  `survey_set_answers`, `survey_add_note`, `survey_set_entity` (editor/owner)
+  and `survey_show_item`.
+
+Marker and item ids are shared: an id from `survey_find_items` or
+`survey_list_markers` works with the edit, delete and item tools alike.
 
 ## Outside the browser: user-claimed flow
 
