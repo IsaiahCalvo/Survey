@@ -99,3 +99,28 @@ test('a signed-out caller cannot read anyone\'s plan', async () => {
   const { error } = await anonClient().rpc('get_user_tier', { p_user_id: ownerId });
   expect(isPermissionDenied(error), JSON.stringify(error)).toBe(true);
 });
+
+// Migration 20261022040000_advisor_cleanup: trigger functions are not RPCs, and
+// invite-delivery and admin helpers need a signed-in caller.
+// PostgREST hides a function the caller cannot execute (PGRST202), or refuses it.
+const notCallable = (error) => isPermissionDenied(error) || error?.code === 'PGRST202';
+
+test('trigger functions and signed-in-only helpers are not callable from outside', async ({ page }) => {
+  const free = await signedIn(page, E2E_ACCOUNTS.free);
+  for (const fn of ['handle_new_user', 'update_user_storage', 'enforce_documents_storage_quota', 'w54_document_annotations_mark_lock']) {
+    const { error } = await free.rpc(fn);
+    expect(notCallable(error), `${fn}: ${JSON.stringify(error)}`).toBe(true);
+  }
+  for (const [fn, args] of [
+    ['is_feature_flag_admin', {}],
+    ['complete_invite_email_delivery', { p_claim_id: '00000000-0000-4000-8000-000000000000' }],
+  ]) {
+    const { error } = await anonClient().rpc(fn, args);
+    expect(notCallable(error), `${fn}: ${JSON.stringify(error)}`).toBe(true);
+  }
+  expect((await free.rpc('is_feature_flag_admin')).error).toBeNull();
+  // Every request runs the agent pre-request hook as the caller, so signed-out
+  // calls must still get through it.
+  const { error: flagsError } = await anonClient().rpc('get_my_feature_flags');
+  expect(flagsError, JSON.stringify(flagsError)).toBeNull();
+});

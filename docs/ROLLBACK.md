@@ -67,9 +67,9 @@ the workflow.
   rows by hand when the damage is small.
 - **Point-in-time restore** (rewind to any minute, not just the daily copy)
   is a paid add-on (about $100/month for 7 days). It was off on 2026-10-21.
-- **Files are not in the backups.** Supabase backups hold the database only.
-  PDFs and photos in Storage are not copied anywhere; a deleted file stays
-  deleted.
+- **Files are not in Supabase's backups.** They hold the database only. See
+  "Storage backup" below for the weekly copy of PDFs and photos (off until
+  `STORAGE_BACKUP_ENABLED` is set).
 
 ### Restoring the database
 
@@ -99,6 +99,30 @@ The drill script shows the order a manual restore must follow: roles, then
 schema, then data with `session_replication_role = replica`, in one
 transaction. Drop `GRANT SET ON PARAMETER` lines from the roles file and empty
 `COPY` blocks from the data file; both only touch Supabase's own objects.
+
+### Storage backup
+
+Actions > "Storage backup" (`scripts/storage-backup.mjs`) copies every stored
+file once a week into the private `storage-backup` bucket of the same project,
+as `<bucket>/<path>`. The copy happens inside Supabase, so it costs no egress;
+the extra space is about the size of the files (181 MB on 2026-10-21, well
+inside the Pro plan's 100 GB). A file removed from its bucket moves to
+`_removed/<date>/<bucket>/<path>` and is purged 30 days later, so a deleted
+account's files leave the backup within about five weeks. It guards against
+deleted or overwritten files, not against losing the whole project.
+
+It runs only when the repo variable `STORAGE_BACKUP_ENABLED` is `true`.
+
+To put files back (a whole person, one document, or one file):
+
+```bash
+SUPABASE_URL=https://cvamwtpsuvxvjdnotbeg.supabase.co SUPABASE_SERVICE_ROLE_KEY=... \
+  node scripts/storage-backup.mjs --restore documents/<user id>/
+# or a removed one: --restore _removed/2026-10-21/documents/<user id>/<file>.pdf
+```
+
+Files that exist in their bucket now are left alone. The database rows that
+point at them come from the database backup (above).
 
 ## 5. The phone apps
 

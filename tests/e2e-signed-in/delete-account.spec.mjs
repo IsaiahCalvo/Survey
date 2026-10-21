@@ -2,85 +2,26 @@
 // removes every row and stored file the person owns, cuts off their agents,
 // and leaves the people they shared with their own files and markup.
 import crypto from 'node:crypto';
+import {
+  PDF, RUN, addDocument, addMarkup, addMedia, exists, makeUser, must, signInToken,
+} from './accountFixtures.mjs';
 import { agentSignIn } from './agentAuth.mjs';
-import { adminClient, expect, test } from './helpers.mjs';
+import { adminClient, expect, functionUrl, test } from './helpers.mjs';
 
 const API = () => process.env.E2E_SUPABASE_URL;
 const KEY = () => process.env.E2E_SUPABASE_ANON_KEY;
-const RUN = crypto.randomBytes(3).toString('hex');
-const PDF = new Blob(['%PDF-1.7\n%%EOF\n'], { type: 'application/pdf' });
-const JPEG = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0xff, 0xd9])], { type: 'image/jpeg' });
 
-async function must(label, promise) {
-  const { data, error } = await promise;
-  if (error) throw new Error(`${label}: ${error.message}`);
-  return data;
-}
-
-async function makeUser(admin, name) {
-  const account = { email: `delete-${name}-${RUN}@example.test`, password: `Pw-${crypto.randomUUID()}` };
-  const { user } = await must(`create ${name}`, admin.auth.admin.createUser({ ...account, email_confirm: true }));
-  return { ...account, id: user.id };
-}
-
-async function signInToken(account) {
-  const res = await fetch(`${API()}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: { apikey: KEY(), 'content-type': 'application/json' },
-    body: JSON.stringify({ email: account.email, password: account.password }),
-  });
-  const body = await res.json();
-  expect(body.access_token, JSON.stringify(body)).toBeTruthy();
-  return body.access_token;
-}
-
-// The stack's edge runtime serves the function; E2E_FUNCTIONS_URL points at a
-// hand-served copy where that runtime cannot start.
-const FUNCTION_URL = () => process.env.E2E_FUNCTIONS_URL || `${API()}/functions/v1/delete-account`;
-const deleteAccount = (token, body = { confirmation: 'DELETE' }) => fetch(FUNCTION_URL(), {
+const deleteAccount = (token, body = { confirmation: 'DELETE' }) => fetch(functionUrl('delete-account'), {
   method: 'POST',
   headers: { apikey: KEY(), authorization: `Bearer ${token}`, 'content-type': 'application/json' },
   body: JSON.stringify(body),
 });
 
-async function addDocument(admin, owner, { projectId = null, name, sha = null }) {
-  const id = crypto.randomUUID();
-  const filePath = `${owner.id}/${id}.pdf`;
-  await must('upload pdf', admin.storage.from('documents').upload(filePath, PDF, { contentType: 'application/pdf' }));
-  await must('document row', admin.from('documents').insert({
-    id, user_id: owner.id, project_id: projectId, name, file_path: filePath, file_size: PDF.size, page_count: 1,
-    content_sha256: sha,
-  }));
-  return { id, filePath };
-}
-
-// Survey media is keyed by document, whoever took the photo.
-async function addMedia(admin, documentId) {
-  const path = `${documentId}/marker-${RUN}/${crypto.randomUUID()}.jpg`;
-  await must('upload media', admin.storage.from('survey-media').upload(path, JPEG, { contentType: 'image/jpeg' }));
-  return path;
-}
-
-async function addMarkup(admin, documentId, author) {
-  const annotationId = `delete-${RUN}-${crypto.randomUUID()}`;
-  await must('annotation', admin.from('document_annotations').insert({
-    document_id: documentId, user_id: author.id, annotation_id: annotationId, annotation_type: 'survey-marker',
-    page_number: 1, bounds: { x: 1, y: 1, width: 10, height: 10 }, annotation_data: { type: 'rect' },
-  }));
-  return annotationId;
-}
-
-async function exists(admin, bucket, path) {
-  const slash = path.lastIndexOf('/');
-  const { data } = await admin.storage.from(bucket).list(path.slice(0, slash), { search: path.slice(slash + 1) });
-  return (data || []).some((o) => o.name === path.slice(slash + 1));
-}
-
 test('deleting an account removes everything the person owns, and only that', async ({ page }) => {
   test.setTimeout(240_000);
   const admin = adminClient();
-  const leaver = await makeUser(admin, 'leaver');
-  const friend = await makeUser(admin, 'friend');
+  const leaver = await makeUser(admin, 'delete-leaver');
+  const friend = await makeUser(admin, 'delete-friend');
 
   // The leaver's own project, file, nested legacy file, media and markup.
   const project = crypto.randomUUID();
@@ -182,8 +123,8 @@ test('deleting an account removes everything the person owns, and only that', as
 test('a retry after the rows went still moves a shared file\'s survey data', async () => {
   test.setTimeout(120_000);
   const admin = adminClient();
-  const leaver = await makeUser(admin, 'retry-leaver');
-  const friend = await makeUser(admin, 'retry-friend');
+  const leaver = await makeUser(admin, 'delete-retry-leaver');
+  const friend = await makeUser(admin, 'delete-retry-friend');
   const project = crypto.randomUUID();
   await must('project', admin.from('projects').insert({ id: project, user_id: leaver.id, name: `Retry project ${RUN}` }));
   const filed = await addDocument(admin, friend, { projectId: project, name: `Retry filed ${RUN}` });

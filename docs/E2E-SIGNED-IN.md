@@ -122,11 +122,12 @@ The stack runs from `.e2e/supabase-stack/` (git-ignored), not `supabase/`:
 its config is `supabase/config.toml` with its own `project_id`, ports and unused
 services off (studio, mail, analytics, pooler). The edge runtime serves a copy
 of `supabase/functions/` so account deletion runs through the real
-`delete-account` function. Where its container cannot start (some sandboxes
-refuse its file limit), start the stack with `E2E_EDGE_RUNTIME=off`, serve the
-function with `deno run -A supabase/functions/delete-account/index.ts` (with
-`SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` from
-`.env.e2e`) and set `E2E_FUNCTIONS_URL=http://127.0.0.1:8000/`. Its migrations
+`delete-account` and `export-account` functions. Where its container cannot
+start (some sandboxes refuse its file limit), start the stack with
+`E2E_EDGE_RUNTIME=off`, serve the functions with
+`deno run -A --config supabase/functions/deno.json scripts/e2e-serve-functions.ts`
+(with `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` from
+`.env.e2e`) and set `E2E_FUNCTIONS_URL=http://127.0.0.1:8000/functions/v1`. Its migrations
 are a plain copy of `supabase/migrations/`; that folder alone builds the
 database:
 
