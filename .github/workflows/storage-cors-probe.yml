@@ -1,0 +1,22 @@
+name: storage-cors-probe
+# Read-only header probe of Supabase Storage CORS/Range behaviour.
+# Manual only; sends OPTIONS and a 1-byte ranged GET to a made-up path.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: https://cvamwtpsuvxvjdnotbeg.supabase.co
+    steps:
+      - name: Preflight (web origin)
+        run: curl -sS -i -X OPTIONS "$BASE/storage/v1/object/sign/documents/__probe__.pdf" -H 'Origin: https://surveytool.app' -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: range' -o /dev/null -D - || true
+      - name: Preflight (capacitor origin)
+        run: curl -sS -i -X OPTIONS "$BASE/storage/v1/object/sign/documents/__probe__.pdf" -H 'Origin: capacitor://localhost' -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: range' -o /dev/null -D - || true
+      - name: Ranged GET (missing object)
+        run: curl -sS -X GET "$BASE/storage/v1/object/public/__probe__/x.pdf" -H 'Origin: https://surveytool.app' -H 'Range: bytes=0-0' -o /dev/null -D - || true
+      - name: Ranged GET (signed path, bogus token)
+        run: curl -sS -X GET "$BASE/storage/v1/object/sign/documents/__probe__.pdf?token=x" -H 'Origin: https://surveytool.app' -H 'Range: bytes=0-0' -o /dev/null -D - || true
