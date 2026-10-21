@@ -96,8 +96,9 @@ test('the section icon button has no disabled colour of its own to be out-ranked
 test('select-mode buttons and Select toggles use the shared rules', () => {
   const src = read('src/components/SectionIconButton.jsx');
   assert.match(src, /selectModeActionState\(key, label, \{ count, can: can\[key\] \}\)/);
-  assert.match(src, /disabled=\{!state\.enabled\}/);
-  assert.match(src, /onClick=\{\(\) => \{ if \(state\.enabled\) handlers\[handler\]\(\); \}\}/, 'a disabled action never runs its handler');
+  assert.match(src, /disabled=\{!state\.enabled && !reasoned\}/);
+  // Off for a reason: aria-disabled, and a tap toasts the reason instead of running.
+  assert.match(src, /onClick=\{\(\) => \{ if \(state\.enabled \|\| reasoned\) activateOrExplain\(reasoned \? state\.tooltip : null, handlers\[handler\]\); \}\}/, 'a disabled action never runs its handler');
   assert.match(src, /nothingToSelect/);
   // Projects and templates share ONE item at a time.
   assert.match(read('src/home/ProjectsFolderTree.jsx'), /can=\{\{ share: selCount > 1 \? 'Share one project at a time' : true \}\}/);

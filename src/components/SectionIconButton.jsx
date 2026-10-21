@@ -31,6 +31,7 @@ import useLoadoutTransition from '../hooks/useLoadoutTransition';
 import Icon from '../Icons.jsx';
 import { TooltipContext } from './Tooltip.jsx';
 import { selectAllState, selectModeActionState } from '../utils/disabledActions.js';
+import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import './SectionIconButton.css';
 
 export const SECTION_ACTION_ICONS = Object.freeze({
@@ -181,6 +182,9 @@ export function SelectModeButtons({
       {SELECT_MODE_ACTIONS.map(({ key, label, handler }) => {
         if (typeof handlers[handler] !== 'function') return null;
         const state = selectModeActionState(key, label, { count, can: can[key] });
+        // Off for a permission reason (a string `can`): still tappable, so a
+        // phone user gets the reason as a toast instead of a hover tip.
+        const reasoned = !state.enabled && count > 0 && typeof can[key] === 'string' && Boolean(can[key]);
         return (
           <SectionIconButton
             key={key}
@@ -188,10 +192,11 @@ export function SelectModeButtons({
             action={key}
             label={label}
             tooltip={state.tooltip}
-            disabled={!state.enabled}
+            disabled={!state.enabled && !reasoned}
+            aria-disabled={reasoned ? true : undefined}
             className={key === 'delete' ? 'is-danger' : ''}
             tooltipPlacement={tooltipPlacement}
-            onClick={() => { if (state.enabled) handlers[handler](); }}
+            onClick={() => { if (state.enabled || reasoned) activateOrExplain(reasoned ? state.tooltip : null, handlers[handler]); }}
             {...(key === 'delete' ? deleteProps : null)}
           />
         );

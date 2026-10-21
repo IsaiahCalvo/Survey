@@ -22,6 +22,7 @@
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
 import { canManageProjectFile } from './projectFilePermissions.js';
+import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
@@ -167,9 +168,10 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
             type="button"
             role="menuitem"
             className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
-            disabled={it.disabled}
-            {...(it.title ? tip(it.title) : {})}
-            onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+            disabled={it.reason ? undefined : it.disabled}
+            aria-disabled={it.reason ? true : undefined}
+            {...(it.reason ? tip(it.reason) : {})}
+            onClick={() => { if (it.disabled && !it.reason) return; onClose(); activateOrExplain(it.reason, it.onClick); }}
           >
             {it.iconNode
               ? it.iconNode
@@ -2057,8 +2059,8 @@ export default function ProjectsFolderTree({
               { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
-              { label: 'Delete', danger: true, disabled: !canManage, title: canManage ? undefined : noManageTitle, onClick: () => deleteFiles([fileMenu.id]) },
-              { label: 'Share', disabled: !canManage, title: canManage ? undefined : noManageTitle, onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
+              { label: 'Delete', danger: true, reason: canManage ? null : noManageTitle, onClick: () => deleteFiles([fileMenu.id]) },
+              { label: 'Share', reason: canManage ? null : noManageTitle, onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
               {
                 label: locked ? 'Unlock document' : 'Lock document',
                 disabled: !canLock,
