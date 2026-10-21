@@ -29,8 +29,14 @@ test('crash reporter: personal details are scrubbed', () => {
   );
   assert.doesNotMatch(text, /jane|example\.com|Plan v2|3f2a9c1e|token=abc|123456789|eyJ/);
   assert.match(text, /\[email\]/);
-  assert.match(text, /\[file\]/);
+  assert.match(text, /"\[text\]"/);
   assert.match(text, /https:\/\/surveytool\.app\/app/);
+  // Document names: quoted, unquoted with spaces, or with no extension at all.
+  assert.equal(scrubCrashText('Could not copy "Acme Confidential Site Plan".'), 'Could not copy "[text]".');
+  assert.equal(scrubCrashText('Failed to upload any files. Errors: Acme Site Plan v2.pdf: too big'),
+    'Failed to upload any files. Errors: [file]: too big');
+  assert.equal(scrubCrashText("Cannot read properties of undefined (reading 'x')"), "Cannot read properties of undefined (reading 'x')");
+  assert.equal(scrubCrashText("Bad value 'Main Street job'"), "Bad value '[text]'");
   assert.equal(scrubCrashText('word '.repeat(80), 300).length, 300);
 });
 
@@ -53,12 +59,13 @@ test('crash reporter: sends the backlog and new crashes once, at most a few per 
   __resetCrashLogForTests();
   const now = Date.parse('2026-10-21T12:00:00Z');
   const storage = memoryStorage();
-  recordCrash({ kind: 'error', message: 'old one' }, { storage, now: now - 1000 });
+  recordCrash({ kind: 'error', message: 'old one' }, { storage, now: now - 60000 });
   recordCrash({ kind: 'error', message: 'too old' }, { storage, now: now - 2 * 24 * 3600 * 1000 });
   const calls = [];
-  const supabase = { rpc: async (name, args) => { calls.push([name, args]); return { error: null }; } };
+  const supabase = { rpc: async (name, args) => { calls.push([name, args]); return { data: true, error: null }; } };
+  const immediately = (fn) => { fn(); return 0; };
 
-  const stop = installCrashReporter(supabase, { now: () => now, storage });
+  const stop = installCrashReporter(supabase, { now: () => now, storage, schedule: immediately });
   await tick();
   assert.deepEqual(calls.map(([, a]) => a.p_message), ['old one']);
   assert.equal(calls[0][0], 'report_client_error');
@@ -71,10 +78,40 @@ test('crash reporter: sends the backlog and new crashes once, at most a few per 
 
   // A reload does not resend what already went out.
   const again = [];
-  installCrashReporter({ rpc: async (n, a) => { again.push(a.p_message); return { error: null }; } }, { now: () => now + 600000, storage })();
+  installCrashReporter({ rpc: async (n, a) => { again.push(a.p_message); return { data: true, error: null }; } },
+    { now: () => now + 600000, storage, schedule: immediately })();
   await tick();
   assert.ok(!again.includes('old one'));
   assert.ok(JSON.parse(storage.getItem(CRASH_LOG_KEY)).length > 0);
+});
+
+test('crash reporter: waits for repeats to fold in, and keeps refused reports for later', async () => {
+  __resetCrashLogForTests();
+  let clock = Date.parse('2026-10-21T12:00:00Z');
+  const storage = memoryStorage();
+  const pending = [];
+  const calls = [];
+  let accept = false;
+  const supabase = { rpc: async (name, args) => { calls.push(args); return { data: accept, error: null }; } };
+  const stop = installCrashReporter(supabase, { now: () => clock, storage, schedule: (fn, ms) => { pending.push([fn, ms]); return 0; } });
+
+  recordCrash({ kind: 'error', message: 'loop' }, { storage, now: clock });
+  recordCrash({ kind: 'error', message: 'loop' }, { storage, now: clock + 1000 });
+  recordCrash({ kind: 'error', message: 'loop' }, { storage, now: clock + 2000 });
+  assert.equal(pending.length, 1, 'repeats do not queue a second send');
+  assert.ok(pending[0][1] > 30000, 'waits out the fold window');
+  clock += pending[0][1];
+  pending.shift()[0]();
+  await tick();
+  assert.equal(calls[0].p_repeats, 3);
+  assert.equal(readCrashReports(storage)[0].sentAt, null, 'flood guard said no: not stamped');
+  stop();
+
+  accept = true;
+  installCrashReporter(supabase, { now: () => clock, storage, schedule: (fn) => { fn(); return 0; } })();
+  await tick();
+  assert.equal(calls.length, 2, 'sent again on the next load');
+  assert.ok(readCrashReports(storage)[0].sentAt);
 });
 
 const pgBin = ['/usr/lib/postgresql/16/bin', '/opt/homebrew/bin', '/usr/local/bin']

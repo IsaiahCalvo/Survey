@@ -32,7 +32,7 @@ const LIVE_BEAT_MS = 4000;
 const LIVE_DEAD_AFTER_MS = 12000;
 // ...but not one from long ago (a laptop asleep for a week).
 const LIVE_FORGET_AFTER_MS = 6 * 60 * 60 * 1000;
-const DEDUPE_MS = 30000;
+export const DEDUPE_MS = 30000;
 const ROUTE_KEYS = ['mobileNav', 'nativeShell', 'tab', 'view'];
 
 const listeners = new Set();
