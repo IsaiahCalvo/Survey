@@ -47,6 +47,25 @@ const PROBE = () => {
       for (const e of list.getEntries()) w.__perf.longTasks.push([e.startTime, e.duration]);
     }).observe({ type: 'longtask', buffered: true });
   } catch { /* no longtask support */ }
+  // Long animation frames (Chromium LoAF): where a slow frame's time went.
+  w.__perf.loaf = [];
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        if (!w.__perf.recording) continue;
+        const scripts = (e.scripts || []).map((sc) => ({ d: Math.round(sc.duration), inv: sc.invoker || '', src: `${(sc.sourceURL || '').split('/').pop()}:${sc.sourceCharPosition}`, fn: sc.sourceFunctionName || '' }));
+        w.__perf.loaf.push({ d: Math.round(e.duration), script: Math.round(scripts.reduce((n, sc) => n + sc.d, 0)), render: Math.round(e.renderStart ? e.startTime + e.duration - e.renderStart : 0), layout: Math.round(e.styleAndLayoutStart ? e.startTime + e.duration - e.styleAndLayoutStart : 0), scripts });
+      }
+    }).observe({ type: 'long-animation-frame', buffered: false });
+  } catch { /* no LoAF support */ }
+  // Page-div style writes (one per page per page-list re-render that changes it).
+  w.__perf.pageStyleWrites = 0;
+  try {
+    new MutationObserver((records) => {
+      if (!w.__perf.recording) return;
+      for (const r of records) if (r.target.classList?.contains('survey-pdfjs-page-div')) w.__perf.pageStyleWrites += 1;
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ['style'] });
+  } catch { /* none */ }
   let last = 0;
   const frame = (t) => {
     const s = w.__perf;
@@ -99,8 +118,17 @@ async function window_(page, start) {
       longest: tasks.reduce((m, [, d]) => Math.max(m, d), 0),
       dropped,
       frames: s.frames.length,
+      pageStyleWrites: s.pageStyleWrites,
+      loafCount: s.loaf.length,
+      loafMs: s.loaf.reduce((n, f) => n + f.d, 0),
+      loafScriptMs: s.loaf.reduce((n, f) => n + f.script, 0),
+      loafRenderMs: s.loaf.reduce((n, f) => n + f.render, 0),
+      loafLayoutMs: s.loaf.reduce((n, f) => n + f.layout, 0),
+      loafTop: [...s.loaf].sort((a, b) => b.d - a.d).slice(0, 5),
     };
     s.frames = [];
+    s.loaf = [];
+    s.pageStyleWrites = 0;
     s.recording = false;
     return r;
   }, start);
@@ -289,6 +317,7 @@ async function oneRun(browser, size) {
   for (let i = 0; i < steps; i += 1) { await page.mouse.wheel(0, -400); await page.waitForTimeout(16); }
   await page.waitForTimeout(500);
   const pan = await window_(page, start);
+  console.log(size, 'pan slowest frames', JSON.stringify(pan.loafTop));
   pan.maxScroll = await page.evaluate(() => window.__perf.maxScroll || 0);
   await quiet(page);
 
@@ -308,6 +337,7 @@ async function oneRun(browser, size) {
   await page.keyboard.up('Control');
   await page.waitForTimeout(800);
   const zoom = await window_(page, start);
+  console.log(size, 'zoom slowest frames', JSON.stringify(zoom.loafTop));
   if (zoomProfile) fs.writeFileSync(zoomProfile, JSON.stringify((await cdp.send('Profiler.stop')).profile));
   await quiet(page);
   const heapEndMB = await heapMB(cdp);
@@ -318,6 +348,10 @@ async function oneRun(browser, size) {
     firstPage, heapOpenMB, canvasOpenMB: open.canvasMB, pagesDrawnOpen: open.pagesDrawn,
     panBlocking: pan.blocking, panLongest: pan.longest, panDropped: pan.dropped,
     zoomBlocking: zoom.blocking, zoomLongest: zoom.longest, zoomDropped: zoom.dropped,
+    zoomPageStyleWrites: zoom.pageStyleWrites, zoomLoafCount: zoom.loafCount, zoomLoafMs: zoom.loafMs,
+    zoomLoafScriptMs: zoom.loafScriptMs, zoomLoafRenderMs: zoom.loafRenderMs, zoomLoafLayoutMs: zoom.loafLayoutMs,
+    panPageStyleWrites: pan.pageStyleWrites, panLoafCount: pan.loafCount, panLoafMs: pan.loafMs,
+    panLoafScriptMs: pan.loafScriptMs, panLoafRenderMs: pan.loafRenderMs,
     panScrolledPages: pan.maxScroll / perPage,
     heapEndMB, canvasMB: end.canvasMB, canvases: end.canvases, pagesDrawn: end.pagesDrawn, overlays: end.overlays, domNodes: end.domNodes,
   };
