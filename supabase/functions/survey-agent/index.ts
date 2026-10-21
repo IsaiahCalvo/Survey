@@ -210,6 +210,16 @@ Deno.serve(async (req) => {
     return json(429, { error: monthly ? 'monthly_cap_reached' : 'busy_try_again' });
   };
 
+  // Groq's free caps are per model per day across everyone; the hourly alert
+  // job reads these counts (survey_agent_daily_usage). A failed count never
+  // fails the request.
+  const countDaily = async (kind: string, tokens: number, audioSeconds = 0) => {
+    const { error } = await admin.rpc('record_survey_agent_daily', {
+      p_kind: kind, p_tokens: Math.max(0, Math.round(tokens)), p_audio_seconds: audioSeconds,
+    });
+    if (error) console.warn('[survey-agent] daily count failed', error.message);
+  };
+
   if (action === 'speak') {
     const v = speaker();
     if (!v) return json(501, { error: 'speech_not_set_up' });
@@ -227,7 +237,9 @@ Deno.serve(async (req) => {
       console.error('[survey-agent] speech failed', err);
       return json(502, { error: 'speech_unavailable' });
     }
-    if (res.status === 429) return json(429, { error: 'busy_try_again', retry_after: null });
+    // Orpheus's free tier allows only about 100 replies a day for everyone;
+    // the app falls back to the device's voice for the rest of the session.
+    if (res.status === 429) return json(429, { error: 'speech_limit_reached' });
     if (!res.ok) {
       // For example the model's terms not yet accepted on the Groq account.
       console.error('[survey-agent] speech error', res.status, (await res.text()).slice(0, 300));
@@ -237,6 +249,7 @@ Deno.serve(async (req) => {
     await admin.rpc('record_survey_agent_usage', {
       p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: Math.ceil(input.length * v.microsPerChar),
     });
+    await countDaily('speak', input.length);
     return json(200, { audio: encodeBase64(audio), mime: res.headers.get('content-type') || 'audio/wav', usage_left: usageLeft(1) });
   }
 
@@ -269,6 +282,7 @@ Deno.serve(async (req) => {
     await admin.rpc('record_survey_agent_usage', {
       p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: Math.ceil(seconds * t.microsPerSecond),
     });
+    await countDaily('transcribe', 0, seconds);
     return json(200, { text: String(out?.text || '').trim(), usage_left: usageLeft(1) });
   }
 
@@ -313,6 +327,7 @@ Deno.serve(async (req) => {
       p_output_tokens: Number(out?.usage?.completion_tokens || 0),
       p_cost_micros: surveyAgentCostMicros(out?.usage, provider.prices),
     });
+    await countDaily('turn', Number(out?.usage?.prompt_tokens || 0) + Number(out?.usage?.completion_tokens || 0));
     return json(200, {
       message: {
         content: typeof message.content === 'string' ? message.content : '',
