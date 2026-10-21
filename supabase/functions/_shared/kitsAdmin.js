@@ -12,7 +12,7 @@
 import { publishProblems } from './kitShape.js';
 import { parseBody, s } from './inputSchema.js';
 
-const BODY_SCHEMA = {
+export const BODY_SCHEMA = {
   action: s.enum(['list', 'publish', 'assign', 'unassign']),
   kit: s.record({ maxBytes: 256 * 1024, optional: true }),
   email: s.string({ max: 320, optional: true }),

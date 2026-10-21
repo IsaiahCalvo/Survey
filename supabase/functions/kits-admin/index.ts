@@ -2,8 +2,8 @@
 // The caller must be signed in and on the /flags admin list (checked in the
 // database with the caller's own token); only then does it use the service role.
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
-import { handleKitsAdmin } from '../_shared/kitsAdmin.js';
-import { readJsonBody } from '../_shared/inputSchema.js';
+import { BODY_SCHEMA, handleKitsAdmin } from '../_shared/kitsAdmin.js';
+import { parseBody, readJsonBody } from '../_shared/inputSchema.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -28,7 +28,9 @@ Deno.serve(async (req) => {
   const { data: { user }, error } = await userClient.auth.getUser(authHeader.replace(/^Bearer\s+/i, ''));
   if (error || !user) return json({ error: 'Unauthorized' }, 401);
 
-  const payload = await readJsonBody(req);
+  const parsed = parseBody(BODY_SCHEMA, await readJsonBody(req));
+  if (!parsed.ok) return json({ error: parsed.error }, 400);
+  const payload = parsed.value;
   const service = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '', { auth: { persistSession: false } });
   try {
     const { status, body } = await handleKitsAdmin(payload, { userClient, service });
