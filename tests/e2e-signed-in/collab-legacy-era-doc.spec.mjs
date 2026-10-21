@@ -26,7 +26,7 @@ async function ownerId(admin) {
 }
 
 // A fresh document with three legacy-era rectangles and nothing else.
-async function seedLegacyDoc(admin, name) {
+async function seedLegacyDoc(admin, name, legacyRows = 3) {
   const userId = await ownerId(admin);
   const id = randomUUID();
   const bytes = fs.readFileSync(path.resolve(E2E_DOCUMENT.fixture));
@@ -42,7 +42,7 @@ async function seedLegacyDoc(admin, name) {
   if (doc.error) throw doc.error;
   // Same shape annotationTypeSerializers.serializeFabricObjectToRow wrote
   // (Playwright cannot import src/ here: it loads it as CommonJS).
-  const rows = [0, 1, 2].map((i) => {
+  const rows = Array.from({ length: legacyRows }, (_, i) => {
     const annotationId = `legacy-rect-${i}-${id.slice(0, 8)}`;
     const left = 60 + i * 90;
     const fabricObject = {
@@ -56,9 +56,17 @@ async function seedLegacyDoc(admin, name) {
       color: '#d32f2f', opacity: null, stroke_width: 2, font_size: null, last_modified_by: userId,
     };
   });
-  const ins = await admin.from('document_annotations').insert(rows);
-  if (ins.error) throw ins.error;
+  if (rows.length) {
+    const ins = await admin.from('document_annotations').insert(rows);
+    if (ins.error) throw ins.error;
+  }
   return { id, filePath };
+}
+
+async function sealOf(admin, id) {
+  const { data, error } = await admin.from('documents').select('cutover_completed_at').eq('id', id).single();
+  if (error) throw error;
+  return data.cutover_completed_at;
 }
 
 async function openDoc(page, name) {
@@ -110,7 +118,37 @@ for (const flagOn of [false, true]) {
       const { count } = await admin.from('document_annotations')
         .select('id', { count: 'exact', head: true }).eq('document_id', seeded.id).like('annotation_id', 'legacy-rect-%');
       expect(count).toBe(3);
+
+      // Cutover seal. Flag off: the old backfill copies the rows into the
+      // collab doc and seals (unchanged). Flag on: these rows are not in the
+      // annotation doc, so it must stay unsealed rather than drop them.
+      if (flagOn) {
+        await page.waitForTimeout(12_000); // past the seal check's delay
+        expect(await sealOf(admin, seeded.id)).toBeNull();
+      } else {
+        await expect.poll(() => sealOf(admin, seeded.id), { timeout: 30_000 }).not.toBeNull();
+      }
       expect(errors).toEqual([]);
+    } finally {
+      await admin.from('documents').delete().eq('id', seeded.id);
+      await admin.storage.from('documents').remove([seeded.filePath]);
+    }
+  });
+}
+
+for (const flagOn of [false, true]) {
+  const label = flagOn ? 'flag on' : 'flag off';
+
+  test(`a document with no legacy rows is sealed on a writable open (${label})`, async ({ page }) => {
+    const admin = adminClient();
+    const name = `E2E Clean Seal ${flagOn ? 'on' : 'off'} ${Date.now()}.pdf`;
+    const seeded = await seedLegacyDoc(admin, name, 0);
+    try {
+      expect(await sealOf(admin, seeded.id)).toBeNull();
+      await setFlag(page, flagOn);
+      await signIn(page, E2E_ACCOUNTS.owner);
+      await openDoc(page, name);
+      await expect.poll(() => sealOf(admin, seeded.id), { timeout: 30_000 }).not.toBeNull();
     } finally {
       await admin.from('documents').delete().eq('id', seeded.id);
       await admin.storage.from('documents').remove([seeded.filePath]);
