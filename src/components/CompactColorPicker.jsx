@@ -1394,11 +1394,13 @@ const CompactColorPicker = ({
                     <div style={{ color: 'var(--text-3)', font: `${isDesktop ? 400 : 600} ${(dense || isDesktop) ? '10.5px' : '11px'}/1 ${FONT}` }}>Recent</div>
                     <div style={isDesktop
                         ? { display: 'grid', gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: '4px', justifyItems: 'center' }
-                        /* Phone: one track per preset, spread edge to edge
-                           like the presets row, so each recent disc sits under
-                           a preset disc (a packed 8px-gap row drifted left of
-                           them, by ~70px at 390 wide). */
-                        : { display: 'grid', gridTemplateColumns: `repeat(${presets.length}, max-content)`, justifyContent: 'space-between', alignItems: 'center' }}>
+                        /* Phone: one swatch-sized track per preset, spread
+                           edge to edge like the presets row, so each recent
+                           disc sits under a preset disc. max-content would
+                           collapse unused tracks (recents are usually < 8)
+                           and space-between would then spend leftover space
+                           after the last disc. */
+                        : { display: 'grid', gridTemplateColumns: `repeat(${presets.length}, ${dense ? 22 : 26}px)`, justifyContent: 'space-between', alignItems: 'center' }}>
                         {recentColors.map((c) => renderSwatch(c))}
                     </div>
                 </div>
