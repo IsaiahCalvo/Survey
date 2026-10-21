@@ -304,6 +304,63 @@ test('hands-free: the device hears what it is sure of, only an unsure clip goes 
   expect(await page.evaluate(() => window.__locks.map((l) => [l.kind, l.released]))).toEqual([['screen', true]]);
 });
 
+test('hands-free in the phone apps: the phone hears the words, the web mic and the server are not used', async ({ page }) => {
+  const log = { clips: [], turns: [], speak: [] };
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+    // A stand-in for the app's speech plugin (src/mobile/nativeSpeech.js).
+    window.__nativeStarts = [];
+    window.__surveyAgentNativeSpeech = {
+      isAvailable: async () => true,
+      requestPermission: async () => true,
+      start(opts) {
+        const session = { opts, stopped: false, stop() { session.stopped = true; } };
+        window.__nativeStarts.push(session);
+        return session;
+      },
+    };
+    window.__nativeSay = (text, confidence) => {
+      const s = window.__nativeStarts.at(-1);
+      s.opts.onSpeechStart?.();
+      s.opts.onFinal({ text, confidence });
+    };
+    window.__micOpens = 0;
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = (c) => { window.__micOpens += 1; return real(c); };
+  }, { template: TEMPLATE, data });
+  await mockServer(page, log);
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await panel.getByRole('button', { name: 'Hands-free' }).click();
+  await expect(panel.getByText('Listening. Just talk.')).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeStarts.map((s) => s.opts.lang))).toEqual(['en-US']);
+
+  await page.evaluate(() => window.__nativeSay('D 117, card reader installed.', 0.9));
+  await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
+  // Too unsure to act on: asked again, nothing sent.
+  const turnsBefore = log.turns.length;
+  await page.evaluate(() => window.__nativeSay('mm', 0.1));
+  await page.evaluate(() => window.__nativeSay('No, D1-18.', 0.85));
+  await expect(panel.getByText(/set card reader to Y on D-118/)).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d118')).toBe('Y');
+  await panel.getByRole('button', { name: 'Stop hands-free' }).click();
+
+  const said = log.turns.slice(turnsBefore).map((t) => t.messages.filter((m) => m.role === 'user').at(-1).content);
+  expect(said).not.toContain('mm');
+  expect(log.clips).toHaveLength(0);
+  expect(await page.evaluate(() => window.__micOpens)).toBe(0);
+  expect(await page.evaluate(() => window.__nativeStarts.at(-1).stopped)).toBe(true);
+});
+
 test('hands-free: talking over a long spoken reply stops it, and what was said is heard', async ({ page }) => {
   const log = { clips: [], turns: [], speak: [] };
   const data = await seed();

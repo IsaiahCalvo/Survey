@@ -20,6 +20,8 @@ import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageW
 import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
+import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
+import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
 import { isSureHearing, startDeviceHearing } from '../agent/deviceHearing.js';
 import { keepScreenAwake } from '../agent/keepAwake.js';
 import { AGENT_LANGS, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays, readAgentLang, writeAgentLang } from '../agent/agentLanguage.js';
@@ -196,6 +198,11 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     if (deviceHearingRef.current) {
       deviceHearingRef.current.stop();
       deviceHearingRef.current = startDeviceHearing({ lang: agentLocale(next) });
+    }
+    if (micRef.current?.native) {
+      micRef.current.stop();
+      micRef.current = null;
+      startHandsFreeRef.current();
     }
   };
 
@@ -550,6 +557,10 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     if (queueRef.current.length) { queueClip(clip, durationMs); return; }
     const text = await hear(clip, durationMs, endedAt);
     if (text === null) { queueClip(clip, durationMs); return; }
+    await handleHandsFreeText(text, { cutIn });
+  };
+  // What was said, as words: from a clip, or from the phone's own hearing.
+  const handleHandsFreeText = async (text, { cutIn = false } = {}) => {
     if (!text || !handsFreeRef.current) return;
     // Cut in on the agent, but it was the agent's own voice leaking back in.
     if (cutIn && heardOwnVoice(text, lastSpokenRef.current)) return;
@@ -587,6 +598,33 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   };
   const handleHandsFreeClipRef = useRef(handleHandsFreeClip);
   handleHandsFreeClipRef.current = handleHandsFreeClip;
+  // The phone's own hearing (iPhone and Android apps): words, in order.
+  const onNativeText = (raw, { cutIn, unsure }) => {
+    const b = surveyAgentBridge.current;
+    const text = snapItemNames(cleanTranscript(raw), Object.values(b?.markers || {}).map((m) => m?.name));
+    if (cameraRef.current) {
+      if (CANCEL_WORDS.test(text)) cameraRef.current.cancel();
+      else if (SHUTTER_WORDS.test(text)) cameraRef.current.capture().catch(() => {});
+      return;
+    }
+    if (unsure) {
+      if (speakRef.current) speak(agentSays(langRef.current, 'sayAgain')).catch(() => {});
+      return;
+    }
+    handsFreePendingRef.current += 1;
+    setPhase('working');
+    handsFreeChainRef.current = handsFreeChainRef.current
+      .then(() => handleHandsFreeTextRef.current(text, { cutIn }))
+      .catch(() => {})
+      .finally(() => {
+        handsFreePendingRef.current -= 1;
+        if (!handsFreePendingRef.current && handsFreeRef.current) setPhase('listening');
+      });
+  };
+  const handleHandsFreeTextRef = useRef(null);
+  handleHandsFreeTextRef.current = handleHandsFreeText;
+  const onNativeTextRef = useRef(onNativeText);
+  onNativeTextRef.current = onNativeText;
   const onHandsFreeClipRef = useRef(onHandsFreeClip);
   onHandsFreeClipRef.current = onHandsFreeClip;
 
@@ -595,18 +633,52 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     if (recorder.state !== 'idle') recorder.stop();
     if (speechRef.current) speechRef.current.stop();
     try {
-      micRef.current = await startHandsFreeMic({
+      // In the phone apps, the phone's own speech to text hears the person;
+      // the web mic and the server only when it can't.
+      const speech = await loadNativeSpeech();
+      micRef.current = speech
+        ? await startNativeHandsFree({
+          speech,
+          lang: agentLocale(langRef.current),
+          onText: (text, info) => onNativeTextRef.current(text, info),
+          onHearing: (on) => setHearing(on),
+          onBargeIn: () => stopSpeaking(),
+          spokenNow: () => lastSpokenRef.current,
+          onFatal: () => { if (handsFreeRef.current) restartHandsFreeRef.current(); },
+        }).catch(() => null)
+        : null;
+      micRef.current = micRef.current || await startHandsFreeMic({
         onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
         onHearing: (on) => setHearing(on),
         onBargeIn: () => stopSpeaking(),
       });
-      deviceHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
+      if (!micRef.current.native) deviceHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
+      awakeRef.current?.release();
       awakeRef.current = keepScreenAwake();
       handsFreeRef.current = true;
       setHandsFree(true);
       setPhase('listening');
     } catch (err) {
       push({ role: 'error', text: err?.name === 'NotAllowedError' ? 'Allow the microphone to talk hands-free.' : 'The microphone could not start.' });
+    }
+  };
+
+  const startHandsFreeRef = useRef(startHandsFree);
+  startHandsFreeRef.current = startHandsFree;
+  // The phone's hearing stopped for good mid-walk (permission taken away, the
+  // language not offered): carry on with the web mic and the server.
+  const restartHandsFreeRef = useRef(null);
+  restartHandsFreeRef.current = async () => {
+    micRef.current?.stop();
+    try {
+      micRef.current = await startHandsFreeMic({
+        onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
+        onHearing: (on) => setHearing(on),
+        onBargeIn: () => stopSpeaking(),
+      });
+    } catch {
+      stopHandsFree();
+      push({ role: 'error', text: 'The microphone could not start.' });
     }
   };
 

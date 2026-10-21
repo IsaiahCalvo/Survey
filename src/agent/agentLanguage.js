@@ -34,11 +34,13 @@ const SAID = {
     savedFirst: 'No signal. I saved that and will send it when you are back online.',
     savedBusy: 'That was a lot at once. I saved it and will send it in a moment.',
     saved: 'Saved.',
+    sayAgain: 'Sorry, say that again?',
   },
   es: {
     savedFirst: 'No hay señal. Lo guardé y lo enviaré cuando vuelva la conexión.',
     savedBusy: 'Fue mucho a la vez. Lo guardé y lo enviaré en un momento.',
     saved: 'Guardado.',
+    sayAgain: 'Perdón, ¿puede repetirlo?',
   },
 };
 export const agentSays = (lang, key) => (SAID[lang] || SAID.en)[key] || SAID.en[key];
