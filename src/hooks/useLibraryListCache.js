@@ -11,8 +11,16 @@ export function useLibraryListCache({ enabled, userId, kind, scopeKey, loadedSco
     if (!enabled || !userId) return;
     const cached = readLibraryListCache(userId, kind);
     if (cached) {
-      setRows((current) => (current.length ? current : cached));
+      // Keep in-memory rows only when they already belong to this scope
+      // (the server settled it). `current.length` is the previous account
+      // on an in-place switch — never paint or later persist those.
+      setRows((current) => (loadedScopeKey === scopeKey ? current : cached));
       setCachedScopeKey(scopeKey);
+    } else {
+      setCachedScopeKey(null);
+      if (loadedScopeKey !== scopeKey) {
+        setRows((current) => (current.length ? [] : current));
+      }
     }
   }, [enabled, userId, kind, scopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {

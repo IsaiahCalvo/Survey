@@ -320,11 +320,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     refetch: refetchDocuments
   } = useDocuments(selectedProjectId, { listCache: true });
 
-  // Fetch all documents for file count display in project list
+  // Fetch all documents for file count display in project list.
+  // Same device-cache as the home list so Duplicate / file counts work
+  // as soon as the cached library is on screen, not only after the
+  // second server read settles.
   const {
     documents: allDocuments,
     refetch: refetchAllDocuments
-  } = useDocuments(null);
+  } = useDocuments(null, { listCache: true });
 
   // Duplicate-upload ASK flows (decision 6). One modal, promise-shaped so the
   // upload paths can simply `await` the user's answer mid-flow. If a second
@@ -518,6 +521,12 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     // project's documents alone, and restoring against it would skip saved
     // tabs from other projects and then save the shortened set over the
     // user's session (Bugbot, #817). Report "not the full library" instead.
+    // A device-cache seed paints the hub only: documentsInitialLoading is
+    // still true then, and restore must wait for the server list. Stamping
+    // here would match saved tabs against the cached copy, skip documents
+    // the server still has, and the next save would persist the shortened
+    // strip (same class of session loss as #817).
+    if (documentsInitialLoading) return;
     onLibraryUserChange?.(selectedProjectId ? null : (user?.id || null));
   }, [supabaseDocuments]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2196,7 +2205,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           throw error;
         }
         const createdDocuments = [];
-        const sourceDocuments = (allDocuments || []).filter((doc) => doc.project_id === source.id);
+        const library = (allDocuments && allDocuments.length)
+          ? allDocuments
+          : (supabaseDocuments || documents || []);
+        const sourceDocuments = library.filter((doc) => (doc.project_id ?? doc.projectId) === source.id);
         try {
           for (const doc of sourceDocuments) {
             createdDocuments.push(await cloneDocumentToProject(doc, created.id));

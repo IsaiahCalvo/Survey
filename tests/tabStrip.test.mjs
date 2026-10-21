@@ -240,6 +240,8 @@ test('the library is stamped with its owner where it loads, and the restore read
   assert.match(appShell, /useTabSession\(\{[\s\S]{0,200}documentsUserId,/);
   assert.match(dashboard, /onLibraryUserChange\?\.\([^;]*user\?\.id \|\| null\)\);\n\s*\}, \[supabaseDocuments\]\)/,
     'stamped only when a new list lands, never on the user change alone');
+  assert.match(dashboard, /if \(documentsInitialLoading\) return;\n\s*onLibraryUserChange\?\./,
+    'cache seed must not stamp; restore waits for the server list');
 });
 
 test('the open-tabs restore only runs against the whole library, never one project', () => {

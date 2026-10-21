@@ -65,3 +65,17 @@ test('auth binding clears on sign-out and drops other accounts on sign-in', () =
   listener('INITIAL_SESSION', null);
   assert.equal(readLibraryListCache('u3', 'templates', { storage }), null);
 });
+
+test('INITIAL_SESSION with a stored refresh token keeps the list cache', () => {
+  const storage = memoryStorage();
+  storage.setItem('sb-cvam-auth-token', '{"refresh_token":"r"}');
+  let listener;
+  bindLibraryListCacheToAuth({
+    auth: { onAuthStateChange: (fn) => { listener = fn; }, storageKey: 'sb-cvam-auth-token' },
+  }, { storage });
+  writeLibraryListCache('u1', 'projects', [{ id: 1 }], { storage });
+  listener('INITIAL_SESSION', null);
+  assert.deepEqual(readLibraryListCache('u1', 'projects', { storage }), [{ id: 1 }]);
+  listener('SIGNED_OUT', null);
+  assert.equal(readLibraryListCache('u1', 'projects', { storage }), null);
+});

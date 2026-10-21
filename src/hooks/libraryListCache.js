@@ -83,14 +83,30 @@ export function clearLibraryListCache({ keepUserId = null, storage = defaultStor
   } catch { /* storage unavailable */ }
 }
 
+// Is a Supabase session still stored on this device? An offline start with an
+// expired access token reports INITIAL_SESSION without a session although the
+// refresh token is still there (auth-js _emitInitialSession): that must not
+// empty the cache — same rule as bindPdfCacheToAuth.
+function storedSessionExists(storage, storageKey) {
+  try {
+    if (storageKey) return Boolean(storage.getItem(storageKey));
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key && /^sb-.*-auth-token$/.test(key) && storage.getItem(key)) return true;
+    }
+  } catch { /* storage unavailable: treat as signed out */ }
+  return false;
+}
+
 export function bindLibraryListCacheToAuth(client, { storage = defaultStorage() } = {}) {
   if (!client?.auth?.onAuthStateChange) return;
   client.auth.onAuthStateChange((event, session) => {
     const actor = session?.user?.id ?? null;
-    if (event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !actor)) {
+    if (event === 'SIGNED_OUT' || (!actor && !storedSessionExists(storage, client.auth.storageKey))) {
       clearLibraryListCache({ storage });
       return;
     }
-    if (actor) clearLibraryListCache({ keepUserId: actor, storage });
+    if (!actor) return; // session still stored (offline start): keep the cache
+    clearLibraryListCache({ keepUserId: actor, storage });
   });
 }
