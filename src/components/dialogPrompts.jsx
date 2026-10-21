@@ -134,11 +134,12 @@ export function PromptModal({
               }}
             />
           </div>
-          <button onClick={onCancel} title="Close" aria-label="Close" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button onClick={onCancel} title="Close" aria-label="Close" className="dialog-close-touch-pad" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} style={cancelButtonStyle}>Cancel</button>
+          <button onClick={onCancel} className="dialog-touch-pad" style={cancelButtonStyle}>Cancel</button>
           <button
+            className="dialog-touch-pad"
             onClick={submit}
             style={{ background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
           >

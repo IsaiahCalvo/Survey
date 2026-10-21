@@ -186,14 +186,14 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
           <button disabled={submitting} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button disabled={submitting} onClick={onClose} className="hub-btn">Cancel</button>
+          <button disabled={submitting} onClick={onClose} className="hub-btn dialog-touch-pad">Cancel</button>
           {/* A delete confirm is still the dialog's primary action, so it keeps
               the filled shape and only swaps gold for the destructive red
               (is-danger on PRIMARY = --danger-fill + white label). */}
           <button
             disabled={submitting}
             onClick={handleConfirm}
-            className={danger ? 'hub-btn hub-btn--primary is-danger' : 'hub-btn hub-btn--primary'}
+            className={danger ? 'hub-btn hub-btn--primary is-danger dialog-touch-pad' : 'hub-btn hub-btn--primary dialog-touch-pad'}
           >
             {submitting && <Spinner size={14} color="currentColor" />}
             {submitting ? (busyLabel || `${confirmLabel}…`) : confirmLabel}

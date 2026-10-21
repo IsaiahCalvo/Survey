@@ -147,6 +147,8 @@ export const ACCOUNT_DELETION_ERROR_TEXT = {
   500: "Your account couldn't be fully deleted. Try again or contact support.",
 };
 
+export const ACCOUNT_DELETION_NETWORK_ERROR_TEXT = "We couldn't reach the server, so nothing was deleted. Check your connection and try again.";
+
 export const accountDeletionErrorMessage = (status) => (
   ACCOUNT_DELETION_ERROR_TEXT[status] || ACCOUNT_DELETION_ERROR_TEXT[500]
 );
@@ -163,7 +165,10 @@ export const requestAccountDeletion = async (functionsClient) => {
       mapped.status = status;
       throw mapped;
     }
-    throw error;
+    // No response at all (offline, blocked): supabase-js says "Failed to send
+    // a request to the Edge Function"; say it in plain words.
+    console.warn('[accountDeletion] request failed', error);
+    throw new Error(ACCOUNT_DELETION_NETWORK_ERROR_TEXT);
   }
   if (data?.error) throw new Error(data.error);
   if (data?.deleted !== true) throw new Error('Account deletion did not complete.');

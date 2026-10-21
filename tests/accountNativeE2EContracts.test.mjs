@@ -41,7 +41,7 @@ test('account deletion sends the destructive confirmation and surfaces every saf
 
   await assert.rejects(
     requestAccountDeletion({ invoke: async () => ({ data: null, error: new Error('offline') }) }),
-    /offline/,
+    /couldn't reach the server, so nothing was deleted/,
   );
   await assert.rejects(
     requestAccountDeletion({ invoke: async () => ({ data: { error: 'billing cancellation failed' }, error: null }) }),
