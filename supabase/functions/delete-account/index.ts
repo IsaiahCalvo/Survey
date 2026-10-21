@@ -18,33 +18,26 @@ const json = (status: number, body: Record<string, unknown>) => new Response(JSO
   headers: { ...corsHeaders, 'Content-Type': 'application/json' },
 });
 
-async function listOwnedStorage(
-  admin: AdminClient,
-  prefix: string,
-): Promise<string[]> {
-  const paths: string[] = [];
-  for (let offset = 0; ; offset += 100) {
-    const { data, error } = await admin.storage.from('documents').list(prefix, { limit: 100, offset });
-    if (error) throw new Error(`Could not inspect stored documents: ${error.message}`);
-    const entries = data || [];
-    for (const entry of entries) {
-      if (!entry?.name) continue;
-      const path = `${prefix}/${entry.name}`;
-      if (entry.id) paths.push(path);
-      else paths.push(...await listOwnedStorage(admin, path));
-    }
-    if (entries.length < 100) break;
-  }
-  return paths;
+type StoredObject = { bucket_id: string; name: string };
+
+async function listOwnedStorage(admin: AdminClient, userId: string): Promise<StoredObject[]> {
+  // Names PDFs, avatars, survey media and thumbnails. Media is keyed by
+  // document id, so this must run while the document rows still exist.
+  const { data, error } = await admin.rpc('account_deletion_storage_objects', { target_user_id: userId });
+  if (error) throw new Error(`Could not inspect stored files: ${error.message}`);
+  return (data || []) as StoredObject[];
 }
 
-async function removeOwnedStorage(admin: AdminClient, userId: string) {
-  // Files normally live directly below documents/<user-id>, but recursively
-  // walk the prefix so a legacy/nested upload cannot survive account deletion.
-  const paths = await listOwnedStorage(admin, userId);
-  for (let offset = 0; offset < paths.length; offset += 100) {
-    const { error } = await admin.storage.from('documents').remove(paths.slice(offset, offset + 100));
-    if (error) throw new Error(`Could not remove stored documents: ${error.message}`);
+async function removeOwnedStorage(admin: AdminClient, objects: StoredObject[]) {
+  const byBucket = new Map<string, string[]>();
+  for (const { bucket_id, name } of objects) {
+    byBucket.set(bucket_id, [...(byBucket.get(bucket_id) || []), name]);
+  }
+  for (const [bucket, paths] of byBucket) {
+    for (let offset = 0; offset < paths.length; offset += 100) {
+      const { error } = await admin.storage.from(bucket).remove(paths.slice(offset, offset + 100));
+      if (error) throw new Error(`Could not remove stored files: ${error.message}`);
+    }
   }
 }
 
@@ -98,14 +91,18 @@ Deno.serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     }) : null;
 
+    let storedObjects: StoredObject[] = [];
     await runAccountDeletionStages({
       // Billing remains first so no account can be removed while still billable.
       // Missing Stripe customers are accepted for safe retries.
       cancelBilling: async () => {
         if (stripe) await deleteStripeCustomer(stripe, subscription?.stripe_customer_id);
       },
-      deleteDatabaseRows: () => deleteOwnedRows(admin, user.id),
-      removeStorage: () => removeOwnedStorage(admin, user.id),
+      deleteDatabaseRows: async () => {
+        storedObjects = await listOwnedStorage(admin, user.id);
+        await deleteOwnedRows(admin, user.id);
+      },
+      removeStorage: () => removeOwnedStorage(admin, storedObjects),
       deleteAuthUser: async () => {
         const { error } = await admin.auth.admin.deleteUser(user.id);
         if (error) throw error;
