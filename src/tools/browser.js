@@ -3,6 +3,7 @@
 import { loadPdfjs } from '../utils/pdfWorkerConfig.js';
 import { ToolError } from './errors.js';
 import { qpdfRunner } from './qpdf.js';
+import { jpegInfo } from './jpeg.js';
 
 function makeCanvas(w, h) {
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
@@ -25,12 +26,40 @@ function releaseCanvas(c) {
   c.height = 0;
 }
 
+// A JPEG of `width` x `height` decoded at no less than `want` pixels wide:
+// the browser's ImageDecoder can decode at 1/8, 2/8 ... of full size and skips
+// most of the work for a small one. (It rounds a size it is asked for down to
+// one of those, so ask for the one at or above what is needed.) Resolves to a
+// VideoFrame to draw and close, or null when this browser has no ImageDecoder
+// or can't read the JPEG.
+async function decodeJpegNear(bytes, width, height, want) {
+  if (typeof ImageDecoder === 'undefined') return null;
+  const eighths = Math.ceil((8 * want) / width);
+  const size = eighths < 8 ? { desiredWidth: Math.ceil((width * eighths) / 8), desiredHeight: Math.ceil((height * eighths) / 8) } : {};
+  let decoder;
+  try {
+    // pdf.js ignores colour profiles inside a JPEG, so this does too.
+    decoder = new ImageDecoder({ data: bytes, type: 'image/jpeg', colorSpaceConversion: 'none', ...size });
+    return (await decoder.decode()).image;
+  } catch {
+    return null;
+  } finally {
+    decoder?.close();
+  }
+}
+
 export const canvasCodec = {
   async reencode(input, { width, height, quality, maxSide }) {
     let source;
     if (input.kind === 'jpeg') {
-      source = await createImageBitmap(new Blob([input.bytes], { type: 'image/jpeg' }), { imageOrientation: 'none' });
-      if (source.width !== width || source.height !== height) { source.close(); return null; }
+      // A JPEG whose own size doesn't match the PDF's is left alone.
+      const info = jpegInfo(input.bytes);
+      if (!info || info.width !== width || info.height !== height || info.orientation !== 1) return null;
+      const scale = Math.min(1, maxSide / Math.max(width, height));
+      // Decoded at twice the new size or more, so the final shrink keeps the
+      // crispness a full-size decode gave (a 1/8-style decode alone is softer).
+      source = await decodeJpegNear(input.bytes, width, height, Math.round(width * scale * 2))
+        || await createImageBitmap(new Blob([input.bytes], { type: 'image/jpeg' }), { imageOrientation: 'none' });
     } else {
       const rgba = new Uint8ClampedArray(width * height * 4);
       const px = input.pixels;
@@ -62,8 +91,22 @@ export const canvasCodec = {
 
 export async function openPdfjs(bytes) {
   const pdfjs = await loadPdfjs();
-  // pdf.js takes ownership of the buffer it is given, so hand it a copy.
-  return pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+  // pdf.js takes ownership of the buffer it is given, so it would need a copy
+  // of the whole file. Hand it only the parts it asks for instead: a 100 MB
+  // scan set then sits in memory once, and pdf.js reads just the pages it draws.
+  const range = new pdfjs.PDFDataRangeTransport(bytes.length, null);
+  range.requestDataRange = (begin, end) => {
+    Promise.resolve().then(() => range.onDataRange(begin, bytes.slice(begin, end)));
+  };
+  return pdfjs.getDocument({
+    range, length: bytes.length, disableAutoFetch: true, disableStream: true, isEvalSupported: false,
+  }).promise;
+}
+
+// Let go of a pdf.js document and what its worker holds. pdf.js 6 moved
+// destroy() from the document to its loading task.
+export function closePdfjs(doc) {
+  return doc?.then((d) => (d.loadingTask || d).destroy?.()).catch(() => {});
 }
 
 // Safari stops drawing canvases past ~16.7M pixels, so cap every render there.
@@ -88,6 +131,40 @@ export async function renderPage(pdf, index, { width, scale, extraRotation = 0 }
 }
 
 export { releaseCanvas };
+
+// A scanned page (see scanPages.js) drawn straight from its JPEG, at the size
+// and turn renderPage would give it; a small picture of a big scan costs a
+// fraction of a full decode. Null when this browser has no ImageDecoder; then
+// the page is drawn with pdf.js as usual.
+export async function renderScan(scan, { width, scale } = {}) {
+  if (typeof ImageDecoder === 'undefined') return null;
+  const sideways = scan.rotate % 180 !== 0;
+  const bw = sideways ? scan.box.height : scan.box.width;
+  const bh = sideways ? scan.box.width : scan.box.height;
+  let s = scale || width / bw;
+  if (bw * bh * s * s > MAX_PIXELS) s = Math.sqrt(MAX_PIXELS / (bw * bh));
+  // Same geometry as pdf.js: the canvas is the page size rounded down, and
+  // the picture is drawn at the page's exact size.
+  const vw = bw * s;
+  const vh = bh * s;
+  const cw = Math.max(1, Math.floor(vw));
+  const ch = Math.max(1, Math.floor(vh));
+  const frame = await decodeJpegNear(scan.jpeg, scan.width, scan.height, Math.ceil(scan.box.width * s));
+  if (!frame) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.imageSmoothingQuality = 'high';
+  if (scan.rotate === 90) { ctx.translate(vw, 0); ctx.rotate(Math.PI / 2); }
+  else if (scan.rotate === 180) { ctx.translate(vw, vh); ctx.rotate(Math.PI); }
+  else if (scan.rotate === 270) { ctx.translate(0, vh); ctx.rotate(-Math.PI / 2); }
+  ctx.drawImage(frame, 0, 0, scan.box.width * s, scan.box.height * s);
+  frame.close();
+  return canvas;
+}
 
 // What an image file really is, from its first bytes.
 export function sniffImage(bytes) {
@@ -174,8 +251,9 @@ async function prepareOne(bytes, mime) {
   return out;
 }
 
-export function saveFile(bytes, name, type) {
-  const url = URL.createObjectURL(new Blob([bytes], { type }));
+// data: bytes or a Blob.
+export function saveFile(data, name, type) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
   const a = document.createElement('a');
   a.href = url;
   a.download = name;

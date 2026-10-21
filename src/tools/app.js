@@ -4,17 +4,16 @@
 import { ToolError } from './errors.js';
 import { protectPdf, unlockPdf, looksEncrypted } from './qpdf.js';
 import { parsePageSet, parseRangeGroups, formatPageSet, everyN } from './ranges.js';
-import { makeZip } from './zip.js';
+import { makeZipBlob } from './zip.js';
 import { noteFreeToolStep } from './funnel.js';
 import {
-  canvasCodec, openPdfjs, renderPage, prepareImage, gifToImages, saveFile, canvasToBytes, releaseCanvas, runQpdf,
+  canvasCodec, openPdfjs, closePdfjs, renderPage, renderScan, prepareImage, gifToImages, saveFile, canvasToBytes, releaseCanvas, runQpdf,
 } from './browser.js';
 import { makeSign } from './sign.js';
 
 // The PDF engine (pdf-lib, ~430 KB) loads when a file is chosen, not with the
 // page, so a phone shows the drop zone sooner. Each name below stands in for
 // the real function until then.
-const loadOps = () => import('./ops.js');
 const lazy = (load, name) => async (...args) => (await load())[name](...args);
 const [
   addHeaderFooter, organizePages, flattenPdf, cropPdf, readDetails, editDetails, removeAnnotations, textToPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
@@ -33,7 +32,7 @@ const batching = () => BATCH && S.files.length > 1;
 const NEXT = (root.dataset.next || '').split('|').filter(Boolean).map((p) => p.split(':'));
 
 import {
-  PDF_TYPE, base, pdfOut, SEG, DOC_OPTIONS, blocksToPdf, docNotice,
+  PDF_TYPE, base, pdfOut, blobOut, SEG, DOC_OPTIONS, blocksToPdf, docNotice, loadOps,
 } from './kit.js';
 
 function fmtSize(n) {
@@ -77,14 +76,23 @@ const TO_IMAGE_OPTIONS = [
 ];
 
 async function toImages(file, opts, progress, format) {
-  const pdf = await file.pdfjs();
   const pick = file.selected.size ? [...file.selected].sort((a, b) => a - b) : [...Array(file.pages).keys()];
   const type = format === 'png' ? 'image/png' : 'image/jpeg';
+  const dpi = Number(opts.dpi);
+  const scans = await file.scans();
   const out = [];
   for (let n = 0; n < pick.length; n += 1) {
     progress(`Page ${n + 1} of ${pick.length}`);
-    const canvas = await renderPage(pdf, pick[n], { scale: Number(opts.dpi) / 72 });
-    out.push({ name: `${base(file.name)}-page-${pick[n] + 1}.${format}`, bytes: await canvasToBytes(canvas, type, 0.9), type });
+    const name = `${base(file.name)}-page-${pick[n] + 1}.${format}`;
+    // A scan already at about this many dots per inch is saved as it is:
+    // the same picture, with no second round of JPEG loss.
+    const scan = scans[pick[n]];
+    if (format === 'jpg' && scan && !scan.rotate && Math.abs((scan.width / scan.box.width) * 72 / dpi - 1) < 0.03) {
+      out.push(blobOut(name, scan.jpeg, type));
+      continue;
+    }
+    const canvas = await file.render(pick[n], { scale: dpi / 72 });
+    out.push(blobOut(name, await canvasToBytes(canvas, type, 0.9), type));
     releaseCanvas(canvas);
   }
   return out;
@@ -150,7 +158,9 @@ const TOOLS = {
       for (let n = 0; n < files.length; n += 1) {
         const f = files[n];
         const bytes = await compressPdf(f.bytes, opts.level, canvasCodec, (i, total) => progress(`${files.length > 1 ? `File ${n + 1} of ${files.length}: ` : ''}${Math.round((i / total) * 100)}%`));
-        out.push({ ...pdfOut(`${base(f.name)}-compressed.pdf`, bytes), before: f.size });
+        const name = `${base(f.name)}-compressed.pdf`;
+        // Several files end up in a ZIP, so each one can leave the page's memory now.
+        out.push({ ...(files.length > 1 ? blobOut(name, bytes, PDF_TYPE) : pdfOut(name, bytes)), before: f.size });
       }
       return out;
     },
@@ -503,6 +513,8 @@ async function addFiles(list) {
       pages: 0, selected: new Set(), turns: new Map(), thumbs: new Map(), url: null, doc: null,
     };
     item.pdfjs = () => (item.doc ||= openPdfjs(bytes));
+    item.scans = () => (item.scanList ||= findScans(item));
+    item.render = (index, opts) => drawPage(item, index, opts);
     if (ACCEPT === 'pdf') {
       try {
         item.pages = (await item.pdfjs()).numPages;
@@ -541,11 +553,37 @@ async function addFiles(list) {
   if (T.auto && S.files.length && !S.error) run();
 }
 
+// Which pages are plain scans (see scanPages.js), so they can be drawn from
+// their JPEGs. Only read with pdf-lib when the file has about a JPEG a page.
+async function findScans(item) {
+  if (ACCEPT !== 'pdf' || !item.pages) return [];
+  try {
+    const { mightBeScans, findScans: find } = await import('./scanPages.js');
+    if (!mightBeScans(item.bytes, item.pages)) return [];
+    const { loadPdf } = await loadOps();
+    const list = find(await loadPdf(item.bytes));
+    return list.length === item.pages ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+// A page as a canvas: from its JPEG when it is a plain scan, else by pdf.js.
+async function drawPage(item, index, opts) {
+  const scan = (await item.scans())[index];
+  return (scan && await renderScan(scan, opts)) || renderPage(await item.pdfjs(), index, opts);
+}
+
+// Let go of pdf.js's copy of what it has read; it opens again when needed.
+function closeDoc(item) {
+  closePdfjs(item.doc);
+  item.doc = null;
+}
+
 function dispose(item) {
   if (item.url) URL.revokeObjectURL(item.url);
   item.release?.();
-  // pdf.js 6 moved destroy() from the document to its loading task.
-  item.doc?.then((d) => (d.loadingTask || d).destroy?.()).catch(() => {});
+  closeDoc(item);
   item.thumbs.forEach(releaseCanvas);
 }
 
@@ -563,6 +601,7 @@ function setBusy(msg) {
 
 const queue = [];
 let pumping = false;
+let running = false;
 const observer = 'IntersectionObserver' in window
   ? new IntersectionObserver((entries) => {
     for (const e of entries) {
@@ -577,7 +616,8 @@ const observer = 'IntersectionObserver' in window
 async function pump() {
   if (pumping) return;
   pumping = true;
-  while (queue.length) {
+  // Thumbnails wait while a tool runs, so the two don't fight over memory.
+  while (queue.length && !running) {
     const slot = queue.shift();
     const file = S.files.find((f) => f.key === slot.dataset.file);
     if (!file || !slot.isConnected) continue;
@@ -585,9 +625,11 @@ async function pump() {
     let canvas = file.thumbs.get(index);
     if (!canvas) {
       try {
-        canvas = await renderPage(await file.pdfjs(), index, { width: 150 * Math.min(2, window.devicePixelRatio || 1) });
+        canvas = await file.render(index, { width: 150 * Math.min(2, window.devicePixelRatio || 1) });
         file.thumbs.set(index, canvas);
       } catch {
+        // A run closed the file under it; draw it again afterwards.
+        if (running) queue.unshift(slot);
         continue;
       }
     }
@@ -870,6 +912,11 @@ function pickFiles() {
 async function run() {
   S.error = '';
   setBusy('Working…');
+  running = true;
+  await loadOps().catch(() => {});
+  // Thumbnails are drawn; pdf.js's copy of the file isn't needed for them
+  // now, and tools that use pdf.js open the file again.
+  S.files.forEach(closeDoc);
   const progress = (msg) => {
     const el = root.querySelector('[data-progress]');
     if (el) el.textContent = msg;
@@ -881,7 +928,9 @@ async function run() {
       for (let n = 0; n < S.files.length; n += 1) {
         const tag = `File ${n + 1} of ${S.files.length}`;
         progress(tag);
-        outputs.push(...await T.run([S.files[n]], S.opts, (msg) => progress(`${tag}: ${msg}`), { batch: true }));
+        const got = await T.run([S.files[n]], S.opts, (msg) => progress(`${tag}: ${msg}`), { batch: true });
+        // These all go in one ZIP, so hand each to the browser as it's made.
+        outputs.push(...got.map(({ bytes, ...o }) => (bytes ? { ...o, ...blobOut(o.name, bytes, o.type) } : o)));
       }
       // Two inputs with the same name would overwrite each other in the ZIP.
       const seen = new Map();
@@ -897,7 +946,10 @@ async function run() {
       progress('Packing the ZIP');
       const first = S.files[0];
       const zipName = `${S.files.length === 1 ? base(first.name) : 'files'}-${TOOL_ID}.zip`;
-      outputs = [{ name: zipName, bytes: makeZip(outputs), type: 'application/zip', count: outputs.length, parts: outputs, note: outputs.find((o) => o.note)?.note }];
+      const blob = makeZipBlob(outputs);
+      // Keep the sizes only, not a second copy of every file.
+      const parts = outputs.map((o) => ({ before: o.before, size: sizeOf(o) }));
+      outputs = [{ name: zipName, blob, size: blob.size, type: 'application/zip', count: outputs.length, parts, note: outputs.find((o) => o.note)?.note }];
     }
     S.result = outputs[0];
     remember();
@@ -906,8 +958,12 @@ async function run() {
     if (!(err instanceof ToolError)) console.error(err);
     S.error = err instanceof ToolError ? err.message : 'Something went wrong with this file. Try again, or try a different file.';
   }
+  running = false;
   setBusy(null);
+  pump();
 }
+
+const sizeOf = (r) => (r.bytes ? r.bytes.length : r.size);
 
 function resultView() {
   const r = S.result;
@@ -915,7 +971,7 @@ function resultView() {
   if (TOOL_ID === 'compress-pdf') {
     const parts = r.parts || [r];
     const before = parts.reduce((n, p) => n + p.before, 0);
-    const after = parts.reduce((n, p) => n + p.bytes.length, 0);
+    const after = parts.reduce((n, p) => n + sizeOf(p), 0);
     const saved = Math.round((1 - after / before) * 100);
     lines.push(saved >= 1
       ? h('p', { class: 'rbig' }, `${fmtSize(before)} → ${fmtSize(after)}`, h('span', {}, ` ${saved}% smaller`))
@@ -927,12 +983,12 @@ function resultView() {
   return h('div', { class: 'result', role: 'status' },
     h('h2', {}, r.title || 'Your file is ready'),
     ...lines,
-    h('p', { class: 'rname' }, r.name, h('span', {}, ` · ${fmtSize(r.bytes.length)}`)),
+    h('p', { class: 'rname' }, r.name, h('span', {}, ` · ${fmtSize(sizeOf(r))}`)),
     h('div', { class: 'ract' },
-      h('button', { type: 'button', class: 'btn primary lg', onclick: () => saveFile(r.bytes, r.name, r.type) }, r.saveLabel || 'Download'),
+      h('button', { type: 'button', class: 'btn primary lg', onclick: () => saveFile(r.blob || r.bytes, r.name, r.type) }, r.saveLabel || 'Download'),
       h('button', { type: 'button', class: 'btn ghost lg', onclick: () => { S.result = null; render(); } }, 'Back'),
       h('button', { type: 'button', class: 'btn ghost lg', onclick: () => { disposeAll(); S.result = null; render(); } }, 'Start over')),
-    r.type === PDF_TYPE
+    r.type === PDF_TYPE && r.bytes
       ? h('div', { class: 'rapp' },
         h('p', {}, 'Want to mark it up? Survey adds pens, shapes, clouds and counts, free.'),
         h('button', { type: 'button', class: 'btn ghost', onclick: () => openInSurvey(r) }, 'Open in Survey'))

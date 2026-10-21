@@ -5,7 +5,9 @@ import {
 } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { grayContent, grayscalePdf, pagesToGrayPdf } from '../grayscale.js';
+import sharp from 'sharp';
 import { encodeGrayJpeg, encodePng } from '../imageWriters.js';
+import { jpegInfo } from '../jpeg.js';
 
 const text = (b) => new TextDecoder('latin1').decode(b);
 const enc = (s) => new TextEncoder().encode(s);
@@ -196,4 +198,26 @@ test('the picture way makes one page per grey picture at the original size', asy
   const bytes = await pagesToGrayPdf([{ jpeg, width: 612, height: 792 }, { jpeg, width: 200, height: 100 }]);
   const doc = await PDFDocument.load(bytes);
   assert.deepEqual(doc.getPages().map((p) => [p.getWidth(), p.getHeight()]), [[612, 792], [200, 100]]);
+});
+
+test('a real colour JPEG turns grey without decoding: its brightness blocks are kept', async () => {
+  const w = 40;
+  const h = 24;
+  const red = new Uint8Array(await sharp({ create: { width: w, height: h, channels: 3, background: { r: 255, g: 0, b: 0 } } }).jpeg({ quality: 90 }).toBuffer());
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([100, 100]);
+  const ref = doc.context.register(PDFRawStream.of(doc.context.obj({
+    Type: 'XObject', Subtype: 'Image', Width: w, Height: h, ColorSpace: 'DeviceRGB', BitsPerComponent: 8, Filter: 'DCTDecode',
+  }), red));
+  page.node.set(PDFName.of('Resources'), doc.context.obj({ XObject: { J: ref } }));
+  page.node.set(PDFName.of('Contents'), doc.context.register(doc.context.flateStream(enc('q 100 0 0 100 0 0 cm /J Do Q'))));
+  // No decoder passed in: this way doesn't need one.
+  const { bytes, kept } = await grayscalePdf(await doc.save());
+  assert.equal(kept.pictures, 0);
+  const out = await PDFDocument.load(bytes);
+  const img = out.getPage(0).node.Resources().lookup(PDFName.of('XObject')).lookup(PDFName.of('J'));
+  assert.equal(img.dict.get(PDFName.of('ColorSpace')).decodeText(), 'DeviceGray');
+  assert.equal(jpegInfo(img.contents).components, 1);
+  const [p] = await paint(bytes);
+  assert.ok(Math.abs(p.images[0].data[0] - 76) <= 3);
 });

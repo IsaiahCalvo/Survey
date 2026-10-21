@@ -2,7 +2,7 @@
 // blank ones are picked in the page grid, and the person can change the pick
 // before saving.
 import {
-  SEG, base, pdfOut, loadOps, renderPage, releaseCanvas,
+  SEG, base, pdfOut, loadOps, releaseCanvas,
 } from '../kit.js';
 import { measure, blankIndexes } from '../blankPages.js';
 
@@ -11,13 +11,12 @@ const LEVEL_LABEL = 'What counts as blank';
 const CHECK_WIDTH = 200;
 
 async function check(item, busy) {
-  const pdf = await item.pdfjs();
   const out = [];
   for (let i = 0; i < item.pages; i += 1) {
     busy(`Checking page ${i + 1} of ${item.pages}`);
     let canvas;
     try {
-      canvas = await renderPage(pdf, i, { width: CHECK_WIDTH });
+      canvas = await item.render(i, { width: CHECK_WIDTH });
       const { width, height } = canvas;
       out.push(measure(canvas.getContext('2d').getImageData(0, 0, width, height).data, width, height));
     } catch {
