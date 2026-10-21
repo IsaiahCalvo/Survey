@@ -25,7 +25,7 @@ import { acceptDocumentInvite } from '../services/documentInviteService';
 import { acceptProjectInvite } from '../services/projectInviteService';
 import { acceptTemplateInvite } from '../services/templateInviteService';
 import { supabase } from '../supabaseClient';
-import { buildAppDestination } from '../utils/accountPlatform';
+import { buildAppDestination, isPurchaseUiHidden, withUpgradeHint } from '../utils/accountPlatform';
 import { PENDING_INVITE_KEY as PENDING_KEY } from '../utils/pendingInvite';
 import { C } from '../uiPalette';
 
@@ -133,7 +133,7 @@ export default function InviteAcceptPage() {
       case 'accepted':
         if (result.upgradeRequired) {
           const intended = (result.intendedRole || 'editor').toLowerCase();
-          return `You have Viewer access for now. Upgrade to Pro or higher to unlock ${intended.charAt(0).toUpperCase() + intended.slice(1)} access.`;
+          return withUpgradeHint('You have Viewer access for now.', `Upgrade to Pro or higher to unlock ${intended.charAt(0).toUpperCase() + intended.slice(1)} access.`);
         }
         return `You now have ${(result.effectiveRole || 'viewer')} access to this ${kindNoun}.`;
       case 'already_accepted':
@@ -218,7 +218,9 @@ export default function InviteAcceptPage() {
 
           {result?.status === 'accepted' && result.upgradeRequired && (
             <div style={{ background: 'var(--accent-soft)', border: `1px solid ${C.gold}`, borderRadius: 8, padding: '10px 12px', color: C.gold, fontSize: 13, lineHeight: 1.45 }}>
-              Upgrade to use {(result.intendedRole || 'editor')} permissions. Your original role ({result.intendedRole}) is preserved and activates automatically after upgrade.
+              {isPurchaseUiHidden()
+                ? `Your ${result.intendedRole || 'editor'} role is saved and turns on when your plan includes it.`
+                : `Upgrade to use ${result.intendedRole || 'editor'} permissions. Your original role (${result.intendedRole}) is preserved and activates automatically after upgrade.`}
             </div>
           )}
 

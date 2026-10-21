@@ -60,7 +60,7 @@ import {
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
-import { openExternalDestination } from './utils/accountPlatform.js';
+import { openExternalDestination, withUpgradeHint } from './utils/accountPlatform.js';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
@@ -6151,7 +6151,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const surveyMemoryDocKey = surveyMemoryDocumentKey(pdfFile, pdfFilePath);
   const handleSurveyToggle = useCallback(() => {
     if (!features?.advancedSurvey) {
-      showToast('Survey templates are a Pro feature. Please upgrade to use this tool.', 'warn');
+      showToast(withUpgradeHint('Survey templates are part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
       return;
     }
     if (!showSurveyPanel) {
@@ -15679,7 +15679,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
     const { silent = false } = options;
     if (!features?.excelExport) {
-      if (!silent) showToast('Excel export is a Pro feature. Please upgrade to use this tool.', 'warn');
+      if (!silent) showToast(withUpgradeHint('Excel export is part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
       return;
     }
     // If called from event handler, targetPath will be the event object
@@ -21793,7 +21793,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleExportSpaceToCSV = useCallback((spaceId) => {
     if (!features?.excelExport) {
-      showToast('CSV/Excel Export is a Pro feature. Please upgrade to use this tool.', 'warn');
+      showToast(withUpgradeHint('CSV/Excel export is part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
       return;
     }
     const space = spaces.find(s => s.id === spaceId);
@@ -21835,7 +21835,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleExportSpaceToPDF = useCallback(async (spaceId) => {
     if (!features?.excelExport) {
-      showToast('Space PDF Export is a Pro feature. Please upgrade.', 'warn');
+      showToast(withUpgradeHint('Space PDF export is part of the Pro plan.', 'Please upgrade.'), 'warn');
       return;
     }
     const space = spaces.find(s => s.id === spaceId);
@@ -22724,7 +22724,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setActiveTool(REGION_EDIT_TOOL);
       setShowRegionSelection(true);
     } else {
-      showToast('The region selection tool is a Pro feature. Please upgrade to use this tool.', 'warn');
+      showToast(withUpgradeHint('The region selection tool is part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
     }
     goToPage(pageId, { fallback: 'nearest' });
   }, [spaces, goToPage, canManageSpaces, getRegionEditReturnTool, showSurveyPanel, selectedModuleId, activeRegionId, clearAnnotationSelectionForContextChange]);
@@ -41748,7 +41748,7 @@ ${pageBlocks}
                 <button
                   onClick={async () => {
                     if (!features?.sso) {
-                      showToast('OneDrive integration is an Enterprise feature. Please upgrade.', 'warn');
+                      showToast(withUpgradeHint('OneDrive integration is part of the Enterprise plan.', 'Please upgrade.'), 'warn');
                       return;
                     }
                     try {

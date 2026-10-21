@@ -199,6 +199,12 @@ export const getNativeAppPlatform = (windowObject = (typeof window === 'undefine
 
 export const isPurchaseUiHidden = (windowObject) => getNativeAppPlatform(windowObject) !== null;
 
+// A plan-limit message with its "upgrade" nudge. The native apps drop the
+// nudge: store rules forbid pointing people at purchases made outside the app.
+export const withUpgradeHint = (message, hint, windowObject) => (
+  isPurchaseUiHidden(windowObject) ? message : `${message} ${hint}`
+);
+
 // App Store 4.8: Google sign-in would require offering Sign in with Apple too,
 // so the iOS app hides it. Android, web and Electron keep it.
 export const isGoogleSignInHidden = (windowObject) => getNativeAppPlatform(windowObject) === 'ios';
