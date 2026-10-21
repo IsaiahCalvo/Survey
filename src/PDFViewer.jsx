@@ -28102,7 +28102,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Layers ('layers' flag): new highlight/underline/strikeout marks go on
     // the active layer, as in handleSaveAnnotations (ref is null when off).
     // Stamped before the undo step is built so redo keeps the layer.
-    if (activeLayerIdRef.current && !isUndoingRef.current && saveContext?.action !== 'move-to-page') {
+    if (activeLayerIdRef.current && !isUndoingRef.current
+      && saveContext?.action !== 'move-to-page' && saveContext?.action !== 'move-region') {
       const stampedByPage = stampNewMarksByPage(annotationsByPageRef.current, transaction.nextByPage, activeLayerIdRef.current);
       if (stampedByPage !== transaction.nextByPage) {
         transaction = { ...transaction, nextByPage: stampedByPage, action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, stampedByPage) || transaction.action };

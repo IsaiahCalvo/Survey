@@ -189,3 +189,13 @@ test('text-markup transactions: undo step rebuilt from stamped pages keeps the l
   assert.equal(find(redone, 2, 'st1').layerId, 'L2');
   assert.equal(find(redone, 1, 'old').layerId, undefined);
 });
+
+test('text-markup transactions: a mark moved to another page keeps its (default) layer', async () => {
+  const { readFileSync } = await import('node:fs');
+  const moved = { data: { id: 'm1' } };
+  const prev = { 1: { objects: [moved] }, 2: { objects: [] } };
+  const next = { 1: { objects: [] }, 2: { objects: [moved] } };
+  assert.equal(stampNewMarksByPage(prev, next, 'L2'), next);
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /saveContext\?\.action !== 'move-to-page' && saveContext\?\.action !== 'move-region'/);
+});

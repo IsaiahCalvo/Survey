@@ -1382,7 +1382,9 @@ const SVGAnnotationLayerBody = memo(({
     const r = resolveDrawSnap(anchor, point, {
       shiftKey: !!e?.shiftKey,
       endpointSnap,
-      candidates: endpointSnap ? collectEndpointCandidates(drawSnapObjects) : [],
+      candidates: endpointSnap
+        ? collectEndpointCandidates(drawSnapObjects, { include: new Set(renderedAnnotationEntriesRef.current.map((entry) => entry.index)) })
+        : [],
       tolPage: snapThreshold(inverseScale, DRAW_SNAP_SCREEN_PX),
     });
     setDrawSnapEndpoint((prev) => {
