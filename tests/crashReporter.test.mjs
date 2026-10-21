@@ -42,11 +42,11 @@ test('crash reporter: personal details are scrubbed', () => {
 
 test('crash reporter: report carries no breadcrumbs, agent string or user id', () => {
   const report = toReport({
-    kind: 'error', message: 'boom', stack: 'at a\nat b', route: '/app', build: '1.2.3',
+    id: 'abc-123', kind: 'error', message: 'boom', stack: 'at a\nat b', route: '/app', build: '1.2.3',
     at: '2026-10-21T00:00:00.000Z', count: 3, actions: ['Save'], agent: 'Mozilla/5.0', memory: { used: 1 },
   }, { win: { innerWidth: 400 }, userAgent: 'Mozilla/5.0 (iPhone) Version/18.1 Mobile/15E148 Safari/604.1' });
   assert.deepEqual(Object.keys(report).sort(), [
-    'p_browser', 'p_build', 'p_kind', 'p_message', 'p_occurred_at', 'p_platform', 'p_repeats', 'p_route', 'p_stack',
+    'p_browser', 'p_build', 'p_kind', 'p_message', 'p_occurred_at', 'p_platform', 'p_repeats', 'p_report_id', 'p_route', 'p_stack',
   ]);
   assert.equal(report.p_platform, 'web-phone');
   assert.equal(report.p_browser, 'Safari 18');
@@ -149,6 +149,11 @@ test('crash reporter: database rules', { skip: isRoot || !tool('initdb') || !too
     assert.equal(psql('select length(message) || \'|\' || repeats from public.client_errors;'), '300|1000');
     assert.throws(() => psql('set role anon; select count(*) from public.client_errors;'), /permission denied/);
     assert.throws(() => psql("set role authenticated; insert into public.client_errors (kind, message) values ('error', 'x');"), /permission denied/);
+
+    // A second tab sending the same record stores nothing new.
+    psql("set role anon; select public.report_client_error('error', 'twice', p_report_id => 'r1');");
+    psql("set role anon; select public.report_client_error('error', 'twice', p_report_id => 'r1');");
+    assert.equal(psql("select count(*) from public.client_errors where message = 'twice';"), '1');
 
     psql("insert into public.client_errors (kind, message) select 'error', 'flood' from generate_series(1, 600);");
     assert.equal(psql("set role anon; select public.report_client_error('error', 'one more');"), 'f', 'flood guard');

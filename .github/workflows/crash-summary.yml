@@ -42,6 +42,8 @@ jobs:
           query "select kind, platform, build, left(message, 160) as message, sum(repeats)::int as times, count(*)::int as reports
                  from public.client_errors where received_at > now() - interval '24 hours'
                  group by 1, 2, 3, 4 order by times desc limit 25" > rows.json
+          query "select coalesce(sum(repeats), 0)::int as times from public.client_errors
+                 where received_at > now() - interval '24 hours'" | jq '.[0].times' > total.txt
           query "delete from public.client_errors where received_at < now() - interval '30 days'" > /dev/null
           jq length rows.json
 
@@ -49,7 +51,7 @@ jobs:
         shell: bash
         run: |
           [ "$(jq length rows.json)" = 0 ] && { echo "No crashes in the last 24 hours."; exit 0; }
-          total="$(jq '[.[].times] | add' rows.json)"
+          total="$(cat total.txt)"
           table="$(jq -r '.[] | "| \(.times) | \(.kind) | \(.platform // "") | \(.build // "") | \(.message | gsub("\\|"; "/") | gsub("\n"; " ")) |"' rows.json)"
           body="$(printf '**%s crashes in the 24 hours to %s**\n\n| Times | Kind | Platform | Build | Message |\n|---|---|---|---|---|\n%s\n\nTop 25 groups. Full records stay in each person'\''s Settings → Crash reports.' "$total" "$(date -u +%FT%TZ)" "$table")"
           title="Daily crash summary"

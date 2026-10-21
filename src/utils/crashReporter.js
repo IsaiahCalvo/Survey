@@ -74,6 +74,8 @@ export function toReport(record, { win, userAgent } = {}) {
     p_browser: browserOf(userAgent),
     p_occurred_at: record.at || null,
     p_repeats: record.count || 1,
+    // Random per record (crashLog.js), so another tab sending it too is a no-op.
+    p_report_id: record.id ? String(record.id).slice(0, 40) : null,
   };
 }
 

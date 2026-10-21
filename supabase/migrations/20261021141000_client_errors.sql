@@ -23,7 +23,10 @@ create table if not exists public.client_errors (
   build text,
   platform text,
   browser text,
-  repeats integer not null default 1
+  repeats integer not null default 1,
+  -- The browser's random id for this record, so two open tabs sending the
+  -- same crash store it once.
+  report_id text unique
 );
 
 create index if not exists client_errors_received_at_idx on public.client_errors (received_at);
@@ -40,7 +43,8 @@ create or replace function public.report_client_error(
   p_platform text default null,
   p_browser text default null,
   p_occurred_at timestamptz default null,
-  p_repeats integer default 1
+  p_repeats integer default 1,
+  p_report_id text default null
 )
 returns boolean
 language plpgsql
@@ -55,7 +59,7 @@ begin
   if (select count(*) from public.client_errors where received_at > now() - interval '10 minutes') >= 600 then
     return false;
   end if;
-  insert into public.client_errors (occurred_at, kind, message, stack, route, build, platform, browser, repeats)
+  insert into public.client_errors (occurred_at, kind, message, stack, route, build, platform, browser, repeats, report_id)
   values (
     least(coalesce(p_occurred_at, now()), now()),
     p_kind,
@@ -65,11 +69,13 @@ begin
     left(p_build, 64),
     left(p_platform, 24),
     left(p_browser, 32),
-    greatest(1, least(coalesce(p_repeats, 1), 1000))
-  );
+    greatest(1, least(coalesce(p_repeats, 1), 1000)),
+    left(p_report_id, 40)
+  )
+  on conflict (report_id) do nothing;
   return true;
 end;
 $$;
 
-revoke all on function public.report_client_error(text, text, text, text, text, text, text, timestamptz, integer) from public;
-grant execute on function public.report_client_error(text, text, text, text, text, text, text, timestamptz, integer) to anon, authenticated;
+revoke all on function public.report_client_error(text, text, text, text, text, text, text, timestamptz, integer, text) from public;
+grant execute on function public.report_client_error(text, text, text, text, text, text, text, timestamptz, integer, text) to anon, authenticated;
