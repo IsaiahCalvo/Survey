@@ -28,6 +28,9 @@ const NET = process.env.NET || null;
 const OUT = process.env.OUT || null;
 const HEAP_TOP = Number(process.env.HEAP_TOP || 0);
 const heapTop = {};
+// ZOOM_PROFILE=<file> records a CPU profile of the first run's zoom gesture per size.
+const ZOOM_PROFILE = process.env.ZOOM_PROFILE || null;
+const profiled = {};
 const exe = process.env.PW_CHROMIUM_PATH || (fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 
 const DEVICES = {
@@ -203,6 +206,13 @@ async function oneRun(browser, size) {
   await quiet(page);
 
   // Zoom: ctrl+wheel in then out, mid-viewport.
+  const zoomProfile = ZOOM_PROFILE && !profiled[size] ? ZOOM_PROFILE.replace(/(\.cpuprofile)?$/, `-${size}.cpuprofile`) : null;
+  if (zoomProfile) {
+    profiled[size] = true;
+    await cdp.send('Profiler.enable');
+    await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
+    await cdp.send('Profiler.start');
+  }
   start = await page.evaluate(() => { window.__perf.frames = []; window.__perf.recording = true; return performance.now(); });
   await page.keyboard.down('Control');
   for (let i = 0; i < 12; i += 1) { await page.mouse.wheel(0, -60); await page.waitForTimeout(30); }
@@ -211,6 +221,7 @@ async function oneRun(browser, size) {
   await page.keyboard.up('Control');
   await page.waitForTimeout(800);
   const zoom = await window_(page, start);
+  if (zoomProfile) fs.writeFileSync(zoomProfile, JSON.stringify((await cdp.send('Profiler.stop')).profile));
   await quiet(page);
   const heapEndMB = await heapMB(cdp);
   if (HEAP_TOP && !heapTop[size]) heapTop[size] = await heapByConstructor(cdp);
