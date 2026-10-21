@@ -15,6 +15,7 @@ const DOC = E2E_DOCUMENT.id;
 const PROJECT = E2E_PROJECT.id;
 const TEMPLATE = 'e2e00000-0000-4000-8000-000000000201';
 const SESSION = 'e2e00000-0000-4000-8000-000000000202';
+const KIT = 'rls-sweep';
 
 async function must(label, request) {
   const { error } = await request;
@@ -56,6 +57,16 @@ async function seedOwnerRows(admin, ids) {
   await replace('document_templates', 'document_id', DOC, { document_id: DOC, template_id: TEMPLATE, linked_by: owner });
   await replace('doc_yjs_updates', 'document_id', DOC, { document_id: DOC, client_id: 'rls', seq: 1, update: '\\x00' });
   await replace('doc_yjs_state', 'document_id', DOC, { document_id: DOC, state: '\\x00', state_vector: '\\x00', through_seq: 1 });
+  await replace('document_presence', 'document_id', DOC, { document_id: DOC, user_id: owner });
+  await replace('excel_workbook_registrations', 'document_id', DOC, {
+    document_id: DOC, template_id: 'rls', workbook_id: 'rls', token_hash: 'rls', token_expiry: expires,
+  });
+  await replace('template_collaborators', 'template_id', TEMPLATE, { template_id: TEMPLATE, user_id: owner, role: 'editor' });
+  await replace('agent_activity', 'user_id', owner, { user_id: owner, client_id: 'rls', action: 'insert', table_name: 'projects' });
+  await replace('agent_identities', 'user_id', owner, { user_id: owner, client_id: 'rls', agentid_sub: 'rls' });
+  await replace('survey_agent_usage', 'user_id', owner, { user_id: owner, month: new Date().toISOString().slice(0, 8) + '01' });
+  await must('kit', admin.from('kits').upsert({ id: KIT, version: '1.0.0', kind: 'toolKit', definition: {} }, { onConflict: 'id,version', ignoreDuplicates: true }));
+  await replace('account_kits', 'user_id', owner, { user_id: owner, kit_id: KIT, kit_version: '1.0.0' });
 }
 
 // Each table, and the filter that picks out the owner's rows in it.
@@ -84,12 +95,43 @@ const ownerRows = (ids) => ({
   document_templates: ['document_id', DOC],
   doc_yjs_updates: ['document_id', DOC],
   doc_yjs_state: ['document_id', DOC],
+  document_presence: ['document_id', DOC],
+  excel_workbook_registrations: ['document_id', DOC],
+  template_collaborators: ['template_id', TEMPLATE],
+  agent_activity: ['user_id', ids.owner],
+  agent_identities: ['user_id', ids.owner],
+  survey_agent_usage: ['user_id', ids.owner],
+  account_kits: ['user_id', ids.owner],
+  kits: ['id', KIT],
 });
+
+// Tables and views the sweep above leaves out, and why. A new table fails the
+// completeness test until it is added to ownerRows or here.
+const NOT_SWEPT = {
+  // No grants to anon or authenticated: only the service role reaches them.
+  agent_access: 'service only', agent_links: 'service only', agent_rate_counters: 'service only',
+  analytics_ingestion_daily_counters: 'service only', archive_purge_failures: 'service only',
+  archive_purge_runs: 'service only', auth_change_intents: 'service only', client_errors: 'service only',
+  email_send_events: 'service only', excel_sync_audit: 'service only', excel_sync_changesets: 'service only',
+  excel_sync_head: 'service only', excel_sync_ops: 'service only', excel_sync_state: 'service only',
+  integration_test_bytea_roundtrip: 'service only', invite_email_deliveries: 'service only',
+  rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
+  // Their write triggers need a signed-in editor, so the service role cannot
+  // seed a row. Reads need viewer access to the document.
+  annotation_snapshots: 'editor writes only', annotation_updates: 'editor writes only',
+  // The phone lab inbox: anyone may add a shape-checked row, nobody reads.
+  phone_lab_recordings: 'add only',
+  // Flag admins only (Isaiah); nobody in the sweep is one.
+  feature_flags: 'flag admins only', feature_flag_admins: 'flag admins only',
+  // security_invoker views over swept tables, checked by user below.
+  archived_projects_summary: 'view', daily_usage_summary: 'view', user_quota_status: 'view',
+};
 
 // What a collaborator on the shared document may read; the rest stays the owner's.
 const SHARED_WITH_COLLABORATORS = new Set([
   'projects', 'documents', 'document_collaborators', 'project_collaborators', 'document_annotations',
   'document_history_events', 'document_revisions', 'document_templates', 'doc_yjs_updates', 'doc_yjs_state',
+  'document_presence', 'excel_workbook_registrations',
 ]);
 
 let admin;
@@ -129,6 +171,34 @@ test('collaborators see the shared document\'s rows and nothing else of the owne
       const seen = await visibleOwnerRows(client, table, filter);
       if (SHARED_WITH_COLLABORATORS.has(table)) expect(seen, `${account.email} ${table}`).toBeGreaterThan(0);
       else expect(seen, `${account.email} ${table}`).toBe(0);
+    }
+  }
+});
+
+test('every table and view is either swept or listed with a reason', async () => {
+  // The API's own description lists everything it serves.
+  const res = await fetch(`${process.env.E2E_SUPABASE_URL}/rest/v1/`, {
+    headers: { apikey: process.env.E2E_SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${process.env.E2E_SUPABASE_SERVICE_ROLE_KEY}` },
+  });
+  const served = Object.keys((await res.json()).definitions || {});
+  expect(served.length).toBeGreaterThan(40);
+  const swept = new Set([...Object.keys(ownerRows(ids)), ...Object.keys(NOT_SWEPT)]);
+  expect(served.filter((name) => !swept.has(name)), 'add these to ownerRows or NOT_SWEPT').toEqual([]);
+});
+
+test('signed-out callers and strangers cannot read or add rows in the tables left out of the sweep', async () => {
+  for (const account of [null, E2E_ACCOUNTS.free]) {
+    const client = await clientFor(account);
+    for (const [table, why] of Object.entries(NOT_SWEPT)) {
+      const { data, error } = await client.from(table).select('*').limit(5);
+      if (why === 'view') {
+        // Views run as the caller, so only the caller's own rows come back.
+        if (!error) expect(data.filter((row) => row.user_id && row.user_id !== ids.free), `${table}`).toEqual([]);
+        continue;
+      }
+      expect(error || data.length === 0, `${account?.email || 'anon'} read ${table}`).toBeTruthy();
+      const { error: insertError } = await client.from(table).insert({});
+      expect(insertError, `${account?.email || 'anon'} add to ${table}`).toBeTruthy();
     }
   }
 });
@@ -236,4 +306,38 @@ test('stored PDFs: collaborators can read, nobody else can read or overwrite', a
   }
   const after = await (await admin.storage.from('documents').download(doc.file_path)).data.arrayBuffer();
   expect(after.byteLength).toBe(before.byteLength);
+});
+
+test('survey photos: an uploader removed from the document can no longer delete them', async () => {
+  const pro = await clientFor(E2E_ACCOUNTS.pro);
+  const owner = await clientFor(E2E_ACCOUNTS.owner);
+  const jpeg = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' });
+  const path = () => `${DOC}/rls-sweep/${crypto.randomUUID()}.jpg`;
+  const exists = async (name) => {
+    const { data } = await admin.storage.from('survey-media').list(`${DOC}/rls-sweep`, { search: name.split('/').pop() });
+    return (data || []).length > 0;
+  };
+  await must('pro joins as editor', admin.from('document_collaborators').upsert({
+    document_id: DOC, user_id: ids.pro, role: 'editor', email: E2E_ACCOUNTS.pro.email, status: 'active',
+  }, { onConflict: 'document_id,user_id' }));
+  const kept = path();
+  const own = path();
+  try {
+    // While an editor, the uploader can delete their own photo.
+    await must('upload', pro.storage.from('survey-media').upload(own, jpeg, { contentType: 'image/jpeg' }));
+    await pro.storage.from('survey-media').remove([own]);
+    expect(await exists(own), 'editor deletes own upload').toBe(false);
+
+    await must('upload', pro.storage.from('survey-media').upload(kept, jpeg, { contentType: 'image/jpeg' }));
+    await must('remove pro', admin.from('document_collaborators').delete().eq('document_id', DOC).eq('user_id', ids.pro));
+    await pro.storage.from('survey-media').remove([kept]);
+    expect(await exists(kept), 'removed uploader cannot delete').toBe(true);
+
+    // The document's owner still can.
+    await owner.storage.from('survey-media').remove([kept]);
+    expect(await exists(kept), 'owner deletes').toBe(false);
+  } finally {
+    await admin.from('document_collaborators').delete().eq('document_id', DOC).eq('user_id', ids.pro);
+    await admin.storage.from('survey-media').remove([kept, own]);
+  }
 });
