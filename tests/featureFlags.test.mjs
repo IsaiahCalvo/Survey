@@ -3,7 +3,7 @@
 // only admins see or change flags, testers get only their own answers.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -49,7 +49,8 @@ test('flags: the saved server answer decides when nothing else does', async () =
     return { data: { 'smart-fill': true, 'gone-flag': true }, error: null };
   } };
   assert.equal(await refreshFeatureFlags(supabase, { storage }), true);
-  assert.deepEqual(JSON.parse(storage.getItem(FLAG_CACHE_KEY)), { 'smart-fill': true });
+  const expected = Object.fromEntries(Object.keys(FEATURE_FLAGS).map((key) => [key, key === 'smart-fill']));
+  assert.deepEqual(JSON.parse(storage.getItem(FLAG_CACHE_KEY)), expected, 'known flags only; missing ones are off');
   assert.equal(isFeatureOn('smart-fill', { storage, env: {} }), true);
   assert.equal(await refreshFeatureFlags(supabase, { storage }), false, 'same answer is not a change');
 
@@ -62,8 +63,9 @@ test('flags: tester email list is tidied', () => {
   assert.deepEqual(normalizeTesterEmails(' B@x.com, a@x.com;\nb@x.com  not-an-email '), ['a@x.com', 'b@x.com']);
 });
 
-test('flags: every client flag is seeded in the migration', () => {
-  const sql = readFileSync(new URL('../supabase/migrations/20261021030000_feature_flags.sql', import.meta.url), 'utf8');
+test('flags: every client flag is seeded in a migration', () => {
+  const dir = new URL('../supabase/migrations/', import.meta.url);
+  const sql = readdirSync(dir).filter((f) => f.endsWith('.sql')).map((f) => readFileSync(new URL(f, dir), 'utf8')).join('\n');
   for (const key of Object.keys(FEATURE_FLAGS)) assert.match(sql, new RegExp(`\\('${key}', 'off'`), key);
 });
 

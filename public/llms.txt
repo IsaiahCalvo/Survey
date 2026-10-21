@@ -1,0 +1,23 @@
+# Survey
+
+> Survey is a PDF markup and counting app for construction and engineering drawings. It runs in the browser on Mac, Windows, iPad, Android tablets and phones at https://surveytool.app.
+
+People use Survey to redline drawing sets, tap to count items on a plan (each category keeps a running total), and export the counts to Excel. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, survey tools, templates and regions, Excel export, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
+
+## Pages
+
+- [Home](https://surveytool.app/welcome): what Survey is and who it is for
+- [Features](https://surveytool.app/features): count markers, pen and highlighter, shapes, clouds and arrows, large drawing sets
+- [Devices](https://surveytool.app/devices): desktop, tablet and phone
+- [Pricing](https://surveytool.app/pricing): Free, Pro and Enterprise plans
+- [FAQ](https://surveytool.app/faq): common questions
+- [Field surveys](https://surveytool.app/use-cases/field-surveys): Walk a site with the plans on your iPad, count what is there, tag what needs work and send the totals to Excel.
+- [Punch lists](https://surveytool.app/use-cases/punch-lists): Mark punch items right on the floor plan with numbered markers and notes, then share the marked-up set with your team.
+- [As-builts](https://surveytool.app/use-cases/as-builts): Red-line the drawings with what was really built: moved walls, rerouted runs, added fixtures. Keep it with the project.
+- [Survey vs Bluebeam Revu](https://surveytool.app/compare/bluebeam): An honest look at Survey and Bluebeam Revu for marking up and counting on construction drawings: what each does best and who each one fits.
+- [Survey vs Drawboard Projects](https://surveytool.app/compare/drawboard): An honest look at Survey and Drawboard Projects for marking up construction drawings: what each does best and who each one fits.
+
+## Optional
+
+- [Privacy policy](https://surveytool.app/privacy.html)
+- [Terms of service](https://surveytool.app/terms.html)

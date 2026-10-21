@@ -4,7 +4,7 @@
 // off at once when the person removes it.
 import crypto from 'node:crypto';
 import { E2E_ACCOUNTS, E2E_DOCUMENT } from './accounts.mjs';
-import { expect, test } from './helpers.mjs';
+import { adminClient, expect, test } from './helpers.mjs';
 
 const API = () => process.env.E2E_SUPABASE_URL;
 const KEY = () => process.env.E2E_SUPABASE_ANON_KEY;
@@ -152,4 +152,57 @@ test('each agent has an hourly limit on email and Excel calls, and it shows in t
   const row = page.locator('li', { hasText: name });
   await expect(row.filter({ hasText: 'used profile change email (refused: over the hourly limit)' })).toHaveCount(1, { timeout: 30_000 });
   await expect(row.filter({ hasText: /used profile change email$/ })).toHaveCount(5);
+});
+
+test('a checked AgentID shows next to the agent, and agents cannot read it', async ({ page }) => {
+  const name = `AgentID agent ${RUN}`;
+  const { clientId, tok } = await agentSignIn(page, E2E_ACCOUNTS.editor, name);
+  const userId = sub(tok.access_token);
+  // What the agent-identity function records after checking the AgentID token.
+  const { error } = await adminClient().from('agent_identities').upsert({
+    user_id: userId, client_id: clientId, agentid_sub: `agt_${RUN}`, agent_email: `bot-${RUN}@agentmail.to`,
+    owner_email: 'owner@example.com', owner_human_verified: true,
+  });
+  expect(error).toBeNull();
+  expect(await (await agentApi(tok.access_token).get('agent_identities?select=agentid_sub')).json()).toEqual([]);
+
+  await page.goto('/agent-link');
+  await expect(page.locator(`div:has(> span:has-text("${name}"))`))
+    .toContainText(`AgentID bot-${RUN}@agentmail.to, owned by owner@example.com (verified human)`, { timeout: 30_000 });
+  await adminClient().from('agent_identities').delete().eq('user_id', userId).eq('client_id', clientId);
+
+  await page.goto('/agentid/callback?code=abc&state=xyz');
+  await expect(page.getByText('Agent sign-in received')).toBeVisible();
+});
+
+test('log rows past 90 days are hidden and pruned, even for people whose agents went quiet', async ({ page }) => {
+  const admin = adminClient();
+  const { data: { users } } = await admin.auth.admin.listUsers();
+  const quiet = users.find((u) => u.email === E2E_ACCOUNTS.free.email);
+  const { error } = await admin.from('agent_activity').insert({
+    user_id: quiet.id, client_id: `old-${RUN}`, action: 'insert', table_name: 'projects',
+    created_at: new Date(Date.now() - 100 * 86_400_000).toISOString(),
+  });
+  expect(error).toBeNull();
+
+  const { tok } = await agentSignIn(page, E2E_ACCOUNTS.pro, `Pruning agent ${RUN}`);
+  const a = agentApi(tok.access_token);
+  const created = await a.post('projects', { user_id: sub(tok.access_token), name: `Prune trigger ${RUN}` });
+  const [{ id }] = await created.json();
+  await a.del(`projects?id=eq.${id}`);
+
+  const { data } = await admin.from('agent_activity').select('id').eq('client_id', `old-${RUN}`);
+  expect(data).toEqual([]);
+});
+
+test('an agent cannot raise its own hourly cap from REST', async ({ page }) => {
+  const { tok } = await agentSignIn(page, E2E_ACCOUNTS.free, `Cap probe ${RUN}`);
+  const a = agentApi(tok.access_token);
+  // Spend the real cap (5/hour for this function), passing a huge p_limit each time.
+  let refused = 0;
+  for (let i = 0; i < 7; i += 1) {
+    const ok = await (await a.rpc('agent_rate_hit', { p_fn: 'send-profile-change-notification', p_limit: 1_000_000 })).json();
+    if (ok === false) refused += 1;
+  }
+  expect(refused).toBeGreaterThan(0);
 });

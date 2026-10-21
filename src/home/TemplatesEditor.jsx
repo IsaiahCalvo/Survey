@@ -39,7 +39,7 @@
    the parent panels' `overflow: hidden` can never clip them or spawn
    scrollbars.
 */
-import { listExportKits, subscribeExportKits, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
+import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
 import { ANSWER_SET_PRESETS, DEFAULT_ANSWER_SET } from '../services/answerSets.js';
 import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
@@ -2459,7 +2459,7 @@ export default function TemplatesEditor({
                 <select
                   className="hub-answer-set"
                   aria-label="Checklist answers"
-                  value={answerPresetIdOf(tpl.answerSet)}
+                  value={answerPresetIdOf(tpl.answerSet || getExportKit(tpl.exportKitId)?.answerSet)}
                   onChange={(e) => {
                     const preset = ANSWER_SET_PRESETS.find((p) => p.id === e.target.value);
                     mutateTpl(tpl.id, (t) => {
@@ -2470,7 +2470,7 @@ export default function TemplatesEditor({
                   {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
                   style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
                 >
-                  {!answerPresetIdOf(tpl.answerSet) && <option value="">Custom</option>}
+                  {!answerPresetIdOf(tpl.answerSet || getExportKit(tpl.exportKitId)?.answerSet) && <option value="">Custom</option>}
                   {ANSWER_SET_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
               </div>
@@ -3185,7 +3185,7 @@ export default function TemplatesEditor({
                   <span>Answers</span>
                   <select
                     aria-label="Checklist answers"
-                    value={answerPresetIdOf(tpl.answerSet)}
+                    value={answerPresetIdOf(tpl.answerSet || getExportKit(tpl.exportKitId)?.answerSet)}
                     onChange={(e) => {
                       const preset = ANSWER_SET_PRESETS.find((p) => p.id === e.target.value);
                       mutateTpl(tpl.id, (t) => {
@@ -3194,7 +3194,7 @@ export default function TemplatesEditor({
                       });
                     }}
                   >
-                    {!answerPresetIdOf(tpl.answerSet) && <option value="">Custom</option>}
+                    {!answerPresetIdOf(tpl.answerSet || getExportKit(tpl.exportKitId)?.answerSet) && <option value="">Custom</option>}
                     {ANSWER_SET_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                   </select>
                 </label>

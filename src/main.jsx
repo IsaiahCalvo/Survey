@@ -36,13 +36,19 @@ if (typeof window !== 'undefined') {
     })
     .catch((err) => console.warn('[flags] not loaded', err));
 }
-// Crash reports (Settings -> Crash reports): kept on this device only.
+// Crash reports (Settings -> Crash reports): the full record stays on this device...
 installCrashLog({
   build: [
     typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'unknown',
     typeof __BUILD_STAMP__ !== 'undefined' && __BUILD_STAMP__ ? __BUILD_STAMP__ : null,
   ].filter(Boolean).join(' '),
 });
+// ...and a scrubbed copy goes to the client_errors table (src/utils/crashReporter.js).
+if (typeof window !== 'undefined') {
+  Promise.all([import('./utils/crashReporter'), import('./supabaseClient')])
+    .then(([{ installCrashReporter }, { supabase }]) => installCrashReporter(supabase))
+    .catch(() => {});
+}
 
 // Stale-deploy recovery: when a lazy-loaded code chunk fails to load (usually a
 // new version deployed while this tab was open, so the old hashed chunk is
@@ -557,7 +563,7 @@ if (!devRouteActive && isResetPasswordRoute) {
 // sign-up email or Google sign-in returns to the front page while an agent
 // code or consent request is waiting.
 const isAgentLinkRoute = typeof window !== 'undefined'
-  && (/^\/(?:agent-link|oauth\/consent)(?:\/|$)/.test(window.location.pathname || '')
+  && (/^\/(?:agent-link|oauth\/consent|agentid\/callback)(?:\/|$)/.test(window.location.pathname || '')
     || (() => { try { return Boolean(agentLinkResumeUrl(window.location, window.localStorage)); } catch { return false; } })());
 
 if (!devRouteActive && isAgentLinkRoute) {

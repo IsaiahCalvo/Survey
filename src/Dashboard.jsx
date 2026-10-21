@@ -13,7 +13,7 @@ import { resolveIncomingUpload, shouldOfferAlias, nextAvailableName } from './ut
 import DuplicateUploadModal from './components/DuplicateUploadModal';
 import Icon from './Icons';
 import DismissBarrier from './components/DismissBarrier';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
 import CreateProjectModal from './home/CreateProjectModal';
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
@@ -170,23 +170,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   const {
     projects: supabaseProjects,
     initialLoading: projectsInitialLoading,
+    showingCached: projectsShowingCached,
     error: projectsLoadError,
     createProject: createSupabaseProject,
     updateProject: updateSupabaseProject,
     deleteProject: deleteSupabaseProject,
     refetch: refetchProjects
-  } = useProjects();
+  } = useProjects({ listCache: true });
 
   const {
     templates: supabaseTemplates,
     initialLoading: templatesInitialLoading,
+    showingCached: templatesShowingCached,
     error: templatesLoadError,
     createTemplate: createSupabaseTemplate,
     updateTemplate: updateSupabaseTemplate,
     deleteTemplate: deleteSupabaseTemplate,
     replaceTemplates: replaceSupabaseTemplates,
     refetch: refetchTemplates
-  } = useTemplates();
+  } = useTemplates({ listCache: true });
 
   const { uploadDocument: uploadToStorage, uploadDataFile, deleteDocumentFile: deleteFromStorage, downloadDocument: downloadFromStorage } = useStorage();
 
@@ -310,12 +312,13 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   const {
     documents: supabaseDocuments,
     initialLoading: documentsInitialLoading,
+    showingCached: documentsShowingCached,
     error: documentsLoadError,
     createDocument: createSupabaseDocument,
     updateDocument: updateSupabaseDocument,
     deleteDocument: deleteSupabaseDocument,
     refetch: refetchDocuments
-  } = useDocuments(selectedProjectId);
+  } = useDocuments(selectedProjectId, { listCache: true });
 
   // Fetch all documents for file count display in project list
   const {
@@ -476,8 +479,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [user]);
 
-  // Sync Supabase documents with parent component state
-  useEffect(() => {
+  // Sync Supabase documents with parent component state. A layout effect so
+  // a list painted from the device cache never shows one skeleton frame
+  // between the cached rows arriving and this copy catching up.
+  useLayoutEffect(() => {
     if (!Array.isArray(supabaseDocuments)) return;
     // Convert Supabase documents to the format expected by the UI.
     // Spread the real Supabase row FIRST so the true shape survives —
@@ -2407,10 +2412,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
      a no-op. Mount the file inputs here so handleUploadClick fires correctly
      in v2.0 browser mode. handleFileUpload already resets event.target.value
      so the same file can be re-picked. */
+  // A list painted from the device cache is not a first load: no skeleton,
+  // the server read refreshes it in place. (documentsInitialLoading itself
+  // still waits for the server, so the saved-tab restore above never runs
+  // against the cached copy.)
   const hubInitialLoading = resolveHubInitialLoading({
-    documentsInitialLoading,
-    projectsInitialLoading,
-    templatesInitialLoading,
+    documentsInitialLoading: documentsInitialLoading && !documentsShowingCached,
+    projectsInitialLoading: projectsInitialLoading && !projectsShowingCached,
+    templatesInitialLoading: templatesInitialLoading && !templatesShowingCached,
     authLoading,
     documentsAwaitingSync: (supabaseDocuments?.length || 0) > 0 && (documents?.length || 0) === 0,
   });

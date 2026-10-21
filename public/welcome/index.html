@@ -3,318 +3,142 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Survey — PDF markup for construction drawings</title>
-<meta name="description" content="Survey is a PDF markup app for construction and engineering drawings. Mark up, count, and survey your plans on the web, desktop, and tablet, synced everywhere." />
-<meta property="og:title" content="Survey — PDF markup for construction drawings" />
-<meta property="og:description" content="Mark up, count, and survey your plans. Works in the browser, on desktop and on tablet." />
-<meta property="og:url" content="https://surveytool.app/welcome" />
+<title>Survey: PDF markup and counting for construction drawings</title>
+<meta name="description" content="Mark up construction drawings, count items on the plan and send the totals to Excel. Works in your browser on desktop, iPad and phone. Free to start." />
 <link rel="canonical" href="https://surveytool.app/welcome" />
+<meta name="color-scheme" content="light dark" />
+<meta name="theme-color" content="#f4f1e8" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#121821" media="(prefers-color-scheme: dark)" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Survey" />
+<meta property="og:title" content="Survey: PDF markup and counting for construction drawings" />
+<meta property="og:description" content="Mark up construction drawings, count items on the plan and send the totals to Excel. Works in your browser on desktop, iPad and phone. Free to start." />
+<meta property="og:url" content="https://surveytool.app/welcome" />
 <meta property="og:image" content="https://surveytool.app/welcome/og.jpg" />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Survey — PDF markup for construction drawings" />
-<meta name="twitter:description" content="Mark up, count, and survey your plans. Works in the browser, on desktop and on tablet." />
+<meta name="twitter:title" content="Survey: PDF markup and counting for construction drawings" />
+<meta name="twitter:description" content="Mark up construction drawings, count items on the plan and send the totals to Excel. Works in your browser on desktop, iPad and phone. Free to start." />
 <meta name="twitter:image" content="https://surveytool.app/welcome/og.jpg" />
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Survey","applicationCategory":"BusinessApplication","operatingSystem":"Web, Windows, macOS, iPadOS","url":"https://surveytool.app/welcome","offers":[{"@type":"Offer","price":"0","priceCurrency":"USD","name":"Free"},{"@type":"Offer","price":"9.99","priceCurrency":"USD","name":"Pro"}]}</script>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-<meta name="theme-color" content="#0b0d12" />
-<style>
-:root{--bg:#0b0d12;--bg2:#10131a;--panel:#141822;--panel2:#191e2a;--line:#232938;--line2:#2e3547;--text:#eef0f5;--muted:#9aa3b5;--dim:#8b93a6;--gold:#d8a84e;--gold2:#edc26d;--ink:#1a1405}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
-a{color:inherit}
-img,video{display:block;max-width:100%;height:auto}
-.wrap{max-width:1160px;margin:0 auto;padding:0 24px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 22px;border-radius:10px;font-weight:600;text-decoration:none;font-size:15px;border:1px solid var(--line2);transition:background .15s,border-color .15s,transform .15s;white-space:nowrap}
-.btn:hover{border-color:#47506a;transform:translateY(-1px)}
-.btn.gold{background:var(--gold);border-color:var(--gold);color:var(--ink)}
-.btn.gold:hover{background:var(--gold2);border-color:var(--gold2)}
-.btn.lg{padding:15px 28px;font-size:16px;border-radius:12px}
-.eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
-h1,h2,h3{letter-spacing:-.025em;margin:0}
-h2{font-size:clamp(30px,4.4vw,48px);line-height:1.1}
-.sub{color:var(--muted);font-size:clamp(16px,1.8vw,19px)}
-/* nav */
-.bar{background:linear-gradient(90deg,#2a2112,#1a160e);border-bottom:1px solid #3a2f18;font-size:14px;text-align:center;padding:9px 16px;color:#e9dcc0}
-.bar a{color:var(--gold2);font-weight:600;text-decoration:none;margin-left:6px}
-.bar .pill{display:inline-block;background:var(--gold);color:var(--ink);font-size:11px;font-weight:800;border-radius:999px;padding:2px 8px;margin-right:8px;letter-spacing:.04em}
-header{position:sticky;top:0;z-index:20;background:rgba(11,13,18,.82);backdrop-filter:saturate(1.4) blur(12px);-webkit-backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid rgba(255,255,255,.06)}
-nav{display:flex;align-items:center;gap:28px;height:64px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:750;font-size:19px;text-decoration:none;letter-spacing:-.02em}
-.brand img{width:30px;height:30px}
-nav .links{display:flex;gap:26px}
-nav .links a{text-decoration:none;color:var(--muted);font-size:15px}
-nav .links a:hover{color:var(--text)}
-nav .right{margin-left:auto;display:flex;gap:10px;align-items:center}
-nav .right .signin{text-decoration:none;color:var(--text);font-size:15px;padding:0 8px}
-/* hero */
-.hero{position:relative;padding:64px 0 0;text-align:center;overflow:hidden}
-.hero::before{content:"";position:absolute;inset:0;background:radial-gradient(60% 50% at 50% 70%,rgba(216,168,78,.18),transparent 70%),radial-gradient(40% 40% at 15% 10%,rgba(80,110,200,.10),transparent 70%);pointer-events:none}
-.hero::after{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse at 50% 30%,#000 30%,transparent 75%);-webkit-mask-image:radial-gradient(ellipse at 50% 30%,#000 30%,transparent 75%);pointer-events:none}
-.hero .wrap{position:relative;z-index:1}
-.hero h1{font-size:clamp(40px,7vw,80px);line-height:1.02;max-width:980px;margin:16px auto 26px;font-weight:800}
-.mark{position:relative;display:inline-block;white-space:nowrap}
-.mark svg{position:absolute;left:-2%;bottom:-.22em;width:104%;height:.36em;overflow:visible;pointer-events:none}
-.mark path+path{animation-delay:1.1s;stroke-width:3.5;opacity:.8}
-.mark path{fill:none;stroke:var(--gold);stroke-width:5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:500;stroke-dashoffset:500;animation:draw 1.6s .4s cubic-bezier(.6,.1,.3,1) forwards}
-@keyframes draw{to{stroke-dashoffset:0}}
-.hero .sub{max-width:660px;margin:0 auto 34px}
-.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.plat{margin-top:20px;color:var(--dim);font-size:14px}
-.plat b{color:var(--muted);font-weight:500}
-.stage{position:relative;margin:52px auto 0;max-width:1100px;padding:0 24px}
-.laptop{position:relative;border-radius:16px 16px 0 0;background:#1b1f29;padding:10px 10px 0;border:1px solid #2b3142;border-bottom:none;box-shadow:0 -10px 80px rgba(216,168,78,.15),0 40px 120px rgba(0,0,0,.6)}
-.laptop .chrome{display:flex;align-items:center;gap:6px;padding:4px 6px 10px}
-.laptop .chrome i{width:10px;height:10px;border-radius:50%;background:#3a4052;display:block}
-.laptop .chrome span{margin:0 auto;font-size:12px;color:var(--dim);background:#121520;border:1px solid #262c3b;border-radius:6px;padding:3px 40px}
-.laptop video,.laptop img{border-radius:6px 6px 0 0;width:100%;aspect-ratio:16/10;object-fit:cover;background:#0d0f14}
-.float{position:absolute;z-index:2;background:rgba(20,24,34,.92);border:1px solid var(--line2);border-radius:12px;padding:10px 14px;font-size:13px;text-align:left;box-shadow:0 20px 40px rgba(0,0,0,.45);backdrop-filter:blur(8px);animation:bob 6s ease-in-out infinite}
-.float b{display:block;font-size:20px;color:var(--gold2)}
-.float.f1{left:-8px;top:22%}.float.f2{right:-8px;top:52%;animation-delay:-3s}
-@keyframes bob{50%{transform:translateY(-8px)}}
-.fade{height:120px;margin-top:-120px;position:relative;pointer-events:none;background:linear-gradient(transparent,var(--bg))}
-/* trades strip */
-.trades{padding:40px 0 20px;text-align:center;color:var(--dim);font-size:14px}
-.trades ul{list-style:none;padding:0;margin:16px 0 0;display:flex;flex-wrap:wrap;justify-content:center;gap:10px 34px}
-.trades li{font-size:17px;font-weight:650;color:#7f889c;letter-spacing:-.01em}
-section{padding:110px 0}
-.center{text-align:center}
-.center .sub{max-width:640px;margin:16px auto 0}
-/* tabs demo */
-.tabs{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:40px 0 28px}
-.tabs button{font:inherit;font-size:15px;font-weight:600;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:10px 18px;cursor:pointer}
-.tabs button[aria-selected=true]{background:var(--gold);color:var(--ink);border-color:var(--gold)}
-.panes{max-width:1000px;margin:0 auto}
-.pane{display:none;grid-template-columns:1.25fr 1fr;gap:40px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:28px}
-.pane.on{display:grid;animation:in .35s ease}
-@keyframes in{from{opacity:0;transform:translateY(6px)}}
-.pane .pic{border-radius:12px;overflow:hidden;border:1px solid var(--line2);background:#fff}
-.pane h3{font-size:26px;margin-bottom:10px}
-.pane p{color:var(--muted);margin:0 0 14px}
-.ticks{list-style:none;padding:0;margin:0;color:var(--text)}
-.ticks li{padding-left:28px;position:relative;margin:8px 0;font-size:15px}
-.ticks li::before{content:"";position:absolute;left:0;top:3px;width:18px;height:18px;border-radius:50%;background:rgba(216,168,78,.15) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M5 10.5l3 3 7-7' fill='none' stroke='%23d8a84e' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat}
-/* tool grid */
-.tools{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:48px}
-.tool{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;transition:border-color .2s,transform .2s}
-.tool:hover{border-color:#3d4560;transform:translateY(-2px)}
-.tool .art{height:92px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);margin-bottom:16px;display:grid;place-items:center;overflow:hidden}
-.tool h3{font-size:16px;margin-bottom:4px}
-.tool p{margin:0;color:var(--muted);font-size:14px}
-/* value row */
-.values{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:56px;text-align:left}
-.values .n{font-size:44px;font-weight:800;letter-spacing:-.03em;color:var(--gold2);line-height:1}
-.values h3{font-size:19px;margin:14px 0 6px}
-.values p{margin:0;color:var(--muted)}
-/* devices */
-.devices{position:relative;max-width:1000px;margin:56px auto 0;height:560px}
-.dev-tab{position:absolute;left:0;top:0;width:80%;border-radius:26px;background:#1b1f29;padding:14px;border:1px solid #2e3446;box-shadow:0 40px 100px rgba(0,0,0,.55)}
-.dev-tab img{border-radius:14px}
-.dev-ph{position:absolute;right:2%;bottom:0;width:23%;border-radius:34px;background:#1b1f29;padding:9px;border:1px solid #2e3446;box-shadow:0 30px 80px rgba(0,0,0,.6)}
-.dev-ph img{border-radius:26px}
-.badges{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:28px}
-.soon{display:inline-flex;align-items:center;gap:8px;border:1px dashed var(--line2);border-radius:10px;padding:12px 18px;color:var(--muted);font-size:14px}
-/* custom */
-.custom{background:linear-gradient(135deg,#1c1710,#121520 60%);border:1px solid #3a2f18;border-radius:24px;padding:56px;display:grid;grid-template-columns:1.2fr 1fr;gap:40px;align-items:center}
-.custom h2{font-size:clamp(28px,3.6vw,40px)}
-.custom p{color:var(--muted);font-size:17px}
-.chips{display:flex;flex-wrap:wrap;gap:10px}
-.chips span{background:rgba(216,168,78,.1);border:1px solid rgba(216,168,78,.3);color:#ecd9b0;border-radius:999px;padding:8px 14px;font-size:14px}
-/* pricing */
-.prices{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:52px;align-items:stretch}
-.price{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:30px;display:flex;flex-direction:column;position:relative}
-.price.best{border:1.5px solid var(--gold);background:linear-gradient(180deg,#1d1a12,var(--panel) 40%);box-shadow:0 30px 80px rgba(216,168,78,.12)}
-.price .tag{position:absolute;top:-12px;left:30px;background:var(--gold);color:var(--ink);font-size:12px;font-weight:800;border-radius:999px;padding:4px 10px}
-.price h3{font-size:18px}
-.price .amt{font-size:46px;font-weight:800;letter-spacing:-.03em;margin:14px 0 0;line-height:1}
-.price .amt small{font-size:15px;color:var(--muted);font-weight:500;letter-spacing:0}
-.price .note{color:var(--muted);font-size:14px;margin-top:8px;min-height:21px}
-.price .ticks{margin:22px 0 28px;flex:1}
-/* faq */
-.faq{max-width:780px;margin:44px auto 0}
-.faq details{border-bottom:1px solid var(--line);padding:20px 4px}
-.faq summary{cursor:pointer;font-weight:650;font-size:18px;list-style:none;display:flex;justify-content:space-between;gap:16px}
-.faq summary::-webkit-details-marker{display:none}
-.faq summary::after{content:"+";color:var(--gold);font-size:24px;line-height:1;transition:transform .2s}
-.faq details[open] summary::after{transform:rotate(45deg)}
-.faq p{color:var(--muted);margin:12px 0 0}
-.faq a{color:var(--gold2)}
-/* final */
-.final{position:relative;text-align:center;border:1px solid var(--line);border-radius:28px;padding:84px 24px;overflow:hidden;background:radial-gradient(70% 90% at 50% 100%,rgba(216,168,78,.22),transparent 70%),var(--bg2)}
-.final h2{max-width:720px;margin:0 auto 16px}
-.final .sub{margin:0 auto 32px;max-width:520px}
-footer{border-top:1px solid var(--line);padding:56px 0 40px;color:var(--muted);font-size:14px}
-.fgrid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px}
-.fgrid .fh{color:var(--text);font-size:14px;margin:0 0 12px}
-.fgrid a{display:block;text-decoration:none;margin:8px 0}
-.fgrid a:hover{color:var(--text)}
-.fgrid a.brand{display:flex}
-section[id]{scroll-margin-top:72px}
-.copy{margin-top:40px;padding-top:24px;border-top:1px solid var(--line);color:var(--dim);font-size:13px}
-/* reveal */
-.rv{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
-.rv.in{opacity:1;transform:none}
-@media (max-width:980px){.tools{grid-template-columns:repeat(2,1fr)}.custom{grid-template-columns:1fr;padding:36px}.prices{grid-template-columns:1fr;max-width:460px;margin-left:auto;margin-right:auto}.devices{height:auto;padding-bottom:40px}.dev-tab{position:relative;width:88%}.dev-ph{width:30%}.float{display:none}.fgrid{grid-template-columns:1fr 1fr}}
-@media (max-width:760px){nav .links{display:none}.pane{grid-template-columns:1fr;padding:18px}.values{grid-template-columns:1fr;gap:28px}section{padding:76px 0}.hero{padding-top:56px}.cta .btn{width:100%}.cta{max-width:360px;margin:0 auto}.laptop{padding:6px 6px 0;border-radius:12px 12px 0 0}.laptop .chrome{display:none}.stage{padding:0 12px;margin-top:44px}.bar .more{display:none}}
-@media (max-width:520px){.tools{gap:10px}.tool{padding:12px}.tool .art{height:70px}.tool .art svg{transform:scale(.8)}.tool p{font-size:13px}nav .right .signin{display:none}.dev-ph{width:36%}.final{padding:60px 20px}}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}.mark path{stroke-dashoffset:0}.rv{opacity:1;transform:none}}
-</style>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" media="print" onload="this.media='all'" />
+<style>:root{  --paper:#f4f1e8;--sheet:#fbfaf5;--ink:#17202b;--soft:#4a5462;--rule:#d9d3c3;  --blue:#1f4fa3;--blue-ink:#ffffff;--red:#c8392b;--grid:rgba(31,79,163,.07);  --shadow:0 1px 0 rgba(23,32,43,.04),0 18px 40px -18px rgba(23,32,43,.28);  --display:"Bricolage Grotesque",system-ui,sans-serif;--body:"Public Sans",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace;  color-scheme:light;}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){  --paper:#121821;--sheet:#18202b;--ink:#ece8dd;--soft:#a7afbb;--rule:#2a3442;  --blue:#8fb0ff;--blue-ink:#0d1420;--red:#ff7a66;--grid:rgba(143,176,255,.06);  --shadow:0 18px 40px -18px rgba(0,0,0,.7);color-scheme:dark;}}:root[data-theme="dark"]{  --paper:#121821;--sheet:#18202b;--ink:#ece8dd;--soft:#a7afbb;--rule:#2a3442;  --blue:#8fb0ff;--blue-ink:#0d1420;--red:#ff7a66;--grid:rgba(143,176,255,.06);  --shadow:0 18px 40px -18px rgba(0,0,0,.7);color-scheme:dark;}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.6 var(--body);-webkit-font-smoothing:antialiased;  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:32px 32px}img,video{max-width:100%;height:auto;display:block}a{color:var(--blue)}h1,h2,h3{font-family:var(--display);line-height:1.08;letter-spacing:-.02em;margin:0 0 .5em;font-weight:700}h1{font-size:clamp(40px,6vw,72px)}h2{font-size:clamp(28px,3.6vw,42px)}h3{font-size:20px;font-weight:500;letter-spacing:-.01em}p{margin:0 0 1em}.wrap{max-width:1180px;margin:0 auto;padding:0 24px}.narrow{max-width:780px}.center{text-align:center}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.skip{position:absolute;left:-999px;top:8px;background:var(--ink);color:var(--paper);padding:8px 12px;border-radius:6px;z-index:50}.skip:focus{left:8px}:focus-visible{outline:2px solid var(--blue);outline-offset:3px;border-radius:4px}.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:8px;font:600 15px/1 var(--body);text-decoration:none;border:1.5px solid transparent;transition:transform .15s,background .15s,border-color .15s}.btn:hover{transform:translateY(-1px)}.btn.primary{background:var(--blue);color:var(--blue-ink)}.btn.ghost{border-color:var(--ink);color:var(--ink)}.btn.ghost:hover{background:var(--ink);color:var(--paper)}.btn.lg{min-height:52px;padding:0 24px;font-size:16px}.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--rule)}.nav{display:flex;align-items:center;gap:28px;height:64px}.brand{display:flex;align-items:center;gap:10px;font:700 20px/1 var(--display);color:var(--ink);text-decoration:none}.brand img{border-radius:7px}.links{display:flex;gap:4px}.links a,.mnav a{color:var(--soft);text-decoration:none;font-weight:500;padding:8px 12px;border-radius:6px}.links a:hover{color:var(--ink)}.links a[aria-current="page"]{color:var(--ink);background:var(--sheet);box-shadow:inset 0 -2px 0 var(--red)}.right{margin-left:auto;display:flex;align-items:center;gap:12px}.login{color:var(--ink);text-decoration:none;font-weight:500}.theme,.menu{width:40px;height:40px;border-radius:8px;border:1px solid var(--rule);background:var(--sheet);color:var(--ink);display:grid;place-items:center;cursor:pointer}.theme svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;grid-area:1/1;transition:transform .35s,opacity .25s}.theme .i-moon{fill:currentColor;stroke:none;opacity:0;transform:rotate(-60deg) scale(.6)}:root[data-theme="dark"] .theme .i-sun{opacity:0;transform:rotate(60deg) scale(.6)}:root[data-theme="dark"] .theme .i-moon{opacity:1;transform:none}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .theme .i-sun{opacity:0;transform:rotate(60deg) scale(.6)}:root:not([data-theme="light"]) .theme .i-moon{opacity:1;transform:none}}.menu{display:none;gap:5px;align-content:center}.menu span{display:block;width:18px;height:2px;background:currentColor;border-radius:2px}.mnav{display:none}::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}.hero{padding:72px 0 40px}.hero-grid{display:grid;grid-template-columns:5fr 6fr;gap:56px;align-items:center}.kicker{font:500 14px/1 var(--mono);color:var(--red);margin-bottom:20px}.lede{font-size:19px;color:var(--soft);max-width:560px}.cta{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 14px}.fine{font-size:14px;color:var(--soft)}.hero-stage{position:relative;padding:28px}.frame{position:relative;border-radius:12px;overflow:hidden;background:var(--sheet);border:1px solid var(--rule);box-shadow:var(--shadow)}.bar{display:flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-bottom:1px solid var(--rule);font:500 11px var(--mono);color:var(--soft)}.bar i{width:9px;height:9px;border-radius:50%;background:var(--rule)}.bar span{margin-left:10px}.cloud{position:absolute;left:7%;top:28%;width:26%;height:36%;pointer-events:none;overflow:visible}.cloud path{fill:none;stroke:var(--red);stroke-width:3;stroke-linecap:round;vector-effect:non-scaling-stroke;stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1.6s .4s cubic-bezier(.6,.1,.3,1) forwards}@keyframes draw{to{stroke-dashoffset:0}}.tag{position:absolute;margin:0;background:var(--sheet);border:1px solid var(--rule);border-radius:8px;padding:8px 12px;font-size:14px;box-shadow:var(--shadow);opacity:0;animation:pop .4s forwards}.tag b{font:500 15px var(--mono);color:var(--red);margin-right:4px}.t1{left:-6px;bottom:44px;animation-delay:1.9s}.t2{right:-4px;top:58px;animation-delay:2.1s}@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}.who{border-block:1px solid var(--rule);background:var(--sheet)}.who p{margin:0;padding:18px 0;color:var(--soft);text-align:center}.who span{color:var(--ink);font-weight:500}.sec{padding:88px 0}.sec.tight{padding-top:16px}.head{max-width:640px;margin-bottom:40px}.head p,.page-head .lede{color:var(--soft)}.more-link{margin-top:28px;font-weight:600}.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}.card{display:block;text-decoration:none;color:inherit;background:var(--sheet);border:1px solid var(--rule);border-radius:12px;padding:14px 14px 20px;transition:border-color .2s,transform .2s}.card:hover{border-color:var(--blue);transform:translateY(-2px)}.card .shot{margin:0 0 16px;aspect-ratio:16/10}.card h3{margin:0 6px 6px}.card p{margin:0 6px;color:var(--soft);font-size:16px}.shot{margin:0;border-radius:8px;overflow:hidden;border:1px solid var(--rule);background:#fff}.shot img{width:100%;height:100%;object-fit:cover}.split-grid{display:grid;grid-template-columns:5fr 6fr;gap:56px;align-items:center}.ticks{list-style:none;padding:0;margin:0 0 24px}.ticks li{padding:6px 0 6px 28px;position:relative}.ticks li::before{content:"";position:absolute;left:2px;top:13px;width:12px;height:7px;border-left:2px solid var(--red);border-bottom:2px solid var(--red);transform:rotate(-45deg)}.devices{position:relative;padding-right:70px}.devices.wide{max-width:900px;margin:0 auto}.dev-tab{margin:0;border:10px solid #1b222c;border-radius:18px;overflow:hidden;box-shadow:var(--shadow)}.dev-ph{margin:0;position:absolute;right:0;bottom:-24px;width:26%;border:6px solid #1b222c;border-radius:22px;overflow:hidden;box-shadow:var(--shadow);background:#1b222c}.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:stretch}.plan{display:flex;flex-direction:column;background:var(--sheet);border:1px solid var(--rule);border-radius:12px;padding:28px}.plan.best{border:2px solid var(--blue)}.plan h3{margin:0}.flag{font:500 12px var(--mono);color:var(--red);margin:6px 0 0}.amt{font:700 44px/1 var(--display);margin:18px 0 6px}.amt small{font:500 15px var(--body);color:var(--soft);margin-left:4px}.note{color:var(--soft);font-size:15px}.plan ul{list-style:none;padding:0;margin:8px 0 24px;flex:1}.plan li{padding:7px 0;border-top:1px dashed var(--rule);font-size:16px}.plan .btn{width:100%}.custom{background:var(--ink);color:var(--paper);border-radius:16px;padding:48px}.custom p{max-width:620px;opacity:.85}.custom .btn.ghost{border-color:var(--paper);color:var(--paper)}.custom .btn.ghost:hover{background:var(--paper);color:var(--ink)}.band{padding:40px 0 96px}.cta-band{text-align:center;border-top:2px solid var(--ink);padding-top:72px}.cta-band p{color:var(--soft)}.page-head{padding:72px 0 32px}.page-head h1{max-width:820px}.jump{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.jump a{padding:8px 14px;border:1px solid var(--rule);border-radius:999px;background:var(--sheet);color:var(--ink);text-decoration:none;font-size:15px}.jump a:hover{border-color:var(--blue)}.feat{padding:56px 0;border-top:1px solid var(--rule);scroll-margin-top:72px}.feat-grid{display:grid;grid-template-columns:5fr 7fr;gap:56px;align-items:center}.feat.flip .feat-grid>div{order:2}.feat .lead{font-size:20px;color:var(--ink);font-weight:500}.feat p{color:var(--soft)}.grid6{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:12px;overflow:hidden}.grid6>div{background:var(--sheet);padding:24px}.grid6 p{color:var(--soft);margin:0;font-size:16px}.dev-rows{display:grid;grid-template-columns:repeat(3,1fr);gap:32px}.dev-rows article{border-top:2px solid var(--ink);padding-top:20px}.dev-rows h2{font-size:24px}.dev-rows p{color:var(--soft)}.tbl{overflow-x:auto;margin-top:24px;border:1px solid var(--rule);border-radius:12px;background:var(--sheet)}table{width:100%;border-collapse:collapse;min-width:560px}th,td{padding:14px 18px;text-align:left;border-bottom:1px solid var(--rule)}td{text-align:center}thead th{font-family:var(--display);font-size:18px;text-align:center}tbody th{font-weight:500}tr:last-child>*{border-bottom:0}.yes{color:var(--red);font-weight:700}.no{color:var(--soft)}.faq details{border-bottom:1px solid var(--rule)}.faq summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:20px 0}.faq summary::-webkit-details-marker{display:none}.faq summary h3{margin:0;font-size:20px}.faq summary::after{content:"+";font:500 24px var(--mono);color:var(--red);transition:transform .2s}.faq details[open] summary::after{transform:rotate(45deg)}.faq p{color:var(--soft);margin:0 0 20px;max-width:680px}.steps{list-style:none;padding:0;margin:24px 0 0;display:grid;grid-template-columns:repeat(4,1fr);gap:24px;counter-reset:s}.steps li{counter-increment:s;border-top:2px solid var(--ink);padding-top:16px}.steps li::before{content:counter(s,decimal-leading-zero);font:500 14px var(--mono);color:var(--red)}.steps h3{margin:8px 0 6px}.steps p{color:var(--soft);margin:0;font-size:16px}.vs{display:grid;grid-template-columns:1fr 1fr;gap:24px}.vs article{background:var(--sheet);border:1px solid var(--rule);border-radius:12px;padding:28px}.vs h2{font-size:24px}.kicker a{color:inherit}.foot{border-top:1px solid var(--rule);background:var(--sheet);padding:56px 0 32px;font-size:15px}.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:32px}.fgrid p{color:var(--soft);max-width:300px;margin-top:12px}.fh{font:500 13px var(--mono);color:var(--soft);margin:0 0 12px;letter-spacing:0}.fgrid a:not(.brand){display:block;color:var(--ink);text-decoration:none;padding:4px 0}.fgrid a:not(.brand):hover{color:var(--blue)}.copy{margin:40px 0 0;color:var(--soft);font-size:14px}@media (max-width:980px){  .hero-grid,.split-grid,.feat-grid{grid-template-columns:1fr;gap:36px}  .feat.flip .feat-grid>div{order:0}  .trio,.plans,.dev-rows,.vs{grid-template-columns:1fr}  .steps{grid-template-columns:1fr 1fr}  .trio{max-width:560px}  .plans{max-width:520px}  .grid6{grid-template-columns:1fr 1fr}  .fgrid{grid-template-columns:1fr 1fr}}@media (max-width:820px){  .links,.login{display:none}  .menu{display:grid}  .mnav:not([hidden]){display:flex;flex-direction:column;padding:8px 16px 16px;border-top:1px solid var(--rule)}  .mnav a{padding:12px 8px;font-size:17px;color:var(--ink)}}@media (max-width:560px){  body{font-size:16px}  .wrap{padding:0 16px}  .hero{padding:44px 0 24px}  .hero-stage{padding:14px}  .sec{padding:64px 0}  .right .btn.primary{display:none}  .grid6,.fgrid,.steps{grid-template-columns:1fr}  .custom{padding:32px 24px}  .devices{padding-right:40px}  .tag{font-size:13px}}@media (prefers-reduced-motion:reduce){  html{scroll-behavior:auto}  *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition:none!important}}</style>
+<script>try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://surveytool.app/#org","name":"Survey","url":"https://surveytool.app/welcome","logo":"https://surveytool.app/logo512.png","email":"isaiahcalvo123@gmail.com"},{"@type":"SoftwareApplication","@id":"https://surveytool.app/#app","name":"Survey","url":"https://surveytool.app/","applicationCategory":"BusinessApplication","operatingSystem":"Web browser, macOS, Windows, iPadOS, Android","description":"PDF markup and counting app for construction and engineering drawings.","publisher":{"@id":"https://surveytool.app/#org"},"offers":[{"@type":"Offer","name":"Free","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Pro monthly","price":"9.99","priceCurrency":"USD"},{"@type":"Offer","name":"Pro yearly","price":"99","priceCurrency":"USD"},{"@type":"Offer","name":"Enterprise","price":"20","priceCurrency":"USD","description":"Per user per month, minimum 3 users"}]},{"@type":"WebSite","@id":"https://surveytool.app/#site","name":"Survey","url":"https://surveytool.app/welcome","publisher":{"@id":"https://surveytool.app/#org"}}]}</script>
 </head>
 <body>
-<div class="bar"><span class="pill">NEW</span>Count markers now total up by category <span class="more">and export straight to Excel.</span><a href="#features">See how →</a></div>
-<header><div class="wrap"><nav>
-  <a class="brand" href="/welcome"><img src="/logo192.png" alt="" width="30" height="30" />Survey</a>
-  <div class="links">
-    <a href="#features">Features</a>
-    <a href="#devices">Devices</a>
-    <a href="#pricing">Pricing</a>
-    <a href="#faq">FAQ</a>
-  </div>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap nav">
+  <a class="brand" href="/welcome"><img src="/logo192.png" alt="" width="28" height="28" />Survey</a>
+  <nav class="links" aria-label="Main"><a href="/features">Features</a><a href="/use-cases">Use cases</a><a href="/pricing">Pricing</a><a href="/faq">FAQ</a></nav>
   <div class="right">
-    <a class="signin" href="/?signin=1">Log in</a>
-    <a class="btn gold" href="/?signin=1">Start free</a>
+    <button class="theme" type="button" aria-label="Dark theme" aria-pressed="false"><svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg><svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+    <a class="login" href="/?signin=1">Log in</a>
+    <a class="btn primary" href="/?signin=1">Start free</a>
+    <button class="menu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span><span></span></button>
   </div>
-</nav></div></header>
-
-<main>
-<div class="hero">
-  <div class="wrap">
-    <span class="eyebrow">PDF markup for construction</span>
-    <h1>Mark up drawings.<br /><span class="mark">Count everything.<svg viewBox="0 0 400 30" preserveAspectRatio="none" aria-hidden="true"><path d="M6 20C70 8 150 6 220 10s120 6 174-2"/><path d="M40 27c80-8 180-10 320-6"/></svg></span></h1>
-    <p class="sub">Survey is the PDF markup app for drawings. Redline, count and tag every sheet with Apple Pencil or a mouse, then share it with your team and send the totals to Excel.</p>
-    <div class="cta">
-      <a class="btn gold lg" href="/?signin=1">Open Survey free</a>
-      <a class="btn lg" href="#features">See it in action</a>
-    </div>
-    <div class="plat">Works in your browser on <b>Mac</b> · <b>Windows</b> · <b>iPad</b> · <b>Android tablets</b> · <b>phones</b></div>
+</div>
+<nav class="mnav" id="mnav" aria-label="Mobile" hidden><a href="/features">Features</a><a href="/use-cases">Use cases</a><a href="/pricing">Pricing</a><a href="/faq">FAQ</a><a href="/?signin=1">Log in</a></nav>
+</header>
+<main id="main">
+<section class="hero"><div class="wrap hero-grid">
+  <div class="hero-copy">
+    <p class="kicker">PDF markup for drawing sets</p>
+    <h1>Mark up the plans. Count what's on them.</h1>
+    <p class="lede">Survey is a PDF markup app for construction drawings. Redline sheets, tap to count fixtures and send the totals to Excel, on your desk, your iPad or your phone.</p>
+    <div class="cta"><a class="btn primary lg" href="/?signin=1">Open Survey free</a><a class="btn ghost lg" href="/features">See the tools</a></div>
+    <p class="fine">No card. No install. Works in Chrome, Edge and Safari.</p>
   </div>
-  <div class="stage">
-    <div class="float f1">Open office desks<b>10 counted</b></div>
-    <div class="float f2">Synced<b>All devices</b></div>
-    <div class="laptop">
-      <div class="chrome" aria-hidden="true"><i></i><i></i><i></i><span>surveytool.app</span></div>
-      <video autoplay muted loop playsinline preload="auto" poster="/welcome/hero-poster.webp" width="1280" height="800" aria-label="Screen recording of Survey: numbered count markers dropped on desks, a highlighter over a room name, a pen line, a box and an arrow drawn on a floor plan">
+  <div class="hero-stage">
+    <div class="frame">
+      <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>surveytool.app</span></div>
+      <video autoplay muted loop playsinline preload="metadata" poster="/welcome/hero-poster.webp" width="1280" height="800" aria-label="Screen recording of Survey: count markers dropped on desks, then a highlighter and a box drawn on a floor plan">
         <source src="/welcome/hero.webm" type="video/webm" />
         <source src="/welcome/hero.mp4" type="video/mp4" />
       </video>
     </div>
+    <svg class="cloud" viewBox="0 0 600 400" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M60 70c10-40 70-40 80-10 10-36 80-36 90 0 12-34 84-34 92 0 14-32 82-30 90 4 30-12 66 18 52 52 34 10 34 64 4 76 18 34-14 70-48 58-8 36-76 40-90 8-16 32-84 32-96 0-16 30-82 28-90-6-34 10-66-24-50-58-34-14-30-70 6-74-10-34 26-62 60-50z"/></svg>
+    <p class="tag t1"><b>10</b> desks counted</p>
+    <p class="tag t2">Synced to iPad</p>
   </div>
-  <div class="fade"></div>
+</div></section>
+
+<section class="who"><div class="wrap"><p>Made for <span>general contractors</span>, <span>estimators</span>, <span>electricians</span>, <span>surveyors</span>, <span>inspectors</span> and <span>architects</span>.</p></div></section>
+
+<section class="sec"><div class="wrap">
+  <div class="head">
+    <h2>What can you do with Survey?</h2>
+    <p>Everything you would do with a red pen and a printed set, plus the counting you would normally do by hand.</p>
+  </div>
+  <div class="trio">
+    <a class="card" href="/features#count"><figure class="shot "><img src="/welcome/app-counts.webp" width="680" height="440" loading="lazy" decoding="async" alt="Numbered count markers on desks in a floor plan" /></figure><h3>Count markers</h3><p>Tap each item on the plan and Survey numbers it and keeps the total.</p></a>
+    <a class="card" href="/features#pen"><figure class="shot "><img src="/welcome/app-pen.webp" width="850" height="400" loading="lazy" decoding="async" alt="A highlighted room name and a pen line on a plan" /></figure><h3>Pen and highlighter</h3><p>Write on drawings the way you would on paper.</p></a>
+    <a class="card" href="/features#shapes"><figure class="shot "><img src="/welcome/app-shapes.webp" width="880" height="400" loading="lazy" decoding="async" alt="A box drawn around a conference room" /></figure><h3>Shapes, clouds and arrows</h3><p>Box it, cloud it, point at it.</p></a>
+  </div>
+  <p class="more-link"><a href="/features">All features</a></p>
+</div></section>
+
+<section class="sec split"><div class="wrap split-grid">
+  <div>
+    <h2>Does it work on my iPad and phone?</h2>
+    <p>Yes. The same project and the same markups follow you from your desk to the job site. On iPad, Apple Pencil draws and your fingers move the sheet.</p>
+    <ul class="ticks"><li>Mac and Windows in the browser</li><li>iPad and Android tablets</li><li>iPhone and Android phones</li></ul>
+    <a class="btn ghost" href="/devices">How it works on each device</a>
+  </div>
+  <div class="devices"><figure class="dev-tab"><img src="/welcome/app-markup-800.webp" width="800" height="500" loading="lazy" decoding="async" alt="Survey on a tablet showing a marked-up floor plan" /></figure><figure class="dev-ph"><img src="/welcome/app-phone.webp" width="390" height="844" loading="lazy" decoding="async" alt="Survey on a phone showing a floor plan" /></figure></div>
+</div></section>
+
+<section class="sec"><div class="wrap">
+  <div class="head"><h2>How much does Survey cost?</h2><p>Free for one project. Pro is $9.99 a month for everything else.</p></div>
+  <div class="plans">
+  <article class="plan">
+    <h3>Free</h3>
+    <p class="amt">$0<small>/month</small></p>
+    <p class="note">For trying Survey on one project</p>
+    <ul><li>1 project</li><li>5 documents</li><li>100MB storage</li><li>Markup and count tools</li><li>Works on every device</li></ul>
+    <a class="btn ghost" href="/?signin=1">Start free</a>
+  </article>
+  <article class="plan best">
+    <h3>Pro</h3><p class="flag">Most picked</p>
+    <p class="amt">$9.99<small>/month</small></p>
+    <p class="note">or $99 a year, which saves $20</p>
+    <ul><li>Unlimited projects</li><li>Unlimited documents</li><li>10GB storage</li><li>Survey tools, templates and regions</li><li>Excel export</li><li>OneDrive</li></ul>
+    <a class="btn primary" href="/?signin=1">Start free, upgrade in the app</a>
+  </article>
+  <article class="plan">
+    <h3>Enterprise</h3>
+    <p class="amt">$20<small>/user/month</small></p>
+    <p class="note">Minimum 3 users</p>
+    <ul><li>Everything in Pro</li><li>Live editing together</li><li>1TB storage</li><li>Admin tools and single sign-on</li><li>Custom builds for your company</li></ul>
+    <a class="btn ghost" href="mailto:isaiahcalvo123@gmail.com">Email us</a>
+  </article>
 </div>
-
-<div class="trades wrap">Made for the people who live in drawing sets
-  <ul><li>General contractors</li><li>Estimators</li><li>Electricians</li><li>Surveyors</li><li>Inspectors</li><li>Architects</li></ul>
-</div>
-
-<section id="features"><div class="wrap center">
-  <span class="eyebrow">See it in action</span>
-  <h2 class="rv">Everything you do on paper, faster</h2>
-  <p class="sub rv">Pick a tool and see what it does on a real plan.</p>
-  <div class="tabs" role="tablist">
-    <button role="tab" aria-selected="true" aria-controls="t1" id="b1">Count</button>
-    <button role="tab" aria-selected="false" aria-controls="t2" id="b2">Pen and highlighter</button>
-    <button role="tab" aria-selected="false" aria-controls="t3" id="b3">Shapes and arrows</button>
-    <button role="tab" aria-selected="false" aria-controls="t4" id="b4">Your whole plan</button>
-  </div>
-  <div class="panes" style="text-align:left">
-    <div class="pane on" id="t1" role="tabpanel" aria-labelledby="b1"><div class="pic"><img src="/welcome/app-counts.webp" width="680" height="440" loading="lazy" alt="Numbered count markers on desks" /></div><div><h3>Tap to count</h3><p>Drop numbered markers on outlets, fixtures or desks. The numbers keep going across pages.</p><ul class="ticks"><li>Totals by category</li><li>Send counts to Excel</li><li>Save marker sets as templates</li></ul></div></div>
-    <div class="pane" id="t2" role="tabpanel" aria-labelledby="b2"><div class="pic"><img src="/welcome/app-pen.webp" width="850" height="400" loading="lazy" alt="A highlighted room name and a smooth pen line" /></div><div><h3>Ink that feels like paper</h3><p>Smooth pen and highlighter with Apple Pencil, a mouse or a trackpad. Fingers pan and zoom, so you never mark by mistake.</p><ul class="ticks"><li>Pen, highlighter and eraser</li><li>Any color and width</li></ul></div></div>
-    <div class="pane" id="t3" role="tabpanel" aria-labelledby="b3"><div class="pic"><img src="/welcome/app-shapes.webp" width="880" height="400" loading="lazy" alt="A box drawn around a conference room" /></div><div><h3>Shapes that stay sharp</h3><p>Boxes, circles, clouds, lines and arrows. They stay crisp at any zoom and print the way you see them.</p><ul class="ticks"><li>Solid or dashed lines</li><li>Callouts and text boxes</li><li>Engineering symbols and stamps</li></ul></div></div>
-    <div class="pane" id="t4" role="tabpanel" aria-labelledby="b4"><div class="pic"><img src="/welcome/app-markup.webp" srcset="/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w" sizes="(max-width: 760px) 100vw, 560px" width="1600" height="1000" loading="lazy" alt="A full floor plan marked up in Survey" /></div><div><h3>The whole set, in one place</h3><p>Open big drawing sets fast, jump between sheets, and keep every markup in layers you can show or hide.</p><ul class="ticks"><li>Bookmarks, search and page tabs</li><li>Layers for each trade</li></ul></div></div>
-  </div>
+  <p class="more-link"><a href="/pricing">Compare plans</a></p>
 </div></section>
 
-<section style="padding-top:0"><div class="wrap center">
-  <h2 class="rv">All the tools you need on the plans</h2>
-  <div class="tools">
-    <div class="tool rv"><div class="art"><svg width="120" height="50" viewBox="0 0 120 50"><path d="M8 34c14-22 26 10 40-6s26 10 40-4 18 6 24 2" fill="none" stroke="#e5484d" stroke-width="4" stroke-linecap="round"/></svg></div><h3>Pen</h3><p>Smooth ink that follows your hand.</p></div>
-    <div class="tool rv"><div class="art"><svg width="120" height="50" viewBox="0 0 120 50"><rect x="10" y="17" width="100" height="16" rx="8" fill="#ffd166" opacity=".7"/><text x="60" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#3a2e00" font-family="sans-serif">LOBBY</text></svg></div><h3>Highlighter</h3><p>Mark what matters without hiding it.</p></div>
-    <div class="tool rv"><div class="art"><svg width="120" height="56" viewBox="0 0 120 56"><g fill="#e5484d"><circle cx="24" cy="28" r="12"/><circle cx="60" cy="28" r="12"/><circle cx="96" cy="28" r="12"/></g><g fill="#fff" font-family="sans-serif" font-size="12" font-weight="800" text-anchor="middle"><text x="24" y="32">1</text><text x="60" y="32">2</text><text x="96" y="32">3</text></g></svg></div><h3>Counts</h3><p>Numbered markers with live totals.</p></div>
-    <div class="tool rv"><div class="art"><svg width="120" height="60" viewBox="0 0 120 60"><path d="M20 40c-6-10 4-22 14-18 2-12 20-14 26-4 8-10 26-6 26 6 12-2 18 12 10 20 4 10-8 14-14 8-6 8-22 8-26 0-10 6-26 2-26-8-10 2-14-6-10-4z" fill="none" stroke="#d8a84e" stroke-width="2.6"/></svg></div><h3>Clouds</h3><p>Flag revisions the way drawings expect.</p></div>
-    <div class="tool rv"><div class="art"><svg width="120" height="50" viewBox="0 0 120 50"><rect x="14" y="10" width="44" height="30" rx="2" fill="none" stroke="#4f8cff" stroke-width="3"/><path d="M68 38L104 14" stroke="#e5484d" stroke-width="3" stroke-linecap="round"/><path d="M104 14l-12 2 6 8z" fill="#e5484d"/></svg></div><h3>Shapes and arrows</h3><p>Boxes, circles, lines and polylines.</p></div>
-    <div class="tool rv"><div class="art"><svg width="120" height="56" viewBox="0 0 120 56"><rect x="14" y="10" width="92" height="36" rx="5" fill="#fff4c2" stroke="#d9a400"/><text x="24" y="33" font-size="12" fill="#5b4a00" font-family="sans-serif">Check slab edge</text></svg></div><h3>Callouts and notes</h3><p>Text that stays readable at any zoom.</p></div>
-    <div class="tool rv"><div class="art"><svg width="120" height="56" viewBox="0 0 120 56" fill="none" stroke="#9aa3b5" stroke-width="2"><circle cx="30" cy="28" r="14"/><path d="M22 28h16M30 20v16"/><rect x="58" y="14" width="28" height="28"/><path d="M58 14l28 28M86 14L58 42"/><path d="M96 42l8-28 8 28z"/></svg></div><h3>Symbols and stamps</h3><p>An engineering symbol library to stamp on any page.</p></div>
-    <div class="tool rv"><div class="art"><svg width="120" height="56" viewBox="0 0 120 56"><rect x="20" y="8" width="80" height="40" rx="4" fill="#1e6b3a"/><g stroke="#ffffff55"><path d="M20 21h80M20 34h80M47 8v40M73 8v40"/></g><text x="33" y="18" font-size="8" fill="#fff" font-family="sans-serif" text-anchor="middle">Desk</text><text x="60" y="18" font-size="8" fill="#fff" font-family="sans-serif" text-anchor="middle">10</text></svg></div><h3>Excel export</h3><p>Counts and tags land in a spreadsheet.</p></div>
-  </div>
-  <div class="values">
-    <div class="rv"><div class="n">0</div><h3>Nothing to install</h3><p>Open surveytool.app in any modern browser and start marking up in seconds.</p></div>
-    <div class="rv"><div class="n">1</div><h3>One account, every device</h3><p>Start on your desk, pick it up on the iPad at the job site. Your markups sync.</p></div>
-    <div class="rv"><div class="n">∞</div><h3>Unlimited on Pro</h3><p>Unlimited projects and documents, 10GB of storage and every survey tool.</p></div>
-  </div>
+<section class="sec"><div class="wrap custom">
+  <h2>Need Survey to fit how your company works?</h2>
+  <p>We build custom Excel exports, company markup templates, symbol sets and team roles. Tell us what your team does today and we will set it up.</p>
+  <a class="btn ghost" href="mailto:isaiahcalvo123@gmail.com">Email us</a>
 </div></section>
-
-<section id="devices" style="padding-top:20px"><div class="wrap center">
-  <span class="eyebrow">Desktop, tablet and phone</span>
-  <h2 class="rv">One project. Every screen.</h2>
-  <p class="sub rv">The same drawings and the same markups at your desk, on the iPad in the field, and on your phone.</p>
-  <div class="devices rv">
-    <div class="dev-tab"><img src="/welcome/app-markup.webp" srcset="/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w" sizes="(max-width: 980px) 88vw, 800px" width="1600" height="1000" loading="lazy" alt="Survey on a tablet showing a marked-up floor plan" /></div>
-    <div class="dev-ph"><img src="/welcome/app-phone.webp" width="390" height="844" loading="lazy" alt="Survey on a phone showing a floor plan" /></div>
-  </div>
-  <div class="badges">
-    <a class="btn gold" href="/?signin=1">Open in your browser</a>
-    <span class="soon">iPhone, iPad and Android apps coming soon</span>
-    <span class="soon">Mac and Windows apps coming soon</span>
-  </div>
-</div></section>
-
-<section style="padding-top:20px"><div class="wrap">
-  <div class="custom rv">
-    <div><span class="eyebrow">Built for how you work</span><h2 style="margin:14px 0 14px">Need it your way? We build it.</h2><p>Your company's Excel format, your markup templates, your own tools. Tell us how your team works and we will set Survey up to match.</p><a class="btn gold" href="mailto:isaiahcalvo123@gmail.com?subject=Survey%20custom%20setup" style="margin-top:12px">Talk to us</a></div>
-    <div class="chips"><span>Custom Excel exports</span><span>Company templates</span><span>Custom markup tools</span><span>Symbol sets</span><span>Team roles</span><span>OneDrive</span></div>
-  </div>
-</div></section>
-
-<section id="pricing" style="padding-top:20px"><div class="wrap center">
-  <span class="eyebrow">Pricing</span>
-  <h2 class="rv">Start free. Upgrade when you grow.</h2>
-  <div class="prices" style="text-align:left">
-    <div class="price"><h3>Free</h3><div class="amt">$0<small> /month</small></div><div class="note">For trying Survey on a project</div><ul class="ticks"><li>1 project</li><li>5 documents</li><li>100MB storage</li><li>Markup tools and PDF viewer</li></ul><a class="btn" href="/?signin=1">Start free</a></div>
-    <div class="price best"><span class="tag">Most popular</span><h3>Pro</h3><div class="amt">$9.99<small> /month</small></div><div class="note">or $99 a year (save $20)</div><ul class="ticks"><li>Unlimited projects and documents</li><li>10GB storage</li><li>Survey tools</li><li>Templates and regions</li><li>Excel export</li><li>OneDrive</li></ul><a class="btn gold" href="/?signin=1">Get Pro</a></div>
-    <div class="price"><h3>Enterprise</h3><div class="amt">$20<small> /user/month</small></div><div class="note">Minimum 3 users</div><ul class="ticks"><li>Everything in Pro</li><li>Team work and live editing</li><li>1TB team storage</li><li>SSO and admin tools</li><li>Priority support</li></ul><a class="btn" href="mailto:isaiahcalvo123@gmail.com?subject=Survey%20Enterprise">Contact us</a></div>
-  </div>
-</div></section>
-
-<section id="faq" style="padding-top:20px"><div class="wrap center">
-  <h2 class="rv">Questions</h2>
-  <div class="faq" style="text-align:left">
-    <details><summary>Do I need to install anything?</summary><p>No. Survey runs in Chrome, Edge and Safari. Open surveytool.app and sign in.</p></details>
-    <details><summary>Does it work on iPad with Apple Pencil?</summary><p>Yes. The Pencil draws and your fingers pan and zoom, so you never mark the page by mistake.</p></details>
-    <details><summary>Is it really free?</summary><p>Yes. The Free plan gives you 1 project, 5 documents and 100MB of storage, with no card needed. Pro adds unlimited projects and documents, 10GB of storage, survey tools and Excel export.</p></details>
-    <details><summary>Can I cancel Pro any time?</summary><p>Yes. Cancel from your account settings and keep Pro until the end of the period you paid for.</p></details>
-    <details><summary>Where are my files kept?</summary><p>Your markups save to the cloud so they sync to every device. See our <a href="/privacy.html">privacy policy</a>.</p></details>
-    <details><summary>Can my team work on the same drawings?</summary><p>Yes. Invite people as viewers or editors. Enterprise adds live editing together, admin tools and SSO.</p></details>
-  </div>
-</div></section>
-
-<section style="padding-top:20px"><div class="wrap">
-  <div class="final rv">
-    <h2>Your next drawing set deserves better than paper</h2>
-    <p class="sub">Free to start. Nothing to install.</p>
-    <a class="btn gold lg" href="/?signin=1">Open Survey free</a>
-  </div>
+<section class="band"><div class="wrap cta-band">
+  <h2>Bring your next drawing set</h2>
+  <p>Free to start. Nothing to install.</p>
+  <a class="btn primary lg" href="/?signin=1">Open Survey free</a>
 </div></section>
 </main>
-
-<footer><div class="wrap">
+<footer class="foot"><div class="wrap">
   <div class="fgrid">
-    <div><a class="brand" href="/welcome" style="margin:0 0 12px"><img src="/logo192.png" alt="" width="30" height="30" />Survey</a><p style="max-width:300px;margin:0">PDF markup for construction and engineering drawings.</p></div>
-    <div><h3 class="fh">Product</h3><a href="#features">Features</a><a href="#devices">Devices</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
-    <div><h3 class="fh">Get started</h3><a href="/?signin=1">Log in</a><a href="/?signin=1">Start free</a><a href="mailto:isaiahcalvo123@gmail.com">Contact</a></div>
-    <div><h3 class="fh">Legal</h3><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
+    <div><a class="brand" href="/welcome"><img src="/logo192.png" alt="" width="28" height="28" />Survey</a><p>PDF markup and counting for construction and engineering drawings.</p></div>
+    <div><h2 class="fh">Product</h2><a href="/features">Features</a><a href="/devices">Devices</a><a href="/pricing">Pricing</a><a href="/faq">FAQ</a></div>
+    <div><h2 class="fh">Use cases</h2><a href="/use-cases/field-surveys">Field surveys</a><a href="/use-cases/punch-lists">Punch lists</a><a href="/use-cases/as-builts">As-builts</a></div>
+    <div><h2 class="fh">Compare</h2><a href="/compare/bluebeam">Survey vs Bluebeam</a><a href="/compare/drawboard">Survey vs Drawboard</a></div>
+    <div><h2 class="fh">Get started</h2><a href="/?signin=1">Log in</a><a href="/?signin=1">Start free</a><a href="mailto:isaiahcalvo123@gmail.com">Contact</a></div>
+    <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
   </div>
-  <div class="copy">© <span id="y">2026</span> Survey. All rights reserved.</div>
+  <p class="copy">© <span class="yr">2026</span> Survey</p>
 </div></footer>
-<script>
-document.getElementById('y').textContent=new Date().getFullYear();
-if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){var hv=document.querySelector('.laptop video');if(hv){hv.removeAttribute('autoplay');hv.pause();hv.controls=true;var fd=document.querySelector('.hero .fade');if(fd)fd.style.display='none'}}
-var tabs=document.querySelectorAll('[role=tab]');
-tabs.forEach(function(t){t.addEventListener('click',function(){tabs.forEach(function(o){o.setAttribute('aria-selected',o===t);document.getElementById(o.getAttribute('aria-controls')).classList.toggle('on',o===t)})})});
-if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{rootMargin:'0px 0px -8% 0px'});document.querySelectorAll('.rv').forEach(function(el){io.observe(el)})}else{document.querySelectorAll('.rv').forEach(function(el){el.classList.add('in')})}
-</script>
+<script src="/welcome/site.js" defer></script>
 </body>
 </html>

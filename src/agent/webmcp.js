@@ -6,6 +6,49 @@
 // document.modelContext (Chrome flag or origin trial) and the user has not
 // turned it off with localStorage 'survey.webmcp' = 'off'.
 import { checkAgentAccess, planFeatures } from './agentAccess.js';
+import { buildSurveyAgentTools } from '../../supabase/functions/_shared/surveyAgentSpec.js';
+import { createSurveyAgentToolbox } from './surveyAgentTools.js';
+
+// The Survey agent's item tools (KAL-527), offered to browser agents too:
+// same names with a survey_ prefix, same writes as the in-app agent chat.
+// Files can only be attached from the chat, so attach_media is left out.
+const SURVEY_ITEM_TOOLS = {
+  get_survey_context: { name: 'survey_get_context', access: { minRole: 'viewer' }, readOnly: true },
+  find_items: { name: 'survey_find_items', access: { minRole: 'viewer' }, readOnly: true },
+  get_item: { name: 'survey_get_item', access: { minRole: 'viewer' }, readOnly: true },
+  set_answers: { name: 'survey_set_answers', access: { signIn: true, minRole: 'editor' } },
+  add_note: { name: 'survey_add_note', access: { signIn: true, minRole: 'editor' } },
+  set_entity: { name: 'survey_set_entity', access: { signIn: true, minRole: 'editor' } },
+  show_item: { name: 'survey_show_item', access: { minRole: 'viewer' }, readOnly: true },
+};
+
+// A browser agent cannot know the open template's answers up front, so the
+// answer is any string here; the tool checks it against the template.
+function withoutAnswerEnum(schema) {
+  return JSON.parse(JSON.stringify(schema), (key, value) => (key === 'enum' ? undefined : value));
+}
+
+function surveyItemTools(toolbox) {
+  return buildSurveyAgentTools([])
+    .filter((t) => SURVEY_ITEM_TOOLS[t.function.name])
+    .map(({ function: fn }) => {
+      const meta = SURVEY_ITEM_TOOLS[fn.name];
+      return {
+        name: meta.name,
+        description: `${fn.description} Needs Survey mode open with a template.`,
+        inputSchema: withoutAnswerEnum(fn.parameters),
+        annotations: meta.readOnly ? { readOnlyHint: true, untrustedContentHint: true } : {},
+        access: meta.access,
+        documentScoped: true,
+        execute: async (args) => {
+          const { document_id: _doc, ...input } = args || {};
+          const result = await toolbox.run(fn.name, input);
+          if (result.isError) throw new Error(result.content);
+          return result.content;
+        },
+      };
+    });
+}
 
 const viewers = new Set();
 
@@ -61,7 +104,7 @@ export function makeAccessReader(supabase, tierLimits) {
   };
 }
 
-export function buildAgentTools({ getViewer = activeViewer, getDocument = activeDocument, supabase = null, readAccess = async () => ({ signedIn: false }) } = {}) {
+export function buildAgentTools({ getViewer = activeViewer, getDocument = activeDocument, supabase = null, readAccess = async () => ({ signedIn: false }), surveyToolbox = createSurveyAgentToolbox() } = {}) {
   const need = () => {
     const viewer = getViewer();
     if (!viewer) throw new Error('No document is open in Survey.');
@@ -185,6 +228,7 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
         return `Added a Survey marker on page ${page}.`;
       },
     },
+    ...surveyItemTools(surveyToolbox),
   ];
   return tools.map((tool) => ({
     ...tool,

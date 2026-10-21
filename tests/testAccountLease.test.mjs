@@ -623,6 +623,9 @@ test('every app-navigation Playwright harness has a machine-enforced auth classi
       classified = signedInE2ELocalOnly && source.includes('LOCAL_HOSTS');
     } else if (relativePath.startsWith('debug/scenarios/')) {
       classified = true; // debug config above disables real auto-login.
+    } else if (relativePath === 'scripts/prod-smoke.mjs') {
+      // Signed-out smoke test of the live site: no accounts, no sign-in.
+      classified = !/signIn|password|auth\.admin|loadVerifiedTestAccounts/i.test(source);
     } else if (relativePath === 'agent-cli/mobile-annotations-e2e.mjs') {
       classified =
         source.includes('http://localhost:8091')

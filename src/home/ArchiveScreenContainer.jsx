@@ -13,13 +13,16 @@ import { useCallback, useEffect, useState } from 'react';
 import ArchiveScreen from './ArchiveScreen';
 import { loadArchive, restoreArchiveItems, deleteArchiveItemsForever } from '../services/archiveService';
 import { notifyLibraryChanged } from '../hooks/libraryChangeBus';
+import { readLibraryListCache, writeLibraryListCache } from '../hooks/libraryListCache';
 
 export default function ArchiveScreenContainer({ user, onNav, templatesLocked = false }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const userId = user?.id || null;
+  // Seed the first render from the device cache so a repeat visit never
+  // paints the loading rows before the mount effect runs.
+  const [initialCached] = useState(() => readLibraryListCache(userId, 'archive'));
+  const [items, setItems] = useState(() => initialCached || []);
+  const [loading, setLoading] = useState(() => !initialCached);
+  const [error, setError] = useState(null);
 
   const refresh = useCallback(async ({ showSpinner = false } = {}) => {
     if (!userId) {
@@ -27,15 +30,22 @@ export default function ArchiveScreenContainer({ user, onNav, templatesLocked = 
       setLoading(false);
       return;
     }
-    if (showSpinner) setLoading(true);
+    // A repeat visit paints the last known Archive from the device cache and
+    // re-reads behind it, so a just-archived item still appears within a read.
+    const cached = showSpinner ? readLibraryListCache(userId, 'archive') : null;
+    if (cached) {
+      setItems(cached);
+      setLoading(false);
+    } else if (showSpinner) setLoading(true);
     const { data, error: loadError } = await loadArchive(userId);
     setError(loadError || null);
     setItems(loadError ? [] : data);
+    if (!loadError) writeLibraryListCache(userId, 'archive', data);
     setLoading(false);
   }, [userId]);
 
   useEffect(() => {
-    // Re-read on every mount rather than caching: the user arrives here right
+    // Re-read on every mount (the cached copy only paints first): the user arrives here right
     // after archiving something, and a stale list is the one thing that would
     // make them think the archive failed.
     let cancelled = false;
