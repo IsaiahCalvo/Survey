@@ -384,7 +384,7 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
       },
       {
         name: 'survey_delete_annotation',
-        description: 'Delete a normal annotation (text note, shape or highlight — not a Survey marker, which has survey_delete_marker) by id. Because this is hard to take back, it does NOTHING unless confirm is true, which the agent should set only after the person has agreed. One Undo restores it. Needs editor or owner access.',
+        description: 'Delete a normal annotation (text note, shape, highlight or callout — not a Survey marker, which has survey_delete_marker) by id. Because this is hard to take back, it does NOTHING unless confirm is true, which the agent should set only after the person has agreed. One Undo restores it. Needs editor or owner access.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -585,6 +585,60 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the highlight was not added.');
           if (!res?.ok) throw new Error('Could not add the highlight.');
           return `Highlighted "${searchText}" on page ${page}.`;
+        },
+      },
+      {
+        name: 'survey_edit_callout',
+        description: 'Edit a callout by id (from survey_list_annotations): change its text and/or its colors. Give at least one of text, stroke_color (outline/leader) or fill_color. A text change re-fits the box. Needs editor or owner access, and only a callout the person could edit by hand changes.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            annotation_id: { type: 'string' },
+            text: { type: 'string', description: 'The new callout text (optional).' },
+            stroke_color: { type: 'string', description: 'Hex outline/leader color like #1e293b (optional).' },
+            fill_color: { type: 'string', description: 'Hex box fill color (optional).' },
+          },
+          required: ['annotation_id'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ annotation_id: annotationId, text: calloutText, stroke_color: strokeColor, fill_color: fillColor }) => {
+          const doc = getDocument();
+          if (calloutText == null && !strokeColor && !fillColor) throw new Error('Give the new text, a stroke_color or a fill_color.');
+          const res = doc.editCallout(annotationId, { text: calloutText, strokeColor, fillColor });
+          if (res?.reason === 'not-found') throw new Error(`No callout with id ${annotationId}. Use survey_list_annotations.`);
+          if (res?.reason === 'empty') throw new Error('Nothing to change: give the new text, a stroke_color or a fill_color.');
+          if (res?.reason === 'not-allowed') throw new Error('This person cannot change that callout (it belongs to someone else or is locked), so nothing changed.');
+          if (res?.reason === 'locked') throw new Error('That callout is locked, so nothing changed.');
+          if (!res?.ok) throw new Error('Could not edit that callout.');
+          return 'Changed the callout.';
+        },
+      },
+      {
+        name: 'survey_recolor_highlight',
+        description: 'Change a highlight\'s color and/or opacity by id (from survey_list_annotations). Give at least one of color (hex) or opacity (0-100). Recolors the whole highlighted run. Needs editor or owner access, and only a highlight the person could edit by hand changes.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            annotation_id: { type: 'string' },
+            color: { type: 'string', description: 'Hex highlight color like #f4d35e (optional).' },
+            opacity: { type: 'number', minimum: 0, maximum: 100, description: 'Highlight opacity, 0-100 (optional).' },
+          },
+          required: ['annotation_id'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ annotation_id: annotationId, color, opacity }) => {
+          const doc = getDocument();
+          if (color == null && opacity == null) throw new Error('Give a color or an opacity to change.');
+          const res = doc.recolorHighlight(annotationId, { color, opacity: opacity == null ? undefined : Number(opacity) });
+          if (res?.reason === 'not-found') throw new Error(`No annotation with id ${annotationId}. Use survey_list_annotations.`);
+          if (res?.reason === 'not-a-highlight') throw new Error('That annotation is not a highlight, so it cannot be recolored.');
+          if (res?.reason === 'empty' || res?.reason === 'no-change') throw new Error('Give a color or an opacity to change.');
+          if (res?.reason === 'not-allowed') throw new Error('This person cannot change that highlight (it belongs to someone else or is locked), so nothing changed.');
+          if (res?.reason === 'locked') throw new Error('A locked annotation blocked the change, so nothing changed.');
+          if (!res?.ok) throw new Error('Could not recolor that highlight.');
+          return 'Changed the highlight.';
         },
       },
     ] : []),

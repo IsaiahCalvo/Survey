@@ -69,8 +69,12 @@ and the user's role all apply, and one Undo takes a change back:
   still matches) and highlights them, with an optional hex color and opacity. If
   the words repeat, `occurrence` picks which one. A scanned page needs text
   recognition run on it first.
-- `survey_delete_annotation` removes the rectangle/ellipse/line/polygon shapes
-  too (not callouts or highlights, which have their own structure).
+- `survey_edit_callout` — change a callout's text and/or its colors by id
+  (editor/owner). A text change re-fits the box.
+- `survey_recolor_highlight` — change a highlight's color and/or opacity by id
+  (editor/owner); it recolors the whole highlighted run.
+- `survey_delete_annotation` removes the rectangle/ellipse/line/polygon shapes,
+  highlights and callouts too, by id (editor/owner, confirm-first).
 
 ## Outside the browser: user-claimed flow
 
