@@ -1051,6 +1051,23 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
         }}>
           <Icon name="chevronLeft" size={HEADER_GLYPH} color="currentColor" />
         </button>
+        {/* First-run walk #7: export was only reachable through the rail's
+            unlabeled kebab. Same action as its "Export annotated PDF" row;
+            the kebab row stays. */}
+        <button
+          type="button"
+          className="mobile-pdf-header__icon mobile-pdf-header__export"
+          aria-label="Export"
+          title="Export annotated PDF"
+          data-mobile-header-export="true"
+          disabled={!bottomToolbarApi?.exportAnnotatedPdf}
+          onClick={() => {
+            commitPanelTyping();
+            bottomToolbarApi?.exportAnnotatedPdf?.();
+          }}
+        >
+          <Icon name="share" size={HEADER_GLYPH} color="currentColor" />
+        </button>
       </div>
 
       <div className="mobile-pdf-header__pages" ref={pagesRef}>
