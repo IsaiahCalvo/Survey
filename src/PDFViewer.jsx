@@ -3384,7 +3384,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [cloudIntensity, setCloudIntensity] = useState(2);
   const [textStyleDefaults, setTextStyleDefaults] = useState({
     fontColor: '#1e293b',
-    fontFamily: 'Arial',
+    fontFamily: 'Helvetica',
     fontSize: 16,
     bold: true,
     italic: false,

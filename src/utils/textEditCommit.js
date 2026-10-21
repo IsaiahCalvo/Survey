@@ -266,3 +266,22 @@ export function shouldAutoFitExistingText({ original, isCallout = false, prefere
   if (isCallout || preference === false) return false;
   return original?.data?.textAutoFit === true;
 }
+
+/**
+ * Keep a NEW text box fully on its page: a tap near the right/bottom edge used
+ * to start a box that hung off the page, and export then clipped it. Shifts the
+ * top-left so the whole box fits; a box larger than the page pins to 0.
+ */
+export function clampNewTextBoxToPage({ left, top, width, height, pageWidth, pageHeight }) {
+  const clampAxis = (pos, size, max) => {
+    const p = Number(pos) || 0;
+    const s = Math.max(0, Number(size) || 0);
+    const m = Number(max);
+    if (!(m > 0)) return p;
+    return Math.max(0, Math.min(p, m - s));
+  };
+  return {
+    left: clampAxis(left, width, pageWidth),
+    top: clampAxis(top, height, pageHeight),
+  };
+}

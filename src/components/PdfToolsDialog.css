@@ -52,6 +52,11 @@
   .pdft-tools{grid-template-columns:1fr}
   .pdft-seg button,.pdft-input,.pdft-check{min-height:44px}
   .pdft-pbtns button{min-height:44px;min-width:28px}
+  /* Back (←) is a 24px glyph whose shared pad only reaches 24x42, and Turn
+     every page has no pad: both measured under 44px on a phone. */
+  .pdft-head .dialog-touch-pad::after{inset:-10px}
+  .pdft-all{min-height:44px}
+  .pdft-foot .hub-btn{min-width:44px}
   .pdft-pages{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 /* Phones: four 44px page buttons don't fit across a page card at 320px, so
