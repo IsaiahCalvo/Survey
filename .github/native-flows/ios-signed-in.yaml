@@ -14,10 +14,9 @@ name: ios-signed-in
 - inputText: "e2e-owner@example.com"
 - tapOn: "Password"
 - inputText: "E2e-local-only-123!"
-- hideKeyboard
-- tapOn:
-    text: "Sign in"
-    index: 1
+# Submit with the keyboard: Google sign-in is hidden on iPhone, so "Sign in"
+# labels sit in a different order than on Android and the SSO link matches too.
+- pressKey: Enter
 - extendedWaitUntil:
     visible: ".*E2E Sample Drawing.*"
     timeout: 60000
