@@ -16,7 +16,8 @@ export default function MeasureScaleDialog({ pageNumber, lengthPt = null, curren
   const [preset, setPreset] = useState('1/4');
   const calibrating = Number.isFinite(lengthPt) && lengthPt > 0;
   const scale = calibrating ? scaleFromCalibration(lengthPt, real, unit) : scaleFromPreset(preset);
-  const fieldStyle = { minHeight: 36, fontSize: 14, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2, #fff)', color: 'var(--text-1, #111)' };
+  // 44px touch targets; 16px text so iOS Safari does not zoom on focus.
+  const fieldStyle = { minHeight: 44, fontSize: 16, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2, #fff)', color: 'var(--text-1, #111)' };
   const submit = (e) => {
     e.preventDefault();
     if (scale) onApply(scale);
@@ -65,14 +66,14 @@ export default function MeasureScaleDialog({ pageNumber, lengthPt = null, curren
                 {MEASURE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
             </label>
-            <button type="button" className="btn btn-ghost" data-measure-start-calibrate="true" style={{ minHeight: 40 }} onClick={onCalibrate}>
+            <button type="button" className="btn btn-ghost" data-measure-start-calibrate="true" style={{ minHeight: 44, whiteSpace: 'normal', textAlign: 'center', lineHeight: 1.3 }} onClick={onCalibrate}>
               Calibrate: draw a line over a known distance
             </button>
           </>
         )}
         <span style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" className="btn btn-ghost" style={{ minHeight: 40, minWidth: 72 }} onClick={onCancel}>Cancel</button>
-          <button type="submit" className="btn btn-active" data-measure-apply="true" style={{ minHeight: 40, minWidth: 72 }} disabled={!scale}>Apply</button>
+          <button type="button" className="btn btn-ghost" style={{ minHeight: 44, minWidth: 72 }} onClick={onCancel}>Cancel</button>
+          <button type="submit" className="btn btn-active" data-measure-apply="true" style={{ minHeight: 44, minWidth: 72 }} disabled={!scale}>Apply</button>
         </span>
       </form>
     </div>,

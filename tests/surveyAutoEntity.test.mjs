@@ -69,3 +69,9 @@ test('the shared checklist handler uses the rule and no longer needs a Space', (
   assert.ok(!/entityId:\s*undefined/.test(handler), 'the handler must never clear the entity');
   assert.match(handler, /applyEntitySelectionForMarker\([^)]*\{ automatic: true \}\)/, 'an automatic pick is not remembered as the user\'s last entity');
 });
+
+test('a negated or pending status is never taken for Complete', () => {
+  const pending = [{ id: 'p', name: 'Pending' }, { id: 'n', name: 'Not yet complete' }, { id: 'w', name: 'Pending - complete later' }];
+  assert.equal(findCompleteEntity(pending), null);
+  assert.equal(findCompleteEntity([...pending, { id: 'c', name: '100% Complete' }]).id, 'c');
+});

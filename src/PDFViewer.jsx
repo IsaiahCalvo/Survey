@@ -26507,6 +26507,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // [InteractionDiag] route toolbar tool selection through the logged
       // wrapper so every tool-button click emits a tool-intent marker.
       setActiveTool: setActiveToolLogged,
+      // Phone rail Measure (the desktop Shape row's Measure menu).
+      measureMode,
+      setMeasureMode,
+      measureScaleDialogOpen: !!measureScaleDialog,
+      openMeasureScaleDialog: setMeasureScaleDialog,
+      // The tool's style only (desktop Shape row's setter): never restyles a selection.
+      setToolLineBorderStyle: setLineBorderStyle,
       setActiveCategoryDropdown,
       setTooltip,
       setShowAnnotationColorPicker,
@@ -26548,6 +26555,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    measureMode,
+    measureScaleDialog,
     pickBarTool,
     liveTextSelection,
     selectionMode,
