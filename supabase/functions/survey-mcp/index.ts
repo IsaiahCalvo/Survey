@@ -25,6 +25,7 @@ import { normalizeItemName, scoreItemName } from '../_shared/surveyAgentSpec.js'
 import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../_shared/surveyMarkerDocSync.js';
 import { bytesToPgHex, pgHexToBytes } from '../_shared/pgBytea.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { agentClientId } from '../_shared/agentSession.ts';
 
 const CONNECTOR_WRITES_FLAG = 'survey-connector-writes';
 // When the person has this on, the app stores each marker as one Y.Map entry
@@ -518,7 +519,35 @@ function pageArgs(args: Record<string, unknown>, def: number, max: number): { li
   return { limit, offset };
 }
 
-async function callTool(db: SupabaseClient, name: string, args: Record<string, unknown>) {
+// Who is calling: the person the token belongs to, and the agent's client_id
+// (empty when the caller is not an agent session).
+type Actor = { userId: string; clientId: string };
+
+// Record a connector write so the person can undo it from /agent-link. The WAL
+// write already succeeded; this is a best-effort audit with the before-state,
+// so a failure here (or a non-agent caller) never fails the write.
+async function recordChange(
+  db: SupabaseClient,
+  actor: Actor | undefined,
+  row: { documentId: string; kind: string; markerId: string; payload: Record<string, unknown>; summary: string },
+): Promise<void> {
+  if (!actor?.clientId || !actor.userId) return; // only agent sessions record
+  try {
+    await db.from('agent_change').insert({
+      user_id: actor.userId,
+      client_id: actor.clientId,
+      document_id: row.documentId,
+      kind: row.kind,
+      marker_id: row.markerId,
+      payload: row.payload,
+      summary: row.summary.slice(0, 200),
+    });
+  } catch (err) {
+    console.error('[survey-mcp] record change failed', err);
+  }
+}
+
+async function callTool(db: SupabaseClient, name: string, args: Record<string, unknown>, actor?: Actor) {
   if (name === 'list_projects') {
     const { limit, offset } = pageArgs(args, 100, 200);
     const { data, error } = await db.from('projects').select('id, name, updated_at')
@@ -645,9 +674,11 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     // later edit to a different answer or to the note survives an undo, and the
     // change_id token stays as small as the request that made it.
     let undo: Record<string, unknown> | null = null;
+    let markerName = '';
     const result = await writeMarkers(db, documentId, (markers) => {
       const marker = markers[itemId];
       if (!marker) throw new ToolError('No item with that id in this document. Use find_survey_items.');
+      markerName = String(marker.name || '');
       if (name === 'set_answers') {
         const answers = Array.isArray(args.answers) ? args.answers : [];
         if (!answers.length) throw new ToolError('Pass at least one answer.');
@@ -719,7 +750,17 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         }
       }
     }, fieldMaps);
-    return text({ ok: true, item_id: itemId, changed: result.changed, change_id: result.changed && undo ? encodeChange(undo) : null });
+    // `undo` is only assigned inside the mutate closure, so read it through an
+    // alias the type-checker keeps as the descriptor type, not `never`.
+    const undoDesc = undo as Record<string, unknown> | null;
+    if (result.changed && undoDesc) {
+      const label = markerName || 'an item';
+      const summary = name === 'set_answers' ? `Set answers on ${label}`
+        : name === 'add_note' ? `Added to ${label}'s note`
+        : `Changed the status on ${label}`;
+      await recordChange(db, actor, { documentId, kind: String(undoDesc.kind), markerId: itemId, payload: undoDesc, summary });
+    }
+    return text({ ok: true, item_id: itemId, changed: result.changed, change_id: result.changed && undoDesc ? encodeChange(undoDesc) : null });
   }
   if (name === 'create_item') {
     if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
@@ -770,6 +811,9 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     }, fieldMaps);
     // Undo of a create removes the marker it added.
     const undo = { v: 1, d: documentId, m: itemId, kind: 'create' };
+    if (result.changed) {
+      await recordChange(db, actor, { documentId, kind: 'create', markerId: itemId, payload: undo, summary: `Added ${itemName}` });
+    }
     return text({ ok: true, item_id: itemId, changed: result.changed, change_id: result.changed ? encodeChange(undo) : null });
   }
   if (name === 'undo_change') {
@@ -836,7 +880,7 @@ const MESSAGE_SCHEMA = {
 // fan out into hundreds of database reads.
 const MAX_BATCH = 20;
 
-async function handle(db: SupabaseClient, raw: Record<string, unknown>) {
+async function handle(db: SupabaseClient, raw: Record<string, unknown>, actor?: Actor) {
   const parsed = parseBody(MESSAGE_SCHEMA, raw);
   if (!parsed.ok) return rpcError((raw as Record<string, unknown>)?.id, -32600, `Invalid request: ${parsed.error}`);
   const msg = parsed.value;
@@ -877,7 +921,7 @@ async function handle(db: SupabaseClient, raw: Record<string, unknown>) {
     const name = String(params.name || '');
     const args = (params.arguments && typeof params.arguments === 'object' ? params.arguments : {}) as Record<string, unknown>;
     try {
-      return rpcResult(id, await callTool(db, name, args));
+      return rpcResult(id, await callTool(db, name, args, actor));
     } catch (err) {
       if (err instanceof ToolError) return rpcResult(id, { ...text(err.message), isError: true });
       console.error('[survey-mcp] tool failed', name, err);
@@ -911,15 +955,16 @@ Deno.serve(async (req) => {
   });
   const { data: userData, error: userError } = await db.auth.getUser(token);
   if (userError || !userData?.user) return unauthorized();
+  const actor: Actor = { userId: userData.user.id, clientId: agentClientId(`Bearer ${token}`) || '' };
 
   let body: unknown;
   try { body = await req.json(); } catch { return jsonResponse(400, rpcError(null, -32700, 'Parse error')); }
   if (Array.isArray(body)) {
     if (body.length === 0 || body.length > MAX_BATCH) return jsonResponse(400, rpcError(null, -32600, 'Invalid request'));
-    const out = (await Promise.all(body.map((m) => handle(db, m as Record<string, unknown>)))).filter(Boolean);
+    const out = (await Promise.all(body.map((m) => handle(db, m as Record<string, unknown>, actor)))).filter(Boolean);
     return out.length ? jsonResponse(200, out) : new Response(null, { status: 202, headers: corsHeaders });
   }
   if (!body || typeof body !== 'object') return jsonResponse(400, rpcError(null, -32600, 'Invalid request'));
-  const reply = await handle(db, body as Record<string, unknown>);
+  const reply = await handle(db, body as Record<string, unknown>, actor);
   return reply ? jsonResponse(200, reply) : new Response(null, { status: 202, headers: corsHeaders });
 });

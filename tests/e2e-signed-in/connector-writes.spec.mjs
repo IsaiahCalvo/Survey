@@ -78,6 +78,8 @@ test.afterEach(async () => {
   await setFlag('off');
   // Cascades the document_templates link.
   await adminClient().from('templates').delete().eq('id', TEMPLATE_ID);
+  // Clear the agent_change rows this run recorded on the shared doc.
+  await adminClient().from('agent_change').delete().eq('document_id', E2E_DOCUMENT.id);
 });
 
 test('a write-scope agent sets an answer through the connector, and an open client converges', async ({ page, browser }) => {
@@ -111,6 +113,13 @@ test('a write-scope agent sets an answer through the connector, and an open clie
   expect(toolText(reply)).toMatch(/"changed": ?true/);
   const changeId = JSON.parse(toolText(reply)).change_id;
   expect(typeof changeId).toBe('string');
+
+  // The write was recorded in agent_change (before-state for a person-side undo).
+  await expect.poll(async () => {
+    const { data } = await adminClient().from('agent_change')
+      .select('kind, marker_id').eq('document_id', E2E_DOCUMENT.id).eq('marker_id', itemId).eq('kind', 'answers').maybeSingle();
+    return data?.marker_id ?? null;
+  }, { timeout: 30_000 }).toBe(itemId);
 
   // The open client merged the WAL update and re-projected it to the mirror
   // (the connector write never touches document_annotations itself).
