@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  stampNewMarksByPage,
   DEFAULT_LAYER_ID,
   addLayer,
   calloutsWithoutHiddenLayers,
@@ -155,4 +156,36 @@ test('wiring: every mark save, the eraser, print and the review bundle honor lay
   // Print and the review bundle skip hidden layers like Export PDF / XFDF.
   assert.match(viewer, /annotationsByPage: withoutHiddenLayers\(printableAnnotationsByPageRef\.current \|\| \{\}, hiddenLayerIdsRef\.current\)/);
   assert.equal((viewer.match(/annotationsByPage: withoutHiddenLayers\(annotationsByPage, hiddenLayerIds\)/g) || []).length, 2);
+});
+
+test('text-markup transactions: new highlight groups on any page get the active layer', () => {
+  const prev = { 1: { objects: [{ data: { id: 'old' } }] } };
+  const hl = { type: 'group', data: { id: 'hl1', textMarkupType: 'highlight' } };
+  const ul = { type: 'group', data: { id: 'ul1', textMarkupType: 'underline' } };
+  const next = { 1: { objects: [{ data: { id: 'old' } }, hl] }, 2: { objects: [ul] } };
+  const out = stampNewMarksByPage(prev, next, 'L2');
+  assert.equal(out[1].objects[0].layerId, undefined);
+  assert.equal(out[1].objects[1].layerId, 'L2');
+  assert.equal(out[2].objects[0].layerId, 'L2');
+  assert.equal(next[1].objects[1].layerId, undefined, 'input not mutated');
+  assert.equal(stampNewMarksByPage(prev, next, null), next, 'flag off / no active layer: unchanged');
+  assert.equal(stampNewMarksByPage(prev, next, 'default'), next);
+  assert.equal(stampNewMarksByPage(next, next, 'L2'), next, 'nothing new: same reference');
+});
+
+test('text-markup transactions: undo step rebuilt from stamped pages keeps the layer on redo', async () => {
+  const { buildTextMarkupDocumentAction } = await import('../src/utils/textMarkupGroupTransactions.js');
+  const { applyAnnotationHistoryAction } = await import('../src/utils/annotationLocalHistory.js');
+  const prev = { 1: { objects: [{ type: 'rect', data: { id: 'old' } }] } };
+  const next = {
+    1: { objects: [{ type: 'rect', data: { id: 'old' } }, { type: 'group', data: { id: 'hl1', textMarkupType: 'highlight' } }] },
+    2: { objects: [{ type: 'group', data: { id: 'st1', textMarkupType: 'strikeout' } }] },
+  };
+  const stamped = stampNewMarksByPage(prev, next, 'L2');
+  const action = buildTextMarkupDocumentAction(prev, stamped);
+  const redone = applyAnnotationHistoryAction(prev, action);
+  const find = (byPage, page, id) => (byPage[page] || byPage[String(page)]).objects.find((o) => o.data?.id === id);
+  assert.equal(find(redone, 1, 'hl1').layerId, 'L2');
+  assert.equal(find(redone, 2, 'st1').layerId, 'L2');
+  assert.equal(find(redone, 1, 'old').layerId, undefined);
 });
