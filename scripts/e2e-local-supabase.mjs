@@ -291,7 +291,18 @@ async function main() {
   const command = process.argv[2] || 'up';
   if (command === 'up') {
     ensureDocker();
+    // `supabase start` is a no-op on an already-running stack, so a stack that
+    // was started from an older config.toml keeps that old config (e.g. OAuth
+    // off, before the oauth_server rewrite above). Detect that drift and
+    // restart so the current config always applies.
+    const configPath = path.join(STACK_DIR, 'supabase/config.toml');
+    const previousConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null;
+    const alreadyRunning = readStatus() !== null;
     prepareWorkdir();
+    if (alreadyRunning && previousConfig !== fs.readFileSync(configPath, 'utf8')) {
+      log('stack config changed since it started; restarting so the new config applies');
+      runCli(['stop', '--no-backup'], { allowFail: true });
+    }
     runCli(['start', '-x', EXCLUDED.join(',')]);
     const status = readStatus();
     if (!status) fail('stack started but `supabase status` failed');

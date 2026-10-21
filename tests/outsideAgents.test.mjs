@@ -116,6 +116,16 @@ test('agent hourly limits: people pass untouched, agents are counted and fail cl
   }
 });
 
+test('an agent cannot lift its own hourly cap by passing a big p_limit', () => {
+  // The limit lives in the function, keyed by p_fn; p_limit is ignored. An
+  // agent calling the RPC straight from REST with a huge p_limit stays capped.
+  const sql = read('supabase/migrations/20261021100000_agent_rate_limit_server_side.sql');
+  assert.match(sql, /v_limit integer := case p_fn/);
+  assert.match(sql, /return v_calls <= v_limit;/);
+  assert.doesNotMatch(sql, /<= p_limit/);
+  assert.match(sql, /p_limit integer default null/);
+});
+
 test('agent activity log: agents\' writes are recorded, people read their own log, agents read none', () => {
   const sql = read('supabase/migrations/20261021050000_agent_activity_log.sql');
   assert.match(sql, /using \(user_id = auth\.uid\(\) and not public\.is_agent_session\(\)\)/);

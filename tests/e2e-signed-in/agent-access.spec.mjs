@@ -194,3 +194,15 @@ test('log rows past 90 days are hidden and pruned, even for people whose agents 
   const { data } = await admin.from('agent_activity').select('id').eq('client_id', `old-${RUN}`);
   expect(data).toEqual([]);
 });
+
+test('an agent cannot raise its own hourly cap from REST', async ({ page }) => {
+  const { tok } = await agentSignIn(page, E2E_ACCOUNTS.free, `Cap probe ${RUN}`);
+  const a = agentApi(tok.access_token);
+  // Spend the real cap (5/hour for this function), passing a huge p_limit each time.
+  let refused = 0;
+  for (let i = 0; i < 7; i += 1) {
+    const ok = await (await a.rpc('agent_rate_hit', { p_fn: 'send-profile-change-notification', p_limit: 1_000_000 })).json();
+    if (ok === false) refused += 1;
+  }
+  expect(refused).toBeGreaterThan(0);
+});
