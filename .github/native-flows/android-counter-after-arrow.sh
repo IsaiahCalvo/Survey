@@ -27,9 +27,10 @@ size=$(ev "(() => { const g = [...document.querySelectorAll('g[data-annotation-i
 echo "counter size after arrow: ${size}px"
 [ "$size" != "none" ] && [ "$size" -ge 12 ] || { echo "::error::Counter after Arrow is not a full marker (${size}px)"; exit 1; }
 echo "Counter check passed."
-# #1055: revision cloud in the Shapes row, and the Measure menu.
-pick Shapes
-pick Cloud
+# #1055: revision cloud in the Shapes row, and the Measure menu. The Shapes
+# strip may still be open from the Counter pick, and tapping Shapes again
+# closes it, so open it only if Cloud is not showing.
+( pick Cloud ) || { pick Shapes; pick Cloud; }
 adb shell input stylus swipe $((X - 150)) $((Y + 300)) $((X + 100)) $((Y + 450)) 300
 sleep 2
 clouds=$(ev "document.querySelectorAll('g[data-annotation-index]').length")
