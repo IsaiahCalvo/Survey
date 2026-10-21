@@ -230,6 +230,7 @@ jobs:
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
             maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             bash .github/native-flows/android-pen-mode.sh "$OUT" || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            bash .github/native-flows/android-counter-after-arrow.sh "$OUT" || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             adb reverse --remove-all
             maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
       - uses: actions/upload-artifact@v4
