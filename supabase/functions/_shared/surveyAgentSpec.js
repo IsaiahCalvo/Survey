@@ -143,7 +143,10 @@ export function sanitizeAgentMessages(messages) {
       const calls = [];
       for (const c of Array.isArray(m.tool_calls) ? m.tool_calls : []) {
         if (!isObj(c) || !isText(c.id, 200) || !isObj(c.function)) return { error: 'bad_message' };
-        if (!SURVEY_AGENT_TOOL_NAMES.includes(c.function.name) || !isText(c.function.arguments, max)) return { error: 'bad_message' };
+        // Any tool-shaped name: a model that once asked for a tool that does
+        // not exist got an error result, and that turn must not block the
+        // rest of the chat.
+        if (!/^[A-Za-z0-9_.-]{1,64}$/.test(String(c.function.name)) || !isText(c.function.arguments, max)) return { error: 'bad_message' };
         calls.push({ id: c.id, type: 'function', function: { name: c.function.name, arguments: c.function.arguments } });
       }
       if (!content && !calls.length) return { error: 'bad_message' };

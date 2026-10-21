@@ -49,8 +49,17 @@ const text = (value: unknown) => ({ content: [{ type: 'text', text: typeof value
 type Category = { id: string; name: string; checklist: { id: string; text: string }[] };
 
 // Category and checklist names come from the templates the person can see.
-async function categoryNames(db: SupabaseClient) {
-  const { data } = await db.from('templates').select('id, name, config').limit(300);
+// Templates linked to the document go first, so when two templates reuse a
+// category id the document's own wins.
+async function categoryNames(db: SupabaseClient, documentId: string) {
+  const [{ data: all }, { data: links }] = await Promise.all([
+    db.from('templates').select('id, name, config').limit(300),
+    UUID.test(documentId)
+      ? db.from('document_templates').select('template_id').eq('document_id', documentId)
+      : Promise.resolve({ data: [] as { template_id: string }[] }),
+  ]);
+  const linked = new Set((links || []).map((l) => String(l.template_id)));
+  const data = [...(all || [])].sort((a, b) => Number(linked.has(String(b.id))) - Number(linked.has(String(a.id))));
   const categories = new Map<string, Category>();
   const entities = new Map<string, string>();
   for (const row of data || []) {
@@ -173,7 +182,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
   }
   const documentId = String(args.document_id || '');
   if (name === 'list_survey_items' || name === 'find_survey_items') {
-    const [rows, names] = await Promise.all([surveyItems(db, documentId), categoryNames(db)]);
+    const [rows, names] = await Promise.all([surveyItems(db, documentId), categoryNames(db, documentId)]);
     const want = args.category ? normalizeItemName(String(args.category)) : '';
     let items = rows.map((r) => {
       const category = names.categories.get(String(r.category_id || ''));
@@ -206,7 +215,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     return text({ document_id: documentId, count: items.length, items });
   }
   if (name === 'get_survey_item') {
-    const [rows, names] = await Promise.all([surveyItems(db, documentId), categoryNames(db)]);
+    const [rows, names] = await Promise.all([surveyItems(db, documentId), categoryNames(db, documentId)]);
     const r = rows.find((row) => row.annotation_id === String(args.item_id || ''));
     if (!r) throw new ToolError('No item with that id in this document. Use find_survey_items.');
     const category = names.categories.get(String(r.category_id || ''));

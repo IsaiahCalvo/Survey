@@ -124,6 +124,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       push({ role: 'agent', text: result.reply, changes: result.changes });
       if (speakRef.current) speak(result.reply);
     } catch (err) {
+      // The server refused the stored chat: start over rather than repeat it.
+      if (err?.code === 'bad_message' || err?.code === 'bad_message_order' || err?.code === 'conversation_too_long') historyRef.current = [];
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(err?.changes);
       push({ role: 'error', text: err?.message || surveyAgentErrorText(err?.code), changes: err?.changes || [] });
@@ -134,6 +136,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
 
   const sendRef = useRef(send);
   sendRef.current = send;
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
   const undoEntry = (entry) => {
     const { reverted, kept } = toolbox.undo(entry.changes || []);
@@ -197,7 +201,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     rec.onend = () => {
       speechRef.current = null;
       setListening(false);
-      if (finalText.trim()) sendRef.current(finalText);
+      // Send what is in the box, so a word fixed while listening is kept.
+      const typed = draftRef.current.trim();
+      if (typed || finalText.trim()) sendRef.current(typed || finalText);
     };
     speechRef.current = rec;
     setListening(true);

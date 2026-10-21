@@ -1536,7 +1536,9 @@ const SurveySpacesRail = ({
         const marker = surveyMarkers?.[annotationId];
         if (!marker) return;
         const { moduleId, category } = surveyAgentCategoryOf(marker);
-        applyEntitySelectionForMarker(annotationId, moduleId, category, entityId, { automatic: true });
+        // The person asked for it, so it counts as their pick (remembered
+        // for the next marker), same as a tap.
+        applyEntitySelectionForMarker(annotationId, moduleId, category, entityId);
       },
       updateNote: (annotationId, updater) => updateSurveyMarkerNote(annotationId, updater, { requireExisting: true }),
       uploadMedia: (annotationId, file, kind) => uploadSurveyMedia({ documentId: pdfFile?.id || null, markerId: annotationId, file, kind }),

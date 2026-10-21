@@ -11,6 +11,8 @@ const ERROR_TEXT = {
   monthly_cap_reached: 'You reached this month\'s Survey agent limit.',
   busy_try_again: 'The agent is busy. Try again in a moment.',
   conversation_too_long: 'This chat is too long. Start a new one.',
+  bad_message: 'This chat could not continue, so it starts fresh. Say that again.',
+  bad_message_order: 'This chat could not continue, so it starts fresh. Say that again.',
 };
 
 export function surveyAgentErrorText(code) {
