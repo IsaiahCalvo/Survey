@@ -28,24 +28,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const VIEWER_SOURCE = readFileSync(resolve(REPO_ROOT, 'src/PDFViewer.jsx'), 'utf8');
 
-const sidecarLoader = () => {
-  const start = VIEWER_SOURCE.indexOf('const loadSurveyDataFromSupabase = useCallback(');
-  assert.notEqual(start, -1, 'loadSurveyDataFromSupabase exists');
-  return VIEWER_SOURCE.slice(start, start + 6000);
-};
-
-test('the project sidecar never restores Survey Markers onto a cloud document', () => {
-  assert.match(sidecarLoader(), /if \(data\.annotations && !doc\.id\) \{\s*setSurveyMarkers\(data\.annotations\);\s*\}/);
-});
-
-test('the project sidecar never restores marks, callouts or spaces onto a cloud document', () => {
-  const body = sidecarLoader();
-  assert.match(body, /const shouldRestoreLegacyAnnotationBlob = !doc\.id;/);
-  assert.match(body, /if \(data\.annotationsByPage && shouldRestoreLegacyAnnotationBlob\)/);
-  assert.match(body, /if \(data\.callouts && shouldRestoreLegacyAnnotationBlob\)/);
-  assert.match(body, /if \(data\.spaces && shouldRestoreLegacyAnnotationBlob\) \{\s*setSpaces\(Array\.isArray\(data\.spaces\) \? data\.spaces : \[\]\);\s*\}/);
-});
-
 test('the unreachable empty-cloud guard stays deleted', () => {
   assert.equal(existsSync(resolve(REPO_ROOT, 'src/utils/safeSnapshot.js')), false);
   assert.doesNotMatch(VIEWER_SOURCE, /resolveSafeSnapshot|utils\/safeSnapshot/);

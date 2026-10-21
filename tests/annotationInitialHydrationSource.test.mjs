@@ -146,15 +146,10 @@ test('stacked ink repair runs after hydration/listener wiring, before first pain
 // above) and whose module is now deleted. The live first-paint contract
 // (source: 'annotation-doc') is pinned in the first test of this file.
 
-test('a stale project sidecar never replaces a cloud document\'s spaces', () => {
-  // Highlights no longer use resolveSafeSnapshot on hydrate — the durable Y.Doc
-  // is their source of truth now. KAL-275 (2026-10-13) deleted the last
-  // resolveSafeSnapshot wrap (the sidecar spaces / Survey Marker restore): it
-  // only acted for a cloud document, and those restores never run for one.
-  // That gate is what protects visible state, so it is pinned instead (the
-  // Survey Marker side in tests/annotationIdleRecoveryContracts.test.mjs).
-  assert.match(APP_SOURCE, /const shouldRestoreLegacyAnnotationBlob = !doc\.id;/);
-  assert.match(APP_SOURCE, /if \(data\.spaces && shouldRestoreLegacyAnnotationBlob\) \{/);
+test('no project sidecar restore remains to replace a cloud document\'s spaces', () => {
+  // The <doc>_data.json sidecar (never accepted by the PDF/Excel-only bucket)
+  // was removed 2026-10-21; spaces load only from the durable Y.Doc.
+  assert.doesNotMatch(APP_SOURCE, /loadSurveyDataFromSupabase|shouldRestoreLegacyAnnotationBlob/);
 });
 
 test('first visible annotation wrappers expose and honor the hydration gate', () => {
