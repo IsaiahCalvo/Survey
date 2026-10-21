@@ -146,6 +146,18 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   assert.match(src, /function pageArgs/);
   assert.match(src, /\.range\(offset, offset \+ limit - 1\)/);
   assert.match(src, /next_offset:/);
+  // Each connector write records its before-state in agent_change (best effort,
+  // agent-session only) so the person can undo it from /agent-link.
+  assert.match(src, /function recordChange/);
+  assert.match(src, /from\('agent_change'\)\.insert/);
+  assert.match(src, /if \(!actor\?\.clientId \|\| !actor\.userId\) return;/);
+  const mig = read('supabase/migrations/20261023130000_agent_change.sql');
+  assert.match(mig, /create table if not exists public\.agent_change/);
+  // Agent inserts its own; person reads + marks undone; agent can't read.
+  assert.match(mig, /for insert\s+to authenticated\s+with check \(user_id = auth\.uid\(\) and public\.is_agent_session\(\)\)/);
+  assert.match(mig, /for select\s+to authenticated\s+using \(user_id = auth\.uid\(\) and not public\.is_agent_session\(\)\)/);
+  assert.match(mig, /for update/);
+  assert.match(mig, /interval '90 days'/);
 });
 
 async function loadAgentSession() {
