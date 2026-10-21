@@ -1,0 +1,87 @@
+name: Roll back production
+
+# Points surveytool.app back at an earlier production deployment in a few
+# seconds, without a rebuild. Run it from the Actions tab (or `gh workflow run
+# rollback-production.yml`). docs/ROLLBACK.md says when to use it.
+#
+# It moves the live deployment's aliases with the same REST call the nightly
+# alias uses, rather than Vercel's "Instant Rollback" button: that button also
+# stops later production deploys from taking the domain until someone undoes
+# it, while a moved alias is simply taken back by the next normal deploy.
+# The fix still has to reach main; this only buys time.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deployment to go back to (id dpl_… or its URL). Empty = the production deployment before the live one.'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Only show what would move'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    # Same group as the deploy job, so a rollback never races a deploy.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      TEAM: team_uLSMMTmD4LhtDBm9qJ8DV59v
+      PROJECT: prj_ix7x9o7mg5Xi5XXVra0kzP3X7o3p
+      DOMAIN: surveytool.app
+      TARGET: ${{ inputs.target }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - name: Move the production aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.vercel.com"
+          get() { curl --fail-with-body --silent --show-error -H "Authorization: Bearer $VERCEL_TOKEN" "$api$1"; }
+
+          live="$(get "/v4/aliases/$DOMAIN?teamId=$TEAM" | jq -r '.deploymentId')"
+          [ -n "$live" ] && [ "$live" != null ] || { echo "::error::Could not find the deployment behind $DOMAIN"; exit 1; }
+
+          if [ -n "$TARGET" ]; then
+            target="$(get "/v13/deployments/${TARGET#https://}?teamId=$TEAM" | jq -r '.id')"
+          else
+            live_created="$(get "/v13/deployments/$live?teamId=$TEAM" | jq -r '.createdAt')"
+            target="$(get "/v6/deployments?projectId=$PROJECT&teamId=$TEAM&target=production&state=READY&until=$live_created&limit=5" \
+              | jq -r --arg live "$live" '[.deployments[] | select(.uid != $live)][0].uid // empty')"
+          fi
+          [ -n "$target" ] && [ "$target" != null ] || { echo "::error::No earlier production deployment found"; exit 1; }
+          [ "$target" != "$live" ] || { echo "::error::$target is already live"; exit 1; }
+
+          info="$(get "/v13/deployments/$target?teamId=$TEAM")"
+          [ "$(jq -r '.readyState' <<<"$info")" = READY ] || { echo "::error::$target is not READY"; exit 1; }
+          aliases="$(get "/v2/deployments/$live/aliases?teamId=$TEAM" | jq -r '.aliases[].alias')"
+
+          {
+            echo "### Roll back production"
+            echo "- Live now: \`$live\`"
+            echo "- Going back to: \`$target\` ($(jq -r '.url' <<<"$info"), built $(jq -r '.createdAt / 1000 | todate' <<<"$info"))"
+            echo "- Aliases to move:"; sed 's/^/  - /' <<<"$aliases"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          if [ "$DRY_RUN" = true ]; then echo "Dry run: nothing moved." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+
+          while read -r alias; do
+            [ -n "$alias" ] || continue
+            jq -n --arg alias "$alias" '{alias: $alias}' \
+              | curl --fail-with-body --silent --show-error -X POST -H "Authorization: Bearer $VERCEL_TOKEN" \
+                  -H 'Content-Type: application/json' --data @- "$api/v2/deployments/$target/aliases?teamId=$TEAM" > /dev/null
+            echo "Moved $alias"
+          done <<<"$aliases"
+
+          now="$(get "/v4/aliases/$DOMAIN?teamId=$TEAM" | jq -r '.deploymentId')"
+          [ "$now" = "$target" ] || { echo "::error::$DOMAIN still points at $now"; exit 1; }
+          echo "$DOMAIN now serves $target. The next normal production deploy takes it back." | tee -a "$GITHUB_STEP_SUMMARY"
+          curl --silent "https://$DOMAIN/release.json?t=$(date +%s)" || true
