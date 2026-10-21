@@ -215,7 +215,7 @@ Deno.serve(async (req) => {
     if (!v) return json(501, { error: 'speech_not_set_up' });
     const input = speechText(body.text);
     if (!input) return json(400, { error: 'bad_request' });
-    if (!(await reserve())) return json(429, { error: 'monthly_cap_reached', usage_left: usageLeft() });
+    if (!(await reserve())) return refused();
     let res: Response;
     try {
       res = await fetch(v.url, {
