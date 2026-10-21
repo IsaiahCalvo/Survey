@@ -3649,6 +3649,9 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
   }
   html.survey-viewer-open .app-toast-host {
     --app-toast-chrome-fallback: calc(var(--native-safe-area-top, env(safe-area-inset-top, 0px)) + 34px);
+    /* In the viewer the stack starts right of the tool rail: a sticky toast
+       (Smart fill's "Apply") covered Pan, the rail's first chip. */
+    left: calc(var(--mobile-rail-w, 36px) + 8px) !important;
   }
   html[data-native-shell="expo"] .app-toast-host {
     --app-toast-chrome-fallback: 96px;

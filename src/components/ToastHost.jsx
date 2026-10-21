@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { isPhoneLayout } from '../utils/layoutMode.js';
 import { exitMs } from '../utils/motion.js';
 import { createToastStore } from '../utils/toastQueue.js';
+import { TOAST_USER_DISMISS_EVENT } from '../utils/toast';
 import './ToastHost.css';
 
 // KAL-57 — single mounted host for the in-app toast bus (see utils/toast.js).
@@ -39,12 +40,13 @@ import './ToastHost.css';
 //   - 'app-toast-dismiss' ({ id }) takes a toast down early (dismissToast()).
 
 const TYPE_CLASS = { info: 'info', success: 'success', error: 'error', warn: 'warn' };
-// The phone's top bars (viewer header, home header) and the banners hung under
+// The phone's top bars (viewer header, the tool-settings / Survey strip under
+// it, whose Done a sticky toast used to cover, home header) and the banners hung under
 // the viewer header ("Document locked", the storage / sync-failure banner, which
 // sits above this stack at z 100020). Their measured bottom edge feeds
 // --app-toast-chrome-bottom so the stack lands right under whichever is on
 // screen, wherever the shell put it (see .app-toast-host).
-const PHONE_TOP_CHROME_SELECTORS = ['.mobile-pdf-header', '.survey-hub .header', '.document-lock-banner', '.storage-banner'];
+const PHONE_TOP_CHROME_SELECTORS = ['.mobile-pdf-header', '.mobile-pdf-properties', '.survey-hub .header', '.document-lock-banner', '.storage-banner'];
 
 export default function ToastHost() {
   const storeRef = useRef(null);
@@ -111,7 +113,10 @@ export default function ToastHost() {
           role="status"
           aria-live="polite"
           aria-hidden={t.leaving ? 'true' : undefined}
-          onClick={() => store.dismiss(t.id)}
+          onClick={() => {
+            store.dismiss(t.id);
+            window.dispatchEvent(new CustomEvent(TOAST_USER_DISMISS_EVENT, { detail: { id: t.key } }));
+          }}
           onMouseEnter={() => store.pause(t.id)}
           onMouseLeave={() => store.resume(t.id)}
           onFocus={() => store.pause(t.id)}

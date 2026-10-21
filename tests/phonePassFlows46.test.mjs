@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+/*
+ * Phone pass, flows 4-6 (2026-10-21, Playwright iPhone 13 / iPhone SE on the
+ * local signed-in stack). Three phone bugs found while testing Smart fill:
+ *
+ * 1. iPhone SE: the Survey Marker shape menu (Rectangle / Freehand / Smart
+ *    fill) never showed. Its chip sits in the scrolling rail column, and that
+ *    column's "more below" fade is a mask-image, which clips every descendant
+ *    (position: fixed ones too). On a short phone the rail overflows, the mask
+ *    goes on, and the menu was masked out: invisible and untappable.
+ * 2. Tapping the Smart fill preview toast away (the only Cancel the phone
+ *    toast offers) left the blue preview outline on the page.
+ * 3. In the viewer the sticky toast covered the Survey strip's Done and the
+ *    rail's first chip (Pan).
+ */
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
+test('the phone Survey Marker shape menu is portaled out of the masked rail column', () => {
+  const src = read('src/mobile/MobileSurveyRail.jsx');
+  assert.match(src, /import \{ createPortal \} from 'react-dom';/);
+  const menuAt = src.indexOf('className="mobile-pdf-tools__popover is-marker-shape"');
+  assert.ok(menuAt > 0, 'the shape menu is still rendered here');
+  const before = src.slice(Math.max(0, menuAt - 400), menuAt);
+  assert.match(before, /createPortal\(/, 'the menu goes through createPortal');
+  const after = src.slice(menuAt, menuAt + 2000);
+  assert.match(after, /<\/div>,\s*document\.body,\s*\)\}/, 'portaled to document.body');
+  // The fade that caused it is still there; the menu just no longer lives under it.
+  assert.match(read('src/mobile/mobilePdfViewer.css'), /\.mobile-pdf-tools__main\[data-more-below='true'\] \{[^}]*mask-image/);
+});
+
+test('tapping a toast away tells listeners which toast the user dismissed', () => {
+  const toast = read('src/utils/toast.js');
+  assert.match(toast, /export const TOAST_USER_DISMISS_EVENT = 'app-toast-user-dismiss';/);
+  const host = read('src/components/ToastHost.jsx');
+  assert.match(host, /store\.dismiss\(t\.id\);\s*window\.dispatchEvent\(new CustomEvent\(TOAST_USER_DISMISS_EVENT, \{ detail: \{ id: t\.key \} \}\)\);/);
+});
+
+test('dismissing the Smart fill preview toast takes the preview outline down', () => {
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  assert.match(layer, /window\.addEventListener\(TOAST_USER_DISMISS_EVENT, onUserDismiss\)/);
+  assert.match(layer, /event\?\.detail\?\.id === 'smart-fill-preview'\) setSmartFillPreview\(null\)/);
+  // The preview toast still uses that id.
+  assert.match(layer, /id: 'smart-fill-preview',/);
+});
+
+test('phone toasts land under the tool-settings / Survey strip and right of the rail', () => {
+  const host = read('src/components/ToastHost.jsx');
+  assert.match(host, /PHONE_TOP_CHROME_SELECTORS = \[[^\]]*'\.mobile-pdf-properties'/);
+  const css = read('src/styles.css');
+  assert.match(css, /html\.survey-viewer-open \.app-toast-host \{[^}]*left: calc\(var\(--mobile-rail-w, 36px\) \+ 8px\) !important;/);
+});
