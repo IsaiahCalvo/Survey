@@ -26,9 +26,9 @@ import { acceptProjectInvite } from '../services/projectInviteService';
 import { acceptTemplateInvite } from '../services/templateInviteService';
 import { supabase } from '../supabaseClient';
 import { buildAppDestination } from '../utils/accountPlatform';
+import { PENDING_INVITE_KEY as PENDING_KEY } from '../utils/pendingInvite';
 import { C } from '../uiPalette';
 
-const PENDING_KEY = 'kal31_pending_invite_token';
 
 
 function getTokenFromPath() {
@@ -91,12 +91,13 @@ export default function InviteAcceptPage() {
         if (cancelled) return;
         setResult(r);
         setPhase('result');
-        if (r.status === 'accepted') {
-          try { window.localStorage.removeItem(PENDING_KEY); } catch (_e) { /* ignore */ }
-        }
+        // Any answer ends the sign-in round trip; a kept token would send the
+        // app back here after every later sign-in.
+        try { window.localStorage.removeItem(PENDING_KEY); } catch (_e) { /* ignore */ }
       } catch (err) {
         if (cancelled) return;
         console.error('[KAL-31] InviteAcceptPage error:', err);
+        try { window.localStorage.removeItem(PENDING_KEY); } catch (_e) { /* ignore */ }
         setError(err?.message || String(err));
         setResult({ status: 'invalid' });
         setPhase('result');
