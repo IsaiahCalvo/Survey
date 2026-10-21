@@ -105,3 +105,13 @@ test('rtf: parts that won\'t carry over are listed; other files are refused', ()
   assert.throws(() => readRtf(rtf('<html>no</html>')), (e) => e instanceof ToolError && /RTF/.test(e.message));
   assert.throws(() => readRtf(rtf('{\\rtf1\\ansi {\\fonttbl{\\f0 Arial;}}}')), (e) => e instanceof ToolError && /empty/.test(e.message));
 });
+
+test('RTF: bytes past ASCII written as-is use the code page', () => {
+  // "Привет" in windows-1251, as raw bytes rather than \'hh escapes.
+  const head = new TextEncoder().encode('{\\rtf1\\ansi\\ansicpg1251\\deff0{\\fonttbl{\\f0 Arial;}}\\pard Hi ');
+  const word = Uint8Array.of(0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2);
+  const tail = new TextEncoder().encode('!\\par}');
+  const bytes = new Uint8Array([...head, ...word, ...tail]);
+  const text = JSON.stringify(readRtf(bytes).blocks);
+  assert.match(text, /Hi Привет!/);
+});

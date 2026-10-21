@@ -6,9 +6,10 @@
 // Pure JS, no DOM, so it runs in Node tests too.
 import { ToolError } from './errors.js';
 
-// \fcharsetN to Windows code page.
+// \fcharsetN to Windows code page. 0 (ANSI) means the document's own
+// \ansicpg, so it isn't listed.
 const CHARSET_CP = {
-  0: 1252, 77: 10000, 128: 932, 129: 949, 134: 936, 136: 950, 161: 1253, 162: 1254,
+  77: 10000, 128: 932, 129: 949, 134: 936, 136: 950, 161: 1253, 162: 1254,
   163: 1258, 177: 1255, 178: 1256, 186: 1257, 204: 1251, 222: 874, 238: 1250,
 };
 // Groups whose text isn't part of the body.
@@ -192,7 +193,13 @@ export function readRtf(bytes) {
     if (text != null) {
       const k = Math.min(skipChars, text.length);
       skipChars -= k;
-      emit(text.slice(k));
+      // Bytes past ASCII written as-is (not as \'hh) are in the document's
+      // code page too, so they go through the same decoder.
+      for (const part of text.slice(k).split(/([\x80-\xff]+)/)) {
+        if (!part) continue;
+        if (part.charCodeAt(0) >= 0x80) for (let i = 0; i < part.length; i += 1) pending.push(part.charCodeAt(i));
+        else { flushBytes(); emit(part); }
+      }
       continue;
     }
     skipChars = 0;
