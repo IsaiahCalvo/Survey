@@ -638,6 +638,25 @@ async function runBackfillUnlocked(args) {
     sessionId,
     clientID,
   });
+  // Ids another writer (this user, another tab, a collaborator) changed or
+  // deleted while the loop was yielding. The rows were read before the loop,
+  // so importing them now would revert that edit or bring a deleted mark
+  // back (applyFabricCreate overwrites differing fields and clears
+  // tombstones); those rows are left alone.
+  const touchedDuringImport = new Set();
+  const noteForeignChanges = (events, transaction) => {
+    if (transaction?.origin === batchOrigin) return;
+    for (const event of events) {
+      if (event.target === yMapAnnotations) {
+        for (const key of event.changes.keys.keys()) touchedDuringImport.add(String(key));
+      } else if (event.path?.length) {
+        touchedDuringImport.add(String(event.path[0]));
+      }
+    }
+  };
+  yMapAnnotations.observeDeep(noteForeignChanges);
+  let skippedConcurrent = 0;
+  try {
   for (let batchStart = 0; batchStart < rows.length; batchStart += BACKFILL_BATCH_SIZE) {
     // Give the main thread back between batches. Run back to back, a
     // 4,000-row document imported (and broadcast) in one ~1.4 s task during
@@ -652,6 +671,11 @@ async function runBackfillUnlocked(args) {
         const __rowType = row?.annotation_type || 'unknown';
         try {
           const { fabricObject, pageNumber, annotationId } = deserializeRowDefensive(row);
+          const rowKey = String(fabricObject?.data?.id || annotationId);
+          if (touchedDuringImport.has(rowKey)) {
+            skippedConcurrent++;
+            continue;
+          }
           fabricObject.pageNumber = pageNumber;
 
           // Per-row origin still built — used as the inner originPayload arg
@@ -698,6 +722,15 @@ async function runBackfillUnlocked(args) {
         }
       }
     }, batchOrigin);
+  }
+
+  } finally {
+    yMapAnnotations.unobserveDeep(noteForeignChanges);
+  }
+  if (skippedConcurrent > 0) {
+    crdtBackfillDebug('[Phase31 UAT] backfill:skipped-concurrently-changed ' + JSON.stringify({
+      documentId, skippedConcurrent,
+    }));
   }
 
   // Mark done. Stored INSIDE Y.Doc so it propagates via CRDT sync. A second
