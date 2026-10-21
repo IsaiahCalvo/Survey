@@ -121,6 +121,14 @@ const orderByStoredIds = (rows, storedIds = []) => {
    Anchored to `anchorRect` (a getBoundingClientRect() snapshot of the trigger
    button) so it floats cleanly over the page — immune to any ancestor's
    overflow clipping. `align` decides which corner of the anchor it hangs from. */
+/* Select-bar Delete/Share follow the same rule as the row menu: every
+   selected file must be one you uploaded or in a project you own. */
+const manageCan = (files, project, userId) => {
+  const ok = files.every((f) => canManageProjectFile(f, project, userId));
+  const reason = ok ? true : 'Only the uploader or project owner can do this';
+  return { delete: reason, share: reason };
+};
+
 function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160 }) {
   const tip = useTooltip();
   const ref = useRef(null);
@@ -857,6 +865,7 @@ export default function ProjectsFolderTree({
               onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
               onMove={() => openMoveCopy(selectedFiles, 'move')}
               onCopy={() => openMoveCopy(selectedFiles, 'copy')}
+              can={manageCan(selectedFiles, mobileDrillProject, user?.id)}
               onShare={() => onShare && onShare(mobileDrillProject)}
               onDelete={() => deleteFiles(selectedFiles.map((f) => f.id))}
             />
@@ -1165,6 +1174,7 @@ export default function ProjectsFolderTree({
                             onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
                             onMove={() => openMoveCopy(selectedFiles, 'move')}
                             onCopy={() => openMoveCopy(selectedFiles, 'copy')}
+                            can={manageCan(selectedFiles, open, user?.id)}
                             onShare={() => onShare && onShare(open)}
                             onDelete={() => deleteFiles(selectedFiles.map((f) => f.id))}
                           />
