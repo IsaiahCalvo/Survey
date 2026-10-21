@@ -1967,10 +1967,20 @@ export default function App({ devPreviewReturnTab = null }) {
   // "PDF tools…" in the viewer's export menus: the Documents dialog (Dashboard)
   // on the open document. A file that isn't saved to the account yet has no
   // stored copy for the tools to read, so Dashboard explains that instead.
-  const openPdfToolsForActiveTab = () => {
+  const openPdfToolsForActiveTab = async () => {
     const file = tabs.find((t) => t.id === activeTabId)?.file;
-    // The open tab already holds the PDF, so the tools work offline too.
-    const blob = file instanceof Blob && file.size > 0 ? file : null;
+    // The open tab already holds the PDF, so the tools work offline too. A
+    // streamed open (#1097) has no File, only the library row: take the bytes
+    // from the viewer's loaded pdf.js document instead of downloading again.
+    let blob = file instanceof Blob && file.size > 0 ? file : null;
+    if (!blob) {
+      try {
+        const data = await leftRailApi?.pdfDoc?.getData?.();
+        if (data?.byteLength > 0) blob = new Blob([data], { type: 'application/pdf' });
+      } catch (err) {
+        console.warn('[PdfTools] could not read the open document', err);
+      }
+    }
     dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null, blob }]);
   };
   const openPdfToolsRef = useRef(openPdfToolsForActiveTab);

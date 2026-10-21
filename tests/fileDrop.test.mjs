@@ -197,7 +197,9 @@ test('wiring: PDF tools saves wait for the stored bytes and report failures', ()
 
 test('wiring: PDF tools on an open document use the bytes in the tab, so they work offline', () => {
   const appShell = read('src/AppShell.jsx');
-  assert.match(appShell, /const blob = file instanceof Blob && file\.size > 0 \? file : null;/);
+  assert.match(appShell, /let blob = file instanceof Blob && file\.size > 0 \? file : null;/);
+  // A streamed open (#1097) has no File: the viewer's pdf.js document has the bytes.
+  assert.match(appShell, /const data = await leftRailApi\?\.pdfDoc\?\.getData\?\.\(\);/);
   const dashboard = read('src/Dashboard.jsx');
   const source = dashboard.slice(dashboard.indexOf('const pdfToolSource'), dashboard.indexOf('const openPdfTools'));
   assert.match(source, /if \(doc\.blob\) return new Uint8Array\(await doc\.blob\.arrayBuffer\(\)\);/);
