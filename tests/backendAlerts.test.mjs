@@ -23,3 +23,16 @@ test('queries use ClickHouse log fields and never select whole rows', () => {
     assert.doesNotMatch(sql, /event_message|select \*|count\(\*\)/);
   }
 });
+
+test('crash groups: a new crash 10+ times or any crash 100+ times raises an alert', () => {
+  const base = { failedSignIns: 0, edge5xx: [], agentCalls: 0 };
+  const problems = problemsFrom({ ...base, crashGroups: [
+    { kind: 'error', message: 'x is undefined', times: 12, seen_before: false, platforms: 'web-phone', build: '2.0.1' },
+    { kind: 'error', message: 'old one', times: 50, seen_before: true },
+    { kind: 'request', message: 'GET /rest/v1/documents -> 503', times: 140, seen_before: true, platforms: 'ios-app' },
+    { kind: 'error', message: 'rare', times: 3, seen_before: false },
+  ] });
+  assert.equal(problems.length, 2);
+  assert.match(problems[0], /^- New crash: 12 times .*web-phone; build 2\.0\.1\): x is undefined$/);
+  assert.match(problems[1], /^- Crash spike: 140 times .*request; ios-app/);
+});
