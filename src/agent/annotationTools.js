@@ -7,6 +7,11 @@
 
 import { ANNOTATION_TOOL_SPECS } from '../../supabase/functions/_shared/annotationAgentSpec.js';
 
+// Finish an add message, appending the new annotation's id when the document
+// reports one. The id lets a caller (e.g. the voice agent's per-turn Undo) take
+// the add back with survey_delete_annotation. Omitted cleanly when absent.
+const added = (base, res) => (res?.id ? `${base} (id ${res.id}).` : `${base}.`);
+
 // Build the shape (rectangle/ellipse) executor: both share one body, keyed by
 // the builder shape name and the word used in messages.
 function shapeExecutor({ getDocument, builderShape, word }) {
@@ -23,7 +28,7 @@ function shapeExecutor({ getDocument, builderShape, word }) {
     if (res?.reason === 'off-page' || res?.reason === 'too-small') throw new Error(`The ${word} must fit inside the page (${size.width} x ${size.height} points).`);
     if (res?.reason === 'locked') throw new Error(`A locked annotation on that page blocked the save, so the ${word} was not added.`);
     if (!res?.ok) throw new Error(`Could not add the ${word}.`);
-    return `Added a ${word} on page ${page}.`;
+    return added(`Added a ${word} on page ${page}`, res);
   };
 }
 
@@ -48,7 +53,7 @@ export function buildAnnotationTools({ getDocument, text }) {
       if (res?.reason === 'off-page') throw new Error(`The note must start inside the page (${size.width} x ${size.height} points).`);
       if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the note was not added.');
       if (!res?.ok) throw new Error('Could not add the note.');
-      return `Added a text note on page ${page}.`;
+      return added(`Added a text note on page ${page}`, res);
     },
     survey_edit_text_note: async ({ annotation_id: annotationId, text: noteText }) => {
       const doc = getDocument();
@@ -88,7 +93,7 @@ export function buildAnnotationTools({ getDocument, text }) {
       if (res?.reason === 'off-page') throw new Error(`Both ends must be inside the page (${size.width} x ${size.height} points).`);
       if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the line was not added.');
       if (!res?.ok) throw new Error('Could not add the line.');
-      return `Added a ${arrow === true ? 'arrow' : 'line'} on page ${page}.`;
+      return added(`Added a ${arrow === true ? 'arrow' : 'line'} on page ${page}`, res);
     },
     survey_add_polygon: async ({ page, points, closed, stroke_color: strokeColor, fill_color: fillColor, stroke_width: strokeWidth }) => {
       const doc = getDocument();
@@ -104,7 +109,7 @@ export function buildAnnotationTools({ getDocument, text }) {
       if (res?.reason === 'off-page') throw new Error(`Every point must be inside the page (${size.width} x ${size.height} points).`);
       if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the shape was not added.');
       if (!res?.ok) throw new Error('Could not add the shape.');
-      return `Added a ${closed === false ? 'polyline' : 'polygon'} on page ${page}.`;
+      return added(`Added a ${closed === false ? 'polyline' : 'polygon'} on page ${page}`, res);
     },
     survey_add_callout: async ({ page, text: calloutText, arrow_x: arrowX, arrow_y: arrowY, box_x: boxX, box_y: boxY, box_width: boxWidth, stroke_color: strokeColor, fill_color: fillColor }) => {
       const doc = getDocument();
@@ -117,7 +122,7 @@ export function buildAnnotationTools({ getDocument, text }) {
       if (res?.reason === 'empty') throw new Error('The callout text is empty.');
       if (res?.reason === 'off-page') throw new Error(`The arrow point and the box corner must be inside the page (${size.width} x ${size.height} points).`);
       if (!res?.ok) throw new Error('Could not add the callout.');
-      return `Added a callout on page ${page}.`;
+      return added(`Added a callout on page ${page}`, res);
     },
     survey_add_highlight: async ({ page, search_text: searchText, color, opacity, occurrence }) => {
       const doc = getDocument();
@@ -130,7 +135,7 @@ export function buildAnnotationTools({ getDocument, text }) {
       if (res?.reason === 'no-match') throw new Error('Could not find that text on the page. Check the words and the page number.');
       if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the highlight was not added.');
       if (!res?.ok) throw new Error('Could not add the highlight.');
-      return `Highlighted "${searchText}" on page ${page}.`;
+      return added(`Highlighted "${searchText}" on page ${page}`, res);
     },
     survey_edit_callout: async ({ annotation_id: annotationId, text: calloutText, stroke_color: strokeColor, fill_color: fillColor }) => {
       const doc = getDocument();
