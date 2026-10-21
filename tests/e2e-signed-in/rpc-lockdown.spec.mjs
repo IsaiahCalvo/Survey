@@ -3,17 +3,21 @@
 // or that were meant for the service role only, stay shut.
 import { createClient } from '@supabase/supabase-js';
 import { E2E_ACCOUNTS, E2E_DOCUMENT } from './accounts.mjs';
-import { adminClient, expect, test } from './helpers.mjs';
+import { adminClient, clientFromPageSession, expect, signIn, test } from './helpers.mjs';
 
 const anonClient = () => createClient(process.env.E2E_SUPABASE_URL, process.env.E2E_SUPABASE_ANON_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-async function signedIn(account) {
-  const client = anonClient();
-  const { error } = await client.auth.signInWithPassword({ email: account.email, password: account.password });
-  expect(error).toBeNull();
-  return client;
+// Signs in through the real sign-in dialog, then probes with that session.
+async function signedIn(page, account) {
+  await signIn(page, account);
+  return clientFromPageSession(page);
+}
+
+async function userId(account) {
+  const { data } = await adminClient().auth.admin.listUsers();
+  return data.users.find((u) => u.email === account.email).id;
 }
 
 const isPermissionDenied = (error) => error?.code === '42501' || /permission denied/i.test(error?.message || '');
@@ -28,18 +32,18 @@ test('a signed-out caller cannot archive, restore or purge a document', async ()
   expect(data.user_archived_at).toBeNull();
 });
 
-test('a signed-in non-owner is still told not_owner', async () => {
-  const free = await signedIn(E2E_ACCOUNTS.free);
+test('a signed-in non-owner is still told not_owner', async ({ page }) => {
+  const free = await signedIn(page, E2E_ACCOUNTS.free);
   const { data, error } = await free.rpc('archive_document', { p_document_id: E2E_DOCUMENT.id });
   expect(error).toBeNull();
   expect(data).toMatchObject({ ok: false, reason: 'not_owner' });
 });
 
-test('a signed-in user cannot call the service-only Excel sync RPCs', async () => {
-  const owner = await signedIn(E2E_ACCOUNTS.owner);
-  const { data: { user } } = await owner.auth.getUser();
+test('a signed-in user cannot call the service-only Excel sync RPCs', async ({ page }) => {
+  const owner = await signedIn(page, E2E_ACCOUNTS.owner);
+  const ownerId = await userId(E2E_ACCOUNTS.owner);
   const apply = await owner.rpc('kal308_apply_changeset', {
-    p_actor_id: user.id, p_document_id: E2E_DOCUMENT.id, p_template_id: 't', p_workbook_id: 'w',
+    p_actor_id: ownerId, p_document_id: E2E_DOCUMENT.id, p_template_id: 't', p_workbook_id: 'w',
     p_capability_tier: 'business', p_client_change_set_id: 'c', p_request_hash: 'h',
     p_device_hint: 'd', p_template_config: null, p_rows: [],
   });
@@ -51,10 +55,9 @@ test('a signed-in user cannot call the service-only Excel sync RPCs', async () =
   expect(isPermissionDenied(persist.error), JSON.stringify(persist.error)).toBe(true);
 });
 
-test('a signed-in user cannot look up other people by id or email', async () => {
-  const free = await signedIn(E2E_ACCOUNTS.free);
-  const owner = await adminClient().auth.admin.listUsers();
-  const ownerId = owner.data.users.find((u) => u.email === E2E_ACCOUNTS.owner.email).id;
+test('a signed-in user cannot look up other people by id or email', async ({ page }) => {
+  const free = await signedIn(page, E2E_ACCOUNTS.free);
+  const ownerId = await userId(E2E_ACCOUNTS.owner);
   const checks = [
     ['check_user_collaborator_eligibility', { target_user_id: ownerId }],
     ['get_user_id_by_email', { email_address: E2E_ACCOUNTS.owner.email }],
@@ -66,8 +69,8 @@ test('a signed-in user cannot look up other people by id or email', async () => 
   }
 });
 
-test('the owner can still archive and restore their own document', async () => {
-  const owner = await signedIn(E2E_ACCOUNTS.owner);
+test('the owner can still archive and restore their own document', async ({ page }) => {
+  const owner = await signedIn(page, E2E_ACCOUNTS.owner);
   const archived = await owner.rpc('archive_document', { p_document_id: E2E_DOCUMENT.id });
   expect(archived.error).toBeNull();
   expect(archived.data.ok).toBe(true);
