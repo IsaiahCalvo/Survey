@@ -18,33 +18,66 @@ const json = (status: number, body: Record<string, unknown>) => new Response(JSO
   headers: { ...corsHeaders, 'Content-Type': 'application/json' },
 });
 
-async function listOwnedStorage(
-  admin: AdminClient,
-  prefix: string,
-): Promise<string[]> {
-  const paths: string[] = [];
-  for (let offset = 0; ; offset += 100) {
-    const { data, error } = await admin.storage.from('documents').list(prefix, { limit: 100, offset });
-    if (error) throw new Error(`Could not inspect stored documents: ${error.message}`);
-    const entries = data || [];
-    for (const entry of entries) {
-      if (!entry?.name) continue;
-      const path = `${prefix}/${entry.name}`;
-      if (entry.id) paths.push(path);
-      else paths.push(...await listOwnedStorage(admin, path));
-    }
-    if (entries.length < 100) break;
+type StoredObject = { bucket_id: string; name: string };
+type SidecarMove = { name: string; document_id: string };
+
+// PostgREST caps each response at max_rows, which may be below the asked
+// range, so page until a response comes back empty.
+async function readAllRows<T>(admin: AdminClient, fn: string, userId: string): Promise<T[]> {
+  const rows: T[] = [];
+  for (;;) {
+    const { data, error } = await admin
+      .rpc(fn, { target_user_id: userId })
+      .range(rows.length, rows.length + 999);
+    if (error) throw new Error(`Could not inspect stored files: ${error.message}`);
+    if (!data?.length) break;
+    rows.push(...(data as T[]));
   }
-  return paths;
+  return rows;
 }
 
-async function removeOwnedStorage(admin: AdminClient, userId: string) {
-  // Files normally live directly below documents/<user-id>, but recursively
-  // walk the prefix so a legacy/nested upload cannot survive account deletion.
-  const paths = await listOwnedStorage(admin, userId);
-  for (let offset = 0; offset < paths.length; offset += 100) {
-    const { error } = await admin.storage.from('documents').remove(paths.slice(offset, offset + 100));
-    if (error) throw new Error(`Could not remove stored documents: ${error.message}`);
+// Names PDFs, sidecars, avatars, survey media and thumbnails. Media is keyed
+// by document id, so this must run while the document rows still exist.
+const listOwnedStorage = (admin: AdminClient, userId: string) =>
+  readAllRows<StoredObject>(admin, 'account_deletion_storage_objects', userId);
+
+const listSidecarMoves = (admin: AdminClient, userId: string) =>
+  readAllRows<SidecarMove>(admin, 'account_deletion_sidecar_moves', userId);
+
+async function moveKeptSidecars(admin: AdminClient, moves: SidecarMove[]) {
+  // Other people's documents left the person's projects; their survey JSON
+  // follows them to <new project>/<document>_data.json.
+  for (let offset = 0; offset < moves.length; offset += 100) {
+    const batch = moves.slice(offset, offset + 100);
+    const { data, error } = await admin
+      .from('documents')
+      .select('id, project_id')
+      .in('id', batch.map((move) => move.document_id));
+    if (error) throw new Error(`Could not look up moved documents: ${error.message}`);
+    const projectOf = new Map((data || []).map((row: { id: string; project_id: string | null }) => [row.id, row.project_id]));
+    for (const move of batch) {
+      const projectId = projectOf.get(move.document_id);
+      const target = projectId ? `${projectId}/${move.document_id}_data.json` : null;
+      if (!target || target === move.name) continue;
+      const { error: moveError } = await admin.storage.from('documents').move(move.name, target);
+      // A retry finds the sidecar already moved.
+      if (moveError && !/not.?found/i.test(moveError.message)) {
+        throw new Error(`Could not keep a shared document's survey data: ${moveError.message}`);
+      }
+    }
+  }
+}
+
+async function removeOwnedStorage(admin: AdminClient, objects: StoredObject[]) {
+  const byBucket = new Map<string, string[]>();
+  for (const { bucket_id, name } of objects) {
+    byBucket.set(bucket_id, [...(byBucket.get(bucket_id) || []), name]);
+  }
+  for (const [bucket, paths] of byBucket) {
+    for (let offset = 0; offset < paths.length; offset += 100) {
+      const { error } = await admin.storage.from(bucket).remove(paths.slice(offset, offset + 100));
+      if (error) throw new Error(`Could not remove stored files: ${error.message}`);
+    }
   }
 }
 
@@ -98,15 +131,30 @@ Deno.serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     }) : null;
 
+    let storedObjects: StoredObject[] = [];
+    let sidecarMoves: SidecarMove[] = [];
     await runAccountDeletionStages({
       // Billing remains first so no account can be removed while still billable.
       // Missing Stripe customers are accepted for safe retries.
       cancelBilling: async () => {
         if (stripe) await deleteStripeCustomer(stripe, subscription?.stripe_customer_id);
       },
-      deleteDatabaseRows: () => deleteOwnedRows(admin, user.id),
-      removeStorage: () => removeOwnedStorage(admin, user.id),
+      deleteDatabaseRows: async () => {
+        storedObjects = await listOwnedStorage(admin, user.id);
+        sidecarMoves = await listSidecarMoves(admin, user.id);
+        await deleteOwnedRows(admin, user.id);
+      },
+      removeStorage: async () => {
+        await moveKeptSidecars(admin, sidecarMoves);
+        await removeOwnedStorage(admin, storedObjects);
+      },
       deleteAuthUser: async () => {
+        // The emptied projects outlive the rows stage so a retry can still
+        // find unmoved sidecars. Delete them here: left to cascade from the
+        // auth user, their metric trigger writes a usage row for the user
+        // being deleted and the delete fails.
+        const { error: projectsError } = await admin.from('projects').delete().eq('user_id', user.id);
+        if (projectsError) throw new Error(`Could not remove projects: ${projectsError.message}`);
         const { error } = await admin.auth.admin.deleteUser(user.id);
         if (error) throw error;
       },

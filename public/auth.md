@@ -60,7 +60,11 @@ user's role all apply, and one Undo takes a change back:
   set `arrow` true for an arrowhead (editor/owner).
 - `survey_add_polygon` — draw a polygon (closed, 3+ points) or polyline (open,
   `closed: false`, 2+ points) from a list of page points (editor/owner).
-- `survey_delete_annotation` removes any of these shapes too.
+- `survey_add_callout` — add a text box with a leader line pointing at a page
+  spot: the text, the arrow point and the box corner, with optional box width
+  and colors (editor/owner).
+- `survey_delete_annotation` removes the rectangle/ellipse/line/polygon shapes
+  too (not callouts, which have their own structure).
 
 ## Outside the browser: user-claimed flow
 

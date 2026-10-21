@@ -38,4 +38,15 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Survey Marker media (src/components/SurveyMediaCapture.jsx): photo and
+         video come from <input type="file" capture>, audio from getUserMedia +
+         MediaRecorder. Capacitor's BridgeWebChromeClient requests these at
+         runtime for the file-chooser camera intent and grants the WebView's
+         getUserMedia PermissionRequest, so no MainActivity code is needed. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>

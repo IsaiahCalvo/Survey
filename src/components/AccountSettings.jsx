@@ -20,6 +20,12 @@ import Spinner from './Spinner';
 import { passwordMeetsRequirements } from './authFlow';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
+import { useConfirmDialog, usePromptDialog } from './dialogPrompts';
+import {
+  ACCOUNT_DELETION_CONFIRMATION,
+  deleteAccountButtonState,
+  isAccountDeletionConfirmed,
+} from './accountDeletionConfirm';
 import CrashReportsPanel from './CrashReportsPanel';
 import {
   readAnnotationSnapping,
@@ -31,6 +37,8 @@ import {
 import {
   buildBillingReturnUrl,
   canUnlinkProvider,
+  isGoogleSignInHidden,
+  isPurchaseUiHidden,
   openDeferredExternalDestination,
   resolveSubscriptionQuery,
   SUBSCRIPTION_LOAD_FAILED_TEXT,
@@ -60,6 +68,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('general');
   const [subscriptionViewTab, setSubscriptionViewTab] = useState('manage'); // 'manage' or 'usage'
   const dialogRef = useRef(null);
+  const [deletionDialogOpen, setDeletionDialogOpen] = useState(false);
   // KAL-397 — Annotations tab. This device's setting (localStorage), read on
   // open and kept in step with other windows; an open document reads it at
   // the next text edit, so a change applies without a reload.
@@ -74,7 +83,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
   // it on Escape, and returns focus to whatever opened it.
-  useFocusTrap(dialogRef, isOpen, { onEscape: onClose });
+  useFocusTrap(dialogRef, isOpen && !deletionDialogOpen, { onEscape: onClose });
 
   // Form state
   const [firstName, setFirstName] = useState('');
@@ -212,6 +221,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     }
   }, [isMSAuthenticated, msAccount, user, updateProfile]);
 
+  const [askConfirm, accountConfirmDialog] = useConfirmDialog();
+  const [askPrompt, accountDeletePrompt] = usePromptDialog();
   if (!isOpen || !user) return null;
 
   /* Owner 2026-10-02: only a real change asks to be saved. A missing name in
@@ -375,6 +386,26 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   };
 
   const handleDeleteAccount = async () => {
+    setDeletionDialogOpen(true);
+    try {
+      const typed = await askPrompt({
+        title: 'Delete account',
+        message: 'This permanently removes your account, your documents, projects, survey photos and audio. Documents other people own stay with them.',
+        label: `Type ${ACCOUNT_DELETION_CONFIRMATION} to continue`,
+        confirmLabel: 'Continue',
+      });
+      if (typed === null) return;
+      if (!isAccountDeletionConfirmed(typed)) {
+        setError(`Type ${ACCOUNT_DELETION_CONFIRMATION} to confirm account deletion.`);
+        return;
+      }
+      if (!(await askConfirm({
+        title: 'Delete account?',
+        message: 'This cannot be undone. Your account and its data will be removed and you will be signed out.',
+        confirmLabel: 'Delete account',
+        danger: true,
+      }))) return;
+    } finally { setDeletionDialogOpen(false); }
     setError('');
     setLoading(true);
 
@@ -422,6 +453,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   return (
     <div className="account-settings-overlay" onClick={onClose}>
+      <span style={{ display: 'contents' }} onClick={(event) => event.stopPropagation()}>{accountDeletePrompt}{accountConfirmDialog}</span>
       <div
         className="account-settings-modal"
         ref={dialogRef}
@@ -681,15 +713,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   <button
                     className="account-btn-danger"
                     type="button"
-                    disabled
-                    title="Account deletion isn't self-serve yet — contact support"
-                    aria-label="Account deletion isn't self-serve yet — contact support"
+                    disabled={deleteAccountButtonState({ loading }).disabled}
+                    onClick={handleDeleteAccount}
                   >
-                    Delete account
+                    {deleteAccountButtonState({ loading }).label}
                   </button>
                   <p className="account-danger-zone-description">
-                    Account deletion isn&apos;t self-serve yet — contact support and
-                    we&apos;ll remove your account and all associated data.
+                    Permanently remove your account and its data.
                   </p>
                 </section>
 
@@ -760,7 +790,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       } else if (subscription.status === 'trialing' && subscription.trial_ends_at) {
                         text = `Pro trial — you won't be charged if you cancel before ${fmt(subscription.trial_ends_at)}.`;
                       } else if (subscription.status === 'past_due') {
-                        text = 'Your last payment failed — update your card in Manage Billing & Payments.';
+                        text = isPurchaseUiHidden()
+                          ? 'Your last payment failed.'
+                          : 'Your last payment failed — update your card in Manage Billing & Payments.';
                       } else if (subscription.status === 'active' && subscription.metadata?.cancel_at) {
                         // Cancellation scheduled: saying "renews" here would be
                         // false — the user cancelled (owner-hit 2026-08-30).
@@ -779,7 +811,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     })()}
 
                     {/* Manage Billing Button (for users with active subscriptions) */}
-                    {subscription && subscription.tier !== 'free' && subscription.stripe_customer_id && (
+                    {!isPurchaseUiHidden() && subscription && subscription.tier !== 'free' && subscription.stripe_customer_id && (
                       <div style={{ textAlign: 'center', marginBottom: '16px' }}>
                         <button
                           onClick={async () => {
@@ -829,7 +861,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     )}
 
                     {/* Billing Period Toggle (only show for paid users selecting new plan) */}
-                    {subscription?.tier === 'free' && (
+                    {!isPurchaseUiHidden() && subscription?.tier === 'free' && (
                       <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px', background: 'var(--surface-1)', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 16px auto' }}>
                         <button
                           onClick={() => setBillingPeriod('monthly')}
@@ -879,6 +911,20 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       </div>
                     )}
 
+                    {/* Native iOS/Android apps show plan status only — no plan
+                        picker, prices or purchase buttons (store review). */}
+                    {isPurchaseUiHidden() ? (
+                      <div className="account-subscription-card" data-testid="native-plan-status" style={{ border: '2px solid var(--accent)' }}>
+                        <div className="account-subscription-header">
+                          <div className="account-plan-name">
+                            {subscription?.tier
+                              ? `${subscription.tier.charAt(0).toUpperCase()}${subscription.tier.slice(1)} plan`
+                              : 'Free plan'}
+                          </div>
+                        </div>
+                        <div style={{ color: 'var(--text-3)', fontSize: '13px' }}>Current plan</div>
+                      </div>
+                    ) : (
                     <div className="account-subscription-grid">
                       {/* Free Plan */}
                       <div className="account-subscription-card" style={{
@@ -1033,6 +1079,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                       </div>
                     </div>
+                    )}
                     </>
                   )}
                 </section>
@@ -1147,7 +1194,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Google Drive */}
+                {/* Google Drive — hidden on iOS unless already linked
+                    elsewhere (App Store 4.8; the row stays so it can be
+                    disconnected). */}
+                {(!isGoogleSignInHidden() || user?.app_metadata?.provider === 'google' || user?.identities?.some(id => id.provider === 'google')) && (
                 <div className="account-connected-account" style={{ marginTop: '16px' }}>
                   <div className="account-connected-account-info">
                     <div className="account-connected-account-icon">
@@ -1192,6 +1242,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     </button>
                   </div>
                 </div>
+                )}
               </section>
             )}
           </div>

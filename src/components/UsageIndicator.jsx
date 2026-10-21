@@ -10,6 +10,7 @@
  */
 import { useSubscriptionLimits } from '../hooks/useSubscriptionLimits';
 import { useAuth } from '../contexts/AuthContext';
+import { isPurchaseUiHidden } from '../utils/accountPlatform';
 
 // Module scope so these keep stable component identity across UsageIndicator
 // renders (defining them in the body remounted every metric row each render).
@@ -172,7 +173,7 @@ const UsageIndicator = () => {
         showBar={!storageUnlimited}
       />
 
-      {tier === 'free' && (storagePercentage >= 75 || projectsPercentage >= 75 || documentsPercentage >= 75) && (
+      {!isPurchaseUiHidden() && tier === 'free' && (storagePercentage >= 75 || projectsPercentage >= 75 || documentsPercentage >= 75) && (
         <div style={{
           marginTop: '12px',
           padding: '10px',

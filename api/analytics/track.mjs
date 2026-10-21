@@ -11,6 +11,7 @@ const requestWindows = new Map();
 const isAllowedBrowserOrigin = (origin) => {
   if (PRODUCTION_ORIGINS.has(origin)) return true;
   if (origin === 'capacitor://localhost') return true;
+  if (origin === 'https://localhost') return true; // Capacitor Android WebView
   try {
     const url = new URL(origin);
     const hostname = url.hostname.toLowerCase();

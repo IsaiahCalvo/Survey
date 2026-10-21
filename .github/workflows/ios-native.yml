@@ -145,7 +145,10 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          # Plain AOSP image: on google_apis, Play services sometimes dies during
+          # boot and Android kills our app with it (it holds the Play fonts
+          # provider the web view uses). Not something users hit.
+          target: default
           arch: x86_64
           profile: pixel_7
           disable-animations: true
@@ -162,7 +165,7 @@ jobs:
             sleep 15; adb exec-out screencap -p > "$OUT/launch-25s.png"
             sleep 20; adb exec-out screencap -p > "$OUT/launch-45s.png"
             adb logcat -d > "$OUT/logcat.txt" || true
-            adb shell pidof "$APP_ID" || { echo "::error::the app is no longer running 45s after launch"; exit 1; }
+            adb shell pidof "$APP_ID" || { grep -E "AndroidRuntime|FATAL|ActivityManager.*(survey|Killing)|lowmemorykiller|chromium.*(crash|Renderer)" "$OUT/logcat.txt" | tail -40; echo "::error::the app is no longer running 45s after launch"; exit 1; }
             echo "App still running after 45s."
       - uses: actions/upload-artifact@v4
         if: always()
@@ -212,7 +215,10 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
-          target: google_apis
+          # Plain AOSP image: on google_apis, Play services sometimes dies during
+          # boot and Android kills our app with it (it holds the Play fonts
+          # provider the web view uses). Not something users hit.
+          target: default
           arch: x86_64
           profile: pixel_7
           disable-animations: true
@@ -222,9 +228,10 @@ jobs:
             # A slow CI emulator pops "Pixel Launcher isn't responding" over the app.
             adb shell settings put global hide_error_dialogs 1
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml
+            maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            bash .github/native-flows/android-pen-mode.sh "$OUT" || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             adb reverse --remove-all
-            maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml
+            maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

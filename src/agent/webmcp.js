@@ -523,6 +523,40 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           return `Added a ${closed === false ? 'polyline' : 'polygon'} on page ${page}.`;
         },
       },
+      {
+        name: 'survey_add_callout',
+        description: 'Add a callout: a text box with a leader line pointing at a spot on the page. Give the page, the text, the point the arrow should point at (arrow_x/arrow_y, PDF points from the top-left), and the text box top-left (box_x/box_y). Optionally a box width, a hex outline color and a hex fill color. Needs editor or owner access.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            page: { type: 'integer', minimum: 1 },
+            text: { type: 'string', description: 'The callout text.' },
+            arrow_x: { type: 'number', minimum: 0, description: 'X of the point the leader arrow points at.' },
+            arrow_y: { type: 'number', minimum: 0, description: 'Y of the point the leader arrow points at.' },
+            box_x: { type: 'number', minimum: 0, description: 'X of the text box top-left corner.' },
+            box_y: { type: 'number', minimum: 0, description: 'Y of the text box top-left corner.' },
+            box_width: { type: 'number', exclusiveMinimum: 0, description: 'Text box width in points (default 120).' },
+            stroke_color: { type: 'string', description: 'Hex outline/leader color like #1e293b (optional).' },
+            fill_color: { type: 'string', description: 'Hex box fill color (optional; default transparent).' },
+          },
+          required: ['page', 'text', 'arrow_x', 'arrow_y', 'box_x', 'box_y'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ page, text: calloutText, arrow_x: arrowX, arrow_y: arrowY, box_x: boxX, box_y: boxY, box_width: boxWidth, stroke_color: strokeColor, fill_color: fillColor }) => {
+          const doc = getDocument();
+          if (!String(calloutText || '').trim()) throw new Error('The callout text is empty.');
+          const size = doc.getPageSize(Number(page));
+          if (!size) throw new Error('That page is not in the open document.');
+          const inPage = (px, py) => Number(px) >= 0 && Number(py) >= 0 && Number(px) <= size.width && Number(py) <= size.height;
+          if (!inPage(arrowX, arrowY) || !inPage(boxX, boxY)) throw new Error(`The arrow point and the box corner must be inside the page (${size.width} x ${size.height} points).`);
+          const res = doc.addCallout({ page: Number(page), text: String(calloutText), arrowX: Number(arrowX), arrowY: Number(arrowY), boxX: Number(boxX), boxY: Number(boxY), boxWidth: boxWidth == null ? undefined : Number(boxWidth), strokeColor, fillColor });
+          if (res?.reason === 'empty') throw new Error('The callout text is empty.');
+          if (res?.reason === 'off-page') throw new Error(`The arrow point and the box corner must be inside the page (${size.width} x ${size.height} points).`);
+          if (!res?.ok) throw new Error('Could not add the callout.');
+          return `Added a callout on page ${page}.`;
+        },
+      },
     ] : []),
     ...surveyItemTools(surveyToolbox),
   ];

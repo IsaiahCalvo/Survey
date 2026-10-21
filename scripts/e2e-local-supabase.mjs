@@ -12,8 +12,12 @@
 // instead of the repo's supabase/ folder, for two reasons:
 //   1. Its own project_id and ports (544xx) keep it from colliding with a dev
 //      `supabase start` run from the repo (543xx).
-//   2. Services the suite does not use (studio, mail, analytics, edge runtime,
-//      image proxy, pooler) are switched off so it starts fast.
+//   2. Services the suite does not use (studio, mail, analytics, image proxy,
+//      pooler) are switched off so it starts fast. The edge runtime stays on:
+//      account deletion is only end to end through the real function.
+//      E2E_EDGE_RUNTIME=off drops it where its container cannot start (some
+//      sandboxes refuse its file limit); then serve the functions yourself and
+//      point E2E_FUNCTIONS_URL at them.
 // Its migrations are a straight copy of supabase/migrations/: that folder
 // alone builds the database (20241220000000_baseline.sql recreates what
 // production had before the chain began).
@@ -39,8 +43,9 @@ const ENV_FILE = path.join(ROOT, '.env.e2e');
 const CLI_VERSION = '2.111.0'; // same pin as .github/workflows/deploy-production.yml
 const PROJECT_ID = 'survey-e2e';
 const EXCLUDED = [
-  'studio', 'imgproxy', 'mailpit', 'postgres-meta', 'edge-runtime',
+  'studio', 'imgproxy', 'mailpit', 'postgres-meta',
   'logflare', 'vector', 'supavisor',
+  ...(process.env.E2E_EDGE_RUNTIME === 'off' ? ['edge-runtime'] : []),
 ];
 
 const log = (...args) => console.log('[e2e-stack]', ...args);
@@ -72,7 +77,7 @@ function runCli(args, { capture = false, allowFail = false } = {}) {
 
 // Section-aware rewrite of the repo's config.toml for the E2E workdir.
 export function buildStackConfig(source) {
-  const disable = new Set(['studio', 'inbucket', 'analytics', 'edge_runtime', 'db.seed', 'db.pooler']);
+  const disable = new Set(['studio', 'inbucket', 'analytics', 'db.seed', 'db.pooler']);
   let section = '';
   return source.split('\n').map((line) => {
     const header = line.match(/^\s*\[([^\]]+)\]\s*$/);
@@ -113,6 +118,12 @@ function prepareWorkdir() {
   for (const name of repoMigrations) {
     fs.copyFileSync(path.join(ROOT, 'supabase/migrations', name), path.join(migrationsDir, name));
   }
+  const functionsDir = path.join(supabaseDir, 'functions');
+  fs.rmSync(functionsDir, { recursive: true, force: true });
+  fs.cpSync(path.join(ROOT, 'supabase/functions'), functionsDir, {
+    recursive: true,
+    filter: (source) => !source.includes(`${path.sep}node_modules`),
+  });
   log(`workdir ${path.relative(ROOT, STACK_DIR)}: ${repoMigrations.length} migrations`);
 }
 
