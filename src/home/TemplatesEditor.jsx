@@ -39,9 +39,9 @@
    the parent panels' `overflow: hidden` can never clip them or spawn
    scrollbars.
 */
-import { listExportKits, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
+import { listExportKits, subscribeExportKits, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
 import { ANSWER_SET_PRESETS, DEFAULT_ANSWER_SET } from '../services/answerSets.js';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
 import { reloadTemplatesAfterPendingSave } from './templatePersistence.js';
@@ -986,7 +986,7 @@ export default function TemplatesEditor({
   );
   const dirty = editFlag && workingCopyDiffers(workingFingerprint, baseline);
   /* The baseline a save makes once it lands: exactly the copy it sent. */
-  const exportKitOptions = useMemo(() => listExportKits(), []);
+  const exportKitOptions = useSyncExternalStore(subscribeExportKits, listExportKits);
   const fingerprintOf = (list) => fingerprintTemplates(list, { roleColors, borderColors, matchFill }, freshBlankItemsRef.current);
 
   const closeMobileTemplate = useCallback(() => {

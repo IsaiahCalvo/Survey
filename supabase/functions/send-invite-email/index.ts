@@ -12,6 +12,7 @@
  */
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { handleSendInviteEmail, CORS_HEADERS } from './handler.js';
+import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -37,6 +38,12 @@ Deno.serve(async (req) => {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  if (await agentOverLimit(authHeader, 'send-invite-email', callerClient)) {
+    return new Response(JSON.stringify({ error: AGENT_RATE_LIMITED_MESSAGE }), {
+      status: 429, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
 
   const deps = {
     anonKey: ANON_KEY,

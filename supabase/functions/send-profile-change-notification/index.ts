@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
+import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
 import {
   renderEmailLayout,
   EMAIL_DANGER,
@@ -59,6 +60,13 @@ Deno.serve(async (req) => {
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (await agentOverLimit(authHeader, 'send-profile-change-notification', supabaseClient)) {
+      return new Response(JSON.stringify({ error: AGENT_RATE_LIMITED_MESSAGE }), {
+        status: 429,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }

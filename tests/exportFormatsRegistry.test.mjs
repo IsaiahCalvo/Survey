@@ -132,3 +132,34 @@ test('import maps a kit\'s renamed system headers back to the standard names', a
   assert.equal(toStandardHeaders(header, std, std), header);
   assert.equal(toStandardHeaders(header, null, std), header);
 });
+
+test('account kits from the database register, skip bad rows and built-ins, and unload', async () => {
+  const { loadAccountExportKits } = await import('../src/services/exportFormats/accountKits.js');
+  const { subscribeExportKits } = await import('../src/services/exportFormats/registry.js');
+  const lockCols = getExportKit('wireless-lock-schedule').columns;
+  const rows = [
+    { kit_id: 'acme-doors', kit_version: '1.2.0', kits: { kind: 'exportKit', label: 'Acme doors', definition: { minEngine: 1, columns: lockCols } } },
+    { kit_id: 'default-survey', kit_version: '9.0.0', kits: { kind: 'exportKit', label: 'hijack', definition: { minEngine: 1, columns: lockCols } } },
+    { kit_id: 'broken', kit_version: '1.0.0', kits: { kind: 'exportKit', definition: { minEngine: 1, columns: [] } } },
+    { kit_id: 'a-tool', kit_version: '1.0.0', kits: { kind: 'toolKit', definition: {} } },
+  ];
+  const client = { from: (t) => { assert.equal(t, 'account_kits'); return { select: async () => ({ data: rows, error: null }) }; } };
+  let changes = 0;
+  const unsub = subscribeExportKits(() => { changes += 1; });
+  const before = listExportKits();
+  const off = await loadAccountExportKits(client);
+  assert.notEqual(listExportKits(), before);
+  assert.equal(listExportKits(), listExportKits());
+  assert.equal(getExportKit('acme-doors').label, 'Acme doors');
+  assert.equal(getExportKit('acme-doors').version, '1.2.0');
+  assert.equal(getExportKit('default-survey').version, '1.0.0');
+  assert.equal(getExportKit('broken'), null);
+  assert.equal(getExportKit('a-tool'), null);
+  off();
+  assert.equal(getExportKit('acme-doors'), null);
+  assert.equal(changes, 2);
+  unsub();
+  const failing = { from: () => ({ select: async () => ({ data: null, error: { message: 'relation does not exist' } }) }) };
+  const noop = await loadAccountExportKits(failing);
+  noop();
+});

@@ -24,6 +24,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 // relative imports intact, and Deno resolves these statically at deploy.
 import { buildScopeImportPlans } from '../_shared/matcher/buildScopeImportPlans.js';
 import { generateRowIdToken } from '../_shared/matcher/rowIdToken.js';
+import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
 
 const corsHeaders = {
   // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -117,6 +118,11 @@ Deno.serve(async (req: Request) => {
     actorId = data.user.id; // the authenticated user IS p_actor_id (F17).
   } catch {
     return json({ error: 'unauthorized' }, 401);
+  }
+
+  const callerClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
+  if (await agentOverLimit(authHeader, 'excel-apply-changeset', callerClient)) {
+    return json({ error: AGENT_RATE_LIMITED_MESSAGE }, 429);
   }
 
   // Service-role client for all privileged reads + the apply RPC (bypasses RLS).

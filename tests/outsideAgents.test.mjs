@@ -80,14 +80,49 @@ test('agents cannot pay, open billing, or delete the account', () => {
   }
 });
 
+async function loadAgentSession() {
+  const { stripTypeScriptTypes } = await import('node:module');
+  const js = stripTypeScriptTypes(read('supabase/functions/_shared/agentSession.ts'));
+  return import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+}
+const agentToken = (claims) => `Bearer h.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.s`;
+
 test('isAgentSession reads client_id from the token', async () => {
-  const src = read('supabase/functions/_shared/agentSession.ts')
-    .replace(/export /g, '').replace(/\(authHeader: string \| null\): boolean/, '(authHeader)');
-  const isAgentSession = new Function(`${src}; return isAgentSession;`)();
-  const tok = (claims) => `Bearer h.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.s`;
-  assert.equal(isAgentSession(tok({ sub: 'u', client_id: 'c1' })), true);
-  assert.equal(isAgentSession(tok({ sub: 'u' })), false);
-  assert.equal(isAgentSession(tok({ sub: 'u', client_id: '' })), false);
+  const { isAgentSession, agentClientId } = await loadAgentSession();
+  assert.equal(isAgentSession(agentToken({ sub: 'u', client_id: 'c1' })), true);
+  assert.equal(agentClientId(agentToken({ sub: 'u', client_id: 'c1' })), 'c1');
+  assert.equal(isAgentSession(agentToken({ sub: 'u' })), false);
+  assert.equal(isAgentSession(agentToken({ sub: 'u', client_id: '' })), false);
   assert.equal(isAgentSession(null), false);
   assert.equal(isAgentSession('Bearer garbage'), false);
+});
+
+test('agent hourly limits: people pass untouched, agents are counted and fail closed', async () => {
+  const { agentOverLimit, AGENT_HOURLY_LIMITS } = await loadAgentSession();
+  const calls = [];
+  const client = (result) => ({ rpc: async (name, args) => { calls.push([name, args]); return result; } });
+  assert.equal(await agentOverLimit(agentToken({ sub: 'u' }), 'send-email', client({ data: false })), false);
+  assert.equal(calls.length, 0, 'a person never touches the counter');
+  const agent = agentToken({ sub: 'u', client_id: 'c1' });
+  assert.equal(await agentOverLimit(agent, 'send-email', client({ data: true, error: null })), false);
+  assert.deepEqual(calls.at(-1), ['agent_rate_hit', { p_fn: 'send-email', p_limit: AGENT_HOURLY_LIMITS['send-email'] }]);
+  assert.equal(await agentOverLimit(agent, 'send-email', client({ data: false, error: null })), true);
+  assert.equal(await agentOverLimit(agent, 'send-email', client({ data: null, error: { message: 'down' } })), true, 'fails closed');
+  for (const fn of Object.keys(AGENT_HOURLY_LIMITS)) {
+    const src = read(`supabase/functions/${fn}/index.ts`);
+    assert.match(src, new RegExp(`agentOverLimit\\([^)]*'${fn}'`), `${fn} checks its agent limit`);
+    assert.match(src, /status: 429|, 429\)/, `${fn} answers 429`);
+    assert.match(read('supabase/migrations/20261021060000_agent_rate_limits.sql'), new RegExp(`'${fn}'`));
+  }
+});
+
+test('agent activity log: agents\' writes are recorded, people read their own log, agents read none', () => {
+  const sql = read('supabase/migrations/20261021050000_agent_activity_log.sql');
+  assert.match(sql, /using \(user_id = auth\.uid\(\) and not public\.is_agent_session\(\)\)/);
+  assert.match(sql, /if v_uid is null or not public\.is_agent_session\(\) then\s+return null;/);
+  for (const table of ['projects', 'documents', 'document_annotations', 'survey_items']) assert.match(sql, new RegExp(`'${table}'`));
+  assert.match(sql, /interval '90 days'/);
+  const page = read('src/home/AgentLinkPage.jsx');
+  assert.match(page, /from\('agent_activity'\)/);
+  assert.match(page, /rpc\('my_agent_last_active'\)/);
 });

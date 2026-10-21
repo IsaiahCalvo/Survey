@@ -59,6 +59,21 @@ const card = {
 };
 const btn = { padding: '10px 16px', borderRadius: 8, border: 'none', background: C.gold, color: C.onGold, cursor: 'pointer', fontSize: 14, fontWeight: 600, minHeight: 44 };
 const plain = { ...btn, background: 'transparent', color: C.ink, border: `1px solid ${C.ruleStrong}` };
+const THING = {
+  document_annotations: 'markup', survey_items: 'survey item', documents: 'document', projects: 'project',
+  spaces: 'space', templates: 'template', kits: 'kit', document_collaborators: 'sharing', project_collaborators: 'sharing',
+  template_collaborators: 'sharing', document_invites: 'invite', project_invites: 'invite', template_invites: 'invite',
+  excel_schema_mapping: 'Excel mapping', 'send-email': 'email sending', 'send-invite-email': 'invite email',
+  'send-profile-change-notification': 'profile change email', 'excel-apply-changeset': 'Excel sync',
+};
+const DID = { insert: 'added', update: 'changed', delete: 'removed', call: 'used' };
+const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '');
+export function describeActivity(row) {
+  const thing = THING[row.table_name] || row.table_name;
+  if (row.action === 'call') return `used ${thing}${row.row_label ? ` (${row.row_label})` : ''}`;
+  return `${DID[row.action] || row.action} ${thing}${row.row_label ? ` "${row.row_label}"` : ''}`;
+}
+
 const ghost = { ...btn, background: 'transparent', color: C.dangerText, border: `1px solid ${C.rule}`, padding: '4px 10px', fontSize: 12, fontWeight: 400 };
 
 function Consent({ authorizationId }) {
@@ -121,6 +136,8 @@ export default function AgentLinkPage() {
   const [busy, setBusy] = useState(false);
   const [links, setLinks] = useState([]);
   const [grants, setGrants] = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [lastActive, setLastActive] = useState({});
   // Closed at first so the person reads why they're here before signing in.
   const [authOpen, setAuthOpen] = useState(false);
 
@@ -149,6 +166,13 @@ export default function AgentLinkPage() {
     // Fails quietly while the project's OAuth server is off.
     const grantResult = await supabase.auth.oauth.listGrants().catch(() => null);
     setGrants(Array.isArray(grantResult?.data) ? grantResult.data : []);
+    const [{ data: log }, { data: seen }] = await Promise.all([
+      supabase.from('agent_activity').select('id, client_id, action, table_name, row_label, created_at')
+        .order('created_at', { ascending: false }).limit(50),
+      supabase.rpc('my_agent_last_active'),
+    ]);
+    setActivity(log || []);
+    setLastActive(Object.fromEntries((seen || []).map((r) => [r.client_id, r.last_active])));
   }, [user]);
 
   useEffect(() => { loadLinks(); }, [loadLinks]);
@@ -198,9 +222,13 @@ export default function AgentLinkPage() {
   }
 
   const agents = [
-    ...grants.map((g) => ({ key: `g:${g.client?.id}`, name: g.client?.name || 'AI agent', remove: () => revokeGrant(g.client?.id) })),
-    ...links.map((l) => ({ key: `l:${l.id}`, name: l.agent_name, remove: () => revoke(l.id) })),
+    ...grants.map((g) => ({
+      key: `g:${g.client?.id}`, name: g.client?.name || 'AI agent', remove: () => revokeGrant(g.client?.id),
+      note: [g.granted_at && `allowed ${when(g.granted_at)}`, lastActive[g.client?.id] && `last active ${when(lastActive[g.client?.id])}`].filter(Boolean).join(', '),
+    })),
+    ...links.map((l) => ({ key: `l:${l.id}`, name: l.agent_name, remove: () => revoke(l.id), note: l.approved_at ? `allowed ${when(l.approved_at)}, read only` : 'read only' })),
   ];
+  const agentName = (clientId) => grants.find((g) => g.client?.id === clientId)?.client?.name || 'Removed agent';
 
   return (
     <div style={card}>
@@ -228,10 +256,26 @@ export default function AgentLinkPage() {
           <h3 style={{ fontSize: 15, marginTop: 24 }}>Agents with access</h3>
           {agents.map((a) => (
             <div key={a.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 14, padding: '6px 0' }}>
-              <span>{a.name}</span>
+              <span>{a.name}{a.note && <span style={{ display: 'block', fontSize: 12, color: C.inkSoft }}>{a.note}</span>}</span>
               <button style={ghost} onClick={a.remove}>Remove</button>
             </div>
           ))}
+        </>
+      )}
+      {(agents.length > 0 || activity.length > 0) && (
+        <>
+          <h3 style={{ fontSize: 15, marginTop: 24 }}>What agents changed</h3>
+          {activity.length === 0 ? (
+            <p style={{ fontSize: 13, color: C.inkSoft }}>Nothing yet. Changes an agent makes show here for 90 days.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: 13 }}>
+              {activity.map((r) => (
+                <li key={r.id} style={{ padding: '4px 0', borderTop: `1px solid ${C.rule}` }}>
+                  <span style={{ color: C.inkSoft }}>{when(r.created_at)}</span> · <strong>{agentName(r.client_id)}</strong> {describeActivity(r)}
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
       <p style={{ marginTop: 24 }}><a href={buildAppDestination()} style={{ color: C.gold }}>Back to Survey</a></p>
