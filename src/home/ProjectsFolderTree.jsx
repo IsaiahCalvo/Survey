@@ -22,6 +22,7 @@
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
 import { canManageProjectFile } from './projectFilePermissions.js';
+import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
@@ -121,6 +122,14 @@ const orderByStoredIds = (rows, storedIds = []) => {
    Anchored to `anchorRect` (a getBoundingClientRect() snapshot of the trigger
    button) so it floats cleanly over the page — immune to any ancestor's
    overflow clipping. `align` decides which corner of the anchor it hangs from. */
+/* Select-bar Delete/Share follow the same rule as the row menu: every
+   selected file must be one you uploaded or in a project you own. */
+const manageCan = (files, project, userId) => {
+  const ok = files.every((f) => canManageProjectFile(f, project, userId));
+  const reason = ok ? true : 'Only the uploader or project owner can do this';
+  return { delete: reason, share: reason };
+};
+
 function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160 }) {
   const tip = useTooltip();
   const ref = useRef(null);
@@ -159,9 +168,10 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
             type="button"
             role="menuitem"
             className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
-            disabled={it.disabled}
-            {...(it.title ? tip(it.title) : {})}
-            onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+            disabled={it.reason ? undefined : it.disabled}
+            aria-disabled={it.reason ? true : undefined}
+            {...(it.reason ? tip(it.reason) : {})}
+            onClick={() => { if (it.disabled && !it.reason) return; onClose(); activateOrExplain(it.reason, it.onClick); }}
           >
             {it.iconNode
               ? it.iconNode
@@ -857,6 +867,7 @@ export default function ProjectsFolderTree({
               onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
               onMove={() => openMoveCopy(selectedFiles, 'move')}
               onCopy={() => openMoveCopy(selectedFiles, 'copy')}
+              can={manageCan(selectedFiles, mobileDrillProject, user?.id)}
               onShare={() => onShare && onShare(mobileDrillProject)}
               onDelete={() => deleteFiles(selectedFiles.map((f) => f.id))}
             />
@@ -1165,6 +1176,7 @@ export default function ProjectsFolderTree({
                             onDuplicate={() => { duplicateFiles(selectedFiles.map((f) => f.id)); setSelFiles(new Set()); }}
                             onMove={() => openMoveCopy(selectedFiles, 'move')}
                             onCopy={() => openMoveCopy(selectedFiles, 'copy')}
+                            can={manageCan(selectedFiles, open, user?.id)}
                             onShare={() => onShare && onShare(open)}
                             onDelete={() => deleteFiles(selectedFiles.map((f) => f.id))}
                           />
@@ -2047,8 +2059,8 @@ export default function ProjectsFolderTree({
               { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
-              { label: 'Delete', danger: true, disabled: !canManage, title: canManage ? undefined : noManageTitle, onClick: () => deleteFiles([fileMenu.id]) },
-              { label: 'Share', disabled: !canManage, title: canManage ? undefined : noManageTitle, onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
+              { label: 'Delete', danger: true, reason: canManage ? null : noManageTitle, onClick: () => deleteFiles([fileMenu.id]) },
+              { label: 'Share', reason: canManage ? null : noManageTitle, onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
               {
                 label: locked ? 'Unlock document' : 'Lock document',
                 disabled: !canLock,

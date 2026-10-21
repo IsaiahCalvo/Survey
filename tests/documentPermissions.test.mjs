@@ -27,7 +27,8 @@ test('desktop bulk pane shows the block reason on greyed Share / Delete', async 
   const src = await readFile(new URL('../src/home/DocumentsLedger.jsx', import.meta.url), 'utf8');
   for (const verb of ['share', 'delete']) {
     assert.ok(
-      src.includes(`disabled={Boolean(selectionBlock('${verb}'))} {...tip(selectionBlock('${verb}') || '', 'above')}`),
+      src.includes(`aria-disabled={selectionBlock('${verb}') ? true : undefined} {...tip(selectionBlock('${verb}') || '', 'above')}`)
+        && src.includes(`activateOrExplain(selectionBlock('${verb}'),`),
       `bulk pane ${verb} button carries the reason tooltip`,
     );
   }

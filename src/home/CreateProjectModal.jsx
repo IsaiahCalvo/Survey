@@ -35,7 +35,7 @@ export default function CreateProjectModal({
     <div
       className="create-project-modal-scrim"
       onClick={() => { if (!busy) onCancel?.(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 2100, display: 'grid', placeItems: 'center', padding: 16, background: COLORS.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 2100, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', placeItems: 'center', padding: 16, background: COLORS.scrim, backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
     >
       <section
         ref={cardRef}

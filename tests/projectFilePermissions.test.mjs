@@ -20,7 +20,9 @@ test('uploader and project owner can manage; others cannot', () => {
 test('file menu wires Delete and Share to the check', () => {
   const src = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
   assert.match(src, /canManageProjectFile\(f, open, user\?\.id\)/);
-  assert.match(src, /label: 'Delete', danger: true, disabled: !canManage, title:/);
-  assert.match(src, /label: 'Share', disabled: !canManage, title:/);
-  assert.match(src, /tip\(it\.title\)/);
+  assert.match(src, /label: 'Delete', danger: true, reason: canManage \? null : noManageTitle/);
+  assert.match(src, /label: 'Share', reason: canManage \? null : noManageTitle/);
+  assert.match(src, /tip\(it\.reason\)/);
+  // Select bar uses the same rule.
+  assert.match(src, /can=\{manageCan\(selectedFiles, open, user\?\.id\)\}/);
 });

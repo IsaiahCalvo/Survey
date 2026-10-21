@@ -27,6 +27,7 @@ import { clickableProps } from '../utils/keyActivate';
 import useModalFocusTrap from './useModalFocusTrap';
 import { isPhoneLayout } from '../utils/layoutMode.js';
 import { canManageDocument, manageSelectionBlock } from './documentPermissions.js';
+import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
 import { showToast } from '../utils/toast';
@@ -137,8 +138,9 @@ function DocumentActionMenu({ anchorRect, point = null, items, onClose, returnFo
             type="button"
             role="menuitem"
             className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
-            disabled={it.disabled}
-            onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
+            disabled={it.reason ? undefined : it.disabled}
+            aria-disabled={it.reason ? true : undefined}
+            onClick={() => { if (it.disabled && !it.reason) return; onClose(); activateOrExplain(it.reason, it.onClick); }}
           >
             {it.label}
           </button>
@@ -933,10 +935,10 @@ export default function DocumentsLedger({
                 <button type="button" className="hub-menu__item" onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); }}>
                   <Icon name="duplicate" size={15} color="var(--ink-200)" />Duplicate
                 </button>
-                <button type="button" className="hub-menu__item" disabled={Boolean(selectionBlock('share'))} {...tip(selectionBlock('share') || '', 'above')} onClick={() => onShare && onShare(selectedRaw())}>
+                <button type="button" className="hub-menu__item" aria-disabled={selectionBlock('share') ? true : undefined} {...tip(selectionBlock('share') || '', 'above')} onClick={() => activateOrExplain(selectionBlock('share'), () => onShare && onShare(selectedRaw()))}>
                   <Icon name="share" size={15} color="var(--ink-200)" />Share
                 </button>
-                <button type="button" className="hub-menu__item is-danger" disabled={Boolean(selectionBlock('delete'))} {...tip(selectionBlock('delete') || '', 'above')} onClick={() => archiveSelected(selectedRaw())}>
+                <button type="button" className="hub-menu__item is-danger" aria-disabled={selectionBlock('delete') ? true : undefined} {...tip(selectionBlock('delete') || '', 'above')} onClick={() => activateOrExplain(selectionBlock('delete'), () => archiveSelected(selectedRaw()))}>
                   <Icon name="trash" size={15} color="currentColor" />Delete
                 </button>
               </div>
@@ -1006,7 +1008,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(previewDoc.raw)}>Open file</button>
-                <button className="btn documents-preview-share" disabled={!canManageDoc(previewDoc.raw)} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share', 'above')} aria-label="Share" onClick={() => onShare && onShare([previewDoc.raw])}><Icon name="share" size={16} /></button>
+                <button className="btn documents-preview-share" aria-disabled={canManageDoc(previewDoc.raw) ? undefined : true} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([previewDoc.raw], user?.id, 'share'), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
               </div>
             </aside>
           )}
@@ -1079,7 +1081,7 @@ export default function DocumentsLedger({
                   for actions; phone and desktop match). */}
               <div className="documents-mobile-detail-actions">
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
-                <button type="button" className="btn documents-preview-share" disabled={!canManageDoc(mobileDetailDoc.raw)} {...tip(canManageDoc(mobileDetailDoc.raw) ? 'Share' : 'Only the owner can share', 'above')} aria-label="Share" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={18} /></button>
+                <button type="button" className="btn documents-preview-share" aria-disabled={canManageDoc(mobileDetailDoc.raw) ? undefined : true} {...tip(canManageDoc(mobileDetailDoc.raw) ? 'Share' : 'Only the owner can share', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([mobileDetailDoc.raw], user?.id, 'share'), () => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); })} aria-label="Share"><Icon name="share" size={18} /></button>
               </div>
             </section>
           </div>
@@ -1110,9 +1112,6 @@ export default function DocumentsLedger({
       if (!doc) return null;
       const locked = doc.raw?.locked_at != null;
       const canLock = user?.id && doc.raw?.user_id === user.id;
-      // Rename, delete and share are owner-only on the server (RLS); a shared
-      // viewer/editor gets them greyed out rather than a raw error after.
-      const canManage = canManageDoc(doc.raw);
       return (
         <DocumentActionMenu
           anchorRect={docMenu.rect}
@@ -1125,14 +1124,14 @@ export default function DocumentsLedger({
             { label: 'Move to project…', onClick: () => { setMoveMode('move'); setMoveOpen(true); } },
             { label: 'Copy to project…', onClick: () => { setMoveMode('copy'); setMoveOpen(true); } },
             { label: 'Duplicate', onClick: () => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); } },
-            { label: 'Share', disabled: Boolean(selectionBlock('share')), onClick: () => onShare && onShare(selectedRaw()) },
-            { label: `Delete ${docMenu.ids.length} documents`, danger: true, disabled: Boolean(selectionBlock('delete')), onClick: () => archiveSelected(selectedRaw()) },
+            { label: 'Share', reason: selectionBlock('share'), onClick: () => onShare && onShare(selectedRaw()) },
+            { label: `Delete ${docMenu.ids.length} documents`, danger: true, reason: selectionBlock('delete'), onClick: () => archiveSelected(selectedRaw()) },
           ] : [
-            { label: 'Rename', disabled: !canManage, onClick: () => setRenameTarget(doc.raw) },
+            { label: 'Rename', reason: manageSelectionBlock([doc.raw], user?.id, 'rename'), onClick: () => setRenameTarget(doc.raw) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
-            { label: 'Delete', danger: true, disabled: !canManage, onClick: () => onDelete && onDelete([doc.raw]) },
-            { label: 'Share', disabled: !canManage, onClick: () => onShare && onShare([doc.raw]) },
+            { label: 'Delete', danger: true, reason: manageSelectionBlock([doc.raw], user?.id, 'delete'), onClick: () => onDelete && onDelete([doc.raw]) },
+            { label: 'Share', reason: manageSelectionBlock([doc.raw], user?.id, 'share'), onClick: () => onShare && onShare([doc.raw]) },
             {
               label: locked ? 'Unlock document' : 'Lock document',
               disabled: !canLock,
