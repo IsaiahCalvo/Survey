@@ -136,11 +136,35 @@ export const unlinkOAuthProvider = async ({ auth, user, provider }) => {
   return refreshed?.data?.user || user;
 };
 
+// delete-account contract (owned by the backend): 200 {deleted:true}; 400
+// missing confirmation; 401 signed out; 403 agent token; 503 billing could not
+// be cancelled safely (nothing deleted); 500 otherwise.
+export const ACCOUNT_DELETION_ERROR_TEXT = {
+  400: "Account deletion wasn't confirmed, so nothing was deleted. Try again.",
+  401: 'You were signed out. Sign in again, then delete your account.',
+  403: "Your account can't be deleted from a connected agent. Sign in yourself to delete it.",
+  503: "We couldn't cancel your subscription safely, so nothing was deleted. Try again or contact support.",
+  500: "Your account couldn't be fully deleted. Try again or contact support.",
+};
+
+export const accountDeletionErrorMessage = (status) => (
+  ACCOUNT_DELETION_ERROR_TEXT[status] || ACCOUNT_DELETION_ERROR_TEXT[500]
+);
+
 export const requestAccountDeletion = async (functionsClient) => {
   const { data, error } = await functionsClient.invoke('delete-account', {
     body: { confirmation: 'DELETE' },
   });
-  if (error) throw error;
+  if (error) {
+    // supabase-js FunctionsHttpError carries the Response as `context`.
+    const status = error?.context?.status;
+    if (typeof status === 'number') {
+      const mapped = new Error(accountDeletionErrorMessage(status));
+      mapped.status = status;
+      throw mapped;
+    }
+    throw error;
+  }
   if (data?.error) throw new Error(data.error);
   if (data?.deleted !== true) throw new Error('Account deletion did not complete.');
   return data;

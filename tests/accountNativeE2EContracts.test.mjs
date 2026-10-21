@@ -51,6 +51,31 @@ test('account deletion sends the destructive confirmation and surfaces every saf
     requestAccountDeletion({ invoke: async () => ({ data: {}, error: null }) }),
     /did not complete/,
   );
+
+  const httpError = (status) => ({ invoke: async () => ({ data: null, error: Object.assign(new Error('Edge Function returned a non-2xx status code'), { context: { status } }) }) });
+  const expected = {
+    400: /wasn't confirmed/,
+    401: /signed out/,
+    403: /connected agent/,
+    503: /^We couldn't cancel your subscription safely, so nothing was deleted\. Try again or contact support\.$/,
+    500: /couldn't be fully deleted/,
+    502: /couldn't be fully deleted/,
+  };
+  for (const [status, message] of Object.entries(expected)) {
+    await assert.rejects(requestAccountDeletion(httpError(Number(status))), (err) => {
+      assert.match(err.message, message);
+      assert.equal(err.status, Number(status));
+      return true;
+    });
+  }
+});
+
+test('deleteAccount signs out only after the function reports success', () => {
+  const auth = read('src/contexts/AuthContext.jsx');
+  const body = auth.slice(auth.indexOf('const deleteAccount = async'), auth.indexOf('const resendConfirmation'));
+  assert.ok(body.indexOf('await requestAccountDeletion(') < body.indexOf("signOut({ scope: 'local' })"));
+  const settings = read('src/components/AccountSettings.jsx');
+  assert.match(settings, /await deleteAccount\(\);\s*onClose\(\);\s*\} catch \(err\) \{\s*setError\(err\.message/);
 });
 
 test('Google disconnect unlinks only Google and refuses the final provider before any request', async () => {
