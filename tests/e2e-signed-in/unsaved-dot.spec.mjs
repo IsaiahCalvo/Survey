@@ -12,7 +12,7 @@ function unsavedDot(page) {
 }
 
 function upToDate(page) {
-  return page.getByText('Up to date', { exact: true }).filter({ visible: true }).first();
+  return page.getByRole('button', { name: /^Up to date\./ }).filter({ visible: true }).first();
 }
 
 async function updateIds(admin) {
