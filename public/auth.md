@@ -184,7 +184,12 @@ For agents that speak MCP (Claude and ChatGPT connectors, scripts):
   - `create_item` — add one item in a category from `get_survey_context`, on a
     page, at a box (`bounds`, PDF points from the page top-left), with an
     optional entity. Returns the new item's id.
-  All write through the document's live collaboration state, so an open app
+  - `undo_change` — reverse one change, using the `change_id` a write returned.
+    It restores the item to what it was before that change; if the change
+    created the item, the item is removed. So act first and undo if it was
+    wrong — you need not ask the person before each change.
+  Every write returns a `change_id`; keep it if you may want to undo. They all
+  write through the document's live collaboration state, so an open app
   converges to the change. A viewer's agent, or a read-only agent, cannot write.
 - Every call runs as the person, so the agent sees exactly their documents.
 

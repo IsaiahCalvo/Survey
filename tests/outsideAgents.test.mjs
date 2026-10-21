@@ -89,13 +89,18 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   const readTools = src.slice(src.indexOf('const READ_TOOLS'), src.indexOf('const WRITE_TOOLS'));
   assert.equal((readTools.match(/readOnlyHint: true/g) || []).length, 7);
   assert.doesNotMatch(readTools, /readOnlyHint: false/);
-  assert.doesNotMatch(readTools, /set_answers|add_note|set_entity|create_item/);
-  // WRITE_TOOLS exist, are the four expected writes, and are not read-only.
+  assert.doesNotMatch(readTools, /set_answers|add_note|set_entity|create_item|undo_change/);
+  // WRITE_TOOLS exist, are the five expected writes, and are not read-only.
   const writeTools = src.slice(src.indexOf('const WRITE_TOOLS'), src.indexOf('async function gunzip'));
-  for (const name of ['set_answers', 'add_note', 'set_entity', 'create_item']) {
+  for (const name of ['set_answers', 'add_note', 'set_entity', 'create_item', 'undo_change']) {
     assert.match(writeTools, new RegExp(`name: '${name}'`), name);
   }
-  assert.equal((writeTools.match(/readOnlyHint: false/g) || []).length, 4);
+  assert.equal((writeTools.match(/readOnlyHint: false/g) || []).length, 5);
+  // Every write returns an opaque change_id, and undo_change reverses it on the
+  // same gated write path (no server state kept).
+  assert.match(src, /name === 'undo_change'/);
+  assert.match(src, /change_id: result\.changed/);
+  assert.match(src, /function decodeChange/);
   // tools/list offers writes only when the flag is on AND the token may write.
   assert.match(src, /const CONNECTOR_WRITES_FLAG = 'survey-connector-writes'/);
   const list = src.slice(src.indexOf("method === 'tools/list'"), src.indexOf("method === 'tools/call'"));
