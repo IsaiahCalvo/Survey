@@ -1,9 +1,13 @@
 // What a tool module under defs/ builds on. A def is the same shape as an
 // entry in TOOLS in app.js:
 //   view: 'files' | 'pages' | 'organize'   how the chosen files are shown
-//   options: [{ key, label, type: SEG|'select'|'text'|'number'|'check'|'password'|'pages'|'file', def, choices, show, help, onChange(value, files) }]
-//            type 'file' takes a second file (accept, pick: button text); its value is
-//            { name, type, bytes, url } or null, and it stays when the main file changes
+//   options: [{ key, label, type: SEG|'select'|'text'|'number'|'check'|'password'|'pages'|'color'|'file'|'insert', def, choices, show(opts, files), help, onChange(value, files) }]
+//     more: true      tucked under "More options"      grid: true   a SEG laid out three across
+//     'file'          a second file (accept, pick: button text); its value is { name, type, mime, bytes, url }
+//                     or null, and it stays when the main file changes
+//     'insert'        choices of [token, label] typed into the text box last used (or `target`)
+//     The last settings used are kept in this browser; forget: true leaves one out
+//     (passwords, files and per-file defaults are never kept).
 //   select: 'keep' | 'delete'              pages view: tap pages to pick them
 //   keepLock: true                         take password-locked PDFs as they are (item.locked)
 //   openAnyway: true                       take PDFs pdf.js can't open (item.broken, item.pages 0)
@@ -11,10 +15,11 @@
 //                                          busy(text) shows progress while it runs
 //   notice(files, opts) -> string | null   a note shown above the options
 //   auto: true                             run as soon as a file is added (no options to set first)
-//   run(files, opts, progress) -> [{ name, bytes, type, note? }]   more than one output is zipped
+//   run(files, opts, progress, { batch }) -> [{ name, bytes, type, note? }]   more than one output is zipped
 //                                          (the first note shows on the ZIP). A single output may
 //                                          also carry title (result heading), view(h) -> Node shown
 //                                          on the result, and saveLabel (the Download button text)
+//                                          batch is true when several files run one at a time
 // Throw ToolError with a plain message for anything the person should read.
 export const PDF_TYPE = 'application/pdf';
 export const SEG = 'seg';

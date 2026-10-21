@@ -7,6 +7,7 @@ import {
 } from 'pdf-lib';
 
 import { ToolError } from './errors.js';
+import { parsePageSet } from './ranges.js';
 
 export { ToolError };
 
@@ -115,42 +116,118 @@ export function visualFrame(page) {
   return { width, height, rotation: r, toPage };
 }
 
+// Where to put a w x h box, turned `angle` degrees about its centre, so its
+// centre lands on visual point (cx, cy): pdf-lib turns text and images about
+// their bottom-left corner, in the page's own unrotated space.
+function boxOrigin(f, { w, h, cx, cy, angle = 0 }) {
+  const a = (angle * Math.PI) / 180;
+  const vx = cx - (w / 2) * Math.cos(a) + (h / 2) * Math.sin(a);
+  const vy = cy - (w / 2) * Math.sin(a) - (h / 2) * Math.cos(a);
+  return { ...f.toPage(vx, vy), rotate: degrees(angle + f.rotation) };
+}
+
 // Draw `text` centred on visual point (cx, cy), turned `angle` degrees.
 function drawCentered(page, text, { font, size, cx, cy, angle = 0, color, opacity = 1 }) {
   const f = visualFrame(page);
   const w = font.widthOfTextAtSize(text, size);
   const h = font.heightAtSize(size, { descender: false });
-  const a = (angle * Math.PI) / 180;
-  const vx = cx - (w / 2) * Math.cos(a) + (h / 2) * Math.sin(a);
-  const vy = cy - (w / 2) * Math.sin(a) - (h / 2) * Math.cos(a);
-  const p = f.toPage(vx, vy);
-  page.drawText(text, { x: p.x, y: p.y, size, font, color, opacity, rotate: degrees(angle + f.rotation) });
+  const { x, y, rotate } = boxOrigin(f, { w, h, cx, cy, angle });
+  page.drawText(text, { x, y, size, font, color, opacity, rotate });
 }
 
+const FONT_FAMILIES = {
+  helvetica: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],
+  times: [StandardFonts.TimesRoman, StandardFonts.TimesRomanBold],
+  courier: [StandardFonts.Courier, StandardFonts.CourierBold],
+};
+const embedStandard = (doc, family, bold) => doc.embedFont((FONT_FAMILIES[family] || FONT_FAMILIES.helvetica)[bold ? 1 : 0]);
+
+// '#rrggbb' (or 'rrggbb') to a pdf-lib colour.
+export function hexColor(hex, fallback = rgb(0, 0, 0)) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex ?? '').trim());
+  if (!m) return fallback;
+  const v = parseInt(m[1], 16);
+  return rgb(((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255);
+}
+
+// The pages (0-based) a stamp goes on: every page for an empty range or "all",
+// otherwise the typed pages, like "2-10, 15".
+export function stampPages(range, count, { skipFirst = false } = {}) {
+  const text = String(range ?? '').trim();
+  const picked = !text || /^all$/i.test(text) ? [...Array(count).keys()] : parsePageSet(text, count);
+  const out = skipFirst ? picked.filter((i) => i !== 0) : picked;
+  if (!out.length) throw new ToolError('There are no pages left to add it to. Check the pages you picked.');
+  return out;
+}
+
+const ROMAN = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'], [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']];
+function roman(n) {
+  let s = '';
+  let left = n;
+  for (const [v, r] of ROMAN) while (left >= v) { s += r; left -= v; }
+  return s;
+}
+// a, b ... z, aa, ab ... like spreadsheet columns.
+function letters(n) {
+  let s = '';
+  for (let k = n; k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(97 + ((k - 1) % 26)) + s;
+  return s;
+}
+
+// One page number in a number style: '1', 'i', 'I', 'a', 'A', or 'bates'
+// (zero-padded to six digits between a prefix and a suffix).
+export function numberText(n, { style = '1', prefix = '', suffix = '' } = {}) {
+  if (style === 'bates') return `${prefix}${String(Math.max(0, n)).padStart(6, '0')}${suffix}`;
+  if (n < 1 || !['i', 'I', 'a', 'A'].includes(style)) return String(n);
+  if (style === 'i') return roman(n);
+  if (style === 'I') return roman(n).toUpperCase();
+  return style === 'a' ? letters(n) : letters(n).toUpperCase();
+}
+
+// {n} is the page's number and {p} the last number.
 export const NUMBER_FORMATS = {
-  n: (n) => `${n}`,
-  page: (n) => `Page ${n}`,
-  of: (n, total) => `Page ${n} of ${total}`,
-  slash: (n, total) => `${n} / ${total}`,
+  n: '{n}', page: 'Page {n}', of: 'Page {n} of {p}', nof: '{n} of {p}', slash: '{n} / {p}', dash: '- {n} -',
 };
 
-// position: '<top|bottom>-<left|center|right>'.
-export async function addPageNumbers(bytes, { position = 'bottom-center', format = 'n', start = 1, skipFirst = false, size = 11 } = {}) {
+// Edge distance for 'auto': a little more on big sheets.
+const autoMargin = (f) => Math.max(18, Math.min(f.width, f.height) * 0.04);
+
+// Draw one line in a top or bottom corner or middle, `y` points from the top
+// or bottom edge and `x` from the side, as people see the page. Margins too
+// big for a small page are cut down to a fifth of it.
+function drawAtEdge(page, text, { font, size, top, align, x, y, color }) {
+  const f = visualFrame(page);
+  const w = font.widthOfTextAtSize(text, size);
+  const th = font.heightAtSize(size, { descender: false });
+  const side = Math.min(x, f.width * 0.2);
+  const edge = Math.min(y, f.height * 0.2);
+  const cx = align === 'left' ? side + w / 2 : align === 'right' ? f.width - side - w / 2 : f.width / 2;
+  drawCentered(page, text, { font, size, cx, cy: top ? f.height - edge - th / 2 : edge + th / 2, color });
+}
+
+// position: '<top|bottom>-<left|center|right>'. format: a key of
+// NUMBER_FORMATS, or 'custom' with `custom` text holding {n} and {p}.
+// `pages` is a typed range ('' for all); numbering counts from `start` over
+// the pages picked. margin: points from the edge, or 'auto'.
+export async function addPageNumbers(bytes, {
+  position = 'bottom-center', format = 'n', custom = '', style = '1', prefix = '', suffix = '', start = 1, skipFirst = false, pages = '',
+  margin = 'auto', font: family = 'helvetica', bold = false, size = 11, color = '#1a1a1a',
+} = {}) {
+  const template = format === 'custom' ? String(custom) : NUMBER_FORMATS[format] || NUMBER_FORMATS.n;
+  if (!template.trim()) throw new ToolError('Type the words to put on each page, with {n} where the number goes.');
   const doc = await loadPdf(bytes);
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const pages = doc.getPages();
-  const numbered = skipFirst ? pages.slice(1) : pages;
-  const total = numbered.length + start - 1;
-  const [v, hpos] = position.split('-');
-  const fmt = NUMBER_FORMATS[format] || NUMBER_FORMATS.n;
-  numbered.forEach((page, i) => {
-    const f = visualFrame(page);
-    const text = fmt(start + i, total);
-    const margin = Math.max(18, Math.min(f.width, f.height) * 0.04);
-    const w = font.widthOfTextAtSize(text, size);
-    const cx = hpos === 'left' ? margin + w / 2 : hpos === 'right' ? f.width - margin - w / 2 : f.width / 2;
-    const cy = v === 'top' ? f.height - margin : margin;
-    drawCentered(page, text, { font, size, cx, cy, color: rgb(0.1, 0.1, 0.1) });
+  const font = await embedStandard(doc, family, bold);
+  const all = doc.getPages();
+  const picked = stampPages(pages, all.length, { skipFirst });
+  const total = picked.length + start - 1;
+  const [v, align] = position.split('-');
+  const ink = hexColor(color, rgb(0.1, 0.1, 0.1));
+  const fmt = (n) => numberText(n, { style, prefix, suffix });
+  picked.forEach((index, k) => {
+    const page = all[index];
+    const text = latin1(template.replace(/\{n\}/g, fmt(start + k)).replace(/\{p\}/g, fmt(total)));
+    const m = margin === 'auto' ? autoMargin(visualFrame(page)) : Number(margin) || 0;
+    drawAtEdge(page, text, { font, size, top: v === 'top', align, x: m, y: m, color: ink });
   });
   return save(doc);
 }
@@ -162,20 +239,106 @@ export const WATERMARK_COLORS = {
   black: rgb(0, 0, 0),
 };
 
-// size: how much of the page's width (or its diagonal) the words span, 0.2 - 1.
-export async function addWatermark(bytes, { text = 'DRAFT', size = 0.6, opacity = 0.25, color = 'red', diagonal = true } = {}) {
-  const words = String(text).trim();
-  if (!words) throw new ToolError('Type the words for the watermark.');
+// Move what pdf-lib just drew on this page to the start of its content, so
+// the page's own drawing paints over it. pdf-lib adds its drawing as the last
+// content stream, after wrapping the page's own streams in q ... Q.
+function sendBehind(page) {
+  const contents = page.node.Contents();
+  if (!(contents instanceof PDFArray) || contents.size() < 2) return;
+  const last = contents.get(contents.size() - 1);
+  contents.remove(contents.size() - 1);
+  contents.insert(0, last);
+}
+
+// Where the centre of a box goes for a spot on the 3 x 3 grid. ex and ey are
+// half the box's width and height once turned; a box too big for its spot is
+// centred instead.
+function gridSpot(f, spot, ex, ey) {
+  const m = autoMargin(f);
+  let [row, col] = ['middle', 'center'];
+  if (spot.includes('-')) [row, col] = spot.split('-');
+  else if (spot === 'top' || spot === 'bottom') row = spot;
+  else if (spot === 'left' || spot === 'right') col = spot;
+  const fitX = ex * 2 <= f.width - 2 * m;
+  const fitY = ey * 2 <= f.height - 2 * m;
+  const cx = !fitX || col === 'center' ? f.width / 2 : col === 'left' ? m + ex : f.width - m - ex;
+  const cy = !fitY || row === 'middle' ? f.height / 2 : row === 'bottom' ? m + ey : f.height - m - ey;
+  return [cx, cy];
+}
+
+// Watermark words, or an image (`image`: { bytes, type: 'png' | 'jpg' }).
+// size: how much of the page it spans, 0.2 - 1 (each tile is smaller).
+// angle: degrees, or 'diag' for corner to corner (the older `diagonal` flag
+// still works). position: 'center', 'top-left' ... 'bottom-right', 'top',
+// 'left' and so on. behind: under the page's own drawing. tile: repeat it
+// across the page. pages: a typed range ('' for all).
+export async function addWatermark(bytes, {
+  text = 'DRAFT', image = null, size = 0.6, opacity = 0.25, color = 'red', diagonal = true, angle, position = 'center',
+  font: family = 'helvetica', bold = true, behind = false, tile = false, pages = '',
+} = {}) {
+  const words = latin1(String(text).trim());
+  if (!image && !words) throw new ToolError('Type the words for the watermark.');
   const doc = await loadPdf(bytes);
-  const font = await doc.embedFont(StandardFonts.HelveticaBold);
-  const clean = latin1(words);
-  const unit = font.widthOfTextAtSize(clean, 1);
-  for (const page of doc.getPages()) {
+  let draw;
+  let unitW;
+  let unitH;
+  if (image) {
+    const embedded = image.type === 'png' ? await doc.embedPng(image.bytes) : await doc.embedJpg(image.bytes);
+    [unitW, unitH] = [embedded.width, embedded.height];
+    draw = (page, { w, h, ...at }) => page.drawImage(embedded, { ...at, width: w, height: h, opacity });
+  } else {
+    const font = await embedStandard(doc, family, bold);
+    const ink = WATERMARK_COLORS[color] || hexColor(color, WATERMARK_COLORS.red);
+    [unitW, unitH] = [font.widthOfTextAtSize(words, 1), font.heightAtSize(1, { descender: false })];
+    draw = (page, { w, h, ...at }) => page.drawText(words, { ...at, size: w / unitW, font, color: ink, opacity });
+  }
+  const all = doc.getPages();
+  for (const index of stampPages(pages, all.length)) {
+    const page = all[index];
     const f = visualFrame(page);
-    const span = diagonal ? Math.hypot(f.width, f.height) * 0.8 : f.width * 0.9;
-    const angle = diagonal ? (Math.atan2(f.height, f.width) * 180) / Math.PI : 0;
-    const fontSize = Math.max(6, Math.min((span * size) / unit, f.height * 0.5));
-    drawCentered(page, clean, { font, size: fontSize, cx: f.width / 2, cy: f.height / 2, angle, color: WATERMARK_COLORS[color] || WATERMARK_COLORS.red, opacity });
+    const deg = angle === 'diag' || (angle == null && diagonal) ? (Math.atan2(f.height, f.width) * 180) / Math.PI : Number(angle) || 0;
+    const a = (deg * Math.PI) / 180;
+    const [cos, sin] = [Math.abs(Math.cos(a)), Math.abs(Math.sin(a))];
+    let w;
+    if (image) {
+      w = unitW * Math.min((f.width * size) / unitW, (f.height * size) / unitH) * (tile ? 0.3 : 1);
+    } else {
+      // The longest line through the middle of the page at this angle.
+      const reach = Math.min(cos > 1e-6 ? f.width / cos : Infinity, sin > 1e-6 ? f.height / sin : Infinity);
+      w = unitW * Math.max(6, Math.min((reach * 0.85 * size) / unitW, f.height * 0.5) * (tile ? 0.3 : 1));
+    }
+    let h = (w / unitW) * unitH;
+    if (!tile) {
+      // Once turned, it must still fit inside the page's margins.
+      const m = autoMargin(f);
+      const k = Math.min(1, (f.width - 2 * m) / (w * cos + h * sin), (f.height - 2 * m) / (w * sin + h * cos));
+      w *= k;
+      h *= k;
+    }
+    const place = (cx, cy) => draw(page, { w, h, ...boxOrigin(f, { w, h, cx, cy, angle: deg }) });
+    if (tile) {
+      // Rows along the angle, every other row shifted half a step, out past
+      // the corners so the page is covered whatever the angle.
+      const stepU = w * 1.5;
+      const stepV = h * 4;
+      const pad = Math.max(w, h);
+      const reachAll = Math.hypot(f.width, f.height) / 2 + pad;
+      const nu = Math.ceil(reachAll / stepU) + 1;
+      const nv = Math.ceil(reachAll / stepV) + 1;
+      const [c, s] = [Math.cos(a), Math.sin(a)];
+      for (let j = -nv; j <= nv; j += 1) {
+        for (let i = -nu; i <= nu; i += 1) {
+          const u = (i + (j % 2 ? 0.5 : 0)) * stepU;
+          const v = j * stepV;
+          const cx = f.width / 2 + u * c - v * s;
+          const cy = f.height / 2 + u * s + v * c;
+          if (cx > -pad && cy > -pad && cx < f.width + pad && cy < f.height + pad) place(cx, cy);
+        }
+      }
+    } else {
+      place(...gridSpot(f, position, (w * cos + h * sin) / 2, (w * sin + h * cos) / 2));
+    }
+    if (behind) sendBehind(page);
   }
   return save(doc);
 }
@@ -213,25 +376,43 @@ export async function imagesToPdf(images, { pageSize = 'fit', orientation = 'aut
   return save(doc);
 }
 
-// Header and footer text. {page}, {total}, {date} and {file} are filled in.
-export async function addHeaderFooter(bytes, { header = '', footer = '', align = 'center', size = 10, skipFirst = false, fileName = '', date = new Date() } = {}) {
-  if (!header.trim() && !footer.trim()) throw new ToolError('Type a header, a footer, or both.');
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const pad2 = (n) => String(n).padStart(2, '0');
+// 'mdy' 10/21/2026, 'dmy' 21/10/2026, 'ymd' 2026-10-21, 'long' Oct 21, 2026.
+export function formatDate(d, format = 'long') {
+  const [y, m, day] = [d.getFullYear(), d.getMonth() + 1, d.getDate()];
+  if (format === 'mdy') return `${pad2(m)}/${pad2(day)}/${y}`;
+  if (format === 'dmy') return `${pad2(day)}/${pad2(m)}/${y}`;
+  if (format === 'ymd') return `${y}-${pad2(m)}-${pad2(day)}`;
+  return `${MONTHS[m - 1]} ${pad2(day)}, ${y}`;
+}
+
+const BOXES = { tl: [true, 'left'], tc: [true, 'center'], tr: [true, 'right'], bl: [false, 'left'], bc: [false, 'center'], br: [false, 'right'] };
+
+// Header and footer text in up to six boxes (tl, tc, tr, bl, bc, br: top or
+// bottom, then left, centre or right). {page}, {total}, {date} and {file} are
+// filled in. The older one-line form (header, footer, align) still works.
+// marginY is from the top and bottom edges, marginX from the sides, in points.
+export async function addHeaderFooter(bytes, {
+  boxes, header = '', footer = '', align = 'center', size = 12, skipFirst = false, pages = '', fileName = '', date = new Date(),
+  dateFormat = 'long', font: family = 'helvetica', bold = false, color = '#1a1a1a', marginY = 36, marginX = 72,
+} = {}) {
+  const side = { left: 'l', center: 'c', right: 'r' }[align] || 'c';
+  const texts = boxes || { [`t${side}`]: header, [`b${side}`]: footer };
+  const used = Object.entries(texts).filter(([k, t]) => BOXES[k] && String(t ?? '').trim());
+  if (!used.length) throw new ToolError('Type a header, a footer, or both.');
   const doc = await loadPdf(bytes);
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const pages = doc.getPages();
-  const day = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-  pages.forEach((page, i) => {
-    if (skipFirst && i === 0) return;
-    const f = visualFrame(page);
-    const margin = Math.max(18, Math.min(f.width, f.height) * 0.04);
-    for (const [template, top] of [[header, true], [footer, false]]) {
-      if (!template.trim()) continue;
-      const text = latin1(template.replace(/\{page\}/g, i + 1).replace(/\{total\}/g, pages.length).replace(/\{date\}/g, day).replace(/\{file\}/g, fileName));
-      const w = font.widthOfTextAtSize(text, size);
-      const cx = align === 'left' ? margin + w / 2 : align === 'right' ? f.width - margin - w / 2 : f.width / 2;
-      drawCentered(page, text, { font, size, cx, cy: top ? f.height - margin : margin, color: rgb(0.1, 0.1, 0.1) });
+  const font = await embedStandard(doc, family, bold);
+  const all = doc.getPages();
+  const day = formatDate(date, dateFormat);
+  const ink = hexColor(color, rgb(0.1, 0.1, 0.1));
+  for (const i of stampPages(pages, all.length, { skipFirst })) {
+    for (const [key, template] of used) {
+      const text = latin1(String(template).replace(/\{page\}/g, i + 1).replace(/\{total\}/g, all.length).replace(/\{date\}/g, day).replace(/\{file\}/g, fileName));
+      const [top, align2] = BOXES[key];
+      drawAtEdge(all[i], text, { font, size, top, align: align2, x: marginX, y: marginY, color: ink });
     }
-  });
+  }
   return save(doc);
 }
 
