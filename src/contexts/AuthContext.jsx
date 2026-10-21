@@ -19,6 +19,7 @@ import {
 } from '../supabaseClient';
 import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
 import { pdfByteCache } from '../services/pdfByteCache.js';
+import { loadAccountExportKits } from '../services/exportFormats/accountKits.js';
 
 export const AuthContext = createContext({});
 
@@ -543,6 +544,15 @@ export const AuthProvider = ({ children }) => {
     if (loadingTier) return;
     window.electronAPI.setDeveloperMode(subscriptionTier === 'developer').catch(() => {});
   }, [subscriptionTier, loadingTier]);
+
+  // Export kits assigned to this account (custom builds library); removed on sign-out.
+  useEffect(() => {
+    if (!user?.id || !isSupabaseAvailable()) return undefined;
+    let off = null;
+    let cancelled = false;
+    loadAccountExportKits(supabase).then((fn) => { if (cancelled) fn(); else off = fn; }).catch(() => {});
+    return () => { cancelled = true; off?.(); };
+  }, [user?.id]);
 
   // Refetch subscription tier when window regains focus (user returns from Stripe)
   useEffect(() => {

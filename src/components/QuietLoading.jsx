@@ -1,8 +1,11 @@
 // The loading state for opening a document (owner 2026-10-20, after studying
 // Drawboard PDF; supersedes the 2026-10-04 "one quiet line, faint outline"):
-// a letter-shaped page skeleton with a few text-line placeholders and one
-// soft sweep (components/skeleton.css), with the "Opening <name>…" caption
-// under it. Library loads use the row skeletons in Skeleton.jsx instead.
+// recorded 2026-10-20: Drawboard draws NO fake page while a PDF opens (a
+// letter-shaped skeleton lies about landscape/odd sizes). Its viewer chrome is
+// up at once and the canvas shows only a small centred mark over a thin
+// 3px progress bar until the real page appears whole. We show the bar
+// (indeterminate: parse progress is not plumbed here) over the
+// "Opening <name>…" caption. Library loads use the row skeletons in Skeleton.jsx instead.
 //
 // It shows nothing for the first SHOW_AFTER_MS, so a fast open never flashes a
 // loading screen at all, then fades in. An open can pass through
@@ -12,7 +15,6 @@
 // clock, so the page never blinks off and back on and never restarts its wait.
 
 import { useEffect, useState } from 'react';
-import { SkeletonBlock } from './Skeleton';
 
 export const QUIET_LOADING_SHOW_AFTER_MS = 300;
 // A gap shorter than this between two loading states still counts as one.
@@ -47,13 +49,12 @@ export function openingLabel(name) {
 const QUIET_LOADING_CSS = `
 .quiet-loading-stack { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
   width: 100%; height: 100%; padding: 24px; box-sizing: border-box; }
-.quiet-loading-page { position: relative; flex: none; height: min(72%, 860px); aspect-ratio: 612 / 792; max-width: 86%;
-  box-sizing: border-box; border-radius: 2px; background: var(--surface-2); border: 1px solid var(--border);
-  box-shadow: 0 2px 14px rgba(0,0,0,0.25); opacity: 0; overflow: hidden;
-  display: flex; flex-direction: column; gap: 12px; padding: 44px 40px;
+.quiet-loading-bar { position: relative; flex: none; width: 120px; height: 3px; border-radius: 2px; overflow: hidden;
+  background: color-mix(in srgb, var(--text-3) 22%, transparent); opacity: 0;
   animation: quietLoadingIn 220ms ease-out both; pointer-events: none; }
-.quiet-loading-page .sk-block { --sk-glow: color-mix(in srgb, var(--text-3) 16%, var(--surface-3)); }
-.quiet-loading-page .qlp-gap { flex: none; height: 6%; }
+.quiet-loading-bar::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; border-radius: 2px;
+  background: var(--text-2, var(--text-3)); animation: quietLoadingBar 1.4s ease-in-out infinite; }
+@keyframes quietLoadingBar { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 @keyframes quietLoadingIn { from { opacity: 0; } to { opacity: 1; } }
 .quiet-loading-text {
   max-width: min(80%, 440px);
@@ -86,10 +87,11 @@ const QUIET_LOADING_CSS = `
   }
   html[data-native-shell="expo"] .quiet-loading-text { --quiet-phone-header-h: 34px; }
   .survey-pdfjs-viewer .quiet-loading-text { top: 50%; }
-  .quiet-loading-page { display: none; }
+  .quiet-loading-bar { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .quiet-loading-text, .quiet-loading-page { animation-duration: 1ms; }
+  .quiet-loading-text, .quiet-loading-bar { animation-duration: 1ms; }
+  .quiet-loading-bar::after { animation: none; left: 30%; }
 }
 `;
 
@@ -131,20 +133,7 @@ export default function QuietLoading({ label, background = 'transparent', style 
       <style>{QUIET_LOADING_CSS}</style>
       {(label || shownLabel).startsWith('Opening') ? (
         <div className="quiet-loading-stack">
-          <div aria-hidden="true" className="quiet-loading-page" style={{ animationDelay: `${delayMs}ms` }}>
-            <SkeletonBlock w="46%" h={14} />
-            <SkeletonBlock w="30%" h={9} />
-            <span className="qlp-gap" />
-            <SkeletonBlock w="92%" h={8} />
-            <SkeletonBlock w="86%" h={8} />
-            <SkeletonBlock w="90%" h={8} />
-            <SkeletonBlock w="64%" h={8} />
-            <span className="qlp-gap" />
-            <SkeletonBlock w="100%" h="28%" />
-            <span className="qlp-gap" />
-            <SkeletonBlock w="88%" h={8} />
-            <SkeletonBlock w="72%" h={8} />
-          </div>
+          <span aria-hidden="true" className="quiet-loading-bar" style={{ animationDelay: `${delayMs}ms` }} />
           <span className="quiet-loading-text" style={{ animationDelay: `${delayMs}ms` }}>{label || shownLabel}</span>
         </div>
       ) : (
