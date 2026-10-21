@@ -280,6 +280,11 @@ export async function seed({ url, serviceKey }) {
     ));
   }
 
+  // Local stack only (assertLocal above): the owner test account is an app
+  // admin here so the /flags and /kits pages can be tested signed in.
+  assertLocal(url);
+  await must('local test admin', admin.from('feature_flag_admins').upsert({ user_id: ownerId }));
+
   log('seeded:');
   for (const [key, account] of Object.entries(E2E_ACCOUNTS)) {
     log(`  ${key.padEnd(6)} ${account.email.padEnd(28)} tier=${account.tier}${account.role ? ` role=${account.role}` : ''}`);

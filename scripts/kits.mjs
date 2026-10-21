@@ -18,7 +18,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
 import { validateExportKit, getExportKit, BUILT_IN_EXPORT_KIT_IDS } from '../src/services/exportFormats/registry.js';
-import { validateAnswerSet } from '../src/services/answerSets.js';
+import { publishProblems } from '../supabase/functions/_shared/kitShape.js';
 
 async function must(label, promise) {
   const { data, error } = await promise;
@@ -37,10 +37,8 @@ async function userIdByEmail(admin, email) {
 }
 
 export async function publishKit(admin, kit) {
-  const errors = validateExportKit(kit);
-  if (kit.answerSet !== undefined) errors.push(...validateAnswerSet(kit.answerSet));
+  const errors = publishProblems(kit);
   if (errors.length) throw new Error(`kit is not valid: ${errors.join('; ')}`);
-  if (BUILT_IN_EXPORT_KIT_IDS.includes(kit.id)) throw new Error(`${kit.id} is built into the app; pick another id`);
   const { id, version, kind, label = '', ...rest } = kit;
   await must('publish', admin.from('kits').insert({ id, version, kind, label, definition: { ...rest, label } }));
   return { id, version };

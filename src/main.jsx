@@ -600,6 +600,23 @@ if (!devRouteActive && isFlagsRoute) {
   });
 }
 
+// `/kits`: Survey's admins publish kits and give them to customer accounts.
+const isKitsRoute = typeof window !== 'undefined'
+  && /^\/kits(?:\/|$)/.test(window.location.pathname || '');
+
+if (!devRouteActive && isKitsRoute) {
+  devRouteActive = true;
+  import('./home/KitsAdminPage').then(({ default: KitsAdminPage }) => {
+    createRoot(document.getElementById('root')).render(
+      <ErrorBoundary>
+        <AuthProvider>
+          <KitsAdminPage />
+        </AuthProvider>
+      </ErrorBoundary>
+    );
+  });
+}
+
 if (!devRouteActive) {
   createRoot(document.getElementById('root')).render(
     <ErrorBoundary>
