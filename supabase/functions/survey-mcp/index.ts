@@ -87,7 +87,8 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
   const linked = new Set((links || []).map((l) => String(l.template_id)));
   const data = [...(all || [])].sort((a, b) => Number(linked.has(String(b.id))) - Number(linked.has(String(a.id))));
   const categories = new Map<string, Category>();
-  const entities = new Map<string, string>();
+  const entities = new Map<string, { name: string; color: string | null }>();
+  const categoryModule = new Map<string, string>();
   const linkedCats = new Set<string>();
   const linkedEnts = new Set<string>();
   // The answer values a category's checklist items may take, from the owning
@@ -101,10 +102,14 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
     const tplValues = answerValuesOf(config);
     const modules = (config.modules || config.spaces || []) as Record<string, unknown>[];
     for (const module of Array.isArray(modules) ? modules : []) {
+      const moduleId = String(module.id || '');
       const cats = (module.categories || module.cats || []) as Record<string, unknown>[];
       for (const c of Array.isArray(cats) ? cats : []) {
         if (!c?.id) continue;
         if (isLinked) linkedCats.add(String(c.id));
+        // The category's owning module — stored on a new marker so create_item
+        // items show in the sidebar and export, which filter by moduleId.
+        if (moduleId && !categoryModule.has(String(c.id))) categoryModule.set(String(c.id), moduleId);
         if (categories.has(String(c.id))) continue;
         answerValues.set(String(c.id), tplValues);
         const list = (c.checklist || c.items || []) as unknown[];
@@ -121,10 +126,10 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
     for (const e of (config.entities || []) as Record<string, unknown>[]) {
       if (!e?.id) continue;
       if (isLinked) linkedEnts.add(String(e.id));
-      if (!entities.has(String(e.id))) entities.set(String(e.id), String(e.name || ''));
+      if (!entities.has(String(e.id))) entities.set(String(e.id), { name: String(e.name || ''), color: e.color != null ? String(e.color) : null });
     }
   }
-  return { categories, entities, linkedCats, linkedEnts, answerValues };
+  return { categories, entities, categoryModule, linkedCats, linkedEnts, answerValues };
 }
 
 // A template's allowed answer values (answerSets.js: template.answerSet wins,
@@ -388,6 +393,20 @@ function writeError(error: { code?: string; message?: string } | null): ToolErro
   return new ToolError('Could not save that change. Try again.');
 }
 
+// Entity / category ids the document's own markers already use — get_survey_context
+// advertises these alongside a linked template's, so writes accept them too (an
+// unlinked document has no document_templates rows, so linked* alone is empty).
+function documentEntityIds(markers: Record<string, Record<string, unknown>>): Set<string> {
+  const out = new Set<string>();
+  for (const m of Object.values(markers)) { const id = m?.entityId; if (id) out.add(String(id)); }
+  return out;
+}
+function documentCategoryIds(markers: Record<string, Record<string, unknown>>): Set<string> {
+  const out = new Set<string>();
+  for (const m of Object.values(markers)) { const id = m?.categoryId; if (id) out.add(String(id)); }
+  return out;
+}
+
 // Apply a change to the survey markers and append the diff to the WAL as the
 // person. `mutate` edits the markers dict in place (or throws a ToolError). The
 // whole dict is passed back to syncSurveyMarkersToDoc so unchanged markers stay
@@ -467,7 +486,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         id: r.annotation_id,
         name: r.name || 'Unnamed item',
         category: category?.name || null,
-        entity: r.entity_name || names.entities.get(String(r.entity_id || '')) || null,
+        entity: r.entity_name || names.entities.get(String(r.entity_id || ''))?.name || null,
         answered: checklist.filter((c) => responses[c.id]?.selection).length,
         total: checklist.length,
         no: checklist.filter((c) => responses[c.id]?.selection === 'N').length,
@@ -499,7 +518,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
       id: r.annotation_id,
       name: r.name || 'Unnamed item',
       category: category?.name || null,
-      entity: r.entity_name || names.entities.get(String(r.entity_id || '')) || null,
+      entity: r.entity_name || names.entities.get(String(r.entity_id || ''))?.name || null,
       checklist: (category?.checklist || []).map((c) => ({ item: c.text, answer: responses[c.id]?.selection || null })),
       note: noteText(r.notes),
       files: mediaCount(r.notes),
@@ -530,7 +549,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     return text({
       document_id: documentId,
       categories: [...names.categories.values()].filter((c) => cats.has(c.id)).map((c) => ({ id: c.id, name: c.name, checklist: c.checklist })),
-      entities: [...names.entities.entries()].filter(([id]) => ents.has(id)).map(([id, name]) => ({ id, name })),
+      entities: [...names.entities.entries()].filter(([id]) => ents.has(id)).map(([id, e]) => ({ id, name: e.name })),
     });
   }
   if (name === 'set_answers' || name === 'add_note' || name === 'set_entity') {
@@ -579,14 +598,25 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         obj.text = beforeText ? `${beforeText}\n${add}` : add;
         markers[itemId] = { ...marker, note: obj };
       } else {
-        // set_entity: set or clear the item's entity (status), validating the
-        // id against this document's own entities (mirrors surveyAgentTools.js).
+        // set_entity: set or clear the item's entity (status). Accept any entity
+        // get_survey_context advertises for this document — one its linked
+        // templates define OR one the document's own markers already use (an
+        // unlinked document has no document_templates rows). Update id, name and
+        // colour together, the way the app does (applyEntitySelectionForMarker in
+        // SurveySpacesRail.jsx): a retained name/colour renders and reports the
+        // old status after the id changes.
         const raw = args.entity_id;
         const entityId = raw == null || raw === '' ? null : String(raw);
-        if (entityId && !names!.linkedEnts.has(entityId)) {
-          throw new ToolError(`${entityId} is not one of this document's entities. Use get_survey_context.`);
+        if (entityId) {
+          const used = documentEntityIds(markers);
+          const known = names!.entities.get(entityId);
+          if (!known || !(names!.linkedEnts.has(entityId) || used.has(entityId))) {
+            throw new ToolError(`${entityId} is not one of this document's entities. Use get_survey_context.`);
+          }
+          markers[itemId] = { ...marker, entityId, entityName: known.name, entityColor: known.color };
+        } else {
+          markers[itemId] = { ...marker, entityId: undefined, entityName: undefined, entityColor: undefined };
         }
-        markers[itemId] = { ...marker, entityId };
       }
     }, fieldMaps);
     return text({ ok: true, item_id: itemId, changed: result.changed });
@@ -608,16 +638,35 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     // The in-app create_item takes a plan-search match so the model can't invent
     // coordinates; the connector has no plan-search session, so it takes an
     // explicit page + box, validated here. The category and any entity must be
-    // ones this document's linked templates define (get_survey_context).
+    // ones get_survey_context advertises for THIS document — defined by a linked
+    // template OR already used by the document's own markers (an unlinked
+    // document has no document_templates rows). The new marker carries its
+    // category's module (sidebar + export filter by moduleId) and, for an
+    // entity, its name and colour (the app stores all three).
     const names = await categoryNames(db, documentId);
-    if (!names.linkedCats.has(categoryId)) throw new ToolError(`${categoryId} is not a category linked to this document. Use get_survey_context.`);
-    const raw = args.entity_id;
-    const entityId = raw == null || raw === '' ? null : String(raw);
-    if (entityId && !names.linkedEnts.has(entityId)) throw new ToolError(`${entityId} is not one of this document's entities. Use get_survey_context.`);
+    const rawEnt = args.entity_id;
+    const wantEntity = rawEnt == null || rawEnt === '' ? null : String(rawEnt);
     const itemId = `surveyMarker-${crypto.randomUUID()}`;
     const result = await writeMarkers(db, documentId, (markers) => {
       if (markers[itemId]) throw new ToolError('Could not create the item, please try again.');
-      markers[itemId] = { id: itemId, pageNumber: page, bounds, categoryId, name: itemName, entityId, checklistResponses: {} };
+      const usedCats = documentCategoryIds(markers);
+      if (!names.categories.has(categoryId) || !(names.linkedCats.has(categoryId) || usedCats.has(categoryId))) {
+        throw new ToolError(`${categoryId} is not a category for this document. Use get_survey_context.`);
+      }
+      const marker: Record<string, unknown> = { id: itemId, pageNumber: page, bounds, categoryId, name: itemName, checklistResponses: {} };
+      const moduleId = names.categoryModule.get(categoryId);
+      if (moduleId) marker.moduleId = moduleId;
+      if (wantEntity) {
+        const used = documentEntityIds(markers);
+        const known = names.entities.get(wantEntity);
+        if (!known || !(names.linkedEnts.has(wantEntity) || used.has(wantEntity))) {
+          throw new ToolError(`${wantEntity} is not one of this document's entities. Use get_survey_context.`);
+        }
+        marker.entityId = wantEntity;
+        marker.entityName = known.name;
+        marker.entityColor = known.color;
+      }
+      markers[itemId] = marker;
     }, fieldMaps);
     return text({ ok: true, item_id: itemId, changed: result.changed });
   }

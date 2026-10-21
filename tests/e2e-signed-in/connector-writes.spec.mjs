@@ -20,6 +20,7 @@ const RUN = crypto.randomBytes(3).toString('hex');
 // marker must point at a real category + checklist, linked to the document.
 // RUN is 6 hex chars; the UUID's final group must be exactly 12, so prefix 6.
 const TEMPLATE_ID = `e2e00000-0000-4000-8000-00000c${RUN}`;
+const MODULE_ID = `mod-${RUN}`;
 const CATEGORY_ID = `e2e-cat-${RUN}`;
 const CHECKLIST_ID = `e2e-chk-${RUN}`;
 const ENTITY_ID = `e2e-ent-${RUN}`;
@@ -36,10 +37,10 @@ async function seedTemplate() {
   const { data: { user } } = await owner.auth.getUser();
   const admin = adminClient();
   const config = {
-    modules: [{ id: `mod-${RUN}`, name: 'General', categories: [
+    modules: [{ id: MODULE_ID, name: 'General', categories: [
       { id: CATEGORY_ID, name: 'Door', checklist: [{ id: CHECKLIST_ID, text: 'Locked?' }] },
     ] }],
-    entities: [{ id: ENTITY_ID, name: 'Installed' }],
+    entities: [{ id: ENTITY_ID, name: 'Installed', color: '#22aa55' }],
   };
   const tpl = await admin.from('templates').upsert({ id: TEMPLATE_ID, user_id: user.id, name: `E2E ${RUN}`, config });
   if (tpl.error) throw new Error(`seed template: ${tpl.error.message}`);
@@ -146,6 +147,15 @@ test('a write-scope agent sets an answer through the connector, and an open clie
       .select('checklist_responses').eq('document_id', E2E_DOCUMENT.id).eq('annotation_id', newItemId).maybeSingle();
     return data?.checklist_responses?.[checklistItemId]?.selection ?? null;
   }, { timeout: 30_000 }).toBe('Y');
+
+  // The created item carries its category's module (sidebar + export filter on
+  // module_id) and the entity's id and name (set_entity sets both).
+  const { data: row } = await admin.from('document_annotations')
+    .select('module_id, category_id, entity_id, entity_name').eq('document_id', E2E_DOCUMENT.id).eq('annotation_id', newItemId).maybeSingle();
+  expect(row?.module_id).toBe(MODULE_ID);
+  expect(row?.category_id).toBe(CATEGORY_ID);
+  expect(row?.entity_id).toBe(ENTITY_ID);
+  expect(row?.entity_name).toBe('Installed');
 });
 
 test('a read-only agent is refused the write, and never sees the tool', async ({ page }) => {
