@@ -52,6 +52,10 @@ const ALSO = {
   'booklet-pdf': 'print fold saddle staple', 'resize-pdf': 'page size a4 letter scale', 'fast-web-view': 'linearize optimize web',
   'remove-annotations': 'markups comments delete', 'flatten-pdf': 'forms fields', 'watermark-pdf': 'stamp text draft confidential',
   'add-page-numbers': 'pagination bates', 'extract-images': 'save pictures photos', 'remove-blank-pages': 'empty pages scan',
+  'pdf-to-word': 'docx doc microsoft office editable convert', 'pdf-to-markdown': 'md text ai chatgpt llm convert',
+  'pdf-to-docx': 'word doc microsoft office editable convert',
+  'split-by-size': 'mb smaller parts email limit large file', 'pdf-page-sizes': 'info properties dimensions metadata paper size',
+  'add-image-to-pdf': 'logo picture png jpg stamp signature insert',
 };
 const keys = (t) => `${t.name} ${t.short} ${t.id.replace(/-/g, ' ')} ${ALSO[t.id] || ''} ${t.trade?.keys || ''}`.toLowerCase().replace(/"/g, '');
 const card = (t) => `<a class="tcard" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
@@ -67,6 +71,10 @@ const PAIRS = [
   ['jpg-to-pdf', 'image-to-pdf', 'png-to-pdf', 'compress-pdf'], ['word-to-pdf', 'txt-to-pdf', 'merge-pdf', 'compress-pdf'],
   ['n-up-pdf', 'booklet-pdf', 'resize-pdf'], ['booklet-pdf', 'n-up-pdf', 'add-blank-pages', 'reverse-pdf'],
   ['remove-blank-pages', 'delete-pages', 'ocr-pdf', 'compress-pdf'], ['grayscale-pdf', 'compress-pdf', 'n-up-pdf'],
+  ['pdf-to-word', 'pdf-to-markdown', 'pdf-to-txt', 'ocr-pdf'], ['pdf-to-markdown', 'pdf-to-word', 'pdf-to-txt', 'ocr-pdf'],
+  ['pdf-to-docx', 'pdf-to-word', 'word-to-pdf', 'ocr-pdf'],
+  ['split-by-size', 'compress-pdf', 'split-pdf', 'merge-pdf'], ['pdf-page-sizes', 'resize-pdf', 'ocr-pdf', 'edit-pdf-details'],
+  ['add-image-to-pdf', 'watermark-pdf', 'sign-pdf', 'add-header-footer'],
 ];
 function relatedTo(t) {
   const want = new Set();
