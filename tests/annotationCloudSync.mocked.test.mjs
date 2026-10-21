@@ -19,6 +19,12 @@ function makeSupabaseMock(state) {
       return chain;
     };
   }
+  chain.rpc = (...args) => {
+    calls.push(['rpc', ...args]);
+    return Promise.resolve(state.rpcError
+      ? { data: null, error: state.rpcError }
+      : { data: state.rows || [], error: null });
+  };
   chain.single = async () => {
     calls.push(['single']);
     if (state.throwOnQuery) throw state.throwOnQuery;
@@ -577,4 +583,33 @@ test('realtime deserialize failures + delete-fallback throw + empty hydrate id',
   const loaded = await loadAllNonSurveyMarkerAnnotations('doc-owned');
   assert.equal(loaded.error, null);
   state.rows = [];
+});
+
+// Keep last: the missing-function fallback is sticky for the module.
+test('hydrate reads pages through get_document_annotation_page, falls back to the table when it is missing', async () => {
+  const { loadAllNonSurveyMarkerAnnotations } = await import(pathToFileURL(resolve('src/services/annotationCloudSync.js')).href);
+  state.rows = [];
+  fake.calls.length = 0;
+  const viaRpc = await loadAllNonSurveyMarkerAnnotations('doc-rpc');
+  assert.equal(viaRpc.error, null);
+  const rpcCall = fake.calls.find((c) => c[0] === 'rpc');
+  assert.equal(rpcCall[1], 'get_document_annotation_page');
+  assert.equal(rpcCall[2].p_document_id, 'doc-rpc');
+  assert.equal(rpcCall[2].p_after_id, null);
+  assert.equal(rpcCall[2].p_limit, 1000);
+  assert.ok(rpcCall[2].p_types.includes('ink'));
+  assert.ok(rpcCall[2].p_fabric_types.includes('survey-marker'));
+  assert.equal(fake.calls.some((c) => c[0] === 'from' && c[1] === 'document_annotations'), false);
+
+  state.rpcError = { code: 'PGRST202', message: 'Could not find the function' };
+  fake.calls.length = 0;
+  const fallback = await loadAllNonSurveyMarkerAnnotations('doc-fallback');
+  assert.equal(fallback.error, null);
+  assert.ok(fake.calls.some((c) => c[0] === 'from' && c[1] === 'document_annotations'));
+  assert.ok(fake.calls.some((c) => c[0] === 'or'));
+
+  fake.calls.length = 0;
+  await loadAllNonSurveyMarkerAnnotations('doc-after-fallback');
+  assert.equal(fake.calls.some((c) => c[0] === 'rpc'), false);
+  state.rpcError = null;
 });
