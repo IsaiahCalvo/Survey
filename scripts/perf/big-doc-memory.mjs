@@ -163,6 +163,49 @@ async function heapByConstructor(cdp) {
     rows.push(`RETAINERS of ${key} (sample ${seen})`);
     for (const [c, n] of [...chains].sort((a, b) => b[1] - a[1]).slice(0, 6)) rows.push(`   ${n} ${c}`);
   }
+  // Per Y.Doc (an object with guid + store + share edges): bytes reachable
+  // from it without passing through another Y.Doc or up through a parent.
+  const edgeStart = new Int32Array(retainer.length + 1);
+  for (let n = 0, e = 0; n < retainer.length; n += 1) { edgeStart[n] = e; e += snap.nodes[n * f.length + iEdgeCount] * ef.length; }
+  edgeStart[retainer.length] = snap.edges.length;
+  const edgesOf = function* (n) {
+    for (let e = edgeStart[n]; e < edgeStart[n + 1]; e += ef.length) {
+      const type = edgeTypes[snap.edges[e + iEType]];
+      if (type === 'weak' || type === 'shortcut') continue;
+      const name = type === 'element' || type === 'hidden' ? null : snap.strings[snap.edges[e + iEName]];
+      yield [name, snap.edges[e + iTo] / f.length];
+    }
+  };
+  const docs = [];
+  for (let n = 0; n < retainer.length; n += 1) {
+    if (types[snap.nodes[n * f.length + iType]] !== 'object') continue;
+    const names = new Set();
+    for (const [name] of edgesOf(n)) if (name) names.add(name);
+    if (names.has('guid') && names.has('store') && names.has('share')) docs.push(n);
+  }
+  const docSet = new Set(docs);
+  const SKIP = new Set(['parent', '_item', 'doc', '_observers', '_dEH', '_eH', 'subdocs', 'map', '__proto__', 'constructor', 'context']);
+  rows.push(`Y.Doc copies: ${docs.length}`);
+  for (const d of docs) {
+    let guid = '?';
+    for (const [name, to] of edgesOf(d)) if (name === 'guid') guid = snap.strings[snap.nodes[to * f.length + iName]];
+    const seen = new Uint8Array(retainer.length);
+    const stack = [d];
+    seen[d] = 1;
+    let bytes = 0;
+    while (stack.length) {
+      const n = stack.pop();
+      bytes += snap.nodes[n * f.length + iSize];
+      const t = types[snap.nodes[n * f.length + iType]];
+      if (t === 'closure' || t === 'code' || t === 'hidden' || t === 'synthetic') continue;
+      for (const [name, to] of edgesOf(n)) {
+        if (seen[to] || docSet.has(to) || (name && SKIP.has(name))) continue;
+        seen[to] = 1;
+        stack.push(to);
+      }
+    }
+    rows.push(`   ${(bytes / 1e6).toFixed(1)}MB  Y.Doc ${guid.slice(0, 70)}`);
+  }
   return rows;
 }
 
