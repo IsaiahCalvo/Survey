@@ -143,7 +143,7 @@ test('loading treatment fits the app palette and accessibility settings', () => 
   assert.match(QUIET, /color: var\(--text-3\)/);
   assert.match(QUIET, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(SKELETON, /role="status"/);
-  assert.match(SKELETON_CSS, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.sk-block \{ animation: none;/);
+  assert.doesNotMatch(SKELETON_CSS, /animation:[^;]*infinite/, 'no shimmer: static like Drawboard');
   assert.doesNotMatch(SKELETON_CSS, /#[0-9a-f]{3,6}\b/i, 'skeleton colors come from theme tokens');
 });
 
