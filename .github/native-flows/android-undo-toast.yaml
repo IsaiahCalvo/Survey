@@ -1,0 +1,34 @@
+# #1098: archiving a project acts at once and offers an Undo toast instead of a
+# confirm. Runs signed in as e2e-owner with a document open. Go back to Home,
+# open "E2E Sample Project"'s "More" menu on the Projects tab and tap "Delete"
+# (the project menu's archive item: it moves the project to Archive,
+# src/home/ProjectsFolderTree.jsx deleteProjects -> src/Dashboard.jsx), wait for
+# the "Project moved to Archive · Undo" toast (.undo-toast.hub-undo-toast),
+# tap Undo and check the project is listed again.
+# android-undo-toast-check.sh runs this in two parts split at the markers below
+# (part A up to the toast; part B after the Undo tap) and checks the toast's
+# placement in between. The toast lives 5 s, so keep part A's tail short.
+appId: com.kalvoe.survey
+name: android-undo-toast
+---
+- tapOn: "Back to documents"
+- tapOn: "Projects"
+- extendedWaitUntil:
+    visible: ".*E2E Sample Project.*"
+    timeout: 60000
+# The row's "More" button is found and tapped in the web view by
+# android-undo-toast-check.sh (Maestro's rightOf missed it on the phone row).
+# --- split: toast up ---
+- tapOn: "Undo"
+# --- split: after undo ---
+- extendedWaitUntil:
+    visible: ".*E2E Sample Project.*"
+    timeout: 30000
+- assertNotVisible: "Project moved to Archive"
+- takeScreenshot: 17-undo-restored
+# Back to the Documents tab: the offline relaunch next expects the document
+# list, and the app reopens on the last tab.
+- tapOn: "Documents"
+- extendedWaitUntil:
+    visible: ".*E2E Sample Drawing.*"
+    timeout: 30000

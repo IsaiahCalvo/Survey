@@ -1,0 +1,64 @@
+# Editor walk of the project menu in the real Android app, against the
+# throwaway local Supabase (docs/E2E-SIGNED-IN.md). Sign in as the seeded
+# editor (role=editor on "E2E Sample Project"), open that project's "More"
+# menu on the Projects tab and check #1071/#1093: Share, Delete and Add member
+# are greyed for a non-owner. They use aria-disabled (not the disabled
+# attribute), so they stay tappable; a tap shows the reason
+# "Only the project owner can do this" as a toast and never runs the action
+# (src/home/ProjectsFolderTree.jsx PopupMenu, src/utils/disabledReasonToast.js).
+appId: com.kalvoe.survey
+name: android-editor-project-menu
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    text: "Wait"
+    optional: true
+- extendedWaitUntil:
+    visible: "Welcome back"
+    timeout: 90000
+- tapOn:
+    text: "Wait"
+    optional: true
+- tapOn:
+    id: "email"
+- inputText: "e2e-editor@example.com"
+- tapOn:
+    id: "password"
+- inputText: "E2e-local-only-123!"
+- hideKeyboard
+- tapOn:
+    text: "Sign in"
+    index: 1
+# Signed in when the document list (the default Home tab) shows the sample.
+- extendedWaitUntil:
+    visible: ".*E2E Sample Drawing.*"
+    timeout: 60000
+- tapOn: "Projects"
+- extendedWaitUntil:
+    visible: ".*E2E Sample Project.*"
+    timeout: 60000
+# Each project row ends in a "More" button (aria-label="More").
+# android-editor-project-menu.sh taps it in the web view between the two
+# parts split at this marker (Maestro's rightOf missed it on the phone row).
+# --- split: open menu ---
+- extendedWaitUntil:
+    visible: "Add member"
+    timeout: 30000
+- takeScreenshot: 13-editor-project-menu
+- assertVisible:
+    text: "Share"
+    enabled: false
+- assertVisible:
+    text: "Delete"
+    enabled: false
+- assertVisible:
+    text: "Add member"
+    enabled: false
+# Items the editor may use stay enabled.
+- assertVisible:
+    text: "Get link to project"
+    enabled: true
+# The reason is only a tooltip until tapped; android-editor-project-menu.sh
+# taps Delete in the web view and checks the reason toast and that the
+# project is still listed.

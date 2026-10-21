@@ -1,0 +1,11 @@
+# Run after ios-signed-in.yaml with the local API stopped: relaunch the app and
+# check the Documents list still shows from the device cache (#906).
+appId: com.kalvoe.survey
+name: ios-offline-relaunch
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: ".*E2E Sample Drawing.*"
+    timeout: 60000
+- takeScreenshot: 07-offline-relaunch-documents

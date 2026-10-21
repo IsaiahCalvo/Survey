@@ -1,0 +1,16 @@
+# Opens the seeded voice-agent drawing (#1090: linked to template "E2E Doors",
+# item D-1-17) from an open document.
+appId: com.kalvoe.survey
+name: android-open-agent-drawing
+---
+- tapOn: "Back to documents"
+- extendedWaitUntil:
+    visible: ".*E2E Survey Agent Drawing.*"
+    timeout: 60000
+- tapOn: ".*E2E Survey Agent Drawing.*"
+- tapOn:
+    text: "Open file"
+    optional: true
+- extendedWaitUntil:
+    visible: "More document options"
+    timeout: 90000

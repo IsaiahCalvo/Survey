@@ -27,3 +27,23 @@ size=$(ev "(() => { const g = [...document.querySelectorAll('g[data-annotation-i
 echo "counter size after arrow: ${size}px"
 [ "$size" != "none" ] && [ "$size" -ge 12 ] || { echo "::error::Counter after Arrow is not a full marker (${size}px)"; exit 1; }
 echo "Counter check passed."
+# #1055: revision cloud in the Shapes row, and the Measure menu. The Shapes
+# strip may still be open from the Counter pick, and tapping Shapes again
+# closes it, so open it only if Cloud is not showing.
+( pick Cloud ) || { pick Shapes; pick Cloud; }
+adb shell input stylus swipe $((X - 150)) $((Y + 300)) $((X + 100)) $((Y + 450)) 300
+sleep 2
+clouds=$(ev "document.querySelectorAll('g[data-annotation-index]').length")
+echo "annotations after cloud: $clouds"
+adb exec-out screencap -p > "$OUT/09-revision-cloud.png"
+pick Measure
+sleep 1
+adb exec-out screencap -p > "$OUT/10-measure-menu.png"
+echo "Cloud and Measure check passed."
+# #1087: a Length measure shows a readable label right after drawing.
+pick Length
+adb shell input stylus swipe $((X - 200)) $((Y - 350)) $((X + 150)) $((Y - 350)) 300
+sleep 2
+adb exec-out screencap -p > "$OUT/11-measure-length.png"
+label=$(ev "(() => { const t = [...document.querySelectorAll('svg text')].filter(e => /\\d/.test(e.textContent)).pop(); if (!t) return 'none'; const r = t.getBoundingClientRect(); return t.textContent.trim() + ' ' + Math.round(r.height) + 'px'; })()")
+echo "measure label: $label"

@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["T3KR4X5869.com.kalvoe.survey"],
+        "components": [{ "/": "/invite/*" }]
+      }
+    ]
+  }
+}

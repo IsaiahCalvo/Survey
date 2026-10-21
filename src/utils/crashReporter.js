@@ -43,6 +43,7 @@ export function platformOf(win = (typeof window !== 'undefined' ? window : null)
   if (!win) return 'unknown';
   const native = win.Capacitor?.getPlatform?.();
   if (native === 'ios' || native === 'android') return `${native}-app`;
+  if (win.electronAPI) return 'electron-app';
   const narrow = (win.innerWidth || 0) < 768;
   return narrow ? 'web-phone' : 'web-desktop';
 }

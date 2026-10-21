@@ -59,6 +59,10 @@ const PACKAGE_VERSION_WAIVERS = new Set([
   // ALLOWED_LICENSES entry above handles modern releases, but legacy versions
   // sometimes report differently — keep this here as a safety net.
   'argparse@2.0.1',
+  // `@capgo/capacitor-speech-recognition` is MPL-2.0: file-level copyleft that
+  // only binds changes to its own files. We ship it unmodified (Survey agent
+  // hands-free speech in the native apps), so our code stays ours.
+  '@capgo/capacitor-speech-recognition@8.4.4',
   // `chainsaw` / `traverse` declare 'MIT*' in package.json. license-checker's
   // asterisk notation means "license file content not auto-verified" — both
   // packages are confirmed MIT via upstream README/LICENSE inspection

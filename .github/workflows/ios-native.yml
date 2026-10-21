@@ -24,6 +24,15 @@ on:
       - '.github/workflows/ios-native.yml'
       - '.github/native-flows/**'
   workflow_dispatch:
+  # The iOS signed-in walk is too slow for every PR (see that job). It runs at
+  # most once a day after a green "Build and tests" on main (timed jobs are
+  # often skipped in this repo, so the cron is only a backup), or on demand.
+  workflow_run:
+    workflows: ["Build and tests"]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '30 5 * * *'
 
 permissions:
   contents: read
@@ -38,6 +47,7 @@ defaults:
 
 jobs:
   native:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     name: Build and launch iOS app
     runs-on: macos-26
     timeout-minutes: 45
@@ -112,6 +122,7 @@ jobs:
           retention-days: 7
 
   android:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     name: Build and launch Android app (Pixel emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -176,6 +187,7 @@ jobs:
           retention-days: 7
 
   android-signed-in:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     name: Android signed-in walk (local Supabase, export to share sheet)
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -213,6 +225,9 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - name: Walk the app on a Pixel emulator
+        # A lost emulator leaves adb on "waiting for device"; fail fast instead
+        # of using the job's whole hour (the steps above take ~20 min).
+        timeout-minutes: 30
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -229,14 +244,144 @@ jobs:
             # A slow CI emulator pops "Pixel Launcher isn't responding" over the app.
             adb shell settings put global hide_error_dialogs 1
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            bash .github/native-flows/android-pen-mode.sh "$OUT" || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            bash .github/native-flows/android-counter-after-arrow.sh "$OUT" || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            # Editor first, then wipe the app so the owner signs in fresh.
+            timeout 400 bash .github/native-flows/android-editor-project-menu.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            adb shell pm clear com.kalvoe.survey
+            maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            timeout 300 bash .github/native-flows/android-pen-mode.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            timeout 300 bash .github/native-flows/android-counter-after-arrow.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            timeout 300 bash .github/native-flows/android-delete-point.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            timeout 300 bash .github/native-flows/android-voice-mic.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            timeout 300 bash .github/native-flows/android-undo-toast-check.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             adb reverse --remove-all
-            maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            timeout 300 bash .github/native-flows/android-pdf-tools-offline.sh "$OUT" || echo "::warning::offline PDF tools check failed (not gating yet)"
+      # The emulator has twice died mid-walk (adb: port 5554 refused). Record
+      # whether the host's out-of-memory killer took it.
+      - name: Host memory check
+        if: failure()
+        run: |
+          free -m
+          sudo dmesg | grep -iE "out of memory|killed process|oom" | tail -20 || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: android-signed-in-results
           path: android-flow-out
           retention-days: 7
+
+  ios-walk-due:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      key: ${{ steps.when.outputs.key }}
+      done: ${{ steps.mark.outputs.cache-hit }}
+    steps:
+      - id: when
+        run: echo "key=ios-walk-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - name: Already walked today?
+        id: mark
+        uses: actions/cache/restore@v4
+        with:
+          path: .ios-walk-mark
+          key: ${{ steps.when.outputs.key }}
+          lookup-only: true
+
+  ios-signed-in:
+    name: iOS signed-in walk (local Supabase, export to share sheet)
+    # Needs Docker for the local Supabase, which GitHub's fast Apple-silicon
+    # runners cannot run (no nested VMs), so this uses an Intel runner with
+    # Colima and takes ~2h. Too slow to gate every PR: nightly + manual only.
+    needs: ios-walk-due
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (needs.ios-walk-due.outputs.done != 'true' &&
+       (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'))
+    # Intel runner: the local Supabase needs Docker, which runs here through
+    # Colima; Apple-silicon runners cannot nest a VM for it.
+    runs-on: macos-15-intel
+    timeout-minutes: 200
+    env:
+      OUT: ${{ github.workspace }}/ios-flow-out
+      DEVICE: iPhone 16
+      BUNDLE_ID: com.kalvoe.survey
+      # The Intel runner also hosts the Colima VM, so Maestro's iOS driver
+      # starts slowly; its default wait is too short there.
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '600000'
+      MAESTRO_CLI_NO_ANALYTICS: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Start Docker (Colima)
+        run: |
+          brew install colima docker
+          colima start --cpu 4 --memory 10 --disk 40
+          echo "DOCKER_HOST=unix://$HOME/.colima/default/docker.sock" >> "$GITHUB_ENV"
+      # The Colima VM is slow: realtime never passes its health check there
+      # (the walk does not need it), and storage can miss the first one.
+      - name: Start the local Supabase
+        run: npm run e2e:stack:up || { sleep 30; npm run e2e:stack:up; }
+        env:
+          E2E_REALTIME: 'off'
+      - name: Build web bundle against the local stack
+        run: npx vite build --mode e2e
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+      - run: npx cap sync ios
+      - name: Build app for the simulator
+        run: |
+          mkdir -p "$OUT"
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO build 2>&1 \
+            | tee "$OUT/xcodebuild.log" | grep -E "error:|BUILD (SUCCEEDED|FAILED)"
+          test "${PIPESTATUS[0]}" = 0
+      - name: Install Maestro
+        run: |
+          curl -fsSL https://get.maestro.mobile.dev | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      # Boot only after the local stack is up: booting alongside Colima starved
+      # both on this 4-core runner (the stack missed its health checks).
+      - name: Boot the simulator and install the app
+        run: |
+          UDID=$(xcrun simctl list devices available -j | node -e '
+            const d=JSON.parse(require("fs").readFileSync(0)).devices;
+            const all=Object.entries(d).filter(([r])=>r.includes("iOS")).flatMap(([,l])=>l);
+            const m=all.reverse().find(x=>x.name===process.env.DEVICE)||all.find(x=>x.name.startsWith("iPhone"));
+            console.log(m.udid)')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$(find build/ios/Build/Products -maxdepth 2 -name 'App.app' | head -1)"
+      - name: Walk the app (signed in, Counter after Arrow, export)
+        run: maestro --device "$UDID" test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/ios-signed-in.yaml
+      - name: Relaunch with the API stopped (offline)
+        run: |
+          docker ps -q | xargs docker pause
+          maestro --device "$UDID" test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/ios-offline-relaunch.yaml
+      - name: Save logs
+        if: always()
+        run: xcrun simctl spawn booted log show --last 10m --predicate 'process == "App"' > "$OUT/app.log" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-signed-in-results
+          path: ios-flow-out
+          retention-days: 7
+      - name: Mark today's walk done
+        if: success() && github.event_name != 'workflow_dispatch'
+        run: mkdir -p .ios-walk-mark && date -u > .ios-walk-mark/at
+      - if: success() && github.event_name != 'workflow_dispatch'
+        uses: actions/cache/save@v4
+        with:
+          path: .ios-walk-mark
+          key: ${{ needs.ios-walk-due.outputs.key }}

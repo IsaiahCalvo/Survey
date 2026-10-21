@@ -1,0 +1,70 @@
+# Signed-in walk through the real iOS app in the simulator against the
+# throwaway local Supabase (same steps as android-signed-in.yaml). Web view
+# inputs have no ids on iOS, so fields are found by their labels.
+appId: com.kalvoe.survey
+name: ios-signed-in
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Welcome back"
+    timeout: 120000
+- takeScreenshot: 01-sign-in
+- tapOn: "Email"
+- inputText: "e2e-owner@example.com"
+- tapOn: "Password"
+- inputText: "E2e-local-only-123!"
+# Submit with the keyboard: Google sign-in is hidden on iPhone, so "Sign in"
+# labels sit in a different order than on Android and the SSO link matches too.
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: ".*E2E Sample Drawing.*"
+    timeout: 60000
+- takeScreenshot: 02-documents
+- tapOn: ".*E2E Sample Drawing.*"
+- tapOn:
+    text: "Open file"
+    optional: true
+- extendedWaitUntil:
+    visible: "More document options"
+    timeout: 90000
+- takeScreenshot: 03-document-open
+# #1002: a Counter right after an Arrow is a full marker. iOS has no web view
+# inspector in CI, so this one is checked by screenshot; Android measures it.
+- tapOn: "Shapes"
+- tapOn: "Arrow"
+- swipe:
+    start: 35%, 60%
+    end: 60%, 50%
+    duration: 400
+- tapOn: "Counter"
+- tapOn:
+    point: 40%, 40%
+- takeScreenshot: 04-counter-after-arrow
+# #1055: revision cloud and the Measure menu. Tapping Shapes again would close
+# the strip the Counter pick left open, so only open it if Cloud is hidden.
+- runFlow:
+    when:
+      notVisible: "Cloud"
+    commands:
+      - tapOn: "Shapes"
+- tapOn: "Cloud"
+- swipe:
+    start: 30%, 70%
+    end: 60%, 78%
+    duration: 400
+- takeScreenshot: 04b-revision-cloud
+- tapOn: "Measure"
+- takeScreenshot: 04c-measure-menu
+# Leave the draw tool so the menu taps do not draw.
+- tapOn:
+    text: "Pan"
+    optional: true
+- tapOn: "More document options"
+- takeScreenshot: 05-more-menu
+- tapOn: "Export annotated PDF"
+# The iOS share sheet shows a Copy / Save to Files row.
+- extendedWaitUntil:
+    visible: ".*(Copy|Save to Files|AirDrop|Options).*"
+    timeout: 30000
+- takeScreenshot: 06-share-sheet
