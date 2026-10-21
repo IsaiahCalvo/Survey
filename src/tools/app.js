@@ -24,6 +24,10 @@ const root = document.getElementById('tool');
 const TOOL_ID = root.dataset.tool;
 const ACCEPT = root.dataset.accept;
 const MULTIPLE = root.hasAttribute('data-multiple');
+// Batch tools work on one file but take many: each file runs on its own with
+// the same options, and the results come back in one ZIP.
+const BATCH = root.hasAttribute('data-batch');
+const batching = () => BATCH && S.files.length > 1;
 
 import { PDF_TYPE, base, pdfOut, SEG } from './kit.js';
 
@@ -714,7 +718,24 @@ async function run() {
     if (el) el.textContent = msg;
   };
   try {
-    let outputs = await T.run(S.files, S.opts, progress);
+    let outputs;
+    if (batching()) {
+      outputs = [];
+      for (let n = 0; n < S.files.length; n += 1) {
+        const tag = `File ${n + 1} of ${S.files.length}`;
+        progress(tag);
+        outputs.push(...await T.run([S.files[n]], S.opts, (msg) => progress(`${tag}: ${msg}`)));
+      }
+      // Two inputs with the same name would overwrite each other in the ZIP.
+      const seen = new Map();
+      for (const o of outputs) {
+        const n = seen.get(o.name) || 0;
+        seen.set(o.name, n + 1);
+        if (n) o.name = o.name.replace(/(\.[a-z0-9]+)?$/i, ` (${n + 1})$1`);
+      }
+    } else {
+      outputs = await T.run(S.files, S.opts, progress);
+    }
     if (outputs.length > 1) {
       progress('Packing the ZIP');
       const first = S.files[0];
@@ -794,9 +815,10 @@ function render() {
     root.replaceChildren(zone, err || '');
     return;
   }
-  const view = T.view === 'files' ? filesView() : T.view === 'organize' ? organizeView() : T.view === 'sign' ? sign.view(S.files[0]) : pagesView();
+  const kind = batching() ? 'files' : T.view;
+  const view = kind === 'files' ? filesView() : kind === 'organize' ? organizeView() : kind === 'sign' ? sign.view(S.files[0]) : pagesView();
   const head = h('div', { class: 'thead' },
-    h('p', { class: 'ttitle' }, T.view === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, T.view === 'pages' && h('span', {}, ` · ${S.files[0].pages} pages`)),
+    h('p', { class: 'ttitle' }, kind === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, kind === 'pages' && h('span', {}, ` · ${S.files[0].pages} pages`)),
     h('button', { type: 'button', class: 'btn ghost', onclick: pickFiles, disabled: !!S.busy }, MULTIPLE ? 'Add more' : 'Change file'));
   const hint = T.hint && h('p', { class: 'thint' }, T.hint);
   const action = h('div', { class: 'tbar' },

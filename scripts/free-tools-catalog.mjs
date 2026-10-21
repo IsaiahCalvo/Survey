@@ -126,7 +126,7 @@ export const TOOLS = [
     faq: [['Which image types work?', 'JPG, PNG, WebP, GIF (first frame), BMP and TIFF (every page).'], PRIVATE, FREE, LIMIT],
   },
   {
-    id: 'txt-to-pdf', group: 'to-pdf', name: 'Text to PDF', icon: 'txt',
+    id: 'txt-to-pdf', batch: true, group: 'to-pdf', name: 'Text to PDF', icon: 'txt',
     short: 'Turn a .txt file into a clean PDF.',
     title: 'TXT to PDF converter free, no upload | Survey',
     desc: 'Turn plain text files into tidy PDFs with the font and page size you pick. Free, in your browser, no upload.',
@@ -137,7 +137,7 @@ export const TOOLS = [
     faq: [['Which letters work?', 'English and Western European letters. Other scripts, like Chinese or Arabic, show as question marks for now.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'pdf-to-jpg', group: 'from-pdf', name: 'PDF to JPG', icon: 'photo',
+    id: 'pdf-to-jpg', batch: true, group: 'from-pdf', name: 'PDF to JPG', icon: 'photo',
     short: 'Save each page as a JPG image.',
     title: 'PDF to JPG converter free, no upload | Survey',
     desc: 'Save every page of a PDF as a JPG image at the quality you pick. Free, in your browser, no upload.',
@@ -148,7 +148,7 @@ export const TOOLS = [
     faq: [['Which quality should I pick?', 'Normal (150 DPI) is right for screens and email. High (300 DPI) is for printing or zooming into fine detail on drawings.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'pdf-to-png', group: 'from-pdf', name: 'PDF to PNG', icon: 'photo',
+    id: 'pdf-to-png', batch: true, group: 'from-pdf', name: 'PDF to PNG', icon: 'photo',
     short: 'Save each page as a sharp PNG.',
     title: 'PDF to PNG converter free, no upload | Survey',
     desc: 'Save PDF pages as sharp PNG images, good for drawings and text. Free, in your browser, no upload.',
@@ -159,7 +159,7 @@ export const TOOLS = [
     faq: [['PNG or JPG?', 'PNG is best for drawings, plans and text. JPG makes smaller files for photos.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'pdf-to-txt', group: 'from-pdf', name: 'PDF to text', icon: 'text',
+    id: 'pdf-to-txt', batch: true, group: 'from-pdf', name: 'PDF to text', icon: 'text',
     short: 'Copy all the words out of a PDF.',
     title: 'PDF to TXT: get the text out of a PDF free | Survey',
     desc: 'Pull all the text out of a PDF into a plain .txt file. Free, in your browser, no upload.',
@@ -170,7 +170,7 @@ export const TOOLS = [
     faq: [['Why is my file empty?', 'A scanned PDF is a picture of the page, so it has no text to pull out.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'add-page-numbers', group: 'edit', name: 'Add page numbers', icon: 'numbers',
+    id: 'add-page-numbers', batch: true, group: 'edit', name: 'Add page numbers', icon: 'numbers',
     short: 'Number the pages of a PDF.',
     title: 'Add page numbers to a PDF free | Survey',
     desc: 'Number PDF pages at the top or bottom, as 1, Page 1 or Page 1 of 10. Free, in your browser, no upload.',
@@ -181,7 +181,7 @@ export const TOOLS = [
     faq: [['Can I skip the cover page?', 'Yes. Turn on "Skip the first page" and numbering starts on page 2.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'watermark-pdf', group: 'edit', name: 'Add watermark', icon: 'watermark',
+    id: 'watermark-pdf', batch: true, group: 'edit', name: 'Add watermark', icon: 'watermark',
     short: 'Stamp text like DRAFT across pages.',
     title: 'Add a watermark to a PDF free | Survey',
     desc: 'Stamp text such as DRAFT, CONFIDENTIAL or NOT FOR CONSTRUCTION across PDF pages. Free, in your browser, no upload.',
@@ -192,7 +192,7 @@ export const TOOLS = [
     faq: [['Can people remove the watermark?', 'It is drawn into the page, so it can\'t be clicked away. Someone with a full PDF editor could still take it out.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'add-header-footer', group: 'edit', name: 'Headers and footers', icon: 'header',
+    id: 'add-header-footer', batch: true, group: 'edit', name: 'Headers and footers', icon: 'header',
     short: 'Add a line of text to the top or bottom of every page.',
     title: 'Add a header or footer to a PDF free | Survey',
     desc: 'Put a project name, date or page count at the top or bottom of every PDF page. Free, in your browser, no upload.',
@@ -203,7 +203,7 @@ export const TOOLS = [
     faq: [['What do {page} and {total} do?', 'They turn into the page number and the page count, so the footer can read "Page 3 of 12".'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'flatten-pdf', group: 'edit', name: 'Flatten PDF', icon: 'flatten',
+    id: 'flatten-pdf', batch: true, group: 'edit', name: 'Flatten PDF', icon: 'flatten',
     short: 'Lock markups and form answers into the page.',
     title: 'Flatten a PDF: lock forms and markups free | Survey',
     desc: 'Make form answers and markups part of the page, so they print and show the same everywhere and can\'t be changed. Free, no upload.',
@@ -214,7 +214,7 @@ export const TOOLS = [
     faq: [['Why flatten a PDF?', 'Some apps hide markups or form answers. Flattening draws them into the page, so everyone sees and prints the same thing.'], ['Do links still work?', 'Yes. Links stay clickable; everything else becomes part of the page.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'crop-pdf', group: 'pages', name: 'Crop PDF', icon: 'crop',
+    id: 'crop-pdf', batch: true, group: 'pages', name: 'Crop PDF', icon: 'crop',
     short: 'Trim the white edges off every page.',
     title: 'Crop PDF pages free: trim the margins | Survey',
     desc: 'Trim the same margin off every edge of every PDF page. Free, in your browser, no upload.',
@@ -236,7 +236,7 @@ export const TOOLS = [
     faq: [['Where does the title show?', 'In the browser tab and the title bar of most PDF readers, and in search results for PDFs on the web.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'remove-annotations', group: 'edit', name: 'Remove markups', icon: 'clean',
+    id: 'remove-annotations', batch: true, group: 'edit', name: 'Remove markups', icon: 'clean',
     short: 'Strip comments and markups off a PDF.',
     title: 'Remove comments and markups from a PDF free | Survey',
     desc: 'Take every comment, highlight and markup off a PDF to get a clean copy. Form fields and links stay. Free, no upload.',
@@ -247,7 +247,7 @@ export const TOOLS = [
     faq: [['Why are some marks still there?', 'Marks that were flattened, or drawn by the app that made the PDF, are part of the page itself, not separate markups.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'word-to-pdf', group: 'to-pdf', name: 'Word to PDF', icon: 'word',
+    id: 'word-to-pdf', batch: true, group: 'to-pdf', name: 'Word to PDF', icon: 'word',
     short: 'Turn a Word .docx file into a PDF.',
     title: 'Word to PDF converter free, no upload (DOCX) | Survey',
     desc: 'Convert a Word document (.docx) to PDF right in your browser. Keeps headings, lists, tables, links and pictures. Free, no sign-up, no upload.',
@@ -280,7 +280,7 @@ export const TOOLS = [
     faq: [['Is this a legal signature?', 'It is a picture of your signature, like signing a printout. That is fine for most everyday forms. Some contracts need a certified digital signature instead.'], ['Can I sign on a phone or tablet?', 'Yes. Draw with your finger or a pen in the box, then drag the signature into place.'], ['Can I put it on any page?', 'Yes. Use the arrows above the page to pick which page to sign. It starts on the last page.'], PRIVATE, FREE],
   },
   {
-    id: 'protect-pdf', group: 'secure', name: 'Protect PDF', icon: 'lock',
+    id: 'protect-pdf', batch: true, group: 'secure', name: 'Protect PDF', icon: 'lock',
     short: 'Lock a PDF with a password.',
     title: 'Password protect a PDF free, AES-256 | Survey',
     desc: 'Add a password to a PDF in your browser with strong AES-256 encryption. Optionally block printing and copying. Free, no upload.',
@@ -291,7 +291,7 @@ export const TOOLS = [
     faq: [['How strong is the lock?', 'It uses AES-256, the strongest kind PDFs support. A long password is what keeps it safe.'], ['What if I forget the password?', 'We never see your password or your file, so we can\'t get it back. Keep the password somewhere safe.'], ['Will it open in other apps?', 'Yes. Adobe Reader, Preview, Chrome, Edge and other PDF apps ask for the password and open it.'], PRIVATE, FREE],
   },
   {
-    id: 'unlock-pdf', group: 'secure', name: 'Unlock PDF', icon: 'unlock',
+    id: 'unlock-pdf', batch: true, group: 'secure', name: 'Unlock PDF', icon: 'unlock',
     short: 'Take the password off a PDF you can open.',
     title: 'Unlock a PDF: remove the password free | Survey',
     desc: 'Remove the password and print or copy limits from a PDF you know the password to. Works in your browser, free, no upload.',

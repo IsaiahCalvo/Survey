@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ORIGIN, APP, page, faqList, faqSchema } from './build-marketing.mjs';
 import { GROUPS, TOOLS } from './free-tools-catalog.mjs';
+import { BATCH } from './free-tools-faq.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'tools');
 
@@ -65,6 +66,9 @@ const PICK = {
 const SCRIPT = '\n<script type="module" src="/src/tools/main.js"></script>';
 
 function toolPage(t) {
+  // A batch tool handles one file at a time but takes several at once.
+  const many = t.multiple || t.batch;
+  const faq = t.batch && !t.faq.includes(BATCH) ? [...t.faq.slice(0, 2), BATCH, ...t.faq.slice(2)] : t.faq;
   const path = `/tools/${t.id}`;
   const related = TOOLS.filter((o) => o.id !== t.id && (o.group === t.group || ['merge-pdf', 'compress-pdf', 'split-pdf'].includes(o.id))).slice(0, 6);
   const howTo = {
@@ -80,7 +84,7 @@ function toolPage(t) {
   return page({
     path, title: t.title, desc: t.desc,
     crumbs: [['Free PDF tools', '/tools'], [t.name, path]],
-    schema: [app, howTo, faqSchema(t.faq)],
+    schema: [app, howTo, faqSchema(faq)],
     scripts: SCRIPT,
     body: `<section class="page-head tool-head"><div class="wrap">
   <p class="kicker"><a href="/tools">Free PDF tools</a></p>
@@ -88,11 +92,11 @@ function toolPage(t) {
   <p class="lede">${t.lede}</p>
 </div></section>
 <section class="tool-sec"><div class="wrap">
-  <div class="tool" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}"${t.multiple ? ' data-multiple' : ''}>
+  <div class="tool" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}"${many ? ' data-multiple' : ''}${t.batch ? ' data-batch' : ''}>
     <div class="dz" data-dz>
       ${icon(t.icon, t.iconSvg)}
-      <p class="dz-main"><label class="btn primary lg"><span data-pick>${PICK[t.accept][t.multiple ? 1 : 0]}</span><input type="file" hidden data-early accept="${PICK[t.accept][2]}"${t.multiple ? ' multiple' : ''} /></label></p>
-      <p class="dz-or">or drop ${t.multiple ? 'them' : 'it'} here</p>
+      <p class="dz-main"><label class="btn primary lg"><span data-pick>${PICK[t.accept][many ? 1 : 0]}</span><input type="file" hidden data-early accept="${PICK[t.accept][2]}"${many ? ' multiple' : ''} /></label></p>
+      <p class="dz-or">or drop ${many ? 'them' : 'it'} here</p>
       <p class="dz-safe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your files stay on this device</p>
       <noscript><p>This tool needs JavaScript turned on.</p></noscript>
     </div>
@@ -103,7 +107,7 @@ function toolPage(t) {
   <ol class="steps">${t.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
 </div></section>
 <section class="sec tight"><div class="wrap">${why()}</div></section>
-<section class="sec"><div class="wrap narrow"><h2>Questions</h2>${faqList(t.faq)}</div></section>
+<section class="sec"><div class="wrap narrow"><h2>Questions</h2>${faqList(faq)}</div></section>
 <section class="sec tight"><div class="wrap">
   <h2>More free PDF tools</h2>
   <div class="tgrid">${related.map(card).join('')}</div>
