@@ -181,6 +181,75 @@ test('a write-scope agent sets an answer through the connector, and an open clie
   expect(row?.entity_name).toBe('Installed');
 });
 
+test('the person undoes a recorded connector change from survey-undo, on their own token', async ({ browser }) => {
+  const itemId = `surveyMarker-${RUN}-pundo`;
+  const checklistItemId = CHECKLIST_ID;
+  await seedTemplate();
+  await seedMarker(itemId);
+  await setFlag('on');
+
+  // A write-scope agent sets an answer — which records an agent_change row.
+  const agentCtx = await browser.newContext();
+  let tok;
+  try {
+    ({ tok } = await agentSignIn(await agentCtx.newPage(), E2E_ACCOUNTS.owner, `Undo agent ${RUN}`, 'Allow', { write: true }));
+  } finally {
+    await agentCtx.close();
+  }
+  const wrote = await mcp(tok.access_token, 'tools/call', {
+    name: 'set_answers',
+    arguments: { document_id: E2E_DOCUMENT.id, item_id: itemId, answers: [{ checklist_item_id: checklistItemId, value: 'N' }] },
+  });
+  expect(wrote?.result?.isError, toolText(wrote)).toBeFalsy();
+
+  const admin = adminClient();
+  await expect.poll(async () => {
+    const { data } = await admin.from('document_annotations')
+      .select('checklist_responses').eq('document_id', E2E_DOCUMENT.id).eq('annotation_id', itemId).maybeSingle();
+    return data?.checklist_responses?.[checklistItemId]?.selection ?? null;
+  }, { timeout: 30_000 }).toBe('N');
+
+  // The person reads their own agent_change row and presses Undo — survey-undo
+  // reverses it on the person's token (no connector flag) and stamps undone_at.
+  await expect.poll(async () => {
+    const { data } = await admin.from('agent_change')
+      .select('id').eq('document_id', E2E_DOCUMENT.id).eq('marker_id', itemId).eq('kind', 'answers').maybeSingle();
+    return data?.id ?? null;
+  }, { timeout: 30_000 }).not.toBeNull();
+  const { data: changeRow } = await admin.from('agent_change').select('id').eq('marker_id', itemId).eq('kind', 'answers').maybeSingle();
+  const changeId = changeRow.id;
+
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const ownerToken = (await owner.auth.getSession()).data.session.access_token;
+  const res = await fetch(functionUrl('survey-undo'), {
+    method: 'POST',
+    headers: { authorization: `Bearer ${ownerToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ change_id: changeId }),
+  });
+  const undoBody = await res.json();
+  expect(res.status, JSON.stringify(undoBody)).toBe(200);
+  expect(undoBody.ok).toBe(true);
+
+  // The answer is back to unset in the mirror, and the row is marked undone.
+  await expect.poll(async () => {
+    const { data } = await admin.from('document_annotations')
+      .select('checklist_responses').eq('document_id', E2E_DOCUMENT.id).eq('annotation_id', itemId).maybeSingle();
+    return data?.checklist_responses?.[checklistItemId]?.selection ?? null;
+  }, { timeout: 30_000 }).toBe(null);
+  const { data: afterRow } = await admin.from('agent_change').select('undone_at').eq('id', changeId).maybeSingle();
+  expect(afterRow?.undone_at).toBeTruthy();
+
+  // Undoing the same row again is a friendly no-op (already undone).
+  const again = await fetch(functionUrl('survey-undo'), {
+    method: 'POST',
+    headers: { authorization: `Bearer ${ownerToken}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ change_id: changeId }),
+  });
+  const againBody = await again.json();
+  expect(again.status).toBe(200);
+  expect(againBody.already_undone).toBe(true);
+});
+
 test('a read-only agent is refused the write, and never sees the tool', async ({ page }) => {
   const itemId = `surveyMarker-${RUN}-ro`;
   await seedMarker(itemId);
