@@ -255,7 +255,7 @@ jobs:
             timeout 300 bash .github/native-flows/android-undo-toast-check.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             adb reverse --remove-all
             maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            timeout 300 bash .github/native-flows/android-pdf-tools-offline.sh "$OUT" || echo "::warning::offline PDF tools check failed (not gating yet)"
+            timeout 300 bash .github/native-flows/android-pdf-tools-offline.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
       # The emulator has twice died mid-walk (adb: port 5554 refused). Record
       # whether the host's out-of-memory killer took it.
       - name: Host memory check
