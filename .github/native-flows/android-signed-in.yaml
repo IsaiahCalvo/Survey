@@ -36,7 +36,7 @@ name: android-signed-in
     text: "Open file"
     optional: true
 - extendedWaitUntil:
-    visible: "Pages"
+    visible: "More document options"
     timeout: 90000
 - takeScreenshot: 03-document-open
 - tapOn: "More document options"
