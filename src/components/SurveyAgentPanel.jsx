@@ -17,7 +17,7 @@ import { ANNOTATION_AGENT_FLAG } from '../../supabase/functions/_shared/annotati
 import { activeAgentDocument } from '../agent/webmcp.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
-import { cleanTranscript, heardOwnVoice, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
+import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
@@ -84,6 +84,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const [phase, setPhase] = useState('listening');
   const [hearing, setHearing] = useState(false);
   const micRef = useRef(null);
+  const recentItemsRef = useRef([]);
   const handsFreeRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -175,6 +176,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);
+      // Items worked on lately: speech to text expects these names most.
+      const touched = result.changes.map((c) => c.itemId).filter(Boolean);
+      if (touched.length) recentItemsRef.current = [...recentItemsRef.current.filter((id) => !touched.includes(id)), ...touched].slice(-8);
       historyRef.current = result.history;
       if (job.entryId) markEntry(job.entryId, { waiting: false });
       push({ role: 'agent', text: result.reply, changes: result.changes });
@@ -304,8 +308,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     setTranscribing(true);
     try {
       const audio = await blobToBase64(file);
-      const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(surveyAgentBridge.current) });
-      return cleanTranscript(out?.text);
+      const b = surveyAgentBridge.current;
+      const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
+      return snapItemNames(cleanTranscript(out?.text), Object.values(b?.markers || {}).map((m) => m?.name));
     } catch (err) {
       if (err?.code === 'offline') return null;
       push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.', code: err?.code });

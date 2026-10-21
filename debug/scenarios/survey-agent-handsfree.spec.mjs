@@ -22,7 +22,8 @@ import { join, resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..', '..');
 const PDF_FILE = 'print-fidelity.pdf';
 const CLIP = join(root, 'tests', 'fixtures', 'voice', 'two_turns.wav');
-const SAID = ['D-117, card reader installed.', 'No, D-118.'];
+// As speech to text really writes them: the app puts the names back.
+const SAID = ['D 117, card reader installed.', 'No, D1-18.'];
 // What the server voice sends back: a real WAV (a soft tone). 0.4 s by
 // default, so the next thing said comes after it; 8 s to test cutting in.
 const voiceWav = (seconds) => {
@@ -220,6 +221,9 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
     expect(clip.ms).toBeLessThan(5_000);
     expect(clip.hints).toEqual(expect.arrayContaining(['Card reader', 'D-117', 'D-118']));
   }
+  // What the model got: the names as written in the survey.
+  const said = log.turns.map((t) => t.messages.filter((m) => m.role === 'user').at(-1).content);
+  expect(said).toEqual(expect.arrayContaining(['D-117, card reader installed.', 'No, D-118.']));
   // Each reply was spoken once, without ids or the dash in tags: the first
   // in the server voice, the second (server voice failed) by the device.
   expect(log.speak).toEqual(['D 117: card reader is Y.', 'Took that back from D 117 and set card reader to Y on D 118.']);
