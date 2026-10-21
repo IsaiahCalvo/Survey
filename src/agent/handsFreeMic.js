@@ -5,7 +5,9 @@
 // cancellation, does not count. The speech gate itself is in voiceLoop.js.
 import { BARGE_IN_GATE, MAIN_GATE, createBandLevel, createSpeechGate, downsample, encodeWav } from './voiceLoop.js';
 
-const PRE_ROLL_MS = 350;
+// Kept from before the gate opens. In loud noise the gate opens a few
+// syllables late, so this is long enough to keep the start of an item name.
+const PRE_ROLL_MS = 600;
 
 export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOptions } = {}) {
   const media = navigator.mediaDevices;

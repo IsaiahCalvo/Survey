@@ -7,7 +7,7 @@ import { MAIN_GATE, createBandLevel, createSpeechGate, frameLevel } from '../../
 
 const RATE = 16_000;
 const FRAME = 341; // about 21 ms, as the mic's 1024-sample buffer at 48 kHz
-const PRE_ROLL_S = 0.35;
+const PRE_ROLL_S = 0.6; // as handsFreeMic.js
 
 function readWav(path) {
   const buf = readFileSync(path);
