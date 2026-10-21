@@ -35,6 +35,9 @@ on:
       perf_flags:
         description: 'Feature flags to turn on for the perf run, comma-separated (perf runs only)'
         default: ''
+      perf_markups:
+        description: 'Markups in the seeded set, and optionally the sheets they sit on, <count>[/<sheets>], e.g. 20000/30 (perf runs only)'
+        default: '4000'
       perf_suite:
         description: 'Which profilers to run, comma-separated: open, link (share-link open), memory, profile (perf runs only)'
         default: 'open,memory,profile'
@@ -125,9 +128,12 @@ jobs:
           FLAGS: ${{ inputs.perf_flags }}
           PERF_BASE: ${{ inputs.perf_base }}
           PERF_SUITE: ${{ inputs.perf_suite }}
+          PERF_MARKUPS: ${{ inputs.perf_markups }}
           BASE: http://127.0.0.1:5241
         run: |
           node scripts/e2e-local-supabase.mjs seed
+          export BIG_DOC_MARKUPS="${PERF_MARKUPS%%/*}"
+          if [[ "$PERF_MARKUPS" == */* ]]; then export BIG_DOC_HOT_PAGES="${PERF_MARKUPS##*/}"; fi
           node scripts/perf/big-doc-seed.mjs
           mkdir -p perf-out
           want() { [[ ",${PERF_SUITE:-open,memory,profile}," == *",$1,"* ]]; }
