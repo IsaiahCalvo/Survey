@@ -17,6 +17,7 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { jsonEqual } from './utils/jsonEqual.js';
+import { isCloudSaveConfirmed } from './utils/cloudSaveBaseline.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
@@ -23297,8 +23298,37 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const savedAnnotationsByPageRef = useRef({});
 
   // Mark annotations as dirty when they change
+  const cloudSyncKeyRef = useRef(null);
   useEffect(() => {
     if (!pdfId) return;
+
+    // Cloud documents are saved by sync: when sync reports "Up to date", the
+    // current marks are the saved copy, so the tab's unsaved dot clears. A
+    // new sync state counts at once. Marks that change while the status still
+    // reads "Up to date" (an edit, or the cloud copy loading on open) count
+    // only if it still reads so a moment later: an edit's upload flips it to
+    // pending in the meantime, and a failed upload never confirms.
+    const syncKey = `${cloudSyncStatus}|${cloudSyncQueueSize}`;
+    const syncChanged = cloudSyncKeyRef.current !== syncKey;
+    cloudSyncKeyRef.current = syncKey;
+    const confirmed = isCloudSaveConfirmed({
+      isCloudDocument: !!pdfFile?.id,
+      cloudSyncEnabled,
+      status: cloudSyncStatus,
+      queueSize: cloudSyncQueueSize,
+    });
+    if (confirmed && syncChanged) {
+      savedAnnotationsByPageRef.current = annotationsByPage;
+    }
+    let confirmTimer = null;
+    if (confirmed && !syncChanged) {
+      confirmTimer = setTimeout(() => {
+        if (cloudSyncKeyRef.current !== syncKey) return;
+        savedAnnotationsByPageRef.current = annotationsByPage;
+        setHasUnsavedAnnotations(false);
+        if (onUnsavedAnnotationsChange) onUnsavedAnnotationsChange(false);
+      }, 1500);
+    }
 
     // Compare current with saved to detect changes. jsonEqual answers exactly
     // like comparing the two JSON.stringify strings, without building them
@@ -23317,7 +23347,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onUnsavedAnnotationsChange(false);
       }
     }
-  }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange]);
+    return () => { if (confirmTimer) clearTimeout(confirmTimer); };
+  }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange, pdfFile?.id, cloudSyncEnabled, cloudSyncStatus, cloudSyncQueueSize]);
 
   // Hardening (audit 2026-04-30 #3): notify the App-level beforeunload guard
   // whenever this PDFViewer's annotation count flips between empty and
