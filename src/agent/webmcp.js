@@ -347,6 +347,9 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           if (!String(noteText || '').trim()) throw new Error('The note text is empty.');
           const size = doc.getPageSize(Number(page));
           if (!size) throw new Error('That page is not in the open document.');
+          if (Number(x) < 0 || Number(y) < 0 || Number(x) >= size.width || Number(y) >= size.height) {
+            throw new Error(`The note must start inside the page (${size.width} x ${size.height} points).`);
+          }
           const res = doc.addTextNote({ page: Number(page), x: Number(x), y: Number(y), width: width == null ? undefined : Number(width), text: String(noteText), color });
           if (res?.reason === 'off-page') throw new Error(`The note must start inside the page (${size.width} x ${size.height} points).`);
           if (!res?.ok) throw new Error('Could not add the note.');

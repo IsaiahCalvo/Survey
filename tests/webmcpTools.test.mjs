@@ -312,6 +312,8 @@ test('adding a note checks empty text, the page, and off-page placement', async 
   const add = (args) => annoTool('editor', doc, 'survey_add_text_note').execute(args);
   await assert.rejects(add({ page: 1, x: 10, y: 20, text: '   ' }), /empty/);
   await assert.rejects(add({ page: 2, x: 10, y: 20, text: 'x' }), /not in the open document/);
+  await assert.rejects(add({ page: 1, x: 10, y: 10000, text: 'x' }), /inside the page/);
+  await assert.rejects(add({ page: 1, x: 700, y: 20, text: 'x' }), /inside the page/);
   assert.equal(doc.addedNotes.length, 0);
   const offPage = { ...fakeAnnoDoc(), addTextNote: () => ({ ok: false, reason: 'off-page' }) };
   await assert.rejects(annoTool('editor', offPage, 'survey_add_text_note').execute({ page: 1, x: 10, y: 20, text: 'x' }), /inside the page/);

@@ -32888,6 +32888,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         ? { x: m.bounds.x, y: m.bounds.y, width: m.bounds.width, height: m.bounds.height }
         : null,
     } : null);
+    // Find one normal annotation across pages: { page, index, obj } or null.
+    // A local helper so the bridge method and the mutation callbacks share it
+    // (agentMarkerStateRef.current holds only state, not these methods).
+    const findAnnotationById = (wantedId) => {
+      const byPage = agentMarkerStateRef.current.getAnnotationsByPage();
+      for (const [page, pageJson] of Object.entries(byPage)) {
+        const objects = pageJson?.objects || [];
+        const index = objects.findIndex((o) => (o.id || o.data?.id) === wantedId);
+        if (index >= 0) return { page: Number(page), index, obj: objects[index] };
+      }
+      return null;
+    };
     return registerAgentDocument({
       documentId: pdfFile?.id || null,
       surveyReady: () => agentMarkerStateRef.current.surveyReady,
@@ -32976,15 +32988,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // step from the page diff and runs the save-time lock guard.
       annotationIdOf: (obj) => (obj && (obj.id || obj.data?.id)) || null,
       // Find one annotation across pages: { page, index, obj } or null.
-      findAnnotation: (wantedId) => {
-        const byPage = agentMarkerStateRef.current.getAnnotationsByPage();
-        for (const [page, pageJson] of Object.entries(byPage)) {
-          const objects = pageJson?.objects || [];
-          const index = objects.findIndex((o) => (o.id || o.data?.id) === wantedId);
-          if (index >= 0) return { page: Number(page), index, obj: objects[index] };
-        }
-        return null;
-      },
+      findAnnotation: findAnnotationById,
       listAnnotations: () => {
         const byPage = agentMarkerStateRef.current.getAnnotationsByPage();
         const out = [];
@@ -33013,7 +33017,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const size = sizes?.[page];
         if (!size) return { ok: false, reason: 'not-found' };
         const wrapWidth = Math.max(24, Number(width) || 160);
-        if (x < 0 || y < 0 || x + wrapWidth > size.width) return { ok: false, reason: 'off-page' };
+        if (x < 0 || y < 0 || y >= size.height || x + wrapWidth > size.width) return { ok: false, reason: 'off-page' };
         let obj = buildNewTextCommitJSON({
           text, left: x, top: y, innerWrapWidth: wrapWidth - 2 * TEXT_PADDING, autoFit: false,
           fill: color || '#111827', stroke: 'transparent', strokeWidth: 0,
@@ -33030,7 +33034,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Replace a text note's text (height re-fits). Gated like a human edit.
       editTextNote: (id, { text }) => {
         const { viewerId, documentOwnerId: ownerId, saveAnnotations, getAnnotationsByPage } = agentMarkerStateRef.current;
-        const found = agentMarkerStateRef.current.findAnnotation(id);
+        const found = findAnnotationById(id);
         if (!found) return { ok: false, reason: 'not-found' };
         const { page, index, obj } = found;
         if (!(obj.type === 'Textbox' || obj.type === 'textbox' || obj.type === 'i-text' || obj.type === 'text')) {
@@ -33048,7 +33052,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Delete any normal annotation by id. Gated like a human delete.
       deleteAnnotation: (id) => {
         const { viewerId, documentOwnerId: ownerId, saveAnnotations, getAnnotationsByPage } = agentMarkerStateRef.current;
-        const found = agentMarkerStateRef.current.findAnnotation(id);
+        const found = findAnnotationById(id);
         if (!found) return { ok: false, reason: 'not-found' };
         const { page, index, obj } = found;
         if (!canDelete({ annotation: obj, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
