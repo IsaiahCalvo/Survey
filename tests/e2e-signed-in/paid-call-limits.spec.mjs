@@ -1,6 +1,6 @@
 // Short-window limits on paid calls (migration 20261022010100): the voice
 // agent's per-minute burst cap and the profile-change email cap; and the
-// daily cap on voice logs (20261022190000).
+// daily cap on voice logs (20261024120000).
 import { E2E_ACCOUNTS } from './accounts.mjs';
 import { adminClient, apiClientFor, expect, test } from './helpers.mjs';
 
