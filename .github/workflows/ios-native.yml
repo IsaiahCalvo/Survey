@@ -244,6 +244,8 @@ jobs:
             # A slow CI emulator pops "Pixel Launcher isn't responding" over the app.
             adb shell settings put global hide_error_dialogs 1
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            # Editor first: the owner sign-in next clears its state.
+            timeout 400 bash .github/native-flows/android-editor-project-menu.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-pen-mode.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-counter-after-arrow.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
@@ -253,8 +255,6 @@ jobs:
             adb reverse --remove-all
             maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-pdf-tools-offline.sh "$OUT" || echo "::warning::offline PDF tools check failed (not gating yet)"
-            adb reverse tcp:54421 tcp:54421
-            timeout 400 bash .github/native-flows/android-editor-project-menu.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
       # The emulator has twice died mid-walk (adb: port 5554 refused). Record
       # whether the host's out-of-memory killer took it.
       - name: Host memory check
