@@ -747,6 +747,25 @@ const ICON_RENDERERS = {
     // the old 5..19 diagonal they measured 22% smaller than Rectangle and 30%
     // smaller than Ellipse in a row of identical buttons — the widest size break
     // in the app. The arrowhead legs keep their old half-the-span proportion.
+    // Measure tools (Drawboard Measure group): Length = a dimension line with
+    // end ticks, Area = a dashed square with a corner tick, Scale = a ruler.
+    measureLength: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 12H20M4 8V16M20 8V16M7 12L9 10M7 12L9 14M17 12L15 10M17 12L15 14" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    measureArea: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 4H20V20H4Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M8 16L16 8M8 12L12 8M12 16L16 12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    measureScale: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M2 9H22V15H2Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M6 9V12M10 9V13M14 9V12M18 9V13" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
     line: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <line x1="3" y1="21" x2="21" y2="3" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
