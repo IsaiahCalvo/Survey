@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# PDF tools with no network (#1029): run after android-offline-relaunch.yaml,
-# with adb reverse removed so the local API is gone. Opens the cached sample
-# drawing, rotates it, checks Save fails with the offline message, downloads
-# (share sheet), then compresses and downloads again. Usage: <script> OUT_DIR
+# PDF tools with no network (#1029): the tools must work on a document that is
+# already open when the connection drops. Runs after android-offline-relaunch.yaml.
+# A cloud document can't be opened from scratch offline (the device keeps no
+# copy it may use without the server's access check, see pdfByteCache.js), so
+# reconnect the local API, open the sample drawing, then cut it again. Then:
+# rotate, check Save fails with the offline message, download (share sheet),
+# compress and download again. Usage: <script> OUT_DIR
 set -euo pipefail
 OUT="$1"
+adb reverse tcp:54421 tcp:54421
 maestro test --test-output-dir "$OUT" .github/native-flows/android-pdf-tools-offline.yaml
+# Let the whole file arrive, then drop the connection.
+sleep 8
+adb reverse --remove-all
 PID=$(adb shell pidof com.kalvoe.survey | tr -d '\r')
 adb forward tcp:9222 "localabstract:webview_devtools_remote_$PID"
 ev() { node .github/native-flows/webview-storage.mjs --eval "$1"; }
