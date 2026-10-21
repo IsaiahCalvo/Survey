@@ -27,3 +27,15 @@ size=$(ev "(() => { const g = [...document.querySelectorAll('g[data-annotation-i
 echo "counter size after arrow: ${size}px"
 [ "$size" != "none" ] && [ "$size" -ge 12 ] || { echo "::error::Counter after Arrow is not a full marker (${size}px)"; exit 1; }
 echo "Counter check passed."
+# #1055: revision cloud in the Shapes row, and the Measure menu.
+pick Shapes
+pick Cloud
+adb shell input stylus swipe $((X - 150)) $((Y + 300)) $((X + 100)) $((Y + 450)) 300
+sleep 2
+clouds=$(ev "document.querySelectorAll('g[data-annotation-index]').length")
+echo "annotations after cloud: $clouds"
+adb exec-out screencap -p > "$OUT/09-revision-cloud.png"
+pick Measure
+sleep 1
+adb exec-out screencap -p > "$OUT/10-measure-menu.png"
+echo "Cloud and Measure check passed."

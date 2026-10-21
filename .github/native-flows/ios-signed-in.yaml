@@ -41,6 +41,16 @@ name: ios-signed-in
 - tapOn:
     point: 40%, 40%
 - takeScreenshot: 04-counter-after-arrow
+# #1055: revision cloud and the Measure menu.
+- tapOn: "Shapes"
+- tapOn: "Cloud"
+- swipe:
+    start: 30%, 70%
+    end: 60%, 78%
+    duration: 400
+- takeScreenshot: 04b-revision-cloud
+- tapOn: "Measure"
+- takeScreenshot: 04c-measure-menu
 # Leave the draw tool so the menu taps do not draw.
 - tapOn:
     text: "Pan"
