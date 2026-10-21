@@ -2,8 +2,8 @@
    Drawboard uses ... it's way better"; supersedes the 2026-10-04 one-quiet-line
    decision). Placeholders are shaped like the real rows so nothing moves when
    the data lands. The whole group waits SKELETON_SHOW_AFTER_MS (fast loads
-   show nothing) and fades in; then one soft highlight sweeps across the
-   blocks. Reduced motion: still blocks, no sweep. */
+   show nothing) and fades in. Blocks stay still: Drawboard uses no shimmer
+   anywhere (recorded 2026-10-20). */
 .sk {
   --sk-base: var(--surface-3);
   --sk-glow: color-mix(in srgb, var(--text-3) 16%, var(--surface-3));
@@ -16,12 +16,8 @@
   display: block;
   flex: none;
   border-radius: 4px;
+  /* Static, like Drawboard (recorded 2026-10-20): no shimmer anywhere. */
   background-color: var(--sk-base, var(--surface-3));
-  background-image: linear-gradient(90deg, transparent 0%, var(--sk-glow, rgba(255, 255, 255, 0.06)) 50%, transparent 100%);
-  background-size: 200% 100%;
-  background-repeat: no-repeat;
-  background-position: 150% 0;
-  animation: skSweep 1.6s ease-in-out infinite;
 }
 .sk-block.is-round { border-radius: 50%; }
 .sk-block.is-paper { background-color: color-mix(in srgb, var(--text-3) 12%, var(--surface-3)); border-radius: 2px; }
@@ -30,13 +26,8 @@
   clip: rect(0 0 0 0); white-space: nowrap;
 }
 @keyframes skIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes skSweep {
-  0% { background-position: 150% 0; }
-  100% { background-position: -50% 0; }
-}
 @media (prefers-reduced-motion: reduce) {
   .sk { animation-duration: 1ms; }
-  .sk-block { animation: none; background-image: none; }
 }
 
 /* ── Home: Documents ledger ─────────────────────────────────────────── */
@@ -95,13 +86,8 @@
 .sk-search-row { padding: 9px 0; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); }
 
 /* A page not drawn yet: the real page-shaped white paper keeps its size, and
-   a faint sweep says it is coming (Pages panel thumbnails). */
+   a faint still tint says it is coming (Pages panel thumbnails). */
 .sk-paper-sweep {
   position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(90deg, transparent 0%, rgba(20, 24, 32, 0.07) 50%, transparent 100%) no-repeat;
-  background-size: 200% 100%; background-position: 150% 0;
-  animation: skSweep 1.6s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .sk-paper-sweep { animation: none; background: rgba(20, 24, 32, 0.04); }
+  background: rgba(20, 24, 32, 0.04);
 }
