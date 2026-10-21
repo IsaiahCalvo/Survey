@@ -19,6 +19,8 @@ import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
 import { useStorage } from '../hooks/useDatabase';
+import { getDocumentCollaborators } from '../services/documentAnnotationService';
+import { documentTeamRows } from './documentTeam.js';
 import Spinner from '../components/Spinner';
 import DismissBarrier from '../components/DismissBarrier';
 import { clickableProps } from '../utils/keyActivate';
@@ -337,6 +339,26 @@ export default function DocumentsLedger({
   const selectedDocs = docs.filter((d) => selDocs.has(d.id));
   const bulkSelected = !docSelectMode && selectedDocs.length >= 2;
   const previewDoc = !docSelectMode && selectedDocs.length === 1 ? selectedDocs[0] : sel;
+  // Team for the open preview (desktop panel or phone detail): owner + collaborators.
+  const teamDocRaw = (mobileDetailDoc || previewDoc)?.raw || null;
+  const teamDocId = teamDocRaw?.id || null;
+  const [teamCollab, setTeamCollab] = useState({ id: null, rows: [] });
+  useEffect(() => {
+    if (!teamDocId) return undefined;
+    let live = true;
+    getDocumentCollaborators(teamDocId)
+      .then((res) => { if (live) setTeamCollab({ id: teamDocId, rows: res?.data || [] }); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [teamDocId]);
+  const teamRows = documentTeamRows(teamDocRaw, teamCollab.id === teamDocId ? teamCollab.rows : [], user);
+  const renderTeam = (nameStyle) => teamRows.map((p) => (
+    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <Avatar initials={initialsOf(p.name)} id={p.id} size={22} />
+      <span style={nameStyle}>{p.isMe ? `${p.name} (you)` : p.name}</span>
+      {p.role === 'owner' && p.name !== 'Owner' ? <span className="meta" style={{ fontSize: 11 }}>Owner</span> : null}
+    </div>
+  ));
   const applySelection = (mode, d) => {
     const next = nextDocumentSelection({ order: docOrder, selected: selDocs, anchor: anchorRef.current, id: d.id, mode });
     anchorRef.current = next.anchor;
@@ -960,14 +982,11 @@ export default function DocumentsLedger({
                   }
                 />
               </div>
-              {/* Team — always shown directly under the preview: at least the
-                  document's owner (the signed-in user). A real teammates
-                  feature will add more people here later. */}
+              {/* Team — the document's owner (uploader), then its collaborators. */}
               <div style={{ marginTop: 14, flex: 'none' }}>
                 <div className="section-label">Team</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                  <Avatar initials={initialsOf(user?.name || user?.email || 'You')} id={user?.id || user?.email || null} size={22} />
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{user?.name || user?.email?.split('@')[0] || 'You'}</span>
+                <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+                  {renderTeam({ fontSize: 12, fontWeight: 600 })}
                 </div>
               </div>
               {/* Last edited + Uploaded dates. */}
@@ -1043,9 +1062,13 @@ export default function DocumentsLedger({
               <div className="documents-mobile-detail-facts">
                 <div>
                   <span>Team</span>
-                  <div className="documents-mobile-detail-owner">
-                    <Avatar initials={initialsOf(user?.name || user?.email || 'You')} id={user?.id || user?.email || null} size={22} />
-                    <strong>{user?.name || user?.email?.split('@')[0] || 'You'}</strong>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {teamRows.map((p) => (
+                      <div key={p.id} className="documents-mobile-detail-owner">
+                        <Avatar initials={initialsOf(p.name)} id={p.id} size={22} />
+                        <strong>{p.isMe ? `${p.name} (you)` : p.name}</strong>
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div><span>Last edited</span><strong>{mobileDetailDoc.lastEditedAbs}</strong></div>
