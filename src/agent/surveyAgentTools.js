@@ -56,6 +56,37 @@ const out = (value) => (typeof value === 'string' ? value : JSON.stringify(value
 
 class ToolError extends Error {}
 
+// A browser agent has no file to drop, so survey_add_photo takes the image as
+// base64 (optionally a data: URL). Decode it to a Blob the upload path accepts,
+// and cap the size so a huge paste can't be forced through.
+const PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+function decodePhotoBase64(input) {
+  const raw = String(input || '').trim();
+  if (!raw) throw new ToolError('No image data given.');
+  const m = /^data:(image\/[a-z0-9.+-]+)?(;base64)?,(.*)$/is.exec(raw);
+  let mime = 'image/jpeg';
+  let b64 = raw;
+  if (m) {
+    if (m[1]) mime = m[1].toLowerCase();
+    b64 = m[3];
+  }
+  b64 = b64.replace(/\s+/g, '');
+  if (!mime.startsWith('image/')) throw new ToolError('Only image data is allowed.');
+  let bytes;
+  try {
+    const bin = atob(b64);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  } catch {
+    throw new ToolError('The image data is not valid base64.');
+  }
+  if (!bytes.length) throw new ToolError('The image data is empty.');
+  if (bytes.length > PHOTO_MAX_BYTES) {
+    throw new ToolError(`The photo is too large (${Math.round(bytes.length / (1024 * 1024))}MB). The limit is ${PHOTO_MAX_BYTES / (1024 * 1024)}MB.`);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
 /**
  * attachments: Map of attachment id -> { file, kind, name } the person added
  * in this chat. documentId: the document the turn started on; once the person
@@ -298,6 +329,44 @@ export function createSurveyAgentToolbox({
         content: `Attached ${refs.length} file${refs.length === 1 ? '' : 's'} to ${nameOf(marker)}.`,
         change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${refs.length} file${refs.length === 1 ? '' : 's'} attached`, fields: [field] },
       };
+    },
+
+    async add_photo({ item_id: itemId, image_base64: imageBase64 } = {}) {
+      const b = bridge();
+      writable(b);
+      const marker = markerOf(b, itemId);
+      const blob = decodePhotoBase64(imageBase64);
+      const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
+      const ref = await b.uploadMedia(itemId, blob, 'photo');
+      b.addMediaRefs(itemId, [ref]);
+      field.afterMedia = mediaCountOf(marker.note) + 1;
+      return {
+        content: `Added a photo to ${nameOf(marker)}.`,
+        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: photo added`, fields: [field] },
+      };
+    },
+
+    export_summary() {
+      const b = bridge();
+      const { list } = categoryIndex(b.template);
+      const markers = Object.values(b.markers || {});
+      const catCounts = new Map();
+      const entCounts = new Map();
+      for (const marker of markers) {
+        if (marker?.categoryId) catCounts.set(marker.categoryId, (catCounts.get(marker.categoryId) || 0) + 1);
+        const key = marker?.entityId || null;
+        entCounts.set(key, (entCounts.get(key) || 0) + 1);
+      }
+      const entities = entitiesOf(b.template);
+      const lines = [`${b.template.name || 'Survey'} — ${markers.length} item${markers.length === 1 ? '' : 's'}`, '', 'By category:'];
+      for (const { category } of list) lines.push(`- ${category.name}: ${catCounts.get(category.id) || 0}`);
+      if (entities.length) {
+        lines.push('', 'By status:');
+        for (const entity of entities) lines.push(`- ${entity.name}: ${entCounts.get(entity.id) || 0}`);
+        const none = entCounts.get(null) || 0;
+        if (none) lines.push(`- (no status): ${none}`);
+      }
+      return { content: lines.join('\n') };
     },
 
     async find_on_plan({ text } = {}) {
