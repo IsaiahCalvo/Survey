@@ -17,6 +17,10 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const TOKEN_TTL_SECONDS = 3600;
 const REFRESH_TTL_SECONDS = 30 * 24 * 3600;
 const POLL_INTERVAL_SECONDS = 5;
+// Unclaimed codes one address may hold at once. A code lives 10 minutes, so a
+// real agent never needs more than a few; a flood stops here instead of
+// filling the table. Per address, so one caller cannot lock everyone out.
+const MAX_PENDING_PER_IP = 5;
 
 function randomCode(length: number) {
   // 32 letters divide 256 evenly, so every letter is equally likely.
@@ -62,6 +66,15 @@ const BODY_SCHEMA = {
   refresh_token: s.string({ max: 200, optional: true }),
 };
 
+// Prefer the headers the edge proxy sets itself over x-forwarded-for, whose
+// first entry a caller can write.
+function callerIp(req: Request) {
+  return (req.headers.get('cf-connecting-ip')
+    || req.headers.get('x-real-ip')
+    || (req.headers.get('x-forwarded-for') || '').split(',')[0]
+    || '').trim();
+}
+
 const siteUrl = () => (Deno.env.get('SITE_URL') || 'https://surveytool.app').replace(/\/$/, '');
 
 Deno.serve(async (req) => {
@@ -87,12 +100,22 @@ Deno.serve(async (req) => {
     // Old unclaimed codes are useless; drop them so the table stays small.
     await admin.from('agent_links').delete()
       .eq('status', 'pending').lt('code_expires_at', new Date().toISOString());
+    const ip = callerIp(req);
+    const ipHash = ip ? await sha256(`agent-start:${ip}`) : null;
+    if (ipHash) {
+      const { count, error: countError } = await admin.from('agent_links')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending').eq('client_ip_hash', ipHash);
+      if (countError) return json(500, { error: 'could_not_start' });
+      if ((count ?? 0) >= MAX_PENDING_PER_IP) return json(429, { error: 'slow_down' });
+    }
     const deviceCode = randomSecret('sdc_');
     const userCode = randomCode(8);
     const { error } = await admin.from('agent_links').insert({
       agent_name: agentName,
       user_code: userCode,
       device_code_hash: await sha256(deviceCode),
+      client_ip_hash: ipHash,
     });
     if (error) return json(500, { error: 'could_not_start' });
     return json(200, {

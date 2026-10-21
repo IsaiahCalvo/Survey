@@ -47,3 +47,13 @@ test('refresh keys: hashed, one use, cleared on remove', () => {
   assert.match(sql, /refresh_token_hash = null/);
   assert.ok(!/grant select[^;]*refresh_token_hash/.test(sql), 'users never read refresh hashes');
 });
+
+test('agent-auth start caps pending codes per caller address, storing only a hash', () => {
+  const fn = read('supabase/functions/agent-auth/index.ts');
+  assert.match(fn, /const MAX_PENDING_PER_IP = \d+;/);
+  assert.match(fn, /\.eq\('status', 'pending'\)\.eq\('client_ip_hash', ipHash\)/);
+  assert.match(fn, /json\(429, \{ error: 'slow_down' \}\)/);
+  assert.match(fn, /client_ip_hash: ipHash/);
+  assert.doesNotMatch(fn, /client_ip:/);
+  assert.match(read('supabase/migrations/20261021190100_agent_link_ip_limit.sql'), /ADD COLUMN IF NOT EXISTS client_ip_hash text/);
+});
