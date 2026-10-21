@@ -156,6 +156,23 @@ export function boundsCover(bounds, box) {
 const MAX_PAGES = 300;
 const wordsCache = new WeakMap();
 
+// A page's words, read once per document handle; a page with no text yet is
+// asked again next time (the person may have run text recognition since).
+async function readPageWords(doc, page) {
+  let cache = wordsCache.get(doc);
+  if (!cache) { cache = new Map(); wordsCache.set(doc, cache); }
+  let entry = cache.get(page);
+  if (!entry || entry.source === 'none') {
+    try {
+      entry = await doc.getPageWords(page);
+    } catch {
+      entry = { words: [], source: 'none' };
+    }
+    cache.set(page, entry);
+  }
+  return entry;
+}
+
 /**
  * Searches every page of an open document handle (PDFViewer's agent handle:
  * getPageCount, getPageWords) for a tag. Returns { matches, unreadPages }:
@@ -163,25 +180,79 @@ const wordsCache = new WeakMap();
  */
 export async function findTagInDocument(doc, query) {
   if (!doc?.getPageWords || !doc?.getPageCount) return { matches: [], unreadPages: [] };
-  let cache = wordsCache.get(doc);
-  if (!cache) { cache = new Map(); wordsCache.set(doc, cache); }
   const count = Math.min(doc.getPageCount() || 0, MAX_PAGES);
   const pages = [];
   const unreadPages = [];
   for (let page = 1; page <= count; page += 1) {
-    let entry = cache.get(page);
-    if (!entry || entry.source === 'none') {
-      try {
-        entry = await doc.getPageWords(page);
-      } catch {
-        entry = { words: [], source: 'none' };
-      }
-      cache.set(page, entry);
-    }
+    const entry = await readPageWords(doc, page);
     if (entry.source === 'none') unreadPages.push(page);
     else pages.push({ page, words: entry.words, source: entry.source });
   }
   return { matches: findTagOnPages(query, pages), unreadPages };
+}
+
+/**
+ * The shape of a tag from one example, for "add all doors on this sheet":
+ * "D-117" means the letters D, then 2 to 4 digits, then maybe one letter
+ * (D-12, D-117A, D1180). Plain numbers ("117") match too much on a plan
+ * (sizes, notes), so an example needs letters before or after its digits.
+ * Returns { test(compact), name(compact) } or null.
+ */
+export function tagShape(example) {
+  const raw = String(example || '').trim();
+  const m = /^([a-z]*)([^a-z0-9]*)(\d+)([a-z]?)$/i.exec(raw.replace(/\s+/g, ' '));
+  if (!m) return null;
+  const [, prefix, sep, digits, suffix] = m;
+  if (!prefix && !suffix) return null;
+  const min = prefix ? Math.max(1, digits.length - 1) : digits.length;
+  const max = digits.length + 1;
+  const re = new RegExp(`^${prefix.toLowerCase()}(\\d{${min},${max}})(${suffix ? '[a-z]' : '[a-z]?'})$`);
+  return {
+    test: (compactText) => re.test(compactText),
+    // "d118a" in the example's own style: "D-118A".
+    name: (compactText) => {
+      const [, d, s] = re.exec(compactText);
+      return `${prefix.toUpperCase()}${prefix ? sep.trim() || (sep ? ' ' : '') : ''}${d}${s.toUpperCase()}`;
+    },
+  };
+}
+
+const MAX_TAGS = 500;
+
+/**
+ * Every tag shaped like `example` on one page's words, once per name (the
+ * first place it is printed). Each: { page, name, text, box, source }.
+ */
+export function findTagsLikeOnPage(example, { page, words = [], source = 'text' }) {
+  const shape = tagShape(example);
+  if (!shape) return [];
+  const found = new Map();
+  for (let i = 0; i < words.length && found.size < MAX_TAGS; i += 1) {
+    let joined = '';
+    const run = [];
+    let best = null;
+    for (let j = i; j < words.length && j < i + MAX_JOIN; j += 1) {
+      if (run.length && !adjacent(run[run.length - 1].box, words[j].box)) break;
+      run.push(words[j]);
+      joined += compact(words[j].text);
+      if (shape.test(joined)) best = { joined, run: [...run] };
+    }
+    if (!best) continue;
+    i += best.run.length - 1;
+    const name = shape.name(best.joined);
+    if (!found.has(name)) {
+      found.set(name, { page, name, text: best.run.map((w) => w.text).join(' '), box: union(best.run.map((w) => w.box)), source });
+    }
+  }
+  return [...found.values()];
+}
+
+/** findTagsLikeOnPage on one page of an open document handle: { matches, unread }. */
+export async function findTagsLikeInDocument(doc, example, page) {
+  if (!doc?.getPageWords) return { matches: [], unread: true };
+  const entry = await readPageWords(doc, page);
+  if (entry.source === 'none') return { matches: [], unread: true };
+  return { matches: findTagsLikeOnPage(example, { page, words: entry.words, source: entry.source }), unread: false };
 }
 
 /**

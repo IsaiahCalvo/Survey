@@ -32833,6 +32833,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return { words: [], source: 'none' };
       },
       getPageCount: () => agentMarkerStateRef.current.pdfDoc?.numPages || 0,
+      getCurrentPage: () => pageNumRef.current || 1,
       // Survey agent (create_item): a named marker in a given category, the
       // same commit a placed marker gets. Returns the new id.
       createSurveyMarker: ({ page, bounds, moduleId, categoryId, name, entityId }) => {

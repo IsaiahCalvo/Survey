@@ -4,8 +4,11 @@ import {
   boundsCover,
   findTagInDocument,
   findTagOnPages,
+  findTagsLikeInDocument,
+  findTagsLikeOnPage,
   markerBoxAroundTag,
   ocrWordsToWords,
+  tagShape,
   textItemsToWords,
 } from '../src/agent/planText.js';
 import { createSurveyAgentToolbox } from '../src/agent/surveyAgentTools.js';
@@ -171,4 +174,61 @@ test('a viewer cannot add items', async () => {
   const { matches } = JSON.parse((await box.run('find_on_plan', { text: 'D-119' })).content);
   assert.equal((await box.run('create_item', { name: 'D-119', category_id: 'cat-door', plan_match_id: matches[0].id, entity_id: null })).isError, true);
   assert.equal(created.length, 0);
+});
+
+test('a tag shape from one example: same letters, about as many digits, maybe a letter after', () => {
+  const door = tagShape('D-117');
+  assert.deepEqual(['d117', 'd12', 'd1180', 'd117a', 'd1', 'd11712', 'sd117', 'dr117', '117'].filter(door.test),
+    ['d117', 'd12', 'd1180', 'd117a']);
+  assert.equal(door.name('d117a'), 'D-117A');
+  assert.equal(tagShape('CAM 7').name('cam12'), 'CAM 12');
+  assert.equal(tagShape('101A').test('205b'), true);
+  assert.equal(tagShape('101A').test('205'), false, 'bare numbers are sizes and notes');
+  assert.equal(tagShape('117'), null);
+  assert.equal(tagShape('Door'), null);
+});
+
+test('every tag like the example on a page, joined across words, once each', async () => {
+  const w = (text, x, y = 100, width = 20) => ({ text, box: { x, y, width, height: 8 } });
+  const words = [
+    w('DOOR', 0), w('D-117', 40), w('D-', 100, 200, 8), w('118', 110, 200, 14),
+    w('D-117', 300, 400), w('SD-120', 40, 500), w('D-121A', 200, 500), w('12"', 400, 500), w('D-', 10, 600), w('122', 300, 600),
+  ];
+  const found = findTagsLikeOnPage('D-117', { page: 4, words });
+  assert.deepEqual(found.map((m) => m.name), ['D-117', 'D-118', 'D-121A']);
+  assert.deepEqual(found[0].box, { x: 40, y: 100, width: 20, height: 8 }, 'first place printed');
+  assert.deepEqual(found[1].box, { x: 100, y: 200, width: 24, height: 8 });
+
+  const doc = { getPageWords: async (page) => (page === 2 ? { words: [], source: 'none' } : { words, source: 'text' }) };
+  assert.equal((await findTagsLikeInDocument(doc, 'D-117', 4)).matches.length, 3);
+  assert.deepEqual(await findTagsLikeInDocument(doc, 'D-117', 2), { matches: [], unread: true });
+});
+
+test('add_all_from_plan adds every new door on the page as one undoable reply', async () => {
+  const words = [
+    { text: 'D-118', box: { x: 110, y: 100, width: 24, height: 8 } },
+    { text: 'D-119', box: { x: 300, y: 100, width: 24, height: 8 } },
+    { text: 'D-120', box: { x: 400, y: 100, width: 24, height: 8 } },
+  ];
+  const { bridge, markers, created, deleted } = planBridge({
+    getCurrentPage: () => 2,
+    findAllOnPlan: async (like, page) => ({ matches: findTagsLikeOnPage(like, { page, words }), unread: page !== 2 }),
+  });
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const ctx = JSON.parse((await box.run('get_survey_context', {})).content);
+  assert.equal(ctx.categories[0].example_item, 'D-118');
+  assert.equal(ctx.page_on_screen, 2);
+
+  const res = await box.run('add_all_from_plan', { category_id: 'cat-door', like: 'D-118', page: null, entity_id: null });
+  assert.equal(res.isError, false);
+  assert.deepEqual(created.map((c) => [c.name, c.page]), [['D-119', 2], ['D-120', 2]]);
+  assert.match(res.content, /Found 3 tags like D-118 on page 2\. Added 2 as Door: D-119, D-120\. 1 was already an item\./);
+  assert.equal(res.changes.length, 2);
+  assert.deepEqual(box.undo(res.changes), { reverted: 2, kept: 0 });
+  assert.deepEqual(deleted.sort(), ['new-1', 'new-2']);
+  assert.equal(Object.keys(markers).length, 1);
+
+  assert.match((await box.run('add_all_from_plan', { category_id: 'cat-door', like: 'D-118', page: 5, entity_id: null })).content, /Page 5 has no text/);
+  assert.equal((await box.run('add_all_from_plan', { category_id: 'cat-door', like: '118', page: 2, entity_id: null })).isError, true);
+  assert.equal((await box.run('add_all_from_plan', { category_id: 'cat-nope', like: 'D-118', page: 2, entity_id: null })).isError, true);
 });

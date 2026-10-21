@@ -138,6 +138,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
         ? await toolbox.run(c.function.name, args)
         : { content: 'The tool input was not valid JSON. Try again.', isError: true };
       if (result.change) changes.push(result.change);
+      if (result.changes) changes.push(...result.changes);
       messages.push({ role: 'tool', tool_call_id: c.id, content: result.isError ? `Error: ${result.content}` : result.content });
       // Let the panel re-render so the next tool reads the new state.
       await yieldToApp();

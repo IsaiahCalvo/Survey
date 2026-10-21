@@ -34,7 +34,7 @@ import SurveyAgentPanel from './components/SurveyAgentPanel.jsx';
 import { isSurveyAgentEnabled } from './agent/surveyAgentFlag.js';
 import { surveyAgentBridge } from './agent/surveyAgentTools.js';
 import { activeAgentDocument } from './agent/webmcp.js';
-import { findTagInDocument } from './agent/planText.js';
+import { findTagInDocument, findTagsLikeInDocument } from './agent/planText.js';
 import { SHEET_DETENT_STANDARD, endSheetReveal, revealInSheet, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useSheetFocus } from './mobile/useSheetFocus';
 // Phone Survey panel look (layout B, one card divided). Every rule in it is
@@ -1571,6 +1571,8 @@ const SurveySpacesRail = ({
       },
       // Phase 2: tags on the plan, and adding them as items (PDFViewer's handle).
       findOnPlan: (text) => findTagInDocument(activeAgentDocument(), text),
+      findAllOnPlan: (like, page) => findTagsLikeInDocument(activeAgentDocument(), like, page),
+      getCurrentPage: () => activeAgentDocument()?.getCurrentPage?.() || null,
       getPageSize: (page) => activeAgentDocument()?.getPageSize?.(page) || null,
       createItem: (spec) => activeAgentDocument()?.createSurveyMarker?.(spec) || null,
       deleteMarker: (annotationId) => handleDeleteSurveyMarkerItem(annotationId),
