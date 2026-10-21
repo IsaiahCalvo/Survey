@@ -287,7 +287,7 @@
   align-self: center;
 }
 .survey-agent-dots.is-phone { min-width: 48px; height: 32px; border-radius: 16px; }
-.survey-agent-dots[aria-pressed="true"] { background: var(--accent-soft, rgba(216, 168, 78, 0.25)); }
+.survey-agent-dots[aria-pressed="true"] { background: var(--pressed, rgba(0, 0, 0, 0.12)); }
 .survey-agent-dots__dot {
   width: 5px;
   height: 5px;
