@@ -24,6 +24,7 @@
  * method or callback (PDFViewer assumes the handle never throws).
  */
 import { registerAgentViewer } from '../agent/webmcp';
+import { createValueSignal } from '../utils/valueSignal.js';
 import {
   forwardRef,
   memo,
@@ -34,6 +35,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -732,7 +734,11 @@ function applyDetailTileStyle(canvas, box, atScale, atRotation) {
 // pinch-live / idle on the phone, where no tile raster runs while the fingers
 // are down — each one competed with touchmove on the main thread. The tile
 // re-sharpens once, on release.
-const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, liveZoomRef, liveZoomSignal, interactionRef, glideSettlingRef, scrollerRef, isMobileSurface }) {
+// The signal reaches the tiles through a small store, not a prop: as a prop it
+// made the whole page list (one div per sheet) rebuild on every wheel-zoom
+// frame on desktop; now only the mounted tiles re-render.
+const DetailTile = memo(function DetailTile({ pdf, pageIndex, scale, rotation, liveZoomRef, liveZoomSignalStore, interactionRef, glideSettlingRef, scrollerRef, isMobileSurface }) {
+  const liveZoomSignal = useSyncExternalStore(liveZoomSignalStore.subscribe, liveZoomSignalStore.get);
   const hostRef = useRef(null);
   const canvasRef = useRef(null);
   const taskRef = useRef(null);
@@ -5301,6 +5307,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // re-runs its scheduling (see DetailTile).
   tileLiveZoomRef.current = liveZoom;
   const tileLiveZoomSignal = isMobileSurface ? (liveZoom === 1 ? 1 : 0) : liveZoom;
+  const tileLiveZoomSignalStoreRef = useRef(null);
+  if (!tileLiveZoomSignalStoreRef.current) tileLiveZoomSignalStoreRef.current = createValueSignal(tileLiveZoomSignal);
+  useLayoutEffect(() => { tileLiveZoomSignalStoreRef.current.set(tileLiveZoomSignal); }, [tileLiveZoomSignal]);
   const nativePinchE2E = import.meta.env.DEV
     && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).has('nativePinchE2E');
@@ -5371,8 +5380,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // The page list does not depend on the live zoom (the content node's
   // transform carries the preview), so a pinch frame re-renders ONE element,
   // not every page div of a long document (owner 2026-09-30: smooth pinch).
-  // On desktop the tile signal is the live zoom itself, so this still follows
-  // it there for DetailTile's progressive sharpening.
+  // DetailTile's live-zoom signal reaches the tiles through a store (see
+  // createValueSignal), so the list does not follow it either.
   const pageNodes = useMemo(() => pageSizes.map((s, i) => {
     const dim = layout.dims[i];
     const left = getPageLeftAtScale(i, scale);
@@ -5424,7 +5433,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
               scale={scale}
               rotation={rotation}
               liveZoomRef={tileLiveZoomRef}
-              liveZoomSignal={tileLiveZoomSignal}
+              liveZoomSignalStore={tileLiveZoomSignalStoreRef.current}
               interactionRef={panInteractionRef}
               glideSettlingRef={glideSettlingRef}
               scrollerRef={scrollerRef}
@@ -5459,7 +5468,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       </div>
     );
   }), [pageSizes, layout, scale, range, pageTransformations, viewerId, isMobileSurface, phoneLayout, onRaster, rotation,
-    textSelectionLayerActive, textSelectionLayerInteractive, panTextHoverSelect, onTextAvailability, tileLiveZoomSignal,
+    textSelectionLayerActive, textSelectionLayerInteractive, panTextHoverSelect, onTextAvailability,
     getPageLeftAtScale]);
 
   const scrollbarPreviewMetrics = livePreview ? (() => {
