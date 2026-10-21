@@ -63,6 +63,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   const modeBtn = (val, label) => (
     <button
       onClick={() => setMode(val)}
+      className="dialog-touch-pad"
       style={{
         flex: 1, height: 28, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit',
         fontSize: 12, fontWeight: 600,
