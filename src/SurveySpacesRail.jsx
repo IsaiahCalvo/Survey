@@ -10,7 +10,7 @@
 // Accurate rename candidate: SurveyRail.jsx.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import Icon from './Icons';
 import ListItemContextMenu from './components/ListItemContextMenu';
 import SurveyCategoryMoveDialog from './components/SurveyCategoryMoveDialog';
@@ -4741,8 +4741,13 @@ const SurveySpacesRail = ({
             {/* KAL-57: themed confirm dialog for the rail's three bulk-delete
                 actions, replacing native confirm(). Rendered unconditionally
                 (including mobile) so any delete path can await it; it renders
-                nothing until a handler opens it. */}
-            {confirmDialogElement}
+                nothing until a handler opens it. On the phone the rail lives in
+                the survey sheet (z 6500), which hid the dialog (z 1300) and left a
+                long-press Delete unconfirmable, so there it goes to <body> above
+                the sheet, like the long-press menu itself. */}
+            {mobileMode && typeof document !== 'undefined'
+              ? createPortal(<div style={{ position: 'relative', zIndex: 10003 }}>{confirmDialogElement}</div>, document.body)
+              : confirmDialogElement}
             {surveyAgentOpen && surveyAgentEnabled && showSurveyPanel && selectedTemplate && (
               <SurveyAgentPanel mobileMode={mobileMode} onClose={() => setSurveyAgentOpen(false)} />
             )}

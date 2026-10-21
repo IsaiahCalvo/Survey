@@ -127,6 +127,7 @@ export function MobileSurveyCategoryColumn({ toolbar, armed, max, columnRef, all
           type="button"
           key={category.id}
           className={activeId === category.id ? 'is-active' : ''}
+          aria-pressed={activeId === category.id}
           aria-label={`Survey category ${category.name || 'Untitled Category'}`}
           title={category.name || 'Untitled Category'}
           onClick={() => onTapCategory?.(category)}

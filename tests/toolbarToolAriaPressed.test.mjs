@@ -31,3 +31,20 @@ test('tool bar buttons render aria-pressed', () => {
   const subrow = viewer.match(/className=\{`btn chrome-subcontrol \$\{(isActive|activeTool === t\.id) \? 'btn-active' : 'btn-ghost'\}`\}\s*\n\s*aria-pressed=\{\1\}/g) || [];
   assert.equal(subrow.length, 3, 'Draw, Shapes and Text sub-row tools set aria-pressed');
 });
+
+test('phone tool rail: tools report aria-pressed, plain actions do not', async () => {
+  const { railButtonPressed } = await import('../src/utils/toolbarToolPressed.js');
+  assert.equal(railButtonPressed(true), true);
+  assert.equal(railButtonPressed(false), false);
+  assert.equal(railButtonPressed(0), false);
+  assert.equal(railButtonPressed(undefined), undefined);
+  const chrome = readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
+  const at = chrome.indexOf('const RailButton = ');
+  assert.ok(at > 0);
+  assert.match(chrome.slice(at, at + 800), /aria-pressed=\{railButtonPressed\(active\)\}/);
+});
+
+test('phone survey rail: category chips report aria-pressed', () => {
+  const rail = readFileSync(new URL('../src/mobile/MobileSurveyRail.jsx', import.meta.url), 'utf8');
+  assert.match(rail, /className=\{activeId === category\.id \? 'is-active' : ''\}\s*aria-pressed=\{activeId === category\.id\}/);
+});
