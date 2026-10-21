@@ -42,6 +42,7 @@ import {
   buildNewTextCommitJSON,
   buildExistingTextCommitJSON,
   shouldAutoFitExistingText,
+  clampNewTextBoxToPage,
 } from '../utils/textEditCommit.js';
 import { readTextboxAutoFit } from '../utils/annotationPreferences.js';
 import { stampAnnotationCreationIdentity } from '../utils/annotationStorageIdentity.js';
@@ -357,16 +358,24 @@ export default function TextEditOverlay({
     const scaleY = Math.abs(Number(src.scaleY) || 1);
     const oneLineOuterH = (Number(isNewText ? newTextStyle?.fontSize : src.fontSize) || 16)
       * (isNewText ? 1.16 : (Number(src.lineHeight) || 1.16)) * 1.13 + 2 * padY;
-    geomRef.current = isNewText
-      ? {
+    let newGeom = null;
+    if (isNewText) {
+      const outerW = Math.max(8 + 2 * pad, textBoxWidth || 160);
+      const outerH = autoFitRef.current
+        ? oneLineOuterH
+        : Math.max(oneLineOuterH, Number(textBoxHeight) || 0);
+      const { left, top } = clampNewTextBoxToPage({
         left: clickPosition?.x ?? 0,
         top: clickPosition?.y ?? 0,
-        outerW: Math.max(8 + 2 * pad, textBoxWidth || 160),
-        outerH: autoFitRef.current
-          ? oneLineOuterH
-          : Math.max(oneLineOuterH, Number(textBoxHeight) || 0),
-        angle: 0,
-      }
+        width: outerW,
+        height: outerH,
+        pageWidth,
+        pageHeight,
+      });
+      newGeom = { left, top, outerW, outerH, angle: 0 };
+    }
+    geomRef.current = isNewText
+      ? newGeom
       : {
         left: Number(src.left) || 0,
         top: Number(src.top) || 0,
