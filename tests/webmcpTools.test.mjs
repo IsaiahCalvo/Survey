@@ -248,3 +248,102 @@ test('a marker the person may not change reports a refusal, not a false success'
   const locked = { ...fakeDoc(), editSurveyMarker: () => ({ ok: false, reason: 'locked' }) };
   await assert.rejects(markerTool('owner', locked, 'survey_edit_marker').execute({ marker_id: 'm1', x: 5, y: 5, width: 60, height: 40 }), /locked/);
 });
+
+// --- Annotation write tools (behind the annotation-agent flag) --------------
+
+const fakeAnnoDoc = () => {
+  const notes = {
+    a1: { id: 'a1', page: 1, type: 'Textbox', text: 'hi', box: { x: 10, y: 10, width: 160, height: 24 } },
+  };
+  const addedNotes = [];
+  const editedNotes = [];
+  const deletedNotes = [];
+  return {
+    ...fakeDoc(),
+    notes,
+    addedNotes,
+    editedNotes,
+    deletedNotes,
+    listAnnotations: () => Object.values(notes).map(({ id, page, type, text, box }) => ({ id, page, type, text, box })),
+    findAnnotation: (id) => (notes[id] ? { page: notes[id].page, index: 0, obj: notes[id] } : null),
+    addTextNote: (args) => { addedNotes.push(args); return { ok: true }; },
+    editTextNote: (id, patch) => { if (!notes[id]) return { ok: false, reason: 'not-found' }; editedNotes.push({ id, ...patch }); return { ok: true }; },
+    deleteAnnotation: (id) => { if (!notes[id]) return { ok: false, reason: 'not-found' }; deletedNotes.push(id); return { ok: true }; },
+  };
+};
+const annoTools = (role, doc) => {
+  const sb = fakeSupabase({ role });
+  return buildAgentTools({ supabase: sb, getDocument: () => doc, readAccess: makeAccessReader(sb, TIERS), includeAnnotationTools: true });
+};
+const annoTool = (role, doc, name) => tool(annoTools(role, doc), name);
+
+test('annotation tools are absent unless the flag turns them on', () => {
+  const off = buildAgentTools({ getDocument: () => fakeAnnoDoc(), readAccess: open });
+  assert.equal(tool(off, 'survey_add_text_note'), undefined);
+  assert.equal(tool(off, 'survey_list_annotations'), undefined);
+  const on = buildAgentTools({ getDocument: () => fakeAnnoDoc(), readAccess: open, includeAnnotationTools: true });
+  assert.ok(tool(on, 'survey_add_text_note') && tool(on, 'survey_list_annotations'));
+});
+
+test('any role can list annotations; it is read-only', async () => {
+  for (const role of ['viewer', 'editor', 'owner']) {
+    const doc = fakeAnnoDoc();
+    const list = JSON.parse(await annoTool(role, doc, 'survey_list_annotations').execute({}));
+    assert.deepEqual(list, [{ id: 'a1', page: 1, type: 'Textbox', text: 'hi', box: { x: 10, y: 10, width: 160, height: 24 } }]);
+  }
+  assert.equal(annoTool('viewer', fakeAnnoDoc(), 'survey_list_annotations').annotations.readOnlyHint, true);
+});
+
+test('editor and owner agents can add a text note; viewer cannot', async () => {
+  for (const role of ['editor', 'owner']) {
+    const doc = fakeAnnoDoc();
+    assert.match(await annoTool(role, doc, 'survey_add_text_note').execute({ page: 1, x: 10, y: 20, text: 'note' }), /Added a text note/);
+    assert.equal(doc.addedNotes.length, 1);
+    assert.equal(doc.addedNotes[0].text, 'note');
+  }
+  const doc = fakeAnnoDoc();
+  await assert.rejects(annoTool('viewer', doc, 'survey_add_text_note').execute({ page: 1, x: 10, y: 20, text: 'note' }), /viewer.*needs editor/);
+  await assert.rejects(annoTool(null, doc, 'survey_add_text_note').execute({ page: 1, x: 10, y: 20, text: 'note' }), /do not have access/);
+  assert.equal(doc.addedNotes.length, 0);
+});
+
+test('adding a note checks empty text, the page, and off-page placement', async () => {
+  const doc = fakeAnnoDoc();
+  const add = (args) => annoTool('editor', doc, 'survey_add_text_note').execute(args);
+  await assert.rejects(add({ page: 1, x: 10, y: 20, text: '   ' }), /empty/);
+  await assert.rejects(add({ page: 2, x: 10, y: 20, text: 'x' }), /not in the open document/);
+  assert.equal(doc.addedNotes.length, 0);
+  const offPage = { ...fakeAnnoDoc(), addTextNote: () => ({ ok: false, reason: 'off-page' }) };
+  await assert.rejects(annoTool('editor', offPage, 'survey_add_text_note').execute({ page: 1, x: 10, y: 20, text: 'x' }), /inside the page/);
+});
+
+test('editor can change a note; refusals come through, not false success', async () => {
+  const doc = fakeAnnoDoc();
+  assert.match(await annoTool('editor', doc, 'survey_edit_text_note').execute({ annotation_id: 'a1', text: 'new' }), /Changed/);
+  assert.deepEqual(doc.editedNotes, [{ id: 'a1', text: 'new' }]);
+  await assert.rejects(annoTool('editor', doc, 'survey_edit_text_note').execute({ annotation_id: 'gone', text: 'x' }), /No annotation/);
+  await assert.rejects(annoTool('editor', doc, 'survey_edit_text_note').execute({ annotation_id: 'a1', text: ' ' }), /empty/);
+  await assert.rejects(annoTool('viewer', doc, 'survey_edit_text_note').execute({ annotation_id: 'a1', text: 'x' }), /viewer.*needs editor/);
+  const denied = { ...fakeAnnoDoc(), editTextNote: () => ({ ok: false, reason: 'not-allowed' }) };
+  await assert.rejects(annoTool('editor', denied, 'survey_edit_text_note').execute({ annotation_id: 'a1', text: 'x' }), /belongs to someone else or is locked/);
+  const notText = { ...fakeAnnoDoc(), editTextNote: () => ({ ok: false, reason: 'not-a-text-note' }) };
+  await assert.rejects(annoTool('editor', notText, 'survey_edit_text_note').execute({ annotation_id: 'a1', text: 'x' }), /not a text note/);
+});
+
+test('delete annotation needs confirm:true and editor access', async () => {
+  const doc = fakeAnnoDoc();
+  const del = (args) => annoTool('editor', doc, 'survey_delete_annotation').execute(args);
+  assert.match(await del({ annotation_id: 'a1' }), /Not deleted.*confirm: true/s);
+  assert.equal(doc.deletedNotes.length, 0);
+  assert.match(await del({ annotation_id: 'a1', confirm: false }), /Not deleted/);
+  assert.equal(doc.deletedNotes.length, 0);
+  assert.match(await del({ annotation_id: 'a1', confirm: true }), /Deleted annotation a1/);
+  assert.deepEqual(doc.deletedNotes, ['a1']);
+  await assert.rejects(annoTool('editor', fakeAnnoDoc(), 'survey_delete_annotation').execute({ annotation_id: 'gone', confirm: true }), /No annotation/);
+  await assert.rejects(annoTool('viewer', fakeAnnoDoc(), 'survey_delete_annotation').execute({ annotation_id: 'a1', confirm: true }), /viewer.*needs editor/);
+});
+
+test('delete annotation surfaces a gate refusal instead of a false success', async () => {
+  const denied = { ...fakeAnnoDoc(), deleteAnnotation: () => ({ ok: false, reason: 'not-allowed' }) };
+  await assert.rejects(annoTool('owner', denied, 'survey_delete_annotation').execute({ annotation_id: 'a1', confirm: true }), /belongs to someone else or is locked/);
+});
