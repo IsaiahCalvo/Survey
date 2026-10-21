@@ -124,6 +124,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const [hearing, setHearing] = useState(false);
   const micRef = useRef(null);
   const recentItemsRef = useRef([]);
+  // Every item worked on in this chat: what an end-of-walk summary covers.
+  const walkItemsRef = useRef(new Set());
   const handsFreeRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -215,6 +217,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       extraTools: annotations ? buildAnnotationTools({ getDocument: openDocument, text: (v) => (typeof v === 'string' ? v : JSON.stringify(v)) }) : [],
       getDocument: activeAgentDocument,
       requestPhoto,
+      walkItems: () => [...walkItemsRef.current],
     });
     try {
       const result = await runSurveyAgentTurn({
@@ -230,9 +233,10 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       // Items worked on lately: speech to text expects these names most.
       const touched = result.changes.map((c) => c.itemId).filter(Boolean);
       if (touched.length) recentItemsRef.current = [...recentItemsRef.current.filter((id) => !touched.includes(id)), ...touched].slice(-8);
+      for (const id of touched) walkItemsRef.current.add(id);
       historyRef.current = result.history;
       if (job.entryId) markEntry(job.entryId, { waiting: false });
-      push({ role: 'agent', text: result.reply, changes: result.changes });
+      push({ role: 'agent', text: result.reply, changes: result.changes, summary: result.summary || null });
       return result.reply;
     } catch (err) {
       // No signal (or too weak to finish) before anything changed: keep the
@@ -614,6 +618,30 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     if (added.length) setPendingFiles((list) => [...list, ...added]);
   };
 
+  // The end-of-walk summary as a text file: the share sheet on a phone
+  // (Mail, Messages, Files...), else a download (the native app turns a
+  // download into its share sheet too).
+  const saveSummary = async ({ title, text }) => {
+    const name = `${String(title || 'Survey summary').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80)}.txt`;
+    const file = new File([text], name, { type: 'text/plain' });
+    try {
+      if (mobileMode && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title });
+        return;
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
   const removePending = (id) => {
     attachmentsRef.current.delete(id);
     setPendingFiles((list) => list.filter((f) => f.id !== id));
@@ -684,6 +712,11 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
                   ? <span className="survey-agent__undone">{entry.undone === 'partly' ? 'Undone, later edits kept' : 'Undone'}</span>
                   : <button type="button" className="survey-agent__undo" onClick={() => undoEntry(entry)}>Undo</button>}
               </div>
+            ) : null}
+            {entry.summary ? (
+              <button type="button" className="survey-agent__undo survey-agent__save" onClick={() => saveSummary(entry.summary)}>
+                Save summary
+              </button>
             ) : null}
           </div>
         ))}

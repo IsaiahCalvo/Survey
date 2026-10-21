@@ -154,3 +154,65 @@ test('"What\'s left on this sheet?" reads the page\'s progress back', async ({ p
   // Read-only: no change card.
   await expect(panel.getByTestId('survey-agent-changes')).toHaveCount(0);
 });
+
+test('"Sum up the walk" gives a summary with the items that have issues, and Save summary downloads it', async ({ page }) => {
+  const data = await seed();
+  data.markers['surveyMarker-d101'].checklistResponses = { 'cl-power': { selection: 'N' } };
+  data.markers['surveyMarker-d102'] = {
+    ...data.markers['surveyMarker-d101'], id: 'surveyMarker-d102', name: 'D-102', bounds: { x: 252, y: 112, width: 44, height: 30 },
+    checklistResponses: { 'cl-power': { selection: 'Y' } },
+  };
+  data.markers['surveyMarker-d103'] = { ...data.markers['surveyMarker-d101'], id: 'surveyMarker-d103', name: 'D-103', checklistResponses: {} };
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  const calls = [];
+  await page.route('**/functions/v1/survey-agent', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+      return;
+    }
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    const reply = (json) => route.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify(json) });
+    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
+    if (!body.messages.some((m) => m.role === 'tool')) {
+      return reply({ message: { content: '', tool_calls: [
+        { id: 'w1', type: 'function', function: { name: 'walk_summary', arguments: JSON.stringify({ scope: 'walk', page: null }) } },
+      ] } });
+    }
+    return reply({ message: { content: 'Two of three doors done, one with issues: D-101 has no power.', tool_calls: [] } });
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await input.fill("that's it for today, sum up the walk");
+  await input.press('Enter');
+  await expect(panel.getByText('Two of three doors done, one with issues')).toBeVisible();
+
+  // Nothing was worked on in this chat, so it covers the whole survey.
+  const result = JSON.parse(calls.filter((c) => c.action === 'turn').at(-1).messages.find((m) => m.role === 'tool').content);
+  expect(result).toMatchObject({
+    scope: 'the whole survey',
+    totals: { items: 3, done: 2, partly: 0, notStarted: 1, withIssues: 1 },
+    categories: [{ name: 'Doors', with_issues: [{ name: 'D-101', issues: ['Power at door = N'] }] }],
+  });
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    panel.getByRole('button', { name: 'Save summary' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe('Door Agent Template- summary of the whole survey.txt');
+  const text = await (await import('node:fs/promises')).readFile(await download.path(), 'utf8');
+  expect(text).toContain('3 items: 2 done, 0 partly done, 1 not started, 1 with issues.');
+  expect(text).toContain('  D-101: Power at door = N');
+});

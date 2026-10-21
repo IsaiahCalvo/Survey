@@ -499,3 +499,36 @@ test('with no IndexedDB, waiting messages live for the session only', async () =
   assert.equal(await keepWaiting({ id: 'w1', docKey: 'doc-1', said: 'D-117 lock installed' }), null);
   assert.deepEqual(await loadWaiting('doc-1'), []);
 });
+
+test('walk_summary: this walk\'s items by category, with the ones that have issues, and text to save', async () => {
+  const { bridge, markers } = fakeBridge();
+  markers.m117 = { ...markers.m117, checklistResponses: { 'chk-cable': { selection: 'Y' }, 'chk-reader': { selection: 'N' }, 'chk-lock': { selection: 'Y' } } };
+  markers.m118 = { ...markers.m118, checklistResponses: { 'chk-cable': { selection: 'Y' } } };
+  const walked = ['m117', 'm118'];
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge, walkItems: () => walked });
+  const res = await box.run('walk_summary', { scope: 'walk', page: null });
+  const data = JSON.parse(res.content);
+  assert.equal(data.scope, 'this walk');
+  assert.deepEqual(data.totals, { items: 2, done: 1, partly: 1, notStarted: 0, withIssues: 1 });
+  assert.deepEqual(data.categories, [{ name: 'Door', items: 2, done: 1, partly_done: 1, not_started: 0, with_issues: [{ name: 'D-117', issues: ['Card reader installed = N'] }] }]);
+  assert.equal(res.summary.title, 'Security: summary of this walk');
+  assert.match(res.summary.text, /2 items: 1 done, 1 partly done, 0 not started, 1 with issues\./);
+  assert.match(res.summary.text, /\n {2}D-117: Card reader installed = N/);
+
+  const nothingYet = createSurveyAgentToolbox({ getBridge: () => bridge, walkItems: () => [] });
+  const all = JSON.parse((await nothingYet.run('walk_summary', { scope: 'walk', page: null })).content);
+  assert.equal(all.scope, 'the whole survey');
+  assert.equal(all.totals.items, 3);
+  assert.ok(all.note);
+});
+
+test('a turn hands back the summary a tool made', async () => {
+  const { bridge } = fakeBridge();
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge, walkItems: () => [] });
+  let step = 0;
+  const call = async () => (step++ === 0
+    ? { message: { content: '', tool_calls: [{ id: 'w1', type: 'function', function: { name: 'walk_summary', arguments: '{"scope":"all","page":null}' } }] } }
+    : { message: { content: 'Nothing done yet.', tool_calls: [] } });
+  const result = await runSurveyAgentTurn({ history: [], userText: 'sum up', call, toolbox: box, answerValues: ['Y', 'N'] });
+  assert.equal(result.summary.title, 'Security: summary of the whole survey');
+});

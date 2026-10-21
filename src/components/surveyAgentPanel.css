@@ -141,6 +141,7 @@
   background: #000;
 }
 .survey-agent__camera-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.survey-agent__save { align-self: flex-start; }
 .survey-agent__undone { flex: none; color: var(--text-3); font-size: 12px; }
 .survey-agent__pending { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 12px 0; }
 .survey-agent__chip {

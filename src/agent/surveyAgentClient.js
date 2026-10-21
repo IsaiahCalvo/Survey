@@ -110,6 +110,8 @@ const parseArgs = (raw) => {
 export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, annotations = false, maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
   const messages = [...history, { role: 'user', content: userText }];
   const changes = [];
+  // A summary a tool made this turn ({ title, text }), for the person to save.
+  let summary = null;
   for (let step = 0; step < maxSteps; step += 1) {
     let response;
     try {
@@ -124,7 +126,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
       .filter((c) => c?.id && c?.function?.name);
     if (!calls.length) {
       messages.push({ role: 'assistant', content: reply || '(no reply)' });
-      return { history: messages, reply: reply || (changes.length ? 'Done.' : 'I did not change anything.'), changes };
+      return { history: messages, reply: reply || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary };
     }
     messages.push({
       role: 'assistant',
@@ -145,6 +147,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
         : { content: 'The tool input was not valid JSON. Try again.', isError: true };
       if (result.change) changes.push(result.change);
       if (result.changes) changes.push(...result.changes);
+      if (result.summary) summary = result.summary;
       messages.push({ role: 'tool', tool_call_id: c.id, content: result.isError ? `Error: ${result.content}` : result.content });
       // Let the panel re-render so the next tool reads the new state.
       await yieldToApp();
@@ -152,5 +155,5 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
   }
   // Too many steps: close the turn so the conversation stays valid.
   messages.push({ role: 'assistant', content: 'I stopped there; that took too many steps.' });
-  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes };
+  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes, summary };
 }
