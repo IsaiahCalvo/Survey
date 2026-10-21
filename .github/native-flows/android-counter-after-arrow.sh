@@ -40,3 +40,10 @@ pick Measure
 sleep 1
 adb exec-out screencap -p > "$OUT/10-measure-menu.png"
 echo "Cloud and Measure check passed."
+# #1087: a Length measure shows a readable label right after drawing.
+pick Length
+adb shell input stylus swipe $((X - 200)) $((Y - 350)) $((X + 150)) $((Y - 350)) 300
+sleep 2
+adb exec-out screencap -p > "$OUT/11-measure-length.png"
+label=$(ev "(() => { const t = [...document.querySelectorAll('svg text')].filter(e => /\\d/.test(e.textContent)).pop(); if (!t) return 'none'; const r = t.getBoundingClientRect(); return t.textContent.trim() + ' ' + Math.round(r.height) + 'px'; })()")
+echo "measure label: $label"
