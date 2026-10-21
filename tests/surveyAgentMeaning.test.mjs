@@ -150,3 +150,9 @@ test('own answer sets: Y and N map onto the set, and two "no" answers are told a
   const plain = JSON.parse((await createSurveyAgentToolbox({ getBridge: () => bridgeFor() }).run('get_survey_context', {})).content);
   assert.equal(plain.answer_meaning, undefined);
 });
+
+test('Open / Done (punch list) maps too', () => {
+  const text = answerSetMeaning(['Open', 'Done', 'N/A']);
+  assert.match(text, /say Y, use "Done"; where they say N, use "Open"/);
+  assert.match(text, /"Done" for [^;]*fixed/);
+});

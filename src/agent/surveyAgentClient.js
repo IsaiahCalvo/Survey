@@ -102,13 +102,31 @@ const parseArgs = (raw) => {
   try { return JSON.parse(raw || '{}'); } catch { return null; }
 };
 
+const sizeOf = (messages) => messages.reduce((n, m) => n + JSON.stringify(m).length, 0);
+
+/**
+ * A long chat, cut down by whole turns from the oldest. Groq does not count
+ * a prompt prefix it has seen (the rules, the tools, the chat so far) against
+ * the free caps, so a growing chat costs only its new part per call. The cut
+ * is rare and large, so the prefix stays the same between cuts.
+ */
+export function compactHistory(history, { maxMessages = 60, maxChars = 60_000 } = {}) {
+  if (history.length <= maxMessages && sizeOf(history) <= maxChars) return history;
+  const starts = history.map((m, i) => (m.role === 'user' ? i : -1)).filter((i) => i > 0);
+  for (const start of starts) {
+    const rest = history.slice(start);
+    if (rest.length <= maxMessages / 2 && sizeOf(rest) <= maxChars / 2) return rest;
+  }
+  return starts.length ? history.slice(starts[starts.length - 1]) : [];
+}
+
 /**
  * history: the conversation so far (OpenAI chat shape: user, assistant with
  * tool_calls, tool), not changed on error. Returns { history, reply, changes }
  * where changes are the writes this turn made, oldest first.
  */
 export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, annotations = false, lang = 'en', maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
-  const messages = [...history, { role: 'user', content: userText }];
+  const messages = [...compactHistory(history), { role: 'user', content: userText }];
   const changes = [];
   // A summary a tool made this turn ({ title, text }), for the person to save.
   let summary = null;
