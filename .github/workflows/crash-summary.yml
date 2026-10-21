@@ -44,7 +44,7 @@ jobs:
           [ "$(date -u +%H)" -lt 7 ] && echo "early=true" >> "$GITHUB_OUTPUT" || true
       - name: Already done this day?
         id: mark
-        if: github.event_name == 'workflow_run'
+        if: github.event_name != 'workflow_dispatch'
         uses: actions/cache/restore@v4
         with:
           path: .crash-summary-mark
