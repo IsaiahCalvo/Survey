@@ -9,13 +9,15 @@
  *   assign <email> <kit-id> <version>   give that version to the account (replaces its older one)
  *   unassign <email> <kit-id>           take the kit away from the account
  *   list                                every assignment, by email
+ *   fork <id@version> <new-id> <out.json>  copy a kit (built-in or published) to start
+ *                                       the next customer's; edit the file, then publish it
  *
  * A kit file is the same JSON shape as src/services/exportFormats/kits/*.js.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createClient } from '@supabase/supabase-js';
-import { validateExportKit, BUILT_IN_EXPORT_KIT_IDS } from '../src/services/exportFormats/registry.js';
+import { validateExportKit, getExportKit, BUILT_IN_EXPORT_KIT_IDS } from '../src/services/exportFormats/registry.js';
 import { validateAnswerSet } from '../src/services/answerSets.js';
 
 async function must(label, promise) {
@@ -55,6 +57,26 @@ export async function unassignKit(admin, email, kitId) {
   await must('unassign', admin.from('account_kits').delete().eq('user_id', userId).eq('kit_id', kitId));
 }
 
+/** A new kit file copied from `source`, at 1.0.0, recording where it came from. */
+export function forkKit(source, newId) {
+  const { id, version, created_at: _c, definition, ...rest } = source;
+  const copy = { ...rest, ...(definition || {}), id: newId, version: '1.0.0', kind: source.kind || 'exportKit', extends: `${id}@${version}` };
+  copy.label = `${copy.label || id} (copy)`;
+  const errors = validateExportKit(copy);
+  if (errors.length) throw new Error(`source kit is not valid: ${errors.join('; ')}`);
+  return JSON.parse(JSON.stringify(copy));
+}
+
+export async function readKit(admin, ref) {
+  const [id, version] = String(ref).split('@');
+  const builtIn = getExportKit(id);
+  if (builtIn && BUILT_IN_EXPORT_KIT_IDS.includes(id) && (!version || version === builtIn.version)) return builtIn;
+  if (!version) throw new Error('give the version: <id>@<x.y.z>');
+  const row = await must('read kit', admin.from('kits').select('id, version, kind, label, definition').eq('id', id).eq('version', version).maybeSingle());
+  if (!row) throw new Error(`no kit ${ref}`);
+  return row;
+}
+
 export async function listAssignments(admin) {
   const rows = await must('list', admin.from('account_kits').select('user_id, kit_id, kit_version').order('kit_id'));
   const emails = new Map();
@@ -80,10 +102,14 @@ async function main([command, ...args]) {
   } else if (command === 'unassign' && args.length === 2) {
     await unassignKit(admin, ...args);
     console.log(`took ${args[1]} from ${args[0]}`);
+  } else if (command === 'fork' && args.length === 3) {
+    const kit = forkKit(await readKit(admin, args[0]), args[1]);
+    writeFileSync(args[2], `${JSON.stringify(kit, null, 2)}\n`);
+    console.log(`wrote ${args[2]} (${kit.id}@${kit.version}, from ${kit.extends})`);
   } else if (command === 'list') {
     (await listAssignments(admin)).forEach((r) => console.log(`${r.email}\t${r.kit}`));
   } else {
-    throw new Error('usage: publish <kit.json> | assign <email> <kit-id> <version> | unassign <email> <kit-id> | list');
+    throw new Error('usage: publish <kit.json> | assign <email> <kit-id> <version> | unassign <email> <kit-id> | list | fork <id@version> <new-id> <out.json>');
   }
 }
 
