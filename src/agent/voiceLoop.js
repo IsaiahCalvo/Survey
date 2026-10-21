@@ -113,6 +113,50 @@ export function heardOwnVoice(heard, spoken) {
   return h.filter((w) => said.has(w)).length / h.length >= 0.7;
 }
 
+/**
+ * The main gate's settings with createBandLevel (measured on mixed site
+ * noise, scripts/voice-eval): a lower ratio than the raw-level default,
+ * since band-limiting already takes out most machine noise.
+ */
+export const MAIN_GATE = { ratio: 2 };
+
+/**
+ * Loudness in the speech band (250 to 3500 Hz) instead of the whole signal:
+ * a generator's hum or a truck's rumble sits mostly below speech, so with it
+ * filtered out the gate can still tell when someone starts talking. Keeps
+ * filter state across frames; one per stream.
+ */
+export function createBandLevel(sampleRate, { low = 250, high = 3500 } = {}) {
+  const biquad = (type, f0) => {
+    const w = (2 * Math.PI * Math.min(f0, sampleRate * 0.45)) / sampleRate;
+    const alpha = Math.sin(w) / (2 * Math.SQRT1_2);
+    const c = Math.cos(w);
+    const a0 = 1 + alpha;
+    const a1 = -2 * c / a0;
+    const a2 = (1 - alpha) / a0;
+    const b0 = (type === 'high' ? (1 + c) / 2 : (1 - c) / 2) / a0;
+    const b1 = (type === 'high' ? -(1 + c) : 1 - c) / a0;
+    let x1 = 0; let x2 = 0; let y1 = 0; let y2 = 0;
+    return (x) => {
+      const y = b0 * x + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = x; y2 = y1; y1 = y;
+      return y;
+    };
+  };
+  // Two of each: a steeper edge, so a strong hum just under `low` stays out.
+  const filters = [biquad('high', low), biquad('high', low), biquad('low', high), biquad('low', high)];
+  return (samples) => {
+    if (!samples?.length) return 0;
+    let sum = 0;
+    for (let i = 0; i < samples.length; i += 1) {
+      let v = samples[i];
+      for (const f of filters) v = f(v);
+      sum += v * v;
+    }
+    return Math.sqrt(sum / samples.length);
+  };
+}
+
 /** Loudness of one frame of samples (root mean square, 0 to 1). */
 export function frameLevel(samples) {
   if (!samples?.length) return 0;
@@ -187,13 +231,50 @@ export function spokenReply(text) {
 }
 
 /**
- * Words for speech to text to expect: the template's checklist and entity
- * words, then the item names (most likely to be misheard: "D1-18" for
- * "D-118"). Whisper keeps only the end of a long hint, so names go last, the
- * likeliest at the very end: the items worked on in this chat (recent, oldest
- * first) and then the selected item. The list stays short.
+ * Many names in a row ("D-101", "D-102", ... "D-130") as one range,
+ * "D-101 to D-130": shows speech to text how names are written without
+ * listing them all. A long list of names makes Whisper repeat names from it
+ * over and over instead of writing what was said.
  */
-export function transcriptionHints(bridge, { maxNames = 40, maxWords = 16, recent = [] } = {}) {
+export function nameRanges(names) {
+  const groups = new Map();
+  const out = [];
+  for (const name of names) {
+    const m = String(name).match(/^(.*?[^\d])(\d+)$/);
+    if (!m) { out.push({ at: out.length, text: name }); continue; }
+    // Zero-padded numbers ("A-01") only group with the same width.
+    const key = `${m[1]}\u0000${m[2].startsWith('0') ? m[2].length : ''}`;
+    if (!groups.has(key)) {
+      groups.set(key, { prefix: m[1], nums: [], at: out.length });
+      out.push(null);
+    }
+    groups.get(key).nums.push(Number(m[2]));
+    if (m[2].startsWith('0')) groups.get(key).width = m[2].length;
+  }
+  for (const { prefix, nums, at, width = 0 } of groups.values()) {
+    const sorted = [...new Set(nums)].sort((a, b) => a - b);
+    const pad = (n) => String(n).padStart(width, '0');
+    const parts = [];
+    for (let i = 0; i < sorted.length;) {
+      let j = i;
+      while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j += 1;
+      if (j - i >= 2) parts.push(`${prefix}${pad(sorted[i])} to ${prefix}${pad(sorted[j])}`);
+      else for (let k = i; k <= j; k += 1) parts.push(`${prefix}${pad(sorted[k])}`);
+      i = j + 1;
+    }
+    out[at] = { text: parts };
+  }
+  return out.filter(Boolean).flatMap((o) => o.text);
+}
+
+/**
+ * Words for speech to text to expect: the template's checklist and entity
+ * words, then the item names, as ranges where they run in order. Whisper
+ * keeps only the end of a long hint, so the likeliest names go last, one by
+ * one: the items worked on in this chat (recent, oldest first) and then the
+ * selected item. The list stays short.
+ */
+export function transcriptionHints(bridge, { maxNames = 12, maxWords = 16, maxLikely = 4, recent = [] } = {}) {
   const seen = new Set();
   const take = (list, max) => {
     const out = [];
@@ -218,12 +299,16 @@ export function transcriptionHints(bridge, { maxNames = 40, maxWords = 16, recen
   const nameOf = (id) => markers[id]?.name;
   // Likeliest first, so the cap drops the least likely; then reversed so the
   // likeliest end up last.
-  const likely = [bridge?.selectedMarkerId, ...[...recent].reverse()].filter(Boolean).map(nameOf);
-  const names = take([...likely, ...Object.values(markers).map((m) => m?.name)], maxNames);
-  const keep = new Set(likely.filter(Boolean).map((n) => String(n).trim().toLowerCase()));
-  const rest = names.filter((n) => !keep.has(n.toLowerCase()));
-  const top = names.filter((n) => keep.has(n.toLowerCase())).reverse();
-  return [...words, ...rest, ...top];
+  const likely = take([bridge?.selectedMarkerId, ...[...recent].reverse()].filter(Boolean).map(nameOf), maxLikely);
+  // Every name in the ranges, the likely ones too, so a range isn't split.
+  const byKey = new Map();
+  for (const m of Object.values(markers)) {
+    const name = String(m?.name || '').trim().slice(0, 40);
+    if (name && !byKey.has(name.toLowerCase())) byKey.set(name.toLowerCase(), name);
+  }
+  const all = [...byKey.values()];
+  const rest = nameRanges(all).filter((r) => !seen.has(r.toLowerCase())).slice(0, Math.max(0, maxNames - likely.length));
+  return [...words, ...rest, ...likely.reverse()];
 }
 
 /**
@@ -234,23 +319,64 @@ export function transcriptionHints(bridge, { maxNames = 40, maxWords = 16, recen
  */
 export function snapItemNames(text, names) {
   const known = new Map();
+  // Names like CAM-12 or FA-204 also by their spoken long form: "Camera 12"
+  // (a word starting with the letters) or "fire alarm 204" (initials of
+  // words of four letters or more, so "fix all 204" stays). Two letters or
+  // more, so "Day 12" never becomes D-12.
+  const spoken = new Map();
   for (const name of names || []) {
     const key = normalizeItemName(name);
     if (key && /\d/.test(key) && /[a-z]/.test(key) && !known.has(key)) known.set(key, String(name));
+    const parts = key.match(/^([a-z]{2,})(\d+)$/);
+    if (parts) {
+      if (!spoken.has(parts[2])) spoken.set(parts[2], []);
+      spoken.get(parts[2]).push({ letters: parts[1], name: String(name) });
+    }
   }
+  const byLongForm = (core) => {
+    const tokens = core.toLowerCase().split(/[\s-]+/);
+    // The words before the number: letters only, and not number words.
+    let k = 0;
+    while (k < tokens.length && /^[a-z]+$/.test(tokens[k]) && normalizeItemName(tokens[k]) === tokens[k]) k += 1;
+    const digits = normalizeItemName(tokens.slice(k).join(' '));
+    if (!k || !/^\d+$/.test(digits)) return null;
+    const lead = tokens.slice(0, k);
+    const fits = (spoken.get(digits) || []).filter(({ letters }) => (lead.length === 1
+      ? lead[0].length > letters.length && lead[0].startsWith(letters)
+      : lead.every((w) => w.length >= 4) && lead.map((w) => w[0]).join('') === letters));
+    return fits.length === 1 ? fits[0].name : null;
+  };
+  // Sounds speech to text mixes up, tried only for a name that isn't on the
+  // list and only when exactly one listed name fits: "eighteen" heard as
+  // "eighty" (D-180 for D-118), and the letters that rhyme with "ee"
+  // (B-129 or V-118 for D-129, D-118).
+  const EE = 'bcdegptvz';
+  const misheard = (key) => {
+    const m = key.match(/^([a-z]{1,3})(\d+)$/);
+    if (!m) return null;
+    const tries = [];
+    const ty = m[2].match(/^(\d*)([2-9])0$/);
+    if (ty) tries.push(`${m[1]}${ty[1]}1${ty[2]}`);
+    if (m[1].length === 1 && EE.includes(m[1])) for (const l of EE) if (l !== m[1]) tries.push(`${l}${m[2]}`);
+    const fits = [...new Set(tries.map((t) => known.get(t)).filter(Boolean))];
+    return fits.length === 1 ? fits[0] : null;
+  };
   const words = String(text || '').split(/(\s+)/);
   if (!known.size) return String(text || '');
   const out = [];
   for (let i = 0; i < words.length;) {
     if (/^\s+$/.test(words[i]) || !words[i]) { out.push(words[i]); i += 1; continue; }
     let hit = null;
-    // Up to four words ("d one eighteen", "door D 1 18"), longest first.
-    for (let n = 4; n >= 1 && !hit; n -= 1) {
+    // Up to five words ("d one eighteen", "fire alarm two oh four"), longest first.
+    for (let n = 5; n >= 1 && !hit; n -= 1) {
       const end = i + (n - 1) * 2;
       if (end >= words.length) continue;
       const span = words.slice(i, end + 1).join('');
       const core = span.replace(/^[^\w]+|[^\w]+$/g, '');
-      const name = known.get(normalizeItemName(core));
+      const key = normalizeItemName(core);
+      // Spelled letters heard as one word: "F A 204" written "EFA 204".
+      const spelled = key.match(/^e([flmnsx][a-z]+\d+)$/)?.[1];
+      const name = known.get(key) || (spelled && known.get(spelled)) || byLongForm(core) || misheard(key);
       if (name) {
         const lead = span.slice(0, span.indexOf(core));
         const tail = span.slice(span.indexOf(core) + core.length);

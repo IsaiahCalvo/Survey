@@ -209,13 +209,15 @@ Deno.serve(async (req) => {
             }
         )
     } catch (error) {
+        // A real error status (not 200 with an error inside), so the app
+        // treats it as a failure and the crash reporter counts it. Stripe's
+        // own message stays in the function log, not in the page.
         console.error('Error creating checkout session:', error);
-        const message = error instanceof Error ? error.message : String(error);
         return new Response(
-            JSON.stringify({ error: message }),
+            JSON.stringify({ error: 'Could not start checkout' }),
             {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                status: 200,
+                status: 500,
             }
         )
     }

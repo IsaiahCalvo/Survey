@@ -114,7 +114,7 @@ test('the group icons sit at the same x whatever tool, pick or loadout is showin
   // plan has no input for the loadout showing now (w45 took its width and
   // re-centred on it): whatever a caller measures of the loadout, the answer
   // is the same.
-  assert.equal(WIDEST_SUBTOOLS_WIDTH, 7 * 28 + 6 * 6 + 17);
+  assert.equal(WIDEST_SUBTOOLS_WIDTH, 8 * 28 + 7 * 6 + 17);
   // It reads no measure of the loadout at all — only the room kept for the
   // widest one... RULED 2026-09-27 owner: Pan/Select beside the groups — it
   // reads the Pan / Select block again (the same width in every state).
@@ -137,7 +137,9 @@ test('the group icons sit at the same x whatever tool, pick or loadout is showin
 test('the group icons are centred on the canvas at every desktop width with no panel open', () => {
   // RULED 2026-09-26 owner: fixed centred groups + animated loadouts — the
   // icons alone are centred (w45 centred Pan / Select + icons + loadout).
-  for (let width = 721; width <= 2000; width += 7) {
+  // Since Shapes gained Cloud (eight tools) the centred plan needs 754px;
+  // narrower windows fall back to the start anchor so the loadout clears Export.
+  for (let width = 754; width <= 2000; width += 7) {
     const input = bar(width);
     const plan = planTopBar(input);
     assert.equal(plan.anchor, 'center', `@${width}`);
@@ -508,13 +510,14 @@ test('Test 41: the text bar fits every desktop width from 721px up', () => {
   assert.ok(left + plan.width <= span.usableRight - ROW_INSET);
 });
 
-test('Test 41: the desktop rows fit down to 554px; the screen, not the window, picks the phone layout', () => {
+test('Test 41: the desktop rows fit down to 588px; the screen, not the window, picks the phone layout', () => {
   // The phone switch used to sit here at 720px (a window width). Since
   // 2026-10-13 the layout follows the screen (utils/layoutMode.js: a short
   // side under 600px is a phone), so a desktop window keeps these rows at
-  // every width; with no side panel they still fit down to 554px (the tool
+  // every width; with no side panel they still fit down to 588px (554px before
+  // Shapes gained Cloud) (the tool
   // bar: Undo/Redo, Pan/Select, the group icons, the widest loadout, Export).
-  assert.equal(minDesktopWindowWidth(), 554);
+  assert.equal(minDesktopWindowWidth(), 588);
   assert.ok(minDesktopWindowWidth() < ROWS_TUNED_MIN_WIDTH);
   // The tool bar's own plan agrees at 721px: the widest loadout ends clear of
   // Export.

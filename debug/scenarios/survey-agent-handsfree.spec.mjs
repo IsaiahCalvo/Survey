@@ -195,11 +195,20 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  // One window: the Survey panel's mic starts hands-free with no chat
+  // window, and turns gold while it listens.
+  const panel = page.getByRole('region', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Survey agent: talk hands-free' }).click();
+  const mic = page.getByRole('button', { name: 'Stop hands-free' }).first();
+  await expect(mic).toHaveAttribute('aria-pressed', 'true');
+  await expect(mic).toHaveClass(/is-recording/);
+  await expect(panel).toBeHidden();
+  await expect.poll(() => mic.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(216, 168, 78)');
 
-  await panel.getByRole('button', { name: 'Hands-free' }).click();
-  await expect(panel.getByRole('button', { name: 'Stop hands-free' })).toHaveAttribute('aria-pressed', 'true');
+  // The typing dots swap the Survey panel for the chat, in its place.
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  await expect(panel).toBeVisible();
+  await expect(page.locator('#survey-rail-panel [data-testid="survey-agent-panel"]')).toBeVisible();
   await expect(panel.getByRole('status').first()).toContainText(/Listening|Hearing|Working|Speaking/);
 
   // First thing said: D-117 gets the answer, and the reply is spoken short.
@@ -210,8 +219,12 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
   await expect(panel.getByText(/set card reader to Y on D-118/)).toBeVisible({ timeout: 30_000 });
   await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d118')).toBe('Y');
   await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d117')).toBe(null);
-  await panel.getByRole('button', { name: 'Stop hands-free' }).click();
-  await expect(panel.getByRole('button', { name: 'Hands-free' })).toHaveAttribute('aria-pressed', 'false');
+  // A tap outside the chat goes back to the Survey panel, still listening.
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').click({ position: { x: 20, y: 20 } });
+  await expect(panel).toBeHidden();
+  await expect(mic).toHaveAttribute('aria-pressed', 'true');
+  await mic.click();
+  await expect(page.getByRole('button', { name: 'Survey agent: talk hands-free' })).toHaveAttribute('aria-pressed', 'false');
 
   // The mic sent real 16 kHz WAV clips, one per thing said, cut on the pause.
   expect(log.clips.length).toBeGreaterThanOrEqual(2);
@@ -235,7 +248,7 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
 // The device's own speech to text (a fake engine here; headless Chromium
 // has no speech service) hears each thing said while the mic cuts its clip.
 // What it is sure of skips the server; the unsure second clip goes there.
-test('hands-free: the device hears what it is sure of, and only an unsure clip goes to the server', async ({ page }) => {
+test('hands-free: the device hears what it is sure of, only an unsure clip goes to the server, and the screen stays on', async ({ page }) => {
   const log = { clips: [], turns: [], speak: [] };
   const data = await seed();
   await page.addInitScript(({ template, data: d }) => {
@@ -272,6 +285,12 @@ test('hands-free: the device hears what it is sure of, and only an unsure clip g
     }
     window.webkitSpeechRecognition = FakeRecognition;
     window.SpeechRecognition = FakeRecognition;
+    // The screen is kept on while hands-free listens.
+    window.__locks = [];
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: { async request(kind) { const l = { kind, released: false, addEventListener() {}, async release() { l.released = true; } }; window.__locks.push(l); return l; } },
+    });
   }, { template: TEMPLATE, data });
   await mockServer(page, log, { firstClip: 1 });
 
@@ -279,8 +298,8 @@ test('hands-free: the device hears what it is sure of, and only an unsure clip g
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   await panel.getByRole('button', { name: 'Hands-free' }).click();
 
   await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
@@ -295,6 +314,64 @@ test('hands-free: the device hears what it is sure of, and only an unsure clip g
   const said = log.turns.map((t) => t.messages.filter((m) => m.role === 'user').at(-1).content);
   expect(said).toEqual(expect.arrayContaining(['D-117, card reader installed.', 'No, D-118.']));
   expect(await page.evaluate(() => window.__deviceRecs)).toBeGreaterThanOrEqual(1);
+  expect(await page.evaluate(() => window.__locks.map((l) => [l.kind, l.released]))).toEqual([['screen', true]]);
+});
+
+test('hands-free in the phone apps: the phone hears the words, the web mic and the server are not used', async ({ page }) => {
+  const log = { clips: [], turns: [], speak: [] };
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+    // A stand-in for the app's speech plugin (src/mobile/nativeSpeech.js).
+    window.__nativeStarts = [];
+    window.__surveyAgentNativeSpeech = {
+      isAvailable: async () => true,
+      requestPermission: async () => true,
+      start(opts) {
+        const session = { opts, stopped: false, stop() { session.stopped = true; } };
+        window.__nativeStarts.push(session);
+        return session;
+      },
+    };
+    window.__nativeSay = (text, confidence) => {
+      const s = window.__nativeStarts.at(-1);
+      s.opts.onSpeechStart?.();
+      s.opts.onFinal({ text, confidence });
+    };
+    window.__micOpens = 0;
+    const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = (c) => { window.__micOpens += 1; return real(c); };
+  }, { template: TEMPLATE, data });
+  await mockServer(page, log);
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
+  await panel.getByRole('button', { name: 'Hands-free' }).click();
+  await expect(panel.getByText('Listening. Just talk.')).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeStarts.map((s) => s.opts.lang))).toEqual(['en-US']);
+
+  await page.evaluate(() => window.__nativeSay('D 117, card reader installed.', 0.9));
+  await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
+  // Too unsure to act on: asked again, nothing sent.
+  const turnsBefore = log.turns.length;
+  await page.evaluate(() => window.__nativeSay('mm', 0.1));
+  await page.evaluate(() => window.__nativeSay('No, D1-18.', 0.85));
+  await expect(panel.getByText(/set card reader to Y on D-118/)).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d118')).toBe('Y');
+  await panel.getByRole('button', { name: 'Stop hands-free' }).click();
+
+  const said = log.turns.slice(turnsBefore).map((t) => t.messages.filter((m) => m.role === 'user').at(-1).content);
+  expect(said).not.toContain('mm');
+  expect(log.clips).toHaveLength(0);
+  expect(await page.evaluate(() => window.__micOpens)).toBe(0);
+  expect(await page.evaluate(() => window.__nativeStarts.at(-1).stopped)).toBe(true);
 });
 
 test('hands-free: talking over a long spoken reply stops it, and what was said is heard', async ({ page }) => {
@@ -319,8 +396,8 @@ test('hands-free: talking over a long spoken reply stops it, and what was said i
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   await panel.getByRole('button', { name: 'Hands-free' }).click();
 
   await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
@@ -359,8 +436,8 @@ test('hands-free with no signal: what is said is saved, said back as saved, and 
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   await expect(panel.getByRole('button', { name: 'Hands-free' })).toBeEnabled();
 
   await context.setOffline(true);

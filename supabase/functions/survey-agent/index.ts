@@ -29,9 +29,11 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import {
   SURVEY_AGENT_DEFAULT_PROVIDER,
+  SURVEY_AGENT_LANGUAGES,
   SURVEY_AGENT_LIMITS,
-  SURVEY_AGENT_SYSTEM_PROMPT,
+  surveyAgentSystemMessages,
   buildSurveyAgentTools,
+  markupOpenInTurn,
   sanitizeAgentMessages,
   surveyAgentCostMicros,
 } from '../_shared/surveyAgentSpec.js';
@@ -93,6 +95,9 @@ function modelProvider() {
   };
 }
 
+// How long to wait for the main model's per-minute cap before moving on.
+const MAIN_MODEL_WAIT_MS = 8000;
+const MODEL_GONE_REST_MS = 24 * 60 * 60 * 1000;
 // Models resting after hitting (or nearly hitting) a cap, per instance.
 const modelRest = createModelRest();
 
@@ -156,6 +161,7 @@ Deno.serve(async (req) => {
     messages: s.array(s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }), { max: SURVEY_AGENT_LIMITS.maxMessages * 2, optional: true }),
     answer_values: s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }),
     annotations: s.boolean({ optional: true }),
+    lang: s.enum([...SURVEY_AGENT_LANGUAGES], { optional: true }),
   }, parsedJson);
   if (!parsed.ok) return json(400, { error: 'bad_request', detail: parsed.error });
   const body: Record<string, unknown> = parsed.value;
@@ -297,7 +303,13 @@ Deno.serve(async (req) => {
     form.append('model', t.model);
     form.append('response_format', 'json');
     form.append('temperature', '0');
-    if (hints) form.append('prompt', `Construction site survey. Words and item names: ${hints}.`);
+    // A set language keeps Whisper from guessing (or translating) short clips.
+    if (body.lang) form.append('language', String(body.lang));
+    if (hints) {
+      form.append('prompt', body.lang === 'es'
+        ? `Inspección de obra. Palabras y nombres: ${hints}.`
+        : `Construction site survey. Words and item names: ${hints}.`);
+    }
     const res = await fetch(t.url, { method: 'POST', headers: { Authorization: `Bearer ${t.key}` }, body: form });
     if (res.status === 429) return json(429, { error: 'busy_try_again', retry_after: null });
     if (!res.ok) {
@@ -329,14 +341,17 @@ Deno.serve(async (req) => {
         || (flag?.mode === 'testers' && Boolean(email) && (flag.tester_emails || []).includes(email));
     }
     const request = {
-      messages: [{ role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT }, ...(clean.messages || [])],
-      tools: buildSurveyAgentTools(body.answer_values, { annotations }),
+      messages: [...surveyAgentSystemMessages(body.lang), ...(clean.messages || [])],
+      tools: buildSurveyAgentTools(body.answer_values, { annotations, markupOpen: markupOpenInTurn(clean.messages) }),
       tool_choice: 'auto',
       temperature: 0.2,
       max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,
     };
     let res: Response | null = null;
-    for (const model of modelRest.available(provider.models)) {
+    const chain = modelRest.available(provider.models);
+    let waited = false;
+    for (let i = 0; i < chain.length; i += 1) {
+      const model = chain[i];
       try {
         res = await fetch(`${provider.baseUrl}/chat/completions`, {
           method: 'POST',
@@ -346,6 +361,14 @@ Deno.serve(async (req) => {
       } catch (err) {
         console.error('[survey-agent] model call failed', err);
         return json(502, { error: 'model_unavailable' });
+      }
+      // A model the provider no longer has (or never had for this key):
+      // leave it alone for a day and go on down the chain.
+      if (res.status === 404 || (res.status === 400 && /model_not_found|decommissioned/.test(await res.clone().text()))) {
+        modelRest.rest(model, MODEL_GONE_REST_MS);
+        console.error('[survey-agent] model missing, resting a day', model);
+        res = null;
+        continue;
       }
       if (res.status !== 429) {
         const nearCap = restWhenNearCap({
@@ -358,11 +381,20 @@ Deno.serve(async (req) => {
         }
         break;
       }
-      // A cap on this model: rest it and try the next one in the same turn.
       const refusal = restAfterRefusal({ retryAfter: res.headers.get('retry-after'), message: await res.text() });
+      res = null;
+      // The main model's per-minute cap frees up in seconds: wait for it
+      // once rather than hand the turn to a weaker model.
+      if (i === 0 && !refusal.daily && !waited && refusal.ms <= MAIN_MODEL_WAIT_MS) {
+        waited = true;
+        console.info('[survey-agent] model busy for a moment, waiting', model, Math.round(refusal.ms / 1000));
+        await new Promise((r) => setTimeout(r, refusal.ms + 250));
+        i -= 1;
+        continue;
+      }
+      // A cap on this model: rest it and try the next one in the same turn.
       modelRest.rest(model, refusal.ms);
       console.info('[survey-agent] model refused, moving on', model, refusal.daily ? 'daily' : 'per minute', Math.round(refusal.ms / 1000));
-      res = null;
     }
     // Every model is resting: say how long until the first is free.
     if (!res) return json(429, { error: 'busy_try_again', retry_after: Math.min(modelRest.soonest(provider.models), 60) });

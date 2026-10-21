@@ -69,11 +69,11 @@
  * The hook that measures the DOM and applies both plans is useResponsiveToolbar.
  */
 
-/** The widest a group's tools get in the tool bar: Shapes' seven 28px buttons
+/** The widest a group's tools get in the tool bar: Shapes' eight 28px buttons
  * on the 6px tool gutter, plus the rule (1px + 8px each side) that fences them
- * off from the group icons. 7 * 28 + 6 * 6 + 17 = 249. planTopBar's default
+ * off from the group icons. 8 * 28 + 7 * 6 + 17 = 283. planTopBar's default
  * when the live width is not given. */
-export const WIDEST_SUBTOOLS_WIDTH = 249;
+export const WIDEST_SUBTOOLS_WIDTH = 283;
 
 /** The same widest loadout on a given tool gutter. A touch-first screen
  * opens the tool bar's gutter to 12px (styles/touchTargets.css, touch audit
@@ -81,7 +81,7 @@ export const WIDEST_SUBTOOLS_WIDTH = 249;
  * then keeps that much wider loadout clear of Export. */
 export const widestSubtoolsWidth = (toolGap = 6) => {
   const gap = Number.isFinite(toolGap) && toolGap >= 0 ? toolGap : 6;
-  return 7 * 28 + 6 * gap + 17;
+  return 8 * 28 + 7 * gap + 17;
 };
 
 /** The widest formatting row any tool draws: the Arrow tool's colours, rule,
@@ -730,10 +730,10 @@ export const DESKTOP_RAIL_WIDTH = 48;
 
 /* Owner Test 41 (2026-10-04): the desktop rows must never be covered. With
  * every step above they fit every window from 720px up even beside an open
- * side panel, and with no side panel down to minDesktopWindowWidth() = 554px.
+ * side panel, and with no side panel down to minDesktopWindowWidth() = 588px.
  * 720px used to be where the phone layout took over; since 2026-10-13 the
  * screen picks the layout (utils/layoutMode.js), so a desktop window dragged
- * narrower than 554px keeps the desktop layout and its rows can run into each
+ * narrower than 588px keeps the desktop layout and its rows can run into each
  * other there (the owner's call: never switch a desktop to the phone layout).
  */
 

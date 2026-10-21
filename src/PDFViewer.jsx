@@ -79,6 +79,8 @@ import SurveyCategoryChips from './components/SurveyCategoryChips';
 import SurveyEntityBar from './components/SurveyEntityBar';
 import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
+import MeasureScaleDialog from './components/MeasureScaleDialog';
+import { applyPageScale, pageScaleFromObjects } from './utils/measure/measureScale.js';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
 import NewColumnsModal from './components/NewColumnsModal';
@@ -185,6 +187,7 @@ import {
   summarizeSelectionRestyle,
 } from './utils/selectionRestyle.js';
 import { toolSupportsCloudBorderStyle } from './utils/pdfAnnotationAppearance.js';
+import { isShapeToolButtonActive, resolveShapeToolPick } from './utils/cloudShapeTool.js';
 import { toolOffersCloudLineStyle } from './utils/textCloudBorder.js';
 import { trackSurveyAnalyticsEvent } from './utils/surveyAnalytics';
 import { mintPastedCloneIdentity } from './utils/pasteCloneIdentity';
@@ -3080,6 +3083,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
+  // Measure tools ride on the Line / Polygon tools: measureMode only says the
+  // commit is a measurement ('length' | 'area') or a calibration line.
+  // measureScales holds scales set this session per page (also saved on the
+  // page's measurements); measureScaleDialog is { pageNumber, lengthPt?, line? }.
+  const [measureMode, setMeasureMode] = useState(null);
+  const [measureScales, setMeasureScales] = useState({});
+  const [measureScaleDialog, setMeasureScaleDialog] = useState(null);
+  const [measureMenuRect, setMeasureMenuRect] = useState(null);
+  useEffect(() => {
+    const base = measureMode === 'area' ? 'polygon' : 'line';
+    if (measureMode && activeTool !== base) setMeasureMode(null);
+  }, [activeTool, measureMode]);
   // Select-family mode for annotation gestures. PDF text keeps its existing
   // activeTool='text-select' path, so this state can grow without changing it.
   const [selectionMode, setSelectionMode] = useState(loadSelectMode);
@@ -32989,7 +33004,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Add a rectangle or ellipse from a page box (PDF points, top-left
       // origin). Uses the same boundary-shape builder a drawn shape uses, so
       // geometry, scope and author identity match a hand-drawn one.
-      addShape: ({ page, shape, x, y, width, height, strokeColor, fillColor, strokeWidth }) => {
+      addShape: ({ page, shape, x, y, width, height, strokeColor, fillColor, strokeWidth, borderStyle }) => {
         const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage, annotationScope } = agentMarkerStateRef.current;
         const size = sizes?.[page];
         if (!size) return { ok: false, reason: 'not-found' };
@@ -33009,8 +33024,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           fillColor: fillColor || null,
           fillOpacity: fillColor ? 100 : 0,
           strokeWidth: Number(strokeWidth) > 0 ? Number(strokeWidth) : 2,
-          lineBorderStyle: 'solid',
-          cloudIntensity: null,
+          // 'cloud': a revision cloud, as the toolbar's Cloud style draws it.
+          lineBorderStyle: borderStyle === 'cloud' ? 'cloud' : 'solid',
+          cloudIntensity: borderStyle === 'cloud' ? 2 : null,
           ...annotationScope(page),
         });
         if (!obj) return { ok: false, reason: 'too-small' };
@@ -36419,6 +36435,31 @@ ${pageBlocks}
     />
   );
 
+  // Measure: a calibration line was drawn -> ask its real length.
+  const handleMeasureCalibrateLine = useCallback((pageNumber, lengthPt, line) => {
+    setMeasureScaleDialog({ pageNumber, lengthPt, line });
+  }, []);
+  // Apply a page scale: re-stamp every measurement on the page (labels follow,
+  // one undo step) and keep a calibration line as a Length measurement so the
+  // scale is saved with the document even before anything else is measured.
+  const applyMeasureScale = useCallback((scale) => {
+    const dialog = measureScaleDialog;
+    setMeasureScaleDialog(null);
+    if (!dialog || !scale) return;
+    const { pageNumber, line } = dialog;
+    setMeasureScales((prev) => ({ ...prev, [pageNumber]: scale }));
+    const pageJson = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
+    const extra = line ? [line] : [];
+    const hasMeasures = (pageJson.objects || []).some((o) => o?.data?.measure);
+    if (!hasMeasures && !extra.length) return;
+    handleSaveAnnotationsWithTextMarkupAtomicity(
+      pageNumber,
+      applyPageScale(pageJson, scale, extra),
+      { source: 'measure:set-scale', tool: 'line' },
+    );
+    if (measureMode === 'calibrate') setMeasureMode('length');
+  }, [handleSaveAnnotationsWithTextMarkupAtomicity, measureMode, measureScaleDialog]);
+
   if (pdfLoadError) {
     const docName = pdfFile?.name || 'this document';
     return (
@@ -36556,6 +36597,21 @@ ${pageBlocks}
           note before Submit. Lives here so it renders above every floating
           UI including the context menu below. */}
       <SaveLogBanner />
+      {measureScaleDialog && (
+        <MeasureScaleDialog
+          pageNumber={measureScaleDialog.pageNumber}
+          lengthPt={measureScaleDialog.lengthPt ?? null}
+          currentScale={pageScaleFromObjects(annotationsByPageRef.current?.[measureScaleDialog.pageNumber]?.objects)
+            || measureScales[measureScaleDialog.pageNumber]}
+          onApply={applyMeasureScale}
+          onCalibrate={() => {
+            setMeasureScaleDialog(null);
+            setActiveTool('line');
+            setMeasureMode('calibrate');
+          }}
+          onCancel={() => setMeasureScaleDialog(null)}
+        />
+      )}
       {/* Hidden custom print panel implementation. */}
       <PrintPanel
         open={printPanelOpen}
@@ -37943,6 +37999,9 @@ ${pageBlocks}
                                   onMoveMarksToPage={getSvgLayerPageHandlers(pageNumber).onMoveMarksToPage}
                                   onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
                                   activeTool={activeTool}
+                                  measureMode={measureMode}
+                                  measureScale={measureScales[pageNumber] || null}
+                                  onMeasureCalibrate={handleMeasureCalibrateLine}
                                   // UX 2026-09-15 (Drawboard parity — Pan is a selection
                                   // mode): mount the edit-entry HIT LAYER under Pan.
                                   // Deliberately NOT folded into `svgInteractive` above:
@@ -39063,11 +39122,98 @@ ${pageBlocks}
                   // polygon is a many-sided Rectangle, a polyline is a
                   // many-segment Line. Both are click-to-place, not drag-out.
                   { id: 'polygon', label: 'Polygon', iconName: 'polygon' },
+                  // Drawboard Shape > Cloud: Rectangle + Cloud line style.
+                  { id: 'cloud', label: 'Cloud', iconName: 'lineSampleCloud' },
                   { id: 'polyline', label: 'Polyline', iconName: 'polyline' },
                   { id: 'line', label: 'Line', iconName: 'line' },
                   { id: 'arrow', label: 'Arrow', iconName: 'arrow' },
-                  { id: 'counter', label: 'Counter', iconName: 'counter' }
+                  { id: 'counter', label: 'Counter', iconName: 'counter' },
+                  { id: 'measure', measure: true, label: 'Measure', iconName: 'measureScale' }
                 ].map(t => {
+                  if (t.measure) {
+                    // Drawboard Measure group, folded into one button so the
+                    // Shape row still fits a 820px tablet: it opens a menu of
+                    // Length / Area / Page scale (calibrate or preset).
+                    const measureItems = [
+                      { key: 'length', label: 'Length', iconName: 'measureLength' },
+                      { key: 'area', label: 'Area', iconName: 'measureArea' },
+                      { key: 'scale', label: 'Page scale…', iconName: 'measureScale' },
+                    ];
+                    const pressed = !!measureMode || !!measureScaleDialog;
+                    const activeItem = measureItems.find((m) => m.key === measureMode);
+                    const pick = (item) => {
+                      setMeasureMenuRect(null);
+                      if (item === 'scale') {
+                        setMeasureScaleDialog({ pageNumber: pageNum });
+                        return;
+                      }
+                      setActiveTool(item === 'area' ? 'polygon' : 'line');
+                      setMeasureMode(item);
+                    };
+                    return (
+                      <span key="measure" style={{ display: 'contents' }}>
+                        <button
+                          data-measure-tool="menu"
+                          data-tool-switch="true"
+                          onClick={(e) => {
+                            const r = e.currentTarget.getBoundingClientRect();
+                            setMeasureMenuRect((open) => (open ? null : { left: r.left, top: r.bottom + 6, right: r.right }));
+                          }}
+                          {...chromeTip(t.label, 'below')}
+                          className={`btn chrome-subcontrol ${pressed ? 'btn-active' : 'btn-ghost'}`}
+                          aria-pressed={pressed}
+                          aria-haspopup="menu"
+                          aria-expanded={!!measureMenuRect}
+                          aria-label={t.label}
+                        >
+                          <Icon name={activeItem?.iconName || t.iconName} size={CHROME_GLYPH} />
+                        </button>
+                        {measureMenuRect && createPortal(
+                          <div
+                            style={{ position: 'fixed', inset: 0, zIndex: 999998 }}
+                            onPointerDown={(e) => { if (e.target === e.currentTarget) setMeasureMenuRect(null); }}
+                          >
+                            <div
+                              role="menu"
+                              data-measure-menu="true"
+                              style={{
+                                position: 'fixed',
+                                top: measureMenuRect.top,
+                                left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - 188)),
+                                width: 180,
+                                background: 'var(--surface-2)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '6px',
+                                boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                                padding: 4,
+                                display: 'flex',
+                                flexDirection: 'column',
+                                color: 'var(--text-2)',
+                              }}
+                            >
+                              {measureItems.map((m) => (
+                                <button
+                                  key={m.key}
+                                  role="menuitem"
+                                  data-measure-tool={m.key}
+                                  className={`btn ${measureMode === m.key ? 'btn-active' : 'btn-ghost'}`}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 40, justifyContent: 'flex-start', padding: '0 10px' }}
+                                  onClick={(e) => {
+                                    pick(m.key);
+                                    if (m.key === 'area') releaseFocusForDraftTool(e.currentTarget);
+                                  }}
+                                >
+                                  <Icon name={m.iconName} size={CHROME_GLYPH} />
+                                  {m.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>,
+                          document.body,
+                        )}
+                      </span>
+                    );
+                  }
                   // [COUNTER MULTI-LIST] Counter button has an embedded
                   // chevron — visually one button, not split. The chevron
                   // appears inside the button only when at least one series
@@ -39084,6 +39230,7 @@ ${pageBlocks}
                   // popup buttons reuse the project's `.btn`/`.btn-ghost`/
                   // `.btn-active` styles instead of inline custom hovers.
                   const isCounter = t.id === 'counter';
+                  const isActive = isShapeToolButtonActive(t.id, activeTool, lineBorderStyle);
                   const showCaret = false;
                   const button = (
                     <button
@@ -39093,7 +39240,10 @@ ${pageBlocks}
                       data-morph-icon={t.iconName}
                       data-tool-switch="true"
                       onClick={(e) => {
-                        setActiveTool(t.id);
+                        const pick = resolveShapeToolPick(t.id, lineBorderStyle);
+                        if (pick.lineBorderStyle) setLineBorderStyle(pick.lineBorderStyle);
+                        setActiveTool(pick.tool);
+                        setMeasureMode(null);
                         // UX 2026-09-09: Polygon and Polyline are click-to-place
                         // drafts finished with Enter. Leaving keyboard focus on
                         // this button after arming the tool put Enter in the
@@ -39122,8 +39272,8 @@ ${pageBlocks}
                       // .chrome-subcontrol box + shared 18px glyph, as the
                       // Draw row. (The split-menu chevron this button used to
                       // size itself around is dead — showCaret is false.)
-                      className={`btn chrome-subcontrol ${activeTool === t.id ? 'btn-active' : 'btn-ghost'}`}
-                      aria-pressed={activeTool === t.id}
+                      className={`btn chrome-subcontrol ${isActive && !measureMode ? 'btn-active' : 'btn-ghost'}`}
+                      aria-pressed={isActive && !measureMode}
                       style={{ position: 'relative' }}
                       // KAL-65: the instant chip above IS this control's tooltip;
                       // a native title= would stack the OS tooltip on top of it.

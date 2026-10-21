@@ -124,6 +124,15 @@ function prepareWorkdir() {
     recursive: true,
     filter: (source) => !source.includes(`${path.sep}node_modules`),
   });
+  // The Survey agent answers "enabled" for the seeded owner, so app walks can
+  // open it and start hands-free. The key is fake: nothing reaches Groq, and
+  // a model call would fail, never cost.
+  fs.writeFileSync(path.join(functionsDir, '.env'), [
+    'GROQ_API_KEY=e2e-fake-no-calls',
+    `SURVEY_AGENT_TESTERS=${E2E_ACCOUNTS.owner.email}`,
+    'SURVEY_AGENT_TTS=off',
+    '',
+  ].join('\n'));
   log(`workdir ${path.relative(ROOT, STACK_DIR)}: ${repoMigrations.length} migrations`);
 }
 
@@ -284,6 +293,13 @@ export async function seed({ url, serviceKey }) {
   // admin here so the /flags and /kits pages can be tested signed in.
   assertLocal(url);
   await must('local test admin', admin.from('feature_flag_admins').upsert({ user_id: ownerId }));
+  // The app shows the Survey agent button to the owner, as /flags does for testers.
+  await must('survey-agent flag', admin.from('feature_flags').upsert({
+    key: 'survey-agent',
+    mode: 'testers',
+    tester_emails: [E2E_ACCOUNTS.owner.email],
+    description: 'Seeded by scripts/e2e-local-supabase.mjs',
+  }, { onConflict: 'key' }));
 
   log('seeded:');
   for (const [key, account] of Object.entries(E2E_ACCOUNTS)) {

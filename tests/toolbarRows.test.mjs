@@ -302,14 +302,14 @@ test('w47: the loadout and row 2 crossfade through ghost layers; row 2 fades out
   assert.match(hook, /running\.reverse\(\);/);
 });
 
-test('w47: the room kept for the widest loadout matches the Shapes group\'s seven tools', () => {
+test('w47: the room kept for the widest loadout matches the Shapes group\'s eight tools', () => {
   // RULED 2026-09-26 owner: fixed centred groups + animated loadouts. The
   // icons keep WIDEST_SUBTOOLS_WIDTH clear on their right for the loadout; a
   // new tool in the widest group must raise it, or that loadout would run
   // into Export in a narrow window.
   const shapes = pdfViewer.slice(pdfViewer.indexOf("{subRowCategory === 'shape' && "), pdfViewer.indexOf("{subRowCategory === 'review' && "));
   const listed = shapes.slice(0, shapes.indexOf('].map(')).match(/\{ id: '[a-z-]+', label: /g) || [];
-  assert.equal(listed.length, 7);
+  assert.equal(listed.length, 8);
   assert.equal(WIDEST_SUBTOOLS_WIDTH, listed.length * 28 + (listed.length - 1) * 6 + 17);
 });
 

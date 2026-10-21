@@ -97,9 +97,9 @@ test('the survey bar\'s "All N" chips and Reuse take a finger: the bar\'s height
 
 test('the tool bar plan keeps the wider loadout clear of Export', () => {
   assert.equal(widestSubtoolsWidth(), WIDEST_SUBTOOLS_WIDTH);
-  assert.equal(widestSubtoolsWidth(6), 249);
-  assert.equal(widestSubtoolsWidth(12), 7 * 28 + 6 * 12 + 17);
-  assert.equal(widestSubtoolsWidth(Number.NaN), 249);
+  assert.equal(widestSubtoolsWidth(6), 283);
+  assert.equal(widestSubtoolsWidth(12), 8 * 28 + 7 * 12 + 17);
+  assert.equal(widestSubtoolsWidth(Number.NaN), 283);
   // An iPad mini (744px) with the 12px gutter: Undo/Redo end at 78, Pan /
   // Select 85px, the icons 108px, Export at 706.
   const reserve = widestSubtoolsWidth(12) + 28 + 12;
@@ -140,4 +140,14 @@ test('hover paints in the chrome sheets are behind @media (hover: hover), so a t
   // Focus and open states keep their look (only the hover half moved).
   assert.match(read('src/TabBar.css'), /\.tab-strip-overflow\[aria-expanded='true'\] \{/);
   assert.match(read('src/components/AnnotationSizeControl.css'), /\.annotation-size-control__trigger\[data-state='open'\] \{/);
+});
+
+test('the Move / Copy dialog\'s mode buttons take the 44px dialog-touch-pad on a touch screen (28px painted)', () => {
+  const src = read('src/home/BulkModals.jsx');
+  const modeBtn = src.slice(src.indexOf('const modeBtn'), src.indexOf('return (', src.indexOf('const modeBtn')));
+  assert.match(modeBtn, /onClick=\{\(\) => setMode\(val\)\}/);
+  assert.match(modeBtn, /className="dialog-touch-pad"/);
+  assert.match(modeBtn, /height: 28/);
+  const hub = stripComments(read('src/home/hub.css'));
+  assert.match(hub, /@media \(pointer: coarse\)[\s\S]*\.dialog-touch-pad::after\s*\{[^}]*inset:\s*-9px 0/);
 });

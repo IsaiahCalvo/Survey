@@ -5,7 +5,9 @@
 // as if the person had tapped. Every write returns a change with an undo.
 import { answerSetFor } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
-import { normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
+import { MARK_COLOR_HEX, normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
+import { markBox, visiblePageBox } from './planView.js';
+import { moduleKind, moduleMeaning } from '../../supabase/functions/_shared/surveyAgentMeaning.js';
 import { boundsCover, markerBoxAroundTag, tagShape } from './planText.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
 
@@ -158,6 +160,10 @@ export function createSurveyAgentToolbox({
     const exact = scored.filter((m) => m.score >= 1);
     if (exact.length === 1) return exact[0].id;
     if (!exact.length && scored.length === 1) return scored[0].id;
+    // The same tag in several modules (D-117 for installation and for
+    // commissioning): the one in the module open in the panel.
+    const here = (exact.length ? exact : scored).filter((m) => b.currentModuleId && b.markers[m.id]?.moduleId === b.currentModuleId);
+    if (here.length === 1 && (exact.length ? exact : scored).every((m) => m.id === here[0].id || b.markers[m.id]?.moduleId !== b.currentModuleId)) return here[0].id;
     if (!scored.length) throw new ToolError(`No item named ${heard}. Check with find_items or find_on_plan; nothing changed.`);
     const names = (exact.length ? exact : scored).map((m) => m.name).sort((a, b2) => a.localeCompare(b2, undefined, { numeric: true }));
     throw new ToolError(`Several items match ${heard}: ${names.slice(0, 5).join(', ')}. Ask which one; nothing changed.`);
@@ -260,8 +266,10 @@ export function createSurveyAgentToolbox({
         if (key) counts.set(key, (counts.get(key) || 0) + 1);
         if (key && !examples.has(key) && String(marker.name || '').trim()) examples.set(key, String(marker.name).trim());
       }
-      const multiModule = modulesOf(b.template).length > 1;
+      const allModules = modulesOf(b.template);
+      const multiModule = allModules.length > 1;
       const selected = b.selectedMarkerId && b.markers?.[b.selectedMarkerId];
+      const current = allModules.find((m) => m.id === (b.currentModuleId || selected?.moduleId)) || (multiModule ? null : allModules[0]);
       return {
         content: out({
           template: b.template.name || null,
@@ -275,6 +283,9 @@ export function createSurveyAgentToolbox({
             checklist: activeChecklist(category).map((item) => ({ id: item.id, text: itemText(item) })),
           })),
           entities: entitiesOf(b.template).map((e) => ({ id: e.id, name: e.name })),
+          // What plain talk means in each module ("it's installed", "it works").
+          modules: allModules.map((m) => ({ name: m.name || null, kind: moduleKind(m.name), meaning: moduleMeaning(m.name) })),
+          current_module: current ? current.name || null : null,
           selected_item: selected ? { id: b.selectedMarkerId, name: nameOf(selected) } : null,
           page_on_screen: b.getCurrentPage?.() || null,
           can_edit: b.canEdit !== false,
@@ -296,13 +307,31 @@ export function createSurveyAgentToolbox({
             id,
             name: nameOf(marker),
             category: entry?.category?.name || null,
+            ...(entry?.module?.name ? { module: entry.module.name } : {}),
             on_plan: Boolean(marker.pageNumber && marker.bounds),
             score: Math.round(score * 100) / 100,
+            here: Boolean(b.currentModuleId) && marker.moduleId === b.currentModuleId,
           });
         }
       }
       matches.sort((a, b2) => b2.score - a.score || a.name.localeCompare(b2.name));
-      return { content: out({ matches: matches.slice(0, 5) }) };
+      // The same tag in several modules (D-117 in Installation and in
+      // Commissioning): the person means the one in the module open on
+      // screen, so of the best matches only those are listed and the model
+      // doesn't ask which. A weaker match here never hides a better one
+      // elsewhere.
+      const top = matches[0]?.score;
+      const best = matches.filter((m) => m.score === top);
+      const bestHere = best.filter((m) => m.here);
+      const kept = bestHere.length ? [...bestHere, ...matches.filter((m) => m.score < top)] : matches;
+      const shown = kept.slice(0, 5).map(({ here: _, ...m }) => m);
+      const otherModules = bestHere.length ? [...new Set(best.filter((m) => !m.here).map((m) => m.module).filter(Boolean))] : [];
+      return {
+        content: out({
+          matches: shown,
+          ...(otherModules.length ? { open_module_only: `Showing the open module's items; the same names are also in ${otherModules.join(', ')}.` } : {}),
+        }),
+      };
     },
 
     get_item({ item_id: itemId } = {}) {
@@ -316,6 +345,7 @@ export function createSurveyAgentToolbox({
           id: itemId,
           name: nameOf(marker),
           category: entry ? { id: entry.category.id, name: entry.category.name } : null,
+          ...(entry?.module ? { module: entry.module.name || null, meaning: moduleMeaning(entry.module.name) } : {}),
           entity: entity ? { id: entity.id, name: entity.name } : null,
           checklist: entry ? activeChecklist(entry.category).map((item) => ({
             id: item.id,
@@ -329,31 +359,52 @@ export function createSurveyAgentToolbox({
       };
     },
 
-    set_answers({ item_id: givenId, item_name: itemName, answers } = {}) {
+    // Answers and a note in one step: "D-117 is installed but has no power"
+    // sets the installation lines and notes the power. all_lines answers
+    // every line the person did not name one by one ("everything's in").
+    set_answers({ item_id: givenId, item_name: itemName, answers, all_lines: allLines = null, note = null } = {}) {
       const b = bridge();
       writable(b);
       const itemId = givenId || markerIdByName(b, itemName);
       const marker = markerOf(b, itemId);
       const entry = categoryIndex(b.template).find(marker.moduleId, marker.categoryId);
-      if (!entry) throw new ToolError('This item has no category in the template, so it has no checklist.');
-      const checklist = new Map(activeChecklist(entry.category).map((item) => [item.id, item]));
+      const addition = String(note || '').trim();
+      const named = Array.isArray(answers) ? answers : [];
+      if (!named.length && !allLines && !addition) throw new ToolError('No answers given.');
+      if ((named.length || allLines) && !entry) throw new ToolError('This item has no category in the template, so it has no checklist.');
+      const lines = entry ? activeChecklist(entry.category) : [];
+      const checklist = new Map(lines.map((item) => [item.id, item]));
       const allowed = answerSetFor(b.template).map((a) => a.value);
-      const list = Array.isArray(answers) ? answers : [];
-      if (!list.length) throw new ToolError('No answers given.');
-      for (const a of list) {
+      for (const a of named) {
         if (!checklist.has(a?.checklist_item_id)) throw new ToolError(`${a?.checklist_item_id} is not on the ${entry.category.name} checklist. Use get_item for its checklist ids.`);
         if (!allowed.includes(a?.value)) throw new ToolError(`"${a?.value}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);
       }
+      if (allLines && !allowed.includes(allLines)) throw new ToolError(`"${allLines}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);
+      const given = new Set(named.map((a) => a.checklist_item_id));
+      const list = [...named, ...(allLines ? lines.filter((l) => !given.has(l.id)).map((l) => ({ checklist_item_id: l.id, value: allLines })) : [])];
       const responses = marker.checklistResponses || {};
       const fields = list.map((a) => ({ type: 'answer', id: a.checklist_item_id, before: clone(responses[a.checklist_item_id]), after: a.value }));
-      // A tap's answer can move the entity (auto-entity rule). What it moved
-      // to is only known once the app re-renders: settle() fills `after`.
-      fields.push({ type: 'autoEntity', before: marker.entityId || null, after: undefined });
-      b.setAnswers(itemId, list.map((a) => ({ checklistItemId: a.checklist_item_id, value: a.value })));
-      const label = list.map((a) => `${itemText(checklist.get(a.checklist_item_id))} = ${a.value}`).join('; ');
+      const said = [];
+      if (list.length) {
+        // A tap's answer can move the entity (auto-entity rule). What it moved
+        // to is only known once the app re-renders: settle() fills `after`.
+        fields.push({ type: 'autoEntity', before: marker.entityId || null, after: undefined });
+        b.setAnswers(itemId, list.map((a) => ({ checklistItemId: a.checklist_item_id, value: a.value })));
+        said.push(list.map((a) => `${itemText(checklist.get(a.checklist_item_id))} = ${a.value}`).join('; '));
+      }
+      if (addition) {
+        const beforeText = noteTextOf(marker.note).trimEnd();
+        fields.push({ type: 'note', before: clone(marker.note), afterText: beforeText ? `${beforeText}\n${addition}` : addition, afterMedia: mediaCountOf(marker.note) });
+        b.updateNote(itemId, (prev) => {
+          const before = String(prev?.text || '').trimEnd();
+          return { ...prev, text: before ? `${before}\n${addition}` : addition };
+        });
+        said.push(`note "${addition.length > 80 ? `${addition.slice(0, 77)}...` : addition}"`);
+      }
+      const what = [list.length ? `${list.length} answer${list.length === 1 ? '' : 's'}` : '', addition ? 'a note' : ''].filter(Boolean).join(' and ');
       return {
-        content: `Set ${list.length} answer${list.length === 1 ? '' : 's'} on ${nameOf(marker)}${givenId ? '' : ` (item id ${itemId})`}.`,
-        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${label}`, fields },
+        content: `Set ${what} on ${nameOf(marker)}${givenId ? '' : ` (item id ${itemId})`}.`,
+        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${said.join('; ')}`, fields },
       };
     },
 
@@ -592,12 +643,70 @@ export function createSurveyAgentToolbox({
       };
     },
 
+    // "Circle D-117", "cloud this area": a shape around an item, a plan tag
+    // or what is on screen, drawn the way the person's own tools draw it.
+    mark_on_plan({ shape, item_id: itemId, plan_match_id: matchId, on_screen: onScreen, color } = {}) {
+      const b = bridge();
+      if (b.canEdit === false) throw new ToolError('This person can only view this document, so nothing can be drawn.');
+      const doc = typeof getDocument === 'function' ? getDocument() : null;
+      if (!doc?.addShape) throw new ToolError('Drawing on the plan is not available here.');
+      const kind = ['circle', 'box', 'cloud'].includes(shape) ? shape : 'circle';
+      const picked = [itemId, matchId, onScreen === true].filter(Boolean).length;
+      if (picked !== 1) throw new ToolError('Say what to mark: one item, one plan tag, or what is on screen.');
+      let page;
+      let box;
+      let what;
+      if (itemId) {
+        const marker = markerOf(b, itemId);
+        if (!marker.pageNumber || !marker.bounds) throw new ToolError(`${nameOf(marker)} is not placed on the plan, so there is nothing to mark.`);
+        page = marker.pageNumber;
+        box = marker.bounds;
+        what = nameOf(marker);
+      } else if (matchId) {
+        const match = planMatches.get(matchId);
+        if (!match) throw new ToolError(`No plan match ${matchId}. Use find_on_plan first.`);
+        page = match.page;
+        box = match.box;
+        what = match.text ? `"${match.text}"` : 'that tag';
+      } else {
+        page = b.getCurrentPage?.() || null;
+        const size = page && (doc.getPageSize?.(page) || b.getPageSize?.(page));
+        box = size ? visiblePageBox(page, size) : null;
+        if (!box) throw new ToolError('Could not tell which part of the plan is on screen. Name an item to mark instead.');
+        what = 'the area on screen';
+      }
+      const size = doc.getPageSize?.(page) || b.getPageSize?.(page);
+      if (!size) throw new ToolError('That page is not in the open document.');
+      const at = markBox(box, size, { shape: kind, inset: !itemId && !matchId });
+      const res = doc.addShape({
+        page,
+        shape: kind === 'circle' ? 'ellipse' : 'rect',
+        ...at,
+        strokeColor: MARK_COLOR_HEX[color] || MARK_COLOR_HEX.red,
+        strokeWidth: 2,
+        ...(kind === 'cloud' ? { borderStyle: 'cloud' } : {}),
+      });
+      if (res?.reason === 'locked') throw new ToolError('A locked markup on that page blocked the save, so nothing was drawn.');
+      if (!res?.ok) throw new ToolError('Could not draw that on the plan.');
+      const word = { circle: 'a circle', box: 'a box', cloud: 'a cloud' }[kind];
+      const label = `Drew ${word} around ${what} on page ${page}.`;
+      return {
+        content: res.id ? `${label.slice(0, -1)} (id ${res.id}).` : label,
+        ...(res.id ? { change: { annotationId: res.id, documentId: b.documentId || null, label } } : {}),
+      };
+    },
+
     show_item({ item_id: itemId } = {}) {
       const b = bridge();
       const marker = markerOf(b, itemId);
       b.showMarker(itemId);
       return { content: `Showing ${nameOf(marker)}.` };
     },
+    // The server sends the markup tools on the model's next step.
+    open_markup_tools() {
+      return { content: 'The markup tools are ready.' };
+    },
+
     // The chat's own Undo, by voice: "no, that was D-118" or "undo that".
     undo_last_turn() {
       bridge();

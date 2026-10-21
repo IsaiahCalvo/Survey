@@ -19,6 +19,11 @@ on:
     # asserts the two are still paired, and that check runs in CI.
     workflows: ["Build and tests"]
     types: [completed]
+  # Backup only: GitHub runs this repo's cron schedules now and then at best
+  # (one scheduled run of any workflow on 2026-10-21), so the CI trigger above
+  # is what really opens each 3-hour window.
+  schedule:
+    - cron: '17 */3 * * *'
   workflow_dispatch:
 
 permissions:
@@ -42,13 +47,13 @@ permissions:
 
 jobs:
   deploy:
-    # `conclusion == 'success'` is the aggregate of every blocking CI job: all
-    # four test shards, the slow isolated suites, and the build inside
-    # `ci-gate`. A red shard makes the run red, which skips this job.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main')
+    # The `pick` job (below, kept after this one so the release contract's
+    # ordering check reads this job first) chooses the newest main commit whose
+    # "Build and tests" run passed. That run's conclusion is the aggregate of
+    # every blocking CI job: all four test shards, the slow isolated suites,
+    # and the build inside `ci-gate`.
+    needs: pick
+    if: needs.pick.outputs.ship == 'true'
     # Job-level on purpose — see the note above `jobs:`. A skipped run must
     # never enter this group, or it cancels a pending real deploy.
     concurrency:
@@ -64,7 +69,7 @@ jobs:
       - name: Checkout the exact tested revision
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ needs.pick.outputs.sha }}
           # Full history, so the freshness check below can tell which of two
           # revisions is newer.
           fetch-depth: 0
@@ -138,10 +143,32 @@ jobs:
         # revision over a newer one (two CI runs can finish out of order).
         # So: ship when main still points here, or when what is live is older
         # than this revision; skip, green, when live is already this or newer.
+        #
+        # 2026-10-21 — it also rechecks the 3-hour window (see `pick`). Two
+        # CI runs can both pick "ship" before either deploys; the second one
+        # then waits here, behind the first, in the concurrency group. Once
+        # the first has shipped, live is minutes old again, so the second
+        # applies its backend changes (which always go first and must work
+        # with the older frontend anyway) and leaves Vercel for the next
+        # window.
         id: freshness
         shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          URGENT: ${{ needs.pick.outputs.urgent }}
+          WINDOW_SECONDS: '10500'
         run: |
-          tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          tested_sha="${{ needs.pick.outputs.sha }}"
+          built="$(curl --fail --silent https://surveytool.app/release.json | jq -r '.builtAt // empty' 2>/dev/null || true)"
+          if [ "$EVENT" != workflow_dispatch ] && [ "$URGENT" != true ] && [ -n "$built" ]; then
+            age=$(( $(date -u +%s) - $(date -u -d "$built" +%s) ))
+            if [ "$age" -lt "$WINDOW_SECONDS" ]; then
+              echo "Production shipped ${age}s ago, after this run was picked; leaving Vercel for the next window."
+              echo "ship=false" >> "$GITHUB_OUTPUT"
+              echo "### Skipped Vercel: production shipped ${age}s ago (3-hour window)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
           remote_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
           if [ "$remote_sha" = "$tested_sha" ]; then
             echo "ship=true" >> "$GITHUB_OUTPUT"; exit 0
@@ -169,7 +196,7 @@ jobs:
           # Token-based CLI deploy replaced the git deploy hook on 2026-08-18:
           # the repo moved to the Kal-Voe org and Vercel's Hobby plan cannot
           # git-connect private org-owned repos, so hook/git deploys are gone.
-          tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          tested_sha="${{ needs.pick.outputs.sha }}"
           npm install -g vercel@latest
           vercel deploy --prod --yes --token "$VERCEL_TOKEN" \
             --build-env VERCEL_GIT_COMMIT_SHA="$tested_sha"
@@ -178,7 +205,7 @@ jobs:
         if: steps.freshness.outputs.ship == 'true'
         shell: bash
         run: |
-          tested_sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          tested_sha="${{ needs.pick.outputs.sha }}"
           for attempt in $(seq 1 120); do
             live_sha="$(curl --fail --silent --show-error \
               "https://surveytool.app/release.json?attempt=$attempt" \
@@ -196,6 +223,75 @@ jobs:
         run: |
           {
             echo "### Production deployment complete"
-            echo "- Revision: \`${{ github.event.workflow_run.head_sha || github.sha }}\`"
+            echo "- Revision: \`${{ needs.pick.outputs.sha }}\`"
             echo "- URL: https://surveytool.app"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # 2026-10-21 — production ships at most once every 3 hours. Vercel's free
+  # plan allows 100 deploys a day for the whole account, and a deploy per merge
+  # hit that cap (about half of all deploys failed that morning). The owner
+  # chose a 3-hour cadence. Runs on every finished CI run (any branch) and
+  # decides whether a window is open:
+  #   - nothing new: the newest green main commit is already live → skip;
+  #   - run by hand, or a commit since the live one says `[deploy now]` in its
+  #     message → ship now (urgent fixes; rollbacks are Vercel's instant
+  #     rollback and never wait on this);
+  #   - otherwise ship only when what is live was built 3 hours ago or more.
+  pick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.pick.outputs.sha }}
+      ship: ${{ steps.pick.outputs.ship }}
+      urgent: ${{ steps.pick.outputs.urgent }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 300
+
+      - name: Pick the newest green main commit and decide whether to ship
+        id: pick
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          WINDOW_SECONDS: '10500'
+        run: |
+          green="$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=100" \
+            --jq '.workflow_runs[].head_sha')"
+          sha=""
+          for c in $(git rev-list --max-count=300 HEAD); do
+            if grep -qx "$c" <<< "$green"; then sha="$c"; break; fi
+          done
+          if [ -z "$sha" ]; then
+            echo "No green main commit in the last 300."; echo "ship=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          release="$(curl --fail --silent https://surveytool.app/release.json || echo '{}')"
+          live="$(jq -r '.commit // empty' <<< "$release" 2>/dev/null || true)"
+          built="$(jq -r '.builtAt // empty' <<< "$release" 2>/dev/null || true)"
+          if [ -n "$live" ] && git cat-file -e "$live^{commit}" 2>/dev/null \
+            && git merge-base --is-ancestor "$sha" "$live"; then
+            echo "Live ($live) already includes $sha."; echo "ship=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$EVENT" = workflow_dispatch ]; then
+            echo "Run by hand: shipping $sha."; echo "ship=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ -n "$live" ] && git cat-file -e "$live^{commit}" 2>/dev/null \
+            && git log --format=%B "$live..$sha" | grep -qF '[deploy now]'; then
+            echo "A commit since $live asks for [deploy now]: shipping $sha."
+            echo "ship=true" >> "$GITHUB_OUTPUT"; echo "urgent=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          age=999999
+          [ -n "$built" ] && age=$(( $(date -u +%s) - $(date -u -d "$built" +%s) ))
+          if [ "$age" -lt "$WINDOW_SECONDS" ]; then
+            echo "Live was built ${age}s ago; next window in $(( (WINDOW_SECONDS - age) / 60 )) min."
+            echo "ship=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "Window open (live built ${age}s ago): shipping $sha."
+          echo "ship=true" >> "$GITHUB_OUTPUT"
+          echo "### Shipping \`$sha\` (live was \`${live:-unknown}\`)" >> "$GITHUB_STEP_SUMMARY"

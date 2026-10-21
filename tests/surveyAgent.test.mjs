@@ -6,6 +6,7 @@ import { keepWaiting, loadWaiting } from '../src/agent/waitingStore.js';
 import { buildAgentTools } from '../src/agent/webmcp.js';
 import {
   SURVEY_AGENT_TOOL_NAMES,
+  markupOpenInTurn,
   buildSurveyAgentTools,
   sanitizeAgentMessages,
   surveyAgentCostMicros,
@@ -457,6 +458,77 @@ test('markup the agent added shows on the change card and Undo deletes it', asyn
   assert.equal(live.has('a1'), false);
   // Already gone (the person deleted it): kept, nothing thrown.
   assert.deepEqual(box.undo([added.change]), { reverted: 0, kept: 1 });
+});
+
+test('mark_on_plan circles, boxes or clouds an item, a plan tag or what is on screen, and Undo takes it back', async () => {
+  const { bridge } = fakeBridge({ getPageSize: () => ({ width: 612, height: 792 }) });
+  bridge.markers.m300 = { name: 'D-300', moduleId: 'mod-1', categoryId: 'cat-door', pageNumber: 1, bounds: { x: 100, y: 200, width: 40, height: 20 }, checklistResponses: {} };
+  bridge.findOnPlan = async () => ({ matches: [{ page: 1, text: 'CAM-4', box: { x: 300, y: 300, width: 30, height: 10 } }] });
+  const drawn = [];
+  const live = new Set();
+  const doc = {
+    getPageSize: () => ({ width: 612, height: 792 }),
+    addShape: (args) => { drawn.push(args); const id = `s${drawn.length}`; live.add(id); return { ok: true, id }; },
+    findAnnotation: (id) => (live.has(id) ? { id } : null),
+    deleteAnnotation: (id) => (live.delete(id) ? { ok: true } : { ok: false }),
+  };
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge, getDocument: () => doc });
+  const circled = await box.run('mark_on_plan', { shape: 'circle', item_id: 'm300', plan_match_id: null, on_screen: false, color: null });
+  assert.equal(circled.isError, false);
+  assert.equal(circled.content, 'Drew a circle around D-300 on page 1 (id s1).');
+  assert.deepEqual(circled.change, { annotationId: 's1', documentId: 'doc-1', label: 'Drew a circle around D-300 on page 1.' });
+  const c = drawn[0];
+  assert.equal(c.shape, 'ellipse');
+  assert.equal(c.strokeColor, '#dc2626');
+  assert.equal(c.borderStyle, undefined);
+  // The ellipse holds the item's whole box, corners too.
+  const inside = (px, py) => ((px - (c.x + c.width / 2)) / (c.width / 2)) ** 2 + ((py - (c.y + c.height / 2)) / (c.height / 2)) ** 2 <= 1;
+  for (const [px, py] of [[100, 200], [140, 200], [100, 220], [140, 220]]) assert.ok(inside(px, py), `corner ${px},${py} outside`);
+  // A cloud around a plan tag, in blue; a box near the page edge stays on the page.
+  const { content } = await box.run('find_on_plan', { text: 'CAM-4' });
+  const matchId = JSON.parse(content).matches[0].id;
+  await box.run('mark_on_plan', { shape: 'cloud', item_id: null, plan_match_id: matchId, on_screen: false, color: 'blue' });
+  assert.deepEqual({ shape: drawn[1].shape, borderStyle: drawn[1].borderStyle, strokeColor: drawn[1].strokeColor }, { shape: 'rect', borderStyle: 'cloud', strokeColor: '#2563eb' });
+  assert.ok(drawn[1].x < 300 && drawn[1].x + drawn[1].width > 330);
+  await box.run('mark_on_plan', { shape: 'box', item_id: 'm117', plan_match_id: null, on_screen: false, color: null });
+  assert.equal(drawn[2].x, 0);
+  assert.equal(drawn[2].y, 0);
+  // "This area" needs the page on screen; with no page element there is none.
+  bridge.getCurrentPage = () => 1;
+  assert.match((await box.run('mark_on_plan', { shape: 'cloud', item_id: null, plan_match_id: null, on_screen: true, color: null })).content, /on screen/);
+  // One target, placed items only, editors only.
+  assert.match((await box.run('mark_on_plan', { shape: 'circle', item_id: 'm300', plan_match_id: matchId, on_screen: false, color: null })).content, /Say what to mark/);
+  assert.match((await box.run('mark_on_plan', { shape: 'circle', item_id: 'm118', plan_match_id: null, on_screen: false, color: null })).content, /not placed on the plan/);
+  assert.deepEqual(box.undo([circled.change]), { reverted: 1, kept: 0 });
+  assert.equal(live.has('s1'), false);
+  bridge.canEdit = false;
+  assert.match((await box.run('mark_on_plan', { shape: 'circle', item_id: 'm300', plan_match_id: null, on_screen: false, color: null })).content, /can only view/);
+  assert.equal(drawn.length, 3);
+});
+
+test('markup tools come on demand: a small stand-in until the model asks for them in this turn', async () => {
+  const closed = buildSurveyAgentTools(['Y'], { annotations: true, markupOpen: false }).map((t) => t.function.name);
+  assert.ok(closed.includes('open_markup_tools'));
+  assert.ok(!closed.includes('mark_on_plan') && !closed.includes('add_text_note'));
+  const open = buildSurveyAgentTools(['Y'], { annotations: true, markupOpen: true }).map((t) => t.function.name);
+  assert.ok(open.includes('mark_on_plan') && !open.includes('open_markup_tools'));
+  assert.ok(!buildSurveyAgentTools(['Y'], { markupOpen: false }).some((t) => t.function.name === 'open_markup_tools'));
+  const asked = (name) => ({ role: 'assistant', content: '', tool_calls: [{ id: 'c', type: 'function', function: { name, arguments: '{}' } }] });
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'circle D-117' }]), false);
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'circle D-117' }, asked('open_markup_tools'), { role: 'tool', tool_call_id: 'c', content: 'ok' }]), true);
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'x' }, asked('add_text_note'), { role: 'tool', tool_call_id: 'c', content: 'ok' }]), true);
+  // A new thing said closes them again.
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'x' }, asked('open_markup_tools'), { role: 'tool', tool_call_id: 'c', content: 'ok' }, { role: 'assistant', content: 'Done.' }, { role: 'user', content: 'D-118 lock yes' }]), false);
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'x' }, asked('set_answers')]), false);
+  const box = createSurveyAgentToolbox({ getBridge: () => fakeBridge().bridge });
+  assert.deepEqual(await box.run('open_markup_tools', {}), { isError: false, content: 'The markup tools are ready.' });
+});
+
+test('mark_on_plan comes with the markup tools only', () => {
+  assert.ok(!buildSurveyAgentTools(['Y']).some((t) => t.function.name === 'mark_on_plan'));
+  const mark = buildSurveyAgentTools(['Y'], { annotations: true }).find((t) => t.function.name === 'mark_on_plan');
+  assert.deepEqual(mark.function.parameters.properties.shape.enum, ['circle', 'box', 'cloud']);
+  assert.ok(mark.function.parameters.properties.color.enum.includes(null));
 });
 
 test('take_photo opens the camera, waits, and attaches the photo to the item', async () => {
