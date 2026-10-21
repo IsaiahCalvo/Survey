@@ -122,14 +122,14 @@ async function oneRun(browser, size, { profile = null } = {}) {
     await cdp.send('Profiler.start');
   }
   if (size === 'desktop') await page.getByRole('button', { name: 'Open file' }).first().click();
-  else {
-    await page.evaluate(() => { window.__bigOpen.t0 = performance.now(); });
+  else if (size === 'tablet') {
+    // The tablet layout selects the row on a tap and opens with "Open file".
     await row.tap();
-    // Wider touch layouts select the row on a tap and open with "Open file".
     const openBtn = page.getByRole('button', { name: 'Open file' }).filter({ visible: true }).first();
-    await page.waitForTimeout(400);
-    if (await page.evaluate(() => !document.querySelector('.survey-pdfjs-page-div')) && await openBtn.isVisible().catch(() => false)) await openBtn.tap();
-  }
+    await openBtn.waitFor({ timeout: 10_000 });
+    await page.evaluate(() => { window.__bigOpen.t0 = performance.now(); });
+    await openBtn.tap();
+  } else { await page.evaluate(() => { window.__bigOpen.t0 = performance.now(); }); await row.tap(); }
   await page.waitForFunction(() => window.__bigOpen?.marks != null && window.__bigOpen?.firstPage != null, null, { timeout: 120_000, polling: 100 });
   // Wait until QUIET_MS passes with no long task after the marks are up.
   const result = await page.waitForFunction((quiet) => {
