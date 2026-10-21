@@ -59,3 +59,16 @@ test('AppShell opens a share link from its row as soon as the user is known, onc
   // The list path still exists for rows this one leaves alone.
   assert.match(src, /const documentToOpen = documents\.find\(/);
 });
+
+test('the thumbnail backfill waits while a share link is still opening', async () => {
+  const src = readFileSync(new URL('../src/hooks/useThumbnailBackfill.js', import.meta.url), 'utf8');
+  assert.match(src, /isBusy: \(\) => !listVisible\(\) \|\| isUserBusy\(\) \|\| deepLinkOpenPending\(\),/);
+  const body = src.slice(src.indexOf('const DEEP_LINK_HOLD_MS'), src.indexOf('export function useThumbnailBackfill'));
+  // eslint-disable-next-line no-new-func
+  const deepLinkOpenPending = new Function(`${body.replace('export ', '')}; return deepLinkOpenPending;`)();
+  assert.equal(deepLinkOpenPending('?docId=abc', 1000), true);
+  assert.equal(deepLinkOpenPending('?tab=home', 1000), false);
+  assert.equal(deepLinkOpenPending('', 1000), false);
+  // A link whose document never opened stops holding thumbnails back.
+  assert.equal(deepLinkOpenPending('?docId=abc', 25_000), false);
+});

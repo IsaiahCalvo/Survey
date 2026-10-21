@@ -151,6 +151,21 @@ export async function documentNeedsThumbnail(doc) {
  * @param {{ current: HTMLElement|null }} options.hostRef  the list's root; the
  *        queue pauses whenever it is not rendered (another tab, viewer open)
  */
+// A share link (/?docId=) is opening a document: its stream and the viewer's
+// code need the bandwidth, so thumbnails wait. The open drops the parameter
+// when it starts, and the open viewer then hides the list (perf, 2026-10-21:
+// a full thumbnail download was competing with the linked open).
+// Capped: a link whose document never opens keeps the parameter, and must not
+// hold thumbnails back for the whole session.
+const DEEP_LINK_HOLD_MS = 20_000;
+export function deepLinkOpenPending(
+  search = typeof window !== 'undefined' ? window.location?.search : '',
+  sinceLoadMs = typeof performance !== 'undefined' ? performance.now() : 0,
+) {
+  if (sinceLoadMs > DEEP_LINK_HOLD_MS) return false;
+  try { return new URLSearchParams(search || '').has('docId'); } catch { return false; }
+}
+
 export function useThumbnailBackfill(documents, { downloadDocument, hostRef, enabled = true } = {}) {
   const backfillRef = useRef(null);
   const downloadRef = useRef(downloadDocument);
@@ -168,7 +183,7 @@ export function useThumbnailBackfill(documents, { downloadDocument, hostRef, ena
         downloadDocument: downloadRef.current,
         isCancelled,
       }), GENERATE_TIMEOUT_MS),
-      isBusy: () => !listVisible() || isUserBusy(),
+      isBusy: () => !listVisible() || isUserBusy() || deepLinkOpenPending(),
       onError: (error, doc) => console.warn('[ThumbnailBackfill] failed:', doc?.name || doc?.id, error?.message || error),
     });
     backfillRef.current = backfill;
