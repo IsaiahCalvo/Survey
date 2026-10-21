@@ -5638,3 +5638,18 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   .projects-file-editor-label-short { display: inline; }
   .projects-file-editor-name { display: none; }
 }
+
+/* Documents list with the preview open. On a tablet the list pane is only
+   ~400-560px wide, so the fixed columns pushed the row's More button off the
+   right edge (it scrolled away and could not be tapped). Narrow panes drop
+   Size, then Project (both stay in the preview); wide panes keep them all. */
+.survey-hub .documents-ledger-scroll { container-type: inline-size; }
+.survey-hub .documents-ledger-grid.is-preview { grid-template-columns: 32px 54px minmax(150px, 1fr) 124px 124px 72px 36px; }
+@container (max-width: 620px) {
+  .survey-hub .documents-ledger-grid.is-preview { grid-template-columns: 32px 54px minmax(0, 1fr) 110px 116px 36px; }
+  .survey-hub .documents-ledger-grid.is-preview .documents-col-size { display: none; }
+}
+@container (max-width: 480px) {
+  .survey-hub .documents-ledger-grid.is-preview { grid-template-columns: 32px 54px minmax(0, 1fr) 116px 36px; }
+  .survey-hub .documents-ledger-grid.is-preview .documents-col-project { display: none; }
+}
