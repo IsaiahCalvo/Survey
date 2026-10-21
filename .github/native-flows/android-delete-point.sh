@@ -15,7 +15,9 @@ pick() {
 # Distinct corner indices of the selected poly (only rendered while selected).
 count() { ev "new Set([...document.querySelectorAll('[data-poly-vertex-index]')].map(e => e.getAttribute('data-poly-vertex-index'))).size"; }
 W=$(adb shell wm size | sed 's/.*: //;s/x.*//' | tr -d '\r'); H=$(adb shell wm size | sed 's/.*x//' | tr -d '\r')
-X=$((W / 2)); Y=$((H * 3 / 4))
+# Right of the revision cloud, inside the page on a Pixel 7 (the page ends
+# near 74% of the screen height, so 3/4 missed it).
+X=$((W * 3 / 4)); Y=$((H * 13 / 20))
 ( pick Polygon ) || { pick Shapes; pick Polygon; }
 # Four corners, then a tap back on the first one closes the polygon.
 for p in "$((X - 150)) $((Y - 100))" "$((X + 150)) $((Y - 100))" "$((X + 150)) $((Y + 100))" "$((X - 150)) $((Y + 100))" "$((X - 150)) $((Y - 100))"; do
