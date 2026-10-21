@@ -70,9 +70,13 @@ export function constrainToPage(left, top, width, height, pageWidth, pageHeight)
  * @returns {number} Inverse scale factor (always > 0)
  */
 export function getInverseScale(svgElement, viewBoxWidth) {
-  const clientWidth = svgElement.clientWidth;
-  if (!clientWidth) return 1;
-  return 1 / (clientWidth / viewBoxWidth);
+  return inverseScaleFromWidth(svgElement.clientWidth, viewBoxWidth);
+}
+
+/** The same factor from a width already in hand (e.g. a ResizeObserver entry). */
+export function inverseScaleFromWidth(width, viewBoxWidth) {
+  if (!width) return 1;
+  return 1 / (width / viewBoxWidth);
 }
 
 /**

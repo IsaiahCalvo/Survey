@@ -195,6 +195,9 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
   // the next frame, so a bad measurement can never lock the page up.
   const churnRef = useRef({ count: 0, frameRequested: false });
   const contentWatchRef = useRef({ observer: null, holder: null });
+  // DOM changes inside the toolbar since the last plan (see the every-render
+  // effect below).
+  const domWatchRef = useRef({ observer: null, host: null, formatRow: null });
 
   const measureAndPlan = useCallback(() => {
     const host = hostRef.current;
@@ -355,9 +358,35 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
 
   // Every render: the armed tool, the selection or a "Mixed" label may have
   // changed what the formatting row holds, or shown / hidden the row.
+  // Perf (dense sheets, 2026-10-21): the shell re-renders as the page number
+  // changes during a pan, and measuring forced a layout of every mounted page
+  // each time (~1 s over a 30-sheet pan on a tablet). Re-plan only when the
+  // toolbar's own DOM changed since the last plan; width changes from outside
+  // come through the ResizeObservers below.
   useLayoutEffect(() => {
-    if (!enabled) return;
-    measureAndPlan();
+    if (!enabled) {
+      // Re-plan in full when it comes back on.
+      domWatchRef.current.host = undefined;
+      return;
+    }
+    const dom = domWatchRef.current;
+    const host = hostRef.current;
+    const formatRow = formatRowRef?.current || null;
+    let changed = !dom.observer || dom.host !== host || dom.formatRow !== formatRow;
+    if (typeof MutationObserver === 'undefined') changed = true;
+    else {
+      if (!dom.observer) dom.observer = new MutationObserver(() => {});
+      if (dom.observer.takeRecords().length > 0) changed = true;
+      if (dom.host !== host || dom.formatRow !== formatRow) {
+        dom.observer.disconnect();
+        const opts = { subtree: true, childList: true, attributes: true, characterData: true };
+        if (host) dom.observer.observe(host, opts);
+        if (formatRow && !host?.contains(formatRow)) dom.observer.observe(formatRow, opts);
+        dom.host = host;
+        dom.formatRow = formatRow;
+      }
+    }
+    if (changed) measureAndPlan();
     // The settings holder is portalled into the row after the row mounts (and
     // again if the row is rebuilt): keep the size watcher on the live one.
     const holder = formatRowRef?.current?.querySelector('[data-chrome-settings-holder]') || null;
@@ -368,6 +397,8 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       watch.holder = holder;
     }
   });
+
+  useEffect(() => () => { domWatchRef.current.observer?.disconnect(); }, []);
 
   // The window (or split view) changed width: re-plan before the next paint.
   useEffect(() => {
