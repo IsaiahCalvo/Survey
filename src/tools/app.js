@@ -413,6 +413,10 @@ async function addFiles(list) {
         if (locked && T.keepLock) {
           item.locked = true;
           item.doc = null;
+        } else if (!locked && T.openAnyway) {
+          // Repair takes files pdf.js can't read; the tool tries other readers.
+          item.broken = true;
+          item.doc = null;
         } else {
           S.error = locked
             ? [`"${file.name}" is locked with a password. `, h('a', { href: '/tools/unlock-pdf' }, 'Unlock it'), ' first, then try again.']
@@ -440,7 +444,8 @@ async function addFiles(list) {
 
 function dispose(item) {
   if (item.url) URL.revokeObjectURL(item.url);
-  item.doc?.then((d) => d.destroy()).catch(() => {});
+  // pdf.js 6 moved destroy() from the document to its loading task.
+  item.doc?.then((d) => (d.loadingTask || d).destroy?.()).catch(() => {});
   item.thumbs.forEach(releaseCanvas);
 }
 
@@ -518,7 +523,7 @@ function fileRow(file, i) {
     : ACCEPT === 'pdf' && !file.locked ? thumbSlot(file, 0) : h('div', { class: 'thumb ext' }, file.name.split('.').pop().slice(0, 4).toUpperCase());
   const row = h('li', { class: 'frow', draggable: n > 1 ? 'true' : null, 'data-index': String(i) },
     preview,
-    h('div', { class: 'fmeta' }, h('span', { class: 'fname' }, file.name), h('span', { class: 'fsub' }, `${file.locked ? 'Locked · ' : ''}${file.pages ? `${file.pages} page${file.pages === 1 ? '' : 's'} · ` : ''}${fmtSize(file.size)}`)),
+    h('div', { class: 'fmeta' }, h('span', { class: 'fname' }, file.name), h('span', { class: 'fsub' }, `${file.locked ? 'Locked · ' : ''}${file.broken ? 'Damaged · ' : ''}${file.pages ? `${file.pages} page${file.pages === 1 ? '' : 's'} · ` : ''}${fmtSize(file.size)}`)),
     h('div', { class: 'facts' },
       n > 1 && h('button', { type: 'button', class: 'ibtn', 'aria-label': `Move ${file.name} up`, disabled: i === 0, onclick: move(-1), html: ICON.up }),
       n > 1 && h('button', { type: 'button', class: 'ibtn', 'aria-label': `Move ${file.name} down`, disabled: i === n - 1, onclick: move(1), html: ICON.down }),

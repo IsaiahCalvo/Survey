@@ -3,6 +3,8 @@
 //   view: 'files' | 'pages' | 'organize'   how the chosen files are shown
 //   options: [{ key, label, type: SEG|'select'|'text'|'number'|'check'|'password'|'pages', def, choices, show, help }]
 //   select: 'keep' | 'delete'              pages view: tap pages to pick them
+//   keepLock: true                         take password-locked PDFs as they are (item.locked)
+//   openAnyway: true                       take PDFs pdf.js can't open (item.broken, item.pages 0)
 //   prepare(item)                          once per added file (item.bytes, item.name, item.pages, item.pdfjs())
 //   notice(files) -> string | null         a note shown above the options
 //   run(files, opts, progress) -> [{ name, bytes, type, note? }]   more than one output is zipped

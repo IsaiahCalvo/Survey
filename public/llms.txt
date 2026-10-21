@@ -49,6 +49,10 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Make a booklet](https://surveytool.app/tools/booklet-pdf): Print a PDF as a folded, stapled booklet.
 - [Reverse PDF](https://surveytool.app/tools/reverse-pdf): Flip the page order so the last page comes first.
 - [Insert blank pages](https://surveytool.app/tools/add-blank-pages): Add empty pages after every page or where you choose.
+- [Repair PDF](https://surveytool.app/tools/repair-pdf): Fix a PDF that won't open or shows errors.
+- [Split by bookmarks](https://surveytool.app/tools/split-by-bookmarks): One PDF per chapter or sheet, from its bookmarks.
+- [Remove hidden data](https://surveytool.app/tools/sanitize-pdf): Strip metadata, scripts and attachments from a PDF.
+- [Fast web view](https://surveytool.app/tools/fast-web-view): Make a big PDF open fast online, page 1 first.
 
 ## Optional
 
