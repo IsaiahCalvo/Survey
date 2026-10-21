@@ -407,6 +407,11 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 }
 
 
+/* First-run walk #7: the export button sits 8px right of Back and its hit
+   pad reaches 8px sideways too, so it is 44x44 without covering Back. */
+.mobile-pdf-header__export { margin-left: 4px; }
+.mobile-pdf-header__icon.mobile-pdf-header__export::after { inset-inline: -8px; }
+
 .mobile-pdf-header__icon:disabled { color: var(--text-disabled);
   cursor: not-allowed;
 }
@@ -4068,6 +4073,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 @media (max-width: 340px) {
   .mobile-pdf-header__document { left: 4px; max-width: 156px; gap: 2px; }
   .mobile-pdf-header__history { right: 4px; gap: 2px; }
+  .mobile-pdf-header__export { margin-left: 6px; }
   .mobile-pdf-dock { padding-inline: 14px; }
 }
 
