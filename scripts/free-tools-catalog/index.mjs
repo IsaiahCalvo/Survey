@@ -10,6 +10,11 @@ import repairPdf from './repair-pdf.mjs';
 import splitByBookmarks from './split-by-bookmarks.mjs';
 import sanitizePdf from './sanitize-pdf.mjs';
 import fastWebView from './fast-web-view.mjs';
+import extractImages from './extract-images.mjs';
+import removeBlankPages from './remove-blank-pages.mjs';
+import pdfToTiff from './pdf-to-tiff.mjs';
+import pdfToBmp from './pdf-to-bmp.mjs';
+import grayscalePdf from './grayscale-pdf.mjs';
 
 export default [
   ocrPdf,
@@ -22,4 +27,9 @@ export default [
   splitByBookmarks,
   sanitizePdf,
   fastWebView,
+  extractImages,
+  removeBlankPages,
+  pdfToTiff,
+  pdfToBmp,
+  grayscalePdf,
 ];

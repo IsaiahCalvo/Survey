@@ -53,6 +53,11 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Split by bookmarks](https://surveytool.app/tools/split-by-bookmarks): One PDF per chapter or sheet, from its bookmarks.
 - [Remove hidden data](https://surveytool.app/tools/sanitize-pdf): Strip metadata, scripts and attachments from a PDF.
 - [Fast web view](https://surveytool.app/tools/fast-web-view): Make a big PDF open fast online, page 1 first.
+- [Extract images](https://surveytool.app/tools/extract-images): Save every picture inside a PDF.
+- [Remove blank pages](https://surveytool.app/tools/remove-blank-pages): Find empty pages and take them out.
+- [PDF to TIFF](https://surveytool.app/tools/pdf-to-tiff): Save a PDF as one multi-page TIFF.
+- [PDF to BMP](https://surveytool.app/tools/pdf-to-bmp): Save each page as a BMP picture.
+- [Grayscale PDF](https://surveytool.app/tools/grayscale-pdf): Make a PDF black and white.
 
 ## Optional
 

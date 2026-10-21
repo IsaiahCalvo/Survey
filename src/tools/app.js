@@ -435,7 +435,7 @@ async function addFiles(list) {
     } else if (ACCEPT === 'image' && !isTiffFile(file)) {
       item.url = URL.createObjectURL(file);
     }
-    if (T.prepare) await T.prepare(item);
+    if (T.prepare) await T.prepare(item, setBusy);
     S.files.push(item);
   }
   if (S.files.length && (!MULTIPLE || !Object.keys(S.opts).length)) S.opts = defaults(S.files[0]);
@@ -633,7 +633,7 @@ function organizeView() {
 function optionsView() {
   const file = S.files[0];
   const fields = T.view === 'sign' ? sign.fields(file) : [];
-  const notice = T.notice?.(S.files);
+  const notice = T.notice?.(S.files, S.opts);
   if (notice) fields.push(h('p', { class: 'tnote', role: 'note' }, notice));
   if (T.view === 'organize') {
     const removed = file.pages - file.order.length;
@@ -653,7 +653,7 @@ function optionsView() {
   for (const opt of T.options || []) {
     if (opt.show && !opt.show(S.opts)) continue;
     const id = `opt-${opt.key}`;
-    const set = (v, rerender) => { S.opts[opt.key] = v; if (rerender) render(); };
+    const set = (v, rerender) => { S.opts[opt.key] = v; opt.onChange?.(v, S.files); if (rerender || opt.onChange) render(); };
     let control;
     if (opt.type === SEG) {
       control = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': opt.label }, opt.choices.map(([v, l]) => h('button', {
