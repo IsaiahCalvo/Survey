@@ -1,0 +1,215 @@
+#!/usr/bin/env node
+// Pan/zoom smoothness and memory profiler for the big drawing set on the LOCAL
+// e2e stack. Seed and serve exactly as for big-doc-open.mjs, then:
+//
+//   BASE=http://127.0.0.1:5241 RUNS=3 node scripts/perf/big-doc-memory.mjs
+//
+// Per device size (phone 390x844, tablet 1024x1366 by default) each run opens
+// the set in a cold context and records:
+//   firstPage            - open click to page 1 drawn (same rule as big-doc-open)
+//   heapOpenMB           - JS heap after open settles (after a forced GC)
+//   pan*                 - flick-scrolls down PAN_PAGES sheets and back up:
+//                          long-task total, longest task, dropped frames
+//   zoom*                - ctrl+wheel zoom in then out over the middle sheet
+//   heapEndMB            - JS heap after pan + zoom (after a forced GC)
+//   canvasMB / canvases  - backing-store bytes of every live <canvas> at the end
+//   pagesDrawn           - page canvases still holding a drawn bitmap
+//   overlays             - per-page markup overlays still mounted
+// OUT=<file.json> writes every run. NET=<latency ms>/<down Mbps> throttles.
+import fs from 'node:fs';
+import { chromium } from '@playwright/test';
+
+const BASE = process.env.BASE || 'http://127.0.0.1:5241';
+const RUNS = Number(process.env.RUNS || 3);
+const SIZES = (process.env.SIZES || 'phone,tablet').split(',');
+const PAN_PAGES = Number(process.env.PAN_PAGES || 30);
+const DOC_NAME = process.env.BIG_DOC_NAME || 'Big Drawing Set.pdf';
+const NET = process.env.NET || null;
+const OUT = process.env.OUT || null;
+const exe = process.env.PW_CHROMIUM_PATH || (fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
+
+const DEVICES = {
+  phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
+  tablet: { viewport: { width: 1024, height: 1366 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
+  desktop: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+};
+
+const PROBE = () => {
+  const w = window;
+  w.__perf = { t0: null, firstPage: null, longTasks: [], frames: [], recording: false };
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) w.__perf.longTasks.push([e.startTime, e.duration]);
+    }).observe({ type: 'longtask', buffered: true });
+  } catch { /* no longtask support */ }
+  let last = 0;
+  const frame = (t) => {
+    const s = w.__perf;
+    if (s.recording && last) s.frames.push(t - last);
+    last = t;
+    if (s.t0 != null && s.firstPage == null) {
+      const canvas = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"] canvas.survey-pdfjs-page-canvas');
+      const overlay = document.querySelector('[data-overlay-page="1"] [data-pdf-ready]');
+      const drawn = canvas && canvas.width > 0 && !(canvas.width === 300 && canvas.height === 150);
+      const covered = overlay?.getAttribute('data-annotation-hydration-gated') === 'true'
+        || overlay?.getAttribute('data-annotation-visual-cover-active') === 'true';
+      if (drawn && !covered && overlay?.getAttribute('data-pdf-ready') === 'true') s.firstPage = performance.now();
+    }
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+};
+
+async function signIn(page) {
+  await page.goto(`${BASE}/`);
+  const dialog = page.getByRole('dialog', { name: 'Welcome back' });
+  await dialog.waitFor({ timeout: 60_000 });
+  await dialog.getByLabel('Email').fill('e2e-owner@example.com');
+  await dialog.getByLabel('Password').fill('E2e-local-only-123!');
+  await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden', timeout: 60_000 });
+}
+
+const quiet = (page, ms = 2000) => page.waitForFunction((q) => {
+  const s = window.__perf;
+  const lastEnd = s.longTasks.reduce((m, [st, d]) => Math.max(m, st + d), 0);
+  return performance.now() - lastEnd > q;
+}, ms, { timeout: 120_000, polling: 250 });
+
+async function heapMB(cdp) {
+  await cdp.send('HeapProfiler.collectGarbage');
+  const { metrics } = await cdp.send('Performance.getMetrics');
+  const used = metrics.find((m) => m.name === 'JSHeapUsedSize')?.value || 0;
+  return used / 1e6;
+}
+
+// Long tasks and frame gaps inside [start, now).
+async function window_(page, start) {
+  return page.evaluate((t0) => {
+    const s = window.__perf;
+    const tasks = s.longTasks.filter(([st]) => st >= t0);
+    const dropped = s.frames.reduce((n, dt) => n + Math.max(0, Math.round(dt / (1000 / 60)) - 1), 0);
+    const r = {
+      blocking: tasks.reduce((sum, [, d]) => sum + Math.max(0, d - 50), 0),
+      longest: tasks.reduce((m, [, d]) => Math.max(m, d), 0),
+      dropped,
+      frames: s.frames.length,
+    };
+    s.frames = [];
+    s.recording = false;
+    return r;
+  }, start);
+}
+
+async function snapshotDom(page) {
+  return page.evaluate(() => {
+    let bytes = 0;
+    const all = [...document.querySelectorAll('canvas')];
+    for (const c of all) bytes += c.width * c.height * 4;
+    const pageCanvases = [...document.querySelectorAll('canvas.survey-pdfjs-page-canvas')];
+    return {
+      canvasMB: bytes / 1e6,
+      canvases: all.length,
+      pagesDrawn: pageCanvases.filter((c) => c.width > 0 && !(c.width === 300 && c.height === 150)).length,
+      overlays: document.querySelectorAll('[data-overlay-page]').length,
+      domNodes: document.getElementsByTagName('*').length,
+    };
+  });
+}
+
+async function scroller(page) {
+  return page.evaluateHandle(() => {
+    let el = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"]');
+    while (el && el !== document.body) {
+      const st = getComputedStyle(el);
+      if (/(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 10) return el;
+      el = el.parentElement;
+    }
+    return document.scrollingElement;
+  });
+}
+
+async function oneRun(browser, size) {
+  const context = await browser.newContext(DEVICES[size]);
+  await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
+  await context.addInitScript(PROBE);
+  const page = await context.newPage();
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Performance.enable');
+  if (NET) {
+    const [latency, mbps] = NET.split('/').map(Number);
+    await cdp.send('Network.enable');
+    await cdp.send('Network.emulateNetworkConditions', {
+      offline: false, latency, downloadThroughput: (mbps * 1e6) / 8, uploadThroughput: (mbps * 1e6) / 16,
+    });
+  }
+  await signIn(page);
+  const row = page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first();
+  if (size === 'desktop') {
+    await row.click();
+    await page.evaluate(() => { window.__perf.t0 = performance.now(); });
+    await page.getByRole('button', { name: 'Open file' }).first().click();
+  } else {
+    await page.evaluate(() => { window.__perf.t0 = performance.now(); });
+    await row.tap();
+  }
+  await page.waitForFunction(() => window.__perf.firstPage != null, null, { timeout: 120_000, polling: 100 });
+  const firstPage = await page.evaluate(() => window.__perf.firstPage - window.__perf.t0);
+  await quiet(page, 3000);
+  const heapOpenMB = await heapMB(cdp);
+  const open = await snapshotDom(page);
+
+  // Pan: flick down PAN_PAGES sheets, then back to the top.
+  const sc = await scroller(page);
+  const box = await page.evaluate((el) => ({ h: el.clientHeight, sh: el.scrollHeight, pages: document.querySelectorAll('.survey-pdfjs-page-div').length }), sc);
+  const perPage = box.sh / Math.max(1, box.pages);
+  const vp = DEVICES[size].viewport;
+  await page.mouse.move(vp.width / 2, vp.height / 2);
+  let start = await page.evaluate(() => { window.__perf.frames = []; window.__perf.recording = true; return performance.now(); });
+  const steps = Math.ceil((PAN_PAGES * perPage) / 400);
+  for (let i = 0; i < steps; i += 1) { await page.mouse.wheel(0, 400); await page.waitForTimeout(16); }
+  for (let i = 0; i < steps; i += 1) { await page.mouse.wheel(0, -400); await page.waitForTimeout(16); }
+  await page.waitForTimeout(500);
+  const pan = await window_(page, start);
+  await quiet(page);
+
+  // Zoom: ctrl+wheel in then out, mid-viewport.
+  start = await page.evaluate(() => { window.__perf.frames = []; window.__perf.recording = true; return performance.now(); });
+  await page.keyboard.down('Control');
+  for (let i = 0; i < 12; i += 1) { await page.mouse.wheel(0, -60); await page.waitForTimeout(30); }
+  await page.waitForTimeout(800);
+  for (let i = 0; i < 12; i += 1) { await page.mouse.wheel(0, 60); await page.waitForTimeout(30); }
+  await page.keyboard.up('Control');
+  await page.waitForTimeout(800);
+  const zoom = await window_(page, start);
+  await quiet(page);
+  const heapEndMB = await heapMB(cdp);
+  const end = await snapshotDom(page);
+  await context.close();
+  return {
+    firstPage, heapOpenMB, canvasOpenMB: open.canvasMB, pagesDrawnOpen: open.pagesDrawn,
+    panBlocking: pan.blocking, panLongest: pan.longest, panDropped: pan.dropped,
+    zoomBlocking: zoom.blocking, zoomLongest: zoom.longest, zoomDropped: zoom.dropped,
+    heapEndMB, canvasMB: end.canvasMB, canvases: end.canvases, pagesDrawn: end.pagesDrawn, overlays: end.overlays, domNodes: end.domNodes,
+  };
+}
+
+const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+const browser = await chromium.launch({ executablePath: exe, args: ['--enable-precise-memory-info'] });
+const summary = {};
+const all = {};
+for (const size of SIZES) {
+  await oneRun(browser, size).catch((e) => console.log(size, 'warm-up failed', e.message));
+  const runs = [];
+  for (let i = 0; i < RUNS; i += 1) {
+    const r = await oneRun(browser, size);
+    runs.push(r);
+    console.log(size, `run ${i + 1}`, Object.entries(r).map(([k, v]) => `${k}=${Math.round(v * 10) / 10}`).join(' '));
+  }
+  all[size] = runs;
+  summary[size] = Object.fromEntries(Object.keys(runs[0]).map((k) => [k, Math.round(median(runs.map((r) => r[k])) * 10) / 10]));
+}
+await browser.close();
+console.log('MEDIANS', JSON.stringify(summary));
+if (OUT) fs.writeFileSync(OUT, JSON.stringify({ summary, runs: all }, null, 2));
