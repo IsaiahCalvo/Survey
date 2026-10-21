@@ -84,6 +84,7 @@ test('analytics proxy permits trusted browser preflight with Authorization but n
     'http://localhost:5177',
     'http://127.0.0.1:5173',
     'capacitor://localhost',
+    'https://localhost',
     'https://isaiahs-macbook-pro.taila0b324.ts.net',
   ]) {
     const result = await invoke({ method: 'OPTIONS', origin, token: '' });
