@@ -118,6 +118,7 @@ import {
   resolvePolyDraftFinish,
   updatePolyDraftPreview,
 } from '../utils/polyDraft.js';
+import { collectEndpointCandidates, resolveDrawSnap, DRAW_SNAP_SCREEN_PX } from '../utils/drawSnap.js';
 import {
   getAnnotationRenderIdentity,
   stampAnnotationCreationIdentity,
@@ -1369,6 +1370,28 @@ const SVGAnnotationLayerBody = memo(({
   const [shapeCreation, setShapeCreation] = useState(null);
   const shapeCreationRef = useRef(null);
   useEffect(() => { shapeCreationRef.current = shapeCreation; }, [shapeCreation]);
+  // Line / arrow / polyline / polygon / measure drawing snaps (drawSnap.js):
+  // Shift locks the new segment to 45° steps; the point locks onto another
+  // line end or corner on this page within 8 screen px (Alt or the snapping
+  // preference off disables that pull). `drawSnapEndpoint` is the indicator.
+  const [drawSnapEndpoint, setDrawSnapEndpoint] = useState(null);
+  const drawSnapObjects = annotations?.objects;
+  const resolveCreationSnap = useCallback((anchor, point, e) => {
+    if (!point) return point;
+    const endpointSnap = !isAnnotationSnapFree(e);
+    const r = resolveDrawSnap(anchor, point, {
+      shiftKey: !!e?.shiftKey,
+      endpointSnap,
+      candidates: endpointSnap ? collectEndpointCandidates(drawSnapObjects) : [],
+      tolPage: snapThreshold(inverseScale, DRAW_SNAP_SCREEN_PX),
+    });
+    setDrawSnapEndpoint((prev) => {
+      const next = r.endpoint;
+      if (prev === next || (prev && next && prev.x === next.x && prev.y === next.y)) return prev;
+      return next;
+    });
+    return r.point;
+  }, [drawSnapObjects, inverseScale]);
   const freehandPointsRef = useRef([]);
   // w32: the in-progress stroke streamed to other screens (ghost ink there,
   // annotationLiveStrokes.js); ended on commit or cancel.
@@ -2494,10 +2517,13 @@ const SVGAnnotationLayerBody = memo(({
       return;
     }
 
-    const end = (finalClientPoint && svgRef.current)
+    let end = (finalClientPoint && svgRef.current)
       ? screenToSVG(svgRef.current, finalClientPoint.x, finalClientPoint.y)
       : state.current;
     if (!end) return;
+    if ((tool === 'line' || tool === 'arrow') && finalClientPoint && state.start) {
+      end = resolveCreationSnap(state.start, end, finalClientPoint);
+    }
 
     if (tool === 'survey-marker') {
       const left = Math.min(state.start.x, end.x);
@@ -2546,7 +2572,7 @@ const SVGAnnotationLayerBody = memo(({
     activeRegionId, activeTool, arrowheadStyle, arrowStartStyle, cloudIntensity, fillColor, fillOpacity,
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
     onSurveyMarkerCreated, pageNumber, selectAnnotation, selectedModuleId, selectedSpaceId,
-    spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
+    spaces, strokeColor, strokeOpacity, strokeWidth, viewerId, resolveCreationSnap,
   ]);
 
   // Owner 2026-10-13: Smart fill. A press asks the registered provider
@@ -2879,17 +2905,23 @@ const SVGAnnotationLayerBody = memo(({
       if (!point) return;
       setPolyDraft((prev) => {
         if (!prev) return prev;
-        const next = updatePolyDraftPreview(prev, point, {
+        let next = updatePolyDraftPreview(prev, point, {
           shiftKey: e.shiftKey,
           snapRadius: polyFirstPointSnapRadius,
         });
+        if (!next.snapToFirst) {
+          next = { ...next, preview: resolveCreationSnap(prev.points?.[prev.points.length - 1] || null, point, e) };
+        }
         polyDraftRef.current = next;
         return next;
       });
     };
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
-  }, [polyDraftActive, polyFirstPointSnapRadius]);
+  }, [polyDraftActive, polyFirstPointSnapRadius, resolveCreationSnap]);
+  useEffect(() => {
+    if (!shapeCreation && !polyDraftActive) setDrawSnapEndpoint(null);
+  }, [shapeCreation, polyDraftActive]);
 
   // Enter finishes, Escape cancels. Capture phase + stopPropagation so an
   // in-progress draft consumes Escape before the viewer's "clear selection"
@@ -3008,7 +3040,10 @@ const SVGAnnotationLayerBody = memo(({
         liveStrokeRef.current?.push(freehandPointsRef.current);
         setShapeCreation((prev) => (prev ? { ...prev, tick: (prev.tick || 0) + 1, ...(passedNow ? { passed: true } : {}) } : prev));
       } else {
-        const point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+        let point = screenToSVG(svgRef.current, e.clientX, e.clientY);
+        if (point && draft && (draft.tool === 'line' || draft.tool === 'arrow') && draft.start) {
+          point = resolveCreationSnap(draft.start, point, e);
+        }
         setShapeCreation((prev) => (prev ? {
           ...prev,
           ...(point ? { current: point } : {}),
@@ -3040,14 +3075,14 @@ const SVGAnnotationLayerBody = memo(({
         cancelDraft();
         return;
       }
-      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey });
     };
     const onUp = (e) => {
       const placing = clickPlace();
       if (placing) {
         // The second click's release sets the end.
         if (placing.endPointerId == null || e.pointerId !== placing.endPointerId) return;
-        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY });
+        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey });
         return;
       }
       if (!isGesturePointer(e)) return;
@@ -3098,7 +3133,7 @@ const SVGAnnotationLayerBody = memo(({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [shapeCreation, appendCoalescedPagePoints, endLiveStroke]);
+  }, [shapeCreation, appendCoalescedPagePoints, endLiveStroke, resolveCreationSnap]);
 
   // Escape abandons a drag-out / click-placed shape draft (freehand ink has
   // its own rules). Capture phase + stopPropagation, like the polygon draft's
@@ -7421,12 +7456,13 @@ const SVGAnnotationLayerBody = memo(({
                   pointerDown: true,
                   pageNumber,
                 });
-                const created = createPolyDraft(activeTool, point);
+                const created = createPolyDraft(activeTool, resolveCreationSnap(null, point, e));
                 const next = created ? { ...created, gestureId } : null;
                 polyDraftRef.current = next;
                 setPolyDraft(next);
               } else {
-                const next = addPolyDraftPoint(draft, point, { shiftKey: e.shiftKey });
+                const last = draft.points?.[draft.points.length - 1] || null;
+                const next = addPolyDraftPoint(draft, resolveCreationSnap(last, point, e));
                 polyDraftRef.current = next;
                 setPolyDraft(next);
               }
@@ -7503,11 +7539,12 @@ const SVGAnnotationLayerBody = memo(({
                 });
                 setShapeCreation({ tool, gestureId, pointerId: e.pointerId, tick: 0, liveId });
               } else {
+                const start = (tool === 'line' || tool === 'arrow') ? resolveCreationSnap(null, point, e) : point;
                 setShapeCreation({
                   tool,
                   gestureId,
-                  start: point,
-                  current: point,
+                  start,
+                  current: start,
                   pointerId: e.pointerId,
                   pointerType: e.pointerType,
                   // screen point of the press: a release within
@@ -8065,6 +8102,9 @@ const SVGAnnotationLayerBody = memo(({
         />
       )}
       <SnapGuidesLayer guides={snapGuides} inverseScale={inverseScale} />
+      {drawSnapEndpoint && (
+        <SnapGuidesLayer guides={{ lines: [], points: [], endpoint: drawSnapEndpoint }} inverseScale={inverseScale} />
+      )}
       {lassoPoints?.length > 0 && (
         <g data-lasso-selection-preview="true" pointerEvents="none">
           <path

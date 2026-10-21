@@ -190,8 +190,8 @@ const HANDLED = {
   'shift+enter': () => /e\.key === 'Enter' && isInputFocused\) \{\s*e\.preventDefault\(\);\s*if \(e\.shiftKey\) \{\s*goToPrevMatchRef/.test(SRC.search),
   'mod+g': () => /isCmdOrCtrlG = \(e\.ctrlKey \|\| e\.metaKey\) && !e\.altKey && e\.key\.toLowerCase\(\) === 'g'/.test(SRC.search),
   'mod+shift+g': () => /isCmdOrCtrlG\) \{\s*e\.preventDefault\(\);\s*if \(e\.shiftKey\) \{\s*goToPrevMatchRef/.test(SRC.search),
-  click: () => /addPolyDraftPoint\(draft, point, \{ shiftKey: e\.shiftKey \}\)/.test(SRC.svg),
-  'shift+click': () => /addPolyDraftPoint\(draft, point, \{ shiftKey: e\.shiftKey \}\)/.test(SRC.svg)
+  click: () => /addPolyDraftPoint\(draft, resolveCreationSnap\(last, point, e\)\)/.test(SRC.svg),
+  'shift+click': () => /addPolyDraftPoint\(draft, resolveCreationSnap\(last, point, e\)\)/.test(SRC.svg)
     && /if \(e\.shiftKey\) \{[\s\S]{0,900}setSelectedIds/.test(SRC.interaction),
   'alt+click': () => /if \(e\.altKey\) \{\s*setSelectedIds\(\(previous\) => \{\s*const next = new Set\(previous\);\s*next\.delete\(index\)/.test(SRC.interaction),
   'mod+a': () => /\(event\.metaKey \|\| event\.ctrlKey\) && !event\.altKey && !event\.shiftKey && String\(event\.key\)\.toLowerCase\(\) === 'a'/.test(SRC.pages),
