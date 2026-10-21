@@ -78,6 +78,7 @@ function capitalize(s) {
  *   newClaimId?: () => string,
  *   inviteUserByEmail: (email: string, redirectTo: string) => Promise<{ error: object|null, outcome?: 'confirmed'|'definite-failure'|'uncertain' }>,
  *   sendFallbackEmail: (payload: { to: string, subject: string, template: string, data: object }) => Promise<boolean|{ outcome: 'confirmed'|'definite-failure'|'uncertain' }>,
+ *   agentOverLimit?: () => Promise<boolean>,
  * }} deps
  * @returns {Promise<{ status: number, body: object|null }>}
  */
@@ -115,6 +116,12 @@ export async function handleSendInviteEmail(input, deps) {
   if (row.accepted_at) return json(409, { sent: false, error: 'Invite already accepted' });
   if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) {
     return json(409, { sent: false, error: 'Invite expired' });
+  }
+
+  // Count only after the caller and invite are valid so a 401/400/404/409
+  // cannot spend the hourly allowance (or turn an unverified token into 429).
+  if (typeof deps.agentOverLimit === 'function' && await deps.agentOverLimit()) {
+    return json(429, { sent: false, error: 'This AI agent has used this too often. Try again within the hour.' });
   }
 
   // Claim this exact invite generation before touching either transport.

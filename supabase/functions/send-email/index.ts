@@ -202,7 +202,14 @@ Deno.serve(async (req) => {
         // (stripe-webhook) are trusted infrastructure and skip this.
         let recipient = String(to);
         if (caller.type === 'user') {
-            if (await agentOverLimit(caller.authHeader, 'send-email', callerScopedClient(caller.authHeader))) {
+            // send-invite-email already counted this agent against its own
+            // hourly cap. A matching service-role proof means skip this
+            // second counter so one invite does not spend both allowances.
+            const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+            const nestedInvite = Boolean(
+                serviceKey && req.headers.get('x-survey-invite-nested') === serviceKey,
+            );
+            if (!nestedInvite && await agentOverLimit(caller.authHeader, 'send-email', callerScopedClient(caller.authHeader))) {
                 return new Response(
                     JSON.stringify({ error: AGENT_RATE_LIMITED_MESSAGE }),
                     { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

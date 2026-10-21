@@ -214,6 +214,33 @@ test('GOAL-1 fn: control chars in copy fields are stripped from the email subjec
   equal(p.data.inviterName, 'Eve');
 });
 
+test('GOAL-1 fn: agent limit runs only after auth and a valid invite', async () => {
+  const hits = [];
+  const limited = async () => { hits.push('hit'); return true; };
+
+  equal((await handleSendInviteEmail(post({ token: 'tok123' }, null), makeDeps({ agentOverLimit: limited }).deps)).status, 401);
+  equal((await handleSendInviteEmail(post({}), makeDeps({ agentOverLimit: limited }).deps)).status, 400);
+  equal((await handleSendInviteEmail(
+    post({ token: 'tok123' }),
+    makeDeps({ agentOverLimit: limited, selectInviteRow: async () => null }).deps,
+  )).status, 404);
+  equal((await handleSendInviteEmail(
+    post({ token: 'tok123' }),
+    makeDeps({
+      agentOverLimit: limited,
+      selectInviteRow: async (table) => (table === 'document_invites' ? baseRow({ revoked_at: PAST }) : null),
+    }).deps,
+  )).status, 409);
+  equal(hits.length, 0, '401/400/404/409 must not increment the agent counter');
+
+  const { deps, calls } = makeDeps({ agentOverLimit: limited });
+  const out = await handleSendInviteEmail(post({ token: 'tok123' }), deps);
+  equal(out.status, 429);
+  equal(hits.length, 1);
+  equal(calls.invite.length, 0);
+  equal(calls.fallback.length, 0);
+});
+
 test('GOAL-1 fn: fallback send failure → 502 generic', async () => {
   const { deps } = makeDeps({
     inviteUserByEmail: async () => ({ error: { code: 'email_exists' } }),

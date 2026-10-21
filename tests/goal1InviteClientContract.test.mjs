@@ -86,6 +86,9 @@ test('GOAL-1 wiring: index.ts is a thin wrapper — caller-scoped RLS lookup and
   match(text, /functions\/v1\/send-email/);
   match(text, /apikey:\s*ANON_KEY/);
   match(text, /Authorization:\s*authHeader/);
+  // Nested send-email must not spend a second agent hourly quota.
+  match(text, /'x-survey-invite-nested':\s*SERVICE_ROLE_KEY/);
+  match(read('supabase/functions/send-email/index.ts'), /x-survey-invite-nested/);
   // Thin: no branch logic in the wrapper.
   doesNotMatch(text, /email_exists/);
 });

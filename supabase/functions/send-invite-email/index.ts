@@ -39,14 +39,9 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  if (await agentOverLimit(authHeader, 'send-invite-email', callerClient)) {
-    return new Response(JSON.stringify({ error: AGENT_RATE_LIMITED_MESSAGE }), {
-      status: 429, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-    });
-  }
-
   const deps = {
     anonKey: ANON_KEY,
+    agentOverLimit: () => agentOverLimit(authHeader, 'send-invite-email', callerClient),
     getUserFromToken: async (jwt: string) => {
       try {
         const { data, error } = await createClient(SUPABASE_URL, ANON_KEY).auth.getUser(jwt);
@@ -146,6 +141,10 @@ Deno.serve(async (req) => {
             // derived above and never accepted from the browser.
             apikey: ANON_KEY,
             Authorization: authHeader,
+            // Prove this is the invite function so send-email does not spend
+            // a second agent hourly quota. The service role is never a JWT
+            // here; send-email compares it to its own secret.
+            'x-survey-invite-nested': SERVICE_ROLE_KEY,
           },
           body: JSON.stringify(payload),
         });
@@ -167,6 +166,11 @@ Deno.serve(async (req) => {
   };
 
   const out = await handleSendInviteEmail({ method: req.method, authHeader, body }, deps);
+  if (out.status === 429) {
+    return new Response(JSON.stringify({ error: AGENT_RATE_LIMITED_MESSAGE }), {
+      status: 429, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
   return new Response(out.body == null ? null : JSON.stringify(out.body), {
     status: out.status,
     headers: out.body == null
