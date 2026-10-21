@@ -23302,20 +23302,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => {
     if (!pdfId) return;
 
-    // Cloud documents are saved by sync: when sync newly reports "Up to date",
-    // the current marks are the saved copy, so the tab's unsaved dot clears.
-    // Only a change in sync state counts; an edit that lands while the status
-    // still reads "Up to date" from before it is not saved yet.
+    // Cloud documents are saved by sync: when sync reports "Up to date", the
+    // current marks are the saved copy, so the tab's unsaved dot clears. A
+    // new sync state counts at once. Marks that change while the status still
+    // reads "Up to date" (an edit, or the cloud copy loading on open) count
+    // only if it still reads so a moment later: an edit's upload flips it to
+    // pending in the meantime, and a failed upload never confirms.
     const syncKey = `${cloudSyncStatus}|${cloudSyncQueueSize}`;
     const syncChanged = cloudSyncKeyRef.current !== syncKey;
     cloudSyncKeyRef.current = syncKey;
-    if (syncChanged && isCloudSaveConfirmed({
+    const confirmed = isCloudSaveConfirmed({
       isCloudDocument: !!pdfFile?.id,
       cloudSyncEnabled,
       status: cloudSyncStatus,
       queueSize: cloudSyncQueueSize,
-    })) {
+    });
+    if (confirmed && syncChanged) {
       savedAnnotationsByPageRef.current = annotationsByPage;
+    }
+    let confirmTimer = null;
+    if (confirmed && !syncChanged) {
+      confirmTimer = setTimeout(() => {
+        if (cloudSyncKeyRef.current !== syncKey) return;
+        savedAnnotationsByPageRef.current = annotationsByPage;
+        setHasUnsavedAnnotations(false);
+        if (onUnsavedAnnotationsChange) onUnsavedAnnotationsChange(false);
+      }, 1500);
     }
 
     // Compare current with saved to detect changes. jsonEqual answers exactly
@@ -23335,6 +23347,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onUnsavedAnnotationsChange(false);
       }
     }
+    return () => { if (confirmTimer) clearTimeout(confirmTimer); };
   }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange, pdfFile?.id, cloudSyncEnabled, cloudSyncStatus, cloudSyncQueueSize]);
 
   // Hardening (audit 2026-04-30 #3): notify the App-level beforeunload guard
