@@ -66,6 +66,7 @@ const isPhoneWidth = () => isPhoneLayout();
    what opened it. */
 function DocumentActionMenu({ anchorRect, point = null, items, onClose, returnFocusTo = null, focusFirst = false, minWidth = 168 }) {
   const ref = useRef(null);
+  const tip = useTooltip();
 
   useEffect(() => {
     // Opened from the keyboard: focus the first item (it wears the app's
@@ -140,6 +141,7 @@ function DocumentActionMenu({ anchorRect, point = null, items, onClose, returnFo
             className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
             disabled={it.reason ? undefined : it.disabled}
             aria-disabled={it.reason ? true : undefined}
+            {...(it.reason ? tip(it.reason, 'right') : {})}
             onClick={() => { if (it.disabled && !it.reason) return; onClose(); activateOrExplain(it.reason, it.onClick); }}
           >
             {it.label}
