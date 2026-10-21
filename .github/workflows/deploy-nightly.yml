@@ -12,19 +12,52 @@ name: Deploy nightly
 #
 # Address: https://surveytool-nightly.vercel.app (a preview deployment of the
 # production Vercel project, aliased; no new domain).
+#
+# GitHub runs this repo's cron schedules only now and then (one scheduled run
+# of any workflow on 2026-10-21 while ~350 others ran), so every finished
+# "Deploy production" run also starts it, and the first one each UTC day
+# deploys; the rest of that day skip (a day-keyed cache entry marks it done).
+# The schedule stays as a backup. Run by hand to deploy again the same day.
 on:
   schedule:
     - cron: '0 10 * * *'
+  workflow_run:
+    workflows: ["Deploy production"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  due:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      key: ${{ steps.day.outputs.key }}
+      done: ${{ steps.mark.outputs.cache-hit }}
+    steps:
+      - name: Today's mark
+        id: day
+        run: echo "key=nightly-deploy-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - name: Already deployed today?
+        id: mark
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/cache/restore@v4
+        with:
+          path: .nightly-deploy-day
+          key: ${{ steps.day.outputs.key }}
+          lookup-only: true
+
   deploy:
+    needs: due
+    if: needs.due.outputs.done != 'true'
+    # Not cancel-in-progress: with a run started after every production run,
+    # a newer run would keep cancelling the one deploying. At most one more
+    # waits, so nightly ships at most twice on a busy day.
     concurrency:
       group: nightly-deploy
-      cancel-in-progress: true
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -123,3 +156,13 @@ jobs:
           done
           echo "$NIGHTLY_HOST did not reach revision $tested_sha" >&2
           exit 1
+
+      - name: Mark today deployed
+        run: mkdir -p .nightly-deploy-day && date -u +%FT%TZ > .nightly-deploy-day/at
+      - uses: actions/cache/save@v4
+        # A hand-run deploy on a day already marked would fail to save the
+        # same key again; that is harmless, so it must not turn the run red.
+        continue-on-error: true
+        with:
+          path: .nightly-deploy-day
+          key: ${{ needs.due.outputs.key }}
