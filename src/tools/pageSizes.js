@@ -59,9 +59,10 @@ export const mm = (pt) => trim((pt / PT_PER_IN) * MM_PER_IN, 0);
 
 // One row per page. view is [x1, y1, x2, y2] (the visible box) and rotate the
 // page's /Rotate, as pdf.js gives them.
-export function pageRow(index, view, rotate, hasText) {
-  const boxW = Math.abs(view[2] - view[0]);
-  const boxH = Math.abs(view[3] - view[1]);
+// userUnit: the page's /UserUnit (points per unit), 1 for nearly every PDF.
+export function pageRow(index, view, rotate, hasText, userUnit = 1) {
+  const boxW = Math.abs(view[2] - view[0]) * userUnit;
+  const boxH = Math.abs(view[3] - view[1]) * userUnit;
   const sideways = ((rotate % 180) + 180) % 180 === 90;
   const width = sideways ? boxH : boxW;
   const height = sideways ? boxW : boxH;

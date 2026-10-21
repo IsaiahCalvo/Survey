@@ -53,7 +53,7 @@ export default {
     for (let i = 0; i < pdf.numPages; i += 1) {
       progress(`Page ${i + 1} of ${pdf.numPages}`);
       const page = await pdf.getPage(i + 1);
-      rows.push(pageRow(i, page.view, page.rotate, await hasText(page)));
+      rows.push(pageRow(i, page.view, page.rotate, await hasText(page), page.userUnit || 1));
       page.cleanup();
     }
     const meta = await pdf.getMetadata().catch(() => ({}));

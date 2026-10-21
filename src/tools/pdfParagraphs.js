@@ -258,7 +258,9 @@ export function markHeadings(pages) {
 
 // ---------------------------------------------------------------- markdown
 
-const escMd = (s) => s.replace(/([\\`*_[\]])/g, '\\$1');
+// < and & too: Markdown readers treat raw HTML as markup, so text like
+// "<component>" or "<!-- note -->" would vanish when shown.
+const escMd = (s) => s.replace(/([\\`*_[\]])/g, '\\$1').replace(/&/g, '&amp;').replace(/</g, '&lt;');
 const escStart = (s) => s.replace(/^(#{1,6}\s|>|[-+=]\s|\d+[.)]\s)/, '\\$1');
 
 function mdInline(runs, allBold) {

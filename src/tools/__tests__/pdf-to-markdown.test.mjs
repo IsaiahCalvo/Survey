@@ -55,3 +55,10 @@ test('list markers: bullets and numbers, not section numbers', () => {
   assert.equal(listMarker('1.01 SUMMARY'), null);
   assert.equal(listMarker('2024 schedule'), null);
 });
+
+test('markdown: HTML-looking text stays text', () => {
+  const item = (str, y) => ({ str, transform: [11, 0, 0, 11, 72, y], width: str.length * 5.5, fontName: 'f' });
+  const words = placeItems([item('Use <component> & <!-- note --> literally.', 700)], [1, 0, 0, -1, 0, 792]);
+  const paras = linesFromItems(words).flatMap(paragraphsFromLines);
+  assert.equal(toMarkdown([{ width: 612, height: 792, paras }]), 'Use &lt;component> &amp; &lt;!-- note --> literally.\n');
+});

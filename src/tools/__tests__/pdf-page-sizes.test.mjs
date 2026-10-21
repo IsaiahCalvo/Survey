@@ -73,3 +73,10 @@ test('page sizes: facts and CSV', () => {
   assert.equal(formatBytes(500), '500 B');
   assert.equal(formatBytes(2048), '2 KB');
 });
+
+test('page sizes: /UserUnit scales the page box', () => {
+  const r = pageRow(0, [0, 0, 306, 396], 0, true, 2);
+  assert.equal(r.width, 612);
+  assert.equal(r.height, 792);
+  assert.match(r.name, /Letter/);
+});
