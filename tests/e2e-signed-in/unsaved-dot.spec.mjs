@@ -39,7 +39,10 @@ test('the tab unsaved dot clears when cloud sync is up to date', async ({ page }
     // Still gone after a reload (the tab reopens on desktop).
     await page.reload();
     const close = page.getByRole('button', { name: `Close ${E2E_DOCUMENT.name}` });
-    if (!(await close.isVisible({ timeout: 30_000 }).catch(() => false))) await openSampleDocument(page);
+    if (!(await close.isVisible({ timeout: 30_000 }).catch(() => false))) {
+      await page.getByText(E2E_DOCUMENT.name, { exact: true }).first().dblclick();
+    }
+    await expect(page.getByText('Type your name in the box:')).toBeVisible({ timeout: 60_000 });
     await expect(page.locator('.survey-pdfjs-page-div[data-page-number="1"] canvas').first()).toBeVisible({ timeout: 60_000 });
     await expect(upToDate(page)).toBeVisible({ timeout: 30_000 });
     await expect(unsavedDot(page)).toHaveCount(0);
