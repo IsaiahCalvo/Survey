@@ -35,6 +35,9 @@ on:
       perf_flags:
         description: 'Feature flags to turn on for the perf run, comma-separated (perf runs only)'
         default: ''
+      perf_suite:
+        description: 'Which profilers to run, comma-separated: open, link (share-link open), memory, profile (perf runs only)'
+        default: 'open,memory,profile'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -121,11 +124,13 @@ jobs:
           NET: ${{ inputs.perf_net }}
           FLAGS: ${{ inputs.perf_flags }}
           PERF_BASE: ${{ inputs.perf_base }}
+          PERF_SUITE: ${{ inputs.perf_suite }}
           BASE: http://127.0.0.1:5241
         run: |
           node scripts/e2e-local-supabase.mjs seed
           node scripts/perf/big-doc-seed.mjs
           mkdir -p perf-out
+          want() { [[ ",${PERF_SUITE:-open,memory,profile}," == *",$1,"* ]]; }
           # Runners differ by up to ~40% in open time, so a before/after is
           # only meaningful from one runner: profile the base ref first.
           if [ -n "$PERF_BASE" ]; then
@@ -136,15 +141,17 @@ jobs:
             (cd "$RUNNER_TEMP/perf-base" && npx vite build --mode e2e --outDir "$PWD/dist-base")
             (npx vite preview --mode e2e --outDir "$RUNNER_TEMP/perf-base/dist-base" --host 127.0.0.1 --port 5242 --strictPort &)
             npx wait-on -t 60000 http://127.0.0.1:5242
-            BASE=http://127.0.0.1:5242 RUNS=3 SIZES=desktop,phone node scripts/perf/big-doc-open.mjs | tee perf-out/base-open.txt
-            BASE=http://127.0.0.1:5242 RUNS=3 SIZES=phone,tablet,desktop node scripts/perf/big-doc-memory.mjs | tee perf-out/base-memory.txt
+            if want open; then BASE=http://127.0.0.1:5242 RUNS=3 SIZES=desktop,phone node scripts/perf/big-doc-open.mjs | tee perf-out/base-open.txt; fi
+            if want link; then BASE=http://127.0.0.1:5242 RUNS=3 SIZES=desktop,phone LINK=1 node scripts/perf/big-doc-open.mjs | tee perf-out/base-link.txt; fi
+            if want memory; then BASE=http://127.0.0.1:5242 RUNS=3 SIZES=phone,tablet,desktop node scripts/perf/big-doc-memory.mjs | tee perf-out/base-memory.txt; fi
           fi
           npx vite build --mode e2e --outDir dist-perf --sourcemap
           (npx vite preview --mode e2e --outDir dist-perf --host 127.0.0.1 --port 5241 --strictPort &)
           npx wait-on -t 60000 http://127.0.0.1:5241
-          RUNS=3 SIZES=desktop,phone node scripts/perf/big-doc-open.mjs | tee perf-out/open.txt
-          RUNS=3 SIZES=phone,tablet,desktop HEAP_TOP=40 ZOOM_PROFILE=perf-out/zoom OUT=perf-out/memory.json node scripts/perf/big-doc-memory.mjs | tee perf-out/memory.txt
-          PROFILE=perf-out/open SIZES=phone,tablet node scripts/perf/big-doc-open.mjs || true
+          if want open; then RUNS=3 SIZES=desktop,phone node scripts/perf/big-doc-open.mjs | tee perf-out/open.txt; fi
+          if want link; then RUNS=3 SIZES=desktop,phone LINK=1 node scripts/perf/big-doc-open.mjs | tee perf-out/link.txt; fi
+          if want memory; then RUNS=3 SIZES=phone,tablet,desktop HEAP_TOP=40 ZOOM_PROFILE=perf-out/zoom OUT=perf-out/memory.json node scripts/perf/big-doc-memory.mjs | tee perf-out/memory.txt; fi
+          if want profile; then PROFILE=perf-out/open SIZES=phone,tablet node scripts/perf/big-doc-open.mjs || true; fi
           for f in perf-out/*.cpuprofile; do echo "== $f"; DIST=dist-perf TOP=40 node scripts/perf/cpuprofile-top.mjs "$f" || true; done
           { echo '### Big drawing set'; echo '```'; grep MEDIANS perf-out/*.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
