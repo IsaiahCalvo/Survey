@@ -37,6 +37,7 @@ import {
 } from './MobileSurveyRail.jsx';
 import { railButtonPressed } from '../utils/toolbarToolPressed.js';
 import { formatPageTotal } from '../utils/pageTotalLabel.js';
+import { MOBILE_MEASURE_ITEMS, applyMobileMeasurePick, applyMobileShapePick, isMobileShapeToolActive } from './mobileShapeRail.js';
 import './mobilePdfViewer.css';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
@@ -138,10 +139,13 @@ const TOOL_GROUPS = {
       // click-to-place (tap each corner, then tap a checkmark to finish);
       // the flow is pointer-driven and has not been tuned for touch yet.
       { id: 'polygon', label: 'Polygon', icon: 'polygon' },
+      // Cloud and Measure as on the desktop Shape row (see mobileShapeRail.js).
+      { id: 'cloud', label: 'Cloud', icon: 'lineSampleCloud' },
       { id: 'polyline', label: 'Polyline', icon: 'polyline' },
       { id: 'line', label: 'Line', icon: 'line' },
       { id: 'arrow', label: 'Arrow', icon: 'arrow' },
       { id: 'counter', label: 'Counter', icon: 'counter' },
+      { id: 'measure', label: 'Measure', icon: 'measureScale', measure: true },
     ],
   },
   review: {
@@ -2802,6 +2806,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   });
   const markerArmed = activeTool === 'survey-marker';
 
+  const [measureMenuRect, setMeasureMenuRect] = useState(null);
   const selectTool = (toolId) => {
     bottomToolbarApi?.setActiveTool?.(toolId);
     bottomToolbarApi?.setActiveCategoryDropdown?.(null);
@@ -2955,7 +2960,28 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                     />
                   </>
                 )}
-                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).map((tool) => (
+                {!regionApi && (TOOL_GROUPS[openCategory]?.tools || []).map((tool) => (openCategory === 'shape' ? (
+                  <RailButton
+                    key={tool.id}
+                    active={isMobileShapeToolActive(tool.id, { activeTool, lineBorderStyle: bottomToolbarApi?.lineBorderStyle, measureMode: bottomToolbarApi?.measureMode, measureScaleDialogOpen: bottomToolbarApi?.measureScaleDialogOpen })}
+                    icon={tool.icon}
+                    glyph={SUBTOOL_GLYPH}
+                    label={tool.label}
+                    data-morph-icon={tool.icon}
+                    data-tool-switch="true"
+                    data-measure-tool={tool.measure ? 'menu' : undefined}
+                    aria-haspopup={tool.measure ? 'menu' : undefined}
+                    aria-expanded={tool.measure ? !!measureMenuRect : undefined}
+                    onClick={(e) => {
+                      if (tool.measure) {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setMeasureMenuRect((open) => (open ? null : { left: r.right + 6, top: r.top }));
+                        return;
+                      }
+                      selectTool(applyMobileShapePick(tool.id, bottomToolbarApi));
+                    }}
+                  />
+                ) : (
                   <RailButton
                     key={tool.id}
                     active={activeTool === tool.id}
@@ -2967,7 +2993,52 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                     data-tool-switch="true"
                     onClick={() => { if (!tool.disabled) selectTool(tool.id); }}
                   />
-                ))}
+                )))}
+                {measureMenuRect && createPortal(
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 999998 }}
+                    onPointerDown={(e) => { if (e.target === e.currentTarget) setMeasureMenuRect(null); }}
+                  >
+                    <div
+                      role="menu"
+                      data-measure-menu="true"
+                      style={{
+                        position: 'fixed',
+                        left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - 188)),
+                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - 160)),
+                        width: 180,
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+                        padding: 4,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        color: 'var(--text-2)',
+                      }}
+                    >
+                      {MOBILE_MEASURE_ITEMS.map((m) => (
+                        <button
+                          key={m.key}
+                          type="button"
+                          role="menuitem"
+                          data-measure-tool={m.key}
+                          className={`btn ${bottomToolbarApi?.measureMode === m.key ? 'btn-active' : 'btn-ghost'}`}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44, justifyContent: 'flex-start', padding: '0 12px' }}
+                          onClick={() => {
+                            setMeasureMenuRect(null);
+                            applyMobileMeasurePick(m.key, bottomToolbarApi);
+                            bottomToolbarApi?.setActiveCategoryDropdown?.(null);
+                          }}
+                        >
+                          <Icon name={m.icon} size={SUBTOOL_GLYPH} color="currentColor" />
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>,
+                  document.body,
+                )}
               </div>
               <div ref={setGroupGhostLayerEl} className="mobile-pdf-tools__group-ghosts" data-loadout-ghost-layer="true" aria-hidden="true" />
             </div>
