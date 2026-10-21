@@ -13,8 +13,13 @@ adb shell input touchscreen swipe $X $Y $((X + 150)) $((Y + 150)) 300
 sleep 2
 after_finger=$(read_mode); echo "after finger: $after_finger"
 [ "$after_finger" = "null" ] || { echo "::error::a finger changed the draw mode ($after_finger)"; exit 1; }
-adb shell input stylus swipe $X $Y $((X + 150)) $((Y - 150)) 300
-sleep 2
+# The first stylus press can land while the page is still settling; retry a
+# few presses and poll rather than trusting one fixed sleep.
+for i in 1 2 3 4 5; do
+  adb shell input stylus swipe $X $Y $((X + 150)) $((Y - 150)) 300
+  sleep 2
+  [ "$(read_mode)" = "pen" ] && break
+done
 adb exec-out screencap -p > "$OUT/07-after-stylus.png"
 after_pen=$(read_mode); echo "after stylus: $after_pen, penSeen: $(node .github/native-flows/webview-storage.mjs surveyPenSeen)"
 adb shell input 2>&1 | grep -i stylus | head -3 || true
