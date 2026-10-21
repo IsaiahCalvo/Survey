@@ -7,7 +7,7 @@ import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ORIGIN, APP, page, faqList, faqSchema } from './build-marketing.mjs';
-import { GROUPS, TOOLS } from './free-tools-catalog.mjs';
+import { GROUPS, TOOLS, POPULAR } from './free-tools-catalog.mjs';
 import { BATCH } from './free-tools-faq.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'tools');
@@ -39,7 +39,43 @@ const ICONS = {
 // An entry may bring its own icon paths as `iconSvg` instead of naming one here.
 const icon = (k, own) => `<svg class="ticon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${own || ICONS[k]}</svg>`;
 
-const card = (t) => `<a class="tcard" href="/tools/${t.id}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
+// Other words people search for, so the hub search finds the tool.
+const ALSO = {
+  'merge-pdf': 'combine join', 'split-pdf': 'separate cut', 'compress-pdf': 'shrink reduce smaller size',
+  'organize-pdf': 'reorder sort move pages', 'delete-pages': 'remove pages', 'jpg-to-pdf': 'jpeg photo picture image',
+  'png-to-pdf': 'picture image', 'image-to-pdf': 'photo picture jpg png heic webp', 'pdf-to-jpg': 'jpeg image picture convert',
+  'pdf-to-png': 'image picture convert', 'pdf-to-txt': 'text extract copy', 'word-to-pdf': 'docx doc microsoft office',
+  'sign-pdf': 'signature esign', 'protect-pdf': 'password encrypt lock secure', 'unlock-pdf': 'remove password decrypt',
+  'ocr-pdf': 'scan scanned searchable text recognition', 'compare-pdf': 'diff difference changes versions revision',
+  'repair-pdf': 'fix broken damaged corrupt', 'grayscale-pdf': 'black and white greyscale gray grey colour color',
+  'sanitize-pdf': 'metadata privacy hidden data scrub', 'n-up-pdf': 'pages per sheet 2 up 4 up multiple pages print',
+  'booklet-pdf': 'print fold saddle staple', 'resize-pdf': 'page size a4 letter scale', 'fast-web-view': 'linearize optimize web',
+  'remove-annotations': 'markups comments delete', 'flatten-pdf': 'forms fields', 'watermark-pdf': 'stamp text draft confidential',
+  'add-page-numbers': 'pagination bates', 'extract-images': 'save pictures photos', 'remove-blank-pages': 'empty pages scan',
+};
+const keys = (t) => `${t.name} ${t.short} ${t.id.replace(/-/g, ' ')} ${ALSO[t.id] || ''}`.toLowerCase().replace(/"/g, '');
+const card = (t) => `<a class="tcard" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
+const byId = (id) => TOOLS.find((t) => t.id === id);
+
+// Tools that go together, shown first under "More free PDF tools".
+const PAIRS = [
+  ['ocr-pdf', 'pdf-to-txt', 'compare-pdf', 'compress-pdf'], ['compare-pdf', 'ocr-pdf', 'merge-pdf'],
+  ['repair-pdf', 'compress-pdf', 'unlock-pdf', 'fast-web-view'], ['merge-pdf', 'split-pdf', 'organize-pdf', 'compress-pdf'],
+  ['split-pdf', 'split-by-bookmarks', 'extract-pages', 'merge-pdf'], ['compress-pdf', 'grayscale-pdf', 'fast-web-view', 'remove-annotations'],
+  ['sign-pdf', 'protect-pdf', 'flatten-pdf'], ['protect-pdf', 'unlock-pdf', 'sanitize-pdf', 'sign-pdf'],
+  ['sanitize-pdf', 'edit-pdf-details', 'remove-annotations', 'protect-pdf'], ['pdf-to-jpg', 'pdf-to-png', 'extract-images', 'pdf-to-tiff'],
+  ['jpg-to-pdf', 'image-to-pdf', 'png-to-pdf', 'compress-pdf'], ['word-to-pdf', 'txt-to-pdf', 'merge-pdf', 'compress-pdf'],
+  ['n-up-pdf', 'booklet-pdf', 'resize-pdf'], ['booklet-pdf', 'n-up-pdf', 'add-blank-pages', 'reverse-pdf'],
+  ['remove-blank-pages', 'delete-pages', 'ocr-pdf', 'compress-pdf'], ['grayscale-pdf', 'compress-pdf', 'n-up-pdf'],
+];
+function relatedTo(t) {
+  const want = new Set();
+  for (const p of PAIRS) if (p.includes(t.id)) p.forEach((id) => want.add(id));
+  TOOLS.filter((o) => o.group === t.group).forEach((o) => want.add(o.id));
+  POPULAR.forEach((id) => want.add(id));
+  want.delete(t.id);
+  return [...want].map(byId).filter(Boolean).slice(0, 6);
+}
 
 const WHY = [
   ['Private', 'Your files stay on your device. Nothing is uploaded.'],
@@ -70,7 +106,7 @@ function toolPage(t) {
   const many = t.multiple || t.batch;
   const faq = t.batch && !t.faq.includes(BATCH) ? [...t.faq.slice(0, 2), BATCH, ...t.faq.slice(2)] : t.faq;
   const path = `/tools/${t.id}`;
-  const related = TOOLS.filter((o) => o.id !== t.id && (o.group === t.group || ['merge-pdf', 'compress-pdf', 'split-pdf'].includes(o.id))).slice(0, 6);
+  const related = relatedTo(t);
   const howTo = {
     '@type': 'HowTo', name: `How to ${t.h1.charAt(0).toLowerCase()}${t.h1.slice(1)}`,
     tool: { '@type': 'HowToTool', name: 'A web browser' },
@@ -126,15 +162,28 @@ const HUB_FAQ = [
 
 const hub = page({
   path: '/tools', crumb: 'Free PDF tools',
-  title: 'Free PDF tools: merge, split, compress, convert | Survey',
-  desc: 'Free PDF tools that run in your browser: merge, split, compress, sign, lock and convert Word, JPG, PNG and TIFF to PDF, or PDF to images. No sign-up, no upload.',
+  title: 'Free PDF tools: merge, compress, OCR, convert | Survey',
+  desc: `${TOOLS.length} free PDF tools that run in your browser: merge, split, compress, OCR, compare, sign, lock and convert Word or images to PDF. No sign-up, no upload.`,
   schema: [{ '@type': 'ItemList', name: 'Free PDF tools', itemListElement: TOOLS.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: t.name, url: `${ORIGIN}/tools/${t.id}` })) }, faqSchema(HUB_FAQ)],
   body: `<section class="page-head"><div class="wrap">
   <p class="kicker">Free PDF tools</p>
   <h1>Every PDF tool you need, free</h1>
-  <p class="lede">Merge, split, shrink, sign, lock and convert PDFs right in your browser. No sign-up, and your files never leave your device.</p>
+  <p class="lede">${TOOLS.length} tools to merge, split, shrink, read scans, compare, sign, lock and convert PDFs right in your browser. No sign-up, and your files never leave your device.</p>
 </div></section>
-${GROUPS.map(([g, label]) => `<section class="sec tight tgroup"><div class="wrap">
+<section class="sec tight hub-find-sec"><div class="wrap">
+  <div class="hub-find" data-hub hidden>
+    <input type="search" id="tool-search" placeholder="Search ${TOOLS.length} tools" aria-label="Search the free PDF tools" autocomplete="off" />
+    <div class="chips" role="group" aria-label="Show tools for">
+      <button type="button" class="chip" data-g="" aria-pressed="true">All</button>${GROUPS.map(([g, label]) => `<button type="button" class="chip" data-g="${g}" aria-pressed="false">${label}</button>`).join('')}
+    </div>
+    <p class="hub-none" role="status" hidden>No tool matches that. Try another word, or <a href="/tools">see all tools</a>.</p>
+  </div>
+</div></section>
+<section class="sec tight tgroup" data-group="popular"><div class="wrap">
+  <h2>Most used</h2>
+  <div class="tgrid">${POPULAR.map(byId).map(card).join('')}</div>
+</div></section>
+${GROUPS.map(([g, label]) => `<section class="sec tight tgroup" data-group="${g}"><div class="wrap">
   <h2>${label}</h2>
   <div class="tgrid">${TOOLS.filter((t) => t.group === g).map(card).join('')}</div>
 </div></section>`).join('\n')}

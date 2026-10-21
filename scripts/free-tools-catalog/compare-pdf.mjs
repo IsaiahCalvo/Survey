@@ -2,7 +2,7 @@ import { PRIVATE, FREE, LIMIT } from '../free-tools-faq.mjs';
 
 export default {
   id: 'compare-pdf',
-  group: 'edit',
+  group: 'fix',
   name: 'Compare PDFs',
   icon: 'compare',
   iconSvg: '<rect x="3" y="4" width="7.5" height="16" rx="1"/><rect x="13.5" y="4" width="7.5" height="16" rx="1"/><path d="M5.5 8.5h2.5M5.5 12h2.5M16 8.5h2.5M16 12h2.5M16 15.5h2.5"/>',

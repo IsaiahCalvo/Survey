@@ -12,6 +12,16 @@
 .tcard p{margin:0;color:var(--soft);font-size:15px;line-height:1.45}
 .tgroup h2{font-size:24px;margin-bottom:16px}
 .tgroup+.tgroup{padding-top:8px}
+.tgroup[hidden],.tcard[hidden]{display:none}
+.hub-find-sec{padding-bottom:0}
+.hub-find input{width:100%;font:inherit;font-size:17px;padding:14px 16px;border:1px solid var(--rule);border-radius:12px;background:var(--sheet);color:inherit}
+.hub-find input:focus{outline:2px solid var(--blue);outline-offset:1px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.chip{font:inherit;font-size:14px;min-height:40px;padding:8px 14px;border:1px solid var(--rule);border-radius:999px;background:var(--sheet);color:inherit;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:#fff}
+.hub-none{margin:16px 0 0;color:var(--soft)}
+.hub-find-sec{padding-top:0}
+@media (max-width:640px){.chips{flex-wrap:nowrap;overflow-x:auto;margin-right:-16px;padding-right:16px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}.chip{flex:none}}
 .why{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
 .why>div{border-top:2px solid var(--ink);padding-top:16px}
 .why h3{margin:0 0 6px}

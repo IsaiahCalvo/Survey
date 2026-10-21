@@ -1,7 +1,7 @@
 import { PRIVATE, FREE, LIMIT } from '../free-tools-faq.mjs';
 
 export default {
-  id: 'resize-pdf', group: 'pages', name: 'Resize PDF pages', icon: 'resize',
+  id: 'resize-pdf', group: 'layout', name: 'Resize PDF pages', icon: 'resize',
   iconSvg: '<rect x="3" y="7" width="10" height="14" rx="1"/><path d="M9 3h12v12M15 3h6v6M21 3l-7 7"/>',
   short: 'Change the page size to Letter, A4, A3 or ARCH D.',
   title: 'Resize PDF pages to Letter, A4 or A3 free | Survey',

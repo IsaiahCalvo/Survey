@@ -4,12 +4,17 @@
 
 export const GROUPS = [
   ['pages', 'Organize pages'],
+  ['layout', 'Page size and layout'],
   ['size', 'Make it smaller'],
   ['to-pdf', 'Convert to PDF'],
   ['from-pdf', 'Convert from PDF'],
   ['edit', 'Add to a PDF'],
+  ['fix', 'Read, compare and fix'],
   ['secure', 'Sign and protect'],
 ];
+
+// Shown first on the hub, most searched first.
+export const POPULAR = ['merge-pdf', 'compress-pdf', 'split-pdf', 'pdf-to-jpg', 'jpg-to-pdf', 'word-to-pdf', 'sign-pdf', 'ocr-pdf'];
 
 import { PRIVATE, FREE, LIMIT, OFFLINE } from './free-tools-faq.mjs';
 import MORE_TOOLS from './free-tools-catalog/index.mjs';
@@ -214,7 +219,7 @@ export const TOOLS = [
     faq: [['Why flatten a PDF?', 'Some apps hide markups or form answers. Flattening draws them into the page, so everyone sees and prints the same thing.'], ['Do links still work?', 'Yes. Links stay clickable; everything else becomes part of the page.'], PRIVATE, FREE, OFFLINE],
   },
   {
-    id: 'crop-pdf', batch: true, group: 'pages', name: 'Crop PDF', icon: 'crop',
+    id: 'crop-pdf', batch: true, group: 'layout', name: 'Crop PDF', icon: 'crop',
     short: 'Trim the white edges off every page.',
     title: 'Crop PDF pages free: trim the margins | Survey',
     desc: 'Trim the same margin off every edge of every PDF page. Free, in your browser, no upload.',
