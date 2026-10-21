@@ -4,6 +4,15 @@
 // Work still behind a feature flag stays off this list until it is on for all.
 export const WHATS_NEW = [
   { date: '2026-10-21', items: [
+    'A fresh look for the website: cleaner type and spacing.',
+    'Free PDF tools: RTF, HTML, DOCX, BMP and GIF to PDF, and the tools are faster and lighter on big scanned drawing sets.',
+    'Polylines and polygons: add a point on an edge, or remove one (right-click Delete point, Alt-click, Delete key or long-press).',
+    'The page menu has Select all on page, Paste in place and Set page scale. Every Copy now uses the same clipboard.',
+    'Deleting a page, archiving a project or restoring a revision shows an Undo message instead of asking first.',
+    'Measure shows the length in an easy-to-read label above the line.',
+    'Phones: picking a tool no longer moves the sheet, and the Undo message has a bigger Undo button.',
+    'Only the owner can Share or Delete from the Projects select bar.',
+    'Opening a cloud PDF from Home starts showing it sooner.',
     'Phones: Revision cloud and Measure are in the Shapes row, and the scale dialog has bigger buttons.',
     'In a project\'s menu, only the owner sees Share, Delete and Add member.',
     'Answer sets have two new ready-made choices: Installed / Missing / Damaged and Works / Not working.',
