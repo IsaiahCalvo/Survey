@@ -21,7 +21,7 @@
    clip them or force a scrollbar. Because the portal renders OUTSIDE the
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
-import { canManageProject, canManageProjectFile } from './projectFilePermissions.js';
+import { canManageProject, canManageProjectFile, projectSelectionCan } from './projectFilePermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
@@ -831,7 +831,7 @@ export default function ProjectsFolderTree({
               count={selCount}
               allSelected={allSel}
               total={filtered.length}
-              can={{ share: selCount > 1 ? 'Share one project at a time' : true }}
+              can={projectSelectionCan(filtered.filter((p) => selProj.has(p.id)), user?.id)}
               onToggleAll={() => setSelProj(allSel ? new Set() : new Set(filtered.map((p) => p.id)))}
               onDuplicate={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
               onShare={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
@@ -990,7 +990,7 @@ export default function ProjectsFolderTree({
                   count={selCount}
                   allSelected={selCount === filtered.length && filtered.length > 0}
                   total={filtered.length}
-                  can={{ share: selCount > 1 ? 'Share one project at a time' : true }}
+                  can={projectSelectionCan(filtered.filter((p) => selProj.has(p.id)), user?.id)}
                   onToggleAll={() => setSelProj(selCount === filtered.length && filtered.length > 0 ? new Set() : new Set(filtered.map((p) => p.id)))}
                   onDuplicate={() => { duplicateProjects([...selProj]); setSelProj(new Set()); }}
                   onShare={() => { const first = filtered.find((p) => selProj.has(p.id)); if (first) onShare && onShare(first); }}
