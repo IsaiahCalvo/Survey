@@ -2196,6 +2196,13 @@ async function emitOpenPreview(state, stage) {
   await waitForPaint();
 }
 
+function waitForIdle(timeout = 1000) {
+  return new Promise((resolve) => {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout });
+    else setTimeout(resolve, 0);
+  });
+}
+
 function waitForPaint() {
   return new Promise((resolve) => {
     let settled = false;
@@ -2421,7 +2428,15 @@ async function loadFromBackend(state) {
       try {
         Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
         await emitOpenPreview(state, 'cloud-snapshot');
+        // The marks are on screen now. Each further full apply of a big
+        // snapshot (the accepted shadow, the IndexedDB mirror) is a few
+        // hundred ms of decode; run back to back they held up mounting and
+        // drawing the first PDF page (it stays covered until then). Let the
+        // page's own work go first. Yjs updates commute, so anything applied
+        // to these docs in between changes no result.
+        await waitForIdle();
         applyAcceptedUpdate(state, bytes);
+        await waitForIdle();
         applyToLocalPersistence(state, bytes);
       } catch (err) {
         throw new Error(`snapshot decode failed: ${err?.message || 'invalid Yjs update'}`, { cause: err });
