@@ -638,7 +638,7 @@ test('every app-navigation Playwright harness has a machine-enforced auth classi
       classified = true;
     } else if (relativePath.startsWith('tests/e2e-signed-in/')) {
       classified = signedInE2ELocalOnly && source.includes('LOCAL_HOSTS');
-    } else if (relativePath === 'scripts/perf/big-doc-open.mjs') {
+    } else if (relativePath === 'scripts/perf/big-doc-open.mjs' || relativePath === 'scripts/perf/big-doc-memory.mjs') {
       // Local e2e stack accounts only; every non-local request is aborted.
       classified = source.includes("['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort(");
     } else if (relativePath.startsWith('debug/scenarios/')) {
