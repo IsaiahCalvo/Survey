@@ -21,6 +21,7 @@ import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcripti
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { isSureHearing, startDeviceHearing } from '../agent/deviceHearing.js';
+import { keepScreenAwake } from '../agent/keepAwake.js';
 import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
 import SurveyAgentCamera from './SurveyAgentCamera';
@@ -178,6 +179,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     micRef.current?.stop();
     deviceHearingRef.current?.stop();
     pttHearingRef.current?.stop();
+    awakeRef.current?.release();
     stopSpeaking();
     // A turn waiting on the camera gets "no photo" rather than hanging.
     photoResolveRef.current?.(null);
@@ -463,6 +465,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   // The device's own hearing first (free); the server only when the device
   // heard nothing or was unsure. Same return values as transcribe.
   const deviceHearingRef = useRef(null);
+  const awakeRef = useRef(null);
   const pttHearingRef = useRef(null);
   const hear = async (clip, durationMs, endedAt, hearing = deviceHearingRef.current) => {
     if (hearing?.available) {
@@ -508,6 +511,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     micRef.current = null;
     deviceHearingRef.current?.stop();
     deviceHearingRef.current = null;
+    awakeRef.current?.release();
+    awakeRef.current = null;
     stopSpeaking();
   }, []);
 
@@ -583,6 +588,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
         onBargeIn: () => stopSpeaking(),
       });
       deviceHearingRef.current = startDeviceHearing();
+      awakeRef.current = keepScreenAwake();
       handsFreeRef.current = true;
       setHandsFree(true);
       setPhase('listening');

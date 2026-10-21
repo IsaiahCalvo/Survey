@@ -235,7 +235,7 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
 // The device's own speech to text (a fake engine here; headless Chromium
 // has no speech service) hears each thing said while the mic cuts its clip.
 // What it is sure of skips the server; the unsure second clip goes there.
-test('hands-free: the device hears what it is sure of, and only an unsure clip goes to the server', async ({ page }) => {
+test('hands-free: the device hears what it is sure of, only an unsure clip goes to the server, and the screen stays on', async ({ page }) => {
   const log = { clips: [], turns: [], speak: [] };
   const data = await seed();
   await page.addInitScript(({ template, data: d }) => {
@@ -272,6 +272,12 @@ test('hands-free: the device hears what it is sure of, and only an unsure clip g
     }
     window.webkitSpeechRecognition = FakeRecognition;
     window.SpeechRecognition = FakeRecognition;
+    // The screen is kept on while hands-free listens.
+    window.__locks = [];
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: { async request(kind) { const l = { kind, released: false, addEventListener() {}, async release() { l.released = true; } }; window.__locks.push(l); return l; } },
+    });
   }, { template: TEMPLATE, data });
   await mockServer(page, log, { firstClip: 1 });
 
@@ -295,6 +301,7 @@ test('hands-free: the device hears what it is sure of, and only an unsure clip g
   const said = log.turns.map((t) => t.messages.filter((m) => m.role === 'user').at(-1).content);
   expect(said).toEqual(expect.arrayContaining(['D-117, card reader installed.', 'No, D-118.']));
   expect(await page.evaluate(() => window.__deviceRecs)).toBeGreaterThanOrEqual(1);
+  expect(await page.evaluate(() => window.__locks.map((l) => [l.kind, l.released]))).toEqual([['screen', true]]);
 });
 
 test('hands-free: talking over a long spoken reply stops it, and what was said is heard', async ({ page }) => {
