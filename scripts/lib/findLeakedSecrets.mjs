@@ -2,6 +2,8 @@
 // key is expected in the bundle; a service_role key, Stripe secret, webhook
 // secret or email/model API key is not.
 const PATTERNS = [
+  // New-style Supabase service key; the sb_publishable_ key is public.
+  ['Supabase secret key', /\bsb_secret_[A-Za-z0-9_-]{20,}/g],
   ['Stripe secret or restricted key', /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,}/g],
   ['Stripe webhook secret', /\bwhsec_[A-Za-z0-9]{20,}/g],
   ['Brevo API key', /\bxkeysib-[a-f0-9]{40,}/g],

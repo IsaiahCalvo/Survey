@@ -33,3 +33,9 @@ test('Stripe, webhook, Brevo and Groq secrets are caught', () => {
 test('redaction regexes in app code are not flagged', () => {
   assert.deepEqual(findLeakedSecrets('[/\\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{6,}/g,`[REDACTED_KEY]`]'), []);
 });
+
+test('a new-style Supabase secret key is caught, the publishable key is not', () => {
+  assert.deepEqual(findLeakedSecrets('k="sb_publishable_' + 'p'.repeat(30) + '"'), []);
+  const found = findLeakedSecrets('k="sb_secret_' + 's'.repeat(30) + '"');
+  assert.deepEqual(found.map((f) => f.kind), ['Supabase secret key']);
+});
