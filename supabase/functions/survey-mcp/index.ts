@@ -254,7 +254,10 @@ async function handle(db: SupabaseClient, raw: Record<string, unknown>) {
   const parsed = parseBody(MESSAGE_SCHEMA, raw);
   if (!parsed.ok) return rpcError((raw as Record<string, unknown>)?.id, -32600, `Invalid request: ${parsed.error}`);
   const msg = parsed.value;
-  const { id, method } = msg;
+  // parseBody drops null fields, but a null id is still a request, not a
+  // notification, so read id straight from the message.
+  const id = raw.id;
+  const { method } = msg;
   const params = (msg.params && typeof msg.params === 'object' ? msg.params : {}) as Record<string, unknown>;
   const isNotification = id === undefined;
   if (method === 'initialize') {

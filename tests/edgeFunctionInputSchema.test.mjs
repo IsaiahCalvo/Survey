@@ -67,4 +67,9 @@ describe('wiring', () => {
     const src = readFileSync(new URL('survey-mcp/index.ts', dir), 'utf8');
     assert.match(src, /body\.length > MAX_BATCH/);
   });
+
+  it('survey-mcp keeps a null JSON-RPC id (a request, not a notification)', () => {
+    const src = readFileSync(new URL('survey-mcp/index.ts', dir), 'utf8');
+    assert.match(src, /const id = raw\.id;/);
+  });
 });
