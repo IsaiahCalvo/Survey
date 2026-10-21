@@ -174,6 +174,9 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [subscriptionTier, setSubscriptionTier] = useState('free');
   const [loadingTier, setLoadingTier] = useState(true);
+  // Whose plan `subscriptionTier` is. After a sign-in the tier still reads the
+  // default 'free' until this user's read lands; pro-lock waits for a match.
+  const [tierUserId, setTierUserId] = useState(null);
 
   // KAL-token-refresh: the live `user` object reference, kept in a ref so the
   // onAuthStateChange handler (created once, no deps) can compare an incoming
@@ -369,6 +372,7 @@ export const AuthProvider = ({ children }) => {
   const fetchSubscriptionTier = async (userId, { coalesce = false } = {}) => {
     if (!userId || !isSupabaseAvailable()) {
       setSubscriptionTier('free');
+      setTierUserId(userId || null);
       setLoadingTier(false);
       return;
     }
@@ -391,9 +395,11 @@ export const AuthProvider = ({ children }) => {
         }
       }
       setSubscriptionTier(await tierPromise);
+      setTierUserId(userId);
     } catch (err) {
       console.error('Error:', err);
       setSubscriptionTier('free');
+      setTierUserId(userId);
     } finally {
       setLoadingTier(false);
     }
@@ -524,6 +530,7 @@ export const AuthProvider = ({ children }) => {
         fetchSubscriptionTier(session.user.id, { coalesce: true });
       } else {
         setSubscriptionTier('free');
+        setTierUserId(null);
         setLoadingTier(false);
       }
     });
@@ -858,6 +865,7 @@ export const AuthProvider = ({ children }) => {
     // resolved; the developer-mode effect still waits on `loadingTier`.
     loading,
     loadingTier,
+    tierUserId,
     signUp,
     signIn,
     signInWithGoogle,
