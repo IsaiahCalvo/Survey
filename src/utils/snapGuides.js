@@ -256,6 +256,8 @@ export function snapResizePoint(point, handleId, targets, threshold) {
 export function sameSnapGuides(a, b) {
   if (a === b) return true;
   if (!a || !b) return false;
+  if (!!a.endpoint !== !!b.endpoint) return false;
+  if (a.endpoint && (Math.abs(a.endpoint.x - b.endpoint.x) > 1e-6 || Math.abs(a.endpoint.y - b.endpoint.y) > 1e-6)) return false;
   if (a.lines.length !== b.lines.length || a.points.length !== b.points.length) return false;
   const near = (p, q) => Math.abs(p - q) < 1e-6;
   for (let i = 0; i < a.lines.length; i += 1) {
