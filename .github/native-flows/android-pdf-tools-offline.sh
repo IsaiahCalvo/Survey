@@ -21,6 +21,8 @@ wait_button() {
     [ "$r" = "yes" ] && return 0; sleep 1
   done
   echo "dialog: $(ev "(() => (document.querySelector('.pdft-card')?.innerText || 'no dialog').replace(/\\s+/g, ' ').slice(0, 400))()")"
+  echo "detail: $(ev "(() => document.querySelector('.pdft-error[data-detail]')?.dataset.detail || 'none')()")"
+  timeout 20 adb logcat -d | grep -i "PdfTools" | tail -5 || true
   echo "::error::no '$1' button after $2s"; adb exec-out screencap -p > "$OUT/pdf-tools-stuck.png"; exit 1
 }
 # Download hands the file to Android's share sheet; check it shows, then close it.
