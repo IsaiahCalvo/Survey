@@ -138,6 +138,19 @@ export async function tiffToImages(bytes, onPage) {
   return out;
 }
 
+// Every frame of a moving GIF as a PNG. The decoder loads only when needed.
+export async function gifToImages(bytes, onFrame) {
+  const { decodeGifFrames } = await import('./gif.js');
+  const out = [];
+  for (const f of decodeGifFrames(bytes, onFrame)) {
+    const c = makeCanvas(f.width, f.height);
+    c.getContext('2d').putImageData(new ImageData(f.rgba, f.width, f.height), 0, 0);
+    out.push({ bytes: await canvasToBytes(c, 'image/png'), type: 'png' });
+    releaseCanvas(c);
+  }
+  return out;
+}
+
 // Make any image something pdf-lib can embed: JPEG or PNG, upright. Returns a
 // list, since one TIFF can hold many pages.
 export async function prepareImage(bytes, mime) {

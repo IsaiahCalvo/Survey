@@ -22,6 +22,11 @@ import pdfToDocx from './pdf-to-docx.mjs';
 import splitBySize from './split-by-size.mjs';
 import pdfPageSizes from './pdf-page-sizes.mjs';
 import addImageToPdf from './add-image-to-pdf.mjs';
+import rtfToPdf from './rtf-to-pdf.mjs';
+import htmlToPdf from './html-to-pdf.mjs';
+import docxToPdf from './docx-to-pdf.mjs';
+import bmpToPdf from './bmp-to-pdf.mjs';
+import gifToPdf from './gif-to-pdf.mjs';
 
 export default [
   ocrPdf,
@@ -46,4 +51,9 @@ export default [
   splitBySize,
   pdfPageSizes,
   addImageToPdf,
+  rtfToPdf,
+  htmlToPdf,
+  docxToPdf,
+  bmpToPdf,
+  gifToPdf,
 ];

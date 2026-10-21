@@ -7,7 +7,7 @@ import { parsePageSet, parseRangeGroups, formatPageSet, everyN } from './ranges.
 import { makeZip } from './zip.js';
 import { noteFreeToolStep } from './funnel.js';
 import {
-  canvasCodec, openPdfjs, renderPage, prepareImage, saveFile, canvasToBytes, releaseCanvas, runQpdf, loadDocFont,
+  canvasCodec, openPdfjs, renderPage, prepareImage, gifToImages, saveFile, canvasToBytes, releaseCanvas, runQpdf,
 } from './browser.js';
 import { makeSign } from './sign.js';
 
@@ -30,7 +30,9 @@ const MULTIPLE = root.hasAttribute('data-multiple');
 const BATCH = root.hasAttribute('data-batch');
 const batching = () => BATCH && S.files.length > 1;
 
-import { PDF_TYPE, base, pdfOut, SEG } from './kit.js';
+import {
+  PDF_TYPE, base, pdfOut, SEG, DOC_OPTIONS, blocksToPdf, docNotice,
+} from './kit.js';
 
 function fmtSize(n) {
   if (n < 1024) return `${n} B`;
@@ -86,11 +88,16 @@ async function toImages(file, opts, progress, format) {
   return out;
 }
 
+const isGif = (b) => b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46;
+
 async function fromImages(files, opts, progress) {
   const images = [];
   for (let n = 0; n < files.length; n += 1) {
     progress(`Image ${n + 1} of ${files.length}`);
-    images.push(...await prepareImage(files[n].bytes, files[n].mime));
+    const f = files[n];
+    if (opts.frames === 'all' && isGif(f.bytes)) {
+      images.push(...await gifToImages(f.bytes, (i, total) => progress(`Image ${n + 1} of ${files.length}: frame ${i + 1} of ${total}`)));
+    } else images.push(...await prepareImage(f.bytes, f.mime));
   }
   progress('Making the PDF');
   if (!images.length) throw new ToolError('Add at least one image.');
@@ -250,29 +257,18 @@ const TOOLS = {
   },
   'word-to-pdf': {
     view: 'files',
-    options: [
-      { key: 'pageSize', label: 'Page size', type: SEG, def: 'letter', choices: [['letter', 'Letter'], ['a4', 'A4']] },
-      { key: 'font', label: 'Font', type: SEG, def: 'sans', choices: [['sans', 'Clean (Helvetica)'], ['serif', 'Classic (Times)']] },
-    ],
+    options: DOC_OPTIONS,
     async prepare(item) {
       const { inspectDocx } = await import('./docx.js');
       item.notes = await inspectDocx(item.bytes);
     },
-    notice(files) {
-      const notes = [...new Set(files.flatMap((f) => f.notes || []))];
-      if (!notes.length) return null;
-      const list = notes.length > 1 ? `${notes.slice(0, -1).join(', ')} and ${notes[notes.length - 1]}` : notes[0];
-      return `Heads up: this document has ${list}, which won't look the same in the PDF. This tool is best for simple documents like letters, reports and specs.`;
-    },
+    notice: docNotice,
     async run([file], o, progress) {
-      const { readDocx, docxBlocksToPdf } = await import('./docx.js');
+      const { readDocx } = await import('./docx.js');
       progress('Reading the document');
       const blocks = await readDocx(file.bytes);
       progress('Making the PDF');
-      const { bytes, skippedImages } = await docxBlocksToPdf(blocks, { pageSize: o.pageSize, font: o.font, loadFont: loadDocFont, loadFontkit: async () => (await import('@pdf-lib/fontkit')).default });
-      const out = pdfOut(`${base(file.name)}.pdf`, bytes);
-      if (skippedImages) out.note = `${skippedImages} picture${skippedImages === 1 ? ' was' : 's were'} left out because ${skippedImages === 1 ? 'it uses' : 'they use'} a type a browser can't draw (like WMF or EMF).`;
-      return [out];
+      return [await blocksToPdf(blocks, file.name, o)];
     },
   },
   'tiff-to-pdf': { view: 'files', hint: 'Every page of a multi-page TIFF is kept. Drag files to set the order.', options: IMAGE_OPTIONS, run: fromImages },
@@ -354,6 +350,17 @@ const TOOLS = {
   },
 };
 
+// Pages of their own for searches like "DOCX to PDF", sharing a tool above.
+TOOLS['docx-to-pdf'] = TOOLS['word-to-pdf'];
+TOOLS['bmp-to-pdf'] = TOOLS['image-to-pdf'];
+TOOLS['gif-to-pdf'] = {
+  ...TOOLS['image-to-pdf'],
+  options: [
+    { key: 'frames', label: 'Moving GIFs', type: SEG, def: 'first', choices: [['first', 'First frame'], ['all', 'Every frame']], help: 'Every frame puts each frame of a moving GIF on its own page.' },
+    ...IMAGE_OPTIONS,
+  ],
+};
+
 // Tools added later live in their own module under defs/ (see kit.js for
 // what they get to use), so a page only loads its own tool's code.
 const T = TOOLS[TOOL_ID] || (await import(`./defs/${TOOL_ID}.js`)).default;
@@ -385,6 +392,8 @@ const ACCEPTS = {
   image: { test: isImage, input: 'image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff', wrong: 'Choose JPG, PNG, WebP, GIF, BMP or TIFF images.' },
   docx: { test: (f) => /\.(docx|doc)$/i.test(f.name) || f.type.includes('wordprocessingml'), input: '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document', wrong: 'Choose a Word file that ends in .docx.' },
   tiff: { test: isTiffFile, input: 'image/tiff,.tif,.tiff', wrong: 'Choose TIFF images, ones that end in .tif or .tiff.' },
+  rtf: { test: (f) => /\.rtf$/i.test(f.name) || /rtf/i.test(f.type), input: '.rtf,application/rtf,text/rtf', wrong: 'Choose an RTF file, one that ends in .rtf.' },
+  html: { test: (f) => /\.x?html?$/i.test(f.name) || /html/i.test(f.type), input: '.html,.htm,.xhtml,text/html', wrong: 'Choose a web page file, one that ends in .html or .htm.' },
   text: { test: isText, input: 'text/plain,.txt,.text,.md,.csv,.log', wrong: 'Choose a plain text file, like one that ends in .txt.' },
 }[ACCEPT];
 

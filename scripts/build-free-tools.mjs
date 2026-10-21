@@ -56,6 +56,8 @@ const ALSO = {
   'pdf-to-docx': 'word doc microsoft office editable convert',
   'split-by-size': 'mb smaller parts email limit large file', 'pdf-page-sizes': 'info properties dimensions metadata paper size',
   'add-image-to-pdf': 'logo picture png jpg stamp signature insert',
+  'rtf-to-pdf': 'rich text wordpad document', 'html-to-pdf': 'web page htm website saved page', 'docx-to-pdf': 'word microsoft office document',
+  'bmp-to-pdf': 'bitmap image picture', 'gif-to-pdf': 'animated moving image picture frames',
 };
 const keys = (t) => `${t.name} ${t.short} ${t.id.replace(/-/g, ' ')} ${ALSO[t.id] || ''} ${t.trade?.keys || ''}`.toLowerCase().replace(/"/g, '');
 const card = (t) => `<a class="tcard" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
@@ -68,7 +70,8 @@ const PAIRS = [
   ['split-pdf', 'split-by-bookmarks', 'extract-pages', 'merge-pdf'], ['compress-pdf', 'grayscale-pdf', 'fast-web-view', 'remove-annotations'],
   ['sign-pdf', 'protect-pdf', 'flatten-pdf'], ['protect-pdf', 'unlock-pdf', 'sanitize-pdf', 'sign-pdf'],
   ['sanitize-pdf', 'edit-pdf-details', 'remove-annotations', 'protect-pdf'], ['pdf-to-jpg', 'pdf-to-png', 'extract-images', 'pdf-to-tiff'],
-  ['jpg-to-pdf', 'image-to-pdf', 'png-to-pdf', 'compress-pdf'], ['word-to-pdf', 'txt-to-pdf', 'merge-pdf', 'compress-pdf'],
+  ['jpg-to-pdf', 'image-to-pdf', 'png-to-pdf', 'compress-pdf'], ['word-to-pdf', 'docx-to-pdf', 'rtf-to-pdf', 'html-to-pdf', 'txt-to-pdf'],
+  ['jpg-to-pdf', 'image-to-pdf', 'bmp-to-pdf', 'gif-to-pdf', 'tiff-to-pdf'],
   ['n-up-pdf', 'booklet-pdf', 'resize-pdf'], ['booklet-pdf', 'n-up-pdf', 'add-blank-pages', 'reverse-pdf'],
   ['remove-blank-pages', 'delete-pages', 'ocr-pdf', 'compress-pdf'], ['grayscale-pdf', 'compress-pdf', 'n-up-pdf'],
   ['pdf-to-word', 'pdf-to-markdown', 'pdf-to-txt', 'ocr-pdf'], ['pdf-to-markdown', 'pdf-to-word', 'pdf-to-txt', 'ocr-pdf'],
@@ -105,6 +108,8 @@ const PICK = {
   text: ['Choose a text file', 'Choose text files', 'text/plain,.txt,.text,.md,.csv,.log'],
   docx: ['Choose a Word file', 'Choose Word files', '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
   tiff: ['Choose a TIFF', 'Choose TIFF files', 'image/tiff,.tif,.tiff'],
+  rtf: ['Choose an RTF file', 'Choose RTF files', '.rtf,application/rtf,text/rtf'],
+  html: ['Choose an HTML file', 'Choose HTML files', '.html,.htm,.xhtml,text/html'],
 };
 
 const SCRIPT = '\n<script type="module" src="/src/tools/main.js"></script>';

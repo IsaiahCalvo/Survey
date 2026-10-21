@@ -24,5 +24,32 @@ export { ToolError } from './errors.js';
 export {
   openPdfjs, renderPage, canvasToBytes, releaseCanvas, prepareImage, runQpdf, MAX_PIXELS,
 } from './browser.js';
+import { loadDocFont } from './browser.js';
 // pdf-lib helpers (ops.js) load on first use.
 export const loadOps = () => import('./ops.js');
+
+// Word, RTF and HTML to PDF: the same page options and layout (docLayout.js).
+export const DOC_OPTIONS = [
+  { key: 'pageSize', label: 'Page size', type: SEG, def: 'letter', choices: [['letter', 'Letter'], ['a4', 'A4']] },
+  { key: 'font', label: 'Font', type: SEG, def: 'sans', choices: [['sans', 'Clean (Helvetica)'], ['serif', 'Classic (Times)']] },
+];
+// The heads-up for parts of a document that won't look the same, from the
+// list each file's prepare() put in item.notes.
+export function docNotice(files) {
+  const notes = [...new Set(files.flatMap((f) => f.notes || []))];
+  if (!notes.length) return null;
+  const list = notes.length > 1 ? `${notes.slice(0, -1).join(', ')} and ${notes[notes.length - 1]}` : notes[0];
+  return `Heads up: this document has ${list}, which won't look the same in the PDF. This tool is best for simple documents like letters, reports and specs.`;
+}
+// `left` is how many pictures were already left out, and `why(one)` says why.
+const CANT_DRAW = (one) => `${one ? 'it uses' : 'they use'} a type a browser can't draw (like WMF or EMF)`;
+export async function blocksToPdf(blocks, name, opts, { left = 0, why = CANT_DRAW } = {}) {
+  const { docxBlocksToPdf } = await import('./docLayout.js');
+  const { bytes, skippedImages } = await docxBlocksToPdf(blocks, {
+    pageSize: opts.pageSize, font: opts.font, loadFont: loadDocFont, loadFontkit: async () => (await import('@pdf-lib/fontkit')).default,
+  });
+  const out = pdfOut(`${base(name)}.pdf`, bytes);
+  const n = skippedImages + left;
+  if (n) out.note = `${n} picture${n === 1 ? ' was' : 's were'} left out because ${why(n === 1)}.`;
+  return out;
+}
