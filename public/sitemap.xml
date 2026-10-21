@@ -23,6 +23,7 @@
   <url><loc>https://surveytool.app/tools/jpg-to-pdf</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://surveytool.app/tools/png-to-pdf</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://surveytool.app/tools/image-to-pdf</loc><lastmod>2026-10-21</lastmod></url>
+  <url><loc>https://surveytool.app/tools/txt-to-pdf</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://surveytool.app/tools/pdf-to-jpg</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://surveytool.app/tools/pdf-to-png</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://surveytool.app/tools/pdf-to-txt</loc><lastmod>2026-10-21</lastmod></url>
@@ -30,6 +31,9 @@
   <url><loc>https://surveytool.app/tools/watermark-pdf</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://surveytool.app/tools/add-header-footer</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://surveytool.app/tools/flatten-pdf</loc><lastmod>2026-10-21</lastmod></url>
+  <url><loc>https://surveytool.app/tools/crop-pdf</loc><lastmod>2026-10-21</lastmod></url>
+  <url><loc>https://surveytool.app/tools/edit-pdf-details</loc><lastmod>2026-10-21</lastmod></url>
+  <url><loc>https://surveytool.app/tools/remove-annotations</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://surveytool.app/privacy.html</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://surveytool.app/terms.html</loc><lastmod>2026-10-21</lastmod></url>
 </urlset>

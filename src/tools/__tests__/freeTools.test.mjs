@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, PDFName, PDFRawStream, degrees } from 'pdf-lib';
 import {
-  addHeaderFooter, organizePages, flattenPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf, visualFrame, loadPdf,
+  addHeaderFooter, organizePages, flattenPdf, cropPdf, readDetails, editDetails, removeAnnotations, textToPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf, visualFrame, loadPdf,
 } from '../ops.js';
 import { ToolError } from '../errors.js';
 import { compressPdf, deflate, inflate } from '../compress.js';
@@ -196,4 +196,47 @@ test('flatten draws form fields and markups into the page and keeps links', asyn
   assert.ok(xobjects.keys().length >= 2, `xobjects: ${xobjects.keys().length}`);
 
   await assert.rejects(flattenPdf(await samplePdf(1)), (e) => e instanceof ToolError && /nothing|no form/i.test(e.message));
+});
+
+test('crop trims every edge by the same amount', async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([600, 800]);
+  const out = await PDFDocument.load(await cropPdf(await doc.save(), { trim: 50 }));
+  const box = out.getPage(0).getCropBox();
+  assert.deepEqual([box.x, box.y, box.width, box.height], [50, 50, 500, 700]);
+  const tiny = await PDFDocument.create();
+  tiny.addPage([60, 60]);
+  await assert.rejects(cropPdf(await tiny.save(), { trim: 18 }), ToolError);
+});
+
+test('details round-trip; keywords split on commas', async () => {
+  const out = await editDetails(await samplePdf(1), { title: ' Level 2 plan ', author: 'Isaiah', keywords: 'plan, level 2,' });
+  const d = await readDetails(out);
+  assert.equal(d.title, 'Level 2 plan');
+  assert.equal(d.author, 'Isaiah');
+  assert.equal(d.keywords, 'plan level 2');
+});
+
+test('remove markups keeps form fields and, by default, links', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([300, 300]);
+  doc.getForm().createTextField('f').addToPage(page, { x: 10, y: 10, width: 100, height: 20 });
+  const ctx = doc.context;
+  for (const Subtype of ['Square', 'Text', 'Link']) page.node.addAnnot(ctx.register(ctx.obj({ Type: 'Annot', Subtype, Rect: [0, 0, 5, 5] })));
+  const src = await doc.save();
+  const kept = await PDFDocument.load(await removeAnnotations(src));
+  const subs = kept.getPage(0).node.Annots().asArray().map((r) => kept.context.lookup(r).get(PDFName.of('Subtype')).toString());
+  assert.deepEqual(subs.sort(), ['/Link', '/Widget']);
+  const noLinks = await PDFDocument.load(await removeAnnotations(src, { keepLinks: false }));
+  assert.equal(noLinks.getPage(0).node.Annots().size(), 1);
+  await assert.rejects(removeAnnotations(await samplePdf(1)), ToolError);
+});
+
+test('text to PDF wraps long lines and breaks pages', async () => {
+  const long = 'word '.repeat(400);
+  const lines = Array.from({ length: 120 }, (_, i) => `Line ${i + 1}`).join('\n');
+  const out = await PDFDocument.load(await textToPdf(`${long}\n${lines}\fNew page ✓ café`, { pageSize: 'a4', font: 'mono' }));
+  assert.ok(out.getPageCount() >= 4, `pages: ${out.getPageCount()}`);
+  assert.equal(Math.round(out.getPage(0).getWidth()), 595);
+  await assert.rejects(textToPdf('  \n '), ToolError);
 });

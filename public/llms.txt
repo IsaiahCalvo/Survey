@@ -27,6 +27,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [JPG to PDF](https://surveytool.app/tools/jpg-to-pdf): Turn photos into one PDF.
 - [PNG to PDF](https://surveytool.app/tools/png-to-pdf): Turn PNG images into a PDF.
 - [Image to PDF](https://surveytool.app/tools/image-to-pdf): WebP, GIF, BMP, JPG or PNG to PDF.
+- [Text to PDF](https://surveytool.app/tools/txt-to-pdf): Turn a .txt file into a clean PDF.
 - [PDF to JPG](https://surveytool.app/tools/pdf-to-jpg): Save each page as a JPG image.
 - [PDF to PNG](https://surveytool.app/tools/pdf-to-png): Save each page as a sharp PNG.
 - [PDF to text](https://surveytool.app/tools/pdf-to-txt): Copy all the words out of a PDF.
@@ -34,6 +35,9 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Add watermark](https://surveytool.app/tools/watermark-pdf): Stamp text like DRAFT across pages.
 - [Headers and footers](https://surveytool.app/tools/add-header-footer): Add a line of text to the top or bottom of every page.
 - [Flatten PDF](https://surveytool.app/tools/flatten-pdf): Lock markups and form answers into the page.
+- [Crop PDF](https://surveytool.app/tools/crop-pdf): Trim the white edges off every page.
+- [Edit PDF details](https://surveytool.app/tools/edit-pdf-details): Change the title, author and keywords.
+- [Remove markups](https://surveytool.app/tools/remove-annotations): Strip comments and markups off a PDF.
 
 ## Optional
 
