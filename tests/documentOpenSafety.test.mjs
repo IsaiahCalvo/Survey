@@ -61,13 +61,50 @@ test('real tab handler opens distinct IDs and reuses an ID after name or size ch
   assert.equal(activeTab, 'tab-a');
 });
 
+test('a Home tap hands the library row to the viewer without downloading it first', async () => {
+  const calls = { deletes: 0, listUpdates: 0, opens: [], downloads: 0, toasts: 0 };
+  const doc = { id: 'doc-1', name: 'plan.pdf', file_path: 'owner/hash.pdf', content_sha256: 'abc', user_id: 'u1' };
+  const original = structuredClone(doc);
+  const handler = extractHandler(dashboardSource,
+    'const handleDocumentClick =', '\n  useEffect(() => {', {
+      console: { log() {}, error() {} }, performance: { now: () => 0 },
+      // The viewer streams the file (services/cloudPdfStream.js) and falls
+      // back to the download itself; the home never fetches the bytes.
+      downloadFromStorage: async () => { calls.downloads++; throw new Error('home must not download'); },
+      isStorageFileNotFoundError,
+      showToast: () => { calls.toasts++; },
+      onDocumentSelect: (...args) => { calls.opens.push(args); },
+      onDocumentOpenStart() {},
+      onDocumentOpenEnd() {},
+      deleteDocumentEverywhere: () => { calls.deletes++; },
+      handleFileNotFound: () => { calls.deletes++; },
+      setDocuments: () => { calls.listUpdates++; },
+    });
+  await handler(doc);
+  assert.deepEqual(doc, original, 'the library row is not mutated');
+  assert.equal(calls.downloads, 0);
+  assert.equal(calls.toasts, 0);
+  assert.equal(calls.deletes, 0);
+  assert.equal(calls.listUpdates, 0);
+  assert.equal(calls.opens.length, 1);
+  const [opened, filePath] = calls.opens[0];
+  assert.equal(filePath, 'owner/hash.pdf');
+  assert.equal(opened.id, 'doc-1');
+  assert.equal(opened.name, 'plan.pdf');
+  assert.equal(opened.filePath, 'owner/hash.pdf');
+  assert.equal(opened.supabaseFilePath, 'owner/hash.pdf');
+  assert.equal(opened.contentSha256, 'abc');
+  assert.equal(opened.user_id, 'u1');
+  assert.equal(typeof opened.arrayBuffer, 'undefined', 'no bytes: the viewer takes the streaming path');
+});
+
 for (const error of [
   { status: 404, message: 'Object not found' },
   { statusCode: 400, message: 'Object not found' },
   new Error('offline'),
 ]) {
   test(`real document-open failure preserves all records: ${error.message}`, async () => {
-    const calls = { deletes: 0, listUpdates: 0, opens: 0, toasts: [], openStarts: 0, openEnds: 0 };
+    const calls = { deletes: 0, listUpdates: 0, toasts: [], openEnds: 0 };
     const doc = { id: 'pending-upload', name: 'plan.pdf', file_path: 'owner/hash.pdf' };
     const original = structuredClone(doc);
     const handler = extractHandler(dashboardSource,
@@ -76,10 +113,9 @@ for (const error of [
         downloadFromStorage: async () => { throw error; },
         isStorageFileNotFoundError,
         showToast: (...args) => calls.toasts.push(args),
-        onDocumentSelect: () => { calls.opens++; },
-        // 2026-10-07: the tap shows "Opening <file>…" at once; a failed read
-        // must take it away again so the home is usable.
-        onDocumentOpenStart: () => { calls.openStarts++; },
+        // The open itself fails (the viewer could not take the document).
+        onDocumentSelect: () => { throw error; },
+        onDocumentOpenStart() {},
         onDocumentOpenEnd: () => { calls.openEnds++; },
         deleteDocumentEverywhere: () => { calls.deletes++; },
         handleFileNotFound: () => { calls.deletes++; },
@@ -89,8 +125,6 @@ for (const error of [
     assert.deepEqual(doc, original);
     assert.equal(calls.deletes, 0, 'opening a file never deletes the document or annotations');
     assert.equal(calls.listUpdates, 0, 'failed reads keep the document visible for recovery');
-    assert.equal(calls.opens, 0);
-    assert.equal(calls.openStarts, 1);
     assert.equal(calls.openEnds, 1, 'a failed open removes the opening cover');
     assert.equal(calls.toasts.length, 1);
     if (isStorageFileNotFoundError(error)) assert.match(calls.toasts[0][0], /annotations were kept/);
