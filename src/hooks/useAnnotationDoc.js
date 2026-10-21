@@ -1045,10 +1045,12 @@ export function useAnnotationDoc({
     if (!h || !readyRef.current) return undefined;
     let finished = false;
     let timer = null;
+    let observing = false;
     const meta = h.doc.getMap(META_MAP);
     const stop = () => {
-      if (!finished) meta.unobserve(onMeta);
       finished = true;
+      if (observing) meta.unobserve(onMeta);
+      observing = false;
       if (timer) clearTimeout(timer);
       timer = null;
     };
@@ -1076,6 +1078,7 @@ export function useAnnotationDoc({
       }).catch(() => {});
     }
     meta.observe(onMeta);
+    observing = true;
     schedule(STORE_COMPACTION_DELAY_MS);
     return stop;
   }, [legacyCollabRetired, docRole, initialHydration.ready, initialHydration.documentId, documentId]);
