@@ -379,7 +379,7 @@ ${cta()}`,
 const STATUS_SCRIPT = `<script>
 (function(){
   var REPO='IsaiahCalvo/Survey';
-  var KINDS=[[/is down/i,'Outage','Survey could not be reached.'],[/deploy/i,'Update problem','An update failed to go out. The site kept running.']];
+  var KINDS=[[/is down/i,'Outage','Survey could not be reached.'],[/deploy|smoke/i,'Update problem','An update or a live check failed.']];
   function kind(t){for(var i=0;i<KINDS.length;i++)if(KINDS[i][0].test(t))return KINDS[i];return [null,'Problem',''];}
   function when(s){var d=new Date(s);return d.toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'});}
   function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e;}
@@ -391,18 +391,24 @@ const STATUS_SCRIPT = `<script>
   // answer for a few minutes and fall back to it when GitHub says no.
   var KEY='survey-status-v1',cached=null;
   try{cached=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
-  var fresh=cached&&Date.now()-cached.t<180000;
+  var fresh=cached&&Date.now()-cached.t<180000,stale=false;
   (fresh?Promise.resolve(cached.items):fetch('https://api.github.com/repos/'+REPO+'/issues?labels=alert&state=all&per_page=15',{headers:{Accept:'application/vnd.github+json'}})
     .then(function(r){if(!r.ok)throw new Error(r.status);return r.json()}).then(function(items){
       items=items.filter(function(i){return !i.pull_request}).map(function(i){return {title:i.title,state:i.state,created_at:i.created_at,closed_at:i.closed_at}});
       try{localStorage.setItem(KEY,JSON.stringify({t:Date.now(),items:items}))}catch(e){}
       return items;
-    },function(err){if(cached)return cached.items;throw err;}))
+    },function(err){if(!cached)throw err;stale=true;return cached.items;}))
     .then(function(items){
       var open=items.filter(function(i){return i.state==='open'});
       var down=open.some(function(i){return kind(i.title)[1]==='Outage'});
-      now.className='st-now '+(down?'bad':open.length?'warn':'ok');
-      now.textContent=down?'Survey is having problems. We are on it.':open.length?'Survey is working. An update is delayed.':'All systems working.';
+      if(stale){
+        // An old answer must not pass for the current state.
+        now.className='st-now';
+        now.textContent='Could not check status right now. Below is what we saw at '+when(cached.t)+'.';
+      }else{
+        now.className='st-now '+(down?'bad':open.length?'warn':'ok');
+        now.textContent=down?'Survey is having problems. We are on it.':open.length?'Some parts of Survey may not be working. We are looking into it.':'All systems working.';
+      }
       list.textContent='';
       if(!items.length){list.appendChild(el('li','fine','No problems recorded.'));return;}
       items.forEach(function(i){
