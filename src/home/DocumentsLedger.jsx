@@ -466,6 +466,12 @@ export default function DocumentsLedger({
   const canManageDoc = (raw) => Boolean(
     raw && ((user?.id && raw.user_id === user.id) || raw.my_role === 'owner'),
   );
+  // Same rule for a multi-selection: Share/Delete only when every picked
+  // document is the user's own (phone select bar, desktop menus).
+  const canManageSelection = () => selectedRaw().every(canManageDoc);
+  const ownerOnlyCan = () => (canManageSelection()
+    ? {}
+    : { share: 'Only the owner can share', delete: 'Only the owner can delete' });
   const showDocumentDetails = (doc) => {
     if (isPhoneLayout()) {
       mobileDetailOpenerRef.current = docMenu?.trigger || document.activeElement;
@@ -517,6 +523,7 @@ export default function DocumentsLedger({
                   allSelected={allSel}
                   total={docs.length}
                   onToggleAll={() => setSelDocs(allSel ? new Set() : new Set(docs.map((d) => d.id)))}
+                  can={ownerOnlyCan()}
                   onDuplicate={() => { onDuplicate && onDuplicate(selectedRaw()); clearSel(); }}
                   onMove={() => { setMoveMode('move'); setMoveOpen(true); }}
                   onCopy={() => { setMoveMode('copy'); setMoveOpen(true); }}
@@ -909,10 +916,10 @@ export default function DocumentsLedger({
                 <button type="button" className="hub-menu__item" onClick={() => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); }}>
                   <Icon name="duplicate" size={15} color="var(--ink-200)" />Duplicate
                 </button>
-                <button type="button" className="hub-menu__item" onClick={() => onShare && onShare(selectedRaw())}>
+                <button type="button" className="hub-menu__item" disabled={!canManageSelection()} onClick={() => onShare && onShare(selectedRaw())}>
                   <Icon name="share" size={15} color="var(--ink-200)" />Share
                 </button>
-                <button type="button" className="hub-menu__item is-danger" onClick={() => archiveSelected(selectedRaw())}>
+                <button type="button" className="hub-menu__item is-danger" disabled={!canManageSelection()} onClick={() => archiveSelected(selectedRaw())}>
                   <Icon name="trash" size={15} color="currentColor" />Delete
                 </button>
               </div>
@@ -1100,8 +1107,8 @@ export default function DocumentsLedger({
             { label: 'Move to project…', onClick: () => { setMoveMode('move'); setMoveOpen(true); } },
             { label: 'Copy to project…', onClick: () => { setMoveMode('copy'); setMoveOpen(true); } },
             { label: 'Duplicate', onClick: () => { onDuplicate && onDuplicate(selectedRaw()); clearDesktopSelection(); } },
-            { label: 'Share', onClick: () => onShare && onShare(selectedRaw()) },
-            { label: `Delete ${docMenu.ids.length} documents`, danger: true, onClick: () => archiveSelected(selectedRaw()) },
+            { label: 'Share', disabled: !canManageSelection(), onClick: () => onShare && onShare(selectedRaw()) },
+            { label: `Delete ${docMenu.ids.length} documents`, danger: true, disabled: !canManageSelection(), onClick: () => archiveSelected(selectedRaw()) },
           ] : [
             { label: 'Rename', disabled: !canManage, onClick: () => setRenameTarget(doc.raw) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
