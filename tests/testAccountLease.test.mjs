@@ -633,6 +633,13 @@ test('every app-navigation Playwright harness has a machine-enforced auth classi
     } else if (relativePath === 'scripts/prod-smoke.mjs') {
       // Signed-out smoke test of the live site: no accounts, no sign-in.
       classified = !/signIn|password|auth\.admin|loadVerifiedTestAccounts/i.test(source);
+    } else if (relativePath === 'scripts/live-journey-check.mjs') {
+      // Hourly live check: one dedicated account named by JOURNEY_EMAIL, made
+      // by hand; it may only find that account, never create or remove one.
+      classified =
+        source.includes('process.env')
+        && source.includes('JOURNEY_EMAIL')
+        && !/auth\.admin\.(?:createUser|deleteUser|updateUserById)|signInWithPassword|loadVerifiedTestAccounts/.test(source);
     } else if (relativePath === 'agent-cli/mobile-annotations-e2e.mjs') {
       classified =
         source.includes('http://localhost:8091')
