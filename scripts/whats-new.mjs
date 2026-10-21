@@ -4,6 +4,11 @@
 // Work still behind a feature flag stays off this list until it is on for all.
 export const WHATS_NEW = [
   { date: '2026-10-21', items: [
+    'Account settings has a "Download my data" button that gives you a ZIP of your files and work.',
+    'Big drawing sets show their first page sooner, and no longer freeze for a moment after they open.',
+    'Counter marks keep their size after you draw an arrow or rectangle.',
+    'The page grid draws under your markup and the page text, not over it.',
+    'Buttons in dialogs are easier to tap on touch screens.',
     'Color pickers have a "Recent" row with the last custom colors you used.',
     'Delete account in Account settings works again and removes your files. Work you shared stays with the people you shared it with.',
     'Survey photos no longer keep the GPS location they were taken at.',
