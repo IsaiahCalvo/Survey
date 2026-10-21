@@ -50,7 +50,7 @@ export const E2E_DOCUMENT = {
 export const E2E_SURVEY = {
   documentId: 'e2e00000-0000-4000-8000-000000000102',
   documentName: 'E2E Survey Agent Drawing.pdf',
-  templateId: 'e2e00000-0000-4000-8000-000000000201',
+  templateId: 'e2e00000-0000-4000-8000-000000000301',
   templateName: 'E2E Doors',
   moduleId: 'e2e-mod-install',
   moduleName: 'Installation',

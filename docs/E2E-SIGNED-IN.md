@@ -60,7 +60,7 @@ bytes from `debug/fixtures/clickable-link-test.pdf`, stored at
 For voice and agent walks (browser, iOS, Android) the owner also has:
 
 - drawing **E2E Survey Agent Drawing.pdf** (`e2e00000-0000-4000-8000-000000000102`) in the same project,
-- template **E2E Doors** (`e2e00000-0000-4000-8000-000000000201`), linked to that drawing: module
+- template **E2E Doors** (`e2e00000-0000-4000-8000-000000000301`), linked to that drawing: module
   **Installation** (`e2e-mod-install`), category **Door** (`e2e-cat-door`), lines Cables Pulled,
   Frame Installed & Prepped, Door Installed & Prepped,
 - item **D-1-17** (`surveyMarker-e2e-d117`) on page 1, every line blank (reset on each seed).
