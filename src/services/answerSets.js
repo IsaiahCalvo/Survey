@@ -5,7 +5,9 @@
  * (`template.answerSet`), e.g. Pass / Fail / N/A. Each answer has a `tone`
  * that drives its colors: good (green), bad (red), neutral (grey). Good and
  * neutral answers count as "done" for the auto-entity rule, as Y and N/A do.
+ * An export kit may carry a set too (`kit.answerSet`); the template's own wins.
  */
+import { getExportKit } from './exportFormats/registry.js';
 
 export const ANSWER_TONES = Object.freeze(['good', 'bad', 'neutral']);
 
@@ -55,10 +57,16 @@ export function validateAnswerSet(set) {
   return errors;
 }
 
-/** The template's answer set, or Y / N / N/A when it has none or a bad one. */
+const usable = (set) => Boolean(set) && validateAnswerSet(set).length === 0;
+
+/**
+ * The template's answer set, else its export kit's, else Y / N / N/A.
+ * A bad set is skipped like a missing one.
+ */
 export function answerSetFor(template) {
-  const set = template?.answerSet;
-  return set && validateAnswerSet(set).length === 0 ? set : DEFAULT_ANSWER_SET;
+  if (usable(template?.answerSet)) return template.answerSet;
+  const kitSet = template?.exportKitId ? getExportKit(template.exportKitId)?.answerSet : null;
+  return usable(kitSet) ? kitSet : DEFAULT_ANSWER_SET;
 }
 
 export function answerTone(set, value) {

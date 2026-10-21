@@ -48,3 +48,19 @@ test('template fingerprint changes when an answer set is picked', async () => {
   assert.equal(templateFingerprint(t), JSON.stringify(['Doors', [], []]));
   assert.notEqual(templateFingerprint({ ...t, answerSet: ANSWER_SET_PRESETS[1].answers }), templateFingerprint(t));
 });
+
+test('a kit can carry the answer set; the template\'s own set still wins', async () => {
+  const { registerExportKit, getExportKit } = await import('../src/services/exportFormats/registry.js');
+  const { answerSetFor, DEFAULT_ANSWER_SET } = await import('../src/services/answerSets.js');
+  const passFail = [{ value: 'Pass', tone: 'good' }, { value: 'Fail', tone: 'bad' }];
+  const off = registerExportKit({ ...getExportKit('wireless-lock-schedule'), id: 'kit-answers-test', answerSet: passFail });
+  assert.deepEqual(answerSetFor({ exportKitId: 'kit-answers-test' }).map((a) => a.value), ['Pass', 'Fail']);
+  const own = [{ value: 'Ok', tone: 'good' }, { value: 'Bad', tone: 'bad' }];
+  assert.equal(answerSetFor({ exportKitId: 'kit-answers-test', answerSet: own }), own);
+  assert.equal(answerSetFor({ exportKitId: 'wireless-lock-schedule' }), DEFAULT_ANSWER_SET);
+  off();
+  const offBad = registerExportKit({ ...getExportKit('wireless-lock-schedule'), id: 'kit-answers-bad', answerSet: [{ value: 'a,b', tone: 'good' }] });
+  assert.equal(answerSetFor({ exportKitId: 'kit-answers-bad' }), DEFAULT_ANSWER_SET);
+  offBad();
+  assert.equal(answerSetFor({ exportKitId: 'kit-answers-test' }), DEFAULT_ANSWER_SET);
+});

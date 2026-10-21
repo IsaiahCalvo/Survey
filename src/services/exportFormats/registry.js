@@ -14,6 +14,7 @@
  *     id: 'default-survey', kind: 'exportKit', version: '1.0.0', minEngine: 1,
  *     label: 'Survey (standard)',
  *     extends: null,                       // kit id@version this was tweaked from
+ *     answerSet: [{ value, tone }, ...],   // optional; see answerSets.js (checked there on use)
  *     columns: [                           // in sheet order, left to right
  *       { field: 'row_id', header: 'Row ID' },
  *       { field: 'checklist' },            // expands to one column per checklist item
@@ -76,7 +77,11 @@ export function subscribeExportKits(fn) {
 export function registerExportKit(kit) {
   const errors = validateExportKit(kit);
   if (errors.length) throw new TypeError(`registerExportKit(${kit?.id}): ${errors.join('; ')}`);
-  const entry = Object.freeze({ ...kit, columns: Object.freeze(kit.columns.map((c) => Object.freeze({ ...c }))) });
+  const entry = Object.freeze({
+    ...kit,
+    columns: Object.freeze(kit.columns.map((c) => Object.freeze({ ...c }))),
+    ...(Array.isArray(kit.answerSet) ? { answerSet: Object.freeze(kit.answerSet.map((a) => Object.freeze({ value: a?.value, tone: a?.tone }))) } : {}),
+  });
   kits.set(entry.id, entry);
   notify();
   return () => {
