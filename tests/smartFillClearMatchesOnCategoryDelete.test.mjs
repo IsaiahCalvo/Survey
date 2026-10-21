@@ -26,6 +26,9 @@ test('matches go only when their source marker is deleted, or when the source is
   assert.equal(shouldClearSmartFillMatches('m1', ['m2']), false);
   assert.equal(shouldClearSmartFillMatches('m1', []), false);
   assert.equal(shouldClearSmartFillMatches(null, []), true);
+  // Never started a search on this page — leave sibling in-flight finds alone.
+  assert.equal(shouldClearSmartFillMatches(undefined, ['m1']), false);
+  assert.equal(shouldClearSmartFillMatches(undefined, []), false);
 });
 
 test('category delete notifies, and the SVG layer clears its matches on it', () => {
@@ -39,4 +42,16 @@ test('category delete notifies, and the SVG layer clears its matches on it', () 
   const handler = layer.slice(layer.lastIndexOf('const onClear', at), at);
   assert.match(handler, /shouldClearSmartFillMatches\(smartFillMatchSourceRef\.current/);
   assert.match(handler, /setSmartFillMatches\(\[\]\)/);
+});
+
+test('Find more records the source marker before the scan resolves', () => {
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  const start = layer.indexOf('findMoreLikeThisRef.current =');
+  assert.ok(start > 0);
+  const thenAt = layer.indexOf('findSimilarOnPage(', start);
+  assert.ok(thenAt > start);
+  const beforeScan = layer.slice(start, thenAt);
+  const afterScan = layer.slice(thenAt, layer.indexOf('// A deleted category takes the matches', thenAt));
+  assert.match(beforeScan, /smartFillMatchSourceRef\.current =/);
+  assert.doesNotMatch(afterScan, /smartFillMatchSourceRef\.current =/);
 });

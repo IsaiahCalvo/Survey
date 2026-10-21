@@ -12,7 +12,11 @@ export function notifySmartFillCategoriesDeleted(categoryIds = [], markerIds = [
 // Matches found from a marker stay when some OTHER category is deleted; they
 // go when the delete takes their source marker. Matches with no known source
 // (the tool-bar search, which works from the last sample only) go on any delete.
+// A page that has never started a search has no source yet (`undefined`) and
+// must not clear — otherwise sibling pages abort work and dismiss the shared
+// find toast on every category delete.
 export function shouldClearSmartFillMatches(sourceMarkerId, deletedMarkerIds = []) {
+  if (sourceMarkerId === undefined) return false;
   if (sourceMarkerId == null) return true;
   return deletedMarkerIds.includes(sourceMarkerId);
 }

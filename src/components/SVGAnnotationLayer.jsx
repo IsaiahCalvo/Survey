@@ -2457,7 +2457,10 @@ const SVGAnnotationLayerBody = memo(({
   }, [clearSmartFillPreview, height, onSurveyMarkerCreated, pageNumber, width]);
 
   const findMoreLikeThisRef = useRef(null);
-  const smartFillMatchSourceRef = useRef(null);
+  // `undefined` = this page has never started a search (sibling pages must not
+  // dismiss the shared find toast). Set as soon as a scan starts so an
+  // in-flight Find more uses this search's source, not the last finished one.
+  const smartFillMatchSourceRef = useRef();
   const surveyMarkersRef = useRef(surveyMarkers);
   surveyMarkersRef.current = surveyMarkers;
   findMoreLikeThisRef.current = (sample, skipBounds = null, { quietIfNone = false } = {}) => {
@@ -2465,6 +2468,12 @@ const SVGAnnotationLayerBody = memo(({
     smartFillScanAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     smartFillScanAbortRef.current = controller;
+    const centre = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+    const inside = (pt, b) => b && pt.x >= b.x && pt.x <= b.x + b.width && pt.y >= b.y && pt.y <= b.y + b.height;
+    const sourceAt = skipBounds ? centre(skipBounds) : null;
+    smartFillMatchSourceRef.current = sourceAt
+      ? ((surveyMarkersRef.current || []).find((m) => m && inside(sourceAt, m))?.annotationId ?? null)
+      : null;
     const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
     if (!quietIfNone) showSmartFillFindToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find', duration: Infinity });
     findSimilarOnPage({ pageCanvas, pageSize: { width, height }, sample, signal: controller?.signal || null }).then((res) => {
@@ -2476,18 +2485,12 @@ const SVGAnnotationLayerBody = memo(({
           : 'Smart fill couldn’t finish looking on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
         return;
       }
-      const centre = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
-      const inside = (pt, b) => b && pt.x >= b.x && pt.x <= b.x + b.width && pt.y >= b.y && pt.y <= b.y + b.height;
       const matches = res.polygons
         .map((polygon) => buildPolygonMarkerBounds(polygon))
         .filter((b) => b && !inside(centre(b), skipBounds))
         // A tag that already has a marker here is not "more" (the tool-bar
         // search has no skipBounds, so it re-offered the tag just applied).
         .filter((b) => !(surveyMarkersRef.current || []).some((m) => m && inside(centre(b), m)));
-      const sourceAt = skipBounds ? centre(skipBounds) : null;
-      smartFillMatchSourceRef.current = sourceAt
-        ? ((surveyMarkersRef.current || []).find((m) => m && inside(sourceAt, m))?.annotationId ?? null)
-        : null;
       setSmartFillMatches(matches);
       // From the tool bar every page in view looks; only pages with matches speak.
       if (quietIfNone && !matches.length) return;
