@@ -24,7 +24,7 @@ import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { canRemovePolyVertex, insertPolyVertex, insertVertexOnNearestEdge, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
+import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
@@ -8729,12 +8729,25 @@ const SVGAnnotationLayerBody = memo(({
             setFocusedPolyVertex({ annotationIndex: selectedIndex, vertexIndex: i });
             setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: e.clientX, y: e.clientY, touch: isTouchMenuInput(contextMenuInputOf(e)) });
           };
+          // A cloud's crowns bulge outside the corner-to-corner sides by an
+          // amount that grows with zoom and stroke, while the side band is
+          // screen-constant, so on pen / touch the band also covers the crowns
+          // (a press on the drawn scallops otherwise missed it). Mouse keeps
+          // the plain band.
+          const polyCloudChrome = cloudSelectionChrome(obj);
+          const polyEdgeReach = polyCloudChrome && isCoarsePointer
+            ? cloudPolyEdgeReach(obj.points.map((p) => ({
+              x: pLeft + pScaleX * ((Number(p?.x) || 0) - pPathOffsetX),
+              y: pTop + pScaleY * ((Number(p?.y) || 0) - pPathOffsetY),
+            })), polyCloudChrome.frame)
+            : 0;
+          const polyEdgeTolerance = (vTouchHitR || vHandleR * 2) + polyEdgeReach;
           // Double-click is mouse/pen; a finger long-presses the side instead.
           const edgeHit = (e) => {
             const ctm = e.currentTarget.getScreenCTM?.();
             if (!ctm) return null;
             const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
-            return insertVertexOnNearestEdge(worldPoints, pt, vTouchHitR || vHandleR * 2, { closed: String(obj.type).toLowerCase() === 'polygon' });
+            return insertVertexOnNearestEdge(worldPoints, pt, polyEdgeTolerance, { closed: String(obj.type).toLowerCase() === 'polygon' });
           };
           const onEdgeDoubleClick = (e) => {
             e.stopPropagation();
@@ -8768,10 +8781,9 @@ const SVGAnnotationLayerBody = memo(({
           // how far its crowns actually reach, and the frame only ever
           // appeared in double-click bbox mode. Vertex dots stay the only
           // GRABBERS here (resize grabbers belong to bbox mode); the frame is
-          // pure feedback. Plain polygons/polylines pass null and are
-          // unchanged. The frame lives in the unrotated page frame, so it
-          // rotates about the same pivot the cloud itself does.
-          const polyCloudChrome = cloudSelectionChrome(obj);
+          // pure feedback. Plain polygons/polylines pass null (polyCloudChrome,
+          // above) and are unchanged. The frame lives in the unrotated page
+          // frame, so it rotates about the same pivot the cloud itself does.
           return (
             <g key={`selection-wrapper-${selectedIndex}`} transform={overlayTransform}>
               {polyCloudChrome && (
@@ -8798,7 +8810,7 @@ const SVGAnnotationLayerBody = memo(({
                   points={[...worldPoints, ...(String(obj.type).toLowerCase() === 'polygon' ? [worldPoints[0]] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke="transparent"
-                  strokeWidth={(vTouchHitR || vHandleR * 2) * 2}
+                  strokeWidth={polyEdgeTolerance * 2}
                   style={{ pointerEvents: 'stroke', cursor: 'copy' }}
                   onPointerDown={onEdgePointerDown}
                   onDoubleClick={onEdgeDoubleClick}

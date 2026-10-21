@@ -44,3 +44,19 @@ test('a long-press Add point here menu on a side keeps a 44px row on every phone
   const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /const onHandle = [^\n]*\[data-poly-edge-hit\]/);
 });
+
+test('a pen / touch side long-press band covers a cloud polygon\'s crowns, mouse keeps the plain band', async () => {
+  const { cloudPolyEdgeReach } = await import('../src/utils/polyVertices.js');
+  const pts = [{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 200 }, { x: 100, y: 200 }];
+  // Crowns reach 18 units above the top side (frame from cloudSelectionChrome).
+  assert.equal(cloudPolyEdgeReach(pts, { left: 92, top: 82, width: 216, height: 126 }), 18);
+  // Frame inside the corners (or none): no extra reach.
+  assert.equal(cloudPolyEdgeReach(pts, { left: 100, top: 100, width: 200, height: 100 }), 0);
+  assert.equal(cloudPolyEdgeReach(pts, null), 0);
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  // Reach only on a coarse pointer; band width and the long-press hit test share one tolerance.
+  assert.match(src, /const polyEdgeReach = polyCloudChrome && isCoarsePointer/);
+  assert.match(src, /insertVertexOnNearestEdge\(worldPoints, pt, polyEdgeTolerance,/);
+  assert.match(src, /data-poly-edge-hit="true"[\s\S]{0,400}strokeWidth=\{polyEdgeTolerance \* 2\}/);
+});
