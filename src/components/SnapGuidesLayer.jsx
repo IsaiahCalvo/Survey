@@ -34,10 +34,13 @@ export default function SnapGuidesLayer({ guides, inverseScale = 1 }) {
   const endpoint = guides?.endpoint || null;
   if (!guides?.lines?.length) {
     if (!endpoint) return null;
+    // Touch / pen: a ring that clears a fingertip (r 16 vs 5 screen px).
+    const r = (endpoint.coarse ? 16 : 5) * k;
+    const w = endpoint.coarse ? 2.5 : 1.5;
     return (
       <g data-snap-guides="true" pointerEvents="none" style={{ pointerEvents: 'none' }}>
-        <circle cx={endpoint.x} cy={endpoint.y} r={5 * k} fill="none" stroke="#ffffff" strokeWidth={3 * k} />
-        <circle data-snap-endpoint="true" cx={endpoint.x} cy={endpoint.y} r={5 * k} fill="none" stroke={SNAP_GUIDE_COLOR} strokeWidth={1.5 * k} />
+        <circle cx={endpoint.x} cy={endpoint.y} r={r} fill="none" stroke="#ffffff" strokeWidth={(w + 1.5) * k} />
+        <circle data-snap-endpoint="true" data-snap-coarse={endpoint.coarse ? 'true' : undefined} cx={endpoint.x} cy={endpoint.y} r={r} fill="none" stroke={SNAP_GUIDE_COLOR} strokeWidth={w * k} />
       </g>
     );
   }

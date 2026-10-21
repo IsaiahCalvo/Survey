@@ -11,6 +11,22 @@
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 
 export const DRAW_SNAP_SCREEN_PX = 8;
+// Touch / pen (no Shift, a fingertip covers the target): a wider endpoint
+// pull, and a Drawboard-style angle assist that locks the segment to the
+// nearest 45° step when it is already within TOUCH_ANGLE_ASSIST_DEG of it.
+export const DRAW_SNAP_TOUCH_SCREEN_PX = 14;
+export const TOUCH_ANGLE_ASSIST_DEG = 5;
+
+/** True for a finger or pen pointer (mouse keeps the Shift-only behaviour). */
+export function isCoarseSnapPointer(e) {
+  const t = e?.pointerType;
+  return t === 'touch' || t === 'pen';
+}
+
+/** Endpoint-snap radius in screen px for this pointer. */
+export function drawSnapScreenPx(e) {
+  return isCoarseSnapPointer(e) ? DRAW_SNAP_TOUCH_SCREEN_PX : DRAW_SNAP_SCREEN_PX;
+}
 
 const finite = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
@@ -26,6 +42,20 @@ export function snapAngle(from, to, stepDeg = 45) {
   const c = Math.round(Math.cos(angle) * 1e12) / 1e12;
   const s = Math.round(Math.sin(angle) * 1e12) / 1e12;
   return { x: from.x + c * length, y: from.y + s * length };
+}
+
+/**
+ * Angle assist: `to` locked to the nearest stepDeg multiple about `from` when
+ * the segment is within tolDeg of it, else null (left free).
+ */
+export function assistAngle(from, to, { stepDeg = 45, tolDeg = TOUCH_ANGLE_ASSIST_DEG } = {}) {
+  if (!from || !to || !(stepDeg > 0) || !(tolDeg > 0)) return null;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (!(Math.hypot(dx, dy) > 0)) return null;
+  const deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const off = Math.abs(deg - Math.round(deg / stepDeg) * stepDeg);
+  return off <= tolDeg ? snapAngle(from, to, stepDeg) : null;
 }
 
 /** Closest candidate within tolPage (inclusive), or null. */
@@ -109,17 +139,37 @@ export function collectEndpointCandidates(objects, { excludeIndex = -1, own = nu
 }
 
 /**
+ * resolveDrawSnap options for a live pointer event: Shift on any pointer;
+ * on touch / pen the wider radius and the ±5° angle assist. `endpoint.coarse`
+ * tells the indicator to draw the larger ring.
+ */
+export function drawSnapEventOptions(e, inverseScale) {
+  const coarse = isCoarseSnapPointer(e);
+  const inv = Number(inverseScale);
+  return {
+    shiftKey: !!e?.shiftKey,
+    tolPage: drawSnapScreenPx(e) * (Number.isFinite(inv) && inv > 0 ? inv : 1),
+    angleAssistDeg: coarse ? TOUCH_ANGLE_ASSIST_DEG : 0,
+    coarse,
+  };
+}
+
+/**
  * Resolve the final point. Returns { point, endpoint } where endpoint is the
  * snapped target (for the indicator) or null.
  */
 export function resolveDrawSnap(anchor, point, {
-  shiftKey = false, endpointSnap = true, candidates = [], tolPage = 0, stepDeg = 45,
+  shiftKey = false, endpointSnap = true, candidates = [], tolPage = 0, stepDeg = 45, angleAssistDeg = 0, coarse = false,
 } = {}) {
   if (!point) return { point, endpoint: null };
   if (endpointSnap) {
     const hit = nearestEndpoint(point, candidates, tolPage);
-    if (hit) return { point: { x: hit.x, y: hit.y }, endpoint: { x: hit.x, y: hit.y } };
+    if (hit) return { point: { x: hit.x, y: hit.y }, endpoint: { x: hit.x, y: hit.y, ...(coarse ? { coarse: true } : {}) } };
   }
   if (shiftKey && anchor) return { point: snapAngle(anchor, point, stepDeg), endpoint: null };
+  if (angleAssistDeg > 0 && anchor) {
+    const locked = assistAngle(anchor, point, { stepDeg, tolDeg: angleAssistDeg });
+    if (locked) return { point: locked, endpoint: null };
+  }
   return { point: { x: point.x, y: point.y }, endpoint: null };
 }

@@ -118,7 +118,7 @@ import {
   resolvePolyDraftFinish,
   updatePolyDraftPreview,
 } from '../utils/polyDraft.js';
-import { collectEndpointCandidates, resolveDrawSnap, DRAW_SNAP_SCREEN_PX } from '../utils/drawSnap.js';
+import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
 import {
   getAnnotationRenderIdentity,
   stampAnnotationCreationIdentity,
@@ -1380,16 +1380,15 @@ const SVGAnnotationLayerBody = memo(({
     if (!point) return point;
     const endpointSnap = !isAnnotationSnapFree(e);
     const r = resolveDrawSnap(anchor, point, {
-      shiftKey: !!e?.shiftKey,
+      ...drawSnapEventOptions(e, inverseScale),
       endpointSnap,
       candidates: endpointSnap
         ? collectEndpointCandidates(drawSnapObjects, { include: new Set(renderedAnnotationEntriesRef.current.map((entry) => entry.index)) })
         : [],
-      tolPage: snapThreshold(inverseScale, DRAW_SNAP_SCREEN_PX),
     });
     setDrawSnapEndpoint((prev) => {
       const next = r.endpoint;
-      if (prev === next || (prev && next && prev.x === next.x && prev.y === next.y)) return prev;
+      if (prev === next || (prev && next && prev.x === next.x && prev.y === next.y && !!prev.coarse === !!next.coarse)) return prev;
       return next;
     });
     return r.point;
@@ -3077,14 +3076,14 @@ const SVGAnnotationLayerBody = memo(({
         cancelDraft();
         return;
       }
-      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey });
+      commitShapeCreationRef.current({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey, pointerType: e.pointerType });
     };
     const onUp = (e) => {
       const placing = clickPlace();
       if (placing) {
         // The second click's release sets the end.
         if (placing.endPointerId == null || e.pointerId !== placing.endPointerId) return;
-        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey });
+        commitShapeCreationRef.current({ x: e.clientX, y: e.clientY, shiftKey: e.shiftKey, altKey: e.altKey, pointerType: e.pointerType });
         return;
       }
       if (!isGesturePointer(e)) return;

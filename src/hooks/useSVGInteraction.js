@@ -43,7 +43,7 @@ import {
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
-import { collectEndpointCandidates, resolveDrawSnap, DRAW_SNAP_SCREEN_PX } from '../utils/drawSnap.js';
+import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
 // UX 2026-09-09: a cloud polygon/polyline vertex drag replays the approved
 // studio's moveVertex(): only the dragged vertex's corner is re-fitted and the
 // resulting per-vertex memory rides on the annotation (data.pdfCloudVertexState)
@@ -412,10 +412,9 @@ export function useSVGInteraction({
   // corner within 8 screen px unless Alt / the snapping preference is off.
   const snapDraggedPoint = (ds, anchor, point, e) => {
     const r = resolveDrawSnap(anchor, point, {
-      shiftKey: !!e?.shiftKey,
+      ...drawSnapEventOptions(e, inverseScale),
       endpointSnap: !isAnnotationSnapFree(e),
       candidates: ds.snapEndpoints || [],
-      tolPage: snapThreshold(inverseScale, DRAW_SNAP_SCREEN_PX),
     });
     applySnapGuides(r.endpoint ? { lines: [], points: [], endpoint: r.endpoint } : null);
     return r.point;
