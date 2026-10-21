@@ -197,19 +197,34 @@ export async function findTagInDocument(doc, query) {
  * x4,y4 (bottom-right) } — the layout createTextMarkupAnnotation expects; it
  * runs mergeLineQuads to coalesce the per-word quads into per-line spans.
  */
+// Two word boxes that abut on one line — no real space between them. A PDF
+// that changes font mid-word splits the visible word across text items, so
+// textItemsToWords hands back fragments ("Gen", "eral") that must join into
+// one searchable word; a genuine space between words leaves a clear gap.
+const abuts = (a, b) => {
+  const h = Math.max(a.height, b.height, 1);
+  const sameLine = Math.abs((a.y + a.height / 2) - (b.y + b.height / 2)) < h * 0.6;
+  const gap = b.x - (a.x + a.width);
+  return sameLine && gap < h * 0.2 && gap > -h;
+};
+
 export function findHighlightQuads(words, query, { occurrence = 1 } = {}) {
   const tokens = (words || []).filter((w) => String(w?.text || '').trim() && w?.box);
   const needle = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (!needle || !tokens.length) return null;
-  // One haystack of the word texts joined by single spaces, each word's span
-  // kept, so a match that crosses a space (or a line) still finds its words.
+  // One haystack of the word texts, each word's span kept, so a match that
+  // crosses a space (or a line) still finds its words. Fragments of one word
+  // the PDF split across items are joined with no space, so the word still
+  // matches as written; real word and line gaps keep their single space.
   let hay = '';
   const spans = [];
+  let prev = null;
   for (const w of tokens) {
+    if (prev && !abuts(prev.box, w.box)) hay += ' ';
     const start = hay.length;
     hay += String(w.text).toLowerCase();
     spans.push({ start, end: hay.length, box: w.box, text: w.text });
-    hay += ' ';
+    prev = w;
   }
   const want = Math.max(1, Math.trunc(Number(occurrence) || 1));
   let at = -1;

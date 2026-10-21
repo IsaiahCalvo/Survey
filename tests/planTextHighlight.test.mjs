@@ -58,6 +58,21 @@ test('a phrase that wraps across lines still matches both lines', () => {
   assert.equal(res.quads[1].y1, 120);
 });
 
+test('a word the PDF split across items (abutting boxes) still matches as written', () => {
+  // "Gen" ends at x=100; "eral" starts right there (gap 0) — one visual word
+  // split by a mid-word font change. Then a real space before "Notes".
+  const words = [
+    { text: 'Gen', box: { x: 50, y: 100, width: 50, height: 12 } },
+    { text: 'eral', box: { x: 100, y: 100, width: 40, height: 12 } },
+    { text: 'Notes', box: { x: 160, y: 100, width: 50, height: 12 } },
+  ];
+  const res = findHighlightQuads(words, 'General Notes');
+  assert.ok(res, 'split word should still match');
+  assert.equal(res.quads.length, 3);
+  // A real gap is still a word boundary, so "General" alone matches both frags.
+  assert.equal(findHighlightQuads(words, 'General').quads.length, 2);
+});
+
 test('no match, empty query and no words all return null', () => {
   assert.equal(findHighlightQuads(line(['hello']), 'goodbye'), null);
   assert.equal(findHighlightQuads(line(['hello']), '   '), null);
