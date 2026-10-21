@@ -289,3 +289,61 @@ test('a tagged probe falls back at once, without waiting for pdf.js', async () =
   assert.equal(result, null);
   assert.equal(hanging.destroyed, 1);
 });
+
+import { createCloudRangeTransport } from '../src/services/cloudPdfStream.js';
+
+class FakeRangeBase {
+  constructor(length) { this.length = length; this.ranges = []; }
+  onDataRange(begin, chunk) { this.ranges.push([begin, Array.from(chunk)]); }
+}
+const transportBytes = Uint8Array.from({ length: 64 }, (_, i) => i);
+const transportFetch = (log, { status = 206, ignoreRange = false } = {}) => async (url, init) => {
+  log.push(init.headers.Range);
+  const [, a, b] = /bytes=(\d+)-(\d+)/.exec(init.headers.Range);
+  const body = ignoreRange ? transportBytes : transportBytes.slice(Number(a), Number(b) + 1);
+  return { status: ignoreRange ? 200 : status, arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) };
+};
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+test('range transport fetches each chunk with Range and needs no readable headers', async () => {
+  const log = [];
+  const t = createCloudRangeTransport({ pdfjsLib: { PDFDataRangeTransport: FakeRangeBase }, url: 'u', length: 64, fetchImpl: transportFetch(log) });
+  t.requestDataRange(8, 12);
+  await settle();
+  assert.deepEqual(log, ['bytes=8-11']);
+  assert.deepEqual(t.ranges, [[8, [8, 9, 10, 11]]]);
+});
+
+test('range transport slices a full-file 200 and reports failures once', async () => {
+  const t = createCloudRangeTransport({ pdfjsLib: { PDFDataRangeTransport: FakeRangeBase }, url: 'u', length: 64, fetchImpl: transportFetch([], { ignoreRange: true }) });
+  t.requestDataRange(4, 6);
+  await settle();
+  assert.deepEqual(t.ranges, [[4, [4, 5]]]);
+  const errors = [];
+  const bad = createCloudRangeTransport({ pdfjsLib: { PDFDataRangeTransport: FakeRangeBase }, url: 'u', length: 64, fetchImpl: transportFetch([], { status: 403 }), onError: (e) => errors.push(e.message) });
+  bad.requestDataRange(0, 2);
+  bad.requestDataRange(2, 4);
+  await settle();
+  assert.deepEqual(errors, ['range 403']);
+  assert.deepEqual(bad.ranges, []);
+});
+
+test('no transport without a known size or pdf.js support', () => {
+  const lib = { PDFDataRangeTransport: FakeRangeBase };
+  assert.equal(createCloudRangeTransport({ pdfjsLib: lib, url: 'u', length: NaN, fetchImpl: async () => {} }), null);
+  assert.equal(createCloudRangeTransport({ pdfjsLib: {}, url: 'u', length: 10, fetchImpl: async () => {} }), null);
+});
+
+test('the stream open uses the range transport when the stored size is known', async () => {
+  const lib = fakePdfjs();
+  lib.PDFDataRangeTransport = FakeRangeBase;
+  const result = await tryOpenCloudPdfStream({
+    pdfjsLib: lib, filePath: 'p', source: async () => ({ url: 'https://x/signed', size: 64 }),
+    probeTag: async () => 'untagged', fetchImpl: transportFetch([]),
+  });
+  assert.ok(result?.pdf);
+  assert.ok(lib.calls[0].range instanceof FakeRangeBase);
+  assert.equal(lib.calls[0].length, 64);
+  assert.equal(lib.calls[0].url, undefined);
+  assert.equal(lib.calls[0].disableAutoFetch, false);
+});

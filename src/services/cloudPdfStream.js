@@ -157,17 +157,61 @@ export async function probePdfPresentationTag(url, { fetchImpl = globalThis.fetc
   }
 }
 
+/**
+ * Supabase Storage answers Range with 206 but sends no
+ * Access-Control-Expose-Headers, so a browser script cannot read
+ * Accept-Ranges / Content-Range / Content-Length on a cross-origin signed URL
+ * (checked 2026-10-21 by .github/workflows/storage-cors-probe.yml). pdf.js's
+ * own network loader then cannot detect range support and falls back to one
+ * full download. When the stored size is known we hand pdf.js a
+ * PDFDataRangeTransport instead: each chunk it asks for is one ranged GET, and
+ * no response header has to be readable.
+ */
+export function createCloudRangeTransport({ pdfjsLib, url, length, fetchImpl = globalThis.fetch, onError = () => {} }) {
+  const Base = pdfjsLib?.PDFDataRangeTransport;
+  if (typeof Base !== 'function' || typeof fetchImpl !== 'function' || !url) return null;
+  if (!Number.isFinite(length) || length <= 0) return null;
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let failed = false;
+  class CloudRangeTransport extends Base {
+    requestDataRange(begin, end) {
+      if (failed) return;
+      fetchImpl(url, { headers: { Range: `bytes=${begin}-${end - 1}` }, cache: 'no-store', signal: controller?.signal })
+        .then(async (response) => {
+          if (response.status !== 206 && response.status !== 200) throw new Error(`range ${response.status}`);
+          const buffer = await response.arrayBuffer();
+          // A server that ignores Range sends the whole file: slice it.
+          const chunk = response.status === 200 ? buffer.slice(begin, end) : buffer;
+          if (chunk.byteLength !== end - begin) throw new Error('range length mismatch');
+          if (!failed) this.onDataRange(begin, new Uint8Array(chunk));
+        })
+        .catch((error) => {
+          if (failed) return;
+          failed = true;
+          controller?.abort();
+          onError(error instanceof Error ? error : new Error(String(error)));
+        });
+    }
+    abort() { failed = true; controller?.abort(); }
+  }
+  return new CloudRangeTransport(length, null);
+}
+
 /** pdf.js options for a ranged, progressively loaded open. */
-export function streamGetDocumentOptions(url, verbosity) {
-  return {
-    url,
+export function streamGetDocumentOptions(url, verbosity, { transport = null, length = null } = {}) {
+  const shared = {
     isEvalSupported: false,
     rangeChunkSize: STREAM_RANGE_CHUNK_BYTES,
     disableAutoFetch: false,
+    ...(verbosity != null ? { verbosity } : {}),
+  };
+  if (transport) return { ...shared, range: transport, length, disableStream: true };
+  return {
+    url,
+    ...shared,
     disableStream: false,
     disableRange: false,
     withCredentials: false,
-    ...(verbosity != null ? { verbosity } : {}),
   };
 }
 
@@ -187,6 +231,7 @@ export async function tryOpenCloudPdfStream({
   onAllBytes = () => {},
   onBytesFailed = () => {},
   probeTag = (url, size) => probePdfPresentationTag(url, { size }),
+  fetchImpl = globalThis.fetch,
 }) {
   let loadingTask = null;
   let timer = null;
@@ -205,7 +250,17 @@ export async function tryOpenCloudPdfStream({
       .then((tag) => {
         if (tag !== 'untagged') throw new Error(tag === 'tagged' ? 'presentation-tag' : 'presentation-tag-unknown');
       });
-    loadingTask = pdfjs.getDocument(streamGetDocumentOptions(opened.url, pdfjs.VerbosityLevel?.ERRORS));
+    const length = Number(opened.size);
+    // A failed chunk would leave pdf.js waiting forever; destroying the task
+    // rejects its pending promises so the open (or the reload) falls back.
+    const transport = createCloudRangeTransport({
+      pdfjsLib: pdfjs,
+      url: opened.url,
+      length,
+      fetchImpl,
+      onError: () => { void loadingTask?.destroy?.()?.catch?.(() => {}); },
+    });
+    loadingTask = pdfjs.getDocument(streamGetDocumentOptions(opened.url, pdfjs.VerbosityLevel?.ERRORS, transport ? { transport, length } : {}));
     // A timeout leaves this promise behind; it must not become unhandled.
     loadingTask.promise?.catch?.(() => {});
     const timeout = new Promise((_, reject) => {
