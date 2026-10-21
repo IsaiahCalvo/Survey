@@ -25,6 +25,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { buildScopeImportPlans } from '../_shared/matcher/buildScopeImportPlans.js';
 import { generateRowIdToken } from '../_shared/matcher/rowIdToken.js';
 import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 const corsHeaders = {
   // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -129,12 +130,29 @@ Deno.serve(async (req: Request) => {
   const service = createClient(supabaseUrl, serviceKey);
 
   // 3. PARSE BODY.
-  let body: any;
+  let raw: unknown;
   try {
-    body = await req.json();
+    raw = await req.json();
   } catch {
     return json({ error: 'invalid_json' }, 400);
   }
+  // Shape and size only; the matcher and the apply RPC check the contents.
+  const parsed = parseBody({
+    documentId: s.string({ max: 64, optional: true }),
+    templateId: s.string({ max: 64, optional: true }),
+    workbookId: s.string({ max: 512, optional: true }),
+    syncToken: s.string({ max: 4096, optional: true }),
+    changeSet: s.record({ maxBytes: 8388608, optional: true }),
+    worksheetDataList: s.array(s.record({ maxBytes: 16777216 }), { max: 200, optional: true }),
+    surveyMarkers: s.record({ maxBytes: 16777216, optional: true }),
+    appValuesByMarkerId: s.record({ maxBytes: 16777216, optional: true }),
+    templateConfig: s.record({ maxBytes: 1048576, optional: true }),
+    ingestSeq: s.any({ maxBytes: 256 }),
+    capabilityTier: s.string({ max: 40, optional: true }),
+    deviceHint: s.any({ maxBytes: 1024 }),
+  }, raw);
+  if (!parsed.ok) return json({ error: 'invalid_request', detail: parsed.error }, 400);
+  const body: any = parsed.value;
   const {
     documentId,
     templateId,

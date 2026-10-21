@@ -31,6 +31,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { sweepOrphanedSurveyMedia, MEDIA_SWEEP_LIMIT } from './surveyMediaSweep.js';
 import { sweepOrphanedDocumentFiles, DOCUMENT_FILE_SWEEP_LIMIT } from './documentFileSweep.js';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 const corsHeaders = {
   // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -115,21 +116,28 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: 'unauthorized' }, 401);
   }
 
-  let batchLimit = DEFAULT_BATCH_LIMIT;
-  let dryRun = false;
+  let raw: unknown = {};
   try {
-    const body = await req.json();
-    if (body && typeof body === 'object') {
-      if (body.limit !== undefined) batchLimit = normalizeBatchLimit(body.limit);
-      // A GENUINE rehearsal: dry_run is passed through to the SQL, which reports
-      // exactly what it would purge and deletes nothing. It must never be a
-      // half-measure — an operator reaching for "dry run" is trying to avoid
-      // deleting anything at all.
-      dryRun = body.dry_run === true;
-    }
+    raw = (await req.json()) ?? {};
   } catch {
     /* no body is fine — defaults apply */
   }
+  // dry_run must be a real boolean: a string "true" used to read as false and
+  // run a real purge.
+  const parsed = parseBody({
+    limit: s.integer({ min: 1, max: 100000, optional: true }),
+    dry_run: s.boolean({ optional: true }),
+  }, raw);
+  if (!parsed.ok) {
+    log('bad_request', { detail: parsed.error });
+    return json({ ok: false, error: 'invalid_request', detail: parsed.error }, 400);
+  }
+  const batchLimit = parsed.value.limit !== undefined ? normalizeBatchLimit(parsed.value.limit) : DEFAULT_BATCH_LIMIT;
+  // A GENUINE rehearsal: dry_run is passed through to the SQL, which reports
+  // exactly what it would purge and deletes nothing. It must never be a
+  // half-measure — an operator reaching for "dry run" is trying to avoid
+  // deleting anything at all.
+  const dryRun = parsed.value.dry_run === true;
 
   const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },

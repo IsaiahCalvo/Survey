@@ -2,6 +2,7 @@ import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { resolveBillingReturnUrl } from '../_shared/billingReturn.ts';
 import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2026-02-25.clover',
@@ -87,7 +88,11 @@ Deno.serve(async (req) => {
 
         console.log('Customer ID:', subscription.stripe_customer_id);
 
-        const body = await req.json().catch(() => ({}));
+        const parsed = parseBody({ returnUrl: s.string({ max: 2048, optional: true }) }, await req.json().catch(() => ({})));
+        if (!parsed.ok) {
+            return new Response(JSON.stringify({ error: parsed.error }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        const body = parsed.value;
         const returnUrl = resolveBillingReturnUrl(body?.returnUrl, req.headers.get('origin'));
         let session;
         try {

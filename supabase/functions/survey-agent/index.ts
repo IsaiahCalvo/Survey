@@ -27,6 +27,7 @@ import {
   sanitizeAgentMessages,
   surveyAgentCostMicros,
 } from '../_shared/surveyAgentSpec.js';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 const corsHeaders = {
   // INTENTIONAL: web, Electron (file://) and Capacitor all call this with a
@@ -92,8 +93,20 @@ Deno.serve(async (req) => {
 
   const raw = await req.text();
   if (raw.length > SURVEY_AGENT_LIMITS.maxRequestBytes + MAX_AUDIO_BYTES * 1.4) return json(413, { error: 'too_large' });
-  let body: Record<string, unknown> = {};
-  try { body = JSON.parse(raw || '{}'); } catch { return json(400, { error: 'bad_json' }); }
+  let parsedJson: unknown = {};
+  try { parsedJson = JSON.parse(raw || '{}'); } catch { return json(400, { error: 'bad_json' }); }
+  // Types and sizes; sanitizeAgentMessages / buildSurveyAgentTools check the insides.
+  const parsed = parseBody({
+    action: s.enum(['status', 'transcribe', 'turn']),
+    mime: s.string({ max: 200, optional: true }),
+    audio: s.string({ max: Math.ceil(MAX_AUDIO_BYTES * 1.4), optional: true }),
+    hints: s.array(s.any({ maxBytes: 2048 }), { max: 200, optional: true }),
+    duration_ms: s.any({ maxBytes: 64 }),
+    messages: s.array(s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }), { max: SURVEY_AGENT_LIMITS.maxMessages * 2, optional: true }),
+    answer_values: s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }),
+  }, parsedJson);
+  if (!parsed.ok) return json(400, { error: 'bad_request', detail: parsed.error });
+  const body: Record<string, unknown> = parsed.value;
   const action = String(body.action || '');
 
   // Who is asking: a signed-in person (their own Supabase JWT).

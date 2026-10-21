@@ -2,6 +2,7 @@ import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { deleteStripeCustomer, runAccountDeletionStages } from '../_shared/accountDeletion.ts';
 import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 type AdminClient = ReturnType<typeof createClient<any>>;
 
@@ -60,7 +61,8 @@ Deno.serve(async (req) => {
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json(401, { error: 'Missing authorization header' });
-    const body = await req.json().catch(() => ({}));
+    const parsed = parseBody({ confirmation: s.enum(['DELETE']) }, await req.json().catch(() => ({})));
+    const body = parsed.ok ? parsed.value : null;
     if (body?.confirmation !== 'DELETE') return json(400, { error: 'Deletion confirmation is required' });
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');

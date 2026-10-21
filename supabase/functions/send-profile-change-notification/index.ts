@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
 import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
+import { parseBody, s } from '../_shared/inputSchema.js';
 import {
   renderEmailLayout,
   EMAIL_DANGER,
@@ -74,10 +75,10 @@ Deno.serve(async (req) => {
     // Get request body
     // Only the fields AccountSettings can change; anything else would put
     // caller-chosen text into the email subject.
-    const body = await req.json().catch(() => ({}))
-    const changedFields = Array.isArray(body?.changedFields)
-      ? [...new Set(body.changedFields)].filter((field) => field === 'name' || field === 'password')
-      : []
+    const parsed = parseBody({
+      changedFields: s.array(s.enum(['name', 'password']), { max: 2 }),
+    }, await req.json().catch(() => ({})))
+    const changedFields = parsed.ok ? [...new Set(parsed.value.changedFields as string[])] : []
 
     if (changedFields.length === 0) {
       return new Response(JSON.stringify({ error: 'No changed fields provided' }), {

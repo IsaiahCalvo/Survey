@@ -11,6 +11,7 @@ import {
     EMAIL_LIST_STYLE as LIST,
 } from '../_shared/emailLayout.ts';
 import { resolveBrevoApiKey } from './config.ts';
+import { parseBody, s } from '../_shared/inputSchema.js';
 import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
 import {
     authorizeUserSend,
@@ -184,7 +185,19 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const { to, subject, template, data } = await req.json();
+        const parsed = parseBody({
+            to: s.string({ max: 320, optional: true }),
+            subject: s.string({ max: 500, optional: true }),
+            template: s.string({ max: 80, pattern: /^[a-z0-9-]+$/, optional: true }),
+            data: s.record({ maxBytes: 32 * 1024, optional: true }),
+        }, await req.json());
+        if (!parsed.ok) {
+            return new Response(
+                JSON.stringify({ error: parsed.error }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+        const { to, subject, template, data } = parsed.value as { to?: string, subject?: string, template?: string, data?: Record<string, any> };
 
         if (!to || !subject || !template) {
             return new Response(
