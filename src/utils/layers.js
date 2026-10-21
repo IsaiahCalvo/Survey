@@ -147,6 +147,23 @@ export function stampNewObjectsOnLayer(previousObjects, nextObjects, activeLayer
   return changed ? out : nextObjects;
 }
 
+// Page-map form of stampNewObjectsOnLayer, for multi-page commits (text
+// highlight/underline/strikeout transactions). Returns nextByPage unchanged
+// when nothing new needed a layer.
+export function stampNewMarksByPage(previousByPage, nextByPage, activeLayerId) {
+  if (!nextByPage || typeof nextByPage !== 'object' || !activeLayerId || activeLayerId === DEFAULT_LAYER_ID) return nextByPage;
+  let out = nextByPage;
+  for (const pageKey of Object.keys(nextByPage)) {
+    const page = nextByPage[pageKey];
+    if (!Array.isArray(page?.objects)) continue;
+    const stamped = stampNewObjectsOnLayer(previousByPage?.[pageKey]?.objects, page.objects, activeLayerId);
+    if (stamped === page.objects) continue;
+    if (out === nextByPage) out = { ...nextByPage };
+    out[pageKey] = { ...page, objects: stamped };
+  }
+  return out;
+}
+
 // Export copy of annotationsByPage / callouts without marks on hidden layers.
 export function withoutHiddenLayers(annotationsByPage, hiddenSet) {
   if (!hiddenSet || hiddenSet.size === 0 || !annotationsByPage) return annotationsByPage;

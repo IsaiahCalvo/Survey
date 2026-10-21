@@ -362,7 +362,7 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
-import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer } from './utils/layers.js';
+import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
@@ -28099,6 +28099,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const commitTextMarkupDocumentTransaction = useCallback((transaction, saveContext = null) => {
     if (!transaction?.action || !transaction?.nextByPage) return false;
+    // Layers ('layers' flag): new highlight/underline/strikeout marks go on
+    // the active layer, as in handleSaveAnnotations (ref is null when off).
+    // Stamped before the undo step is built so redo keeps the layer.
+    if (activeLayerIdRef.current && !isUndoingRef.current && saveContext?.action !== 'move-to-page') {
+      const stampedByPage = stampNewMarksByPage(annotationsByPageRef.current, transaction.nextByPage, activeLayerIdRef.current);
+      if (stampedByPage !== transaction.nextByPage) {
+        transaction = { ...transaction, nextByPage: stampedByPage, action: buildTextMarkupDocumentAction(annotationsByPageRef.current || {}, stampedByPage) || transaction.action };
+      }
+    }
     const viewerId = yjsUndoCtx?.userId || user?.id || null;
     // RULED 2026-09-28 owner: open editing + lock — a text-markup transaction
     // that would change a locked mark does not happen at all (it is one
