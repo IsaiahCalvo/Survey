@@ -8,25 +8,13 @@
 //
 // Probes use password sign-in against the API (not the UI): this is about the
 // database, and 5 roles x 30 tables through the UI would take minutes.
-import { createClient } from '@supabase/supabase-js';
 import { E2E_ACCOUNTS, E2E_DOCUMENT, E2E_PROJECT } from './accounts.mjs';
-import { adminClient, expect, test } from './helpers.mjs';
+import { adminClient, apiClientFor as clientFor, expect, test } from './helpers.mjs';
 
 const DOC = E2E_DOCUMENT.id;
 const PROJECT = E2E_PROJECT.id;
 const TEMPLATE = 'e2e00000-0000-4000-8000-000000000201';
 const SESSION = 'e2e00000-0000-4000-8000-000000000202';
-
-const options = { auth: { persistSession: false, autoRefreshToken: false } };
-const newClient = () => createClient(process.env.E2E_SUPABASE_URL, process.env.E2E_SUPABASE_ANON_KEY, options);
-
-async function clientFor(account) {
-  const client = newClient();
-  if (!account) return client;
-  const { error } = await client.auth.signInWithPassword({ email: account.email, password: account.password });
-  if (error) throw new Error(`sign-in ${account.email}: ${error.message}`);
-  return client;
-}
 
 async function must(label, request) {
   const { error } = await request;

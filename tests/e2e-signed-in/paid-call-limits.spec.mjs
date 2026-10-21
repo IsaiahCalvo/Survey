@@ -1,15 +1,11 @@
 // Short-window limits on paid calls (migration 20261022010100): the voice
 // agent's per-minute burst cap and the profile-change email cap.
-import { createClient } from '@supabase/supabase-js';
 import { E2E_ACCOUNTS } from './accounts.mjs';
-import { adminClient, expect, test } from './helpers.mjs';
+import { adminClient, apiClientFor, expect, test } from './helpers.mjs';
 
 async function signedIn(account) {
-  const client = createClient(process.env.E2E_SUPABASE_URL, process.env.E2E_SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data, error } = await client.auth.signInWithPassword({ email: account.email, password: account.password });
-  if (error) throw error;
+  const client = await apiClientFor(account);
+  const { data } = await client.auth.getUser();
   return { client, userId: data.user.id };
 }
 
