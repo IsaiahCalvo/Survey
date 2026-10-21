@@ -24,6 +24,10 @@ on:
       - '.github/workflows/ios-native.yml'
       - '.github/native-flows/**'
   workflow_dispatch:
+  # The iOS signed-in walk is too slow for every PR (see that job); it runs
+  # nightly and on demand instead.
+  schedule:
+    - cron: '30 5 * * *'
 
 permissions:
   contents: read
@@ -257,6 +261,10 @@ jobs:
 
   ios-signed-in:
     name: iOS signed-in walk (local Supabase, export to share sheet)
+    # Needs Docker for the local Supabase, which GitHub's fast Apple-silicon
+    # runners cannot run (no nested VMs), so this uses an Intel runner with
+    # Colima and takes ~2h. Too slow to gate every PR: nightly + manual only.
+    if: github.event_name != 'pull_request'
     # Intel runner: the local Supabase needs Docker, which runs here through
     # Colima; Apple-silicon runners cannot nest a VM for it.
     runs-on: macos-15-intel
