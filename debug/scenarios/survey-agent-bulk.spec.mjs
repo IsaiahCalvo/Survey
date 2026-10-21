@@ -99,3 +99,58 @@ test('"Add all doors on this sheet" adds every new door tag on the page, and Und
   await card.getByRole('button', { name: /Undo/ }).click();
   await expect.poll(() => markerNames(page)).toEqual(['D-101@1']);
 });
+
+test('"What\'s left on this sheet?" reads the page\'s progress back', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  data.markers['surveyMarker-d102'] = {
+    ...data.markers['surveyMarker-d101'], id: 'surveyMarker-d102', name: 'D-102', bounds: { x: 252, y: 112, width: 44, height: 30 },
+    checklistResponses: { 'cl-power': { selection: 'Y' } },
+  };
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await page.route('**/functions/v1/survey-agent', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+      return;
+    }
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    const reply = (json) => route.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify(json) });
+    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
+    const tools = body.messages.filter((m) => m.role === 'tool');
+    if (!tools.length) {
+      return reply({ message: { content: '', tool_calls: [
+        { id: 's1', type: 'function', function: { name: 'survey_status', arguments: JSON.stringify({ page: null, all_pages: false }) } },
+      ] } });
+    }
+    return reply({ message: { content: 'One of two doors is done. D-101 has not been started.', tool_calls: [] } });
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await input.fill("what's left on this sheet");
+  await input.press('Enter');
+  await expect(panel.getByText('One of two doors is done.')).toBeVisible();
+
+  const result = JSON.parse(calls.filter((c) => c.action === 'turn').at(-1).messages.find((m) => m.role === 'tool').content);
+  expect(result).toEqual({
+    scope: 'page 1',
+    items: 2,
+    done: 1,
+    not_started: { count: 1, names: ['D-101'] },
+    partly_done: { count: 0, items: [] },
+  });
+  // Read-only: no change card.
+  await expect(panel.getByTestId('survey-agent-changes')).toHaveCount(0);
+});

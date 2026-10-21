@@ -457,3 +457,24 @@ test('take_photo opens the camera, waits, and attaches the photo to the item', a
   bridge.canEdit = false;
   assert.match((await box.run('take_photo', { item_id: 'm117' })).content, /can only view/);
 });
+
+test('survey_status says what is done and what is left, on a page or the whole survey', async () => {
+  const { bridge, markers } = fakeBridge({ getCurrentPage: () => 2 });
+  markers.m118 = { ...markers.m118, pageNumber: 2, checklistResponses: { 'chk-cable': { selection: 'Y' } } };
+  markers.m201 = { ...markers.m201, pageNumber: 3, checklistResponses: { 'chk-cable': { selection: 'Y' }, 'chk-reader': { selection: 'N' }, 'chk-lock': { selection: 'Y' } } };
+  const box = toolboxFor(bridge);
+  const page = JSON.parse((await box.run('survey_status', { page: null, all_pages: false })).content);
+  assert.deepEqual(page, {
+    scope: 'page 2',
+    items: 2,
+    done: 0,
+    not_started: { count: 1, names: ['D-117'] },
+    partly_done: { count: 1, items: [{ name: 'D-118', missing: ['Card reader installed', 'Lock installed'] }] },
+  });
+  const all = JSON.parse((await box.run('survey_status', { page: null, all_pages: true })).content);
+  assert.equal(all.scope, 'whole survey');
+  assert.equal(all.items, 3);
+  assert.equal(all.done, 1, 'archived checklist lines do not count');
+  assert.equal(JSON.parse((await box.run('survey_status', { page: 3, all_pages: false })).content).done, 1);
+  assert.ok(SURVEY_AGENT_TOOL_NAMES.includes('survey_status'));
+});
