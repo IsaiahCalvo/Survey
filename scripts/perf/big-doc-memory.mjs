@@ -52,6 +52,7 @@ const PROBE = () => {
   try {
     new PerformanceObserver((list) => {
       for (const e of list.getEntries()) {
+        w.__perf.lastLoafEnd = Math.max(w.__perf.lastLoafEnd || 0, e.startTime + e.duration);
         if (!w.__perf.recording) continue;
         const scripts = (e.scripts || []).map((sc) => ({ d: Math.round(sc.duration), inv: sc.invoker || '', src: `${(sc.sourceURL || '').split('/').pop()}:${sc.sourceCharPosition}`, fn: sc.sourceFunctionName || '' }));
         w.__perf.loaf.push({ d: Math.round(e.duration), script: Math.round(scripts.reduce((n, sc) => n + sc.d, 0)), render: Math.round(e.renderStart ? e.startTime + e.duration - e.renderStart : 0), layout: Math.round(e.styleAndLayoutStart ? e.startTime + e.duration - e.styleAndLayoutStart : 0), scripts });
@@ -94,11 +95,13 @@ async function signIn(page) {
   await dialog.waitFor({ state: 'hidden', timeout: 60_000 });
 }
 
-const quiet = (page, ms = 2000) => page.waitForFunction((q) => {
+// Quiet: no long task and no long animation frame (background sync, e.g. an
+// IndexedDB compaction, shows as the latter) for `ms`.
+const quiet = (page, ms = 3000) => page.waitForFunction((q) => {
   const s = window.__perf;
-  const lastEnd = s.longTasks.reduce((m, [st, d]) => Math.max(m, st + d), 0);
+  const lastEnd = Math.max(s.lastLoafEnd || 0, s.longTasks.reduce((m, [st, d]) => Math.max(m, st + d), 0));
   return performance.now() - lastEnd > q;
-}, ms, { timeout: 120_000, polling: 250 });
+}, ms, { timeout: 180_000, polling: 250 });
 
 async function heapMB(cdp) {
   await cdp.send('HeapProfiler.collectGarbage');
