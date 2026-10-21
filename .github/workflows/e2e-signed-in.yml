@@ -26,6 +26,12 @@ on:
       perf_base:
         description: 'Also profile this git ref (branch or sha) on the same runner, for a before/after (perf runs only)'
         default: ''
+      perf_sheet_kb:
+        description: 'KB of raster per seeded sheet, for a realistic file size (perf runs only; 0 = vector only, ~0.8 MB)'
+        default: '0'
+      perf_net:
+        description: 'Throttle the profiled page, <latency ms>/<down Mbps>, e.g. 150/9 (perf runs only)'
+        default: ''
       perf_flags:
         description: 'Feature flags to turn on for the perf run, comma-separated (perf runs only)'
         default: ''
@@ -110,6 +116,8 @@ jobs:
         if: ${{ inputs.perf }}
         env:
           BIG_DOC_PAGES: ${{ inputs.perf_pages }}
+          BIG_DOC_SHEET_KB: ${{ inputs.perf_sheet_kb }}
+          NET: ${{ inputs.perf_net }}
           FLAGS: ${{ inputs.perf_flags }}
           PERF_BASE: ${{ inputs.perf_base }}
           BASE: http://127.0.0.1:5241
