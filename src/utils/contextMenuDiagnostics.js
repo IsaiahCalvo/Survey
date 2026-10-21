@@ -203,6 +203,14 @@ function diag(line) {
       return;
     }
 
+    // A selected polygon / polyline corner grabber owns its own "Delete
+    // point" menu (SVGAnnotationLayer onContextMenu): let the event reach it.
+    if (e.target && typeof e.target.closest === 'function'
+        && e.target.closest('[data-poly-vertex-index], [data-poly-vertex-menu]')) {
+      e.preventDefault();
+      return;
+    }
+
     // Region Editor owns its own right-click menu. This dispatcher runs in
     // capture phase, so without this guard it opens the page-level disabled
     // Paste menu before RegionSelectionTool can show Copy/Cut/Paste/Merge.

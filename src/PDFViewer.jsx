@@ -36697,7 +36697,19 @@ ${pageBlocks}
           clipboardPage,
           clipboardType,
           pageTransformations,
+          // Drawboard gap #16: viewer role / locked doc hides editing rows.
+          readOnly: Boolean(documentLocked) || yjsDocRole === 'viewer',
           handlers: {
+            selectAll: (page) => {
+              const objects = annotationsByPageRef.current?.[page]?.objects || [];
+              const annotationIndices = objects.flatMap((o, i) => (o && o.visible !== false ? [i] : []));
+              setPendingSvgSelection({ pageNumber: page, annotationIndices, surveyMarkerIds: [], exclusive: true, tick: Date.now() });
+            },
+            pasteInPlace: (page) => {
+              const clip = familyClipboardRef.current;
+              if (clip && commitFamilyPaste(page, clip, 0, 0) && clip.mode === 'cut') setFamilyClipboard(null);
+            },
+            setScale: (page) => setMeasureScaleDialog({ pageNumber: page }),
             cut: handleCutPage,
             copy: handleCopyPage,
             paste: (page, position) => { if (clipboardPage) handlePastePage(page, clipboardPage, clipboardType, position); },

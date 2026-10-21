@@ -56,6 +56,9 @@ const ALSO = {
   'pdf-to-docx': 'word doc microsoft office editable convert',
   'split-by-size': 'mb smaller parts email limit large file', 'pdf-page-sizes': 'info properties dimensions metadata paper size',
   'add-image-to-pdf': 'logo picture png jpg stamp signature insert',
+  'rtf-to-pdf': 'rich text wordpad document', 'html-to-pdf': 'web page htm website saved page', 'docx-to-pdf': 'word microsoft office document',
+  'bmp-to-pdf': 'bitmap image picture', 'gif-to-pdf': 'animated moving image picture frames',
+  'pdf-viewer': 'view open read reader online preview', 'pdf-to-pdfa': 'pdfa pdf/a archive archival iso 19005',
 };
 const keys = (t) => `${t.name} ${t.short} ${t.id.replace(/-/g, ' ')} ${ALSO[t.id] || ''} ${t.trade?.keys || ''}`.toLowerCase().replace(/"/g, '');
 const card = (t) => `<a class="tcard" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
@@ -68,13 +71,15 @@ const PAIRS = [
   ['split-pdf', 'split-by-bookmarks', 'extract-pages', 'merge-pdf'], ['compress-pdf', 'grayscale-pdf', 'fast-web-view', 'remove-annotations'],
   ['sign-pdf', 'protect-pdf', 'flatten-pdf'], ['protect-pdf', 'unlock-pdf', 'sanitize-pdf', 'sign-pdf'],
   ['sanitize-pdf', 'edit-pdf-details', 'remove-annotations', 'protect-pdf'], ['pdf-to-jpg', 'pdf-to-png', 'extract-images', 'pdf-to-tiff'],
-  ['jpg-to-pdf', 'image-to-pdf', 'png-to-pdf', 'compress-pdf'], ['word-to-pdf', 'txt-to-pdf', 'merge-pdf', 'compress-pdf'],
+  ['jpg-to-pdf', 'image-to-pdf', 'png-to-pdf', 'compress-pdf'], ['word-to-pdf', 'docx-to-pdf', 'rtf-to-pdf', 'html-to-pdf', 'txt-to-pdf'],
+  ['jpg-to-pdf', 'image-to-pdf', 'bmp-to-pdf', 'gif-to-pdf', 'tiff-to-pdf'],
   ['n-up-pdf', 'booklet-pdf', 'resize-pdf'], ['booklet-pdf', 'n-up-pdf', 'add-blank-pages', 'reverse-pdf'],
   ['remove-blank-pages', 'delete-pages', 'ocr-pdf', 'compress-pdf'], ['grayscale-pdf', 'compress-pdf', 'n-up-pdf'],
   ['pdf-to-word', 'pdf-to-markdown', 'pdf-to-txt', 'ocr-pdf'], ['pdf-to-markdown', 'pdf-to-word', 'pdf-to-txt', 'ocr-pdf'],
   ['pdf-to-docx', 'pdf-to-word', 'word-to-pdf', 'ocr-pdf'],
   ['split-by-size', 'compress-pdf', 'split-pdf', 'merge-pdf'], ['pdf-page-sizes', 'resize-pdf', 'ocr-pdf', 'edit-pdf-details'],
   ['add-image-to-pdf', 'watermark-pdf', 'sign-pdf', 'add-header-footer'],
+  ['pdf-viewer', 'compare-pdf', 'ocr-pdf', 'pdf-to-txt'], ['pdf-to-pdfa', 'ocr-pdf', 'compress-pdf', 'flatten-pdf'],
 ];
 function relatedTo(t) {
   const want = new Set();
@@ -83,6 +88,24 @@ function relatedTo(t) {
   POPULAR.forEach((id) => want.add(id));
   want.delete(t.id);
   return [...want].map(byId).filter(Boolean).slice(0, 6);
+}
+
+// "Continue with" on a result: tools the new PDF can go straight on to,
+// without saving it and choosing it again. Only tools that take one PDF.
+const NEXT = {
+  'compress-pdf': ['merge-pdf', 'split-pdf', 'flatten-pdf', 'protect-pdf', 'pdf-viewer'],
+  'merge-pdf': ['compress-pdf', 'add-page-numbers', 'organize-pdf', 'split-pdf', 'pdf-viewer'],
+  'ocr-pdf': ['compress-pdf', 'pdf-to-txt', 'pdf-to-pdfa', 'compare-pdf', 'pdf-viewer'],
+  // Most edits would undo PDF/A (compress, protect and merge all do), so only offer tools that read it.
+  'pdf-to-pdfa': ['pdf-viewer', 'pdf-page-sizes', 'pdf-to-txt'],
+  // A locked file can't go on to other tools until it is unlocked.
+  'protect-pdf': [],
+  'sign-pdf': ['flatten-pdf', 'protect-pdf', 'compress-pdf', 'pdf-viewer'],
+  'flatten-pdf': ['compress-pdf', 'merge-pdf', 'protect-pdf', 'pdf-viewer'],
+};
+const NEXT_ANY = ['compress-pdf', 'merge-pdf', 'split-pdf', 'flatten-pdf', 'pdf-viewer'];
+function nextFor(t) {
+  return (NEXT[t.id] || NEXT_ANY).map(byId).filter((o) => o && o.id !== t.id && o.accept === 'pdf').slice(0, 5);
 }
 
 const WHY = [
@@ -105,6 +128,8 @@ const PICK = {
   text: ['Choose a text file', 'Choose text files', 'text/plain,.txt,.text,.md,.csv,.log'],
   docx: ['Choose a Word file', 'Choose Word files', '.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
   tiff: ['Choose a TIFF', 'Choose TIFF files', 'image/tiff,.tif,.tiff'],
+  rtf: ['Choose an RTF file', 'Choose RTF files', '.rtf,application/rtf,text/rtf'],
+  html: ['Choose an HTML file', 'Choose HTML files', '.html,.htm,.xhtml,text/html'],
 };
 
 const SCRIPT = '\n<script type="module" src="/src/tools/main.js"></script>';
@@ -136,7 +161,7 @@ function toolPage(t) {
   <p class="lede">${t.lede}</p>
 </div></section>
 <section class="tool-sec"><div class="wrap">
-  <div class="tool" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}"${many ? ' data-multiple' : ''}${t.batch ? ' data-batch' : ''}>
+  <div class="tool" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}" data-next="${nextFor(t).map((o) => `${o.id}:${o.name}`).join('|')}"${many ? ' data-multiple' : ''}${t.batch ? ' data-batch' : ''}>
     <div class="dz" data-dz>
       ${icon(t.icon, t.iconSvg)}
       <p class="dz-main"><label class="btn primary lg"><span data-pick>${PICK[t.accept][many ? 1 : 0]}</span><input type="file" hidden data-early accept="${PICK[t.accept][2]}"${many ? ' multiple' : ''} /></label></p>
