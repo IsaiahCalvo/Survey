@@ -6,9 +6,12 @@
 import { answerSetFor } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
 import { normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
-import { boundsCover, markerBoxAroundTag } from './planText.js';
+import { boundsCover, markerBoxAroundTag, tagShape } from './planText.js';
 
 export { normalizeItemName, scoreItemName };
+
+// One add_all_from_plan call adds at most this many; the rest on asking again.
+const MAX_BULK_ITEMS = 60;
 
 // The panel fills this while Survey mode is open (SurveySpacesRail).
 export const surveyAgentBridge = { current: null };
@@ -122,6 +125,7 @@ export function createSurveyAgentToolbox({
   undoLastTurn = null,
   extraTools = [],
   getDocument = null,
+  requestPhoto = null,
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -140,10 +144,45 @@ export function createSurveyAgentToolbox({
     if (b.canEdit === false) throw new ToolError('This person can only view this document, so nothing can be changed.');
   };
   const nameOf = (marker) => marker?.name || 'Unnamed item';
+  // Uploads files to an item's note, as a person adding them would.
+  const attachFiles = async (b, itemId, marker, files) => {
+    const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
+    const refs = [];
+    for (const a of files) refs.push(await b.uploadMedia(itemId, a.file, a.kind));
+    b.addMediaRefs(itemId, refs);
+    field.afterMedia = mediaCountOf(marker.note) + refs.length;
+    const what = files.length === 1 && files[0].kind === 'photo' ? 'photo' : `file${refs.length === 1 ? '' : 's'}`;
+    return {
+      content: `Attached ${refs.length} ${what} to ${nameOf(marker)}.`,
+      change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${refs.length} ${what} attached`, fields: [field] },
+    };
+  };
   // Plan matches from find_on_plan in this chat, so create_item takes an id
   // instead of coordinates the model could make up.
   const planMatches = new Map();
   const extras = new Map((extraTools || []).map((t) => [String(t.name).replace(/^survey_/, ''), t]));
+
+  // Where new items go: a category from the template, and maybe an entity.
+  const itemTarget = (b, categoryId, entityId) => {
+    writable(b);
+    if (typeof b.createItem !== 'function') throw new ToolError('Items cannot be added here.');
+    const entry = categoryIndex(b.template).list.find(({ category }) => category.id === categoryId);
+    if (!entry) throw new ToolError(`No category with id ${categoryId}. Use get_survey_context.`);
+    const entity = entityId ? entitiesOf(b.template).find((e) => e.id === entityId) : null;
+    if (entityId && !entity) throw new ToolError(`No entity with id ${entityId}.`);
+    return { entry, entity };
+  };
+  const sameNamed = (b, categoryId, name) => Object.entries(b.markers || {}).find(([, m]) => m?.categoryId === categoryId
+    && normalizeItemName(m.name) === normalizeItemName(name));
+  const addItem = (b, entry, entity, name, page, tagBox) => b.createItem({
+    name,
+    moduleId: entry.module.id,
+    categoryId: entry.category.id,
+    entityId: entity?.id || null,
+    page,
+    bounds: markerBoxAroundTag(tagBox, b.getPageSize?.(page) || null),
+  });
+  const createdChange = (b, itemId, label) => ({ itemId, documentId: b.documentId || null, label, fields: [{ type: 'create' }] });
 
   // A spot just right of an item's box (or of a tag found on the plan), or
   // left of it when that runs off the page: where a person means by "a note
@@ -192,9 +231,12 @@ export function createSurveyAgentToolbox({
       const b = bridge();
       const { list } = categoryIndex(b.template);
       const counts = new Map();
+      // One name per category, so "add all doors" knows what a door tag looks like.
+      const examples = new Map();
       for (const marker of Object.values(b.markers || {})) {
         const key = marker?.categoryId;
         if (key) counts.set(key, (counts.get(key) || 0) + 1);
+        if (key && !examples.has(key) && String(marker.name || '').trim()) examples.set(key, String(marker.name).trim());
       }
       const multiModule = modulesOf(b.template).length > 1;
       const selected = b.selectedMarkerId && b.markers?.[b.selectedMarkerId];
@@ -207,10 +249,12 @@ export function createSurveyAgentToolbox({
             name: category.name,
             ...(multiModule ? { module: module.name } : {}),
             item_count: counts.get(category.id) || 0,
+            ...(examples.has(category.id) ? { example_item: examples.get(category.id) } : {}),
             checklist: activeChecklist(category).map((item) => ({ id: item.id, text: itemText(item) })),
           })),
           entities: entitiesOf(b.template).map((e) => ({ id: e.id, name: e.name })),
           selected_item: selected ? { id: b.selectedMarkerId, name: nameOf(selected) } : null,
+          page_on_screen: b.getCurrentPage?.() || null,
           can_edit: b.canEdit !== false,
         }),
       };
@@ -334,18 +378,20 @@ export function createSurveyAgentToolbox({
       const list = (Array.isArray(ids) ? ids : []).map((id) => [id, attachments.get(id)]);
       const missing = list.filter(([, a]) => !a || a.attachedTo).map(([id]) => id);
       if (!list.length || missing.length) throw new ToolError(`No unattached file with id ${missing.join(', ') || '(none)'} in this chat.`);
-      const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
-      const refs = [];
-      for (const [, a] of list) {
-        refs.push(await b.uploadMedia(itemId, a.file, a.kind));
-      }
-      b.addMediaRefs(itemId, refs);
+      const result = await attachFiles(b, itemId, marker, list.map(([, a]) => a));
       for (const [, a] of list) a.attachedTo = itemId;
-      field.afterMedia = mediaCountOf(marker.note) + refs.length;
-      return {
-        content: `Attached ${refs.length} file${refs.length === 1 ? '' : 's'} to ${nameOf(marker)}.`,
-        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${refs.length} file${refs.length === 1 ? '' : 's'} attached`, fields: [field] },
-      };
+      return result;
+    },
+
+    async take_photo({ item_id: itemId } = {}) {
+      const b = bridge();
+      writable(b);
+      const marker = markerOf(b, itemId);
+      if (typeof requestPhoto !== 'function') throw new ToolError('The camera cannot be opened here. Ask the person to attach a photo instead.');
+      const file = await requestPhoto({ itemId, name: nameOf(marker) });
+      if (!file) return { content: `The person closed the camera without taking a photo for ${nameOf(marker)}.` };
+      // The item may have changed while the camera was open.
+      return attachFiles(b, itemId, markerOf(bridge(), itemId), [{ file, kind: 'photo' }]);
     },
 
     async add_photo({ item_id: itemId, image_base64: imageBase64 } = {}) {
@@ -414,38 +460,50 @@ export function createSurveyAgentToolbox({
 
     create_item({ name, category_id: categoryId, plan_match_id: matchId, entity_id: entityId = null } = {}) {
       const b = bridge();
-      writable(b);
-      if (typeof b.createItem !== 'function') throw new ToolError('Items cannot be added here.');
+      const { entry, entity } = itemTarget(b, categoryId, entityId);
       const itemName = String(name || '').trim().slice(0, 120);
       if (!itemName) throw new ToolError('Give the item a name.');
-      const entry = categoryIndex(b.template).list.find(({ category }) => category.id === categoryId);
-      if (!entry) throw new ToolError(`No category with id ${categoryId}. Use get_survey_context.`);
-      const entity = entityId ? entitiesOf(b.template).find((e) => e.id === entityId) : null;
-      if (entityId && !entity) throw new ToolError(`No entity with id ${entityId}.`);
       const match = planMatches.get(matchId);
       if (!match) throw new ToolError(`No plan match ${matchId}. Use find_on_plan first.`);
-      const same = Object.entries(b.markers || {}).find(([, m]) => m?.categoryId === categoryId
-        && normalizeItemName(m.name) === normalizeItemName(itemName));
+      const same = sameNamed(b, categoryId, itemName);
       if (same) throw new ToolError(`${nameOf(same[1])} already exists (id ${same[0]}).`);
-      const bounds = markerBoxAroundTag(match.box, b.getPageSize?.(match.page) || null);
-      const itemId = b.createItem({
-        name: itemName,
-        moduleId: entry.module.id,
-        categoryId,
-        entityId: entity?.id || null,
-        page: match.page,
-        bounds,
-      });
+      const itemId = addItem(b, entry, entity, itemName, match.page, match.box);
       if (!itemId) throw new ToolError('The item could not be added. Is Survey mode open on this document?');
       return {
         content: `Added ${itemName} (${entry.category.name}) on page ${match.page}, id ${itemId}.`,
-        change: {
-          itemId,
-          documentId: b.documentId || null,
-          label: `Added ${itemName} (${entry.category.name}) on page ${match.page}`,
-          fields: [{ type: 'create' }],
-        },
+        change: createdChange(b, itemId, `Added ${itemName} (${entry.category.name}) on page ${match.page}`),
       };
+    },
+
+    // "Add all doors on this sheet": every tag shaped like the example on
+    // one page, as items of one category, skipping ones already items.
+    async add_all_from_plan({ category_id: categoryId, like, page, entity_id: entityId = null } = {}) {
+      const b = bridge();
+      const { entry, entity } = itemTarget(b, categoryId, entityId);
+      if (typeof b.findAllOnPlan !== 'function') throw new ToolError('The plan cannot be searched here.');
+      if (!tagShape(like)) throw new ToolError('Give an example tag with its letters, for example D-117, so I know what to look for.');
+      const onPage = Number(page) || b.getCurrentPage?.() || null;
+      if (!onPage) throw new ToolError('Say which page to look on.');
+      const { matches, unread } = await b.findAllOnPlan(like, onPage);
+      if (unread) throw new ToolError(`Page ${onPage} has no text to read. Run text recognition on it first.`);
+      const markers = Object.entries(b.markers || {});
+      const fresh = matches.filter((m) => !sameNamed(b, categoryId, m.name)
+        && !markers.some(([, marker]) => marker?.pageNumber === onPage && boundsCover(marker.bounds, m.box)));
+      const already = matches.length - fresh.length;
+      const added = [];
+      const changes = [];
+      for (const m of fresh.slice(0, MAX_BULK_ITEMS)) {
+        const itemId = addItem(b, entry, entity, m.name, onPage, m.box);
+        if (!itemId) break;
+        added.push(m.name);
+        changes.push(createdChange(b, itemId, `Added ${m.name} (${entry.category.name}) on page ${onPage}`));
+      }
+      if (fresh.length && !added.length) throw new ToolError('The items could not be added. Is Survey mode open on this document?');
+      const parts = [`Found ${matches.length} tag${matches.length === 1 ? '' : 's'} like ${like} on page ${onPage}.`];
+      if (added.length) parts.push(`Added ${added.length} as ${entry.category.name}: ${added.join(', ')}.`);
+      if (already) parts.push(already === 1 ? '1 was already an item.' : `${already} were already items.`);
+      if (fresh.length > added.length) parts.push(`${fresh.length - added.length} more not added; ask again to add the rest.`);
+      return { content: parts.join(' '), changes };
     },
 
     show_item({ item_id: itemId } = {}) {
