@@ -654,7 +654,19 @@ async function runBackfillUnlocked(args) {
       }
     }
   };
+  // A delete of a mark not imported yet only writes its tombstone, so watch
+  // the tombstone map too.
+  const tombstones = typeof ydoc.getMap === 'function' ? ydoc.getMap('__annotationDeletionTombstones') : null;
+  const noteForeignTombstones = (event, transaction) => {
+    if (transaction?.origin === batchOrigin) return;
+    for (const key of event.changes.keys.keys()) touchedDuringImport.add(String(key));
+  };
   yMapAnnotations.observeDeep(noteForeignChanges);
+  tombstones?.observe(noteForeignTombstones);
+  const stopWatching = () => {
+    yMapAnnotations.unobserveDeep(noteForeignChanges);
+    tombstones?.unobserve(noteForeignTombstones);
+  };
   let skippedConcurrent = 0;
   const importedKeys = new Set();
   try {
@@ -727,7 +739,7 @@ async function runBackfillUnlocked(args) {
   }
 
   } catch (loopError) {
-    yMapAnnotations.unobserveDeep(noteForeignChanges);
+    stopWatching();
     throw loopError;
   }
   if (skippedConcurrent > 0) {
@@ -770,7 +782,7 @@ async function runBackfillUnlocked(args) {
   // v2.4 either. Sealing without them is correct.
   // Observed until here so the gate below also counts deletes that landed
   // after the last batch.
-  yMapAnnotations.unobserveDeep(noteForeignChanges);
+  stopWatching();
   let cutoverCompleted = false;
   if (args.markCutoverComplete) {
     // Verified-count match: yMapSize >= imported gates the cutover_completed_at

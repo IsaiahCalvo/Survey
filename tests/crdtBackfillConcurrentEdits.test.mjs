@@ -98,3 +98,22 @@ test('a mark deleted while the backfill yields does not block the cutover seal',
   assert.equal(yMap.size, 59);
   assert.ok(writes.some((w) => w.table === 'documents' && w.values.cutover_completed_at), 'cutover sealed');
 });
+
+test('a mark deleted before its batch is imported is not brought back', async () => {
+  const ydoc = new Y.Doc();
+  const yMap = ydoc.getMap('annotations');
+  const rows = Array.from({ length: 60 }, (_, i) => legacyRow(i));
+  let fired = false;
+  const afterFirstBatch = () => {
+    if (fired) return;
+    fired = true;
+    yMap.unobserveDeep(afterFirstBatch);
+    // mark-50 is not in the Y.Map yet: the delete only writes its tombstone.
+    setTimeout(() => applyFabricDelete(ydoc, yMap, 'mark-50', userOrigin), 0);
+  };
+  yMap.observeDeep(afterFirstBatch);
+  await runBackfill({ ydoc, supabase: {}, documentId: 'doc-3', userId: USER, sessionId: 's', clientID: ydoc.clientID, existingHydrateRows: rows });
+  assert.equal(yMap.has('mark-50'), false);
+  assert.ok(ydoc.getMap('__annotationDeletionTombstones').has('mark-50'), 'tombstone kept');
+  assert.equal(yMap.size, 59);
+});
