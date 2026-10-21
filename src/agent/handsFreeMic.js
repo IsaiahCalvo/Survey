@@ -6,22 +6,100 @@
 import { BARGE_IN_GATE, MAIN_GATE, createBandLevel, createSpeechGate, downsample, encodeWav } from './voiceLoop.js';
 
 const PRE_ROLL_MS = 350;
+const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+// ScriptProcessor still runs everywhere (Safari included) and needs no
+// extra module file; each buffer is about 21 ms at 48 kHz.
+const BUFFER_SIZE = 1024;
+// What the warm mic keeps before hands-free takes it over, and how long it
+// waits to be taken before letting the mic go.
+const WARM_KEEP_MS = 20_000;
+const WARM_GIVE_UP_MS = 15_000;
 
-export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOptions } = {}) {
-  const media = navigator.mediaDevices;
-  if (!media?.getUserMedia) throw new Error('This browser cannot use the microphone.');
-  const stream = await media.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-  });
+const newAudioContext = () => {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   const ctx = new AudioCtx();
-  if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+  // Made and started inside the tap where it can be, so phones let it run.
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  return ctx;
+};
+
+function openMic(stream, ctx = newAudioContext()) {
   const source = ctx.createMediaStreamSource(stream);
-  // ScriptProcessor still runs everywhere (Safari included) and needs no
-  // extra module file; each buffer is about 21 ms at 48 kHz.
-  const bufferSize = 1024;
-  const node = ctx.createScriptProcessor(bufferSize, 1, 1);
-  const frameMs = (bufferSize / ctx.sampleRate) * 1000;
+  const node = ctx.createScriptProcessor(BUFFER_SIZE, 1, 1);
+  source.connect(node);
+  // A processor only runs when connected onward; its output stays silent.
+  node.connect(ctx.destination);
+  const close = () => {
+    try { node.disconnect(); source.disconnect(); } catch { /* already off */ }
+    stream.getTracks().forEach((t) => t.stop());
+    ctx.close().catch(() => {});
+  };
+  return { stream, ctx, node, close };
+}
+
+let warm = null;
+
+/**
+ * Starts recording the moment the mic is tapped, before the app has asked
+ * the server anything, so the first words are never lost. Hands-free takes
+ * the warm mic over and hears what it kept. Not in the phone apps, where
+ * the phone's own speech to text uses the mic.
+ */
+export function warmUpHandsFreeMic() {
+  if (warm || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+  if (globalThis.Capacitor?.isNativePlatform?.()) return;
+  let ctx;
+  try { ctx = newAudioContext(); } catch { return; }
+  const mine = { frames: [], mic: null, cancelled: false };
+  warm = mine;
+  mine.ready = navigator.mediaDevices.getUserMedia({ audio: AUDIO }).then((stream) => {
+    if (mine.cancelled) { stream.getTracks().forEach((t) => t.stop()); ctx.close().catch(() => {}); return null; }
+    mine.mic = openMic(stream, ctx);
+    const keep = Math.ceil(WARM_KEEP_MS / ((BUFFER_SIZE / mine.mic.ctx.sampleRate) * 1000));
+    mine.mic.node.onaudioprocess = (event) => {
+      mine.frames.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      if (mine.frames.length > keep) mine.frames.shift();
+    };
+    return mine;
+  }).catch((err) => {
+    if (warm === mine) warm = null;
+    ctx.close().catch(() => {});
+    mine.error = err;
+    return null;
+  });
+  mine.timer = setTimeout(() => { if (warm === mine) letGoOfWarmMic(); }, WARM_GIVE_UP_MS);
+}
+
+/** Hands-free did not start after all: free the mic. */
+export function letGoOfWarmMic() {
+  const mine = warm;
+  if (!mine) return;
+  warm = null;
+  mine.cancelled = true;
+  clearTimeout(mine.timer);
+  mine.mic?.close();
+}
+
+async function takeWarmMic() {
+  const mine = warm;
+  if (!mine) return null;
+  warm = null;
+  clearTimeout(mine.timer);
+  await mine.ready;
+  if (mine.error) throw mine.error;
+  return mine.mic ? mine : null;
+}
+
+export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOptions } = {}) {
+  const taken = await takeWarmMic();
+  let mic = taken?.mic;
+  if (!mic) {
+    const media = navigator.mediaDevices;
+    if (!media?.getUserMedia) throw new Error('This browser cannot use the microphone.');
+    mic = openMic(await media.getUserMedia({ audio: AUDIO }));
+  }
+  const { ctx, node } = mic;
+  const frameMs = (BUFFER_SIZE / ctx.sampleRate) * 1000;
   const mainGate = createSpeechGate({ frameMs, ...MAIN_GATE, ...gateOptions });
   const level = createBandLevel(ctx.sampleRate);
   const bargeGate = createSpeechGate({ frameMs, ...BARGE_IN_GATE });
@@ -34,9 +112,8 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
   let paused = false;
   let stopped = false;
 
-  node.onaudioprocess = (event) => {
+  const hear = (samples) => {
     if (paused || stopped) return;
-    const samples = new Float32Array(event.inputBuffer.getChannelData(0));
     const result = gate.push(level(samples));
     if (clip) clip.push(samples);
     else {
@@ -63,9 +140,9 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
       onClip?.(new Blob([wav], { type: 'audio/wav' }), Math.round((total / ctx.sampleRate) * 1000), { cutIn });
     }
   };
-  source.connect(node);
-  // A processor only runs when connected onward; its output stays silent.
-  node.connect(ctx.destination);
+  node.onaudioprocess = (event) => hear(new Float32Array(event.inputBuffer.getChannelData(0)));
+  // What the warm mic kept since the tap, heard first, in order.
+  for (const samples of taken?.frames || []) hear(samples);
 
   const clear = () => {
     clip = null;
@@ -100,9 +177,7 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
     stop() {
       if (stopped) return;
       stopped = true;
-      try { node.disconnect(); source.disconnect(); } catch { /* already off */ }
-      stream.getTracks().forEach((t) => t.stop());
-      ctx.close().catch(() => {});
+      mic.close();
     },
   };
 }

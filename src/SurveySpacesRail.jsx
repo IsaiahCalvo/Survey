@@ -34,6 +34,7 @@ import SurveyAgentPanel from './components/SurveyAgentPanel.jsx';
 import { isSurveyAgentEnabled } from './agent/surveyAgentFlag.js';
 import { surveyAgentBridge } from './agent/surveyAgentTools.js';
 import { unlockPlayback } from './agent/agentVoice.js';
+import { warmUpHandsFreeMic } from './agent/handsFreeMic.js';
 import { activeAgentDocument } from './agent/webmcp.js';
 import { findTagInDocument, findTagsLikeInDocument } from './agent/planText.js';
 import { SHEET_DETENT_STANDARD, endSheetReveal, revealInSheet, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
@@ -1518,8 +1519,19 @@ const SurveySpacesRail = ({
   const [surveyAgentView, setSurveyAgentView] = useState('hidden');
   const [surveyAgentAsk, setSurveyAgentAsk] = useState(0);
   const [surveyAgentActivity, setSurveyAgentActivity] = useState({ handsFree: false, phase: 'idle' });
+  // Gold from the tap itself, while the agent gets ready (it is already
+  // recording); off again if it can't start here.
+  const [surveyAgentStarting, setSurveyAgentStarting] = useState(false);
+  useEffect(() => {
+    if (surveyAgentActivity.handsFree) setSurveyAgentStarting(false);
+  }, [surveyAgentActivity.handsFree]);
+  useEffect(() => {
+    if (!surveyAgentStarting) return undefined;
+    const t = setTimeout(() => setSurveyAgentStarting(false), 5000);
+    return () => clearTimeout(t);
+  }, [surveyAgentStarting]);
   const [surveyRailEl, setSurveyRailEl] = useState(null);
-  const showSurveyAgentChat = useCallback(() => { setSurveyAgentMounted(true); setSurveyAgentView('chat'); }, []);
+  const showSurveyAgentChat = useCallback(() => { setSurveyAgentMounted(true); setSurveyAgentView('chat'); setSurveyAgentStarting(false); }, []);
   const hideSurveyAgentChat = useCallback(() => setSurveyAgentView('hidden'), []);
   // The panel's element, so the chat can be drawn inside it.
   const surveyRailRef = useCallback((el) => {
@@ -1620,10 +1632,12 @@ const SurveySpacesRail = ({
         icon="mic"
         label={surveyAgentActivity.handsFree ? 'Stop hands-free' : 'Survey agent: talk hands-free'}
         phone={mobileMode}
-        className={`survey-agent-mic${surveyAgentActivity.handsFree ? ' is-recording' : ''}`}
+        className={`survey-agent-mic${surveyAgentActivity.handsFree || surveyAgentStarting ? ' is-recording' : ''}`}
         aria-pressed={surveyAgentActivity.handsFree}
         onClick={() => {
           unlockPlayback();
+          // Recording starts now, inside the tap; hands-free takes it over.
+          if (!surveyAgentActivity.handsFree) { warmUpHandsFreeMic(); setSurveyAgentStarting(true); } else setSurveyAgentStarting(false);
           setSurveyAgentMounted(true);
           setSurveyAgentAsk((n) => n + 1);
         }}
