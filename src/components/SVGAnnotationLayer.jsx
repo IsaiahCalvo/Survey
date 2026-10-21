@@ -23,7 +23,8 @@
 import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { canRemovePolyVertex, removePolyVertex } from '../utils/polyVertices.js';
+import { canRemovePolyVertex, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
+import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
@@ -8630,7 +8631,7 @@ const SVGAnnotationLayerBody = memo(({
               polyVertexLongPressRef.current = {
                 timer: setTimeout(() => {
                   cleanup();
-                  setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: start.x, y: start.y });
+                  setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: start.x, y: start.y, touch: true });
                 }, 500),
               };
             }
@@ -8640,7 +8641,7 @@ const SVGAnnotationLayerBody = memo(({
             e.preventDefault();
             e.stopPropagation();
             setFocusedPolyVertex({ annotationIndex: selectedIndex, vertexIndex: i });
-            setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: e.clientX, y: e.clientY });
+            setPolyVertexMenu({ annotationIndex: selectedIndex, vertexIndex: i, x: e.clientX, y: e.clientY, touch: isTouchMenuInput(contextMenuInputOf(e)) });
           };
           const vertexFocused = (i) => focusedPolyVertex?.annotationIndex === selectedIndex && focusedPolyVertex.vertexIndex === i;
           // UX 2026-09-09 (Drawboard PDF, defect 4): a polygon / polyline
@@ -9210,15 +9211,16 @@ const SVGAnnotationLayerBody = memo(({
     {polyVertexMenu && typeof document !== 'undefined' && createPortal((() => {
       const menuObj = annotations?.objects?.[polyVertexMenu.annotationIndex];
       const canDelete = canRemovePolyVertex(menuObj);
+      const menuLayout = polyVertexMenuLayout({ ...polyVertexMenu, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight });
       return (
         <div
           data-poly-vertex-menu="true"
           role="menu"
           onContextMenu={(e) => e.preventDefault()}
           style={{
-            position: 'fixed', left: polyVertexMenu.x, top: polyVertexMenu.y, zIndex: 10000,
+            position: 'fixed', left: menuLayout.left, top: menuLayout.top, zIndex: 10000, boxSizing: 'border-box',
             background: 'var(--surface, #fff)', color: 'var(--text, #1f2328)', border: '1px solid rgba(0,0,0,0.15)',
-            borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', padding: 4, minWidth: 140, font: '13px system-ui, sans-serif',
+            borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,0.18)', padding: 4, minWidth: menuLayout.width, font: '13px system-ui, sans-serif',
           }}
         >
           <button
@@ -9232,7 +9234,7 @@ const SVGAnnotationLayerBody = memo(({
               setPolyVertexMenu(null);
             }}
             style={{
-              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', minHeight: 36, border: 0, borderRadius: 6,
+              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', minHeight: menuLayout.rowHeight, boxSizing: 'border-box', border: 0, borderRadius: 6,
               background: 'transparent', color: 'inherit', font: 'inherit', cursor: canDelete ? 'pointer' : 'default', opacity: canDelete ? 1 : 0.45,
             }}
           >

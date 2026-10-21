@@ -65,3 +65,17 @@ export function removePolyVertex(obj, index) {
   }
   return next;
 }
+
+/**
+ * Where the "Delete point" menu goes and how tall its row is. A touch press
+ * gets a 44 px row; the box is kept inside the viewport (a corner near the
+ * right or bottom edge of a phone otherwise pushed the row off-screen).
+ */
+export function polyVertexMenuLayout({ x, y, touch = false, viewportWidth = Infinity, viewportHeight = Infinity, margin = 8 }) {
+  const rowHeight = touch ? 44 : 36;
+  const width = touch ? 168 : 140;
+  const height = rowHeight + 10; // 4 px padding each side + 1 px border each side
+  const left = Math.max(margin, Math.min(x, viewportWidth - width - margin));
+  const top = Math.max(margin, Math.min(y, viewportHeight - height - margin));
+  return { left, top, width, rowHeight };
+}
