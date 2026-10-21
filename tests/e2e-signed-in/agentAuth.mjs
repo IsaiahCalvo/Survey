@@ -27,8 +27,11 @@ export const tokenRequest = (params) => fetch(`${API()}/auth/v1/oauth/token`, {
   body: new URLSearchParams(params),
 }).then((r) => r.json());
 
-/** The agent's whole sign-in, with the person answering on the consent page. */
-export async function agentSignIn(page, account, name, answer = 'Allow') {
+/**
+ * The agent's whole sign-in, with the person answering on the consent page.
+ * `write` picks "Read and make changes"; the page starts on "Read only".
+ */
+export async function agentSignIn(page, account, name, answer = 'Allow', { write = false } = {}) {
   const clientId = await registerAgent(name);
   const verifier = crypto.randomBytes(48).toString('base64url');
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
@@ -50,6 +53,8 @@ export async function agentSignIn(page, account, name, answer = 'Allow') {
   await dialog.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByText('wants to use Survey as you')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(name)).toBeVisible();
+  await expect(page.getByLabel('Read only')).toBeChecked();
+  if (write) await page.getByLabel('Read and make changes').check();
   await page.getByRole('button', { name: answer, exact: true }).click();
   await expect.poll(() => callback, { timeout: 20_000 }).not.toBeNull();
   expect(callback.searchParams.get('state')).toBe(state);

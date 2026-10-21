@@ -10,6 +10,11 @@ export default {
   lede: 'Turn every color in a PDF to gray, so it prints the same on any printer. Text and lines stay sharp.',
   accept: 'pdf', multiple: true, action: 'Make it gray',
   steps: ['Choose one or more PDFs.', 'Keep "Keep text sharp", or pick "Turn pages into pictures" to be sure every last bit turns gray.', 'Press Make it gray and save the new file.'],
+  trade: {
+    h2: 'Print color drawings in black and white',
+    text: 'Turn color sheets or site photo reports gray to print on a black and white printer or plotter. Check that color-coded items still tell apart in gray.',
+    keys: 'color drawings plotter print plan sheets',
+  },
   faq: [
     ['Will I still be able to select and search the text?', 'Yes, with "Keep text sharp", the usual choice. Colors are changed to gray inside the PDF, so text, lines and links stay as they were. "Turn pages into pictures" makes each page a gray picture, so the text can no longer be selected.'],
     ['Why might a little color be left?', 'A few rare kinds of color, like some complex gradients or JPEG 2000 pictures, can\'t be changed in place. The tool tells you when that happens; "Turn pages into pictures" turns everything gray.'],

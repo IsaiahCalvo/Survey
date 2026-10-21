@@ -34,6 +34,14 @@ With a PDF open in Survey mode and a template chosen:
   entities), `survey_find_items`, `survey_get_item` (all read),
   `survey_set_answers`, `survey_add_note`, `survey_set_entity` (editor/owner)
   and `survey_show_item`.
+- `survey_add_photo` — attach a photo to an item (editor/owner). A browser
+  agent has no file to drop, so pass the image as base64 (a `data:` URL is
+  fine); the limit is 20MB. The photo is added to the item's note and one Undo
+  takes it back.
+- `survey_export` — a plain-text summary of the survey counts to hand to the
+  person: each category with how many items it has, and the breakdown by
+  status (read). It is a summary, not a spreadsheet file; the Excel export
+  stays a person-only action in the app.
 
 Marker and item ids are shared: an id from `survey_find_items` or
 `survey_list_markers` works with the edit, delete and item tools alike.
@@ -157,7 +165,10 @@ For agents that speak MCP (Claude and ChatGPT connectors, scripts):
   which points to Survey's authorization server, so MCP clients find the sign-in
   on their own. Dynamic client registration is on.
 - Tools (read-only for now): `list_projects`, `list_documents`,
-  `list_survey_items`, `find_survey_items`, `get_survey_item`.
+  `list_survey_items`, `find_survey_items`, `get_survey_item`,
+  `get_document_role` (this person's role on a document) and
+  `get_survey_context` (a document's survey template: categories, checklist
+  items and entities).
 - Every call runs as the person, so the agent sees exactly their documents.
 
 In Claude: Settings > Connectors > Add custom connector, paste the server URL.

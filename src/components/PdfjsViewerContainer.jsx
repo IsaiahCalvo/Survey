@@ -110,6 +110,7 @@ import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE
 import {
   compensateScrollLeftForColumnWidth,
   resolveCentredPageLeft,
+  resolveFitPageWidth,
   resolveDocumentColumnWidth,
   resolveDocumentScrollLeftMax,
 } from '../utils/pdfPageColumn.js';
@@ -1531,6 +1532,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // scrollTop taken just before a room change (resolveRoomCompensationBase).
   const roomScrollSnapshotRef = useRef(null);
   const topInsetRef = useRef(0);
+  // #10 (first run walk 2026-10-21): the desktop shell keeps a see-through
+  // strip the height of its settings row over the viewer (data-viewer-top-
+  // reserve). The room it makes when a document opens is not compensated -
+  // the page has not been seen yet - so the page opens below the row and a
+  // tool's settings row later drops into that room without covering it.
+  const topReserveRef = useRef(false);
+  const firstTopRoomAppliedRef = useRef(false);
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the band
   // between panels). Side panels (desktop Pages, Survey) float over the left /
   // right of this scroller. sideInsetRef is their live measured width; sideRoom
@@ -1567,6 +1575,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // The last fit: { mode, viewW, viewH, pageW, pageH, pageIndex } (see
   // shouldAutoRefit). Cleared when a new document loads.
   const lastFitRef = useRef(null);
+  // Phone: the scale of the open-time fit while it still stands (null once you
+  // zoom); page sizes arriving later re-fit it to the widest page.
+  const phoneOpenFitScaleRef = useRef(null);
   const interactionModeRef = useRef(interactionMode);
   interactionModeRef.current = interactionMode;
   const spacePanRef = useRef(false);
@@ -1843,6 +1854,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           ))
           : Math.max(0.2, Math.min(2, getFitWidthForContainer(cw, metrics) / (sizes[0]?.w || 612)));
         setScale(fit); scaleRef.current = fit; prevScaleRef.current = fit;
+        phoneOpenFitScaleRef.current = hasViewport ? fit : null;
         setLiveZoom(1); liveZoomRef.current = 1;
         currentPageRef.current = 1;
         lastFitRef.current = null;
@@ -2154,6 +2166,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       raf = 0;
       if (!el.clientWidth || !el.clientHeight) return;
       const strips = getViewerTopOverlays().filter((node) => node?.isConnected);
+      topReserveRef.current = strips.some((node) => node.getAttribute?.('data-viewer-top-reserve') === 'true');
       const inset = computeTopOverlayInset(
         el.getBoundingClientRect(),
         strips.map((node) => node.getBoundingClientRect()),
@@ -2204,6 +2217,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (previous === topRoom) return;
     const el = scrollerRef.current;
     if (!el) return;
+    const firstRoom = !firstTopRoomAppliedRef.current;
+    firstTopRoomAppliedRef.current = true;
+    if (firstRoom && previous === 0 && topReserveRef.current && el.scrollTop === 0) return;
     // At the end of the document the browser has already clamped scrollTop
     // for the shorter content; compensate from the offset before the change.
     const base = resolveRoomCompensationBase({
@@ -4699,7 +4715,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       : requestedIndex;
     if (isFit) {
       const metrics = layoutMetricsRef.current;
-      const d = dimsPtRef.current[pageIndex] || { w: 612, h: 792 };
+      const pageDim = dimsPtRef.current[pageIndex] || { w: 612, h: 792 };
+      const d = { ...pageDim, w: resolveFitPageWidth({ phone: phoneLayout, mode: target, pageWidth: pageDim.w, widestPageWidth: widestPagePtRef.current }) };
       const fitRecord = {
         mode: target,
         viewW: el.clientWidth,
@@ -4771,7 +4788,21 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }
       el.scrollLeft = landLeft;
     }
-  }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax]);
+  }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax, phoneLayout]);
+
+  // Phone: the open-time fit used page 1's size (the other sizes load behind
+  // it). When a wider page arrives and you have not zoomed yet, fit again so
+  // the widest sheet's edges are on screen (resolveFitPageWidth).
+  useLayoutEffect(() => {
+    const openFit = phoneOpenFitScaleRef.current;
+    if (openFit == null) return;
+    if (!phoneLayout || Math.abs(scaleRef.current - openFit) > 1e-6) {
+      phoneOpenFitScaleRef.current = null;
+      return;
+    }
+    zoomToScale('fit', { auto: true });
+    phoneOpenFitScaleRef.current = scaleRef.current;
+  }, [layout.widestPt, phoneLayout, zoomToScale]);
 
   useLayoutEffect(() => {
     const pending = pendingViewportFitRef.current;

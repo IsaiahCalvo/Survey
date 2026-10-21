@@ -11,6 +11,11 @@ export default {
   lede: 'Fix a PDF that won\'t open, shows errors or has blank pages. The tool rebuilds the file and keeps every page it can read.',
   accept: 'pdf', multiple: false, batch: true, action: 'Repair PDF',
   steps: ['Choose the damaged PDF.', 'Leave "Fix the file" on. Pick "Rebuild from pictures" only if that doesn\'t work.', 'Press Repair PDF and save the fixed copy.'],
+  trade: {
+    h2: 'Fix a drawing set that won\'t open',
+    text: 'Big drawing sets sometimes download only part way from a portal or email. Repair keeps every sheet it can read and tells you how many, so you know what to download again.',
+    keys: 'drawing set download failed portal corrupt sheets',
+  },
   faq: [
     ['What kind of damage can it fix?', 'Files cut short by a failed download, files with a broken index, and files with stray data at the start. It saves every page it can still read and tells you how many that was.'],
     ['What does "Rebuild from pictures" do?', 'It draws each page as a picture and puts those pictures in a new PDF. It looks the same, but you can\'t select or search the text. Use it when the normal fix still won\'t open.'],

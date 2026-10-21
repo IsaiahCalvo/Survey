@@ -8,13 +8,14 @@
 //
 // Each run is a cold browser context (no IndexedDB / HTTP cache), signs in as
 // the e2e owner, and times from the "Open file" click to:
-//   firstPage   - page 1 of the PDF is drawn (its canvas past the 300x150
-//                 default size, overlay pdf-ready)
+//   firstPage   - page 1 of the PDF is drawn and uncovered (its canvas past
+//                 the 300x150 default size, overlay pdf-ready, no hydration cover)
 //   marks       - page 1's markups are on screen (SVG shapes in its overlay)
 //   interactive - marks are up AND the main thread is free: the end of the last
 //                 long task (>50 ms) before a QUIET_MS window with none
 // and also reports the long-task total (blocking time) up to interactive.
 // PROFILE=<file.cpuprofile> records a CPU profile of the first run instead.
+// NET=<latency ms>/<down Mbps> throttles the page's network (e.g. 150/9).
 import fs from 'node:fs';
 import { chromium } from '@playwright/test';
 
@@ -24,6 +25,7 @@ const QUIET_MS = Number(process.env.QUIET_MS || 5000);
 const SIZES = (process.env.SIZES || 'desktop,phone').split(',');
 const DOC_NAME = process.env.BIG_DOC_NAME || 'Big Drawing Set.pdf';
 const PROFILE = process.env.PROFILE || null;
+const NET = process.env.NET || null;
 const exe = process.env.PW_CHROMIUM_PATH || (fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 
 const DEVICES = {
@@ -59,7 +61,12 @@ const PROBE = () => {
       const canvas = document.querySelector('.survey-pdfjs-page-div[data-page-number="1"] canvas.survey-pdfjs-page-canvas');
       // A canvas pdf.js has not drawn yet keeps the default 300x150 size.
       const drawn = canvas && canvas.width > 0 && !(canvas.width === 300 && canvas.height === 150);
-      if (s.firstPage == null && drawn && host?.querySelector('[data-pdf-ready="true"]')) s.firstPage = performance.now();
+      // Page 1 stays under a cover until its marks are ready (by design); a
+      // page drawn underneath the cover is not on screen yet.
+      const overlay = host?.querySelector('[data-pdf-ready]');
+      const covered = overlay?.getAttribute('data-annotation-hydration-gated') === 'true'
+        || overlay?.getAttribute('data-annotation-visual-cover-active') === 'true';
+      if (s.firstPage == null && drawn && !covered && overlay?.getAttribute('data-pdf-ready') === 'true') s.firstPage = performance.now();
       if (s.ev) {
         const el = host?.querySelector('[data-page-annotation-object-count]');
         const cnt = Number(el?.getAttribute('data-page-annotation-object-count') || 0);
@@ -91,6 +98,15 @@ async function oneRun(browser, size, { profile = null } = {}) {
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
   await context.addInitScript(PROBE);
   const page = await context.newPage();
+  if (NET) {
+    // NET=<latency ms>/<down Mbps>, e.g. 150/9 for a phone on 4G.
+    const [latency, mbps] = NET.split('/').map(Number);
+    const net = await context.newCDPSession(page);
+    await net.send('Network.enable');
+    await net.send('Network.emulateNetworkConditions', {
+      offline: false, latency, downloadThroughput: (mbps * 1e6) / 8, uploadThroughput: (mbps * 1e6) / 16,
+    });
+  }
   await signIn(page);
   const row = page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first();
   // Desktop selects the row then opens with "Open file"; phone opens on the tap.

@@ -52,3 +52,16 @@ export function resolveDocumentScrollLeftMax({ columnWidth = 0, viewportWidth = 
 export function compensateScrollLeftForColumnWidth(scrollLeft, previousColumnWidth, nextColumnWidth) {
   return Math.max(0, finite(scrollLeft) + (finite(nextColumnWidth) - finite(previousColumnWidth)) / 2);
 }
+
+/**
+ * The page width a fit sizes to. Phone (first-run walk 2026-10-21, item 14):
+ * a mixed document fitted to a portrait page 1 left its landscape sheets wider
+ * than the screen, their left side off screen on open. On the phone, Fit page
+ * and Fit width size to the widest page so every page's edges are on screen;
+ * Fit height and the desktop keep measuring the page you are looking at.
+ */
+export function resolveFitPageWidth({ phone = false, mode = 'fit', pageWidth = 0, widestPageWidth = 0 } = {}) {
+  const page = Math.max(0, finite(pageWidth));
+  if (!phone || mode === 'fith') return page;
+  return Math.max(page, finite(widestPageWidth));
+}

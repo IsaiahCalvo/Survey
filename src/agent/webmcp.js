@@ -21,7 +21,8 @@ export { ANNOTATION_AGENT_FLAG };
 
 // The Survey agent's item tools (KAL-527), offered to browser agents too:
 // same names with a survey_ prefix, same writes as the in-app agent chat.
-// Files can only be attached from the chat, so attach_media is left out.
+// attach_media is left out (its files come from the chat); a browser agent
+// attaches a photo through survey_add_photo instead, which takes base64.
 const SURVEY_ITEM_TOOLS = {
   get_survey_context: { name: 'survey_get_context', access: { minRole: 'viewer' }, readOnly: true },
   find_items: { name: 'survey_find_items', access: { minRole: 'viewer' }, readOnly: true },
@@ -32,6 +33,8 @@ const SURVEY_ITEM_TOOLS = {
   show_item: { name: 'survey_show_item', access: { minRole: 'viewer' }, readOnly: true },
   find_on_plan: { name: 'survey_find_on_plan', access: { minRole: 'viewer' }, readOnly: true },
   create_item: { name: 'survey_create_item', access: { signIn: true, minRole: 'editor' } },
+  add_photo: { name: 'survey_add_photo', access: { signIn: true, minRole: 'editor' } },
+  export_summary: { name: 'survey_export', access: { minRole: 'viewer' }, readOnly: true },
 };
 
 // A browser agent cannot know the open template's answers up front, so the
@@ -41,7 +44,7 @@ function withoutAnswerEnum(schema) {
 }
 
 function surveyItemTools(toolbox) {
-  return buildSurveyAgentTools([])
+  return buildSurveyAgentTools([], { webmcp: true })
     .filter((t) => SURVEY_ITEM_TOOLS[t.function.name])
     .map(({ function: fn }) => {
       const meta = SURVEY_ITEM_TOOLS[fn.name];

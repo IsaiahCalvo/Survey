@@ -17,10 +17,12 @@ import { ANNOTATION_AGENT_FLAG } from '../../supabase/functions/_shared/annotati
 import { activeAgentDocument } from '../agent/webmcp.js';
 import { isFeatureOn } from '../featureFlags.js';
 import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
-import { cleanTranscript, heardOwnVoice, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
+import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
+import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
+import SurveyAgentCamera from './SurveyAgentCamera';
 import './surveyAgentPanel.css';
 
 const blobToBase64 = (blob) => new Promise((resolve, reject) => {
@@ -54,6 +56,30 @@ const HANDS_FREE_TEXT = {
 let nextId = 1;
 const newId = (prefix) => `${prefix}${nextId++}`;
 
+// No signal, too weak to finish a call, or the per-minute limit (hands-free
+// talk can reach it): the message waits and sends later.
+const WAIT_CODES = new Set(['offline', 'network', 'busy_try_again']);
+const SAVED_FIRST = 'No signal. I saved that and will send it when you are back online.';
+const SAVED_BUSY = 'That was a lot at once. I saved it and will send it in a moment.';
+const SAVED_AGAIN = 'Saved.';
+// Kept on the device, unique across reloads.
+const waitIdOf = () => `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+// The last status the server gave this person, so the chat still opens
+// with no signal. Only whether it is on; limits come back with the signal.
+const LAST_STATUS_KEY = 'survey.agent.lastStatus';
+function readLastStatus(userId) {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(LAST_STATUS_KEY) || 'null');
+    return saved?.userId === userId && saved.enabled ? { enabled: true, reason: null, transcription: Boolean(saved.transcription), speech: false } : null;
+  } catch { return null; }
+}
+function writeLastStatus(userId, s) {
+  try {
+    window.localStorage.setItem(LAST_STATUS_KEY, JSON.stringify({ userId, enabled: true, transcription: Boolean(s.transcription) }));
+  } catch { /* storage blocked */ }
+}
+
 
 const openDocument = () => {
   const doc = activeAgentDocument();
@@ -81,9 +107,27 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const queueRef = useRef([]);
   const [queued, setQueued] = useState(0);
   const [handsFree, setHandsFree] = useState(false);
+  // The camera take_photo opened: { itemId, name }, and how to answer it.
+  const [camera, setCamera] = useState(null);
+  const cameraRef = useRef(null);
+  const photoResolveRef = useRef(null);
+  const requestPhoto = useCallback(({ itemId, name }) => new Promise((resolve) => {
+    photoResolveRef.current?.(null);
+    photoResolveRef.current = resolve;
+    setCamera({ itemId, name });
+  }), []);
+  const closeCamera = useCallback((file = null) => {
+    const resolve = photoResolveRef.current;
+    photoResolveRef.current = null;
+    setCamera(null);
+    resolve?.(file);
+  }, []);
   const [phase, setPhase] = useState('listening');
   const [hearing, setHearing] = useState(false);
   const micRef = useRef(null);
+  const recentItemsRef = useRef([]);
+  // Every item worked on in this chat: what an end-of-walk summary covers.
+  const walkItemsRef = useRef(new Set());
   const handsFreeRef = useRef(false);
   const [draft, setDraft] = useState('');
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -102,14 +146,23 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
 
   useEffect(() => {
     let live = true;
-    call({ action: 'status' })
-      .then((s) => {
+    (async () => {
+      const userId = await supabase?.auth?.getSession?.().then((r) => r?.data?.session?.user?.id || null).catch(() => null);
+      try {
+        const s = await call({ action: 'status' });
         if (!live) return;
         setStatus(s || { enabled: false, reason: 'network' });
         voice.setServerVoice(Boolean(s?.speech));
         if (s?.usage_left) setUsageLeft(s.usage_left);
-      })
-      .catch((err) => { if (live) setStatus({ enabled: false, reason: err?.code || 'network' }); });
+        if (userId && s?.enabled) writeLastStatus(userId, s);
+      } catch (err) {
+        if (!live) return;
+        // No signal: if the agent worked for this person before, open
+        // anyway, so what they say waits on the device and sends later.
+        const last = WAIT_CODES.has(err?.code) && userId ? readLastStatus(userId) : null;
+        setStatus(last ? { ...last, over_cap: false } : { enabled: false, reason: err?.code || 'network' });
+      }
+    })();
     return () => { live = false; };
   }, [call, voice]);
 
@@ -123,6 +176,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     handsFreeRef.current = false;
     micRef.current?.stop();
     stopSpeaking();
+    // A turn waiting on the camera gets "no photo" rather than hanging.
+    photoResolveRef.current?.(null);
   }, []);
 
   const toggleSpeak = () => {
@@ -163,6 +218,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       undoLastTurn: () => undoLastRef.current(),
       extraTools: annotations ? buildAnnotationTools({ getDocument: openDocument, text: (v) => (typeof v === 'string' ? v : JSON.stringify(v)) }) : [],
       getDocument: activeAgentDocument,
+      requestPhoto,
+      walkItems: () => [...walkItemsRef.current],
     });
     try {
       const result = await runSurveyAgentTurn({
@@ -175,16 +232,21 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);
+      // Items worked on lately: speech to text expects these names most.
+      const touched = result.changes.map((c) => c.itemId).filter(Boolean);
+      if (touched.length) recentItemsRef.current = [...recentItemsRef.current.filter((id) => !touched.includes(id)), ...touched].slice(-8);
+      for (const id of touched) walkItemsRef.current.add(id);
       historyRef.current = result.history;
       if (job.entryId) markEntry(job.entryId, { waiting: false });
-      push({ role: 'agent', text: result.reply, changes: result.changes });
+      push({ role: 'agent', text: result.reply, changes: result.changes, summary: result.summary || null });
       return result.reply;
     } catch (err) {
-      // No signal before anything changed: keep the message for later.
-      if (err?.code === 'offline' && !err?.changes?.length) {
-        queueRef.current.push(job);
-        setQueued(queueRef.current.length);
-        if (job.entryId) markEntry(job.entryId, { waiting: true });
+      // No signal (or too weak to finish) before anything changed: keep the
+      // message for later. Each call is one model step with no writes on the
+      // server, so sending it again later cannot double anything.
+      if (WAIT_CODES.has(err?.code) && !err?.changes?.length) {
+        waitReasonRef.current = err.code;
+        enqueueRef.current(job);
         return null;
       }
       // The server refused the stored chat: start over rather than repeat it.
@@ -213,44 +275,59 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     const entryId = newId('e');
     setEntries((list) => [...list, { id: entryId, role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name) }]);
     // Messages wait their turn behind ones still waiting for signal.
-    const job = { said, files, entryId };
+    const job = { said, files, entryId, docKey: surveyAgentBridge.current?.waitKey || null };
     if (queueRef.current.length) {
-      queueRef.current.push(job);
-      setQueued(queueRef.current.length);
-      markEntry(entryId, { waiting: true });
+      enqueueRef.current(job, { quiet: true });
       return null;
     }
     return runJob(job);
   }, [pendingFiles, runJob]);
 
   // Signal back: send what waited, oldest first, and stop at the first
-  // message that has to wait again.
+  // message that has to wait again. A message waits for its own document.
   const flushingRef = useRef(false);
   const flushQueue = useCallback(async () => {
     if (flushingRef.current || turnRef.current) return;
     flushingRef.current = true;
     try {
       while (queueRef.current.length) {
-        const job = queueRef.current.shift();
+        const job = queueRef.current[0];
+        if (job.docKey && job.docKey !== (surveyAgentBridge.current?.waitKey || null)) break;
+        queueRef.current.shift();
         setQueued(queueRef.current.length);
-        let reply;
+        job.flushing = true;
+        let reply = null;
         if (job.clip) {
           const text = await transcribeRef.current(job.clip, job.durationMs);
           if (text === null) { queueRef.current.unshift(job); setQueued(queueRef.current.length); break; }
-          if (!text) continue;
-          const entryId = newId('e');
-          setEntries((list) => [...list, { id: entryId, role: 'user', text }]);
-          reply = await runJob({ said: text, files: [], entryId });
+          if (!text) {
+            if (job.entryId) markEntry(job.entryId, { text: 'Voice message (could not hear it)', waiting: false });
+          } else {
+            if (job.entryId) markEntry(job.entryId, { text });
+            const said = { said: text, files: [], entryId: job.entryId, docKey: job.docKey, waitId: job.waitId };
+            reply = await runJob(said);
+            if (queueRef.current.includes(said)) {
+              // Heard, but the turn has to wait again: keep the words, not the audio.
+              queueRef.current[queueRef.current.indexOf(said)] = { ...said, flushing: false };
+              if (job.waitId && job.docKey) keepWaiting({ id: job.waitId, docKey: job.docKey, said: text });
+              break;
+            }
+          }
         } else {
           reply = await runJob(job);
+          if (queueRef.current.includes(job)) { job.flushing = false; break; }
         }
-        if (queueRef.current.includes(job)) break;
-        if (reply && speakRef.current && !handsFreeRef.current) speak(reply);
+        dropWaiting(job.waitId);
+        if (reply) await speakOutRef.current(reply);
       }
+      if (!queueRef.current.length) savedNoticeRef.current = false;
     } finally {
       flushingRef.current = false;
     }
   }, [runJob]);
+
+  const flushQueueRef = useRef(flushQueue);
+  flushQueueRef.current = flushQueue;
 
   useEffect(() => {
     const online = () => { flushQueue(); };
@@ -271,6 +348,68 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   sendRef.current = sendAndSpeak;
   const draftRef = useRef(draft);
   draftRef.current = draft;
+
+  // A reply said out loud when voice is on. In hands-free the mic is guarded
+  // (not while the person is mid-sentence) so it can be cut off by talking.
+  const speakOut = async (reply, { here = false } = {}) => {
+    if (!reply || !speakRef.current) return;
+    if (!handsFreeRef.current) { await speak(reply, { here }); return; }
+    const mic = micRef.current;
+    if (mic?.guard() === false) return;
+    lastSpokenRef.current = spokenReply(reply);
+    setPhase('speaking');
+    await speak(reply, { here });
+    setPhase(handsFreePendingRef.current ? 'working' : 'listening');
+    mic?.unguard();
+  };
+  const speakOutRef = useRef(speakOut);
+  speakOutRef.current = speakOut;
+
+  // Puts a message in the waiting line (at the front when it was being
+  // sent from there), keeps it on the device, and says so: "saved, will
+  // send" once per stretch without signal, then just "Saved."
+  const savedNoticeRef = useRef(false);
+  const waitReasonRef = useRef('offline');
+  const enqueue = (job, { quiet = false } = {}) => {
+    // Back from a send attempt: same place in line, and nothing new to say.
+    const retried = Boolean(job.flushing);
+    if (retried) { job.flushing = false; queueRef.current.unshift(job); } else queueRef.current.push(job);
+    setQueued(queueRef.current.length);
+    if (job.entryId) markEntry(job.entryId, { waiting: true });
+    // Files stay in this session only; words and recorded audio survive a reload.
+    if (!job.files?.length && job.docKey) {
+      job.waitId = job.waitId || waitIdOf();
+      keepWaiting({ id: job.waitId, docKey: job.docKey, said: job.said || null, clip: job.clip || null, durationMs: job.durationMs || null });
+    }
+    if (quiet || retried) return;
+    const busy = waitReasonRef.current === 'busy_try_again';
+    const first = !savedNoticeRef.current;
+    if (!busy) savedNoticeRef.current = true;
+    speakOutRef.current(busy ? SAVED_BUSY : first ? SAVED_FIRST : SAVED_AGAIN, { here: true });
+  };
+  const enqueueRef = useRef(enqueue);
+  enqueueRef.current = enqueue;
+
+  // Messages left waiting on this device for this document (the chat was
+  // closed or the page reloaded with no signal): show them and send them.
+  useEffect(() => {
+    const docKey = surveyAgentBridge.current?.waitKey || null;
+    if (!docKey) return undefined;
+    let live = true;
+    loadWaiting(docKey).then((rows) => {
+      if (!live || !rows.length) return;
+      for (const row of rows) {
+        if (queueRef.current.some((j) => j.waitId === row.id)) continue;
+        const entryId = newId('e');
+        setEntries((list) => [...list, { id: entryId, role: 'user', text: row.said || 'Voice message', waiting: true }]);
+        queueRef.current.push({ said: row.said || '', files: [], clip: row.clip || null, durationMs: row.durationMs || null, entryId, docKey, waitId: row.id });
+      }
+      savedNoticeRef.current = true;
+      setQueued(queueRef.current.length);
+      flushQueueRef.current();
+    });
+    return () => { live = false; };
+  }, []);
 
   const applyUndo = (entry) => {
     const result = toolbox.undo(entry.changes || []);
@@ -304,10 +443,11 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     setTranscribing(true);
     try {
       const audio = await blobToBase64(file);
-      const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(surveyAgentBridge.current) });
-      return cleanTranscript(out?.text);
+      const b = surveyAgentBridge.current;
+      const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
+      return snapItemNames(cleanTranscript(out?.text), Object.values(b?.markers || {}).map((m) => m?.name));
     } catch (err) {
-      if (err?.code === 'offline') return null;
+      if (WAIT_CODES.has(err?.code)) { waitReasonRef.current = err.code; return null; }
       push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.', code: err?.code });
       return '';
     } finally {
@@ -318,8 +458,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   transcribeRef.current = transcribe;
 
   const queueClip = (clip, durationMs) => {
-    queueRef.current.push({ clip, durationMs });
-    setQueued(queueRef.current.length);
+    const entryId = newId('e');
+    setEntries((list) => [...list, { id: entryId, role: 'user', text: 'Voice message' }]);
+    enqueue({ clip, durationMs, files: [], entryId, docKey: surveyAgentBridge.current?.waitKey || null });
   };
 
   const recorder = useAudioRecorder({
@@ -345,6 +486,17 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     micRef.current = null;
     stopSpeaking();
   }, []);
+
+  // With the camera open, "take it" / "cancel" go straight to the camera:
+  // the turn that opened it is still waiting on the photo.
+  const SHUTTER = /\b(take it|snap( it)?|cheese|shoot|take (the |a )?(photo|picture|pic))\b/i;
+  const CANCEL = /\b(cancel|never ?mind|no photo|close( the)? camera)\b/i;
+  const handleCameraClip = async (clip, durationMs) => {
+    const text = await transcribe(clip, durationMs);
+    if (!text || !cameraRef.current) return;
+    if (CANCEL.test(text)) cameraRef.current.cancel();
+    else if (SHUTTER.test(text)) await cameraRef.current.capture();
+  };
 
   // One clip at a time, in order. The mic keeps listening while the agent
   // works (people talk on) and while it speaks (people cut in).
@@ -379,6 +531,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     }
   };
   const onHandsFreeClip = (clip, durationMs, info) => {
+    if (cameraRef.current) { handleCameraClip(clip, durationMs).catch(() => {}); return; }
     handsFreePendingRef.current += 1;
     setPhase('working');
     handsFreeChainRef.current = handsFreeChainRef.current
@@ -470,6 +623,30 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     if (added.length) setPendingFiles((list) => [...list, ...added]);
   };
 
+  // The end-of-walk summary as a text file: the share sheet on a phone
+  // (Mail, Messages, Files...), else a download (the native app turns a
+  // download into its share sheet too).
+  const saveSummary = async ({ title, text }) => {
+    const name = `${String(title || 'Survey summary').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80)}.txt`;
+    const file = new File([text], name, { type: 'text/plain' });
+    try {
+      if (mobileMode && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title });
+        return;
+      }
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
   const removePending = (id) => {
     attachmentsRef.current.delete(id);
     setPendingFiles((list) => list.filter((f) => f.id !== id));
@@ -478,7 +655,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const ready = status?.enabled && !status?.over_cap;
   const statusText = !status ? 'Connecting...'
     : !status.enabled || status.over_cap ? surveyAgentErrorText(status.reason)
-      : queued ? `No signal. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send when you are back online.`
+      : queued ? (waitReasonRef.current === 'busy_try_again'
+        ? `Busy for a moment. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send shortly.`
+        : `No signal. ${queued === 1 ? '1 message is' : `${queued} messages are`} waiting and will send when you are back online.`)
         : usageWarning(usageLeft);
   const livePhase = hearing ? 'hearing' : phase === 'speaking' ? 'speaking' : transcribing || busy || phase === 'working' ? 'working' : 'listening';
   const handsFreeText = handsFree ? HANDS_FREE_TEXT[livePhase] : null;
@@ -541,6 +720,11 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
                   : <button type="button" className="survey-agent__undo" onClick={() => undoEntry(entry)}>Undo</button>}
               </div>
             ) : null}
+            {entry.summary ? (
+              <button type="button" className="survey-agent__undo survey-agent__save" onClick={() => saveSummary(entry.summary)}>
+                Save summary
+              </button>
+            ) : null}
           </div>
         ))}
         {(busy || transcribing) && <div className="survey-agent__msg is-agent"><div className="survey-agent__bubble is-typing">Working...</div></div>}
@@ -550,6 +734,15 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
           <span className="survey-agent__dot" aria-hidden="true" />
           {handsFreeText}
         </p>
+      )}
+      {camera && (
+        <SurveyAgentCamera
+          key={camera.itemId}
+          ref={cameraRef}
+          itemName={camera.name}
+          handsFree={handsFree}
+          onDone={closeCamera}
+        />
       )}
       {statusText && <p className="survey-agent__status" role="status">{statusText}</p>}
       {pendingFiles.length > 0 && (

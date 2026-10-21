@@ -80,6 +80,28 @@ test('agents cannot pay, open billing, delete the account, or export it', () => 
   }
 });
 
+test('survey-mcp exposes only read-only tools, and its role read uses GET', () => {
+  const src = read('supabase/functions/survey-mcp/index.ts');
+  for (const name of ['list_projects', 'list_documents', 'list_survey_items', 'find_survey_items', 'get_survey_item', 'get_document_role', 'get_survey_context']) {
+    assert.match(src, new RegExp(`name: '${name}'`), name);
+  }
+  // Every declared tool is read-only — the connector must not gain a write
+  // tool here until the server-side write path (KAL-531) lands.
+  const tools = src.slice(src.indexOf('const TOOLS'), src.indexOf('async function callTool'));
+  assert.equal((tools.match(/readOnlyHint: true/g) || []).length, 7);
+  // A read-only agent can only reach a STABLE rpc via GET (the #1034 gate).
+  assert.match(src, /rpc\('get_my_document_role', \{ doc_id: documentId \}, \{ get: true \}\)/);
+  // get_survey_context describes only THIS document's survey — the categories
+  // its linked templates define plus the ones its own items use — never the
+  // union of every template the person can see, and never empty just because
+  // document_templates has no rows (it reads the items too).
+  const ctx = src.slice(src.indexOf("name === 'get_survey_context'"), src.indexOf("throw new ToolError(`Unknown tool"));
+  assert.match(ctx, /surveyItems\(db, documentId\)/);
+  assert.match(ctx, /names\.linkedCats/);
+  assert.match(ctx, /r\.category_id\) cats\.add/);
+  assert.match(ctx, /\.filter\(\(c\) => cats\.has\(c\.id\)\)/);
+});
+
 async function loadAgentSession() {
   const { stripTypeScriptTypes } = await import('node:module');
   const js = stripTypeScriptTypes(read('supabase/functions/_shared/agentSession.ts'));

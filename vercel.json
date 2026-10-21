@@ -11,6 +11,7 @@
     { "source": "/faq", "destination": "/faq/index.html" },
     { "source": "/status", "destination": "/status/index.html" },
     { "source": "/whats-new", "destination": "/whats-new/index.html" },
+    { "source": "/use-with-ai", "destination": "/use-with-ai/index.html" },
     { "source": "/use-cases", "destination": "/use-cases/index.html" },
     { "source": "/use-cases/:slug", "destination": "/use-cases/:slug/index.html" },
     { "source": "/compare/:slug", "destination": "/compare/:slug/index.html" },
@@ -32,7 +33,7 @@
       ]
     },
     {
-      "source": "/((?!welcome|features|devices|pricing|faq|use-cases|compare|tools|privacy\\.html|terms\\.html|404\\.html).*)",
+      "source": "/((?!welcome|features|devices|pricing|faq|use-with-ai|use-cases|compare|tools|privacy\\.html|terms\\.html|404\\.html).*)",
       "headers": [
         { "key": "Content-Security-Policy-Report-Only", "value": "default-src 'self'; script-src 'self' 'sha256-BGc+jgl/EbMGuqYayQWZd27/gSnabh2TUC+dHMGaq1I=' 'sha256-dcveo2muxWvLrM7H8rn3NZpgPKxGwVXzgVaZei7nzqk=' 'wasm-unsafe-eval' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' data: blob: https://surveytool.app https://cvamwtpsuvxvjdnotbeg.supabase.co wss://cvamwtpsuvxvjdnotbeg.supabase.co https://graph.microsoft.com https://login.microsoftonline.com https://*.sharepoint.com https://*.1drv.com https://*.livefilestore.com; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com https://login.microsoftonline.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" }
       ]

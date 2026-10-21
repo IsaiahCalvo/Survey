@@ -11,6 +11,11 @@ export default {
   lede: 'Turn a long PDF into one file per chapter, section or sheet, using the bookmarks already in it. Each file is named after its bookmark.',
   accept: 'pdf', multiple: false, action: 'Split PDF',
   steps: ['Choose a PDF that has bookmarks.', 'Check the bookmarks found, and pick top level or top and second level.', 'Press Split PDF. The files come in one ZIP.'],
+  trade: {
+    h2: 'One PDF per sheet from a bookmarked set',
+    text: 'Many drawing sets have a bookmark for each sheet, like A-101 or S-201. Split the set into one file per sheet, each named after its bookmark. Pick second level when the sheets sit under discipline bookmarks.',
+    keys: 'drawing set sheet bookmarks plan sheets discipline sheet number',
+  },
   faq: [
     ['What are bookmarks in a PDF?', 'They are the list of chapters or sheets shown in the side panel of most PDF readers. Many drawing sets and reports have them.'],
     ['What if my PDF has no bookmarks?', 'The tool tells you as soon as you choose the file. Use Split PDF instead to split it by page numbers.'],

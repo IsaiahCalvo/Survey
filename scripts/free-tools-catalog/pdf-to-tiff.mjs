@@ -10,6 +10,11 @@ export default {
   lede: 'Save every page of a PDF in one TIFF file, the kind many scanning, fax and archive systems ask for.',
   accept: 'pdf', multiple: false, batch: true, action: 'Make TIFF',
   steps: ['Choose a PDF.', 'Pick the quality and the colors. Tap pages to save only those.', 'Press Make TIFF and save the file.'],
+  trade: {
+    h2: 'Drawings to TIFF for document control',
+    text: 'Some archive and document control systems still ask for TIFF. Save a drawing set as one multi-page TIFF. Black and white at High suits line drawings.',
+    keys: 'drawing set archive document control record drawings',
+  },
   faq: [
     ['Do I get one file or one per page?', 'One TIFF with every page in it, which is what most systems that ask for TIFF expect.'],
     ['Which settings should I pick?', 'Normal (150 DPI) is fine for reading on screen. Pick High (300 DPI) for printing or archives. Black and white makes the smallest files and suits text and drawings.'],

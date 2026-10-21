@@ -194,3 +194,13 @@ test('wiring: PDF tools saves wait for the stored bytes and report failures', ()
   assert.match(save, /freeDocumentName\(result\.name, taken\)/, 'results get a free name, never the hidden duplicate ask');
   assert.match(save, /if \(notSaved\) throw new Error/);
 });
+
+test('wiring: PDF tools on an open document use the bytes in the tab, so they work offline', () => {
+  const appShell = read('src/AppShell.jsx');
+  assert.match(appShell, /const blob = file instanceof Blob && file\.size > 0 \? file : null;/);
+  const dashboard = read('src/Dashboard.jsx');
+  const source = dashboard.slice(dashboard.indexOf('const pdfToolSource'), dashboard.indexOf('const openPdfTools'));
+  assert.match(source, /if \(doc\.blob\) return new Uint8Array\(await doc\.blob\.arrayBuffer\(\)\);/);
+  assert.match(source, /navigator\?\.onLine === false/, 'offline gets its own message');
+  assert.match(dashboard, /\.filter\(\(doc\) => doc\?\.file_path \|\| doc\?\.blob\)/);
+});

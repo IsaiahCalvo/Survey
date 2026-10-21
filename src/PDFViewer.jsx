@@ -3384,7 +3384,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [cloudIntensity, setCloudIntensity] = useState(2);
   const [textStyleDefaults, setTextStyleDefaults] = useState({
     fontColor: '#1e293b',
-    fontFamily: 'Arial',
+    fontFamily: 'Helvetica',
     fontSize: 16,
     bold: true,
     italic: false,
@@ -16299,6 +16299,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // instead HIDDEN + text-formatted, and the token is HMAC-signed — so accidental
       // edits are out of sight and any tampering is detected on import (malformed →
       // review). That protects identity without breaking the user's sort/filter.
+
+      // Survey agent testers: a Summary sheet on a new export, not on a sync to
+      // a linked workbook (Live Sync writes that one's existing sheets cell by cell).
+      if (!targetPath) {
+        const [{ isSurveyAgentEnabled }, { addSummarySheet }] = await Promise.all([
+          import('./agent/surveyAgentFlag.js'),
+          import('./services/excelSummarySheet.js'),
+        ]);
+        if (isSurveyAgentEnabled()) addSummarySheet(workbook, { template: selectedTemplate, markers: surveyMarkers });
+      }
 
       // Write workbook to buffer
       const workbookBuffer = await workbook.xlsx.writeBuffer();
@@ -32833,6 +32843,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return { words: [], source: 'none' };
       },
       getPageCount: () => agentMarkerStateRef.current.pdfDoc?.numPages || 0,
+      getCurrentPage: () => pageNumRef.current || 1,
       // Survey agent (create_item): a named marker in a given category, the
       // same commit a placed marker gets. Returns the new id.
       createSurveyMarker: ({ page, bounds, moduleId, categoryId, name, entityId }) => {

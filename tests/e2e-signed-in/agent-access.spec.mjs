@@ -25,8 +25,8 @@ function agentApi(token) {
 
 const sub = (token) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).sub;
 
-test('a viewer\'s agent can read but not edit, and gets no Pro features', async ({ page }) => {
-  const { clientId, tok } = await agentSignIn(page, E2E_ACCOUNTS.viewer, `Viewer agent ${RUN}`);
+test('a viewer\'s agent, even one let make changes, can read but not edit, and gets no Pro features', async ({ page }) => {
+  const { clientId, tok } = await agentSignIn(page, E2E_ACCOUNTS.viewer, `Viewer agent ${RUN}`, 'Allow', { write: true });
   const claims = JSON.parse(Buffer.from(tok.access_token.split('.')[1], 'base64url').toString());
   expect(claims.client_id).toBe(clientId);
   const a = agentApi(tok.access_token);
@@ -46,6 +46,59 @@ test('a viewer\'s agent can read but not edit, and gets no Pro features', async 
   expect(await approve.text()).toMatch(/agents cannot approve agents/);
 });
 
+test('a read-only agent can read but every change is refused, and Remove forgets the choice', async ({ page }) => {
+  const account = E2E_ACCOUNTS.owner;
+  const { clientId, tok } = await agentSignIn(page, account, `Read-only agent ${RUN}`);
+  const a = agentApi(tok.access_token);
+  const userId = sub(tok.access_token);
+  expect(await (await a.rpc('my_agent_access', {})).json()).toBe('read');
+  expect(await (await a.get('rpc/my_agent_access')).json()).toBe('read');
+
+  // Reads work, by GET and by POST to a read-only function.
+  expect(await (await a.get(`documents?id=eq.${E2E_DOCUMENT.id}&select=id`)).json()).toHaveLength(1);
+  expect(await (await a.rpc('get_my_document_role', { doc_id: E2E_DOCUMENT.id })).json()).toBe('owner');
+  // Read-only functions that were once left VOLATILE (revision history, plan).
+  expect((await a.rpc('kal48_list_revisions', { p_document_id: E2E_DOCUMENT.id })).status).toBe(200);
+  expect((await a.rpc('get_user_tier', { p_user_id: userId })).status).toBe(200);
+  // Its own hourly counter still works.
+  expect(await (await a.rpc('agent_rate_hit', { p_fn: 'send-profile-change-notification', p_limit: 5 })).json()).toBe(true);
+
+  // Every kind of change is refused, though the person owns the document.
+  const refused = async (res) => {
+    expect(res.status).toBe(403);
+    expect(await res.text()).toMatch(/can only read/);
+  };
+  await refused(await a.post('projects', { user_id: userId, name: `Read-only ${RUN}` }));
+  await refused(await a.post('document_annotations', {
+    document_id: E2E_DOCUMENT.id, user_id: userId, annotation_id: `ro-${RUN}`,
+    annotation_type: 'survey-marker', page_number: 1, bounds: {},
+  }));
+  await refused(await a.patch(`documents?id=eq.${E2E_DOCUMENT.id}`, { name: 'renamed by agent' }));
+  await refused(await a.del(`document_annotations?document_id=eq.${E2E_DOCUMENT.id}`));
+  await refused(await a.rpc('set_agent_access', { p_client_id: clientId, p_write: true }));
+  const upload = await fetch(`${API()}/storage/v1/object/documents/${userId}/agent-${RUN}.txt`, {
+    method: 'POST', headers: { apikey: KEY(), authorization: `Bearer ${tok.access_token}`, 'content-type': 'text/plain' }, body: 'x',
+  });
+  expect(upload.status).toBeGreaterThanOrEqual(400);
+  expect(await (await a.rpc('my_agent_access', {})).json()).toBe('read');
+
+  // The person's own sign-in is not affected.
+  const human = (await (await fetch(`${API()}/auth/v1/token?grant_type=password`, {
+    method: 'POST', headers: { apikey: KEY(), 'content-type': 'application/json' },
+    body: JSON.stringify({ email: account.email, password: account.password }),
+  })).json()).access_token;
+  expect(await (await agentApi(human).rpc('my_agent_access', {})).json()).toBe('person');
+
+  // Remove, then let it in again with "Read only" left on: still read only,
+  // even though the person had picked "Read and make changes" for it before.
+  expect((await agentApi(human).rpc('set_agent_access', { p_client_id: clientId, p_write: true })).status).toBeLessThan(300);
+  const { data: before } = await adminClient().from('agent_access').select('can_write').eq('client_id', clientId);
+  expect(before).toEqual([{ can_write: true }]);
+  expect((await authCall(human, `user/oauth/grants?client_id=${clientId}`, 'DELETE')).status).toBeLessThan(300);
+  const { data: after } = await adminClient().from('agent_access').select('can_write').eq('client_id', clientId);
+  expect(after).toEqual([]);
+});
+
 test('Deny sends the agent away with nothing', async ({ page }) => {
   const { error } = await agentSignIn(page, E2E_ACCOUNTS.free, `Denied agent ${RUN}`, 'Deny');
   expect(error).toBe('access_denied');
@@ -53,7 +106,7 @@ test('Deny sends the agent away with nothing', async ({ page }) => {
 
 test('the person sees what the agent changed, and Remove cuts it off at once', async ({ page }) => {
   const name = `Owner agent ${RUN}`;
-  const { clientId, tok } = await agentSignIn(page, E2E_ACCOUNTS.owner, name);
+  const { clientId, tok } = await agentSignIn(page, E2E_ACCOUNTS.owner, name, 'Allow', { write: true });
   const a = agentApi(tok.access_token);
   const projectName = `Agent project ${RUN}`;
 
@@ -129,7 +182,7 @@ test('log rows past 90 days are hidden and pruned, even for people whose agents 
   });
   expect(error).toBeNull();
 
-  const { tok } = await agentSignIn(page, E2E_ACCOUNTS.pro, `Pruning agent ${RUN}`);
+  const { tok } = await agentSignIn(page, E2E_ACCOUNTS.pro, `Pruning agent ${RUN}`, 'Allow', { write: true });
   const a = agentApi(tok.access_token);
   const created = await a.post('projects', { user_id: sub(tok.access_token), name: `Prune trigger ${RUN}` });
   const [{ id }] = await created.json();

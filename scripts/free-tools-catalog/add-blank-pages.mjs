@@ -10,6 +10,11 @@ export default {
   lede: 'Add empty pages for notes, or so each page prints on its own sheet when printing on both sides.',
   accept: 'pdf', multiple: false, action: 'Add pages',
   steps: ['Choose a PDF.', 'Pick where the blank pages go and how many.', 'Press Add pages and save the new file.'],
+  trade: {
+    h2: 'Leave room for field notes',
+    text: 'Add a blank page after each sheet or punch list page so the crew has room to write notes on the printout.',
+    keys: 'field notes punch list printout',
+  },
   faq: [
     ['What size are the blank pages?', 'The same size and way round as the page just before them, so they print the same.'],
     ['Why add a blank page after every page?', 'So each page lands on its own sheet when you print on both sides, or to leave room for hand-written notes.'],

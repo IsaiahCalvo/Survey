@@ -52,6 +52,14 @@ type Category = { id: string; name: string; checklist: { id: string; text: strin
 // Category and checklist names come from the templates the person can see.
 // Templates linked to the document go first, so when two templates reuse a
 // category id the document's own wins.
+// The item tools want this union: a marker's category_id resolves whichever
+// visible template defines it. get_survey_context must instead describe only
+// THIS document's survey, so it filters by `linkedCats`/`linkedEnts` (the ids
+// defined by a linked template) plus the ids the document's own items use —
+// never categories from other visible templates. `linkedCats`/`linkedEnts`
+// alone can be empty, because document_templates is filled as a client-side
+// sharing side effect and many documents (and collaborators' views) have no
+// rows, so the items' own ids are the reliable half.
 async function categoryNames(db: SupabaseClient, documentId: string) {
   const [{ data: all }, { data: links }] = await Promise.all([
     db.from('templates').select('id, name, config').limit(300),
@@ -63,13 +71,18 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
   const data = [...(all || [])].sort((a, b) => Number(linked.has(String(b.id))) - Number(linked.has(String(a.id))));
   const categories = new Map<string, Category>();
   const entities = new Map<string, string>();
+  const linkedCats = new Set<string>();
+  const linkedEnts = new Set<string>();
   for (const row of data || []) {
+    const isLinked = linked.has(String(row.id));
     const config = (row.config && typeof row.config === 'object' ? row.config : {}) as Record<string, unknown>;
     const modules = (config.modules || config.spaces || []) as Record<string, unknown>[];
     for (const module of Array.isArray(modules) ? modules : []) {
       const cats = (module.categories || module.cats || []) as Record<string, unknown>[];
       for (const c of Array.isArray(cats) ? cats : []) {
-        if (!c?.id || categories.has(String(c.id))) continue;
+        if (!c?.id) continue;
+        if (isLinked) linkedCats.add(String(c.id));
+        if (categories.has(String(c.id))) continue;
         const list = (c.checklist || c.items || []) as unknown[];
         categories.set(String(c.id), {
           id: String(c.id),
@@ -82,10 +95,12 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
       }
     }
     for (const e of (config.entities || []) as Record<string, unknown>[]) {
-      if (e?.id && !entities.has(String(e.id))) entities.set(String(e.id), String(e.name || ''));
+      if (!e?.id) continue;
+      if (isLinked) linkedEnts.add(String(e.id));
+      if (!entities.has(String(e.id))) entities.set(String(e.id), String(e.name || ''));
     }
   }
-  return { categories, entities };
+  return { categories, entities, linkedCats, linkedEnts };
 }
 
 const noteText = (notes: unknown) => {
@@ -161,6 +176,28 @@ const TOOLS = [
     },
     annotations: { readOnlyHint: true },
   },
+  {
+    name: 'get_document_role',
+    title: 'Get this person\'s role on a document',
+    description: 'This person\'s role on one document: owner, editor or viewer (null if they cannot see it). An agent has exactly this role, so an editor\'s agent could change the document while a viewer\'s can only read.',
+    inputSchema: {
+      type: 'object',
+      properties: { document_id: { type: 'string' } },
+      required: ['document_id'],
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: 'get_survey_context',
+    title: 'Get a document\'s survey template',
+    description: 'The survey structure for one document: each category with its checklist item ids and text, and the entities (colored statuses or owners). Use it to make sense of the answers that list_survey_items and get_survey_item return.',
+    inputSchema: {
+      type: 'object',
+      properties: { document_id: { type: 'string' } },
+      required: ['document_id'],
+    },
+    annotations: { readOnlyHint: true },
+  },
 ];
 
 async function callTool(db: SupabaseClient, name: string, args: Record<string, unknown>) {
@@ -231,6 +268,32 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
       files: mediaCount(r.notes),
       on_plan: !(r.annotation_data as Record<string, unknown> | null)?.unplaced,
       page: (r.annotation_data as Record<string, unknown> | null)?.unplaced ? null : r.page_number,
+    });
+  }
+  if (name === 'get_document_role') {
+    if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
+    // STABLE function, so a GET keeps a read-only agent inside its scope.
+    const { data, error } = await db.rpc('get_my_document_role', { doc_id: documentId }, { get: true });
+    if (error) throw new ToolError('Could not read the role for that document.');
+    return text({ document_id: documentId, role: (data as string | null) || null });
+  }
+  if (name === 'get_survey_context') {
+    if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
+    // Describe only THIS document's survey: the categories/entities its linked
+    // templates define, plus the ones its own items actually use (so an
+    // unshared document with no document_templates rows still reports its
+    // structure), and never another visible template's categories.
+    const [names, rows] = await Promise.all([categoryNames(db, documentId), surveyItems(db, documentId)]);
+    const cats = new Set(names.linkedCats);
+    const ents = new Set(names.linkedEnts);
+    for (const r of rows) {
+      if (r.category_id) cats.add(String(r.category_id));
+      if (r.entity_id) ents.add(String(r.entity_id));
+    }
+    return text({
+      document_id: documentId,
+      categories: [...names.categories.values()].filter((c) => cats.has(c.id)).map((c) => ({ id: c.id, name: c.name, checklist: c.checklist })),
+      entities: [...names.entities.entries()].filter(([id]) => ents.has(id)).map(([id, name]) => ({ id, name })),
     });
   }
   throw new ToolError(`Unknown tool ${name}.`);

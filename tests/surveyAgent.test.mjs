@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSurveyAgentToolbox, normalizeItemName, scoreItemName } from '../src/agent/surveyAgentTools.js';
-import { runSurveyAgentTurn } from '../src/agent/surveyAgentClient.js';
+import { makeSurveyAgentCaller, runSurveyAgentTurn } from '../src/agent/surveyAgentClient.js';
+import { keepWaiting, loadWaiting } from '../src/agent/waitingStore.js';
 import { buildAgentTools } from '../src/agent/webmcp.js';
 import {
   SURVEY_AGENT_TOOL_NAMES,
@@ -102,6 +103,27 @@ test('set_answers writes once through the panel and can be undone', async () => 
   assert.equal(markers.m117.checklistResponses['chk-reader'].selection, 'N');
   assert.deepEqual(box.undo([result.change]), { reverted: 2, kept: 0 });
   assert.deepEqual(markers.m117.checklistResponses, {});
+});
+
+test('set_answers by name: one clear match is used, anything else changes nothing', async () => {
+  const { bridge, markers, calls } = fakeBridge();
+  markers.m300 = { name: 'D-300', moduleId: 'mod-1', categoryId: 'cat-door', checklistResponses: {} };
+  markers.m300b = { name: 'D 300', moduleId: 'mod-1', categoryId: 'cat-door', checklistResponses: {} };
+  const box = toolboxFor(bridge);
+  const heard = await box.run('set_answers', { item_name: 'D one seventeen', answers: [{ checklist_item_id: 'chk-lock', value: 'Y' }] });
+  assert.equal(heard.isError, false);
+  assert.match(heard.content, /on D-117 \(item id m117\)/);
+  assert.equal(markers.m117.checklistResponses['chk-lock'].selection, 'Y');
+  assert.equal(heard.change.itemId, 'm117');
+  const twins = await box.run('set_answers', { item_name: 'D-300', answers: [{ checklist_item_id: 'chk-lock', value: 'Y' }] });
+  assert.equal(twins.isError, true);
+  assert.match(twins.content, /Several items match D-300: D 300, D-300/);
+  const none = await box.run('set_answers', { item_name: 'D-999', answers: [{ checklist_item_id: 'chk-lock', value: 'Y' }] });
+  assert.equal(none.isError, true);
+  assert.match(none.content, /No item named D-999/);
+  const blank = await box.run('set_answers', { answers: [{ checklist_item_id: 'chk-lock', value: 'Y' }] });
+  assert.equal(blank.isError, true);
+  assert.equal(calls.filter((c) => c[0] === 'setAnswers').length, 1, 'only the clear match wrote');
 });
 
 test('undo keeps what changed after the agent and takes back one turn in one write', async () => {
@@ -205,6 +227,48 @@ test('attach_media uploads chat files to the item once', async () => {
   assert.equal(result.isError, false);
   assert.equal(markers.m117.note.media[0].id, 'media-door.jpg');
   assert.equal((await box.run('attach_media', { item_id: 'm118', attachment_ids: ['a1'] })).isError, true);
+});
+
+// A real 1x1 PNG — the guard sniffs magic bytes, so the payload must be a
+// genuine image, not just any base64.
+const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+test('add_photo attaches a base64 image to the item (editor)', async () => {
+  const { bridge, markers } = fakeBridge();
+  const box = toolboxFor(bridge);
+  const result = await box.run('add_photo', { item_id: 'm117', image_base64: `data:image/png;base64,${PNG_1X1}` });
+  assert.equal(result.isError, false);
+  assert.match(result.content, /Added a photo to D-117/);
+  assert.equal(markers.m117.note.media.length, 1);
+  // One Undo takes it back: the change records the note before the photo.
+  assert.equal(result.change.fields[0].type, 'note');
+  // A bare base64 image (no data: prefix) is accepted too.
+  assert.equal((await box.run('add_photo', { item_id: 'm118', image_base64: PNG_1X1 })).isError, false);
+});
+
+test('add_photo refuses a viewer, non-image data (even bare), and empty data', async () => {
+  const viewer = fakeBridge({ canEdit: false });
+  assert.equal((await toolboxFor(viewer.bridge).run('add_photo', { item_id: 'm117', image_base64: `data:image/png;base64,${PNG_1X1}` })).isError, true);
+  const box = toolboxFor(fakeBridge().bridge);
+  // A PDF mislabeled as an image, and raw non-image base64 with no prefix, are
+  // both refused by the magic-byte sniff — the declared type is not trusted.
+  assert.match((await box.run('add_photo', { item_id: 'm117', image_base64: 'data:application/pdf;base64,JVBERi0xLjQK' })).content, /supported image/);
+  assert.match((await box.run('add_photo', { item_id: 'm117', image_base64: 'aGVsbG8gd29ybGQ=' })).content, /supported image/);
+  assert.match((await box.run('add_photo', { item_id: 'm117', image_base64: '' })).content, /No image data/);
+});
+
+test('export_summary gives a plain-text counts summary', async () => {
+  const summary = (await toolboxFor(fakeBridge().bridge).run('export_summary', {})).content;
+  assert.match(summary, /Security — 3 items/);
+  assert.match(summary, /- Door: 3/);
+  assert.match(summary, /- Subcontractor: 0/);
+});
+
+test('add_photo and export_summary are on the WebMCP survey_ surface', () => {
+  const tools = buildAgentTools({ getDocument: () => ({ documentId: 'doc-1' }), readAccess: async () => ({ signedIn: true, role: 'owner' }) });
+  assert.ok(tools.find((t) => t.name === 'survey_add_photo'));
+  const exp = tools.find((t) => t.name === 'survey_export');
+  assert.equal(exp.annotations.readOnlyHint, true);
 });
 
 test('no Survey mode means a clear error, not a crash', async () => {
@@ -393,4 +457,99 @@ test('markup the agent added shows on the change card and Undo deletes it', asyn
   assert.equal(live.has('a1'), false);
   // Already gone (the person deleted it): kept, nothing thrown.
   assert.deepEqual(box.undo([added.change]), { reverted: 0, kept: 1 });
+});
+
+test('take_photo opens the camera, waits, and attaches the photo to the item', async () => {
+  const { bridge, markers } = fakeBridge();
+  const asked = [];
+  let photo = { name: 'photo.jpg', size: 10, type: 'image/jpeg' };
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge, requestPhoto: async (req) => { asked.push(req); return photo; } });
+  const res = await box.run('take_photo', { item_id: 'm117' });
+  assert.deepEqual(asked, [{ itemId: 'm117', name: 'D-117' }]);
+  assert.equal(res.content, 'Attached 1 photo to D-117.');
+  assert.equal(res.change.label, 'D-117: 1 photo attached');
+  assert.equal(markers.m117.note.media.at(-1).kind, 'photo');
+  // Closed without a photo: nothing changes.
+  photo = null;
+  const none = await box.run('take_photo', { item_id: 'm117' });
+  assert.equal(none.content, 'The person closed the camera without taking a photo for D-117.');
+  assert.equal(none.change, undefined);
+  // No camera here, or a view-only person.
+  assert.match((await createSurveyAgentToolbox({ getBridge: () => bridge }).run('take_photo', { item_id: 'm117' })).content, /camera cannot be opened/);
+  bridge.canEdit = false;
+  assert.match((await box.run('take_photo', { item_id: 'm117' })).content, /can only view/);
+});
+
+test('survey_status says what is done and what is left, on a page or the whole survey', async () => {
+  const { bridge, markers } = fakeBridge({ getCurrentPage: () => 2 });
+  markers.m118 = { ...markers.m118, pageNumber: 2, checklistResponses: { 'chk-cable': { selection: 'Y' } } };
+  markers.m201 = { ...markers.m201, pageNumber: 3, checklistResponses: { 'chk-cable': { selection: 'Y' }, 'chk-reader': { selection: 'N' }, 'chk-lock': { selection: 'Y' } } };
+  const box = toolboxFor(bridge);
+  const page = JSON.parse((await box.run('survey_status', { page: null, all_pages: false })).content);
+  assert.deepEqual(page, {
+    scope: 'page 2',
+    items: 2,
+    done: 0,
+    not_started: { count: 1, names: ['D-117'] },
+    partly_done: { count: 1, items: [{ name: 'D-118', missing: ['Card reader installed', 'Lock installed'] }] },
+  });
+  const all = JSON.parse((await box.run('survey_status', { page: null, all_pages: true })).content);
+  assert.equal(all.scope, 'whole survey');
+  assert.equal(all.items, 3);
+  assert.equal(all.done, 1, 'archived checklist lines do not count');
+  assert.equal(JSON.parse((await box.run('survey_status', { page: 3, all_pages: false })).content).done, 1);
+  assert.ok(SURVEY_AGENT_TOOL_NAMES.includes('survey_status'));
+});
+
+test('the caller gives up on a hanging call, and tells a weak signal from a failing server', async () => {
+  const seen = [];
+  const fake = (result) => ({ functions: { invoke: async (name, opts) => { seen.push(opts); return result; } } });
+  await makeSurveyAgentCaller(fake({ data: { ok: true }, error: null }))({ action: 'transcribe' });
+  assert.equal(seen[0].timeout, 30_000);
+  await makeSurveyAgentCaller(fake({ data: {}, error: null }))({ action: 'turn' });
+  assert.equal(seen[1].timeout, 45_000);
+  const dropped = makeSurveyAgentCaller(fake({ data: null, error: Object.assign(new Error('fetch failed'), { context: new TypeError('Failed to fetch') }) }));
+  await assert.rejects(dropped({ action: 'turn' }), (err) => err.code === 'network');
+  const broken = makeSurveyAgentCaller(fake({ data: null, error: Object.assign(new Error('500'), { context: { status: 500, json: async () => { throw new Error('not json'); } } }) }));
+  await assert.rejects(broken({ action: 'turn' }), (err) => err.code === 'server_error');
+  const coded = makeSurveyAgentCaller(fake({ data: null, error: Object.assign(new Error('429'), { context: { status: 429, json: async () => ({ error: 'monthly_cap_reached' }) } }) }));
+  await assert.rejects(coded({ action: 'turn' }), (err) => err.code === 'monthly_cap_reached');
+});
+
+test('with no IndexedDB, waiting messages live for the session only', async () => {
+  assert.equal(await keepWaiting({ id: 'w1', docKey: 'doc-1', said: 'D-117 lock installed' }), null);
+  assert.deepEqual(await loadWaiting('doc-1'), []);
+});
+
+test('walk_summary: this walk\'s items by category, with the ones that have issues, and text to save', async () => {
+  const { bridge, markers } = fakeBridge();
+  markers.m117 = { ...markers.m117, checklistResponses: { 'chk-cable': { selection: 'Y' }, 'chk-reader': { selection: 'N' }, 'chk-lock': { selection: 'Y' } } };
+  markers.m118 = { ...markers.m118, checklistResponses: { 'chk-cable': { selection: 'Y' } } };
+  const walked = ['m117', 'm118'];
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge, walkItems: () => walked });
+  const res = await box.run('walk_summary', { scope: 'walk', page: null });
+  const data = JSON.parse(res.content);
+  assert.equal(data.scope, 'this walk');
+  assert.deepEqual(data.totals, { items: 2, done: 1, partly: 1, notStarted: 0, withIssues: 1 });
+  assert.deepEqual(data.categories, [{ name: 'Door', items: 2, done: 1, partly_done: 1, not_started: 0, with_issues: [{ name: 'D-117', issues: ['Card reader installed = N'] }] }]);
+  assert.equal(res.summary.title, 'Security: summary of this walk');
+  assert.match(res.summary.text, /2 items: 1 done, 1 partly done, 0 not started, 1 with issues\./);
+  assert.match(res.summary.text, /\n {2}D-117: Card reader installed = N/);
+
+  const nothingYet = createSurveyAgentToolbox({ getBridge: () => bridge, walkItems: () => [] });
+  const all = JSON.parse((await nothingYet.run('walk_summary', { scope: 'walk', page: null })).content);
+  assert.equal(all.scope, 'the whole survey');
+  assert.equal(all.totals.items, 3);
+  assert.ok(all.note);
+});
+
+test('a turn hands back the summary a tool made', async () => {
+  const { bridge } = fakeBridge();
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge, walkItems: () => [] });
+  let step = 0;
+  const call = async () => (step++ === 0
+    ? { message: { content: '', tool_calls: [{ id: 'w1', type: 'function', function: { name: 'walk_summary', arguments: '{"scope":"all","page":null}' } }] } }
+    : { message: { content: 'Nothing done yet.', tool_calls: [] } });
+  const result = await runSurveyAgentTurn({ history: [], userText: 'sum up', call, toolbox: box, answerValues: ['Y', 'N'] });
+  assert.equal(result.summary.title, 'Security: summary of the whole survey');
 });

@@ -53,7 +53,7 @@ const ALSO = {
   'remove-annotations': 'markups comments delete', 'flatten-pdf': 'forms fields', 'watermark-pdf': 'stamp text draft confidential',
   'add-page-numbers': 'pagination bates', 'extract-images': 'save pictures photos', 'remove-blank-pages': 'empty pages scan',
 };
-const keys = (t) => `${t.name} ${t.short} ${t.id.replace(/-/g, ' ')} ${ALSO[t.id] || ''}`.toLowerCase().replace(/"/g, '');
+const keys = (t) => `${t.name} ${t.short} ${t.id.replace(/-/g, ' ')} ${ALSO[t.id] || ''} ${t.trade?.keys || ''}`.toLowerCase().replace(/"/g, '');
 const card = (t) => `<a class="tcard" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
 const byId = (id) => TOOLS.find((t) => t.id === id);
 
@@ -142,7 +142,11 @@ function toolPage(t) {
   <h2>How to ${t.h1.charAt(0).toLowerCase()}${t.h1.slice(1)}</h2>
   <ol class="steps">${t.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
 </div></section>
-<section class="sec tight"><div class="wrap">${why()}</div></section>
+${t.trade ? `<section class="sec"><div class="wrap narrow">
+  <h2>${t.trade.h2}</h2>
+  <p>${t.trade.text}</p>
+</div></section>
+` : ''}<section class="sec tight"><div class="wrap">${why()}</div></section>
 <section class="sec"><div class="wrap narrow"><h2>Questions</h2>${faqList(faq)}</div></section>
 <section class="sec tight"><div class="wrap">
   <h2>More free PDF tools</h2>
@@ -192,6 +196,13 @@ ${GROUPS.map(([g, label]) => `<section class="sec tight tgroup" data-group="${g}
 ${APP_PITCH}`,
   scripts: SCRIPT,
 });
+
+// Search results cut titles past about 60 characters and descriptions past
+// about 160, so fail the build instead of shipping a clipped snippet.
+for (const t of TOOLS) {
+  if (t.title.length > 60) throw new Error(`${t.id}: title is ${t.title.length} characters (max 60)`);
+  if (t.desc.length > 160) throw new Error(`${t.id}: desc is ${t.desc.length} characters (max 160)`);
+}
 
 rmSync(root, { recursive: true, force: true });
 const out = { 'index.html': hub, ...Object.fromEntries(TOOLS.map((t) => [`${t.id}/index.html`, toolPage(t)])) };

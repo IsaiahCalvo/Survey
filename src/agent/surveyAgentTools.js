@@ -6,9 +6,15 @@
 import { answerSetFor } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
 import { normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
-import { boundsCover, markerBoxAroundTag } from './planText.js';
+import { boundsCover, markerBoxAroundTag, tagShape } from './planText.js';
+import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
 
 export { normalizeItemName, scoreItemName };
+
+// One add_all_from_plan call adds at most this many; the rest on asking again.
+const MAX_BULK_ITEMS = 60;
+// survey_status names at most this many items per group; the counts are whole.
+const STATUS_LIST_MAX = 20;
 
 // The panel fills this while Survey mode is open (SurveySpacesRail).
 export const surveyAgentBridge = { current: null };
@@ -56,6 +62,52 @@ const out = (value) => (typeof value === 'string' ? value : JSON.stringify(value
 
 class ToolError extends Error {}
 
+// A browser agent has no file to drop, so survey_add_photo takes the image as
+// base64 (optionally a data: URL). Decode it to a Blob the upload path accepts,
+// and cap the size so a huge paste can't be forced through.
+const PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+// Sniff the real image type from the first bytes. The declared MIME (from a
+// data: URL) is not trusted — a caller could label any bytes image/jpeg — so
+// the content itself decides, and anything we don't recognise is refused.
+function sniffImageMime(b) {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
+    && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return 'image/png';
+  if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46
+    && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  // ISO-BMFF (HEIC/HEIF, iPhone photos): "....ftyp<brand>".
+  if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+    const brand = String.fromCharCode(b[8], b[9], b[10], b[11]).toLowerCase();
+    if (['heic', 'heix', 'hevc', 'heif', 'mif1', 'msf1'].includes(brand)) return 'image/heic';
+  }
+  return null;
+}
+
+function decodePhotoBase64(input) {
+  const raw = String(input || '').trim();
+  if (!raw) throw new ToolError('No image data given.');
+  // Drop a data: URL prefix if present; what follows the first comma is the
+  // base64 payload. A bare base64 string is taken whole.
+  const comma = raw.startsWith('data:') ? raw.indexOf(',') : -1;
+  const b64 = (comma >= 0 ? raw.slice(comma + 1) : raw).replace(/\s+/g, '');
+  let bytes;
+  try {
+    const bin = atob(b64);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  } catch {
+    throw new ToolError('The image data is not valid base64.');
+  }
+  if (!bytes.length) throw new ToolError('The image data is empty.');
+  if (bytes.length > PHOTO_MAX_BYTES) {
+    throw new ToolError(`The photo is too large (${Math.round(bytes.length / (1024 * 1024))}MB). The limit is ${PHOTO_MAX_BYTES / (1024 * 1024)}MB.`);
+  }
+  const mime = sniffImageMime(bytes);
+  if (!mime) throw new ToolError('That is not a supported image (JPEG, PNG, GIF, WebP or HEIC).');
+  return new Blob([bytes], { type: mime });
+}
+
 /**
  * attachments: Map of attachment id -> { file, kind, name } the person added
  * in this chat. documentId: the document the turn started on; once the person
@@ -76,6 +128,9 @@ export function createSurveyAgentToolbox({
   undoLastTurn = null,
   extraTools = [],
   getDocument = null,
+  requestPhoto = null,
+  // Ids of the items worked on in this chat, for the end-of-walk summary.
+  walkItems = null,
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -90,14 +145,66 @@ export function createSurveyAgentToolbox({
     if (!marker) throw new ToolError(`No item with id ${itemId}. Use find_items to get an id.`);
     return marker;
   };
+  // set_answers by name, so "D-117 lock yes" is one model step: only a
+  // single clear match is used; anything else sends the model back to ask.
+  const markerIdByName = (b, name) => {
+    const heard = String(name || '').trim();
+    if (!heard) throw new ToolError('Give item_id or item_name.');
+    const { find } = categoryIndex(b.template);
+    const scored = Object.entries(b.markers || {})
+      .filter(([, marker]) => marker)
+      .map(([id, marker]) => ({ id, name: nameOf(marker), score: scoreItemName(heard, marker.name, find(marker.moduleId, marker.categoryId)?.category?.name) }))
+      .filter((m) => m.score >= 0.5);
+    const exact = scored.filter((m) => m.score >= 1);
+    if (exact.length === 1) return exact[0].id;
+    if (!exact.length && scored.length === 1) return scored[0].id;
+    if (!scored.length) throw new ToolError(`No item named ${heard}. Check with find_items or find_on_plan; nothing changed.`);
+    const names = (exact.length ? exact : scored).map((m) => m.name).sort((a, b2) => a.localeCompare(b2, undefined, { numeric: true }));
+    throw new ToolError(`Several items match ${heard}: ${names.slice(0, 5).join(', ')}. Ask which one; nothing changed.`);
+  };
   const writable = (b) => {
     if (b.canEdit === false) throw new ToolError('This person can only view this document, so nothing can be changed.');
   };
   const nameOf = (marker) => marker?.name || 'Unnamed item';
+  // Uploads files to an item's note, as a person adding them would.
+  const attachFiles = async (b, itemId, marker, files) => {
+    const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
+    const refs = [];
+    for (const a of files) refs.push(await b.uploadMedia(itemId, a.file, a.kind));
+    b.addMediaRefs(itemId, refs);
+    field.afterMedia = mediaCountOf(marker.note) + refs.length;
+    const what = files.length === 1 && files[0].kind === 'photo' ? 'photo' : `file${refs.length === 1 ? '' : 's'}`;
+    return {
+      content: `Attached ${refs.length} ${what} to ${nameOf(marker)}.`,
+      change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${refs.length} ${what} attached`, fields: [field] },
+    };
+  };
   // Plan matches from find_on_plan in this chat, so create_item takes an id
   // instead of coordinates the model could make up.
   const planMatches = new Map();
   const extras = new Map((extraTools || []).map((t) => [String(t.name).replace(/^survey_/, ''), t]));
+
+  // Where new items go: a category from the template, and maybe an entity.
+  const itemTarget = (b, categoryId, entityId) => {
+    writable(b);
+    if (typeof b.createItem !== 'function') throw new ToolError('Items cannot be added here.');
+    const entry = categoryIndex(b.template).list.find(({ category }) => category.id === categoryId);
+    if (!entry) throw new ToolError(`No category with id ${categoryId}. Use get_survey_context.`);
+    const entity = entityId ? entitiesOf(b.template).find((e) => e.id === entityId) : null;
+    if (entityId && !entity) throw new ToolError(`No entity with id ${entityId}.`);
+    return { entry, entity };
+  };
+  const sameNamed = (b, categoryId, name) => Object.entries(b.markers || {}).find(([, m]) => m?.categoryId === categoryId
+    && normalizeItemName(m.name) === normalizeItemName(name));
+  const addItem = (b, entry, entity, name, page, tagBox) => b.createItem({
+    name,
+    moduleId: entry.module.id,
+    categoryId: entry.category.id,
+    entityId: entity?.id || null,
+    page,
+    bounds: markerBoxAroundTag(tagBox, b.getPageSize?.(page) || null),
+  });
+  const createdChange = (b, itemId, label) => ({ itemId, documentId: b.documentId || null, label, fields: [{ type: 'create' }] });
 
   // A spot just right of an item's box (or of a tag found on the plan), or
   // left of it when that runs off the page: where a person means by "a note
@@ -146,9 +253,12 @@ export function createSurveyAgentToolbox({
       const b = bridge();
       const { list } = categoryIndex(b.template);
       const counts = new Map();
+      // One name per category, so "add all doors" knows what a door tag looks like.
+      const examples = new Map();
       for (const marker of Object.values(b.markers || {})) {
         const key = marker?.categoryId;
         if (key) counts.set(key, (counts.get(key) || 0) + 1);
+        if (key && !examples.has(key) && String(marker.name || '').trim()) examples.set(key, String(marker.name).trim());
       }
       const multiModule = modulesOf(b.template).length > 1;
       const selected = b.selectedMarkerId && b.markers?.[b.selectedMarkerId];
@@ -161,10 +271,12 @@ export function createSurveyAgentToolbox({
             name: category.name,
             ...(multiModule ? { module: module.name } : {}),
             item_count: counts.get(category.id) || 0,
+            ...(examples.has(category.id) ? { example_item: examples.get(category.id) } : {}),
             checklist: activeChecklist(category).map((item) => ({ id: item.id, text: itemText(item) })),
           })),
           entities: entitiesOf(b.template).map((e) => ({ id: e.id, name: e.name })),
           selected_item: selected ? { id: b.selectedMarkerId, name: nameOf(selected) } : null,
+          page_on_screen: b.getCurrentPage?.() || null,
           can_edit: b.canEdit !== false,
         }),
       };
@@ -217,9 +329,10 @@ export function createSurveyAgentToolbox({
       };
     },
 
-    set_answers({ item_id: itemId, answers } = {}) {
+    set_answers({ item_id: givenId, item_name: itemName, answers } = {}) {
       const b = bridge();
       writable(b);
+      const itemId = givenId || markerIdByName(b, itemName);
       const marker = markerOf(b, itemId);
       const entry = categoryIndex(b.template).find(marker.moduleId, marker.categoryId);
       if (!entry) throw new ToolError('This item has no category in the template, so it has no checklist.');
@@ -239,7 +352,7 @@ export function createSurveyAgentToolbox({
       b.setAnswers(itemId, list.map((a) => ({ checklistItemId: a.checklist_item_id, value: a.value })));
       const label = list.map((a) => `${itemText(checklist.get(a.checklist_item_id))} = ${a.value}`).join('; ');
       return {
-        content: `Set ${list.length} answer${list.length === 1 ? '' : 's'} on ${nameOf(marker)}.`,
+        content: `Set ${list.length} answer${list.length === 1 ? '' : 's'} on ${nameOf(marker)}${givenId ? '' : ` (item id ${itemId})`}.`,
         change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${label}`, fields },
       };
     },
@@ -288,18 +401,58 @@ export function createSurveyAgentToolbox({
       const list = (Array.isArray(ids) ? ids : []).map((id) => [id, attachments.get(id)]);
       const missing = list.filter(([, a]) => !a || a.attachedTo).map(([id]) => id);
       if (!list.length || missing.length) throw new ToolError(`No unattached file with id ${missing.join(', ') || '(none)'} in this chat.`);
-      const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
-      const refs = [];
-      for (const [, a] of list) {
-        refs.push(await b.uploadMedia(itemId, a.file, a.kind));
-      }
-      b.addMediaRefs(itemId, refs);
+      const result = await attachFiles(b, itemId, marker, list.map(([, a]) => a));
       for (const [, a] of list) a.attachedTo = itemId;
-      field.afterMedia = mediaCountOf(marker.note) + refs.length;
+      return result;
+    },
+
+    async take_photo({ item_id: itemId } = {}) {
+      const b = bridge();
+      writable(b);
+      const marker = markerOf(b, itemId);
+      if (typeof requestPhoto !== 'function') throw new ToolError('The camera cannot be opened here. Ask the person to attach a photo instead.');
+      const file = await requestPhoto({ itemId, name: nameOf(marker) });
+      if (!file) return { content: `The person closed the camera without taking a photo for ${nameOf(marker)}.` };
+      // The item may have changed while the camera was open.
+      return attachFiles(b, itemId, markerOf(bridge(), itemId), [{ file, kind: 'photo' }]);
+    },
+
+    async add_photo({ item_id: itemId, image_base64: imageBase64 } = {}) {
+      const b = bridge();
+      writable(b);
+      const marker = markerOf(b, itemId);
+      const blob = decodePhotoBase64(imageBase64);
+      const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
+      const ref = await b.uploadMedia(itemId, blob, 'photo');
+      b.addMediaRefs(itemId, [ref]);
+      field.afterMedia = mediaCountOf(marker.note) + 1;
       return {
-        content: `Attached ${refs.length} file${refs.length === 1 ? '' : 's'} to ${nameOf(marker)}.`,
-        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${refs.length} file${refs.length === 1 ? '' : 's'} attached`, fields: [field] },
+        content: `Added a photo to ${nameOf(marker)}.`,
+        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: photo added`, fields: [field] },
       };
+    },
+
+    export_summary() {
+      const b = bridge();
+      const { list } = categoryIndex(b.template);
+      const markers = Object.values(b.markers || {});
+      const catCounts = new Map();
+      const entCounts = new Map();
+      for (const marker of markers) {
+        if (marker?.categoryId) catCounts.set(marker.categoryId, (catCounts.get(marker.categoryId) || 0) + 1);
+        const key = marker?.entityId || null;
+        entCounts.set(key, (entCounts.get(key) || 0) + 1);
+      }
+      const entities = entitiesOf(b.template);
+      const lines = [`${b.template.name || 'Survey'} — ${markers.length} item${markers.length === 1 ? '' : 's'}`, '', 'By category:'];
+      for (const { category } of list) lines.push(`- ${category.name}: ${catCounts.get(category.id) || 0}`);
+      if (entities.length) {
+        lines.push('', 'By status:');
+        for (const entity of entities) lines.push(`- ${entity.name}: ${entCounts.get(entity.id) || 0}`);
+        const none = entCounts.get(null) || 0;
+        if (none) lines.push(`- (no status): ${none}`);
+      }
+      return { content: lines.join('\n') };
     },
 
     async find_on_plan({ text } = {}) {
@@ -330,37 +483,112 @@ export function createSurveyAgentToolbox({
 
     create_item({ name, category_id: categoryId, plan_match_id: matchId, entity_id: entityId = null } = {}) {
       const b = bridge();
-      writable(b);
-      if (typeof b.createItem !== 'function') throw new ToolError('Items cannot be added here.');
+      const { entry, entity } = itemTarget(b, categoryId, entityId);
       const itemName = String(name || '').trim().slice(0, 120);
       if (!itemName) throw new ToolError('Give the item a name.');
-      const entry = categoryIndex(b.template).list.find(({ category }) => category.id === categoryId);
-      if (!entry) throw new ToolError(`No category with id ${categoryId}. Use get_survey_context.`);
-      const entity = entityId ? entitiesOf(b.template).find((e) => e.id === entityId) : null;
-      if (entityId && !entity) throw new ToolError(`No entity with id ${entityId}.`);
       const match = planMatches.get(matchId);
       if (!match) throw new ToolError(`No plan match ${matchId}. Use find_on_plan first.`);
-      const same = Object.entries(b.markers || {}).find(([, m]) => m?.categoryId === categoryId
-        && normalizeItemName(m.name) === normalizeItemName(itemName));
+      const same = sameNamed(b, categoryId, itemName);
       if (same) throw new ToolError(`${nameOf(same[1])} already exists (id ${same[0]}).`);
-      const bounds = markerBoxAroundTag(match.box, b.getPageSize?.(match.page) || null);
-      const itemId = b.createItem({
-        name: itemName,
-        moduleId: entry.module.id,
-        categoryId,
-        entityId: entity?.id || null,
-        page: match.page,
-        bounds,
-      });
+      const itemId = addItem(b, entry, entity, itemName, match.page, match.box);
       if (!itemId) throw new ToolError('The item could not be added. Is Survey mode open on this document?');
       return {
         content: `Added ${itemName} (${entry.category.name}) on page ${match.page}, id ${itemId}.`,
-        change: {
-          itemId,
-          documentId: b.documentId || null,
-          label: `Added ${itemName} (${entry.category.name}) on page ${match.page}`,
-          fields: [{ type: 'create' }],
-        },
+        change: createdChange(b, itemId, `Added ${itemName} (${entry.category.name}) on page ${match.page}`),
+      };
+    },
+
+    // "Add all doors on this sheet": every tag shaped like the example on
+    // one page, as items of one category, skipping ones already items.
+    async add_all_from_plan({ category_id: categoryId, like, page, entity_id: entityId = null } = {}) {
+      const b = bridge();
+      const { entry, entity } = itemTarget(b, categoryId, entityId);
+      if (typeof b.findAllOnPlan !== 'function') throw new ToolError('The plan cannot be searched here.');
+      if (!tagShape(like)) throw new ToolError('Give an example tag with its letters, for example D-117, so I know what to look for.');
+      const onPage = Number(page) || b.getCurrentPage?.() || null;
+      if (!onPage) throw new ToolError('Say which page to look on.');
+      const { matches, unread } = await b.findAllOnPlan(like, onPage);
+      if (unread) throw new ToolError(`Page ${onPage} has no text to read. Run text recognition on it first.`);
+      const markers = Object.entries(b.markers || {});
+      const fresh = matches.filter((m) => !sameNamed(b, categoryId, m.name)
+        && !markers.some(([, marker]) => marker?.pageNumber === onPage && boundsCover(marker.bounds, m.box)));
+      const already = matches.length - fresh.length;
+      const added = [];
+      const changes = [];
+      for (const m of fresh.slice(0, MAX_BULK_ITEMS)) {
+        const itemId = addItem(b, entry, entity, m.name, onPage, m.box);
+        if (!itemId) break;
+        added.push(m.name);
+        changes.push(createdChange(b, itemId, `Added ${m.name} (${entry.category.name}) on page ${onPage}`));
+      }
+      if (fresh.length && !added.length) throw new ToolError('The items could not be added. Is Survey mode open on this document?');
+      const parts = [`Found ${matches.length} tag${matches.length === 1 ? '' : 's'} like ${like} on page ${onPage}.`];
+      if (added.length) parts.push(`Added ${added.length} as ${entry.category.name}: ${added.join(', ')}.`);
+      if (already) parts.push(already === 1 ? '1 was already an item.' : `${already} were already items.`);
+      if (fresh.length > added.length) parts.push(`${fresh.length - added.length} more not added; ask again to add the rest.`);
+      return { content: parts.join(' '), changes };
+    },
+
+    // "What's left on this sheet?": each item's checklist progress on one
+    // page (default the page on screen) or the whole survey.
+    survey_status({ page = null, all_pages: allPages = false } = {}) {
+      const b = bridge();
+      const onPage = allPages ? null : (Number(page) || b.getCurrentPage?.() || null);
+      const index = categoryIndex(b.template);
+      const items = Object.entries(b.markers || {})
+        .filter(([, m]) => m && (onPage == null || m.pageNumber === onPage))
+        .map(([id, m]) => {
+          const entry = index.find(m.moduleId, m.categoryId);
+          const checklist = entry ? activeChecklist(entry.category) : [];
+          const responses = m.checklistResponses || {};
+          const missing = checklist.filter((c) => !responses[c.id]?.selection).map(itemText);
+          return { id, name: nameOf(m), total: checklist.length, missing };
+        })
+        .sort((x, y) => x.name.localeCompare(y.name, undefined, { numeric: true }));
+      const done = items.filter((i) => !i.missing.length);
+      const notStarted = items.filter((i) => i.total && i.missing.length === i.total);
+      const partly = items.filter((i) => i.missing.length && i.missing.length < i.total);
+      const names = (list) => list.slice(0, STATUS_LIST_MAX).map((i) => i.name);
+      return {
+        content: out({
+          scope: onPage == null ? 'whole survey' : `page ${onPage}`,
+          items: items.length,
+          done: done.length,
+          not_started: { count: notStarted.length, names: names(notStarted) },
+          partly_done: {
+            count: partly.length,
+            items: partly.slice(0, STATUS_LIST_MAX).map((i) => ({ name: i.name, missing: i.missing.slice(0, 6) })),
+          },
+        }),
+      };
+    },
+
+    // "Wrap up": what this walk did (the items worked on in this chat), or
+    // a page, or the whole survey, with the items that have issues. The
+    // panel offers the text to save or share.
+    walk_summary({ scope = 'walk', page = null } = {}) {
+      const b = bridge();
+      const walked = typeof walkItems === 'function' ? walkItems() : [];
+      const useWalk = scope === 'walk' && walked.length > 0;
+      const onPage = scope === 'page' ? (Number(page) || b.getCurrentPage?.() || null) : null;
+      const summary = summarizeSurvey({ template: b.template, markers: b.markers, itemIds: useWalk ? walked : null, page: onPage });
+      const label = useWalk ? 'this walk' : onPage ? `page ${onPage}` : 'the whole survey';
+      const title = `${b.template.name || 'Survey'}: summary of ${label}`;
+      return {
+        content: out({
+          scope: label,
+          ...(scope === 'walk' && !useWalk ? { note: 'Nothing was worked on in this chat yet, so this is the whole survey.' } : {}),
+          totals: summary.totals,
+          categories: summary.categories.map((c) => ({
+            name: c.name,
+            items: c.items,
+            done: c.done,
+            partly_done: c.partly,
+            not_started: c.notStarted,
+            with_issues: c.issues.slice(0, STATUS_LIST_MAX).map((i) => ({ name: i.name, issues: i.lines.slice(0, 4).map((l) => `${l.text} = ${l.answer}`) })),
+          })),
+        }),
+        summary: { title, text: summaryText(summary, { title }) },
       };
     },
 

@@ -1469,6 +1469,18 @@ export default function App({ devPreviewReturnTab = null }) {
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A free tool (/tools) used before signing in or signing up: report which
+  // one, once, now that analytics can take the event (src/tools/funnel.js).
+  useEffect(() => {
+    if (!user?.id) return;
+    Promise.all([import('./tools/funnel.js'), import('./utils/surveyAnalytics')])
+      .then(([{ takeFreeToolFunnel }, { trackSurveyAnalyticsEvent }]) => {
+        const report = takeFreeToolFunnel(user);
+        if (report) trackSurveyAnalyticsEvent(report.event, report.properties);
+      })
+      .catch(() => {});
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Someone who opened an invite link while signed out comes back here after
   // signing in; send them on to the invite page so the invite is accepted.
   useEffect(() => {
@@ -1957,7 +1969,9 @@ export default function App({ devPreviewReturnTab = null }) {
   // stored copy for the tools to read, so Dashboard explains that instead.
   const openPdfToolsForActiveTab = () => {
     const file = tabs.find((t) => t.id === activeTabId)?.file;
-    dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null }]);
+    // The open tab already holds the PDF, so the tools work offline too.
+    const blob = file instanceof Blob && file.size > 0 ? file : null;
+    dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null, blob }]);
   };
   const openPdfToolsRef = useRef(openPdfToolsForActiveTab);
   openPdfToolsRef.current = openPdfToolsForActiveTab;
@@ -2109,7 +2123,8 @@ export default function App({ devPreviewReturnTab = null }) {
       </AnnotationDropdown>
     );
   };
-  useDropInRow(textBarEl, textFormatRowEl, chromeMotion);
+  // The text controls live in row 2 now (#10): they come with its crossfade.
+  useDropInRow(textBarEl, textFormatRowEl, false);
   const selectArmed = !!bottomToolbarApi && isSelectFamilyTool(bottomToolbarApi.activeTool);
   const selectModesInToolBar = selectArmed && toolBarGroup === 'select';
   // Owner 2026-10-01 (Spaces toolbar): "it shouldn't be in a floating toolbar
@@ -2306,6 +2321,12 @@ export default function App({ devPreviewReturnTab = null }) {
   // lets the viewer add scroll room so the page can be scrolled out from under
   // every strip in it (owner 2026-09-23, src/utils/viewerTopOverlay.js).
   const subToolbarHostRef = useViewerTopOverlayRef();
+  // First run walk 2026-10-21 (#10): an empty, see-through strip the height of
+  // row 2, always over the top of the desktop viewer. The viewer opens a
+  // document with its room already made (PdfjsViewerContainer), so when a
+  // tool's settings row drops in it lands in that room: the page neither
+  // moves nor gets covered.
+  const formatRowReserveRef = useViewerTopOverlayRef();
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -3244,7 +3265,11 @@ export default function App({ devPreviewReturnTab = null }) {
                   rectangle swatch until they migrate. */}
               <div data-toolbar-settings-row="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-settings-gap, var(--chrome-gap))', position: 'relative' }}>
                 {areasMode && renderAreaActions()}
-                {showTextFormatting && !surveyRowShown && textFormatRowEl && createPortal(
+                {/* First run walk 2026-10-21 (#10): the text formatting
+                    controls now sit IN row 2, after the Aa button, instead of
+                    in a third bar under it - two stacked bars covered a row of
+                    the page more than the others. */}
+                {showTextFormatting && !surveyRowShown && (
                   /* 2026-05-26: the formatting controls drop into the sub-row
                      beneath the top strip (mirrors the Draw / Shape category
                      sub-rows). The inline strip's swatch, width input and Aa
@@ -3281,7 +3306,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     data-text-row-step={textRowLookNow.step}
                     data-text-row-valign={bottomToolbarApi?.textVerticalAlignSupported !== false ? 'true' : 'false'}
                     style={{
-                      width: '100%', height: 'var(--chrome-bar-h)', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', borderTop: 'none', cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: `${textFormatRowLeft}px`, gap: 'var(--chrome-row-gap)', zIndex: 10, boxSizing: 'border-box',
+                      height: '100%', marginLeft: `${TEXT_ROW_CAPTION_ROOM}px`, cursor: 'default', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 'var(--chrome-row-gap)', boxSizing: 'border-box',
                       ...(textRowLookNow.tight ? {
                         '--chrome-row-gap': `${TIGHT_SPACING.gap}px`,
                         '--chrome-divider-inset': `${TIGHT_SPACING.inset}px`,
@@ -3563,8 +3588,7 @@ export default function App({ devPreviewReturnTab = null }) {
                         </button>
                       );
                     }))}
-                  </div>,
-                  textFormatRowEl
+                  </div>
                 )}
                 <>
                 {/* PASS 7 (board 13, owner ruling): the ERASER's two kinds are a
@@ -4372,6 +4396,21 @@ export default function App({ devPreviewReturnTab = null }) {
                 2026-09-23 (owner): it still never pushes the page down, but the
                 viewer gives the page matching scroll room above page 1, so you
                 can scroll the top of the page out from underneath the strips. */}
+            <div
+              ref={formatRowReserveRef}
+              aria-hidden="true"
+              data-viewer-top-reserve="true"
+              style={{
+                display: isViewerVisible && !isMobileViewer ? 'block' : 'none',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 'calc(var(--chrome-bar-h) + 1px)',
+                pointerEvents: 'none',
+                visibility: 'hidden',
+              }}
+            />
             <div
               id="chrome-sub-toolbar-host"
               ref={subToolbarHostRef}

@@ -10,6 +10,11 @@ export default {
   lede: 'Put the pages in booklet order, two to a side, so you can print, fold in half and staple.',
   accept: 'pdf', multiple: false, batch: true, action: 'Make booklet',
   steps: ['Choose a PDF.', 'Pick the paper you will print on.', 'Press Make booklet, then print on both sides, flipping on the short edge. Fold the stack and staple the fold.'],
+  trade: {
+    h2: 'Print a spec section or safety plan as a booklet',
+    text: 'Fold a spec section, a site safety plan or an equipment manual into a booklet that is easy to carry on site.',
+    keys: 'spec section safety plan manual',
+  },
   faq: [
     ['How do I print it?', 'Print on both sides of the paper and choose "flip on short edge". Keep the sheets in order, fold the whole stack in half and staple along the fold.'],
     ['Why were blank pages added?', 'Each folded sheet holds 4 pages, so a booklet needs a multiple of 4. Blank pages are added at the end to make it fit.'],

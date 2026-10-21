@@ -138,6 +138,56 @@ test('Survey agent fills an item from a typed message and undoes it', async ({ p
   await expect.poll(async () => JSON.stringify((await readMarker(page))?.note || '')).not.toContain('No power at the door.');
 });
 
+// "D-117 power no" in one model step: set_answers takes the name as heard.
+test('Survey agent sets an answer by item name with no separate search', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await page.route('**/functions/v1/survey-agent', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+      return;
+    }
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    const reply = (json) => route.fulfill({
+      status: 200,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+      body: JSON.stringify(json),
+    });
+    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
+    const tools = body.messages.filter((m) => m.role === 'tool');
+    if (!tools.length) {
+      return reply({ message: { content: '', tool_calls: [
+        { id: 'n1', type: 'function', function: { name: 'set_answers', arguments: JSON.stringify({ item_name: 'D one seventeen', answers: [{ checklist_item_id: 'cl-power', value: 'N' }] }) } },
+      ] } });
+    }
+    return reply({ message: { content: 'D-117 power is N.', tool_calls: [] } });
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await input.fill('D one seventeen power no');
+  await input.press('Enter');
+
+  await expect(panel.getByText('D-117 power is N.')).toBeVisible();
+  await expect(panel.getByTestId('survey-agent-changes')).toContainText('Power at door = N');
+  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
+  // Two model calls (write, words) instead of three (find, write, words).
+  expect(calls.filter((c) => c.action === 'turn')).toHaveLength(2);
+});
+
 // Phase 2 (KAL-528): the model finds a tag on the plan and adds it as an item.
 // Page 2 of this PDF is rotated 90 degrees, so the box has to follow the
 // rotation to land on the printed word.
@@ -269,6 +319,115 @@ test('With no signal a message waits, then sends when the signal is back; the al
   await expect(panel.getByText('D-117: power is N and I added a note.')).toBeVisible({ timeout: 30_000 });
   await expect(panel.getByText('Waiting for signal')).toHaveCount(0);
   await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
+});
+
+test('With no signal a message is kept on the device: closing the chat keeps it, and it sends once back online', async ({ page, context }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '1');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+    // The device voice, silent: keep what would be said.
+    window.__said = [];
+    if (window.speechSynthesis) {
+      window.speechSynthesis.speak = (u) => { window.__said.push(u.text); setTimeout(() => u.onend?.(), 0); };
+      window.speechSynthesis.cancel = () => {};
+    }
+  }, { template: TEMPLATE, data });
+  await mockModel(page, calls);
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  const open = page.getByRole('button', { name: 'Survey agent: talk or type to fill items' });
+  await open.click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+
+  await context.setOffline(true);
+  await input.fill('door 117 has no power');
+  await input.press('Enter');
+  await expect(panel.getByText('Waiting for signal')).toBeVisible();
+  // Said out loud, in the device's own voice (no signal for the server's).
+  await expect.poll(() => page.evaluate(() => window.__said)).toContain('No signal. I saved that and will send it when you are back online.');
+
+  // Closing the chat keeps the message on the device.
+  await panel.getByRole('button', { name: 'Close Survey agent' }).click();
+  await expect(panel).toHaveCount(0);
+  await open.click();
+  await expect(panel.getByText('door 117 has no power')).toBeVisible();
+  await expect(panel.getByText('Waiting for signal')).toBeVisible();
+  expect(calls.filter((c) => c.action === 'turn')).toHaveLength(0);
+
+  await context.setOffline(false);
+  await expect(panel.getByText('D-117: power is N and I added a note.')).toBeVisible({ timeout: 40_000 });
+  await expect(panel.getByText('Waiting for signal')).toHaveCount(0);
+  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
+  // Each said once: the retries while offline stay quiet.
+  await expect.poll(() => page.evaluate(() => window.__said)).toEqual([
+    'No signal. I saved that and will send it when you are back online.',
+    'D 117: power is N and I added a note.',
+  ]);
+
+  // Sent once: opening the chat again does not send it again.
+  await panel.getByRole('button', { name: 'Close Survey agent' }).click();
+  await open.click();
+  await expect(panel.getByRole('textbox', { name: 'Message the Survey agent' })).toBeEnabled();
+  await page.waitForTimeout(1500);
+  await expect(panel.getByText('door 117 has no power')).toHaveCount(0);
+  expect(calls.filter((c) => c.action === 'turn')).toHaveLength(3);
+});
+
+test('A message that hits the per-minute limit waits and sends a moment later, instead of being lost', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '1');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+    window.__said = [];
+    if (window.speechSynthesis) {
+      window.speechSynthesis.speak = (u) => { window.__said.push(u.text); setTimeout(() => u.onend?.(), 0); };
+      window.speechSynthesis.cancel = () => {};
+    }
+  }, { template: TEMPLATE, data });
+  await mockModel(page, calls);
+  // The first three model calls hit the per-minute limit (the first try and
+  // both retries); after that the limit has cleared.
+  let refusals = 3;
+  // Registered last, so it answers first.
+  await page.route('**/functions/v1/survey-agent', async (route, request) => {
+    const body = request.method() === 'POST' ? request.postDataJSON() : null;
+    if (body?.action === 'turn' && refusals > 0) {
+      refusals -= 1;
+      await route.fulfill({ status: 429, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'busy_try_again', retry_after: 1 }) });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await input.fill('door 117 has no power');
+  await input.press('Enter');
+
+  await expect(panel.getByText('Waiting for signal')).toBeVisible({ timeout: 20_000 });
+  await expect(panel.getByRole('status')).toContainText('Busy for a moment. 1 message is waiting and will send shortly.');
+  await expect.poll(() => page.evaluate(() => window.__said)).toContain('That was a lot at once. I saved it and will send it in a moment.');
+  await expect(panel.getByText('D-117: power is N and I added a note.')).toBeVisible({ timeout: 40_000 });
+  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
+  expect(refusals).toBe(0);
 });
 
 // Shared markup tools (annotation-agent flag): "put a note by D-117" lands a

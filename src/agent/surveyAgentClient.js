@@ -28,6 +28,8 @@ export class SurveyAgentError extends Error {
   }
 }
 
+const CALL_TIMEOUT_MS = { status: 15_000, turn: 45_000, transcribe: 30_000, speak: 20_000 };
+
 const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 
 // Calls the edge function through supabase-js (it adds the person's JWT).
@@ -37,12 +39,16 @@ export function makeSurveyAgentCaller(supabase, { onUsage } = {}) {
     // No Supabase config (offline builds, local test runs): nothing to call.
     if (!supabase?.functions) throw new SurveyAgentError('not_set_up');
     if (isOffline()) throw new SurveyAgentError('offline');
-    const { data, error } = await supabase.functions.invoke('survey-agent', { body: payload });
+    // A weak signal can leave a call hanging; give up so the message waits.
+    const timeout = CALL_TIMEOUT_MS[payload?.action] || CALL_TIMEOUT_MS.turn;
+    const { data, error } = await supabase.functions.invoke('survey-agent', { body: payload, timeout });
     if (error) {
       let body = null;
       try { body = await error.context?.json?.(); } catch { /* not JSON */ }
       if (body?.usage_left) onUsage?.(body.usage_left);
-      throw new SurveyAgentError(body?.error || (isOffline() ? 'offline' : 'network'), { retryAfter: body?.retry_after ?? null });
+      // A reply with no error code is the server failing, not the signal.
+      const answered = typeof error.context?.status === 'number';
+      throw new SurveyAgentError(body?.error || (answered ? 'server_error' : isOffline() ? 'offline' : 'network'), { retryAfter: body?.retry_after ?? null });
     }
     if (data?.usage_left) onUsage?.(data.usage_left);
     return data;
@@ -52,7 +58,7 @@ export function makeSurveyAgentCaller(supabase, { onUsage } = {}) {
 // Errors worth trying again by themselves: a dropped connection or a busy
 // model. Each call is one model step with no writes on the server, so a
 // repeat cannot double anything.
-const TRANSIENT = new Set(['network', 'busy_try_again', 'model_unavailable', 'transcription_failed']);
+const TRANSIENT = new Set(['network', 'server_error', 'busy_try_again', 'model_unavailable', 'transcription_failed']);
 
 /** The same caller, trying a dropped or busy call again a few times. */
 export function withRetries(call, { delays = [1000, 3000], wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
@@ -104,6 +110,8 @@ const parseArgs = (raw) => {
 export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, annotations = false, maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
   const messages = [...history, { role: 'user', content: userText }];
   const changes = [];
+  // A summary a tool made this turn ({ title, text }), for the person to save.
+  let summary = null;
   for (let step = 0; step < maxSteps; step += 1) {
     let response;
     try {
@@ -118,7 +126,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
       .filter((c) => c?.id && c?.function?.name);
     if (!calls.length) {
       messages.push({ role: 'assistant', content: reply || '(no reply)' });
-      return { history: messages, reply: reply || (changes.length ? 'Done.' : 'I did not change anything.'), changes };
+      return { history: messages, reply: reply || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary };
     }
     messages.push({
       role: 'assistant',
@@ -138,6 +146,8 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
         ? await toolbox.run(c.function.name, args)
         : { content: 'The tool input was not valid JSON. Try again.', isError: true };
       if (result.change) changes.push(result.change);
+      if (result.changes) changes.push(...result.changes);
+      if (result.summary) summary = result.summary;
       messages.push({ role: 'tool', tool_call_id: c.id, content: result.isError ? `Error: ${result.content}` : result.content });
       // Let the panel re-render so the next tool reads the new state.
       await yieldToApp();
@@ -145,5 +155,5 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
   }
   // Too many steps: close the turn so the conversation stays valid.
   messages.push({ role: 'assistant', content: 'I stopped there; that took too many steps.' });
-  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes };
+  return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes, summary };
 }

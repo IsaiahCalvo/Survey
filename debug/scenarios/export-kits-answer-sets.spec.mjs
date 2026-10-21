@@ -97,6 +97,30 @@ test('standard template exports today\'s layout with Y / N / N/A', async ({ page
   expect(ws.getCell('G2').alignment?.horizontal).toBe('center');
   expect(ws.getCell('H2').alignment?.horizontal).toBeUndefined();
   expect(ws.getColumn(8).width).toBe(50);
+  // The Summary sheet is for Survey agent testers only.
+  expect(wb.worksheets.map((w) => w.name)).not.toContain('Summary');
+  expect(errors).toEqual([]);
+});
+
+test('with the Survey agent on, a Summary sheet goes last: counts per category and the items with issues', async ({ page, context }) => {
+  await seed(context);
+  await context.addInitScript(() => localStorage.setItem('SURVEY_AGENT_BETA', '1'));
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  const wb = await surveyAndExport(page, 'Standard Survey', [['Lock type ok', 'Y'], ['Gateway in range', 'N']]);
+  const names = wb.worksheets.map((w) => w.name);
+  expect(names.at(-1)).toBe('Summary');
+  expect(rowValues(sheetOf(wb), 1)).toEqual(['Row ID', 'Changed By', 'Changed Date', 'Item', 'Lock type ok', 'Gateway in range', 'Entity', 'Notes']);
+  const summary = wb.getWorksheet('Summary');
+  const rows = [];
+  summary.eachRow((row) => rows.push(row.values.slice(1)));
+  expect(rows[0]).toEqual(['Standard Survey: summary']);
+  expect(rows[2]).toEqual(['1 item: 1 done, 0 partly done, 0 not started, 1 with issues.']);
+  expect(rows.slice(3, 6)).toEqual([
+    ['Category', 'Items', 'Done', 'Partly done', 'Not started', 'With issues'],
+    ['Level 1', 1, 1, 0, 0, 1],
+    ['Total', 1, 1, 0, 0, 1],
+  ]);
+  expect(rows.at(-1).slice(2)).toEqual(['Gateway in range', 'N']);
   expect(errors).toEqual([]);
 });
 

@@ -1,6 +1,9 @@
 // The free PDF tools at /tools: one entry per page. scripts/build-free-tools.mjs
 // turns this list into the pages under tools/, and build-marketing.mjs puts the
 // paths in the sitemap. src/tools/main.js reads `id` from <body data-tool>.
+// `trade` is an optional short section on the page for construction and
+// field-survey searches (drawing sets, plan sheets, submittals, RFIs):
+// { h2, text (may hold links), keys (extra words for the hub search) }.
 
 export const GROUPS = [
   ['pages', 'Organize pages'],
@@ -24,44 +27,64 @@ export const TOOLS = [
     id: 'merge-pdf', group: 'pages', name: 'Merge PDF', icon: 'merge',
     short: 'Combine several PDFs into one file.',
     title: 'Merge PDF files free, no upload | Survey',
-    desc: 'Combine PDF files into one in your browser. Drag to set the order. Free, no sign-up, and your files never leave your device.',
+    desc: 'Combine PDF files, plan sheets or a submittal package into one file. Drag to set the order. Free, no sign-up, and your files never leave your device.',
     h1: 'Merge PDF files',
-    lede: 'Put several PDFs together in the order you want. It all happens on your device.',
+    lede: 'Put several PDFs together in the order you want, like plan sheets into one drawing set. It all happens on your device.',
     accept: 'pdf', multiple: true, action: 'Merge PDFs',
     steps: ['Choose two or more PDFs, or drop them on the page.', 'Drag the files, or use the arrows, to set the order.', 'Press Merge PDFs and save the new file.'],
+    trade: {
+      h2: 'Merge plan sheets into one drawing set',
+      text: 'Put separate plan sheets back together as one drawing set, in sheet order. It works for a submittal package too: cover sheet, product data and shop drawings in one PDF.',
+      keys: 'drawing set plan sheets combine sheets submittal package shop drawings',
+    },
     faq: [['Can I change the order?', 'Yes. Drag a file, or use its arrow buttons, before you merge.'], ['Does merging lower the quality?', 'No. Pages are copied as they are, with the same text, images and markups.'], PRIVATE, FREE, LIMIT],
   },
   {
     id: 'split-pdf', group: 'pages', name: 'Split PDF', icon: 'split',
     short: 'Break one PDF into several files.',
     title: 'Split a PDF into separate files free | Survey',
-    desc: 'Split a PDF by page ranges, every few pages or into single pages. Runs in your browser, free, with no upload.',
+    desc: 'Split a PDF or drawing set by page ranges, every few pages or one file per sheet. Runs in your browser, free, with no upload.',
     h1: 'Split a PDF',
     lede: 'Cut a PDF into parts by page ranges, every few pages, or one file per page.',
     accept: 'pdf', multiple: false, action: 'Split PDF',
     steps: ['Choose a PDF.', 'Pick how to split it: by ranges, every few pages, or every page.', 'Press Split PDF. More than one file comes as a ZIP.'],
+    trade: {
+      h2: 'Split a drawing set by sheet',
+      text: 'Pick "Every page" to get one PDF per sheet, or type ranges to split out each discipline, like 1-12 for architectural and 13-20 for structural. If the set has a bookmark for each sheet, <a href="/tools/split-by-bookmarks">Split by bookmarks</a> names the files for you.',
+      keys: 'drawing set by sheet plan sheets discipline separate sheets',
+    },
     faq: [['How do I write page ranges?', 'Use commas and dashes, like 1-3, 4-10, 11. Each range becomes its own file.'], ['Why do I get a ZIP?', 'When the split makes more than one file, they come in one ZIP so you save them all at once.'], PRIVATE, FREE, LIMIT],
   },
   {
     id: 'compress-pdf', group: 'size', name: 'Compress PDF', icon: 'compress',
     short: 'Make a PDF smaller to email or upload.',
     title: 'Compress PDF to reduce file size free | Survey',
-    desc: 'Shrink a PDF in your browser with light, medium or strong settings. Free, no sign-up, and your file never leaves your device.',
+    desc: 'Shrink a PDF, scan or drawing set to email or upload, with light, medium or strong settings. Free, no sign-up, and your file never leaves your device.',
     h1: 'Compress a PDF',
     lede: 'Make a PDF smaller so it is quick to email or upload. Pick how hard to squeeze it.',
     accept: 'pdf', multiple: true, action: 'Compress',
     steps: ['Choose one or more PDFs.', 'Pick light, medium or strong.', 'Press Compress and save the smaller file.'],
+    trade: {
+      h2: 'Compress a drawing set to email or upload',
+      text: 'Email and project portals often cap file size. Scanned sheets, as-builts and site photo reports shrink the most. Plan sheets drawn in CAD are mostly lines and text, so they shrink less, but they stay sharp.',
+      keys: 'drawing set plan sheets email attachment too big upload limit site photos as-builts',
+    },
     faq: [['How much smaller will it get?', 'Files full of photos or scans shrink the most. Drawings made of lines and text are already small, so they shrink less.'], ['Will it look worse?', 'Light keeps photos close to the original. Strong makes photos softer to save the most space. Lines and text stay sharp at every setting.'], PRIVATE, FREE, OFFLINE],
   },
   {
     id: 'rotate-pdf', group: 'pages', name: 'Rotate PDF', icon: 'rotate',
     short: 'Turn some or all pages the right way up.',
     title: 'Rotate PDF pages free | Survey',
-    desc: 'Rotate one page or every page of a PDF and save it. Works in your browser, free, with no upload.',
+    desc: 'Rotate one page or every page of a PDF, like plan sheets that scanned sideways, and save it. Works in your browser, free, with no upload.',
     h1: 'Rotate PDF pages',
     lede: 'Turn pages that came out sideways or upside down, then save the fixed PDF.',
     accept: 'pdf', multiple: false, action: 'Save PDF',
     steps: ['Choose a PDF.', 'Turn single pages with their buttons, or turn them all at once.', 'Press Save PDF.'],
+    trade: {
+      h2: 'Rotate plan sheets that scanned sideways',
+      text: 'Large sheets often scan or plot sideways. Turn just those sheets, or the whole set, so every page opens the right way up on a tablet in the field.',
+      keys: 'plan sheets sideways landscape drawing set scanned',
+    },
     faq: [['Is the rotation saved for good?', 'Yes. The pages open the new way in every PDF reader.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -73,6 +96,11 @@ export const TOOLS = [
     lede: 'See every page, drag them into the order you want, turn the sideways ones and drop the extras.',
     accept: 'pdf', multiple: false, action: 'Save PDF',
     steps: ['Choose a PDF.', 'Drag pages, or use the arrows, to reorder. Turn or remove any page.', 'Press Save PDF.'],
+    trade: {
+      h2: 'Put a drawing set in sheet order',
+      text: 'Drag sheets to match the sheet index, turn the ones that came in sideways, and drop duplicates or old sheets before you send the set out.',
+      keys: 'drawing set sheet order sheet index plan sheets reorder sheets',
+    },
     faq: [['Can I undo a change?', 'Yes. Press "Undo all changes" to go back to the pages as they were.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -84,6 +112,11 @@ export const TOOLS = [
     lede: 'Tap the pages you don\'t want, or type their numbers, and save the PDF without them.',
     accept: 'pdf', multiple: false, action: 'Delete pages', pick: 'delete',
     steps: ['Choose a PDF.', 'Tap the pages to remove, or type them, like 2, 5-7.', 'Press Delete pages and save the new file.'],
+    trade: {
+      h2: 'Take superseded sheets out of a set',
+      text: 'When a revision replaces a few sheets, delete the old ones by number, then add the new ones with <a href="/tools/merge-pdf">Merge PDF</a>.',
+      keys: 'superseded sheets old revision drawing set remove sheets',
+    },
     faq: [['Is my original file changed?', 'No. You save a new copy; the original stays as it was.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -95,6 +128,11 @@ export const TOOLS = [
     lede: 'Pick the pages you need and save just those as a new PDF.',
     accept: 'pdf', multiple: false, action: 'Extract pages', pick: 'keep',
     steps: ['Choose a PDF.', 'Tap the pages to keep, or type them, like 1-3, 8.', 'Press Extract pages and save the new file.'],
+    trade: {
+      h2: 'Pull your trade\'s sheets out of the full set',
+      text: 'Save just the electrical sheets, one detail, or the spec section you need, so the crew opens a small file instead of the whole set.',
+      keys: 'trade sheets discipline detail spec section drawing set',
+    },
     faq: [['Can I save each page as its own file?', 'Yes. Turn on "One file per page" and you get a ZIP with a PDF for each page.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -106,6 +144,11 @@ export const TOOLS = [
     lede: 'Turn photos into one PDF, one photo per page. Phone photos come out the right way up.',
     accept: 'image', multiple: true, action: 'Make PDF',
     steps: ['Choose your photos.', 'Set the order, page size and margins.', 'Press Make PDF and save it.'],
+    trade: {
+      h2: 'Turn site photos into a PDF',
+      text: 'Gather site photos for a daily report, punch list or inspection into one PDF, one photo per page, in the order you set.',
+      keys: 'site photos jobsite photo log daily report punch list inspection',
+    },
     faq: [['Can I add PNG or other images too?', 'Yes. JPG, PNG, WebP, GIF and BMP all work, and you can mix them.'], PRIVATE, FREE, LIMIT],
   },
   {
@@ -117,6 +160,11 @@ export const TOOLS = [
     lede: 'Turn screenshots and PNG images into one PDF, sharp and with no loss in quality.',
     accept: 'image', multiple: true, action: 'Make PDF',
     steps: ['Choose your images.', 'Set the order, page size and margins.', 'Press Make PDF and save it.'],
+    trade: {
+      h2: 'Screenshots for an RFI or report',
+      text: 'Turn screenshots of a model view, a detail or a text thread into one PDF you can attach to an RFI or field report.',
+      keys: 'screenshot rfi field report detail',
+    },
     faq: [['Do see-through parts stay see-through?', 'Yes. PNG images keep their clear parts, so they sit on a white page.'], PRIVATE, FREE, LIMIT],
   },
   {
@@ -128,6 +176,11 @@ export const TOOLS = [
     lede: 'Turn any mix of images into one PDF, one image per page.',
     accept: 'image', multiple: true, action: 'Make PDF',
     steps: ['Choose your images.', 'Set the order, page size and margins.', 'Press Make PDF and save it.'],
+    trade: {
+      h2: 'Mixed photos and scans in one file',
+      text: 'Site photos, scanned forms and screenshots often come in different formats. Put them all in one PDF for a field report or closeout package.',
+      keys: 'site photos field report closeout package scans',
+    },
     faq: [['Which image types work?', 'JPG, PNG, WebP, GIF (first frame), BMP and TIFF (every page).'], PRIVATE, FREE, LIMIT],
   },
   {
@@ -139,6 +192,11 @@ export const TOOLS = [
     lede: 'Turn a plain .txt file into a tidy PDF, with long lines wrapped and pages filled in.',
     accept: 'text', multiple: false, action: 'Make PDF',
     steps: ['Choose a text file.', 'Pick the font, text size and page size.', 'Press Make PDF and save it.'],
+    trade: {
+      h2: 'Field notes and point lists to PDF',
+      text: 'Turn field notes, a log or a point list saved as .txt or .csv into a PDF you can print or file with the job. Pick Courier to keep columns lined up.',
+      keys: 'field notes point list csv coordinates log survey data',
+    },
     faq: [['Which letters work?', 'English and Western European letters. Other scripts, like Chinese or Arabic, show as question marks for now.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -150,6 +208,11 @@ export const TOOLS = [
     lede: 'Save each page of a PDF as a JPG image, ready to text, post or drop into a slide.',
     accept: 'pdf', multiple: false, action: 'Make images', format: 'jpg',
     steps: ['Choose a PDF.', 'Pick the quality and which pages.', 'Press Make images. More than one page comes as a ZIP.'],
+    trade: {
+      h2: 'Send a plan sheet as a picture',
+      text: 'Save a sheet or detail as a JPG to text to the crew or drop into a report. Pick High so fine lines and small notes stay readable when zoomed in.',
+      keys: 'plan sheet detail picture text message crew',
+    },
     faq: [['Which quality should I pick?', 'Normal (150 DPI) is right for screens and email. High (300 DPI) is for printing or zooming into fine detail on drawings.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -161,6 +224,11 @@ export const TOOLS = [
     lede: 'Save each page as a PNG, which keeps thin lines and text crisp.',
     accept: 'pdf', multiple: false, action: 'Make images', format: 'png',
     steps: ['Choose a PDF.', 'Pick the quality and which pages.', 'Press Make images. More than one page comes as a ZIP.'],
+    trade: {
+      h2: 'Plan sheets and details as PNG',
+      text: 'PNG keeps the thin lines and small text on drawings crisp. Use it for a detail in a slide, a report or a toolbox talk handout.',
+      keys: 'plan sheet detail drawing image',
+    },
     faq: [['PNG or JPG?', 'PNG is best for drawings, plans and text. JPG makes smaller files for photos.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -172,17 +240,27 @@ export const TOOLS = [
     lede: 'Get every word out of a PDF as a plain text file you can search, paste or edit.',
     accept: 'pdf', multiple: false, action: 'Get text',
     steps: ['Choose a PDF.', 'Press Get text.', 'Save the .txt file.'],
+    trade: {
+      h2: 'Copy text out of specs and minutes',
+      text: 'Get the words out of a spec section or meeting minutes to paste into an email or a takeoff sheet. Scanned pages have no text, so run <a href="/tools/ocr-pdf">OCR PDF</a> first.',
+      keys: 'spec specs specifications copy text meeting minutes',
+    },
     faq: [['Why is my file empty?', 'A scanned PDF is a picture of the page, so it has no text to pull out.'], PRIVATE, FREE, OFFLINE],
   },
   {
     id: 'add-page-numbers', batch: true, group: 'edit', name: 'Add page numbers', icon: 'numbers',
     short: 'Number the pages of a PDF.',
     title: 'Add page numbers to a PDF free | Survey',
-    desc: 'Number PDF pages at the top or bottom, as 1, Page 1 or Page 1 of 10. Free, in your browser, no upload.',
+    desc: 'Number PDF pages, like a submittal package, at the top or bottom as 1, Page 1 or Page 1 of 10. Free, in your browser, no upload.',
     h1: 'Add page numbers to a PDF',
     lede: 'Put numbers on every page, where you want them and how you want them to read.',
     accept: 'pdf', multiple: false, action: 'Add numbers',
     steps: ['Choose a PDF.', 'Pick the spot, the style and the first number.', 'Press Add numbers and save the file.'],
+    trade: {
+      h2: 'Number a submittal package',
+      text: 'Number every page of a submittal or closeout package so reviewers can point to a page in their comments. Skip the cover page, or start at any number.',
+      keys: 'submittal closeout package page count',
+    },
     faq: [['Can I skip the cover page?', 'Yes. Turn on "Skip the first page" and numbering starts on page 2.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -194,6 +272,11 @@ export const TOOLS = [
     lede: 'Stamp words like DRAFT or NOT FOR CONSTRUCTION across every page.',
     accept: 'pdf', multiple: false, action: 'Add watermark',
     steps: ['Choose a PDF.', 'Type the words and pick size, color and how see-through.', 'Press Add watermark and save the file.'],
+    trade: {
+      h2: 'Mark sheets NOT FOR CONSTRUCTION',
+      text: 'Stamp PRELIMINARY, NOT FOR CONSTRUCTION, VOID or SUPERSEDED across a drawing set or spec so nobody builds from the wrong version.',
+      keys: 'not for construction preliminary void superseded issued for bid stamp drawing set',
+    },
     faq: [['Can people remove the watermark?', 'It is drawn into the page, so it can\'t be clicked away. Someone with a full PDF editor could still take it out.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -205,17 +288,27 @@ export const TOOLS = [
     lede: 'Put a project name, a date or "Page 1 of 10" at the top or bottom of every page.',
     accept: 'pdf', multiple: false, action: 'Add text',
     steps: ['Choose a PDF.', 'Type the header and footer. Use {page}, {total}, {date} or {file} to fill those in.', 'Press Add text and save the file.'],
+    trade: {
+      h2: 'Put the project name on every page',
+      text: 'Add the project name, job number and date to every page of a submittal, RFI or field report. Use {page} and {total} for "Page 3 of 12".',
+      keys: 'project name job number submittal rfi field report date',
+    },
     faq: [['What do {page} and {total} do?', 'They turn into the page number and the page count, so the footer can read "Page 3 of 12".'], PRIVATE, FREE, OFFLINE],
   },
   {
     id: 'flatten-pdf', batch: true, group: 'edit', name: 'Flatten PDF', icon: 'flatten',
     short: 'Lock markups and form answers into the page.',
     title: 'Flatten a PDF: lock forms and markups free | Survey',
-    desc: 'Make form answers and markups part of the page, so they print and show the same everywhere and can\'t be changed. Free, no upload.',
+    desc: 'Lock form answers and markups into the page, like a filled-in RFI form, so they show the same everywhere and can\'t be changed. Free, no upload.',
     h1: 'Flatten a PDF',
     lede: 'Lock form answers, comments and markups into the page so they show the same in every app and can\'t be edited.',
     accept: 'pdf', multiple: false, action: 'Flatten',
     steps: ['Choose a PDF.', 'Press Flatten.', 'Save the flattened file.'],
+    trade: {
+      h2: 'Flatten a form before you send an RFI',
+      text: 'Flatten a filled-in RFI, inspection form or daily report so the answers can\'t be changed and look the same for the architect, owner or inspector. Markups on drawings lock in the same way.',
+      keys: 'rfi form inspection daily report lock markups drawings',
+    },
     faq: [['Why flatten a PDF?', 'Some apps hide markups or form answers. Flattening draws them into the page, so everyone sees and prints the same thing.'], ['Do links still work?', 'Yes. Links stay clickable; everything else becomes part of the page.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -227,6 +320,11 @@ export const TOOLS = [
     lede: 'Trim the white edges off every page so the drawing fills more of the screen.',
     accept: 'pdf', multiple: false, action: 'Crop PDF',
     steps: ['Choose a PDF.', 'Pick how much to trim from each edge.', 'Press Crop PDF and save the file.'],
+    trade: {
+      h2: 'Trim the white border off scanned sheets',
+      text: 'Scans and plots often have a wide white border. Trim it so the drawing fills more of a tablet screen in the field. The same trim applies to every edge of every page.',
+      keys: 'scanned sheets border tablet ipad plan sheets margin',
+    },
     faq: [['Is the trimmed part deleted?', 'No. It is hidden, the way most PDF apps crop. A full PDF editor can bring it back.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -238,6 +336,11 @@ export const TOOLS = [
     lede: 'Change the title, author, subject and keywords stored inside a PDF, which apps and search show.',
     accept: 'pdf', multiple: false, action: 'Save details',
     steps: ['Choose a PDF.', 'Change the title, author, subject or keywords.', 'Press Save details and save the file.'],
+    trade: {
+      h2: 'Name the drawing set inside the file',
+      text: 'Set the title to the project and set, like "Level 2 plans, Rev 3", so the browser tab and search show that instead of a bare file name.',
+      keys: 'drawing set title project name revision',
+    },
     faq: [['Where does the title show?', 'In the browser tab and the title bar of most PDF readers, and in search results for PDFs on the web.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -249,6 +352,11 @@ export const TOOLS = [
     lede: 'Get a clean copy without comments, highlights, clouds or sticky notes. Form fields and links stay.',
     accept: 'pdf', multiple: false, action: 'Remove markups',
     steps: ['Choose a PDF.', 'Choose whether to keep links.', 'Press Remove markups and save the clean copy.'],
+    trade: {
+      h2: 'Get a clean set without review comments',
+      text: 'Strip review clouds, comments and sticky notes off a marked-up drawing set before you reissue it or start a new round of review. Flattened markups are part of the page and stay.',
+      keys: 'clean set review comments clouds redlines drawing set',
+    },
     faq: [['Why are some marks still there?', 'Marks that were flattened, or drawn by the app that made the PDF, are part of the page itself, not separate markups.'], PRIVATE, FREE, OFFLINE],
   },
   {
@@ -260,6 +368,11 @@ export const TOOLS = [
     lede: 'Turn a Word document into a PDF without uploading it. Best for letters, reports and specs.',
     accept: 'docx', multiple: false, action: 'Make PDF',
     steps: ['Choose a Word file (.docx).', 'Pick the page size and font.', 'Press Make PDF and save it.'],
+    trade: {
+      h2: 'RFIs, specs and minutes to PDF',
+      text: 'Turn an RFI, a submittal cover letter or meeting minutes written in Word into a PDF to send or file. Specs with headers, footers or columns lose those, so use Word\'s own Save as PDF for them.',
+      keys: 'rfi spec specifications meeting minutes submittal cover letter',
+    },
     faq: [['Will it look exactly like Word?', 'Close for simple documents: headings, bold and italic text, lists, tables, links and pictures carry over. Text boxes, columns, shapes, charts and headers or footers don\'t, and the tool tells you when a file has them.'], ['Can it open old .doc files?', 'Not yet. Open the file in Word, Pages or Google Docs and save it as .docx, then try again.'], ['Why not upload it to a server like other sites?', 'Keeping the file on your device means nobody else ever sees it. For complex layouts, Word\'s own "Save as PDF" gives the most exact result.'], PRIVATE, FREE],
   },
   {
@@ -271,6 +384,11 @@ export const TOOLS = [
     lede: 'Turn TIFF scans, faxes and drawings into one PDF. Every page of a multi-page TIFF comes along.',
     accept: 'tiff', multiple: true, action: 'Make PDF',
     steps: ['Choose one or more TIFF files.', 'Drag them into order and pick a page size.', 'Press Make PDF and save it.'],
+    trade: {
+      h2: 'Old scanned drawings to PDF',
+      text: 'Large-format scanners and old plan archives often save drawings as TIFF. Turn them into one PDF set. With "Same as image", a sheet scanned at 300 DPI keeps its real paper size.',
+      keys: 'scanned drawings as-builts record drawings archive large format scan plans',
+    },
     faq: [['Does it keep every page of a multi-page TIFF?', 'Yes. Each page in the TIFF becomes a page in the PDF, in the same order.'], ['Will the PDF be the right size?', 'Yes. With "Same as image", a scan made at 300 DPI comes out at its real paper size.'], ['Which TIFFs work?', 'Most do, including black and white fax files (Group 3 and 4), LZW, ZIP and JPEG ones.'], PRIVATE, FREE],
   },
   {
@@ -282,6 +400,11 @@ export const TOOLS = [
     lede: 'Draw or type your signature, drag it where it goes, and save the signed PDF.',
     accept: 'pdf', multiple: false, action: 'Sign and save',
     steps: ['Choose a PDF.', 'Draw your signature in the box, or type your name.', 'Drag it into place on the page, then press Sign and save.'],
+    trade: {
+      h2: 'Sign field reports and tickets on site',
+      text: 'Sign a daily report, a time and materials ticket or an inspection form on a phone or tablet, then send the PDF from the job.',
+      keys: 'daily report time and materials ticket inspection form field',
+    },
     faq: [['Is this a legal signature?', 'It is a picture of your signature, like signing a printout. That is fine for most everyday forms. Some contracts need a certified digital signature instead.'], ['Can I sign on a phone or tablet?', 'Yes. Draw with your finger or a pen in the box, then drag the signature into place.'], ['Can I put it on any page?', 'Yes. Use the arrows above the page to pick which page to sign. It starts on the last page.'], PRIVATE, FREE],
   },
   {
@@ -293,6 +416,11 @@ export const TOOLS = [
     lede: 'Lock a PDF so it only opens with your password. Uses strong AES-256 encryption.',
     accept: 'pdf', multiple: false, action: 'Lock PDF',
     steps: ['Choose a PDF.', 'Type a password twice, and choose whether people can print or copy.', 'Press Lock PDF and save it.'],
+    trade: {
+      h2: 'Lock a bid set before you send it',
+      text: 'Add a password to bid documents, pricing or contracts, and choose whether people can print or copy from them.',
+      keys: 'bid set bid documents pricing contract',
+    },
     faq: [['How strong is the lock?', 'It uses AES-256, the strongest kind PDFs support. A long password is what keeps it safe.'], ['What if I forget the password?', 'We never see your password or your file, so we can\'t get it back. Keep the password somewhere safe.'], ['Will it open in other apps?', 'Yes. Adobe Reader, Preview, Chrome, Edge and other PDF apps ask for the password and open it.'], PRIVATE, FREE],
   },
   {
@@ -304,6 +432,11 @@ export const TOOLS = [
     lede: 'Take the password off a PDF so it opens without one. You need to know the password.',
     accept: 'pdf', multiple: false, action: 'Unlock PDF',
     steps: ['Choose the locked PDF.', 'Type its password. Leave it blank if it only blocks printing or copying.', 'Press Unlock PDF and save the copy.'],
+    trade: {
+      h2: 'Unlock a drawing set you were sent',
+      text: 'If a drawing set or spec came with a password you know, unlock a copy so it opens, prints and takes markups without asking each time.',
+      keys: 'drawing set spec password locked print',
+    },
     faq: [['Can it crack a password I don\'t know?', 'No. You need the password to open the file. It can remove print and copy limits from a file that opens without one.'], ['Is the unlocked copy the same?', 'Yes. Pages, text and markups stay as they were. Only the lock is gone.'], PRIVATE, FREE, OFFLINE],
   },
   ...MORE_TOOLS,

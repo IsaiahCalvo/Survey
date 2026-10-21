@@ -10,6 +10,11 @@ export default {
   lede: 'Fit every page onto Letter, A4, A3, Legal, Tabloid or ARCH D paper. Lines and text stay sharp.',
   accept: 'pdf', multiple: false, batch: true, action: 'Resize PDF',
   steps: ['Choose a PDF.', 'Pick the new page size, and a margin if you want one.', 'Press Resize PDF and save the new file.'],
+  trade: {
+    h2: 'Print a drawing set on 11 x 17',
+    text: 'Scale a 24 x 36 ARCH D set down to 11 x 17 Tabloid for the field, or scale letter pages up. Lines and text stay sharp, but a resized sheet is no longer to scale.',
+    keys: '11x17 tabloid arch d 24x36 half size set plan sheets',
+  },
   faq: [
     ['Will the pages be stretched?', 'No. Each page is scaled up or down to fit the new size and keeps its shape. Any space left over stays white.'],
     ['Does it stay sharp?', 'Yes. Lines and text are moved over as they are, not turned into a picture, so you can zoom in and print at full quality.'],
