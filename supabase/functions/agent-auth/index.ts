@@ -16,7 +16,6 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const TOKEN_TTL_SECONDS = 3600;
 const REFRESH_TTL_SECONDS = 30 * 24 * 3600;
 const POLL_INTERVAL_SECONDS = 5;
-const MAX_PENDING_CODES = 500;
 
 function randomCode(length: number) {
   // 32 letters divide 256 evenly, so every letter is equally likely.
@@ -77,12 +76,6 @@ Deno.serve(async (req) => {
     // Old unclaimed codes are useless; drop them so the table stays small.
     await admin.from('agent_links').delete()
       .eq('status', 'pending').lt('code_expires_at', new Date().toISOString());
-    // Anyone can call start without signing in, so cap how many live codes can
-    // wait at once; a flood then costs a 429, not an ever-growing table.
-    const { count: pending } = await admin.from('agent_links')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'pending');
-    if ((pending ?? 0) >= MAX_PENDING_CODES) return json(429, { error: 'slow_down' });
     const deviceCode = randomSecret('sdc_');
     const userCode = randomCode(8);
     const { error } = await admin.from('agent_links').insert({
