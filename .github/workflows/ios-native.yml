@@ -22,6 +22,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/ios-native.yml'
+      - '.github/native-flows/**'
   workflow_dispatch:
 
 permissions:

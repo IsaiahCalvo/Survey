@@ -25,7 +25,8 @@ name: android-signed-in
 - hideKeyboard
 - tapOn:
     text: "Sign in"
-    index: 1
+    below:
+      id: "password"
 - extendedWaitUntil:
     visible: ".*E2E Sample Drawing.*"
     timeout: 60000
