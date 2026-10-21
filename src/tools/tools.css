@@ -18,7 +18,9 @@
 .hub-find input:focus{outline:2px solid var(--accent);outline-offset:1px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .chip{font:inherit;font-size:14px;min-height:40px;padding:8px 14px;border:1px solid var(--rule);border-radius:999px;background:var(--sheet);color:inherit;cursor:pointer}
-.chip[aria-pressed="true"]{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--accent-ink)}
+/* Selected states follow the app's rule (tests/selectedStateGoldInkOnly.test.mjs): no gold
+   fill, border or ring on a pressed control, so pressed chips and choices use ink. */
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 .hub-none{margin:16px 0 0;color:var(--soft)}
 .hub-find-sec{padding-top:0}
 @media (max-width:640px){.chips{flex-wrap:nowrap;overflow-x:auto;margin-right:-16px;padding-right:16px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}.chip{flex:none}}
@@ -63,7 +65,7 @@
 .opt.check input{width:20px;height:20px;accent-color:var(--accent)}
 .seg{display:flex;flex-wrap:wrap;gap:6px}
 .seg button{font:500 15px var(--body);min-height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-.seg button[aria-checked="true"]{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--accent-ink)}
+.seg button[aria-checked="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 .seg svg,.ibtn svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .tbar{display:flex;align-items:center;gap:16px;padding:16px 20px;border-top:1px solid var(--rule);position:sticky;bottom:0;background:var(--sheet);border-radius:0 0 16px 16px;z-index:2}
 .tprog{color:var(--soft);font:500 14px var(--mono)}
@@ -93,7 +95,7 @@ button.btn,label.btn{cursor:pointer}
 .pnum{font:500 13px var(--mono);color:var(--soft);text-align:center}
 button.ptile{cursor:pointer}
 button.ptile:hover{border-color:var(--rule)}
-.ptile[aria-pressed="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.ptile[aria-pressed="true"]{border-color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent)}
 .ptile[aria-pressed="true"]::after{content:"";position:absolute;top:12px;right:12px;width:22px;height:22px;border-radius:50%;background:var(--accent-fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12l4 4 8-8' fill='none' stroke='%2315110a' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E") center/16px no-repeat}
 .del .ptile[aria-pressed="true"]{border-color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent)}
 .del .ptile[aria-pressed="true"]::after{background:var(--red) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 7l10 10M17 7L7 17' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E") center/14px no-repeat}
