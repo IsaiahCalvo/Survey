@@ -237,11 +237,28 @@ export function findHighlightQuads(words, query, { occurrence = 1 } = {}) {
   const matchEnd = at + needle.length;
   const hit = spans.filter((s) => s.start < matchEnd && s.end > at);
   if (!hit.length) return null;
-  const quads = hit.map(({ box }) => ({
-    x1: box.x, y1: box.y,
-    x2: box.x + box.width, y2: box.y,
-    x3: box.x, y3: box.y + box.height,
-    x4: box.x + box.width, y4: box.y + box.height,
+  // One continuous quad per line, spanning the first to the last matched word
+  // on it (so the inter-word spaces are covered, like a dragged selection).
+  // A per-word quad would leave the gaps unpainted, since mergeLineQuads only
+  // stitches quads that nearly touch.
+  const lines = [];
+  for (const { box } of hit) {
+    const line = lines.find((l) => Math.abs((l.cy) - (box.y + box.height / 2)) < Math.max(l.h, box.height, 1) * 0.6);
+    if (line) {
+      line.left = Math.min(line.left, box.x);
+      line.top = Math.min(line.top, box.y);
+      line.right = Math.max(line.right, box.x + box.width);
+      line.bottom = Math.max(line.bottom, box.y + box.height);
+      line.h = Math.max(line.h, box.height);
+    } else {
+      lines.push({ left: box.x, top: box.y, right: box.x + box.width, bottom: box.y + box.height, h: box.height, cy: box.y + box.height / 2 });
+    }
+  }
+  const quads = lines.map(({ left, top, right, bottom }) => ({
+    x1: left, y1: top,
+    x2: right, y2: top,
+    x3: left, y3: bottom,
+    x4: right, y4: bottom,
   }));
   return { quads, text: hit.map((s) => s.text).join(' ') };
 }

@@ -21,16 +21,19 @@ test('finds a one-word phrase and returns its quad in page points', () => {
   });
 });
 
-test('a multi-word phrase covers every word it spans', () => {
+test('a multi-word phrase on one line is one continuous quad spanning it', () => {
   const res = findHighlightQuads(line(['General', 'Notes', 'apply']), 'general notes');
-  assert.equal(res.quads.length, 2);
+  assert.equal(res.quads.length, 1);
   assert.equal(res.text, 'General Notes');
+  // Spans from the first word's left (50) to the last word's right (110+50).
+  assert.equal(res.quads[0].x1, 50);
+  assert.equal(res.quads[0].x2, 160);
 });
 
 test('matching ignores case and extra whitespace', () => {
   const res = findHighlightQuads(line(['General', 'Notes']), '  GENERAL   notes ');
   assert.ok(res);
-  assert.equal(res.quads.length, 2);
+  assert.equal(res.quads.length, 1);
 });
 
 test('a phrase inside one word covers the whole word', () => {
@@ -68,9 +71,12 @@ test('a word the PDF split across items (abutting boxes) still matches as writte
   ];
   const res = findHighlightQuads(words, 'General Notes');
   assert.ok(res, 'split word should still match');
-  assert.equal(res.quads.length, 3);
-  // A real gap is still a word boundary, so "General" alone matches both frags.
-  assert.equal(findHighlightQuads(words, 'General').quads.length, 2);
+  // All three fragments are on one line → one continuous quad.
+  assert.equal(res.quads.length, 1);
+  assert.equal(res.quads[0].x1, 50);
+  assert.equal(res.quads[0].x2, 210);
+  // "General" alone matches both fragments, still one line → one quad.
+  assert.equal(findHighlightQuads(words, 'General').quads.length, 1);
 });
 
 test('no match, empty query and no words all return null', () => {
