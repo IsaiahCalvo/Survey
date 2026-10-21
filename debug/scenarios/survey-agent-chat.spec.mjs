@@ -110,8 +110,8 @@ test('Survey agent fills an item from a typed message and undoes it', async ({ p
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
 
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   await expect(panel).toBeVisible();
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
@@ -174,8 +174,8 @@ test('Survey agent sets an answer by item name with no separate search', async (
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('D one seventeen power no');
@@ -234,8 +234,8 @@ test('Survey agent in Spanish: the reply is asked for in Spanish and spoken in a
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   await panel.getByRole('button', { name: 'Language: English' }).click();
   await expect(panel.getByRole('button', { name: 'Language: Español' })).toHaveText('ES');
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
@@ -301,8 +301,8 @@ test('Survey agent adds an item from a tag on a rotated plan page, and Undo remo
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('add ROTATION from page 2 as a door');
@@ -370,8 +370,8 @@ test('With no signal a message waits, then sends when the signal is back; the al
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   await expect(panel.getByRole('status')).toContainText('about 40 requests left');
 
   await context.setOffline(true);
@@ -409,9 +409,9 @@ test('With no signal a message is kept on the device: closing the chat keeps it,
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  const open = page.getByRole('button', { name: 'Survey agent: talk or type to fill items' });
+  const open = page.getByRole('button', { name: 'Open Survey agent chat' });
   await open.click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
 
@@ -422,9 +422,9 @@ test('With no signal a message is kept on the device: closing the chat keeps it,
   // Said out loud, in the device's own voice (no signal for the server's).
   await expect.poll(() => page.evaluate(() => window.__said)).toContain('No signal. I saved that and will send it when you are back online.');
 
-  // Closing the chat keeps the message on the device.
-  await panel.getByRole('button', { name: 'Close Survey agent' }).click();
-  await expect(panel).toHaveCount(0);
+  // Going back to the Survey panel keeps the message waiting.
+  await panel.getByRole('button', { name: 'Back to Survey' }).click();
+  await expect(panel).toBeHidden();
   await open.click();
   await expect(panel.getByText('door 117 has no power')).toBeVisible();
   await expect(panel.getByText('Waiting for signal')).toBeVisible();
@@ -441,11 +441,11 @@ test('With no signal a message is kept on the device: closing the chat keeps it,
   ]);
 
   // Sent once: opening the chat again does not send it again.
-  await panel.getByRole('button', { name: 'Close Survey agent' }).click();
+  await panel.getByRole('button', { name: 'Back to Survey' }).click();
   await open.click();
   await expect(panel.getByRole('textbox', { name: 'Message the Survey agent' })).toBeEnabled();
   await page.waitForTimeout(1500);
-  await expect(panel.getByText('door 117 has no power')).toHaveCount(0);
+  await expect(panel.getByText('Waiting for signal')).toHaveCount(0);
   expect(calls.filter((c) => c.action === 'turn')).toHaveLength(3);
 });
 
@@ -482,8 +482,8 @@ test('A message that hits the per-minute limit waits and sends a moment later, i
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('door 117 has no power');
@@ -543,8 +543,8 @@ test('With markup tools on, the agent puts a text note next to an item', async (
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('put a note by D-117: ceiling tile missing');
@@ -616,8 +616,8 @@ test('With markup tools on, the agent circles an item and clouds the area on scr
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   const shapes = () => page.evaluate(async () => {

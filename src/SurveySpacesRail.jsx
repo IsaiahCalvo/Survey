@@ -33,6 +33,7 @@ import { buildNoteWithMedia, normalizeNoteMedia, uploadSurveyMedia } from './ser
 import SurveyAgentPanel from './components/SurveyAgentPanel.jsx';
 import { isSurveyAgentEnabled } from './agent/surveyAgentFlag.js';
 import { surveyAgentBridge } from './agent/surveyAgentTools.js';
+import { unlockPlayback } from './agent/agentVoice.js';
 import { activeAgentDocument } from './agent/webmcp.js';
 import { findTagInDocument, findTagsLikeInDocument } from './agent/planText.js';
 import { SHEET_DETENT_STANDARD, endSheetReveal, revealInSheet, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
@@ -1510,7 +1511,21 @@ const SurveySpacesRail = ({
   // agents (WebMCP) write through this panel's own writes, so an agent change
   // is the same change a tap makes.
   const [surveyAgentEnabled] = useState(isSurveyAgentEnabled);
-  const [surveyAgentOpen, setSurveyAgentOpen] = useState(false);
+  // One window (owner 2026-10-21): the mic starts and stops hands-free with
+  // no window; the typing dots swap this panel for the chat and back. The
+  // agent stays mounted once used, so it keeps listening and keeps its chat.
+  const [surveyAgentMounted, setSurveyAgentMounted] = useState(false);
+  const [surveyAgentView, setSurveyAgentView] = useState('hidden');
+  const [surveyAgentAsk, setSurveyAgentAsk] = useState(0);
+  const [surveyAgentActivity, setSurveyAgentActivity] = useState({ handsFree: false, phase: 'idle' });
+  const [surveyRailEl, setSurveyRailEl] = useState(null);
+  const showSurveyAgentChat = useCallback(() => { setSurveyAgentMounted(true); setSurveyAgentView('chat'); }, []);
+  const hideSurveyAgentChat = useCallback(() => setSurveyAgentView('hidden'), []);
+  // The panel's element, so the chat can be drawn inside it.
+  const surveyRailRef = useCallback((el) => {
+    (mobileMode ? surveySheetFocusRef : sideOccluderRef)(el);
+    setSurveyRailEl(el);
+  }, [mobileMode, surveySheetFocusRef, sideOccluderRef]);
   const surveyAgentCategoryOf = (marker) => {
     const moduleId = marker?.moduleId || selectedModuleId;
     const modules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
@@ -1584,15 +1599,36 @@ const SurveySpacesRail = ({
     };
   }
   useEffect(() => () => { surveyAgentBridge.current = null; }, []);
+  const surveyAgentLive = surveyAgentActivity.phase !== 'idle' && surveyAgentActivity.phase !== 'listening';
   const surveyAgentButton = surveyAgentEnabled && selectedTemplate ? (
-    <SectionIconButton
-      action="add"
-      icon="mic"
-      label="Survey agent: talk or type to fill items"
-      phone={mobileMode}
-      aria-pressed={surveyAgentOpen}
-      onClick={() => setSurveyAgentOpen((open) => !open)}
-    />
+    <>
+      <button
+        type="button"
+        data-survey-agent-dots=""
+        className={`survey-agent-dots${mobileMode ? ' is-phone' : ''}${surveyAgentLive ? ' is-live' : ''}`}
+        aria-label={surveyAgentView === 'chat' ? 'Back to Survey' : 'Open Survey agent chat'}
+        aria-pressed={surveyAgentView === 'chat'}
+        title={surveyAgentView === 'chat' ? 'Back to Survey' : 'Survey agent chat'}
+        onClick={() => (surveyAgentView === 'chat' ? hideSurveyAgentChat() : showSurveyAgentChat())}
+      >
+        <span className="survey-agent-dots__dot" aria-hidden="true" />
+        <span className="survey-agent-dots__dot" aria-hidden="true" />
+        <span className="survey-agent-dots__dot" aria-hidden="true" />
+      </button>
+      <SectionIconButton
+        action="add"
+        icon="mic"
+        label={surveyAgentActivity.handsFree ? 'Stop hands-free' : 'Survey agent: talk hands-free'}
+        phone={mobileMode}
+        className={`survey-agent-mic${surveyAgentActivity.handsFree ? ' is-recording' : ''}`}
+        aria-pressed={surveyAgentActivity.handsFree}
+        onClick={() => {
+          unlockPlayback();
+          setSurveyAgentMounted(true);
+          setSurveyAgentAsk((n) => n + 1);
+        }}
+      />
+    </>
   ) : null;
 
   const renderSurveyMarkerNotes = (annotationId, variant) => (
@@ -2132,7 +2168,7 @@ const SurveySpacesRail = ({
               data-viewer-occluder={isSurveyPanelCollapsed ? undefined : (mobileMode ? 'sheet' : 'side')}
               // Phone: swipe down anywhere + the keyboard lift (owner 2026-09-30).
               {...(mobileMode ? surveySheetProps : null)}
-              ref={mobileMode ? surveySheetFocusRef : sideOccluderRef}
+              ref={surveyRailRef}
               tabIndex={mobileMode && !isSurveyPanelCollapsed ? -1 : undefined}
               // KAL-66: the phone Survey sheet is a named region (not a
               // dialog: the viewer's key rules treat [role="dialog"] as a
@@ -4758,8 +4794,16 @@ const SurveySpacesRail = ({
             {mobileMode && typeof document !== 'undefined'
               ? createPortal(<div style={{ position: 'relative', zIndex: 10003 }}>{confirmDialogElement}</div>, document.body)
               : confirmDialogElement}
-            {surveyAgentOpen && surveyAgentEnabled && showSurveyPanel && selectedTemplate && (
-              <SurveyAgentPanel mobileMode={mobileMode} onClose={() => setSurveyAgentOpen(false)} />
+            {surveyAgentMounted && surveyAgentEnabled && showSurveyPanel && selectedTemplate && (
+              <SurveyAgentPanel
+                mobileMode={mobileMode}
+                host={surveyRailEl}
+                view={surveyAgentView}
+                handsFreeAsk={surveyAgentAsk}
+                onShowChat={showSurveyAgentChat}
+                onClose={hideSurveyAgentChat}
+                onActivity={setSurveyAgentActivity}
+              />
             )}
           </>
   );

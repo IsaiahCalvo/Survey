@@ -236,3 +236,75 @@
 @media (max-width: 380px) {
   .survey-agent.is-phone .survey-agent__beta { display: none; }
 }
+
+/* One window (owner 2026-10-21): the chat takes the Survey panel's place
+   instead of floating over the plan, and hides (still listening) when the
+   person goes back to the Survey panel. */
+.survey-agent[hidden] { display: none; }
+.survey-agent.is-inline {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  width: auto;
+  max-width: none;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+/* The panel is 320px wide: one header line, no wrapping. */
+.survey-agent.is-inline .survey-agent__head { gap: 4px; }
+.survey-agent.is-inline .survey-agent__title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.survey-agent.is-inline .survey-agent__voice { white-space: nowrap; margin-right: 0; }
+.survey-agent.is-inline .survey-agent__beta { display: none; }
+/* Phone: below the sheet's grab handle, so a swipe down still closes it. */
+.survey-agent.is-inline.is-phone { top: 35px; }
+
+/* The Survey panel's mic: gold while hands-free is on, hovered or not.
+   The rail's hover and press resets are (1 id, 7 classes) and !important,
+   so the class is repeated to out-rank them. */
+.survey-agent-mic.is-recording,
+#chrome-right-host .survey-agent-mic.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording {
+  color: var(--accent-text, #fff) !important;
+  background-color: var(--accent, #d8a84e) !important;
+}
+
+/* The typing dots beside the mic, like a phone's "someone is typing": they
+   open the chat. Still while nothing is happening, moving while the agent
+   hears, works or speaks. */
+.survey-agent-dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 36px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.06));
+  cursor: pointer;
+  align-self: center;
+}
+.survey-agent-dots.is-phone { min-width: 48px; height: 32px; border-radius: 16px; }
+.survey-agent-dots[aria-pressed="true"] { background: var(--accent-soft, rgba(216, 168, 78, 0.25)); }
+.survey-agent-dots__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-3, #999);
+}
+.survey-agent-dots.is-phone .survey-agent-dots__dot { width: 6px; height: 6px; }
+.survey-agent-dots.is-live .survey-agent-dots__dot {
+  background: var(--text-2, #666);
+  animation: survey-agent-typing 1.2s ease-in-out infinite;
+}
+.survey-agent-dots.is-live .survey-agent-dots__dot:nth-child(2) { animation-delay: 0.15s; }
+.survey-agent-dots.is-live .survey-agent-dots__dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes survey-agent-typing {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .survey-agent-dots__dot { animation: none !important; }
+}

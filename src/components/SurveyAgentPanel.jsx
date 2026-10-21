@@ -5,6 +5,11 @@
 // changed something lists the changes with one Undo for the whole turn.
 // Hands-free mode keeps the mic open: talk, hear a short spoken reply, talk
 // again, with no taps. With no signal, messages wait and send once it is back.
+//
+// One window (owner 2026-10-21): the Survey panel's mic starts and stops
+// hands-free with no window; the chat lives hidden and keeps listening. The
+// typing dots beside the mic swap the Survey panel for the chat (`view`
+// 'chat', drawn inside `host`); a tap outside or Back swaps it back.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -89,7 +94,15 @@ const openDocument = () => {
   return doc;
 };
 
-export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
+export default function SurveyAgentPanel({
+  onClose,
+  mobileMode = false,
+  view = 'chat',
+  host = null,
+  handsFreeAsk = 0,
+  onShowChat = () => {},
+  onActivity = () => {},
+}) {
   const [usageLeft, setUsageLeft] = useState(null);
   const rawCall = useMemo(() => makeSurveyAgentCaller(supabase, { onUsage: setUsageLeft }), []);
   const call = useMemo(() => withRetries(rawCall), [rawCall]);
@@ -115,12 +128,15 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const [handsFree, setHandsFree] = useState(false);
   // The camera take_photo opened: { itemId, name }, and how to answer it.
   const [camera, setCamera] = useState(null);
+  const onShowChatRef = useRef(onShowChat);
+  onShowChatRef.current = onShowChat;
   const cameraRef = useRef(null);
   const photoResolveRef = useRef(null);
   const requestPhoto = useCallback(({ itemId, name }) => new Promise((resolve) => {
     photoResolveRef.current?.(null);
     photoResolveRef.current = resolve;
     setCamera({ itemId, name });
+    onShowChatRef.current();
   }), []);
   const closeCamera = useCallback((file = null) => {
     const resolve = photoResolveRef.current;
@@ -783,12 +799,43 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const livePhase = hearing ? 'hearing' : phase === 'speaking' ? 'speaking' : transcribing || busy || phase === 'working' ? 'working' : 'listening';
   const handsFreeText = handsFree ? HANDS_FREE_TEXT[livePhase] : null;
 
+  // The Survey panel's mic and dots follow what the agent is doing.
+  const activity = handsFree ? livePhase : (busy || transcribing ? 'working' : 'idle');
+  useEffect(() => { onActivity({ handsFree, phase: activity }); }, [handsFree, activity, onActivity]);
+
+  // Each tap of the Survey panel's mic starts or stops hands-free, once the
+  // server has said whether this person can use the agent. When hands-free
+  // can't run here, the chat opens so the reason (or the keyboard) shows.
+  const askHandledRef = useRef(0);
+  useEffect(() => {
+    if (!status || handsFreeAsk <= askHandledRef.current) return;
+    askHandledRef.current = handsFreeAsk;
+    if (handsFreeRef.current) { stopHandsFree(); return; }
+    if (ready && status.transcription && canHandsFree()) startHandsFreeRef.current();
+    else onShowChatRef.current();
+  }, [handsFreeAsk, status, ready, stopHandsFree]);
+
+  // A tap anywhere outside the chat goes back to the Survey panel.
+  const sectionRef = useRef(null);
+  useEffect(() => {
+    if (view !== 'chat' || !host) return undefined;
+    const outside = (e) => {
+      const t = e.target;
+      if (!(t instanceof Element) || sectionRef.current?.contains(t) || t.closest('[data-survey-agent-dots]')) return;
+      onClose();
+    };
+    document.addEventListener('pointerdown', outside, true);
+    return () => document.removeEventListener('pointerdown', outside, true);
+  }, [view, host, onClose]);
+
   const panel = (
     <section
-      className={`survey-agent${mobileMode ? ' is-phone' : ''}`}
-      role="dialog"
+      ref={sectionRef}
+      className={`survey-agent${mobileMode ? ' is-phone' : ''}${host ? ' is-inline' : ''}`}
+      role={host ? 'region' : 'dialog'}
       aria-label="Survey agent"
       data-testid="survey-agent-panel"
+      hidden={view !== 'chat'}
     >
       <header className="survey-agent__head">
         <span className="survey-agent__title">Survey agent <span className="survey-agent__beta">Beta</span></span>
@@ -801,7 +848,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
             disabled={!ready && !handsFree}
             onClick={handsFree ? stopHandsFree : startHandsFree}
           >
-            {handsFree ? (mobileMode ? 'Stop' : 'Stop hands-free') : 'Hands-free'}
+            {handsFree ? (mobileMode || host ? 'Stop' : 'Stop hands-free') : 'Hands-free'}
           </button>
         )}
         <button
@@ -823,7 +870,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
             {speakReplies ? 'Voice on' : 'Voice off'}
           </button>
         )}
-        <button type="button" className="survey-agent__icon" aria-label="Close Survey agent" onClick={onClose}>
+        <button type="button" className="survey-agent__icon" aria-label={host ? 'Back to Survey' : 'Close Survey agent'} onClick={onClose}>
           <Icon name="close" size={16} color="currentColor" />
         </button>
       </header>
@@ -932,5 +979,5 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       </form>
     </section>
   );
-  return typeof document !== 'undefined' ? createPortal(panel, document.body) : panel;
+  return typeof document !== 'undefined' ? createPortal(panel, host || document.body) : panel;
 }
