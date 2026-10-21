@@ -30,6 +30,9 @@ export const FEATURE_FLAGS = Object.freeze({
   'pro-lock': Object.freeze({
     label: 'Lock Pro features for Free plan',
   }),
+  'legacy-collab-retired': Object.freeze({
+    label: 'Retire the legacy collab layer (step 1)',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
