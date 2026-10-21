@@ -46,7 +46,7 @@ test('mobile long-press menu never arms from resize or rotation handles', () => 
   // the finger and the pen paths alike.
   assert.match(
     containerSource,
-    /const onHandle = \(target\) => Boolean\(target\?\.closest\?\.\('\[data-resize-handle\], \[data-rotation-handle\], \[data-handle-hit-pad\]'\)\);/,
+    /const onHandle = \(target\) => Boolean\(target\?\.closest\?\.\('\[data-resize-handle\], \[data-rotation-handle\], \[data-handle-hit-pad\], \[data-poly-edge-hit\]'\)\);/,
   );
   assert.match(containerSource, /if \(onHandle\(event\.target\)\) \{ press\.cancel\(\); return; \}/);
   assert.match(containerSource, /if \(event\.button !== 0 \|\| onHandle\(event\.target\)\) \{ penId = null; press\.cancel\(\); return; \}/);
