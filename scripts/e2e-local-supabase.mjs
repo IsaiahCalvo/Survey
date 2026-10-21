@@ -87,6 +87,11 @@ export function buildStackConfig(source) {
     if (section === 'auth.oauth_server' && /^(enabled|allow_dynamic_registration)\s*=/.test(line)) {
       return line.replace(/=.*/, '= true');
     }
+    // Every test client signs in from 127.0.0.1, so the per-IP sign-in limit
+    // (30 per 5 minutes) would stop scripts/db-load-test.mjs after 30 users.
+    if (section === 'auth.rate_limit' && /^(sign_in_sign_ups|token_refresh)\s*=/.test(line)) {
+      return line.replace(/=.*/, '= 10000');
+    }
     if (section === 'auth' && /^site_url\s*=/.test(line)) return `site_url = "${E2E_BASE_URL}"`;
     if (section === 'auth' && /^additional_redirect_urls\s*=/.test(line)) {
       return `additional_redirect_urls = ["${E2E_BASE_URL}", "${E2E_BASE_URL.replace('127.0.0.1', 'localhost')}"]`;

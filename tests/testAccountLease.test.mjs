@@ -379,6 +379,7 @@ test('all official real-account entry points use the verified lease loader', () 
     'tests/phase28/provisionBenchmarkBots.mjs',
   ]);
   const disposableOrIsolatedTestProject = new Set([
+    'scripts/db-load-test.mjs',
     'scripts/kal31/debug-rpc.mjs',
     'scripts/kal31/verify-acceptance.mjs',
     'tests/kal309ApplyChangesetIntegration.test.mjs',
