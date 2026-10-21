@@ -448,6 +448,81 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           return `Added a ${word} on page ${page}.`;
         },
       })),
+      {
+        name: 'survey_add_line',
+        description: 'Draw a straight line (or arrow) on the open PDF between two page points (PDF points from the top-left of the page). Set arrow true for an arrowhead. Optionally a hex stroke color and stroke width. Needs editor or owner access.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            page: { type: 'integer', minimum: 1 },
+            x1: { type: 'number', minimum: 0 },
+            y1: { type: 'number', minimum: 0 },
+            x2: { type: 'number', minimum: 0 },
+            y2: { type: 'number', minimum: 0 },
+            arrow: { type: 'boolean', description: 'true draws an arrow (arrowhead at the end point); default false.' },
+            stroke_color: { type: 'string', description: 'Hex line color like #111827 (optional).' },
+            stroke_width: { type: 'number', exclusiveMinimum: 0, description: 'Line width in points (default 2).' },
+          },
+          required: ['page', 'x1', 'y1', 'x2', 'y2'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ page, x1, y1, x2, y2, arrow, stroke_color: strokeColor, stroke_width: strokeWidth }) => {
+          const doc = getDocument();
+          const size = doc.getPageSize(Number(page));
+          if (!size) throw new Error('That page is not in the open document.');
+          const inPage = (px, py) => Number(px) >= 0 && Number(py) >= 0 && Number(px) <= size.width && Number(py) <= size.height;
+          if (!inPage(x1, y1) || !inPage(x2, y2)) throw new Error(`Both ends must be inside the page (${size.width} x ${size.height} points).`);
+          const res = doc.addLine({ page: Number(page), x1: Number(x1), y1: Number(y1), x2: Number(x2), y2: Number(y2), arrow: arrow === true, strokeColor, strokeWidth: strokeWidth == null ? undefined : Number(strokeWidth) });
+          if (res?.reason === 'too-small') throw new Error('The line is too short to draw (make the two points at least a few points apart).');
+          if (res?.reason === 'off-page') throw new Error(`Both ends must be inside the page (${size.width} x ${size.height} points).`);
+          if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the line was not added.');
+          if (!res?.ok) throw new Error('Could not add the line.');
+          return `Added a ${arrow === true ? 'arrow' : 'line'} on page ${page}.`;
+        },
+      },
+      {
+        name: 'survey_add_polygon',
+        description: 'Draw a polygon (closed) or polyline (open) on the open PDF from a list of page points (PDF points from the top-left). closed defaults to true (polygon); pass false for an open polyline. A polygon needs 3+ points, a polyline 2+. Optionally a hex stroke color, hex fill color (polygon only) and stroke width. Needs editor or owner access.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            page: { type: 'integer', minimum: 1 },
+            points: {
+              type: 'array',
+              minItems: 2,
+              items: {
+                type: 'object',
+                properties: { x: { type: 'number', minimum: 0 }, y: { type: 'number', minimum: 0 } },
+                required: ['x', 'y'],
+              },
+            },
+            closed: { type: 'boolean', description: 'true (default) = filled-capable polygon; false = open polyline.' },
+            stroke_color: { type: 'string', description: 'Hex outline color like #111827 (optional).' },
+            fill_color: { type: 'string', description: 'Hex fill color for a closed polygon (optional; left out = no fill).' },
+            stroke_width: { type: 'number', exclusiveMinimum: 0, description: 'Outline width in points (default 2).' },
+          },
+          required: ['page', 'points'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ page, points, closed, stroke_color: strokeColor, fill_color: fillColor, stroke_width: strokeWidth }) => {
+          const doc = getDocument();
+          const size = doc.getPageSize(Number(page));
+          if (!size) throw new Error('That page is not in the open document.');
+          if (!Array.isArray(points) || points.some((p) => !p || !(Number(p.x) >= 0) || !(Number(p.y) >= 0) || Number(p.x) > size.width || Number(p.y) > size.height)) {
+            throw new Error(`Every point must be inside the page (${size.width} x ${size.height} points).`);
+          }
+          const minimum = closed === false ? 2 : 3;
+          if (points.length < minimum) throw new Error(`A ${closed === false ? 'polyline needs at least 2' : 'polygon needs at least 3'} points.`);
+          const res = doc.addPolygon({ page: Number(page), points, closed: closed !== false, strokeColor, fillColor, strokeWidth: strokeWidth == null ? undefined : Number(strokeWidth) });
+          if (res?.reason === 'too-few-points') throw new Error(`A ${closed === false ? 'polyline needs at least 2' : 'polygon needs at least 3'} points.`);
+          if (res?.reason === 'off-page') throw new Error(`Every point must be inside the page (${size.width} x ${size.height} points).`);
+          if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the shape was not added.');
+          if (!res?.ok) throw new Error('Could not add the shape.');
+          return `Added a ${closed === false ? 'polyline' : 'polygon'} on page ${page}.`;
+        },
+      },
     ] : []),
     ...surveyItemTools(surveyToolbox),
   ];

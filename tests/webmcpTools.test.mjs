@@ -272,6 +272,8 @@ const fakeAnnoDoc = () => {
     editTextNote: (id, patch) => { if (!notes[id]) return { ok: false, reason: 'not-found' }; editedNotes.push({ id, ...patch }); return { ok: true }; },
     deleteAnnotation: (id) => { if (!notes[id]) return { ok: false, reason: 'not-found' }; deletedNotes.push(id); return { ok: true }; },
     addShape: (args) => { addedShapes.push(args); return { ok: true, id: 's1' }; },
+    addLine: (args) => { addedShapes.push({ kind: 'line', ...args }); return { ok: true, id: 'l1' }; },
+    addPolygon: (args) => { addedShapes.push({ kind: 'poly', ...args }); return { ok: true, id: 'p1' }; },
   };
 };
 const annoTools = (role, doc) => {
@@ -386,6 +388,31 @@ test('a shape must fit the page, and the right builder shape is used', async () 
 test('a shape save blocked by a locked sibling is reported', async () => {
   const blocked = { ...fakeAnnoDoc(), addShape: () => ({ ok: false, reason: 'locked' }) };
   await assert.rejects(annoTool('editor', blocked, 'survey_add_rectangle').execute({ page: 1, x: 10, y: 20, width: 50, height: 50 }), /locked annotation on that page blocked/);
+});
+
+test('line tool: flag, role, bounds, arrow flag, and short-line refusal', async () => {
+  assert.equal(tool(buildAgentTools({ getDocument: () => fakeAnnoDoc(), readAccess: open }), 'survey_add_line'), undefined);
+  const doc = fakeAnnoDoc();
+  assert.match(await annoTool('editor', doc, 'survey_add_line').execute({ page: 1, x1: 10, y1: 10, x2: 200, y2: 120, arrow: true }), /Added a arrow/);
+  assert.equal(doc.addedShapes.at(-1).arrow, true);
+  await assert.rejects(annoTool('viewer', doc, 'survey_add_line').execute({ page: 1, x1: 10, y1: 10, x2: 20, y2: 20 }), /viewer.*needs editor/);
+  await assert.rejects(annoTool('editor', doc, 'survey_add_line').execute({ page: 1, x1: 10, y1: 10, x2: 9000, y2: 20 }), /inside the page/);
+  await assert.rejects(annoTool('editor', doc, 'survey_add_line').execute({ page: 2, x1: 10, y1: 10, x2: 20, y2: 20 }), /not in the open document/);
+  const shortLine = { ...fakeAnnoDoc(), addLine: () => ({ ok: false, reason: 'too-small' }) };
+  await assert.rejects(annoTool('editor', shortLine, 'survey_add_line').execute({ page: 1, x1: 10, y1: 10, x2: 11, y2: 10 }), /too short/);
+});
+
+test('polygon tool: flag, role, point bounds, min points, and open/closed', async () => {
+  assert.equal(tool(buildAgentTools({ getDocument: () => fakeAnnoDoc(), readAccess: open }), 'survey_add_polygon'), undefined);
+  const doc = fakeAnnoDoc();
+  const tri = [{ x: 10, y: 10 }, { x: 100, y: 10 }, { x: 50, y: 90 }];
+  assert.match(await annoTool('editor', doc, 'survey_add_polygon').execute({ page: 1, points: tri }), /Added a polygon/);
+  assert.equal(doc.addedShapes.at(-1).closed, true);
+  assert.match(await annoTool('editor', doc, 'survey_add_polygon').execute({ page: 1, points: [{ x: 10, y: 10 }, { x: 100, y: 10 }], closed: false }), /Added a polyline/);
+  assert.equal(doc.addedShapes.at(-1).closed, false);
+  await assert.rejects(annoTool('editor', doc, 'survey_add_polygon').execute({ page: 1, points: [{ x: 10, y: 10 }, { x: 100, y: 10 }] }), /at least 3/);
+  await assert.rejects(annoTool('editor', doc, 'survey_add_polygon').execute({ page: 1, points: [{ x: 10, y: 10 }, { x: 9000, y: 10 }, { x: 50, y: 90 }] }), /inside the page/);
+  await assert.rejects(annoTool('viewer', doc, 'survey_add_polygon').execute({ page: 1, points: tri }), /viewer.*needs editor/);
 });
 
 test('a save blocked by a locked sibling is reported, not a false success', async () => {
