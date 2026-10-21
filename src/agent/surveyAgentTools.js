@@ -60,18 +60,31 @@ class ToolError extends Error {}
 // base64 (optionally a data: URL). Decode it to a Blob the upload path accepts,
 // and cap the size so a huge paste can't be forced through.
 const PHOTO_MAX_BYTES = 20 * 1024 * 1024;
+// Sniff the real image type from the first bytes. The declared MIME (from a
+// data: URL) is not trusted — a caller could label any bytes image/jpeg — so
+// the content itself decides, and anything we don't recognise is refused.
+function sniffImageMime(b) {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
+    && b[4] === 0x0d && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return 'image/png';
+  if (b.length >= 6 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif';
+  if (b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46
+    && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'image/webp';
+  // ISO-BMFF (HEIC/HEIF, iPhone photos): "....ftyp<brand>".
+  if (b.length >= 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+    const brand = String.fromCharCode(b[8], b[9], b[10], b[11]).toLowerCase();
+    if (['heic', 'heix', 'hevc', 'heif', 'mif1', 'msf1'].includes(brand)) return 'image/heic';
+  }
+  return null;
+}
+
 function decodePhotoBase64(input) {
   const raw = String(input || '').trim();
   if (!raw) throw new ToolError('No image data given.');
-  const m = /^data:(image\/[a-z0-9.+-]+)?(;base64)?,(.*)$/is.exec(raw);
-  let mime = 'image/jpeg';
-  let b64 = raw;
-  if (m) {
-    if (m[1]) mime = m[1].toLowerCase();
-    b64 = m[3];
-  }
-  b64 = b64.replace(/\s+/g, '');
-  if (!mime.startsWith('image/')) throw new ToolError('Only image data is allowed.');
+  // Drop a data: URL prefix if present; what follows the first comma is the
+  // base64 payload. A bare base64 string is taken whole.
+  const comma = raw.startsWith('data:') ? raw.indexOf(',') : -1;
+  const b64 = (comma >= 0 ? raw.slice(comma + 1) : raw).replace(/\s+/g, '');
   let bytes;
   try {
     const bin = atob(b64);
@@ -84,6 +97,8 @@ function decodePhotoBase64(input) {
   if (bytes.length > PHOTO_MAX_BYTES) {
     throw new ToolError(`The photo is too large (${Math.round(bytes.length / (1024 * 1024))}MB). The limit is ${PHOTO_MAX_BYTES / (1024 * 1024)}MB.`);
   }
+  const mime = sniffImageMime(bytes);
+  if (!mime) throw new ToolError('That is not a supported image (JPEG, PNG, GIF, WebP or HEIC).');
   return new Blob([bytes], { type: mime });
 }
 

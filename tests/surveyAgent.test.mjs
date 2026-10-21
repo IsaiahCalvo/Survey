@@ -207,22 +207,31 @@ test('attach_media uploads chat files to the item once', async () => {
   assert.equal((await box.run('attach_media', { item_id: 'm118', attachment_ids: ['a1'] })).isError, true);
 });
 
+// A real 1x1 PNG — the guard sniffs magic bytes, so the payload must be a
+// genuine image, not just any base64.
+const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
 test('add_photo attaches a base64 image to the item (editor)', async () => {
   const { bridge, markers } = fakeBridge();
   const box = toolboxFor(bridge);
-  const result = await box.run('add_photo', { item_id: 'm117', image_base64: 'data:image/png;base64,aGVsbG8=' });
+  const result = await box.run('add_photo', { item_id: 'm117', image_base64: `data:image/png;base64,${PNG_1X1}` });
   assert.equal(result.isError, false);
   assert.match(result.content, /Added a photo to D-117/);
   assert.equal(markers.m117.note.media.length, 1);
   // One Undo takes it back: the change records the note before the photo.
   assert.equal(result.change.fields[0].type, 'note');
+  // A bare base64 image (no data: prefix) is accepted too.
+  assert.equal((await box.run('add_photo', { item_id: 'm118', image_base64: PNG_1X1 })).isError, false);
 });
 
-test('add_photo refuses a viewer and rejects non-image or empty data', async () => {
+test('add_photo refuses a viewer, non-image data (even bare), and empty data', async () => {
   const viewer = fakeBridge({ canEdit: false });
-  assert.equal((await toolboxFor(viewer.bridge).run('add_photo', { item_id: 'm117', image_base64: 'data:image/png;base64,aGVsbG8=' })).isError, true);
+  assert.equal((await toolboxFor(viewer.bridge).run('add_photo', { item_id: 'm117', image_base64: `data:image/png;base64,${PNG_1X1}` })).isError, true);
   const box = toolboxFor(fakeBridge().bridge);
-  assert.match((await box.run('add_photo', { item_id: 'm117', image_base64: 'data:application/pdf;base64,aGVsbG8=' })).content, /image data/);
+  // A PDF mislabeled as an image, and raw non-image base64 with no prefix, are
+  // both refused by the magic-byte sniff — the declared type is not trusted.
+  assert.match((await box.run('add_photo', { item_id: 'm117', image_base64: 'data:application/pdf;base64,JVBERi0xLjQK' })).content, /supported image/);
+  assert.match((await box.run('add_photo', { item_id: 'm117', image_base64: 'aGVsbG8gd29ybGQ=' })).content, /supported image/);
   assert.match((await box.run('add_photo', { item_id: 'm117', image_base64: '' })).content, /No image data/);
 });
 
