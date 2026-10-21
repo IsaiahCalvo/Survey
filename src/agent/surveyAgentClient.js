@@ -104,20 +104,63 @@ const parseArgs = (raw) => {
 
 const sizeOf = (messages) => messages.reduce((n, m) => n + JSON.stringify(m).length, 0);
 
+// Old turns kept as words only after a cut: what was said and answered.
+const OLD_TURNS_KEPT = 10;
+
+const turnsOf = (history) => {
+  const turns = [];
+  for (const m of history) {
+    if (m.role === 'user' || !turns.length) turns.push([]);
+    turns[turns.length - 1].push(m);
+  }
+  return turns;
+};
+
+// A turn as words: the person's message and the agent's final reply.
+const wordsOf = (turn) => {
+  const reply = [...turn].reverse().find((m) => m.role === 'assistant' && !m.tool_calls?.length && m.content);
+  return turn[0]?.role === 'user' && reply ? [turn[0], reply] : null;
+};
+
+// The turn's get_survey_context call and result, kept so the agent does not
+// fetch the survey again after a cut.
+const contextOf = (turn) => {
+  for (let i = turn.length - 1; i >= 0; i -= 1) {
+    const call = turn[i].tool_calls?.find((c) => c.function?.name === 'get_survey_context');
+    const result = call && turn.find((m) => m.role === 'tool' && m.tool_call_id === call.id);
+    if (result) {
+      const words = wordsOf(turn);
+      return [turn[0], { role: 'assistant', content: null, tool_calls: [call] }, result, words ? words[1] : { role: 'assistant', content: 'Done.' }];
+    }
+  }
+  return null;
+};
+
 /**
- * A long chat, cut down by whole turns from the oldest. Groq does not count
- * a prompt prefix it has seen (the rules, the tools, the chat so far) against
- * the free caps, so a growing chat costs only its new part per call. The cut
- * is rare and large, so the prefix stays the same between cuts.
+ * A long chat, cut down. Groq does not count a prompt prefix it has seen
+ * (the rules, the tools, the chat so far) against the free caps, so a
+ * growing chat costs only its new part per call; the cut is rare and large,
+ * so the prefix stays the same between cuts. Recent turns stay whole; the
+ * last few before them stay as words, plus the newest survey context.
  */
 export function compactHistory(history, { maxMessages = 60, maxChars = 60_000 } = {}) {
   if (history.length <= maxMessages && sizeOf(history) <= maxChars) return history;
-  const starts = history.map((m, i) => (m.role === 'user' ? i : -1)).filter((i) => i > 0);
-  for (const start of starts) {
-    const rest = history.slice(start);
-    if (rest.length <= maxMessages / 2 && sizeOf(rest) <= maxChars / 2) return rest;
+  const turns = turnsOf(history).filter((t) => t[0]?.role === 'user');
+  let whole = 1;
+  while (whole < turns.length) {
+    const recent = turns.slice(-(whole + 1)).flat();
+    if (recent.length > maxMessages / 2 || sizeOf(recent) > maxChars / 2) break;
+    whole += 1;
   }
-  return starts.length ? history.slice(starts[starts.length - 1]) : [];
+  const older = turns.slice(0, turns.length - whole);
+  const ctxAt = older.findLastIndex((t) => contextOf(t));
+  const kept = [];
+  older.forEach((t, i) => {
+    if (i === ctxAt) kept.push(contextOf(t));
+    else if (i >= older.length - OLD_TURNS_KEPT) { const w = wordsOf(t); if (w) kept.push(w); }
+  });
+  const out = [...kept.flat(), ...turns.slice(-whole).flat()];
+  return out.length <= maxMessages && sizeOf(out) <= maxChars ? out : turns.slice(-whole).flat();
 }
 
 /**

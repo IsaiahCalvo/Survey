@@ -634,20 +634,30 @@ test('a cached prompt prefix costs half and does not count against the free caps
   assert.equal(surveyAgentCostMicros(usage, { input: 0.15, output: 0.6 }), Math.ceil(2500 * 0.15 + 100 * 0.6));
 });
 
-test('a long chat is cut by whole turns from the oldest, and a short one is left alone', () => {
-  const turn = (n) => [
+test('a long chat is cut: recent turns whole, older ones as words, the newest survey context kept', () => {
+  const turn = (n, tool = 'get_item') => [
     { role: 'user', content: `turn ${n}` },
-    { role: 'assistant', content: null, tool_calls: [{ id: `c${n}`, type: 'function', function: { name: 'get_item', arguments: '{}' } }] },
+    { role: 'assistant', content: null, tool_calls: [{ id: `c${n}`, type: 'function', function: { name: tool, arguments: '{}' } }] },
     { role: 'tool', tool_call_id: `c${n}`, content: 'x'.repeat(100) },
-    { role: 'assistant', content: 'Done.' },
+    { role: 'assistant', content: `Done ${n}.` },
   ];
   const short = [...turn(1), ...turn(2)];
   assert.equal(compactHistory(short), short);
-  const long = Array.from({ length: 20 }, (_, i) => turn(i + 1)).flat();
+  const long = Array.from({ length: 20 }, (_, i) => turn(i + 1, i === 1 ? 'get_survey_context' : 'get_item')).flat();
   const cut = compactHistory(long);
-  assert.ok(cut.length <= 30);
+  assert.ok(cut.length < long.length);
   assert.equal(cut[0].role, 'user');
   assert.deepEqual(cut.slice(-4), turn(20));
+  // The survey context from turn 2 stays, call and result.
+  assert.deepEqual(cut.slice(0, 4), turn(2, 'get_survey_context'));
+  // Older turns between: words only.
+  const words = cut.filter((m) => m.role === 'user' && !m.content.match(/turn (2|1[3-9]|20)$/));
+  for (const w of words) {
+    const at = cut.indexOf(w);
+    assert.equal(cut[at + 1].role, 'assistant');
+    assert.equal(cut[at + 1].tool_calls, undefined);
+  }
+  assert.ok(!sanitizeAgentMessages([...cut, { role: 'user', content: 'next' }]).error);
   const big = [...turn(1), ...turn(2).map((m) => (m.role === 'tool' ? { ...m, content: 'y'.repeat(70_000) } : m)), ...turn(3)];
-  assert.deepEqual(compactHistory(big), turn(3));
+  assert.deepEqual(compactHistory(big), [turn(1)[0], turn(1)[3], turn(2)[0], turn(2)[3], ...turn(3)]);
 });
