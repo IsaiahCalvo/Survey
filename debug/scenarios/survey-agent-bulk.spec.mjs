@@ -80,8 +80,8 @@ test('"Add all doors on this sheet" adds every new door tag on the page, and Und
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill('add all doors on this sheet');
@@ -135,8 +135,8 @@ test('"What\'s left on this sheet?" reads the page\'s progress back', async ({ p
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill("what's left on this sheet");
@@ -191,8 +191,8 @@ test('"Sum up the walk" gives a summary with the items that have issues, and Sav
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
-  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
-  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
   await input.fill("that's it for today, sum up the walk");
