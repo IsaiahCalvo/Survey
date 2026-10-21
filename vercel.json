@@ -13,7 +13,7 @@
     { "source": "/use-cases/:slug", "destination": "/use-cases/:slug/index.html" },
     { "source": "/compare/:slug", "destination": "/compare/:slug/index.html" },
     { "source": "/(.*)/assets/(.*)", "destination": "/assets/$2" },
-    { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
+    { "source": "/((?:invite|reset-password|agent-link|oauth/consent|agentid/callback|flags|mobile)(?:/.*)?)", "destination": "/index.html" }
   ],
   "headers": [
     {
