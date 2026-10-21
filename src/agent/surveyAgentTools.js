@@ -272,12 +272,20 @@ export function createSurveyAgentToolbox({
     // after a turn.
     settle(changes) {
       const b = getBridge();
-      for (const change of changes || []) {
-        const marker = b?.markers?.[change.itemId];
+      const list = changes || [];
+      list.forEach((change, index) => {
         for (const field of change.fields || []) {
-          if (field.type === 'autoEntity' && field.after === undefined && marker) field.after = marker.entityId || null;
+          if (field.type !== 'autoEntity' || field.after !== undefined) continue;
+          // A later entity write on the same item saw what auto-complete left;
+          // only with none since is the item's entity now that value.
+          const later = list.slice(index + 1)
+            .filter((c) => c.itemId === change.itemId)
+            .flatMap((c) => c.fields || [])
+            .find((f) => f.type === 'entity' || f.type === 'autoEntity');
+          if (later) field.after = later.before ?? null;
+          else if (b?.markers?.[change.itemId]) field.after = b.markers[change.itemId].entityId || null;
         }
-      }
+      });
     },
     // Takes back `changes` (one turn's, oldest first). A field goes back only
     // while it still holds what the agent wrote, so a later tap or a later

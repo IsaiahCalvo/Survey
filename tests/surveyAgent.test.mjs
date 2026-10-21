@@ -121,6 +121,20 @@ test('undo keeps what changed after the agent and takes back one turn in one wri
   assert.equal(markers.m117.note.text, 'Existing.');
 });
 
+test('undo puts back the entity from before auto-complete and a later set_entity', async () => {
+  const { bridge, markers } = fakeBridge();
+  const plainSet = bridge.setAnswers;
+  // The app marks the item Complete when its answers are all done.
+  bridge.setAnswers = (id, answers) => { plainSet(id, answers); markers[id] = { ...markers[id], entityId: 'ent-done' }; };
+  const box = toolboxFor(bridge);
+  const answers = await box.run('set_answers', { item_id: 'm117', answers: [{ checklist_item_id: 'chk-cable', value: 'Y' }] });
+  const entity = await box.run('set_entity', { item_id: 'm117', entity_id: 'ent-sub' });
+  const changes = [answers.change, entity.change];
+  box.settle(changes);
+  box.undo(changes);
+  assert.equal(markers.m117.entityId, null);
+});
+
 test('a turn bound to one document refuses once another is open', async () => {
   const { bridge, calls } = fakeBridge();
   const box = createSurveyAgentToolbox({ getBridge: () => bridge, documentId: 'doc-1' });
