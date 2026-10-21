@@ -10,13 +10,30 @@ const FATAL = new Set(['not-allowed', 'unavailable', 'language-not-supported']);
 
 const isNative = () => Boolean(globalThis.window?.Capacitor?.isNativePlatform?.());
 
+// CI walks (vite --mode e2e only): CI emulators have no speech service, so a
+// walk can set localStorage surveyE2EFakeSpeech=1 to stand in for the plugin
+// and hand in sentences through globalThis.__surveyNativeSpeechTest.say().
+const fakeSpeech = () => {
+  if (import.meta.env?.MODE !== 'e2e') return false;
+  try { return globalThis.localStorage?.getItem('surveyE2EFakeSpeech') === '1'; } catch { return false; }
+};
+const fakePlugin = {
+  available: async () => ({ available: true }),
+  checkPermissions: async () => ({ speechRecognition: 'granted' }),
+  requestPermissions: async () => ({ speechRecognition: 'granted' }),
+  start: async () => ({}),
+  stop: async () => {},
+  addListener: async () => ({ remove: async () => {} }),
+};
+
 async function plugin() {
+  if (fakeSpeech()) return fakePlugin;
   const { SpeechRecognition } = await import('@capgo/capacitor-speech-recognition');
   return SpeechRecognition;
 }
 
 export async function isAvailable() {
-  if (!isNative()) return false;
+  if (!isNative() && !fakeSpeech()) return false;
   try {
     const { available } = await (await plugin()).available();
     return Boolean(available);
@@ -26,7 +43,7 @@ export async function isAvailable() {
 }
 
 export async function requestPermission() {
-  if (!isNative()) return 'denied';
+  if (!isNative() && !fakeSpeech()) return 'denied';
   try {
     const sr = await plugin();
     const now = await sr.checkPermissions();
@@ -49,7 +66,7 @@ export function errorCode(err) {
 }
 
 export async function start({ lang = 'en-US', onFinal, onPartial, onSpeechStart, onSpeechEnd, onError } = {}) {
-  if (!isNative()) {
+  if (!isNative() && !fakeSpeech()) {
     onError?.('unavailable');
     throw Object.assign(new Error('Native speech is unavailable'), { code: 'unavailable' });
   }
