@@ -1,0 +1,22 @@
+/*
+ * Page grid overlay (Drawboard gap #10). Drawn as a pseudo-element on each
+ * pdf.js page div, sized in PDF points times the page's own --survey-page-scale,
+ * so it follows zoom with no JavaScript and is never part of an export or the
+ * saved PDF. 36pt (half-inch) cells; pointer-events off so it never takes input.
+ */
+html[data-page-grid="on"] .survey-pdfjs-page-div::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    --page-grid-step: calc(var(--survey-page-scale, 1) * 36px);
+    background-image:
+        linear-gradient(to right, rgba(37, 99, 235, 0.16) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(37, 99, 235, 0.16) 1px, transparent 1px);
+    background-size: var(--page-grid-step) var(--page-grid-step);
+}
+
+@media print {
+    html[data-page-grid="on"] .survey-pdfjs-page-div::after { display: none; }
+}

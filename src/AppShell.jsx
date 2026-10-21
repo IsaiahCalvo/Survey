@@ -14,6 +14,7 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 // in PDFViewer's publisher effects, not here — preserve that contract.
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
+import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
 import { captureTabSource, isCurrentTabSource } from './utils/tabSourceIdentity.js';
@@ -4941,6 +4942,20 @@ export default function App({ devPreviewReturnTab = null }) {
                       </button>
                       {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
                     </div>
+                    {/* Drawboard gap #10: View > page grid overlay. */}
+                    <PageGridToggle render={({ on, toggle }) => (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        aria-label="Page grid"
+                        aria-pressed={on}
+                        data-page-grid-toggle="true"
+                        {...chromeTip(on ? 'Hide page grid' : 'Show page grid', 'left')}
+                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    )} />
                     {/* drawboardAudit C2: the Pencil-only switch sits where
                         Drawboard keeps it - the utility end of the bar holding
                         the page controls. Nothing renders (no rule either)
