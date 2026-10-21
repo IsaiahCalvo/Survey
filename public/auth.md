@@ -55,8 +55,12 @@ user's role all apply, and one Undo takes a change back:
   after the person has agreed; one Undo restores it.
 - `survey_add_rectangle` / `survey_add_ellipse` — draw a shape from a page box
   (top-left corner in PDF points, a width and a height), with an optional hex
-  stroke color, hex fill color and stroke width (editor/owner). `survey_delete_annotation`
-  removes a shape too.
+  stroke color, hex fill color and stroke width (editor/owner).
+- `survey_add_line` — draw a straight line or arrow between two page points;
+  set `arrow` true for an arrowhead (editor/owner).
+- `survey_add_polygon` — draw a polygon (closed, 3+ points) or polyline (open,
+  `closed: false`, 2+ points) from a list of page points (editor/owner).
+- `survey_delete_annotation` removes any of these shapes too.
 
 ## Outside the browser: user-claimed flow
 

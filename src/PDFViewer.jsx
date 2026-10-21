@@ -253,7 +253,7 @@ import { fromFabricGroup, toFabricGroup } from './utils/calloutEditAdapter';
 import { getActivePageRegionId, getPageAnnotationVisibilityState, isAnnotationVisibleInSurveyMode, isSurveyVisibilityContext, normalizePageRegions, normalizeRegionVisibility, shouldStampActiveRegionId } from './utils/annotationVisibilityRules';
 // KAL-88 — shared creation scope stamp (Decision 11 companion); used by the
 // counter drop so counters scope exactly like pen/shape/text creations.
-import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON } from './utils/annotationCreationCommit';
+import { applyScope as applyAnnotationCreationScope, applyPasteScope, buildBoundaryShapeCommitJSON, buildLineCommitJSON, buildPolyShapeCommitJSON } from './utils/annotationCreationCommit';
 import { shouldAutoSelectAfterCommit } from './utils/autoSelectAfterCommit';
 import { isSurveyScopedHistoryEvent, resolveHistoryEntryContext } from './utils/historyContextRestore';
 import { projectAnnotationForHistoryPreview } from './utils/historyPreviewAnnotation';
@@ -33080,6 +33080,71 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         recordAnnotationCommit({ surface: 'webmcp', source: 'shape:create', action: `shape-agent-create-${tool}`, pageNumber: page });
         const result = saveAnnotations(page, { ...pageJson, objects: [...(pageJson.objects || []), obj] },
           { source: 'webmcp:shape:create', action: 'fabric:create' });
+        if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
+        return { ok: true, id: obj.id || obj.data?.id };
+      },
+      // Add a straight line or arrow between two page points. Same line builder
+      // and save seam a drawn line uses; an arrow gets its head from the tool.
+      addLine: ({ page, x1, y1, x2, y2, strokeColor, strokeWidth, arrow }) => {
+        const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage, annotationScope } = agentMarkerStateRef.current;
+        const size = sizes?.[page];
+        if (!size) return { ok: false, reason: 'not-found' };
+        const inPage = (px, py) => px >= 0 && py >= 0 && px <= size.width && py <= size.height;
+        if (!inPage(x1, y1) || !inPage(x2, y2)) return { ok: false, reason: 'off-page' };
+        const tool = arrow ? 'arrow' : 'line';
+        let obj = buildLineCommitJSON({
+          tool,
+          id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `anno-${Date.now()}`,
+          start: { x: x1, y: y1 },
+          end: { x: x2, y: y2 },
+          strokeColor: strokeColor || '#111827',
+          strokeOpacity: 100,
+          strokeWidth: Number(strokeWidth) > 0 ? Number(strokeWidth) : 2,
+          arrowheadStyle: null,
+          lineBorderStyle: 'solid',
+          cloudIntensity: null,
+          ...annotationScope(page),
+        });
+        if (!obj) return { ok: false, reason: 'too-small' };
+        obj = stampAnnotationCreationIdentity(obj, { authorId: viewerId });
+        const pageJson = getAnnotationsByPage()[page] || { objects: [] };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'line:create', action: `line-agent-create-${tool}`, pageNumber: page });
+        const result = saveAnnotations(page, { ...pageJson, objects: [...(pageJson.objects || []), obj] },
+          { source: 'webmcp:line:create', action: 'fabric:create' });
+        if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
+        return { ok: true, id: obj.id || obj.data?.id };
+      },
+      // Add a polygon (closed) or polyline (open) from page-space points. Same
+      // poly builder and save seam a drawn one uses.
+      addPolygon: ({ page, points, closed, strokeColor, fillColor, strokeWidth }) => {
+        const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage, annotationScope } = agentMarkerStateRef.current;
+        const size = sizes?.[page];
+        if (!size) return { ok: false, reason: 'not-found' };
+        if (!Array.isArray(points) || points.some((p) => !p
+          || !(Number(p.x) >= 0) || !(Number(p.y) >= 0)
+          || Number(p.x) > size.width || Number(p.y) > size.height)) {
+          return { ok: false, reason: 'off-page' };
+        }
+        const tool = closed === false ? 'polyline' : 'polygon';
+        let obj = buildPolyShapeCommitJSON({
+          tool,
+          id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `anno-${Date.now()}`,
+          points: points.map((p) => ({ x: Number(p.x), y: Number(p.y) })),
+          strokeColor: strokeColor || '#111827',
+          strokeOpacity: 100,
+          fillColor: fillColor || null,
+          fillOpacity: fillColor ? 100 : 0,
+          strokeWidth: Number(strokeWidth) > 0 ? Number(strokeWidth) : 2,
+          lineBorderStyle: 'solid',
+          cloudIntensity: null,
+          ...annotationScope(page),
+        });
+        if (!obj) return { ok: false, reason: 'too-few-points' };
+        obj = stampAnnotationCreationIdentity(obj, { authorId: viewerId });
+        const pageJson = getAnnotationsByPage()[page] || { objects: [] };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'poly:create', action: `poly-agent-create-${tool}`, pageNumber: page });
+        const result = saveAnnotations(page, { ...pageJson, objects: [...(pageJson.objects || []), obj] },
+          { source: 'webmcp:poly:create', action: 'fabric:create' });
         if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
         return { ok: true, id: obj.id || obj.data?.id };
       },
