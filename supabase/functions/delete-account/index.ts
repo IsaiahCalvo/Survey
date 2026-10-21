@@ -23,9 +23,18 @@ type StoredObject = { bucket_id: string; name: string };
 async function listOwnedStorage(admin: AdminClient, userId: string): Promise<StoredObject[]> {
   // Names PDFs, avatars, survey media and thumbnails. Media is keyed by
   // document id, so this must run while the document rows still exist.
-  const { data, error } = await admin.rpc('account_deletion_storage_objects', { target_user_id: userId });
-  if (error) throw new Error(`Could not inspect stored files: ${error.message}`);
-  return (data || []) as StoredObject[];
+  // PostgREST caps each response at max_rows, which may be below the asked
+  // range, so page until a response comes back empty.
+  const objects: StoredObject[] = [];
+  for (;;) {
+    const { data, error } = await admin
+      .rpc('account_deletion_storage_objects', { target_user_id: userId })
+      .range(objects.length, objects.length + 999);
+    if (error) throw new Error(`Could not inspect stored files: ${error.message}`);
+    if (!data?.length) break;
+    objects.push(...(data as StoredObject[]));
+  }
+  return objects;
 }
 
 async function removeOwnedStorage(admin: AdminClient, objects: StoredObject[]) {

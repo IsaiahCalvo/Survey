@@ -16,7 +16,10 @@
 --      otherwise vanish from a shared file);
 --    - moves other people's documents out of the person's projects before the
 --      projects go (documents.project_id cascades, so they would otherwise be
---      deleted with the project), and makes each such document's uploader its
+--      deleted with the project) into a new project of the same name owned by
+--      the uploader, one per old project, so documents_user_project_sha_uidx
+--      (one copy of a PDF per user per project) still holds, and makes each
+--      such document's uploader its
 --      owner: filing a document in a project made the project owner its
 --      'owner' collaborator (add_document_owner_collaborator), and
 --      kal31_guard_last_owner refuses to drop the last owner, which would
@@ -72,6 +75,9 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  moved record;
+  new_project_id uuid;
 begin
   if auth.role() is distinct from 'service_role' then
     raise exception 'service role required';
@@ -84,10 +90,22 @@ begin
      and a.user_id = target_user_id
      and d.user_id <> target_user_id;
 
-  update public.documents
-     set project_id = null
-   where user_id <> target_user_id
-     and project_id in (select id from public.projects where user_id = target_user_id);
+  for moved in
+    select distinct d.user_id as owner_id, p.id as old_project_id, p.name
+      from public.documents d
+      join public.projects p on p.id = d.project_id
+     where p.user_id = target_user_id
+       and d.user_id <> target_user_id
+  loop
+    insert into public.projects (user_id, name)
+    values (moved.owner_id, moved.name)
+    returning id into new_project_id;
+
+    update public.documents
+       set project_id = new_project_id
+     where project_id = moved.old_project_id
+       and user_id = moved.owner_id;
+  end loop;
 
   insert into public.document_collaborators (document_id, user_id, role, status)
   select c.document_id, d.user_id, 'owner', 'active'

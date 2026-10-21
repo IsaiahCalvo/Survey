@@ -43,12 +43,13 @@ const deleteAccount = (token, body = { confirmation: 'DELETE' }) => fetch(FUNCTI
   body: JSON.stringify(body),
 });
 
-async function addDocument(admin, owner, { projectId = null, name }) {
+async function addDocument(admin, owner, { projectId = null, name, sha = null }) {
   const id = crypto.randomUUID();
   const filePath = `${owner.id}/${id}.pdf`;
   await must('upload pdf', admin.storage.from('documents').upload(filePath, PDF, { contentType: 'application/pdf' }));
   await must('document row', admin.from('documents').insert({
     id, user_id: owner.id, project_id: projectId, name, file_path: filePath, file_size: PDF.size, page_count: 1,
+    content_sha256: sha,
   }));
   return { id, filePath };
 }
@@ -102,7 +103,11 @@ test('deleting an account removes everything the person owns, and only that', as
   }));
   const leaverMarkupOnShared = await addMarkup(admin, shared.id, leaver);
   const leaverMediaOnShared = await addMedia(admin, shared.id);
-  const friendInLeaverProject = await addDocument(admin, friend, { projectId: project, name: `Friend filed ${RUN}` });
+  // The same PDF the friend also keeps outside any project (one copy per
+  // project per user is enforced, so it must not land next to this one).
+  const sha = crypto.createHash('sha256').update(RUN).digest('hex');
+  const friendLoose = await addDocument(admin, friend, { name: `Friend loose ${RUN}`, sha });
+  const friendInLeaverProject = await addDocument(admin, friend, { projectId: project, name: `Friend filed ${RUN}`, sha });
 
   await must('email log', admin.from('email_send_events').insert({ user_id: leaver.id, template: 'invite', recipient: friend.email }));
 
@@ -137,8 +142,10 @@ test('deleting an account removes everything the person owns, and only that', as
   expect(await exists(admin, 'survey-media', leaverMediaOnShared)).toBe(true);
   const markup = await must('kept markup', admin.from('document_annotations').select('user_id').eq('annotation_id', leaverMarkupOnShared));
   expect(markup).toEqual([{ user_id: friend.id }]);
-  const filed = await must('filed doc', admin.from('documents').select('project_id').eq('id', friendInLeaverProject.id));
-  expect(filed).toEqual([{ project_id: null }]);
+  const [filed] = await must('filed doc', admin.from('documents').select('project_id').eq('id', friendInLeaverProject.id));
+  const newProject = await must('new project', admin.from('projects').select('user_id, name').eq('id', filed.project_id));
+  expect(newProject).toEqual([{ user_id: friend.id, name: `Leaver project ${RUN}` }]);
+  expect(await exists(admin, 'documents', friendLoose.filePath)).toBe(true);
   // Filing it in the leaver's project made the leaver its owner; the friend is now.
   const filedPeople = await must('filed people', admin.from('document_collaborators')
     .select('user_id, role').eq('document_id', friendInLeaverProject.id));
@@ -157,6 +164,6 @@ test('deleting an account removes everything the person owns, and only that', as
   expect(refresh.ok, 'agent refresh refused').toBe(false);
 
   await admin.auth.admin.deleteUser(friend.id);
-  await admin.storage.from('documents').remove([shared.filePath, friendInLeaverProject.filePath]);
+  await admin.storage.from('documents').remove([shared.filePath, friendInLeaverProject.filePath, friendLoose.filePath]);
   await admin.storage.from('survey-media').remove([leaverMediaOnShared]);
 });

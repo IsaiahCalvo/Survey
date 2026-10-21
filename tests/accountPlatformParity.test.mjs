@@ -94,7 +94,7 @@ test('delete-account function verifies caller and performs retry-safe ordered de
   assert.match(source, /body\?\.confirmation !== 'DELETE'/);
   assert.match(source, /caller\.auth\.getUser\(\)/);
   assert.match(source, /deleteStripeCustomer\(stripe, subscription\?\.stripe_customer_id\)/);
-  assert.match(source, /admin\.rpc\('account_deletion_storage_objects'/);
+  assert.match(source, /\.rpc\('account_deletion_storage_objects'[\s\S]*\.range\(/);
   // Media is keyed by document id, so the file list is taken before the rows go.
   assert.match(source, /storedObjects = await listOwnedStorage\(admin, user\.id\);\s*await deleteOwnedRows/);
   assert.match(source, /storage\.from\(bucket\)\.remove\(paths\.slice/);
@@ -112,7 +112,7 @@ test('delete-account function verifies caller and performs retry-safe ordered de
   assert.match(everything, /function public\.account_deletion_storage_objects[\s\S]*service role required/);
   assert.match(everything, /grant execute on function public\.account_deletion_storage_objects\(uuid\) to service_role/);
   assert.match(everything, /update public\.document_annotations a\s+set user_id = d\.user_id/);
-  assert.match(everything, /set project_id = null/);
+  assert.match(everything, /insert into public\.projects \(user_id, name\)[\s\S]*set project_id = new_project_id/);
 });
 
 test('Microsoft and invite returns preserve the active production/mobile route', () => {
