@@ -5,6 +5,7 @@ import {
   addHeaderFooter, organizePages, flattenPdf, cropPdf, readDetails, editDetails, removeAnnotations, textToPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf, visualFrame, loadPdf, signPdf,
 } from '../ops.js';
 import { readFileSync } from 'node:fs';
+import { deflateSync } from 'node:zlib';
 import { createRequire } from 'node:module';
 import UTIF from 'utif2';
 import createQpdf from '@neslinesli93/qpdf-wasm';
@@ -308,11 +309,11 @@ test('sign draws the image on the chosen page, upright on rotated pages', async 
 });
 
 test('word: HTML becomes headings, styled runs, lists, tables and images', () => {
-  const blocks = htmlToBlocks('<h1>Title &amp; more</h1><p><strong>B</strong> <em>I</em> <a href="https://x.test">link</a></p><ul><li>One<ul><li>Inner</li></ul></li><li>Two</li></ul><table><tr><th>H</th><td colspan="2">wide</td></tr></table><p><img src="data:image/png;base64,AAAA" /></p>');
+  const blocks = htmlToBlocks('<h1>Title &amp; more</h1><p><strong>B</strong> <em>I</em> <a href="https://x.test?a=1&amp;b=2">link</a></p><ul><li>One<ul><li>Inner</li></ul></li><li>Two</li></ul><table><tr><th>H</th><td colspan="2">wide</td></tr></table><p><img src="data:image/png;base64,AAAA" /></p>');
   assert.deepEqual(blocks.map((b) => b.kind), ['para', 'para', 'para', 'para', 'para', 'table', 'image']);
   assert.equal(blocks[0].style, 'h1');
   assert.equal(blocks[0].runs[0].text, 'Title & more');
-  assert.equal(blocks[1].runs.find((r) => r.text === 'link').href, 'https://x.test');
+  assert.equal(blocks[1].runs.find((r) => r.text === 'link').href, 'https://x.test?a=1&b=2');
   assert.deepEqual(blocks.slice(2, 5).map((b) => [b.list.depth, b.list.n]), [[0, 1], [1, 1], [0, 2]]);
   assert.equal(blocks[5].rows[0][1].span, 2);
   assert.equal(blocks[5].rows[0][0].blocks[0].runs[0].b, true);
@@ -343,6 +344,47 @@ test('word to PDF: other alphabets embed a font only when needed', async () => {
   assert.equal(loads, 2);
   assert.ok((await PDFDocument.load(bytes)).getPageCount() === 1);
   await assert.rejects(docxBlocksToPdf(htmlToBlocks('<p>Привет</p>')), ToolError);
+});
+
+test('word to PDF: a tall picture stays on one page, query links decode, cell pictures draw', async () => {
+  const hrefBlocks = htmlToBlocks('<p><a href="https://example.com?a=1&amp;b=2">q</a></p>');
+  assert.equal(hrefBlocks[0].runs[0].href, 'https://example.com?a=1&b=2');
+  const linkedDoc = await PDFDocument.load((await docxBlocksToPdf(hrefBlocks)).bytes);
+  const uri = linkedDoc.context.lookup(linkedDoc.getPage(0).node.Annots().get(0)).lookup(PDFName.of('A')).lookup(PDFName.of('URI'));
+  assert.equal(uri.decodeText(), 'https://example.com?a=1&b=2');
+
+  const png = `data:image/png;base64,${Buffer.from(PNG).toString('base64')}`;
+  const tableBlocks = htmlToBlocks(`<table><tr><td><img src="${png}" /></td><td>cap</td></tr></table>`);
+  assert.equal(tableBlocks[0].rows[0][0].blocks[0].kind, 'image');
+  const drawn = await docxBlocksToPdf(tableBlocks);
+  assert.equal(drawn.skippedImages, 0);
+  assert.ok((await PDFDocument.load(drawn.bytes)).getPage(0).node.Resources()?.lookup(PDFName.of('XObject')));
+  assert.equal((await docxBlocksToPdf(htmlToBlocks('<table><tr><td><img src="data:image/wmf;base64,AA" /></td></tr></table>'))).skippedImages, 1);
+
+  const raw = Buffer.alloc(1000 * 4);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(1, 0);
+  ihdr.writeUInt32BE(1000, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), 8 + data.length);
+    return out;
+  };
+  const tall = Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+  const { bytes } = await docxBlocksToPdf(htmlToBlocks(`<p><img src="data:image/png;base64,${tall.toString('base64')}" /></p>`));
+  const doc = await PDFDocument.load(bytes);
+  assert.equal(doc.getPageCount(), 1);
+  assert.ok(doc.getPage(0).node.Resources()?.lookup(PDFName.of('XObject')));
 });
 
 test('word: complex parts are listed; non-docx and empty files are refused', async () => {

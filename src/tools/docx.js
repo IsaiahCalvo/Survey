@@ -55,7 +55,7 @@ export function htmlToBlocks(html) {
     if (m[5] != null) tokens.push({ text: decode(m[5]) });
     else tokens.push({ close: !!m[1], tag: m[2].toLowerCase(), attrs: m[3], self: !!m[4] });
   }
-  const attr = (a, name) => (new RegExp(`${name}="([^"]*)"`, 'i').exec(a || '') || [])[1];
+  const attr = (a, name) => decode((new RegExp(`${name}="([^"]*)"`, 'i').exec(a || '') || [])[1] || '');
 
   let pos = 0;
   function parseBlocks(endTag, list) {
@@ -321,21 +321,27 @@ export async function docxBlocksToPdf(blocks, { pageSize = 'letter', font = 'san
   };
   const listIndent = (block) => (block.list ? 18 * (block.list.depth + 1) : 0);
 
-  async function image(src, maxW, x) {
+  async function picture(src, maxW) {
     const m = /^data:image\/(png|jpe?g);base64,(.*)$/i.exec(src);
-    if (!m || !images) { skipped += 1; return; }
+    if (!m || !images) { skipped += 1; return null; }
     const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
     let img;
     try {
       img = m[1].toLowerCase() === 'png' ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-    } catch { skipped += 1; return; }
+    } catch { skipped += 1; return null; }
     const maxH = PH - margin * 2;
     const k = Math.min(1, maxW / (img.width * 0.75), maxH / (img.height * 0.75));
-    const w = img.width * 0.75 * k;
-    const h = img.height * 0.75 * k;
-    room(h + 6);
-    page.drawImage(img, { x, y: y - h, width: w, height: h });
-    y -= h + 8;
+    return { img, w: img.width * 0.75 * k, h: img.height * 0.75 * k };
+  }
+
+  async function image(src, maxW, x) {
+    const pic = await picture(src, maxW);
+    if (!pic) return;
+    // A portrait photo scales to the full content height; don't ask for extra
+    // leading that would fail the room check at the top of a page.
+    room(Math.min(pic.h + 6, PH - margin * 2));
+    page.drawImage(pic.img, { x, y: y - pic.h, width: pic.w, height: pic.h });
+    y -= pic.h + 8;
   }
 
   async function table(block) {
@@ -345,23 +351,35 @@ export async function docxBlocksToPdf(blocks, { pageSize = 'letter', font = 'san
     for (const row of block.rows) {
       // Measure every cell, then draw the row as one unit.
       let col = 0;
-      const cells = row.map((c) => {
+      const cells = [];
+      for (const c of row) {
         const w = colW * c.span - pad * 2;
-        const parts = c.blocks.filter((b) => b.kind === 'para').map((b) => {
-          const st = STYLE[b.style] || STYLE.p;
-          return { ls: paraLines(b, w - listIndent(b)), lh: st.size * 1.3, indent: listIndent(b), block: b };
-        });
-        const h = parts.reduce((s, p) => s + p.ls.length * p.lh + 3, 0) + pad * 2;
-        const cell = { x: left + col * colW, w: colW * c.span, parts, h };
+        const parts = [];
+        for (const b of c.blocks) {
+          if (b.kind === 'para') {
+            const st = STYLE[b.style] || STYLE.p;
+            parts.push({ ls: paraLines(b, w - listIndent(b)), lh: st.size * 1.3, indent: listIndent(b), block: b });
+          } else if (b.kind === 'image') {
+            const pic = await picture(b.src, w);
+            if (pic) parts.push(pic);
+          }
+        }
+        const h = parts.reduce((s, p) => s + (p.img ? p.h + 3 : p.ls.length * p.lh + 3), 0) + pad * 2;
+        cells.push({ x: left + col * colW, w: colW * c.span, parts, h });
         col += c.span;
-        return cell;
-      });
+      }
       const rowH = Math.max(14, ...cells.map((c) => c.h));
       room(Math.min(rowH, PH - margin * 2));
       const top = y;
       for (const c of cells) {
         let cy = top - pad;
         for (const p of c.parts) {
+          if (p.img) {
+            if (cy - p.h < margin) break;
+            page.drawImage(p.img, { x: c.x + pad, y: cy - p.h, width: p.w, height: p.h });
+            cy -= p.h + 3;
+            continue;
+          }
           for (const l of p.ls) {
             if (cy - p.lh < margin) break;
             drawLine(l, c.x + pad + p.indent, cy, p.lh, addLink);
