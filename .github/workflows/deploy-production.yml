@@ -122,6 +122,8 @@ jobs:
           excel-apply-changeset
           send-profile-change-notification
           stripe-webhook
+          survey-agent
+          survey-mcp
 
       - name: Verify database, functions, Stripe, and endpoint health
         run: node scripts/release-integrity.mjs --remote

@@ -396,3 +396,14 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+# Survey agent (KAL-527). Browser-invoked and self-authenticating: it checks
+# the caller's Bearer JWT itself, so the CORS preflight must reach it.
+[functions.survey-agent]
+verify_jwt = false
+
+# Remote MCP endpoint for outside agents. It answers a CORS preflight and the
+# OAuth metadata GET without a token, and checks the agent's Bearer token
+# itself.
+[functions.survey-mcp]
+verify_jwt = false
