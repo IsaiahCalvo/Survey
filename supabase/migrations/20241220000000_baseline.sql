@@ -30,7 +30,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
 
 -- Tables that early migrations attach policies to but production has since
 -- dropped by hand. Created only on a blank database (before `projects`
--- exists) so the chain replays; 20261021050000_fresh_database_parity.sql
+-- exists) so the chain replays; 20261021060000_fresh_database_parity.sql
 -- drops them again.
 DO $legacy$
 BEGIN
