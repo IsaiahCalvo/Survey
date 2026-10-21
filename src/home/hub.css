@@ -5684,3 +5684,16 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 @media (pointer: coarse) {
   .access-role-select { height: 44px !important; }
 }
+
+/* Preview pane: double-clicking a row opens the file. Mouse/trackpad only;
+   a touch screen opens on tap and has no double-click. */
+.documents-preview-open-hint {
+  flex: none;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: center;
+}
+@media (hover: none), (pointer: coarse) {
+  .documents-preview-open-hint { display: none; }
+}

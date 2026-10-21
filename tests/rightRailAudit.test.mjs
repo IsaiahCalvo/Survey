@@ -106,11 +106,11 @@ test('rail "1 · 36": drawn dot between two equal-height number boxes', () => {
   const collapsed = appShell.slice(appShell.indexOf('// Owner 2026-10-07 (Drawboard rail): the Survey rail never'), appShell.indexOf('})()}', appShell.indexOf('// Owner 2026-10-07 (Drawboard rail): the Survey rail never')));
   const dotAt = collapsed.indexOf('data-rail-page-dot');
   // Spaces chunk A (2026-10-01): the total reads 0 while the active space has
-  // no pages, so it is `{api.activeSpaceHasNoPages ? 0 : api.numPages}`.
-  assert.ok(collapsed.indexOf('{pageValue}') < dotAt && dotAt < collapsed.indexOf('api.numPages}'));
+  // no pages, and a dash while the file is still loading (formatPageTotal).
+  assert.ok(collapsed.indexOf('{pageValue}') < dotAt && dotAt < collapsed.indexOf('{formatPageTotal(api.numPages, api.activeSpaceHasNoPages)}'));
   assert.doesNotMatch(collapsed, />·</, 'no font middle-dot glyph in the vertical stack');
   // The total sits in the page field's 20px box.
-  assert.match(collapsed, /data-rail-page-dot[\s\S]{0,200}height: 'var\(--chrome-field-h\)'[\s\S]{0,200}\{api\.activeSpaceHasNoPages \? 0 : api\.numPages\}/);
+  assert.match(collapsed, /data-rail-page-dot[\s\S]{0,200}height: 'var\(--chrome-field-h\)'[\s\S]{0,200}\{formatPageTotal\(api\.numPages, api\.activeSpaceHasNoPages\)\}/);
 });
 
 test('rail fields select their value on focus, commit the typed DOM value, and dismiss on an outside click', () => {
