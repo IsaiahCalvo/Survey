@@ -13,21 +13,12 @@ import { pathToFileURL } from 'node:url';
 
 const MIGRATION = /^(\d{14})_[^/]+\.sql$/;
 
-// The one migration allowed to sort before the others: it recreates what
-// production had before the chain began, so a fresh database builds from
-// supabase/migrations/ alone. Production already has those objects, and its
-// version was recorded as applied there by hand (INSERT INTO
-// supabase_migrations.schema_migrations), so `supabase db push` skips it.
-export const BASELINE_MIGRATION = '20241220000000_baseline.sql';
-
 export function findOutOfOrderMigrations(baseFiles, addedFiles) {
   const versions = (files) => files.map((f) => basename(f)).filter((n) => MIGRATION.test(n)).sort();
-  const base = versions(baseFiles).filter((n) => n !== BASELINE_MIGRATION);
+  const base = versions(baseFiles);
   const newest = base[base.length - 1] || '';
   const newestVersion = newest.slice(0, 14);
-  const late = versions(addedFiles)
-    .filter((n) => n !== BASELINE_MIGRATION)
-    .filter((n) => !base.includes(n) && n.slice(0, 14) <= newestVersion);
+  const late = versions(addedFiles).filter((n) => !base.includes(n) && n.slice(0, 14) <= newestVersion);
   return { newest, late };
 }
 
