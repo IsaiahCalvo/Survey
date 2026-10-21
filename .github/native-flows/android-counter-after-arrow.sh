@@ -23,7 +23,7 @@ pick Counter
 adb shell input stylus tap $((X - 100)) $((Y - 200))
 sleep 2
 adb exec-out screencap -p > "$OUT/08-counter-after-arrow.png"
-size=$(ev "(() => { const g = [...document.querySelectorAll('g[data-annotation-index]')].pop(); if (!g) return 'none'; const r = g.getBoundingClientRect(); return Math.round(Math.min(r.width, r.height)); })()")
+size=$(ev "(() => { const g = [...document.querySelectorAll('g[data-annotation-index]')].filter(g => { const t = g.querySelector('text'); return t && /^[0-9]+$/.test((t.textContent || '').trim()); }).pop(); if (!g) return 'none'; const r = g.getBoundingClientRect(); return Math.round(Math.min(r.width, r.height)); })()")
 echo "counter size after arrow: ${size}px"
 [ "$size" != "none" ] && [ "$size" -ge 12 ] || { echo "::error::Counter after Arrow is not a full marker (${size}px)"; exit 1; }
 echo "Counter check passed."
