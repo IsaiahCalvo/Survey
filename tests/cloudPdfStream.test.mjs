@@ -347,3 +347,12 @@ test('the stream open uses the range transport when the stored size is known', a
   assert.equal(lib.calls[0].url, undefined);
   assert.equal(lib.calls[0].disableAutoFetch, false);
 });
+
+test('a range failure after the streamed open reloads by full download, tagged or not', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  const body = src.match(/onBytesFailed: \(\) => \{([\s\S]{0,400}?)\n {12}\},/)?.[1] || '';
+  assert.match(body, /streamNeedsBytesPathsRef\.current\.add\(streamPath\)/);
+  assert.match(body, /setLoadRetryToken\(\(t\) => t \+ 1\)/);
+  assert.doesNotMatch(body, /pdfBytesHavePresentationTag/);
+});
