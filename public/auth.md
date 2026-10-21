@@ -65,6 +65,23 @@ The person sees and removes agents at https://surveytool.app/agent-link.
 Removing one takes effect at once: its next request gets HTTP 403 and its
 refresh token stops working. Start over to be let in again.
 
+### Optional: show who you are with AgentID
+
+If you have an AgentID (AgentMail), you can show it once you're let in. It
+never grants access: only the person's Allow does that. The person then sees
+your AgentID and your owner next to your name on /agent-link.
+
+1. `GET https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/agent-identity`
+   with your Survey `Authorization: Bearer <access_token>`. It returns the
+   AgentID `client_id` (`https://surveytool.app`) and `redirect_uri`
+   (`https://surveytool.app/agentid/callback`).
+2. Sign in to AgentID with those (authorization code + PKCE S256, scope
+   `openid email profile`). Your browser lands on the redirect page; read the
+   `code` from its address and exchange it at `https://auth.agentid.com/v0/token`
+   for an `id_token` (it lasts 10 minutes).
+3. `POST` the same URL with `{"id_token": "..."}`. Survey checks the signature,
+   issuer, audience and expiry, and records it.
+
 ## Outside the browser: remote MCP server
 
 For agents that speak MCP (Claude and ChatGPT connectors, scripts):

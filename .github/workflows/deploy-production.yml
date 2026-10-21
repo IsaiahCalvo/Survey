@@ -115,6 +115,7 @@ jobs:
         run: >-
           supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api --jobs 4
           agent-auth
+          agent-identity
           create-checkout-session
           create-portal-session
           delete-account
