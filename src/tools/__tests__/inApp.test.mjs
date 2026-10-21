@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { runInAppTool, IN_APP_TOOLS, baseName } from '../inApp.js';
+import { runInAppTool, IN_APP_TOOLS, baseName, freeDocumentName } from '../inApp.js';
 import { ToolError } from '../errors.js';
 
 async function sample(n, width = 300) {
@@ -16,6 +16,9 @@ test('in-app tools: every tool has a label and a line about it', () => {
   assert.deepEqual(IN_APP_TOOLS.map((t) => t.id), ['merge', 'split', 'organize', 'rotate', 'compress', 'ocr', 'flatten', 'protect']);
   for (const t of IN_APP_TOOLS) assert.ok(t.label && t.short);
   assert.equal(baseName('Plan A.PDF'), 'Plan A');
+  const taken = new Set(['plan (rotated).pdf', 'plan (rotated) 2.pdf']);
+  assert.equal(freeDocumentName('Plan (rotated).pdf', taken), 'Plan (rotated) 3.pdf');
+  assert.equal(freeDocumentName('Other.pdf', taken), 'Other.pdf');
 });
 
 test('in-app merge joins documents in order and names the result after the first', async () => {

@@ -163,7 +163,7 @@ test('phone layout (the shared screen rule) takes no drops; desktop does', () =>
 
 test('wiring: drops reuse the Upload button path, never a second one', () => {
   const dashboard = read('src/Dashboard.jsx');
-  assert.match(dashboard, /const uploadBrowserPdf = async \(file, \{ projectId = null, openAfterUpload = true, waitForStorage = false \} = \{\}\) =>/);
+  assert.match(dashboard, /const uploadBrowserPdf = async \(file, \{ projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true \} = \{\}\) =>/);
   assert.match(dashboard, /await uploadBrowserPdf\(file, \{ projectId, openAfterUpload \}\);/, 'the file picker goes through the shared path');
   assert.match(dashboard, /await uploadBrowserPdf\(asPdfFile\(pdf\), \{/, 'drops go through the same path');
   assert.match(dashboard, /uploadDroppedFiles: handleDroppedFiles/);
@@ -190,6 +190,7 @@ test('wiring: PDF tools saves wait for the stored bytes and report failures', ()
   const dashboard = read('src/Dashboard.jsx');
   assert.match(dashboard, /if \(waitForStorage && !\(await stored\)\) return 'failed';/);
   const save = dashboard.slice(dashboard.indexOf('const savePdfToolResults'), dashboard.indexOf('const cloneDocumentToProject'));
-  assert.match(save, /uploadBrowserPdf\(file, \{ projectId: targetProjectId, openAfterUpload: false, waitForStorage: true \}\)/);
+  assert.match(save, /uploadBrowserPdf\(file, \{ projectId: targetProjectId, openAfterUpload: false, waitForStorage: true, askDuplicates: false \}\)/);
+  assert.match(save, /freeDocumentName\(result\.name, taken\)/, 'results get a free name, never the hidden duplicate ask');
   assert.match(save, /if \(notSaved\) throw new Error/);
 });

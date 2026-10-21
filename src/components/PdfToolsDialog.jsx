@@ -117,7 +117,10 @@ export default function PdfToolsDialog({ open, onClose, sources = [], others = [
   const bytesRef = useRef(new Map());
   const bytesOf = useMemo(() => (src) => {
     if (!bytesRef.current.has(src.id)) {
-      bytesRef.current.set(src.id, Promise.resolve(src.getBytes()).then((b) => (b instanceof Uint8Array ? b : new Uint8Array(b))));
+      const pending = Promise.resolve(src.getBytes()).then((b) => (b instanceof Uint8Array ? b : new Uint8Array(b)));
+      // Forget a failed download so the next Run tries again.
+      pending.catch(() => bytesRef.current.delete(src.id));
+      bytesRef.current.set(src.id, pending);
     }
     return bytesRef.current.get(src.id);
   }, []);

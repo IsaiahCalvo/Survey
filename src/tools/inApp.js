@@ -18,6 +18,15 @@ export const IN_APP_TOOLS = [
 ];
 
 export const baseName = (name) => String(name || 'document').replace(/\.pdf$/i, '');
+// "Plan (rotated).pdf", then "Plan (rotated) 2.pdf"... against lower-cased names in use.
+export function freeDocumentName(name, taken) {
+  if (!taken.has(name.toLowerCase())) return name;
+  const stem = baseName(name);
+  for (let n = 2; ; n += 1) {
+    const next = `${stem} ${n}.pdf`;
+    if (!taken.has(next.toLowerCase())) return next;
+  }
+}
 const out = (name, bytes) => ({ name, bytes });
 const ops = () => import('./ops.js');
 

@@ -47,6 +47,7 @@ import { notifyLibraryChanged } from './hooks/libraryChangeBus';
 import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
 import { addedToProjectMessage, asPdfFile, isUploadableProjectId, rejectedFilesMessage, splitDroppedFiles } from './utils/fileDrop.js';
+import { freeDocumentName } from './tools/inApp.js';
 import { FONT_FAMILY, hexToRgba, hasNameConflict } from './viewerShared.js';
 
 // --- helpers --------------------------------------------------------------
@@ -774,7 +775,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // file-input bookkeeping stays in handleFileUpload. Resolves to what
   // happened: 'added' | 'existing' (deduped to a document already there) |
   // 'skipped' (the user canceled the duplicate ask) | 'failed'.
-  const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true, waitForStorage = false } = {}) => {
+  const uploadBrowserPdf = async (file, { projectId = null, openAfterUpload = true, waitForStorage = false, askDuplicates = true } = {}) => {
     if (!user) {
       setDashboardError('Please sign in to upload documents.');
       onShowAuthModal();
@@ -801,7 +802,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
 
     // Decision 6 gate: same name + different contents -> ask first.
-    const duplicateGate = await confirmSameNameDifferentContent({
+    const duplicateGate = !askDuplicates ? { proceed: true } : await confirmSameNameDifferentContent({
       fileName: file.name,
       contentSha,
       projectId,
@@ -850,7 +851,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         return 'failed'; // nothing archived, nothing opened — safe retry
       }
       await archiveReplacedDocument(duplicateGate.archiveDocId);
-      await maybeOfferAlias(resolvedDoc, file.name, contentSha);
+      if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
       if (openAfterUpload) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
       return 'existing';
@@ -2110,8 +2111,8 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const rows = (docs || [])
       .map((doc) => (allDocuments || []).find((candidate) => candidate.id === doc?.id) || doc)
       .filter((doc) => doc?.file_path);
-    if (!rows.length) {
-      showToast('Save this document to your account first, then try again.', 'info');
+    if (!rows.length || rows.length < (docs || []).length) {
+      showToast(rows.length ? 'Some of these documents aren’t saved to your account yet. Save them first, then try again.' : 'Save this document to your account first, then try again.', 'info');
       return;
     }
     setPdfTools({ docs: rows, initialTool });
@@ -2129,8 +2130,16 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     let notSaved = 0;
     setActiveUploads((count) => count + 1);
     try {
-      for (const file of files) {
-        const status = await uploadBrowserPdf(file, { projectId: targetProjectId, openAfterUpload: false, waitForStorage: true });
+      // Results get a free name instead of the upload's "same name" ask: that
+      // ask lives in the Dashboard, which is hidden while a document is open.
+      const taken = new Set((allDocuments || [])
+        .filter((doc) => (doc.project_id || null) === targetProjectId)
+        .map((doc) => String(doc.name || '').toLowerCase()));
+      for (const result of files) {
+        const name = freeDocumentName(result.name, taken);
+        taken.add(name.toLowerCase());
+        const file = name === result.name ? result : new File([result], name, { type: 'application/pdf' });
+        const status = await uploadBrowserPdf(file, { projectId: targetProjectId, openAfterUpload: false, waitForStorage: true, askDuplicates: false });
         if (status !== 'added' && status !== 'existing') notSaved += 1;
       }
     } finally {
