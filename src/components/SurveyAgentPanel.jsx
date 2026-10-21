@@ -76,7 +76,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const undoLastRef = useRef(() => null);
-  const toolbox = useMemo(() => createSurveyAgentToolbox({ attachments: attachmentsRef.current, undoLastTurn: () => undoLastRef.current() }), []);
+  const toolbox = useMemo(() => createSurveyAgentToolbox({ attachments: attachmentsRef.current, undoLastTurn: () => undoLastRef.current(), getDocument: activeAgentDocument }), []);
   // Messages said or typed with no signal, sent in order once it is back.
   const queueRef = useRef([]);
   const [queued, setQueued] = useState(0);
@@ -162,6 +162,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       documentId: bridge.documentId || null,
       undoLastTurn: () => undoLastRef.current(),
       extraTools: annotations ? buildAnnotationTools({ getDocument: openDocument, text: (v) => (typeof v === 'string' ? v : JSON.stringify(v)) }) : [],
+      getDocument: activeAgentDocument,
     });
     try {
       const result = await runSurveyAgentTurn({
