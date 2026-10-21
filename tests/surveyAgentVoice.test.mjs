@@ -54,6 +54,17 @@ for (const name of ['d117.wav', 'd119.wav', 'cam12.wav', 'no118.wav', 'undo.wav'
   });
 }
 
+// Real people with varied accents (tests/fixtures/voice/edacc, CC BY-SA),
+// over generator hum or hammer bursts.
+for (const name of ['hammer_001', 'gen_034', 'hammer_040', 'gen_050', 'hammer_063', 'gen_067']) {
+  test(`hands-free cuts one clip from a real voice: edacc/${name}`, () => {
+    const events = clipsIn(`edacc/${name}.wav`);
+    assert.deepEqual(events.map((x) => x.e), ['start', 'end'], JSON.stringify(events));
+    assert.ok(Number(events[0].at) >= 0.7, `started in the noise before the words: ${events[0].at}`);
+    assert.ok(Number(events[1].at) - Number(events[0].at) >= 2, `kept the whole tag: ${JSON.stringify(events)}`);
+  });
+}
+
 test('two things said with a pause are two clips', () => {
   assert.deepEqual(clipsIn('two_turns.wav').map((x) => x.e), ['start', 'end', 'start', 'end']);
 });

@@ -17,7 +17,11 @@
 //   SURVEY_AGENT_TESTERS: comma-separated emails allowed in while testing.
 //   SURVEY_AGENT_OPEN: 'true' also lets in paid plans.
 //   OPENAI_API_KEY: optional, speech to text when there is no Groq key.
-// Actions: status | turn | transcribe.
+//   SURVEY_AGENT_TTS: 'off' turns the server voice off (the app then uses
+//     the device's own voice). SURVEY_AGENT_TTS_MODEL / _VOICE pick the
+//     voice (Groq Orpheus by default); SURVEY_AGENT_TTS_PRICE is USD per
+//     million characters (default 0, free tier; Orpheus lists 22).
+// Actions: status | turn | transcribe | speak.
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import {
   SURVEY_AGENT_DEFAULT_PROVIDER,
@@ -80,6 +84,32 @@ function transcriber() {
   return null;
 }
 
+function speaker() {
+  const groq = Deno.env.get('GROQ_API_KEY');
+  if (!groq || Deno.env.get('SURVEY_AGENT_TTS') === 'off') return null;
+  return {
+    url: 'https://api.groq.com/openai/v1/audio/speech',
+    key: groq,
+    model: Deno.env.get('SURVEY_AGENT_TTS_MODEL') || 'canopylabs/orpheus-v1-english',
+    voice: Deno.env.get('SURVEY_AGENT_TTS_VOICE') || 'hannah',
+    microsPerChar: envNumber('SURVEY_AGENT_TTS_PRICE', 0),
+  };
+}
+
+// Orpheus takes at most 200 characters; cut at a word.
+const MAX_SPEECH_CHARS = 200;
+function speechText(value: unknown): string {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= MAX_SPEECH_CHARS) return text;
+  return text.slice(0, MAX_SPEECH_CHARS).replace(/\s+\S*$/, '');
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
 function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   const binary = atob(value);
   const bytes = new Uint8Array(new ArrayBuffer(binary.length));
@@ -97,7 +127,8 @@ Deno.serve(async (req) => {
   try { parsedJson = JSON.parse(raw || '{}'); } catch { return json(400, { error: 'bad_json' }); }
   // Types and sizes; sanitizeAgentMessages / buildSurveyAgentTools check the insides.
   const parsed = parseBody({
-    action: s.enum(['status', 'transcribe', 'turn']),
+    action: s.enum(['status', 'transcribe', 'turn', 'speak']),
+    text: s.string({ max: 1000, optional: true }),
     mime: s.string({ max: 200, optional: true }),
     audio: s.string({ max: Math.ceil(MAX_AUDIO_BYTES * 1.4), optional: true }),
     hints: s.array(s.any({ maxBytes: 2048 }), { max: 200, optional: true }),
@@ -149,6 +180,7 @@ Deno.serve(async (req) => {
       enabled: allowed && modelReady,
       reason: !allowed ? 'not_enabled_for_you' : !modelReady ? 'not_set_up' : overCap ? 'monthly_cap_reached' : null,
       transcription: Boolean(transcriber()),
+      speech: Boolean(speaker()),
       over_cap: overCap,
       usage_left: allowed ? usageLeft() : null,
     });
@@ -177,6 +209,36 @@ Deno.serve(async (req) => {
       || Number(now?.requests || 0) >= envNumber('SURVEY_AGENT_MONTHLY_REQUEST_CAP', 3000);
     return json(429, { error: monthly ? 'monthly_cap_reached' : 'busy_try_again' });
   };
+
+  if (action === 'speak') {
+    const v = speaker();
+    if (!v) return json(501, { error: 'speech_not_set_up' });
+    const input = speechText(body.text);
+    if (!input) return json(400, { error: 'bad_request' });
+    if (!(await reserve())) return json(429, { error: 'monthly_cap_reached', usage_left: usageLeft() });
+    let res: Response;
+    try {
+      res = await fetch(v.url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${v.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: v.model, voice: v.voice, input, response_format: 'wav' }),
+      });
+    } catch (err) {
+      console.error('[survey-agent] speech failed', err);
+      return json(502, { error: 'speech_unavailable' });
+    }
+    if (res.status === 429) return json(429, { error: 'busy_try_again', retry_after: null });
+    if (!res.ok) {
+      // For example the model's terms not yet accepted on the Groq account.
+      console.error('[survey-agent] speech error', res.status, (await res.text()).slice(0, 300));
+      return json(502, { error: 'speech_unavailable' });
+    }
+    const audio = new Uint8Array(await res.arrayBuffer());
+    await admin.rpc('record_survey_agent_usage', {
+      p_user_id: user.id, p_input_tokens: 0, p_output_tokens: 0, p_cost_micros: Math.ceil(input.length * v.microsPerChar),
+    });
+    return json(200, { audio: encodeBase64(audio), mime: res.headers.get('content-type') || 'audio/wav', usage_left: usageLeft(1) });
+  }
 
   if (action === 'transcribe') {
     const t = transcriber();
