@@ -137,13 +137,22 @@ test('undo puts back the entity from before auto-complete and a later set_entity
 
 test('a turn bound to one document refuses once another is open', async () => {
   const { bridge, calls } = fakeBridge();
-  const box = createSurveyAgentToolbox({ getBridge: () => bridge, documentId: 'doc-1' });
+  let extraRan = false;
+  const box = createSurveyAgentToolbox({
+    getBridge: () => bridge,
+    documentId: 'doc-1',
+    extraTools: [{ name: 'add_text_note', execute: async () => { extraRan = true; return 'ok'; } }],
+  });
   assert.equal((await box.run('find_items', { query: 'D-117' })).isError, false);
   bridge.documentId = 'doc-2';
   const late = await box.run('set_answers', { item_id: 'm117', answers: [{ checklist_item_id: 'chk-cable', value: 'Y' }] });
   assert.equal(late.isError, true);
   assert.match(late.content, /another document/);
   assert.equal(calls.length, 0);
+  const lateExtra = await box.run('add_text_note', { page: 1, x: 5, y: 6, text: 'y' });
+  assert.equal(lateExtra.isError, true);
+  assert.match(lateExtra.content, /another document/);
+  assert.equal(extraRan, false);
 });
 
 test('invalid answers, unknown checklist items and viewers change nothing', async () => {

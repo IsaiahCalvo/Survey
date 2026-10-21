@@ -370,6 +370,9 @@ export function createSurveyAgentToolbox({
       const extra = extras.get(name);
       if (extra) {
         try {
+          // Same document guard as built-in tools: a late extra-tool write
+          // must not land after the person opens another document.
+          bridge();
           const content = await extra.execute(placeNear(input || {}));
           return { isError: false, content: typeof content === 'string' ? content : out(content) };
         } catch (err) {
