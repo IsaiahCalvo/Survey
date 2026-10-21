@@ -23,6 +23,19 @@ const root = resolve(import.meta.dirname, '..', '..');
 const PDF_FILE = 'print-fidelity.pdf';
 const CLIP = join(root, 'tests', 'fixtures', 'voice', 'two_turns.wav');
 const SAID = ['D-117, card reader installed.', 'No, D-118.'];
+// What the server voice sends back: a real 0.4 s WAV (a soft tone). Short,
+// so the next thing said in the clip is not spoken over; the mic is off
+// while the agent talks.
+const VOICE_WAV = (() => {
+  const n = 16_000 * 0.4;
+  const out = Buffer.alloc(44 + n * 2);
+  out.write('RIFF', 0); out.writeUInt32LE(36 + n * 2, 4); out.write('WAVEfmt ', 8);
+  out.writeUInt32LE(16, 16); out.writeUInt16LE(1, 20); out.writeUInt16LE(1, 22);
+  out.writeUInt32LE(16_000, 24); out.writeUInt32LE(32_000, 28); out.writeUInt16LE(2, 32); out.writeUInt16LE(16, 34);
+  out.write('data', 36); out.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i += 1) out.writeInt16LE(Math.round(Math.sin(i / 8) * 3000), 44 + i * 2);
+  return out.toString('base64');
+})();
 const CHROMIUM = process.env.PW_CHROMIUM_PATH || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 
 test.use({
@@ -104,7 +117,14 @@ function mockServer(page, log) {
       headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...json, usage_left: { requests: 2900, cost_share: 1 } }),
     });
-    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: true, over_cap: false });
+    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: true, speech: true, over_cap: false });
+    // The server voice answers the first reply, then fails (as when the
+    // model is not set up): the device voice must take over.
+    if (body.action === 'speak') {
+      log.speak.push(body.text);
+      if (log.speak.length === 1) return reply({ audio: VOICE_WAV, mime: 'audio/wav' });
+      return route.fulfill({ status: 502, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'speech_unavailable' }) });
+    }
     if (body.action === 'transcribe') {
       const bytes = Buffer.from(body.audio, 'base64');
       const text = await transcribeClip(body, clips);
@@ -144,9 +164,13 @@ const readMarkers = (page) => page.evaluate(() => {
 const reader = (markers, id) => markers[id]?.checklistResponses?.['cl-reader']?.selection || null;
 
 test('hands-free: talk, hear the reply, talk again, and a spoken correction moves the answer', async ({ page }) => {
-  const log = { clips: [], turns: [] };
+  const log = { clips: [], turns: [], speak: [] };
   const data = await seed();
   await page.addInitScript(({ template, data: d }) => {
+    // Count server-voice playback (audio is muted for the whole browser).
+    window.__played = 0;
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...args) { window.__played += 1; return start.apply(this, args); };
     localStorage.setItem('SURVEY_AGENT_BETA', '1');
     localStorage.setItem('survey.agent.speak', '1');
     localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
@@ -195,9 +219,10 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
     expect(clip.ms).toBeLessThan(5_000);
     expect(clip.hints).toEqual(expect.arrayContaining(['Card reader', 'D-117', 'D-118']));
   }
-  // Each reply was spoken once, without ids or the dash in tags.
-  const spoken = await page.evaluate(() => window.__spoken);
-  expect(spoken[0]).toBe('D 117: card reader is Y.');
-  expect(spoken[1]).toBe('Took that back from D 117 and set card reader to Y on D 118.');
+  // Each reply was spoken once, without ids or the dash in tags: the first
+  // in the server voice, the second (server voice failed) by the device.
+  expect(log.speak).toEqual(['D 117: card reader is Y.', 'Took that back from D 117 and set card reader to Y on D 118.']);
+  expect(await page.evaluate(() => window.__played)).toBe(1);
+  expect(await page.evaluate(() => window.__spoken)).toEqual(['Took that back from D 117 and set card reader to Y on D 118.']);
   console.log('HANDSFREE', JSON.stringify(log.clips.map(({ hints: _h, ...c }) => c)));
 });

@@ -13,7 +13,8 @@ import { classifyMediaFile } from '../services/surveyMediaService';
 import { answerSetFor } from '../services/answerSets.js';
 import { createSurveyAgentToolbox, surveyAgentBridge } from '../agent/surveyAgentTools.js';
 import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
-import { cleanTranscript, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
+import { cleanTranscript, transcriptionHints } from '../agent/voiceLoop.js';
+import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
 import './surveyAgentPanel.css';
@@ -35,25 +36,6 @@ const SPEAK_KEY = 'survey.agent.speak';
 const readSpeakSetting = () => {
   try { return window.localStorage.getItem(SPEAK_KEY) !== '0'; } catch { return true; }
 };
-const canSpeak = () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function';
-// Resolves when the voice has finished (or could not start), so hands-free
-// mode only listens again once the device is quiet.
-const speak = (text) => new Promise((resolve) => {
-  const words = spokenReply(text);
-  if (!canSpeak() || !words) { resolve(); return; }
-  let done = false;
-  const finish = () => { if (!done) { done = true; clearTimeout(timer); resolve(); } };
-  // Some devices never fire onend; give up after a generous reading time.
-  const timer = setTimeout(finish, 2500 + words.length * 90);
-  try {
-    window.speechSynthesis.cancel();
-    const utterance = new window.SpeechSynthesisUtterance(words);
-    utterance.onend = finish;
-    utterance.onerror = finish;
-    window.speechSynthesis.speak(utterance);
-  } catch { finish(); }
-});
-const stopSpeaking = () => { try { if (canSpeak()) window.speechSynthesis.cancel(); } catch { /* nothing playing */ } };
 const canHandsFree = () => typeof window !== 'undefined'
   && Boolean(navigator.mediaDevices?.getUserMedia)
   && Boolean(window.AudioContext || window.webkitAudioContext);
@@ -70,7 +52,13 @@ const newId = (prefix) => `${prefix}${nextId++}`;
 
 export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const [usageLeft, setUsageLeft] = useState(null);
-  const call = useMemo(() => withRetries(makeSurveyAgentCaller(supabase, { onUsage: setUsageLeft })), []);
+  const rawCall = useMemo(() => makeSurveyAgentCaller(supabase, { onUsage: setUsageLeft }), []);
+  const call = useMemo(() => withRetries(rawCall), [rawCall]);
+  // Spoken replies: the server's natural voice when it has one, else the
+  // device's own voice.
+  const voice = useMemo(() => createAgentVoice({ call: rawCall }), [rawCall]);
+  const speak = voice.speak;
+  const stopSpeaking = voice.stop;
   const attachmentsRef = useRef(new Map());
   const [status, setStatus] = useState(null);
   const [entries, setEntries] = useState([]);
@@ -107,11 +95,12 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       .then((s) => {
         if (!live) return;
         setStatus(s || { enabled: false, reason: 'network' });
+        voice.setServerVoice(Boolean(s?.speech));
         if (s?.usage_left) setUsageLeft(s.usage_left);
       })
       .catch((err) => { if (live) setStatus({ enabled: false, reason: err?.code || 'network' }); });
     return () => { live = false; };
-  }, [call]);
+  }, [call, voice]);
 
   useEffect(() => {
     const el = listRef.current;
@@ -127,6 +116,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
 
   const toggleSpeak = () => {
     const next = !speakReplies;
+    if (next) unlockPlayback();
     setSpeakReplies(next);
     if (!next) stopSpeaking();
     try { window.localStorage.setItem(SPEAK_KEY, next ? '1' : '0'); } catch { /* storage blocked */ }
@@ -384,6 +374,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   onHandsFreeClipRef.current = onHandsFreeClip;
 
   const startHandsFree = async () => {
+    unlockPlayback();
     if (recorder.state !== 'idle') recorder.stop();
     if (speechRef.current) speechRef.current.stop();
     try {
@@ -436,6 +427,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const canTalk = Boolean(status?.transcription) || Boolean(browserSpeech());
   const recording = recorder.state !== 'idle' || listening;
   const toggleTalk = () => {
+    unlockPlayback();
     if (status?.transcription) {
       if (recorder.state === 'recording') recorder.stop();
       else if (recorder.state === 'idle') recorder.start();
@@ -490,7 +482,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
             {handsFree ? (mobileMode ? 'Stop' : 'Stop hands-free') : 'Hands-free'}
           </button>
         )}
-        {canSpeak() && (
+        {canSpeakReplies() && (
           <button
             type="button"
             className="survey-agent__voice"
@@ -552,7 +544,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       )}
       <form
         className="survey-agent__composer"
-        onSubmit={(e) => { e.preventDefault(); sendAndSpeak(draft); }}
+        onSubmit={(e) => { e.preventDefault(); unlockPlayback(); sendAndSpeak(draft); }}
       >
         <input
           ref={fileInputRef}
@@ -574,7 +566,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
           disabled={!ready}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAndSpeak(draft); }
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); unlockPlayback(); sendAndSpeak(draft); }
           }}
         />
         {canTalk && (
