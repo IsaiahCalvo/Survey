@@ -1,13 +1,14 @@
 /* Documents preview "Team": the document's owner (uploader) first, then its
  * active collaborators, one row per person. Rows come from
- * getDocumentCollaborators (document_collaborators, which carries `email`).
+ * getDocumentCollaborators (document_collaborators, which carries `email`);
+ * the owner's name comes from get_document_owner_profile (ownerProfile).
  * Tests: tests/documentTeam.test.mjs.
  */
 
 const nameOf = (person) => person?.name || person?.user_metadata?.full_name
   || (person?.email ? String(person.email).split('@')[0] : '');
 
-export function documentTeamRows(doc, collaborators, currentUser) {
+export function documentTeamRows(doc, collaborators, currentUser, ownerProfile = null) {
   const rows = [];
   const seen = new Set();
   const list = Array.isArray(collaborators) ? collaborators : [];
@@ -15,7 +16,8 @@ export function documentTeamRows(doc, collaborators, currentUser) {
   if (ownerId) {
     const ownerRow = list.find((c) => c?.user_id === ownerId);
     const isMe = currentUser?.id && currentUser.id === ownerId;
-    const name = (isMe ? nameOf(currentUser) : '') || nameOf(ownerRow?.user || ownerRow) || 'Owner';
+    const name = (isMe ? nameOf(currentUser) : '') || nameOf(ownerRow?.user || ownerRow)
+      || (ownerProfile?.user_id === ownerId ? nameOf(ownerProfile) : '') || 'Owner';
     rows.push({ id: ownerId, name, role: 'owner', isMe: Boolean(isMe) });
     seen.add(ownerId);
   }

@@ -678,6 +678,17 @@ export async function getDocumentCollaborators(documentId) {
 }
 
 /**
+ * Owner's display name/email for a document the caller can access
+ * (RPC returns nothing otherwise).
+ */
+export async function getDocumentOwnerProfile(documentId) {
+  if (!documentId) return null;
+  const { data, error } = await supabase.rpc('get_document_owner_profile', { doc_id: documentId });
+  if (error) return null;
+  return Array.isArray(data) ? data[0] || null : data || null;
+}
+
+/**
  * Remove a collaborator from a document
  */
 export async function removeDocumentCollaborator(documentId, userId) {
