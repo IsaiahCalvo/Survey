@@ -3,7 +3,7 @@
 import { E2E_ACCOUNTS } from './accounts.mjs';
 import { clientFromPageSession, expect, signIn, test } from './helpers.mjs';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -48,6 +48,21 @@ test('the kits tool refuses bad kits, built-in ids and changed versions', async 
   const list = kits('list');
   expect(list.ok).toBe(true);
   expect(list.out).toContain(`${E2E_ACCOUNTS.pro.email}\t${KIT.id}@${KIT.version}`);
+});
+
+test('fork copies a kit to start the next customer\'s, which then publishes', async () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'fork-')), 'next.json');
+  expect(kits('fork', 'wireless-lock-schedule', 'e2e-next-customer', out).ok).toBe(true);
+  expect(JSON.parse(readFileSync(out, 'utf8'))).toMatchObject({ id: 'e2e-next-customer', version: '1.0.0', extends: 'wireless-lock-schedule@0.1.0' });
+  const fromDb = kits('fork', `${KIT.id}@${KIT.version}`, 'e2e-next-customer', out);
+  expect(fromDb.ok, fromDb.out).toBe(true);
+  const copy = JSON.parse(readFileSync(out, 'utf8'));
+  expect(copy).toMatchObject({ extends: `${KIT.id}@${KIT.version}`, answerSet: PASS_FAIL, label: 'Acme doors (E2E) (copy)' });
+  copy.version = `1.0.${Date.now() % 100000}`;
+  writeFileSync(out, JSON.stringify(copy));
+  const pub = kits('publish', out);
+  expect(pub.ok, pub.out).toBe(true);
+  expect(kits('fork', 'no-such-kit@1.0.0', 'x', out).out).toMatch(/no kit/);
 });
 
 async function openTemplateEditor(page) {
