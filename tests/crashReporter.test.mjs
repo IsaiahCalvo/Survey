@@ -52,6 +52,9 @@ test('crash reporter: report carries no breadcrumbs, agent string or user id', (
   assert.equal(report.p_browser, 'Safari 18');
   assert.equal(report.p_repeats, 3);
   assert.equal(platformOf({ Capacitor: { getPlatform: () => 'android' } }), 'android-app');
+  assert.equal(platformOf({ Capacitor: { getPlatform: () => 'ios' }, innerWidth: 1200 }), 'ios-app');
+  assert.equal(platformOf({ electronAPI: {}, innerWidth: 1200 }), 'electron-app');
+  assert.equal(platformOf({ Capacitor: { getPlatform: () => 'web' }, innerWidth: 1200 }), 'web-desktop');
   assert.equal(browserOf('Mozilla/5.0 Chrome/131.0 Safari/537.36'), 'Chrome 131');
 });
 
