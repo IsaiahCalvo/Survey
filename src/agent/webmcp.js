@@ -228,6 +228,77 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
         return `Added a Survey marker on page ${page}.`;
       },
     },
+    {
+      name: 'survey_list_markers',
+      description: 'List the Survey markers on the open PDF: id, page, name and box. Use an id with survey_edit_marker or survey_delete_marker, or with the survey_* item tools.',
+      inputSchema: { type: 'object', properties: {} },
+      annotations: { readOnlyHint: true, untrustedContentHint: true },
+      access: { minRole: 'viewer' },
+      documentScoped: true,
+      execute: async () => {
+        const doc = getDocument();
+        return text(typeof doc.listSurveyMarkers === 'function' ? doc.listSurveyMarkers() : []);
+      },
+    },
+    {
+      name: 'survey_edit_marker',
+      description: 'Move or resize a Survey marker box on the open PDF. Give the marker id (from survey_list_markers or survey_find_items) and the new box. Needs editor or owner access, and only a marker the person could move by hand changes. Coordinates are PDF points from the top-left of the page.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          marker_id: { type: 'string' },
+          x: { type: 'number', minimum: 0 },
+          y: { type: 'number', minimum: 0 },
+          width: { type: 'number', exclusiveMinimum: 2 },
+          height: { type: 'number', exclusiveMinimum: 2 },
+        },
+        required: ['marker_id', 'x', 'y', 'width', 'height'],
+      },
+      access: { signIn: true, minRole: 'editor' },
+      documentScoped: true,
+      execute: async ({ marker_id: markerId, x, y, width, height }) => {
+        const doc = getDocument();
+        if (!doc.surveyReady()) throw new Error('Turn on Survey mode and pick a template first.');
+        const marker = doc.getSurveyMarker?.(markerId);
+        if (!marker || !marker.page) throw new Error(`No marker with id ${markerId} on the plan. Use survey_list_markers.`);
+        const size = doc.getPageSize(Number(marker.page));
+        if (!size) throw new Error('That marker’s page is not in the open document.');
+        const b = [x, y, width, height].map(Number);
+        if (b.some((n) => !Number.isFinite(n)) || b[2] <= 2 || b[3] <= 2
+          || b[0] < 0 || b[1] < 0 || b[0] + b[2] > size.width || b[1] + b[3] > size.height) {
+          throw new Error(`The box must fit inside the page (${size.width} x ${size.height} points).`);
+        }
+        const res = doc.editSurveyMarker(markerId, { x: b[0], y: b[1], width: b[2], height: b[3] });
+        if (!res?.ok) throw new Error('Could not edit that marker.');
+        return `Moved the marker on page ${marker.page}.`;
+      },
+    },
+    {
+      name: 'survey_delete_marker',
+      description: 'Delete a Survey marker from the open PDF. It also clears that item’s answers; the marker is kept in trash for 30 days and there is one Undo. Because this is hard to take back, it does NOTHING unless confirm is true, which the agent should set only after the person has agreed. Needs editor or owner access.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          marker_id: { type: 'string' },
+          confirm: { type: 'boolean', description: 'Leave false (or unset) to check first; set true only after the person has agreed to delete.' },
+        },
+        required: ['marker_id'],
+      },
+      access: { signIn: true, minRole: 'editor' },
+      documentScoped: true,
+      execute: async ({ marker_id: markerId, confirm }) => {
+        const doc = getDocument();
+        const marker = doc.getSurveyMarker?.(markerId);
+        if (!marker) throw new Error(`No marker with id ${markerId}. Use survey_list_markers.`);
+        const label = marker.name || 'this marker';
+        if (confirm !== true) {
+          return `Not deleted. Ask the person to confirm, then call again with confirm: true to remove "${label}"${marker.page ? ` on page ${marker.page}` : ''}.`;
+        }
+        const res = doc.deleteSurveyMarker(markerId);
+        if (!res?.ok) throw new Error('Could not delete that marker.');
+        return `Deleted ${label}. It is in the trash for 30 days, and the last change can be undone.`;
+      },
+    },
     ...surveyItemTools(surveyToolbox),
   ];
   return tools.map((tool) => ({

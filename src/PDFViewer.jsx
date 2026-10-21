@@ -32847,9 +32847,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // WebMCP: an agent adds Survey markers through the same path as a drawn
   // box (history, sync, server role check). Only the active tab answers.
   const agentMarkerStateRef = useRef(null);
-  agentMarkerStateRef.current = { handleSurveyMarkerCreated, surveyReady: Boolean(showSurveyPanel && selectedTemplate), pageSizes };
+  agentMarkerStateRef.current = {
+    handleSurveyMarkerCreated,
+    handleSurveyMarkerBoundsChange,
+    handleDeleteSurveyMarker,
+    surveyReady: Boolean(showSurveyPanel && selectedTemplate),
+    pageSizes,
+    getMarkers: () => surveyMarkersRef.current || {},
+  };
   useEffect(() => {
     if (isActive === false) return undefined;
+    const markerSummary = (id, m) => (m ? {
+      id,
+      page: m.pageNumber || null,
+      name: m.name || null,
+      bounds: m.bounds
+        ? { x: m.bounds.x, y: m.bounds.y, width: m.bounds.width, height: m.bounds.height }
+        : null,
+    } : null);
     return registerAgentDocument({
       documentId: pdfFile?.id || null,
       surveyReady: () => agentMarkerStateRef.current.surveyReady,
@@ -32857,6 +32872,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       addSurveyMarker: (page, bounds) => {
         recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:create', action: 'survey-marker-agent', pageNumber: page });
         agentMarkerStateRef.current.handleSurveyMarkerCreated(page, bounds);
+      },
+      // Read the markers now on the open plan, so an agent can target one.
+      listSurveyMarkers: () => Object.entries(agentMarkerStateRef.current.getMarkers())
+        .map(([id, m]) => markerSummary(id, m))
+        .filter((m) => m && m.page),
+      getSurveyMarker: (id) => markerSummary(id, agentMarkerStateRef.current.getMarkers()[id]),
+      // Move/resize an existing marker's box. Routes through the same gated
+      // handler as a drag (ownership + lock gate, history, sync), which is a
+      // silent no-op when the person may not change this marker.
+      editSurveyMarker: (id, bounds) => {
+        const marker = agentMarkerStateRef.current.getMarkers()[id];
+        if (!marker || !marker.pageNumber) return { ok: false, reason: 'not-found' };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:bounds', action: 'survey-marker-agent-edit', pageNumber: marker.pageNumber });
+        agentMarkerStateRef.current.handleSurveyMarkerBoundsChange(marker.pageNumber, id, bounds, { action: 'agent-edit' });
+        return { ok: true };
+      },
+      // Delete through the same gated path as the UI (ownership gate, 30-day
+      // trash, History row, item + linked-Excel cleanup, one Undo).
+      deleteSurveyMarker: (id) => {
+        const marker = agentMarkerStateRef.current.getMarkers()[id];
+        if (!marker) return { ok: false, reason: 'not-found' };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:delete', action: 'survey-marker-agent-delete', pageNumber: marker.pageNumber });
+        agentMarkerStateRef.current.handleDeleteSurveyMarker(id);
+        return { ok: true };
       },
     });
   }, [isActive, pdfFile?.id]);

@@ -122,12 +122,24 @@ test('install only when the browser offers WebMCP and not turned off', () => {
 const DOC_ID = '0b6f2a52-1d1f-4a35-9a43-1a2b3c4d5e6f';
 const fakeDoc = (ready = true) => {
   const added = [];
+  const edited = [];
+  const deleted = [];
+  const markers = {
+    'm1': { id: 'm1', page: 1, name: 'Door D-117', bounds: { x: 10, y: 20, width: 40, height: 30 } },
+  };
   return {
     added,
+    edited,
+    deleted,
+    markers,
     documentId: DOC_ID,
     surveyReady: () => ready,
     getPageSize: (p) => (p === 1 ? { width: 612, height: 792 } : null),
     addSurveyMarker: (page, b) => added.push({ page, ...b }),
+    listSurveyMarkers: () => Object.values(markers),
+    getSurveyMarker: (id) => markers[id] || null,
+    editSurveyMarker: (id, b) => { if (!markers[id]) return { ok: false }; edited.push({ id, ...b }); return { ok: true }; },
+    deleteSurveyMarker: (id) => { if (!markers[id]) return { ok: false }; deleted.push(id); return { ok: true }; },
   };
 };
 const markerTools = (role, doc) => {
@@ -166,4 +178,63 @@ test('agent cannot pick another document id to borrow its role', async () => {
   const add = tool(buildAgentTools({ supabase: sb, getDocument: () => doc, readAccess: makeAccessReader(sb, TIERS) }), 'survey_add_marker');
   await add.execute({ ...box, document_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' });
   assert.deepEqual(sb.calls.at(-1), { rpc: 'get_my_document_role', args: { doc_id: DOC_ID } });
+});
+
+const markerTool = (role, doc, name) => {
+  const sb = fakeSupabase({ role });
+  return tool(buildAgentTools({ supabase: sb, getDocument: () => doc, readAccess: makeAccessReader(sb, TIERS) }), name);
+};
+
+test('any role can list the markers on the plan', async () => {
+  for (const role of ['viewer', 'editor', 'owner']) {
+    const doc = fakeDoc();
+    const list = JSON.parse(await markerTool(role, doc, 'survey_list_markers').execute({}));
+    assert.deepEqual(list, [{ id: 'm1', page: 1, name: 'Door D-117', bounds: { x: 10, y: 20, width: 40, height: 30 } }]);
+  }
+  assert.equal(tool(buildAgentTools({ getDocument: () => fakeDoc(), readAccess: open }), 'survey_list_markers').annotations.readOnlyHint, true);
+});
+
+test('editor and owner agents can move a marker; viewer cannot', async () => {
+  for (const role of ['editor', 'owner']) {
+    const doc = fakeDoc();
+    assert.match(await markerTool(role, doc, 'survey_edit_marker').execute({ marker_id: 'm1', x: 5, y: 5, width: 60, height: 40 }), /Moved/);
+    assert.deepEqual(doc.edited, [{ id: 'm1', x: 5, y: 5, width: 60, height: 40 }]);
+  }
+  const doc = fakeDoc();
+  await assert.rejects(markerTool('viewer', doc, 'survey_edit_marker').execute({ marker_id: 'm1', x: 5, y: 5, width: 60, height: 40 }), /viewer.*needs editor/);
+  assert.equal(doc.edited.length, 0);
+});
+
+test('editing checks the box fits the page, the marker exists, and survey mode', async () => {
+  const doc = fakeDoc();
+  const edit = (args) => markerTool('editor', doc, 'survey_edit_marker').execute(args);
+  await assert.rejects(edit({ marker_id: 'm1', x: 600, y: 5, width: 60, height: 40 }), /fit inside/);
+  await assert.rejects(edit({ marker_id: 'm1', x: 5, y: 5, width: 1, height: 40 }), /fit inside/);
+  await assert.rejects(edit({ marker_id: 'nope', x: 5, y: 5, width: 60, height: 40 }), /No marker/);
+  await assert.rejects(markerTool('editor', fakeDoc(false), 'survey_edit_marker').execute({ marker_id: 'm1', x: 5, y: 5, width: 60, height: 40 }), /Survey mode/);
+  assert.equal(doc.edited.length, 0);
+});
+
+test('delete needs confirm:true and editor access, and nothing goes without it', async () => {
+  const doc = fakeDoc();
+  const del = (args) => markerTool('editor', doc, 'survey_delete_marker').execute(args);
+  assert.match(await del({ marker_id: 'm1' }), /Not deleted.*confirm: true/s);
+  assert.equal(doc.deleted.length, 0);
+  assert.match(await del({ marker_id: 'm1', confirm: false }), /Not deleted/);
+  assert.equal(doc.deleted.length, 0);
+  assert.match(await del({ marker_id: 'm1', confirm: true }), /Deleted Door D-117/);
+  assert.deepEqual(doc.deleted, ['m1']);
+});
+
+test('viewer agent cannot delete a marker, confirm or not', async () => {
+  const doc = fakeDoc();
+  await assert.rejects(markerTool('viewer', doc, 'survey_delete_marker').execute({ marker_id: 'm1', confirm: true }), /viewer.*needs editor/);
+  await assert.rejects(markerTool(null, doc, 'survey_delete_marker').execute({ marker_id: 'm1', confirm: true }), /do not have access/);
+  assert.equal(doc.deleted.length, 0);
+});
+
+test('delete of a missing marker is a clear error', async () => {
+  const doc = fakeDoc();
+  await assert.rejects(markerTool('owner', doc, 'survey_delete_marker').execute({ marker_id: 'gone', confirm: true }), /No marker/);
+  assert.equal(doc.deleted.length, 0);
 });
