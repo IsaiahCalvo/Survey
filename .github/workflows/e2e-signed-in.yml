@@ -113,7 +113,7 @@ jobs:
           npx wait-on -t 60000 http://127.0.0.1:5241
           mkdir -p perf-out
           RUNS=3 SIZES=desktop,phone node scripts/perf/big-doc-open.mjs | tee perf-out/open.txt
-          RUNS=3 OUT=perf-out/memory.json node scripts/perf/big-doc-memory.mjs | tee perf-out/memory.txt
+          RUNS=3 HEAP_TOP=40 OUT=perf-out/memory.json node scripts/perf/big-doc-memory.mjs | tee perf-out/memory.txt
           PROFILE=perf-out/open SIZES=phone node scripts/perf/big-doc-open.mjs || true
           { echo '### Big drawing set'; echo '```'; grep MEDIANS perf-out/*.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 

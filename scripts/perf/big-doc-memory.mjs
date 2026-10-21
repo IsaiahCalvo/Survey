@@ -26,6 +26,8 @@ const PAN_PAGES = Number(process.env.PAN_PAGES || 30);
 const DOC_NAME = process.env.BIG_DOC_NAME || 'Big Drawing Set.pdf';
 const NET = process.env.NET || null;
 const OUT = process.env.OUT || null;
+const HEAP_TOP = Number(process.env.HEAP_TOP || 0);
+const heapTop = {};
 const exe = process.env.PW_CHROMIUM_PATH || (fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 
 const DEVICES = {
@@ -101,6 +103,27 @@ async function window_(page, start) {
   }, start);
 }
 
+// Self size by constructor name from a heap snapshot (top HEAP_TOP rows).
+async function heapByConstructor(cdp) {
+  const chunks = [];
+  const onChunk = (e) => chunks.push(e.chunk);
+  cdp.on('HeapProfiler.addHeapSnapshotChunk', onChunk);
+  await cdp.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
+  cdp.off('HeapProfiler.addHeapSnapshotChunk', onChunk);
+  const snap = JSON.parse(chunks.join(''));
+  const f = snap.snapshot.meta.node_fields;
+  const types = snap.snapshot.meta.node_types[0];
+  const iType = f.indexOf('type'); const iName = f.indexOf('name'); const iSize = f.indexOf('self_size');
+  const by = new Map();
+  for (let i = 0; i < snap.nodes.length; i += f.length) {
+    const key = `${types[snap.nodes[i + iType]]}:${snap.strings[snap.nodes[i + iName]].slice(0, 60)}`;
+    const v = by.get(key) || [0, 0];
+    v[0] += snap.nodes[i + iSize]; v[1] += 1;
+    by.set(key, v);
+  }
+  return [...by].sort((a, b) => b[1][0] - a[1][0]).slice(0, HEAP_TOP).map(([k, [b, n]]) => `${(b / 1e6).toFixed(2)}MB x${n} ${k}`);
+}
+
 async function snapshotDom(page) {
   return page.evaluate(() => {
     let bytes = 0;
@@ -152,6 +175,10 @@ async function oneRun(browser, size) {
   } else {
     await page.evaluate(() => { window.__perf.t0 = performance.now(); });
     await row.tap();
+    // Wider touch layouts select the row on a tap and open with "Open file".
+    const openBtn = page.getByRole('button', { name: 'Open file' }).filter({ visible: true }).first();
+    await page.waitForTimeout(400);
+    if (await page.evaluate(() => !document.querySelector('.survey-pdfjs-page-div')) && await openBtn.isVisible().catch(() => false)) await openBtn.tap();
   }
   await page.waitForFunction(() => window.__perf.firstPage != null, null, { timeout: 120_000, polling: 100 });
   const firstPage = await page.evaluate(() => window.__perf.firstPage - window.__perf.t0);
@@ -167,10 +194,12 @@ async function oneRun(browser, size) {
   await page.mouse.move(vp.width / 2, vp.height / 2);
   let start = await page.evaluate(() => { window.__perf.frames = []; window.__perf.recording = true; return performance.now(); });
   const steps = Math.ceil((PAN_PAGES * perPage) / 400);
+  await page.evaluate((el) => { window.__perf.maxScroll = 0; el.addEventListener('scroll', () => { window.__perf.maxScroll = Math.max(window.__perf.maxScroll, el.scrollTop); }, { passive: true }); }, sc);
   for (let i = 0; i < steps; i += 1) { await page.mouse.wheel(0, 400); await page.waitForTimeout(16); }
   for (let i = 0; i < steps; i += 1) { await page.mouse.wheel(0, -400); await page.waitForTimeout(16); }
   await page.waitForTimeout(500);
   const pan = await window_(page, start);
+  pan.maxScroll = await page.evaluate(() => window.__perf.maxScroll || 0);
   await quiet(page);
 
   // Zoom: ctrl+wheel in then out, mid-viewport.
@@ -184,12 +213,14 @@ async function oneRun(browser, size) {
   const zoom = await window_(page, start);
   await quiet(page);
   const heapEndMB = await heapMB(cdp);
+  if (HEAP_TOP && !heapTop[size]) heapTop[size] = await heapByConstructor(cdp);
   const end = await snapshotDom(page);
   await context.close();
   return {
     firstPage, heapOpenMB, canvasOpenMB: open.canvasMB, pagesDrawnOpen: open.pagesDrawn,
     panBlocking: pan.blocking, panLongest: pan.longest, panDropped: pan.dropped,
     zoomBlocking: zoom.blocking, zoomLongest: zoom.longest, zoomDropped: zoom.dropped,
+    panScrolledPages: pan.maxScroll / perPage,
     heapEndMB, canvasMB: end.canvasMB, canvases: end.canvases, pagesDrawn: end.pagesDrawn, overlays: end.overlays, domNodes: end.domNodes,
   };
 }
@@ -208,8 +239,9 @@ for (const size of SIZES) {
     console.log(size, `run ${i + 1}`, Object.entries(r).map(([k, v]) => `${k}=${Math.round(v * 10) / 10}`).join(' '));
   }
   all[size] = runs;
+  if (heapTop[size]) console.log(size, 'heap by constructor\n  ' + heapTop[size].join('\n  '));
   summary[size] = Object.fromEntries(Object.keys(runs[0]).map((k) => [k, Math.round(median(runs.map((r) => r[k])) * 10) / 10]));
 }
 await browser.close();
 console.log('MEDIANS', JSON.stringify(summary));
-if (OUT) fs.writeFileSync(OUT, JSON.stringify({ summary, runs: all }, null, 2));
+if (OUT) fs.writeFileSync(OUT, JSON.stringify({ summary, runs: all, heapTop }, null, 2));
