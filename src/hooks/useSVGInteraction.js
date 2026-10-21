@@ -10,7 +10,8 @@
  */
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, startTransition } from 'react';
 import { flushSync } from 'react-dom';
-import { screenToSVG, normalizeAngle, getInverseScale, clampInverseScale } from '../utils/svgTransformMath';
+import { screenToSVG, normalizeAngle, getInverseScale, inverseScaleFromWidth, clampInverseScale } from '../utils/svgTransformMath';
+
 import { getAnnotationBBox, getAnnotationWorldAABB, getGroupBBox, getLineEndpoints, computeLineBboxCenter, isImportedPath, isAbsoluteCoordPath } from '../utils/svgBoundingBox';
 import {
   applyPageAffineToInkObject,
@@ -171,6 +172,10 @@ import { resolveTextDoubleClick } from '../utils/selectModes.js';
 import { useCrossPageMove } from './useCrossPageMove.js';
 import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 import { lockTextboxSizeAfterResize } from '../utils/annotationPreferences.js';
+
+// Last inverse scale measured per page width (page units), shared by every
+// page layer: pages of one set share a width and a zoom.
+const lastInverseScaleByPageWidth = new Map();
 
 const cloneAnnotations = (annotations) => deepClone(annotations);
 
@@ -376,7 +381,10 @@ export function useSVGInteraction({
   // hoveredId (annotations) because callout ids are strings and live in
   // App.jsx state, so mixing the two would require namespaced keys.
   const [hoveredCalloutId, setHoveredCalloutId] = useState(null);
-  const [inverseScale, setInverseScale] = useState(1);
+  // Starts from the last value measured for pages this wide: pages mounting
+  // during a pan then render their marks once, not once at 1 and again at the
+  // measured value (perf: dense sheets, 2026-10-21).
+  const [inverseScale, setInverseScale] = useState(() => lastInverseScaleByPageWidth.get(pageWidth) ?? 1);
   const [interactionState, setInteractionState] = useState('idle'); // 'idle' | 'dragging' | 'resizing' | 'rotating'
   // UX: Phase 15 UAT-3 (2026-04-18) — which callout part (if any) is being
   // actively dragged right now. Set at pointerdown, cleared at pointerup.
@@ -621,8 +629,9 @@ export function useSVGInteraction({
     const svgEl = svgRef.current;
     if (!svgEl || !pageWidth) return;
 
-    // Initial computation
-    setInverseScale(getInverseScale(svgEl, pageWidth));
+    // The first measurement comes from the ResizeObserver's initial callback
+    // below (its size needs no forced layout), not a clientWidth read on mount.
+    let measured = false;
 
     // Owner 2026-10-07 (smooth zoom): a zoom commit resizes every mounted
     // page's svg at once, and this update re-renders each whole layer (every
@@ -643,6 +652,7 @@ export function useSVGInteraction({
       waitTimer = 0;
       if (!svgEl.isConnected) return;
       const next = getInverseScale(svgEl, pageWidth);
+      lastInverseScaleByPageWidth.set(pageWidth, next);
       startTransition(() => setInverseScale(next));
     };
     // Still means still for a moment: pinches often come one after another,
@@ -671,7 +681,19 @@ export function useSVGInteraction({
       }
       apply();
     };
-    const observer = new ResizeObserver(schedule);
+    const observer = new ResizeObserver((entries) => {
+      if (!measured) {
+        measured = true;
+        const width = Math.round(entries[entries.length - 1]?.contentRect?.width || 0);
+        if (width > 0) {
+          const next = inverseScaleFromWidth(width, pageWidth);
+          lastInverseScaleByPageWidth.set(pageWidth, next);
+          setInverseScale(next);
+          return;
+        }
+      }
+      schedule();
+    });
 
     observer.observe(svgEl);
 
