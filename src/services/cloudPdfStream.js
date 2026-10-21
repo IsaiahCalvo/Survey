@@ -167,7 +167,7 @@ export async function probePdfPresentationTag(url, { fetchImpl = globalThis.fetc
  * PDFDataRangeTransport instead: each chunk it asks for is one ranged GET, and
  * no response header has to be readable.
  */
-export function createCloudRangeTransport({ pdfjsLib, url, length, fetchImpl = globalThis.fetch, onError = () => {} }) {
+export function createCloudRangeTransport({ pdfjsLib, url, length, fetchImpl = globalThis.fetch, onError = () => {}, retries = 3, retryDelayMs = 300 }) {
   const Base = pdfjsLib?.PDFDataRangeTransport;
   if (typeof Base !== 'function' || typeof fetchImpl !== 'function' || !url) return null;
   if (!Number.isFinite(length) || length <= 0) return null;
@@ -176,15 +176,27 @@ export function createCloudRangeTransport({ pdfjsLib, url, length, fetchImpl = g
   class CloudRangeTransport extends Base {
     requestDataRange(begin, end) {
       if (failed) return;
-      fetchImpl(url, { headers: { Range: `bytes=${begin}-${end - 1}` }, cache: 'no-store', signal: controller?.signal })
-        .then(async (response) => {
-          if (response.status !== 206 && response.status !== 200) throw new Error(`range ${response.status}`);
-          const buffer = await response.arrayBuffer();
-          // A server that ignores Range sends the whole file: slice it.
-          const chunk = response.status === 200 ? buffer.slice(begin, end) : buffer;
-          if (chunk.byteLength !== end - begin) throw new Error('range length mismatch');
-          if (!failed) this.onDataRange(begin, new Uint8Array(chunk));
-        })
+      const attempt = async () => {
+        const response = await fetchImpl(url, { headers: { Range: `bytes=${begin}-${end - 1}` }, cache: 'no-store', signal: controller?.signal });
+        if (response.status !== 206 && response.status !== 200) throw new Error(`range ${response.status}`);
+        const buffer = await response.arrayBuffer();
+        // A server that ignores Range sends the whole file: slice it.
+        const chunk = response.status === 200 ? buffer.slice(begin, end) : buffer;
+        if (chunk.byteLength !== end - begin) throw new Error('range length mismatch');
+        return chunk;
+      };
+      // A transient network blip should not cost the whole open: retry a chunk
+      // before giving up on the stream.
+      const withRetries = async () => {
+        for (let tries = 1; ; tries += 1) {
+          try { return await attempt(); } catch (error) {
+            if (failed || tries >= retries) throw error;
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs * tries));
+          }
+        }
+      };
+      withRetries()
+        .then((chunk) => { if (!failed) this.onDataRange(begin, new Uint8Array(chunk)); })
         .catch((error) => {
           if (failed) return;
           failed = true;
@@ -230,6 +242,7 @@ export async function tryOpenCloudPdfStream({
   onFallback = () => {},
   onAllBytes = () => {},
   onBytesFailed = () => {},
+  onStreamBroken = () => {},
   probeTag = (url, size) => probePdfPresentationTag(url, { size }),
   fetchImpl = globalThis.fetch,
 }) {
@@ -251,14 +264,20 @@ export async function tryOpenCloudPdfStream({
         if (tag !== 'untagged') throw new Error(tag === 'tagged' ? 'presentation-tag' : 'presentation-tag-unknown');
       });
     const length = Number(opened.size);
-    // A failed chunk would leave pdf.js waiting forever; destroying the task
-    // rejects its pending promises so the open (or the reload) falls back.
+    // A chunk that still fails after its retries would leave pdf.js waiting
+    // forever. Before the open resolves, destroying the task rejects it and
+    // the caller downloads instead. After it, the pdf is already on screen:
+    // leave it alone and tell the caller to reload by download.
+    let openSettled = false;
     const transport = createCloudRangeTransport({
       pdfjsLib: pdfjs,
       url: opened.url,
       length,
       fetchImpl,
-      onError: () => { void loadingTask?.destroy?.()?.catch?.(() => {}); },
+      onError: (error) => {
+        if (!openSettled) { void loadingTask?.destroy?.()?.catch?.(() => {}); return; }
+        onStreamBroken(error);
+      },
     });
     loadingTask = pdfjs.getDocument(streamGetDocumentOptions(opened.url, pdfjs.VerbosityLevel?.ERRORS, transport ? { transport, length } : {}));
     // A timeout leaves this promise behind; it must not become unhandled.
@@ -267,6 +286,7 @@ export async function tryOpenCloudPdfStream({
       timer = setTimeout(() => reject(new Error('stream open timed out')), timeoutMs);
     });
     const [pdf] = await Promise.race([Promise.all([loadingTask.promise, tagPromise]), timeout]);
+    openSettled = true;
     if (typeof pdf?.getData === 'function') {
       // The rest of the file keeps streaming in (disableAutoFetch: false);
       // once it is all here, hand the bytes on (device cache, mirror check).

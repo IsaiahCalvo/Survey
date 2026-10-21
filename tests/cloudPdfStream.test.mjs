@@ -320,10 +320,10 @@ test('range transport slices a full-file 200 and reports failures once', async (
   await settle();
   assert.deepEqual(t.ranges, [[4, [4, 5]]]);
   const errors = [];
-  const bad = createCloudRangeTransport({ pdfjsLib: { PDFDataRangeTransport: FakeRangeBase }, url: 'u', length: 64, fetchImpl: transportFetch([], { status: 403 }), onError: (e) => errors.push(e.message) });
+  const bad = createCloudRangeTransport({ pdfjsLib: { PDFDataRangeTransport: FakeRangeBase }, url: 'u', length: 64, fetchImpl: transportFetch([], { status: 403 }), retryDelayMs: 0, onError: (e) => errors.push(e.message) });
   bad.requestDataRange(0, 2);
   bad.requestDataRange(2, 4);
-  await settle();
+  for (let i = 0; i < 20; i += 1) await settle();
   assert.deepEqual(errors, ['range 403']);
   assert.deepEqual(bad.ranges, []);
 });
@@ -348,11 +348,34 @@ test('the stream open uses the range transport when the stored size is known', a
   assert.equal(lib.calls[0].disableAutoFetch, false);
 });
 
-test('a range failure after the streamed open reloads by full download, tagged or not', async () => {
-  const { readFile } = await import('node:fs/promises');
-  const src = await readFile(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
-  const body = src.match(/onBytesFailed: \(\) => \{([\s\S]{0,400}?)\n {12}\},/)?.[1] || '';
-  assert.match(body, /streamNeedsBytesPathsRef\.current\.add\(streamPath\)/);
-  assert.match(body, /setLoadRetryToken\(\(t\) => t \+ 1\)/);
-  assert.doesNotMatch(body, /pdfBytesHavePresentationTag/);
+test('a range chunk is retried before the stream gives up', async () => {
+  let calls = 0;
+  const flaky = async (url, init) => {
+    calls += 1;
+    if (calls < 3) throw new Error('network');
+    return transportFetch([])(url, init);
+  };
+  const errors = [];
+  const t = createCloudRangeTransport({ pdfjsLib: { PDFDataRangeTransport: FakeRangeBase }, url: 'u', length: 64, fetchImpl: flaky, retryDelayMs: 0, onError: (e) => errors.push(e) });
+  t.requestDataRange(0, 2);
+  for (let i = 0; i < 10; i += 1) await settle();
+  assert.equal(calls, 3);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(t.ranges, [[0, [0, 1]]]);
+});
+
+test('a range failure after the open reports onStreamBroken and keeps the pdf', async () => {
+  const lib = fakePdfjs();
+  lib.PDFDataRangeTransport = FakeRangeBase;
+  const broken = [];
+  const result = await tryOpenCloudPdfStream({
+    pdfjsLib: lib, filePath: 'p', source: async () => ({ url: 'https://x/signed', size: 64 }),
+    probeTag: async () => 'untagged', fetchImpl: async () => ({ status: 500, arrayBuffer: async () => new ArrayBuffer(0) }),
+    onStreamBroken: (e) => broken.push(e.message),
+  });
+  assert.ok(result?.pdf);
+  lib.calls[0].range.requestDataRange(0, 2);
+  await new Promise((r) => setTimeout(r, 2000));
+  assert.deepEqual(broken, ['range 500']);
+  assert.equal(lib.destroyed, 0);
 });

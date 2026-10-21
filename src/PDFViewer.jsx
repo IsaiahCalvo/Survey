@@ -24217,10 +24217,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               streamNeedsBytesPathsRef.current.add(streamPath);
               if (!isCancelled) setStreamFallbackCount((n) => n + 1);
             },
-            // The streamed file never fully arrived (a range request failed
-            // after the open, which destroys the mounted pdf.js document):
-            // reopen it now by full download, and never stream it again.
+            // The streamed file never fully arrived: open it by download from
+            // now on, and quietly download it once (fills the device cache,
+            // then the same mirror-tag check below).
             onBytesFailed: () => {
+              streamNeedsBytesPathsRef.current.add(streamPath);
+              Promise.resolve()
+                .then(() => downloadFromStorage(streamPath))
+                .then((blob) => blob?.arrayBuffer())
+                .then((bytes) => {
+                  if (!bytes || !pdfBytesHavePresentationTag(bytes)) return;
+                  if (!isCancelled && latestPdfFileRef.current === pdfFile) setLoadRetryToken((t) => t + 1);
+                })
+                .catch(() => {});
+            },
+            // A range chunk failed for good after the streamed open: reload
+            // this file once through the full download.
+            onStreamBroken: () => {
               streamNeedsBytesPathsRef.current.add(streamPath);
               if (!isCancelled && latestPdfFileRef.current === pdfFile) setLoadRetryToken((t) => t + 1);
             },
