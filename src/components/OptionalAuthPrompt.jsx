@@ -18,6 +18,16 @@ import { AuthModal } from './AuthModal';
  * Usage:
  * <OptionalAuthPrompt showAuthModal={showAuthModal} onAuthModalChange={setShowAuthModal} />
  */
+// The website's "Start free" buttons link to /?signup=1 ("Log in" keeps
+// /?signin=1), so a new person lands on Create account, not Welcome back.
+export function startsInSignUp() {
+  try {
+    return new URLSearchParams(window.location.search).get('signup') === '1';
+  } catch {
+    return false;
+  }
+}
+
 export const OptionalAuthPrompt = ({ showAuthModal, onAuthModalChange }) => {
   const { isAuthenticated, loading } = useAuth();
   const [authPromptDismissed, setAuthPromptDismissed] = useState(false);
@@ -73,6 +83,7 @@ export const OptionalAuthPrompt = ({ showAuthModal, onAuthModalChange }) => {
   return (
     <AuthModal
       isOpen={showAuthModal}
+      initialMode={startsInSignUp() ? 'signup' : 'login'}
       onClose={handleClose}
       onDismiss={!isAuthenticated ? handleDismiss : null}
     />

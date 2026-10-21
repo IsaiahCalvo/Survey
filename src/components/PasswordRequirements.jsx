@@ -8,8 +8,19 @@
  * validators can never drift apart.
  */
 import { useState } from 'react';
-import { passwordRequirements } from './authFlow';
+import { PASSWORD_MIN_LENGTH, passwordRequirements } from './authFlow';
 import Icon from '../Icons';
+
+// Short forms for the open checklist, where two columns must fit a phone.
+const SHORT_LABELS = {
+  length: `${PASSWORD_MIN_LENGTH}+ characters`,
+  upper: 'A capital letter',
+  lower: 'A small letter',
+  number: 'A number',
+  special: 'A symbol (! @ # …)',
+  nospace: 'No spaces',
+  nopersonal: 'Not your name or email',
+};
 
 const DEFAULT_THEME = {
   ink: 'var(--text-1)', muted: 'var(--text-3)', card: 'var(--surface-1)', rule: 'var(--border)',
@@ -23,6 +34,7 @@ export default function PasswordRequirements({
   lastName = '',
   theme = {},
   align = 'left',
+  inline = false,
 }) {
   const [open, setOpen] = useState(false);
   const t = { ...DEFAULT_THEME, ...theme };
@@ -31,6 +43,22 @@ export default function PasswordRequirements({
   const touched = String(password || '').length > 0;
   const invalid = touched && !allMet;
   const iconColor = invalid ? t.danger : t.muted;
+
+  // Sign-up: a new person has no rules in mind yet, so the checklist sits
+  // open under the field instead of behind the "i" (which covered the email
+  // field on phones).
+  if (inline) {
+    return (
+      <div aria-live="polite" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 10 }}>
+        {reqs.map((r) => (
+          <div key={r.id} style={{ display: 'flex', gap: 6, fontSize: 11.5, color: r.met ? t.good : (invalid ? t.danger : t.muted), lineHeight: 1.55 }}>
+            <span style={{ width: 12, height: 12, flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginTop: 3 }}>{r.met ? <Icon name="check" size={12} /> : '○'}</span>
+            <span>{SHORT_LABELS[r.id] || r.label}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, minHeight: 18 }}>

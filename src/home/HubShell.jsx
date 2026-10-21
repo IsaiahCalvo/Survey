@@ -187,7 +187,7 @@ export const Search = ({ placeholder = 'Search…', width = 240, value, onChange
    as-is, so it must keep rendering identically. Any change here has to leave
    the no-description path byte-for-byte the same. */
 const EMPTY_STATE_CONTENT_TYPE = { doc: 'document', template: 'template' };
-export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 'plus', onAction }) => (
+export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 'plus', onAction, secondaryLabel, onSecondary }) => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 16px', textAlign: 'center', letterSpacing: 0 }}>
     <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--ink-600)', border: '1px solid var(--ink-500)', display: 'grid', placeItems: 'center' }}>
       {/* The tile keeps the content-type colour (blue document, purple
@@ -205,6 +205,11 @@ export const EmptyState = ({ icon, line, description, actionLabel, actionIcon = 
     <button className="btn primary" type="button" onClick={() => onAction && onAction()}>
       <Icon name={actionIcon} size={12} />{actionLabel}
     </button>
+    {secondaryLabel && (
+      <button className="btn ghost" type="button" onClick={() => onSecondary && onSecondary()}>
+        {secondaryLabel}
+      </button>
+    )}
   </div>
 );
 

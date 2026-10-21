@@ -28,6 +28,7 @@ import useModalFocusTrap from './useModalFocusTrap';
 import { isPhoneLayout } from '../utils/layoutMode.js';
 import { canManageDocument, manageSelectionBlock } from './documentPermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
+import sampleFloorPlanUrl from '../assets/sample-floor-plan.pdf?url';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
 import { showToast } from '../utils/toast';
@@ -318,6 +319,27 @@ export default function DocumentsLedger({
     },
     onDropFiles: (files) => onDropFiles?.(files, { projectId: null }),
   });
+  // An empty Home offers a made-up floor plan (scripts/make-sample-drawing.mjs)
+  // so a new person can try markup before finding a PDF of their own. It goes
+  // through the same upload as a dropped file and opens straight away.
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const trySample = useCallback(async () => {
+    if (sampleBusy || !onDropFiles) return;
+    setSampleBusy(true);
+    try {
+      const response = await fetch(sampleFloorPlanUrl);
+      if (!response.ok) throw new Error(`sample drawing: HTTP ${response.status}`);
+      const file = new File([await response.blob()], 'Sample floor plan.pdf', { type: 'application/pdf' });
+      await onDropFiles([file], { projectId: null, open: true });
+    } catch (error) {
+      console.error('[DocumentsLedger] sample drawing failed', error);
+    } finally {
+      setSampleBusy(false);
+    }
+  }, [onDropFiles, sampleBusy]);
+  const sampleAction = onDropFiles
+    ? { secondaryLabel: sampleBusy ? 'Opening sample…' : 'Try a sample drawing', onSecondary: trySample }
+    : {};
   const backfillDocs = useMemo(() => docs.map((d) => d.raw), [docs]);
   useThumbnailBackfill(backfillDocs, { downloadDocument, hostRef: backfillHostRef });
 
@@ -787,10 +809,11 @@ export default function DocumentsLedger({
                     <EmptyState
                       icon="doc"
                       line="No documents yet"
-                      description="Upload your first PDF to start surveying."
+                      description="Upload a PDF, or drag one here, to start marking it up."
                       actionIcon="upload"
                       actionLabel="Upload PDF"
                       onAction={() => onUpload && onUpload()}
+                      {...sampleAction}
                     />
                   </div>
                 ) : (
@@ -1029,10 +1052,11 @@ export default function DocumentsLedger({
               <EmptyState
                 icon="doc"
                 line="No documents yet"
-                description="Upload your first PDF to start surveying."
+                description="Upload a PDF to start marking it up."
                 actionIcon="upload"
                 actionLabel="Upload PDF"
                 onAction={() => onUpload && onUpload()}
+                {...sampleAction}
               />
             ) : (
               <div className="meta" style={{ padding: '18px 4px', fontSize: 12 }}>No documents match your search.</div>

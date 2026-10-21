@@ -23521,6 +23521,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }));
         if (redactionsSanitizedForExport > 0) {
           showToast(`${redactionsSanitizedForExport} redaction marks were exported as outlines without their replacement text`, 'info');
+        } else {
+          // A browser download starts silently (first-run walk 2026-10-21),
+          // so say where the file went.
+          showToast(`Downloaded ${defaultName}`, 'success');
         }
       }
     } catch (err) {
