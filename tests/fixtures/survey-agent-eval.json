@@ -20,9 +20,19 @@
   },
   "markers": {
     "m117": { "name": "D-117", "moduleId": "mod-1", "categoryId": "cat-door" },
-    "m118": { "name": "D-118", "moduleId": "mod-1", "categoryId": "cat-door" },
+    "m118": { "name": "D-118", "moduleId": "mod-1", "categoryId": "cat-door", "pageNumber": 2, "bounds": { "x": 110, "y": 190, "width": 44, "height": 28 } },
     "m201": { "name": "D-201", "moduleId": "mod-1", "categoryId": "cat-door" },
     "c12": { "name": "CAM-12", "moduleId": "mod-1", "categoryId": "cat-camera" }
+  },
+  "plan": {
+    "pageSize": { "width": 792, "height": 612 },
+    "pages": {
+      "2": [
+        { "text": "D-118", "box": { "x": 120, "y": 200, "width": 24, "height": 8 } },
+        { "text": "D-119", "box": { "x": 300, "y": 210, "width": 24, "height": 8 } },
+        { "text": "ELEV", "box": { "x": 400, "y": 100, "width": 20, "height": 8 } }
+      ]
+    }
   },
   "cases": [
     { "say": "D-117, the door is not installed", "expect": { "m117": { "answers": { "door-installed": "N" } } } },
@@ -34,6 +44,8 @@
     { "say": "Door 36 unicorn, mark it as flying", "expect": { "noChanges": true } },
     { "say": "uh so like, D-117, hardware's not there, it's just the frame and, um, wires hanging out", "expect": { "m117": { "answers": { "hardware": "N" } } } },
     { "say": "D-118 add a note: ceiling tile missing above the door", "expect": { "m118": { "noteIncludes": ["ceiling tile"] } } },
-    { "say": "what's the weather today", "expect": { "noChanges": true } }
+    { "say": "what's the weather today", "expect": { "noChanges": true } },
+    { "say": "D-119 cables are pulled", "expect": { "noChanges": true } },
+    { "say": "Add door D-119 from the plan, the lock is installed", "expect": { "created": { "D-119": { "category": "cat-door", "page": 2, "answers": { "lock": "Y" } } } } }
   ]
 }
