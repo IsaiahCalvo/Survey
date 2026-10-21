@@ -439,6 +439,10 @@ export async function runBackfill(args) {
   });
 }
 
+function yieldToMainThread() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 async function runBackfillUnlocked(args) {
   const {
     ydoc,
@@ -624,7 +628,9 @@ async function runBackfillUnlocked(args) {
   // 'crdt-backfill' so the log renders one "Document migrated" row.
   // Per-row meta.authorId attribution still flows through ctx.userId on
   // the bridge call (separate from the transaction-tag origin).
-  const BACKFILL_BATCH_SIZE = 100;
+  // 25 rows per batch keeps each batch (import + broadcast) well under a
+  // 50 ms frame budget on a phone; batches yield to the main thread below.
+  const BACKFILL_BATCH_SIZE = 25;
   const batchOrigin = buildBackfillOrigin({
     originPayloadFactory,
     userId,
@@ -633,6 +639,12 @@ async function runBackfillUnlocked(args) {
     clientID,
   });
   for (let batchStart = 0; batchStart < rows.length; batchStart += BACKFILL_BATCH_SIZE) {
+    // Give the main thread back between batches. Run back to back, a
+    // 4,000-row document imported (and broadcast) in one ~1.4 s task during
+    // the open, freezing scroll and input after the first page was up.
+    // Writes landing in between are fine: the gate below tolerates a Y.Map
+    // larger than `imported`, and applyFabricCreate is idempotent per id.
+    if (batchStart > 0) await yieldToMainThread();
     const batchEnd = Math.min(batchStart + BACKFILL_BATCH_SIZE, rows.length);
     ydoc.transact(() => {
       for (let i = batchStart; i < batchEnd; i++) {
