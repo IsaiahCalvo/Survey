@@ -60,3 +60,41 @@ test('edits and deletes made while the backfill yields survive later batches', a
   assert.equal(yMap.has('mark-75'), false, 'mark deleted during the import is not brought back');
   assert.equal(yMap.size, 79);
 });
+
+// A chainable Supabase stand-in: the documents row reads as not yet cut over,
+// and the cutover_completed_at write is recorded.
+function fakeSupabase(writes) {
+  const chain = (table) => {
+    const q = {
+      select: () => q, eq: () => q, in: () => q, order: () => q, range: () => q, limit: () => q,
+      maybeSingle: async () => ({ data: { id: 'doc-2', cutover_completed_at: null }, error: null }),
+      single: async () => ({ data: { id: 'doc-2', cutover_completed_at: null }, error: null }),
+      update: (values) => { writes.push({ table, values }); return q; },
+      then: (resolve) => resolve({ data: [], error: null, count: 0 }),
+    };
+    return q;
+  };
+  return { from: chain };
+}
+
+test('a mark deleted while the backfill yields does not block the cutover seal', async () => {
+  const ydoc = new Y.Doc();
+  const yMap = ydoc.getMap('annotations');
+  const rows = Array.from({ length: 60 }, (_, i) => legacyRow(i));
+  const writes = [];
+  let deleted = false;
+  const deleteAfterFirstBatch = () => {
+    if (deleted || !yMap.has('mark-3')) return;
+    deleted = true;
+    yMap.unobserveDeep(deleteAfterFirstBatch);
+    setTimeout(() => applyFabricDelete(ydoc, yMap, 'mark-3', userOrigin), 0);
+  };
+  yMap.observeDeep(deleteAfterFirstBatch);
+  await runBackfill({
+    ydoc, supabase: fakeSupabase(writes), documentId: 'doc-2', userId: USER, sessionId: 's',
+    clientID: ydoc.clientID, existingHydrateRows: rows, markCutoverComplete: true,
+  });
+  assert.equal(yMap.has('mark-3'), false);
+  assert.equal(yMap.size, 59);
+  assert.ok(writes.some((w) => w.table === 'documents' && w.values.cutover_completed_at), 'cutover sealed');
+});

@@ -656,6 +656,7 @@ async function runBackfillUnlocked(args) {
   };
   yMapAnnotations.observeDeep(noteForeignChanges);
   let skippedConcurrent = 0;
+  const importedKeys = new Set();
   try {
   for (let batchStart = 0; batchStart < rows.length; batchStart += BACKFILL_BATCH_SIZE) {
     // Give the main thread back between batches. Run back to back, a
@@ -713,6 +714,7 @@ async function runBackfillUnlocked(args) {
           }
 
           imported++;
+          importedKeys.add(String(annoId));
           importedByType[__rowType] = (importedByType[__rowType] || 0) + 1;
         } catch (err) {
           // eslint-disable-next-line no-console
@@ -724,8 +726,9 @@ async function runBackfillUnlocked(args) {
     }, batchOrigin);
   }
 
-  } finally {
+  } catch (loopError) {
     yMapAnnotations.unobserveDeep(noteForeignChanges);
+    throw loopError;
   }
   if (skippedConcurrent > 0) {
     crdtBackfillDebug('[Phase31 UAT] backfill:skipped-concurrently-changed ' + JSON.stringify({
@@ -765,12 +768,22 @@ async function runBackfillUnlocked(args) {
   // Skipped rows (malformed legacy data we couldn't round-trip) DO NOT block
   // sealing — they were unrenderable in v2.3 and would never be renderable in
   // v2.4 either. Sealing without them is correct.
+  // Observed until here so the gate below also counts deletes that landed
+  // after the last batch.
+  yMapAnnotations.unobserveDeep(noteForeignChanges);
   let cutoverCompleted = false;
   if (args.markCutoverComplete) {
     // Verified-count match: yMapSize >= imported gates the cutover_completed_at
     // write. CONTEXT.md AC bullet 1 + Risk-and-Rollback mitigation #1.
     const yMapSize = yMapAnnotations.size;
-    const expectedMinSize = imported;
+    // Marks this run imported that another writer has since deleted (during
+    // a yield, or right after) are legitimately gone; they must not hold the
+    // seal back.
+    let deletedSinceImport = 0;
+    for (const key of importedKeys) {
+      if (touchedDuringImport.has(key) && !yMapAnnotations.has(key)) deletedSinceImport++;
+    }
+    const expectedMinSize = imported - deletedSinceImport;
     if (yMapSize >= expectedMinSize) {
       try {
         // Count match passed (yMapSize >= imported); seal cutover_completed_at.
