@@ -88,7 +88,8 @@ async function reloadViewer(page, baseUrl) {
 async function openHubTab(page, name) {
   const opener = page.getByRole('button', { name: 'Open pages, search, and bookmarks', exact: true });
   if (await opener.isVisible().catch(() => false)) await opener.click();
-  await page.getByTitle(name, { exact: true }).click();
+  // The hub's tabs are named by aria-label now (no title tooltip).
+  await page.locator(`.mobile-pdf-hub-tab[aria-label="${name}"]`).click();
 }
 
 async function visiblePageContextAction(page, label) {
@@ -239,6 +240,10 @@ async function runMultiSelectClipboardAndZOrder(page, touch, baseUrl) {
   return { created: [rectangle.id, ellipse.id], persistedCount: stableIds.length };
 }
 
+async function expectText(locator, text) {
+  await locator.filter({ hasText: text }).waitFor({ state: 'visible', timeout: 10_000 });
+}
+
 async function runCounterSeries(page, touch, baseUrl) {
   const createCounterAt = async (prior, xFraction, yFraction) => {
     let counter = page.locator('.mobile-pdf-tools__subtools').getByRole('button', { name: 'Counter', exact: true });
@@ -278,12 +283,17 @@ async function runCounterSeries(page, touch, baseUrl) {
   const before = new Set(await annotationIds(page));
   const first = await createCounterAt(before, 0.3, 0.28);
   before.add(first.id);
-  await page.getByRole('button', { name: /Count 1|Counter Series/ }).click();
-  await page.getByRole('button', { name: '+ New Count', exact: true }).click();
+  // Count picker (#837): the strip's "Counter series" pill opens the Counts
+  // menu - New count, or Continue an existing count.
+  const seriesPill = page.locator('[data-mobile-tool-properties="true"]').getByRole('button', { name: 'Counter series', exact: true });
+  await expectText(seriesPill, 'Count 1');
+  await seriesPill.click();
+  await page.getByRole('button', { name: 'New count', exact: true }).click();
   const second = await createCounterAt(before, 0.34, 0.68);
   before.add(second.id);
-  await page.getByRole('button', { name: 'Count 2', exact: true }).click();
-  await page.locator('.mobile-pdf-properties__menu').getByRole('button', { name: /^Count 1\b/ }).click();
+  await expectText(seriesPill, 'Count 2');
+  await seriesPill.click();
+  await page.locator('.counter-series-menu').getByRole('button', { name: /^Continue Count 1,/ }).click();
   const third = await createCounterAt(before, 0.7, 0.7);
   const ids = [first.id, second.id, third.id];
   const snapshot = await persistedSnapshot(page, storageKeys);
@@ -343,7 +353,7 @@ async function runBookmarksAndPages(page, baseUrl) {
   ], 'conflicting combined edit must leave name and page unchanged');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
 
-  await page.getByTitle('Pages', { exact: true }).click();
+  await page.locator('.mobile-pdf-hub-tab[aria-label="Pages"]').click();
   await page.getByRole('toolbar', { name: 'Page actions' }).getByRole('button', { name: 'Add', exact: true }).click();
   await page.waitForFunction(
     (count) => document.querySelectorAll('.mobile-page-card').length === count,
@@ -406,7 +416,7 @@ async function runBookmarksAndPages(page, baseUrl) {
   snapshot = await persistedSnapshot(page, storageKeys);
   assert(snapshot.sidebar.bookmarks.every((bookmark) => JSON.stringify(bookmark.pageIds) === '[1]'));
 
-  await page.getByTitle('Bookmarks', { exact: true }).click();
+  await page.locator('.mobile-pdf-hub-tab[aria-label="Bookmarks"]').click();
   // RULED 2026-09-23 (owner: phone bookmarks match desktop) — delete lives in
   // Edit mode; the panel remounted with the tab switch, so enter it again.
   await page.getByRole('button', { name: 'Edit bookmarks', exact: true }).click();

@@ -524,7 +524,12 @@ async function testMobileEntitiesModalCentering(page, baseUrl, touch) {
   await assertCentered('short-list');
   const addEntity = modal.getByRole('button', { name: 'Add entity', exact: true });
   const entityRows = modal.locator('.templates-mobile-entity-row');
-  for (let index = 0; index < 8; index += 1) {
+  const panel = modal.locator('.templates-mobile-entity-panel');
+  // Rows are 44px now (owner 2026-10-02), so eight extra no longer always
+  // fill the sheet; keep adding (at least eight, at most twenty) until the
+  // list is genuinely longer than the panel.
+  for (let index = 0; index < 20; index += 1) {
+    if (index >= 8 && await panel.evaluate((element) => element.scrollHeight > element.clientHeight + 44)) break;
     const previousCount = await entityRows.count();
     await activate(addEntity, touch, 'mobile');
     await page.waitForFunction(
@@ -537,7 +542,6 @@ async function testMobileEntitiesModalCentering(page, baseUrl, touch) {
       await colorPanel.waitFor({ state: 'hidden' });
     }
   }
-  const panel = modal.locator('.templates-mobile-entity-panel');
   const overflow = await panel.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
@@ -625,18 +629,25 @@ async function testMobileHeaderParity(page, baseUrl) {
   const reference = metrics.documents;
   for (const tab of EDGE_TABS.slice(1)) {
     const candidate = metrics[tab];
-    for (const key of ['row', 'action', 'search']) {
-      for (const field of ['x', 'y', 'width', 'height']) {
-        assertNear(candidate[key][field], reference[key][field], `mobile: ${tab} ${key} ${field} matches Documents`);
-      }
+    for (const field of ['x', 'y', 'width', 'height']) {
+      assertNear(candidate.row[field], reference.row[field], `mobile: ${tab} row ${field} matches Documents`);
     }
+    // The gold action is as wide as its own label since c2793c23 ("Upload" vs
+    // "New project"), pinned to the row's right edge; the search field takes
+    // what is left. So compare the edges that are shared, not the widths.
+    for (const field of ['y', 'height']) {
+      assertNear(candidate.action[field], reference.action[field], `mobile: ${tab} action ${field} matches Documents`);
+      assertNear(candidate.search[field], reference.search[field], `mobile: ${tab} search ${field} matches Documents`);
+    }
+    assertNear(candidate.action.x + candidate.action.width, reference.action.x + reference.action.width, `mobile: ${tab} action right edge matches Documents`);
+    assertNear(candidate.search.x, reference.search.x, `mobile: ${tab} search left edge matches Documents`);
     assert.equal(candidate.actionTypography.fontSize, reference.actionTypography.fontSize, `mobile: ${tab} primary-action font size matches Documents`);
     assertNear(candidate.select.x, reference.select.x, `mobile: ${tab} Select left alignment`);
     assertNear(candidate.select.y, reference.select.y, `mobile: ${tab} Select row alignment`);
   }
   for (const tab of EDGE_TABS) {
     const typography = metrics[tab].actionTypography;
-    assert.equal(typography.fontSize, '11.5px', `mobile: ${tab} primary action uses the shared font token`);
+    assert.equal(typography.fontSize, '11px', `mobile: ${tab} primary action uses the shared font token`);
     assert.equal(typography.whiteSpace, 'nowrap', `mobile: ${tab} primary action cannot wrap`);
     assert.ok(typography.scrollWidth <= typography.clientWidth, `mobile: ${tab} primary action text is not horizontally clipped`);
     assert.ok(typography.scrollHeight <= typography.clientHeight, `mobile: ${tab} primary action text is not vertically clipped`);
