@@ -19,7 +19,20 @@ const flag = (name) => {
 };
 const BASE = (flag('--base') || 'https://surveytool.app').replace(/\/$/, '');
 const EXPECT_COMMIT = flag('--expect-commit');
-const PAGES = ['/', '/welcome'];
+// Pages the React app draws into #root. Signed out, `/` sends visitors to the
+// static /welcome page instead, so it passes by landing there or by drawing.
+const PAGES = ['/', '/app'];
+const SIGNED_OUT_HOME = '/welcome';
+// Generated static pages (scripts/build-marketing.mjs, build-free-tools.mjs).
+// A broken vercel.json rewrite falls through to the app shell, whose title is
+// just "Survey", so each must answer with its own title.
+const STATIC_PAGES = [
+  ['/welcome', /PDF markup/i],
+  ['/pricing', /Pricing/i],
+  ['/status', /Status/i],
+  ['/tools', /PDF tools/i],
+  ['/tools/merge-pdf', /Merge/i],
+];
 const DRAW_TIMEOUT_MS = 30000;
 
 const failures = [];
@@ -46,11 +59,16 @@ async function checkPage(browser, path) {
       failures.push(`${path} answered ${response ? response.status() : 'nothing'}`);
       return;
     }
-    await page.waitForFunction(
-      () => (document.getElementById('root')?.childElementCount || 0) > 0,
-      null,
+    const drew = await page.waitForFunction(
+      (home) => (document.getElementById('root')?.childElementCount || 0) > 0
+        || (location.pathname.replace(/\/$/, '') === home && !!document.querySelector('main, h1')),
+      path === '/' ? SIGNED_OUT_HOME : null,
       { timeout: DRAW_TIMEOUT_MS },
-    ).catch(() => failures.push(`${path} never drew (empty #root after ${DRAW_TIMEOUT_MS / 1000}s)`));
+    ).then(() => true, () => false);
+    if (!drew) {
+      failures.push(`${path} never drew (empty #root after ${DRAW_TIMEOUT_MS / 1000}s, at ${new URL(page.url()).pathname})`);
+      return;
+    }
     // Give late scripts a moment to throw before judging the page clean.
     await page.waitForTimeout(3000);
     for (const message of errors) failures.push(`${path} threw: ${message}`);
@@ -60,7 +78,18 @@ async function checkPage(browser, path) {
   }
 }
 
+async function checkStaticPage(path, title) {
+  const res = await fetch(`${BASE}${path}?smoke=${Date.now()}`, { cache: 'no-store' });
+  if (!res.ok) return failures.push(`${path} answered ${res.status}`);
+  const found = (await res.text()).match(/<title>([^<]*)<\/title>/i)?.[1]?.trim() || '';
+  if (!title.test(found)) return failures.push(`${path} served "${found}" (expected its own page; a rewrite may be broken)`);
+  console.log(`${path} ok`);
+}
+
 await checkRelease().catch((error) => failures.push(`release.json: ${error.message}`));
+for (const [path, title] of STATIC_PAGES) {
+  await checkStaticPage(path, title).catch((error) => failures.push(`${path}: ${error.message}`));
+}
 const browser = await chromium.launch(process.env.SMOKE_CHROMIUM ? { executablePath: process.env.SMOKE_CHROMIUM } : {});
 try {
   for (const path of PAGES) {
