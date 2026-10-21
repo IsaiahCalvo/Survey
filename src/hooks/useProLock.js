@@ -5,7 +5,8 @@ import { useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { buildBillingReturnUrl, openDeferredExternalDestination } from '../utils/accountPlatform';
-import { blockIfProLocked } from '../utils/proLock.js';
+import { blockIfProLocked, PRO_LOCK_FLAG } from '../utils/proLock.js';
+import { isFeatureOn } from '../featureFlags.js';
 import { showToast } from '../utils/toast.js';
 
 // Same checkout as the Pro card's button in Settings (StripeCheckout).
@@ -29,9 +30,10 @@ function startProCheckout() {
 export function useProLock() {
   const { tier, loadingTier } = useAuth();
   return useCallback((feature) => {
-    // While the plan is still loading every account reads as Free; do not
-    // show a paying user an upgrade prompt.
-    if (loadingTier) return false;
+    // While the plan is still loading every account reads as Free: stop the
+    // action without a prompt, so a paying user never sees an upgrade ask and
+    // a Free user can't slip through (e.g. start OneDrive sign-in) meanwhile.
+    if (loadingTier) return isFeatureOn(PRO_LOCK_FLAG);
     return blockIfProLocked(feature, tier, { onUpgrade: startProCheckout });
   }, [tier, loadingTier]);
 }
