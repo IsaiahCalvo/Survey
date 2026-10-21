@@ -31,6 +31,7 @@ const exe = process.env.PW_CHROMIUM_PATH || (fs.existsSync('/opt/pw-browsers/chr
 const DEVICES = {
   desktop: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
   phone: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
+  tablet: { viewport: { width: 1024, height: 1366 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
 };
 
 // Injected before any app code: long-task log + a rAF probe for the milestones.
@@ -121,7 +122,14 @@ async function oneRun(browser, size, { profile = null } = {}) {
     await cdp.send('Profiler.start');
   }
   if (size === 'desktop') await page.getByRole('button', { name: 'Open file' }).first().click();
-  else { await page.evaluate(() => { window.__bigOpen.t0 = performance.now(); }); await row.tap(); }
+  else if (size === 'tablet') {
+    // The tablet layout selects the row on a tap and opens with "Open file".
+    await row.tap();
+    const openBtn = page.getByRole('button', { name: 'Open file' }).filter({ visible: true }).first();
+    await openBtn.waitFor({ timeout: 10_000 });
+    await page.evaluate(() => { window.__bigOpen.t0 = performance.now(); });
+    await openBtn.tap();
+  } else { await page.evaluate(() => { window.__bigOpen.t0 = performance.now(); }); await row.tap(); }
   await page.waitForFunction(() => window.__bigOpen?.marks != null && window.__bigOpen?.firstPage != null, null, { timeout: 120_000, polling: 100 });
   // Wait until QUIET_MS passes with no long task after the marks are up.
   const result = await page.waitForFunction((quiet) => {

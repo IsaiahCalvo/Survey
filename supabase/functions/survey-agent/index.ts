@@ -31,6 +31,7 @@ import {
   SURVEY_AGENT_DEFAULT_PROVIDER,
   SURVEY_AGENT_LANGUAGES,
   SURVEY_AGENT_LIMITS,
+  surveyAgentCappedTokens,
   surveyAgentSystemMessages,
   buildSurveyAgentTools,
   markupOpenInTurn,
@@ -412,7 +413,8 @@ Deno.serve(async (req) => {
       p_output_tokens: Number(out?.usage?.completion_tokens || 0),
       p_cost_micros: turnCost,
     });
-    await countDaily('turn', Number(out?.usage?.prompt_tokens || 0) + Number(out?.usage?.completion_tokens || 0), 0, turnCost);
+    // What the call took from Groq's daily cap (a cached prompt prefix is free).
+    await countDaily('turn', surveyAgentCappedTokens(out?.usage), 0, turnCost);
     return json(200, {
       message: {
         content: typeof message.content === 'string' ? message.content : '',

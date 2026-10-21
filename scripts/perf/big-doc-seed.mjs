@@ -6,7 +6,7 @@
 //
 //   BIG_DOC_PAGES=240 BIG_DOC_MARKUPS=4000 node scripts/perf/big-doc-seed.mjs
 import fs from 'node:fs';
-import { gzipSync } from 'node:zlib';
+import { crc32, deflateSync, gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +24,36 @@ export const BIG_DOC = {
 };
 const PAGES = Number(process.env.BIG_DOC_PAGES || 240);
 const MARKUPS = Number(process.env.BIG_DOC_MARKUPS || 4000);
+// BIG_DOC_SHEET_KB=<n> adds an n-KB raster (a scanned detail) to every sheet.
+// Generated vector sheets compress to almost nothing (240 sheets = 0.8 MB);
+// real drawing sets run 20-100 MB, which is what a phone has to download.
+const SHEET_KB = Number(process.env.BIG_DOC_SHEET_KB || 0);
+
+// A grayscale noise PNG of about `kb` KB (noise does not compress).
+function noisePng(kb, seed) {
+  const width = 512;
+  const height = Math.max(1, Math.round((kb * 1024) / width));
+  const raw = Buffer.alloc((width + 1) * height);
+  let x = (seed * 2654435761) >>> 0 || 1;
+  for (let i = 0; i < raw.length; i += 1) {
+    if (i % (width + 1) === 0) { raw[i] = 0; continue; }
+    x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0;
+    raw[i] = 128 + (x & 127);
+  }
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body) >>> 0);
+    return Buffer.concat([len, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; ihdr[9] = 0; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 
 function readEnv() {
   const env = Object.fromEntries(fs.readFileSync(path.join(ROOT, '.env.e2e'), 'utf8')
@@ -55,6 +85,10 @@ async function buildPdf() {
     }
     page.drawRectangle({ x: 2200, y: 40, width: 350, height: 200, borderColor: rgb(0, 0, 0), borderWidth: 3 });
     page.drawText(`SHEET A-${String(p).padStart(3, '0')}`, { x: 2220, y: 180, size: 28, font });
+    if (SHEET_KB > 0) {
+      const image = await doc.embedPng(noisePng(SHEET_KB, p));
+      page.drawImage(image, { x: 1700, y: 40, width: 480, height: 480 * (image.height / image.width) });
+    }
   }
   return Buffer.from(await doc.save());
 }
