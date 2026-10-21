@@ -206,7 +206,10 @@ export function tagShape(example) {
   if (!prefix && !suffix) return null;
   const min = prefix ? Math.max(1, digits.length - 1) : digits.length;
   const max = digits.length + 1;
-  const re = new RegExp(`^${prefix.toLowerCase()}(\\d{${min},${max}})(${suffix ? '[a-z]' : '[a-z]?'})$`);
+  // A letter after the digits is required only when it is the only thing
+  // that tells a tag from a size or note (101A). A prefix like D already
+  // does that, so D-117A still matches ordinary doors such as D-118.
+  const re = new RegExp(`^${prefix.toLowerCase()}(\\d{${min},${max}})(${!prefix && suffix ? '[a-z]' : '[a-z]?'})$`);
   return {
     test: (compactText) => re.test(compactText),
     // "d118a" in the example's own style: "D-118A".

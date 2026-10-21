@@ -184,6 +184,9 @@ test('a tag shape from one example: same letters, about as many digits, maybe a 
   assert.equal(tagShape('CAM 7').name('cam12'), 'CAM 12');
   assert.equal(tagShape('101A').test('205b'), true);
   assert.equal(tagShape('101A').test('205'), false, 'bare numbers are sizes and notes');
+  assert.equal(tagShape('D-117A').test('d118'), true, 'a prefix already tells tags from sizes');
+  assert.equal(tagShape('D-117A').test('d118a'), true);
+  assert.equal(tagShape('D-117A').name('d118'), 'D-118');
   assert.equal(tagShape('117'), null);
   assert.equal(tagShape('Door'), null);
 });
