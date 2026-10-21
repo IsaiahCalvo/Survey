@@ -308,7 +308,7 @@ test('stored PDFs: collaborators can read, nobody else can read or overwrite', a
   expect(after.byteLength).toBe(before.byteLength);
 });
 
-test('survey photos: an uploader removed from the document can no longer delete them', async () => {
+test('survey photos: an uploader removed from the document can no longer read or delete them', async () => {
   const pro = await clientFor(E2E_ACCOUNTS.pro);
   const owner = await clientFor(E2E_ACCOUNTS.owner);
   const jpeg = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' });
@@ -329,9 +329,12 @@ test('survey photos: an uploader removed from the document can no longer delete 
     expect(await exists(own), 'editor deletes own upload').toBe(false);
 
     await must('upload', pro.storage.from('survey-media').upload(kept, jpeg, { contentType: 'image/jpeg' }));
+    expect((await pro.storage.from('survey-media').download(kept)).data, 'editor reads own upload').not.toBeNull();
     await must('remove pro', admin.from('document_collaborators').delete().eq('document_id', DOC).eq('user_id', ids.pro));
     await pro.storage.from('survey-media').remove([kept]);
     expect(await exists(kept), 'removed uploader cannot delete').toBe(true);
+    const read = await pro.storage.from('survey-media').download(kept);
+    expect(read.data, 'removed uploader cannot read').toBeNull();
 
     // The document's owner still can.
     await owner.storage.from('survey-media').remove([kept]);
