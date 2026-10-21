@@ -49,6 +49,19 @@ Rules:
 - Markup tools (notes, shapes, callouts, highlights on the plan), when you have them: to put one by an item, pass near_item_id (from find_items) or near_plan_match_id (from find_on_plan) instead of guessing a spot.
 - After acting, reply in one or two short sentences saying what you recorded. Your reply may be read aloud to someone walking a site, so say it the way you would out loud: plain words, no ids, no lists, no symbols. If you changed nothing, say so.`;
 
+// Languages the agent hears and answers in. English is the default; the
+// app sends 'es' when the person picked Spanish.
+export const SURVEY_AGENT_LANGUAGES = Object.freeze(['en', 'es']);
+const LANGUAGE_NOTES = Object.freeze({
+  es: 'The person speaks Spanish. Reply in Spanish, in the same short spoken style. Keep item names, checklist text, entity names and answer values exactly as written in the survey (do not translate them), and put notes in the language the person used.',
+});
+
+/** The system messages for one turn: the rules, then a language note if any. */
+export function surveyAgentSystemMessages(lang) {
+  const note = LANGUAGE_NOTES[lang];
+  return [{ role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT }, ...(note ? [{ role: 'system', content: note }] : [])];
+}
+
 const id = (description) => ({ type: 'string', description });
 
 function cleanAnswerValues(values) {

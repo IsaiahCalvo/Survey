@@ -29,8 +29,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import {
   SURVEY_AGENT_DEFAULT_PROVIDER,
+  SURVEY_AGENT_LANGUAGES,
   SURVEY_AGENT_LIMITS,
-  SURVEY_AGENT_SYSTEM_PROMPT,
+  surveyAgentSystemMessages,
   buildSurveyAgentTools,
   sanitizeAgentMessages,
   surveyAgentCostMicros,
@@ -156,6 +157,7 @@ Deno.serve(async (req) => {
     messages: s.array(s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }), { max: SURVEY_AGENT_LIMITS.maxMessages * 2, optional: true }),
     answer_values: s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }),
     annotations: s.boolean({ optional: true }),
+    lang: s.enum([...SURVEY_AGENT_LANGUAGES], { optional: true }),
   }, parsedJson);
   if (!parsed.ok) return json(400, { error: 'bad_request', detail: parsed.error });
   const body: Record<string, unknown> = parsed.value;
@@ -297,7 +299,13 @@ Deno.serve(async (req) => {
     form.append('model', t.model);
     form.append('response_format', 'json');
     form.append('temperature', '0');
-    if (hints) form.append('prompt', `Construction site survey. Words and item names: ${hints}.`);
+    // A set language keeps Whisper from guessing (or translating) short clips.
+    if (body.lang) form.append('language', String(body.lang));
+    if (hints) {
+      form.append('prompt', body.lang === 'es'
+        ? `Inspección de obra. Palabras y nombres: ${hints}.`
+        : `Construction site survey. Words and item names: ${hints}.`);
+    }
     const res = await fetch(t.url, { method: 'POST', headers: { Authorization: `Bearer ${t.key}` }, body: form });
     if (res.status === 429) return json(429, { error: 'busy_try_again', retry_after: null });
     if (!res.ok) {
@@ -329,7 +337,7 @@ Deno.serve(async (req) => {
         || (flag?.mode === 'testers' && Boolean(email) && (flag.tester_emails || []).includes(email));
     }
     const request = {
-      messages: [{ role: 'system', content: SURVEY_AGENT_SYSTEM_PROMPT }, ...(clean.messages || [])],
+      messages: [...surveyAgentSystemMessages(body.lang), ...(clean.messages || [])],
       tools: buildSurveyAgentTools(body.answer_values, { annotations }),
       tool_choice: 'auto',
       temperature: 0.2,
