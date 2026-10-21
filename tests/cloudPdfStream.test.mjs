@@ -256,3 +256,36 @@ test('the pdf is not handed back before the tag probe answers', async () => {
   answer('untagged');
   assert.ok((await pending).pdf);
 });
+
+test('probe uses the stored size when Content-Range is not readable (CORS)', async () => {
+  const bytes = await makePdf({ mirrored: true, pages: 40, filler: 4000 });
+  const inner = rangeFetch(bytes);
+  const hidden = async (url, init) => { const r = await inner(url, init); return { ...r, headers: { get: () => null } }; };
+  assert.equal(await probePdfPresentationTag('u', { fetchImpl: hidden }), 'unknown');
+  assert.equal(await probePdfPresentationTag('u', { fetchImpl: hidden, size: bytes.length }), 'tagged');
+  const plain = await makePdf({ pages: 40, filler: 4000 });
+  const inner2 = rangeFetch(plain);
+  const hidden2 = async (url, init) => { const r = await inner2(url, init); return { ...r, headers: { get: () => null } }; };
+  assert.equal(await probePdfPresentationTag('u', { fetchImpl: hidden2, size: plain.length }), 'untagged');
+});
+
+test('the stored size reaches the probe', async () => {
+  const seen = [];
+  await tryOpenCloudPdfStream({
+    pdfjsReady: Promise.resolve(fakePdfjs()), filePath: 'a', source: async () => ({ url: 'u', size: 1234 }),
+    probeTag: async (url, size) => { seen.push(size); return 'untagged'; },
+  });
+  assert.deepEqual(seen, [1234]);
+});
+
+test('a tagged probe falls back at once, without waiting for pdf.js', async () => {
+  // pdf.js never answers and the open timeout is far away: resolving at all
+  // proves the probe rejected without waiting on pdf.js.
+  const hanging = fakePdfjs({ hang: true });
+  const result = await tryOpenCloudPdfStream({
+    pdfjsReady: Promise.resolve(hanging), filePath: 'a', source: async () => ({ url: 'u' }),
+    probeTag: async () => 'tagged', timeoutMs: 2 ** 31 - 1,
+  });
+  assert.equal(result, null);
+  assert.equal(hanging.destroyed, 1);
+});

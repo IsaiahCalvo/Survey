@@ -76,11 +76,12 @@ async function fetchRange(fetchImpl, url, start, endInclusive) {
  * (pdfBytesHavePresentationTag), so a file whose xref is a stream has no tag
  * the download would apply either: it is 'untagged' unless its tail shows one.
  */
-export async function probePdfPresentationTag(url, { fetchImpl = globalThis.fetch } = {}) {
+export async function probePdfPresentationTag(url, { fetchImpl = globalThis.fetch, size } = {}) {
   try {
     if (typeof fetchImpl !== 'function' || !url) return 'unknown';
     const tail = await fetchRange(fetchImpl, url, null, PROBE_TAIL_BYTES);
-    const total = tail.total;
+    // Content-Range may not be readable cross-origin; the stored size is.
+    const total = Number.isFinite(tail.total) && tail.total > 0 ? tail.total : Number(size);
     if (!Number.isFinite(total) || total <= 0) return 'unknown';
     const tailStart = total - tail.text.length;
     if (tail.text.includes(PRESENTATION_TAG)) return 'tagged';
@@ -185,7 +186,7 @@ export async function tryOpenCloudPdfStream({
   onFallback = () => {},
   onAllBytes = () => {},
   onBytesFailed = () => {},
-  probeTag = (url) => probePdfPresentationTag(url),
+  probeTag = (url, size) => probePdfPresentationTag(url, { size }),
 }) {
   let loadingTask = null;
   let timer = null;
@@ -199,15 +200,18 @@ export async function tryOpenCloudPdfStream({
     if (isCancelled()) return null;
     // A mirrored file must never paint unmirrored: learn whether it carries
     // the tag alongside the pdf.js open, and hand back no pdf until it is known.
-    const tagPromise = Promise.resolve().then(() => probeTag(opened.url)).catch(() => 'unknown');
+    // Anything but 'untagged' rejects at once, without waiting on pdf.js.
+    const tagPromise = Promise.resolve().then(() => probeTag(opened.url, opened.size)).catch(() => 'unknown')
+      .then((tag) => {
+        if (tag !== 'untagged') throw new Error(tag === 'tagged' ? 'presentation-tag' : 'presentation-tag-unknown');
+      });
     loadingTask = pdfjs.getDocument(streamGetDocumentOptions(opened.url, pdfjs.VerbosityLevel?.ERRORS));
     // A timeout leaves this promise behind; it must not become unhandled.
     loadingTask.promise?.catch?.(() => {});
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('stream open timed out')), timeoutMs);
     });
-    const [pdf, tag] = await Promise.race([Promise.all([loadingTask.promise, tagPromise]), timeout]);
-    if (tag !== 'untagged') throw new Error(tag === 'tagged' ? 'presentation-tag' : 'presentation-tag-unknown');
+    const [pdf] = await Promise.race([Promise.all([loadingTask.promise, tagPromise]), timeout]);
     if (typeof pdf?.getData === 'function') {
       // The rest of the file keeps streaming in (disableAutoFetch: false);
       // once it is all here, hand the bytes on (device cache, mirror check).

@@ -929,6 +929,7 @@ export const useStorage = () => {
     if (error || !signed?.signedUrl) return null;
     return {
       url: signed.signedUrl,
+      size: pdfCacheInfoSize(info.data),
       onBytes: (bytes) => {
         if (!stamp || !key || !cache || cache.isDisabled) return;
         if (bytes?.byteLength !== pdfCacheInfoSize(info.data)) return;
