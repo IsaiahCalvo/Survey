@@ -410,6 +410,44 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           return `Deleted annotation ${annotationId}. One Undo restores it.`;
         },
       },
+      ...[
+        { shape: 'rectangle', builderShape: 'rect', word: 'rectangle' },
+        { shape: 'ellipse', builderShape: 'ellipse', word: 'ellipse' },
+      ].map(({ shape, builderShape, word }) => ({
+        name: `survey_add_${shape}`,
+        description: `Draw a ${word} on the open PDF from a page box: the top-left corner (PDF points from the top-left of the page), a width and a height. Optionally a hex stroke color, a hex fill color (left out = no fill) and a stroke width. Needs editor or owner access.`,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            page: { type: 'integer', minimum: 1 },
+            x: { type: 'number', minimum: 0 },
+            y: { type: 'number', minimum: 0 },
+            width: { type: 'number', exclusiveMinimum: 0 },
+            height: { type: 'number', exclusiveMinimum: 0 },
+            stroke_color: { type: 'string', description: 'Hex outline color like #111827 (optional).' },
+            fill_color: { type: 'string', description: 'Hex fill color (optional; left out = no fill).' },
+            stroke_width: { type: 'number', exclusiveMinimum: 0, description: 'Outline width in points (default 2).' },
+          },
+          required: ['page', 'x', 'y', 'width', 'height'],
+        },
+        access: { signIn: true, minRole: 'editor' },
+        documentScoped: true,
+        execute: async ({ page, x, y, width, height, stroke_color: strokeColor, fill_color: fillColor, stroke_width: strokeWidth }) => {
+          const doc = getDocument();
+          const size = doc.getPageSize(Number(page));
+          if (!size) throw new Error('That page is not in the open document.');
+          if (!(Number(width) > 0) || !(Number(height) > 0)
+            || Number(x) < 0 || Number(y) < 0
+            || Number(x) + Number(width) > size.width || Number(y) + Number(height) > size.height) {
+            throw new Error(`The ${word} must fit inside the page (${size.width} x ${size.height} points).`);
+          }
+          const res = doc.addShape({ page: Number(page), shape: builderShape, x: Number(x), y: Number(y), width: Number(width), height: Number(height), strokeColor, fillColor, strokeWidth: strokeWidth == null ? undefined : Number(strokeWidth) });
+          if (res?.reason === 'off-page' || res?.reason === 'too-small') throw new Error(`The ${word} must fit inside the page (${size.width} x ${size.height} points).`);
+          if (res?.reason === 'locked') throw new Error(`A locked annotation on that page blocked the save, so the ${word} was not added.`);
+          if (!res?.ok) throw new Error(`Could not add the ${word}.`);
+          return `Added a ${word} on page ${page}.`;
+        },
+      })),
     ] : []),
     ...surveyItemTools(surveyToolbox),
   ];

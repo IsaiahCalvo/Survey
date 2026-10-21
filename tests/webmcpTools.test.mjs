@@ -258,17 +258,20 @@ const fakeAnnoDoc = () => {
   const addedNotes = [];
   const editedNotes = [];
   const deletedNotes = [];
+  const addedShapes = [];
   return {
     ...fakeDoc(),
     notes,
     addedNotes,
     editedNotes,
     deletedNotes,
+    addedShapes,
     listAnnotations: () => Object.values(notes).map(({ id, page, type, text, box }) => ({ id, page, type, text, box })),
     findAnnotation: (id) => (notes[id] ? { page: notes[id].page, index: 0, obj: notes[id] } : null),
     addTextNote: (args) => { addedNotes.push(args); return { ok: true }; },
     editTextNote: (id, patch) => { if (!notes[id]) return { ok: false, reason: 'not-found' }; editedNotes.push({ id, ...patch }); return { ok: true }; },
     deleteAnnotation: (id) => { if (!notes[id]) return { ok: false, reason: 'not-found' }; deletedNotes.push(id); return { ok: true }; },
+    addShape: (args) => { addedShapes.push(args); return { ok: true, id: 's1' }; },
   };
 };
 const annoTools = (role, doc) => {
@@ -348,6 +351,41 @@ test('delete annotation needs confirm:true and editor access', async () => {
 test('delete annotation surfaces a gate refusal instead of a false success', async () => {
   const denied = { ...fakeAnnoDoc(), deleteAnnotation: () => ({ ok: false, reason: 'not-allowed' }) };
   await assert.rejects(annoTool('owner', denied, 'survey_delete_annotation').execute({ annotation_id: 'a1', confirm: true }), /belongs to someone else or is locked/);
+});
+
+test('shape tools follow the flag, and only editor/owner can add one', async () => {
+  const off = buildAgentTools({ getDocument: () => fakeAnnoDoc(), readAccess: open });
+  assert.equal(tool(off, 'survey_add_rectangle'), undefined);
+  assert.equal(tool(off, 'survey_add_ellipse'), undefined);
+  for (const name of ['survey_add_rectangle', 'survey_add_ellipse']) {
+    for (const role of ['editor', 'owner']) {
+      const doc = fakeAnnoDoc();
+      assert.match(await annoTool(role, doc, name).execute({ page: 1, x: 10, y: 20, width: 100, height: 50 }), /Added a (rectangle|ellipse)/);
+      assert.equal(doc.addedShapes.length, 1);
+    }
+    const doc = fakeAnnoDoc();
+    await assert.rejects(annoTool('viewer', doc, name).execute({ page: 1, x: 10, y: 20, width: 100, height: 50 }), /viewer.*needs editor/);
+    await assert.rejects(annoTool(null, doc, name).execute({ page: 1, x: 10, y: 20, width: 100, height: 50 }), /do not have access/);
+    assert.equal(doc.addedShapes.length, 0);
+  }
+});
+
+test('a shape must fit the page, and the right builder shape is used', async () => {
+  const doc = fakeAnnoDoc();
+  const rect = (args) => annoTool('editor', doc, 'survey_add_rectangle').execute(args);
+  await assert.rejects(rect({ page: 1, x: 10, y: 20, width: 700, height: 50 }), /fit inside the page/);
+  await assert.rejects(rect({ page: 1, x: 10, y: 780, width: 50, height: 50 }), /fit inside the page/);
+  await assert.rejects(rect({ page: 2, x: 10, y: 20, width: 50, height: 50 }), /not in the open document/);
+  assert.equal(doc.addedShapes.length, 0);
+  await rect({ page: 1, x: 10, y: 20, width: 50, height: 50 });
+  assert.equal(doc.addedShapes.at(-1).shape, 'rect');
+  await annoTool('editor', doc, 'survey_add_ellipse').execute({ page: 1, x: 10, y: 20, width: 50, height: 50 });
+  assert.equal(doc.addedShapes.at(-1).shape, 'ellipse');
+});
+
+test('a shape save blocked by a locked sibling is reported', async () => {
+  const blocked = { ...fakeAnnoDoc(), addShape: () => ({ ok: false, reason: 'locked' }) };
+  await assert.rejects(annoTool('editor', blocked, 'survey_add_rectangle').execute({ page: 1, x: 10, y: 20, width: 50, height: 50 }), /locked annotation on that page blocked/);
 });
 
 test('a save blocked by a locked sibling is reported, not a false success', async () => {
