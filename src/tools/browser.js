@@ -67,7 +67,7 @@ export async function openPdfjs(bytes) {
 }
 
 // Safari stops drawing canvases past ~16.7M pixels, so cap every render there.
-const MAX_PIXELS = 16_000_000;
+export const MAX_PIXELS = 16_000_000;
 
 export async function renderPage(pdf, index, { width, scale, extraRotation = 0 } = {}) {
   const page = await pdf.getPage(index + 1);

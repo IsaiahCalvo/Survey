@@ -186,6 +186,7 @@ jobs:
           echo "ship=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy frontend to Vercel only after backend success
+        id: vercel
         if: steps.freshness.outputs.ship == 'true'
         shell: bash
         env:
@@ -198,8 +199,26 @@ jobs:
           # git-connect private org-owned repos, so hook/git deploys are gone.
           tested_sha="${{ needs.pick.outputs.sha }}"
           npm install -g vercel@latest
+          set +e
           vercel deploy --prod --yes --token "$VERCEL_TOKEN" \
-            --build-env VERCEL_GIT_COMMIT_SHA="$tested_sha"
+            --build-env VERCEL_GIT_COMMIT_SHA="$tested_sha" 2>&1 | tee vercel.log
+          status=${PIPESTATUS[0]}
+          if grep -q 'api-deployments-free-per-day' vercel.log; then echo "capped=true" >> "$GITHUB_OUTPUT"; fi
+          exit "$status"
+
+      # 2026-10-21 — Vercel's free plan refuses deploys past 100 in a rolling
+      # 24 hours. A refused deploy doesn't count, but without this mark every
+      # CI run (and a `[deploy now]` commit) would try again within minutes.
+      # `pick` reads the newest mark and waits 30 minutes before the next try.
+      - name: Mark that Vercel's daily cap was hit
+        if: failure() && steps.vercel.outputs.capped == 'true'
+        run: mkdir -p .vercel-capped && date -u +%FT%TZ > .vercel-capped/at && echo "key=vercel-capped-$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+        id: capmark
+      - if: failure() && steps.vercel.outputs.capped == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .vercel-capped
+          key: ${{ steps.capmark.outputs.key }}
 
       - name: Verify the exact revision reached production
         if: steps.freshness.outputs.ship == 'true'
@@ -253,11 +272,22 @@ jobs:
           ref: main
           fetch-depth: 300
 
+      - name: When did Vercel's daily cap last refuse a deploy?
+        id: cap
+        uses: actions/cache/restore@v4
+        with:
+          path: .vercel-capped
+          key: vercel-capped-none
+          restore-keys: vercel-capped-
+          lookup-only: true
+
       - name: Pick the newest green main commit and decide whether to ship
         id: pick
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          CAP_KEY: ${{ steps.cap.outputs.cache-matched-key }}
+          CAP_WAIT_SECONDS: '1800'
           EVENT: ${{ github.event_name }}
           WINDOW_SECONDS: '10500'
         run: |
@@ -277,6 +307,14 @@ jobs:
           if [ -n "$live" ] && git cat-file -e "$live^{commit}" 2>/dev/null \
             && git merge-base --is-ancestor "$sha" "$live"; then
             echo "Live ($live) already includes $sha."; echo "ship=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "$EVENT" != workflow_dispatch ] && [[ "$CAP_KEY" =~ ^vercel-capped-([0-9]{8})([0-9]{2})([0-9]{2})$ ]]; then
+            capped_at=$(date -u -d "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}:${BASH_REMATCH[3]}" +%s)
+            since=$(( $(date -u +%s) - capped_at ))
+            if [ "$since" -lt "$CAP_WAIT_SECONDS" ]; then
+              echo "Vercel's daily cap refused a deploy $(( since / 60 )) min ago; next try in $(( (CAP_WAIT_SECONDS - since) / 60 )) min."
+              echo "ship=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
           fi
           if [ "$EVENT" = workflow_dispatch ]; then
             echo "Run by hand: shipping $sha."; echo "ship=true" >> "$GITHUB_OUTPUT"; exit 0

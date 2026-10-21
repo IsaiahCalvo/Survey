@@ -15,7 +15,7 @@ import { answerSetFor } from '../../src/services/answerSets.js';
 import {
   SURVEY_AGENT_LIMITS, buildSurveyAgentTools, markupOpenInTurn, sanitizeAgentMessages, surveyAgentSystemMessages,
 } from '../../supabase/functions/_shared/surveyAgentSpec.js';
-import { CASES, TEMPLATE, grade, startMarkers } from './cases.mjs';
+import { CASES, grade, startMarkers, templateFor } from './cases.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback; };
@@ -82,10 +82,10 @@ function scripted() {
   };
 }
 
-function bridgeFor(currentModuleId) {
+function bridgeFor(c) {
   const markers = startMarkers();
   return {
-    template: TEMPLATE, markers, documentId: 'doc', canEdit: true, selectedMarkerId: null, currentModuleId,
+    template: templateFor(c), markers, documentId: 'doc', canEdit: true, selectedMarkerId: null, currentModuleId: c.module,
     setAnswers: (id, answers) => {
       const r = { ...markers[id].checklistResponses };
       for (const a of answers) {
@@ -106,14 +106,14 @@ const results = [];
 const call = dry ? scripted() : groq;
 for (const c of CASES) {
   if (only && !only.has(c.id)) continue;
-  const b = bridgeFor(c.module);
+  const b = bridgeFor(c);
   const toolbox = createSurveyAgentToolbox({ getBridge: () => b });
   const before = calls;
   let turn;
   try {
     turn = await runSurveyAgentTurn({
       userText: c.said, call, toolbox, lang: c.lang || 'en',
-      answerValues: answerSetFor(TEMPLATE).map((a) => a.value),
+      answerValues: answerSetFor(b.template).map((a) => a.value),
     });
   } catch (err) {
     if (err instanceof OutOfBudget) { console.log(`Stopped at the budget: ${calls} calls, ${tokens} tokens.`); break; }

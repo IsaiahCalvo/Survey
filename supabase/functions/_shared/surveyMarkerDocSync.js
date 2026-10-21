@@ -13,6 +13,51 @@
 
 export const SURVEY_MARKERS_MAP = 'surveyMarkers';
 
+// Two shapes live under each marker id:
+//   * a plain object (the original shape): the whole marker is one value, so
+//     two screens editing different fields at once keep only one edit;
+//   * a nested Y.Map with one entry per field (`fieldMaps` writes, behind the
+//     survey-marker-fields flag): concurrent edits to different fields merge.
+// Readers accept both whatever the flag says. A `fieldMaps` write upgrades a
+// plain value to a Y.Map the first time it changes that marker; a write
+// without it stores plain objects, as before. No imports: a new Y.Map comes
+// from the constructor of the doc's own root map.
+
+function isYMapValue(value) {
+  return !!value && typeof value === 'object' && typeof value.toJSON === 'function'
+    && typeof value.forEach === 'function' && typeof value.set === 'function';
+}
+
+/** A stored marker value (plain object or nested Y.Map) as a plain object. */
+export function readSurveyMarkerValue(value) {
+  if (!value || typeof value !== 'object') return null;
+  return isYMapValue(value) ? value.toJSON() : value;
+}
+
+function newFieldMap(rootMap, marker) {
+  const Ctor = rootMap.constructor;
+  const fields = new Ctor();
+  for (const key of Object.keys(marker)) {
+    if (marker[key] !== undefined) fields.set(key, marker[key]);
+  }
+  return fields;
+}
+
+// Set only the fields that differ, delete fields the marker no longer has.
+function patchFieldMap(fields, marker) {
+  const drop = [];
+  fields.forEach((_v, key) => { if (!(key in marker) || marker[key] === undefined) drop.push(key); });
+  for (const key of drop) fields.delete(key);
+  for (const key of Object.keys(marker)) {
+    const next = marker[key];
+    if (next === undefined) continue;
+    const cur = fields.get(key);
+    if (cur === undefined || stableStringify(readSurveyMarkerValue(cur) ?? cur) !== stableStringify(next)) {
+      fields.set(key, next);
+    }
+  }
+}
+
 export function getSurveyMarkersMap(doc) {
   return doc.getMap(SURVEY_MARKERS_MAP);
 }
@@ -21,7 +66,10 @@ export function getSurveyMarkersMap(doc) {
 export function docToSurveyMarkers(doc) {
   const map = getSurveyMarkersMap(doc);
   const out = {};
-  map.forEach((value, key) => { if (value && typeof value === 'object') out[key] = value; });
+  map.forEach((value, key) => {
+    const marker = readSurveyMarkerValue(value);
+    if (marker) out[key] = marker;
+  });
   return out;
 }
 
@@ -42,7 +90,7 @@ export function docToSurveyMarkers(doc) {
  *   * `protectedIds` (iterable) are never deleted regardless of origin — used to
  *     shield app-created-not-yet-exported markers even on a local reconcile.
  */
-export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSize = 250, protectedIds = null } = {}) {
+export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSize = 250, protectedIds = null, fieldMaps = false } = {}) {
   const map = getSurveyMarkersMap(doc);
   const desired = markers || {};
   const ids = Object.keys(desired);
@@ -74,12 +122,18 @@ export function syncSurveyMarkersToDoc(doc, markers, { origin = 'local', batchSi
     const next = desired[id];
     const cur = map.get(id);
     if (cur === undefined) changed.push([id, next, true]);
-    else if (stableStringify(cur) !== stableStringify(next)) changed.push([id, next, false]);
+    else if (stableStringify(readSurveyMarkerValue(cur)) !== stableStringify(next)) changed.push([id, next, false]);
   }
   for (let i = 0; i < changed.length; i += step) {
     const batch = changed.slice(i, i + step);
     doc.transact(() => {
-      for (const [id, next, isAdd] of batch) { map.set(id, next); if (isAdd) added += 1; else updated += 1; }
+      for (const [id, next, isAdd] of batch) {
+        const cur = isAdd ? undefined : map.get(id);
+        if (!fieldMaps || !next || typeof next !== 'object' || Array.isArray(next)) map.set(id, next);
+        else if (isYMapValue(cur)) patchFieldMap(cur, next);
+        else map.set(id, newFieldMap(map, next));
+        if (isAdd) added += 1; else updated += 1;
+      }
     }, origin);
   }
 

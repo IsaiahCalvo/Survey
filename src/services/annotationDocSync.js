@@ -38,6 +38,7 @@ import {
   restoreEraseDeletionOnDoc,
 } from '../utils/annotationEraseTransaction.js';
 import { getAnnotationAuthorId } from '../lib/collab/permissionScope.js';
+import { isFeatureOn } from '../featureFlags.js';
 import {
   createAnnotationStorageKeyResolver,
   normalizeByPageAnnotationIdentities,
@@ -61,6 +62,7 @@ import {
   getMetaValue,
   setMetaValue,
   docToSurveyMarkers,
+  readSurveyMarkerValue,
   syncSurveyMarkersToDoc,
   repairStackedInkDuplicates,
   createViewerCaptureState,
@@ -1124,9 +1126,14 @@ function whenSynced(provider, timeoutMs = 3000) {
   });
 }
 
+// Read per write (not cached at load) so tests can toggle it; cheap.
+function surveyMarkerFieldsOn() {
+  try { return isFeatureOn('survey-marker-fields'); } catch { return false; }
+}
+
 function legacyEntryAuthorId(mapName, value) {
   if (mapName === ANNOTATIONS_MAP) return getAnnotationAuthorId(decodeAnnotationEntry(value)?.o);
-  if (mapName === SURVEY_MARKERS_MAP) return getAnnotationAuthorId(value);
+  if (mapName === SURVEY_MARKERS_MAP) return getAnnotationAuthorId(readSurveyMarkerValue(value));
   return null;
 }
 
@@ -5467,8 +5474,7 @@ function sendLiveMarkerUpdate(state, record, touched) {
   if (touched.surveyMarkerKeys.size > 0) {
     const map = getSurveyMarkersMap(state.doc);
     for (const key of touched.surveyMarkerKeys) {
-      const value = map.get(key);
-      markers.set(key, value && typeof value === 'object' ? value : null);
+      markers.set(key, readSurveyMarkerValue(map.get(key)));
     }
   }
   let spaces;
@@ -6935,7 +6941,13 @@ function makeHandle(state) {
     /** Push the survey-marker dict into the doc (minimal per-marker diff → ops). */
     applySurveyMarkers(markers, opts = {}) {
       assertHandleWritable(state);
-      return syncSurveyMarkersToDoc(state.doc, markers, { origin: 'local', ...opts });
+      // survey-marker-fields: one Y.Map entry per field, so concurrent edits
+      // to different fields of one marker merge (surveyMarkerDocSync.js).
+      return syncSurveyMarkersToDoc(state.doc, markers, {
+        origin: 'local',
+        fieldMaps: surveyMarkerFieldsOn(),
+        ...opts,
+      });
     },
 
     /**

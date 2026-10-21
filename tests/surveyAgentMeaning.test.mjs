@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSurveyAgentToolbox } from '../src/agent/surveyAgentTools.js';
-import { MODULE_MEANING, moduleKind } from '../supabase/functions/_shared/surveyAgentMeaning.js';
-import { SURVEY_AGENT_SYSTEM_PROMPT } from '../supabase/functions/_shared/surveyAgentSpec.js';
+import { MODULE_MEANING, answerSetMeaning, moduleKind } from '../supabase/functions/_shared/surveyAgentMeaning.js';
+import { SURVEY_AGENT_SYSTEM_PROMPT, buildSurveyAgentTools } from '../supabase/functions/_shared/surveyAgentSpec.js';
 
 // Like Isaiah's door template: the same door in an installation module and
 // a commissioning module, with lines worded differently.
@@ -124,4 +124,29 @@ test('find_items: a fuzzy match in the open module never hides an exact match in
   const found = JSON.parse((await createSurveyAgentToolbox({ getBridge: () => b }).run('find_items', { query: 'D-117' })).content);
   assert.equal(found.matches[0].id, 'c117');
   assert.equal(found.open_module_only, undefined);
+});
+
+test('own answer sets: Y and N map onto the set, and two "no" answers are told apart by words', async () => {
+  assert.equal(answerSetMeaning([{ value: 'Y', tone: 'good' }, { value: 'N', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }]), null);
+  const imd = answerSetMeaning([{ value: 'Installed', tone: 'good' }, { value: 'Missing', tone: 'bad' }, { value: 'Damaged', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }]);
+  assert.match(imd, /say Y, use "Installed"/);
+  assert.match(imd, /"Damaged" for [^;]*busted/);
+  assert.match(imd, /"Missing" for [^;]*not there/);
+  assert.match(imd, /by their words, not by order/);
+  // The edge function only knows the values; tones come from the words.
+  const works = answerSetMeaning(['Works', 'Not working', 'N/A']);
+  assert.match(works, /say N, use "Not working"/);
+  assert.match(works, /"Not working" for [^;]*dead/);
+  const setAnswers = buildSurveyAgentTools(['Works', 'Not working', 'N/A']).find((t) => t.function.name === 'set_answers');
+  assert.match(setAnswers.function.description, /"Not working" for [^;]*dead/);
+  assert.match(SURVEY_AGENT_SYSTEM_PROMPT, /answer_meaning/);
+
+  const b = bridgeFor();
+  b.template = { ...TEMPLATE, answerSet: [{ value: 'Installed', tone: 'good' }, { value: 'Missing', tone: 'bad' }, { value: 'Damaged', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }] };
+  const box = createSurveyAgentToolbox({ getBridge: () => b });
+  const ctx = JSON.parse((await box.run('get_survey_context', {})).content);
+  assert.deepEqual(ctx.answers, ['Installed', 'Missing', 'Damaged', 'N/A']);
+  assert.match(ctx.answer_meaning, /busted/);
+  const plain = JSON.parse((await createSurveyAgentToolbox({ getBridge: () => bridgeFor() }).run('get_survey_context', {})).content);
+  assert.equal(plain.answer_meaning, undefined);
 });

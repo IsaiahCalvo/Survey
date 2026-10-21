@@ -246,8 +246,8 @@ test('every tool button carries data-tool-switch (desktop bar and phone rail)', 
   assert.match(appShell, /data-morph-icon=\{getSelectModeIconName\(opt\.mode\)\}\s*data-tool-switch="true"/);
   // the tools inside each group (Draw, Shapes, Text rows)
   assert.equal((viewer.match(/data-morph-icon=\{t\.iconName\}\s*data-tool-switch="true"/g) || []).length, 3);
-  // phone: Pan, Select, the group buttons, each group's tools
-  assert.equal((phone.match(/data-tool-switch="true"/g) || []).length, 4);
+  // phone: Pan, Select, the group buttons, each group's tools, the Shapes strip (Cloud / Measure)
+  assert.equal((phone.match(/data-tool-switch="true"/g) || []).length, 5);
 });
 
 test('R5: Escape closes only the topmost popover; a surface that owns Escape keeps it', () => {

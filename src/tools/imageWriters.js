@@ -142,12 +142,15 @@ const KINDS = {
 export async function tiffPage({ width, height, kind, data, dpi = 72 }, zip = deflate) {
   const k = KINDS[kind];
   const rowBytes = Math.ceil((width * k.spp * k.bits) / 8);
-  // Strips of about 256 KB, the size most readers handle well.
-  const rowsPerStrip = Math.max(1, Math.min(height, Math.floor(262144 / rowBytes)));
-  const strips = [];
+  // Strips of about 1 MB, compressed together: each CompressionStream call
+  // has a fixed cost, and a 36x24" sheet took 1.4 s a page in 256 KB strips
+  // one at a time against 0.6 s this way. Readers take any strip size.
+  const rowsPerStrip = Math.max(1, Math.min(height, Math.floor(1048576 / rowBytes)));
+  const jobs = [];
   for (let y = 0; y < height; y += rowsPerStrip) {
-    strips.push(await zip(data.subarray(y * rowBytes, Math.min(height, y + rowsPerStrip) * rowBytes)));
+    jobs.push(zip(data.subarray(y * rowBytes, Math.min(height, y + rowsPerStrip) * rowBytes)));
   }
+  const strips = await Promise.all(jobs);
   return {
     width, height, bitsPerSample: Array(k.spp).fill(k.bits), photometric: k.photometric, compression: 8, strips, rowsPerStrip, dpi,
   };
