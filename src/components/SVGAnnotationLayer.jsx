@@ -478,37 +478,50 @@ const EMPTY_SURVEY_MARKER_IDS = new Set();
 
 import {
   buildMeasureLabel,
+  layoutMeasureLabel,
   measureLineEndpoints,
   pageScaleFromObjects,
   stampMeasure,
 } from '../utils/measure/measureScale.js';
 
-// Measure label (Length / Area): a page-space text with a white halo so it
-// reads over drawings. Page units, so it scales with the viewBox like the mark.
-function renderMeasureLabel(label, key) {
-  if (!label) return null;
+// Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
+// text). Sizes are page units multiplied by inverseScale, so the viewBox still
+// owns zoom; the pill sits off the line's midpoint, never under its handles.
+function renderMeasureLabel(label, key, unitsPerPx) {
+  const box = layoutMeasureLabel(label, unitsPerPx);
+  if (!box) return null;
   return (
-    <text
+    <g
       key={key}
       className="measure-label"
       data-measure-kind={label.kind}
-      x={label.x}
-      y={label.y}
-      dy={label.kind === 'length' ? -4 : 0}
-      transform={label.angle ? `rotate(${label.angle} ${label.x} ${label.y})` : undefined}
-      textAnchor="middle"
-      dominantBaseline={label.kind === 'length' ? 'auto' : 'middle'}
-      fontSize={10}
-      fontFamily="Helvetica"
-      fontWeight="600"
-      fill="#1f2937"
-      stroke="#ffffff"
-      strokeWidth={2.5}
-      paintOrder="stroke"
+      transform={box.angle ? `rotate(${box.angle} ${box.cx} ${box.cy})` : undefined}
       style={{ pointerEvents: 'none', userSelect: 'none' }}
     >
-      {label.text}
-    </text>
+      <rect
+        x={box.cx - box.width / 2}
+        y={box.cy - box.height / 2}
+        width={box.width}
+        height={box.height}
+        rx={box.radius}
+        fill="#ffffff"
+        fillOpacity={0.95}
+        stroke="#d1d5db"
+        strokeWidth={box.fontSize / 12}
+      />
+      <text
+        x={box.cx}
+        y={box.cy}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={box.fontSize}
+        fontFamily="Helvetica"
+        fontWeight="600"
+        fill="#1f2937"
+      >
+        {label.text}
+      </text>
+    </g>
   );
 }
 
@@ -7695,7 +7708,7 @@ const SVGAnnotationLayerBody = memo(({
           vertex. */}
       {measureLabels.length > 0 && (
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
-          {measureLabels.map(({ key, label }) => renderMeasureLabel(label, key))}
+          {measureLabels.map(({ key, label }) => renderMeasureLabel(label, key, clampInverseScale(inverseScale)))}
         </g>
       )}
       {measureMode && shapeCreation && shapeCreation.tool === 'line' && shapeCreation.start && shapeCreation.current
@@ -7706,12 +7719,12 @@ const SVGAnnotationLayerBody = memo(({
           y1: shapeCreation.start.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
           x2: shapeCreation.current.x - (shapeCreation.start.x + shapeCreation.current.x) / 2,
           y2: shapeCreation.current.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
-        }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length')}
+        }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length', clampInverseScale(inverseScale))}
       {measureMode === 'area' && polyDraft && polyDraft.tool === 'polygon' && polyDraft.points.length >= 2
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
           type: 'polygon',
           points: polyDraft.preview ? [...polyDraft.points, polyDraft.preview] : polyDraft.points,
-        }, 'area', null), effectiveMeasureScale), 'measure-draft-area')}
+        }, 'area', null), effectiveMeasureScale), 'measure-draft-area', clampInverseScale(inverseScale))}
       {polyDraft && polyDraft.points.length > 0 && (() => {
         const runPoints = polyDraft.preview
           ? [...polyDraft.points, polyDraft.preview]
