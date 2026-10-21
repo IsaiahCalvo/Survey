@@ -20,6 +20,12 @@ import Spinner from './Spinner';
 import { passwordMeetsRequirements } from './authFlow';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
+import { useConfirmDialog, usePromptDialog } from './dialogPrompts';
+import {
+  ACCOUNT_DELETION_CONFIRMATION,
+  deleteAccountButtonState,
+  isAccountDeletionConfirmed,
+} from './accountDeletionConfirm';
 import CrashReportsPanel from './CrashReportsPanel';
 import {
   readAnnotationSnapping,
@@ -60,6 +66,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('general');
   const [subscriptionViewTab, setSubscriptionViewTab] = useState('manage'); // 'manage' or 'usage'
   const dialogRef = useRef(null);
+  const [deletionDialogOpen, setDeletionDialogOpen] = useState(false);
   // KAL-397 — Annotations tab. This device's setting (localStorage), read on
   // open and kept in step with other windows; an open document reads it at
   // the next text edit, so a change applies without a reload.
@@ -74,7 +81,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
   // it on Escape, and returns focus to whatever opened it.
-  useFocusTrap(dialogRef, isOpen, { onEscape: onClose });
+  useFocusTrap(dialogRef, isOpen && !deletionDialogOpen, { onEscape: onClose });
 
   // Form state
   const [firstName, setFirstName] = useState('');
@@ -212,6 +219,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     }
   }, [isMSAuthenticated, msAccount, user, updateProfile]);
 
+  const [askConfirm, accountConfirmDialog] = useConfirmDialog();
+  const [askPrompt, accountDeletePrompt] = usePromptDialog();
   if (!isOpen || !user) return null;
 
   /* Owner 2026-10-02: only a real change asks to be saved. A missing name in
@@ -375,6 +384,26 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   };
 
   const handleDeleteAccount = async () => {
+    setDeletionDialogOpen(true);
+    try {
+      const typed = await askPrompt({
+        title: 'Delete account',
+        message: 'This permanently removes your account, your documents, projects, survey photos and audio. Documents other people own stay with them.',
+        label: `Type ${ACCOUNT_DELETION_CONFIRMATION} to continue`,
+        confirmLabel: 'Continue',
+      });
+      if (typed === null) return;
+      if (!isAccountDeletionConfirmed(typed)) {
+        setError(`Type ${ACCOUNT_DELETION_CONFIRMATION} to confirm account deletion.`);
+        return;
+      }
+      if (!(await askConfirm({
+        title: 'Delete account?',
+        message: 'This cannot be undone. Your account and its data will be removed and you will be signed out.',
+        confirmLabel: 'Delete account',
+        danger: true,
+      }))) return;
+    } finally { setDeletionDialogOpen(false); }
     setError('');
     setLoading(true);
 
@@ -422,6 +451,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   return (
     <div className="account-settings-overlay" onClick={onClose}>
+      <span style={{ display: 'contents' }} onClick={(event) => event.stopPropagation()}>{accountDeletePrompt}{accountConfirmDialog}</span>
       <div
         className="account-settings-modal"
         ref={dialogRef}
@@ -681,15 +711,13 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   <button
                     className="account-btn-danger"
                     type="button"
-                    disabled
-                    title="Account deletion isn't self-serve yet — contact support"
-                    aria-label="Account deletion isn't self-serve yet — contact support"
+                    disabled={deleteAccountButtonState({ loading }).disabled}
+                    onClick={handleDeleteAccount}
                   >
-                    Delete account
+                    {deleteAccountButtonState({ loading }).label}
                   </button>
                   <p className="account-danger-zone-description">
-                    Account deletion isn&apos;t self-serve yet — contact support and
-                    we&apos;ll remove your account and all associated data.
+                    Permanently remove your account and its data.
                   </p>
                 </section>
 
