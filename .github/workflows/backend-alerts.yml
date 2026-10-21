@@ -13,9 +13,16 @@ name: Backend alerts
 # Repeats become comments on the open issue; the next quiet hour closes it.
 # Counts and function names only: the repo is public.
 
+# GitHub runs this repo's cron schedules only now and then (one scheduled run
+# of any workflow on 2026-10-21 while ~350 others ran), so every finished
+# "Build and tests" run also starts it. The first run in each UTC hour checks;
+# the rest of that hour skip (an hour-keyed cache entry marks it done).
 on:
   schedule:
     - cron: '7 * * * *'
+  workflow_run:
+    workflows: ["Build and tests"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -27,7 +34,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  due:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      key: ${{ steps.hour.outputs.key }}
+      checked: ${{ steps.mark.outputs.cache-hit }}
+    steps:
+      - name: This hour's mark
+        id: hour
+        run: echo "key=backend-alerts-$(date -u +%Y%m%d%H)" >> "$GITHUB_OUTPUT"
+      - name: Already checked this hour?
+        id: mark
+        if: github.event_name == 'workflow_run'
+        uses: actions/cache/restore@v4
+        with:
+          path: .backend-alerts-hour
+          key: ${{ steps.hour.outputs.key }}
+          lookup-only: true
+
   check:
+    needs: due
+    if: needs.due.outputs.checked != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -61,3 +89,10 @@ jobs:
           elif [ -n "$open" ]; then
             gh issue close "$open" --comment "Quiet again at $(date -u +%FT%TZ)."
           fi
+
+      - name: Mark this hour checked
+        run: mkdir -p .backend-alerts-hour && date -u +%FT%TZ > .backend-alerts-hour/at
+      - uses: actions/cache/save@v4
+        with:
+          path: .backend-alerts-hour
+          key: ${{ needs.due.outputs.key }}
