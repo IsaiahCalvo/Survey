@@ -59,11 +59,6 @@ name: android-editor-project-menu
 - assertVisible:
     text: "Get link to project"
     enabled: true
-# The reason is only a tooltip until tapped; a tap shows it as a toast.
-- tapOn: "Delete"
-- extendedWaitUntil:
-    visible: "Only the project owner can do this"
-    timeout: 15000
-- takeScreenshot: 14-editor-delete-reason
-# The project must still be there: the tap did not delete it.
-- assertVisible: ".*E2E Sample Project.*"
+# The reason is only a tooltip until tapped; android-editor-project-menu.sh
+# taps Delete in the web view and checks the reason toast and that the
+# project is still listed.
