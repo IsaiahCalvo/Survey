@@ -4,6 +4,8 @@
 // Work still behind a feature flag stays off this list until it is on for all.
 export const WHATS_NEW = [
   { date: '2026-10-21', items: [
+    'PDF tools inside the app: from a document\'s menu in Documents, the viewer\'s Export menu or the phone More menu. Pick several documents to merge them into one PDF. Results save as a new document.',
+    'Documents shows "–" for the page count while a file is still loading, and hints that a double-click opens it.',
     'Account settings has a "Download my data" button that gives you a ZIP of your files and work.',
     'Big drawing sets show their first page sooner, and no longer freeze for a moment after they open.',
     'Counter marks keep their size after you draw an arrow or rectangle.',
