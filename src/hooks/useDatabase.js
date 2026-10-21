@@ -321,7 +321,7 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
       readLibraryRows(ownedQuery),
       readLibraryRows(() => supabase
         .from('document_collaborators')
-        .select('document_id')
+        .select('document_id, role')
         .eq('user_id', user.id)
         .eq('status', 'active'), { cursorColumn: 'document_id' }),
     ]);
@@ -352,7 +352,14 @@ export const useDocuments = (projectId = null, { enabled = true } = {}) => {
           return collaboratorQuery;
         });
         if (collaboratorResult.error) throw collaboratorResult.error;
-        collaboratorDocuments = collaboratorResult.data || [];
+        // Tag shared rows with the caller's role so the library can grey out
+        // owner-only actions (rename, delete, share) instead of letting them
+        // fail with a raw database error.
+        const roleById = new Map((collaboratorRows.data || []).map((row) => [row.document_id, row.role]));
+        collaboratorDocuments = (collaboratorResult.data || []).map((doc) => ({
+          ...doc,
+          my_role: roleById.get(doc.id) || null,
+        }));
       }
     } else {
       console.warn('Error fetching collaborator documents:', collaboratorRows.error);

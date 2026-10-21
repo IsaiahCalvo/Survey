@@ -461,6 +461,11 @@ export default function DocumentsLedger({
 
   const selectedRaw = () => docs.filter((d) => selDocs.has(d.id)).map((d) => d.raw);
   const clearSel = () => setSelDocs(new Set());
+  // Rename, delete and share are owner-only on the server (RLS); a shared
+  // viewer/editor gets them greyed out instead of a raw error afterwards.
+  const canManageDoc = (raw) => Boolean(
+    raw && ((user?.id && raw.user_id === user.id) || raw.my_role === 'owner'),
+  );
   const showDocumentDetails = (doc) => {
     if (isPhoneLayout()) {
       mobileDetailOpenerRef.current = docMenu?.trigger || document.activeElement;
@@ -980,7 +985,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(previewDoc.raw)}>Open file</button>
-                <button className="btn documents-preview-share" aria-label="Share" {...tip('Share', 'above')} onClick={() => onShare && onShare([previewDoc.raw])}><Icon name="share" size={16} /></button>
+                <button className="btn documents-preview-share" disabled={!canManageDoc(previewDoc.raw)} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share', 'above')} aria-label="Share" onClick={() => onShare && onShare([previewDoc.raw])}><Icon name="share" size={16} /></button>
               </div>
             </aside>
           )}
@@ -1049,7 +1054,7 @@ export default function DocumentsLedger({
                   for actions; phone and desktop match). */}
               <div className="documents-mobile-detail-actions">
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
-                <button type="button" className="btn documents-preview-share" aria-label="Share" {...tip('Share', 'above')} onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={18} /></button>
+                <button type="button" className="btn documents-preview-share" disabled={!canManageDoc(mobileDetailDoc.raw)} {...tip(canManageDoc(mobileDetailDoc.raw) ? 'Share' : 'Only the owner can share', 'above')} aria-label="Share" onClick={() => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); }}><Icon name="share" size={18} /></button>
               </div>
             </section>
           </div>
@@ -1080,6 +1085,9 @@ export default function DocumentsLedger({
       if (!doc) return null;
       const locked = doc.raw?.locked_at != null;
       const canLock = user?.id && doc.raw?.user_id === user.id;
+      // Rename, delete and share are owner-only on the server (RLS); a shared
+      // viewer/editor gets them greyed out rather than a raw error after.
+      const canManage = canManageDoc(doc.raw);
       return (
         <DocumentActionMenu
           anchorRect={docMenu.rect}
@@ -1095,11 +1103,11 @@ export default function DocumentsLedger({
             { label: 'Share', onClick: () => onShare && onShare(selectedRaw()) },
             { label: `Delete ${docMenu.ids.length} documents`, danger: true, onClick: () => archiveSelected(selectedRaw()) },
           ] : [
-            { label: 'Rename', onClick: () => setRenameTarget(doc.raw) },
+            { label: 'Rename', disabled: !canManage, onClick: () => setRenameTarget(doc.raw) },
             { label: 'Copy', onClick: () => setClipboardDoc(doc.raw) },
             { label: 'Paste', disabled: !clipboardDoc, onClick: () => clipboardDoc && onDuplicate && onDuplicate([clipboardDoc]) },
-            { label: 'Delete', danger: true, onClick: () => onDelete && onDelete([doc.raw]) },
-            { label: 'Share', onClick: () => onShare && onShare([doc.raw]) },
+            { label: 'Delete', danger: true, disabled: !canManage, onClick: () => onDelete && onDelete([doc.raw]) },
+            { label: 'Share', disabled: !canManage, onClick: () => onShare && onShare([doc.raw]) },
             {
               label: locked ? 'Unlock document' : 'Lock document',
               disabled: !canLock,
