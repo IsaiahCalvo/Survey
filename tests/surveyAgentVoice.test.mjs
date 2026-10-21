@@ -146,6 +146,27 @@ test('a short bang is not speech; steady noise raises the bar', () => {
   assert.ok(gate.floor > 0.04);
 });
 
+test('a swelling noise (a saw, far-off talk) is not speech, and speech over it still ends', () => {
+  const gate = createSpeechGate({ frameMs: 20, ...MAIN_GATE });
+  const noise = (i) => 0.05 * (1 + 0.6 * Math.sin((2 * Math.PI * 0.7 * i * 20) / 1000));
+  let i = 0;
+  const events = [];
+  for (; i < 150; i += 1) events.push(gate.push(noise(i)));
+  for (let n = 0; n < 100; n += 1, i += 1) events.push(gate.push(0.3));
+  for (let n = 0; n < 250; n += 1, i += 1) events.push(gate.push(noise(i)));
+  assert.deepEqual(events.filter(Boolean), ['start', 'end']);
+});
+
+test('when a machine stops, a command right after it is still heard', () => {
+  const gate = createSpeechGate({ frameMs: 20, ...MAIN_GATE });
+  const events = [];
+  for (let n = 0; n < 150; n += 1) events.push(gate.push(0.05));
+  for (let n = 0; n < 25; n += 1) events.push(gate.push(0.005));
+  for (let n = 0; n < 100; n += 1) events.push(gate.push(0.06));
+  for (let n = 0; n < 75; n += 1) events.push(gate.push(0.005));
+  assert.deepEqual(events.filter(Boolean), ['start', 'end']);
+});
+
 test('a clip never runs past the longest allowed', () => {
   const gate = createSpeechGate({ frameMs: 20, maxMs: 2000 });
   for (let i = 0; i < 20; i += 1) gate.push(0.01);

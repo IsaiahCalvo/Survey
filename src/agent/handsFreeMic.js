@@ -5,7 +5,9 @@
 // cancellation, does not count. The speech gate itself is in voiceLoop.js.
 import { BARGE_IN_GATE, MAIN_GATE, createBandLevel, createSpeechGate, downsample, encodeWav } from './voiceLoop.js';
 
-const PRE_ROLL_MS = 350;
+// Kept from before the gate opens. In loud noise the gate opens a few
+// syllables late, so this is long enough to keep the start of an item name.
+const PRE_ROLL_MS = 600;
 const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
 // ScriptProcessor still runs everywhere (Safari included) and needs no
 // extra module file; each buffer is about 21 ms at 48 kHz.

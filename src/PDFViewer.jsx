@@ -13,6 +13,7 @@ import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 // NO-GO banners in the code below — never relocate or rewrite them.
 // HIGH-RISK FILE: keep diffs minimal and run `npm test` after every change.
 
+import { readOriginalPdfBytes } from './services/embeddedImportBytes.js';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
@@ -364,7 +365,6 @@ import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentatio
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
 import { getAnnotationBBox, getGroupBBox } from './utils/svgBoundingBox.js';
-import { useConfirmDialog } from './components/dialogPrompts';
 import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/useAnnotationContextMenu.jsx';
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
@@ -11558,7 +11558,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [regionOverlayDisabled, setRegionOverlayDisabled] = useRegionOverlayVisibility(pdfId);
 
   // Clipboard state for cut/copy operations
-  const [askPageDelete, pageDeleteDialog] = useConfirmDialog();
   const [clipboardPage, setClipboardPage] = useState(null);
   const [clipboardType, setClipboardType] = useState(null); // 'cut' | 'copy'
 
@@ -20922,6 +20921,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     dismiss: dismissUndoToast,
   } = useUndoToast();
   bookmarkUndoToastRef.current = enqueueUndoToast;
+  // Page delete runs at once (no confirm); the toast's Undo is the timeline Undo.
+  const deletePageWithUndo = useCallback(async (page) => {
+    const ok = await handleDeletePage(page);
+    if (!ok) return ok;
+    const count = Array.isArray(page) ? page.length : 1;
+    enqueueUndoToast({
+      kind: count > 1 ? 'bulk' : 'single',
+      message: count > 1 ? `Deleted ${count} pages` : `Deleted page ${page}`,
+      count,
+      onUndo: () => { handleUndoRef.current?.(); },
+    });
+    return ok;
+  }, [handleDeletePage, enqueueUndoToast]);
 
   // Leaving Survey changes mode; it does not need a status or Undo toast.
   const handleLeaveSurvey = useCallback(() => {
@@ -28727,9 +28739,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let cancelled = false;
     (async () => {
       try {
-        const rawPdfBytes = typeof pdfFile.arrayBuffer === 'function'
-          ? await pdfFile.arrayBuffer()
-          : null;
+        const rawPdfBytes = await readOriginalPdfBytes(pdfFile, pdfDoc);
         const { annotationsByPage: importedWithSource, nativeLayerPolicyByPage } =
           await importAnnotationsFromPdf(pdfDoc, { rawPdfBytes });
         if (cancelled) return;
@@ -35956,7 +35966,7 @@ ${pageBlocks}
       onCurrentMatchIndexChange: handleCurrentMatchIndexChange,
       onDuplicatePage: handleDuplicatePage,
       onInsertBlankPage: handleInsertBlankPage,
-      onDeletePage: handleDeletePage,
+      onDeletePage: deletePageWithUndo,
       onCutPage: handleCutPage,
       onCopyPage: handleCopyPage,
       onPastePage: handlePastePage,
@@ -36635,7 +36645,6 @@ ${pageBlocks}
       {/* Annotation right-click menu. State + lifecycle live in
           useAnnotationContextMenu; this render builder (renderAnnotationContextMenu)
           is a pure view that takes the viewer's action handlers as a bundle. */}
-      {pageDeleteDialog}
       {renderAnnotationContextMenu(annotationContextMenu, closeAnnotationContextMenu, {
         pasteAnnotationAt,
         pdfjsViewerRef,
@@ -36718,7 +36727,7 @@ ${pageBlocks}
             rotate: handleRotatePage,
             mirror: handleMirrorPage,
             reset: handleResetPage,
-            delete: async (page) => { if (await askPageDelete({ title: `Delete page ${page}?`, message: 'You can restore it with Undo.', confirmLabel: 'Delete page', danger: true })) handleDeletePage(page); },
+            delete: deletePageWithUndo,
           },
         },
       })}

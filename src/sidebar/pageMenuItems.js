@@ -163,7 +163,7 @@ export function buildPageMenuItems({
 export function buildCanvasPageItems({ available = {}, canPasteInPlace = false, readOnly = false } = {}) {
   const has = (key) => available[key] !== false;
   return joinGroups([[
-    has('selectAll') && { key: 'selectAllMarks', label: 'Select all markups on this page', icon: 'selectGroup' },
+    has('selectAll') && { key: 'selectAllMarks', label: 'Select all on page', icon: 'selectGroup' },
     !readOnly && has('pasteInPlace') && { key: 'pasteInPlace', label: 'Paste in place', icon: 'paste', disabled: !canPasteInPlace },
     !readOnly && has('setScale') && { key: 'setScale', label: 'Set page scale', icon: 'measureScale' },
   ]]);

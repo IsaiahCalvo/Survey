@@ -137,9 +137,11 @@ test('Dashboard: document Delete archives without a confirm and offers Undo thro
   assert.match(hub, /\.undo-toast\.hub-undo-toast \{\s*bottom: calc\(/);
   // The host's class lands on the toast itself (it is portalled to <body>).
   assert.match(read('src/components/collab/UndoToast.jsx'), /className=\{`undo-toast\$\{className \? ` \$\{className\}` : ''\}/);
-  // Projects still confirm (a project archives with all its documents).
+  // Projects archive the same way: no confirm, an Undo toast that restores them.
   const projects = src.slice(end, src.indexOf('const hubRenameProject'));
-  assert.match(projects, /askConfirm\(/);
+  assert.doesNotMatch(projects, /askConfirm\(/, 'no confirm dialog before project Archive');
+  assert.match(projects, /enqueueArchiveUndo\(\{[\s\S]*onUndo:/);
+  assert.match(projects, /restoreArchiveItems\(succeeded\)/);
 });
 
 test('DocumentsLedger: Documents select mode is explicit; normal clicks preview, and row menus keep supported actions', () => {

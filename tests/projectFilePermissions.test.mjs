@@ -39,3 +39,17 @@ test('project menu: Share/Delete/Add member are owner-only', async () => {
   assert.match(src, /label: 'Delete', danger: true, reason: ownerOnly/);
   assert.match(src, /label: 'Add member', reason: ownerOnly/);
 });
+
+test('projects select bar: Share/Delete are owner-only (phone + desktop)', async () => {
+  const { projectSelectionCan } = await import('../src/home/projectFilePermissions.js');
+  const mine = { id: 'a', user_id: 'me' };
+  const theirs = { id: 'b', user_id: 'other', my_role: 'editor' };
+  assert.deepEqual(projectSelectionCan([mine], 'me'), { delete: true, share: true });
+  assert.deepEqual(projectSelectionCan([theirs], 'me'), {
+    delete: 'Only the project owner can do this', share: 'Only the project owner can do this',
+  });
+  assert.equal(projectSelectionCan([mine, theirs], 'me').delete, 'Only the project owner can do this');
+  assert.equal(projectSelectionCan([mine, { id: 'c', user_id: 'me' }], 'me').share, 'Share one project at a time');
+  const src = readFileSync(new URL('../src/home/ProjectsFolderTree.jsx', import.meta.url), 'utf8');
+  assert.equal(src.match(/can=\{projectSelectionCan\(filtered\.filter\(\(p\) => selProj\.has\(p\.id\)\), user\?\.id\)\}/g)?.length, 2);
+});

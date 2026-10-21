@@ -38,6 +38,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { UndoToast } from '../collab/UndoToast.jsx';
+import { useUndoToast } from '../../hooks/useUndoToast.js';
 import { supabase } from '../../supabaseClient';
 import Icon from '../../Icons';
 import {
@@ -292,6 +294,8 @@ export default function RevisionsPanel({
   const [viewingRevision, setViewingRevision] = useState(null);
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
+  // "Restored vN · Undo": Undo restores the auto revision saved just before.
+  const { toast: restoreUndoToast, enqueue: enqueueRestoreUndo, dismiss: dismissRestoreUndo } = useUndoToast();
   // KAL-313 CONFIRM-CASCADE: pending cascade restore { regionEvent, spaceEvent }
   const [cascadePending, setCascadePending] = useState(null);
   const [hasOlder, setHasOlder] = useState(false);
@@ -601,25 +605,34 @@ export default function RevisionsPanel({
     setViewingRevision(null);
   }, []);
 
-  const handleRestore = useCallback(async (rev) => {
+  // No confirm: restoring saves the current state as an auto revision first,
+  // so the toast's Undo restores that saved revision.
+  const handleRestore = useCallback(async (rev, { isUndo = false } = {}) => {
     if (busy) return;
-    const ok = window.confirm(
-      `Restore v${rev.revisionNumber}? The current state will be saved as an auto revision first, then overwritten by this snapshot.`,
-    );
-    if (!ok) return;
     setBusy(true);
     setStatusMsg(null);
     try {
       const pre = await restoreRevision(rev.id);
-      setStatusMsg(`Restored v${rev.revisionNumber}. Previous state saved as v${pre.revision_number}.`);
+      setStatusMsg(isUndo
+        ? `Undid the restore. Back to the state saved as v${rev.revisionNumber}.`
+        : `Restored v${rev.revisionNumber}. Previous state saved as v${pre.revision_number}.`);
       setViewingRevision(null);
+      if (!isUndo && pre?.id) {
+        enqueueRestoreUndo({
+          kind: 'single',
+          message: `Restored v${rev.revisionNumber}`,
+          onUndo: () => { void handleRestoreRef.current?.({ id: pre.id, revisionNumber: pre.revision_number }, { isUndo: true }); },
+        });
+      }
       await refresh();
     } catch (e) {
       setStatusMsg('Couldn’t restore it. Try again.');
     } finally {
       setBusy(false);
     }
-  }, [busy, refresh]);
+  }, [busy, refresh, enqueueRestoreUndo]);
+  const handleRestoreRef = useRef(handleRestore);
+  handleRestoreRef.current = handleRestore;
 
   const clearPageMarks = useCallback(() => {
     activityClickSeqRef.current += 1;
@@ -1827,7 +1840,8 @@ export default function RevisionsPanel({
     </div>
   ) : null;
 
-  if (embedded) return <>{panel}{viewingBanner}{cascadeModal}</>;
+  const restoreUndo = <UndoToast toast={restoreUndoToast} onDismiss={dismissRestoreUndo} />;
+  if (embedded) return <>{panel}{viewingBanner}{cascadeModal}{restoreUndo}</>;
 
   return (
     <>
@@ -1857,6 +1871,7 @@ export default function RevisionsPanel({
       {viewingBanner}
       {open && panel}
       {cascadeModal}
+      {restoreUndo}
     </>
   );
 }

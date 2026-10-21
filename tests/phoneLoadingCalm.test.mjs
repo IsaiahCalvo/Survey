@@ -86,8 +86,11 @@ test('the human check keeps its room from the first frame and is dark', () => {
   assert.match(TURNSTILE, /minHeight: unavailable \? 0 : \(compact \? 140 : 65\)/);
 });
 
-test('a tapped document answers at once with the quiet "Opening <file>…"', () => {
-  assert.match(DASHBOARD, /onDocumentOpenStart\?\.\(doc\);\s*const blob = await downloadFromStorage\(filePath\);/);
+test('a tapped document answers at once: the viewer opens it (streaming) or the quiet "Opening <file>…" covers the wait', () => {
+  // A cloud document goes straight to the viewer, which shows its own loading
+  // line while page 1 streams in; nothing waits on the home for a download.
+  assert.match(DASHBOARD, /onDocumentSelect\(\{\s*\.\.\.doc,\s*filePath,/);
+  assert.doesNotMatch(DASHBOARD, /const blob = await downloadFromStorage\(filePath\);/);
   assert.match(DASHBOARD, /catch \(error\) \{\s*onDocumentOpenEnd\?\.\(\);/);
   assert.match(APP_SHELL, /const handleDocumentSelect = \(file, filePath = null\) => \{\s*setPendingDocumentOpen\(null\);/);
   assert.match(APP_SHELL, /pendingDocumentOpen && currentView !== 'viewer' && \(/);
