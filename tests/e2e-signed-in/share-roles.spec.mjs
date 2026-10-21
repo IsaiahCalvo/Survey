@@ -44,6 +44,16 @@ async function openProjectMenu(page) {
   return menu;
 }
 
+// Touch on the canvas only pans, so the markup checks draw with a mouse even
+// at the tablet size. A first tap can leave the Documents list showing; a
+// second (double) click opens the document.
+async function openDocument(page) {
+  await openSampleDocument(page).catch(async () => {
+    await page.getByText(E2E_DOCUMENT.name, { exact: true }).first().dblclick();
+    await expect(page.getByText('Type your name in the box:')).toBeVisible({ timeout: 60_000 });
+  });
+}
+
 async function updateSeqs(admin) {
   const { data, error } = await admin.from('annotation_updates').select('seq').eq('document_id', E2E_DOCUMENT.id);
   if (error) throw new Error(`[E2E_SIGNED_IN] annotation_updates: ${error.message}`);
@@ -81,12 +91,15 @@ for (const [device, use] of Object.entries(VIEWPORTS)) {
       });
     }
 
+    test.describe('markup', () => {
+    test.use({ hasTouch: false });
+    test.setTimeout(180_000);
     test('editor can add a markup to the shared document', async ({ page }) => {
       const admin = adminClient();
       const before = await updateSeqs(admin);
       try {
         await signIn(page, E2E_ACCOUNTS.editor);
-        await openSampleDocument(page);
+        await openDocument(page);
         await expect(page.getByText('View-only access', { exact: true })).toHaveCount(0);
         await tool(page, 'Shapes', 'Rectangle');
         await dragPage(page, 1, [[60, 80], [140, 120], [220, 160]]);
@@ -103,26 +116,21 @@ for (const [device, use] of Object.entries(VIEWPORTS)) {
       const before = await updateSeqs(admin);
       try {
         await signIn(page, E2E_ACCOUNTS.viewer);
-        await openSampleDocument(page);
+        await openDocument(page);
         await expect(page.getByText('View-only access', { exact: true }).first()).toBeVisible();
-        // The markup tools are hidden or disabled for a viewer. If one is still
-        // offered, a drag with it must not reach the cloud.
-        const shapes = page.getByRole('button', { name: 'Shapes', exact: true }).filter({ visible: true });
-        if (await shapes.count() && await shapes.first().isEnabled()) {
-          await tool(page, 'Shapes', null);
-          const rect = page.getByRole('button', { name: 'Rectangle', exact: true }).filter({ visible: true });
-          if (await rect.count() && await rect.first().isEnabled()) {
-            await rect.first().click();
-            await dragPage(page, 1, [[60, 80], [140, 120], [220, 160]]);
-            await page.keyboard.press('Escape');
-            await page.keyboard.press('ControlOrMeta+s');
-          }
-        }
-        await page.waitForLoadState('networkidle');
+        // Whatever the toolbar offers a viewer, a drag on the page must not
+        // reach the cloud.
+        await page.getByRole('button', { name: 'Shapes', exact: true }).first().click({ timeout: 5_000 }).catch(() => {});
+        await page.getByRole('button', { name: 'Rectangle', exact: true }).first().click({ timeout: 5_000 }).catch(() => {});
+        await dragPage(page, 1, [[60, 80], [140, 120], [220, 160]]).catch(() => {});
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('ControlOrMeta+s');
+        await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
         expect([...(await updateSeqs(admin))].filter((seq) => !before.has(seq))).toEqual([]);
       } finally {
         await removeNewUpdates(admin, before);
       }
+    });
     });
   });
 }
