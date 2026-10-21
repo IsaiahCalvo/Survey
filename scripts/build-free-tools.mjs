@@ -35,9 +35,10 @@ const ICONS = {
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   unlock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/>',
 };
-const icon = (k) => `<svg class="ticon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${ICONS[k]}</svg>`;
+// An entry may bring its own icon paths as `iconSvg` instead of naming one here.
+const icon = (k, own) => `<svg class="ticon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${own || ICONS[k]}</svg>`;
 
-const card = (t) => `<a class="tcard" href="/tools/${t.id}">${icon(t.icon)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
+const card = (t) => `<a class="tcard" href="/tools/${t.id}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
 
 const WHY = [
   ['Private', 'Your files stay on your device. Nothing is uploaded.'],
@@ -89,7 +90,7 @@ function toolPage(t) {
 <section class="tool-sec"><div class="wrap">
   <div class="tool" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}"${t.multiple ? ' data-multiple' : ''}>
     <div class="dz" data-dz>
-      ${icon(t.icon)}
+      ${icon(t.icon, t.iconSvg)}
       <p class="dz-main"><label class="btn primary lg"><span data-pick>${PICK[t.accept][t.multiple ? 1 : 0]}</span><input type="file" hidden data-early accept="${PICK[t.accept][2]}"${t.multiple ? ' multiple' : ''} /></label></p>
       <p class="dz-or">or drop ${t.multiple ? 'them' : 'it'} here</p>
       <p class="dz-safe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your files stay on this device</p>

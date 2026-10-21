@@ -11,10 +11,8 @@ export const GROUPS = [
   ['secure', 'Sign and protect'],
 ];
 
-const PRIVATE = ['Are my files uploaded?', 'No. The tool runs in your browser, so your files never leave your device. Nothing is sent to us or kept after you close the tab.'];
-const FREE = ['Is it free?', 'Yes. There is no sign-up, no watermark on your file and no daily limit.'];
-const LIMIT = ['Is there a file size limit?', 'Only what your device can hold in memory. Most phones handle files of a few hundred MB; a computer handles more.'];
-const OFFLINE = ['Does it work offline?', 'Yes. Once the page has loaded you can turn off Wi-Fi and the tool still works.'];
+import { PRIVATE, FREE, LIMIT, OFFLINE } from './free-tools-faq.mjs';
+import MORE_TOOLS from './free-tools-catalog/index.mjs';
 
 export const TOOLS = [
   {
@@ -303,6 +301,7 @@ export const TOOLS = [
     steps: ['Choose the locked PDF.', 'Type its password. Leave it blank if it only blocks printing or copying.', 'Press Unlock PDF and save the copy.'],
     faq: [['Can it crack a password I don\'t know?', 'No. You need the password to open the file. It can remove print and copy limits from a file that opens without one.'], ['Is the unlocked copy the same?', 'Yes. Pages, text and markups stay as they were. Only the lock is gone.'], PRIVATE, FREE, OFFLINE],
   },
+  ...MORE_TOOLS,
 ];
 
 export const TOOL_PATHS = ['/tools', ...TOOLS.map((t) => `/tools/${t.id}`)];

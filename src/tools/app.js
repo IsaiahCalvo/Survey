@@ -25,9 +25,7 @@ const TOOL_ID = root.dataset.tool;
 const ACCEPT = root.dataset.accept;
 const MULTIPLE = root.hasAttribute('data-multiple');
 
-const PDF_TYPE = 'application/pdf';
-const base = (name) => name.replace(/\.[a-z0-9]+$/i, '');
-const pdfOut = (name, bytes) => ({ name, bytes, type: PDF_TYPE });
+import { PDF_TYPE, base, pdfOut, SEG } from './kit.js';
 
 function fmtSize(n) {
   if (n < 1024) return `${n} B`;
@@ -60,7 +58,6 @@ const ICON = {
 
 // ---------------------------------------------------------------- options
 
-const SEG = 'seg';
 const IMAGE_OPTIONS = [
   { key: 'pageSize', label: 'Page size', type: SEG, def: 'fit', choices: [['fit', 'Same as image'], ['a4', 'A4'], ['letter', 'Letter']] },
   { key: 'orientation', label: 'Orientation', type: SEG, def: 'auto', choices: [['auto', 'Auto'], ['portrait', 'Portrait'], ['landscape', 'Landscape']], show: (o) => o.pageSize !== 'fit' },
@@ -352,7 +349,9 @@ const TOOLS = {
   },
 };
 
-const T = TOOLS[TOOL_ID];
+// Tools added later live in their own module under defs/ (see kit.js for
+// what they get to use), so a page only loads its own tool's code.
+const T = TOOLS[TOOL_ID] || (await import(`./defs/${TOOL_ID}.js`)).default;
 // Only the sign tool uses it; made lazily since it needs render() below.
 let sign;
 
