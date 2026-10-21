@@ -105,6 +105,27 @@ test('set_answers writes once through the panel and can be undone', async () => 
   assert.deepEqual(markers.m117.checklistResponses, {});
 });
 
+test('set_answers by name: one clear match is used, anything else changes nothing', async () => {
+  const { bridge, markers, calls } = fakeBridge();
+  markers.m300 = { name: 'D-300', moduleId: 'mod-1', categoryId: 'cat-door', checklistResponses: {} };
+  markers.m300b = { name: 'D 300', moduleId: 'mod-1', categoryId: 'cat-door', checklistResponses: {} };
+  const box = toolboxFor(bridge);
+  const heard = await box.run('set_answers', { item_name: 'D one seventeen', answers: [{ checklist_item_id: 'chk-lock', value: 'Y' }] });
+  assert.equal(heard.isError, false);
+  assert.match(heard.content, /on D-117 \(item id m117\)/);
+  assert.equal(markers.m117.checklistResponses['chk-lock'].selection, 'Y');
+  assert.equal(heard.change.itemId, 'm117');
+  const twins = await box.run('set_answers', { item_name: 'D-300', answers: [{ checklist_item_id: 'chk-lock', value: 'Y' }] });
+  assert.equal(twins.isError, true);
+  assert.match(twins.content, /Several items match D-300: D 300, D-300/);
+  const none = await box.run('set_answers', { item_name: 'D-999', answers: [{ checklist_item_id: 'chk-lock', value: 'Y' }] });
+  assert.equal(none.isError, true);
+  assert.match(none.content, /No item named D-999/);
+  const blank = await box.run('set_answers', { answers: [{ checklist_item_id: 'chk-lock', value: 'Y' }] });
+  assert.equal(blank.isError, true);
+  assert.equal(calls.filter((c) => c[0] === 'setAnswers').length, 1, 'only the clear match wrote');
+});
+
 test('undo keeps what changed after the agent and takes back one turn in one write', async () => {
   const { bridge, markers } = fakeBridge({ restoreMarker(id, snap) {
     this.restores = (this.restores || 0) + 1;

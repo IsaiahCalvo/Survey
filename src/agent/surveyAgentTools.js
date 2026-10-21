@@ -145,6 +145,23 @@ export function createSurveyAgentToolbox({
     if (!marker) throw new ToolError(`No item with id ${itemId}. Use find_items to get an id.`);
     return marker;
   };
+  // set_answers by name, so "D-117 lock yes" is one model step: only a
+  // single clear match is used; anything else sends the model back to ask.
+  const markerIdByName = (b, name) => {
+    const heard = String(name || '').trim();
+    if (!heard) throw new ToolError('Give item_id or item_name.');
+    const { find } = categoryIndex(b.template);
+    const scored = Object.entries(b.markers || {})
+      .filter(([, marker]) => marker)
+      .map(([id, marker]) => ({ id, name: nameOf(marker), score: scoreItemName(heard, marker.name, find(marker.moduleId, marker.categoryId)?.category?.name) }))
+      .filter((m) => m.score >= 0.5);
+    const exact = scored.filter((m) => m.score >= 1);
+    if (exact.length === 1) return exact[0].id;
+    if (!exact.length && scored.length === 1) return scored[0].id;
+    if (!scored.length) throw new ToolError(`No item named ${heard}. Check with find_items or find_on_plan; nothing changed.`);
+    const names = (exact.length ? exact : scored).map((m) => m.name).sort((a, b2) => a.localeCompare(b2, undefined, { numeric: true }));
+    throw new ToolError(`Several items match ${heard}: ${names.slice(0, 5).join(', ')}. Ask which one; nothing changed.`);
+  };
   const writable = (b) => {
     if (b.canEdit === false) throw new ToolError('This person can only view this document, so nothing can be changed.');
   };
@@ -312,9 +329,10 @@ export function createSurveyAgentToolbox({
       };
     },
 
-    set_answers({ item_id: itemId, answers } = {}) {
+    set_answers({ item_id: givenId, item_name: itemName, answers } = {}) {
       const b = bridge();
       writable(b);
+      const itemId = givenId || markerIdByName(b, itemName);
       const marker = markerOf(b, itemId);
       const entry = categoryIndex(b.template).find(marker.moduleId, marker.categoryId);
       if (!entry) throw new ToolError('This item has no category in the template, so it has no checklist.');
@@ -334,7 +352,7 @@ export function createSurveyAgentToolbox({
       b.setAnswers(itemId, list.map((a) => ({ checklistItemId: a.checklist_item_id, value: a.value })));
       const label = list.map((a) => `${itemText(checklist.get(a.checklist_item_id))} = ${a.value}`).join('; ');
       return {
-        content: `Set ${list.length} answer${list.length === 1 ? '' : 's'} on ${nameOf(marker)}.`,
+        content: `Set ${list.length} answer${list.length === 1 ? '' : 's'} on ${nameOf(marker)}${givenId ? '' : ` (item id ${itemId})`}.`,
         change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${label}`, fields },
       };
     },
