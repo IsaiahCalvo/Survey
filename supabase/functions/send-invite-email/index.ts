@@ -13,6 +13,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { handleSendInviteEmail, CORS_HEADERS } from './handler.js';
 import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -30,8 +31,15 @@ const inviteColumns = (table: string) => table === 'document_invites'
 Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization') || '';
 
-  let body: unknown = null;
-  try { body = await req.json(); } catch { /* handler 400s on missing token */ }
+  let raw: unknown = null;
+  try { raw = await req.json(); } catch { /* handler 400s on missing token */ }
+  // Wrong types or oversize copy read as no body, which the handler 400s.
+  const parsed = parseBody({
+    token: s.string({ max: 512, optional: true }),
+    displayName: s.string({ max: 2000, optional: true }),
+    inviterName: s.string({ max: 2000, optional: true }),
+  }, raw ?? {});
+  const body: unknown = parsed.ok ? parsed.value : null;
 
   // Caller-scoped client: RLS runs as the calling user.
   const callerClient = createClient(SUPABASE_URL, ANON_KEY, {

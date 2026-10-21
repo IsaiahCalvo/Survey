@@ -7,6 +7,7 @@
 //   POST { id_token } -> checks it and records it
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { agentClientId } from '../_shared/agentSession.ts';
+import { parseBody, s } from '../_shared/inputSchema.js';
 import {
   AGENTID_CLIENT_ID, AGENTID_JWKS_URL, AGENTID_REDIRECT_URI, agentIdRecord, verifyAgentIdToken,
 } from '../_shared/agentIdToken.js';
@@ -49,8 +50,11 @@ Deno.serve(async (req) => {
   }
   if (req.method !== 'POST') return json({ error: 'Use GET or POST' }, 405);
 
-  let idToken = '';
-  try { idToken = String((await req.json())?.id_token || ''); } catch { /* checked below */ }
+  let raw: unknown = {};
+  try { raw = await req.json(); } catch { /* checked below */ }
+  const parsed = parseBody({ id_token: s.string({ max: 16384, optional: true }) }, raw ?? {});
+  if (!parsed.ok) return json({ error: parsed.error }, 400);
+  const idToken = String(parsed.value.id_token || '');
   const claims = await verifyAgentIdToken(idToken, { fetchJwks })
     .catch((e: unknown) => (e instanceof Error ? e : new Error('invalid')));
   if (claims instanceof Error) return json({ error: `AgentID token not accepted: ${claims.message}` }, 400);

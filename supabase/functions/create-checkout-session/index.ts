@@ -5,6 +5,7 @@ import { resolveBillingReturnUrl, withBillingResult } from '../_shared/billingRe
 import { deleteStripeCustomer } from '../_shared/accountDeletion.ts';
 import { ensurePersistedStripeCustomer } from '../_shared/stripeCustomerPersistence.ts';
 import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -65,7 +66,15 @@ Deno.serve(async (req) => {
         }
 
         // Parse request body
-        const { tier = 'pro', billingPeriod = 'monthly', returnUrl } = await req.json();
+        const parsed = parseBody({
+            tier: s.enum(['pro', 'enterprise'], { optional: true }),
+            billingPeriod: s.enum(['monthly', 'annual'], { optional: true }),
+            returnUrl: s.string({ max: 2048, optional: true }),
+        }, await req.json().catch(() => ({})));
+        if (!parsed.ok) {
+            return new Response(JSON.stringify({ error: parsed.error }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        const { tier = 'pro', billingPeriod = 'monthly', returnUrl } = parsed.value as { tier?: string, billingPeriod?: string, returnUrl?: string };
 
         // Validate tier
         if (!['pro', 'enterprise'].includes(tier)) {
