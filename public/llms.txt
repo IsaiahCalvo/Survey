@@ -21,6 +21,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Split PDF](https://surveytool.app/tools/split-pdf): Break one PDF into several files.
 - [Compress PDF](https://surveytool.app/tools/compress-pdf): Make a PDF smaller to email or upload.
 - [Rotate PDF](https://surveytool.app/tools/rotate-pdf): Turn some or all pages the right way up.
+- [Organize pages](https://surveytool.app/tools/organize-pdf): Reorder, turn and remove pages in one go.
 - [Delete pages](https://surveytool.app/tools/delete-pages): Take pages out of a PDF.
 - [Extract pages](https://surveytool.app/tools/extract-pages): Save chosen pages as a new PDF.
 - [JPG to PDF](https://surveytool.app/tools/jpg-to-pdf): Turn photos into one PDF.
@@ -28,8 +29,11 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Image to PDF](https://surveytool.app/tools/image-to-pdf): WebP, GIF, BMP, JPG or PNG to PDF.
 - [PDF to JPG](https://surveytool.app/tools/pdf-to-jpg): Save each page as a JPG image.
 - [PDF to PNG](https://surveytool.app/tools/pdf-to-png): Save each page as a sharp PNG.
+- [PDF to text](https://surveytool.app/tools/pdf-to-txt): Copy all the words out of a PDF.
 - [Add page numbers](https://surveytool.app/tools/add-page-numbers): Number the pages of a PDF.
 - [Add watermark](https://surveytool.app/tools/watermark-pdf): Stamp text like DRAFT across pages.
+- [Headers and footers](https://surveytool.app/tools/add-header-footer): Add a line of text to the top or bottom of every page.
+- [Flatten PDF](https://surveytool.app/tools/flatten-pdf): Lock markups and form answers into the page.
 
 ## Optional
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument, PDFName, PDFRawStream, degrees } from 'pdf-lib';
 import {
-  mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf, visualFrame, loadPdf,
+  addHeaderFooter, organizePages, flattenPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf, visualFrame, loadPdf,
 } from '../ops.js';
 import { ToolError } from '../errors.js';
 import { compressPdf, deflate, inflate } from '../compress.js';
@@ -155,4 +155,45 @@ test('compress swaps in the smaller JPEG the codec returns', async () => {
 test('deflate and inflate round-trip', async () => {
   const data = new TextEncoder().encode('abc'.repeat(100));
   assert.deepEqual(await inflate(await deflate(data)), data);
+});
+
+test('header and footer fill in page numbers; empty text is refused', async () => {
+  const src = await samplePdf(2, 270);
+  const out = await loadPdf(await addHeaderFooter(src, { header: '{file}', footer: 'Page {page} of {total} · {date}', align: 'right', fileName: 'set.pdf' }));
+  assert.equal(out.getPageCount(), 2);
+  await assert.rejects(addHeaderFooter(src, { header: ' ', footer: '' }), ToolError);
+});
+
+test('organize reorders, turns, drops and repeats pages', async () => {
+  const src = await samplePdf(3);
+  const out = await PDFDocument.load(await organizePages(src, [{ index: 2, turns: 1 }, { index: 0 }, { index: 2 }]));
+  assert.deepEqual(out.getPages().map((p) => p.getWidth()), [102, 100, 102]);
+  assert.deepEqual(out.getPages().map((p) => p.getRotation().angle), [90, 0, 0]);
+  await assert.rejects(organizePages(src, []), ToolError);
+});
+
+test('flatten draws form fields and markups into the page and keeps links', async () => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([300, 300]);
+  const field = doc.getForm().createTextField('name');
+  field.setText('Isaiah');
+  field.addToPage(page, { x: 20, y: 20, width: 120, height: 24 });
+  const ctx = doc.context;
+  const ap = ctx.register(ctx.stream('1 0 0 RG 2 w 1 1 48 48 re S', { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 50, 50] }));
+  const square = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Square', Rect: [100, 100, 200, 200], AP: { N: ap } }));
+  const link = ctx.register(ctx.obj({ Type: 'Annot', Subtype: 'Link', Rect: [0, 0, 10, 10] }));
+  page.node.addAnnot(square);
+  page.node.addAnnot(link);
+  const src = await doc.save();
+
+  const out = await PDFDocument.load(await flattenPdf(src));
+  const annots = out.getPage(0).node.Annots();
+  assert.equal(annots.size(), 1);
+  assert.equal(out.context.lookup(annots.get(0)).get(PDFName.of('Subtype')), PDFName.of('Link'));
+  assert.equal(out.getForm().getFields().length, 0);
+  // Both the field and the square are now drawn by the page itself.
+  const xobjects = out.getPage(0).node.Resources().lookup(PDFName.of('XObject'));
+  assert.ok(xobjects.keys().length >= 2, `xobjects: ${xobjects.keys().length}`);
+
+  await assert.rejects(flattenPdf(await samplePdf(1)), (e) => e instanceof ToolError && /nothing|no form/i.test(e.message));
 });

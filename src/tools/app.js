@@ -2,7 +2,7 @@
 // Each tool in TOOLS below says which view it uses, its options, and how it
 // turns the chosen files into output files.
 import {
-  ToolError, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
+  ToolError, addHeaderFooter, organizePages, flattenPdf, mergePdfs, pickPages, deletePages, splitPdf, rotatePages, addPageNumbers, addWatermark, imagesToPdf,
 } from './ops.js';
 import { compressPdf } from './compress.js';
 import { parsePageSet, parseRangeGroups, formatPageSet, everyN } from './ranges.js';
@@ -45,6 +45,8 @@ const ICON = {
   x: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   left: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6"/><path d="M4 4v5h5"/></svg>',
   right: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg>',
+  back: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
+  fwd: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
 };
 
 // ---------------------------------------------------------------- options
@@ -191,6 +193,49 @@ const TOOLS = {
     async run([file], o) {
       const bytes = await addWatermark(file.bytes, { text: o.text, color: o.color, size: Number(o.size), opacity: Number(o.opacity), diagonal: o.diagonal });
       return [pdfOut(`${base(file.name)}-watermarked.pdf`, bytes)];
+    },
+  },
+  'organize-pdf': {
+    view: 'organize', hint: 'Drag pages, or use the arrows, to change the order. Turn or remove any page.',
+    async run([file]) {
+      return [pdfOut(`${base(file.name)}-organized.pdf`, await organizePages(file.bytes, file.order))];
+    },
+  },
+  'add-header-footer': {
+    view: 'pages',
+    options: [
+      { key: 'header', label: 'Header', type: 'text', def: '', placeholder: 'Project name' },
+      { key: 'footer', label: 'Footer', type: 'text', def: 'Page {page} of {total}', placeholder: 'Page {page} of {total}', help: 'Use {page}, {total}, {date} or {file} to fill those in.' },
+      { key: 'align', label: 'Line up', type: SEG, def: 'center', choices: [['left', 'Left'], ['center', 'Middle'], ['right', 'Right']] },
+      { key: 'size', label: 'Size', type: SEG, def: '10', choices: [['8', 'Small'], ['10', 'Medium'], ['13', 'Large']] },
+      { key: 'skipFirst', label: 'Skip the first page', type: 'check', def: false },
+    ],
+    async run([file], o) {
+      const bytes = await addHeaderFooter(file.bytes, { header: o.header, footer: o.footer, align: o.align, size: Number(o.size), skipFirst: o.skipFirst, fileName: file.name });
+      return [pdfOut(`${base(file.name)}-header-footer.pdf`, bytes)];
+    },
+  },
+  'flatten-pdf': {
+    view: 'pages',
+    async run([file]) {
+      return [pdfOut(`${base(file.name)}-flattened.pdf`, await flattenPdf(file.bytes))];
+    },
+  },
+  'pdf-to-txt': {
+    view: 'pages',
+    async run([file], o, progress) {
+      const pdf = await file.pdfjs();
+      const out = [];
+      for (let i = 1; i <= file.pages; i += 1) {
+        progress(`Page ${i} of ${file.pages}`);
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        out.push(content.items.map((it) => (it.str ?? '') + (it.hasEOL ? '\n' : '')).join('').trim());
+        page.cleanup();
+      }
+      const text = out.join('\n\n\f');
+      if (!text.replace(/\f/g, '').trim()) throw new ToolError('No text was found. This PDF may be a scan, which is a picture of the page.');
+      return [{ name: `${base(file.name)}.txt`, bytes: new TextEncoder().encode(text), type: 'text/plain;charset=utf-8' }];
     },
   },
 };
@@ -402,9 +447,50 @@ function pagesView() {
   return grid;
 }
 
+function organizeView() {
+  const file = S.files[0];
+  file.order ||= Array.from({ length: file.pages }, (_, index) => ({ index, turns: 0 }));
+  const { order } = file;
+  const move = (from, to) => {
+    const [x] = order.splice(from, 1);
+    order.splice(to, 0, x);
+    render();
+  };
+  const grid = h('ol', { class: 'pgrid organize' });
+  order.forEach((o, k) => {
+    const slot = thumbSlot(file, o.index);
+    slot.style.setProperty('--turn', `${o.turns * 90}deg`);
+    const n = o.index + 1;
+    const tile = h('div', { class: 'ptile', draggable: 'true' }, slot, h('span', { class: 'pnum' }, String(n)), h('div', { class: 'pturn' },
+      h('button', { type: 'button', class: 'ibtn', 'aria-label': `Move page ${n} earlier`, disabled: k === 0, onclick: () => move(k, k - 1), html: ICON.back }),
+      h('button', { type: 'button', class: 'ibtn', 'aria-label': `Turn page ${n} right`, onclick: () => { o.turns += 1; slot.style.setProperty('--turn', `${o.turns * 90}deg`); }, html: ICON.right }),
+      h('button', { type: 'button', class: 'ibtn', 'aria-label': `Remove page ${n}`, onclick: () => { order.splice(k, 1); render(); }, html: ICON.x }),
+      h('button', { type: 'button', class: 'ibtn', 'aria-label': `Move page ${n} later`, disabled: k === order.length - 1, onclick: () => move(k, k + 1), html: ICON.fwd })));
+    tile.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/x-tool-row', String(k)); tile.classList.add('dragging'); });
+    tile.addEventListener('dragend', () => tile.classList.remove('dragging'));
+    tile.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('text/x-tool-row')) { e.preventDefault(); tile.classList.add('over'); } });
+    tile.addEventListener('dragleave', () => tile.classList.remove('over'));
+    tile.addEventListener('drop', (e) => {
+      const from = e.dataTransfer.getData('text/x-tool-row');
+      if (from === '') return;
+      e.preventDefault();
+      e.stopPropagation();
+      move(Number(from), k);
+    });
+    grid.append(h('li', {}, tile));
+  });
+  return grid;
+}
+
 function optionsView() {
   const file = S.files[0];
   const fields = [];
+  if (T.view === 'organize') {
+    const removed = file.pages - file.order.length;
+    fields.push(h('div', { class: 'opt' }, h('span', { class: 'olabel' }, 'Pages'),
+      h('span', { class: 'ohelp' }, `${file.order.length} of ${file.pages} pages${removed ? `, ${removed} removed` : ''}`),
+      h('div', { class: 'seg' }, h('button', { type: 'button', onclick: () => { file.order = null; render(); } }, 'Undo all changes'))));
+  }
   if (T.rotate) {
     const all = (d) => () => {
       for (let i = 0; i < file.pages; i += 1) file.turns.set(i, (file.turns.get(i) || 0) + d);
@@ -550,7 +636,7 @@ function render() {
     root.replaceChildren(zone, err || '');
     return;
   }
-  const view = T.view === 'files' ? filesView() : pagesView();
+  const view = T.view === 'files' ? filesView() : T.view === 'organize' ? organizeView() : pagesView();
   const head = h('div', { class: 'thead' },
     h('p', { class: 'ttitle' }, T.view === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, T.view === 'pages' && h('span', {}, ` · ${S.files[0].pages} pages`)),
     h('button', { type: 'button', class: 'btn ghost', onclick: pickFiles, disabled: !!S.busy }, MULTIPLE ? 'Add more' : 'Change file'));

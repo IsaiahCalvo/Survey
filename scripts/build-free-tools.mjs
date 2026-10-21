@@ -22,6 +22,10 @@ const ICONS = {
   photo: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 3v4h6V3"/><path d="M8 17l3-4 2 2 3-4"/>',
   numbers: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M10 16h4M12 16v-5l-1.5 1"/>',
   watermark: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M8 16l8-8"/>',
+  organize: '<rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17.5h7M18 14.5l3 3-3 3"/>',
+  text: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 8h6M12 8v9"/>',
+  header: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M8 6.5h8M8 17.5h8"/>',
+  flatten: '<path d="M4 15l8 4 8-4M4 11l8 4 8-4M12 3l8 4-8 4-8-4z"/>',
 };
 const icon = (k) => `<svg class="ticon" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${ICONS[k]}</svg>`;
 

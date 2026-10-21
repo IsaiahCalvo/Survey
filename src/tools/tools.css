@@ -89,6 +89,12 @@ button.ptile:hover{border-color:var(--rule)}
 .del .ptile[aria-pressed="true"]::after{background:var(--red) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 7l10 10M17 7L7 17' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E") center/14px no-repeat}
 .del .ptile[aria-pressed="true"] .thumb{opacity:.45}
 .pturn{display:flex;justify-content:center;gap:8px}
+.organize .pturn{gap:4px;flex-wrap:wrap}
+.organize .ibtn{width:32px;height:32px}
+.organize .ibtn svg{width:16px;height:16px}
+.organize .ptile[draggable=true]{cursor:grab}
+.organize .ptile.dragging{opacity:.4}
+.organize .ptile.over{border-color:var(--blue)}
 
 .result{padding:40px 24px;text-align:center}
 .result h2{font-size:30px}
@@ -109,6 +115,7 @@ button.ptile:hover{border-color:var(--rule)}
   .tool-head{padding:32px 0 16px}
   .why{grid-template-columns:1fr}
   .pgrid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+  .pgrid.organize{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
   .ptile{padding:4px}
   .thumb{--pad:4px}
   .thead,.wview,.opts,.tbar{padding-left:14px;padding-right:14px}
