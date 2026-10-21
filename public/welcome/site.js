@@ -6,9 +6,8 @@
   if (y) y.textContent = new Date().getFullYear();
 
   function isDark() {
-    var t = root.dataset.theme;
-    if (t) return t === 'dark';
-    return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+    // Light unless the visitor picked dark with the toggle.
+    return root.dataset.theme === 'dark';
   }
   var btn = document.querySelector('.theme');
   function sync() {

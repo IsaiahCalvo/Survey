@@ -21,6 +21,7 @@
    clip them or force a scrollbar. Because the portal renders OUTSIDE the
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
+import { canManageProjectFile } from './projectFilePermissions.js';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
@@ -121,6 +122,7 @@ const orderByStoredIds = (rows, storedIds = []) => {
    button) so it floats cleanly over the page — immune to any ancestor's
    overflow clipping. `align` decides which corner of the anchor it hangs from. */
 function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160 }) {
+  const tip = useTooltip();
   const ref = useRef(null);
 
   if (!anchorRect) return null;
@@ -158,6 +160,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
             role="menuitem"
             className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
             disabled={it.disabled}
+            {...(it.title ? tip(it.title) : {})}
             onClick={() => { if (it.disabled) return; onClose(); it.onClick && it.onClick(); }}
           >
             {it.iconNode
@@ -2031,6 +2034,8 @@ export default function ProjectsFolderTree({
         if (!f) return null;
         const locked = f.locked_at != null;
         const canLock = user?.id && f.user_id === user.id;
+        const canManage = canManageProjectFile(f, open, user?.id);
+        const noManageTitle = 'Only the uploader or project owner can do this';
         return (
           <PopupMenu
             anchorRect={fileMenu.rect}
@@ -2042,8 +2047,8 @@ export default function ProjectsFolderTree({
               { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
-              { label: 'Delete', danger: true, onClick: () => deleteFiles([fileMenu.id]) },
-              { label: 'Share', onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
+              { label: 'Delete', danger: true, disabled: !canManage, title: canManage ? undefined : noManageTitle, onClick: () => deleteFiles([fileMenu.id]) },
+              { label: 'Share', disabled: !canManage, title: canManage ? undefined : noManageTitle, onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
               {
                 label: locked ? 'Unlock document' : 'Lock document',
                 disabled: !canLock,

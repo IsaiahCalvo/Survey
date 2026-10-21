@@ -11,6 +11,18 @@ import { resolveViteConfigEnv } from './viteEnvConfig.mjs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function freeToolPages() {
+  const pages = { index: path.join(__dirname, 'index.html') };
+  const dir = path.join(__dirname, 'tools');
+  if (!fs.existsSync(dir)) return pages;
+  for (const entry of fs.readdirSync(dir, { recursive: true })) {
+    if (path.basename(entry) !== 'index.html') continue;
+    const name = path.dirname(entry) === '.' ? 'tools' : `tools/${path.dirname(entry)}`;
+    pages[name] = path.join(dir, entry);
+  }
+  return pages;
+}
+
 // UX 2026-04-22: Bake the current package.json version into the built bundle
 // so every Save Log can stamp which app version produced the log.
 const APP_VERSION = (() => {
@@ -327,6 +339,9 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       chunkSizeWarningLimit: 1500,
       rollupOptions: {
+        // The app, plus the free PDF tool pages (tools/**/index.html, made by
+        // scripts/build-free-tools.mjs). They share the pdf-lib/pdf.js chunks.
+        input: freeToolPages(),
         output: {
           // Split heavy, self-contained third-party libraries into their own
           // cached chunks. These are leaf libraries (no app imports), so isolating

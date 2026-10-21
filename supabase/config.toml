@@ -346,6 +346,12 @@ verify_jwt = false
 [functions.agent-auth]
 verify_jwt = false
 
+# AgentID link for signed-in agents. It checks the agent's Bearer token itself
+# (auth.getUser plus the agent client id) and answers the preflight that the
+# post-deploy health check sends without a token.
+[functions.agent-identity]
+verify_jwt = false
+
 # Browser-invoked and self-authenticating. Keep gateway verification off so the
 # browser's unauthenticated CORS preflight reaches the function.
 [functions.create-portal-session]

@@ -12,6 +12,8 @@
     { "source": "/use-cases", "destination": "/use-cases/index.html" },
     { "source": "/use-cases/:slug", "destination": "/use-cases/:slug/index.html" },
     { "source": "/compare/:slug", "destination": "/compare/:slug/index.html" },
+    { "source": "/tools", "destination": "/tools/index.html" },
+    { "source": "/tools/:tool", "destination": "/tools/:tool/index.html" },
     { "source": "/(.*)/assets/(.*)", "destination": "/assets/$2" },
     { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
   ],

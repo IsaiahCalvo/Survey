@@ -84,6 +84,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          # Full history, so the release notes can list every commit since
+          # the last one noted.
+          fetch-depth: 0
 
       - name: Setup Node.js
         if: github.event.workflow_run.conclusion == 'success'
@@ -136,3 +139,34 @@ jobs:
           elif [ -n "$open" ]; then
             gh issue close "$open" --comment "\`$SHA\` deployed and passed the smoke test."
           fi
+
+      # One comment per new live commit on a single "Production release notes"
+      # issue: the merged PRs since the last commit noted there. The last
+      # comment ends with a marker holding that commit.
+      - name: Post release notes
+        if: github.event.workflow_run.conclusion == 'success' && steps.smoke.outcome == 'success'
+        shell: bash
+        run: |
+          live="$(curl --silent "https://surveytool.app/release.json?t=$(date +%s)" | jq -r '.commit // empty' || true)"
+          [ -n "$live" ] || { echo "No live commit."; exit 0; }
+          git fetch --quiet origin main || true
+          git cat-file -e "$live^{commit}" 2>/dev/null || { echo "Live commit $live is not in history."; exit 0; }
+          title="Production release notes"
+          gh label create release-notes --color 0E8A16 --description "What went live on surveytool.app" 2>/dev/null || true
+          issue="$(gh issue list --label release-notes --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
+          prev=""
+          if [ -n "$issue" ]; then
+            prev="$(gh issue view "$issue" --json body,comments --jq '.body, .comments[].body' \
+              | grep -o 'release-notes-commit: [0-9a-f]\{40\}' | tail -n 1 | cut -d' ' -f2)"
+          fi
+          [ "$prev" = "$live" ] && { echo "Already noted $live."; exit 0; }
+          if [ -n "$prev" ] && git merge-base --is-ancestor "$prev" "$live" 2>/dev/null; then
+            range="$prev..$live"
+          else
+            range="$live~1..$live"
+          fi
+          lines="$(git log --first-parent --format='- %s' "$range" | head -n 60)"
+          body="$(printf '**Live on surveytool.app since %s** (`%s`)\n\n%s\n\n<!-- release-notes-commit: %s -->' \
+            "$(date -u '+%Y-%m-%d %H:%M UTC')" "${live:0:7}" "$lines" "$live")"
+          if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"
+          else gh issue create --title "$title" --label release-notes --body "$body"; fi

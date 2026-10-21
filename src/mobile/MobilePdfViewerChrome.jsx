@@ -1194,7 +1194,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
 
       </div>
 
-      <div className="mobile-pdf-header__history">
+      {/* View-only (ReadOnlyGate.css): dimmed and inert for a viewer, like the
+          desktop undo/redo cluster. */}
+      <div className="mobile-pdf-header__history" data-readonly-disabled="true">
         <button
           type="button"
           className="mobile-pdf-header__icon"
@@ -2857,6 +2859,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               icon={group.icon}
               label={group.label}
               data-tool-switch="true"
+              // View-only: Draw / Shapes / Text dim and go inert (ReadOnlyGate.css).
+              data-readonly-disabled="true"
               onClick={() => { if (!regionApi) toggleCategory(groupId); }}
             />
           ))}
