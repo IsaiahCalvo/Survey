@@ -25,6 +25,7 @@ export function createSpeechGate({
   ratio = 2.6,
   minLevel = 0.012,
   floorMs = 3000,
+  dropMs = 300,
 } = {}) {
   const frames = (ms) => Math.max(1, Math.round(ms / frameMs));
   const startFrames = frames(startMs);
@@ -46,11 +47,21 @@ export function createSpeechGate({
   // levels. A running average that rose slowly and fell fast sat below the
   // middle of a noise that swells (a saw, people talking), so the swells
   // read as speech and the gate never closed.
+  // When a machine stops, the old loud levels would hold the median up for
+  // seconds, long enough to miss a command spoken right after (and then learn
+  // that command as noise). A short run far under the floor resets it.
   const recent = [];
   const recentFrames = frames(floorMs);
+  const dropFrames = frames(dropMs);
+  let dropRun = 0;
   const learn = (level) => {
     recent.push(level);
     if (recent.length > recentFrames) recent.shift();
+    dropRun = floor != null && level < floor / 4 ? dropRun + 1 : 0;
+    if (dropRun >= dropFrames) {
+      recent.splice(0, recent.length - dropRun);
+      dropRun = 0;
+    }
     const sorted = recent.slice().sort((a, b) => a - b);
     floor = sorted[Math.floor(sorted.length / 2)];
   };
