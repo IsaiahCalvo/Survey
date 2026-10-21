@@ -781,9 +781,10 @@ async function testProjects(page, touch, device) {
   // without activating the underlying control. Prove that contract before
   // the second gesture enters selection mode.
   await activate(select, touch, device);
-  assert.equal(await select.textContent(), 'Select', `${device}: first outside tap only dismisses project search`);
+  // Select is an icon button (owner 2026-10-02); its name is the aria-label.
+  assert.equal(await select.getAttribute('aria-label'), 'Select', `${device}: first outside tap only dismisses project search`);
   await activate(select, touch, device);
-  assert.equal(await select.textContent(), 'Done', `${device}: second tap enters project selection`);
+  assert.equal(await select.getAttribute('aria-label'), 'Done', `${device}: second tap enters project selection`);
   const target = page.locator('[data-project-id="p1"]:visible');
   assert.equal(await target.count(), 1, `${device}: project selection target visible`);
   await activate(target, touch, device);
