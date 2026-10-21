@@ -10,6 +10,11 @@ export default {
   lede: 'Pull out the photos and pictures stored in a PDF. JPEGs come out as they are, the rest as PNG.',
   accept: 'pdf', multiple: false, action: 'Save images',
   steps: ['Choose a PDF.', 'Leave "Skip small images like icons" on to drop logos and icons, or turn it off to keep everything.', 'Press Save images. More than one picture comes as a ZIP.'],
+  trade: {
+    h2: 'Get site photos out of a report',
+    text: 'Save the photos from an inspection report, daily report or photo log at full quality, without taking screenshots.',
+    keys: 'site photos inspection report daily report photo log',
+  },
   faq: [
     ['Do the pictures lose quality?', 'No. JPEG photos are copied out exactly as they are stored in the PDF. Other pictures are saved as PNG, which keeps every pixel.'],
     ['Why is a picture missing?', 'Small pictures like icons are skipped unless you turn that off. Text and lines drawn in the PDF are not pictures, so to save a whole page as an image use PDF to JPG or PDF to PNG.'],

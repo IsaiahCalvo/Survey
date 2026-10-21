@@ -11,6 +11,11 @@ export default {
   lede: 'Before you send a PDF, take out what people can\'t see on the page: the author and app details, hidden metadata, scripts and attached files.',
   accept: 'pdf', multiple: false, batch: true, action: 'Clean PDF',
   steps: ['Choose one or more PDFs.', 'Tick what to remove. Comments stay unless you tick them too.', 'Press Clean PDF and save the clean copy.'],
+  trade: {
+    h2: 'Clean a set before it goes to bidders',
+    text: 'Before you send drawings or specs to bidders, owners or subs, take out the author name, old saved versions and attached files left inside the PDF.',
+    keys: 'bid set bidders owner subs metadata',
+  },
   faq: [
     ['What hidden data can a PDF have?', 'The author\'s name, the title, when it was made and changed, the app used, hidden XMP metadata, scripts that run when it opens, and files attached inside it.'],
     ['Will the pages look different?', 'No. Text, drawings, images, links and form fields stay just as they are. Only the hidden parts are taken out.'],

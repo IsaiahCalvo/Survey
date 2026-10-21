@@ -10,6 +10,11 @@ export default {
   lede: 'Save each page of a PDF as a BMP picture, for older programs that only open BMP.',
   accept: 'pdf', multiple: false, action: 'Make images',
   steps: ['Choose a PDF.', 'Pick the quality and which pages.', 'Press Make images. More than one page comes as a ZIP.'],
+  trade: {
+    h2: 'Sheets for older programs',
+    text: 'If an older program on site only opens BMP, save the sheets or details you need as BMP. If it opens PNG, use <a href="/tools/pdf-to-png">PDF to PNG</a> for smaller files.',
+    keys: 'plan sheet detail older software',
+  },
   faq: [
     ['Why are BMP files so big?', 'BMP keeps every pixel with no squeezing at all. If the program you use can open PNG, PDF to PNG gives the same sharp picture in a much smaller file.'],
     ['Which quality should I pick?', 'Normal suits most screens. Pick High for printing. Small makes the smallest files.'],
