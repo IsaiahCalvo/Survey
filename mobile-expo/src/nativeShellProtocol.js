@@ -16,7 +16,7 @@ export function resolveSurveyDeepLink(rawUrl) {
       if (incoming.origin !== surveyOrigin) return null;
       return normalizeSurveyUrl(incoming.toString());
     }
-    if (incoming.protocol !== 'com.kalvoe.survey:') return null;
+    if (incoming.protocol !== 'com.kalvoe.survey.expo:') return null;
 
     const embeddedUrl = incoming.searchParams.get('url');
     if (embeddedUrl) {

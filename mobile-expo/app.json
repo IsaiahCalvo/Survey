@@ -3,7 +3,7 @@
     "name": "Survey",
     "slug": "survey",
     "scheme": [
-      "com.kalvoe.survey",
+      "com.kalvoe.survey.expo",
       "com.googleusercontent.apps.88293580204-481ecgudu1qgmlh2nvdhip13jtqj0iku"
     ],
     "version": "1.0.0",
@@ -15,7 +15,7 @@
     },
     "ios": {
       "appleTeamId": "T3KR4X5869",
-      "bundleIdentifier": "com.kalvoe.survey",
+      "bundleIdentifier": "com.kalvoe.survey.expo",
       "supportsTablet": true,
       "infoPlist": {
         "NSAppTransportSecurity": {
@@ -29,7 +29,7 @@
       "runtimeVersion": "exposdk:57.0.0"
     },
     "android": {
-      "package": "com.kalvoe.survey",
+      "package": "com.kalvoe.survey.expo",
       "adaptiveIcon": {
         "backgroundColor": "#171a21",
         "foregroundImage": "./assets/android-icon-foreground.png",

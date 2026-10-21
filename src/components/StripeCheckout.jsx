@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { buildBillingReturnUrl, openDeferredExternalDestination } from '../utils/accountPlatform';
+import { buildBillingReturnUrl, isPurchaseUiHidden, openDeferredExternalDestination } from '../utils/accountPlatform';
 
 const StripeCheckout = (props) => {
     const [loading, setLoading] = useState(false);
@@ -51,6 +51,9 @@ const StripeCheckout = (props) => {
             setLoading(false);
         }
     };
+
+    // No purchase entry point inside the native store apps.
+    if (isPurchaseUiHidden()) return null;
 
     return (
         <>

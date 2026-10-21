@@ -405,12 +405,82 @@ const imageSize = (image) => ({
 
 const KEEP_AS_IS_PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
+const ascii = (bytes, at, len) => String.fromCharCode(...bytes.subarray(at, at + len));
+
+// JPEG segments that can carry location: APP1 (EXIF incl. GPS, XMP) and APP13
+// (Photoshop/IPTC). Returns the segment ranges before the image data.
+const jpegMetadataSegments = (bytes) => {
+  const ranges = [];
+  if (bytes.length < 4 || bytes[0] !== 0xFF || bytes[1] !== 0xD8) return ranges;
+  let i = 2;
+  while (i + 4 <= bytes.length && bytes[i] === 0xFF) {
+    const marker = bytes[i + 1];
+    if (marker === 0xDA || marker === 0xD9) break; // start of scan / end of image
+    if (marker === 0x01 || (marker >= 0xD0 && marker <= 0xD7) || marker === 0xFF) { i += marker === 0xFF ? 1 : 2; continue; }
+    const len = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (len < 2) break;
+    if (marker === 0xE1 || marker === 0xED) ranges.push([i, i + 2 + len]);
+    i += 2 + len;
+  }
+  return ranges;
+};
+
+/** True when a JPEG/PNG/WebP carries EXIF/XMP/IPTC metadata (where GPS lives). */
+export function imageHasEmbeddedMetadata(bytes, mime) {
+  if (mime === 'image/jpeg') return jpegMetadataSegments(bytes).length > 0;
+  if (mime === 'image/png') {
+    for (let i = 8; i + 8 <= bytes.length;) {
+      const len = ((bytes[i] << 24) >>> 0) + (bytes[i + 1] << 16) + (bytes[i + 2] << 8) + bytes[i + 3];
+      const type = ascii(bytes, i + 4, 4);
+      if (type === 'eXIf') return true;
+      if ((type === 'iTXt' || type === 'zTXt' || type === 'tEXt') && /^(XML:com\.adobe\.xmp|Raw profile type (exif|iptc|xmp))/.test(ascii(bytes, i + 8, Math.min(len, 40)))) return true;
+      if (type === 'IEND') break;
+      i += 12 + len;
+    }
+    return false;
+  }
+  if (mime === 'image/webp') {
+    if (bytes.length < 12 || ascii(bytes, 0, 4) !== 'RIFF' || ascii(bytes, 8, 4) !== 'WEBP') return false;
+    for (let i = 12; i + 8 <= bytes.length;) {
+      const type = ascii(bytes, i, 4);
+      if (type === 'EXIF' || type === 'XMP ') return true;
+      const len = bytes[i + 4] | (bytes[i + 5] << 8) | (bytes[i + 6] << 16) | ((bytes[i + 7] << 24) >>> 0);
+      i += 8 + len + (len & 1);
+    }
+    return false;
+  }
+  return false;
+}
+
+/** Byte-level fallback: drop APP1/APP13 from a JPEG the device cannot re-encode. */
+export function stripJpegMetadata(bytes) {
+  const ranges = jpegMetadataSegments(bytes);
+  if (!ranges.length) return bytes;
+  const parts = [];
+  let at = 0;
+  for (const [start, end] of ranges) { parts.push(bytes.subarray(at, start)); at = end; }
+  parts.push(bytes.subarray(at));
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+
+const readBytes = async (file) => {
+  try {
+    if (typeof file?.arrayBuffer === 'function') return new Uint8Array(await file.arrayBuffer());
+  } catch { /* unreadable: treat as unknown */ }
+  return null;
+};
+
 /**
  * Downscale to `photoMaxEdge` JPEG unless already small. "Small" = longest
  * edge within the limit AND a type every viewer can show (JPEG/PNG/WebP);
  * HEIC/HEIF/GIF/etc. are re-encoded when this device can decode them. If it
  * cannot (HEIC on desktop Chromium), the original is kept when the bucket
- * accepts its type. Re-encoding also drops EXIF (incl. GPS).
+ * accepts its type. Re-encoding drops EXIF (incl. GPS); a small photo that
+ * still carries EXIF/XMP/IPTC is re-encoded too (JPEGs fall back to a
+ * byte-level APP1/APP13 strip when this device cannot re-encode).
  * -> { blob, mime, width?, height? }
  */
 export async function preparePhotoForUpload(file, mime) {
@@ -424,9 +494,13 @@ export async function preparePhotoForUpload(file, mime) {
   const { width, height } = imageSize(image);
   const longest = Math.max(width, height);
   const maxEdge = SURVEY_MEDIA_LIMITS.photoMaxEdge;
+  const bytes = await readBytes(file);
+  // Small photos skip re-encoding only when they carry no EXIF/XMP/IPTC, so a
+  // phone photo's GPS location never reaches storage at any size.
+  const hasMetadata = !bytes || imageHasEmbeddedMetadata(bytes, mime);
   try {
     if (image && longest > 0) {
-      if (longest <= maxEdge && KEEP_AS_IS_PHOTO_TYPES.has(mime)) {
+      if (longest <= maxEdge && KEEP_AS_IS_PHOTO_TYPES.has(mime) && !hasMetadata) {
         return { blob: file, mime, width, height };
       }
       const scale = Math.min(1, maxEdge / longest);
@@ -441,7 +515,10 @@ export async function preparePhotoForUpload(file, mime) {
   if (!ALLOWED.has(mime)) {
     throw new SurveyMediaError(`"${file?.name || 'This photo'}" could not be read on this device. Try a JPEG or PNG.`, 'unsupported-type');
   }
-  return { blob: file, mime, ...(longest > 0 ? { width, height } : {}) };
+  const blob = mime === 'image/jpeg' && bytes && hasMetadata
+    ? new Blob([stripJpegMetadata(bytes)], { type: mime })
+    : file;
+  return { blob, mime, ...(longest > 0 ? { width, height } : {}) };
 }
 
 // ---------------------------------------------------------------------------
