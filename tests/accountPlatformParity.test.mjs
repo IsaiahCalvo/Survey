@@ -94,8 +94,12 @@ test('delete-account function verifies caller and performs retry-safe ordered de
   assert.match(source, /body\?\.confirmation !== 'DELETE'/);
   assert.match(source, /caller\.auth\.getUser\(\)/);
   assert.match(source, /deleteStripeCustomer\(stripe, subscription\?\.stripe_customer_id\)/);
-  assert.match(source, /listOwnedStorage\(admin, userId\)/);
-  assert.match(source, /storage\.from\('documents'\)\.remove\(paths\.slice/);
+  assert.match(source, /\.rpc\(fn, \{ target_user_id: userId \}\)\s*\.range\(/);
+  assert.match(source, /'account_deletion_storage_objects'/);
+  assert.match(source, /'account_deletion_sidecar_moves'/);
+  // Media is keyed by document id, so the file list is taken before the rows go.
+  assert.match(source, /storedObjects = await listOwnedStorage\(admin, user\.id\);\s*sidecarMoves = await listSidecarMoves\(admin, user\.id\);\s*await deleteOwnedRows/);
+  assert.match(source, /storage\.from\(bucket\)\.remove\(paths\.slice/);
   assert.match(source, /admin\.rpc\('delete_account_owned_rows'/);
   assert.match(source, /deleteDatabaseRows:[\s\S]*removeStorage:[\s\S]*deleteAuthUser:/);
   assert.match(source, /admin\.auth\.admin\.deleteUser\(user\.id\)/);
@@ -105,6 +109,12 @@ test('delete-account function verifies caller and performs retry-safe ordered de
   assert.match(migration, /project_collaborators_invited_by_fkey[\s\S]*ON DELETE SET NULL/);
   assert.match(migration, /excel_workbook_registrations[\s\S]*registered_by DROP NOT NULL/);
   assert.match(migration, /FUNCTION public\.delete_account_owned_rows[\s\S]*auth\.role\(\)[\s\S]*service_role/);
+
+  const everything = read('supabase/migrations/20261022030000_account_deletion_everything.sql');
+  assert.match(everything, /function public\.account_deletion_storage_objects[\s\S]*service role required/);
+  assert.match(everything, /grant execute on function public\.account_deletion_storage_objects\(uuid\) to service_role/);
+  assert.match(everything, /update public\.document_annotations a\s+set user_id = d\.user_id/);
+  assert.match(everything, /insert into public\.projects \(user_id, name\)[\s\S]*set project_id = new_project_id/);
 });
 
 test('Microsoft and invite returns preserve the active production/mobile route', () => {
