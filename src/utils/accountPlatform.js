@@ -198,3 +198,7 @@ export const getNativeAppPlatform = (windowObject = (typeof window === 'undefine
 };
 
 export const isPurchaseUiHidden = (windowObject) => getNativeAppPlatform(windowObject) !== null;
+
+// App Store 4.8: Google sign-in would require offering Sign in with Apple too,
+// so the iOS app hides it. Android, web and Electron keep it.
+export const isGoogleSignInHidden = (windowObject) => getNativeAppPlatform(windowObject) === 'ios';

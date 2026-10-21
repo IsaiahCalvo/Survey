@@ -17,6 +17,7 @@ import Spinner from './Spinner';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
 import './AuthModal.css';
+import { isGoogleSignInHidden } from '../utils/accountPlatform';
 
 export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' }) => {
   const [mode, setMode] = useState(initialMode); // 'login', 'signup', 'confirm', 'sso', 'reset'
@@ -396,15 +397,17 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
               <span>or</span>
             </div>
 
-            <button
-              type="button"
-              className="auth-google-btn"
-              onClick={handleGoogleSignIn}
-              disabled={loading}
-            >
-              <Icon name="google" size={18} />
-              Continue with Google
-            </button>
+            {!isGoogleSignInHidden() && (
+              <button
+                type="button"
+                className="auth-google-btn"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+              >
+                <Icon name="google" size={18} />
+                Continue with Google
+              </button>
+            )}
 
             <button
               type="button"

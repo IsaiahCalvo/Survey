@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { getNativeAppPlatform, isPurchaseUiHidden } from '../src/utils/accountPlatform.js';
+import { getNativeAppPlatform, isGoogleSignInHidden, isPurchaseUiHidden } from '../src/utils/accountPlatform.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const cap = (native, platform) => ({ Capacitor: { isNativePlatform: () => native, getPlatform: () => platform } });
@@ -29,4 +29,13 @@ test('every checkout / billing-portal / upgrade entry point is gated', () => {
     const hits = [read('src/components/StripeCheckout.jsx'), settings].join('\n').split(name).length - 1;
     assert.ok(hits >= 1, `${name} entry point moved — re-check native gating`);
   }
+});
+
+test('Google sign-in is hidden on iOS native only (App Store 4.8)', () => {
+  assert.equal(isGoogleSignInHidden(cap(true, 'ios')), true);
+  assert.equal(isGoogleSignInHidden(cap(true, 'android')), false);
+  assert.equal(isGoogleSignInHidden(cap(false, 'web')), false);
+  assert.equal(isGoogleSignInHidden({}), false);
+  assert.match(read('src/components/AuthModal.jsx'), /\{!isGoogleSignInHidden\(\) && \(\s*<button\s+type="button"\s+className="auth-google-btn"/);
+  assert.match(read('src/components/AccountSettings.jsx'), /\(!isGoogleSignInHidden\(\) \|\| user\?\.app_metadata\?\.provider === 'google'/);
 });
