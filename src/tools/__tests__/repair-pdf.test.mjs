@@ -90,6 +90,16 @@ test('repair: a truncated file (no xref or trailer) still gives its pages', asyn
   assert.deepEqual(await pageWidths(r.bytes), [300, 301, 302, 303]);
 });
 
+test('repair: cut off partway through the index or trailer, with or without object streams', async () => {
+  for (const useObjectStreams of [false, true]) {
+    const doc = await PDFDocument.load(await sample(4));
+    const good = await doc.save({ useObjectStreams });
+    const cut = good.subarray(0, good.length - 40);
+    const r = await repairPdf(cut, { run: failingQpdf, expected: 0 });
+    assert.deepEqual(await pageWidths(r.bytes), [300, 301, 302, 303], `object streams: ${useObjectStreams}`);
+  }
+});
+
 test('repair: cut deep into the file keeps what it can and says how many', async () => {
   const good = await sample(6);
   const s = text(good);

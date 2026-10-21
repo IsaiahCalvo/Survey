@@ -11,7 +11,9 @@
 //      a new file. Looks the same, but text is no longer text.
 // No DOM here: the qpdf runner and the page drawer are passed in, so Node
 // tests can run all of it.
-import { PDFDocument } from 'pdf-lib';
+import {
+  PDFDocument, PDFParser, PDFWriter, PDFDict, PDFName,
+} from 'pdf-lib';
 import { ToolError } from './errors.js';
 
 const HEADER = [0x25, 0x50, 0x44, 0x46, 0x2d]; // %PDF-
@@ -28,7 +30,37 @@ export function findHeader(bytes, limit = 1024 * 1024) {
   return -1;
 }
 
-const loadLoose = (bytes) => PDFDocument.load(bytes, { ignoreEncryption: true, throwOnInvalidObject: false, updateMetadata: false });
+const loadOpts = { ignoreEncryption: true, throwOnInvalidObject: false, updateMetadata: false };
+
+// A file cut off at the end has lost its trailer, the part that says which
+// object is the document. Read the whole objects that are left, find the catalog
+// among them (it may sit inside a compressed object stream) and write the
+// file out again with a new trailer.
+export async function withTrailer(bytes) {
+  // Drop the broken tail (half an index or trailer) after the last whole object.
+  const endAt = new TextDecoder('latin1').decode(bytes).lastIndexOf('endobj');
+  if (endAt === -1) return null;
+  const whole = bytes.subarray(0, endAt + 6);
+  const context = await PDFParser.forBytesWithOptions(whole, Infinity, false, false).parseDocument();
+  let root = null;
+  for (const [ref, obj] of context.enumerateIndirectObjects()) {
+    if (obj instanceof PDFDict && obj.get(PDFName.of('Type')) === PDFName.of('Catalog')) root = ref;
+  }
+  if (!root) return null;
+  context.trailerInfo.Root = root;
+  return PDFWriter.forContext(context).serializeToBuffer();
+}
+
+async function loadLoose(bytes) {
+  try {
+    return await PDFDocument.load(bytes, loadOpts);
+  } catch (err) {
+    let patched = null;
+    try { patched = await withTrailer(bytes); } catch { /* not readable this way either */ }
+    if (!patched) throw err;
+    return PDFDocument.load(patched, loadOpts);
+  }
+}
 
 async function countPages(bytes) {
   try {
