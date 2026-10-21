@@ -299,6 +299,44 @@ const WRITE_TOOLS = [
     },
     annotations: { readOnlyHint: false },
   },
+  {
+    name: 'set_entity',
+    title: 'Set or clear an item\'s entity',
+    description: 'Set or clear the entity (status) on one survey item (editor or owner only). The entity must be one of the document\'s entities from get_survey_context. Pass entity_id null to clear it. One Undo in the app takes it back.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        document_id: { type: 'string' },
+        item_id: { type: 'string', description: 'The item id from list_survey_items or find_survey_items.' },
+        entity_id: { description: 'An entity id from get_survey_context, or null to clear the entity.' },
+      },
+      required: ['document_id', 'item_id'],
+    },
+    annotations: { readOnlyHint: false },
+  },
+  {
+    name: 'create_item',
+    title: 'Add a survey item',
+    description: 'Add one survey item to a document (editor or owner only), in a category from get_survey_context, on a page, at a box on that page (PDF points from the page top-left). One Undo in the app takes it back.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        document_id: { type: 'string' },
+        name: { type: 'string', description: 'The item name, e.g. D-117.' },
+        category_id: { type: 'string', description: 'A category id from get_survey_context (one linked to this document).' },
+        page_number: { type: 'integer', description: 'The 1-based page the item sits on.' },
+        bounds: {
+          type: 'object',
+          description: 'The item box on the page, in PDF points from the top-left.',
+          properties: { x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' } },
+          required: ['x', 'y', 'width', 'height'],
+        },
+        entity_id: { description: 'Optional entity id from get_survey_context.' },
+      },
+      required: ['document_id', 'name', 'category_id', 'page_number', 'bounds'],
+    },
+    annotations: { readOnlyHint: false },
+  },
 ];
 
 // gunzip a snapshot stored with encoding_version = 2.
@@ -495,15 +533,16 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
       entities: [...names.entities.entries()].filter(([id]) => ents.has(id)).map(([id, name]) => ({ id, name })),
     });
   }
-  if (name === 'set_answers' || name === 'add_note') {
+  if (name === 'set_answers' || name === 'add_note' || name === 'set_entity') {
     if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
     const itemId = String(args.item_id || '');
     if (!itemId) throw new ToolError('Say which item to change with item_id.');
     const { fieldMaps } = await requireWrite(db);
     // set_answers validates each id and value against the item's own category,
     // the way the in-app agent does (surveyAgentTools.js), so an agent cannot
-    // persist a checklist id or answer the template does not define.
-    const names = name === 'set_answers' ? await categoryNames(db, documentId) : null;
+    // persist a checklist id or answer the template does not define. set_entity
+    // needs the same lookup to validate the entity id against this document.
+    const names = (name === 'set_answers' || name === 'set_entity') ? await categoryNames(db, documentId) : null;
     const result = await writeMarkers(db, documentId, (markers) => {
       const marker = markers[itemId];
       if (!marker) throw new ToolError('No item with that id in this document. Use find_survey_items.');
@@ -529,7 +568,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
           responses[clId] = { ...((responses[clId] as Record<string, unknown>) || {}), selection: value };
         }
         markers[itemId] = { ...marker, checklistResponses: responses };
-      } else {
+      } else if (name === 'add_note') {
         const add = String(args.text || '').trim();
         if (!add) throw new ToolError('Say what to add to the note with text.');
         // Keep the note's shape: append to its `text`, never drop media or
@@ -539,7 +578,46 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         const beforeText = String(obj.text || '').trimEnd();
         obj.text = beforeText ? `${beforeText}\n${add}` : add;
         markers[itemId] = { ...marker, note: obj };
+      } else {
+        // set_entity: set or clear the item's entity (status), validating the
+        // id against this document's own entities (mirrors surveyAgentTools.js).
+        const raw = args.entity_id;
+        const entityId = raw == null || raw === '' ? null : String(raw);
+        if (entityId && !names!.linkedEnts.has(entityId)) {
+          throw new ToolError(`${entityId} is not one of this document's entities. Use get_survey_context.`);
+        }
+        markers[itemId] = { ...marker, entityId };
       }
+    }, fieldMaps);
+    return text({ ok: true, item_id: itemId, changed: result.changed });
+  }
+  if (name === 'create_item') {
+    if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
+    const { fieldMaps } = await requireWrite(db);
+    const itemName = String(args.name || '').trim().slice(0, 120);
+    if (!itemName) throw new ToolError('Give the item a name.');
+    const categoryId = String(args.category_id || '');
+    const page = Number(args.page_number);
+    if (!Number.isInteger(page) || page < 1) throw new ToolError('page_number must be a 1-based page number.');
+    const b = (args.bounds && typeof args.bounds === 'object' ? args.bounds : null) as Record<string, unknown> | null;
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : NaN);
+    const bounds = b ? { x: num(b.x), y: num(b.y), width: num(b.width), height: num(b.height) } : null;
+    if (!bounds || Object.values(bounds).some((n) => Number.isNaN(n)) || bounds.width <= 0 || bounds.height <= 0) {
+      throw new ToolError('bounds needs numeric x, y, width and height (width and height > 0), in PDF points.');
+    }
+    // The in-app create_item takes a plan-search match so the model can't invent
+    // coordinates; the connector has no plan-search session, so it takes an
+    // explicit page + box, validated here. The category and any entity must be
+    // ones this document's linked templates define (get_survey_context).
+    const names = await categoryNames(db, documentId);
+    if (!names.linkedCats.has(categoryId)) throw new ToolError(`${categoryId} is not a category linked to this document. Use get_survey_context.`);
+    const raw = args.entity_id;
+    const entityId = raw == null || raw === '' ? null : String(raw);
+    if (entityId && !names.linkedEnts.has(entityId)) throw new ToolError(`${entityId} is not one of this document's entities. Use get_survey_context.`);
+    const itemId = `surveyMarker-${crypto.randomUUID()}`;
+    const result = await writeMarkers(db, documentId, (markers) => {
+      if (markers[itemId]) throw new ToolError('Could not create the item, please try again.');
+      markers[itemId] = { id: itemId, pageNumber: page, bounds, categoryId, name: itemName, entityId, checklistResponses: {} };
     }, fieldMaps);
     return text({ ok: true, item_id: itemId, changed: result.changed });
   }
