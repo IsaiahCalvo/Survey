@@ -100,7 +100,9 @@ import { shouldRetryStreamedOpenWithDownload } from '../src/services/cloudPdfStr
 
 test('a failure after a streamed open retries once through the download', () => {
   assert.equal(shouldRetryStreamedOpenWithDownload({ openedByStream: true, filePath: 'a.pdf', forced: new Set() }), true);
-  assert.equal(shouldRetryStreamedOpenWithDownload({ openedByStream: true, filePath: 'a.pdf', forced: new Set(['a.pdf']) }), false);
+  // The stream's own callbacks may force the path to download during this
+  // attempt; that must still reload by download, not show the error screen.
+  assert.equal(shouldRetryStreamedOpenWithDownload({ openedByStream: true, filePath: 'a.pdf', forced: new Set(['a.pdf']) }), true);
   assert.equal(shouldRetryStreamedOpenWithDownload({ openedByStream: false, filePath: 'a.pdf', forced: new Set() }), false);
 });
 
@@ -401,4 +403,71 @@ test('a range failure after pdf.js resolves but before the open returns falls ba
   assert.deepEqual(fallbacks, ['range 500']);
   assert.deepEqual(broken, []);
   assert.ok(lib.destroyed >= 1);
+});
+
+test('range transport rejects a file whose size is not the stored size (no retries)', async () => {
+  const sized = (total, { status = 206, headers = true } = {}) => async (url, init) => {
+    const [, a, b] = /bytes=(\d+)-(\d+)/.exec(init.headers.Range);
+    const file = Uint8Array.from({ length: total }, (_, i) => i % 256);
+    const body = status === 200 ? file : file.slice(Number(a), Math.min(total, Number(b) + 1));
+    return {
+      status,
+      headers: { get: (name) => (headers && name.toLowerCase() === 'content-range' ? `bytes ${a}-${b}/${total}` : null) },
+      arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
+    };
+  };
+  // Cross-origin Content-Range is often unreadable: the bodies alone must
+  // reveal the mismatch (the last chunk asks one byte past the stored end).
+  for (const [fetchImpl, label, begin, end] of [
+    [sized(80), '206 longer file', 0, 8],
+    [sized(48), '206 shorter file', 0, 8],
+    [sized(80, { status: 200 }), '200 full body', 0, 8],
+    [sized(80, { headers: false }), '206 longer file, no headers, last chunk', 56, 64],
+    [sized(60, { headers: false }), '206 shorter file, no headers, last chunk', 56, 64],
+  ]) {
+    let calls = 0;
+    const errors = [];
+    const t = createCloudRangeTransport({
+      pdfjsLib: { PDFDataRangeTransport: FakeRangeBase }, url: 'u', length: 64, retryDelayMs: 0,
+      fetchImpl: async (...args) => { calls += 1; return fetchImpl(...args); },
+      onError: (e) => errors.push(e.message),
+    });
+    t.requestDataRange(begin, end);
+    for (let i = 0; i < 10; i += 1) await settle();
+    assert.deepEqual(errors, ['range size mismatch'], label);
+    assert.deepEqual(t.ranges, [], label);
+    assert.equal(calls, 1, label);
+  }
+  // Matching sizes still stream.
+  const ok = createCloudRangeTransport({ pdfjsLib: { PDFDataRangeTransport: FakeRangeBase }, url: 'u', length: 64, fetchImpl: sized(64) });
+  ok.requestDataRange(0, 2);
+  await settle();
+  assert.deepEqual(ok.ranges, [[0, [0, 1]]]);
+  const okNoHeaders = createCloudRangeTransport({ pdfjsLib: { PDFDataRangeTransport: FakeRangeBase }, url: 'u', length: 64, fetchImpl: sized(64, { headers: false }) });
+  okNoHeaders.requestDataRange(62, 64);
+  await settle();
+  assert.deepEqual(okNoHeaders.ranges, [[62, [62, 63]]]);
+});
+
+test('a pdf.js parse error on the stream falls back to the full download', async () => {
+  for (const name of ['InvalidPDFException', 'FormatError', 'UnknownErrorException']) {
+    let destroyed = 0;
+    const lib = {
+      VerbosityLevel: {},
+      getDocument: () => {
+        const error = Object.assign(new Error('Invalid PDF structure.'), { name });
+        const promise = Promise.reject(error);
+        promise.catch(() => {});
+        return { promise, destroy: async () => { destroyed += 1; } };
+      },
+    };
+    const reasons = [];
+    const result = await tryOpenCloudPdfStream({
+      pdfjsReady: Promise.resolve(lib), filePath: 'p', source: async () => ({ url: 'https://x/signed', size: 64 }),
+      probeTag: async () => 'untagged', onFallback: (why) => reasons.push(why),
+    });
+    assert.equal(result, null, name);
+    assert.deepEqual(reasons, ['Invalid PDF structure.'], name);
+    assert.equal(destroyed, 1, name);
+  }
 });

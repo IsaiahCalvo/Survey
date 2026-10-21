@@ -177,12 +177,24 @@ export function createCloudRangeTransport({ pdfjsLib, url, length, fetchImpl = g
     requestDataRange(begin, end) {
       if (failed) return;
       const attempt = async () => {
-        const response = await fetchImpl(url, { headers: { Range: `bytes=${begin}-${end - 1}` }, cache: 'no-store', signal: controller?.signal });
+        // The stored size pdf.js was given must be the size of the file the
+        // URL serves (a file replaced around the open, or stale metadata, would
+        // otherwise hand pdf.js a truncated or shifted file it cannot parse).
+        // Content-Range is often unreadable cross-origin, so check bodies
+        // instead: the last chunk asks for one byte past the stored end, so a
+        // longer file shows up as one extra byte; a shorter one as a short
+        // body. Either rejects at once and the open falls back to the download.
+        const last = end >= length;
+        const response = await fetchImpl(url, { headers: { Range: `bytes=${begin}-${last ? end : end - 1}` }, cache: 'no-store', signal: controller?.signal });
         if (response.status !== 206 && response.status !== 200) throw new Error(`range ${response.status}`);
         const buffer = await response.arrayBuffer();
+        const mismatch = () => Object.assign(new Error('range size mismatch'), { permanent: true });
+        const total = Number(/\/(\d+)\s*$/.exec(response.headers?.get?.('content-range') || '')?.[1]);
+        if (response.status === 206 && Number.isFinite(total) && total > 0 && total !== length) throw mismatch();
+        if (response.status === 200 && buffer.byteLength !== length) throw mismatch();
+        if (response.status === 206 && buffer.byteLength !== end - begin) throw mismatch();
         // A server that ignores Range sends the whole file: slice it.
         const chunk = response.status === 200 ? buffer.slice(begin, end) : buffer;
-        if (chunk.byteLength !== end - begin) throw new Error('range length mismatch');
         return chunk;
       };
       // A transient network blip should not cost the whole open: retry a chunk
@@ -190,7 +202,7 @@ export function createCloudRangeTransport({ pdfjsLib, url, length, fetchImpl = g
       const withRetries = async () => {
         for (let tries = 1; ; tries += 1) {
           try { return await attempt(); } catch (error) {
-            if (failed || tries >= retries) throw error;
+            if (failed || error?.permanent || tries >= retries) throw error;
             await new Promise((resolve) => setTimeout(resolve, retryDelayMs * tries));
           }
         }
@@ -317,7 +329,13 @@ export async function tryOpenCloudPdfStream({
  * or page sizing) reloads once through the full download rather than showing
  * a load error. Once per path: the retry is a download, so it cannot loop.
  */
-export function shouldRetryStreamedOpenWithDownload({ openedByStream, filePath, forced, stillCurrent = true }) {
+export function shouldRetryStreamedOpenWithDownload({ openedByStream, filePath, stillCurrent = true }) {
   // stillCurrent: a page view may have replaced this file; never reload it.
-  return Boolean(openedByStream && stillCurrent && filePath && !forced?.has?.(filePath));
+  // openedByStream already means this path was not forced to download when
+  // this attempt began, so the retry is a download and cannot loop. Do not
+  // also require the path to be absent from the forced set: the stream's own
+  // callbacks (a chunk that failed for good, the bytes that never arrived)
+  // add it there during this attempt, and that must not turn the recoverable
+  // failure into the "Couldn't open this PDF" screen.
+  return Boolean(openedByStream && stillCurrent && filePath);
 }
