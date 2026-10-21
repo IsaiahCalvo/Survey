@@ -21,7 +21,7 @@
    clip them or force a scrollbar. Because the portal renders OUTSIDE the
    `.survey-hub` root, those popups use literal hex colors, not CSS vars.
 */
-import { canManageProjectFile } from './projectFilePermissions.js';
+import { canDeleteProjectFile, canManageProjectFile } from './projectFilePermissions.js';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
@@ -2034,7 +2034,9 @@ export default function ProjectsFolderTree({
         if (!f) return null;
         const locked = f.locked_at != null;
         const canLock = user?.id && f.user_id === user.id;
+        const canDelete = canDeleteProjectFile(f, user?.id);
         const canManage = canManageProjectFile(f, open, user?.id);
+        const noDeleteTitle = 'Only the owner of this document can do that';
         const noManageTitle = 'Only the uploader or project owner can do this';
         return (
           <PopupMenu
@@ -2047,7 +2049,7 @@ export default function ProjectsFolderTree({
               { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
               { label: 'Copy', onClick: () => copyFile(f) },
               { label: 'Paste', disabled: !clipboard, onClick: () => pasteFile() },
-              { label: 'Delete', danger: true, disabled: !canManage, title: canManage ? undefined : noManageTitle, onClick: () => deleteFiles([fileMenu.id]) },
+              { label: 'Delete', danger: true, disabled: !canDelete, title: canDelete ? undefined : noDeleteTitle, onClick: () => deleteFiles([fileMenu.id]) },
               { label: 'Share', disabled: !canManage, title: canManage ? undefined : noManageTitle, onClick: () => onShareDocument ? onShareDocument([f]) : onShare && onShare(open) },
               {
                 label: locked ? 'Unlock document' : 'Lock document',
