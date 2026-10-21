@@ -93,7 +93,8 @@ async function openHubTab(page, name) {
 }
 
 async function visiblePageContextAction(page, label) {
-  const candidates = page.getByRole('button', { name: label, exact: true }).filter({ visible: true });
+  // Page menu entries are role="menuitem" (PageActionsMenu).
+  const candidates = page.getByRole('menuitem', { name: label, exact: true }).filter({ visible: true });
   const indexes = await candidates.evaluateAll((nodes) => nodes.flatMap((node, index) => (
     node.closest('[role="toolbar"][aria-label="Page actions"]') ? [] : [index]
   )));
@@ -337,6 +338,7 @@ async function runBookmarksAndPages(page, baseUrl) {
   assert.equal(snapshot.sidebar.bookmarks[0].name, 'Main entrance', 'invalid combined edit must not commit the name');
   assert.deepEqual(snapshot.sidebar.bookmarks[0].pageIds, [1], 'invalid combined edit must not commit the page');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.locator('input[aria-label="Bookmark name"]').waitFor({ state: 'detached', timeout: 10_000 });
 
   await page.getByRole('button', { name: 'Add bookmark', exact: true }).click();
   await page.getByRole('textbox', { name: 'Bookmark name', exact: true }).fill('Roof');
@@ -360,7 +362,7 @@ async function runBookmarksAndPages(page, baseUrl) {
     initialPageCount + 1,
   );
   await page.getByRole('button', { name: 'Page 2 actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Rotate', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Rotate right', exact: true }).click();
   await page.getByRole('button', { name: 'Page 2 actions', exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
   snapshot = await persistedSnapshot(page, storageKeys);
   assert.deepEqual(snapshot.sidebar.pageTransformations, {}, 'physical rotation must not leave a second CSS rotation');
@@ -368,7 +370,9 @@ async function runBookmarksAndPages(page, baseUrl) {
   // Physical move: both bookmarks belong to the original page 1, so moving
   // that page down must move both durable associations to page 2.
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Move down', exact: true }).click();
+  // Phone page menu (compact): Move up/down live behind More.
+  await page.getByRole('menuitem', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Move down', exact: true }).click();
   await page.waitForFunction((key) => {
     try {
       return JSON.parse(localStorage.getItem(key) || '{}')?.bookmarks
@@ -380,9 +384,9 @@ async function runBookmarksAndPages(page, baseUrl) {
   // page count. Copy page 2 and paste it after page 1: the original shifts to
   // page 3 and the clone occupies page 2, so both bookmark targets survive.
   await page.getByRole('button', { name: 'Page 2 actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Copy', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Copy', exact: true }).click();
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
-  await (await visiblePageContextAction(page, 'Paste')).click();
+  await (await visiblePageContextAction(page, 'Paste below')).click();
   await page.waitForFunction(
     (count) => document.querySelectorAll('.mobile-page-card').length === count,
     initialPageCount + 2,
@@ -396,9 +400,9 @@ async function runBookmarksAndPages(page, baseUrl) {
 
   // Cut/paste moves identity rather than cloning it and consumes the clipboard.
   await page.getByRole('button', { name: 'Page 3 actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Cut', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Cut', exact: true }).click();
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
-  await (await visiblePageContextAction(page, 'Paste')).click();
+  await (await visiblePageContextAction(page, 'Paste below')).click();
   await page.waitForFunction(() => !document.querySelector('.mobile-page-clipboard-badge'));
   await page.waitForFunction(
     (count) => document.querySelectorAll('.mobile-page-card').length === count,
@@ -407,11 +411,11 @@ async function runBookmarksAndPages(page, baseUrl) {
 
   await page.getByRole('button', { name: 'Page 3 actions', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   await page.waitForFunction((count) => document.querySelectorAll('.mobile-page-card').length === count, initialPageCount + 1);
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   await page.waitForFunction((count) => document.querySelectorAll('.mobile-page-card').length === count, initialPageCount);
   snapshot = await persistedSnapshot(page, storageKeys);
   assert(snapshot.sidebar.bookmarks.every((bookmark) => JSON.stringify(bookmark.pageIds) === '[1]'));

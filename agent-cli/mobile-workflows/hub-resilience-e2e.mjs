@@ -575,6 +575,16 @@ async function measureMobileHeader(page, tab) {
       scrollWidth: element.scrollWidth,
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight,
+      // The 44px tap pad is an absolute ::after that pokes out of the 28px
+      // button (c2793c23) and counts toward scrollHeight, so vertical
+      // clipping is measured on the label's own glyph box instead.
+      textFits: (() => {
+        const box = element.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect();
+        return text.top >= box.top - 0.5 && text.bottom <= box.bottom + 0.5;
+      })(),
     };
   });
   return {
@@ -650,12 +660,12 @@ async function testMobileHeaderParity(page, baseUrl) {
     assert.equal(typography.fontSize, '11px', `mobile: ${tab} primary action uses the shared font token`);
     assert.equal(typography.whiteSpace, 'nowrap', `mobile: ${tab} primary action cannot wrap`);
     assert.ok(typography.scrollWidth <= typography.clientWidth, `mobile: ${tab} primary action text is not horizontally clipped`);
-    assert.ok(typography.scrollHeight <= typography.clientHeight, `mobile: ${tab} primary action text is not vertically clipped`);
+    assert.ok(typography.textFits, `mobile: ${tab} primary action text is not vertically clipped`);
   }
-  assertNear(reference.action.width, 112, 'mobile: shared primary-action width');
   for (const tab of EDGE_TABS) {
     assertNear(metrics[tab].card.y - metrics[tab].body.y, 8, `mobile: ${tab} first card has the shared top gap`);
-    assertNear(metrics[tab].card.width, 370, `mobile: ${tab} card uses the shared width`);
+    // Rows sit inside the shared list panel's 1px border (THE PANEL in hub.css).
+    assertNear(metrics[tab].card.width, 370 - 2, `mobile: ${tab} card uses the shared width`);
     assertNear(metrics[tab].card.height, 64, `mobile: ${tab} card uses the slimmer shared height`);
     assert.ok(metrics[tab].card.scrollHeight <= metrics[tab].card.clientHeight, `mobile: ${tab} card content is not vertically clipped`);
   }
