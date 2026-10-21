@@ -27,6 +27,9 @@ import htmlToPdf from './html-to-pdf.mjs';
 import docxToPdf from './docx-to-pdf.mjs';
 import bmpToPdf from './bmp-to-pdf.mjs';
 import gifToPdf from './gif-to-pdf.mjs';
+import pdfToGif from './pdf-to-gif.mjs';
+import pdfToHtml from './pdf-to-html.mjs';
+import pdfToRtf from './pdf-to-rtf.mjs';
 
 export default [
   ocrPdf,
@@ -56,4 +59,7 @@ export default [
   docxToPdf,
   bmpToPdf,
   gifToPdf,
+  pdfToGif,
+  pdfToHtml,
+  pdfToRtf,
 ];
