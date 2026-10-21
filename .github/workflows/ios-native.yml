@@ -162,7 +162,7 @@ jobs:
             sleep 15; adb exec-out screencap -p > "$OUT/launch-25s.png"
             sleep 20; adb exec-out screencap -p > "$OUT/launch-45s.png"
             adb logcat -d > "$OUT/logcat.txt" || true
-            adb shell pidof "$APP_ID" || { echo "::error::the app is no longer running 45s after launch"; exit 1; }
+            adb shell pidof "$APP_ID" || { grep -E "AndroidRuntime|FATAL|ActivityManager.*(survey|Killing)|lowmemorykiller|chromium.*(crash|Renderer)" "$OUT/logcat.txt" | tail -40; echo "::error::the app is no longer running 45s after launch"; exit 1; }
             echo "App still running after 45s."
       - uses: actions/upload-artifact@v4
         if: always()
