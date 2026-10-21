@@ -9,6 +9,7 @@ const ERROR_TEXT = {
   not_enabled_for_you: 'The Survey agent is not turned on for your account yet.',
   not_set_up: 'The Survey agent is not set up on the server yet.',
   monthly_cap_reached: 'You reached this month\'s Survey agent limit.',
+  offline: 'No signal. It will send when you are back online.',
   busy_try_again: 'The agent is busy. Try again in a moment.',
   conversation_too_long: 'This chat is too long. Start a new one.',
   bad_message: 'This chat could not continue, so it starts fresh. Say that again.',
@@ -20,25 +21,72 @@ export function surveyAgentErrorText(code) {
 }
 
 export class SurveyAgentError extends Error {
-  constructor(code) {
+  constructor(code, { retryAfter = null } = {}) {
     super(surveyAgentErrorText(code));
     this.code = code;
+    this.retryAfter = retryAfter;
   }
 }
 
+const isOffline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+
 // Calls the edge function through supabase-js (it adds the person's JWT).
-export function makeSurveyAgentCaller(supabase) {
+// Each reply may carry usage_left, which onUsage receives.
+export function makeSurveyAgentCaller(supabase, { onUsage } = {}) {
   return async (payload) => {
     // No Supabase config (offline builds, local test runs): nothing to call.
     if (!supabase?.functions) throw new SurveyAgentError('not_set_up');
+    if (isOffline()) throw new SurveyAgentError('offline');
     const { data, error } = await supabase.functions.invoke('survey-agent', { body: payload });
     if (error) {
-      let code = null;
-      try { code = (await error.context?.json?.())?.error || null; } catch { /* not JSON */ }
-      throw new SurveyAgentError(code || 'network');
+      let body = null;
+      try { body = await error.context?.json?.(); } catch { /* not JSON */ }
+      if (body?.usage_left) onUsage?.(body.usage_left);
+      throw new SurveyAgentError(body?.error || (isOffline() ? 'offline' : 'network'), { retryAfter: body?.retry_after ?? null });
     }
+    if (data?.usage_left) onUsage?.(data.usage_left);
     return data;
   };
+}
+
+// Errors worth trying again by themselves: a dropped connection or a busy
+// model. Each call is one model step with no writes on the server, so a
+// repeat cannot double anything.
+const TRANSIENT = new Set(['network', 'busy_try_again', 'model_unavailable', 'transcription_failed']);
+
+/** The same caller, trying a dropped or busy call again a few times. */
+export function withRetries(call, { delays = [1000, 3000], wait = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  return async (payload) => {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await call(payload);
+      } catch (err) {
+        if (!TRANSIENT.has(err?.code) || attempt >= delays.length || isOffline()) throw err;
+        const hinted = Number(err.retryAfter) > 0 ? Math.min(Number(err.retryAfter) * 1000, 10_000) : 0;
+        await wait(Math.max(delays[attempt], hinted));
+      }
+    }
+  };
+}
+
+/**
+ * What to tell the person about this month's allowance: null while plenty is
+ * left, a warning near the end, or the stop text once it is used up.
+ */
+export function usageWarning(left) {
+  if (!left) return null;
+  const requests = Number(left.requests);
+  const share = Number(left.cost_share);
+  if ((Number.isFinite(requests) && requests <= 0) || (Number.isFinite(share) && share <= 0)) {
+    return surveyAgentErrorText('monthly_cap_reached');
+  }
+  if ((Number.isFinite(requests) && requests <= 100) || (Number.isFinite(share) && share <= 0.1)) {
+    const n = Number.isFinite(requests) ? requests : null;
+    return n != null && (!Number.isFinite(share) || share > 0.1)
+      ? `Almost at this month's Survey agent limit: about ${n} requests left.`
+      : 'Almost at this month\'s Survey agent limit.';
+  }
+  return null;
 }
 
 const yieldToApp = () => new Promise((resolve) => setTimeout(resolve, 0));

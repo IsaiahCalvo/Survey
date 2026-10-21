@@ -55,7 +55,7 @@ async function seed() {
 
 // The scripted model: find the door, then set an answer and a note, then
 // answer in words. Every request the app sends is kept for checks.
-function mockModel(page, calls) {
+function mockModel(page, calls, status = { enabled: true, reason: null, transcription: false, over_cap: false }) {
   return page.route('**/functions/v1/survey-agent', async (route) => {
     if (route.request().method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
@@ -68,7 +68,7 @@ function mockModel(page, calls) {
       headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
       body: JSON.stringify(json),
     });
-    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
+    if (body.action === 'status') return reply(status);
     const tools = body.messages.filter((m) => m.role === 'tool');
     if (tools.length === 0) {
       return reply({ message: { content: '', tool_calls: [
@@ -236,4 +236,37 @@ test('Survey agent adds an item from a tag on a rotated plan page, and Undo remo
 
   await card.getByRole('button', { name: /Undo/ }).click();
   await expect.poll(stored).toBe(null);
+});
+
+test('With no signal a message waits, then sends when the signal is back; the allowance warns near the end', async ({ page, context }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await mockModel(page, calls, { enabled: true, reason: null, transcription: false, over_cap: false, usage_left: { requests: 40, cost_share: 0.9 } });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await expect(panel.getByRole('status')).toContainText('about 40 requests left');
+
+  await context.setOffline(true);
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await input.fill('door 117 has no power');
+  await input.press('Enter');
+  await expect(panel.getByText('Waiting for signal')).toBeVisible();
+  await expect(panel.getByRole('status')).toContainText('1 message is waiting');
+  expect(calls.filter((c) => c.action === 'turn')).toHaveLength(0);
+
+  await context.setOffline(false);
+  await expect(panel.getByText('D-117: power is N and I added a note.')).toBeVisible({ timeout: 30_000 });
+  await expect(panel.getByText('Waiting for signal')).toHaveCount(0);
+  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
 });
