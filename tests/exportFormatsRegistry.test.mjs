@@ -178,7 +178,8 @@ test('starter kits are valid, carry an answer set, and templates pick it up', as
   const { getExportKit } = await import('../src/services/exportFormats/registry.js');
   const { publishProblems, validateAnswerSet } = await import('../supabase/functions/_shared/kitShape.js');
   const { answerSetFor, isDoneAnswer } = await import('../src/services/answerSets.js');
-  for (const id of ['fire-alarm-devices', 'cctv-cameras', 'access-control-commissioning', 'punch-list']) {
+  for (const id of ['fire-alarm-devices', 'cctv-cameras', 'access-control-commissioning', 'punch-list',
+    'door-hardware-check', 'intrusion-alarm-test', 'network-rack-audit', 'emergency-lighting-test']) {
     const kit = getExportKit(id);
     assert.ok(kit, id);
     assert.deepEqual(validateAnswerSet(kit.answerSet), [], id);
@@ -192,4 +193,7 @@ test('starter kits are valid, carry an answer set, and templates pick it up', as
   assert.equal(isDoneAnswer(punch, 'Open'), false);
   const cctv = getExportKit('cctv-cameras').answerSet;
   assert.equal(isDoneAnswer(cctv, 'Not working'), false);
+  const rack = getExportKit('network-rack-audit').answerSet;
+  assert.equal(isDoneAnswer(rack, 'Fair'), true);
+  assert.equal(isDoneAnswer(rack, 'Poor'), false);
 });

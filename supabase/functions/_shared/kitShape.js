@@ -62,7 +62,8 @@ export function validateAnswerSet(set) {
 // Kits that ship inside the app; a published kit may never take their ids.
 export const BUILT_IN_KIT_IDS = Object.freeze([
   'default-survey', 'wireless-lock-schedule', 'fire-alarm-devices', 'cctv-cameras',
-  'access-control-commissioning', 'punch-list',
+  'access-control-commissioning', 'punch-list', 'door-hardware-check', 'intrusion-alarm-test',
+  'network-rack-audit', 'emergency-lighting-test',
 ]);
 
 /** Every problem with a kit someone wants to publish; empty means it can go. */

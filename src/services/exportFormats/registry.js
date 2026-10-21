@@ -28,6 +28,10 @@ import fireAlarmDevicesKit from './kits/fireAlarmDevices.js';
 import cctvCamerasKit from './kits/cctvCameras.js';
 import accessControlCommissioningKit from './kits/accessControlCommissioning.js';
 import punchListKit from './kits/punchList.js';
+import doorHardwareCheckKit from './kits/doorHardwareCheck.js';
+import intrusionAlarmTestKit from './kits/intrusionAlarmTest.js';
+import networkRackAuditKit from './kits/networkRackAudit.js';
+import emergencyLightingTestKit from './kits/emergencyLightingTest.js';
 
 export const EXPORT_ENGINE_VERSION = 1;
 
@@ -75,6 +79,7 @@ export function getExportKit(id) {
 
 export const DEFAULT_EXPORT_KIT_ID = defaultSurveyKit.id;
 // Kits shipped in the app; an account's kits from the database may not replace them.
-const BUILT_IN_KITS = [defaultSurveyKit, wirelessLockScheduleKit, fireAlarmDevicesKit, cctvCamerasKit, accessControlCommissioningKit, punchListKit];
+const BUILT_IN_KITS = [defaultSurveyKit, wirelessLockScheduleKit, fireAlarmDevicesKit, cctvCamerasKit, accessControlCommissioningKit, punchListKit,
+  doorHardwareCheckKit, intrusionAlarmTestKit, networkRackAuditKit, emergencyLightingTestKit];
 export const BUILT_IN_EXPORT_KIT_IDS = Object.freeze(BUILT_IN_KITS.map((k) => k.id));
 BUILT_IN_KITS.forEach(registerExportKit);
