@@ -25,6 +25,7 @@
  * device.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import SurveyPickList from '../components/SurveyPickList';
 import { useSelectedSurveyMarkerIds } from '../components/SurveyEntityBar';
@@ -399,7 +400,11 @@ export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
       {/* KAL-66 `menu`: from a keyboard, focus goes to the shape in use,
           Up / Down move, and Escape gives focus back to the chip. */}
       <DismissBarrier active={open} insideRefs={insideRefs} onDismiss={() => setOpen(false)} menu />
-      {open && (
+      {/* Portaled: the chip lives in the scrolling rail column, whose
+          "more below" fade is a mask-image. A mask clips every descendant,
+          fixed ones too, so on a short phone (iPhone SE) the menu was masked
+          out entirely - invisible and untappable. */}
+      {open && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
           className="mobile-pdf-tools__popover is-marker-shape"
@@ -428,7 +433,8 @@ export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
               </span>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

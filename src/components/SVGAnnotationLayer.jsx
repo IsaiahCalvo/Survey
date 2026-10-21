@@ -190,7 +190,7 @@ import { findSimilarOnPage } from '../survey/smartFillProvider.js';
 import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
 import { SMART_FILL_CLEAR_MATCHES_EVENT, shouldClearSmartFillMatches } from '../survey/smartFillMatchEvents.js';
 import { markerShapeHitTest } from '../survey/markerShapes.js';
-import { showToast, dismissToast } from '../utils/toast';
+import { showToast, dismissToast, TOAST_USER_DISMISS_EVENT } from '../utils/toast';
 // The toast store renames a toast whose id is still showing, so a later
 // dismissToast(id) would miss it; clear the old one first.
 const showSmartFillFindToast = (message, type, options) => {
@@ -2385,6 +2385,15 @@ const SVGAnnotationLayerBody = memo(({
     setSmartFillPreview(null);
     dismissToast('smart-fill-preview');
   }, []);
+  // Tapping the preview toast away is Cancel: the outline goes with it.
+  useEffect(() => {
+    if (!smartFillPreview) return undefined;
+    const onUserDismiss = (event) => {
+      if (event?.detail?.id === 'smart-fill-preview') setSmartFillPreview(null);
+    };
+    window.addEventListener(TOAST_USER_DISMISS_EVENT, onUserDismiss);
+    return () => window.removeEventListener(TOAST_USER_DISMISS_EVENT, onUserDismiss);
+  }, [smartFillPreview]);
   // Owner 2026-10-20 (beta): "find more like this". After a tag is applied,
   // its outline is remembered (this browser only) and Smart fill can look for
   // the same kind of tag on the page. Matches show as blue outlines; each one

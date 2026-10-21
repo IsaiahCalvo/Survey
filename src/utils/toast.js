@@ -43,6 +43,14 @@ export function showToast(message, type = 'error', options = {}) {
   return id;
 }
 
+/**
+ * Fired on window ({ detail: { id } }, the caller's id) when the user taps a
+ * toast away. A sticky toast that stands for something on screen (Smart fill's
+ * preview outline) listens so the tap takes that down too; on a phone the tap
+ * is the only Cancel the toast offers.
+ */
+export const TOAST_USER_DISMISS_EVENT = 'app-toast-user-dismiss';
+
 /** Take a toast down early (it plays its exit). Unknown ids are ignored. */
 export function dismissToast(id) {
   if (typeof window === 'undefined' || id == null) return;
