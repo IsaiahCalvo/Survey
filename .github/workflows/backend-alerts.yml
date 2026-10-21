@@ -6,7 +6,10 @@ name: Backend alerts
 #   - edge functions answer 5 or more server errors in an hour,
 #   - the voice agent nears Groq's free 1,000 requests a day (800 in 24 hours),
 #   - a crash from the web app or the phone apps spikes (client_errors): one
-#     not seen in the week before happens 10+ times in an hour, or any 100+.
+#     not seen in the week before happens 10+ times in an hour, or any 100+,
+#   - any plan quota reaches 80%: database size, stored files, file downloads,
+#     monthly active users, edge function calls (Supabase Pro), and Groq's free
+#     daily caps per voice-agent model (QUOTAS in the script).
 # Repeats become comments on the open issue; the next quiet hour closes it.
 # Counts and function names only: the repo is public.
 

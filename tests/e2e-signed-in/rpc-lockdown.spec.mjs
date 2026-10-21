@@ -124,3 +124,22 @@ test('trigger functions and signed-in-only helpers are not callable from outside
   const { error: flagsError } = await anonClient().rpc('get_my_feature_flags');
   expect(flagsError, JSON.stringify(flagsError)).toBeNull();
 });
+
+test('only the server records voice-agent daily counts', async ({ page }) => {
+  const free = await signedIn(page, E2E_ACCOUNTS.free);
+  const args = { p_kind: 'turn', p_tokens: 10, p_audio_seconds: 0 };
+  for (const client of [anonClient(), free]) {
+    const { error } = await client.rpc('record_survey_agent_daily', args);
+    expect(notCallable(error), JSON.stringify(error)).toBe(true);
+    const { data } = await client.from('survey_agent_daily_usage').select('day');
+    expect(data ?? []).toEqual([]);
+  }
+  const admin = adminClient();
+  const before = (await admin.from('survey_agent_daily_usage').select('requests, tokens').eq('kind', 'turn')
+    .eq('day', new Date().toISOString().slice(0, 10)).maybeSingle()).data;
+  expect((await admin.rpc('record_survey_agent_daily', args)).error).toBeNull();
+  const { data: after } = await admin.from('survey_agent_daily_usage').select('requests, tokens').eq('kind', 'turn')
+    .eq('day', new Date().toISOString().slice(0, 10)).single();
+  expect(after.requests).toBe((before?.requests ?? 0) + 1);
+  expect(Number(after.tokens)).toBe(Number(before?.tokens ?? 0) + 10);
+});
