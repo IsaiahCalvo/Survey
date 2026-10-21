@@ -311,3 +311,30 @@ test('browser agents get the item tools with the human\'s role', async () => {
   assert.match(await find.execute({ query: 'D 118', category_id: null }), /m118/);
   assert.equal(set(asRole('editor')).inputSchema.properties.answers.items.properties.value.enum, undefined);
 });
+
+test('shared tools run through the toolbox, placed next to an item when asked', async () => {
+  const { bridge } = fakeBridge({ getPageSize: () => ({ width: 612, height: 792 }) });
+  bridge.markers.m300 = { name: 'D-300', moduleId: 'mod-1', categoryId: 'cat-door', pageNumber: 1, bounds: { x: 500, y: 40, width: 20, height: 20 }, checklistResponses: {} };
+  const seen = [];
+  const box = createSurveyAgentToolbox({
+    getBridge: () => bridge,
+    extraTools: [
+      { name: 'survey_add_text_note', execute: async (args) => { seen.push(args); return 'Added a text note on page 2.'; } },
+      { name: 'survey_add_highlight', execute: async () => { throw new Error('That page is not in the open document.'); } },
+    ],
+  });
+  // Next to D-117 (page 2): just right of its box.
+  assert.deepEqual(await box.run('add_text_note', { near_item_id: 'm117', text: 'Ceiling tile missing' }),
+    { isError: false, content: 'Added a text note on page 2.' });
+  assert.deepEqual(seen[0], { text: 'Ceiling tile missing', page: 2, x: 14, y: 1 });
+  // Near the right edge: to the left instead.
+  await box.run('add_text_note', { near_item_id: 'm300', text: 'x' });
+  assert.deepEqual(seen[1], { text: 'x', page: 1, x: 332, y: 40 });
+  // Given coordinates win; plain calls pass through.
+  await box.run('add_text_note', { page: 3, x: 5, y: 6, text: 'y' });
+  assert.deepEqual(seen[2], { page: 3, x: 5, y: 6, text: 'y' });
+  // An item with no place on the plan, an unknown match, a tool error.
+  assert.match((await box.run('add_text_note', { near_item_id: 'm118', text: 'z' })).content, /not placed on the plan/);
+  assert.match((await box.run('add_text_note', { near_plan_match_id: 'plan-9', text: 'z' })).content, /No plan match plan-9/);
+  assert.deepEqual(await box.run('add_highlight', { page: 1 }), { isError: true, content: 'That page is not in the open document.' });
+});
