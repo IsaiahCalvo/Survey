@@ -16,6 +16,7 @@ after_finger=$(read_mode); echo "after finger: $after_finger"
 adb shell input stylus swipe $X $Y $((X + 150)) $((Y - 150)) 300
 sleep 2
 adb exec-out screencap -p > "$OUT/07-after-stylus.png"
-after_pen=$(read_mode); echo "after stylus: $after_pen"
+after_pen=$(read_mode); echo "after stylus: $after_pen, penSeen: $(node .github/native-flows/webview-storage.mjs surveyPenSeen)"
+adb shell input 2>&1 | grep -i stylus | head -3 || true
 [ "$after_pen" = "pen" ] || { echo "::error::first stylus press did not switch to Pencil only ($after_pen)"; exit 1; }
 echo "Pen mode check passed."
