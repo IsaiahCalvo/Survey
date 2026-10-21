@@ -20,6 +20,7 @@ import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageW
 import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
+import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
 import SurveyAgentCamera from './SurveyAgentCamera';
 import './surveyAgentPanel.css';
@@ -54,6 +55,28 @@ const HANDS_FREE_TEXT = {
 
 let nextId = 1;
 const newId = (prefix) => `${prefix}${nextId++}`;
+
+// No signal, or too weak to finish a call: the message waits and sends later.
+const WAIT_CODES = new Set(['offline', 'network']);
+const SAVED_FIRST = 'No signal. I saved that and will send it when you are back online.';
+const SAVED_AGAIN = 'Saved.';
+// Kept on the device, unique across reloads.
+const waitIdOf = () => `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+// The last status the server gave this person, so the chat still opens
+// with no signal. Only whether it is on; limits come back with the signal.
+const LAST_STATUS_KEY = 'survey.agent.lastStatus';
+function readLastStatus(userId) {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(LAST_STATUS_KEY) || 'null');
+    return saved?.userId === userId && saved.enabled ? { enabled: true, reason: null, transcription: Boolean(saved.transcription), speech: false } : null;
+  } catch { return null; }
+}
+function writeLastStatus(userId, s) {
+  try {
+    window.localStorage.setItem(LAST_STATUS_KEY, JSON.stringify({ userId, enabled: true, transcription: Boolean(s.transcription) }));
+  } catch { /* storage blocked */ }
+}
 
 
 const openDocument = () => {
@@ -119,14 +142,23 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
 
   useEffect(() => {
     let live = true;
-    call({ action: 'status' })
-      .then((s) => {
+    (async () => {
+      const userId = await supabase?.auth?.getSession?.().then((r) => r?.data?.session?.user?.id || null).catch(() => null);
+      try {
+        const s = await call({ action: 'status' });
         if (!live) return;
         setStatus(s || { enabled: false, reason: 'network' });
         voice.setServerVoice(Boolean(s?.speech));
         if (s?.usage_left) setUsageLeft(s.usage_left);
-      })
-      .catch((err) => { if (live) setStatus({ enabled: false, reason: err?.code || 'network' }); });
+        if (userId && s?.enabled) writeLastStatus(userId, s);
+      } catch (err) {
+        if (!live) return;
+        // No signal: if the agent worked for this person before, open
+        // anyway, so what they say waits on the device and sends later.
+        const last = WAIT_CODES.has(err?.code) && userId ? readLastStatus(userId) : null;
+        setStatus(last ? { ...last, over_cap: false } : { enabled: false, reason: err?.code || 'network' });
+      }
+    })();
     return () => { live = false; };
   }, [call, voice]);
 
@@ -203,11 +235,11 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       push({ role: 'agent', text: result.reply, changes: result.changes });
       return result.reply;
     } catch (err) {
-      // No signal before anything changed: keep the message for later.
-      if (err?.code === 'offline' && !err?.changes?.length) {
-        queueRef.current.push(job);
-        setQueued(queueRef.current.length);
-        if (job.entryId) markEntry(job.entryId, { waiting: true });
+      // No signal (or too weak to finish) before anything changed: keep the
+      // message for later. Each call is one model step with no writes on the
+      // server, so sending it again later cannot double anything.
+      if (WAIT_CODES.has(err?.code) && !err?.changes?.length) {
+        enqueueRef.current(job);
         return null;
       }
       // The server refused the stored chat: start over rather than repeat it.
@@ -236,44 +268,59 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     const entryId = newId('e');
     setEntries((list) => [...list, { id: entryId, role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name) }]);
     // Messages wait their turn behind ones still waiting for signal.
-    const job = { said, files, entryId };
+    const job = { said, files, entryId, docKey: surveyAgentBridge.current?.waitKey || null };
     if (queueRef.current.length) {
-      queueRef.current.push(job);
-      setQueued(queueRef.current.length);
-      markEntry(entryId, { waiting: true });
+      enqueueRef.current(job, { quiet: true });
       return null;
     }
     return runJob(job);
   }, [pendingFiles, runJob]);
 
   // Signal back: send what waited, oldest first, and stop at the first
-  // message that has to wait again.
+  // message that has to wait again. A message waits for its own document.
   const flushingRef = useRef(false);
   const flushQueue = useCallback(async () => {
     if (flushingRef.current || turnRef.current) return;
     flushingRef.current = true;
     try {
       while (queueRef.current.length) {
-        const job = queueRef.current.shift();
+        const job = queueRef.current[0];
+        if (job.docKey && job.docKey !== (surveyAgentBridge.current?.waitKey || null)) break;
+        queueRef.current.shift();
         setQueued(queueRef.current.length);
-        let reply;
+        job.flushing = true;
+        let reply = null;
         if (job.clip) {
           const text = await transcribeRef.current(job.clip, job.durationMs);
           if (text === null) { queueRef.current.unshift(job); setQueued(queueRef.current.length); break; }
-          if (!text) continue;
-          const entryId = newId('e');
-          setEntries((list) => [...list, { id: entryId, role: 'user', text }]);
-          reply = await runJob({ said: text, files: [], entryId });
+          if (!text) {
+            if (job.entryId) markEntry(job.entryId, { text: 'Voice message (could not hear it)', waiting: false });
+          } else {
+            if (job.entryId) markEntry(job.entryId, { text });
+            const said = { said: text, files: [], entryId: job.entryId, docKey: job.docKey, waitId: job.waitId };
+            reply = await runJob(said);
+            if (queueRef.current.includes(said)) {
+              // Heard, but the turn has to wait again: keep the words, not the audio.
+              queueRef.current[queueRef.current.indexOf(said)] = { ...said, flushing: false };
+              if (job.waitId && job.docKey) keepWaiting({ id: job.waitId, docKey: job.docKey, said: text });
+              break;
+            }
+          }
         } else {
           reply = await runJob(job);
+          if (queueRef.current.includes(job)) { job.flushing = false; break; }
         }
-        if (queueRef.current.includes(job)) break;
-        if (reply && speakRef.current && !handsFreeRef.current) speak(reply);
+        dropWaiting(job.waitId);
+        if (reply) await speakOutRef.current(reply);
       }
+      if (!queueRef.current.length) savedNoticeRef.current = false;
     } finally {
       flushingRef.current = false;
     }
   }, [runJob]);
+
+  const flushQueueRef = useRef(flushQueue);
+  flushQueueRef.current = flushQueue;
 
   useEffect(() => {
     const online = () => { flushQueue(); };
@@ -294,6 +341,66 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   sendRef.current = sendAndSpeak;
   const draftRef = useRef(draft);
   draftRef.current = draft;
+
+  // A reply said out loud when voice is on. In hands-free the mic is guarded
+  // (not while the person is mid-sentence) so it can be cut off by talking.
+  const speakOut = async (reply, { here = false } = {}) => {
+    if (!reply || !speakRef.current) return;
+    if (!handsFreeRef.current) { await speak(reply, { here }); return; }
+    const mic = micRef.current;
+    if (mic?.guard() === false) return;
+    lastSpokenRef.current = spokenReply(reply);
+    setPhase('speaking');
+    await speak(reply, { here });
+    setPhase(handsFreePendingRef.current ? 'working' : 'listening');
+    mic?.unguard();
+  };
+  const speakOutRef = useRef(speakOut);
+  speakOutRef.current = speakOut;
+
+  // Puts a message in the waiting line (at the front when it was being
+  // sent from there), keeps it on the device, and says so: "saved, will
+  // send" once per stretch without signal, then just "Saved."
+  const savedNoticeRef = useRef(false);
+  const enqueue = (job, { quiet = false } = {}) => {
+    // Back from a send attempt: same place in line, and nothing new to say.
+    const retried = Boolean(job.flushing);
+    if (retried) { job.flushing = false; queueRef.current.unshift(job); } else queueRef.current.push(job);
+    setQueued(queueRef.current.length);
+    if (job.entryId) markEntry(job.entryId, { waiting: true });
+    // Files stay in this session only; words and recorded audio survive a reload.
+    if (!job.files?.length && job.docKey) {
+      job.waitId = job.waitId || waitIdOf();
+      keepWaiting({ id: job.waitId, docKey: job.docKey, said: job.said || null, clip: job.clip || null, durationMs: job.durationMs || null });
+    }
+    if (quiet || retried) return;
+    const first = !savedNoticeRef.current;
+    savedNoticeRef.current = true;
+    speakOutRef.current(first ? SAVED_FIRST : SAVED_AGAIN, { here: true });
+  };
+  const enqueueRef = useRef(enqueue);
+  enqueueRef.current = enqueue;
+
+  // Messages left waiting on this device for this document (the chat was
+  // closed or the page reloaded with no signal): show them and send them.
+  useEffect(() => {
+    const docKey = surveyAgentBridge.current?.waitKey || null;
+    if (!docKey) return undefined;
+    let live = true;
+    loadWaiting(docKey).then((rows) => {
+      if (!live || !rows.length) return;
+      for (const row of rows) {
+        if (queueRef.current.some((j) => j.waitId === row.id)) continue;
+        const entryId = newId('e');
+        setEntries((list) => [...list, { id: entryId, role: 'user', text: row.said || 'Voice message', waiting: true }]);
+        queueRef.current.push({ said: row.said || '', files: [], clip: row.clip || null, durationMs: row.durationMs || null, entryId, docKey, waitId: row.id });
+      }
+      savedNoticeRef.current = true;
+      setQueued(queueRef.current.length);
+      flushQueueRef.current();
+    });
+    return () => { live = false; };
+  }, []);
 
   const applyUndo = (entry) => {
     const result = toolbox.undo(entry.changes || []);
@@ -331,7 +438,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
       return snapItemNames(cleanTranscript(out?.text), Object.values(b?.markers || {}).map((m) => m?.name));
     } catch (err) {
-      if (err?.code === 'offline') return null;
+      if (WAIT_CODES.has(err?.code)) return null;
       push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.', code: err?.code });
       return '';
     } finally {
@@ -342,8 +449,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   transcribeRef.current = transcribe;
 
   const queueClip = (clip, durationMs) => {
-    queueRef.current.push({ clip, durationMs });
-    setQueued(queueRef.current.length);
+    const entryId = newId('e');
+    setEntries((list) => [...list, { id: entryId, role: 'user', text: 'Voice message' }]);
+    enqueue({ clip, durationMs, files: [], entryId, docKey: surveyAgentBridge.current?.waitKey || null });
   };
 
   const recorder = useAudioRecorder({
