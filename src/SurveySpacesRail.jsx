@@ -1530,6 +1530,8 @@ const SurveySpacesRail = ({
       waitKey: pdfFile ? (pdfFile.id || getPDFId(pdfFile)) : null,
       canEdit: canEditSurveyMarkers !== false,
       selectedMarkerId: Object.keys(expandedSurveyMarkers || {}).find((id) => expandedSurveyMarkers[id] && surveyMarkers?.[id]) || null,
+      // The module open in the panel ("we're in installation").
+      currentModuleId: selectedModuleId || null,
       setAnswers: (annotationId, answers) => {
         const marker = surveyMarkers?.[annotationId];
         if (!marker) return;

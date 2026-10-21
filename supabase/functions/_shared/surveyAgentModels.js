@@ -5,9 +5,9 @@
 // model in the chain is resting.
 
 // Free Groq models that take tools, best first after the main one.
+// (llama-3.3-70b-versatile left: Groq answers model_not_found for it now.)
 export const SURVEY_AGENT_FALLBACK_MODELS = Object.freeze([
   'openai/gpt-oss-20b',
-  'llama-3.3-70b-versatile',
 ]);
 
 // Below this many requests left today, stop using a model before it runs out.

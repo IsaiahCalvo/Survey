@@ -33,6 +33,7 @@ import {
   SURVEY_AGENT_LIMITS,
   surveyAgentSystemMessages,
   buildSurveyAgentTools,
+  markupOpenInTurn,
   sanitizeAgentMessages,
   surveyAgentCostMicros,
 } from '../_shared/surveyAgentSpec.js';
@@ -94,6 +95,9 @@ function modelProvider() {
   };
 }
 
+// How long to wait for the main model's per-minute cap before moving on.
+const MAIN_MODEL_WAIT_MS = 8000;
+const MODEL_GONE_REST_MS = 24 * 60 * 60 * 1000;
 // Models resting after hitting (or nearly hitting) a cap, per instance.
 const modelRest = createModelRest();
 
@@ -338,13 +342,16 @@ Deno.serve(async (req) => {
     }
     const request = {
       messages: [...surveyAgentSystemMessages(body.lang), ...(clean.messages || [])],
-      tools: buildSurveyAgentTools(body.answer_values, { annotations }),
+      tools: buildSurveyAgentTools(body.answer_values, { annotations, markupOpen: markupOpenInTurn(clean.messages) }),
       tool_choice: 'auto',
       temperature: 0.2,
       max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,
     };
     let res: Response | null = null;
-    for (const model of modelRest.available(provider.models)) {
+    const chain = modelRest.available(provider.models);
+    let waited = false;
+    for (let i = 0; i < chain.length; i += 1) {
+      const model = chain[i];
       try {
         res = await fetch(`${provider.baseUrl}/chat/completions`, {
           method: 'POST',
@@ -354,6 +361,14 @@ Deno.serve(async (req) => {
       } catch (err) {
         console.error('[survey-agent] model call failed', err);
         return json(502, { error: 'model_unavailable' });
+      }
+      // A model the provider no longer has (or never had for this key):
+      // leave it alone for a day and go on down the chain.
+      if (res.status === 404 || (res.status === 400 && /model_not_found|decommissioned/.test(await res.clone().text()))) {
+        modelRest.rest(model, MODEL_GONE_REST_MS);
+        console.error('[survey-agent] model missing, resting a day', model);
+        res = null;
+        continue;
       }
       if (res.status !== 429) {
         const nearCap = restWhenNearCap({
@@ -366,11 +381,20 @@ Deno.serve(async (req) => {
         }
         break;
       }
-      // A cap on this model: rest it and try the next one in the same turn.
       const refusal = restAfterRefusal({ retryAfter: res.headers.get('retry-after'), message: await res.text() });
+      res = null;
+      // The main model's per-minute cap frees up in seconds: wait for it
+      // once rather than hand the turn to a weaker model.
+      if (i === 0 && !refusal.daily && !waited && refusal.ms <= MAIN_MODEL_WAIT_MS) {
+        waited = true;
+        console.info('[survey-agent] model busy for a moment, waiting', model, Math.round(refusal.ms / 1000));
+        await new Promise((r) => setTimeout(r, refusal.ms + 250));
+        i -= 1;
+        continue;
+      }
+      // A cap on this model: rest it and try the next one in the same turn.
       modelRest.rest(model, refusal.ms);
       console.info('[survey-agent] model refused, moving on', model, refusal.daily ? 'daily' : 'per minute', Math.round(refusal.ms / 1000));
-      res = null;
     }
     // Every model is resting: say how long until the first is free.
     if (!res) return json(429, { error: 'busy_try_again', retry_after: Math.min(modelRest.soonest(provider.models), 60) });

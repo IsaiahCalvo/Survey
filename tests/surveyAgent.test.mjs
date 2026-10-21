@@ -6,6 +6,7 @@ import { keepWaiting, loadWaiting } from '../src/agent/waitingStore.js';
 import { buildAgentTools } from '../src/agent/webmcp.js';
 import {
   SURVEY_AGENT_TOOL_NAMES,
+  markupOpenInTurn,
   buildSurveyAgentTools,
   sanitizeAgentMessages,
   surveyAgentCostMicros,
@@ -503,6 +504,24 @@ test('mark_on_plan circles, boxes or clouds an item, a plan tag or what is on sc
   bridge.canEdit = false;
   assert.match((await box.run('mark_on_plan', { shape: 'circle', item_id: 'm300', plan_match_id: null, on_screen: false, color: null })).content, /can only view/);
   assert.equal(drawn.length, 3);
+});
+
+test('markup tools come on demand: a small stand-in until the model asks for them in this turn', async () => {
+  const closed = buildSurveyAgentTools(['Y'], { annotations: true, markupOpen: false }).map((t) => t.function.name);
+  assert.ok(closed.includes('open_markup_tools'));
+  assert.ok(!closed.includes('mark_on_plan') && !closed.includes('add_text_note'));
+  const open = buildSurveyAgentTools(['Y'], { annotations: true, markupOpen: true }).map((t) => t.function.name);
+  assert.ok(open.includes('mark_on_plan') && !open.includes('open_markup_tools'));
+  assert.ok(!buildSurveyAgentTools(['Y'], { markupOpen: false }).some((t) => t.function.name === 'open_markup_tools'));
+  const asked = (name) => ({ role: 'assistant', content: '', tool_calls: [{ id: 'c', type: 'function', function: { name, arguments: '{}' } }] });
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'circle D-117' }]), false);
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'circle D-117' }, asked('open_markup_tools'), { role: 'tool', tool_call_id: 'c', content: 'ok' }]), true);
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'x' }, asked('add_text_note'), { role: 'tool', tool_call_id: 'c', content: 'ok' }]), true);
+  // A new thing said closes them again.
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'x' }, asked('open_markup_tools'), { role: 'tool', tool_call_id: 'c', content: 'ok' }, { role: 'assistant', content: 'Done.' }, { role: 'user', content: 'D-118 lock yes' }]), false);
+  assert.equal(markupOpenInTurn([{ role: 'user', content: 'x' }, asked('set_answers')]), false);
+  const box = createSurveyAgentToolbox({ getBridge: () => fakeBridge().bridge });
+  assert.deepEqual(await box.run('open_markup_tools', {}), { isError: false, content: 'The markup tools are ready.' });
 });
 
 test('mark_on_plan comes with the markup tools only', () => {
