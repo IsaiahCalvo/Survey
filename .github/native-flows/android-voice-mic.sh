@@ -15,8 +15,15 @@ adb forward tcp:9222 "localabstract:webview_devtools_remote_$PID"
 sleep 3
 click() { ev "(() => { const b = [...document.querySelectorAll('button,[role=button]')].find(b => b.offsetParent && (b.getAttribute('aria-label') || '').startsWith('$1')); if (!b) return 'missing'; b.click(); return 'ok'; })()"; }
 echo "open survey: $(click 'Open survey')"; sleep 2
+# The gold mic only shows once a template is picked.
+tpl() { ev "(() => [...document.querySelectorAll('button')].filter(b => b.offsetParent).map(b => b.getAttribute('aria-label') || '').find(l => l.startsWith('Template: ')) || 'none')()"; }
+if ! tpl | grep -q '^Template: E2E Doors\.'; then
+  echo "switch template: $(click 'Template: ')"; sleep 1
+  echo "pick E2E Doors: $(ev "(() => { const b = [...document.querySelectorAll('button,[role=menuitem]')].find(b => b.offsetParent && b.textContent.trim().startsWith('E2E Doors')); if (!b) return 'missing'; b.click(); return 'ok'; })()")"; sleep 2
+fi
+echo "template: $(tpl)"
 MIC='Survey agent: talk hands-free'
-r=$(click "$MIC"); echo "mic tap: $r"; [ "$r" = ok ] || { adb exec-out screencap -p > "$OUT/12-voice-mic.png"; echo "::error::no hands-free mic in the survey panel"; exit 1; }
+r=$(click "$MIC"); echo "mic tap: $r"; [ "$r" = ok ] || { adb exec-out screencap -p > "$OUT/12-voice-mic.png"; echo "::error::no hands-free mic in the survey panel; buttons: $(ev "[...document.querySelectorAll('button')].filter(b => b.offsetParent).map(b => b.getAttribute('aria-label') || b.textContent.trim()).filter(Boolean).join(' | ')")"; exit 1; }
 recording=false
 for i in 1 2 3 4 5 6; do sleep 1; [ "$(ev "!!document.querySelector('.is-recording')")" = true ] && { recording=true; break; }; done
 adb exec-out screencap -p > "$OUT/12-voice-mic.png"
@@ -29,12 +36,6 @@ echo "Voice mic check passed."
 # Voice fill: the e2e fake speech plugin (src/mobile/nativeSpeech.js) says one
 # sentence; the fake Groq then sets every line of D-1-17.
 ev "localStorage.setItem('surveyE2EFakeSpeech', '1'); 'ok'" >/dev/null
-tpl() { ev "(() => [...document.querySelectorAll('button')].filter(b => b.offsetParent).map(b => b.getAttribute('aria-label') || '').find(l => l.startsWith('Template: ')) || 'none')()"; }
-if ! tpl | grep -q '^Template: E2E Doors\.'; then
-  echo "switch template: $(click 'Template: ')"; sleep 1
-  echo "pick E2E Doors: $(ev "(() => { const b = [...document.querySelectorAll('button,[role=menuitem]')].find(b => b.offsetParent && b.textContent.trim().startsWith('E2E Doors')); if (!b) return 'missing'; b.click(); return 'ok'; })()")"; sleep 2
-fi
-echo "template: $(tpl)"
 r=$(click "$MIC"); echo "mic tap: $r"; [ "$r" = ok ] || { echo "::error::no hands-free mic for the voice fill"; exit 1; }
 said=no
 for i in $(seq 10); do sleep 1; [ "$(ev "!!globalThis.__surveyNativeSpeechTest")" = true ] && { ev "globalThis.__surveyNativeSpeechTest.say('D-1-17 is installed'); 'ok'" >/dev/null; said=yes; break; }; done
