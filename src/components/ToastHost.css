@@ -107,6 +107,20 @@ html[data-undo-toast-open] .app-toast-host {
   .app-toast {
     animation-name: sv-toast-in-down;
   }
+  /* The action link paints at its text size (~35x19) but takes a finger:
+     an invisible pad centred on it reaches at least 44x44. */
+  .app-toast__action {
+    position: relative;
+  }
+  .app-toast__action::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
   .app-toast[data-state="closing"] {
     animation-name: sv-toast-out-up;
   }

@@ -45,6 +45,9 @@ assume `~/.claude` loads for you). Full history and gotchas live in CLAUDE.md if
 - Workers must not create accounts, use Gmail plus-aliases, read `.bot-credentials.json`, or
   select/switch accounts themselves. Account provisioning is disabled unless the coordinator
   supplies the script's exact explicit opt-in.
+- Scope: these lease rules cover the shared accounts on the hosted Supabase project. The
+  signed-in E2E suite (`docs/E2E-SIGNED-IN.md`) seeds its own throwaway accounts on a local
+  Supabase stack and refuses any non-local host; running it needs no lease.
 - Run real-auth test commands through
   `node scripts/test-account-lease.mjs run --task <TASK> --lease-token <TOKEN> -- <COMMAND>`.
   Official real-auth harnesses fail closed unless this verifies the complete shared bundle.

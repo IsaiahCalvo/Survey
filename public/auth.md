@@ -56,6 +56,8 @@ the database itself.
   `apikey: sb_publishable_TbwXDm3ybv24oQMBMxlUfQ_kcJ_Byrx` (Survey's public key).
 
 The person sees and removes agents at https://surveytool.app/agent-link.
+Removing one takes effect at once: its next request gets HTTP 403 and its
+refresh token stops working. Start over to be let in again.
 
 ## Rules for agents
 

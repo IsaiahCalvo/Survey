@@ -5,7 +5,7 @@
 // tools for marking up drawings (Callout, Arrow, Cloud) and a way to turn
 // Schematic Mode off on a page the detector got wrong. Pages that are not
 // drawings show nothing.
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Icon from '../Icons.jsx';
 import { readPdfjsTextContent } from '../utils/pdfjsTextContent.js';
@@ -83,6 +83,40 @@ function SchematicModeBadgeBody({
     });
   }, [open]);
 
+  // A page wider than the screen (landscape sheets on a phone) put the
+  // top-right badge past the screen edge. Pull it left by the overflow so it
+  // stays in view; it returns to the page corner once that corner is visible.
+  const [shiftX, setShiftX] = useState(0);
+  const shiftRef = useRef(0);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof window === 'undefined') return undefined;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const rect = root.getBoundingClientRect();
+      const naturalRight = rect.right - shiftRef.current;
+      const naturalLeft = rect.left - shiftRef.current;
+      const limit = (document.documentElement.clientWidth || window.innerWidth) - 8;
+      const next = naturalRight > limit ? Math.min(0, Math.max(limit - naturalRight, 8 - naturalLeft)) : 0;
+      if (Math.abs(next - shiftRef.current) < 0.5) return;
+      shiftRef.current = next;
+      setShiftX(next);
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
+    measure();
+    document.addEventListener('scroll', schedule, { capture: true, passive: true });
+    window.addEventListener('resize', schedule);
+    const observer = typeof ResizeObserver === 'function' && root.offsetParent ? new ResizeObserver(schedule) : null;
+    if (observer) observer.observe(root.offsetParent);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      document.removeEventListener('scroll', schedule, { capture: true });
+      window.removeEventListener('resize', schedule);
+      observer?.disconnect();
+    };
+  });
+
   const result = getSchematicResult(pdfDoc, pageNumber);
   if (!result || result === 'pending' || !result.schematic) return null;
   const off = isSchematicTurnedOff(fingerprint, pageNumber);
@@ -98,7 +132,7 @@ function SchematicModeBadgeBody({
       data-pan-interactive="true"
       data-schematic-mode={off ? 'off' : 'on'}
       data-schematic-kind={result.kind}
-      style={{ position: 'absolute', top: 10, right: 10, zIndex: SCHEMATIC_BADGE_Z, pointerEvents: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}
+      style={{ position: 'absolute', top: 10, right: 10, transform: shiftX ? `translateX(${shiftX}px)` : undefined, zIndex: SCHEMATIC_BADGE_Z, pointerEvents: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}
       {...shield}
     >
       {off ? (

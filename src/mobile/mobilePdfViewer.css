@@ -899,6 +899,13 @@ html[data-native-shell="expo"] .mobile-pdf-header {
 
 .mobile-pdf-tools__main::-webkit-scrollbar { display: none; }
 
+/* More tools below the fold (the rail scrolls): fade the column's last 18px
+   as the hint. Set by MobilePdfViewerChrome; gone once scrolled to the end. */
+.mobile-pdf-tools__main[data-more-below='true'] {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+}
+
 /* The chip token, never a hard pixel width: the rail is 40 wide with a 1px right
    border, so its content box is 39. A 44px button put every chip past that edge,
    which is what clipped the active tool's gold outline and made the column

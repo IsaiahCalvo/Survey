@@ -58,6 +58,17 @@ test('database keeps outside agents to their person, minus money, linked account
   }
 });
 
+test('removing an agent cuts it off at once, not when its token expires', () => {
+  const sql = read('supabase/migrations/20261021040000_agent_removal_takes_effect.sql');
+  // People's own sign-ins skip the lookup; agents need a live session and an unrevoked grant.
+  assert.match(sql, /select coalesce\(auth\.jwt\(\) ->> 'client_id', ''\) = ''\s+or \(/);
+  assert.match(sql, /from auth\.sessions s[\s\S]*?s\.id::text = auth\.jwt\(\) ->> 'session_id'/);
+  assert.match(sql, /from auth\.oauth_consents c[\s\S]*?c\.revoked_at is not null/);
+  assert.match(sql, /alter role authenticator set pgrst\.db_pre_request = 'public\.check_agent_request';/);
+  assert.match(sql, /notify pgrst, 'reload config';/);
+  assert.match(sql, /on storage\.objects as restrictive/);
+});
+
 test('agents cannot pay, open billing, or delete the account', () => {
   const helper = read('supabase/functions/_shared/agentSession.ts');
   assert.match(helper, /claims\?\.client_id/);
