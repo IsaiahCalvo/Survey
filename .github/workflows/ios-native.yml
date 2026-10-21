@@ -237,6 +237,13 @@ jobs:
             timeout 300 bash .github/native-flows/android-counter-after-arrow.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             adb reverse --remove-all
             maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+      # The emulator has twice died mid-walk (adb: port 5554 refused). Record
+      # whether the host's out-of-memory killer took it.
+      - name: Host memory check
+        if: failure()
+        run: |
+          free -m
+          sudo dmesg | grep -iE "out of memory|killed process|oom" | tail -20 || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
