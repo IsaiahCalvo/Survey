@@ -22,7 +22,6 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/config.toml'
       - 'scripts/e2e-local-supabase.mjs'
-      - 'scripts/e2e/**'
       - 'tests/e2e-signed-in/**'
       - 'playwright.e2e-signed-in.config.mjs'
       - 'vite.config.js'
