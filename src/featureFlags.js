@@ -39,6 +39,9 @@ export const FEATURE_FLAGS = Object.freeze({
   'survey-marker-fields': Object.freeze({
     label: 'Survey markers merge concurrent field edits',
   }),
+  layers: Object.freeze({
+    label: 'Layers panel (markup layers + PDF content opacity)',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

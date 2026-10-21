@@ -21,6 +21,7 @@
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
 import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
+import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { canRemovePolyVertex, removePolyVertex } from '../utils/polyVertices.js';
@@ -554,8 +555,12 @@ const SVGAnnotationLayerBody = memo(({
   getSurveyAnnotationVisibilityState,
   isRegionOverlayEnabled,
   layerVisibility,
+  // Layers panel ('layers' flag): Set of hidden layer ids (null = all show)
+  // and the layer new marks go on (null / default = leave marks untagged).
+  hiddenLayerIds = null,
+  activeLayerId = null,
   // Selection / interaction props (Phase 9)
-  onSaveAnnotations,   // (updatedJSON, saveContext) => void
+  onSaveAnnotations: onSaveAnnotationsProp,   // (updatedJSON, saveContext) => void
   // Owner after Test 46: a picked mark dragged onto another page moves there
   // (utils/crossPageMove.js). ({ toPage, marks }) => true when saved.
   onMoveMarksToPage = null,
@@ -777,6 +782,17 @@ const SVGAnnotationLayerBody = memo(({
   onDuplicateFamily = null,
 }) => {
 
+  // Layers: a mark whose id was not on this page before a save is new, so it
+  // goes on the active layer. One wrapper covers every save this layer makes.
+  const layerSaveStateRef = useRef({ annotations, activeLayerId });
+  layerSaveStateRef.current = { annotations, activeLayerId };
+  const onSaveAnnotations = useCallback((updated, ...rest) => {
+    const { annotations: before, activeLayerId: layerId } = layerSaveStateRef.current;
+    if (!layerId || !updated || !Array.isArray(updated.objects)) return onSaveAnnotationsProp?.(updated, ...rest);
+    const objects = stampNewObjectsOnLayer(before?.objects, updated.objects, layerId);
+    return onSaveAnnotationsProp?.(objects === updated.objects ? updated : { ...updated, objects }, ...rest);
+  }, [onSaveAnnotationsProp]);
+
   // ---------------------------------------------------------------------------
   // Refs
   // ---------------------------------------------------------------------------
@@ -801,12 +817,12 @@ const SVGAnnotationLayerBody = memo(({
     const objects = Array.isArray(annotations?.objects) ? annotations.objects : [];
     const labels = [];
     objects.forEach((obj, index) => {
-      if (!obj?.data?.measure || obj.visible === false) return;
+      if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
       const label = buildMeasureLabel(obj, effectiveMeasureScale);
       if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, label });
     });
     return labels;
-  }, [annotations, effectiveMeasureScale]);
+  }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
   const renderedAnnotationEntriesRef = useRef([]);
   // w52: ids of the callouts this page shows AND lets the user pick (visible
   // in context + interactive for the active space). Null until the first
@@ -3900,6 +3916,12 @@ const SVGAnnotationLayerBody = memo(({
         dropReasons.layerHidden.push({ i, layer });
         continue;
       }
+      // Layers panel: marks on a hidden layer neither draw nor hit-test (the
+      // selectable set is built from these rendered entries).
+      if (isOnHiddenLayer(obj, hiddenLayerIds)) {
+        dropReasons.layerHidden.push({ i, layer: obj.layerId || 'default' });
+        continue;
+      }
 
       // --- Three-layer filtering (ported from PAL lines 8625-8840) ---
       const visibilityScope = getAnnotationVisibilityScope({
@@ -4104,6 +4126,7 @@ const SVGAnnotationLayerBody = memo(({
     getSurveyAnnotationVisibilityState,
     isRegionOverlayEnabled,
     layerVisibility,
+    hiddenLayerIds,
     getSpaceIdForRegion,
     activeTool,
     editingAnnotationIndex,
@@ -5423,6 +5446,7 @@ const SVGAnnotationLayerBody = memo(({
         getSurveyAnnotationVisibilityState,
         isRegionOverlayEnabled,
         layerVisibility,
+        hiddenLayerIds,
       })) {
         continue;
       }
@@ -5649,7 +5673,7 @@ const SVGAnnotationLayerBody = memo(({
     // "1 callout + 1 annotation selected" multi-select glow never updated).
     // Per-hover recompute of this loop is cheap (callouts are few per page).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted, getSpaceIdForRegion, modifierMoveActive]);
+  }, [callouts, annotations?.objects, pageNumber, selectedModuleId, showSurveyPanel, selectedSpaceId, activeSpaceId, activeRegions, activeRegionId, spaces, getCanvasAnnotationVisibilityState, getSurveyAnnotationVisibilityState, isRegionOverlayEnabled, layerVisibility, hiddenLayerIds, width, height, editingCalloutId, liveCalloutEditBounds, effectiveSelectedCalloutIds, activeCalloutDrag, visualTransform, inverseScale, isPageInRenderWindow, hoveredCalloutId, selectedIds, editEntryTargetsMounted, getSpaceIdForRegion, modifierMoveActive]);
 
   // w52: publish which callouts this page lets the user pick, for the
   // interaction hook's click / marquee / lasso gates (isCalloutSelectable).

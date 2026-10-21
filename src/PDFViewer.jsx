@@ -360,6 +360,8 @@ import { useUndoToast } from './hooks/useUndoToast.js';
 import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBookmarks } from './utils/bookmarkDeleteUndo.js';
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
+import { isFeatureOn } from './featureFlags.js';
+import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
 import { chooseCloudPdfOpenPath, shouldRetryStreamedOpenWithDownload, tryOpenCloudPdfStream } from './services/cloudPdfStream.js';
@@ -3931,6 +3933,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pasteAnnotationAtRef). Assigned right after handleSaveAnnotations' own
   // declaration so it is always the current render's callback.
   const handleSaveAnnotationsRef = useRef(null);
+  const activeLayerIdRef = useRef(null);
+  const hiddenLayerIdsRef = useRef(null);
 
   // R2.2 Slice 3 — the single commit gate for callout CREATE/EDIT/STYLE
   // mutations. Derives the target page's current callout list from
@@ -21523,6 +21527,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSelectedModuleId(module?.id || null);
     setSelectedCategoryId((id) => (module?.categories || []).some((category) => category.id === id) ? id : null);
   }, [selectedTemplate, showSurveyPanel, appTemplates, selectedModuleId, currentSurveyTemplateHasMarks, surveyTemplateRestorationReady, readSurveyTemplateBinding]);
+  // Layers panel ('layers' flag): the layer list rides the synced doc meta;
+  // the active layer is this screen's own choice.
+  const [layersEnabled] = useState(() => isFeatureOn('layers'));
+  const [layerState, setLayerState] = useState(DEFAULT_LAYER_STATE);
+  const [activeLayerId, setActiveLayerId] = useState(DEFAULT_LAYER_ID);
+  useEffect(() => {
+    if (!layersEnabled || !normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
+    const apply = (value) => setLayerState(normalizeLayerState(value));
+    apply(excelSyncMetaGet(LAYERS_META_KEY));
+    return subscribeDocumentMeta(LAYERS_META_KEY, apply);
+  }, [layersEnabled, normalAnnotationHydration, pdfFile?.id, excelSyncMetaGet, subscribeDocumentMeta]);
+  const handleLayersChange = useCallback((next) => {
+    const normalized = normalizeLayerState(next);
+    setLayerState(normalized);
+    pagePresentationMetaSetRef.current?.(LAYERS_META_KEY, normalized, 'local');
+  }, []);
+  const effectiveActiveLayerId = layersEnabled ? resolveActiveLayerId(layerState, activeLayerId) : null;
+  activeLayerIdRef.current = effectiveActiveLayerId;
+  const hiddenLayerIds = useMemo(() => (layersEnabled ? hiddenLayerIdSet(layerState) : null), [layersEnabled, layerState]);
+  hiddenLayerIdsRef.current = hiddenLayerIds;
+  useEffect(() => {
+    if (!layersEnabled || isActive === false || typeof document === 'undefined') return undefined;
+    const root = document.documentElement;
+    root.style.setProperty('--survey-pdf-content-opacity', String(layerState.pdfOpacity));
+    return () => root.style.removeProperty('--survey-pdf-content-opacity');
+  }, [layersEnabled, isActive, layerState.pdfOpacity]);
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
       [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]
@@ -23520,7 +23550,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const { savePDFWithAnnotationsPdfLib } = await import('./utils/pdfAnnotationsPdfLib');
       const buffer = await savePDFWithAnnotationsPdfLib(
         sourcePdfForExport,
-        annotationsByPage,
+        withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
         pageSizes,
         null,
         {
@@ -23528,7 +23558,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           actionType: 'pdf-export',
           documentId: pdfFile?.id || null,
           pageTransformations,
-          callouts,
+          callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
           // Owner ruling 2026-09-02: export = regular markup + the open
           // module's Survey Markers (same set and paint the screen shows).
           surveyMarkers: printableSurveyMarkers,
@@ -23620,6 +23650,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     printableSurveyMarkers,
     showSurveyPanel,
     selectedModuleId,
+    hiddenLayerIds,
   ]);
 
   // KAL-393: "Export markup (XFDF)" — a sidecar built from the same
@@ -23634,11 +23665,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const result = await runXfdfExport({
         sourcePdf: await getExportSourcePdf(),
         pdfName: pdfFile.name || 'document.pdf',
-        annotationsByPage,
+        annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
         pageSizes,
         exportOptions: {
           documentId: pdfFile?.id || null,
-          callouts,
+          callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
           surveyMarkers: printableSurveyMarkers,
           activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
           spaces,
@@ -23665,6 +23696,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     printableSurveyMarkers,
     showSurveyPanel,
     selectedModuleId,
+    hiddenLayerIds,
   ]);
 
   // KAL-410: "Review package (ZIP)" — the XFDF above, an audit log from
@@ -23681,11 +23713,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         sourcePdf: await getExportSourcePdf(),
         pdfName: pdfFile.name || 'document.pdf',
         documentId: pdfFile?.id || null,
-        annotationsByPage,
+        annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
         pageSizes,
         exportOptions: {
           documentId: pdfFile?.id || null,
-          callouts,
+          callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
           surveyMarkers: printableSurveyMarkers,
           activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
           spaces,
@@ -23712,6 +23744,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     printableSurveyMarkers,
     showSurveyPanel,
     selectedModuleId,
+    hiddenLayerIds,
   ]);
 
   const queuePermanentRedactionConfirmation = useCallback((transaction) => {
@@ -27398,6 +27431,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           };
         }
       }
+    }
+    // Layers ('layers' flag): a mark new to this page goes on the active layer,
+    // whichever tool made it (counter, stamp, paste, text...). Not on Undo /
+    // Redo replay or a cross-page move, which carry the mark's own layer.
+    if (Array.isArray(json?.objects) && activeLayerIdRef.current && !isUndoingRef.current
+      && saveContext?.action !== 'move-to-page') {
+      const stamped = stampNewObjectsOnLayer(annotationsByPageRef.current?.[pageNumber]?.objects, json.objects, activeLayerIdRef.current);
+      if (stamped !== json.objects) json = { ...json, objects: stamped };
     }
     const source_ = saveContext?.source || 'unknown';
     const prevCount_ = annotationsByPageRef.current?.[pageNumber]?.objects?.length ?? 0;
@@ -35316,8 +35357,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
                 await import('./utils/pdfAnnotationsPdfLib');
               const printableRegularPayload = buildPrintableRegularAnnotationPayload({
-                annotationsByPage: printableAnnotationsByPageRef.current || {},
-                callouts: (calloutsRef.current || []).filter((callout) => isAnnotationVisibleInSurveyMode({
+                // Layers panel: hidden layers do not print.
+                annotationsByPage: withoutHiddenLayers(printableAnnotationsByPageRef.current || {}, hiddenLayerIdsRef.current),
+                callouts: calloutsWithoutHiddenLayers(calloutsRef.current || [], hiddenLayerIdsRef.current).filter((callout) => isAnnotationVisibleInSurveyMode({
                   moduleId: callout?.moduleId ?? null,
                   regionId: callout?.regionId ?? null,
                   showSurveyPanel,
@@ -36039,6 +36081,12 @@ ${pageBlocks}
       getHistoryMarkIndex,
       locateHistoryMark,
       focusHistoryMark,
+      layersEnabled,
+      layerState,
+      activeLayerId: effectiveActiveLayerId,
+      onLayersChange: handleLayersChange,
+      onActiveLayerChange: setActiveLayerId,
+      canEditLayers: canRestoreFromHistory,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -36059,6 +36107,10 @@ ${pageBlocks}
   }, [
     isActive,
     onLeftRailApiChange,
+    layersEnabled,
+    layerState,
+    effectiveActiveLayerId,
+    handleLayersChange,
     pdfSidebarRef,
     features,
     canManageSpaces,
@@ -37852,6 +37904,7 @@ ${pageBlocks}
                                   getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
+                                  hiddenLayerIds={hiddenLayerIds}
                                   annotationRevision={annotationRevision}
                                   calloutRevision={calloutRevision}
                                   // Visible ONLY for the zoom/scroll proxy window. During an
@@ -38026,6 +38079,8 @@ ${pageBlocks}
                                   getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
                                   isRegionOverlayEnabled={isRegionOverlayEnabled}
                                   layerVisibility={annotationLayerVisibility}
+                                  hiddenLayerIds={hiddenLayerIds}
+                                  activeLayerId={effectiveActiveLayerId}
                                   onSaveAnnotations={getSvgLayerPageHandlers(pageNumber).onSaveAnnotations}
                                   onMoveMarksToPage={getSvgLayerPageHandlers(pageNumber).onMoveMarksToPage}
                                   onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
@@ -38191,6 +38246,7 @@ ${pageBlocks}
                                   // survey-hidden marks must not be erasable.
                                   showSurveyPanel={showSurveyPanel}
                                   selectedModuleId={selectedModuleId}
+                                  hiddenLayerIds={hiddenLayerIds}
                                   zoomGeneration={zoomGeneration}
                                   interruptionPolicy={eraserInterruptionPolicy}
                                   interruptionPolicyRef={eraserInterruptionPolicyRef}

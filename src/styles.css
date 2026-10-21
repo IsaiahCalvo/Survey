@@ -3765,3 +3765,10 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
 /* Delete glyphs share the same red; disabled actions retain their quiet state. */
 .app-trash-icon { color: var(--danger); }
 :is([disabled], [aria-disabled='true']) .app-trash-icon { color: var(--disabled-ink); }
+
+/* Layers panel ('layers' flag): "PDF content" opacity. The viewer sets the
+   variable only while the flag is on; unset it reads as fully opaque. */
+.survey-pdfjs-page-canvas,
+.survey-pdfjs-detail-tile {
+  opacity: var(--survey-pdf-content-opacity, 1);
+}
