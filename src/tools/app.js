@@ -29,6 +29,8 @@ const MULTIPLE = root.hasAttribute('data-multiple');
 // the same options, and the results come back in one ZIP.
 const BATCH = root.hasAttribute('data-batch');
 const batching = () => BATCH && S.files.length > 1;
+// Tools a finished PDF can go on to ("id:Name|id:Name"), from the page build.
+const NEXT = (root.dataset.next || '').split('|').filter(Boolean).map((p) => p.split(':'));
 
 import {
   PDF_TYPE, base, pdfOut, SEG, DOC_OPTIONS, blocksToPdf, docNotice,
@@ -421,6 +423,8 @@ TOOLS['gif-to-pdf'] = {
 const T = TOOLS[TOOL_ID] || (await import(`./defs/${TOOL_ID}.js`)).default;
 // Only the sign tool uses it; made lazily since it needs render() below.
 let sign;
+// A tool with a view of its own (the viewer) builds it with these.
+const custom = T.makeView?.({ h });
 
 // ---------------------------------------------------------------- state
 
@@ -539,6 +543,7 @@ async function addFiles(list) {
 
 function dispose(item) {
   if (item.url) URL.revokeObjectURL(item.url);
+  item.release?.();
   // pdf.js 6 moved destroy() from the document to its loading task.
   item.doc?.then((d) => (d.loadingTask || d).destroy?.()).catch(() => {});
   item.thumbs.forEach(releaseCanvas);
@@ -931,7 +936,36 @@ function resultView() {
       ? h('div', { class: 'rapp' },
         h('p', {}, 'Want to mark it up? Survey adds pens, shapes, clouds and counts, free.'),
         h('button', { type: 'button', class: 'btn ghost', onclick: () => openInSurvey(r) }, 'Open in Survey'))
-      : h('p', { class: 'fine' }, 'Want to mark up PDFs? ', h('a', { href: '/?open=app' }, 'Open Survey free'), '.'));
+      : h('p', { class: 'fine' }, 'Want to mark up PDFs? ', h('a', { href: '/?open=app' }, 'Open Survey free'), '.'),
+    r.type === PDF_TYPE && NEXT.length
+      ? h('div', { class: 'rnext' }, h('p', {}, 'Continue with'),
+        h('div', { class: 'rnext-btns' }, NEXT.map(([id, name]) => h('button', { type: 'button', class: 'btn ghost', onclick: () => continueWith(r, id) }, name))))
+      : '');
+}
+
+// Send the result straight to another tool page, no download and pick again.
+// It waits in this browser's storage and the next page takes it on load.
+async function continueWith(r, id) {
+  try {
+    const { putHandoff, NEXT_TOOL } = await import('./handoff.js');
+    await putHandoff(r.bytes, r.name, NEXT_TOOL);
+    window.location.assign(`/tools/${id}?from=handoff`);
+  } catch {
+    S.error = 'This browser blocked passing the file on. Download it, then choose it on the next tool.';
+    S.result = null;
+    render();
+  }
+}
+
+// A file handed on by "Continue with" on another tool page.
+async function takeHandedFile() {
+  window.history.replaceState(null, '', window.location.pathname);
+  try {
+    const { takeHandoff, NEXT_TOOL } = await import('./handoff.js');
+    const file = await takeHandoff(NEXT_TOOL);
+    if (file) return addFiles([file]);
+  } catch { /* fall through to an empty tool */ }
+  render();
 }
 
 // Hand the PDF to the app on this site; it stays in this browser throughout.
@@ -972,13 +1006,13 @@ function render() {
     return;
   }
   const kind = batching() ? 'files' : T.view;
-  const view = kind === 'files' ? filesView() : kind === 'organize' ? organizeView() : kind === 'sign' ? sign.view(S.files[0]) : pagesView();
+  const view = kind === 'files' ? filesView() : kind === 'organize' ? organizeView() : kind === 'sign' ? sign.view(S.files[0]) : custom ? custom.view(S.files[0]) : pagesView();
   const head = h('div', { class: 'thead' },
-    h('p', { class: 'ttitle' }, kind === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, kind === 'pages' && h('span', {}, ` · ${S.files[0].pages} pages`)),
+    h('p', { class: 'ttitle' }, kind === 'files' ? `${S.files.length} file${S.files.length === 1 ? '' : 's'}` : S.files[0].name, (kind === 'pages' || custom) && h('span', {}, ` · ${S.files[0].pages} pages`)),
     h('button', { type: 'button', class: 'btn ghost', onclick: pickFiles, disabled: !!S.busy }, MULTIPLE ? 'Add more' : 'Change file'));
   const hint = T.hint && h('p', { class: 'thint' }, T.hint);
   const action = h('div', { class: 'tbar' },
-    h('button', { type: 'button', class: 'btn primary lg', onclick: run, disabled: !!S.busy }, S.busy ? 'Working…' : root.dataset.action),
+    h('button', { type: 'button', class: 'btn primary lg', onclick: T.act ? () => T.act(S.files[0], { openInSurvey }) : run, disabled: !!S.busy }, S.busy ? 'Working…' : root.dataset.action),
     h('span', { class: 'tprog', 'data-progress': true, 'aria-live': 'polite' }, S.busy && S.busy !== 'Working…' ? S.busy : ''));
   root.replaceChildren(h('div', { class: 'work' }, head, hint || '', h('div', { class: 'wbody' }, h('div', { class: 'wview' }, view), optionsView() || ''), err || '', action));
 }
@@ -1006,4 +1040,5 @@ const early = root.querySelector('[data-early]');
 pickLabel = root.querySelector('[data-pick]')?.textContent;
 early?.addEventListener('change', () => addFiles(early.files));
 if (early?.files.length) addFiles(early.files);
+else if (new URLSearchParams(window.location.search).get('from') === 'handoff') takeHandedFile();
 else render();

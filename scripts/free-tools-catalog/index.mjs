@@ -30,6 +30,8 @@ import gifToPdf from './gif-to-pdf.mjs';
 import pdfToGif from './pdf-to-gif.mjs';
 import pdfToHtml from './pdf-to-html.mjs';
 import pdfToRtf from './pdf-to-rtf.mjs';
+import pdfViewer from './pdf-viewer.mjs';
+import pdfToPdfa from './pdf-to-pdfa.mjs';
 
 export default [
   ocrPdf,
@@ -62,4 +64,6 @@ export default [
   pdfToGif,
   pdfToHtml,
   pdfToRtf,
+  pdfViewer,
+  pdfToPdfa,
 ];

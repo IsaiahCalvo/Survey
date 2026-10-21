@@ -185,3 +185,23 @@ button.ptile:hover{border-color:var(--rule)}
   .rfacts{grid-template-columns:1fr;gap:0}
   .rfacts dd{margin-bottom:8px}
 }
+
+/* viewer */
+.wbody:has(> .wview > .pv){grid-template-columns:1fr}
+.pv{display:flex;flex-direction:column;gap:10px}
+.pvbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.pvzoom{min-width:52px;text-align:center;font:500 14px var(--mono)}
+.pvpage{margin-left:auto;color:var(--soft);font:500 14px var(--mono)}
+.pvscroll{height:min(72vh,900px);overflow:auto;background:color-mix(in srgb,var(--rule) 45%,transparent);border-radius:8px;padding:16px;display:flex;flex-direction:column;align-items:flex-start;gap:16px;overscroll-behavior:contain}
+.pvscroll:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pvslot{flex:none;margin:0 auto;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.pvslot canvas{display:block;width:100%;height:100%}
+
+/* continue with */
+.rnext{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:20px;padding-top:20px;border-top:1px solid var(--rule)}
+.rnext p{margin:0;font-weight:600}
+.rnext-btns{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+@media (max-width:560px){
+  .pvscroll{height:62vh;padding:8px;gap:8px}
+  .pvpage{margin-left:0;width:100%}
+}
