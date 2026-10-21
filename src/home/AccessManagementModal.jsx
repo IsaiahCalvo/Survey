@@ -241,7 +241,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
             <button onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>
+          <div className="access-grid access-grid--head" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 18px 6px', borderBottom: `1px solid ${C.rule}`, fontSize: 11, letterSpacing: 0, color: C.muted, fontWeight: 600 }}>
             <span />
             <span>Users</span>
             <span>Role</span>
@@ -263,13 +263,13 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
               const initials = initialsOf(ident.primary);
               const isLastOwner = rl === 'owner' && ownerCount <= 1;
               return (
-                <div key={m.id || `${m.user_id}-${m.document_id}`} data-kal31-row="member" data-kal31-role={rl} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 56, boxSizing: 'border-box' }}>
+                <div key={m.id || `${m.user_id}-${m.document_id}`} data-kal31-row="member" data-kal31-role={rl} className="access-grid" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 56, boxSizing: 'border-box' }}>
                   <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: '50%', background: colorFor(m.user_id || m.user?.email || m.email), color: USER_INITIALS_INK, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, flex: 'none' }}>{initials}</div>
                   <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div {...tip(ident.title)} style={{ fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere', lineHeight: 1.25 }}>{ident.primary}</div>
                     {ident.secondary ? <div {...tip(ident.secondary)} style={{ fontSize: 11, color: C.muted, overflowWrap: 'anywhere', lineHeight: 1.25 }}>{ident.secondary}</div> : null}
                   </div>
-                  <select
+                  <select className="access-role-select"
                     value={roleLabel(rl)}
                     disabled={busy}
                     onChange={(e) => handleRoleChange(m, e.target.value)}
@@ -285,7 +285,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                     // why the button is off (a bare "Remove" chip just echoed it).
                     {...(isLastOwner ? tip('At least one owner must remain') : {})}
                     data-kal31-remove="true"
-                    className="hub-btn is-danger"
+                    className="hub-btn is-danger dialog-touch-pad"
                     style={{ justifySelf: 'end' }}
                   >
                     Remove
@@ -296,7 +296,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
 
             {/* Pending email invites. */}
             {emailPending.map((inv) => (
-              <div key={inv.id} data-kal31-row="invite" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 56, boxSizing: 'border-box', background: 'var(--surface-2)' }}>
+              <div key={inv.id} data-kal31-row="invite" className="access-grid" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 56, boxSizing: 'border-box', background: 'var(--surface-2)' }}>
                 <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--text-3)', color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initialsOf(inv.target_email)}</div>
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <div {...tip(inv.target_email)} style={{ fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere', lineHeight: 1.25 }}>{inv.target_email}</div>
@@ -305,8 +305,8 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                 <div style={{ fontSize: 12, color: C.inkSoft }}>{roleLabel(inv.intended_role)}</div>
                 <div style={{ fontSize: 12, color: C.gold, fontWeight: 600 }}>Pending</div>
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                  <button disabled={busy} onClick={() => handleResend(inv)} className="hub-btn">Resend</button>
-                  <button disabled={busy} onClick={() => handleRevoke(inv)} className="hub-btn is-danger">Revoke</button>
+                  <button disabled={busy} onClick={() => handleResend(inv)} className="hub-btn dialog-touch-pad">Resend</button>
+                  <button disabled={busy} onClick={() => handleRevoke(inv)} className="hub-btn is-danger dialog-touch-pad">Revoke</button>
                 </div>
               </div>
             ))}
@@ -321,7 +321,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   {linksOpen ? '▾' : '▸'} Active share links ({activeLinks.length})
                 </button>
                 {linksOpen && activeLinks.map((inv) => (
-                  <div key={inv.id} data-kal31-row="link" style={{ display: 'grid', gridTemplateColumns: '30px 1fr 1fr 1fr 90px', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box' }}>
+                  <div key={inv.id} data-kal31-row="link" className="access-grid" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box' }}>
                     <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--surface-3)', color: C.ink, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>L</div>
                     <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <div style={{ fontSize: 12, fontWeight: 600 }}>Link invite</div>
@@ -334,8 +334,8 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                         const result = await copyTextToClipboard(buildInviteUrl(inv), { surface: 'document_access_link' });
                         if (result.ok) { setError(''); setStatus('Link copied.'); }
                         else { setStatus(''); setError('Survey could not copy this share link.'); }
-                      }} className="hub-btn">Copy</button>
-                      <button disabled={busy} onClick={() => handleRevoke(inv)} className="hub-btn is-danger">Revoke</button>
+                      }} className="hub-btn dialog-touch-pad">Copy</button>
+                      <button disabled={busy} onClick={() => handleRevoke(inv)} className="hub-btn is-danger dialog-touch-pad">Revoke</button>
                     </div>
                   </div>
                 ))}
