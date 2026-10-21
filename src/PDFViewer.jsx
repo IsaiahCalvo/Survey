@@ -32877,6 +32877,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // deletes them through the same whole-page save seam a human edit uses.
     getAnnotationsByPage: () => annotationsByPageRef.current || {},
     saveAnnotations: handleSaveAnnotationsWithTextMarkupAtomicity,
+    // The survey/region scope a mark created on `page` takes — the same helper
+    // every creation surface uses, so an agent note is not hidden by the
+    // clean-slate rule inside an open survey module.
+    textNoteScope: currentPasteScope,
   };
   useEffect(() => {
     if (isActive === false) return undefined;
@@ -33013,7 +33017,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // text by the app's own measurer, so an agent note renders like a drawn
       // one. Author is stamped so the ownership/lock gate works on later edits.
       addTextNote: ({ page, x, y, width, text, color }) => {
-        const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage } = agentMarkerStateRef.current;
+        const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage, textNoteScope } = agentMarkerStateRef.current;
         const size = sizes?.[page];
         if (!size) return { ok: false, reason: 'not-found' };
         const wrapWidth = Math.max(24, Number(width) || 160);
@@ -33021,14 +33025,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         let obj = buildNewTextCommitJSON({
           text, left: x, top: y, innerWrapWidth: wrapWidth - 2 * TEXT_PADDING, autoFit: false,
           fill: color || '#111827', stroke: 'transparent', strokeWidth: 0,
+          ...textNoteScope(page),
         });
         if (!obj) return { ok: false, reason: 'empty' };
         obj = refitTextboxToText(obj, measureTextLayoutHeight) || obj;
         if (viewerId) obj = { ...obj, meta: { ...(obj.meta || {}), authorId: viewerId } };
         const pageJson = getAnnotationsByPage()[page] || { objects: [] };
         recordAnnotationCommit({ surface: 'webmcp', source: 'text-note:create', action: 'text-note-agent-create', pageNumber: page });
-        saveAnnotations(page, { ...pageJson, objects: [...(pageJson.objects || []), obj] },
+        const result = saveAnnotations(page, { ...pageJson, objects: [...(pageJson.objects || []), obj] },
           { source: 'webmcp:text-note:create', action: 'fabric:create' });
+        if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
         return { ok: true, id: obj.id || obj.data?.id };
       },
       // Replace a text note's text (height re-fits). Gated like a human edit.
@@ -33046,7 +33052,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const objects = [...(pageJson.objects || [])];
         objects[index] = next;
         recordAnnotationCommit({ surface: 'webmcp', source: 'text-note:edit', action: 'text-note-agent-edit', pageNumber: page });
-        saveAnnotations(page, { ...pageJson, objects }, { source: 'webmcp:text-note:edit', action: 'fabric:edit' });
+        const result = saveAnnotations(page, { ...pageJson, objects }, { source: 'webmcp:text-note:edit', action: 'fabric:edit' });
+        if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
         return { ok: true };
       },
       // Delete any normal annotation by id. Gated like a human delete.
@@ -33059,8 +33066,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const pageJson = getAnnotationsByPage()[page] || { objects: [] };
         const objects = (pageJson.objects || []).filter((_, i) => i !== index);
         recordAnnotationCommit({ surface: 'webmcp', source: 'annotation:delete', action: 'annotation-agent-delete', pageNumber: page });
-        saveAnnotations(page, { ...pageJson, objects },
+        const result = saveAnnotations(page, { ...pageJson, objects },
           { source: 'webmcp:annotation:delete', action: 'fabric:delete', finalDeletedAnnotationIds: [id] });
+        if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
         return { ok: true };
       },
     });

@@ -349,3 +349,15 @@ test('delete annotation surfaces a gate refusal instead of a false success', asy
   const denied = { ...fakeAnnoDoc(), deleteAnnotation: () => ({ ok: false, reason: 'not-allowed' }) };
   await assert.rejects(annoTool('owner', denied, 'survey_delete_annotation').execute({ annotation_id: 'a1', confirm: true }), /belongs to someone else or is locked/);
 });
+
+test('a save blocked by a locked sibling is reported, not a false success', async () => {
+  // handleSaveAnnotationsWithTextMarkupAtomicity returns {lockedBlocked:true}
+  // and writes nothing when a group holds a locked mark; the bridge turns that
+  // into reason:'locked' so the agent is never told the write happened.
+  const addBlocked = { ...fakeAnnoDoc(), addTextNote: () => ({ ok: false, reason: 'locked' }) };
+  await assert.rejects(annoTool('editor', addBlocked, 'survey_add_text_note').execute({ page: 1, x: 10, y: 20, text: 'x' }), /locked annotation on that page blocked/);
+  const editBlocked = { ...fakeAnnoDoc(), editTextNote: () => ({ ok: false, reason: 'locked' }) };
+  await assert.rejects(annoTool('editor', editBlocked, 'survey_edit_text_note').execute({ annotation_id: 'a1', text: 'x' }), /locked annotation blocked the change/);
+  const delBlocked = { ...fakeAnnoDoc(), deleteAnnotation: () => ({ ok: false, reason: 'locked' }) };
+  await assert.rejects(annoTool('owner', delBlocked, 'survey_delete_annotation').execute({ annotation_id: 'a1', confirm: true }), /locked annotation blocked the delete/);
+});

@@ -352,6 +352,7 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           }
           const res = doc.addTextNote({ page: Number(page), x: Number(x), y: Number(y), width: width == null ? undefined : Number(width), text: String(noteText), color });
           if (res?.reason === 'off-page') throw new Error(`The note must start inside the page (${size.width} x ${size.height} points).`);
+          if (res?.reason === 'locked') throw new Error('A locked annotation on that page blocked the save, so the note was not added.');
           if (!res?.ok) throw new Error('Could not add the note.');
           return `Added a text note on page ${page}.`;
         },
@@ -376,6 +377,7 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           if (res?.reason === 'not-found') throw new Error(`No annotation with id ${annotationId}. Use survey_list_annotations.`);
           if (res?.reason === 'not-a-text-note') throw new Error('That annotation is not a text note, so its text cannot be changed.');
           if (res?.reason === 'not-allowed') throw new Error('This person cannot change that note (it belongs to someone else or is locked), so nothing changed.');
+          if (res?.reason === 'locked') throw new Error('A locked annotation blocked the change, so nothing changed.');
           if (!res?.ok) throw new Error('Could not edit that note.');
           return 'Changed the note text.';
         },
@@ -403,6 +405,7 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           const res = doc.deleteAnnotation(annotationId);
           if (res?.reason === 'not-found') throw new Error(`No annotation with id ${annotationId}.`);
           if (res?.reason === 'not-allowed') throw new Error('This person cannot delete that annotation (it belongs to someone else or is locked), so nothing was deleted.');
+          if (res?.reason === 'locked') throw new Error('A locked annotation blocked the delete, so nothing was removed.');
           if (!res?.ok) throw new Error('Could not delete that annotation.');
           return `Deleted annotation ${annotationId}. One Undo restores it.`;
         },
