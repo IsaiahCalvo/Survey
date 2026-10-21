@@ -213,6 +213,9 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - name: Walk the app on a Pixel emulator
+        # A lost emulator leaves adb on "waiting for device"; fail fast instead
+        # of using the job's whole hour (the steps above take ~20 min).
+        timeout-minutes: 30
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -229,11 +232,11 @@ jobs:
             # A slow CI emulator pops "Pixel Launcher isn't responding" over the app.
             adb shell settings put global hide_error_dialogs 1
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            bash .github/native-flows/android-pen-mode.sh "$OUT" || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            bash .github/native-flows/android-counter-after-arrow.sh "$OUT" || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            maestro test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/android-signed-in.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            timeout 300 bash .github/native-flows/android-pen-mode.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            timeout 300 bash .github/native-flows/android-counter-after-arrow.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             adb reverse --remove-all
-            maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { adb logcat -d > "$OUT/logcat.txt"; exit 1; }
+            maestro test --format junit --output "$OUT/report-offline.xml" --test-output-dir "$OUT" .github/native-flows/android-offline-relaunch.yaml || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
