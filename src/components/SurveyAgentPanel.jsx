@@ -5,6 +5,11 @@
 // changed something lists the changes with one Undo for the whole turn.
 // Hands-free mode keeps the mic open: talk, hear a short spoken reply, talk
 // again, with no taps. With no signal, messages wait and send once it is back.
+//
+// One window (owner 2026-10-21): the Survey panel's mic starts and stops
+// hands-free with no window; the chat lives hidden and keeps listening. The
+// typing dots beside the mic swap the Survey panel for the chat (`view`
+// 'chat', drawn inside `host`); a tap outside or Back swaps it back.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -20,7 +25,11 @@ import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageW
 import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
+import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
+import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
 import { isSureHearing, startDeviceHearing } from '../agent/deviceHearing.js';
+import { keepScreenAwake } from '../agent/keepAwake.js';
+import { AGENT_LANGS, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays, readAgentLang, writeAgentLang } from '../agent/agentLanguage.js';
 import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
 import SurveyAgentCamera from './SurveyAgentCamera';
@@ -60,9 +69,6 @@ const newId = (prefix) => `${prefix}${nextId++}`;
 // No signal, too weak to finish a call, or the per-minute limit (hands-free
 // talk can reach it): the message waits and sends later.
 const WAIT_CODES = new Set(['offline', 'network', 'busy_try_again']);
-const SAVED_FIRST = 'No signal. I saved that and will send it when you are back online.';
-const SAVED_BUSY = 'That was a lot at once. I saved it and will send it in a moment.';
-const SAVED_AGAIN = 'Saved.';
 // Kept on the device, unique across reloads.
 const waitIdOf = () => `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
@@ -88,14 +94,26 @@ const openDocument = () => {
   return doc;
 };
 
-export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
+export default function SurveyAgentPanel({
+  onClose,
+  mobileMode = false,
+  view = 'chat',
+  host = null,
+  handsFreeAsk = 0,
+  onShowChat = () => {},
+  onActivity = () => {},
+}) {
   const [usageLeft, setUsageLeft] = useState(null);
   const rawCall = useMemo(() => makeSurveyAgentCaller(supabase, { onUsage: setUsageLeft }), []);
   const call = useMemo(() => withRetries(rawCall), [rawCall]);
   // Spoken replies: the server's natural voice when it has one, else the
   // device's own voice.
   const voice = useMemo(() => createAgentVoice({ call: rawCall }), [rawCall]);
-  const speak = voice.speak;
+  // English or Spanish: how it hears, answers and speaks.
+  const [lang, setLang] = useState(() => readAgentLang());
+  const langRef = useRef(lang);
+  langRef.current = lang;
+  const speak = (text, opts = {}) => voice.speak(text, { locale: agentLocale(langRef.current), ...opts });
   const stopSpeaking = voice.stop;
   const attachmentsRef = useRef(new Map());
   const [status, setStatus] = useState(null);
@@ -110,12 +128,15 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const [handsFree, setHandsFree] = useState(false);
   // The camera take_photo opened: { itemId, name }, and how to answer it.
   const [camera, setCamera] = useState(null);
+  const onShowChatRef = useRef(onShowChat);
+  onShowChatRef.current = onShowChat;
   const cameraRef = useRef(null);
   const photoResolveRef = useRef(null);
   const requestPhoto = useCallback(({ itemId, name }) => new Promise((resolve) => {
     photoResolveRef.current?.(null);
     photoResolveRef.current = resolve;
     setCamera({ itemId, name });
+    onShowChatRef.current();
   }), []);
   const closeCamera = useCallback((file = null) => {
     const resolve = photoResolveRef.current;
@@ -178,10 +199,28 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     micRef.current?.stop();
     deviceHearingRef.current?.stop();
     pttHearingRef.current?.stop();
+    awakeRef.current?.release();
     stopSpeaking();
     // A turn waiting on the camera gets "no photo" rather than hanging.
     photoResolveRef.current?.(null);
   }, []);
+
+  const toggleLang = () => {
+    const next = lang === 'es' ? 'en' : 'es';
+    setLang(next);
+    langRef.current = next;
+    writeAgentLang(next);
+    // Hands-free: the device listens in the new language from now on.
+    if (deviceHearingRef.current) {
+      deviceHearingRef.current.stop();
+      deviceHearingRef.current = startDeviceHearing({ lang: agentLocale(next) });
+    }
+    if (micRef.current?.native) {
+      micRef.current.stop();
+      micRef.current = null;
+      startHandsFreeRef.current();
+    }
+  };
 
   const toggleSpeak = () => {
     const next = !speakReplies;
@@ -232,6 +271,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
         toolbox: turnToolbox,
         answerValues: answerSetFor(bridge.template).map((a) => a.value),
         annotations,
+        lang: langRef.current,
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);
@@ -388,7 +428,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     const busy = waitReasonRef.current === 'busy_try_again';
     const first = !savedNoticeRef.current;
     if (!busy) savedNoticeRef.current = true;
-    speakOutRef.current(busy ? SAVED_BUSY : first ? SAVED_FIRST : SAVED_AGAIN, { here: true });
+    speakOutRef.current(agentSays(langRef.current, busy ? 'savedBusy' : first ? 'savedFirst' : 'saved'), { here: true });
   };
   const enqueueRef = useRef(enqueue);
   enqueueRef.current = enqueue;
@@ -447,7 +487,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     try {
       const audio = await blobToBase64(file);
       const b = surveyAgentBridge.current;
-      const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
+      const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, lang: langRef.current, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
       return snapItemNames(cleanTranscript(out?.text), Object.values(b?.markers || {}).map((m) => m?.name));
     } catch (err) {
       if (WAIT_CODES.has(err?.code)) { waitReasonRef.current = err.code; return null; }
@@ -463,6 +503,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   // The device's own hearing first (free); the server only when the device
   // heard nothing or was unsure. Same return values as transcribe.
   const deviceHearingRef = useRef(null);
+  const awakeRef = useRef(null);
   const pttHearingRef = useRef(null);
   const hear = async (clip, durationMs, endedAt, hearing = deviceHearingRef.current) => {
     if (hearing?.available) {
@@ -508,18 +549,18 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     micRef.current = null;
     deviceHearingRef.current?.stop();
     deviceHearingRef.current = null;
+    awakeRef.current?.release();
+    awakeRef.current = null;
     stopSpeaking();
   }, []);
 
   // With the camera open, "take it" / "cancel" go straight to the camera:
   // the turn that opened it is still waiting on the photo.
-  const SHUTTER = /\b(take it|snap( it)?|cheese|shoot|take (the |a )?(photo|picture|pic))\b/i;
-  const CANCEL = /\b(cancel|never ?mind|no photo|close( the)? camera)\b/i;
   const handleCameraClip = async (clip, durationMs, endedAt) => {
     const text = await hear(clip, durationMs, endedAt);
     if (!text || !cameraRef.current) return;
-    if (CANCEL.test(text)) cameraRef.current.cancel();
-    else if (SHUTTER.test(text)) await cameraRef.current.capture();
+    if (CANCEL_WORDS.test(text)) cameraRef.current.cancel();
+    else if (SHUTTER_WORDS.test(text)) await cameraRef.current.capture();
   };
 
   // One clip at a time, in order. The mic keeps listening while the agent
@@ -532,6 +573,10 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     if (queueRef.current.length) { queueClip(clip, durationMs); return; }
     const text = await hear(clip, durationMs, endedAt);
     if (text === null) { queueClip(clip, durationMs); return; }
+    await handleHandsFreeText(text, { cutIn });
+  };
+  // What was said, as words: from a clip, or from the phone's own hearing.
+  const handleHandsFreeText = async (text, { cutIn = false } = {}) => {
     if (!text || !handsFreeRef.current) return;
     // Cut in on the agent, but it was the agent's own voice leaking back in.
     if (cutIn && heardOwnVoice(text, lastSpokenRef.current)) return;
@@ -569,6 +614,33 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   };
   const handleHandsFreeClipRef = useRef(handleHandsFreeClip);
   handleHandsFreeClipRef.current = handleHandsFreeClip;
+  // The phone's own hearing (iPhone and Android apps): words, in order.
+  const onNativeText = (raw, { cutIn, unsure }) => {
+    const b = surveyAgentBridge.current;
+    const text = snapItemNames(cleanTranscript(raw), Object.values(b?.markers || {}).map((m) => m?.name));
+    if (cameraRef.current) {
+      if (CANCEL_WORDS.test(text)) cameraRef.current.cancel();
+      else if (SHUTTER_WORDS.test(text)) cameraRef.current.capture().catch(() => {});
+      return;
+    }
+    if (unsure) {
+      if (speakRef.current) speak(agentSays(langRef.current, 'sayAgain')).catch(() => {});
+      return;
+    }
+    handsFreePendingRef.current += 1;
+    setPhase('working');
+    handsFreeChainRef.current = handsFreeChainRef.current
+      .then(() => handleHandsFreeTextRef.current(text, { cutIn }))
+      .catch(() => {})
+      .finally(() => {
+        handsFreePendingRef.current -= 1;
+        if (!handsFreePendingRef.current && handsFreeRef.current) setPhase('listening');
+      });
+  };
+  const handleHandsFreeTextRef = useRef(null);
+  handleHandsFreeTextRef.current = handleHandsFreeText;
+  const onNativeTextRef = useRef(onNativeText);
+  onNativeTextRef.current = onNativeText;
   const onHandsFreeClipRef = useRef(onHandsFreeClip);
   onHandsFreeClipRef.current = onHandsFreeClip;
 
@@ -577,17 +649,52 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     if (recorder.state !== 'idle') recorder.stop();
     if (speechRef.current) speechRef.current.stop();
     try {
-      micRef.current = await startHandsFreeMic({
+      // In the phone apps, the phone's own speech to text hears the person;
+      // the web mic and the server only when it can't.
+      const speech = await loadNativeSpeech();
+      micRef.current = speech
+        ? await startNativeHandsFree({
+          speech,
+          lang: agentLocale(langRef.current),
+          onText: (text, info) => onNativeTextRef.current(text, info),
+          onHearing: (on) => setHearing(on),
+          onBargeIn: () => stopSpeaking(),
+          spokenNow: () => lastSpokenRef.current,
+          onFatal: () => { if (handsFreeRef.current) restartHandsFreeRef.current(); },
+        }).catch(() => null)
+        : null;
+      micRef.current = micRef.current || await startHandsFreeMic({
         onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
         onHearing: (on) => setHearing(on),
         onBargeIn: () => stopSpeaking(),
       });
-      deviceHearingRef.current = startDeviceHearing();
+      if (!micRef.current.native) deviceHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
+      awakeRef.current?.release();
+      awakeRef.current = keepScreenAwake();
       handsFreeRef.current = true;
       setHandsFree(true);
       setPhase('listening');
     } catch (err) {
       push({ role: 'error', text: err?.name === 'NotAllowedError' ? 'Allow the microphone to talk hands-free.' : 'The microphone could not start.' });
+    }
+  };
+
+  const startHandsFreeRef = useRef(startHandsFree);
+  startHandsFreeRef.current = startHandsFree;
+  // The phone's hearing stopped for good mid-walk (permission taken away, the
+  // language not offered): carry on with the web mic and the server.
+  const restartHandsFreeRef = useRef(null);
+  restartHandsFreeRef.current = async () => {
+    micRef.current?.stop();
+    try {
+      micRef.current = await startHandsFreeMic({
+        onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
+        onHearing: (on) => setHearing(on),
+        onBargeIn: () => stopSpeaking(),
+      });
+    } catch {
+      stopHandsFree();
+      push({ role: 'error', text: 'The microphone could not start.' });
     }
   };
 
@@ -599,7 +706,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       return;
     }
     const rec = new Recognition();
-    rec.lang = navigator.language || 'en-US';
+    rec.lang = agentLocale(langRef.current);
     rec.interimResults = true;
     rec.continuous = true;
     let finalText = '';
@@ -633,7 +740,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       if (recorder.state === 'recording') recorder.stop();
       else if (recorder.state === 'idle') {
         pttHearingRef.current?.stop();
-        pttHearingRef.current = startDeviceHearing();
+        pttHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
         recorder.start();
       }
     } else {
@@ -692,12 +799,43 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const livePhase = hearing ? 'hearing' : phase === 'speaking' ? 'speaking' : transcribing || busy || phase === 'working' ? 'working' : 'listening';
   const handsFreeText = handsFree ? HANDS_FREE_TEXT[livePhase] : null;
 
+  // The Survey panel's mic and dots follow what the agent is doing.
+  const activity = handsFree ? livePhase : (busy || transcribing ? 'working' : 'idle');
+  useEffect(() => { onActivity({ handsFree, phase: activity }); }, [handsFree, activity, onActivity]);
+
+  // Each tap of the Survey panel's mic starts or stops hands-free, once the
+  // server has said whether this person can use the agent. When hands-free
+  // can't run here, the chat opens so the reason (or the keyboard) shows.
+  const askHandledRef = useRef(0);
+  useEffect(() => {
+    if (!status || handsFreeAsk <= askHandledRef.current) return;
+    askHandledRef.current = handsFreeAsk;
+    if (handsFreeRef.current) { stopHandsFree(); return; }
+    if (ready && status.transcription && canHandsFree()) startHandsFreeRef.current();
+    else onShowChatRef.current();
+  }, [handsFreeAsk, status, ready, stopHandsFree]);
+
+  // A tap anywhere outside the chat goes back to the Survey panel.
+  const sectionRef = useRef(null);
+  useEffect(() => {
+    if (view !== 'chat' || !host) return undefined;
+    const outside = (e) => {
+      const t = e.target;
+      if (!(t instanceof Element) || sectionRef.current?.contains(t) || t.closest('[data-survey-agent-dots]')) return;
+      onClose();
+    };
+    document.addEventListener('pointerdown', outside, true);
+    return () => document.removeEventListener('pointerdown', outside, true);
+  }, [view, host, onClose]);
+
   const panel = (
     <section
-      className={`survey-agent${mobileMode ? ' is-phone' : ''}`}
-      role="dialog"
+      ref={sectionRef}
+      className={`survey-agent${mobileMode ? ' is-phone' : ''}${host ? ' is-inline' : ''}`}
+      role={host ? 'region' : 'dialog'}
       aria-label="Survey agent"
       data-testid="survey-agent-panel"
+      hidden={view !== 'chat'}
     >
       <header className="survey-agent__head">
         <span className="survey-agent__title">Survey agent <span className="survey-agent__beta">Beta</span></span>
@@ -710,9 +848,18 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
             disabled={!ready && !handsFree}
             onClick={handsFree ? stopHandsFree : startHandsFree}
           >
-            {handsFree ? (mobileMode ? 'Stop' : 'Stop hands-free') : 'Hands-free'}
+            {handsFree ? (mobileMode || host ? 'Stop' : 'Stop hands-free') : 'Hands-free'}
           </button>
         )}
+        <button
+          type="button"
+          className="survey-agent__voice"
+          aria-label={`Language: ${AGENT_LANGS[lang].label}`}
+          title="English or Spanish"
+          onClick={toggleLang}
+        >
+          {AGENT_LANGS[lang].short}
+        </button>
         {canSpeakReplies() && (
           <button
             type="button"
@@ -723,7 +870,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
             {speakReplies ? 'Voice on' : 'Voice off'}
           </button>
         )}
-        <button type="button" className="survey-agent__icon" aria-label="Close Survey agent" onClick={onClose}>
+        <button type="button" className="survey-agent__icon" aria-label={host ? 'Back to Survey' : 'Close Survey agent'} onClick={onClose}>
           <Icon name="close" size={16} color="currentColor" />
         </button>
       </header>
@@ -832,5 +979,5 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       </form>
     </section>
   );
-  return typeof document !== 'undefined' ? createPortal(panel, document.body) : panel;
+  return typeof document !== 'undefined' ? createPortal(panel, host || document.body) : panel;
 }

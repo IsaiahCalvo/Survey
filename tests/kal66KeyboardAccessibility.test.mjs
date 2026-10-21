@@ -272,7 +272,7 @@ test('KAL-66 round 2 wiring: phone sheets, new menus and popovers use the shared
   const sidebar = read('PDFSidebar.jsx');
   assert.match(sidebar, /useSheetFocus\(\s*mobileMode && !isCollapsed && activeTab !== 'history'/);
   assert.match(sidebar, /ref=\{mobileMode \? sheetFocusRef : sideOccluderRef\}/);
-  assert.match(read('SurveySpacesRail.jsx'), /ref=\{mobileMode \? surveySheetFocusRef : sideOccluderRef\}/);
+  assert.match(read('SurveySpacesRail.jsx'), /\(mobileMode \? surveySheetFocusRef : sideOccluderRef\)\(el\)/);
   const chrome = read('mobile/MobilePdfViewerChrome.jsx');
   assert.match(chrome, /mobile-pdf-users-sheet" role="dialog" aria-modal="true"[^>]*ref=\{usersSheetFocusRef\} tabIndex=\{-1\}/);
   const rail = read('mobile/MobileSurveyRail.jsx');

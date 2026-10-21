@@ -143,3 +143,11 @@ test('only the server records voice-agent daily counts', async ({ page }) => {
   expect(after.requests).toBe((before?.requests ?? 0) + 1);
   expect(Number(after.tokens)).toBe(Number(before?.tokens ?? 0) + 10);
 });
+
+test('the old revision debug helpers are gone', async ({ page }) => {
+  const free = await signedIn(page, E2E_ACCOUNTS.free);
+  const probe = await free.rpc('kal48_debug_probe', { p_document_id: E2E_DOCUMENT.id, p_step: 4 });
+  expect(probe.data, JSON.stringify(probe.error)).toBeNull();
+  const dump = await free.rpc('kal48_dump_access_fn');
+  expect(dump.data, JSON.stringify(dump.error)).toBeNull();
+});

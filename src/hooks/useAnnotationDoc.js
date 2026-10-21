@@ -51,6 +51,10 @@ import {
   annotationStoreCompactionPending,
   annotationStoreCompactionReady,
 } from '../services/annotationStoreCompaction.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { sealCutoverIfCovered } from '../services/legacyCutoverSeal.js';
+import { loadAllNonSurveyMarkerAnnotations } from '../services/annotationCloudSync.js';
+import { invalidateDocumentMetadata, resolveDocumentMetadata } from '../services/documentMetadataResolver.js';
 
 const SPACES_KEY = 'spaces';
 function livePreviewPublicChannelInDev() {
@@ -1028,6 +1032,56 @@ export function useAnnotationDoc({
     }
     return stop;
   }, [docRole, documentLocked, initialHydration.ready, initialHydration.documentId, documentId]);
+
+  // legacy-collab-retired: the old layer's backfill no longer seals
+  // documents.cutover_completed_at, so seal here once this doc holds every
+  // legacy row (legacyCutoverSeal.js; a missing row leaves it unsealed).
+  // Writable opens only, after the embedded import and the carry-over.
+  const [legacyCollabRetired] = useState(() => isFeatureOn('legacy-collab-retired'));
+  useEffect(() => {
+    if (!legacyCollabRetired || !isWritableDocRole(docRole)) return undefined;
+    if (!initialHydration.ready || initialHydration.documentId !== documentId) return undefined;
+    const h = handleRef.current;
+    if (!h || !readyRef.current) return undefined;
+    let finished = false;
+    let timer = null;
+    let observing = false;
+    const meta = h.doc.getMap(META_MAP);
+    const stop = () => {
+      finished = true;
+      if (observing) meta.unobserve(onMeta);
+      observing = false;
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+    const schedule = (ms) => {
+      if (finished || timer) return;
+      timer = setTimeout(() => { timer = null; run(); }, ms);
+    };
+    function onMeta() { schedule(STORE_COMPACTION_JITTER_MS); }
+    function run() {
+      if (finished) return;
+      if (handleRef.current !== h || !readyRef.current) { stop(); return; }
+      if (!annotationStoreCompactionReady(h.doc) || legacyMarksCarryOverPending(h.doc)) return;
+      stop();
+      sealCutoverIfCovered({
+        supabase,
+        documentId,
+        doc: h.doc,
+        resolveMetadata: resolveDocumentMetadata,
+        loadLegacyRows: loadAllNonSurveyMarkerAnnotations,
+        invalidateMetadata: invalidateDocumentMetadata,
+      }).then((result) => {
+        if (result.status === 'sealed' || result.status === 'legacy-marks-missing') {
+          console.log('[useAnnotationDoc] cutover seal', { documentId, status: result.status, missing: result.missing?.length || 0 });
+        }
+      }).catch(() => {});
+    }
+    meta.observe(onMeta);
+    observing = true;
+    schedule(STORE_COMPACTION_DELAY_MS);
+    return stop;
+  }, [legacyCollabRetired, docRole, initialHydration.ready, initialHydration.documentId, documentId]);
 
   // Capture space changes (document-level; coarse whole-array, no-op when
   // unchanged). Spaces + their region polygons now live durably in the Y.Doc

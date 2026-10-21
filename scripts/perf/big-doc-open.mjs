@@ -97,6 +97,8 @@ async function oneRun(browser, size, { profile = null } = {}) {
   const context = await browser.newContext(DEVICES[size]);
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
   await context.addInitScript(PROBE);
+  // FLAGS=a,b turns those feature flags on for the run (src/featureFlags.js).
+  if (process.env.FLAGS) await context.addInitScript((keys) => { for (const k of keys) localStorage.setItem(`survey.flag.${k}`, '1'); }, process.env.FLAGS.split(','));
   const page = await context.newPage();
   if (NET) {
     // NET=<latency ms>/<down Mbps>, e.g. 150/9 for a phone on 4G.

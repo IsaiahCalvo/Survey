@@ -26507,6 +26507,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // [InteractionDiag] route toolbar tool selection through the logged
       // wrapper so every tool-button click emits a tool-intent marker.
       setActiveTool: setActiveToolLogged,
+      // Phone rail Measure (the desktop Shape row's Measure menu).
+      measureMode,
+      setMeasureMode,
+      measureScaleDialogOpen: !!measureScaleDialog,
+      openMeasureScaleDialog: setMeasureScaleDialog,
+      // The tool's style only (desktop Shape row's setter): never restyles a selection.
+      setToolLineBorderStyle: setLineBorderStyle,
       setActiveCategoryDropdown,
       setTooltip,
       setShowAnnotationColorPicker,
@@ -26548,6 +26555,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     zoomMenuRef,
     pageInputRef,
     activeTool,
+    measureMode,
+    measureScaleDialog,
     pickBarTool,
     liveTextSelection,
     selectionMode,
@@ -33004,7 +33013,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Add a rectangle or ellipse from a page box (PDF points, top-left
       // origin). Uses the same boundary-shape builder a drawn shape uses, so
       // geometry, scope and author identity match a hand-drawn one.
-      addShape: ({ page, shape, x, y, width, height, strokeColor, fillColor, strokeWidth }) => {
+      addShape: ({ page, shape, x, y, width, height, strokeColor, fillColor, strokeWidth, borderStyle }) => {
         const { pageSizes: sizes, viewerId, saveAnnotations, getAnnotationsByPage, annotationScope } = agentMarkerStateRef.current;
         const size = sizes?.[page];
         if (!size) return { ok: false, reason: 'not-found' };
@@ -33024,8 +33033,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           fillColor: fillColor || null,
           fillOpacity: fillColor ? 100 : 0,
           strokeWidth: Number(strokeWidth) > 0 ? Number(strokeWidth) : 2,
-          lineBorderStyle: 'solid',
-          cloudIntensity: null,
+          // 'cloud': a revision cloud, as the toolbar's Cloud style draws it.
+          lineBorderStyle: borderStyle === 'cloud' ? 'cloud' : 'solid',
+          cloudIntensity: borderStyle === 'cloud' ? 2 : null,
           ...annotationScope(page),
         });
         if (!obj) return { ok: false, reason: 'too-small' };

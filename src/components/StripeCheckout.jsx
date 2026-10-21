@@ -46,7 +46,7 @@ const StripeCheckout = (props) => {
         } catch (err) {
             tab.cancel();
             console.error('Payment Error:', err);
-            setError(err.message || 'An unexpected error occurred');
+            setError('Could not open checkout. Please try again.');
         } finally {
             setLoading(false);
         }

@@ -7,3 +7,10 @@ export function canManageProjectFile(file, project, userId) {
   if (file.my_role === 'owner') return true;
   return Boolean(project && project.user_id != null && project.user_id === userId);
 }
+
+// Deleting or sharing a whole project is owner-only on the server.
+export function canManageProject(project, userId) {
+  if (!project || userId == null) return false;
+  if (project.my_role === 'owner') return true;
+  return project.user_id != null && project.user_id === userId;
+}

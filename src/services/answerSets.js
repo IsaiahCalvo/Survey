@@ -8,8 +8,9 @@
  * An export kit may carry a set too (`kit.answerSet`); the template's own wins.
  */
 import { getExportKit } from './exportFormats/registry.js';
+import { validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
 
-export const ANSWER_TONES = Object.freeze(['good', 'bad', 'neutral']);
+export { ANSWER_TONES, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
 
 export const DEFAULT_ANSWER_SET = Object.freeze([
   Object.freeze({ value: 'Y', tone: 'good' }),
@@ -39,23 +40,26 @@ export const ANSWER_SET_PRESETS = Object.freeze([
       Object.freeze({ value: 'N/A', tone: 'neutral' }),
     ]),
   }),
+  Object.freeze({
+    id: 'installed-missing-damaged-na',
+    label: 'Installed / Missing / Damaged / N/A',
+    answers: Object.freeze([
+      Object.freeze({ value: 'Installed', tone: 'good' }),
+      Object.freeze({ value: 'Missing', tone: 'bad' }),
+      Object.freeze({ value: 'Damaged', tone: 'bad' }),
+      Object.freeze({ value: 'N/A', tone: 'neutral' }),
+    ]),
+  }),
+  Object.freeze({
+    id: 'works-not-working-na',
+    label: 'Works / Not working / N/A',
+    answers: Object.freeze([
+      Object.freeze({ value: 'Works', tone: 'good' }),
+      Object.freeze({ value: 'Not working', tone: 'bad' }),
+      Object.freeze({ value: 'N/A', tone: 'neutral' }),
+    ]),
+  }),
 ]);
-
-/** Returns a list of problems; empty means the set is usable. */
-export function validateAnswerSet(set) {
-  if (!Array.isArray(set) || set.length < 2 || set.length > 6) return ['answer set needs 2 to 6 answers'];
-  const errors = [];
-  const seen = new Set();
-  set.forEach((a, i) => {
-    const v = typeof a?.value === 'string' ? a.value.trim() : '';
-    // Excel list validation is a comma-separated string, so no commas or quotes.
-    if (!v || v.length > 20 || /[",]/.test(v)) errors.push(`answers[${i}].value must be 1-20 characters, no commas or quotes`);
-    else if (seen.has(v)) errors.push(`answers[${i}].value "${v}" repeated`);
-    else seen.add(v);
-    if (!ANSWER_TONES.includes(a?.tone)) errors.push(`answers[${i}].tone must be good, bad or neutral`);
-  });
-  return errors;
-}
 
 const usable = (set) => Boolean(set) && validateAnswerSet(set).length === 0;
 

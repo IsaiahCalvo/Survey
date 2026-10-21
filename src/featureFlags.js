@@ -33,6 +33,9 @@ export const FEATURE_FLAGS = Object.freeze({
   'legacy-collab-retired': Object.freeze({
     label: 'Retire the legacy collab layer (step 1)',
   }),
+  'survey-marker-fields': Object.freeze({
+    label: 'Survey markers merge concurrent field edits',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
