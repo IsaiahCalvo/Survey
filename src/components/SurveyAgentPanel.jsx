@@ -12,7 +12,7 @@ import { supabase } from '../supabaseClient';
 import { classifyMediaFile } from '../services/surveyMediaService';
 import { answerSetFor } from '../services/answerSets.js';
 import { createSurveyAgentToolbox, surveyAgentBridge } from '../agent/surveyAgentTools.js';
-import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
+import { isAllowanceStop, isWaitingForSignal, lastUndoableEntry, makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
 import { cleanTranscript, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
@@ -132,7 +132,12 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     try { window.localStorage.setItem(SPEAK_KEY, next ? '1' : '0'); } catch { /* storage blocked */ }
   };
 
-  const push = (entry) => setEntries((list) => [...list, { id: newId('e'), ...entry }]);
+  // Keep the ref in this turn so hands-free can read a cap error before React paints.
+  const push = (entry) => {
+    const added = { id: newId('e'), ...entry };
+    entriesRef.current = [...entriesRef.current, added];
+    setEntries((list) => [...list, added]);
+  };
 
   const markEntry = (id, patch) => setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
 
@@ -173,9 +178,10 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       push({ role: 'agent', text: result.reply, changes: result.changes });
       return result.reply;
     } catch (err) {
-      // No signal before anything changed: keep the message for later.
-      if (err?.code === 'offline' && !err?.changes?.length) {
-        queueRef.current.push(job);
+      // No signal (or a dead link that still says online) before anything
+      // changed: put this job back at the front so later messages wait.
+      if (isWaitingForSignal(err)) {
+        queueRef.current.unshift(job);
         setQueued(queueRef.current.length);
         if (job.entryId) markEntry(job.entryId, { waiting: true });
         return null;
@@ -193,28 +199,14 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     }
   }, [call, toolbox]);
 
-  const send = useCallback(async (text) => {
-    const said = String(text || '').trim();
-    const files = pendingFiles;
-    if ((!said && !files.length) || turnRef.current) return null;
-    if (!surveyAgentBridge.current?.template) {
-      push({ role: 'error', text: 'Open Survey mode with a template first.' });
-      return null;
-    }
-    setDraft('');
-    setPendingFiles([]);
-    const entryId = newId('e');
-    setEntries((list) => [...list, { id: entryId, role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name) }]);
-    // Messages wait their turn behind ones still waiting for signal.
-    const job = { said, files, entryId };
-    if (queueRef.current.length) {
-      queueRef.current.push(job);
-      setQueued(queueRef.current.length);
-      markEntry(entryId, { waiting: true });
-      return null;
-    }
-    return runJob(job);
-  }, [pendingFiles, runJob]);
+  const stopHandsFree = useCallback(() => {
+    handsFreeRef.current = false;
+    setHandsFree(false);
+    setHearing(false);
+    micRef.current?.stop();
+    micRef.current = null;
+    stopSpeaking();
+  }, []);
 
   // Signal back: send what waited, oldest first, and stop at the first
   // message that has to wait again.
@@ -227,23 +219,66 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
         const job = queueRef.current.shift();
         setQueued(queueRef.current.length);
         let reply;
+        let running = job;
         if (job.clip) {
           const text = await transcribeRef.current(job.clip, job.durationMs);
           if (text === null) { queueRef.current.unshift(job); setQueued(queueRef.current.length); break; }
           if (!text) continue;
           const entryId = newId('e');
           setEntries((list) => [...list, { id: entryId, role: 'user', text }]);
-          reply = await runJob({ said: text, files: [], entryId });
+          running = { said: text, files: [], entryId };
+          reply = await runJob(running);
         } else {
           reply = await runJob(job);
         }
-        if (queueRef.current.includes(job)) break;
-        if (reply && speakRef.current && !handsFreeRef.current) speak(reply);
+        if (queueRef.current.includes(running)) break;
+        if (reply && speakRef.current) {
+          if (handsFreeRef.current) {
+            const mic = micRef.current;
+            mic?.pause();
+            setPhase('speaking');
+            await speak(reply);
+            setPhase('working');
+            if (handsFreeRef.current && micRef.current === mic) mic?.resume();
+          } else {
+            speak(reply);
+          }
+        }
+        const last = entriesRef.current[entriesRef.current.length - 1];
+        if (isAllowanceStop(last)) {
+          if (handsFreeRef.current && speakRef.current && last.text) await speak(last.text);
+          if (handsFreeRef.current) stopHandsFree();
+          break;
+        }
       }
     } finally {
       flushingRef.current = false;
     }
-  }, [runJob]);
+  }, [runJob, stopHandsFree]);
+
+  const send = useCallback(async (text) => {
+    const said = String(text || '').trim();
+    const files = pendingFiles;
+    if (!said && !files.length) return null;
+    if (!surveyAgentBridge.current?.template) {
+      push({ role: 'error', text: 'Open Survey mode with a template first.' });
+      return null;
+    }
+    setDraft('');
+    setPendingFiles([]);
+    const entryId = newId('e');
+    setEntries((list) => [...list, { id: entryId, role: 'user', text: said || 'Attach these.', files: files.map((f) => f.name) }]);
+    // Messages wait their turn behind ones still waiting for signal, and
+    // behind a turn that is already running, so overlapping speech is not dropped.
+    const job = { said, files, entryId };
+    if (queueRef.current.length || turnRef.current || flushingRef.current) {
+      queueRef.current.push(job);
+      setQueued(queueRef.current.length);
+      markEntry(entryId, { waiting: true });
+      return null;
+    }
+    return runJob(job);
+  }, [pendingFiles, runJob]);
 
   useEffect(() => {
     const online = () => { flushQueue(); };
@@ -258,8 +293,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const sendAndSpeak = useCallback(async (text) => {
     const reply = await send(text);
     if (reply && speakRef.current && !handsFreeRef.current) speak(reply);
+    if (queueRef.current.length) flushQueue();
     return reply;
-  }, [send]);
+  }, [send, flushQueue]);
   const sendRef = useRef(sendAndSpeak);
   sendRef.current = sendAndSpeak;
   const draftRef = useRef(draft);
@@ -271,9 +307,10 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     setEntries((list) => list.map((e) => (e.id === entry.id ? { ...e, undone } : e)));
     return result;
   };
-  // The agent's undo_last_turn: the newest reply with changes not yet undone.
+  // The agent's undo_last_turn: the newest reply (or failed turn) with changes
+  // not yet undone — the same as pressing Undo on that bubble.
   undoLastRef.current = () => {
-    const entry = [...entriesRef.current].reverse().find((e) => e.role === 'agent' && e.changes?.length && !e.undone);
+    const entry = lastUndoableEntry(entriesRef.current);
     return entry ? applyUndo(entry) : null;
   };
 
@@ -300,7 +337,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, hints: transcriptionHints(surveyAgentBridge.current) });
       return cleanTranscript(out?.text);
     } catch (err) {
-      if (err?.code === 'offline') return null;
+      if (isWaitingForSignal(err)) return null;
       push({ role: 'error', text: err?.message || 'Could not hear that. Try again or type it.', code: err?.code });
       return '';
     } finally {
@@ -327,18 +364,6 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     },
   });
 
-  // Hands-free: each clip the mic cuts is heard, answered and (with voice
-  // on) spoken, then the mic listens again. The mic is paused meanwhile so
-  // it never hears the agent's own voice.
-  const stopHandsFree = useCallback(() => {
-    handsFreeRef.current = false;
-    setHandsFree(false);
-    setHearing(false);
-    micRef.current?.stop();
-    micRef.current = null;
-    stopSpeaking();
-  }, []);
-
   // One clip at a time, in order. The mic keeps listening while the agent
   // works (people talk on), and pauses only while the agent speaks.
   const handsFreeChainRef = useRef(Promise.resolve());
@@ -349,7 +374,6 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     const text = await transcribe(clip, durationMs);
     if (text === null) { queueClip(clip, durationMs); return; }
     if (!text || !handsFreeRef.current) return;
-    if (turnRef.current) { setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text)); return; }
     const reply = await send(text);
     const mic = micRef.current;
     if (reply && speakRef.current && handsFreeRef.current) {
@@ -360,11 +384,12 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     }
     const last = entriesRef.current[entriesRef.current.length - 1];
     // Out of allowance: stop listening and say why.
-    if (last?.code === 'monthly_cap_reached' || last?.code === 'not_enabled_for_you') {
+    if (isAllowanceStop(last)) {
       if (speakRef.current) await speak(last.text);
       stopHandsFree();
       return;
     }
+    if (queueRef.current.length) await flushQueue();
     if (handsFreeRef.current && micRef.current === mic) mic?.resume();
   };
   const onHandsFreeClip = (clip, durationMs) => {

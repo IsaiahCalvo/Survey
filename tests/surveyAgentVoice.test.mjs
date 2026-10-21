@@ -10,7 +10,7 @@ import {
   spokenReply,
   transcriptionHints,
 } from '../src/agent/voiceLoop.js';
-import { SurveyAgentError, usageWarning, withRetries } from '../src/agent/surveyAgentClient.js';
+import { isAllowanceStop, isWaitingForSignal, lastUndoableEntry, SurveyAgentError, usageWarning, withRetries } from '../src/agent/surveyAgentClient.js';
 import { createSurveyAgentToolbox } from '../src/agent/surveyAgentTools.js';
 
 // tests/fixtures/voice: synthetic speech mixed with site noise (generator
@@ -140,6 +140,40 @@ test('the monthly allowance warns near the end and says when it is used up', () 
   assert.match(usageWarning({ requests: 40, cost_share: 0.9 }), /about 40 requests left/);
   assert.match(usageWarning({ requests: 2000, cost_share: 0.05 }), /Almost at this month/);
   assert.match(usageWarning({ requests: 0, cost_share: 0.5 }), /reached this month/);
+});
+
+test('a dead link that still says online is held for the next flush', () => {
+  assert.equal(isWaitingForSignal({ code: 'offline' }), true);
+  assert.equal(isWaitingForSignal({ code: 'network' }), true);
+  assert.equal(isWaitingForSignal({ code: 'network', changes: [{ label: 'wrote' }] }), false);
+  assert.equal(isWaitingForSignal({ code: 'monthly_cap_reached' }), false);
+  assert.equal(isWaitingForSignal({ code: 'transcription_failed' }), false);
+});
+
+test('hands-free stops after an allowance refusal', () => {
+  assert.equal(isAllowanceStop({ code: 'monthly_cap_reached' }), true);
+  assert.equal(isAllowanceStop({ code: 'not_enabled_for_you' }), true);
+  assert.equal(isAllowanceStop({ code: 'offline' }), false);
+});
+
+test('undo_last_turn takes a failed turn that still wrote, not an older reply', () => {
+  const entries = [
+    { id: 'old', role: 'agent', changes: [{ label: 'D-117' }] },
+    { id: 'fail', role: 'error', changes: [{ label: 'D-118' }], code: 'network' },
+  ];
+  assert.equal(lastUndoableEntry(entries).id, 'fail');
+  assert.equal(lastUndoableEntry([{ id: '1', role: 'error', changes: [] }]), null);
+  assert.equal(lastUndoableEntry([{ id: '1', role: 'error', changes: [{ label: 'x' }], undone: true }]), null);
+});
+
+test('the panel keeps dead-link work, order, voice, and overlapping speech', () => {
+  const src = readFileSync(new URL('../src/components/SurveyAgentPanel.jsx', import.meta.url), 'utf8');
+  assert.match(src, /queueRef\.current\.unshift\(job\)/);
+  assert.match(src, /queueRef\.current\.includes\(running\)/);
+  assert.match(src, /entriesRef\.current = \[\.\.\.entriesRef\.current, added\]/);
+  assert.match(src, /if \(handsFreeRef\.current\) \{\s*const mic = micRef\.current;/);
+  assert.match(src, /turnRef\.current \|\| flushingRef\.current/);
+  assert.equal(src.includes('if (turnRef.current) { setDraft'), false);
 });
 
 test('undo_last_turn takes back the last reply when the person corrects the agent', async () => {

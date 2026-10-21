@@ -20,6 +20,21 @@ export function surveyAgentErrorText(code) {
   return ERROR_TEXT[code] || 'The Survey agent could not answer. Check your connection and try again.';
 }
 
+// Phones often still report online on a dead link. After retries, treat that
+// the same as no signal: keep the message or clip for the next flush.
+export function isWaitingForSignal(err) {
+  return (err?.code === 'offline' || err?.code === 'network') && !err?.changes?.length;
+}
+
+export function isAllowanceStop(entry) {
+  return entry?.code === 'monthly_cap_reached' || entry?.code === 'not_enabled_for_you';
+}
+
+// Newest reply with writes, including a turn that wrote and then failed.
+export function lastUndoableEntry(entries = []) {
+  return [...entries].reverse().find((e) => (e.role === 'agent' || e.role === 'error') && e.changes?.length && !e.undone) || null;
+}
+
 export class SurveyAgentError extends Error {
   constructor(code, { retryAfter = null } = {}) {
     super(surveyAgentErrorText(code));
