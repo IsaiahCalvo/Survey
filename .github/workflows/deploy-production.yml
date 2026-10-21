@@ -142,10 +142,32 @@ jobs:
         # revision over a newer one (two CI runs can finish out of order).
         # So: ship when main still points here, or when what is live is older
         # than this revision; skip, green, when live is already this or newer.
+        #
+        # 2026-10-21 — it also rechecks the 3-hour window (see `pick`). Two
+        # CI runs can both pick "ship" before either deploys; the second one
+        # then waits here, behind the first, in the concurrency group. Once
+        # the first has shipped, live is minutes old again, so the second
+        # applies its backend changes (which always go first and must work
+        # with the older frontend anyway) and leaves Vercel for the next
+        # window.
         id: freshness
         shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          URGENT: ${{ needs.pick.outputs.urgent }}
+          WINDOW_SECONDS: '10500'
         run: |
           tested_sha="${{ needs.pick.outputs.sha }}"
+          built="$(curl --fail --silent https://surveytool.app/release.json | jq -r '.builtAt // empty' 2>/dev/null || true)"
+          if [ "$EVENT" != workflow_dispatch ] && [ "$URGENT" != true ] && [ -n "$built" ]; then
+            age=$(( $(date -u +%s) - $(date -u -d "$built" +%s) ))
+            if [ "$age" -lt "$WINDOW_SECONDS" ]; then
+              echo "Production shipped ${age}s ago, after this run was picked; leaving Vercel for the next window."
+              echo "ship=false" >> "$GITHUB_OUTPUT"
+              echo "### Skipped Vercel: production shipped ${age}s ago (3-hour window)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
           remote_sha="$(git ls-remote origin refs/heads/main | cut -f1)"
           if [ "$remote_sha" = "$tested_sha" ]; then
             echo "ship=true" >> "$GITHUB_OUTPUT"; exit 0
@@ -223,6 +245,7 @@ jobs:
     outputs:
       sha: ${{ steps.pick.outputs.sha }}
       ship: ${{ steps.pick.outputs.ship }}
+      urgent: ${{ steps.pick.outputs.urgent }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -259,7 +282,8 @@ jobs:
           fi
           if [ -n "$live" ] && git cat-file -e "$live^{commit}" 2>/dev/null \
             && git log --format=%B "$live..$sha" | grep -qF '[deploy now]'; then
-            echo "A commit since $live asks for [deploy now]: shipping $sha."; echo "ship=true" >> "$GITHUB_OUTPUT"; exit 0
+            echo "A commit since $live asks for [deploy now]: shipping $sha."
+            echo "ship=true" >> "$GITHUB_OUTPUT"; echo "urgent=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           age=999999
           [ -n "$built" ] && age=$(( $(date -u +%s) - $(date -u -d "$built" +%s) ))
