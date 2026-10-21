@@ -24,8 +24,13 @@ on:
       - '.github/workflows/ios-native.yml'
       - '.github/native-flows/**'
   workflow_dispatch:
-  # The iOS signed-in walk is too slow for every PR (see that job); it runs
-  # nightly and on demand instead.
+  # The iOS signed-in walk is too slow for every PR (see that job). It runs at
+  # most once a day after a green "Build and tests" on main (timed jobs are
+  # often skipped in this repo, so the cron is only a backup), or on demand.
+  workflow_run:
+    workflows: ["Build and tests"]
+    types: [completed]
+    branches: [main]
   schedule:
     - cron: '30 5 * * *'
 
@@ -42,6 +47,7 @@ defaults:
 
 jobs:
   native:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     name: Build and launch iOS app
     runs-on: macos-26
     timeout-minutes: 45
@@ -116,6 +122,7 @@ jobs:
           retention-days: 7
 
   android:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     name: Build and launch Android app (Pixel emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -180,6 +187,7 @@ jobs:
           retention-days: 7
 
   android-signed-in:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     name: Android signed-in walk (local Supabase, export to share sheet)
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -259,12 +267,34 @@ jobs:
           path: android-flow-out
           retention-days: 7
 
+  ios-walk-due:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      key: ${{ steps.when.outputs.key }}
+      done: ${{ steps.mark.outputs.cache-hit }}
+    steps:
+      - id: when
+        run: echo "key=ios-walk-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+      - name: Already walked today?
+        id: mark
+        uses: actions/cache/restore@v4
+        with:
+          path: .ios-walk-mark
+          key: ${{ steps.when.outputs.key }}
+          lookup-only: true
+
   ios-signed-in:
     name: iOS signed-in walk (local Supabase, export to share sheet)
     # Needs Docker for the local Supabase, which GitHub's fast Apple-silicon
     # runners cannot run (no nested VMs), so this uses an Intel runner with
     # Colima and takes ~2h. Too slow to gate every PR: nightly + manual only.
-    if: github.event_name != 'pull_request'
+    needs: ios-walk-due
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (needs.ios-walk-due.outputs.done != 'true' &&
+       (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'))
     # Intel runner: the local Supabase needs Docker, which runs here through
     # Colima; Apple-silicon runners cannot nest a VM for it.
     runs-on: macos-15-intel
@@ -344,3 +374,11 @@ jobs:
           name: ios-signed-in-results
           path: ios-flow-out
           retention-days: 7
+      - name: Mark today's walk done
+        if: success() && github.event_name != 'workflow_dispatch'
+        run: mkdir -p .ios-walk-mark && date -u > .ios-walk-mark/at
+      - if: success() && github.event_name != 'workflow_dispatch'
+        uses: actions/cache/save@v4
+        with:
+          path: .ios-walk-mark
+          key: ${{ needs.ios-walk-due.outputs.key }}
