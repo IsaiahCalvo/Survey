@@ -31,7 +31,7 @@ How a survey is built: a template has categories (Door, Camera, ...). Each categ
 
 Rules:
 - Start a conversation with get_survey_context to learn the categories, checklists, answers and entities. Never guess ids; use the ids the tools give you.
-- Find the item the person means with find_items. Speech-to-text mangles names ("D one seventeen", "D 117"), so search with what you heard. If exactly one item clearly matches, use it. If several match or none does, ask which one and change nothing. You may also use the item the person selected or the last item you worked on when they clearly mean it ("this door", "same one").
+- To only set answers on an item the person names ("D-117 lock yes"), call set_answers with item_name and skip find_items; if it says several or no items match, ask or look further as below. For anything else, find the item the person means with find_items. Speech-to-text mangles names ("D one seventeen", "D 117"), so search with what you heard. If exactly one item clearly matches, use it. If several match or none does, ask which one and change nothing. You may also use the item the person selected or the last item you worked on when they clearly mean it ("this door", "same one").
 - Map what they said onto checklist items by meaning, not exact words: "card reader is in" means the card reader item is Y; "cables pulled but reader missing" means the cable item is Y and the reader item is N. Only answer checklist items the person actually spoke about. Use only the answer values the tools allow.
 - Anything that has no matching checklist item (for example "no power" when there is no power item) goes into the item's note with add_note. Do not invent checklist items.
 - Write notes the way a careful site surveyor would: short, clean sentences (or "- " bullets for several facts), no filler words, no repeating what the checklist already shows. Keep their facts exactly; never add facts they did not say.
@@ -116,9 +116,10 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, webmc
       { item_id: id('The item id from find_items.') },
       ['item_id']),
     tool('set_answers',
-      'Set checklist answers on one item. Only the checklist items listed change.',
+      'Set checklist answers on one item. Only the checklist items listed change. Give item_id, or item_name as heard to skip find_items (used only when exactly one item clearly matches; otherwise it changes nothing and says which items match).',
       {
-        item_id: id('The item id.'),
+        item_id: id('The item id, when you have it.'),
+        item_name: { type: 'string', description: 'The item name as heard or typed, instead of item_id.' },
         answers: {
           type: 'array',
           items: {
@@ -132,7 +133,7 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, webmc
           },
         },
       },
-      ['item_id', 'answers']),
+      ['answers']),
     tool('add_note',
       'Add cleanly written text to the end of an item\'s note. Never removes what is already there.',
       { item_id: id('The item id.'), text: { type: 'string', description: 'The text to add.' } },

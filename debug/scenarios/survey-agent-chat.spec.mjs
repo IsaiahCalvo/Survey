@@ -138,6 +138,56 @@ test('Survey agent fills an item from a typed message and undoes it', async ({ p
   await expect.poll(async () => JSON.stringify((await readMarker(page))?.note || '')).not.toContain('No power at the door.');
 });
 
+// "D-117 power no" in one model step: set_answers takes the name as heard.
+test('Survey agent sets an answer by item name with no separate search', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await page.route('**/functions/v1/survey-agent', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+      return;
+    }
+    const body = route.request().postDataJSON();
+    calls.push(body);
+    const reply = (json) => route.fulfill({
+      status: 200,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+      body: JSON.stringify(json),
+    });
+    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
+    const tools = body.messages.filter((m) => m.role === 'tool');
+    if (!tools.length) {
+      return reply({ message: { content: '', tool_calls: [
+        { id: 'n1', type: 'function', function: { name: 'set_answers', arguments: JSON.stringify({ item_name: 'D one seventeen', answers: [{ checklist_item_id: 'cl-power', value: 'N' }] }) } },
+      ] } });
+    }
+    return reply({ message: { content: 'D-117 power is N.', tool_calls: [] } });
+  });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await input.fill('D one seventeen power no');
+  await input.press('Enter');
+
+  await expect(panel.getByText('D-117 power is N.')).toBeVisible();
+  await expect(panel.getByTestId('survey-agent-changes')).toContainText('Power at door = N');
+  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
+  // Two model calls (write, words) instead of three (find, write, words).
+  expect(calls.filter((c) => c.action === 'turn')).toHaveLength(2);
+});
+
 // Phase 2 (KAL-528): the model finds a tag on the plan and adds it as an item.
 // Page 2 of this PDF is rotated 90 degrees, so the box has to follow the
 // rotation to land on the printed word.
