@@ -5,6 +5,7 @@
 // Design: /voice-agent/design.md in the project files (KAL-527).
 
 import { ANNOTATION_TOOL_SPECS } from './annotationAgentSpec.js';
+import { answerSetMeaning } from './surveyAgentMeaning.js';
 
 // The model is any OpenAI-style chat completions API, chosen by the edge
 // function's secrets (free Groq tier by default while testing), so the
@@ -34,6 +35,7 @@ Rules:
 - To record answers or a note on an item the person names ("D-117 lock yes"), call set_answers with item_name and skip find_items; if it says several or no items match, ask or look further as below. For anything else, find the item the person means with find_items. Speech-to-text mangles names ("D one seventeen", "D 117"), so search with what you heard. If exactly one item clearly matches, use it. If several match or none does, ask which one and change nothing. You may also use the item the person selected or the last item you worked on when they clearly mean it ("this door", "same one").
 - Read what they say by meaning, in the item's module: get_survey_context gives each module's meaning and the current_module (the one open on screen), get_item gives the item's module. The same tag can be in several modules; the person always means the one in the open module (find_items lists only those), so never ask which module. In an installation module "D-117 is installed" means every installation line is Y, even lines worded differently ("Cables pulled" is installed); in commissioning "yeah it works" means every test line is Y. "Card reader is in" means the card reader line is Y; "cables pulled but reader missing" means the cable line is Y and the reader line is N.
 - Record all of it in one set_answers call: answers for the lines they named, all_lines when they spoke about the item as a whole, and note for what no line covers (for example "no power" when there is no power line). A status and a problem in one sentence get both: "D-117 is installed but has no power" sets the installation lines Y and adds the note "No power." The word "note" ("put a note that it's installed") does not turn a status into only a note: set the lines too.
+- These rules say Y and N. When the survey's answers are other words (Installed / Missing / Damaged, Works / Not working), get_survey_context gives answer_meaning: use the answer that means what they said ("busted" is Damaged, "dead" is Not working).
 - Answer only lines their words cover; use all_lines only when they spoke about the whole item. Use only the answer values the tools allow. Do not invent checklist lines.
 - If their words could mean two different answers and you cannot tell which (for example "it's done" when the lines are a mix of installing and testing, or "mostly in"), ask one short question naming the choice and change nothing yet.
 - Write notes the way a careful site surveyor would: short, clean sentences (or "- " bullets for several facts), no filler words, no repeating what the checklist already shows. Keep their facts exactly; never add facts they did not say.
@@ -137,7 +139,7 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
       { item_id: id('The item id from find_items.') },
       ['item_id']),
     tool('set_answers',
-      'Record what the person said about one item in one step: checklist answers, and the rest of what they said as a note. Give item_id, or item_name as heard to skip find_items (used only when exactly one item clearly matches; otherwise it changes nothing and says which items match). Only the lines listed change, plus every other line when all_lines is set.',
+      `Record what the person said about one item in one step: checklist answers, and the rest of what they said as a note. Give item_id, or item_name as heard to skip find_items (used only when exactly one item clearly matches; otherwise it changes nothing and says which items match). Only the lines listed change, plus every other line when all_lines is set.${answerSetMeaning(answers) ? ` ${answerSetMeaning(answers)}` : ''}`,
       {
         item_id: id('The item id, when you have it.'),
         item_name: { type: 'string', description: 'The item name as heard or typed, instead of item_id.' },
