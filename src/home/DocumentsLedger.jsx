@@ -66,6 +66,7 @@ const isPhoneWidth = () => isPhoneLayout();
    what opened it. */
 function DocumentActionMenu({ anchorRect, point = null, items, onClose, returnFocusTo = null, focusFirst = false, minWidth = 168 }) {
   const ref = useRef(null);
+  const tip = useTooltip();
 
   useEffect(() => {
     // Opened from the keyboard: focus the first item (it wears the app's
@@ -140,6 +141,7 @@ function DocumentActionMenu({ anchorRect, point = null, items, onClose, returnFo
             className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
             disabled={it.reason ? undefined : it.disabled}
             aria-disabled={it.reason ? true : undefined}
+            {...(it.reason ? tip(it.reason, 'right') : {})}
             onClick={() => { if (it.disabled && !it.reason) return; onClose(); activateOrExplain(it.reason, it.onClick); }}
           >
             {it.label}
@@ -473,9 +475,12 @@ export default function DocumentsLedger({
   const showPreview = previewOpen && docs.length > 0;
   // Last column: the row's ⋮ (it used to be the first; the always-on
   // checkbox took that place, as in Drawboard and every desktop file list).
-  const grid = showPreview
-    ? '32px 54px minmax(150px,1fr) 124px 124px 72px 36px'
-    : '32px 54px 2fr 1fr 1fr 1fr 36px';
+  // With the preview open the columns come from hub.css
+  // (.documents-ledger-grid.is-preview): a container query drops Size, then
+  // Project, on narrow (tablet) list panes so the row's More button stays
+  // on screen instead of scrolling off the right edge.
+  const grid = showPreview ? undefined : '32px 54px 2fr 1fr 1fr 1fr 36px';
+  const gridClass = `documents-ledger-grid${showPreview ? ' is-preview' : ''}`;
   const stickyCell = (selected) => ({
     position: 'sticky', left: 0, zIndex: 2,
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
@@ -743,9 +748,9 @@ export default function DocumentsLedger({
     >
       <div className="documents-ledger-body" style={{ padding: '0 8px 8px 8px', flex: 1, minHeight: 0 }}>
         <div ref={dropCardRef} className="card documents-desktop-card" style={{ display: 'grid', gridTemplateColumns: showPreview ? '2.2fr 1fr' : '1fr', height: '100%', overflow: 'hidden' }}>
-          <div className="slim-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
+          <div className="slim-scroll documents-ledger-scroll" style={{ overflow: 'auto', borderRight: showPreview ? '1px solid var(--ink-500)' : 0 }}>
             <div>
-              <div style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
+              <div className={gridClass} style={{ ...ledgerHeader, display: 'grid', gridTemplateColumns: grid, position: 'sticky', top: 0, zIndex: 3 }}>
                 <span className="documents-ledger-head-check" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {docSelectMode && docs.length > 0 && (
                     <button
@@ -766,9 +771,9 @@ export default function DocumentsLedger({
                 </span>
                 <span></span>
                 <span {...clickableProps(() => onHeaderClick('name'))} style={{ padding: '0 14px', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none', color: sortKey === 'name' ? 'var(--bone-100)' : 'inherit' }}>File{arrow('name')}</span>
-                <span {...clickableProps(() => onHeaderClick('project'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
+                <span className="documents-col-project" {...clickableProps(() => onHeaderClick('project'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'project' ? 'var(--bone-100)' : 'inherit' }}>Project{arrow('project')}</span>
                 <span {...clickableProps(() => onHeaderClick('edited'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'edited' ? 'var(--bone-100)' : 'inherit' }}>Last edited{arrow('edited')}</span>
-                <span {...clickableProps(() => onHeaderClick('size'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
+                <span className="documents-col-size" {...clickableProps(() => onHeaderClick('size'))} style={{ cursor: 'pointer', userSelect: 'none', color: sortKey === 'size' ? 'var(--bone-100)' : 'inherit' }}>Size{arrow('size')}</span>
                 <span></span>
               </div>
               {docs.length === 0 && (
@@ -799,7 +804,7 @@ export default function DocumentsLedger({
                   <div
                     key={d.id}
                     data-document-id={d.id}
-                    className={`documents-ledger-row${isFilled ? ' is-selected' : ''}${isDragging ? ' is-dragging' : ''}`}
+                    className={`documents-ledger-row ${gridClass}${isFilled ? ' is-selected' : ''}${isDragging ? ' is-dragging' : ''}`}
                     // KAL-66: data-, not aria-selected - a plain div may not
                     // carry aria-selected (axe aria-allowed-attr); the row's
                     // checkbox is what announces the state.
@@ -870,7 +875,7 @@ export default function DocumentsLedger({
                     <div style={stickyCell(isFilled)}>
                       <span style={{ fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{d.name}</span>
                     </div>
-                    <span className="meta" style={{ fontSize: 12, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
+                    <span className="meta documents-col-project" style={{ fontSize: 12, padding: '12px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{/* Polish round 2 (2026-10-04): a file in no project leaves the cell
                         empty, as the phone row, the preview and the phone details
                         already do; it used to print a mono "N/A". */}
                       {d.project === 'Sandbox' ? null : d.project}</span>
@@ -878,7 +883,7 @@ export default function DocumentsLedger({
                       <div style={{ fontWeight: 600 }}>{d.touchedTime}</div>
                       <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>
                     </div>
-                    <span className="mono" style={{ fontSize: 11, padding: '12px 0' }}>{d.size}</span>
+                    <span className="mono documents-col-size" style={{ fontSize: 11, padding: '12px 0' }}>{d.size}</span>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <button
                         aria-haspopup="menu"
@@ -1008,7 +1013,7 @@ export default function DocumentsLedger({
               <div style={{ flex: 1, minHeight: 0 }} />
               <div style={{ display: 'flex', gap: 8, marginTop: 14, flex: 'none' }}>
                 <button className="btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => onOpenDocument && onOpenDocument(previewDoc.raw)}>Open file</button>
-                <button className="btn documents-preview-share" aria-disabled={canManageDoc(previewDoc.raw) ? undefined : true} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([previewDoc.raw], user?.id, 'share'), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
+                <button className="btn documents-preview-share" aria-disabled={canManageDoc(previewDoc.raw) ? undefined : true} {...tip(canManageDoc(previewDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([previewDoc.raw], user?.id, 'share'), () => onShare && onShare([previewDoc.raw]))} aria-label="Share"><Icon name="share" size={16} /></button>
               </div>
             </aside>
           )}
@@ -1081,7 +1086,7 @@ export default function DocumentsLedger({
                   for actions; phone and desktop match). */}
               <div className="documents-mobile-detail-actions">
                 <button type="button" className="btn primary" onClick={() => { setMobileDetailId(null); onOpenDocument && onOpenDocument(mobileDetailDoc.raw); }}>Open file</button>
-                <button type="button" className="btn documents-preview-share" aria-disabled={canManageDoc(mobileDetailDoc.raw) ? undefined : true} {...tip(canManageDoc(mobileDetailDoc.raw) ? 'Share' : 'Only the owner can share', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([mobileDetailDoc.raw], user?.id, 'share'), () => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); })} aria-label="Share"><Icon name="share" size={18} /></button>
+                <button type="button" className="btn documents-preview-share" aria-disabled={canManageDoc(mobileDetailDoc.raw) ? undefined : true} {...tip(canManageDoc(mobileDetailDoc.raw) ? 'Share' : 'Only the owner can share this', 'above')} onClick={() => activateOrExplain(manageSelectionBlock([mobileDetailDoc.raw], user?.id, 'share'), () => { setMobileDetailId(null); onShare && onShare([mobileDetailDoc.raw]); })} aria-label="Share"><Icon name="share" size={18} /></button>
               </div>
             </section>
           </div>

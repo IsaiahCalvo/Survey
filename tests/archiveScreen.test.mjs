@@ -348,8 +348,10 @@ test('the screen mirrors the Documents ledger structure and states', () => {
   // select column and the same dedicated 54px thumbnail column. Only the three
   // trailing columns differ, because they carry different data.
   assert.match(SCREEN, /const grid = '32px 54px minmax\(150px,1fr\) 110px 124px 110px'/);
-  const DOCUMENTS = read('../src/home/DocumentsLedger.jsx');
-  assert.match(DOCUMENTS, /'32px 54px minmax\(150px,1fr\)/, 'the Documents ledger is the reference for the leading columns');
+  // The Documents ledger's preview-open columns live in hub.css (a container
+  // query narrows them on tablet panes); its wide form is the reference.
+  const HUB_CSS = read('../src/home/hub.css');
+  assert.match(HUB_CSS, /\.documents-ledger-grid\.is-preview \{ grid-template-columns: 32px 54px minmax\(150px, 1fr\)/, 'the Documents ledger is the reference for the leading columns');
   assert.match(SCREEN, /contentVisibility: 'auto'/);
   // Every top-level row is PINNED to the Documents ledger's 51px, whatever it
   // carries. Letting content drive the height made templates 50px, documents
