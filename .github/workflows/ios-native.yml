@@ -260,7 +260,7 @@ jobs:
     # Intel runner: the local Supabase needs Docker, which runs here through
     # Colima; Apple-silicon runners cannot nest a VM for it.
     runs-on: macos-15-intel
-    timeout-minutes: 150
+    timeout-minutes: 200
     env:
       OUT: ${{ github.workspace }}/ios-flow-out
       DEVICE: iPhone 16
@@ -280,17 +280,6 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: npm ci
-      # Booting the simulator takes ~20 min on this runner; start it now so it
-      # boots while the local Supabase starts.
-      - name: Start booting the simulator
-        run: |
-          UDID=$(xcrun simctl list devices available -j | node -e '
-            const d=JSON.parse(require("fs").readFileSync(0)).devices;
-            const all=Object.entries(d).filter(([r])=>r.includes("iOS")).flatMap(([,l])=>l);
-            const m=all.reverse().find(x=>x.name===process.env.DEVICE)||all.find(x=>x.name.startsWith("iPhone"));
-            console.log(m.udid)')
-          echo "UDID=$UDID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$UDID"
       - name: Start Docker (Colima)
         run: |
           brew install colima docker
@@ -319,8 +308,17 @@ jobs:
         run: |
           curl -fsSL https://get.maestro.mobile.dev | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      - name: Install the app
+      # Boot only after the local stack is up: booting alongside Colima starved
+      # both on this 4-core runner (the stack missed its health checks).
+      - name: Boot the simulator and install the app
         run: |
+          UDID=$(xcrun simctl list devices available -j | node -e '
+            const d=JSON.parse(require("fs").readFileSync(0)).devices;
+            const all=Object.entries(d).filter(([r])=>r.includes("iOS")).flatMap(([,l])=>l);
+            const m=all.reverse().find(x=>x.name===process.env.DEVICE)||all.find(x=>x.name.startsWith("iPhone"));
+            console.log(m.udid)')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$(find build/ios/Build/Products -maxdepth 2 -name 'App.app' | head -1)"
       - name: Walk the app (signed in, Counter after Arrow, export)
