@@ -520,7 +520,7 @@ function fileRow(file, i) {
     render();
   };
   const preview = file.url ? h('div', { class: 'thumb' }, h('img', { src: file.url, alt: '' }))
-    : ACCEPT === 'pdf' && !file.locked ? thumbSlot(file, 0) : h('div', { class: 'thumb ext' }, file.name.split('.').pop().slice(0, 4).toUpperCase());
+    : ACCEPT === 'pdf' && !file.locked && !file.broken ? thumbSlot(file, 0) : h('div', { class: 'thumb ext' }, file.name.split('.').pop().slice(0, 4).toUpperCase());
   const row = h('li', { class: 'frow', draggable: n > 1 ? 'true' : null, 'data-index': String(i) },
     preview,
     h('div', { class: 'fmeta' }, h('span', { class: 'fname' }, file.name), h('span', { class: 'fsub' }, `${file.locked ? 'Locked · ' : ''}${file.broken ? 'Damaged · ' : ''}${file.pages ? `${file.pages} page${file.pages === 1 ? '' : 's'} · ` : ''}${fmtSize(file.size)}`)),
@@ -745,7 +745,9 @@ async function run() {
       progress('Packing the ZIP');
       const first = S.files[0];
       const zipName = `${S.files.length === 1 ? base(first.name) : 'files'}-${TOOL_ID}.zip`;
+      const note = [...new Set(outputs.map((o) => o.note).filter(Boolean))].join(' ');
       outputs = [{ name: zipName, bytes: makeZip(outputs), type: 'application/zip', count: outputs.length, parts: outputs }];
+      if (note) outputs[0].note = note;
     }
     S.result = outputs[0];
   } catch (err) {
@@ -816,7 +818,10 @@ function render() {
   if (!S.files.length) {
     const zone = dropzone();
     zone.querySelector('.btn').textContent = pickLabel || 'Choose files';
-    if (S.busy) zone.querySelector('.btn').disabled = true;
+    if (S.busy) {
+      zone.querySelector('.btn').disabled = true;
+      zone.querySelector('.dz-or').replaceWith(h('p', { class: 'dz-or tprog', 'data-progress': true, 'aria-live': 'polite' }, S.busy));
+    }
     root.replaceChildren(zone, err || '');
     return;
   }
