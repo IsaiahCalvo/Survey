@@ -439,6 +439,10 @@ export async function runBackfill(args) {
   });
 }
 
+function yieldToMainThread() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 async function runBackfillUnlocked(args) {
   const {
     ydoc,
@@ -624,7 +628,9 @@ async function runBackfillUnlocked(args) {
   // 'crdt-backfill' so the log renders one "Document migrated" row.
   // Per-row meta.authorId attribution still flows through ctx.userId on
   // the bridge call (separate from the transaction-tag origin).
-  const BACKFILL_BATCH_SIZE = 100;
+  // 25 rows per batch keeps each batch (import + broadcast) well under a
+  // 50 ms frame budget on a phone; batches yield to the main thread below.
+  const BACKFILL_BATCH_SIZE = 25;
   const batchOrigin = buildBackfillOrigin({
     originPayloadFactory,
     userId,
@@ -632,7 +638,45 @@ async function runBackfillUnlocked(args) {
     sessionId,
     clientID,
   });
+  // Ids another writer (this user, another tab, a collaborator) changed or
+  // deleted while the loop was yielding. The rows were read before the loop,
+  // so importing them now would revert that edit or bring a deleted mark
+  // back (applyFabricCreate overwrites differing fields and clears
+  // tombstones); those rows are left alone.
+  const touchedDuringImport = new Set();
+  const noteForeignChanges = (events, transaction) => {
+    if (transaction?.origin === batchOrigin) return;
+    for (const event of events) {
+      if (event.target === yMapAnnotations) {
+        for (const key of event.changes.keys.keys()) touchedDuringImport.add(String(key));
+      } else if (event.path?.length) {
+        touchedDuringImport.add(String(event.path[0]));
+      }
+    }
+  };
+  // A delete of a mark not imported yet only writes its tombstone, so watch
+  // the tombstone map too.
+  const tombstones = typeof ydoc.getMap === 'function' ? ydoc.getMap('__annotationDeletionTombstones') : null;
+  const noteForeignTombstones = (event, transaction) => {
+    if (transaction?.origin === batchOrigin) return;
+    for (const key of event.changes.keys.keys()) touchedDuringImport.add(String(key));
+  };
+  yMapAnnotations.observeDeep(noteForeignChanges);
+  tombstones?.observe(noteForeignTombstones);
+  const stopWatching = () => {
+    yMapAnnotations.unobserveDeep(noteForeignChanges);
+    tombstones?.unobserve(noteForeignTombstones);
+  };
+  let skippedConcurrent = 0;
+  const importedKeys = new Set();
+  try {
   for (let batchStart = 0; batchStart < rows.length; batchStart += BACKFILL_BATCH_SIZE) {
+    // Give the main thread back between batches. Run back to back, a
+    // 4,000-row document imported (and broadcast) in one ~1.4 s task during
+    // the open, freezing scroll and input after the first page was up.
+    // Writes landing in between are fine: the gate below tolerates a Y.Map
+    // larger than `imported`, and applyFabricCreate is idempotent per id.
+    if (batchStart > 0) await yieldToMainThread();
     const batchEnd = Math.min(batchStart + BACKFILL_BATCH_SIZE, rows.length);
     ydoc.transact(() => {
       for (let i = batchStart; i < batchEnd; i++) {
@@ -640,6 +684,11 @@ async function runBackfillUnlocked(args) {
         const __rowType = row?.annotation_type || 'unknown';
         try {
           const { fabricObject, pageNumber, annotationId } = deserializeRowDefensive(row);
+          const rowKey = String(fabricObject?.data?.id || annotationId);
+          if (touchedDuringImport.has(rowKey)) {
+            skippedConcurrent++;
+            continue;
+          }
           fabricObject.pageNumber = pageNumber;
 
           // Per-row origin still built — used as the inner originPayload arg
@@ -677,6 +726,7 @@ async function runBackfillUnlocked(args) {
           }
 
           imported++;
+          importedKeys.add(String(annoId));
           importedByType[__rowType] = (importedByType[__rowType] || 0) + 1;
         } catch (err) {
           // eslint-disable-next-line no-console
@@ -686,6 +736,16 @@ async function runBackfillUnlocked(args) {
         }
       }
     }, batchOrigin);
+  }
+
+  } catch (loopError) {
+    stopWatching();
+    throw loopError;
+  }
+  if (skippedConcurrent > 0) {
+    crdtBackfillDebug('[Phase31 UAT] backfill:skipped-concurrently-changed ' + JSON.stringify({
+      documentId, skippedConcurrent,
+    }));
   }
 
   // Mark done. Stored INSIDE Y.Doc so it propagates via CRDT sync. A second
@@ -720,12 +780,22 @@ async function runBackfillUnlocked(args) {
   // Skipped rows (malformed legacy data we couldn't round-trip) DO NOT block
   // sealing — they were unrenderable in v2.3 and would never be renderable in
   // v2.4 either. Sealing without them is correct.
+  // Observed until here so the gate below also counts deletes that landed
+  // after the last batch.
+  stopWatching();
   let cutoverCompleted = false;
   if (args.markCutoverComplete) {
     // Verified-count match: yMapSize >= imported gates the cutover_completed_at
     // write. CONTEXT.md AC bullet 1 + Risk-and-Rollback mitigation #1.
     const yMapSize = yMapAnnotations.size;
-    const expectedMinSize = imported;
+    // Marks this run imported that another writer has since deleted (during
+    // a yield, or right after) are legitimately gone; they must not hold the
+    // seal back.
+    let deletedSinceImport = 0;
+    for (const key of importedKeys) {
+      if (touchedDuringImport.has(key) && !yMapAnnotations.has(key)) deletedSinceImport++;
+    }
+    const expectedMinSize = imported - deletedSinceImport;
     if (yMapSize >= expectedMinSize) {
       try {
         // Count match passed (yMapSize >= imported); seal cutover_completed_at.

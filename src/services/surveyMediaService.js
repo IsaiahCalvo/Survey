@@ -18,6 +18,7 @@
  * Object name: `{document_id}/{marker_id}/{media_id}.{ext}`.
  */
 import { supabase } from '../supabaseClient.js';
+import { withUpgradeHint } from '../utils/accountPlatform.js';
 
 export const SURVEY_MEDIA_BUCKET = 'survey-media';
 export const SURVEY_MEDIA_LIMITS = {
@@ -333,7 +334,7 @@ export function describeSurveyMediaStorageError(error, { action = 'upload', name
     return new SurveyMediaError(SURVEY_MEDIA_NOT_SET_UP_MESSAGE, 'not-set-up', error);
   }
   if (/quota exceeded/i.test(message)) {
-    return new SurveyMediaError('Your storage is full. Free up space or upgrade your plan to add more media.', 'quota', error);
+    return new SurveyMediaError(withUpgradeHint('Your storage is full. Free up space to add more media.', 'Or upgrade your plan for more.'), 'quota', error);
   }
   if (/maximum allowed size|payload too large|entity too large/i.test(message) || status === '413') {
     return new SurveyMediaError(`${what} is larger than media storage allows.`, 'too-large', error);

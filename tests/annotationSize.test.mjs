@@ -4,6 +4,7 @@ import {
   ANNOTATION_WIDTH_DECIMALS,
   COUNTER_SIZE_MAX,
   COUNTER_SIZE_MIN,
+  canSnapshotToolSettings,
   normalizeAnnotationSize,
   sanitizeAnnotationSizeDraft,
 } from '../src/utils/annotationSize.js';
@@ -52,4 +53,13 @@ test('counter sizes support every approved preset through 76', () => {
   assert.equal(normalizeAnnotationSize(64, COUNTER_SIZE_MIN, COUNTER_SIZE_MAX), 64);
   assert.equal(normalizeAnnotationSize(76, COUNTER_SIZE_MIN, COUNTER_SIZE_MAX), 76);
   assert.equal(normalizeAnnotationSize(77, COUNTER_SIZE_MIN, COUNTER_SIZE_MAX), 76);
+});
+
+test('a tool switched to while a mark is picked never snapshots the previous tool size', () => {
+  // Arrow drawn and auto-selected, then Counter armed: the bar still holds
+  // the arrow's settings, so no snapshot (restoring it gave 4 px counter dots).
+  assert.equal(canSnapshotToolSettings('arrow', 'counter'), false);
+  assert.equal(canSnapshotToolSettings(null, 'counter'), false);
+  // Counter's own settings loaded, then a counter picked: snapshot is fine.
+  assert.equal(canSnapshotToolSettings('counter', 'counter'), true);
 });

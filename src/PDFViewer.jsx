@@ -16,7 +16,6 @@ import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
-import { mergeLegacyEntities } from './utils/mergeLegacyEntities.js';
 import { jsonEqual } from './utils/jsonEqual.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
@@ -60,7 +59,7 @@ import {
   parseProductionBenchmarkConfig,
 } from './utils/productionAnnotationBenchmark.js';
 import { showToast } from './utils/toast';
-import { openExternalDestination } from './utils/accountPlatform.js';
+import { openExternalDestination, withUpgradeHint } from './utils/accountPlatform.js';
 // ExcelJS (~1MB) is loaded on demand inside the three async export/sync handlers
 // below — see `await import('exceljs')` — so it stays out of the main viewer chunk.
 import ExcelLockedModal from './components/ExcelLockedModal';
@@ -317,7 +316,7 @@ import {
 import { enqueueWriteback } from './services/rowIdWritebackQueue';
 import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
 import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
-import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, canSnapshotToolSettings, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { pageOperationCheckpoint, pageOperationStepId } from './utils/pageOperationHistory.js';
 import { snapshotAnnotationPages } from './utils/historySnapshotShare';
@@ -1104,7 +1103,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const pageRenderCacheRef = useRef(new PageRenderCache(100)); // Cache up to 100 pages
   const lastScaleRef = useRef(1.0); // Track last scale for cache management
 
-  const { uploadDataFile, downloadDocument: downloadFromStorage, openDocumentStream } = useStorage();
+  const { downloadDocument: downloadFromStorage, openDocumentStream } = useStorage();
   const { updateDocument: updateSupabaseDocument } = useDocuments(null, { enabled: false });
   const { features } = useAuth();
 
@@ -6151,7 +6150,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const surveyMemoryDocKey = surveyMemoryDocumentKey(pdfFile, pdfFilePath);
   const handleSurveyToggle = useCallback(() => {
     if (!features?.advancedSurvey) {
-      showToast('Survey templates are a Pro feature. Please upgrade to use this tool.', 'warn');
+      showToast(withUpgradeHint('Survey templates are part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
       return;
     }
     if (!showSurveyPanel) {
@@ -8499,10 +8498,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     ));
   }, [onBottomToolbarApiChange]);
 
+  // Which tool's remembered settings the bar currently holds. Switching tools
+  // while a mark is still picked (tablet: the just-drawn arrow stays selected)
+  // skips the load below, so the bar still holds the OLD tool's values until
+  // the pick ends — the snapshot below must not capture those and later
+  // restore them onto the new tool (Counter got the arrow's 2 -> 4 px dots).
+  const toolSettingsLoadedForRef = useRef(null);
   // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
   useEffect(() => {
     if (!pdfId) return;
     if (pickBarTool === 'select') return;
+    toolSettingsLoadedForRef.current = activeTool;
     const toolPrefs = getToolPreference(activeTool);
     if (activeTool === 'text-select') {
       const paint = textMarkupPaintByType[focusedTextMarkupPaint]
@@ -8553,7 +8559,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     if (pickBarTool === 'select') {
-      if (activeTool !== 'select' && activeTool !== 'pan' && !toolSettingsBeforePickRef.current) {
+      if (
+        activeTool !== 'select' && activeTool !== 'pan' && !toolSettingsBeforePickRef.current
+        && canSnapshotToolSettings(toolSettingsLoadedForRef.current, activeTool)
+      ) {
         toolSettingsBeforePickRef.current = {
           strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth,
           lineBorderStyle, cloudIntensity, arrowheadStyle, arrowBothEnds,
@@ -15679,7 +15688,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
     const { silent = false } = options;
     if (!features?.excelExport) {
-      if (!silent) showToast('Excel export is a Pro feature. Please upgrade to use this tool.', 'warn');
+      if (!silent) showToast(withUpgradeHint('Excel export is part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
       return;
     }
     // If called from event handler, targetPath will be the event object
@@ -21793,7 +21802,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleExportSpaceToCSV = useCallback((spaceId) => {
     if (!features?.excelExport) {
-      showToast('CSV/Excel Export is a Pro feature. Please upgrade to use this tool.', 'warn');
+      showToast(withUpgradeHint('CSV/Excel export is part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
       return;
     }
     const space = spaces.find(s => s.id === spaceId);
@@ -21835,7 +21844,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleExportSpaceToPDF = useCallback(async (spaceId) => {
     if (!features?.excelExport) {
-      showToast('Space PDF Export is a Pro feature. Please upgrade.', 'warn');
+      showToast(withUpgradeHint('Space PDF export is part of the Pro plan.', 'Please upgrade.'), 'warn');
       return;
     }
     const space = spaces.find(s => s.id === spaceId);
@@ -22724,7 +22733,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setActiveTool(REGION_EDIT_TOOL);
       setShowRegionSelection(true);
     } else {
-      showToast('The region selection tool is a Pro feature. Please upgrade to use this tool.', 'warn');
+      showToast(withUpgradeHint('The region selection tool is part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
     }
     goToPage(pageId, { fallback: 'nearest' });
   }, [spaces, goToPage, canManageSpaces, getRegionEditReturnTool, showSurveyPanel, selectedModuleId, activeRegionId, clearAnnotationSelectionForContextChange]);
@@ -23378,35 +23387,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     );
   }, [pdfId, pdfFile?.id, pdfFile?.cutoverCompletedAt, annotationsByPage]);
 
-  // Save survey data to Supabase Storage
+  // Survey data (marks, spaces, callouts) persists through the Y.Doc
+  // (cloudSyncForceFlush); only the document row's view metadata is saved here.
+  // No <doc>_data.json sidecar: the documents bucket accepts PDF/Excel only.
   const saveSurveyDataToSupabase = useCallback(async (currentAnnotations, currentSpaces, currentTemplate) => {
     if (!pdfFile || !pdfFile.projectId || !pdfId) {
       return;
     }
 
     try {
-      const data = {
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        pdfId,
-        annotations: currentAnnotations, // surveyMarkers
-        annotationsByPage: annotationsByPage,
-        callouts: callouts, // Callout annotations
-        spaces: currentSpaces,
-        entities: entities,
-        templateId: currentTemplate?.id || null,
-        zoomLevel: scale,
-        currentPage: pageNum
-      };
-
-      const jsonString = JSON.stringify(data);
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      const file = new File([blob], `${pdfFile.id}_data.json`, { type: 'application/json' });
-
-      // Upload to storage: {projectId}/{documentId}_data.json
-      const filePath = `${pdfFile.projectId}/${pdfFile.id}_data.json`;
-      await uploadDataFile(file, filePath);
-
       // Update document metadata
       await updateSupabaseDocument(pdfFile.id, {
         current_page: pageNum,
@@ -23418,93 +23407,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       console.error('Error saving survey data to Supabase:', error);
       // Don't alert here to avoid interrupting the user flow, just log
     }
-  }, [pdfFile, pdfId, annotationsByPage, callouts, entities, scale, pageNum, uploadDataFile, updateSupabaseDocument]);
-
-  // Legacy reads may finish after a tab switch. Keep their definitions local
-  // until this viewer is active, then add missing ids without replacing edits.
-  const sidecarEntitiesRef = useRef(entities);
-  sidecarEntitiesRef.current = entities;
-  const [pendingLegacyEntities, setPendingLegacyEntities] = useState(null);
-  useEffect(() => {
-    if (!isActive || !pendingLegacyEntities || typeof setEntities !== 'function') return;
-    setEntities((current) => mergeLegacyEntities(current, pendingLegacyEntities.definitions, pendingLegacyEntities.initialIds));
-    setPendingLegacyEntities(null);
-  }, [isActive, pendingLegacyEntities, setEntities]);
-
-  // Load survey data from Supabase Storage
-  const loadSurveyDataFromSupabase = useCallback(async (doc, prefetchedDataBlob, { restoreViewState = true, isCurrent = () => true, initialEntityIds = (sidecarEntitiesRef.current || []).map((entity) => entity?.id).filter((id) => id != null) } = {}) => {
-    if (!doc || !doc.projectId) return;
-
-    try {
-      const filePath = `${doc.projectId}/${doc.id}_data.json`;
-
-      // Check if file exists by trying to get URL (or just try download and catch error)
-      // We'll just try to download. Open speed (2026-10-04): the PDF load starts
-      // this same download alongside the PDF's own and hands its promise in,
-      // so local restores overlap the PDF read. Cloud documents apply this
-      // optional legacy data in the background without holding the first page.
-      const dataBlob = prefetchedDataBlob !== undefined
-        ? await prefetchedDataBlob
-        : await downloadFromStorage(filePath);
-      if (!dataBlob) return;
-
-      const text = await dataBlob.text();
-      const data = JSON.parse(text);
-      if (!isCurrent()) return;
-
-      // Verify it matches this PDF
-      if (data.pdfId && data.pdfId !== getPDFId(pdfFile)) {
-        console.warn('Loaded data PDF ID mismatch. Ignoring.');
-        // return; // Optional: decide whether to load anyway or warn
-      }
-
-      // Restore state. Supabase Storage is an older sidecar snapshot. For cloud
-      // documents, highlights now come from the durable Y.Doc — restoring the
-      // sidecar would let a stale blob fight the authoritative copy, so this only
-      // runs for local-only documents (no cloud id), mirroring the spaces +
-      // annotations guards below.
-      // KAL-275: no empty-snapshot guard here. The old one only acted for a
-      // cloud document, which never reaches this line (gated on !doc.id).
-      if (data.annotations && !doc.id) {
-        setSurveyMarkers(data.annotations);
-      }
-      // Cloud-sync documents source editable annotations from Y.Doc/Supabase
-      // rows, not this older Supabase Storage survey-data JSON blob. That
-      // blob can hold a pre-cutover annotationsByPage snapshot; restoring it
-      // after Y.Doc hydrate causes the visible 3644 -> 3058 shrink and the
-      // temporary jagged/duplicate annotation state.
-      const shouldRestoreLegacyAnnotationBlob = !doc.id;
-      if (data.annotationsByPage && shouldRestoreLegacyAnnotationBlob) {
-        setAnnotationsByPage(data.annotationsByPage);
-        savedAnnotationsByPageRef.current = data.annotationsByPage;
-      }
-      if (data.callouts && shouldRestoreLegacyAnnotationBlob) {
-        setCallouts(data.callouts);
-      }
-      // Cloud-sync documents now source spaces (and their region polygons) from
-      // the Y.Doc, not this older Storage survey-data JSON blob. Restoring the
-      // sidecar's spaces after Y.Doc hydrate would let a stale blob overwrite the
-      // authoritative durable copy — same hazard the annotationsByPage/callouts
-      // restores above already guard against via shouldRestoreLegacyAnnotationBlob.
-      if (data.spaces && shouldRestoreLegacyAnnotationBlob) {
-        setSpaces(Array.isArray(data.spaces) ? data.spaces : []);
-      }
-      if (Array.isArray(data.entities)) setPendingLegacyEntities({ definitions: data.entities, initialIds: initialEntityIds });
-
-      // Restore view state if available
-      if (restoreViewState) {
-        if (data.zoomLevel) setScale(data.zoomLevel);
-        const restoredPage = coercePageNumber(data.currentPage, numPages || Number.POSITIVE_INFINITY);
-        if (restoredPage) setPageNum(restoredPage);
-      }
-
-      // Template restoration is handled by the document's template_id usually, 
-      // but we can fallback to data.templateId if needed.
-
-    } catch (error) {
-      // It's normal for new documents to not have data yet
-    }
-  }, [downloadFromStorage, pdfFile, numPages]);
+  }, [pdfFile, pdfId, scale, pageNum, updateSupabaseDocument]);
 
   // UX 2026-04-22: File menu → "Export" — prompts for a new
   // file path and writes the currently-open PDF with annotations baked in.
@@ -24174,18 +24077,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const pdfjsReadyPromise = loadPdfjs();
         pdfjsReadyPromise.catch(() => {});
 
-        // Open speed (2026-10-04): the project sidecar read below used to start
-        // only after the PDF was downloaded and parsed, holding the first page
-        // back by one more round trip. Start it now, alongside the PDF download
-        // (the same read, just earlier). Local imports await its restore; cloud
-        // documents apply optional entities in the background.
-        const initialSidecarEntityIds = (sidecarEntitiesRef.current || []).map((entity) => entity?.id).filter((id) => id != null);
-        const surveyDataBlobPromise = pdfFile.projectId
-          ? Promise.resolve()
-            .then(() => downloadFromStorage(`${pdfFile.projectId}/${pdfFile.id}_data.json`))
-            .catch(() => null)
-          : undefined;
-
         // UX: the unsupported-annotations toast is once-per-document-open —
         // clear both pieces on every load so a document without unsupported
         // types never inherits the previous document's notice.
@@ -24392,18 +24283,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setNumPages(pdf.numPages);
         setPageNum(1);
 
-        // Load project data from Supabase if available
-        if (pdfFile.projectId) {
-          // Cloud marks/spaces come from Y.Doc. Keep custom legacy entities,
-          // but do not hold page paint behind this optional sidecar request or
-          // let its old zoom/page override this document's current view.
-          const sidecarRestore = loadSurveyDataFromSupabase(pdfFile, surveyDataBlobPromise, {
-            restoreViewState: !pdfFile.id,
-            initialEntityIds: initialSidecarEntityIds,
-            isCurrent: () => !isCancelled,
-          });
-          if (!pdfFile.id) await sidecarRestore;
-        }
         if (isCancelled) return;
 
         // Calculate page sizes progressively so the first page can render immediately.
@@ -32915,6 +32794,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       return null;
     };
+    // Resolve a callout by id from the synchronous source. calloutsRef only
+    // syncs on render, so a callout added then deleted/edited in the SAME turn
+    // is missing there; deriveCalloutsFromByPage reads annotationsByPageRef,
+    // which the save path writes immediately (the same source
+    // commitCalloutMutation itself derives from). Mirror resolveCalloutPageNumber:
+    // cheap post-render ref first, derive as the fallback.
+    const resolveLiveCallout = (wantedId) => {
+      if (!wantedId) return null;
+      const fromRef = (calloutsRef.current || []).find((c) => c?.id === wantedId);
+      if (fromRef) return fromRef;
+      const derived = deriveCalloutsFromByPage(annotationsByPageRef.current || {});
+      return derived.find((c) => c?.id === wantedId) || null;
+    };
     return registerAgentDocument({
       documentId: pdfFile?.id || null,
       surveyReady: () => agentMarkerStateRef.current.surveyReady,
@@ -33276,12 +33168,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
         return { ok: true };
       },
-      // Delete any normal annotation by id. Gated like a human delete.
+      // Delete any normal annotation by id (shapes, text notes, highlights and
+      // callouts). Gated like a human delete.
       deleteAnnotation: (id) => {
         const { viewerId, documentOwnerId: ownerId, saveAnnotations, getAnnotationsByPage } = agentMarkerStateRef.current;
         const found = findAnnotationById(id);
         if (!found) return { ok: false, reason: 'not-found' };
         const { page, index, obj } = found;
+        // Callouts keep their own list and commit through commitCalloutMutation,
+        // which carries no lock/permission guard of its own — so gate here, the
+        // same way handleCutCallout does, and remove by id from that list.
+        if (obj?.data?.type === 'callout') {
+          const callout = resolveLiveCallout(id);
+          if (!callout) return { ok: false, reason: 'not-found' };
+          if (isUserLocked(callout)) return { ok: false, reason: 'locked' };
+          if (!canModify({ annotation: callout, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
+          const calloutPage = Number(callout.pageNumber ?? resolveCalloutPageNumber(id) ?? page);
+          recordAnnotationCommit({ surface: 'webmcp', source: 'callout:delete', action: 'callout-agent-delete', pageNumber: calloutPage });
+          commitCalloutMutation(calloutPage, (prev) => prev.filter((c) => c.id !== id), { source: 'webmcp:callout:delete', action: 'delete' });
+          return { ok: true };
+        }
         if (!canDelete({ annotation: obj, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
         const pageJson = getAnnotationsByPage()[page] || { objects: [] };
         const objects = (pageJson.objects || []).filter((_, i) => i !== index);
@@ -33289,6 +33195,81 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const result = saveAnnotations(page, { ...pageJson, objects },
           { source: 'webmcp:annotation:delete', action: 'fabric:delete', finalDeletedAnnotationIds: [id] });
         if (result?.lockedBlocked) return { ok: false, reason: 'locked' };
+        return { ok: true };
+      },
+      // Edit a callout's text and/or colors (editor/owner). A text change
+      // re-fits the box, like addCallout, since this path never opens the
+      // editor. Gated and committed the same way a human callout edit is.
+      editCallout: (id, { text, strokeColor, fillColor } = {}) => {
+        const { viewerId, documentOwnerId: ownerId, pageSizes } = agentMarkerStateRef.current;
+        const callout = resolveLiveCallout(id);
+        if (!callout) return { ok: false, reason: 'not-found' };
+        if (isUserLocked(callout)) return { ok: false, reason: 'locked' };
+        if (!canModify({ annotation: callout, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
+        const hasText = text != null && String(text).trim() !== '';
+        const hasStyle = Boolean(strokeColor) || Boolean(fillColor);
+        if (!hasText && !hasStyle) return { ok: false, reason: 'empty' };
+        const page = Number(callout.pageNumber ?? resolveCalloutPageNumber(id));
+        const size = pageSizes?.[page];
+        recordAnnotationCommit({ surface: 'webmcp', source: 'callout:edit', action: 'callout-agent-edit', pageNumber: page });
+        commitCalloutMutation(page, (prev) => prev.map((c) => {
+          if (c.id !== id) return c;
+          let next = { ...c };
+          if (hasStyle) {
+            next.style = {
+              ...c.style,
+              ...(strokeColor ? { borderColor: strokeColor } : {}),
+              ...(fillColor ? { fillColor } : {}),
+            };
+          }
+          if (hasText) {
+            next.text = String(text);
+            if (size) {
+              const fitted = refitCalloutToText(next, size, measureTextLayoutHeight);
+              if (fitted) {
+                next.textBoxWidth = fitted.textBoxWidth;
+                next.textBoxHeight = fitted.textBoxHeight;
+                next.textBoxPosition = fitted.textBoxPosition;
+              }
+            }
+          }
+          return next;
+        }), { source: 'webmcp:callout:edit', action: 'callout-edit-commit' });
+        return { ok: true };
+      },
+      // Recolor a highlight (editor/owner): a hex color and/or opacity (0-100).
+      // Recolours every mark that shares the selection, through the same
+      // text-markup paint transaction a human recolour uses.
+      recolorHighlight: (id, { color, opacity } = {}) => {
+        const { viewerId, documentOwnerId: ownerId, getAnnotationsByPage } = agentMarkerStateRef.current;
+        if (color == null && opacity == null) return { ok: false, reason: 'empty' };
+        const found = findAnnotationById(id);
+        if (!found) return { ok: false, reason: 'not-found' };
+        const { obj } = found;
+        // Underline/strikeout/squiggly/link/redact all store data.type
+        // 'text-markup' too, so match the markupType, not just the family, or
+        // this highlight-only tool would silently restyle them.
+        if (obj?.data?.markupType !== 'highlight') return { ok: false, reason: 'not-a-highlight' };
+        if (!canModify({ annotation: obj, viewerId, documentOwnerId: ownerId })) return { ok: false, reason: 'not-allowed' };
+        const currentOpacity = Number.isFinite(Number(obj.opacity)) ? Number(obj.opacity) : 0.3;
+        const nextColor = color || obj.fill || obj.stroke || '#f4d35e';
+        const nextOpacity = Number.isFinite(Number(opacity))
+          ? Math.max(0.05, Math.min(1, Number(opacity) / 100))
+          : currentOpacity;
+        const tx = buildTextMarkupPaintEditTransaction({
+          annotationsByPage: getAnnotationsByPage(),
+          annotation: obj,
+          color: nextColor,
+          opacity: nextOpacity,
+        });
+        if (!tx) return { ok: false, reason: 'no-change' };
+        recordAnnotationCommit({ surface: 'webmcp', source: 'text-markup:recolor', action: 'highlight-agent-recolor', pageNumber: obj.data?.pageNumber });
+        const committed = commitTextMarkupDocumentTransactionRef.current?.(tx, {
+          source: 'webmcp:highlight:recolor',
+          action: 'text-markup-update',
+          selectionGroupId: obj.data?.selectionGroupId,
+        });
+        if (!committed) return { ok: false, reason: 'locked' };
         return { ok: true };
       },
     });
@@ -41802,7 +41783,7 @@ ${pageBlocks}
                 <button
                   onClick={async () => {
                     if (!features?.sso) {
-                      showToast('OneDrive integration is an Enterprise feature. Please upgrade.', 'warn');
+                      showToast(withUpgradeHint('OneDrive integration is part of the Enterprise plan.', 'Please upgrade.'), 'warn');
                       return;
                     }
                     try {

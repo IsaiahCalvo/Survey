@@ -398,6 +398,9 @@ test('all official real-account entry points use the verified lease loader', () 
   // Seeded fake accounts on the local Docker stack only: the signed-in E2E
   // config refuses any non-local Supabase host before a spec can run.
   const localStackHelpers = new Set(['tests/e2e-signed-in/helpers.mjs']);
+  // Big-document open profiler seed: the same seeded local-stack accounts,
+  // and it refuses any Supabase URL but 127.0.0.1 / localhost.
+  const localStackPerfSeeds = new Set(['scripts/perf/big-doc-seed.mjs']);
   const signedInConfig = readFileSync(join(root, 'playwright.e2e-signed-in.config.mjs'), 'utf8');
   assert.match(signedInConfig, /refusing non-local Supabase host/);
   const credentialMarker =
@@ -438,6 +441,13 @@ test('all official real-account entry points use the verified lease loader', () 
     if (coordinatorOnly.has(relativePath)) continue;
     if (localStackHelpers.has(relativePath) && source.includes('process.env.E2E_SUPABASE_URL')) continue;
     if (disposableOrIsolatedTestProject.has(relativePath)) continue;
+    if (
+      localStackPerfSeeds.has(relativePath)
+      && source.includes('refusing non-local Supabase URL')
+      && source.includes('(127\\.0\\.0\\.1|localhost)')
+    ) {
+      continue;
+    }
     if (inactiveScaffolds.has(relativePath) && source.includes('test.fixme')) continue;
     if (relativePath === 'scripts/kal44-verify.mjs' && source.includes('hubPreview=1')) continue;
     if (
@@ -628,6 +638,9 @@ test('every app-navigation Playwright harness has a machine-enforced auth classi
       classified = true;
     } else if (relativePath.startsWith('tests/e2e-signed-in/')) {
       classified = signedInE2ELocalOnly && source.includes('LOCAL_HOSTS');
+    } else if (relativePath === 'scripts/perf/big-doc-open.mjs') {
+      // Local e2e stack accounts only; every non-local request is aborted.
+      classified = source.includes("['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort(");
     } else if (relativePath.startsWith('debug/scenarios/')) {
       classified = true; // debug config above disables real auto-login.
     } else if (relativePath === 'scripts/prod-smoke.mjs') {

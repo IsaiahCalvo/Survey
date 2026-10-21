@@ -92,6 +92,26 @@ export function createSpeechGate({
   };
 }
 
+/**
+ * The gate while the agent speaks: the person must be clearly louder than
+ * the site noise and than what is left of the agent's voice after echo
+ * cancellation (about a tenth of its level) to cut in.
+ */
+export const BARGE_IN_GATE = { ratio: 3, minLevel: 0.035 };
+
+/**
+ * True when what was heard is mostly the agent's own spoken reply (its voice
+ * leaked back into the mic), so it must not be taken as the person talking.
+ */
+export function heardOwnVoice(heard, spoken) {
+  const words = (t) => String(t || '').toLowerCase().match(/[a-z0-9]+/g) || [];
+  const h = words(heard);
+  if (!h.length) return false;
+  const said = new Set(words(spoken));
+  if (!said.size) return false;
+  return h.filter((w) => said.has(w)).length / h.length >= 0.7;
+}
+
 /** Loudness of one frame of samples (root mean square, 0 to 1). */
 export function frameLevel(samples) {
   if (!samples?.length) return 0;

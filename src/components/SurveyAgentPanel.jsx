@@ -13,7 +13,7 @@ import { classifyMediaFile } from '../services/surveyMediaService';
 import { answerSetFor } from '../services/answerSets.js';
 import { createSurveyAgentToolbox, surveyAgentBridge } from '../agent/surveyAgentTools.js';
 import { makeSurveyAgentCaller, runSurveyAgentTurn, surveyAgentErrorText, usageWarning, withRetries } from '../agent/surveyAgentClient.js';
-import { cleanTranscript, transcriptionHints } from '../agent/voiceLoop.js';
+import { cleanTranscript, heardOwnVoice, spokenReply, transcriptionHints } from '../agent/voiceLoop.js';
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
@@ -44,7 +44,7 @@ const HANDS_FREE_TEXT = {
   listening: 'Listening. Just talk.',
   hearing: 'Hearing you...',
   working: 'Working...',
-  speaking: 'Speaking...',
+  speaking: 'Speaking. Talk to cut in.',
 };
 
 let nextId = 1;
@@ -318,8 +318,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   });
 
   // Hands-free: each clip the mic cuts is heard, answered and (with voice
-  // on) spoken, then the mic listens again. The mic is paused meanwhile so
-  // it never hears the agent's own voice.
+  // on) spoken, then the mic listens again. While the agent speaks the mic
+  // is guarded: speaking up clearly cuts the agent off and is heard next.
   const stopHandsFree = useCallback(() => {
     handsFreeRef.current = false;
     setHandsFree(false);
@@ -330,23 +330,28 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   }, []);
 
   // One clip at a time, in order. The mic keeps listening while the agent
-  // works (people talk on), and pauses only while the agent speaks.
+  // works (people talk on) and while it speaks (people cut in).
   const handsFreeChainRef = useRef(Promise.resolve());
+  const lastSpokenRef = useRef('');
   const handsFreePendingRef = useRef(0);
-  const handleHandsFreeClip = async (clip, durationMs) => {
+  const handleHandsFreeClip = async (clip, durationMs, { cutIn = false } = {}) => {
     if (!handsFreeRef.current) return;
     if (queueRef.current.length) { queueClip(clip, durationMs); return; }
     const text = await transcribe(clip, durationMs);
     if (text === null) { queueClip(clip, durationMs); return; }
     if (!text || !handsFreeRef.current) return;
+    // Cut in on the agent, but it was the agent's own voice leaking back in.
+    if (cutIn && heardOwnVoice(text, lastSpokenRef.current)) return;
     if (turnRef.current) { setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text)); return; }
     const reply = await send(text);
     const mic = micRef.current;
-    if (reply && speakRef.current && handsFreeRef.current) {
-      mic?.pause();
+    // Not while the person is already saying something else.
+    if (reply && speakRef.current && handsFreeRef.current && mic?.guard() !== false) {
+      lastSpokenRef.current = spokenReply(reply);
       setPhase('speaking');
       await speak(reply);
       setPhase('working');
+      mic?.unguard();
     }
     const last = entriesRef.current[entriesRef.current.length - 1];
     // Out of allowance: stop listening and say why.
@@ -355,13 +360,12 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       stopHandsFree();
       return;
     }
-    if (handsFreeRef.current && micRef.current === mic) mic?.resume();
   };
-  const onHandsFreeClip = (clip, durationMs) => {
+  const onHandsFreeClip = (clip, durationMs, info) => {
     handsFreePendingRef.current += 1;
     setPhase('working');
     handsFreeChainRef.current = handsFreeChainRef.current
-      .then(() => handleHandsFreeClipRef.current(clip, durationMs))
+      .then(() => handleHandsFreeClipRef.current(clip, durationMs, info))
       .catch(() => {})
       .finally(() => {
         handsFreePendingRef.current -= 1;
@@ -379,8 +383,9 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     if (speechRef.current) speechRef.current.stop();
     try {
       micRef.current = await startHandsFreeMic({
-        onClip: (clip, ms) => onHandsFreeClipRef.current(clip, ms),
+        onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
         onHearing: (on) => setHearing(on),
+        onBargeIn: () => stopSpeaking(),
       });
       handsFreeRef.current = true;
       setHandsFree(true);

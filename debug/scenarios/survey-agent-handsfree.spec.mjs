@@ -23,11 +23,10 @@ const root = resolve(import.meta.dirname, '..', '..');
 const PDF_FILE = 'print-fidelity.pdf';
 const CLIP = join(root, 'tests', 'fixtures', 'voice', 'two_turns.wav');
 const SAID = ['D-117, card reader installed.', 'No, D-118.'];
-// What the server voice sends back: a real 0.4 s WAV (a soft tone). Short,
-// so the next thing said in the clip is not spoken over; the mic is off
-// while the agent talks.
-const VOICE_WAV = (() => {
-  const n = 16_000 * 0.4;
+// What the server voice sends back: a real WAV (a soft tone). 0.4 s by
+// default, so the next thing said comes after it; 8 s to test cutting in.
+const voiceWav = (seconds) => {
+  const n = 16_000 * seconds;
   const out = Buffer.alloc(44 + n * 2);
   out.write('RIFF', 0); out.writeUInt32LE(36 + n * 2, 4); out.write('WAVEfmt ', 8);
   out.writeUInt32LE(16, 16); out.writeUInt16LE(1, 20); out.writeUInt16LE(1, 22);
@@ -35,7 +34,8 @@ const VOICE_WAV = (() => {
   out.write('data', 36); out.writeUInt32LE(n * 2, 40);
   for (let i = 0; i < n; i += 1) out.writeInt16LE(Math.round(Math.sin(i / 8) * 3000), 44 + i * 2);
   return out.toString('base64');
-})();
+};
+const VOICE_WAV = voiceWav(0.4);
 const CHROMIUM = process.env.PW_CHROMIUM_PATH || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 
 test.use({
@@ -104,7 +104,7 @@ async function transcribeClip(body, index) {
 }
 
 // A scripted model that reads the newest message the way the real one should.
-function mockServer(page, log) {
+function mockServer(page, log, { longVoice = false } = {}) {
   let clips = 0;
   return page.route('**/functions/v1/survey-agent', async (route) => {
     if (route.request().method() === 'OPTIONS') {
@@ -122,6 +122,7 @@ function mockServer(page, log) {
     // model is not set up): the device voice must take over.
     if (body.action === 'speak') {
       log.speak.push(body.text);
+      if (longVoice) return reply({ audio: voiceWav(8), mime: 'audio/wav' });
       if (log.speak.length === 1) return reply({ audio: VOICE_WAV, mime: 'audio/wav' });
       return route.fulfill({ status: 502, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'speech_unavailable' }) });
     }
@@ -225,4 +226,41 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
   expect(await page.evaluate(() => window.__played)).toBe(1);
   expect(await page.evaluate(() => window.__spoken)).toEqual(['Took that back from D 117 and set card reader to Y on D 118.']);
   console.log('HANDSFREE', JSON.stringify(log.clips.map(({ hints: _h, ...c }) => c)));
+});
+
+test('hands-free: talking over a long spoken reply stops it, and what was said is heard', async ({ page }) => {
+  const log = { clips: [], turns: [], speak: [] };
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    window.__played = 0;
+    window.__stopped = 0;
+    const { start, stop } = AudioBufferSourceNode.prototype;
+    AudioBufferSourceNode.prototype.start = function (...args) { window.__played += 1; return start.apply(this, args); };
+    AudioBufferSourceNode.prototype.stop = function (...args) { window.__stopped += 1; return stop.apply(this, args); };
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '1');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  // Every reply is 8 s long: "No, D-118" comes 2 s after the first thing
+  // said, well inside the first reply.
+  await mockServer(page, log, { longVoice: true });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Survey agent: talk or type to fill items' }).click();
+  const panel = page.getByRole('dialog', { name: 'Survey agent' });
+  await panel.getByRole('button', { name: 'Hands-free' }).click();
+
+  await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
+  await expect(panel.getByRole('status').first()).toContainText('Talk to cut in', { timeout: 10_000 });
+  // The correction, said over the reply: the reply stops and it is heard.
+  await expect(panel.getByText(/set card reader to Y on D-118/)).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d118')).toBe('Y');
+  await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d117')).toBe(null);
+  expect(await page.evaluate(() => window.__stopped)).toBeGreaterThanOrEqual(1);
+  expect(log.clips.length).toBe(2);
+  await panel.getByRole('button', { name: 'Stop hands-free' }).click();
 });

@@ -129,6 +129,11 @@ export const supabase = {
     "import { coalesceRead } from './requestCoalescer.js';",
     `import { coalesceRead } from ${JSON.stringify(coalescerUrl)};`,
   );
+  source = replaceOrThrow(
+    source,
+    "import { withUpgradeHint } from '../utils/accountPlatform';",
+    `import { withUpgradeHint } from ${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src/utils/accountPlatform.js')).href)};`,
+  );
 
   const modulePath = path.join(tempDir, 'useSubscriptionLimits.mjs');
   await writeFile(modulePath, source);

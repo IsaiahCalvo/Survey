@@ -551,6 +551,12 @@
   font-family: inherit;
 }
 
+/* Delete account paints 34px; on any touch screen (phone or tablet) a
+   finger needs 44. Mouse/trackpad keeps 34. */
+@media (pointer: coarse) {
+  .account-btn-danger { min-height: 44px; }
+}
+
 .account-btn-danger:hover:not(:disabled) {
   background: var(--danger-soft);
   border-color: var(--danger);
@@ -859,11 +865,6 @@
      top natively, so only the bottom inset is added there). */
   .account-settings-overlay {
     padding: 0;
-  }
-
-  /* Delete account measured 34px tall on a phone; a finger needs 44. */
-  .account-btn-danger {
-    min-height: 44px;
   }
 
   .account-settings-modal {

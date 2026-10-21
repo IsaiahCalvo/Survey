@@ -22,14 +22,13 @@ test('shared prompt and confirm dialog buttons get 44px touch pads', () => {
 
   const css = read('src/home/hub.css');
   const coarse = css.slice(css.indexOf('@media (pointer: coarse) {\n  .hub-icon-btn:is('));
-  assert.match(coarse, /\.dialog-close-touch-pad::after \{\s*content: '';\s*position: absolute;\s*inset: -10px;/);
+  assert.match(coarse, /\.dialog-close-touch-pad::after \{\s*inset: -11px;/);
   assert.match(coarse, /\.dialog-touch-pad::after \{\s*content: '';\s*position: absolute;\s*inset: -9px 0;/);
 });
 
-test('Settings Delete account button is 44px tall on a phone', () => {
+test('Settings Delete account button is 44px tall on any touch screen', () => {
   const css = read('src/components/AccountSettings.css');
-  const mobile = css.slice(css.indexOf('@media (max-width: 768px)'));
-  assert.match(mobile.slice(0, mobile.indexOf('\n}\n')), /\.account-btn-danger \{\s*min-height: 44px;/);
+  assert.match(css, /@media \(pointer: coarse\) \{\s*\.account-btn-danger \{ min-height: 44px; \}/);
 });
 
 test('a delete request that never reaches the server fails in plain words', async () => {

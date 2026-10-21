@@ -13,6 +13,7 @@
  * Spaces reorder via dnd-kit SortableRearrangeList with optimistic ordering
  * and frame-capture debug hooks.
  */
+import { isPurchaseUiHidden } from '../utils/accountPlatform.js';
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons';
@@ -1303,7 +1304,7 @@ const SpacesPanel = ({
   const expandedSpaceId = Array.from(expandedSpaces)[0] || null;
   const spacesExportTargetId = selectedSpaceId || activeSpaceId || expandedSpaceId || orderedSpaces[0]?.id || null;
   const spacesExportTarget = orderedSpaces.find((space) => space.id === spacesExportTargetId) || null;
-  const createSpaceLabel = canManageSpaces ? 'Create space' : 'Upgrade to Pro to create spaces';
+  const createSpaceLabel = canManageSpaces ? 'Create space' : (isPurchaseUiHidden() ? 'Creating spaces is part of the Pro plan' : 'Upgrade to Pro to create spaces');
   const exportSpaceLabel = spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export';
   const activeSpace = activeSpaceId ? orderedSpaces.find((space) => space.id === activeSpaceId) || null : null;
 

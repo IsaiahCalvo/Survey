@@ -60,6 +60,9 @@ class ToolError extends Error {}
  * attachments: Map of attachment id -> { file, kind, name } the person added
  * in this chat. documentId: the document the turn started on; once the person
  * opens another one, every tool refuses, so a slow reply cannot land there.
+ * extraTools: more tools ({ name, execute(args) }, for example the shared
+ * annotation tools), named without the WebMCP survey_ prefix here. Where they
+ * take a page and a spot, near_item_id or near_plan_match_id can stand in.
  * Returns { run(name, input) -> { content, isError, change }, undo(changes) }.
  * A change is { itemId, documentId, label, fields }: each field holds the
  * value before and the value this tool wrote, so undo only reverts a field
@@ -70,6 +73,7 @@ export function createSurveyAgentToolbox({
   attachments = new Map(),
   documentId,
   undoLastTurn = null,
+  extraTools = [],
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -91,6 +95,36 @@ export function createSurveyAgentToolbox({
   // Plan matches from find_on_plan in this chat, so create_item takes an id
   // instead of coordinates the model could make up.
   const planMatches = new Map();
+  const extras = new Map((extraTools || []).map((t) => [String(t.name).replace(/^survey_/, ''), t]));
+
+  // A spot just right of an item's box (or of a tag found on the plan), or
+  // left of it when that runs off the page: where a person means by "a note
+  // by D-117". PDF points from the page's top-left, like the plan boxes.
+  const GAP = 8;
+  const NOTE_ROOM = 160;
+  const placeNear = (input) => {
+    const { near_item_id: itemId, near_plan_match_id: matchId, ...rest } = input;
+    if (!itemId && !matchId) return rest;
+    let page;
+    let box;
+    if (itemId) {
+      const marker = markerOf(bridge(), itemId);
+      if (!marker.pageNumber || !marker.bounds) throw new ToolError(`${nameOf(marker)} is not placed on the plan, so there is nothing to put this next to.`);
+      page = marker.pageNumber;
+      box = marker.bounds;
+    } else {
+      const match = planMatches.get(matchId);
+      if (!match) throw new ToolError(`No plan match ${matchId}. Use find_on_plan first.`);
+      page = match.page;
+      box = match.box;
+    }
+    const size = bridge().getPageSize?.(page) || null;
+    const right = box.x + box.width + GAP;
+    const fitsRight = !size || right + NOTE_ROOM <= size.width;
+    const x = fitsRight ? right : Math.max(0, box.x - GAP - NOTE_ROOM);
+    const y = Math.max(0, size ? Math.min(box.y, size.height - 1) : box.y);
+    return { ...rest, page: rest.page ?? page, x: rest.x ?? x, y: rest.y ?? y };
+  };
 
   const tools = {
     get_survey_context() {
@@ -333,6 +367,15 @@ export function createSurveyAgentToolbox({
 
   return {
     async run(name, input) {
+      const extra = extras.get(name);
+      if (extra) {
+        try {
+          const content = await extra.execute(placeNear(input || {}));
+          return { isError: false, content: typeof content === 'string' ? content : out(content) };
+        } catch (err) {
+          return { content: err?.message || 'That failed.', isError: true };
+        }
+      }
       const fn = tools[name];
       if (!fn) return { content: `Unknown tool ${name}.`, isError: true };
       try {

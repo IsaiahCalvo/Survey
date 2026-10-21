@@ -117,6 +117,7 @@ export function PromptModal({
             )}
             <input
               ref={inputRef}
+              className="dialog-prompt-input"
               type="text"
               aria-label={label || title || undefined}
               value={value}

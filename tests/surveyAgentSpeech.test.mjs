@@ -41,18 +41,22 @@ test('replies play in the server voice, short and plain', async () => {
   assert.deepEqual(spoken, []);
 });
 
-test('when the server voice fails, the device voice says it, and stays in use', async () => {
-  const { played, spoken } = fakeBrowser();
-  unlockPlayback();
-  let calls = 0;
-  const voice = createAgentVoice({ serverVoice: true, call: async () => { calls += 1; throw new SurveyAgentError('speech_unavailable'); } });
-  await voice.speak('First reply.');
-  await voice.speak('Second reply.');
-  assert.equal(calls, 1, 'the server voice is not tried again this session');
-  assert.deepEqual(spoken, ['First reply.', 'Second reply.']);
-  assert.equal(played.length, 0);
-  assert.equal(voice.usesServer, false);
-});
+// Not set up (for example the model's terms not accepted), or the free
+// tier's daily limit for everyone (about 100 replies) reached.
+for (const code of ['speech_unavailable', 'speech_limit_reached']) {
+  test(`when the server voice fails (${code}), the device voice says it, and stays in use`, async () => {
+    const { played, spoken } = fakeBrowser();
+    unlockPlayback();
+    let calls = 0;
+    const voice = createAgentVoice({ serverVoice: true, call: async () => { calls += 1; throw new SurveyAgentError(code); } });
+    await voice.speak('First reply.');
+    await voice.speak('Second reply.');
+    assert.equal(calls, 1, 'the server voice is not tried again this session');
+    assert.deepEqual(spoken, ['First reply.', 'Second reply.']);
+    assert.equal(played.length, 0);
+    assert.equal(voice.usesServer, false);
+  });
+}
 
 test('a dropped connection falls back once but keeps trying the server voice', async () => {
   const { spoken } = fakeBrowser();
