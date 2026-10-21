@@ -202,3 +202,37 @@ export function applyPageScale(pageJson, scale, extraObjects = []) {
     : obj));
   return { ...(pageJson || {}), objects: [...next, ...extraObjects] };
 }
+
+/**
+ * Screen-constant layout for a measure label pill (Drawboard parity).
+ * `unitsPerPx` is the layer's inverseScale (page units per screen px), so the
+ * label reads at a fixed ~12 px at any zoom with no zoom coordination: it is
+ * just multiplied into page units. A length label sits at the line's midpoint,
+ * pushed perpendicular to the line toward screen-up, clear of the line and of
+ * its endpoint handles; an area label sits on the centroid.
+ */
+export const MEASURE_LABEL_FONT_PX = 12;
+export const MEASURE_LABEL_PAD_X_PX = 6;
+export const MEASURE_LABEL_PAD_Y_PX = 3;
+export const MEASURE_LABEL_GAP_PX = 8;
+const MEASURE_LABEL_CHAR_EM = 0.6;
+
+export function layoutMeasureLabel(label, unitsPerPx = 1) {
+  if (!label) return null;
+  const u = Number.isFinite(unitsPerPx) && unitsPerPx > 0 ? unitsPerPx : 1;
+  const fontSize = MEASURE_LABEL_FONT_PX * u;
+  const width = (String(label.text).length * MEASURE_LABEL_CHAR_EM * MEASURE_LABEL_FONT_PX
+    + 2 * MEASURE_LABEL_PAD_X_PX) * u;
+  const height = (MEASURE_LABEL_FONT_PX + 2 * MEASURE_LABEL_PAD_Y_PX) * u;
+  let cx = label.x;
+  let cy = label.y;
+  if (label.kind === 'length') {
+    // angle is normalized to [-90, 90], so this normal always points screen-up
+    // (or left for a vertical line, matching the rotated text's "up").
+    const rad = ((label.angle || 0) * Math.PI) / 180;
+    const offset = height / 2 + MEASURE_LABEL_GAP_PX * u;
+    cx += Math.sin(rad) * offset;
+    cy -= Math.cos(rad) * offset;
+  }
+  return { cx, cy, fontSize, width, height, radius: height / 2, angle: label.angle || 0 };
+}
