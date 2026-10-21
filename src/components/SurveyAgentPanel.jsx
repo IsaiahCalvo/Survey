@@ -26,6 +26,7 @@ import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcripti
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { letGoOfWarmMic, startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { createTurnJoiner, joinTurnText, joinWavs } from '../agent/turnJoiner.js';
+import { createHoldToTalk } from '../agent/holdToTalk.js';
 import { createVoiceLog, loggedCaller, sendVoiceLog } from '../agent/voiceLog.js';
 import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
@@ -796,19 +797,58 @@ export default function SurveyAgentPanel({
 
   const canTalk = Boolean(status?.transcription) || Boolean(browserSpeech());
   const recording = recorder.state !== 'idle' || listening;
+  const startTalk = () => {
+    if (recorder.state !== 'idle') return;
+    pttHearingRef.current?.stop();
+    pttHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
+    recorder.start();
+  };
+  // Let go before the mic is open (the permission prompt): send once it is.
+  const stopWhenOpenRef = useRef(false);
+  const stopTalk = () => {
+    if (recorder.state === 'starting') stopWhenOpenRef.current = true;
+    else recorder.stop();
+  };
+  useEffect(() => {
+    if (recorder.state === 'recording' && stopWhenOpenRef.current) recorder.stop();
+    if (recorder.state !== 'starting') stopWhenOpenRef.current = false;
+  }, [recorder.state, recorder]);
+  const cancelTalk = () => {
+    stopWhenOpenRef.current = false;
+    pttHearingRef.current?.stop();
+    pttHearingRef.current = null;
+    recorder.cancel();
+  };
   const toggleTalk = () => {
     unlockPlayback();
     if (status?.transcription) {
       if (recorder.state === 'recording') recorder.stop();
-      else if (recorder.state === 'idle') {
-        pttHearingRef.current?.stop();
-        pttHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
-        recorder.start();
-      }
+      else startTalk();
     } else {
       toggleBrowserSpeech();
     }
   };
+  // Hold the mic to talk, let go to send, slide away to cancel; a tap still
+  // starts and the next tap sends. Only for the recorder: the browser's own
+  // speech recognition keeps tap on, tap off.
+  const [holdUi, setHoldUi] = useState({ holding: false, cancelling: false });
+  const holdRef = useRef(null);
+  const talkRef = useRef(null);
+  talkRef.current = { startTalk, stopTalk, cancelTalk, recording: () => recorder.state !== 'idle' };
+  if (!holdRef.current) {
+    holdRef.current = createHoldToTalk({
+      start: () => talkRef.current.startTalk(),
+      stop: () => talkRef.current.stopTalk(),
+      cancel: () => talkRef.current.cancelTalk(),
+      recording: () => talkRef.current.recording(),
+      onChange: setHoldUi,
+    });
+  }
+  const holdable = Boolean(status?.transcription);
+  // Only the finger that started the press counts: a second touch must not
+  // take over (and send what the first was cancelling).
+  const holdPointerRef = useRef(null);
+  const ownPointer = (e) => e.pointerId === holdPointerRef.current;
 
   const addFiles = (fileList) => {
     const added = [];
@@ -1036,14 +1076,43 @@ export default function SurveyAgentPanel({
         {canTalk && (
           <button
             type="button"
-            className={`survey-agent__icon survey-agent__mic${recording ? ' is-on' : ''}`}
+            className={`survey-agent__icon survey-agent__mic${recording ? ' is-on' : ''}${holdUi.cancelling ? ' is-cancel' : ''}`}
             aria-label={recording ? 'Stop and send' : 'Talk'}
+            title={holdable && !recording ? 'Hold to talk, or tap' : undefined}
             aria-pressed={recording}
             disabled={!ready || handsFree || ((busy || transcribing) && !recording)}
-            onClick={toggleTalk}
+            onPointerDown={holdable ? (e) => {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              if (holdPointerRef.current !== null) return;
+              holdPointerRef.current = e.pointerId;
+              try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* pointer already gone */ }
+              unlockPlayback();
+              holdRef.current.down(e.clientX, e.clientY, e.timeStamp);
+            } : undefined}
+            onPointerMove={holdable ? (e) => { if (ownPointer(e)) holdRef.current.move(e.clientX, e.clientY, e.timeStamp); } : undefined}
+            onPointerUp={holdable ? (e) => {
+              if (!ownPointer(e)) return;
+              holdPointerRef.current = null;
+              holdRef.current.up(e.timeStamp);
+            } : undefined}
+            onPointerCancel={holdable ? (e) => {
+              if (!ownPointer(e)) return;
+              holdPointerRef.current = null;
+              holdRef.current.abort();
+            } : undefined}
+            onContextMenu={holdable ? (e) => e.preventDefault() : undefined}
+            // A pointer press is handled above; a keyboard press (detail 0)
+            // or the browser's own speech still toggles here.
+            onClick={(e) => { if (!holdable || e.detail === 0) toggleTalk(); }}
           >
             <Icon name="mic" size={18} color="currentColor" />
           </button>
+        )}
+        {holdUi.holding && (
+          <span className="survey-agent__hold-hint" role="status">
+            {holdUi.cancelling ? 'Let go to cancel' : 'Let go to send. Slide away to cancel.'}
+          </span>
         )}
         <button type="submit" className="survey-agent__send" disabled={!ready || busy || transcribing || (!draft.trim() && !pendingFiles.length)}>
           Send

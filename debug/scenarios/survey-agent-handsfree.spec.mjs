@@ -460,3 +460,85 @@ test('hands-free with no signal: what is said is saved, said back as saved, and 
   await expect(panel.getByText('Voice message')).toHaveCount(0);
   await panel.getByRole('button', { name: 'Stop hands-free' }).click();
 });
+
+// The chat mic: hold to talk and let go to send; slide away to cancel; a
+// quick tap still starts, and the next tap sends.
+test('chat mic: hold to talk, slide away to cancel, tap still toggles', async ({ page }) => {
+  const log = { clips: [], turns: [], speak: [] };
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await mockServer(page, log);
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
+  // The fixture's "Redactions are not applied" notice sits over the chat's
+  // foot. Dismissing it is a tap outside the chat, so open the chat again.
+  await page.getByRole('button', { name: 'Dismiss' }).first().click({ timeout: 5_000 }).catch(() => {});
+  if (!(await panel.isVisible())) await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const mic = panel.locator('.survey-agent__mic');
+  await expect(mic).toBeEnabled();
+  await expect(mic).toHaveAttribute('title', 'Hold to talk, or tap');
+  // hover() waits for the chat to finish sliding in.
+  await mic.hover();
+  const box = await mic.boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  // Hold, talk, let go: sent.
+  await page.mouse.down();
+  await expect(panel.getByRole('status').filter({ hasText: 'Let go to send' })).toBeVisible();
+  await expect(mic).toHaveAttribute('aria-pressed', 'true');
+  await page.waitForTimeout(2500);
+  await page.mouse.up();
+  await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
+  expect(log.clips).toHaveLength(1);
+  await expect(mic).toHaveAttribute('aria-pressed', 'false');
+
+  // Hold, slide away, let go: nothing is sent.
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.waitForTimeout(600);
+  await page.mouse.move(cx, cy - 120, { steps: 4 });
+  await expect(panel.getByRole('status').filter({ hasText: 'Let go to cancel' })).toBeVisible();
+  await expect(mic).toHaveClass(/is-cancel/);
+  await page.mouse.up();
+  await expect(mic).toHaveAttribute('aria-pressed', 'false');
+  await page.waitForTimeout(1500);
+  expect(log.clips).toHaveLength(1);
+
+  // Two fingers: the first slides away to cancel; a second finger's tap
+  // must not take over and send.
+  const touch = (type, pointerId, x, y) => mic.dispatchEvent(type, {
+    pointerId, pointerType: 'touch', isPrimary: pointerId === 7, button: type === 'pointermove' ? -1 : 0, clientX: x, clientY: y, bubbles: true,
+  });
+  await touch('pointerdown', 7, cx, cy);
+  await expect(mic).toHaveAttribute('aria-pressed', 'true');
+  await page.waitForTimeout(600);
+  await touch('pointermove', 7, cx, cy - 120);
+  await expect(mic).toHaveClass(/is-cancel/);
+  await touch('pointerdown', 8, cx, cy);
+  await touch('pointerup', 8, cx, cy);
+  await expect(mic).toHaveClass(/is-cancel/);
+  await touch('pointerup', 7, cx, cy - 120);
+  await expect(mic).toHaveAttribute('aria-pressed', 'false');
+  await page.waitForTimeout(1500);
+  expect(log.clips).toHaveLength(1);
+
+  // Tap to start, tap again to send.
+  await mic.click();
+  await expect(mic).toHaveAttribute('aria-pressed', 'true');
+  await page.waitForTimeout(1000);
+  await expect(mic).toHaveAttribute('aria-pressed', 'true');
+  await mic.click();
+  await expect.poll(() => log.clips.length, { timeout: 15_000 }).toBe(2);
+  await expect(mic).toHaveAttribute('aria-pressed', 'false');
+});

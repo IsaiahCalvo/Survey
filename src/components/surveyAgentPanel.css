@@ -74,6 +74,14 @@
 .survey-agent__icon:hover:not(:disabled) { background: var(--hover, rgba(0, 0, 0, 0.05)); }
 .survey-agent__icon:disabled { opacity: 0.4; cursor: default; }
 .survey-agent__mic.is-on { color: #fff; background: var(--accent-red, #d92d20); }
+/* Held on a phone: no scrolling, text picking or long-press menu. */
+.survey-agent__mic { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.survey-agent__mic.is-cancel { color: #fff; background: var(--text-muted, #667085); }
+.survey-agent__hold-hint {
+  position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px);
+  padding: 6px 10px; border-radius: 8px; font-size: 13px; text-align: center;
+  color: #fff; background: rgba(16, 24, 40, 0.88); pointer-events: none;
+}
 .survey-agent__list {
   flex: 1;
   overflow-y: auto;
@@ -167,6 +175,7 @@
 }
 .survey-agent__chip button { border: 0; background: transparent; color: var(--text-2); cursor: pointer; display: inline-flex; }
 .survey-agent__composer {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 4px;
