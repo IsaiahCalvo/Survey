@@ -87,7 +87,24 @@ const QUIET_LOADING_CSS = `
   }
   html[data-native-shell="expo"] .quiet-loading-text { --quiet-phone-header-h: 34px; }
   .survey-pdfjs-viewer .quiet-loading-text { top: 50%; }
-  .quiet-loading-bar { display: none; }
+  /* 2026-10-21: the "Opening <name>…" bar + caption pin as ONE stack at that
+     same middle, so the bar shows on phones too and the two never part. */
+  .quiet-loading-stack {
+    --quiet-phone-header-h: calc(34px + env(safe-area-inset-top, 0px));
+    --quiet-phone-dock-h: calc(36px + max(10px, var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
+    position: fixed;
+    /* the page area starts right of the 36px tool rail, which is up at once */
+    left: calc(50% + 18px);
+    top: calc((var(--quiet-phone-header-h) + 100% - var(--quiet-phone-dock-h)) / 2);
+    transform: translate(-50%, -50%);
+    width: max-content;
+    max-width: 80vw;
+    height: auto;
+    padding: 0;
+  }
+  html[data-native-shell="expo"] .quiet-loading-stack { --quiet-phone-header-h: 34px; }
+  .survey-pdfjs-viewer .quiet-loading-stack { left: 50%; top: 50%; }
+  .quiet-loading-stack .quiet-loading-text { position: static; transform: none; max-width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   .quiet-loading-text, .quiet-loading-bar { animation-duration: 1ms; }

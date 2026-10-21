@@ -40,7 +40,8 @@ body[data-readonly="true"] [data-tool-toolbar="true"],
 /* w44 (rows flipped): the settings moved out of the tool bar into the
  * formatting row below it; they stay gated exactly as they were. */
 body[data-readonly="true"] [data-chrome-format-row="true"] > [data-chrome-settings-holder="true"],
-body[data-readonly="true"] [data-undo-redo-controls="true"] {
+body[data-readonly="true"] [data-undo-redo-controls="true"],
+body[data-readonly="true"] [data-readonly-disabled="true"] {
   opacity: 0.5;
   pointer-events: none;
   cursor: not-allowed;
