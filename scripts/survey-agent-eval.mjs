@@ -3,6 +3,9 @@
 // app uses, on an in-memory survey. Prints pass/fail per case.
 //   GROQ_API_KEY=... node scripts/survey-agent-eval.mjs
 //   SURVEY_AGENT_BASE_URL=... SURVEY_AGENT_API_KEY=... SURVEY_AGENT_MODEL=... node scripts/survey-agent-eval.mjs
+// Or through a deployed survey-agent function, signed in as a tester:
+//   SURVEY_AGENT_FUNCTION_URL=https://<ref>.supabase.co/functions/v1/survey-agent \
+//   SURVEY_AGENT_JWT=<access token> SUPABASE_ANON_KEY=... node scripts/survey-agent-eval.mjs
 import { readFile } from 'node:fs/promises';
 import { createSurveyAgentToolbox } from '../src/agent/surveyAgentTools.js';
 import { runSurveyAgentTurn } from '../src/agent/surveyAgentClient.js';
@@ -14,8 +17,13 @@ import {
   sanitizeAgentMessages,
 } from '../supabase/functions/_shared/surveyAgentSpec.js';
 
+const functionUrl = process.env.SURVEY_AGENT_FUNCTION_URL;
 const key = process.env.SURVEY_AGENT_API_KEY || process.env.GROQ_API_KEY;
-if (!key) {
+if (functionUrl && !process.env.SURVEY_AGENT_JWT) {
+  console.error('Set SURVEY_AGENT_JWT to a signed-in tester\'s access token.');
+  process.exit(2);
+}
+if (!functionUrl && !key) {
   console.error('Set GROQ_API_KEY (or SURVEY_AGENT_API_KEY with SURVEY_AGENT_BASE_URL).');
   process.exit(2);
 }
@@ -41,7 +49,22 @@ function memoryBridge() {
   };
 }
 
+async function callFunction(payload) {
+  const res = await fetch(functionUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.SURVEY_AGENT_JWT}`,
+      apikey: process.env.SUPABASE_ANON_KEY || '',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`survey-agent ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  return res.json();
+}
+
 async function call(payload) {
+  if (functionUrl) return callFunction(payload);
   const clean = sanitizeAgentMessages(payload.messages);
   if (clean.error) throw new Error(`invalid conversation: ${clean.error}`);
   const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -96,5 +119,5 @@ for (const c of fixture.cases) {
     console.log(`ERROR "${c.say}": ${err.message}`);
   }
 }
-console.log(`\n${passed}/${fixture.cases.length} passed with ${model}`);
+console.log(`\n${passed}/${fixture.cases.length} passed with ${functionUrl ? 'the deployed survey-agent function' : model}`);
 process.exit(passed === fixture.cases.length ? 0 : 1);
