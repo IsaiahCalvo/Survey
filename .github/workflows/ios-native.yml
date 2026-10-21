@@ -151,8 +151,16 @@ jobs:
           disable-animations: true
           script: |
             mkdir -p "$OUT"
+            # A slow CI emulator pops "Pixel Launcher isn't responding" and
+            # monkey can abort with 0 events, so start the activity directly
+            # and retry until the process exists.
+            adb shell settings put global hide_error_dialogs 1
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            adb shell monkey -p "$APP_ID" -c android.intent.category.LAUNCHER 1
+            for i in 1 2 3 4 5; do
+              adb shell am start -W -n "$APP_ID/.MainActivity" || true
+              sleep 5
+              adb shell pidof "$APP_ID" && break
+            done
             sleep 10; adb exec-out screencap -p > "$OUT/launch-10s.png"
             sleep 15; adb exec-out screencap -p > "$OUT/launch-25s.png"
             sleep 20; adb exec-out screencap -p > "$OUT/launch-45s.png"
