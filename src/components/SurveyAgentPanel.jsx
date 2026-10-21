@@ -301,7 +301,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
             if (job.entryId) markEntry(job.entryId, { text: 'Voice message (could not hear it)', waiting: false });
           } else {
             if (job.entryId) markEntry(job.entryId, { text });
-            const said = { said: text, files: [], entryId: job.entryId, docKey: job.docKey, waitId: job.waitId };
+            const said = { said: text, files: [], entryId: job.entryId, docKey: job.docKey, waitId: job.waitId, flushing: true };
             reply = await runJob(said);
             if (queueRef.current.includes(said)) {
               // Heard, but the turn has to wait again: keep the words, not the audio.
