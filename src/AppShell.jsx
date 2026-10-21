@@ -95,6 +95,7 @@ import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
 import { LINE_STYLE_OPTIONS, LINE_STYLE_SAMPLE_ICONS } from './utils/lineStyleOptions.js';
 import SelectionQuickBar from './components/SelectionQuickBar.jsx';
+import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -2860,6 +2861,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   // wider than its neighbours — it lost the caret, so it lost
                   // the extra width too.
                   className={`btn chrome-control ${isActive ? 'btn-active' : 'btn-default'}`}
+                  aria-pressed={isActive}
                   style={isSelect ? { position: 'relative' } : undefined}
                 >
                   {/* PASS 7 (boards 8-14): ONE glyph size for the whole tool
@@ -2907,7 +2909,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                 }}
                 {...chromeTip('Draw', 'below')}
-                className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'draw' || ['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
+                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'eraser'] }) ? 'btn-active' : 'btn-default'}`}
+                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'draw', toolIds: ['pen', 'highlighter', 'text-highlight', 'eraser'] })}
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Draw"
@@ -2929,7 +2932,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                 }}
                 {...chromeTip('Shapes', 'below')}
-                className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'shape' || ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
+                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'shape', toolIds: ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'] }) ? 'btn-active' : 'btn-default'}`}
+                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'shape', toolIds: ['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'] })}
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Shapes"
@@ -2950,7 +2954,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   }
                 }}
                 {...chromeTip('Text', 'below')}
-                className={`btn chrome-control ${bottomToolbarApi.activeTool !== 'pan' && bottomToolbarApi.activeTool !== 'select' && (bottomToolbarApi.activeCategoryDropdown === 'review' || REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) ? 'btn-active' : 'btn-default'}`}
+                className={`btn chrome-control ${isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'review', toolIds: REVIEW_TOOL_IDS }) ? 'btn-active' : 'btn-default'}`}
+                aria-pressed={isToolGroupPressed({ activeTool: bottomToolbarApi.activeTool, activeCategoryDropdown: bottomToolbarApi.activeCategoryDropdown, group: 'review', toolIds: REVIEW_TOOL_IDS })}
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Text"
