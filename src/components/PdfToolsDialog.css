@@ -54,3 +54,9 @@
   .pdft-pbtns button{min-height:44px;min-width:28px}
   .pdft-pages{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+/* Phones: four 44px page buttons don't fit across a page card at 320px, so
+   they sit two by two. */
+@media (max-width:640px){
+  .pdft-pbtns{display:grid;grid-template-columns:repeat(2,44px);gap:4px}
+  .pdft-pbtns button{width:44px;height:44px;min-width:44px}
+}
