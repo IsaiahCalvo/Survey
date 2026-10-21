@@ -185,3 +185,16 @@ export const resolveSubscriptionQuery = async (query, timeoutMs = 10_000) => {
   if (error) throw error;
   return data || { tier: 'free', status: 'active' };
 };
+
+// Store review (App Store 3.1.1, Play payments policy): the Capacitor iOS and
+// Android apps must not sell or point to outside purchase flows, so checkout,
+// billing-portal and plan-picker UI renders only on web and Electron.
+// Returns 'ios' | 'android' | null.
+export const getNativeAppPlatform = (windowObject = (typeof window === 'undefined' ? null : window)) => {
+  const cap = windowObject?.Capacitor;
+  if (!cap?.isNativePlatform?.()) return null;
+  const platform = cap.getPlatform?.();
+  return platform === 'ios' || platform === 'android' ? platform : null;
+};
+
+export const isPurchaseUiHidden = (windowObject) => getNativeAppPlatform(windowObject) !== null;

@@ -37,6 +37,7 @@ import {
 import {
   buildBillingReturnUrl,
   canUnlinkProvider,
+  isPurchaseUiHidden,
   openDeferredExternalDestination,
   resolveSubscriptionQuery,
   SUBSCRIPTION_LOAD_FAILED_TEXT,
@@ -788,7 +789,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       } else if (subscription.status === 'trialing' && subscription.trial_ends_at) {
                         text = `Pro trial — you won't be charged if you cancel before ${fmt(subscription.trial_ends_at)}.`;
                       } else if (subscription.status === 'past_due') {
-                        text = 'Your last payment failed — update your card in Manage Billing & Payments.';
+                        text = isPurchaseUiHidden()
+                          ? 'Your last payment failed.'
+                          : 'Your last payment failed — update your card in Manage Billing & Payments.';
                       } else if (subscription.status === 'active' && subscription.metadata?.cancel_at) {
                         // Cancellation scheduled: saying "renews" here would be
                         // false — the user cancelled (owner-hit 2026-08-30).
@@ -807,7 +810,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     })()}
 
                     {/* Manage Billing Button (for users with active subscriptions) */}
-                    {subscription && subscription.tier !== 'free' && subscription.stripe_customer_id && (
+                    {!isPurchaseUiHidden() && subscription && subscription.tier !== 'free' && subscription.stripe_customer_id && (
                       <div style={{ textAlign: 'center', marginBottom: '16px' }}>
                         <button
                           onClick={async () => {
@@ -857,7 +860,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                     )}
 
                     {/* Billing Period Toggle (only show for paid users selecting new plan) */}
-                    {subscription?.tier === 'free' && (
+                    {!isPurchaseUiHidden() && subscription?.tier === 'free' && (
                       <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px', background: 'var(--surface-1)', padding: '4px', borderRadius: '8px', width: 'fit-content', margin: '0 auto 16px auto' }}>
                         <button
                           onClick={() => setBillingPeriod('monthly')}
@@ -907,6 +910,20 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       </div>
                     )}
 
+                    {/* Native iOS/Android apps show plan status only — no plan
+                        picker, prices or purchase buttons (store review). */}
+                    {isPurchaseUiHidden() ? (
+                      <div className="account-subscription-card" data-testid="native-plan-status" style={{ border: '2px solid var(--accent)' }}>
+                        <div className="account-subscription-header">
+                          <div className="account-plan-name">
+                            {subscription?.tier
+                              ? `${subscription.tier.charAt(0).toUpperCase()}${subscription.tier.slice(1)} plan`
+                              : 'Free plan'}
+                          </div>
+                        </div>
+                        <div style={{ color: 'var(--text-3)', fontSize: '13px' }}>Current plan</div>
+                      </div>
+                    ) : (
                     <div className="account-subscription-grid">
                       {/* Free Plan */}
                       <div className="account-subscription-card" style={{
@@ -1061,6 +1078,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                       </div>
                     </div>
+                    )}
                     </>
                   )}
                 </section>
