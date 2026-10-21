@@ -69,10 +69,10 @@ test('removing an agent cuts it off at once, not when its token expires', () => 
   assert.match(sql, /on storage\.objects as restrictive/);
 });
 
-test('agents cannot pay, open billing, or delete the account', () => {
+test('agents cannot pay, open billing, delete the account, or export it', () => {
   const helper = read('supabase/functions/_shared/agentSession.ts');
   assert.match(helper, /claims\?\.client_id/);
-  for (const fn of ['create-checkout-session', 'create-portal-session', 'delete-account']) {
+  for (const fn of ['create-checkout-session', 'create-portal-session', 'delete-account', 'export-account']) {
     const src = read(`supabase/functions/${fn}/index.ts`);
     assert.match(src, /import \{ isAgentSession, AGENT_REFUSED_MESSAGE \} from '\.\.\/_shared\/agentSession\.ts'/, fn);
     const guard = src.indexOf('isAgentSession(authHeader)');

@@ -17,7 +17,7 @@
 //      account deletion is only end to end through the real function.
 //      E2E_EDGE_RUNTIME=off drops it where its container cannot start (some
 //      sandboxes refuse its file limit); then serve the functions yourself and
-//      point E2E_FUNCTIONS_URL at them.
+//      point E2E_FUNCTIONS_URL at them (scripts/e2e-serve-functions.ts).
 // Its migrations are a straight copy of supabase/migrations/: that folder
 // alone builds the database (20241220000000_baseline.sql recreates what
 // production had before the chain began).

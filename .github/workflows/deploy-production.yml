@@ -119,6 +119,7 @@ jobs:
           create-checkout-session
           create-portal-session
           delete-account
+          export-account
           excel-apply-changeset
           send-profile-change-notification
           stripe-webhook

@@ -87,3 +87,12 @@ export async function apiClientFor(account) {
   if (error) throw new Error(`[E2E_SIGNED_IN] sign-in ${account.email}: ${error.message}`);
   return client;
 }
+
+/**
+ * URL of an edge function. The stack's edge runtime serves them; where that
+ * runtime cannot start, E2E_FUNCTIONS_URL points at scripts/e2e-serve-functions.ts.
+ */
+export function functionUrl(name) {
+  const base = process.env.E2E_FUNCTIONS_URL || `${process.env.E2E_SUPABASE_URL}/functions/v1`;
+  return `${base.replace(/\/+$/, '')}/${name}`;
+}

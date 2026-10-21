@@ -28,6 +28,7 @@ import {
   isAccountDeletionConfirmed,
 } from './accountDeletionConfirm';
 import CrashReportsPanel from './CrashReportsPanel';
+import { downloadMyData } from '../services/accountExport';
 import {
   readAnnotationSnapping,
   writeAnnotationSnapping,
@@ -64,6 +65,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const { isAuthenticated: isMSAuthenticated, login: msLogin, logout: msLogout, account: msAccount, needsReconnect: msNeedsReconnect } = useMSGraph();
   const proLocked = useProLock();
   const [loading, setLoading] = useState(false);
+  const [exportProgress, setExportProgress] = useState(null); // null, or { done, total }
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -420,6 +422,26 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       setLoading(false);
     }
   };
+  const handleDownloadMyData = async () => {
+    setError('');
+    setMessage('');
+    setExportProgress({ done: 0, total: 0 });
+    try {
+      const result = await downloadMyData({
+        functionsClient: supabase.functions,
+        onProgress: (progress) => setExportProgress(progress),
+      });
+      if (result.canceled) return;
+      setMessage(result.failures.length
+        ? `Your data was saved, but ${result.failures.length} file(s) could not be downloaded. The list is in errors.txt inside the ZIP.`
+        : 'Your data was saved as a ZIP file.');
+    } catch (err) {
+      setError(err.message || "Your data couldn't be downloaded.");
+    } finally {
+      setExportProgress(null);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -710,6 +732,26 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                 {!isEditing && (
                   <>
+                {/* Your data */}
+                <section className="account-section account-data-export">
+                  <button
+                    className="account-btn-secondary account-btn-secondary-full"
+                    type="button"
+                    disabled={loading || exportProgress !== null}
+                    onClick={handleDownloadMyData}
+                  >
+                    {exportProgress !== null && <Spinner size={14} />}
+                    {exportProgress === null
+                      ? 'Download my data'
+                      : exportProgress.total
+                        ? `Downloading files ${exportProgress.done} of ${exportProgress.total}…`
+                        : 'Gathering your data…'}
+                  </button>
+                  <p className="account-danger-zone-description">
+                    One ZIP file with your documents, markups, survey photos and audio, and account details.
+                  </p>
+                </section>
+
                 {/* Danger Zone */}
                 <section className="account-section account-danger-zone">
                   <button
