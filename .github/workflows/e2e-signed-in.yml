@@ -26,6 +26,7 @@ on:
       - 'playwright.e2e-signed-in.config.mjs'
       - 'tests/e2e-speed/**'
       - 'playwright.speed.config.mjs'
+      - 'scripts/perf/big-doc-seed.mjs'
       - 'vite.config.js'
       - 'viteEnvConfig.mjs'
       - 'index.html'
