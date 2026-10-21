@@ -43,6 +43,7 @@ People use Survey to redline drawing sets, tap to count items on a plan (each ca
 - [Sign PDF](https://surveytool.app/tools/sign-pdf): Draw or type your signature onto a PDF.
 - [Protect PDF](https://surveytool.app/tools/protect-pdf): Lock a PDF with a password.
 - [Unlock PDF](https://surveytool.app/tools/unlock-pdf): Take the password off a PDF you can open.
+- [OCR PDF](https://surveytool.app/tools/ocr-pdf): Make a scanned PDF searchable.
 
 ## Optional
 
