@@ -316,7 +316,7 @@ import {
 import { enqueueWriteback } from './services/rowIdWritebackQueue';
 import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
 import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
-import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
+import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, canSnapshotToolSettings, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { pageOperationCheckpoint, pageOperationStepId } from './utils/pageOperationHistory.js';
 import { snapshotAnnotationPages } from './utils/historySnapshotShare';
@@ -8498,10 +8498,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     ));
   }, [onBottomToolbarApiChange]);
 
+  // Which tool's remembered settings the bar currently holds. Switching tools
+  // while a mark is still picked (tablet: the just-drawn arrow stays selected)
+  // skips the load below, so the bar still holds the OLD tool's values until
+  // the pick ends — the snapshot below must not capture those and later
+  // restore them onto the new tool (Counter got the arrow's 2 -> 4 px dots).
+  const toolSettingsLoadedForRef = useRef(null);
   // Sync tool properties when activeTool or pdfId changes (load per-tool preferences)
   useEffect(() => {
     if (!pdfId) return;
     if (pickBarTool === 'select') return;
+    toolSettingsLoadedForRef.current = activeTool;
     const toolPrefs = getToolPreference(activeTool);
     if (activeTool === 'text-select') {
       const paint = textMarkupPaintByType[focusedTextMarkupPaint]
@@ -8552,7 +8559,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       return;
     }
     if (pickBarTool === 'select') {
-      if (activeTool !== 'select' && activeTool !== 'pan' && !toolSettingsBeforePickRef.current) {
+      if (
+        activeTool !== 'select' && activeTool !== 'pan' && !toolSettingsBeforePickRef.current
+        && canSnapshotToolSettings(toolSettingsLoadedForRef.current, activeTool)
+      ) {
         toolSettingsBeforePickRef.current = {
           strokeColor, strokeOpacity, fillColor, fillOpacity, strokeWidth,
           lineBorderStyle, cloudIntensity, arrowheadStyle, arrowBothEnds,

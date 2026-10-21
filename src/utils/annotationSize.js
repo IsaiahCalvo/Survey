@@ -59,3 +59,15 @@ export const getAnnotationSizePreviewThickness = (
     / (Math.sqrt(safeMax) - Math.sqrt(safeMin));
   return Number((lowerPixels + ratio * (upperPixels - lowerPixels)).toFixed(2));
 };
+
+/**
+ * The "settings before a pick" snapshot may only capture the bar while it
+ * holds the armed tool's own remembered settings. A tool switch made while a
+ * mark is still picked leaves the previous tool's values in the bar (the
+ * per-tool load waits for the pick to end); snapshotting then would restore
+ * them onto the new tool — a Counter armed right after drawing an arrow took
+ * the arrow's 2 px width, clamped to a 4 px dot.
+ */
+export const canSnapshotToolSettings = (loadedTool, activeTool) => (
+  loadedTool != null && loadedTool === activeTool
+);
