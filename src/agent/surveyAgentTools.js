@@ -76,6 +76,7 @@ export function createSurveyAgentToolbox({
   undoLastTurn = null,
   extraTools = [],
   getDocument = null,
+  requestPhoto = null,
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -94,6 +95,19 @@ export function createSurveyAgentToolbox({
     if (b.canEdit === false) throw new ToolError('This person can only view this document, so nothing can be changed.');
   };
   const nameOf = (marker) => marker?.name || 'Unnamed item';
+  // Uploads files to an item's note, as a person adding them would.
+  const attachFiles = async (b, itemId, marker, files) => {
+    const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
+    const refs = [];
+    for (const a of files) refs.push(await b.uploadMedia(itemId, a.file, a.kind));
+    b.addMediaRefs(itemId, refs);
+    field.afterMedia = mediaCountOf(marker.note) + refs.length;
+    const what = files.length === 1 && files[0].kind === 'photo' ? 'photo' : `file${refs.length === 1 ? '' : 's'}`;
+    return {
+      content: `Attached ${refs.length} ${what} to ${nameOf(marker)}.`,
+      change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${refs.length} ${what} attached`, fields: [field] },
+    };
+  };
   // Plan matches from find_on_plan in this chat, so create_item takes an id
   // instead of coordinates the model could make up.
   const planMatches = new Map();
@@ -288,18 +302,20 @@ export function createSurveyAgentToolbox({
       const list = (Array.isArray(ids) ? ids : []).map((id) => [id, attachments.get(id)]);
       const missing = list.filter(([, a]) => !a || a.attachedTo).map(([id]) => id);
       if (!list.length || missing.length) throw new ToolError(`No unattached file with id ${missing.join(', ') || '(none)'} in this chat.`);
-      const field = { type: 'note', before: clone(marker.note), afterText: noteTextOf(marker.note), afterMedia: null };
-      const refs = [];
-      for (const [, a] of list) {
-        refs.push(await b.uploadMedia(itemId, a.file, a.kind));
-      }
-      b.addMediaRefs(itemId, refs);
+      const result = await attachFiles(b, itemId, marker, list.map(([, a]) => a));
       for (const [, a] of list) a.attachedTo = itemId;
-      field.afterMedia = mediaCountOf(marker.note) + refs.length;
-      return {
-        content: `Attached ${refs.length} file${refs.length === 1 ? '' : 's'} to ${nameOf(marker)}.`,
-        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${refs.length} file${refs.length === 1 ? '' : 's'} attached`, fields: [field] },
-      };
+      return result;
+    },
+
+    async take_photo({ item_id: itemId } = {}) {
+      const b = bridge();
+      writable(b);
+      const marker = markerOf(b, itemId);
+      if (typeof requestPhoto !== 'function') throw new ToolError('The camera cannot be opened here. Ask the person to attach a photo instead.');
+      const file = await requestPhoto({ itemId, name: nameOf(marker) });
+      if (!file) return { content: `The person closed the camera without taking a photo for ${nameOf(marker)}.` };
+      // The item may have changed while the camera was open.
+      return attachFiles(b, itemId, markerOf(bridge(), itemId), [{ file, kind: 'photo' }]);
     },
 
     async find_on_plan({ text } = {}) {

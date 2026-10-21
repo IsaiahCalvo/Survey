@@ -124,6 +124,23 @@
   min-height: 32px;
   cursor: pointer;
 }
+.survey-agent__camera {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+.survey-agent__camera-title { margin: 0; font-weight: 600; font-size: 13px; }
+.survey-agent__camera-note { margin: 0; font-size: 12px; color: var(--text-3); }
+.survey-agent__camera-view {
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #000;
+}
+.survey-agent__camera-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .survey-agent__undone { flex: none; color: var(--text-3); font-size: 12px; }
 .survey-agent__pending { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 12px 0; }
 .survey-agent__chip {

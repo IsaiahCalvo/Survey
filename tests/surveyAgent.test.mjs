@@ -394,3 +394,24 @@ test('markup the agent added shows on the change card and Undo deletes it', asyn
   // Already gone (the person deleted it): kept, nothing thrown.
   assert.deepEqual(box.undo([added.change]), { reverted: 0, kept: 1 });
 });
+
+test('take_photo opens the camera, waits, and attaches the photo to the item', async () => {
+  const { bridge, markers } = fakeBridge();
+  const asked = [];
+  let photo = { name: 'photo.jpg', size: 10, type: 'image/jpeg' };
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge, requestPhoto: async (req) => { asked.push(req); return photo; } });
+  const res = await box.run('take_photo', { item_id: 'm117' });
+  assert.deepEqual(asked, [{ itemId: 'm117', name: 'D-117' }]);
+  assert.equal(res.content, 'Attached 1 photo to D-117.');
+  assert.equal(res.change.label, 'D-117: 1 photo attached');
+  assert.equal(markers.m117.note.media.at(-1).kind, 'photo');
+  // Closed without a photo: nothing changes.
+  photo = null;
+  const none = await box.run('take_photo', { item_id: 'm117' });
+  assert.equal(none.content, 'The person closed the camera without taking a photo for D-117.');
+  assert.equal(none.change, undefined);
+  // No camera here, or a view-only person.
+  assert.match((await createSurveyAgentToolbox({ getBridge: () => bridge }).run('take_photo', { item_id: 'm117' })).content, /camera cannot be opened/);
+  bridge.canEdit = false;
+  assert.match((await box.run('take_photo', { item_id: 'm117' })).content, /can only view/);
+});

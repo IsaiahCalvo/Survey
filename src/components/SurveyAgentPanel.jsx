@@ -21,6 +21,7 @@ import { cleanTranscript, heardOwnVoice, snapItemNames, spokenReply, transcripti
 import { canSpeakReplies, createAgentVoice, unlockPlayback } from '../agent/agentVoice.js';
 import { startHandsFreeMic } from '../agent/handsFreeMic.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
+import SurveyAgentCamera from './SurveyAgentCamera';
 import './surveyAgentPanel.css';
 
 const blobToBase64 = (blob) => new Promise((resolve, reject) => {
@@ -81,6 +82,21 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
   const queueRef = useRef([]);
   const [queued, setQueued] = useState(0);
   const [handsFree, setHandsFree] = useState(false);
+  // The camera take_photo opened: { itemId, name }, and how to answer it.
+  const [camera, setCamera] = useState(null);
+  const cameraRef = useRef(null);
+  const photoResolveRef = useRef(null);
+  const requestPhoto = useCallback(({ itemId, name }) => new Promise((resolve) => {
+    photoResolveRef.current?.(null);
+    photoResolveRef.current = resolve;
+    setCamera({ itemId, name });
+  }), []);
+  const closeCamera = useCallback((file = null) => {
+    const resolve = photoResolveRef.current;
+    photoResolveRef.current = null;
+    setCamera(null);
+    resolve?.(file);
+  }, []);
   const [phase, setPhase] = useState('listening');
   const [hearing, setHearing] = useState(false);
   const micRef = useRef(null);
@@ -124,6 +140,8 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     handsFreeRef.current = false;
     micRef.current?.stop();
     stopSpeaking();
+    // A turn waiting on the camera gets "no photo" rather than hanging.
+    photoResolveRef.current?.(null);
   }, []);
 
   const toggleSpeak = () => {
@@ -164,6 +182,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
       undoLastTurn: () => undoLastRef.current(),
       extraTools: annotations ? buildAnnotationTools({ getDocument: openDocument, text: (v) => (typeof v === 'string' ? v : JSON.stringify(v)) }) : [],
       getDocument: activeAgentDocument,
+      requestPhoto,
     });
     try {
       const result = await runSurveyAgentTurn({
@@ -351,6 +370,17 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     stopSpeaking();
   }, []);
 
+  // With the camera open, "take it" / "cancel" go straight to the camera:
+  // the turn that opened it is still waiting on the photo.
+  const SHUTTER = /\b(take it|snap( it)?|cheese|shoot|take (the |a )?(photo|picture|pic))\b/i;
+  const CANCEL = /\b(cancel|never ?mind|no photo|close( the)? camera)\b/i;
+  const handleCameraClip = async (clip, durationMs) => {
+    const text = await transcribe(clip, durationMs);
+    if (!text || !cameraRef.current) return;
+    if (CANCEL.test(text)) cameraRef.current.cancel();
+    else if (SHUTTER.test(text)) await cameraRef.current.capture();
+  };
+
   // One clip at a time, in order. The mic keeps listening while the agent
   // works (people talk on) and while it speaks (people cut in).
   const handsFreeChainRef = useRef(Promise.resolve());
@@ -384,6 +414,7 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
     }
   };
   const onHandsFreeClip = (clip, durationMs, info) => {
+    if (cameraRef.current) { handleCameraClip(clip, durationMs).catch(() => {}); return; }
     handsFreePendingRef.current += 1;
     setPhase('working');
     handsFreeChainRef.current = handsFreeChainRef.current
@@ -555,6 +586,15 @@ export default function SurveyAgentPanel({ onClose, mobileMode = false }) {
           <span className="survey-agent__dot" aria-hidden="true" />
           {handsFreeText}
         </p>
+      )}
+      {camera && (
+        <SurveyAgentCamera
+          key={camera.itemId}
+          ref={cameraRef}
+          itemName={camera.name}
+          handsFree={handsFree}
+          onDone={closeCamera}
+        />
       )}
       {statusText && <p className="survey-agent__status" role="status">{statusText}</p>}
       {pendingFiles.length > 0 && (

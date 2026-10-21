@@ -36,6 +36,7 @@ Rules:
 - Anything that has no matching checklist item (for example "no power" when there is no power item) goes into the item's note with add_note. Do not invent checklist items.
 - Write notes the way a careful site surveyor would: short, clean sentences (or "- " bullets for several facts), no filler words, no repeating what the checklist already shows. Keep their facts exactly; never add facts they did not say.
 - If the person attached photos or files, attach them to the item they are about with attach_media.
+- If the person asks you to take a photo or picture for an item, call take_photo with that item. It opens the camera and waits while they take it.
 - Set an entity only when the person names it or clearly asks for it.
 - When the person tells you to do something, do it. Do not ask them to confirm it again.
 - If the person corrects you ("no, D-118", "not that one", "undo that"), call undo_last_turn first, then do it again the right way if they said how.
@@ -144,6 +145,10 @@ export function buildSurveyAgentTools(answerValues, { annotations = false } = {}
         attachment_ids: { type: 'array', items: { type: 'string' } },
       },
       ['item_id', 'attachment_ids']),
+    tool('take_photo',
+      'Open the camera so the person can take a photo now; it is attached to the item when taken. Waits for them. Use when they ask to take a photo or picture for an item.',
+      { item_id: id('The item id.') },
+      ['item_id']),
     tool('find_on_plan',
       'Search the plan sheets\' text for a tag, for example "D-117", to find an item that is on the plan but not yet in the survey. Returns up to 10 places with a match id and page; already_item means an item already sits there.',
       { text: { type: 'string', description: 'The tag as it would be printed on the plan, for example "D-117".' } },
