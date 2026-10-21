@@ -28,7 +28,8 @@ done
 sleep 1
 echo "after placing: $(ev "document.querySelectorAll('g[data-annotation-index]').length") annotations, polygons: $(ev "document.querySelectorAll('g[data-annotation-index] polygon').length")"
 pick "Rectangle Select"
-adb shell input stylus tap "$X" $((Y - 100))   # top edge midpoint
+# Box-select around it (a tap on its thin edge did not select it).
+adb shell input stylus swipe $((X - 200)) $((Y - 150)) $((X + 200)) $((Y + 150)) 600
 sleep 1.5
 before=$(count)
 echo "points before: $before"
