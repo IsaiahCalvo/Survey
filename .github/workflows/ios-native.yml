@@ -156,11 +156,8 @@ jobs:
             # and retry until the process exists.
             adb shell settings put global hide_error_dialogs 1
             adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-            for i in 1 2 3 4 5; do
-              adb shell am start -W -n "$APP_ID/.MainActivity" || true
-              sleep 5
-              adb shell pidof "$APP_ID" && break
-            done
+            # The runner runs each script line on its own, so keep the loop on one line.
+            for i in 1 2 3 4 5; do adb shell am start -W -n "$APP_ID/.MainActivity" || true; sleep 5; adb shell pidof "$APP_ID" && break; done
             sleep 10; adb exec-out screencap -p > "$OUT/launch-10s.png"
             sleep 15; adb exec-out screencap -p > "$OUT/launch-25s.png"
             sleep 20; adb exec-out screencap -p > "$OUT/launch-45s.png"
