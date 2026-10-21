@@ -1,4 +1,4 @@
-// Backend security pass (migration 20261021120000_lock_down_definer_rpcs):
+// Backend security pass (migration 20261021160000_lock_down_definer_rpcs):
 // SECURITY DEFINER RPCs that skipped their owner check for signed-out callers,
 // or that were meant for the service role only, stay shut.
 import { createClient } from '@supabase/supabase-js';
