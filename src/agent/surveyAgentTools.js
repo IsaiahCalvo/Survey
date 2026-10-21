@@ -307,13 +307,26 @@ export function createSurveyAgentToolbox({
             id,
             name: nameOf(marker),
             category: entry?.category?.name || null,
+            ...(entry?.module?.name ? { module: entry.module.name } : {}),
             on_plan: Boolean(marker.pageNumber && marker.bounds),
             score: Math.round(score * 100) / 100,
+            here: Boolean(b.currentModuleId) && marker.moduleId === b.currentModuleId,
           });
         }
       }
       matches.sort((a, b2) => b2.score - a.score || a.name.localeCompare(b2.name));
-      return { content: out({ matches: matches.slice(0, 5) }) };
+      // The same tag in several modules (D-117 in Installation and in
+      // Commissioning): the person means the one in the module open on
+      // screen, so only those are listed and the model doesn't ask which.
+      const here = matches.filter((m) => m.here);
+      const shown = (here.length ? here : matches).slice(0, 5).map(({ here: _, ...m }) => m);
+      const otherModules = here.length ? [...new Set(matches.filter((m) => !m.here).map((m) => m.module).filter(Boolean))] : [];
+      return {
+        content: out({
+          matches: shown,
+          ...(otherModules.length ? { open_module_only: `Showing the open module's items; the same names are also in ${otherModules.join(', ')}.` } : {}),
+        }),
+      };
     },
 
     get_item({ item_id: itemId } = {}) {

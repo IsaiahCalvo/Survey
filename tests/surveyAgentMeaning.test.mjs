@@ -102,3 +102,16 @@ test('the prompt tells the model to set lines and the note together', () => {
   assert.match(SURVEY_AGENT_SYSTEM_PROMPT, /installed but has no power" sets the installation lines Y and adds the note/);
   assert.match(SURVEY_AGENT_SYSTEM_PROMPT, /ask one short question/);
 });
+
+test('find_items lists only the open module\'s D-1-17, so the agent does not ask which one', async () => {
+  const b = bridgeFor({ currentModuleId: 'mod-cx' });
+  const box = createSurveyAgentToolbox({ getBridge: () => b });
+  const res = await box.run('find_items', { query: 'D-1-17' });
+  const found = JSON.parse(res.content);
+  assert.deepEqual(found.matches.map((m) => m.id), ['c117']);
+  assert.equal(found.matches[0].module, 'Commissioning');
+  assert.match(found.open_module_only, /Installation/);
+  // No module open: every match, with its module named.
+  const all = JSON.parse((await createSurveyAgentToolbox({ getBridge: () => ({ ...bridgeFor(), currentModuleId: null }) }).run('find_items', { query: 'D-1-17' })).content);
+  assert.deepEqual(all.matches.map((m) => m.module).sort(), ['Commissioning', 'Installation']);
+});
