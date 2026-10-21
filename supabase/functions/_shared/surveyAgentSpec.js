@@ -282,11 +282,14 @@ const NUMBER_WORDS = {
   sixty: '60', seventy: '70', eighty: '80', ninety: '90',
 };
 
+const TENS_AND_ONE = /\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\s-]+(one|two|three|four|five|six|seven|eight|nine)\b/g;
+
 // "Door D one seventeen" -> "doord117": lower case, number words to digits,
-// only letters and digits left.
+// only letters and digits left. "twenty nine" is 29, not 209.
 export function normalizeItemName(value) {
   return String(value || '')
     .toLowerCase()
+    .replace(TENS_AND_ONE, (_, tens, one) => String(Number(NUMBER_WORDS[tens]) + Number(NUMBER_WORDS[one])))
     .replace(/[a-z]+/g, (word) => NUMBER_WORDS[word] ?? word)
     .replace(/[^a-z0-9]/g, '');
 }
