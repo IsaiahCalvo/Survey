@@ -80,7 +80,7 @@ import useStableHandler from './hooks/useStableHandler.js';
 import useFileDropZone from './hooks/useFileDropZone.js';
 import FileDropOverlay from './components/FileDropOverlay.jsx';
 import { useMSGraph } from './contexts/MSGraphContext';
-import { useOptionalAuth } from './components/OptionalAuthPrompt';
+import { startsInSignUp, useOptionalAuth } from './components/OptionalAuthPrompt';
 import { useStorage, useTemplates } from './hooks/useDatabase';
 import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 
@@ -5042,6 +5042,7 @@ export default function App({ devPreviewReturnTab = null }) {
       {/* Authentication Modal */}
       <AuthModal
         isOpen={showAuthModal}
+        initialMode={startsInSignUp() ? 'signup' : 'login'}
         onClose={() => setShowAuthModal(false)}
         onDismiss={!authPromptDismissed ? handleDismiss : null}
       />

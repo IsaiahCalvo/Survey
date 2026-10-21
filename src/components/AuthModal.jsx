@@ -328,7 +328,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
               />
               {mode === 'signup' && (
                 <div style={{ marginTop: 6 }}>
-                  <PasswordRequirements password={password} email={email} firstName={firstName} lastName={lastName} />
+                  <PasswordRequirements password={password} email={email} firstName={firstName} lastName={lastName} inline />
                 </div>
               )}
             </div>
@@ -391,7 +391,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
         </form>
         )}
 
-        {mode === 'login' && (
+        {(mode === 'login' || (mode === 'signup' && !isGoogleSignInHidden())) && (
           <>
             <div className="auth-divider">
               <span>or</span>
@@ -409,14 +409,16 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
               </button>
             )}
 
-            <button
-              type="button"
-              className="auth-sso-link"
-              onClick={() => setMode('sso')}
-              disabled={loading}
-            >
-              Sign in with company SSO (enterprise)
-            </button>
+            {mode === 'login' && (
+              <button
+                type="button"
+                className="auth-sso-link"
+                onClick={() => setMode('sso')}
+                disabled={loading}
+              >
+                Sign in with company SSO (enterprise)
+              </button>
+            )}
           </>
         )}
 

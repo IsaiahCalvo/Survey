@@ -13,6 +13,8 @@ export const ORIGIN = 'https://surveytool.app';
 const CSS = readFileSync(join(root, 'welcome', 'site.css'), 'utf8').replace(/\/\*[^]*?\*\//g, '').replace(/\n+/g, '');
 const TODAY = new Date().toISOString().slice(0, 10);
 export const APP = '/?signin=1';
+// "Start free" opens the app on Create account instead of Welcome back.
+export const SIGNUP = '/?signup=1';
 const MAIL = 'mailto:isaiahcalvo123@gmail.com';
 
 // Free PDF tools live at /tools/* (scripts/build-free-tools.mjs builds them).
@@ -178,7 +180,7 @@ export function page({ path, title, desc, body, schema = [], crumb, crumbs, scri
   <div class="right">
     <button class="theme" type="button" aria-label="Dark theme" aria-pressed="false">${ICON_SUN}${ICON_MOON}</button>
     <a class="login" href="${APP}">Log in</a>
-    <a class="btn primary" href="${APP}">Start free</a>
+    <a class="btn primary" href="${SIGNUP}">Start free</a>
     <button class="menu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span><span></span></button>
   </div>
 </div>
@@ -194,7 +196,7 @@ ${body}
     <div><h2 class="fh">Use cases</h2>${USES.map((u) => `<a href="/use-cases/${u.slug}">${u.name}</a>`).join('')}</div>
     <div><h2 class="fh">Compare</h2>${COMPARE.map((c) => `<a href="/compare/${c.slug}">Survey vs ${c.them.split(' ')[0]}</a>`).join('')}</div>${TOOL_LINKS.length ? `
     <div><h2 class="fh">Free PDF tools</h2>${TOOL_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}</div>` : ''}
-    <div><h2 class="fh">Get started</h2><a href="${APP}">Log in</a><a href="${APP}">Start free</a><a href="${MAIL}">Contact</a><a href="/status">Status</a></div>
+    <div><h2 class="fh">Get started</h2><a href="${APP}">Log in</a><a href="${SIGNUP}">Start free</a><a href="${MAIL}">Contact</a><a href="/status">Status</a></div>
     <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
   </div>
   <p class="copy">© <span class="yr">2026</span> Survey</p>
@@ -213,7 +215,7 @@ const plans = () => `<div class="plans">${PLANS.map((p) => `
     <p class="amt">${p.price}<small>${p.per}</small></p>
     <p class="note">${p.note}</p>
     <ul>${p.items.map((i) => `<li>${i}</li>`).join('')}</ul>
-    <a class="btn ${p.best ? 'primary' : 'ghost'}" href="${p.href || APP}">${p.cta}</a>
+    <a class="btn ${p.best ? 'primary' : 'ghost'}" href="${p.href || SIGNUP}">${p.cta}</a>
   </article>`).join('')}
 </div>`;
 
@@ -223,7 +225,7 @@ export const faqSchema = (items) => ({ '@type': 'FAQPage', mainEntity: items.map
 export const cta = (h = 'Bring your next drawing set') => `<section class="band"><div class="wrap cta-band">
   <h2>${h}</h2>
   <p>Free to start. Nothing to install.</p>
-  <a class="btn primary lg" href="${APP}">Open Survey free</a>
+  <a class="btn primary lg" href="${SIGNUP}">Open Survey free</a>
 </div></section>`;
 
 // ---------- Home ----------
@@ -237,7 +239,7 @@ const home = page({
     <p class="kicker">PDF markup for drawing sets</p>
     <h1>Mark up the plans. Count what's on them.</h1>
     <p class="lede">Survey is a PDF markup app for construction drawings. Redline sheets, tap to count fixtures and send the totals to Excel, on your desk, your iPad or your phone.</p>
-    <div class="cta"><a class="btn primary lg" href="${APP}">Open Survey free</a><a class="btn ghost lg" href="/features">See the tools</a></div>
+    <div class="cta"><a class="btn primary lg" href="${SIGNUP}">Open Survey free</a><a class="btn ghost lg" href="/features">See the tools</a></div>
     <p class="fine">No card. No install. Works in Chrome, Edge and Safari.</p>
   </div>
   <div class="hero-stage">
