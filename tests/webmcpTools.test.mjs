@@ -238,3 +238,13 @@ test('delete of a missing marker is a clear error', async () => {
   await assert.rejects(markerTool('owner', doc, 'survey_delete_marker').execute({ marker_id: 'gone', confirm: true }), /No marker/);
   assert.equal(doc.deleted.length, 0);
 });
+
+test('a marker the person may not change reports a refusal, not a false success', async () => {
+  // The in-app gate silently drops another author's or a locked marker; the
+  // bridge returns {ok:false} so the agent is never told a change happened.
+  const denied = { ...fakeDoc(), editSurveyMarker: () => ({ ok: false, reason: 'not-allowed' }), deleteSurveyMarker: () => ({ ok: false, reason: 'not-allowed' }) };
+  await assert.rejects(markerTool('editor', denied, 'survey_edit_marker').execute({ marker_id: 'm1', x: 5, y: 5, width: 60, height: 40 }), /belongs to someone else/);
+  await assert.rejects(markerTool('editor', denied, 'survey_delete_marker').execute({ marker_id: 'm1', confirm: true }), /belongs to someone else/);
+  const locked = { ...fakeDoc(), editSurveyMarker: () => ({ ok: false, reason: 'locked' }) };
+  await assert.rejects(markerTool('owner', locked, 'survey_edit_marker').execute({ marker_id: 'm1', x: 5, y: 5, width: 60, height: 40 }), /locked/);
+});

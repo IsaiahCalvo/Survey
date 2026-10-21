@@ -269,6 +269,8 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           throw new Error(`The box must fit inside the page (${size.width} x ${size.height} points).`);
         }
         const res = doc.editSurveyMarker(markerId, { x: b[0], y: b[1], width: b[2], height: b[3] });
+        if (res?.reason === 'locked') throw new Error('That marker is locked, so it cannot be moved.');
+        if (res?.reason === 'not-allowed') throw new Error('This person cannot change that marker (it belongs to someone else), so nothing was moved.');
         if (!res?.ok) throw new Error('Could not edit that marker.');
         return `Moved the marker on page ${marker.page}.`;
       },
@@ -295,6 +297,7 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
           return `Not deleted. Ask the person to confirm, then call again with confirm: true to remove "${label}"${marker.page ? ` on page ${marker.page}` : ''}.`;
         }
         const res = doc.deleteSurveyMarker(markerId);
+        if (res?.reason === 'not-allowed') throw new Error('This person cannot delete that marker (it belongs to someone else), so nothing was deleted.');
         if (!res?.ok) throw new Error('Could not delete that marker.');
         return `Deleted ${label}. It is in the trash for 30 days, and the last change can be undone.`;
       },

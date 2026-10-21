@@ -32854,6 +32854,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     surveyReady: Boolean(showSurveyPanel && selectedTemplate),
     pageSizes,
     getMarkers: () => surveyMarkersRef.current || {},
+    viewerId: user?.id ?? null,
+    documentOwnerId,
   };
   useEffect(() => {
     if (isActive === false) return undefined;
@@ -32879,20 +32881,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         .filter((m) => m && m.page),
       getSurveyMarker: (id) => markerSummary(id, agentMarkerStateRef.current.getMarkers()[id]),
       // Move/resize an existing marker's box. Routes through the same gated
-      // handler as a drag (ownership + lock gate, history, sync), which is a
-      // silent no-op when the person may not change this marker.
+      // handler as a drag (ownership + lock gate, history, sync). That handler
+      // is a silent no-op when the person may not change this marker, so the
+      // same gate is checked here first and a denial is reported honestly
+      // (agents must not be told a change happened when it did not).
       editSurveyMarker: (id, bounds) => {
-        const marker = agentMarkerStateRef.current.getMarkers()[id];
+        const { getMarkers, viewerId, documentOwnerId: ownerId } = agentMarkerStateRef.current;
+        const marker = getMarkers()[id];
         if (!marker || !marker.pageNumber) return { ok: false, reason: 'not-found' };
+        if (isUserLocked(marker)) return { ok: false, reason: 'locked' };
+        if (viewerId && ownerId && !canModifySurveyMarker({ surveyMarker: marker, viewerId, documentOwnerId: ownerId })) {
+          return { ok: false, reason: 'not-allowed' };
+        }
         recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:bounds', action: 'survey-marker-agent-edit', pageNumber: marker.pageNumber });
         agentMarkerStateRef.current.handleSurveyMarkerBoundsChange(marker.pageNumber, id, bounds, { action: 'agent-edit' });
         return { ok: true };
       },
       // Delete through the same gated path as the UI (ownership gate, 30-day
-      // trash, History row, item + linked-Excel cleanup, one Undo).
+      // trash, History row, item + linked-Excel cleanup, one Undo). That path
+      // silently drops a marker the person may not erase, so the same erase
+      // gate is checked here first and a denial is reported honestly.
       deleteSurveyMarker: (id) => {
-        const marker = agentMarkerStateRef.current.getMarkers()[id];
+        const { getMarkers, viewerId, documentOwnerId: ownerId } = agentMarkerStateRef.current;
+        const marker = getMarkers()[id];
         if (!marker) return { ok: false, reason: 'not-found' };
+        if (!canCommitSurveyMarkerErase({ surveyMarker: marker, viewerId, documentOwnerId: ownerId })) {
+          return { ok: false, reason: 'not-allowed' };
+        }
         recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:delete', action: 'survey-marker-agent-delete', pageNumber: marker.pageNumber });
         agentMarkerStateRef.current.handleDeleteSurveyMarker(id);
         return { ok: true };
