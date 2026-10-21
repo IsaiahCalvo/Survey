@@ -7,6 +7,7 @@ import { answerSetFor } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
 import { normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { boundsCover, markerBoxAroundTag, tagShape } from './planText.js';
+import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
 
 export { normalizeItemName, scoreItemName };
 
@@ -128,6 +129,8 @@ export function createSurveyAgentToolbox({
   extraTools = [],
   getDocument = null,
   requestPhoto = null,
+  // Ids of the items worked on in this chat, for the end-of-walk summary.
+  walkItems = null,
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -539,6 +542,35 @@ export function createSurveyAgentToolbox({
             items: partly.slice(0, STATUS_LIST_MAX).map((i) => ({ name: i.name, missing: i.missing.slice(0, 6) })),
           },
         }),
+      };
+    },
+
+    // "Wrap up": what this walk did (the items worked on in this chat), or
+    // a page, or the whole survey, with the items that have issues. The
+    // panel offers the text to save or share.
+    walk_summary({ scope = 'walk', page = null } = {}) {
+      const b = bridge();
+      const walked = typeof walkItems === 'function' ? walkItems() : [];
+      const useWalk = scope === 'walk' && walked.length > 0;
+      const onPage = scope === 'page' ? (Number(page) || b.getCurrentPage?.() || null) : null;
+      const summary = summarizeSurvey({ template: b.template, markers: b.markers, itemIds: useWalk ? walked : null, page: onPage });
+      const label = useWalk ? 'this walk' : onPage ? `page ${onPage}` : 'the whole survey';
+      const title = `${b.template.name || 'Survey'}: summary of ${label}`;
+      return {
+        content: out({
+          scope: label,
+          ...(scope === 'walk' && !useWalk ? { note: 'Nothing was worked on in this chat yet, so this is the whole survey.' } : {}),
+          totals: summary.totals,
+          categories: summary.categories.map((c) => ({
+            name: c.name,
+            items: c.items,
+            done: c.done,
+            partly_done: c.partly,
+            not_started: c.notStarted,
+            with_issues: c.issues.slice(0, STATUS_LIST_MAX).map((i) => ({ name: i.name, issues: i.lines.slice(0, 4).map((l) => `${l.text} = ${l.answer}`) })),
+          })),
+        }),
+        summary: { title, text: summaryText(summary, { title }) },
       };
     },
 
