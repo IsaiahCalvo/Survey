@@ -616,14 +616,15 @@ function dropzone() {
     h('p', { class: 'dz-main' }, h('button', { type: 'button', class: 'btn primary lg', onclick: pickFiles }, root.querySelector('[data-pick]')?.textContent || 'Choose files')),
     h('p', { class: 'dz-or' }, `or drop ${MULTIPLE ? 'them' : 'it'} here`),
     h('p', { class: 'dz-safe', html: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your files stay on this device' }));
-  const icon = root.querySelector('.dz > .ticon');
-  if (icon) zone.prepend(icon.cloneNode(true));
+  if (pickIcon) zone.prepend(pickIcon.cloneNode(true));
   return zone;
 }
 
 let pickLabel;
+let pickIcon;
 function render() {
   pickLabel ||= root.querySelector('[data-pick]')?.textContent;
+  pickIcon ||= root.querySelector('.dz > .ticon');
   const err = S.error && h('p', { class: 'terr', role: 'alert' }, S.error);
   if (S.result) {
     root.replaceChildren(resultView());

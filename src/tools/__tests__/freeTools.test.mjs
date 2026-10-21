@@ -152,6 +152,36 @@ test('compress swaps in the smaller JPEG the codec returns', async () => {
   assert.deepEqual([...obj.contents], [...fakeJpeg]);
 });
 
+test('compress leaves a parent image with a soft mask alone', async () => {
+  const doc = await PDFDocument.create();
+  const w = 200;
+  const h = 200;
+  const raw = new Uint8Array(w * h * 3).map((_, i) => (i * 7) % 256);
+  const mask = doc.context.flateStream(new Uint8Array(w * h).fill(200), {
+    Type: 'XObject', Subtype: 'Image', Width: w, Height: h, ColorSpace: 'DeviceGray', BitsPerComponent: 8,
+  });
+  const stream = doc.context.flateStream(raw, {
+    Type: 'XObject', Subtype: 'Image', Width: w, Height: h, ColorSpace: 'DeviceRGB', BitsPerComponent: 8,
+    SMask: doc.context.register(mask),
+  });
+  const ref = doc.context.register(stream);
+  doc.addPage([100, 100]);
+  const src = await doc.save();
+  let calls = 0;
+  const out = await compressPdf(src, 'strong', {
+    async reencode() {
+      calls += 1;
+      return { bytes: new Uint8Array([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9]), width: 100, height: 100 };
+    },
+  });
+  assert.equal(calls, 0);
+  const obj = (await PDFDocument.load(out)).context.lookup(ref);
+  assert.ok(obj instanceof PDFRawStream);
+  assert.equal(obj.dict.get(PDFName.of('Width')).asNumber(), w);
+  assert.equal(obj.dict.get(PDFName.of('Height')).asNumber(), h);
+  assert.ok(obj.dict.get(PDFName.of('SMask')));
+});
+
 test('deflate and inflate round-trip', async () => {
   const data = new TextEncoder().encode('abc'.repeat(100));
   assert.deepEqual(await inflate(await deflate(data)), data);

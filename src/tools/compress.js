@@ -89,7 +89,7 @@ export async function compressPdf(bytes, level, codec, onProgress) {
 async function shrinkImage(context, ref, stream, opts, codec, masks) {
   const { dict } = stream;
   if (masks.has(ref.toString())) return null;
-  if (dict.get(N('ImageMask')) === PDFBool.True || dict.get(N('Decode')) || dict.get(N('Mask'))) return null;
+  if (dict.get(N('ImageMask')) === PDFBool.True || dict.get(N('Decode')) || dict.get(N('Mask')) || dict.get(N('SMask'))) return null;
   const bpc = dict.get(N('BitsPerComponent'));
   if (!(bpc instanceof PDFNumber) || bpc.asNumber() !== 8) return null;
   const comps = components(context, dict.get(N('ColorSpace')));
