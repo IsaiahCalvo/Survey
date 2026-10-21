@@ -107,21 +107,47 @@ async function setup({ url, serviceKey, anonKey }) {
 }
 
 // Remove every load account and its rows so the stack is left as seeded.
-async function cleanup({ url, serviceKey }, accounts) {
+// Finds them by email, so it also cleans up after a run that failed midway.
+async function cleanup({ url, serviceKey }) {
   const admin = createClient(url, serviceKey, noSession);
-  const docIds = accounts.map((a) => a.documentId);
-  await must('drop markups', admin.from('document_annotations').delete().in('document_id', docIds));
-  await must('drop documents', admin.from('documents').delete().in('id', docIds));
-  await must('drop projects', admin.from('projects').delete().in('id', accounts.map((a) => a.projectId)));
-  for (const account of accounts) await must(`delete ${account.email}`, admin.auth.admin.deleteUser(account.userId));
+  const ids = [];
+  for (let page = 1; ; page += 1) {
+    const { users } = await must('list users', admin.auth.admin.listUsers({ page, perPage: 1000 }));
+    users.filter((user) => /^load-\d+@example\.com$/.test(user.email || '')).forEach((user) => ids.push(user.id));
+    if (users.length < 1000) break;
+  }
+  for (let at = 0; at < ids.length; at += 100) {
+    const batch = ids.slice(at, at + 100);
+    const docs = await must('find documents', admin.from('documents').select('id').in('user_id', batch));
+    const docIds = docs.map((doc) => doc.id);
+    if (docIds.length) {
+      await must('drop markups', admin.from('document_annotations').delete().in('document_id', docIds));
+      await must('drop documents', admin.from('documents').delete().in('id', docIds));
+    }
+    await must('drop projects', admin.from('projects').delete().in('user_id', batch));
+  }
+  for (const id of ids) await must(`delete user ${id}`, admin.auth.admin.deleteUser(id));
+  return ids.length;
+}
+
+// Same keyset paging as loadPagedAnnotationRows() in annotationCloudSync.js.
+async function openMarkups(account) {
+  let cursor = null;
+  for (;;) {
+    let query = account.client.from('document_annotations')
+      .select(READ_COLUMNS).eq('document_id', account.documentId).order('id', { ascending: true }).limit(1000);
+    if (cursor !== null) query = query.gt('id', cursor);
+    const { data, error } = await query;
+    if (error || data.length < 1000) return { error };
+    cursor = data[data.length - 1].id;
+  }
 }
 
 const OPS = [
   ['save markup', 55, (a, n) => a.client.from('document_annotations')
     .upsert(markupRow(a.documentId, a.userId, `live-${n % 50}`, n), { onConflict: 'document_id,annotation_id', ignoreDuplicates: false })
     .select('annotation_id, updated_at').single()],
-  ['open document markups', 10, (a) => a.client.from('document_annotations')
-    .select(READ_COLUMNS).eq('document_id', a.documentId).order('id', { ascending: true }).limit(1000)],
+  ['open document markups', 10, (a) => openMarkups(a)],
   ['list documents', 15, (a) => a.client.from('documents')
     .select('*').eq('user_id', a.userId).eq('archived', false)],
   ['list projects', 12, (a) => a.client.from('projects').select('*').eq('user_id', a.userId)],
@@ -171,7 +197,13 @@ const ms = (value) => `${Math.round(value)} ms`;
 async function main() {
   const env = readEnv();
   console.log(`[db-load] setting up ${USERS} signed-in users with ${SEED_MARKUPS} markups each`);
-  const accounts = await setup(env);
+  let accounts;
+  try {
+    accounts = await setup(env);
+  } catch (error) {
+    console.log(`[db-load] setup failed; removed ${await cleanup(env)} load accounts`);
+    throw error;
+  }
   const results = [];
   for (const concurrency of STAGES) {
     console.log(`[db-load] ${concurrency} users at once for ${STAGE_SECONDS}s`);
@@ -194,7 +226,7 @@ async function main() {
     for (const op of r.ops) lines.push(`| ${op.name} | ${op.count} | ${ms(op.p50)} | ${ms(op.p95)} | ${op.errors}${op.sample ? ` (${op.sample.slice(0, 80)})` : ''} |`);
     lines.push('');
   }
-  await cleanup(env, accounts);
+  console.log(`[db-load] removed ${await cleanup(env)} load accounts`);
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, lines.join('\n'));
   console.log(`[db-load] report written to ${path.relative(ROOT, OUT)}`);
