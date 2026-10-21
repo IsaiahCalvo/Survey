@@ -6,7 +6,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { serializeFabricObjectToRow } from '../../src/services/annotationTypeSerializers.js';
 import { E2E_ACCOUNTS, E2E_DOCUMENT, E2E_PROJECT } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
 
@@ -41,10 +40,22 @@ async function seedLegacyDoc(admin, name) {
     file_size: bytes.length, page_count: 1,
   });
   if (doc.error) throw doc.error;
-  const rows = [0, 1, 2].map((i) => serializeFabricObjectToRow({
-    type: 'rect', left: 60 + i * 90, top: 300, width: 60, height: 40,
-    stroke: '#d32f2f', strokeWidth: 2, fill: 'transparent', data: { id: `legacy-rect-${i}-${id.slice(0, 8)}` },
-  }, { documentId: id, userId, pageNumber: 1 }));
+  // Same shape annotationTypeSerializers.serializeFabricObjectToRow wrote
+  // (Playwright cannot import src/ here: it loads it as CommonJS).
+  const rows = [0, 1, 2].map((i) => {
+    const annotationId = `legacy-rect-${i}-${id.slice(0, 8)}`;
+    const left = 60 + i * 90;
+    const fabricObject = {
+      type: 'rect', left, top: 300, width: 60, height: 40, stroke: '#d32f2f', strokeWidth: 2,
+      fill: 'transparent', data: { id: annotationId }, meta: { authorId: userId },
+    };
+    return {
+      document_id: id, user_id: userId, annotation_id: annotationId, annotation_type: 'square', page_number: 1,
+      bounds: { x: left, y: 300, width: 60, height: 40, rotation: 0 },
+      annotation_data: { fabricObject, pageNumber: 1, schemaVersion: 1, clientSessionId: null },
+      color: '#d32f2f', opacity: null, stroke_width: 2, font_size: null, last_modified_by: userId,
+    };
+  });
   const ins = await admin.from('document_annotations').insert(rows);
   if (ins.error) throw ins.error;
   return { id, filePath };
