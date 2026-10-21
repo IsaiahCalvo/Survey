@@ -109,6 +109,8 @@ test('a write-scope agent sets an answer through the connector, and an open clie
   });
   expect(reply?.result?.isError, toolText(reply)).toBeFalsy();
   expect(toolText(reply)).toMatch(/"changed": ?true/);
+  const changeId = JSON.parse(toolText(reply)).change_id;
+  expect(typeof changeId).toBe('string');
 
   // The open client merged the WAL update and re-projected it to the mirror
   // (the connector write never touches document_annotations itself).
@@ -118,6 +120,18 @@ test('a write-scope agent sets an answer through the connector, and an open clie
       .select('checklist_responses').eq('document_id', E2E_DOCUMENT.id).eq('annotation_id', itemId).maybeSingle();
     return data?.checklist_responses?.[checklistItemId]?.selection ?? null;
   }, { timeout: 30_000 }).toBe('N');
+
+  // undo_change reverses that write with the change_id it returned: the item
+  // goes back to no answer, and the open client's mirror reflects it.
+  const undo = await mcp(tok.access_token, 'tools/call', {
+    name: 'undo_change', arguments: { change_id: changeId },
+  });
+  expect(undo?.result?.isError, toolText(undo)).toBeFalsy();
+  await expect.poll(async () => {
+    const { data } = await admin.from('document_annotations')
+      .select('checklist_responses').eq('document_id', E2E_DOCUMENT.id).eq('annotation_id', itemId).maybeSingle();
+    return data?.checklist_responses?.[checklistItemId]?.selection ?? null;
+  }, { timeout: 30_000 }).toBe(null);
 
   // create_item adds a brand-new marker in the same category + an entity; it
   // must be a real, resolvable item — proven by setting its answer and seeing
@@ -165,7 +179,7 @@ test('a read-only agent is refused the write, and never sees the tool', async ({
   const { tok } = await agentSignIn(page, E2E_ACCOUNTS.owner, `Read-only agent ${RUN}`); // no write scope
 
   const names = toolNames(await mcp(tok.access_token, 'tools/list'));
-  for (const t of ['set_answers', 'add_note', 'set_entity', 'create_item']) expect(names).not.toContain(t);
+  for (const t of ['set_answers', 'add_note', 'set_entity', 'create_item', 'undo_change']) expect(names).not.toContain(t);
   const reply = await mcp(tok.access_token, 'tools/call', {
     name: 'set_answers',
     arguments: { document_id: E2E_DOCUMENT.id, item_id: itemId, answers: [{ checklist_item_id: `cl-${RUN}`, value: 'N' }] },
@@ -184,7 +198,7 @@ test('with the flag off, even a write-scope agent has no write tool and is refus
   const { tok } = await agentSignIn(page, E2E_ACCOUNTS.owner, `Flag-off agent ${RUN}`, 'Allow', { write: true });
 
   const names = toolNames(await mcp(tok.access_token, 'tools/list'));
-  for (const t of ['set_answers', 'add_note', 'set_entity', 'create_item']) expect(names).not.toContain(t);
+  for (const t of ['set_answers', 'add_note', 'set_entity', 'create_item', 'undo_change']) expect(names).not.toContain(t);
   const reply = await mcp(tok.access_token, 'tools/call', {
     name: 'create_item',
     arguments: { document_id: E2E_DOCUMENT.id, name: 'x', category_id: 'c', page_number: 1, bounds: { x: 1, y: 1, width: 1, height: 1 } },

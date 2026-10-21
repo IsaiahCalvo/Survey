@@ -89,13 +89,18 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   const readTools = src.slice(src.indexOf('const READ_TOOLS'), src.indexOf('const WRITE_TOOLS'));
   assert.equal((readTools.match(/readOnlyHint: true/g) || []).length, 7);
   assert.doesNotMatch(readTools, /readOnlyHint: false/);
-  assert.doesNotMatch(readTools, /set_answers|add_note|set_entity|create_item/);
-  // WRITE_TOOLS exist, are the four expected writes, and are not read-only.
+  assert.doesNotMatch(readTools, /set_answers|add_note|set_entity|create_item|undo_change/);
+  // WRITE_TOOLS exist, are the five expected writes, and are not read-only.
   const writeTools = src.slice(src.indexOf('const WRITE_TOOLS'), src.indexOf('async function gunzip'));
-  for (const name of ['set_answers', 'add_note', 'set_entity', 'create_item']) {
+  for (const name of ['set_answers', 'add_note', 'set_entity', 'create_item', 'undo_change']) {
     assert.match(writeTools, new RegExp(`name: '${name}'`), name);
   }
-  assert.equal((writeTools.match(/readOnlyHint: false/g) || []).length, 4);
+  assert.equal((writeTools.match(/readOnlyHint: false/g) || []).length, 5);
+  // Every write returns an opaque change_id, and undo_change reverses it on the
+  // same gated write path (no server state kept).
+  assert.match(src, /name === 'undo_change'/);
+  assert.match(src, /change_id: result\.changed/);
+  assert.match(src, /function decodeChange/);
   // tools/list offers writes only when the flag is on AND the token may write.
   assert.match(src, /const CONNECTOR_WRITES_FLAG = 'survey-connector-writes'/);
   const list = src.slice(src.indexOf("method === 'tools/list'"), src.indexOf("method === 'tools/call'"));
@@ -129,6 +134,18 @@ test('survey-mcp read tools stay read-only; write tools are gated by flag + writ
   assert.match(ctx, /names\.linkedCats/);
   assert.match(ctx, /r\.category_id\) cats\.add/);
   assert.match(ctx, /\.filter\(\(c\) => cats\.has\(c\.id\)\)/);
+  // The list tools are paged so a reply stays bounded: limit+offset in the
+  // schema, a clamp helper, DB .range() for the row lists, a slice for items,
+  // and next_offset to page the rest.
+  const readSchemas = src.slice(src.indexOf('const READ_TOOLS'), src.indexOf('const WRITE_TOOLS'));
+  for (const t of ['list_projects', 'list_documents', 'list_survey_items']) {
+    const tool = readSchemas.slice(readSchemas.indexOf(`name: '${t}'`), readSchemas.indexOf(`name: '${t}'`) + 1500);
+    assert.match(tool, /limit:/, `${t} takes limit`);
+    assert.match(tool, /offset:/, `${t} takes offset`);
+  }
+  assert.match(src, /function pageArgs/);
+  assert.match(src, /\.range\(offset, offset \+ limit - 1\)/);
+  assert.match(src, /next_offset:/);
 });
 
 async function loadAgentSession() {

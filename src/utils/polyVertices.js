@@ -79,3 +79,61 @@ export function polyVertexMenuLayout({ x, y, touch = false, viewportWidth = Infi
   const top = Math.max(margin, Math.min(y, viewportHeight - height - margin));
   return { left, top, width, rowHeight };
 }
+
+/**
+ * Nearest spot on a poly outline (OpenTakeoff / Drawboard "add point on an
+ * edge"). `points` and `pt` share one frame; a polygon also tests its closing
+ * side. Returns { points, index, segmentIndex, t } with the new corner at
+ * `index`, or null when no side lies within `tolerance` of `pt` or the spot
+ * sits on an existing corner.
+ */
+export function insertVertexOnNearestEdge(points, pt, tolerance = Infinity, { closed = true } = {}) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  const px = Number(pt?.x);
+  const py = Number(pt?.y);
+  if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
+  const pts = points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 }));
+  const sides = closed && pts.length > 2 ? pts.length : pts.length - 1;
+  let best = null;
+  for (let i = 0; i < sides; i += 1) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const len2 = vx * vx + vy * vy;
+    if (len2 === 0) continue;
+    const t = Math.min(1, Math.max(0, ((px - a.x) * vx + (py - a.y) * vy) / len2));
+    const d = Math.hypot(a.x + t * vx - px, a.y + t * vy - py);
+    if (!best || d < best.d) best = { d, i, t, len: Math.sqrt(len2) };
+  }
+  if (!best || best.d > tolerance) return null;
+  if (best.t * best.len < 1e-6 || (1 - best.t) * best.len < 1e-6) return null;
+  const a = pts[best.i];
+  const b = pts[(best.i + 1) % pts.length];
+  const next = pts.slice();
+  next.splice(best.i + 1, 0, { x: a.x + best.t * (b.x - a.x), y: a.y + best.t * (b.y - a.y) });
+  return { points: next, index: best.i + 1, segmentIndex: best.i, t: best.t };
+}
+
+/**
+ * Copy of `obj` with a corner inserted on side `segmentIndex` at fraction `t`
+ * (found in any affine frame, e.g. world space: the fraction is preserved).
+ * The point lies on the outline, so the bbox and rotation pivot do not move.
+ */
+export function insertPolyVertex(obj, segmentIndex, t) {
+  if (!polyKind(obj) || !Array.isArray(obj.points) || obj.points.length < 2) return null;
+  const n = obj.points.length;
+  const sides = polyKind(obj) === 'polygon' && n > 2 ? n : n - 1;
+  if (!Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= sides) return null;
+  if (!(t > 0 && t < 1)) return null;
+  const points = obj.points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 }));
+  const a = points[segmentIndex];
+  const b = points[(segmentIndex + 1) % n];
+  points.splice(segmentIndex + 1, 0, { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) });
+  const next = { ...obj, points };
+  if (obj.data?.pdfCloudVertexState) {
+    const { pdfCloudVertexState, ...data } = obj.data;
+    next.data = data;
+  }
+  return next;
+}

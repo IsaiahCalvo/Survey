@@ -168,7 +168,9 @@ For agents that speak MCP (Claude and ChatGPT connectors, scripts):
   `list_survey_items`, `find_survey_items`, `get_survey_item`,
   `get_document_role` (this person's role on a document) and
   `get_survey_context` (a document's survey template: categories, checklist
-  items and entities).
+  items and entities). The list tools are paged: pass `limit` and `offset`,
+  and the reply's `next_offset` (when not null) is the `offset` for the next
+  page — so a big survey never fills your context at once.
 - Write tools (`set_answers`, `add_note`, `set_entity`, `create_item`) appear
   only when the person turned on survey changes for the connector and let this
   agent make changes (otherwise the connector is read-only). They act as the
@@ -184,7 +186,12 @@ For agents that speak MCP (Claude and ChatGPT connectors, scripts):
   - `create_item` — add one item in a category from `get_survey_context`, on a
     page, at a box (`bounds`, PDF points from the page top-left), with an
     optional entity. Returns the new item's id.
-  All write through the document's live collaboration state, so an open app
+  - `undo_change` — reverse one change, using the `change_id` a write returned.
+    It restores the item to what it was before that change; if the change
+    created the item, the item is removed. So act first and undo if it was
+    wrong — you need not ask the person before each change.
+  Every write returns a `change_id`; keep it if you may want to undo. They all
+  write through the document's live collaboration state, so an open app
   converges to the change. A viewer's agent, or a read-only agent, cannot write.
 - Every call runs as the person, so the agent sees exactly their documents.
 

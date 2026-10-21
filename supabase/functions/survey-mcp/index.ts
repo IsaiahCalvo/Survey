@@ -191,24 +191,42 @@ const READ_TOOLS = [
   {
     name: 'list_projects',
     title: 'List projects',
-    description: 'The Survey projects this person can see (their own and shared), newest first.',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'The Survey projects this person can see (their own and shared), newest first. Paged: pass limit (default 100, max 200) and offset; next_offset is set when more remain.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', description: 'How many to return (default 100, max 200).' },
+        offset: { type: 'integer', description: 'How many to skip, for the next page (default 0).' },
+      },
+    },
     annotations: { readOnlyHint: true },
   },
   {
     name: 'list_documents',
     title: 'List documents',
-    description: 'The PDFs (plans, drawings) this person can see, newest first, optionally only one project.',
-    inputSchema: { type: 'object', properties: { project_id: { type: 'string', description: 'Only documents in this project.' } } },
+    description: 'The PDFs (plans, drawings) this person can see, newest first, optionally only one project. Paged: pass limit (default 100, max 200) and offset; next_offset is set when more remain.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'Only documents in this project.' },
+        limit: { type: 'integer', description: 'How many to return (default 100, max 200).' },
+        offset: { type: 'integer', description: 'How many to skip, for the next page (default 0).' },
+      },
+    },
     annotations: { readOnlyHint: true },
   },
   {
     name: 'list_survey_items',
     title: 'List survey items',
-    description: 'The surveyed items in one document (doors, cameras, ...): name, category, entity (status/owner), how many checklist items are answered and how many are No, and whether it has a note. Optionally only one category by name.',
+    description: 'The surveyed items in one document (doors, cameras, ...): name, category, entity (status/owner), how many checklist items are answered and how many are No, and whether it has a note. Optionally only one category by name. Paged: pass limit (default 100, max 500) and offset; count is the full total, next_offset is set when more remain.',
     inputSchema: {
       type: 'object',
-      properties: { document_id: { type: 'string' }, category: { type: 'string', description: 'Category name, e.g. Door.' } },
+      properties: {
+        document_id: { type: 'string' },
+        category: { type: 'string', description: 'Category name, e.g. Door.' },
+        limit: { type: 'integer', description: 'How many items to return (default 100, max 500).' },
+        offset: { type: 'integer', description: 'How many items to skip, for the next page (default 0).' },
+      },
       required: ['document_id'],
     },
     annotations: { readOnlyHint: true },
@@ -266,7 +284,7 @@ const WRITE_TOOLS = [
   {
     name: 'set_answers',
     title: 'Set checklist answers on an item',
-    description: 'Set checklist answers on one survey item (editor or owner only). Only the checklist items you list change; the rest keep their answers. Use the checklist item ids from get_survey_context and the template\'s own answer values. One Undo in the app takes the change back.',
+    description: 'Set checklist answers on one survey item (editor or owner only). Only the checklist items you list change; the rest keep their answers. Use the checklist item ids from get_survey_context and the template\'s own answer values. Returns a change_id you can pass to undo_change to take it back.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -292,7 +310,7 @@ const WRITE_TOOLS = [
   {
     name: 'add_note',
     title: 'Add to an item\'s note',
-    description: 'Add cleanly written text to the end of one survey item\'s note (editor or owner only). Never removes what is already there. One Undo in the app takes it back.',
+    description: 'Add cleanly written text to the end of one survey item\'s note (editor or owner only). Never removes what is already there. Returns a change_id you can pass to undo_change to take it back.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -307,7 +325,7 @@ const WRITE_TOOLS = [
   {
     name: 'set_entity',
     title: 'Set or clear an item\'s entity',
-    description: 'Set or clear the entity (status) on one survey item (editor or owner only). The entity must be one of the document\'s entities from get_survey_context. Pass entity_id null to clear it. One Undo in the app takes it back.',
+    description: 'Set or clear the entity (status) on one survey item (editor or owner only). The entity must be one of the document\'s entities from get_survey_context. Pass entity_id null to clear it. Returns a change_id you can pass to undo_change to take it back.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -322,7 +340,7 @@ const WRITE_TOOLS = [
   {
     name: 'create_item',
     title: 'Add a survey item',
-    description: 'Add one survey item to a document (editor or owner only), in a category from get_survey_context, on a page, at a box on that page (PDF points from the page top-left). One Undo in the app takes it back.',
+    description: 'Add one survey item to a document (editor or owner only), in a category from get_survey_context, on a page, at a box on that page (PDF points from the page top-left). Returns a change_id you can pass to undo_change to remove it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -342,7 +360,41 @@ const WRITE_TOOLS = [
     },
     annotations: { readOnlyHint: false },
   },
+  {
+    name: 'undo_change',
+    title: 'Undo a change',
+    description: 'Reverse one change you made, using the change_id a write tool returned (editor or owner only). It puts the item back the way it was before that change; if the change created the item, the item is removed. Make the change and undo it if it was wrong — you do not need to ask before each change.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        change_id: { type: 'string', description: 'The change_id a write tool returned.' },
+      },
+      required: ['change_id'],
+    },
+    annotations: { readOnlyHint: false },
+  },
 ];
+
+// A change_id is an opaque, self-contained token the write tools hand back: the
+// document, the marker, and the fields' values from BEFORE the change (or a
+// create flag). undo_change decodes it and writes those values back, so no
+// server state is kept. The token grants no authority — undo_change still runs
+// through requireWrite and the append RPC's editor RLS, so it can only reverse a
+// change on a document the agent could write anyway. base64url over UTF-8 bytes,
+// so note text in any language survives.
+function encodeChange(obj: Record<string, unknown>): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function decodeChange(token: string): Record<string, unknown> {
+  const b64 = token.replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
 
 // gunzip a snapshot stored with encoding_version = 2.
 async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
@@ -456,23 +508,38 @@ async function requireWrite(db: SupabaseClient): Promise<{ fieldMaps: boolean }>
   return { fieldMaps: flagMap[MARKER_FIELDS_FLAG] === true };
 }
 
+// Clamp the limit/offset a list tool takes, so a reply stays bounded and an
+// agent can page instead of pulling everything into its context at once.
+function pageArgs(args: Record<string, unknown>, def: number, max: number): { limit: number; offset: number } {
+  const rawLimit = Number(args.limit);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), max) : def;
+  const rawOffset = Number(args.offset);
+  const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
+  return { limit, offset };
+}
+
 async function callTool(db: SupabaseClient, name: string, args: Record<string, unknown>) {
   if (name === 'list_projects') {
+    const { limit, offset } = pageArgs(args, 100, 200);
     const { data, error } = await db.from('projects').select('id, name, updated_at')
-      .eq('archived', false).is('user_archived_at', null).order('updated_at', { ascending: false }).limit(200);
+      .eq('archived', false).is('user_archived_at', null).order('updated_at', { ascending: false })
+      .range(offset, offset + limit - 1);
     if (error) throw new ToolError('Could not list projects.');
-    return text(data || []);
+    const rows = data || [];
+    return text({ count: rows.length, offset, next_offset: rows.length === limit ? offset + limit : null, items: rows });
   }
   if (name === 'list_documents') {
+    const { limit, offset } = pageArgs(args, 100, 200);
     let q = db.from('documents').select('id, name, project_id, page_count, updated_at')
       .eq('archived', false).is('user_archived_at', null);
     if (args.project_id) {
       if (!UUID.test(String(args.project_id))) throw new ToolError('project_id must be a project id from list_projects.');
       q = q.eq('project_id', String(args.project_id));
     }
-    const { data, error } = await q.order('updated_at', { ascending: false }).limit(200);
+    const { data, error } = await q.order('updated_at', { ascending: false }).range(offset, offset + limit - 1);
     if (error) throw new ToolError('Could not list documents.');
-    return text(data || []);
+    const rows = data || [];
+    return text({ count: rows.length, offset, next_offset: rows.length === limit ? offset + limit : null, items: rows });
   }
   const documentId = String(args.document_id || '');
   if (name === 'list_survey_items' || name === 'find_survey_items') {
@@ -503,10 +570,21 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         .filter((i) => i.score >= 0.5)
         .sort((a, b) => b.score - a.score)
         .slice(0, 5);
-    } else {
-      items.sort((a, b) => String(a.category).localeCompare(String(b.category)) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+      return text({ document_id: documentId, count: items.length, items });
     }
-    return text({ document_id: documentId, count: items.length, items });
+    items.sort((a, b) => String(a.category).localeCompare(String(b.category)) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+    // Page the full matched set so a big document doesn't return thousands of
+    // rows at once; count is the full total, next_offset pages the rest.
+    const { limit, offset } = pageArgs(args, 100, 500);
+    const page = items.slice(offset, offset + limit);
+    return text({
+      document_id: documentId,
+      count: items.length,
+      returned: page.length,
+      offset,
+      next_offset: offset + page.length < items.length ? offset + page.length : null,
+      items: page,
+    });
   }
   if (name === 'get_survey_item') {
     const [rows, names] = await Promise.all([surveyItems(db, documentId), categoryNames(db, documentId)]);
@@ -562,6 +640,11 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
     // persist a checklist id or answer the template does not define. set_entity
     // needs the same lookup to validate the entity id against this document.
     const names = (name === 'set_answers' || name === 'set_entity') ? await categoryNames(db, documentId) : null;
+    // Captured before the mutate so undo_change can reverse exactly what this
+    // call changed — only the touched sub-fields, never a whole field, so a
+    // later edit to a different answer or to the note survives an undo, and the
+    // change_id token stays as small as the request that made it.
+    let undo: Record<string, unknown> | null = null;
     const result = await writeMarkers(db, documentId, (markers) => {
       const marker = markers[itemId];
       if (!marker) throw new ToolError('No item with that id in this document. Use find_survey_items.');
@@ -573,7 +656,11 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         if (!category) throw new ToolError('This item has no category in the template, so it has no checklist.');
         const checklistIds = new Set(category.checklist.map((c) => c.id));
         const allowed = names!.answerValues.get(categoryId);
-        const responses = { ...((marker.checklistResponses as Record<string, unknown>) || {}) };
+        const original = (marker.checklistResponses as Record<string, unknown>) || {};
+        const responses = { ...original };
+        // Only the checklist entries this call sets, with their prior value
+        // (null = not set), so undo restores just these and leaves the rest.
+        const before: Record<string, unknown> = {};
         for (const a of answers) {
           const row = (a && typeof a === 'object' ? a : {}) as Record<string, unknown>;
           const clId = String(row.checklist_item_id || '');
@@ -584,8 +671,10 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
           if (Array.isArray(allowed) && !allowed.includes(value)) {
             throw new ToolError(`"${value}" is not an allowed answer on ${category.name}. Allowed: ${allowed.join(', ')}.`);
           }
+          if (!(clId in before)) before[clId] = clId in original ? original[clId] : null;
           responses[clId] = { ...((responses[clId] as Record<string, unknown>) || {}), selection: value };
         }
+        undo = { v: 1, d: documentId, m: itemId, kind: 'answers', keys: before };
         markers[itemId] = { ...marker, checklistResponses: responses };
       } else if (name === 'add_note') {
         const add = String(args.text || '').trim();
@@ -595,7 +684,11 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         // field every editor writes (documentSurveyMarkerMapper.js).
         const obj = noteObjectOf(marker.note ?? marker.notes);
         const beforeText = String(obj.text || '').trimEnd();
-        obj.text = beforeText ? `${beforeText}\n${add}` : add;
+        const seg = beforeText ? `\n${add}` : add;
+        obj.text = `${beforeText}${seg}`;
+        // Undo strips just the segment this call appended, if the note still
+        // ends with it — so a note edited afterwards is left as it is.
+        undo = { v: 1, d: documentId, m: itemId, kind: 'note_append', seg };
         markers[itemId] = { ...marker, note: obj };
       } else {
         // set_entity: set or clear the item's entity (status). Accept any entity
@@ -607,6 +700,13 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         // old status after the id changes.
         const raw = args.entity_id;
         const entityId = raw == null || raw === '' ? null : String(raw);
+        // The entity is one logical field (id + its name/colour move together),
+        // so undo restores all three to what they were before this call.
+        undo = { v: 1, d: documentId, m: itemId, kind: 'entity', b: {
+          entityId: (marker.entityId ?? null) as unknown,
+          entityName: (marker.entityName ?? null) as unknown,
+          entityColor: (marker.entityColor ?? null) as unknown,
+        } };
         if (entityId) {
           const used = documentEntityIds(markers);
           const known = names!.entities.get(entityId);
@@ -619,7 +719,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
         }
       }
     }, fieldMaps);
-    return text({ ok: true, item_id: itemId, changed: result.changed });
+    return text({ ok: true, item_id: itemId, changed: result.changed, change_id: result.changed && undo ? encodeChange(undo) : null });
   }
   if (name === 'create_item') {
     if (!UUID.test(documentId)) throw new ToolError('document_id must be a document id from list_documents.');
@@ -668,7 +768,56 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
       }
       markers[itemId] = marker;
     }, fieldMaps);
-    return text({ ok: true, item_id: itemId, changed: result.changed });
+    // Undo of a create removes the marker it added.
+    const undo = { v: 1, d: documentId, m: itemId, kind: 'create' };
+    return text({ ok: true, item_id: itemId, changed: result.changed, change_id: result.changed ? encodeChange(undo) : null });
+  }
+  if (name === 'undo_change') {
+    const token = String(args.change_id || '');
+    if (!token) throw new ToolError('Pass the change_id a write tool returned.');
+    let u: Record<string, unknown>;
+    try { u = decodeChange(token); } catch { throw new ToolError('That change_id is not one this connector gave out.'); }
+    if (!u || u.v !== 1 || !UUID.test(String(u.d || '')) || !u.m) {
+      throw new ToolError('That change_id is not one this connector gave out.');
+    }
+    // Same gate as any write; the append RPC's editor RLS is the real backstop.
+    const { fieldMaps } = await requireWrite(db);
+    const id = String(u.m);
+    const kind = String(u.kind || '');
+    const result = await writeMarkers(db, String(u.d), (markers) => {
+      if (kind === 'create') { delete markers[id]; return; } // the item this change added
+      const marker = markers[id];
+      if (!marker) return; // already gone — nothing to put back
+      if (kind === 'answers') {
+        // Restore ONLY the checklist entries this change set; leave the rest
+        // (an answer changed afterwards survives). null = it was unset before.
+        const keys = (u.keys && typeof u.keys === 'object' ? u.keys : {}) as Record<string, unknown>;
+        const responses = { ...((marker.checklistResponses as Record<string, unknown>) || {}) };
+        for (const [clId, prior] of Object.entries(keys)) {
+          if (prior === null || prior === undefined) delete responses[clId];
+          else responses[clId] = prior;
+        }
+        markers[id] = { ...marker, checklistResponses: responses };
+      } else if (kind === 'note_append') {
+        // Strip just the text this change appended, if the note still ends with
+        // it; a note edited since is left untouched.
+        const seg = String(u.seg || '');
+        const obj = noteObjectOf(marker.note ?? marker.notes);
+        const current = String(obj.text || '');
+        if (seg && current.endsWith(seg)) {
+          obj.text = current.slice(0, current.length - seg.length);
+          markers[id] = { ...marker, note: obj };
+        }
+      } else if (kind === 'entity') {
+        const before = (u.b && typeof u.b === 'object' ? u.b : {}) as Record<string, unknown>;
+        const patch: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(before)) patch[k] = val === null ? undefined : val;
+        markers[id] = { ...marker, ...patch };
+      } else {
+        throw new ToolError('That change_id is not one this connector gave out.');
+      }
+    }, fieldMaps);
+    return text({ ok: true, changed: result.changed });
   }
   throw new ToolError(`Unknown tool ${name}.`);
 }
