@@ -70,3 +70,25 @@ after=$(count)
 echo "points after: $after"
 [ "$after" = "$((before - 1))" ] || { echo "::error::Point count $before -> $after, expected $((before - 1))"; exit 1; }
 echo "Delete point check passed."
+# #1115: long-press on a SIDE of the selected polygon opens "Add point here"
+# (data-poly-vertex-insert). The side's midpoint holds the "Add vertex" handle
+# ([data-add-vertex], stops propagation), so pick a spot along corner 0 -> 1
+# that actually hits the side's hit stroke ([data-poly-edge-hit]).
+before=$(count)
+echo "points before add: $before"
+[ "$before" = "3" ] || { echo "::error::Polygon not selected with 3 points after delete (got $before)"; adb exec-out screencap -p > "$OUT/19-add-point.png"; exit 1; }
+xy=$(ev "(() => { const c = i => { const r = document.querySelector('[data-poly-vertex-index=\"' + i + '\"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }; const a = c(0), b = c(1); const d = window.devicePixelRatio || 1; for (const t of [0.3, 0.25, 0.35, 0.2, 0.4]) { const x = a[0] + (b[0] - a[0]) * t, y = a[1] + (b[1] - a[1]) * t; const el = document.elementFromPoint(x, y); if (el && el.closest('[data-poly-edge-hit]')) return Math.round(x * d) + ' ' + Math.round(y * d); } return 'none'; })()")
+echo "side point at: $xy"
+[ "$xy" != "none" ] || { echo "::error::No spot on side 0-1 hits the side (handles cover it)"; adb exec-out screencap -p > "$OUT/19-add-point.png"; exit 1; }
+set -- $xy
+adb shell input stylus swipe "$1" "$2" "$1" "$2" 900
+sleep 1
+r=$(ev "(() => { const b = document.querySelector('[data-poly-vertex-insert]'); if (!b) return 'no menu'; if (b.disabled) return 'disabled'; b.click(); return 'ok'; })()")
+echo "add point: $r"
+sleep 1.5
+adb exec-out screencap -p > "$OUT/19-add-point.png"
+[ "$r" = "ok" ] || { echo "::error::Long-press did not open an enabled Add point here menu ($r)"; exit 1; }
+after=$(count)
+echo "points after add: $after"
+[ "$after" = "$((before + 1))" ] || { echo "::error::Point count $before -> $after, expected $((before + 1))"; exit 1; }
+echo "Add point check passed."
