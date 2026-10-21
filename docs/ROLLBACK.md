@@ -66,9 +66,39 @@ the workflow.
   that day's snapshot, so anything written since is lost; prefer fixing the
   rows by hand when the damage is small.
 - **Point-in-time restore** (rewind to any minute, not just the daily copy)
-  is a paid add-on the owner turns on in the dashboard. It was not confirmed
-  as on when this page was written; check Database → Backups before relying
-  on it.
+  is a paid add-on (about $100/month for 7 days). It was off on 2026-10-21.
+- **Files are not in the backups.** Supabase backups hold the database only.
+  PDFs and photos in Storage are not copied anywhere; a deleted file stays
+  deleted.
+
+### Restoring the database
+
+Weekly proof: Actions > "Backup restore drill" checks the daily backups are
+fresh and restores a fresh dump into a throwaway local stack
+(`scripts/backup-drill.mjs`). It raises an `alert` issue when either fails.
+
+To rewind production to a daily backup (owner only, site is down meanwhile):
+
+1. Note the time of the damage. Anything saved after the chosen backup is
+   lost, so export what you can first (step below).
+2. Dashboard > Database > Backups > Scheduled: pick the newest copy from
+   before the damage and press Restore.
+3. After it finishes, re-run Actions > "Deploy production" so any migration
+   newer than the backup is applied again, then run "Backup restore drill".
+
+To copy data out without rewinding (safer for small damage), restore a dump
+locally and copy back only the rows you need:
+
+```bash
+supabase link --project-ref cvamwtpsuvxvjdnotbeg
+node scripts/backup-drill.mjs --linked   # proves the dump restores
+supabase db dump --linked --use-copy --data-only -f data.sql   # keep off the repo
+```
+
+The drill script shows the order a manual restore must follow: roles, then
+schema, then data with `session_replication_role = replica`, in one
+transaction. Drop `GRANT SET ON PARAMETER` lines from the roles file and empty
+`COPY` blocks from the data file; both only touch Supabase's own objects.
 
 ## 5. The phone apps
 
