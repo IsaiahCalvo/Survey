@@ -24,7 +24,9 @@
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.55 var(--body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--paper);color:var(--ink);font:400 17px/1.55 var(--body);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+main{flex:1 0 auto}
+code{font:500 .92em/1.5 var(--mono);overflow-wrap:anywhere;word-break:break-word;background:var(--tint2);padding:2px 6px;border-radius:4px}
 img,video{max-width:100%;height:auto;display:block}
 a{color:var(--accent)}
 h1,h2,h3{font-family:var(--display);margin:0 0 .5em;font-weight:600;color:var(--ink);text-wrap:balance}
@@ -175,6 +177,7 @@ p{margin:0 0 1em}
 .grid6 h3 a:hover{text-decoration:underline;text-underline-offset:4px}
 .grid6 p{color:var(--soft);margin:0;font-size:16px}
 .dev-rows{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.narrow .dev-rows{grid-template-columns:repeat(2,1fr)}
 .dev-rows article{background:var(--sheet);border-radius:var(--r-card);padding:32px}
 .dev-rows h2{font-size:24px;letter-spacing:-.01em;margin-bottom:10px}
 .dev-rows h3{font-size:22px;margin-bottom:10px}
@@ -203,6 +206,7 @@ tr:last-child>*{border-bottom:0}
 .steps li::before{content:counter(s);display:inline-grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--ink);color:var(--paper);font:600 15px/1 var(--body);margin-bottom:14px}
 .steps h3{margin:0 0 6px;font-size:20px}
 .steps p{color:var(--soft);margin:0;font-size:16px}
+.narrow .steps{grid-template-columns:repeat(2,1fr)}
 .vs{display:grid;grid-template-columns:1fr 1fr;gap:24px}
 .vs article{background:var(--sheet);border-radius:var(--r-card);padding:32px}
 .vs h2{font-size:24px;letter-spacing:-.01em}
@@ -257,7 +261,7 @@ tr:last-child>*{border-bottom:0}
   .sec{padding:64px 0}
   .head{margin-bottom:32px}
   .right .btn.primary{display:none}
-  .grid6,.fgrid,.steps{grid-template-columns:1fr}
+  .grid6,.fgrid,.steps,.narrow .steps,.narrow .dev-rows{grid-template-columns:1fr}
   .custom,.panel{padding:32px 24px;border-radius:20px}
   .cta-band{padding:64px 24px;border-radius:20px}
   .band{padding-bottom:64px}
