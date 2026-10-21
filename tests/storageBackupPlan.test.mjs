@@ -34,8 +34,20 @@ test('storage backup: removed files are kept 30 days, then purged', () => {
   assert.deepEqual(plan.copy, []);
 });
 
-test('storage backup: leftovers from a stopped refresh are cleared', () => {
-  const plan = planBackup([row(BACKUP_BUCKET, '_staging/documents/u1/a.pdf', 1, '2026-10-20T00:00:00Z')], today);
-  assert.deepEqual(plan.purge, ['_staging/documents/u1/a.pdf']);
-  assert.deepEqual(plan.retire, []);
+test('storage backup: a staged copy is moved into place when it is the only one, else dropped', () => {
+  const plan = planBackup([
+    row('documents', 'u1/a.pdf', 1, '2026-10-01T00:00:00Z'),
+    row(BACKUP_BUCKET, '_staging/documents/u1/a.pdf', 1, '2026-10-20T00:00:00Z'),
+    row(BACKUP_BUCKET, '_staging/documents/u1/gone.pdf', 1, '2026-10-20T00:00:00Z'),
+    row(BACKUP_BUCKET, '_staging/documents/u1/b.pdf', 1, '2026-10-20T00:00:00Z'),
+    row(BACKUP_BUCKET, 'documents/u1/b.pdf', 1, '2026-10-20T00:00:00Z'),
+  ], today);
+  assert.deepEqual(plan.promote, [
+    { from: '_staging/documents/u1/a.pdf', to: 'documents/u1/a.pdf' },
+    { from: '_staging/documents/u1/gone.pdf', to: 'documents/u1/gone.pdf' },
+  ]);
+  assert.deepEqual(plan.copy, [], 'the promoted copy is current');
+  // Its source is gone, so the promoted copy goes on to _removed/.
+  assert.deepEqual(plan.retire.map((r) => r.from).sort(), ['documents/u1/b.pdf', 'documents/u1/gone.pdf']);
+  assert.deepEqual(plan.purge, ['_staging/documents/u1/b.pdf']);
 });

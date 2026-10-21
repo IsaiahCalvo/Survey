@@ -21,10 +21,26 @@ const STAGING = '_staging/';
 const PAGE = 1000;
 const BATCH = 100;
 
-/** What to copy, retire and purge, from one inventory of every bucket. */
+/** What to promote, copy, retire and purge, from one inventory of every bucket. */
 export function planBackup(inventory, today = new Date()) {
   const sources = inventory.filter((o) => o.bucket_id !== BACKUP_BUCKET);
-  const backups = new Map(inventory.filter((o) => o.bucket_id === BACKUP_BUCKET).map((o) => [o.name, o]));
+  const stored = inventory.filter((o) => o.bucket_id === BACKUP_BUCKET);
+  const backups = new Map(stored.filter((o) => !o.name.startsWith(STAGING)).map((o) => [o.name, o]));
+
+  // A run that stopped between dropping the old copy and moving the staged
+  // one in leaves the staged copy as the only backup: move it into place.
+  // A staged copy next to a live one is a stale leftover.
+  const promote = [];
+  const purge = [];
+  for (const o of stored.filter((row) => row.name.startsWith(STAGING))) {
+    const key = o.name.slice(STAGING.length);
+    if (backups.has(key)) {
+      purge.push(o.name);
+    } else {
+      promote.push({ from: o.name, to: key });
+      backups.set(key, o);
+    }
+  }
 
   const copy = [];
   const wanted = new Set();
@@ -39,19 +55,15 @@ export function planBackup(inventory, today = new Date()) {
   const day = today.toISOString().slice(0, 10);
   const cutoff = new Date(today.getTime() - RETAIN_DAYS * 86_400_000).toISOString().slice(0, 10);
   const retire = [];
-  const purge = [];
   for (const name of backups.keys()) {
-    // Leftover from a run that stopped mid-refresh; that file is refreshed again.
-    if (name.startsWith(STAGING)) {
-      purge.push(name);
-    } else if (name.startsWith(REMOVED)) {
+    if (name.startsWith(REMOVED)) {
       const removedOn = name.slice(REMOVED.length, REMOVED.length + 10);
       if (removedOn < cutoff) purge.push(name);
     } else if (!wanted.has(name)) {
       retire.push({ from: name, to: `${REMOVED}${day}/${name}` });
     }
   }
-  return { copy, retire, purge };
+  return { promote, copy, retire, purge };
 }
 
 async function readInventory(admin) {
@@ -76,11 +88,15 @@ async function removeAll(backup, names) {
 export async function runBackup(admin, { dryRun = false, today = new Date(), log = console.log } = {}) {
   const inventory = await readInventory(admin);
   const plan = planBackup(inventory, today);
-  log(`[storage-backup] ${inventory.length} objects; copy ${plan.copy.length}, retire ${plan.retire.length}, purge ${plan.purge.length}${dryRun ? ' (dry run)' : ''}`);
+  log(`[storage-backup] ${inventory.length} objects; promote ${plan.promote.length}, copy ${plan.copy.length}, retire ${plan.retire.length}, purge ${plan.purge.length}${dryRun ? ' (dry run)' : ''}`);
   if (dryRun) return { ...plan, failed: 0 };
 
   const backup = admin.storage.from(BACKUP_BUCKET);
   let failed = 0;
+  for (const { from, to } of plan.promote) {
+    const { error } = await backup.move(from, to);
+    if (error) failed += 1;
+  }
   for (const item of plan.copy) {
     const target = item.replace ? `${STAGING}${item.key}` : item.key;
     if (item.replace) await backup.remove([target]);
