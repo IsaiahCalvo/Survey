@@ -346,6 +346,21 @@ export function snapItemNames(text, names) {
       : lead.every((w) => w.length >= 4) && lead.map((w) => w[0]).join('') === letters));
     return fits.length === 1 ? fits[0].name : null;
   };
+  // Sounds speech to text mixes up, tried only for a name that isn't on the
+  // list and only when exactly one listed name fits: "eighteen" heard as
+  // "eighty" (D-180 for D-118), and the letters that rhyme with "ee"
+  // (B-129 or V-118 for D-129, D-118).
+  const EE = 'bcdegptvz';
+  const misheard = (key) => {
+    const m = key.match(/^([a-z]{1,3})(\d+)$/);
+    if (!m) return null;
+    const tries = [];
+    const ty = m[2].match(/^(\d*)([2-9])0$/);
+    if (ty) tries.push(`${m[1]}${ty[1]}1${ty[2]}`);
+    if (m[1].length === 1 && EE.includes(m[1])) for (const l of EE) if (l !== m[1]) tries.push(`${l}${m[2]}`);
+    const fits = [...new Set(tries.map((t) => known.get(t)).filter(Boolean))];
+    return fits.length === 1 ? fits[0] : null;
+  };
   const words = String(text || '').split(/(\s+)/);
   if (!known.size) return String(text || '');
   const out = [];
@@ -361,7 +376,7 @@ export function snapItemNames(text, names) {
       const key = normalizeItemName(core);
       // Spelled letters heard as one word: "F A 204" written "EFA 204".
       const spelled = key.match(/^e([flmnsx][a-z]+\d+)$/)?.[1];
-      const name = known.get(key) || (spelled && known.get(spelled)) || byLongForm(core);
+      const name = known.get(key) || (spelled && known.get(spelled)) || byLongForm(core) || misheard(key);
       if (name) {
         const lead = span.slice(0, span.indexOf(core));
         const tail = span.slice(span.indexOf(core) + core.length);

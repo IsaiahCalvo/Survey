@@ -273,3 +273,14 @@ test('a looping transcript keeps one copy', () => {
   assert.equal(cleanTranscript('D-117 and D-118 both have power'), 'D-117 and D-118 both have power');
   assert.equal(cleanTranscript(null), '');
 });
+
+test('snapItemNames: eighteen heard as eighty, and letters that rhyme with "ee", only when one listed name fits', () => {
+  const names = ['D-117', 'D-118', 'D-129', 'D-107', 'CAM-12'];
+  assert.equal(snapItemNames('D-180, no power.', names), 'D-118, no power.');
+  assert.equal(snapItemNames('V-118, no power.', names), 'D-118, no power.');
+  assert.equal(snapItemNames('B-1-29, lock yes.', names), 'D-129, lock yes.');
+  assert.equal(snapItemNames('B-107, closer broken.', names), 'D-107, closer broken.');
+  // A listed name is kept as heard; two fits means no guess.
+  assert.equal(snapItemNames('D-117 done', [...names, 'B-117']), 'D-117 done');
+  assert.equal(snapItemNames('V-5 done', ['D-5', 'B-5']), 'V-5 done');
+});
