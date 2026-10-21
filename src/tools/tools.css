@@ -58,7 +58,7 @@
 .tbar{display:flex;align-items:center;gap:16px;padding:16px 20px;border-top:1px solid var(--rule);position:sticky;bottom:0;background:var(--sheet);border-radius:0 0 16px 16px;z-index:2}
 .tprog{color:var(--soft);font:500 14px var(--mono)}
 .btn[disabled]{opacity:.55;cursor:default;transform:none}
-button.btn{cursor:pointer}
+button.btn,label.btn{cursor:pointer}
 
 .ibtn{width:40px;height:40px;border-radius:8px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);display:grid;place-items:center;cursor:pointer}
 .ibtn[disabled]{opacity:.35;cursor:default}

@@ -613,7 +613,7 @@ function resultView() {
 
 function dropzone() {
   const zone = h('div', { class: 'dz', 'data-dz': true },
-    h('p', { class: 'dz-main' }, h('button', { type: 'button', class: 'btn primary lg', onclick: pickFiles }, root.querySelector('[data-pick]')?.textContent || 'Choose files')),
+    h('p', { class: 'dz-main' }, h('button', { type: 'button', class: 'btn primary lg', onclick: pickFiles }, pickLabel || 'Choose files')),
     h('p', { class: 'dz-or' }, `or drop ${MULTIPLE ? 'them' : 'it'} here`),
     h('p', { class: 'dz-safe', html: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your files stay on this device' }));
   const icon = root.querySelector('.dz > .ticon');
@@ -623,7 +623,6 @@ function dropzone() {
 
 let pickLabel;
 function render() {
-  pickLabel ||= root.querySelector('[data-pick]')?.textContent;
   const err = S.error && h('p', { class: 'terr', role: 'alert' }, S.error);
   if (S.result) {
     root.replaceChildren(resultView());
@@ -663,4 +662,10 @@ document.addEventListener('drop', (e) => {
   if (!S.busy) addFiles(e.dataTransfer.files);
 });
 
-render();
+// The page's own picker works before this script loads (it is a plain label
+// and input). Take any files chosen through it, then or later.
+const early = root.querySelector('[data-early]');
+pickLabel = root.querySelector('[data-pick]')?.textContent;
+early?.addEventListener('change', () => addFiles(early.files));
+if (early?.files.length) addFiles(early.files);
+else render();

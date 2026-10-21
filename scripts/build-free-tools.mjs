@@ -74,7 +74,7 @@ function toolPage(t) {
   <div class="tool" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}"${t.multiple ? ' data-multiple' : ''}>
     <div class="dz" data-dz>
       ${icon(t.icon)}
-      <p class="dz-main"><button class="btn primary lg" type="button" data-pick>Choose ${t.accept === 'pdf' ? (t.multiple ? 'PDF files' : 'a PDF') : 'images'}</button></p>
+      <p class="dz-main"><label class="btn primary lg"><span data-pick>Choose ${t.accept === 'pdf' ? (t.multiple ? 'PDF files' : 'a PDF') : 'images'}</span><input type="file" hidden data-early accept="${t.accept === 'pdf' ? 'application/pdf,.pdf' : 'image/*'}"${t.multiple ? ' multiple' : ''} /></label></p>
       <p class="dz-or">or drop ${t.multiple ? 'them' : 'it'} here</p>
       <p class="dz-safe"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your files stay on this device</p>
       <noscript><p>This tool needs JavaScript turned on.</p></noscript>
