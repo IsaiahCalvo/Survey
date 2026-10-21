@@ -5,3 +5,9 @@ export function isToolGroupPressed({ activeTool, activeCategoryDropdown, group, 
   if (activeTool === 'pan' || activeTool === 'select') return false;
   return activeCategoryDropdown === group || toolIds.includes(activeTool);
 }
+
+// Phone tool rail: aria-pressed for a tool button, nothing for an action
+// button that never passes `active`.
+export function railButtonPressed(active) {
+  return active === undefined ? undefined : Boolean(active);
+}

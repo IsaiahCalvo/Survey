@@ -34,6 +34,7 @@ import {
   MobileSurveyEntityColumn,
   useMobileSurveyRailSlots,
 } from './MobileSurveyRail.jsx';
+import { railButtonPressed } from '../utils/toolbarToolPressed.js';
 import './mobilePdfViewer.css';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
@@ -828,11 +829,14 @@ const HORIZONTAL_ALIGNMENTS = [
    drew the rail's. Each glyph sits at the same fill inside its own chip -
    0.57 since the 2026-09-16 phone sweep, where it used to be two thirds.
    Do not pass a bare number here. */
-const RailButton = ({ active = false, disabled = false, icon, label, glyph = RAIL_GLYPH, onClick, children, ...buttonProps }) => (
+const RailButton = ({ active, disabled = false, icon, label, glyph = RAIL_GLYPH, onClick, children, ...buttonProps }) => (
   <button
     type="button"
     className={`mobile-pdf-tools__button${active ? ' is-active' : ''}`}
     aria-label={label}
+    // A tool (one passed `active`) tells a screen reader whether it is on; a
+    // plain action such as History or More passes none and stays a button.
+    aria-pressed={railButtonPressed(active)}
     // UX 2026-09-16: on a tablet or a narrow desktop window this shell gets a
     // real pointer, so the hover hint names the key that arms the tool
     // ("Rectangle  R") exactly as the desktop chip does. A finger never sees
