@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PENDING_INVITE_KEY, pendingInviteRedirect, readPendingInviteToken } from '../src/utils/pendingInvite.js';
+import { appReturnPath } from '../src/utils/accountPlatform.js';
 
 const TOKEN = '7fb955cfb223ad87ed4ced47f32347ae';
 const at = (href) => new URL(href);
@@ -35,4 +36,12 @@ test('storage that throws (private mode) is treated as empty', () => {
   const throwing = { getItem() { throw new Error('denied'); } };
   assert.equal(readPendingInviteToken(at('https://surveytool.app/'), throwing), null);
   assert.equal(readPendingInviteToken(at(`https://surveytool.app/?invite=${TOKEN}`), throwing), TOKEN);
+});
+
+test('keeps the phone app shell flags so the invite page returns to /mobile', () => {
+  const location = at(`https://surveytool.app/mobile?nativeShell=capacitor&mobileNav=tabs&invite=${TOKEN}`);
+  const destination = pendingInviteRedirect(location, store(null));
+  assert.equal(destination, `/invite/${TOKEN}?mobileNav=tabs&nativeShell=capacitor`);
+  // The invite page builds its way back from its own URL.
+  assert.equal(appReturnPath(new URL(destination, 'https://surveytool.app')), '/mobile?mobileNav=tabs&nativeShell=capacitor');
 });

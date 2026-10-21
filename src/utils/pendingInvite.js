@@ -2,6 +2,8 @@
 // ?invite=<token>. The token is also kept in localStorage, because a sign-up
 // confirmation email brings them back without the query. Once they are signed
 // in, the app sends them back to the invite page, which accepts the invite.
+import { appReturnPath } from './accountPlatform.js';
+
 export const PENDING_INVITE_KEY = 'kal31_pending_invite_token';
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{8,256}$/;
@@ -21,5 +23,10 @@ export function pendingInviteRedirect(location, storage) {
   if (!/^https?:$/i.test(location?.protocol || '')) return null;
   if (/^\/invite\//.test(location?.pathname || '')) return null;
   const token = readPendingInviteToken(location, storage);
-  return token ? `/invite/${encodeURIComponent(token)}` : null;
+  if (!token) return null;
+  // Keep the phone app's flags (/mobile, nativeShell, mobileNav) on the invite
+  // URL so the invite page sends the person back into the same shell.
+  const returnPath = appReturnPath(location);
+  const shellQuery = returnPath.includes('?') ? returnPath.slice(returnPath.indexOf('?')) : '';
+  return `/invite/${encodeURIComponent(token)}${shellQuery}`;
 }
