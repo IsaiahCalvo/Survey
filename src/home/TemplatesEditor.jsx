@@ -106,6 +106,7 @@ import DismissBarrier from '../components/DismissBarrier';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 import { templateCategoryEmptyText } from './templateEmptyText.js';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 // The preset id a template's answer set matches ('' when it is custom).
 const answerPresetIdOf = (set) => {
@@ -2309,6 +2310,7 @@ export default function TemplatesEditor({
                       data-drag-rearrange-row
                       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTplMenu({ id: t.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
+                      {...keyboardControlProps()}
                       style={{
                         display: 'grid',
                         gridTemplateColumns: '28px 1fr auto',
@@ -2591,6 +2593,8 @@ export default function TemplatesEditor({
                         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setCatMenu({ id: c.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                         className={`tpl-cat-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
                         onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : i); }}
+                        {...keyboardControlProps()}
+                        aria-label={c.name}
                       >
                         <DragRearrangeHandle
                           {...attributes}
@@ -2869,6 +2873,8 @@ export default function TemplatesEditor({
                         className={`card-line tpl-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
                         aria-expanded={entityEdit ? undefined : isOpen}
                         onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
+                        {...keyboardControlProps()}
+                        aria-label={r.role}
                         style={{
                           transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                         }}
@@ -3330,6 +3336,8 @@ export default function TemplatesEditor({
                                 className={`templates-mobile-category-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
                                 aria-expanded={catEdit ? undefined : open}
                                 onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : ci); }}
+                                {...keyboardControlProps()}
+                                aria-label={c.name}
                               >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
                                 <button
@@ -3542,6 +3550,8 @@ export default function TemplatesEditor({
                                 className={`templates-mobile-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
                                 aria-expanded={entityEdit ? undefined : isOpen}
                                 onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
+                                {...keyboardControlProps()}
+                                aria-label={r.role}
                               >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} collapseOpen={isOpen && foldingColor !== r.id} onCollapse={() => foldColor(null)} />
                                 <button

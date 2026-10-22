@@ -26,6 +26,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import Spinner from '../components/Spinner';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { checkboxProps } from '../utils/keyActivate';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import DismissBarrier from '../components/DismissBarrier';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { visibleOpenInvites } from './accessRows';
@@ -146,8 +147,8 @@ const ActivityModal = ({ member, onClose }) => {
           <button onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>
-          <span onClick={() => click("file")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "file" ? BONE_100 : "inherit" }}>File{arrow("file")}</span>
-          <span onClick={() => click("edited")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "edited" ? BONE_100 : "inherit" }}>Edited{arrow("edited")}</span>
+          <span onClick={() => click("file")} {...keyboardControlProps()} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "file" ? BONE_100 : "inherit" }}>File{arrow("file")}</span>
+          <span onClick={() => click("edited")} {...keyboardControlProps()} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "edited" ? BONE_100 : "inherit" }}>Edited{arrow("edited")}</span>
         </div>
         <div className="slim-scroll" style={{ maxHeight: 420, overflowY: "auto", padding: "6px 8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
           {items.length === 0 ? (
@@ -713,9 +714,9 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
           {/* Column headers */}
           <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>
             <span></span>
-            <span onClick={() => onSort("name")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "name" ? BONE_100 : "inherit" }}>Users{arrow("name")}</span>
-            <span onClick={() => onSort("role")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "role" ? BONE_100 : "inherit" }}>Role{arrow("role")}</span>
-            <span onClick={() => onSort("added")} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "added" ? BONE_100 : "inherit" }}>Added{arrow("added")}</span>
+            <span onClick={() => onSort("name")} {...keyboardControlProps()} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "name" ? BONE_100 : "inherit" }}>Users{arrow("name")}</span>
+            <span onClick={() => onSort("role")} {...keyboardControlProps()} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "role" ? BONE_100 : "inherit" }}>Role{arrow("role")}</span>
+            <span onClick={() => onSort("added")} {...keyboardControlProps()} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "added" ? BONE_100 : "inherit" }}>Added{arrow("added")}</span>
             <span></span>
           </div>
 

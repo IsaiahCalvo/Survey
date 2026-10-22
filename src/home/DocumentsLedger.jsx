@@ -40,6 +40,7 @@ import {
   selectAllCheckState,
   selectionModeFromEvent,
 } from './documentSelection.js';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -844,6 +845,7 @@ export default function DocumentsLedger({
                     // Shift/Ctrl-click must not paint a text selection across rows.
                     onMouseDown={(event) => { if (event.shiftKey || event.metaKey || event.ctrlKey) event.preventDefault(); }}
                     onClick={(event) => onDesktopRowClick(event, d)}
+                    {...keyboardControlProps()}
                     onContextMenu={(event) => onDesktopRowContextMenu(event, d)}
                     onDoubleClick={(event) => {
                       if (docSelectMode || event.shiftKey || event.metaKey || event.ctrlKey) return;
