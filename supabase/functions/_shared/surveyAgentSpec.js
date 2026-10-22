@@ -115,8 +115,13 @@ function voiceAnnotationTools() {
 // from the open template's answer set, so the model cannot send an answer
 // the template does not have. annotations: add the markup tools (only for
 // people with the annotation-agent flag).
-export function buildSurveyAgentTools(answerValues, { annotations = false, markupOpen = true, webmcp = false } = {}) {
+export function buildSurveyAgentTools(answerValues, { annotations = false, markupOpen = true, webmcp = false, typedLines = false } = {}) {
   const answers = cleanAnswerValues(answerValues);
+  // A template with text or number lines (answer_kind in get_survey_context)
+  // cannot hold set_answers values to the answer list.
+  const answerValue = typedLines
+    ? { type: 'string', description: `One of ${answers.join(', ')}; for a line whose answer_kind is text, what was said; for number, the number only (no unit).` }
+    : { type: 'string', enum: answers };
   const tool = (name, description, properties = {}, required = []) => ({
     type: 'function',
     function: {
@@ -127,7 +132,7 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
   });
   return [
     tool('get_survey_context',
-      'The open survey: its template categories with checklist items (ids and text), the allowed answers, the entities, how many items each category has, and the item the person has selected, if any.'),
+      'The open survey: its template categories with checklist items (ids, text, and answer_kind text or number for lines that take what was said), the allowed answers, the entities, how many items each category has, and the item the person has selected, if any.'),
     tool('find_items',
       'Search the items in this survey by name, forgiving of speech-to-text spelling ("D one seventeen" finds D-117). Returns up to 5 best matches with their category and a score from 0 to 1.',
       {
@@ -151,7 +156,7 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
             type: 'object',
             properties: {
               checklist_item_id: id('A checklist item id of this item\'s category.'),
-              value: { type: 'string', enum: answers },
+              value: answerValue,
             },
             required: ['checklist_item_id', 'value'],
             additionalProperties: false,

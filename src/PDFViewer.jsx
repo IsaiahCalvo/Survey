@@ -538,7 +538,7 @@ import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
 import { buildSheetLayout, buildSheetRow, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
-import { answerSetFor, excelAnswerListFormula, DEFAULT_ANSWER_SET } from './services/answerSets.js';
+import { answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
 import {
@@ -16142,20 +16142,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Add Data Validation for Checklist Items
             if (lastChecklistCol >= firstChecklistCol) { // At least one checklist column exists
               for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
-                const colLetter = String.fromCharCode(64 + col); // Convert to letter (A, B, C...)
+                // Pick-one items get the answer list; number items a number
+                // rule; text items none.
+                const rule = excelValidationFor(checklistItems[col - firstChecklistCol], answerSetFor(selectedTemplate));
+                if (!rule) continue;
                 worksheet.getColumn(col).eachCell((cell, rowNum) => {
                   if (rowNum > 1) { // Skip header
-                    cell.dataValidation = {
-                      type: 'list',
-                      allowBlank: true,
-                      formulae: [excelAnswerListFormula(answerSetFor(selectedTemplate))],
-                      showErrorMessage: true,
-                      errorStyle: 'error',
-                      errorTitle: 'Invalid selection',
-                      error: answerSetFor(selectedTemplate) === DEFAULT_ANSWER_SET
-                        ? 'Please select Y, N, or N/A'
-                        : `Please select ${answerSetFor(selectedTemplate).map((a) => a.value).join(', ')}`
-                    };
+                    cell.dataValidation = { ...rule, formulae: [...rule.formulae] };
                   }
                 });
               }
@@ -16183,70 +16176,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               }
             }
 
-            // Add Conditional Formatting for Checklist Items (Y, N, N/A)
+            // Color checklist answers by tone (Y green, N red, N/A grey by
+            // default). Text and number columns get no colors.
             if (lastChecklistCol >= firstChecklistCol) {
               for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
+                if (itemKind(checklistItems[col - firstChecklistCol]) !== 'choice') continue;
                 const colLetter = String.fromCharCode(64 + col);
                 const range = `${colLetter}2:${colLetter}1000`;
-
-                // Y = Green
-                worksheet.addConditionalFormatting({
-                  ref: range,
-                  rules: [
-                    {
-                      type: 'cellIs',
-                      operator: 'equal',
-                      formulae: ['"Y"'],
-                      style: {
-                        fill: {
-                          type: 'pattern',
-                          pattern: 'solid',
-                          bgColor: { argb: 'FFCEEED0' }
-                        }
-                      },
-                      priority: 1
-                    }
-                  ]
-                });
-
-                // N = Red
-                worksheet.addConditionalFormatting({
-                  ref: range,
-                  rules: [
-                    {
-                      type: 'cellIs',
-                      operator: 'equal',
-                      formulae: ['"N"'],
-                      style: {
-                        fill: {
-                          type: 'pattern',
-                          pattern: 'solid',
-                          bgColor: { argb: 'FFF6C9CE' }
-                        }
-                      },
-                      priority: 2
-                    }
-                  ]
-                });
-
-                // N/A = Grey
-                worksheet.addConditionalFormatting({
-                  ref: range,
-                  rules: [
-                    {
-                      type: 'cellIs',
-                      operator: 'equal',
-                      formulae: ['"N/A"'],
-                      style: {
-                        fill: {
-                          type: 'pattern',
-                          pattern: 'solid',
-                          bgColor: { argb: 'FFA6A6A6' }
-                        }
-                      },
-                      priority: 3
-                    }
-                  ]
+                excelAnswerFills(answerSetFor(selectedTemplate)).forEach(({ value, argb }, i) => {
+                  worksheet.addConditionalFormatting({
+                    ref: range,
+                    rules: [
+                      {
+                        type: 'cellIs',
+                        operator: 'equal',
+                        formulae: [`"${value}"`],
+                        style: {
+                          fill: {
+                            type: 'pattern',
+                            pattern: 'solid',
+                            bgColor: { argb }
+                          }
+                        },
+                        priority: i + 1
+                      }
+                    ]
+                  });
                 });
               }
             }

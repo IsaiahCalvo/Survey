@@ -42,7 +42,7 @@
 import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
 import { DEFAULT_ANSWER_SET, answerPresetIdOf, answerSetPresets } from '../services/answerSets.js';
 import { isFeatureOn } from '../featureFlags.js';
-import AnswerSetEditor from './AnswerSetEditor.jsx';
+import AnswerSetEditor, { ItemKindPicker } from './AnswerSetEditor.jsx';
 import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
@@ -261,6 +261,9 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
           text,
         };
         if (it && typeof it === 'object') {
+          // Text / number items (nightly 'custom-answers'); pick-one stays bare.
+          if (it.kind === 'text' || it.kind === 'number') base.kind = it.kind;
+          if (it.kind === 'number' && typeof it.unit === 'string' && it.unit) base.unit = it.unit;
           if (it.archived === true) base.archived = true;
           if (typeof it.archivedAt === 'string') base.archivedAt = it.archivedAt;
           if (typeof it.lastKnownLabel === 'string') {
@@ -1724,6 +1727,18 @@ export default function TemplatesEditor({
     }));
   };
   const renameItem = (ci, itemId, text) => renameItemInModule(openMod, ci, itemId, text);
+  /* Text / number items (nightly 'custom-answers'). Answers already given
+     keep their text; only how the card asks for the next one changes. */
+  const setItemKind = (ci, itemId, kind, unit) => mutateCategoryInModule(openMod, ci, (c) => ({
+    ...c,
+    items: c.items.map((it) => {
+      if (it.id !== itemId) return it;
+      const { kind: _k, unit: _u, ...rest } = it;
+      if (kind === 'text') return { ...rest, kind };
+      if (kind === 'number') return unit ? { ...rest, kind, unit } : { ...rest, kind };
+      return rest;
+    }),
+  }));
 
   /* UX (KAL-69): required-row commit rules, shared by the desktop and mobile
      copies of the checklist and entity rows so they can never drift apart.
@@ -1956,6 +1971,8 @@ export default function TemplatesEditor({
           /* Persist archived metadata so KAL-44 archive survives save/reload.
              Active items round-trip the simple shape unchanged. */
           const out = { id: it.id, text: it.text };
+          if (it.kind === 'text' || it.kind === 'number') out.kind = it.kind;
+          if (it.kind === 'number' && it.unit) out.unit = it.unit;
           if (it.archived === true) {
             out.archived = true;
             if (typeof it.archivedAt === 'string') out.archivedAt = it.archivedAt;
@@ -2715,7 +2732,7 @@ export default function TemplatesEditor({
                               <div
                                 data-drag-rearrange-row
                                 style={{
-                                  display: 'grid', gridTemplateColumns: '24px 1fr 16px',
+                                  display: 'grid', gridTemplateColumns: customAnswers ? '24px 1fr auto 16px' : '24px 1fr 16px',
                                   alignItems: 'center', gap: 6, padding: '3px 0',
                                   borderBottom: j === items.length - 1 ? 0 : '1px dashed var(--rule)',
                                 }}
@@ -2735,6 +2752,7 @@ export default function TemplatesEditor({
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => discardFreshItem(i, it.id))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
+                                {customAnswers && <ItemKindPicker item={it} onChange={(kind, unit) => setItemKind(i, it.id, kind, unit)} />}
                                 <button
                                   aria-label="Delete item" {...tip('Delete item')}
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
@@ -3404,7 +3422,7 @@ export default function TemplatesEditor({
                                           /* Owner 2026-10-02: swipe left for a trash
                                              behind the row - the same delete as its x. */
                                           <SwipeToDeleteRow label="Delete item" onDelete={() => deleteItem(ci, it.id)}>
-                                          <div data-drag-rearrange-row className="templates-mobile-item-row">
+                                          <div data-drag-rearrange-row className="templates-mobile-item-row" style={customAnswers ? { gridTemplateColumns: '44px minmax(0, 1fr) auto 44px' } : undefined}>
                                             <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
                                             <input
                                               className="templates-mobile-inline-input hub-rename"
@@ -3415,6 +3433,7 @@ export default function TemplatesEditor({
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => discardFreshItem(ci, it.id))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
+                                            {customAnswers && <ItemKindPicker phone item={it} onChange={(kind, unit) => setItemKind(ci, it.id, kind, unit)} />}
                                             <button type="button" aria-label="Delete item" {...tip('Delete item')} onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
                                           </SwipeToDeleteRow>

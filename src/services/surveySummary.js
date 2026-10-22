@@ -2,7 +2,7 @@
 // started, and the items with issues (an answer the template marks bad,
 // like N or Fail). Used for the Survey agent's end-of-walk summary, spoken
 // and saved, and for the Summary sheet in the Excel export.
-import { answerSetFor, answerTone } from './answerSets.js';
+import { answerSetFor, isItemIssue } from './answerSets.js';
 import { categoriesOf, checklistOf, itemText, modulesOf } from './templateConfigShape.js';
 
 const activeChecklist = (category) => checklistOf(category)
@@ -33,7 +33,7 @@ export function summarizeSurvey({ template, markers, itemIds = null, page = null
     const responses = marker.checklistResponses || {};
     const answered = group.checklist.filter((c) => responses[c.id]?.selection);
     const issues = group.checklist
-      .filter((c) => answerTone(set, responses[c.id]?.selection) === 'bad')
+      .filter((c) => isItemIssue(c, set, responses[c.id]?.selection))
       .map((c) => ({ text: itemText(c), answer: responses[c.id].selection }));
     group.items.push({ id, name: nameOf(marker), total: group.checklist.length, answered: answered.length, issues });
   }

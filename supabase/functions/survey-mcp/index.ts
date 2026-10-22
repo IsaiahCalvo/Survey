@@ -26,6 +26,7 @@ import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../_shared/surveyMar
 import { bytesToPgHex, pgHexToBytes } from '../_shared/pgBytea.js';
 import { applyUndoDescriptor, noteObjectOf, UNDO_KINDS } from '../_shared/surveyUndoApply.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { checklistItemKind, typedAnswerFor } from '../_shared/kitShape.js';
 import { agentClientId } from '../_shared/agentSession.ts';
 
 const CONNECTOR_WRITES_FLAG = 'survey-connector-writes';
@@ -66,7 +67,7 @@ class ToolError extends Error {}
 
 const text = (value: unknown) => ({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 1) }] });
 
-type Category = { id: string; name: string; checklist: { id: string; text: string }[] };
+type Category = { id: string; name: string; checklist: { id: string; text: string; answer_kind?: string; unit?: string }[] };
 
 // Category and checklist names come from the templates the person can see.
 // Templates linked to the document go first, so when two templates reuse a
@@ -121,7 +122,16 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
           checklist: (Array.isArray(list) ? list : [])
             .map((it, i) => (typeof it === 'string' ? { id: `item-${i}`, text: it } : it as Record<string, unknown>))
             .filter((it) => it && (it as Record<string, unknown>).archived !== true && (it as Record<string, unknown>).id)
-            .map((it) => ({ id: String((it as Record<string, unknown>).id), text: String((it as Record<string, unknown>).text ?? (it as Record<string, unknown>).name ?? '') })),
+            .map((it) => {
+              const item = it as Record<string, unknown>;
+              const kind = checklistItemKind(item);
+              return {
+                id: String(item.id),
+                text: String(item.text ?? item.name ?? ''),
+                // Text / number lines take what was said, not an answer-set value.
+                ...(kind !== 'choice' ? { answer_kind: kind, ...(item.unit ? { unit: String(item.unit) } : {}) } : {}),
+              };
+            }),
         });
       }
     }
@@ -288,7 +298,7 @@ const WRITE_TOOLS = [
             type: 'object',
             properties: {
               checklist_item_id: { type: 'string', description: 'A checklist item id from get_survey_context.' },
-              value: { type: 'string', description: 'The answer value, from the template (e.g. Y, N, N/A).' },
+              value: { type: 'string', description: 'The answer value, from the template (e.g. Y, N, N/A). For a checklist item with answer_kind text, the text; for number, the number only.' },
             },
             required: ['checklist_item_id', 'value'],
           },
@@ -687,9 +697,15 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
           const clId = String(row.checklist_item_id || '');
           if (!clId) throw new ToolError('Each answer needs a checklist_item_id from get_survey_context.');
           if (!checklistIds.has(clId)) throw new ToolError(`${clId} is not on the ${category.name} checklist. Use get_survey_context for its checklist ids.`);
-          const value = String(row.value ?? '');
+          const line = category.checklist.find((c) => c.id === clId);
+          let value = String(row.value ?? '');
+          if (line?.answer_kind) {
+            const typed = typedAnswerFor(line.answer_kind, value);
+            if (typed === null) throw new ToolError(`"${value}" is not a number. "${line.text}" takes a number${line.unit ? ` in ${line.unit}` : ''}.`);
+            value = typed;
+          }
           if (!value) throw new ToolError('Each answer needs a value.');
-          if (Array.isArray(allowed) && !allowed.includes(value)) {
+          if (!line?.answer_kind && Array.isArray(allowed) && !allowed.includes(value)) {
             throw new ToolError(`"${value}" is not an allowed answer on ${category.name}. Allowed: ${allowed.join(', ')}.`);
           }
           if (!(clId in before)) before[clId] = clId in original ? original[clId] : null;
