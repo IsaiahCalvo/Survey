@@ -9535,8 +9535,7 @@ const SVGAnnotationLayerBody = memo(({
             // tldraw method in utils/groupResize.js): the frame shows its
             // eight resize grabbers when every member can take a resize;
             // callouts and Survey Markers resize along. A locked member
-            // keeps the frame move-only with its lock badge. Group rotate
-            // stays hidden. An old-style arrow (a group of line + head)
+            // keeps the frame move-only with its lock badge. An old-style arrow (a group of line + head)
             // draws from its children, which a group resize doesn't
             // rewrite, so it keeps the frame move-only too.
             const groupCanResize = !groupHasLockedMember
@@ -9565,7 +9564,9 @@ const SVGAnnotationLayerBody = memo(({
                   // Drag-to-move starts from a member's pointerdown, not
                   // from the frame, so a move-only frame still moves.
                   moveOnly={!groupCanResize}
-                  hideRotationHandle
+                  // Drawboard: the group turns with its rotate grabber. A
+                  // callout has no turn of its own, so it keeps it hidden.
+                  hideRotationHandle={!groupCanResize || groupCalloutIdSet.size > 0}
                   // Owner ruling 2026-09-28: a lock on the group frame when
                   // any selected member is locked (it stays put in a move).
                   locked={groupHasLockedMember}

@@ -38,7 +38,7 @@ Sources:
 
 Drawboard's rules, plus tldraw's rule where Survey can't follow Drawboard.
 
-- The multi-selection frame shows its **eight resize grabbers**. Rotate stays hidden for now.
+- The multi-selection frame shows its **eight resize grabbers** and its **rotate grabber** (Drawboard). A turn spins every mark's centre about the frame's centre and gives each mark the same turn (Survey Markers too); Shift steps 15°, quarter turns pull within 4°, one Undo. A selection holding a callout keeps the rotate grabber hidden (a callout has no turn of its own).
 - **Corner**: free stretch. **Edge**: one axis. **Alt**: from the centre. **Shift**: keeps proportions, following the bigger move. All as Drawboard.
 - **Text in the selection** keeps the proportions (corner / top / bottom) and **scales its font** with the frame, rounded to 0.1. The box scales inside its fixed padding so the words don't rewrap. From a **left / right side**, only the width changes and the words rewrap. All as Drawboard.
 - **Photos / stamps** keep the proportions, as Drawboard.
@@ -52,7 +52,7 @@ Drawboard's rules, plus tldraw's rule where Survey can't follow Drawboard.
 
 ## Follow-ups (not in this change)
 
-1. Group **rotate** (Drawboard has it; Survey's old group-rotate code is still in the hook, hidden).
+1. ~~Group **rotate**~~ (done 2026-10-22; not with a callout in the selection).
 2. ~~Callouts and Survey Markers in a resizable group~~ (done 2026-10-22).
 3. ~~Text rewrapped from a side should grow its box height to fit~~ (done 2026-10-22: alone and in a group, the box grows downward and never shrinks; `utils/textBoxFit.js`).
 4. Hold **K** to scale line widths too (Drawboard).
