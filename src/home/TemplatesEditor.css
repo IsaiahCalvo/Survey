@@ -220,3 +220,33 @@
 .ed-scope .tpl-cat-check { flex: none; margin: 0 7px 0 11px; }
 .ed-scope .tpl-entity-check { flex: none; margin-right: 7px; }
 .ed-scope .tpl-entity-row.is-selected { background: var(--surface-3); }
+
+/* Desktop pass 2026-10-21 (item 7): below 1280px the fixed 260/268px side
+   columns squeezed the middle column to ~240-320px, so the template name,
+   pickers and entity names clipped ("Templa…", "Survey (st"). Between tablet
+   width and 1280 the Entities panel drops under the Modules panel, giving the
+   middle column the full remaining width. 1280px and up is unchanged. The
+   !important beats the grid's inline columns and hub.css's 768-900 rule. */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .survey-hub .ed-scope .templates-editor-grid {
+    grid-template-columns: 220px minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 38%);
+  }
+  .survey-hub .ed-scope .templates-editor-grid > :nth-child(1) { grid-column: 1; grid-row: 1 / span 2; }
+  .survey-hub .ed-scope .templates-editor-grid > :nth-child(2) { grid-column: 2; grid-row: 1; }
+  .survey-hub .ed-scope .templates-editor-grid > :nth-child(3) { grid-column: 2; grid-row: 2; }
+  /* The desktop Cancel/Save pair is drawn 22px for a mouse at full desktop
+     width; at these widths it is a real target. */
+  .survey-hub .templates-desktop-save-row .hub-btn {
+    height: 32px !important;
+    min-height: 32px;
+    padding: 0 12px !important;
+  }
+}
+@media (min-width: 768px) and (pointer: coarse) {
+  .survey-hub .templates-desktop-save-row .hub-btn {
+    height: 44px !important;
+    min-height: 44px;
+    padding: 0 14px !important;
+  }
+}

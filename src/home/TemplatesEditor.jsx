@@ -105,6 +105,7 @@ import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
+import { templateCategoryEmptyText } from './templateEmptyText.js';
 
 // The preset id a template's answer set matches ('' when it is custom).
 const answerPresetIdOf = (set) => {
@@ -2545,7 +2546,7 @@ export default function TemplatesEditor({
               {/* Expandable category list */}
               <div className="slim-scroll" style={{ overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 4, flex: 1, minHeight: 0 }}>
                 {visibleCats.length === 0 && (
-                  <div className="meta" style={{ padding: '16px 4px', fontSize: 12 }}>This module has no categories yet.</div>
+                  <div className="meta" style={{ padding: '16px 4px', fontSize: 12 }}>{templateCategoryEmptyText(orderedMods.length)}</div>
                 )}
                 <SortableRearrangeList
                   ids={visibleCats.map((c) => c.id)}
