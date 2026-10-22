@@ -17,7 +17,6 @@ import { isPurchaseUiHidden } from '../utils/accountPlatform.js';
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons';
-import SpaceSelectionDialog from '../components/SpaceSelectionDialog.jsx';
 import { parsePageRangeInput, sanitizePageRangeInput } from '../utils/pageRangeParser';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
@@ -63,6 +62,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   onRenameRegion,
   onRemovePage,
   onTransferRegion,
+  isTransferOpenFor = null,
   onNavigateToPage,
   onExitSpace,
   onToggleSpace,
@@ -448,23 +448,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           {page.pageId}
                         </button>
 
-                        <div
-                          role="switch"
-                          tabIndex={isOverlayToggleEnabled ? 0 : -1}
-                          aria-checked={Boolean(isOverlayToggleEnabled && isOverlayEnabled)}
-                          aria-disabled={!isOverlayToggleEnabled || undefined}
-                          aria-label={overlayLabel}
-                          className="spaces-switch spaces-switch--sm"
-                          {...tip(overlayLabel, 'below')}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleOverlay();
-                          }}
-                          onKeyDown={switchKeyDown(toggleOverlay)}
-                        >
-                          <span className="spaces-switch__knob" />
-                        </div>
-
                         <div className="spaces-region__name">
                           {isEditingRegion ? (
                             <input
@@ -556,10 +539,45 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           </button>
                         )}
 
-                        {editMode && onTransferRegion && <>
-                          <button type="button" className="space-card__icon" data-glyph-only="" aria-label={`Move region on page ${page.pageId}`} {...tip('Change page or space', 'below')} onClick={() => onTransferRegion(space.id, page.pageId, false)}><Icon name="moveTo" size={14} color="currentColor" /></button>
-                          <button type="button" className="space-card__icon" data-glyph-only="" aria-label={`Copy region on page ${page.pageId}`} {...tip('Copy region to another page or space', 'below')} onClick={() => onTransferRegion(space.id, page.pageId, true)}><Icon name="copy" size={14} color="currentColor" /></button>
-                        </>}
+                        {/* Owner 2026-10-22: one Move or copy button that opens
+                            the panel's own menu (the Export menu's look), not
+                            a bare browser form. */}
+                        {editMode && onTransferRegion && (
+                          <button
+                            type="button"
+                            className={`space-card__icon${isTransferOpenFor?.(space.id, page.pageId) ? ' is-on' : ''}`}
+                            data-glyph-only=""
+                            aria-haspopup={mobileMode ? 'dialog' : 'menu'}
+                            aria-expanded={Boolean(isTransferOpenFor?.(space.id, page.pageId))}
+                            aria-label={`Move or copy region on page ${page.pageId}`}
+                            {...tip('Move or copy to another page or space', 'below')}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onTransferRegion(space.id, page.pageId, regionLabel, e.currentTarget);
+                            }}
+                          >
+                            <Icon name="moveTo" size={14} color="currentColor" />
+                          </button>
+                        )}
+                        {/* The outline switch sits in the space switch's column. */}
+                        <div
+                          role="switch"
+                          tabIndex={isOverlayToggleEnabled ? 0 : -1}
+                          aria-checked={Boolean(isOverlayToggleEnabled && isOverlayEnabled)}
+                          aria-disabled={!isOverlayToggleEnabled || undefined}
+                          aria-label={overlayLabel}
+                          className="spaces-switch spaces-switch--sm"
+                          {...tip(overlayLabel, 'below')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleOverlay();
+                          }}
+                          onKeyDown={switchKeyDown(toggleOverlay)}
+                        >
+                          <span className="spaces-switch__knob" />
+                        </div>
+
                         {editMode && <button
                           type="button"
                           className="space-card__icon space-card__delete"
@@ -647,6 +665,92 @@ function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExpo
   );
 }
 
+/*
+ * Owner 2026-10-22 ("when I change the region page or space ... it looks like
+ * shit"): Move or copy is the Export menu's family - the same card, the same
+ * space list with a check, the add-pages well for the page - hung under the
+ * row's button (phone: its own small sheet). Move takes the region and its
+ * marks; Copy takes the outline only (Bluebeam's Spaces copy the boundary,
+ * markups stay where they are).
+ */
+function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onCopy, onClose }) {
+  const pageNumber = Number(transfer.targetPageId);
+  const maxPage = typeof numPages === 'number' && numPages > 0 ? numPages : Infinity;
+  const pageValid = Number.isInteger(pageNumber) && pageNumber >= 1 && pageNumber <= maxPage;
+  const samePlace = transfer.targetSpaceId === transfer.sourceSpaceId && pageNumber === transfer.sourcePageId;
+  const canGo = pageValid && !samePlace;
+  const step = (delta) => {
+    const base = Number.isInteger(pageNumber) ? pageNumber : transfer.sourcePageId;
+    const next = Math.min(maxPage, Math.max(1, base + delta));
+    onChange({ targetPageId: String(next) });
+  };
+  const hint = !pageValid
+    ? (Number.isFinite(maxPage) ? `Pick a page from 1 to ${maxPage}` : 'Pick a page')
+    : (samePlace ? 'Pick another page or space' : null);
+  return (
+    <>
+      <div className="spaces-export__head">
+        <strong>{`Move or copy ${transfer.label}`}</strong>
+        {onClose ? (
+          <button type="button" className="spaces-export__close tertiary" onClick={onClose}>Cancel</button>
+        ) : null}
+      </div>
+      <div className="spaces-export__label">Space</div>
+      <div className="spaces-export__spaces" role="radiogroup" aria-label="Destination space">
+        {spaces.map((space) => {
+          const chosen = space.id === transfer.targetSpaceId;
+          const pages = space.assignedPages?.length || 0;
+          return (
+            <button
+              key={space.id}
+              type="button"
+              role="radio"
+              aria-checked={chosen}
+              className={`spaces-export__space${chosen ? ' is-chosen' : ''}`}
+              onClick={() => onChange({ targetSpaceId: space.id })}
+            >
+              <span>{space.name || 'Space'}</span>
+              <small>{pages} {pages === 1 ? 'page' : 'pages'}</small>
+              {chosen ? <Icon name="check" size={14} color="currentColor" /> : <i aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+      <div className="spaces-export__label">Page</div>
+      <div className="spaces-transfer__page">
+        <div className="space-card__add spaces-transfer__field">
+          <input
+            type="text"
+            className="space-card__add-input spaces-transfer__input"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            aria-label="Destination page"
+            value={transfer.targetPageId}
+            onChange={(e) => onChange({ targetPageId: e.target.value.replace(/[^0-9]/g, '') })}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowUp') { e.preventDefault(); step(1); }
+              else if (e.key === 'ArrowDown') { e.preventDefault(); step(-1); }
+              else if (e.key === 'Enter' && canGo) { e.preventDefault(); onMove(); }
+            }}
+          />
+        </div>
+        {Number.isFinite(maxPage) && <small className="spaces-transfer__of">of {maxPage}</small>}
+      </div>
+      {hint && <div className="spaces-transfer__hint" role="status">{hint}</div>}
+      <div className="spaces-export__actions">
+        <button type="button" className="spaces-export__action" aria-label="Move region" disabled={!canGo} onClick={onMove}>
+          <span>Move</span>
+          <small>The region and its marks go there</small>
+        </button>
+        <button type="button" className="spaces-export__action" aria-label="Copy region" disabled={!canGo} onClick={onCopy}>
+          <span>Copy</span>
+          <small>The outline only; marks stay here</small>
+        </button>
+      </div>
+    </>
+  );
+}
+
 const SpacesPanel = ({
   spaces,
   activeSpaceId,
@@ -711,6 +815,19 @@ const SpacesPanel = ({
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [transfer, setTransfer] = useState(null);
+  const transferAnchorRef = useRef(null);
+  const transferMenuRef = useRef(null);
+  const openTransfer = useCallback((sourceSpaceId, sourcePageId, label, anchor) => {
+    setTransfer((current) => {
+      if (current && current.sourceSpaceId === sourceSpaceId && current.sourcePageId === sourcePageId) return null;
+      transferAnchorRef.current = anchor || null;
+      return { sourceSpaceId, sourcePageId, label, targetSpaceId: sourceSpaceId, targetPageId: String(sourcePageId) };
+    });
+  }, []);
+  const isTransferOpenFor = useCallback(
+    (spaceId, pageId) => Boolean(transfer && transfer.sourceSpaceId === spaceId && transfer.sourcePageId === pageId),
+    [transfer]
+  );
   const [isRearrangingSpaces, setIsRearrangingSpaces] = useState(false);
   const [optimisticSpaceIds, setOptimisticSpaceIds] = useState(() => spaces.map(space => space.id));
   // Spaces chunk B: the space the Export menu / sheet is open for (null =
@@ -812,6 +929,19 @@ const SpacesPanel = ({
       close: () => setExportSpaceId(null),
     });
   }, [isSpacesExportMenuOpen, mobileMode]);
+
+  useMenuFocus(transferMenuRef, Boolean(transfer && !mobileMode));
+  React.useEffect(() => {
+    if (!transfer || mobileMode) return undefined;
+    return watchLightPopover({
+      contains: (target) => Boolean(
+        !transferAnchorRef.current
+        || transferAnchorRef.current.contains(target)
+        || transferMenuRef.current?.contains(target)
+      ),
+      close: () => setTransfer(null),
+    });
+  }, [Boolean(transfer), mobileMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const captureSpacesDropFrame = useCallback((label, details = {}) => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return null;
@@ -1336,6 +1466,25 @@ const SpacesPanel = ({
     />
   ) : null;
 
+  const runTransfer = (copy) => {
+    if (!transfer) return;
+    const targetPageId = Number(transfer.targetPageId);
+    if (!Number.isInteger(targetPageId) || targetPageId < 1 || (typeof numPages === 'number' && targetPageId > numPages)) return;
+    const { label: _label, ...request } = transfer;
+    if (onSpaceTransferRegion?.({ ...request, targetPageId, copy }) === true) setTransfer(null);
+  };
+  const transferPanel = transfer ? (
+    <SpacesTransferPanel
+      spaces={orderedSpaces}
+      transfer={transfer}
+      numPages={numPages}
+      onChange={(patch) => setTransfer((current) => (current ? { ...current, ...patch } : current))}
+      onMove={() => runTransfer(false)}
+      onCopy={() => runTransfer(true)}
+      onClose={mobileMode ? () => setTransfer(null) : null}
+    />
+  ) : null;
+
   // The header's controls, drawn either in the panel's own header (phone)
   // or in the rail's title row (desktop, owner 2026-10-07 rail headers).
   const exportControl = (
@@ -1397,7 +1546,7 @@ const SpacesPanel = ({
   return (
     <div
       ref={mobilePanelRootRef}
-      className={`spaces-panel${mobileMode ? ' mobile-spaces-panel' : ''}`}
+      className={`spaces-panel${mobileMode ? ' mobile-spaces-panel' : ''}${editMode ? ' is-edit-mode' : ''}`}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -1509,7 +1658,8 @@ const SpacesPanel = ({
                       onAssignPages={handleAssignPages}
                       onRenameRegion={handleRenameRegion}
                       onRemovePage={handleRemovePage}
-                      onTransferRegion={onSpaceTransferRegion ? (sourceSpaceId, sourcePageId, copy) => setTransfer({ sourceSpaceId, sourcePageId, targetSpaceId: sourceSpaceId, targetPageId: String(sourcePageId), copy }) : null}
+                      onTransferRegion={onSpaceTransferRegion ? openTransfer : null}
+                      isTransferOpenFor={isTransferOpenFor}
                       onNavigateToPage={onNavigateToPage}
                       onRequestRegionEdit={handleRequestRegionEdit}
                       onCancelRegionEdit={onCancelRegionEdit}
@@ -1534,19 +1684,13 @@ const SpacesPanel = ({
           </SortableRearrangeList>
         )}
       </div>
-      <SpaceSelectionDialog open={Boolean(transfer)} onClose={() => setTransfer(null)} title={transfer?.copy ? 'Copy region' : 'Move region'}>
-        {transfer && <form onSubmit={(event) => {
-          event.preventDefault();
-          const targetPageId = Number(transfer.targetPageId);
-          if (!Number.isInteger(targetPageId) || targetPageId < 1 || targetPageId > numPages) return;
-          if (onSpaceTransferRegion?.({ ...transfer, targetPageId }) === true) setTransfer(null);
-        }} style={{ display: 'grid', gap: 16 }}>
-          <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 13 }}>{transfer.copy ? 'Copy the region outlines. Marks stay on their current page.' : 'Move the region and its marks together.'}</p>
-          <label style={{ display: 'grid', gap: 6 }}>Space<select aria-label="Destination space" value={transfer.targetSpaceId} onChange={(event) => setTransfer((current) => ({ ...current, targetSpaceId: event.target.value }))}>{spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label>
-          <label style={{ display: 'grid', gap: 6 }}>Page<input aria-label="Destination page" type="number" min={1} max={numPages} required value={transfer.targetPageId} onChange={(event) => setTransfer((current) => ({ ...current, targetPageId: event.target.value }))} /></label>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" className="btn btn-default" onClick={() => setTransfer(null)}>Cancel</button><button type="submit" className="btn btn-primary">{transfer.copy ? 'Copy region' : 'Move region'}</button></div>
-        </form>}
-      </SpaceSelectionDialog>
+      {transfer && !mobileMode && (
+        <AnchoredPopover getAnchor={() => transferAnchorRef.current} gap={2} zIndex={7000}>
+          <div ref={transferMenuRef} className="spaces-export spaces-export--menu spaces-transfer--menu" role="menu" aria-label={`Move or copy ${transfer.label}`}>
+            {transferPanel}
+          </div>
+        </AnchoredPopover>
+      )}
       {/* Rendered on <body>, above the phone sheet (z 6500): inside the sheet a
           fixed overlay is caught by the sheet's transform. */}
       {typeof document !== 'undefined' && createPortal(
@@ -1554,6 +1698,19 @@ const SpacesPanel = ({
           {confirmDialogElement}
           {/* Chunk B (phone): Export is its own small sheet over the Spaces
               sheet, standing on the dock like every phone sheet. */}
+          {mobileMode && transfer && (
+            <>
+              <button
+                type="button"
+                className="spaces-export-sheet__backdrop"
+                aria-label="Close move or copy"
+                onClick={() => setTransfer(null)}
+              />
+              <div className="spaces-export spaces-export-sheet" role="dialog" aria-label={`Move or copy ${transfer.label}`}>
+                {transferPanel}
+              </div>
+            </>
+          )}
           {mobileMode && exportPanel && (
             <>
               <button
