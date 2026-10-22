@@ -164,3 +164,28 @@ export function cloudPolyEdgeReach(points, frame) {
   const reach = Math.max(minX - left, right - maxX, minY - top, bottom - maxY, 0);
   return Number.isFinite(reach) ? reach : 0;
 }
+
+/**
+ * The side of a selected poly under a screen point, or null. `matrix` is the
+ * side band's screen CTM ({a,b,c,d,e,f}, page units -> CSS px); the point is
+ * mapped back into the band's frame and tested against `worldPoints` with the
+ * band's tolerance. Position only: it never looks at the event target, so a
+ * press the browser hit-tested onto some other element still finds its side.
+ */
+export function polyEdgeHitAtClient(clientX, clientY, matrix, worldPoints, tolerance, { closed = true } = {}) {
+  if (!matrix) return null;
+  const { a, b, c, d, e, f } = matrix;
+  const det = a * d - b * c;
+  if (!Number.isFinite(det) || det === 0) return null;
+  const dx = Number(clientX) - e;
+  const dy = Number(clientY) - f;
+  const pt = { x: (d * dx - c * dy) / det, y: (-b * dx + a * dy) / det };
+  return insertVertexOnNearestEdge(worldPoints, pt, tolerance, { closed });
+}
+
+/** Debug switch for the side long-press log (localStorage or ?debugPolyEdge=1). */
+export function polyEdgeDebugEnabled(win = typeof window !== 'undefined' ? window : null) {
+  if (!win) return false;
+  try { if (win.localStorage?.getItem('debugPolyEdge') === '1') return true; } catch (_) { /* blocked */ }
+  try { return new URLSearchParams(win.location?.search || '').get('debugPolyEdge') === '1'; } catch (_) { return false; }
+}
