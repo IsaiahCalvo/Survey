@@ -90,3 +90,25 @@ test('area label pill stays on the centroid', () => {
   assert.equal(box.cx, 20);
   assert.equal(box.cy, 20);
 });
+
+test('a bent length measures the curve, not its chord, and labels its middle', () => {
+  const straight = stampMeasure(line({ x: 0, y: 0 }, { x: 100, y: 0 }), 'length', null);
+  const bent = { ...straight, data: { ...straight.data, midpoint: { x: 50, y: 25 } } };
+  const flat = buildMeasureLabel(straight, scaleFromCalibration(100, 100, 'in'));
+  const curved = buildMeasureLabel(bent, scaleFromCalibration(100, 100, 'in'));
+  assert.equal(flat.text, '100.00 in');
+  // Quadratic through (50, 25): exact arc length 114.779…
+  assert.ok(Math.abs(curved.value - 114.779) < 0.01, `arc ${curved.value}`);
+  assert.equal(curved.text, '114.78 in');
+  assert.equal(curved.x, 50);
+  assert.equal(curved.y, 25);
+  assert.equal(curved.angle, 0);
+});
+
+test('label follows a live endpoint edit of the same line', () => {
+  const json = stampMeasure(line({ x: 0, y: 0 }, { x: 100, y: 0 }), 'length', null);
+  const moved = { ...json, left: 0, top: 0, width: 200, height: 0, x1: -100, y1: 0, x2: 100, y2: 0 };
+  const label = buildMeasureLabel(moved, scaleFromCalibration(100, 100, 'in'));
+  assert.equal(label.text, '200.00 in');
+  assert.equal(label.x, 100);
+});

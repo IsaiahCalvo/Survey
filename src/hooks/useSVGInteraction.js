@@ -3256,6 +3256,17 @@ export function useSVGInteraction({
       const WMold = ds.originalMidpoint
         ? rotAround(ds.originalMidpoint.x, ds.originalMidpoint.y, pivotOld.x, pivotOld.y, epCosA, epSinA)
         : null;
+      // UX 2026-10-22 (owner): the bend handle stays still while an end moves.
+      // The handle is drawn at the curve's peak, not at the stored t = 0.5
+      // point, so pinning the stored point let the peak slide along the curve
+      // (onto the other end's handle on a lopsided bend). Pin the peak instead
+      // and solve the stored point from it for the new ends.
+      const oldHandle = ds.originalMidpoint
+        ? resolveMidpointHandlePosition({ x: ep.x1, y: ep.y1 }, { x: ep.x2, y: ep.y2 }, ds.originalMidpoint)
+        : null;
+      const WHold = oldHandle
+        ? rotAround(oldHandle.x, oldHandle.y, pivotOld.x, pivotOld.y, epCosA, epSinA)
+        : null;
       // Target world positions: dragged endpoint follows pointer; the
       // other endpoint + the curve midpoint stay exactly where the
       // user last saw them.
@@ -3291,9 +3302,10 @@ export function useSVGInteraction({
       // coords (before the pivot has re-landed on the new bbox center).
       const naiveP1 = rotAround(W1target.x, W1target.y, pivotOld.x, pivotOld.y, epCosA, -epSinA);
       const naiveP2 = rotAround(W2target.x, W2target.y, pivotOld.x, pivotOld.y, epCosA, -epSinA);
-      const naiveMid = WMold
-        ? rotAround(WMold.x, WMold.y, pivotOld.x, pivotOld.y, epCosA, -epSinA)
+      const naiveHandle = WHold
+        ? rotAround(WHold.x, WHold.y, pivotOld.x, pivotOld.y, epCosA, -epSinA)
         : null;
+      const naiveMid = naiveHandle ? midpointForCurveHandle(naiveP1, naiveP2, naiveHandle) : null;
       // Step 2: compute the new bbox center of the naive shape (this
       // is where the RENDERER will actually rotate around after the
       // live-save).
@@ -5868,6 +5880,10 @@ export function useSVGInteraction({
     // Pointermove places the visible peak and solves the through-point.
     // The handle snaps to the chord centre inside the 10px straight zone.
     if (handleId === 'midpoint') {
+      // A fast drag outruns the grabber node, and a node that re-renders or
+      // unmounts mid-drag drops its capture; hold it on the stable page SVG
+      // so every move lands and the handle stays under the pointer.
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
       const ep = getLineEndpoints(obj);
       const start = { x: ep.x1, y: ep.y1 };
       const end = { x: ep.x2, y: ep.y2 };
@@ -5907,6 +5923,8 @@ export function useSVGInteraction({
     if (typeof handleId === 'string' && handleId.startsWith('vertex-')) {
       const vertexIndex = parseInt(handleId.slice('vertex-'.length), 10);
       if (Number.isFinite(vertexIndex) && Array.isArray(obj.points) && obj.points[vertexIndex]) {
+        // Capture on the page SVG, as for the bend handle above.
+        try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
         // Cloud parity: snapshot the studio shape at drag start (its stored
         // per-vertex memory when it has one, else a fresh makeShape fit) in the
         // engine frame, so every move can replay moveVertex() from it.
@@ -5966,6 +5984,8 @@ export function useSVGInteraction({
 
     // Line/arrow endpoint drag: p1 or p2
     if (handleId === 'p1' || handleId === 'p2') {
+      // Capture on the page SVG, as for the bend handle above.
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
       const ep = getLineEndpoints(obj);
       if (typeof window !== 'undefined' && window.__LINE_BBOX_DIAG) try {
         diagLog('[BboxScaleDiag] start ' + JSON.stringify({

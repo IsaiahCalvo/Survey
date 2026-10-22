@@ -13,6 +13,8 @@
  * the page scale is read back from them after a reload.
  */
 
+import { computeLineBboxCenter } from '../svgBoundingBox.js';
+
 export const MEASURE_UNITS = Object.freeze({
   in: { inches: 1, label: 'in', area: 'sq in' },
   ft: { inches: 12, label: 'ft', area: 'sq ft' },
@@ -150,21 +152,69 @@ export function measurePolygonWorldPoints(obj) {
   });
 }
 
+/**
+ * A length measurement's drawn path in world space. A bent line (the middle
+ * handle pulled off the chord) is the renderer's quadratic through
+ * data.midpoint, rotated about the same curve-inclusive bbox centre, so the
+ * value is the length of the curve the user sees, not of its chord.
+ */
+export function measureLinePath(obj) {
+  const mid = obj?.data?.midpoint;
+  if (!mid || !Number.isFinite(mid.x) || !Number.isFinite(mid.y)) {
+    const [a, b] = measureLineEndpoints(obj);
+    return { a, b, mid: null };
+  }
+  const cx = (obj.left ?? 0) + (obj.width ?? 0) / 2;
+  const cy = (obj.top ?? 0) + (obj.height ?? 0) / 2;
+  const ep = { x1: cx + (obj.x1 ?? 0), y1: cy + (obj.y1 ?? 0), x2: cx + (obj.x2 ?? 0), y2: cy + (obj.y2 ?? 0) };
+  const pivot = computeLineBboxCenter(ep, mid);
+  const rad = ((obj.angle ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const rot = (x, y) => ({
+    x: pivot.x + (x - pivot.x) * cos - (y - pivot.y) * sin,
+    y: pivot.y + (x - pivot.x) * sin + (y - pivot.y) * cos,
+  });
+  return { a: rot(ep.x1, ep.y1), b: rot(ep.x2, ep.y2), mid: rot(mid.x, mid.y) };
+}
+
+// Arc length of the quadratic through a, mid (t = 0.5) and b. 128 chords is
+// far below a hundredth of a point on any curve that fits on a sheet.
+export function quadraticArcLength(a, mid, b) {
+  const c = { x: 2 * mid.x - 0.5 * a.x - 0.5 * b.x, y: 2 * mid.y - 0.5 * a.y - 0.5 * b.y };
+  const steps = 128;
+  let length = 0;
+  let prev = a;
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    const u = 1 - t;
+    const pt = {
+      x: u * u * a.x + 2 * u * t * c.x + t * t * b.x,
+      y: u * u * a.y + 2 * u * t * c.y + t * t * b.y,
+    };
+    length += Math.hypot(pt.x - prev.x, pt.y - prev.y);
+    prev = pt;
+  }
+  return length;
+}
+
 /** Label text + anchor for one measurement object, or null. */
 export function buildMeasureLabel(obj, scale) {
   const kind = getMeasureKind(obj);
   if (!kind) return null;
   if (kind === 'length') {
-    const [a, b] = measureLineEndpoints(obj);
-    const lengthPt = Math.hypot(b.x - a.x, b.y - a.y);
+    const { a, b, mid } = measureLinePath(obj);
+    const lengthPt = mid ? quadraticArcLength(a, mid, b) : Math.hypot(b.x - a.x, b.y - a.y);
+    // A quadratic's tangent at t = 0.5 is parallel to its chord, so the label
+    // sits on the curve's middle and reads along the chord either way.
     let angle = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
     if (angle > 90) angle -= 180;
     if (angle < -90) angle += 180;
     return {
       kind,
       text: formatMeasureLength(lengthPt, scale),
-      x: (a.x + b.x) / 2,
-      y: (a.y + b.y) / 2,
+      x: mid ? mid.x : (a.x + b.x) / 2,
+      y: mid ? mid.y : (a.y + b.y) / 2,
       angle,
       value: lengthPt,
     };

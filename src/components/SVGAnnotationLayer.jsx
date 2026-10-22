@@ -821,7 +821,7 @@ const SVGAnnotationLayerBody = memo(({
     objects.forEach((obj, index) => {
       if (!obj?.data?.measure || obj.visible === false || isOnHiddenLayer(obj, hiddenLayerIds)) return;
       const label = buildMeasureLabel(obj, effectiveMeasureScale);
-      if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, label });
+      if (label) labels.push({ key: obj.id || obj.data?.id || `m${index}`, index, label });
     });
     return labels;
   }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
@@ -5969,6 +5969,10 @@ const SVGAnnotationLayerBody = memo(({
   // ---------------------------------------------------------------------------
   // Render: wrap each annotation with hit-area, hover, and interaction handlers
   // ---------------------------------------------------------------------------
+  // Measure labels of marks being dragged, rebuilt from the same live preview
+  // the mark itself paints (filled in by the loop below), so the value and the
+  // pill follow every handle, bend and move frame by frame.
+  const liveMeasureLabels = new Map();
   const wrappedAnnotations = stagedAnnotations
     .map(({ obj, index: i, element, isObjectInteractive }) => {
     // During resize, create a temporary modified copy for rendering
@@ -6231,6 +6235,12 @@ const SVGAnnotationLayerBody = memo(({
       }
       return undefined;
     })();
+    if (obj?.data?.measure && (renderObj !== obj || computedTransform)) {
+      liveMeasureLabels.set(i, {
+        label: buildMeasureLabel(renderObj, effectiveMeasureScale),
+        transform: computedTransform,
+      });
+    }
 
     const isBeingEdited = editingAnnotationIndex != null && i === editingAnnotationIndex;
     // UX 2026-04-19: bbox edit mode (counter / line / arrow / polygon /
@@ -7938,7 +7948,12 @@ const SVGAnnotationLayerBody = memo(({
           vertex. */}
       {measureLabels.length > 0 && (
         <g className="measure-labels" data-measure-label-count={measureLabels.length} style={{ pointerEvents: 'none' }}>
-          {measureLabels.map(({ key, label }) => renderMeasureLabel(label, key, clampInverseScale(inverseScale)))}
+          {measureLabels.map(({ key, index, label }) => {
+            const live = liveMeasureLabels.get(index);
+            if (!live) return renderMeasureLabel(label, key, clampInverseScale(inverseScale));
+            const pill = renderMeasureLabel(live.label, key, clampInverseScale(inverseScale));
+            return live.transform && pill ? <g key={key} transform={live.transform}>{pill}</g> : pill;
+          })}
         </g>
       )}
       {measureMode && shapeCreation && shapeCreation.tool === 'line' && shapeCreation.start && shapeCreation.current
