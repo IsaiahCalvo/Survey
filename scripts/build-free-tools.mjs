@@ -61,10 +61,10 @@ const ALSO = {
   'pdf-viewer': 'view open read reader online preview', 'pdf-to-pdfa': 'pdfa pdf/a archive archival iso 19005',
 };
 const keys = (t) => `${t.name} ${t.short} ${t.id.replace(/-/g, ' ')} ${ALSO[t.id] || ''} ${t.trade?.keys || ''}`.toLowerCase().replace(/"/g, '');
-const card = (t) => `<a class="tcard" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
+const card = (t) => `<a class="tcard g-${t.group}" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
 // Hub rows: a small icon and the name, like Drawboard's and Stirling's lists,
 // so all the tools fit on about one screen. The one-line summary is the tooltip.
-const row = (t) => `<li><a class="trow" href="/tools/${t.id}" title="${t.short.replace(/"/g, '&quot;')}" data-k="${keys(t)}"><span class="tico">${icon(t.icon, t.iconSvg)}</span>${t.name}</a></li>`;
+const row = (t) => `<li><a class="trow g-${t.group}" href="/tools/${t.id}" title="${t.short.replace(/"/g, '&quot;')}" data-k="${keys(t)}"><span class="tico">${icon(t.icon, t.iconSvg)}</span>${t.name}</a></li>`;
 const byId = (id) => TOOLS.find((t) => t.id === id);
 
 // Tools that go together, shown first under "More free PDF tools".
@@ -164,7 +164,7 @@ function toolPage(t) {
   <p class="lede">${t.lede}</p>
 </div></section>
 <section class="tool-sec"><div class="wrap">
-  <div class="tool" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}" data-next="${nextFor(t).map((o) => `${o.id}:${o.name}`).join('|')}"${many ? ' data-multiple' : ''}${t.batch ? ' data-batch' : ''}>
+  <div class="tool g-${t.group}" id="tool" data-tool="${t.id}" data-accept="${t.accept}" data-action="${t.action}" data-next="${nextFor(t).map((o) => `${o.id}:${o.name}`).join('|')}"${many ? ' data-multiple' : ''}${t.batch ? ' data-batch' : ''}>
     <div class="dz" data-dz>
       ${icon(t.icon, t.iconSvg)}
       <p class="dz-main"><label class="btn primary lg"><span data-pick>${PICK[t.accept][many ? 1 : 0]}</span><input type="file" hidden data-early accept="${PICK[t.accept][2]}"${many ? ' multiple' : ''} /></label></p>
