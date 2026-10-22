@@ -64,8 +64,8 @@ async function openSurvey(page, seeded) {
   await expect(page.locator('.survey-pdfjs-page-div[data-page-number="1"] canvas').first()).toBeVisible({ timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: new RegExp(seeded.templateName) }).click();
-  await page.getByRole('button', { name: 'Freehand marker' }).click();
-  await expect(page.getByRole('button', { name: 'Freehand marker' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Freehand marker', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Freehand marker', exact: true })).toHaveAttribute('aria-pressed', 'true');
 }
 
 // Times, inside the page, pointer up -> the card is in the DOM.
