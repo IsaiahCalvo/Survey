@@ -8,7 +8,7 @@
  *
  * Off-screen canvases only; nothing here touches the DOM tree.
  */
-import { paintAnnotationCanvas } from '../utils/annotationCanvasPainter.js';
+import { paintAnnotationCanvas, paintAnnotationCanvasInSlices } from '../utils/annotationCanvasPainter.js';
 import { isAnnotationVisibleInContext } from '../utils/annotationVisibilityRules.js';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
 
@@ -90,8 +90,24 @@ export function selectPageOneMarkup(pageAnnotations, callouts = []) {
   return { objects, callouts: pageCallouts };
 }
 
+const overlayPaintOptions = (canvas, base, { objects = [], callouts = [] }) => {
+  const drawScale = canvas.width / base.pageWidth;
+  return {
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
+    drawScale,
+    drawScaleY: canvas.height / base.pageHeight,
+    displayScale: drawScale,
+    pageWidth: base.pageWidth,
+    pageHeight: base.pageHeight,
+    objects,
+    callouts,
+  };
+};
+
 /** Base page image + markup painted on top, as a new canvas. */
-export function composeThumbnail(base, { objects = [], callouts = [] } = {}) {
+export function composeThumbnail(base, markup = {}) {
+  const { objects = [], callouts = [] } = markup;
   const canvas = makeCanvas(base.canvas.width, base.canvas.height);
   const context = canvas.getContext('2d');
   context.drawImage(base.canvas, 0, 0);
@@ -99,22 +115,37 @@ export function composeThumbnail(base, { objects = [], callouts = [] } = {}) {
     // paintAnnotationCanvas clears its target first, so it paints onto its
     // own transparent layer which is then laid over the page.
     const overlay = makeCanvas(canvas.width, canvas.height);
-    const drawScale = canvas.width / base.pageWidth;
-    const drawScaleY = canvas.height / base.pageHeight;
-    paintAnnotationCanvas(overlay.getContext('2d'), {
-      canvasWidth: overlay.width,
-      canvasHeight: overlay.height,
-      drawScale,
-      drawScaleY,
-      displayScale: drawScale,
-      pageWidth: base.pageWidth,
-      pageHeight: base.pageHeight,
-      objects,
-      callouts,
-    });
+    paintAnnotationCanvas(overlay.getContext('2d'), overlayPaintOptions(overlay, base, markup));
     context.drawImage(overlay, 0, 0);
     releaseCanvas(overlay);
   }
+  return canvas;
+}
+
+/**
+ * composeThumbnail for the background capture: the same image, but the markup
+ * paint yields between marks (a dense page 1 is ~80ms of painting). Resolves
+ * null, with nothing left allocated, when `isCancelled()` turns true.
+ */
+export async function composeThumbnailInSlices(base, markup = {}, { isCancelled = () => false, ...slicing } = {}) {
+  const { objects = [], callouts = [] } = markup;
+  if (!objects.length && !callouts.length) return composeThumbnail(base, markup);
+  const overlay = makeCanvas(base.canvas.width, base.canvas.height);
+  const painted = await paintAnnotationCanvasInSlices(
+    overlay.getContext('2d'),
+    overlayPaintOptions(overlay, base, markup),
+    { ...slicing, isCancelled },
+  );
+  // The bare page can be released (document closed) while the paint waits.
+  if (!painted || isCancelled() || !base.canvas || base.canvas.width <= 1) {
+    releaseCanvas(overlay);
+    return null;
+  }
+  const canvas = makeCanvas(base.canvas.width, base.canvas.height);
+  const context = canvas.getContext('2d');
+  context.drawImage(base.canvas, 0, 0);
+  context.drawImage(overlay, 0, 0);
+  releaseCanvas(overlay);
   return canvas;
 }
 
@@ -127,6 +158,32 @@ export function encodeThumbnail(canvas) {
   try { url = canvas.toDataURL('image/webp', 0.8); } catch { url = ''; }
   if (!url.startsWith('data:image/webp')) url = canvas.toDataURL('image/jpeg', 0.82);
   return url;
+}
+
+const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
+  try { canvas.toBlob((blob) => resolve(blob || null), type, quality); } catch { resolve(null); }
+});
+
+const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(reader.error || new Error('thumbnail read failed'));
+  reader.readAsDataURL(blob);
+});
+
+/**
+ * encodeThumbnail without the main-thread encode: toBlob hands the bitmap to
+ * the browser's encoder off the main thread (a dense sheet's 720px WebP is
+ * ~50ms of toDataURL), and the data URL is built by FileReader. Same output
+ * format and the same WebKit JPEG fallback. Falls back to the synchronous
+ * encode where toBlob or FileReader is missing.
+ */
+export async function encodeThumbnailAsync(canvas) {
+  if (typeof canvas?.toBlob !== 'function' || typeof FileReader === 'undefined') return encodeThumbnail(canvas);
+  let blob = await canvasToBlob(canvas, 'image/webp', 0.8);
+  if (!blob || blob.type !== 'image/webp') blob = await canvasToBlob(canvas, 'image/jpeg', 0.82);
+  if (!blob) return encodeThumbnail(canvas);
+  return blobToDataUrl(blob);
 }
 
 /**

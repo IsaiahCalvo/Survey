@@ -1756,7 +1756,10 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
   context.restore();
 }
 
-export function paintAnnotationCanvas(context, {
+// One step per painted object, so the background thumbnail paint can stop
+// between marks (paintAnnotationCanvasInSlices); paintAnnotationCanvas runs
+// it straight through.
+function* paintAnnotationCanvasSteps(context, {
   canvasWidth,
   canvasHeight,
   drawScale,
@@ -1794,22 +1797,64 @@ export function paintAnnotationCanvas(context, {
   const painted = new Set();
   pendingImageCount = 0;
   paintUniformTextMarkupMasks(context, objects);
-  objects.forEach((object) => {
+  for (const object of objects) {
     if (object?.data?.type === 'callout') {
       const callout = object?.data?.id != null ? calloutsById.get(String(object.data.id)) : null;
       if (callout && !painted.has(callout)) {
         painted.add(callout);
         drawCallout(context, callout, pageWidth, pageHeight, displayScale);
+        yield;
       }
-      return;
+      continue;
     }
     drawAnnotationObject(context, object, displayScale);
-  });
-  callouts.forEach((callout) => {
-    if (!painted.has(callout)) drawCallout(context, callout, pageWidth, pageHeight, displayScale);
-  });
+    yield;
+  }
+  for (const callout of callouts) {
+    if (!painted.has(callout)) {
+      drawCallout(context, callout, pageWidth, pageHeight, displayScale);
+      yield;
+    }
+  }
   context.setTransform(1, 0, 0, 1, 0, 0);
   // pendingImageCount: image marks skipped because their image is still
   // decoding - repaint once preloadAnnotationImages(objects) resolves.
   return { objectCount: objects.length, calloutCount: callouts.length, pendingImageCount };
+}
+
+export function paintAnnotationCanvas(context, options) {
+  const steps = paintAnnotationCanvasSteps(context, options);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+const yieldToMainThread = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * paintAnnotationCanvas for background work (the document thumbnail): the same
+ * paint, in the same order, onto a canvas nobody else draws on, but it gives
+ * the main thread back every `budgetMs` so a dense page (hundreds of marks,
+ * ~80ms in one go) never becomes one long task. `isCancelled()` stops it
+ * between marks; the result is then null.
+ */
+export async function paintAnnotationCanvasInSlices(context, options, {
+  budgetMs = 12,
+  yieldFn = yieldToMainThread,
+  isCancelled = () => false,
+  now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+} = {}) {
+  const steps = paintAnnotationCanvasSteps(context, options);
+  let sliceStart = now();
+  let step = steps.next();
+  while (!step.done) {
+    if (now() - sliceStart >= budgetMs) {
+      // eslint-disable-next-line no-await-in-loop
+      await yieldFn();
+      if (isCancelled()) { steps.return(); return null; }
+      sliceStart = now();
+    }
+    step = steps.next();
+  }
+  return step.value;
 }
