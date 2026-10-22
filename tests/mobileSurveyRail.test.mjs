@@ -104,14 +104,16 @@ test('entity disc with a selected marker: the entity bar write, next marker too'
   assert.match(bar, /export function useSelectedSurveyMarkerIds\(\)/);
 });
 
-test('marker shape on the phone: the chip is the picker, freehand needs a real drag', () => {
+test('marker shape on the phone: the chip is the picker, a finger needs a real drag for freehand', () => {
   const rail = read('../src/mobile/MobileSurveyRail.jsx');
   assert.match(rail, /setMarkerModeToolsShown\(true\);\s*return \(\) => setMarkerModeToolsShown\(false\);/);
   assert.match(rail, /provider\.id === 'smartFill'/);
   const svg = read('../src/components/SVGAnnotationLayer.jsx');
   assert.match(svg, /tool: 'survey-marker-freehand', gestureId, pointerId: e\.pointerId, tick: 0, pressFallback,\s*startClient: \{ x: e\.clientX, y: e\.clientY \}, pointerType: e\.pointerType, passed: false,/);
   assert.match(svg, /draft\.passed === false && draft\.startClient\s*&& hasPassedShapeDragThreshold\(draft\.startClient/);
-  assert.match(svg, /const markerBounds = state\.passed === false\s*\? null/);
+  // A finger tap places nothing; a mouse click or pen tap places a dot (2026-10-22).
+  assert.match(svg, /const tapped = state\.passed === false;/);
+  assert.match(svg, /const markerBounds = tapped\s*\? \(tapPicks \|\| state\.pointerType === 'touch'\s*\? null\s*: buildDotMarkerBounds\(/);
 });
 
 test('phone Survey sheet template list: Recent from 15 templates', () => {
