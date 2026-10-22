@@ -325,7 +325,7 @@ jobs:
       - name: Start Docker (Colima)
         run: |
           brew install colima docker
-          colima start --cpu 4 --memory 10 --disk 40
+          colima start --cpu 2 --memory 7 --disk 40
           echo "DOCKER_HOST=unix://$HOME/.colima/default/docker.sock" >> "$GITHUB_ENV"
       # The Colima VM is slow: realtime never passes its health check there
       # (the walk does not need it), and storage can miss the first one.
@@ -333,6 +333,7 @@ jobs:
         run: npm run e2e:stack:up || { sleep 30; npm run e2e:stack:up; }
         env:
           E2E_REALTIME: 'off'
+          E2E_EDGE_RUNTIME: 'off'
           E2E_IGNORE_HEALTH: '1'
       - name: Build web bundle against the local stack
         run: npx vite build --mode e2e
