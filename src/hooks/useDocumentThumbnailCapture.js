@@ -79,6 +79,9 @@ export function useDocumentThumbnailCapture({
   const dirtyRef = useRef(false);
   const pendingRef = useRef(false);
   const lastSignatureRef = useRef(null);
+  // Bumped by every write; a background write that finds it moved on (a
+  // leave-the-document flush wrote newer markup meanwhile) drops its result.
+  const writeGenRef = useRef(0);
 
   const signatureFor = useCallback((snapshot, geometry) => {
     const markup = selectPageOneMarkup(snapshot.pageOneAnnotations, snapshot.callouts);
@@ -101,6 +104,7 @@ export function useDocumentThumbnailCapture({
   // Leaving the document: encode synchronously so the write is issued before
   // the page can go away.
   const writeNow = useCallback((snapshot, base, markup, signature) => {
+    writeGenRef.current += 1;
     const canvas = composeThumbnail(base, markup);
     let url;
     try { url = encodeThumbnail(canvas); } finally { releaseCanvas(canvas); }
@@ -112,11 +116,14 @@ export function useDocumentThumbnailCapture({
   // runs off the main thread, so a dense page 1 never turns into one long
   // frame a few seconds after the document opens (~180ms on 667 marks).
   const write = useCallback(async (snapshot, base, markup, signature) => {
-    const stale = () => latest.current.key !== snapshot.key || latest.current.pdfDoc !== snapshot.pdfDoc;
+    const gen = ++writeGenRef.current;
+    const stale = () => writeGenRef.current !== gen
+      || latest.current.key !== snapshot.key || latest.current.pdfDoc !== snapshot.pdfDoc;
     const canvas = await composeThumbnailInSlices(base, markup, { isCancelled: stale });
     if (!canvas) return false;
     let url;
     try { url = await encodeThumbnailAsync(canvas); } finally { releaseCanvas(canvas); }
+    if (writeGenRef.current !== gen) return false;
     lastSignatureRef.current = signature;
     return put(snapshot, base, signature, url);
   }, [put]);

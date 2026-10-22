@@ -288,7 +288,7 @@ async function mountCapture(t, { stored = null } = {}) {
         return { canvas: { width: 720, height: 932 }, aspect: PAGE.width / PAGE.height, pageWidth: PAGE.width, pageHeight: PAGE.height, rotate: 0 };
       },
       composeThumbnail: () => { calls.sync += 1; return { width: 720, height: 932 }; },
-      composeThumbnailInSlices: async () => { calls.sliced += 1; return { width: 720, height: 932 }; },
+      composeThumbnailInSlices: async () => { calls.sliced += 1; await harness.paintGate; return { width: 720, height: 932 }; },
       encodeThumbnail: () => { calls.encodeSync += 1; return 'data:image/webp;base64,SYNC'; },
       encodeThumbnailAsync: async () => { calls.encodeAsync += 1; return 'data:image/webp;base64,ASYNC'; },
       releaseCanvas: () => {},
@@ -328,7 +328,7 @@ async function mountCapture(t, { stored = null } = {}) {
   });
   // The viewer mounts before page 1's marks hydrate.
   await render();
-  return { calls, render, wait, signatureOf };
+  return { calls, render, wait, signatureOf, harness };
 }
 
 const marks = () => [
@@ -377,4 +377,24 @@ test('stale thumbnail: painted in slices, encoded off the main thread, written o
   assert.equal(h.calls.put.length, 2);
   assert.equal(h.calls.put[1].value.signature, h.signatureOf(edited));
   assert.equal(h.calls.sliced, 2);
+});
+
+test('a leave-the-document flush is never overwritten by an older background capture', async (t) => {
+  const h = await mountCapture(t, { stored: null });
+  // Hold the background paint until the flush has written.
+  let releasePaint;
+  h.harness.paintGate = new Promise((resolve) => { releasePaint = resolve; });
+  const objects = marks();
+  await h.render({ pageOneAnnotations: { objects } });
+  await h.wait(200);
+  assert.equal(h.calls.sliced, 1, 'background capture is painting');
+  // A newer edit, then the user leaves before it settles.
+  const edited = [...objects, { type: 'rect', left: 9, top: 9, width: 9, height: 9, stroke: '#00f', data: { id: 'c' } }];
+  await h.render({ pageOneAnnotations: { objects: edited } });
+  await act(async () => { document.dispatchEvent(new window.Event('visibilitychange')); });
+  assert.equal(h.calls.put.length, 1, 'the flush wrote');
+  assert.equal(h.calls.put[0].value.signature, h.signatureOf(edited));
+  releasePaint();
+  await h.wait(100);
+  assert.equal(h.calls.put.length, 1, 'the older capture did not overwrite it');
 });
