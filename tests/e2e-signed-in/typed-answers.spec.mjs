@@ -22,6 +22,12 @@ test.afterAll(async () => {
   if (original) await adminClient().from('templates').update({ config: original }).eq('id', E2E_SURVEY.templateId);
 });
 
+// "Survey template updated": take the version this spec wrote.
+async function takeLatest(page) {
+  const latest = page.getByRole('button', { name: 'Use latest version' });
+  if (await latest.waitFor({ timeout: 3_000 }).then(() => true, () => false)) await latest.click();
+}
+
 async function openSurveyItem(page, { reopened = false } = {}) {
   if (!reopened) {
     await page.getByText(E2E_SURVEY.documentName, { exact: true }).first().click();
@@ -34,14 +40,16 @@ async function openSurveyItem(page, { reopened = false } = {}) {
   if (!(await category.isVisible().catch(() => false))) {
     await page.getByRole('button', { name: 'Survey', exact: true }).click();
     await expect(chooser.or(category).first()).toBeVisible({ timeout: 30_000 });
-    if (await chooser.isVisible()) await page.getByText(E2E_SURVEY.templateName, { exact: true }).last().click();
+    if (await chooser.isVisible()) {
+      await page.getByText(E2E_SURVEY.templateName, { exact: true }).last().click();
+      await takeLatest(page);
+    }
   }
   // A document keeps the template version it was surveyed with; take the
   // version this spec just wrote.
   await page.getByRole('button', { name: /^Survey template: .*Switch template$/ }).filter({ visible: true }).first().click();
   await page.getByRole('menuitem', { name: E2E_SURVEY.templateName }).or(page.getByRole('menuitemradio', { name: E2E_SURVEY.templateName })).or(page.getByRole('option', { name: E2E_SURVEY.templateName })).first().click();
-  const latest = page.getByRole('button', { name: 'Use latest version' });
-  if (await latest.waitFor({ timeout: 3_000 }).then(() => true, () => false)) await latest.click();
+  await takeLatest(page);
   await expect(category).toBeVisible();
   const expand = page.getByRole('button', { name: 'Expand marker details' }).first();
   if (!(await expand.isVisible().catch(() => false))) await category.click();
