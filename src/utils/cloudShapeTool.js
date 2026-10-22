@@ -1,7 +1,7 @@
 // Drawboard's Shape > Cloud tool. A cloud here is the Rectangle drawn with the
-// Cloud line style (the same model the Style picker and the Schematic badge
-// use), so it inherits select / move / resize / undo / save / export from the
-// rectangle path. A polygon cloud is Polygon + the Cloud style.
+// Cloud line style (the same model the Style picker uses), so it inherits
+// select / move / resize / undo / save / export from the rectangle path. A
+// polygon cloud is Polygon + the Cloud style.
 export const CLOUD_SHAPE_TOOL_ID = 'cloud';
 
 /** What a Shape-row button arms: { tool, lineBorderStyle } (style null = leave it). */

@@ -40,7 +40,9 @@
    scrollbars.
 */
 import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
-import { ANSWER_SET_PRESETS, DEFAULT_ANSWER_SET } from '../services/answerSets.js';
+import { DEFAULT_ANSWER_SET, answerPresetIdOf, answerSetPresets } from '../services/answerSets.js';
+import { isFeatureOn } from '../featureFlags.js';
+import AnswerSetEditor from './AnswerSetEditor.jsx';
 import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
@@ -106,13 +108,10 @@ import DismissBarrier from '../components/DismissBarrier';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
+import { templateCategoryEmptyText } from './templateEmptyText.js';
 
-// The preset id a template's answer set matches ('' when it is custom).
-const answerPresetIdOf = (set) => {
-  if (!set) return 'yes-no-na';
-  const key = JSON.stringify(set.map((a) => [a.value, a.tone]));
-  return ANSWER_SET_PRESETS.find((p) => JSON.stringify(p.answers.map((a) => [a.value, a.tone])) === key)?.id || '';
-};
+// The "make your own" choice in the checklist-answers picker.
+const OWN_ANSWERS = '__own__';
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
    one shared glyph so mobile cannot drift to a different arrow treatment.
@@ -1024,6 +1023,44 @@ export default function TemplatesEditor({
   const dirty = editFlag && workingCopyDiffers(workingFingerprint, baseline);
   /* The baseline a save makes once it lands: exactly the copy it sent. */
   const exportKitOptions = useSyncExternalStore(subscribeExportKits, listExportKits);
+  /* Checklist answers: a preset, or (nightly 'custom-answers') the
+     template's own typed list. `answerEditorFor` is the template whose list
+     editor is open. */
+  const [customAnswers] = useState(() => isFeatureOn('custom-answers'));
+  const answerPresets = answerSetPresets({ extras: customAnswers });
+  const [answerEditorFor, setAnswerEditorFor] = useState(null);
+  const ownAnswerSetOf = (t) => t.answerSet || getExportKit(t.exportKitId)?.answerSet;
+  const answerPickerProps = (t) => {
+    const presetId = answerPresetIdOf(ownAnswerSetOf(t), answerPresets);
+    const editing = customAnswers && answerEditorFor === t.id;
+    return {
+      value: editing ? '' : presetId,
+      onChange: (e) => {
+        if (e.target.value === OWN_ANSWERS) { setAnswerEditorFor(t.id); return; }
+        if (!e.target.value) return; // "Custom" is the list already in use
+        setAnswerEditorFor(null);
+        const preset = answerPresets.find((p) => p.id === e.target.value);
+        mutateTpl(t.id, (cur) => {
+          const { answerSet: _a, ...rest } = cur;
+          return !preset || preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
+        });
+      },
+      children: [
+        (editing || !presetId) && <option key="custom" value="">Custom</option>,
+        ...answerPresets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>),
+        customAnswers && !editing && <option key={OWN_ANSWERS} value={OWN_ANSWERS}>{presetId ? 'Make your own…' : 'Edit my answers…'}</option>,
+      ],
+    };
+  };
+  const answerListEditor = (t, phone) => (customAnswers && answerEditorFor === t.id ? (
+    <AnswerSetEditor
+      key={t.id}
+      phone={phone}
+      set={ownAnswerSetOf(t) || DEFAULT_ANSWER_SET}
+      onCommit={(set) => mutateTpl(t.id, (cur) => ({ ...cur, answerSet: set }))}
+      onClose={() => setAnswerEditorFor(null)}
+    />
+  ) : null);
   const fingerprintOf = (list) => fingerprintTemplates(list, { roleColors, borderColors, matchFill }, freshBlankItemsRef.current);
 
   const closeMobileTemplate = useCallback(() => {
@@ -2501,20 +2538,10 @@ export default function TemplatesEditor({
                 <select
                   className="hub-answer-set"
                   aria-label="Checklist answers"
-                  value={answerPresetIdOf(tpl.answerSet || getExportKit(tpl.exportKitId)?.answerSet)}
-                  onChange={(e) => {
-                    const preset = ANSWER_SET_PRESETS.find((p) => p.id === e.target.value);
-                    mutateTpl(tpl.id, (t) => {
-                      const { answerSet: _a, ...rest } = t;
-                      return !preset || preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
-                    });
-                  }}
+                  {...answerPickerProps(tpl)}
                   {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
                   style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
-                >
-                  {!answerPresetIdOf(tpl.answerSet || getExportKit(tpl.exportKitId)?.answerSet) && <option value="">Custom</option>}
-                  {ANSWER_SET_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select>
+                />
                 {/* Smart fill (beta): tag shapes taught on drawings. */}
                 {smartFillBeta && (
                   <SmartFillShapeChips
@@ -2526,6 +2553,7 @@ export default function TemplatesEditor({
                 )}
               </div>
             </div>
+            {answerListEditor(tpl, false)}
 
             <div style={{ padding: '6px 18px 14px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
 
@@ -2596,7 +2624,7 @@ export default function TemplatesEditor({
               {/* Expandable category list */}
               <div className="slim-scroll" style={{ overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 6, paddingRight: 4, flex: 1, minHeight: 0 }}>
                 {visibleCats.length === 0 && (
-                  <div className="meta" style={{ padding: '16px 4px', fontSize: 12 }}>This module has no categories yet.</div>
+                  <div className="meta" style={{ padding: '16px 4px', fontSize: 12 }}>{templateCategoryEmptyText(orderedMods.length)}</div>
                 )}
                 <SortableRearrangeList
                   ids={visibleCats.map((c) => c.id)}
@@ -3234,21 +3262,9 @@ export default function TemplatesEditor({
                 )}
                 <label className="templates-mobile-option">
                   <span>Answers</span>
-                  <select
-                    aria-label="Checklist answers"
-                    value={answerPresetIdOf(tpl.answerSet || getExportKit(tpl.exportKitId)?.answerSet)}
-                    onChange={(e) => {
-                      const preset = ANSWER_SET_PRESETS.find((p) => p.id === e.target.value);
-                      mutateTpl(tpl.id, (t) => {
-                        const { answerSet: _a, ...rest } = t;
-                        return !preset || preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
-                      });
-                    }}
-                  >
-                    {!answerPresetIdOf(tpl.answerSet || getExportKit(tpl.exportKitId)?.answerSet) && <option value="">Custom</option>}
-                    {ANSWER_SET_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                  </select>
+                  <select aria-label="Checklist answers" {...answerPickerProps(tpl)} />
                 </label>
+                {answerListEditor(tpl, true)}
               </div>
 
               <section className="templates-mobile-section templates-mobile-modules-section">

@@ -24,7 +24,9 @@ test('a template set is used; a broken one falls back to the default', () => {
   assert.equal(isDoneAnswer(pass, 'Pass'), true);
   assert.equal(isDoneAnswer(pass, 'Y'), false);
   assert.equal(answerSetFor({ answerSet: [{ value: 'a,b', tone: 'good' }, { value: 'c', tone: 'bad' }] }), DEFAULT_ANSWER_SET);
-  assert.equal(answerSetFor({ answerSet: [{ value: 'Only', tone: 'good' }] }), DEFAULT_ANSWER_SET);
+  assert.equal(answerSetFor({ answerSet: [] }), DEFAULT_ANSWER_SET);
+  const seven = Array.from({ length: 7 }, (_, i) => ({ value: `A${i}`, tone: 'good' }));
+  assert.equal(answerSetFor({ answerSet: seven }), DEFAULT_ANSWER_SET);
   assert.ok(validateAnswerSet([{ value: 'A', tone: 'good' }, { value: 'A', tone: 'bad' }]).length);
   assert.ok(validateAnswerSet([{ value: 'A', tone: 'great' }, { value: 'B', tone: 'bad' }]).length);
 });
@@ -63,4 +65,52 @@ test('a kit can carry the answer set; the template\'s own set still wins', async
   assert.equal(answerSetFor({ exportKitId: 'kit-answers-bad' }), DEFAULT_ANSWER_SET);
   offBad();
   assert.equal(answerSetFor({ exportKitId: 'kit-answers-test' }), DEFAULT_ANSWER_SET);
+});
+
+test('make-your-own lists: one answer is a plain "Done"; 5 / 10 / 20 works', () => {
+  const done = [{ value: 'Done', tone: 'good' }];
+  assert.equal(answerSetFor({ answerSet: done }), done);
+  assert.equal(excelAnswerListFormula(done), '"Done"');
+  const sizes = [{ value: '5', tone: 'neutral' }, { value: '10', tone: 'neutral' }, { value: '20', tone: 'neutral' }];
+  assert.equal(answerSetFor({ answerSet: sizes }), sizes);
+  assert.equal(excelAnswerListFormula(sizes), '"5,10,20"');
+  assert.equal(isDoneAnswer(sizes, '10'), true);
+});
+
+test('extra presets are valid and only offered with the flag', async () => {
+  const { EXTRA_ANSWER_SET_PRESETS, answerSetPresets, answerPresetIdOf } = await import('../src/services/answerSets.js');
+  EXTRA_ANSWER_SET_PRESETS.forEach((p) => assert.deepEqual(validateAnswerSet(p.answers), [], p.id));
+  assert.equal(answerSetPresets(), ANSWER_SET_PRESETS);
+  assert.equal(answerSetPresets({ extras: true }).length, ANSWER_SET_PRESETS.length + EXTRA_ANSWER_SET_PRESETS.length);
+  const ids = answerSetPresets({ extras: true }).map((p) => p.id);
+  assert.equal(new Set(ids).size, ids.length);
+  const sml = EXTRA_ANSWER_SET_PRESETS.find((p) => p.id === 'small-medium-large').answers;
+  assert.equal(answerPresetIdOf(undefined), 'yes-no-na');
+  assert.equal(answerPresetIdOf(sml), '');
+  assert.equal(answerPresetIdOf(sml, answerSetPresets({ extras: true })), 'small-medium-large');
+  assert.equal(answerPresetIdOf([{ value: 'Ok', tone: 'good' }], answerSetPresets({ extras: true })), '');
+});
+
+test('a typed-in list is saved only when usable, with a plain reason when not', async () => {
+  const { cleanAnswerSet, answerSetProblem, sameAnswerSet } = await import('../src/services/answerSets.js');
+  assert.deepEqual(cleanAnswerSet([{ value: ' Small ', tone: 'neutral', extra: 1 }]), [{ value: 'Small', tone: 'neutral' }]);
+  assert.equal(cleanAnswerSet([{ value: '', tone: 'good' }]), null);
+  assert.equal(cleanAnswerSet([]), null);
+  assert.equal(answerSetProblem([]), 'Add at least one answer.');
+  assert.equal(answerSetProblem([{ value: ' ', tone: 'good' }]), 'Every answer needs a name.');
+  assert.match(answerSetProblem([{ value: 'a,b', tone: 'good' }]), /commas/);
+  assert.match(answerSetProblem([{ value: 'x'.repeat(21), tone: 'good' }]), /20 characters/);
+  assert.equal(answerSetProblem([{ value: 'A', tone: 'good' }, { value: 'A ', tone: 'bad' }]), 'Two answers have the same name.');
+  assert.equal(answerSetProblem([{ value: 'A', tone: 'good' }]), '');
+  assert.equal(sameAnswerSet([{ value: 'A', tone: 'good' }], [{ value: 'A', tone: 'good' }]), true);
+  assert.equal(sameAnswerSet([{ value: 'A', tone: 'good' }], [{ value: 'A', tone: 'bad' }]), false);
+});
+
+test("'custom-answers' is a beta flag (nightly only) with a migration row", async () => {
+  const { FEATURE_FLAGS } = await import('../src/featureFlags.js');
+  assert.equal(FEATURE_FLAGS['custom-answers']?.stage, 'beta');
+  const { readFileSync, readdirSync } = await import('node:fs');
+  const dir = new URL('../supabase/migrations/', import.meta.url);
+  const sql = readdirSync(dir).filter((f) => f.endsWith('.sql')).map((f) => readFileSync(new URL(f, dir), 'utf8')).join('\n');
+  assert.match(sql, /\('custom-answers', 'off'/);
 });

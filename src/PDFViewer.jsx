@@ -114,7 +114,6 @@ import { deviceCanHover, isTextSelectionCaptureTool, markTakesPanTextHover, shou
 import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
-import SchematicModeBadge from './components/SchematicModeBadge';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
@@ -33740,17 +33739,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     recognizeTextOnPage(pageNum);
   }, [activeTool, ocrStateByPage, pageNum, recognizeTextOnPage, textAvailabilityByPage]);
 
-  // KAL-402 Schematic Mode: the badge's quick tools. Cloud is the Rectangle
-  // with the Cloud line style, as the Style picker sets it.
-  const handleSchematicPickTool = useCallback((tool) => {
-    if (tool === 'cloud') {
-      setLineBorderStyle('cloud');
-      setActiveToolLogged('rect', { source: 'schematic-badge' });
-      return;
-    }
-    setActiveToolLogged(tool, { source: 'schematic-badge' });
-  }, [setActiveToolLogged]);
-
   const cancelTextRecognition = useCallback((pageNumber) => {
     ocrAbortByPageRef.current.get(pageNumber)?.abort?.();
   }, []);
@@ -37578,16 +37566,6 @@ ${pageBlocks}
                             <style>
                               {nativePdfAnnotationLayerHideCss}
                             </style>
-                          )}
-                          {pdfDoc && !pageTinyOnScreen && (
-                            <SchematicModeBadge
-                              pdfDoc={pdfDoc}
-                              pageNumber={pageNumber}
-                              fingerprint={pdfDoc?.fingerprints?.[0] || pdfFile?.id || pdfFile?.name}
-                              activeTool={activeTool}
-                              lineBorderStyle={lineBorderStyle}
-                              onPickTool={handleSchematicPickTool}
-                            />
                           )}
                           {activeTool === 'text-select' && ocrStateByPage[pageNumber]?.status === 'complete' && (
                             <OcrTextLayer

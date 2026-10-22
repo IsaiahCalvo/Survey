@@ -140,7 +140,7 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
 const DEFAULT_ANSWER_VALUES = ['Y', 'N', 'N/A'];
 function answerValuesOf(config: Record<string, unknown>): string[] | null {
   const set = config.answerSet;
-  if (Array.isArray(set) && set.length >= 2 && set.length <= 6) {
+  if (Array.isArray(set) && set.length >= 1 && set.length <= 6) {
     const values = set
       .map((a) => (a && typeof a === 'object' ? String((a as Record<string, unknown>).value ?? '').trim() : ''))
       .filter((v) => v);

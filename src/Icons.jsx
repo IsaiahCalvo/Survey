@@ -439,7 +439,7 @@ const ICON_RENDERERS = {
     ),
 
     // Owner 2026-10-22: the Cloud TOOL button (desktop Shape row, phone shape
-    // rail, Schematic badge, history rows) draws Hugeicons "Cloud" (MIT,
+    // rail, history rows) draws Hugeicons "Cloud" (MIT,
     // hugeicons.com/icon/cloud). The line-style menu keeps the scallop sample
     // below, since there it names a line style, not the tool. Like the
     // selection cursor, the Hugeicons ink runs 21.5 units wide, so it is
