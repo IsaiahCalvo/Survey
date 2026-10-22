@@ -227,6 +227,10 @@ export function readPageLayers(root = typeof document !== 'undefined' ? document
   if (!root) return [];
   const out = [];
   for (const svg of root.querySelectorAll('svg[data-svg-annotation-layer]')) {
+    // Another open tab keeps its page layers in the DOM under display:none.
+    // Its page 1 must never stand in for this tab's page 1 (a wrong matrix
+    // reads the mark as carried off its page, which hides it mid-drag).
+    if (typeof svg.getClientRects === 'function' && svg.getClientRects().length === 0) continue;
     const pageNumber = Number(svg.getAttribute('data-svg-annotation-layer'));
     const viewBox = svg.viewBox?.baseVal;
     const ctm = svg.getScreenCTM?.();

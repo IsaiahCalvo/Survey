@@ -27,7 +27,9 @@ import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
-import { remapSelectedIndices } from '../utils/selectionRemap.js';
+import {
+  indexRemapper, rebasePageCopy, remapDragState, remapSelectedIndices, remapVisualTransform,
+} from '../utils/selectionRemap.js';
 import { trackHandleZoom, untrackHandleZoom } from '../utils/liveHandleZoom.js';
 import { resizeCalloutBox } from '../utils/markBorderOutline.js';
 // w59: one rule for where a moved mark lands (preview === save).
@@ -823,6 +825,23 @@ export function useSVGInteraction({
     const remappedFrom = selectedIds;
     setSelectedIds((prev) => (prev === remappedFrom ? next : prev));
   }, [annotations, selectedIds]);
+  // A live drag follows its marks by id the same way (remapDragState): when
+  // the list changes mid-drag (a delete on another screen, the store's
+  // re-order after open), its positions would otherwise hand the drag and its
+  // preview to a neighbour, and the dragged mark sat still or looked gone.
+  const dragListRef = useRef(null);
+  useLayoutEffect(() => {
+    const objects = annotations?.objects ?? null;
+    const previous = dragListRef.current;
+    dragListRef.current = objects;
+    const ds = dragStateRef.current;
+    if (!ds?.active || !previous || !objects || previous === objects) return;
+    const mapIndex = indexRemapper(previous, objects);
+    const moved = remapDragState(ds, mapIndex);
+    if (moved.currentAnnotations) moved.currentAnnotations = rebasePageCopy(moved.currentAnnotations, annotations);
+    dragStateRef.current = moved;
+    setVisualTransform((prev) => remapVisualTransform(prev, mapIndex));
+  }, [annotations]);
   useEffect(() => {
     if (dragStateRef.current?.active) return;
     setHoveredId(null);
