@@ -110,7 +110,12 @@ test('the template editor shows how each line is answered', async ({ page }) => 
   await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
   const [cable, frame, door] = E2E_SURVEY.checklist.map((c) => c.text);
   const kindOf = (line) => page.getByRole('combobox', { name: `How "${line}" is answered` }).filter({ visible: true }).first();
-  await page.getByRole('button', { name: `Expand ${E2E_SURVEY.categoryName}` }).filter({ visible: true }).first().click();
+  // Other specs may have added templates; open this one, then its category.
+  await page.getByText(E2E_SURVEY.templateName, { exact: true }).filter({ visible: true }).first().click();
+  const expand = page.getByRole('button', { name: `Expand ${E2E_SURVEY.categoryName}` }).filter({ visible: true }).first();
+  const collapse = page.getByRole('button', { name: `Collapse ${E2E_SURVEY.categoryName}` }).filter({ visible: true }).first();
+  await expect(expand.or(collapse).first()).toBeVisible({ timeout: 30_000 });
+  if (await expand.isVisible()) await expand.click();
   await expect(kindOf(cable)).toHaveValue('number', { timeout: 30_000 });
   await expect(page.getByRole('textbox', { name: `Unit for "${cable}"` }).filter({ visible: true }).first()).toHaveValue('ft');
   await expect(kindOf(frame)).toHaveValue('text');
