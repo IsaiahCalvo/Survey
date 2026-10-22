@@ -2932,10 +2932,18 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       onClick={() => regionApi.setToolType?.('rectangular')}
                     />
                     <RailButton
+                      active={regionDrawing && regionApi.toolType === 'polygon'}
+                      icon="areaPolygon"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Polygon area"
+                      data-morph-icon="areaPolygon"
+                      onClick={() => regionApi.setToolType?.('polygon')}
+                    />
+                    <RailButton
                       active={regionDrawing && regionApi.toolType === 'freehand'}
                       icon="areaFreehand"
                       glyph={SUBTOOL_GLYPH}
-                      label="Freehand area"
+                      label="Lasso area"
                       data-morph-icon="areaFreehand"
                       onClick={() => regionApi.setToolType?.('freehand')}
                     />

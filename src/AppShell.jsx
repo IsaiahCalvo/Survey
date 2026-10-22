@@ -2510,8 +2510,10 @@ export default function App({ devPreviewReturnTab = null }) {
         aria-label="Area tools"
         style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}
       >
+        {/* Owner 2026-10-22: Rectangle, Polygon, Lasso - in that order. */}
         {tool('rectangle', 'Rectangle area', 'areaRect', drawing && regionApi.toolType === 'rectangular', () => regionApi.setToolType?.('rectangular'))}
-        {tool('freehand', 'Freehand area', 'areaFreehand', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
+        {tool('polygon', 'Polygon area', 'areaPolygon', drawing && regionApi.toolType === 'polygon', () => regionApi.setToolType?.('polygon'))}
+        {tool('freehand', 'Lasso area', 'areaFreehand', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
         <div className="chrome-divider" />
         {tool('add', 'Add to area', 'plus', regionApi.selectionMode === 'add', () => regionApi.setSelectionMode?.('add'))}
         {tool('subtract', 'Subtract from area', 'minus', regionApi.selectionMode === 'subtract', () => regionApi.setSelectionMode?.('subtract'))}
@@ -2534,33 +2536,53 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
       );
     }
+    // Owner 2026-10-22: the bold "Regions" word read as a button and did
+    // nothing. In its place a quiet line says how the armed tool works
+    // (Bluebeam / Photoshop polygon rules: click each corner, close on the
+    // first corner, Enter or a double-click). It keeps one width, so the
+    // buttons beside it never shift as the words change. Then what can be
+    // done to the areas, then how to leave.
+    const corners = regionApi.polygonCorners || 0;
+    const hint = areasPanArmed
+      ? 'Drag to move around the page'
+      : regionApi.toolType === 'move'
+        ? (regionApi.canDelete ? 'Drag to move · Delete removes it' : 'Click an area to pick it')
+        : regionApi.toolType === 'polygon'
+          ? (corners === 0
+            ? 'Click each corner'
+            : (corners < 3 ? 'Click the next corner · Backspace takes one back' : 'Click the first corner or press Enter to close'))
+          : regionApi.toolType === 'freehand'
+            ? 'Drag around the area'
+            : 'Drag to draw an area';
     return (
       <div data-area-actions="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Regions</span>
+        <span data-area-hint="true" aria-live="polite" style={{ color: 'var(--text-3)', fontSize: '12px', fontWeight: 400, marginRight: '8px', whiteSpace: 'nowrap', width: '288px', flex: '0 1 auto', minWidth: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hint}</span>
         <button
           type="button"
           className="btn btn-sm btn-default"
           disabled={!regionApi.canDelete}
           onClick={regionApi.deleteSelected}
-          {...chromeTip(regionApi.canDelete ? 'Delete the picked regions' : 'Pick a region with Select to delete it', 'below')}
+          aria-label="Delete area"
+          {...chromeTip(regionApi.canDelete ? 'Delete the picked area (Delete)' : 'Pick an area to delete it', 'below')}
         >
-          Delete region
+          Delete
         </button>
-        {regionApi.canSetFullPage && (
-          <button
-            type="button"
-            className="btn btn-sm btn-default"
-            onClick={regionApi.setFullPage}
-            {...chromeTip('Use the whole page as the region', 'below')}
-          >
-            Full page
-          </button>
-        )}
+        {/* Always drawn (greyed when the area already is the page), so the
+            row never shifts. */}
+        <button
+          type="button"
+          className="btn btn-sm btn-default"
+          disabled={!regionApi.canSetFullPage}
+          onClick={regionApi.setFullPage}
+          {...chromeTip(regionApi.canSetFullPage ? 'Use the whole page as the area' : 'The area already is the whole page', 'below')}
+        >
+          Full page
+        </button>
         <div className="chrome-divider" />
         <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
           Cancel
         </button>
-        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the regions (Enter)', 'below')}>
+        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
           Done
         </button>
       </div>

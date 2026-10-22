@@ -181,6 +181,7 @@ export const MORPH_ICONS = Object.freeze({
     ],
   },
   areaRect: areaToolMorph('areaRect'),
+  areaPolygon: areaToolMorph('areaPolygon'),
   areaFreehand: areaToolMorph('areaFreehand'),
   // 2026-10-02: Box Select is Hugeicons Cursor Rectangle Selection 02 (a
   // dashed box corner and a smaller cursor), and the lasso draws the same
