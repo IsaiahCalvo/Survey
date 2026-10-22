@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { itemKind, typedAnswer, TYPED_ANSWER_MAX } from '../services/answerSets.js';
 
 export default function TypedAnswerInput({ item, value, onCommit, className, phone = false }) {
-  const saved = value ?? '';
+  const saved = value == null ? '' : String(value);
   const [draft, setDraft] = useState(null); // null = showing the saved value
   const number = itemKind(item) === 'number';
   const commit = () => {

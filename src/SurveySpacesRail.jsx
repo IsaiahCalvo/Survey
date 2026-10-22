@@ -49,7 +49,7 @@ import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
-import { answerSetFor, answerTone, itemKind } from './services/answerSets.js';
+import { answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput from './components/TypedAnswerInput.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
@@ -1814,8 +1814,8 @@ const SurveySpacesRail = ({
                       <button
                         key={option}
                         type="button"
-                        className={`mobile-survey-check-btn${response === option ? ` is-active is-${answerToneName === 'good' ? 'yes' : answerToneName === 'bad' ? 'no' : 'na'}` : ''}`}
-                        aria-pressed={response === option}
+                        className={`mobile-survey-check-btn${sameAnswer(response, option) ? ` is-active is-${answerToneName === 'good' ? 'yes' : answerToneName === 'bad' ? 'no' : 'na'}` : ''}`}
+                        aria-pressed={sameAnswer(response, option)}
                         aria-label={`${item.text} ${option}`}
                         onClick={() => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, option)}
                       >
@@ -4005,7 +4005,7 @@ const SurveySpacesRail = ({
                                                         ) : (
                                                         <div className="survey-rail__answers" role="group" aria-label={item.text || 'Checklist answer'}>
                                                           {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => {
-                                                            const isAnswer = isSelected === option;
+                                                            const isAnswer = sameAnswer(isSelected, option);
                                                             const tone = answerToneName === 'good' ? 'is-yes' : answerToneName === 'bad' ? 'is-no' : 'is-na';
                                                             return (
                                                               <button

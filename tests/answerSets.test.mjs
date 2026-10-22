@@ -173,3 +173,12 @@ test('template fingerprint and the agent tool schema follow item kinds', async (
   assert.deepEqual(valueOf().enum, ['Y', 'N', 'N/A']);
   assert.equal(valueOf({ typedLines: true }).enum, undefined);
 });
+
+test('a number read back from Excel (10) still matches the answer "10"', async () => {
+  const { answerTone, isDoneAnswer, sameAnswer } = await import('../src/services/answerSets.js');
+  const sizes = [{ value: '5', tone: 'neutral' }, { value: '10', tone: 'bad' }];
+  assert.equal(answerTone(sizes, 10), 'bad');
+  assert.equal(isDoneAnswer(sizes, 5), true);
+  assert.equal(sameAnswer(undefined, 'undefined'), false);
+  assert.equal(isDoneAnswer(DEFAULT_ANSWER_SET, undefined), false);
+});

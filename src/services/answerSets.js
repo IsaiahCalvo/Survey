@@ -131,8 +131,11 @@ export function answerSetFor(template) {
   return usable(kitSet) ? kitSet : DEFAULT_ANSWER_SET;
 }
 
+// Excel import can hand back a number (10) for an answer saved as text ('10').
+export const sameAnswer = (a, b) => a != null && b != null && String(a) === String(b);
+
 export function answerTone(set, value) {
-  return set.find((a) => a.value === value)?.tone || null;
+  return set.find((a) => sameAnswer(a.value, value))?.tone || null;
 }
 
 /** Good and neutral answers count as done (today: Y and N/A). */
