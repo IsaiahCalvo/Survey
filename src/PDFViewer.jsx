@@ -321,7 +321,7 @@ import { enqueueWriteback } from './services/rowIdWritebackQueue';
 import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
 import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, canSnapshotToolSettings, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
-import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
+import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, historyFingerprintsEqual, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { pageOperationCheckpoint, pageOperationStepId } from './utils/pageOperationHistory.js';
 import { snapshotAnnotationPages } from './utils/historySnapshotShare';
 import { eraseTransitionChangedScreen as eraseTransitionChangedScreenWith, foldIntoCreateStep, getHistoryOrder, historyActionChangedPages, isTransientEraseHistoryFailure, legacyRestoreChangesState, runHistoryPress, scopeLegacyRestoreToOwnSlices, shouldRedoLocalBeforeLegacy, shouldUndoLocalBeforeLegacy } from './utils/historyStacks';
@@ -12669,7 +12669,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const lastCheckpoint = undoHistoryRef.current[undoHistoryRef.current.length - 1];
     const lastCheckpointFingerprint = lastCheckpoint ? getHistoryFingerprint(lastCheckpoint) : null;
-    if (lastCheckpoint && lastCheckpointFingerprint?.serialized === currentFingerprint.serialized) {
+    if (lastCheckpoint && historyFingerprintsEqual(lastCheckpointFingerprint, currentFingerprint)) {
       lastCheckpointHashRef.current = lastCheckpointFingerprint?.hash || currentFingerprint.hash;
       pushHistoryDebugEvent('checkpoint_skipped_duplicate', {
         reason: normalizedReason,
@@ -27717,8 +27717,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
 
     if (
-      currentPageFingerprint.serialized === nextPageFingerprint.serialized
-      && (!previewBaseline || previousPageFingerprint.serialized === nextPageFingerprint.serialized)
+      historyFingerprintsEqual(currentPageFingerprint, nextPageFingerprint)
+      && (!previewBaseline || historyFingerprintsEqual(previousPageFingerprint, nextPageFingerprint))
     ) {
       // A gesture that ends exactly where it began is over too: drop its
       // preview baseline, or the next unrelated save on this page would diff
