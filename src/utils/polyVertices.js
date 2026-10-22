@@ -137,3 +137,30 @@ export function insertPolyVertex(obj, segmentIndex, t) {
   }
   return next;
 }
+
+/**
+ * How far (page units) a cloud-styled polygon / polyline reaches outside its
+ * own corner outline: the gap between the corners' bounding box and the
+ * cloud's selection frame (crowns plus stroke), largest side wins. The side
+ * long-press band widens by this on pen / touch so a press on the drawn
+ * scallops - not only on the straight corner-to-corner side under them -
+ * opens "Add point here". `points` and `frame` share the unrotated page frame.
+ */
+export function cloudPolyEdgeReach(points, frame) {
+  if (!Array.isArray(points) || points.length === 0 || !frame) return 0;
+  const xs = points.map((p) => Number(p?.x) || 0);
+  const ys = points.map((p) => Number(p?.y) || 0);
+  let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity;
+  for (let i = 0; i < xs.length; i += 1) {
+    if (xs[i] < minX) minX = xs[i];
+    if (xs[i] > maxX) maxX = xs[i];
+    if (ys[i] < minY) minY = ys[i];
+    if (ys[i] > maxY) maxY = ys[i];
+  }
+  const left = Number(frame.left);
+  const top = Number(frame.top);
+  const right = left + Number(frame.width);
+  const bottom = top + Number(frame.height);
+  const reach = Math.max(minX - left, right - maxX, minY - top, bottom - maxY, 0);
+  return Number.isFinite(reach) ? reach : 0;
+}
