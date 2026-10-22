@@ -183,9 +183,12 @@ test('the carried picture belongs to one page of one document', () => {
 test('wiring: the drag previews / drops through the cross-page hook, Escape cancels, the viewer saves one transaction', () => {
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
   // canvas audit chunk 2: the preview takes the snap adjuster (both moves)
-  // (A copy-drag, Ctrl / Cmd held, stays on its own page: it skips both.)
-  assert.equal((hook.match(/if \(!copyDrag && crossPageMove\.preview\(ds, e, annotations\?\.objects, /g) || []).length, 2);
-  assert.match(hook, /const crossPageDropped = !copyDrop && \(ds\.mode === 'move' \|\| ds\.mode === 'group-move'\) && crossPageMove\.drop\(ds, e\);/);
+  // and the copy flag: a copy-drag (Ctrl / Cmd held) crosses pages too, with
+  // its original left drawn in place, and its drop pastes a copy there.
+  assert.equal((hook.match(/if \(crossPageMove\.preview\(ds, e, annotations\?\.objects, /g) || []).length, 2);
+  assert.equal((hook.match(/^      \}, copyDrag\)\) \{$/gm) || []).length, 2);
+  assert.match(hook, /const crossPageDropped = crossPageCopied \|\| \(!copyDrop && moveDrag && crossPageMove\.drop\(ds, e\)\);/);
+  assert.match(hook, /const landing = crossPageMove\.land\(ds, e\);[\s\S]{0,400}onCopyDragDropRef\.current\(\{ indices \}, landing\.dx, landing\.dy, landing\.toPage\);/);
   assert.match(hook, /if \(cancelMoveDrag\(\) && event\?\.detail\) event\.detail\.cancelled = true;/);
   assert.match(hook, /crossPageMove\.end\(ds\);\n    if \(ds\.copyDrag\) showCopyDragCursor\(false\);\n    \/\/ Reset drag state/);
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');

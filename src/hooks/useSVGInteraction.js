@@ -563,6 +563,7 @@ export function useSVGInteraction({
   });
   const onCopyDragDropRef = useRef(onCopyDragDrop);
   onCopyDragDropRef.current = onCopyDragDrop;
+  const startFamilyGroupMoveRef = useRef(null);
   // Copy-drag: is this move drag a copy right now (the key is read from each
   // pointer event, and from the key itself below)? A counter swung with
   // Shift first (orbitBase) only moves: its new pose is not saved yet.
@@ -572,10 +573,8 @@ export function useSVGInteraction({
       ds.copyDrag = copy;
       showCopyDragCursor(copy);
     }
-    // A copy stays on its own page: no picture carried onto another one.
-    if (copy) crossPageMove.end(ds);
     return copy;
-  }, [crossPageMove]);
+  }, []);
   // Pressing or letting go of Ctrl / Cmd mid-drag flips the drop between copy
   // and move at once, before the pointer moves again (Visio).
   useEffect(() => subscribeMoveModifier(() => {
@@ -586,7 +585,7 @@ export function useSVGInteraction({
     if (copy === Boolean(ds.copyDrag)) return;
     ds.copyDrag = copy;
     showCopyDragCursor(copy);
-    setVisualTransform((prev) => (prev && !prev.crossPageAway ? { ...prev, copy } : prev));
+    setVisualTransform((prev) => (prev ? { ...prev, copy } : prev));
   }), []);
   // Drawboard rule 7: the last two presses on marks ({ key, wasSelected, at,
   // pointerType }, newest first) and when each picked mark joined the
@@ -2043,9 +2042,14 @@ export function useSVGInteraction({
         { key: `c:${calloutId}`, wasSelected: _calAlreadyIn, at: Date.now(), pointerType: e.pointerType || 'mouse' },
         pressLogRef.current[0],
       ].filter(Boolean);
+      // Copy-drag (Visio): Ctrl / Cmd + drag on a callout that is not in a
+      // bigger selection drags it as a group move, whose drop can copy it.
+      const _calCopyDrag = !e.shiftKey && partType === 'whole' && !getCalloutGroupId(callout)
+        && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e)
+        && !(_calAlreadyIn && (selectedIds.size + _calCount + selectedMarkerCount) > 1);
       // Drawboard rule 3: the same for a callout that was not selected (a
       // grouped callout still picks its whole group below).
-      if (!e.shiftKey && !_calAlreadyIn && activeTool === 'select' && !getCalloutGroupId(callout) && svgRef.current) {
+      if (!_calCopyDrag && !e.shiftKey && !_calAlreadyIn && activeTool === 'select' && !getCalloutGroupId(callout) && svgRef.current) {
         onSelectedCalloutIdsChange?.(new Set([calloutId]));
         deselectAll();
         clearSelectedMarkers();
@@ -2180,6 +2184,10 @@ export function useSVGInteraction({
       if (isUserLocked(callout)) {
         e.stopPropagation();
         e.preventDefault();
+        return;
+      }
+      if (_calCopyDrag && startFamilyGroupMoveRef.current?.(e, { calloutIds: [calloutId] })) {
+        e.stopPropagation();
         return;
       }
 
@@ -2517,7 +2525,7 @@ export function useSVGInteraction({
       const copyDrag = resolveCopyDrag(ds, e);
       // Owner after Test 46: a mark that may change pages follows the pointer
       // off its page (clipped) and jumps to the next page once fully off.
-      if (!copyDrag && crossPageMove.preview(ds, e, annotations?.objects, ds.orbitBase ? null : (pdx, pdy, away) => {
+      if (crossPageMove.preview(ds, e, annotations?.objects, ds.orbitBase ? null : (pdx, pdy, away) => {
         if (away) {
           applySnapGuides(null);
           return { dx: pdx, dy: pdy };
@@ -2525,7 +2533,7 @@ export function useSVGInteraction({
         const snapped = snapMoveDelta(ds, pdx, pdy, e);
         showMoveGuides(ds, snapped.dx, snapped.dy, e);
         return snapped;
-      })) {
+      }, copyDrag)) {
         setInteractionState('dragging');
         return;
       }
@@ -2624,7 +2632,7 @@ export function useSVGInteraction({
       // Canvas audit chunk 2: the selection snaps as one by its combined frame.
       ensureGroupMoveSnap(ds);
       const copyDrag = resolveCopyDrag(ds, e);
-      if (!copyDrag && crossPageMove.preview(ds, e, annotations?.objects, (pdx, pdy, away) => {
+      if (crossPageMove.preview(ds, e, annotations?.objects, (pdx, pdy, away) => {
         if (away) {
           applySnapGuides(null);
           return { dx: pdx, dy: pdy };
@@ -2632,7 +2640,7 @@ export function useSVGInteraction({
         const snapped = snapMoveDelta(ds, pdx, pdy, e);
         showMoveGuides(ds, snapped.dx, snapped.dy, e);
         return snapped;
-      })) {
+      }, copyDrag)) {
         setInteractionState('dragging');
         return;
       }
@@ -4528,14 +4536,22 @@ export function useSVGInteraction({
     // (one save, one undo step — PDFViewer handleMoveMarksToPage).
     // Copy-drag: Ctrl / Cmd down at let-go -> the marks stay and a copy lands
     // where they were dragged to (one paste, one Undo step, the copy picked).
-    const copyDrop = (ds.mode === 'move' || ds.mode === 'group-move') && !ds.orbitBase
+    const moveDrag = ds.mode === 'move' || ds.mode === 'group-move';
+    const copyDrop = moveDrag && !ds.orbitBase
       && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e);
-    // A copy-drag skips the cross-page preview, so one turned back into a
-    // move (key let go) over another page reads where it is now first.
-    if (!copyDrop && (ds.mode === 'move' || ds.mode === 'group-move') && ds.crossPage === undefined) {
-      crossPageMove.preview(ds, e, annotations?.objects);
-    }
-    const crossPageDropped = !copyDrop && (ds.mode === 'move' || ds.mode === 'group-move') && crossPageMove.drop(ds, e);
+    // A copy let go over another page lands there (the viewer pastes it on
+    // that page; the originals stay).
+    const crossPageCopied = copyDrop && (() => {
+      const landing = crossPageMove.land(ds, e);
+      if (!landing) return false;
+      const indices = landing.indices
+        .map((index, k) => resolveMarkIndex(annotations?.objects, index, landing.ids[k] ?? null))
+        .filter((index) => index >= 0);
+      if (indices.length === 0) return false;
+      onCopyDragDropRef.current({ indices }, landing.dx, landing.dy, landing.toPage);
+      return true;
+    })();
+    const crossPageDropped = crossPageCopied || (!copyDrop && moveDrag && crossPageMove.drop(ds, e));
     if (crossPageDropped) {
       try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
       justDraggedAtRef.current = Date.now();
@@ -6685,14 +6701,17 @@ export function useSVGInteraction({
   // w53: a drag that starts ON a selected Survey Marker of a family selection
   // moves the whole selection — marks, callouts and markers — exactly like a
   // drag started on a selected mark (same originals, same commit, one step).
-  const startFamilyGroupMove = useCallback((e) => {
+  // `only` ({ calloutIds, markerIds }) drags just those instead: a lone
+  // callout or Survey Marker copy-dragged with Ctrl / Cmd rides this group
+  // move, whose drop can copy (its own drag cannot).
+  const startFamilyGroupMove = useCallback((e, only = null) => {
     const svgEl = svgRef.current;
     if (!svgEl) return false;
     const ctm = svgEl.getScreenCTM?.();
     const ctmInverse = ctm ? ctm.inverse() : null;
     const svgPoint = screenToSVG(svgEl, e.clientX, e.clientY);
     const originals = {};
-    for (const selIdx of selectedIds) {
+    for (const selIdx of (only ? [] : selectedIds)) {
       const selObj = annotations?.objects?.[selIdx];
       if (!canMoveAnnotation(selObj)) continue;
       if (isImportedPath(selObj)) {
@@ -6703,9 +6722,9 @@ export function useSVGInteraction({
       }
     }
     const calloutOriginals = {};
-    const calIds = (selectedCalloutIds instanceof Set)
+    const calIds = only ? (only.calloutIds || []) : ((selectedCalloutIds instanceof Set)
       ? Array.from(selectedCalloutIds)
-      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []));
     for (const cid of calIds) {
       const c = (callouts || []).find((cc) => cc && cc.id === cid);
       if (!c || isUserLocked(c)) continue;
@@ -6729,7 +6748,7 @@ export function useSVGInteraction({
       currentResize: null, currentAngle: undefined,
       groupOriginals: originals,
       groupCalloutOriginals: calloutOriginals,
-      groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
+      groupMarkerIds: only ? (only.markerIds || []).map(String) : getGroupMarkerIds({ movableOnly: true }),
       // w59: never reuse a previous drag's facts (this start spreads the old state).
       groupIds: null,
       groupBoxes: null,
@@ -6738,6 +6757,8 @@ export function useSVGInteraction({
     setInteractionState('dragging');
     return true;
   }, [annotations, callouts, getGroupMarkerIds, isCalloutSelectable, selectedCalloutIds, selectedIds, svgRef]);
+  // The callout press handler is declared above this one.
+  startFamilyGroupMoveRef.current = startFamilyGroupMove;
 
   // w58 (owner 2026-09-28): Cmd (Mac) / Ctrl (Windows) + press inside the
   // selection box moves the selection, wherever in the box the press lands —
@@ -6762,6 +6783,18 @@ export function useSVGInteraction({
     const total = selectedIds.size + calIds.length + selectedMarkerCount;
     if (total === 0) return false;
     if (total > 1) return startFamilyGroupMove(e);
+    // Copy-drag: a lone callout or Survey Marker rides the group move, whose
+    // drop copies while the key is still down (let go first and it moves).
+    if (selectedIds.size === 0 && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e)) {
+      if (selectedMarkerCount === 1) {
+        const markerIds = getGroupMarkerIds({ movableOnly: true });
+        return markerIds.length === 1 ? startFamilyGroupMove(e, { markerIds }) : false;
+      }
+      const callout = (callouts || []).find((c) => c && c.id === calIds[0]);
+      if (!callout || isUserLocked(callout)) return false;
+      if (typeof isCalloutSelectable === 'function' && !isCalloutSelectable(callout.id)) return false;
+      return startFamilyGroupMove(e, { calloutIds: [callout.id] });
+    }
     if (selectedMarkerCount === 1) return 'survey-marker';
 
     const ctm = svgEl.getScreenCTM?.();
@@ -6841,7 +6874,7 @@ export function useSVGInteraction({
       return true;
     }
     return false;
-  }, [annotations, callouts, isCalloutSelectable, selectedCalloutIds, selectedIds, selectedMarkerCount, startFamilyGroupMove, svgRef]);
+  }, [annotations, callouts, getGroupMarkerIds, isCalloutSelectable, selectedCalloutIds, selectedIds, selectedMarkerCount, startFamilyGroupMove, svgRef]);
 
   // ---------------------------------------------------------------------------
   // Return API

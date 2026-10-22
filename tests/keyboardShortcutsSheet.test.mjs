@@ -197,7 +197,7 @@ const HANDLED = {
     && /if \(e\.shiftKey\) \{[\s\S]{0,900}setSelectedIds/.test(SRC.interaction),
   // Visio's Ctrl / Cmd + drag to copy, and Photoshop's Alt + right-drag (Mac:
   // Control + Option + drag) for the width and opacity.
-  'mod+drag': () => /const crossPageDropped = !copyDrop &&/.test(SRC.interaction)
+  'mod+drag': () => /const copyDrop = moveDrag && !ds\.orbitBase/.test(SRC.interaction)
     && /onCopyDragDropRef\.current\(\{ indices: \[moveIndex\] \}/.test(SRC.interaction),
   'alt+right-drag': () => /if \(event\.button === 2\) return true;/.test(read('src/utils/brushAdjustGesture.js')),
   'ctrl+alt+drag': () => /return event\.button === 0 && event\.ctrlKey === true;/.test(read('src/utils/brushAdjustGesture.js')),

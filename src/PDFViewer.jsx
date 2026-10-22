@@ -32455,7 +32455,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // Duplicate (Cmd+D, right-click Duplicate): a copy of the selection 16
   // page units down-right of it; the clipboard is left alone. Copy-drag
-  // (Ctrl / Cmd + drag, Visio) passes `offset` = how far it was dragged.
+  // (Ctrl / Cmd + drag, Visio) passes `offset` = how far it was dragged, and
+  // `offset.toPage` when it was let go over another page.
   const duplicateFamilySelection = useCallback((pageNumber, selection, offset = null) => {
     const collected = collectFamilySelection(pageNumber, selection);
     const { width, height } = pageSizeFor(pageNumber);
@@ -32472,7 +32473,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!clipboard) return false;
     const dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
     const dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
-    return commitFamilyPaste(pageNumber, clipboard, dx, dy);
+    return commitFamilyPaste(offset?.toPage ?? pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
 
   // w53: a saved marker is a family member; one still being placed is not.
