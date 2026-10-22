@@ -55,4 +55,4 @@ Drawboard's rules, plus tldraw's rule where Survey can't follow Drawboard.
 1. ~~Group **rotate**~~ (done 2026-10-22; not with a callout in the selection).
 2. ~~Callouts and Survey Markers in a resizable group~~ (done 2026-10-22).
 3. ~~Text rewrapped from a side should grow its box height to fit~~ (done 2026-10-22: alone and in a group, the box grows downward and never shrinks; `utils/textBoxFit.js`).
-4. ~~Hold **K** to scale line widths too (Drawboard)~~ (done 2026-10-22: shapes, lines, pen strokes and callout lines; K is taken only while a group resize is under way, so the Polyline shortcut still works).
+4. ~~Hold **K** to scale line widths too (Drawboard)~~ (done 2026-10-22: shapes, lines and callout lines, while a pen stroke's width already scales with it; K is taken only while a group resize is under way, so the Polyline shortcut still works).

@@ -3050,8 +3050,9 @@ export function useSVGInteraction({
             target.scaleY = (orig.scaleY || 1) * axis.y;
           }
         }
-        // Drawboard: hold K to scale line widths with the frame too.
-        if (scaleLineWidths && orig.strokeWidth > 0) {
+        // Drawboard: hold K to scale line widths with the frame too. A pen
+        // stroke's width already scales with its ink transform above.
+        if (scaleLineWidths && objType !== 'path' && orig.strokeWidth > 0) {
           target.strokeWidth = scaledGroupLineWidth(orig.strokeWidth, sx, sy);
         }
       }
@@ -4765,9 +4766,11 @@ export function useSVGInteraction({
             const current = (callouts || []).find((c) => c && c.id === cid);
             // Only the style fields the resize changed land on the
             // callout's style as it is now.
+            const startStyle = ds.groupCalloutResizeOriginals?.[cid]?.style || {};
             const styleChange = {};
             for (const key of ['fontSize', 'lineThickness']) {
-              if (patch.style?.[key] != null) styleChange[key] = patch.style[key];
+              const next = patch.style?.[key];
+              if (next != null && next !== startStyle[key]) styleChange[key] = next;
             }
             onUpdateCalloutLive(cid, patch.style
               ? { ...patch, style: { ...(current?.style || {}), ...styleChange } }
