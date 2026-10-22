@@ -8530,6 +8530,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     getToolPreference,
   } = useDocumentToolPreferences(pdfId, pdfFile?.id);
 
+  // Pinned tools (beta 'pinned-tools', components/PinnedToolsDock.jsx): the
+  // dock reads a tool's remembered settings and writes a pin's settings as the
+  // tool's own, so arming the tool then draws with them. Stroke settings sit
+  // under the Cloud key while a cloud line is chosen (paintPreferenceKey).
+  // Read through a ref so the published functions never go stale.
+  const toolStyleIoRef = useRef(null);
+  toolStyleIoRef.current = { getToolPreference, updateToolPreference, lineBorderStyle };
+  const readToolStyle = useCallback((tool, lineStyle) => {
+    const io = toolStyleIoRef.current;
+    const line = lineStyle || io.lineBorderStyle;
+    const strokeKey = line === 'cloud' && toolSupportsCloudBorderStyle(tool) ? 'cloud' : tool;
+    const own = io.getToolPreference(tool);
+    const stroke = io.getToolPreference(strokeKey);
+    return {
+      strokeColor: stroke.strokeColor ?? own.strokeColor,
+      strokeOpacity: stroke.strokeOpacity ?? own.strokeOpacity,
+      strokeWidth: stroke.strokeWidth ?? own.strokeWidth,
+      fillColor: own.fillColor,
+      fillOpacity: own.fillOpacity,
+      lineStyle: line,
+    };
+  }, []);
+  const writeToolStyle = useCallback((tool, style = {}) => {
+    const io = toolStyleIoRef.current;
+    const lineStyle = style.lineStyle || io.lineBorderStyle;
+    if (style.lineStyle && style.lineStyle !== io.lineBorderStyle) setLineBorderStyle(style.lineStyle);
+    const strokeKey = lineStyle === 'cloud' && toolSupportsCloudBorderStyle(tool) ? 'cloud' : tool;
+    const pick = (fields) => Object.fromEntries(fields.filter((f) => style[f] !== undefined).map((f) => [f, style[f]]));
+    const stroke = pick(['strokeColor', 'strokeOpacity', 'strokeWidth']);
+    const fill = pick(['fillColor', 'fillOpacity']);
+    if (Object.keys(stroke).length) io.updateToolPreference(strokeKey, stroke);
+    if (Object.keys(fill).length) io.updateToolPreference(tool, fill);
+  }, []);
+
   // Input field state for stroke width (fixes "Sticky 1" bug)
   // Separate state allows input to be empty while typing
   const [strokeWidthInputValue, setStrokeWidthInputValue] = useState(String(strokeWidth));
@@ -26715,6 +26749,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       openMeasureScaleDialog: setMeasureScaleDialog,
       // The tool's style only (desktop Shape row's setter): never restyles a selection.
       setToolLineBorderStyle: setLineBorderStyle,
+      // Pinned tools dock: a tool's remembered settings, read and written.
+      readToolStyle,
+      writeToolStyle,
       setActiveCategoryDropdown,
       setTooltip,
       setShowAnnotationColorPicker,
