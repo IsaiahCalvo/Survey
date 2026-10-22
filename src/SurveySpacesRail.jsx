@@ -57,7 +57,7 @@ import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
 import { removeSurveyMarkersFromPages } from './utils/surveyMarkerPageRemoval.js';
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
-import { publishSideRoom } from './sidebar/panelLayoutStore.js';
+import { publishSideRoom, subscribeRightPanelYield } from './sidebar/panelLayoutStore.js';
 import { useProLock } from './hooks/useProLock.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
 
@@ -642,6 +642,13 @@ const SurveySpacesRail = ({
     // The left panel's width limit reads the same cover (panelLayoutStore.js).
     publishSideRoom({ rightCover: mobileMode ? 0 : (desktopSurveyPanelShown ? 48 + 320 : 48) });
   }, [mobileMode, desktopSurveyPanelShown]);
+  // Desktop/tablet pass 2026-10-21 (item 1): the left panel was just opened
+  // beside this panel on a window too narrow for both - this one gives way
+  // (PDFSidebar, resolveNarrowPanelYield). Survey itself stays on.
+  useEffect(() => {
+    if (mobileMode) return undefined;
+    return subscribeRightPanelYield(() => setIsSurveyPanelCollapsed(true));
+  }, [mobileMode]);
   useEffect(() => () => {
     publishSideRoom({ rightCover: 48 });
     // Gone: later UI reading the token falls back to its own default.

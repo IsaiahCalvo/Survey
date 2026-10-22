@@ -89,8 +89,10 @@ import { createLongPressTracker, longPressMayArm, markLongPressEvent } from '../
 import {
   compensateScrollTopForRoom,
   computeTopOverlayInset,
+  computePushStripInset,
   getViewerTopOverlays,
   resolvePageLandingScrollTop,
+  resolvePushStripScroll,
   resolveRoomCompensationBase,
   resolveTopRoom,
   resolveVerticalPlacement,
@@ -121,6 +123,7 @@ import {
   getViewerSideOccluders,
   resolveSideRoom,
   shouldAutoRefit,
+  shouldRefitForBand,
   subscribeViewerSideOccluders,
 } from '../utils/viewerSideOverlay.js';
 
@@ -1542,6 +1545,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // the page has not been seen yet - so the page opens below the row and a
   // tool's settings row later drops into that room without covering it.
   const topReserveRef = useRef(false);
+  // The Survey bar's push (resolvePushStripScroll): its height now, and how
+  // much scroll it has taken off so far.
+  const pushStripRef = useRef({ inset: 0, applied: 0 });
   const firstTopRoomAppliedRef = useRef(false);
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the band
   // between panels). Side panels (desktop Pages, Survey) float over the left /
@@ -1555,6 +1561,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const appliedSideRoomRef = useRef(NO_SIDE_INSETS);
   const sideScrollSnapshotRef = useRef(null);
   const sideInsetRef = useRef(NO_SIDE_INSETS);
+  // The zoom-out floor (the whole document fits) is measured against the band
+  // between open side panels, not the full viewer: otherwise a fit to that
+  // band (refitForBand) was clamped back to the full-width fit and a one-page
+  // document stayed under the panels (desktop pass 2026-10-21, item 1).
+  const floorWidth = (width) => Math.max(1, (Number(width) || 0) - sideInsetRef.current.left - sideInsetRef.current.right);
   // Pages on screen, [first, last] (0-based; -1 until measured), and the one
   // drawing queue they share (utils/pageRasterQueue.js).
   const visiblePageRangeRef = useRef([-1, -1]);
@@ -1579,6 +1590,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // The last fit: { mode, viewW, viewH, pageW, pageH, pageIndex } (see
   // shouldAutoRefit). Cleared when a new document loads.
   const lastFitRef = useRef(null);
+  // zoomToScale is declared further down; the side-panel measurer reaches it
+  // through this ref.
+  const zoomToScaleRef = useRef(null);
   // Phone: the scale of the open-time fit while it still stands (null once you
   // zoom); page sizes arriving later re-fit it to the widest page.
   const phoneOpenFitScaleRef = useRef(null);
@@ -1699,6 +1713,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       sideLeft: sideRoomRef.current.left,
     });
   }, [getColumnWidthAtScale]);
+  const getPageLeftAtScaleRef = useRef(getPageLeftAtScale);
+  getPageLeftAtScaleRef.current = getPageLeftAtScale;
 
   // Plus the side-panel room on both sides, so a page can be scrolled out
   // from under either panel.
@@ -2181,6 +2197,24 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         topInsetRef.current = inset;
         syncTopRoom();
       }
+      // A push strip (the Survey bar) moves what was under it down instead of
+      // covering it (desktop/tablet pass 2026-10-21, item 4).
+      const pushRects = [];
+      strips.forEach((node) => {
+        if (node.getAttribute?.('data-viewer-top-push') === 'true') pushRects.push(node.getBoundingClientRect());
+      });
+      const pushInset = computePushStripInset(el.getBoundingClientRect(), pushRects);
+      const push = pushStripRef.current;
+      if (pushInset !== push.inset && !gestureRef.current) {
+        const next = resolvePushStripScroll({
+          scrollTop: el.scrollTop,
+          prevInset: push.inset,
+          nextInset: pushInset,
+          applied: push.applied,
+        });
+        pushStripRef.current = { inset: pushInset, applied: next.applied };
+        if (Math.abs(next.scrollTop - el.scrollTop) > 0.5) el.scrollTop = next.scrollTop;
+      }
     };
     const schedule = () => {
       if (!raf) raf = requestAnimationFrame(measure);
@@ -2281,7 +2315,30 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (next.left !== prev.left || next.right !== prev.right) {
         sideInsetRef.current = next;
         syncSideRoom();
+        // Desktop/tablet pass 2026-10-21 (item 1): a panel that now covers
+        // part of a fitted page re-fits it to the band between the panels
+        // (and a band-driven re-fit grows back when the panel closes). Next
+        // frame, once the side room and its scroll compensation are applied.
+        requestAnimationFrame(() => refitForBand());
       }
+    };
+    const refitForBand = () => {
+      const lastFit = lastFitRef.current;
+      if (!lastFit || !(lastFit.scale > 0) || gestureRef.current || !el.isConnected) return;
+      const s = scaleRef.current;
+      if (Math.abs(s - lastFit.scale) > 1e-3) return; // zoomed since the fit: leave it
+      const d = dimsPtRef.current[lastFit.pageIndex];
+      if (!d || !(el.clientWidth > 0)) return;
+      const insets = sideInsetRef.current;
+      if (!shouldRefitForBand({
+        pageLeft: getPageLeftAtScaleRef.current(lastFit.pageIndex, s) - el.scrollLeft,
+        pageWidth: d.w * s,
+        viewportWidth: el.clientWidth,
+        insets,
+        lastBandW: lastFit.bandW,
+        bandDriven: lastFit.bandDriven,
+      })) return;
+      zoomToScaleRef.current?.(lastFit.mode, { auto: true, band: true });
     };
     const schedule = () => {
       if (!raf) raf = requestAnimationFrame(measure);
@@ -2490,7 +2547,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       dims,
       containerHRef.current,
       layoutMetricsRef.current,
-      containerWRef.current,
+      floorWidth(containerWRef.current),
     );
     const targetScale = Math.min(maxScale, Math.max(minimumScale, requestedScale));
     // Phone pinch (owner 2026-10-02, Drawboard parity): the caller already
@@ -2600,7 +2657,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       dims,
       containerHRef.current,
       layoutMetricsRef.current,
-      containerWRef.current,
+      floorWidth(containerWRef.current),
     );
     const newScale = Math.min(maxScale, Math.max(minimumScale, targetScale));
     // A zoom (or a fit request) ends an in-flight pan coast, exactly as a
@@ -2651,7 +2708,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       dims,
       el.clientHeight,
       layoutMetricsRef.current,
-      el.clientWidth,
+      floorWidth(el.clientWidth),
     );
     if (scaleRef.current + 1e-4 < minimumScale) {
       applyAnchoredScale(minimumScale, el.clientWidth / 2, el.clientHeight / 2);
@@ -3000,7 +3057,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       dims,
       containerHRef.current,
       layoutMetricsRef.current,
-      containerWRef.current,
+      floorWidth(containerWRef.current),
     );
     const target = Math.min(maxScale, Math.max(minimumScale, wanted));
     const now = performance.now();
@@ -3164,7 +3221,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         dimsPtRef.current,
         containerHRef.current,
         layoutMetricsRef.current,
-        containerWRef.current,
+        floorWidth(containerWRef.current),
       );
       const g = gestureRef.current;
       // A mouse-wheel notch (owner 2026-10-07): adds to the glide's target and
@@ -4348,7 +4405,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           dimsPtRef.current,
           containerHRef.current,
           layoutMetricsRef.current,
-          containerWRef.current,
+          floorWidth(containerWRef.current),
         );
         // The fingers' own zoom, carried across mid-gesture rebases. Past the
         // min/max the phone shows it with growing resistance (Drawboard:
@@ -4721,6 +4778,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // open) — see refitAfterLayoutChange below. Only a fit YOU pick (menu,
     // button, space jump, first open) lands the current page.
     const auto = isFit && options?.auto === true;
+    // A re-fit to the band between the side panels (refitForBand above): it
+    // re-sizes even though the viewer itself did not change, and centres the
+    // page in the band, keeping the vertical position.
+    const band = auto && options?.band === true;
     // Fits and the zoom buttons work in the part of the viewer you can SEE:
     // below any tool strips and between any open side panels.
     const side = sideInsetRef.current;
@@ -4750,11 +4811,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         pageW: d.w,
         pageH: d.h,
         pageIndex,
+        bandW,
+        bandDriven: band,
       };
       // Opening or closing a panel does not change the viewer's own size
       // (panels float over it), so an automatic re-fit then has nothing to do
       // and the page stays exactly where it is.
-      if (auto && !shouldAutoRefit(lastFit, fitRecord)) return;
+      if (auto && !band && !shouldAutoRefit(lastFit, fitRecord)) return;
       lastFitRef.current = fitRecord;
       newScale = computeFitScale({
         mode: target === 'fitw' ? 'fitWidth' : target === 'fith' ? 'fitHeight' : 'fitPage',
@@ -4775,8 +4838,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // Zoom buttons and fits hold the middle of the VISIBLE area still.
     const inset = Math.min(topInsetRef.current, el.clientHeight);
     applyAnchoredScale(newScale, side.left + bandW / 2, inset + (el.clientHeight - inset) / 2);
+    if (isFit && lastFitRef.current) lastFitRef.current.scale = scaleRef.current;
     // An automatic re-fit stops here: the visible middle stays put.
-    if (!isFit || auto || !dimsPtRef.current.length) return;
+    if (!isFit || (auto && !band) || !dimsPtRef.current.length) return;
     // A fit you pick lands the page. Fit page / Fit height promise the whole
     // page height on screen: its own top gap just below any tool strips, which
     // with the fitted scale leaves the matching gap at the bottom. Anchoring on
@@ -4796,7 +4860,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       insets: side,
       maxScrollLeft: getHorizontalScrollMax(s),
     });
-    const landTop = target !== 'fitw' ? landing.scrollTop : null;
+    const landTop = target !== 'fitw' && !band ? landing.scrollTop : null;
     const landLeft = landing.scrollLeft;
     if (Math.abs(scaleRef.current - before) > 1e-4 && pendingAnchorRef.current) {
       pendingAnchorRef.current = {
@@ -4815,6 +4879,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       el.scrollLeft = landLeft;
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax, phoneLayout]);
+  zoomToScaleRef.current = zoomToScale;
 
   // Phone: the open-time fit used page 1's size (the other sizes load behind
   // it). When a wider page arrives and you have not zoomed yet, fit again so
@@ -5121,7 +5186,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         dimsPtRef.current,
         containerHRef.current,
         layoutMetricsRef.current,
-        containerWRef.current,
+        floorWidth(containerWRef.current),
       ),
       get pageCount() { return numPagesRef.current || 0; },
       get currentPageNumber() { return currentPageRef.current || 1; },
@@ -5302,7 +5367,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       goToPage,
       getScale: () => scaleRef.current,
       getMinimumScale: () => getMinimumScaleForLayout(
-        dimsPtRef.current, containerHRef.current, layoutMetricsRef.current, containerWRef.current,
+        dimsPtRef.current, containerHRef.current, layoutMetricsRef.current, floorWidth(containerWRef.current),
       ),
       getMaximumScale: () => (isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE),
       rasterQueue: () => rasterQueueRef.current,
