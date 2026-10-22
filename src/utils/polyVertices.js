@@ -164,3 +164,81 @@ export function cloudPolyEdgeReach(points, frame) {
   const reach = Math.max(minX - left, right - maxX, minY - top, bottom - maxY, 0);
   return Number.isFinite(reach) ? reach : 0;
 }
+
+/**
+ * The side of a selected poly under a screen point, or null. `matrix` is the
+ * side band's screen CTM ({a,b,c,d,e,f}, page units -> CSS px); the point is
+ * mapped back into the band's frame and tested against `worldPoints` with the
+ * band's tolerance. Position only: it never looks at the event target, so a
+ * press the browser hit-tested onto some other element still finds its side.
+ */
+export function polyEdgeHitAtClient(clientX, clientY, matrix, worldPoints, tolerance, { closed = true } = {}) {
+  if (!matrix) return null;
+  const { a, b, c, d, e, f } = matrix;
+  const det = a * d - b * c;
+  if (!Number.isFinite(det) || det === 0) return null;
+  const dx = Number(clientX) - e;
+  const dy = Number(clientY) - f;
+  const pt = { x: (d * dx - c * dy) / det, y: (-b * dx + a * dy) / det };
+  return insertVertexOnNearestEdge(worldPoints, pt, tolerance, { closed });
+}
+
+/** Debug switch for the side long-press log (localStorage or ?debugPolyEdge=1). */
+export function polyEdgeDebugEnabled(win = typeof window !== 'undefined' ? window : null) {
+  if (!win) return false;
+  try { if (win.localStorage?.getItem('debugPolyEdge') === '1') return true; } catch (_) { /* blocked */ }
+  try { return new URLSearchParams(win.location?.search || '').get('debugPolyEdge') === '1'; } catch (_) { return false; }
+}
+
+/**
+ * One press, one arm, one menu, one edit. A stylus long-press on Android
+ * reaches the side through several paths (window pointerdown claim,
+ * touchstart fallback, the layer claim, a synthesized contextmenu), and the
+ * pen can lift onto the menu it just opened. This gate keeps them to one:
+ * - arm(x, y, now): a token for a new press, or null while the same contact
+ *   (within 8 px, not yet lifted) already holds one;
+ * - fire(token): true once, for the live token only;
+ * - end(): the contact lifted;
+ * - pressLive(now): the arming contact is still down (a click then is the
+ *   lift itself, not a choice; a lift that was never seen expires after 5 s);
+ * - consume(menu): true once per menu object (one insert / delete per menu).
+ */
+export function createPolyEdgePressGate() {
+  let active = null;
+  const consumed = new WeakSet();
+  const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  return {
+    arm(x, y, now = clock()) {
+      if (active && !active.ended && now - active.at < 5000
+        && Math.hypot(x - active.x, y - active.y) <= 8) return null;
+      active = { x, y, at: now, token: {}, ended: false, fired: false };
+      return active.token;
+    },
+    fire(token) {
+      if (!active || active.token !== token || active.fired) return false;
+      active.fired = true;
+      return true;
+    },
+    end() { if (active) active.ended = true; },
+    pressLive(now = clock()) { return Boolean(active && !active.ended && now - active.at < 5000); },
+    consume(menu) {
+      if (!menu || typeof menu !== 'object' || consumed.has(menu)) return false;
+      consumed.add(menu);
+      return true;
+    },
+  };
+}
+
+/**
+ * The touchstart fallback arms only when no pen / touch pointerdown came
+ * first for this contact (a WebView that sends no pointer events). When one
+ * did, the pointerdown claim already decided - with the pen's own tolerance -
+ * and a touchstart must not overrule it (CI emulator 2026-10-22: a pen press
+ * 52 px off the side was refused by pointerdown, then claimed by touchstart
+ * under the wider finger band, while the press selected the mark beneath).
+ */
+export const POLY_EDGE_TOUCH_FALLBACK_MS = 300;
+export function polyEdgeTouchStartMayArm(lastPointerDownAt, now) {
+  if (!Number.isFinite(lastPointerDownAt)) return true;
+  return now - lastPointerDownAt > POLY_EDGE_TOUCH_FALLBACK_MS;
+}
