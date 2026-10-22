@@ -4543,6 +4543,11 @@ export function useSVGInteraction({
     // where they were dragged to (one paste, one Undo step, the copy picked).
     const copyDrop = (ds.mode === 'move' || ds.mode === 'group-move') && !ds.orbitBase
       && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e);
+    // A copy-drag skips the cross-page preview, so one turned back into a
+    // move (key let go) over another page reads where it is now first.
+    if (!copyDrop && (ds.mode === 'move' || ds.mode === 'group-move') && ds.crossPage === undefined) {
+      crossPageMove.preview(ds, e, annotations?.objects);
+    }
     const crossPageDropped = !copyDrop && (ds.mode === 'move' || ds.mode === 'group-move') && crossPageMove.drop(ds, e);
     if (crossPageDropped) {
       try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }

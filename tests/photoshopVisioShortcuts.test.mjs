@@ -115,6 +115,9 @@ test('copy-drag: a drop with the key down pastes copies and leaves the originals
   // The key at let-go decides, and a copy never carries marks onto another page.
   assert.match(hook, /const copyDrop = \(ds\.mode === 'move' \|\| ds\.mode === 'group-move'\)/);
   assert.match(hook, /const crossPageDropped = !copyDrop &&/);
+  // Key let go over another page: the skipped cross-page preview runs first,
+  // so the drop moves there instead of staying on the first page.
+  assert.match(hook, /ds\.crossPage === undefined\) \{\n\s+crossPageMove\.preview\(ds, e, annotations\?\.objects\);/);
   assert.match(hook, /onCopyDragDropRef\.current\(\{ indices: \[moveIndex\] \}, actualDx, actualDy\)/);
   assert.match(hook, /if \(!groupCopied && \(dx !== 0 \|\| dy !== 0\)\) \{/);
   // Ctrl + drag on a mark that is not picked yet copies it too (Visio),
