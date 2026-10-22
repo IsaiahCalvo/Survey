@@ -14,8 +14,9 @@
 //   4. the server's answer for this person, saved from the last load
 //      (feature_flags table: off, testers only, or on for everyone)
 //   5. default: off
-// Dev servers (vite dev, the e2e harness) skip step 0 so tests can force a
-// beta flag with step 1. Moving a feature to stable = change its stage to
+// Test builds skip step 0 so tests can still turn beta flags on: dev servers
+// (vite dev) and `--mode e2e` builds (the e2e harness and the native-app walks,
+// which run against a throwaway local database, never production). Moving a feature to stable = change its stage to
 // 'rollout' (docs/RELEASE-CHANNELS.md).
 // Features read their flag once at load, so a change made at /flags shows on
 // the next reload. To add a flag: add it here and insert its row in a
@@ -105,6 +106,10 @@ export function releaseChannel(env = readEnv()) {
   return env?.VITE_RELEASE_CHANNEL === 'nightly' ? 'nightly' : 'stable';
 }
 
+function isTestBuild(env) {
+  return env?.DEV === true || env?.MODE === 'e2e';
+}
+
 export function isBetaFlag(key) {
   return FEATURE_FLAGS[key]?.stage === 'beta';
 }
@@ -112,7 +117,7 @@ export function isBetaFlag(key) {
 export function isFeatureOn(key, { storage = safeStorage(), env = readEnv() } = {}) {
   const def = FEATURE_FLAGS[key];
   if (!def) return false;
-  if (def.stage === 'beta' && releaseChannel(env) !== 'nightly' && env?.DEV !== true) return false;
+  if (def.stage === 'beta' && releaseChannel(env) !== 'nightly' && !isTestBuild(env)) return false;
   let own = read(storage, FLAG_OVERRIDE_PREFIX + key);
   if (own !== '1' && own !== '0' && def.legacyKey) own = read(storage, def.legacyKey);
   if (own === '1') return true;

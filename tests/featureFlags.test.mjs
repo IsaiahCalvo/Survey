@@ -57,7 +57,10 @@ test('flags: stable never shows a beta feature, even to testers or with an overr
     const env = def.env ? { [def.env]: '1' } : {};
     assert.equal(isBetaFlag(key), true, key);
     assert.equal(isFeatureOn(key, { storage, env }), false, key);
+    assert.equal(isFeatureOn(key, { storage, env: { ...env, MODE: 'production' } }), false, key);
     assert.equal(isFeatureOn(key, { storage, env: { ...env, VITE_RELEASE_CHANNEL: 'nightly' } }), true, key);
+    // Test builds (e2e harness, native-app walks) still follow the seeded flags.
+    assert.equal(isFeatureOn(key, { storage, env: { ...env, MODE: 'e2e' } }), true, key);
   }
 });
 

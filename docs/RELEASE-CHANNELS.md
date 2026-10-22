@@ -39,8 +39,9 @@ Admins (rows in `feature_flag_admins`, added by hand, never in this public
 repo) switch them at **/flags**. A change shows for each person on their next
 reload. One browser can also force a flag with
 `localStorage.setItem('survey.flag.<key>', '1')` (or `'0'`); on a stable
-production build that works for rollout flags only. Dev servers (`vite`, the
-e2e harness) let tests force beta flags too.
+production build that works for rollout flags only. Test builds (`vite` dev
+servers and `--mode e2e` builds: the e2e harness and native-app walks) follow
+every flag as before, so tests can still turn beta features on.
 
 ### Shipping unfinished work
 
