@@ -417,6 +417,18 @@ function ensureDocker() {
   }
 }
 
+async function waitForStorage(apiUrl, timeoutMs = 10 * 60 * 1000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${apiUrl}/storage/v1/status`);
+      if (res.ok) { log('storage is up'); return; }
+    } catch { /* not listening yet */ }
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  fail('storage did not come up within 10 minutes');
+}
+
 async function main() {
   const command = process.argv[2] || 'up';
   if (command === 'up') {
@@ -433,9 +445,14 @@ async function main() {
       log('stack config changed since it started; restarting so the new config applies');
       runCli(['stop', '--no-backup'], { allowFail: true });
     }
-    runCli(['start', '-x', EXCLUDED.join(',')]);
+    // E2E_IGNORE_HEALTH=1 (iOS job): on the slow Colima VM storage's first
+    // migrations outlast the CLI's health wait, and a failed start tears the
+    // stack down, so a retry starts over. Skip that wait and poll storage here.
+    const ignoreHealth = process.env.E2E_IGNORE_HEALTH === '1';
+    runCli(['start', '-x', EXCLUDED.join(','), ...(ignoreHealth ? ['--ignore-health-check'] : [])]);
     const status = readStatus();
     if (!status) fail('stack started but `supabase status` failed');
+    if (ignoreHealth) await waitForStorage(status.API_URL);
     await seed(writeEnvFile(status));
     log(`ready. Run the suite with: npm run test:e2e:signed-in`);
   } else if (command === 'env') {
