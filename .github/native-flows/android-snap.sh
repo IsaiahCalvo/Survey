@@ -33,8 +33,11 @@ endpx() { ev "(() => { const g = document.querySelector('g[data-annotation-index
 # Draw one line with the stylus and echo the new annotation's index.
 draw() {
   local before; before=$(indices)
-  adb shell input stylus swipe "$1" "$2" "$3" "$4" 600; sleep 1.5
-  newidx "$before"
+  adb shell input stylus swipe "$1" "$2" "$3" "$4" 300; sleep 1.5
+  local n; n=$(newidx "$before")
+  # The first press after another flow can just clear the old selection.
+  case "$n" in none*) adb shell input stylus swipe "$1" "$2" "$3" "$4" 300; sleep 1.5; n=$(newidx "$before");; esac
+  echo "$n"
 }
 W=$(adb shell wm size | sed 's/.*: //;s/x.*//' | tr -d '\r'); H=$(adb shell wm size | sed 's/.*x//' | tr -d '\r')
 # Upper-middle of the page: the page ends near 74% of the screen height and
