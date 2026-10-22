@@ -13,7 +13,10 @@ name: ios-signed-in
 - tapOn: "Email"
 - inputText: "e2e-owner@example.com"
 - tapOn: "Password"
-- inputText: "E2e-local-only-123!"
+# The slow simulator drops keystrokes in the secure field (only one dot
+# landed, 2026-10-22), so paste the password instead of typing it.
+- setClipboard: "E2e-local-only-123!"
+- pasteText
 # Submit with the keyboard: Google sign-in is hidden on iPhone, so "Sign in"
 # labels sit in a different order than on Android and the SSO link matches too.
 - pressKey: Enter
