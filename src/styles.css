@@ -3772,3 +3772,10 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
 .survey-pdfjs-detail-tile {
   opacity: var(--survey-pdf-content-opacity, 1);
 }
+
+/* Copy-drag (Visio's Ctrl / Cmd + drag): the copy cursor everywhere while a
+   drop would copy, whatever element holds the drag's pointer capture. */
+body.survey-copy-drag,
+body.survey-copy-drag * {
+  cursor: copy !important;
+}

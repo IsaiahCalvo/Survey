@@ -75,6 +75,8 @@ export const SHORTCUT_SECTIONS = [
       { chords: ['mod+x'], label: 'Cut' },
       { chords: ['mod+v'], label: 'Paste at the pointer' },
       { chords: ['mod+d'], label: 'Duplicate' },
+      // Visio: let go with the key still down and a copy lands there.
+      { chords: ['mod+drag'], label: 'Drag a copy' },
       { chords: ['delete', 'backspace'], label: 'Delete' },
       { chords: ['arrows'], label: 'Nudge' },
       { chords: ['shift+arrows'], label: 'Nudge 10×' },
@@ -93,6 +95,13 @@ export const SHORTCUT_SECTIONS = [
       // UX: was "Cycle Window, Crossing, and Fence" — Space has toggled only
       // Window and Crossing (for the box and the lasso alike) since Fence left.
       { chords: ['space'], label: 'While dragging: switch Window / Crossing' },
+    ],
+  },
+  {
+    // Photoshop's on-page brush drag (utils/brushAdjustGesture.js).
+    title: 'Drawing',
+    items: [
+      { chords: ['alt+right-drag', 'ctrl+alt+drag'], label: 'Width (sideways) or opacity (up / down)' },
     ],
   },
   {
@@ -148,6 +157,8 @@ const NAMED_KEYS = {
   pageup: 'Page Up',
   pagedown: 'Page Down',
   click: 'Click',
+  drag: 'Drag',
+  'right-drag': 'Right-drag',
   '=': '+',
 };
 
@@ -164,6 +175,7 @@ export function chordKeycaps(chord, { isMac = false } = {}) {
     if (part === 'mod') return isMac ? '⌘' : 'Ctrl';
     if (part === 'shift') return 'Shift';
     if (part === 'alt') return 'Alt';
+    if (part === 'ctrl') return 'Ctrl';
     return part;
   });
   caps.push(NAMED_KEYS[key] || (key.length === 1 ? key.toUpperCase() : key));

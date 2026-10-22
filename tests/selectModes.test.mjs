@@ -436,7 +436,8 @@ test('rule 3: a drag is the tool\'s own job unless it starts on a selection the 
   assert.equal(rules.canToolGrabSelection('rect', ['shape', 'draw']), false);
   assert.equal(rules.canToolGrabSelection('pan', ['draw', null]), true);
   // Select: a press on an unselected mark picks it and starts a box / lasso, never a move
-  assert.match(INTERACTION_SOURCE, /if \(!wasAlreadySelected && activeTool === 'select' && svgRef\.current\) \{\s*beginAreaSelectFromMark\(e\);/);
+  // (except a Ctrl / Cmd + drag, Visio's copy-drag, owner 2026-10-22)
+  assert.match(INTERACTION_SOURCE, /if \(!wasAlreadySelected && activeTool === 'select' && svgRef\.current\s*&& !\(onCopyDragDrop && isCopyDragEvent\(e\)\)\) \{\s*beginAreaSelectFromMark\(e\);/);
   assert.match(INTERACTION_SOURCE, /if \(!e\.shiftKey && !_calAlreadyIn && activeTool === 'select'[\s\S]{0,300}beginAreaSelectFromMark\(e\);/);
   assert.match(INTERACTION_SOURCE, /const beginAreaSelectFromMark = useCallback\(\(e\) => \{[\s\S]{0,1400}keepOnClick: true/);
   assert.match(INTERACTION_SOURCE, /if \(!mq\.shiftHeld && !mq\.keepOnClick\)/);
