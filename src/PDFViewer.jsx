@@ -336,6 +336,7 @@ import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoR
 import { registerAgentDocument } from './agent/webmcp';
 import { findHighlightQuads, ocrWordsToWords, textItemsToWords } from './agent/planText';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
+import { findSurveyMarkerAt } from './utils/surveyMarkerHitTest.js';
 import { watchLightPopover } from './components/dismissRules.js';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
@@ -532,7 +533,10 @@ import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } 
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
 import { shouldCaptureToolSwitchDiag } from './utils/toolSwitchDiag.js';
-import { carryMarkerShape } from './survey/markerShapes.js';
+import { carryMarkerShape, MARKER_STROKE_WIDTHS, restyleStrokeMarkerBounds, strokeMarkerWidth } from './survey/markerShapes.js';
+import { setMarkerStrokeWidth, useMarkerStrokeWidth } from './survey/markerStrokeWidth.js';
+import { useShownMarkerDrawMode } from './survey/markerDrawMode.js';
+import { usePickedSurveyMarker } from './survey/usePickedSurveyMarker.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
@@ -4231,6 +4235,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
       if (hit.kind === 'page') {
+        // Owner 2026-10-22: a Survey Marker is picked by Pan like any mark.
+        const marker = findSurveyMarkerAt(e);
+        if (marker) {
+          setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+          setPendingSurveyMarkerSelection({ pageNumber: marker.pageNumber, annotationId: marker.annotationId, tick: Date.now() });
+          return;
+        }
         if (!e.shiftKey && hasAnyPageSelection()) clearAnnotationSelectionForContextChange('pan-empty-click');
         return;
       }
@@ -8408,6 +8419,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
   // Desktop survey sub-row: whether the Survey module menu is open.
   const [surveyModuleMenuOpen, setSurveyModuleMenuOpen] = useState(false);
+  const [surveyMarkerWidthMenuOpen, setSurveyMarkerWidthMenuOpen] = useState(false);
+  // Owner 2026-10-22: a Survey Marker picked under Select or Pan brings up the
+  // survey bar, as a picked counter brings up the counter's bar.
+  const pickedSurveyMarker = usePickedSurveyMarker();
+  const surveyMarkerPicked = Boolean(pickedSurveyMarker) && (isSelectFamilyTool(activeTool) || activeTool === 'pan');
+  const markerStrokeWidth = useMarkerStrokeWidth();
+  const shownMarkerDrawMode = useShownMarkerDrawMode();
+  // Owner 2026-10-22: the freehand marker's stroke width on the survey bar -
+  // the next marker's (Survey Marker armed in Freehand) or the picked
+  // freehand marker's (restyled at once, one Undo step).
+  const pickedMarkerBounds = surveyMarkerPicked
+    ? surveyMarkers?.[pickedSurveyMarker?.annotationId]?.bounds || null
+    : null;
+  const pickedMarkerWidth = pickedMarkerBounds ? strokeMarkerWidth(pickedMarkerBounds) : null;
+  const surveyBarShowsMarkerWidth = pickedMarkerWidth != null
+    || (activeTool === 'survey-marker' && shownMarkerDrawMode === 'freehand');
   // ...and its template menu (owner 2026-10-07, the bar's first item).
   const [surveyTemplateMenuOpen, setSurveyTemplateMenuOpen] = useState(false);
   surveyBarLiveRef.current = { selectedTemplate, selectedModuleId, selectedCategoryId, rightRailCollapsed, appTemplates };
@@ -8424,6 +8451,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     categoriesKey: surveyBarCategories.map((category) => `${category.id}:${category.name}`).join('|'),
     categoryCount: surveyBarCategories.length,
     entityCount: (selectedTemplate?.entities || []).length,
+    markerWidth: surveyBarShowsMarkerWidth,
   });
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
@@ -26524,6 +26552,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastShapeTool,
       lastReviewTool,
       showSurveyPanel,
+      surveyMarkerPicked,
       surveyToolbar: selectedTemplate ? {
         modules: mobileSurveyModules,
         categories: mobileSurveyCategories,
@@ -26718,6 +26747,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     lastShapeTool,
     lastReviewTool,
     showSurveyPanel,
+    surveyMarkerPicked,
     selectedTemplate,
     mobileSurveyModules,
     mobileSurveyCategories,
@@ -31165,6 +31195,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           bounds: carryMarkerShape({
             ...normalizedBounds,
             angle: nextAngle,
+            // A restyled freehand marker (survey bar Width) brings its own.
+            ...(bounds.shape ? { shape: bounds.shape } : {}),
           }, existing?.bounds),
         },
       };
@@ -31951,11 +31983,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
   }, [undoSurveyMarkerPlacement]);
 
+  // Owner 2026-10-22: a disc picked in the new-marker card recolours the
+  // marker on the page at once, before a category places it.
+  const recolorPendingSurveyMarker = useCallback((annotationId, entity) => {
+    if (!annotationId || !entity) return;
+    const color = normalizeSurveyMarkerColor(entity.color) || entity.color || null;
+    if (!color) return;
+    setNewSurveyMarkersByPage((prev) => {
+      let changed = false;
+      const next = {};
+      for (const [page, markers] of Object.entries(prev || {})) {
+        next[page] = (markers || []).map((preview) => {
+          if ((preview?.annotationId ?? preview?.id) !== annotationId) return preview;
+          changed = true;
+          return { ...preview, color, needsEntity: false };
+        });
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
   const categorizeDialogMarkerId = mobileMode ? null : (pendingSurveyMarker?.id || null);
   useEffect(() => {
     if (!categorizeDialogMarkerId || typeof window === 'undefined') return undefined;
     const onKeyDown = (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
+      // The card's module list is open: its own Escape closes only the list.
+      if (event.target?.closest?.('[data-survey-place-choosing="true"]')) return;
       event.preventDefault();
       event.stopPropagation();
       cancelSurveyMarkerPlacement(categorizeDialogMarkerId);
@@ -40100,9 +40154,35 @@ ${pageBlocks}
                   {inMore || look.reuse === 'compact' ? null : <span>Reuse</span>}
                 </button>
               );
+              const markerWidthValue = pickedMarkerWidth != null ? Math.round(pickedMarkerWidth) : markerStrokeWidth;
+              const markerWidths = MARKER_STROKE_WIDTHS.includes(markerWidthValue)
+                ? MARKER_STROKE_WIDTHS
+                : [...MARKER_STROKE_WIDTHS, markerWidthValue].sort((a, b) => a - b);
+              const markerWidthMenu = surveyBarShowsMarkerWidth ? (
+                <AnnotationDropdown
+                  open={surveyMarkerWidthMenuOpen}
+                  onOpenChange={setSurveyMarkerWidthMenuOpen}
+                  label="Freehand marker width"
+                  value={markerWidthValue}
+                  options={markerWidths.map((width) => ({ value: width, label: `${width} pt` }))}
+                  onSelect={(width) => {
+                    setMarkerStrokeWidth(width);
+                    if (pickedMarkerBounds && pickedSurveyMarker) {
+                      const next = restyleStrokeMarkerBounds(pickedMarkerBounds, width);
+                      if (next) {
+                        handleSurveyMarkerBoundsChange(pickedSurveyMarker.pageNumber, pickedSurveyMarker.annotationId, next, { action: 'stroke-width' });
+                      }
+                    }
+                  }}
+                  width="var(--chrome-field-w-fontsize)"
+                  contentWidth="var(--chrome-field-w-fontsize)"
+                  dataMarker="data-survey-marker-width-menu"
+                />
+              ) : null;
               const moreItems = look.more ? [
                 { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
                 { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
+                ...(markerWidthMenu ? [{ id: 'survey-marker-width', label: 'Width', node: markerWidthMenu }] : []),
               ] : [];
 
               return (
@@ -40171,6 +40251,12 @@ ${pageBlocks}
                         {reuseSwitch(false)}
                       </div>
                     )}
+                    {markerWidthMenu && !look.more && (
+                      <div className="survey-subrow__reuse" data-survey-marker-width="true">
+                        <div className="chrome-divider" aria-hidden="true" />
+                        {markerWidthMenu}
+                      </div>
+                    )}
                   </div>
 
                   <div className="survey-subrow__side survey-subrow__side--end">
@@ -40229,7 +40315,7 @@ ${pageBlocks}
           // Desktop: Survey placement and annotation formatting share the
           // subtoolbar. The Survey button restores placement without changing
           // the template, module, category, entity, or Reuse choice.
-          const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection })))
+          const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection, surveyMarkerPicked })))
             ? 'survey'
             : (activeCategoryDropdown && activeCategoryDropdown !== 'survey' && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
           if (subRowGroup && subRowHost) {
@@ -40237,7 +40323,9 @@ ${pageBlocks}
           }
           // Owner 2026-10-13: the template's entities as swatches in a third
           // bar under the survey bar (desktop; none when it has no entities).
-          if (subRowGroup === 'survey' && subRowHost && !mobileMode && (selectedTemplate?.entities || []).length > 0) {
+          // A picked marker shows its own entity on its floating bar; this bar
+          // picks the NEXT marker's, so it shows only with the tool armed.
+          if (subRowGroup === 'survey' && subRowHost && !mobileMode && activeTool === 'survey-marker' && (selectedTemplate?.entities || []).length > 0) {
             rows.push(createPortal(
               <SurveyEntityBar
                 templateId={selectedTemplate.id}
@@ -40869,6 +40957,7 @@ ${pageBlocks}
             categoryId={selectedCategoryId}
             mobile={mobileMode}
             onCancel={() => cancelSurveyMarkerPlacement(pendingSurveyMarker.id)}
+            onEntityChange={(entity) => recolorPendingSurveyMarker(pendingSurveyMarker.id, entity)}
             onConfirm={(marker, categoryId) => {
               commitMobileSurveyMarker(marker, categoryId);
               rememberSurveyEntity(marker.entityId);
