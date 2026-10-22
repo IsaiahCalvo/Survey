@@ -85,7 +85,7 @@ import {
   PAN_TEXT_CLICK_SLOP_PX, PAN_TEXT_HOVER_MS, PAN_TEXT_LEAVE_GRACE_MS, hasLivePdfTextSelection, isPanTextTarget,
   panTextLeaveWaits, panTextOwnsPress, resolvePanTextHover, resolvePanTextSelectionChange,
 } from '../utils/panTextSelect.js';
-import { createLongPressTracker, longPressMayArm, markLongPressEvent } from '../utils/touchLongPress.js';
+import { createLongPressTracker, longPressMayArm, markLongPressEvent, pointerDrivesLongPress } from '../utils/touchLongPress.js';
 import {
   compensateScrollTopForRoom,
   computeTopOverlayInset,
@@ -4673,11 +4673,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       press.start(event.clientX, event.clientY, 'pen');
     };
     const onPenMove = (event) => {
-      if (event.pointerType === 'pen' && event.pointerId === penId) press.move(event.clientX, event.clientY);
+      if (pointerDrivesLongPress(event, penId)) press.move(event.clientX, event.clientY);
     };
     const onPenEnd = (event) => {
-      if (event.pointerType !== 'pen' || event.pointerId !== penId) return;
-      penId = null;
+      if (!pointerDrivesLongPress(event, penId)) return;
+      if (event.pointerType === 'pen') penId = null;
       press.cancel();
     };
 
