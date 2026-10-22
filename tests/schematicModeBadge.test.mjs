@@ -26,6 +26,8 @@ async function loadBadge() {
     source = source.replace(from, to);
   };
   swap("from 'react';", `from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};`);
+  // The shared tooltip needs its host; this mount tests the badge, not the chip.
+  swap("import { useTooltip } from './Tooltip';", 'const useTooltip = () => () => ({});');
   swap("import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';",
     'const pdfjsLib = { OPS: { save: 1, restore: 2, transform: 3, constructPath: 4, paintImageXObject: 5 } };');
   swap("import Icon from '../Icons.jsx';", 'const Icon = () => null;');

@@ -32,6 +32,7 @@ async function loadPicker() {
   source = source
     .replace("import { useState, useEffect, useMemo, useRef } from 'react';", `import { useState, useEffect, useMemo, useRef } from ${JSON.stringify(reactUrl)};`)
     .replace("import DismissBarrier from './DismissBarrier';", 'const DismissBarrier = () => null;')
+    .replace("import { useTooltip } from './Tooltip';", 'const useTooltip = () => () => ({});')
     .replace(
       "from '../utils/quickStylePresets'",
       `from ${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src/utils/quickStylePresets.js')).href)}`,

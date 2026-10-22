@@ -9,8 +9,10 @@
 // ============================================================================
 import { useEffect, useRef, useState } from 'react';
 import { resolvePdfOutlinePageNumber } from '../utils/bookmarkOutline';
+import { useTooltip } from '../components/Tooltip';
 
 export default function SpikeLinkLayer({ pdf, pageIndex, scale, rotation }) {
+  const tip = useTooltip();
   const [links, setLinks] = useState([]);
   const pdfRef = useRef(pdf);
   pdfRef.current = pdf;
@@ -60,7 +62,7 @@ export default function SpikeLinkLayer({ pdf, pageIndex, scale, rotation }) {
           key={i}
           href={l.url || '#'}
           onClick={(e) => onLink(l, e)}
-          title={l.url || `Go to page`}
+          {...tip(l.url || `Go to page`, 'below')}
           style={{
             position: 'absolute', left: l.x * scale, top: l.y * scale, width: l.w * scale, height: l.h * scale,
             pointerEvents: 'auto', cursor: 'pointer', display: 'block',

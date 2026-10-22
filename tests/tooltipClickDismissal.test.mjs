@@ -12,7 +12,10 @@ test('shared tooltips stay hidden after a press until the pointer leaves', () =>
   assert.match(tooltipSource, /onMouseDown: hideOnPress/);
   assert.match(tooltipSource, /onPointerDown: hideOnPress/);
   assert.match(tooltipSource, /onMouseLeave: resetAfterLeave/);
-  assert.match(tooltipSource, /e\?\.type === 'focus' && !el\.matches\?\.\(':focus-visible'\)/);
+  assert.match(tooltipSource, /const isFocus = e\?\.type === 'focus';/);
+  assert.match(tooltipSource, /if \(isFocus && !el\.matches\?\.\(':focus-visible'\)\) return;/);
+  // A press during the first wait must also stop the waiting chip.
+  assert.match(tooltipSource, /if \(!el\.isConnected \|\| pressedControls\.has\(el\)\) return;/);
 });
 
 test('choosing a select mode cannot leave a tooltip stranded', () => {

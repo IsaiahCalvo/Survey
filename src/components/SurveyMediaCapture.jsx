@@ -8,6 +8,7 @@ import Icon from '../Icons';
 import { watchLightPopover } from './dismissRules';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { showToast } from '../utils/toast';
+import { useTooltip } from './Tooltip';
 
 const isIOS = () => {
   if (typeof navigator === 'undefined') return false;
@@ -167,6 +168,7 @@ export function SurveyAudioRecorderBar({ recorder }) {
  * camera items (a desktop browser opens a file picker for them anyway).
  */
 export function SurveyMediaUploadTile({ variant, disabled, onFiles, onRecordAudio, recording }) {
+  const tip = useTooltip();
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const tileRef = useRef(null);
@@ -261,7 +263,7 @@ export function SurveyMediaUploadTile({ variant, disabled, onFiles, onRecordAudi
         type="button"
         className="survey-notes__media-btn"
         aria-label="Add photo, video or audio"
-        title="Add photo, video or audio"
+        {...tip('Add photo, video or audio', 'below')}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}

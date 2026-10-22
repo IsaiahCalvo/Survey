@@ -77,6 +77,7 @@ import {
 } from '../../utils/historyMarkFilter.js';
 import { historyAnnotationBox, historyAnnotationInkBox, historyBulkGhosts, historyRowGhostAnnotation, historyUnionBox } from '../../utils/historyGeometry.js';
 import { createHistoryPageOverlay, findMarkElements, measureMarkBox, measureMarksBox } from './historyPageOverlay.js';
+import { attachTooltip, useTooltip } from '../Tooltip';
 
 const DRAWER_WIDTH = 360;
 const HISTORY_PANEL_STYLE_ID = 'document-history-panel-style';
@@ -285,6 +286,7 @@ export default function RevisionsPanel({
   locateHistoryMark = null,
   focusHistoryMark = null,
 }) {
+  const tip = useTooltip();
   const [open, setOpen] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [revisions, setRevisions] = useState([]);
@@ -360,8 +362,14 @@ export default function RevisionsPanel({
   const shouldLoadHistory = isActive && (embedded || open);
   const panelVisible = embedded ? isActive : open;
 
+  const tipRef = useRef(tip);
+  tipRef.current = tip;
   const overlay = useCallback(() => {
-    if (!overlayRef.current) overlayRef.current = createHistoryPageOverlay();
+    if (!overlayRef.current) {
+      overlayRef.current = createHistoryPageOverlay(undefined, {
+        attachTooltip: (el, text) => attachTooltip(el, (...args) => tipRef.current(...args), text, 'above'),
+      });
+    }
     return overlayRef.current;
   }, []);
 
@@ -1629,7 +1637,7 @@ export default function RevisionsPanel({
               data-glyph-only=""
               data-testid="document-history-mark-filter-clear"
               aria-label="Clear: show all history"
-              title="Show all history"
+              {...tip('Show all history', 'below')}
               onClick={clearMarkFilter}
             >
               <Icon name="close" size={mobileMode ? 15 : 13} />
@@ -1865,7 +1873,7 @@ export default function RevisionsPanel({
           cursor: 'pointer',
           boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
         }}
-        title="History"
+        {...tip('History', 'below')}
       >
         History
       </button>

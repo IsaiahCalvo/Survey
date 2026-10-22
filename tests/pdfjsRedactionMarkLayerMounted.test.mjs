@@ -27,6 +27,8 @@ async function loadLayer() {
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
   let source = await readFile(componentPath, 'utf8');
   source = source
+    // The shared tooltip needs its host; these mounts test the control, not the chip.
+    .replace(/import \{[^}]*\} from '(?:\.\.?\/)+(?:components\/)?Tooltip';/, 'const useTooltip = () => () => ({}); const withOwnHandlers = (b, own = {}) => ({ ...b, ...own }); const attachTooltip = () => () => {};')
     .replace(
       "from 'react'",
       `from ${JSON.stringify(reactUrl)}`,

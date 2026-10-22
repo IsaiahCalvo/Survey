@@ -340,7 +340,9 @@ export function measureMarksBox(doc, markIds, pageNumber) {
   return measureMarksOnHost(doc, pageHost(doc, pageNumber), markIds);
 }
 
-export function createHistoryPageOverlay(doc = typeof document !== 'undefined' ? document : null) {
+// attachTooltip(el, text): gives a button this overlay builds the app's shared
+// tooltip (components/Tooltip.jsx attachTooltip); never a native title.
+export function createHistoryPageOverlay(doc = typeof document !== 'undefined' ? document : null, { attachTooltip = null } = {}) {
   if (!doc) {
     const noop = () => {};
     return { setHighlight: noop, updateHighlight: noop, setHover: noop, setScene: noop, clearHighlight: noop, clear: noop, destroy: noop, hasHighlight: () => false };
@@ -562,7 +564,7 @@ export function createHistoryPageOverlay(doc = typeof document !== 'undefined' ?
     button.type = 'button';
     button.className = 'dh-restore-pin';
     button.dataset.testid = 'document-history-ghost-restore';
-    button.title = 'Put it back where it was';
+    attachTooltip?.(button, 'Put it back where it was');
     button.innerHTML = `${RESTORE_GLYPH}<span></span>`;
     button.querySelector('span').textContent = pin.label || 'Restore';
     button.addEventListener('click', (event) => { event.stopPropagation(); layer.pinAction?.(); });

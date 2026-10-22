@@ -36,6 +36,7 @@ import { AGENT_LANGS, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays, readA
 import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
 import SurveyAgentCamera from './SurveyAgentCamera';
+import { useTooltip } from './Tooltip';
 import './surveyAgentPanel.css';
 
 const blobToBase64 = (blob) => new Promise((resolve, reject) => {
@@ -106,6 +107,7 @@ export default function SurveyAgentPanel({
   onShowChat = () => {},
   onActivity = () => {},
 }) {
+  const tip = useTooltip();
   const [usageLeft, setUsageLeft] = useState(null);
   // The last few spoken turns with times, for "Send voice log"; sent by
   // itself once a session when hearing or the model fails.
@@ -957,7 +959,7 @@ export default function SurveyAgentPanel({
           type="button"
           className="survey-agent__voice"
           aria-label={`Language: ${AGENT_LANGS[lang].label}`}
-          title="English or Spanish"
+          {...tip('English or Spanish', 'left')}
           onClick={toggleLang}
         >
           {AGENT_LANGS[lang].short}
@@ -1078,7 +1080,7 @@ export default function SurveyAgentPanel({
             type="button"
             className={`survey-agent__icon survey-agent__mic${recording ? ' is-on' : ''}${holdUi.cancelling ? ' is-cancel' : ''}`}
             aria-label={recording ? 'Stop and send' : 'Talk'}
-            title={holdable && !recording ? 'Hold to talk, or tap' : undefined}
+            {...tip(holdable && !recording ? 'Hold to talk, or tap' : undefined, 'left')}
             aria-pressed={recording}
             disabled={!ready || handsFree || ((busy || transcribing) && !recording)}
             onPointerDown={holdable ? (e) => {

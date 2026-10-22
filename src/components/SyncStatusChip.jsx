@@ -14,7 +14,7 @@ import { getCompactSyncStatusMessage, getSyncStatusViewModel } from '../utils/sy
 import Spinner from './Spinner';
 import Icon from '../Icons';
 import DismissBarrier from './DismissBarrier';
-import { AnchoredTooltip } from './Tooltip';
+import { useTooltip } from './Tooltip';
 
 /**
  * Cloud sync status indicator.
@@ -44,6 +44,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
   // Feedback 2026-04-29 from UAT log inspection.
   const [manualSyncing, setManualSyncing] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const tip = useTooltip();
   const manualTimerRef = useRef(null);
   const rootRef = useRef(null);
   const dismissInsideRefs = useMemo(() => [rootRef], []);
@@ -177,7 +178,7 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
             <button
               type="button"
               aria-label="Retry now"
-              title="Retry now"
+              {...tip('Retry now', 'above')}
               onClick={() => {
                 setDetailsOpen(false);
                 void handleManualClick();
@@ -209,14 +210,13 @@ export default function SyncStatusChip({ status, queueSize = 0, enabled = true, 
 }
 
 function CompactSyncStatusChip({ state, label, accessibleLabel, dotColor, detailsOpen, onActivate }) {
-  const [hover, setHover] = useState(false);
+  const tip = useTooltip();
   return (
     <div
       role="button"
       // Owner 2026-10-02: a chrome icon - it hovers and presses like every
       // rail icon (src/styles/states.css section 5), never with a plate. The
-      // class (not data-glyph-only) marks it, because the hover hint below is
-      // drawn inside the chip and its words would un-mark it mid-hover.
+      // class (not data-glyph-only) marks it.
       className="chrome-icon-btn"
       aria-live="polite"
       aria-label={accessibleLabel}
@@ -225,8 +225,9 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, dotColor, detail
       tabIndex={0}
       onClick={onActivate}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      // The shared tooltip; its details panel is open, the hint would only
+      // repeat it.
+      {...(detailsOpen ? {} : tip(label, 'right'))}
       style={{
         position: 'relative',
         display: 'inline-flex',
@@ -250,12 +251,6 @@ function CompactSyncStatusChip({ state, label, accessibleLabel, dotColor, detail
           background: dotColor
         }} />
       )}
-      {/* KAL-65: the sync status hover hint is drawn by the ONE shared tooltip
-          surface (components/Tooltip.jsx) instead of its own hardcoded #1a1a1a
-          box, so it matches every other tooltip in the viewer chrome. */}
-      <AnchoredTooltip visible={hover && !detailsOpen} side="right">
-        {label}
-      </AnchoredTooltip>
     </div>
   );
 }
@@ -268,6 +263,7 @@ const shortRowLabel = (label) => {
 };
 
 function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detailsOpen, onActivate, row = false }) {
+  const tip = useTooltip();
   return (
     <div
       role="button"
@@ -278,7 +274,7 @@ function ExpandedSyncStatusChip({ state, label, accessibleLabel, dotColor, detai
       tabIndex={0}
       onClick={onActivate}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } }}
-      title={label}
+      {...tip(label, 'above')}
       style={{
         display: 'inline-flex',
         alignItems: 'center',

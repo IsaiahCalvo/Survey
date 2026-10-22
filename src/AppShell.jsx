@@ -87,7 +87,7 @@ import { composeTextColor, splitTextColor } from './utils/textColorOpacity';
 import { CHROME_GLYPH, FONT_FAMILY, RAIL_CARET, RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_SPLIT_CONTROL_W, REVIEW_TOOL_IDS, ZOOM_MODE_OPTIONS, appDebug, coerceScrollMode, ensureRgbaOpacity, getWindowTrackpadInteractionDebugSavePayload, hexToRgba, writeSaveLogExtraFiles } from './viewerShared';
 // Owner 2026-09-22: undo/redo draw at 14 (the phone's HISTORY_GLYPH) - see MobilePdfViewerChrome.
 const HISTORY_GLYPH = 14;
-import { TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
+import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } from './components/Tooltip';
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
@@ -860,8 +860,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // (placement geometry, styling and focus handling all live there), and
   // published to the whole viewer tree via TooltipContext below so rails and
   // sidebar panels can opt in without prop-drilling a setter.
+  // With no document open the viewer's chip is not mounted; the shell's own
+  // host below paints instead, so a control outside the viewer (a banner, a
+  // toast, a dialog) still gets the same chip.
+  const shellTooltipSetterRef = useRef(null);
   const chromeTip = useMemo(
-    () => makeTooltipBinding(bottomToolbarApi?.setTooltip),
+    () => makeTooltipBinding(
+      bottomToolbarApi?.setTooltip || ((next) => shellTooltipSetterRef.current?.(next)),
+    ),
     [bottomToolbarApi?.setTooltip],
   );
   // drawboardAudit C2: the right rail's Pencil-only switch (shown once a pen
@@ -5138,6 +5144,7 @@ export default function App({ devPreviewReturnTab = null }) {
           covered the zoom controls; that pill is gone, and the sheet itself
           renders nothing until it is opened.) */}
       <KeyboardShortcutsOverlay />
+      <TooltipChipHost setterRef={shellTooltipSetterRef} />
     </TooltipContext.Provider>
   );
 }

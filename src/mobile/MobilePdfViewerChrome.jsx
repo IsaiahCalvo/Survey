@@ -20,7 +20,6 @@ import { ZOOM_MODE_OPTIONS, ensureRgbaOpacity, getCategoryGlyphLabel } from '../
 import { getMobileSyncPresentation, getMobileTextMarkupPresentation, normalizeMobilePresence } from './mobilePdfViewerModel.js';
 import { withDevFakePresence } from '../components/presenceIdentity.js';
 import { getSelectFamilyLabel, getSelectFamilyTransition, getSelectModeIconName, SELECT_MODE_OPTIONS } from '../utils/selectModes.js';
-import { tooltipForLabel } from '../utils/toolShortcuts.js';
 import { useMobileSheetMotion } from './useMobileSheetMotion';
 import { useSheetFocus } from './useSheetFocus';
 import { commitPanelTyping } from './keyboardViewport.js';
@@ -39,6 +38,7 @@ import { railButtonPressed } from '../utils/toolbarToolPressed.js';
 import { formatPageTotal } from '../utils/pageTotalLabel.js';
 import { MOBILE_MEASURE_ITEMS, applyMobileMeasurePick, applyMobileShapePick, isMobileShapeToolActive } from './mobileShapeRail.js';
 import './mobilePdfViewer.css';
+import { useTooltip } from '../components/Tooltip';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
 // ONE glyph:control ratio for every phone tier, and it is Drawboard's: its
@@ -835,7 +835,9 @@ const HORIZONTAL_ALIGNMENTS = [
    drew the rail's. Each glyph sits at the same fill inside its own chip -
    0.57 since the 2026-09-16 phone sweep, where it used to be two thirds.
    Do not pass a bare number here. */
-const RailButton = ({ active, disabled = false, icon, label, glyph = RAIL_GLYPH, onClick, children, ...buttonProps }) => (
+const RailButton = ({ active, disabled = false, icon, label, glyph = RAIL_GLYPH, onClick, children, ...buttonProps }) => {
+  const tip = useTooltip();
+  return (
   <button
     type="button"
     className={`mobile-pdf-tools__button${active ? ' is-active' : ''}`}
@@ -847,15 +849,17 @@ const RailButton = ({ active, disabled = false, icon, label, glyph = RAIL_GLYPH,
     // real pointer, so the hover hint names the key that arms the tool
     // ("Rectangle  R") exactly as the desktop chip does. A finger never sees
     // it, and the aria-label stays the plain name so a screen reader never
-    // reads the keycap as part of the control's name.
-    title={tooltipForLabel(label)}
+    // reads the keycap as part of the control's name. The shared tooltip
+    // adds the keycap itself (tooltipForLabel inside makeTooltipBinding).
+    {...tip(label, 'left')}
     disabled={disabled}
     onClick={onClick}
     {...buttonProps}
   >
     {children || <Icon name={icon} size={glyph} color="currentColor" />}
   </button>
-);
+  );
+};
 
 /* The Text card's "Text size" field. Review 2026-09-23: it used to save on
    every keystroke, so typing 24 on a picked text box saved 2 and then 24 (two
@@ -1002,6 +1006,7 @@ function MobileTextSizeRow({ value, onCommit }) {
 const ZOOM_FIT_OPTIONS = ZOOM_MODE_OPTIONS.filter((option) => option.id !== 'manual');
 
 export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi, bottomToolbarApi, activeSpace = null, onOpenSpaces = null, onTurnOffSpace = null }) {
+  const tip = useTooltip();
   // OWNER DECISION 2 (2026-07-12): the page pill has two tap zones — the
   // fraction opens an inline page-jump input (type-to-jump), the chevron opens
   // the zoom/fit dropdown ONLY. The old combined page+zoom single surface is
@@ -1062,7 +1067,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           type="button"
           className="mobile-pdf-header__icon mobile-pdf-header__export"
           aria-label="Export"
-          title="Export annotated PDF"
+          {...tip('Export annotated PDF', 'left')}
           data-mobile-header-export="true"
           disabled={!bottomToolbarApi?.exportAnnotatedPdf}
           onClick={() => {
@@ -1282,6 +1287,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
 }
 
 export function MobileToolProperties({ api, onOpenSurveyList }) {
+  const tip = useTooltip();
   // 2026-07-12 (Phase E, demo parity): which colour control has the shared
   // CompactColorPicker takeover open. null | 'textColor' | 'fill' | 'stroke'
   // | 'fontColorLive'. Replaces the old OS <input type=color> swatches so
@@ -1482,7 +1488,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
           type="button"
           className="mobile-pdf-properties__color"
           aria-label="Font color"
-          title="Font color"
+          {...tip('Font color', 'left')}
           onPointerDown={keepTextEditFocus}
           onClick={() => setColorPicker('fontColorLive')}
         >
@@ -1547,7 +1553,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
           type="button"
           className={`mobile-pdf-properties__align${textDefaultsOpen ? ' is-active' : ''}`}
           aria-label="Text alignment"
-          title="Text alignment"
+          {...tip('Text alignment', 'left')}
           aria-expanded={textDefaultsOpen}
           onPointerDown={keepTextEditFocus}
           onClick={() => setTextDefaultsOpen((open) => !open)}
@@ -1725,7 +1731,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                it since the owner reversed that on 2026-09-21. */
             className="mobile-pdf-properties__color"
             aria-label="Text markup color and opacity"
-            title="Text markup color and opacity"
+            {...tip('Text markup color and opacity', 'left')}
             aria-expanded={Boolean(api.showAnnotationColorPicker)}
             onClick={() => api.setShowAnnotationColorPicker?.(true)}
           >
@@ -2629,6 +2635,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
 }
 
 export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedInUser = null, onOpenPanel, onAuxPanelStateChange, auxCloseRequestKey = 0 }) {
+  const tip = useTooltip();
   const [openCategory, setOpenCategory] = useState(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [presenceOpen, setPresenceOpen] = useState(false);
@@ -3118,7 +3125,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               aria-expanded={sync.state !== 'synced' && syncDetailsOpen}
               aria-controls="mobile-sync-status-details"
               // The desktop chip's hover hint is the bare label; so is this.
-              title={sync.label}
+              {...tip(sync.label, 'left')}
               disabled={leftRailApi?.cloudSyncEnabled === false}
               onClick={activateSyncStatus}
             >
@@ -3282,7 +3289,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
             <button
               type="button"
               aria-label="Retry now"
-              title="Retry now"
+              {...tip('Retry now', 'left')}
               // A button glyph is chrome, not a status dot: --text-2, as on
               // the desktop chip's Retry.
               style={{ color: 'var(--text-2)' }}

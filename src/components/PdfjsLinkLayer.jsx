@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { resolvePdfOutlinePageNumber } from '../utils/bookmarkOutline';
 import { useMoveModifierHeld } from '../utils/moveModifier.js';
+import { useTooltip } from './Tooltip';
 
 /**
  * PdfjsLinkLayer — clickable hyperlink overlay for one page under the owned
@@ -31,6 +32,7 @@ export default function PdfjsLinkLayer({
   onInternalNavigate,
   excludedAnnotationIds = [],
 }) {
+  const tip = useTooltip();
   const [links, setLinks] = useState([]);
   const pdfRef = useRef(pdf);
   pdfRef.current = pdf;
@@ -115,7 +117,7 @@ export default function PdfjsLinkLayer({
           key={i}
           href={link.url || '#'}
           onClick={(event) => handleLink(link, event)}
-          title={link.url || 'Go to page'}
+          {...tip(link.url || 'Go to page', 'below')}
           style={{
             position: 'absolute',
             left: `${link.left}%`,

@@ -278,7 +278,7 @@ async function editText(page, touch, toolId) {
   if (await fontColor.count()) {
     await fontColor.click();
     const picker = page.getByRole('dialog', { name: 'Font color picker', exact: true });
-    await picker.getByTitle('#0080FF', { exact: true }).click();
+    await picker.getByLabel('#0080FF', { exact: true }).click();
     await closeColorPicker(page, 'Font color');
   }
   await page.getByRole('button', { name: 'Pan', exact: true }).click();

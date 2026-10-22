@@ -6,9 +6,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnchoredPopover from './AnchoredPopover';
 import Icon from '../Icons';
+import { useTooltip } from './Tooltip';
 import './AnnotationDropdown.css';
 
 export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 }) {
+  const tip = useTooltip();
   const [open, setOpen] = useState(false);
   const buttonRef = useRef(null);
   const menuRef = useRef(null);
@@ -72,7 +74,7 @@ export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 })
                 type="button"
                 role="menuitem"
                 className="annotation-dropdown__option"
-                title={item.title}
+                {...tip(item.title, 'below')}
                 onClick={() => {
                   setOpen(false);
                   item.onSelect();

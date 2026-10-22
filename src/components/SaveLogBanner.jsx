@@ -4,6 +4,7 @@ import { buildLogPreamble } from '../utils/logPreamble';
 import { sanitizeConsoleLogText } from '../utils/consoleLogFilter';
 import Spinner from './Spinner';
 import Icon from '../Icons';
+import { useTooltip, withOwnHandlers } from './Tooltip';
 
 // UX 2026-04-22: Evolution of the old Save Log toast. When the user triggers
 // Save Log, a banner slides in from the LEFT with a 5-second progress bar
@@ -41,6 +42,7 @@ const COUNTDOWN_MS = 5000; // UX: 5 seconds is enough to react, short enough to 
 const AUTO_DISMISS_RESULT_MS = 2800; // UX: success/error pill linger time, matches old toast
 
 export default function SaveLogBanner() {
+  const tip = useTooltip();
   // state machine: null | countdown | entry | confirmEmpty | submitting | success | error
   const [state, setState] = useState(null);
   const [visible, setVisible] = useState(false);
@@ -423,7 +425,6 @@ export default function SaveLogBanner() {
                   onClick={handleCancel}
                   onTouchEnd={(e) => { e.preventDefault(); handleCancel(); }}
                   aria-label="Cancel submission"
-                  title="Cancel — don't send to GitHub"
                   style={{
                     // UX 2026-04-22: Top-left X so the user can abort the push
                     // before the 5-second timer runs out. Bumped to 32px for
@@ -445,8 +446,10 @@ export default function SaveLogBanner() {
                     lineHeight: 1,
                     touchAction: 'manipulation'
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--hover)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'transparent'; }}
+                  {...withOwnHandlers(tip("Cancel — don't send to GitHub", 'below'), {
+                    onMouseEnter: (e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--hover)'; },
+                    onMouseLeave: (e) => { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'transparent'; },
+                  })}
                 >
                   <Icon name="close" size={14} />
                 </button>
@@ -580,7 +583,7 @@ export default function SaveLogBanner() {
               gap: 9,
               cursor: result.url ? 'pointer' : 'default'
             }}
-            title={result.url ? 'Click to open on GitHub' : ''}
+            {...tip(result.url ? 'Click to open on GitHub' : '', 'above')}
           >
             <span aria-hidden="true" style={{ color: colors.accent, display: 'inline-flex' }}>
               {isError ? (

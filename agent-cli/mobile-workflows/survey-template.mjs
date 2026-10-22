@@ -410,9 +410,9 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   let inspectorRow = rows.last();
   await fillAndCommit(inspectorRow.locator('input'), 'Inspector');
   let colorPanel = await openEntityColorPanel(touch, modal, inspectorRow, 'Inspector');
-  await tapEntityColorControl(touch, colorPanel.getByTitle('#22c55e'), 'Inspector fill green');
+  await tapEntityColorControl(touch, colorPanel.getByLabel('#22c55e'), 'Inspector fill green');
   await tapEntityColorControl(touch, colorPanel.getByRole('tab', { name: 'Border', exact: true }), 'Inspector border tab');
-  await tapEntityColorControl(touch, colorPanel.getByTitle('#0000FF'), 'Inspector border blue');
+  await tapEntityColorControl(touch, colorPanel.getByLabel('#0000FF'), 'Inspector border blue');
   await tapLocator(touch, inspectorRow.getByLabel('Edit color', { exact: true }), 'Close Inspector color picker');
   await colorPanel.waitFor({ state: 'hidden', timeout: 10_000 });
   await page.waitForTimeout(950);
@@ -433,9 +433,9 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
   const ownerRow = rows.last();
   await fillAndCommit(ownerRow.locator('input'), 'Owner');
   colorPanel = await openEntityColorPanel(touch, modal, ownerRow, 'Owner');
-  await tapEntityColorControl(touch, colorPanel.getByTitle('#FF0000'), 'Owner fill red');
+  await tapEntityColorControl(touch, colorPanel.getByLabel('#FF0000'), 'Owner fill red');
   await tapEntityColorControl(touch, colorPanel.getByRole('tab', { name: 'Border', exact: true }), 'Owner border tab');
-  await tapEntityColorControl(touch, colorPanel.getByTitle('#0000FF'), 'Owner border blue before match fill');
+  await tapEntityColorControl(touch, colorPanel.getByLabel('#0000FF'), 'Owner border blue before match fill');
   // Match fill is the border grid's first cell (a pressed toggle), not a checkbox.
   const matchFill = colorPanel.getByRole('button', { name: /^Match fill/ });
   await tapEntityColorControl(touch, matchFill, 'Owner match fill');
