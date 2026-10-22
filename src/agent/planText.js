@@ -343,3 +343,53 @@ export function findHighlightQuads(words, query, { occurrence = 1 } = {}) {
   }
   return { quads, text };
 }
+
+/**
+ * Tags on the sheets that fit a spoken description ("camera 6 on the 4th
+ * floor", parsed by spokenTag.js): runs of up to three neighbouring words
+ * holding a digit group, scored with scoreDescribedTag against the sheet's
+ * own floor and wing. Best first; each { page, text, box, source, score,
+ * sheetFloor }.
+ */
+export function findDescribedOnPages(target, pages, { score, sheetOf, limit = MAX_MATCHES, min = 0.5 } = {}) {
+  if (!target || typeof score !== 'function') return [];
+  const found = [];
+  for (const { page, words = [], source = 'text', sheet: known = null } of pages || []) {
+    const sheet = known || (sheetOf ? sheetOf(words) : { floor: null, wing: null });
+    const seen = new Set();
+    for (let i = 0; i < words.length; i += 1) {
+      const run = [];
+      let best = null;
+      for (let j = i; j < words.length && j < i + MAX_JOIN; j += 1) {
+        if (run.length && !adjacent(run[run.length - 1].box, words[j].box)) break;
+        run.push(words[j]);
+        const text = run.map((w) => w.text).join(' ');
+        // A tag is short; a sentence with a number in it is not one.
+        if (compact(text).length > 14 || !/\d/.test(text)) continue;
+        const s = score(target, text, { pageFloor: sheet.floor, pageWing: sheet.wing });
+        if (s >= min && (!best || s > best.score)) best = { score: s, text, run: [...run] };
+      }
+      if (!best) continue;
+      i += best.run.length - 1;
+      const key = compact(best.text);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push({ page, text: best.text, box: union(best.run.map((w) => w.box)), source, score: best.score, sheetFloor: sheet.floor });
+    }
+  }
+  return found.sort((a, b) => b.score - a.score || a.page - b.page).slice(0, limit);
+}
+
+/** Each page's words and sheet floor, for every page of an open document handle. */
+export async function readDocumentSheets(doc, sheetOf) {
+  if (!doc?.getPageWords || !doc?.getPageCount) return { pages: [], unreadPages: [] };
+  const count = Math.min(doc.getPageCount() || 0, MAX_PAGES);
+  const pages = [];
+  const unreadPages = [];
+  for (let page = 1; page <= count; page += 1) {
+    const entry = await readPageWords(doc, page);
+    if (entry.source === 'none') unreadPages.push(page);
+    else pages.push({ page, words: entry.words, source: entry.source, sheet: sheetOf ? sheetOf(entry.words) : null });
+  }
+  return { pages, unreadPages };
+}
