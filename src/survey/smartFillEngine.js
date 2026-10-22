@@ -408,23 +408,30 @@ function candidateCells(mask, width, height, sample) {
 
 /**
  * Find every tag on a whole-page ink mask that matches `sample` (a signature
- * in mask pixels). Each closed paper cell about the right size is a candidate;
- * the normal tap engine runs on a crop around it and the answer is compared to
- * the sample. Returns rings in mask pixels, de-duplicated. Bounded: at most
+ * in mask pixels, or a list of them). Each closed paper cell about the right
+ * size is a candidate; the normal tap engine runs on a crop around it and the
+ * answer is compared to the samples. With `templates` (taught tag shapes,
+ * smartFillTemplates.js) and `pxPerUnit`, each candidate is first matched
+ * against those, so tags touching walls or each other are found too.
+ * Returns rings in mask pixels, de-duplicated. Bounded: at most
  * `maxCandidates` crops are tried.
  */
-export function findSimilarTags(mask, width, height, sample, { maxCandidates = 400 } = {}) {
-  if (!sample?.width) return [];
+export function findSimilarTags(mask, width, height, sample, { maxCandidates = 400, templates = null, pxPerUnit = 0, outlineAt = null } = {}) {
+  const samples = (Array.isArray(sample) ? sample : [sample]).filter((s) => s?.width > 0);
+  if (!samples.length) return [];
+  // The candidate cells must fit the biggest sample.
+  const span = { width: Math.max(...samples.map((s) => s.width)), height: Math.max(...samples.map((s) => s.height)) };
   // Cells come from the plain mask and from the gap-closed masks too, so a tag
   // whose border has a small break (which a tap closes, closedGaps 1-2) is
   // still a candidate. Paper in a grown mask is paper in the plain one, so the
   // seed is valid for the normal engine below, which re-verifies every cell.
   const cells = [];
   for (const r of [0, 1, 2]) {
-    cells.push(...candidateCells(r ? dilateMask(mask, width, height, r) : mask, width, height, sample));
+    cells.push(...candidateCells(r ? dilateMask(mask, width, height, r) : mask, width, height, span));
   }
   const found = [];
-  const pad = Math.ceil(Math.max(sample.width, sample.height) * 1.5) + 8;
+  const pad = Math.ceil(Math.max(span.width, span.height) * 1.5) + 8;
+  const find = outlineAt || ((crop, cw, ch, x, y) => findTagOutlineTolerant(crop, cw, ch, x, y));
   for (const cell of cells.slice(0, maxCandidates)) {
     const sx = cell.seed % width; const sy = (cell.seed - sx) / width;
     if (found.some((f) => sx >= f.minX && sx <= f.maxX && sy >= f.minY && sy <= f.maxY)) continue;
@@ -433,10 +440,11 @@ export function findSimilarTags(mask, width, height, sample, { maxCandidates = 4
     const cw = x1 - x0; const ch = y1 - y0;
     const crop = new Uint8Array(cw * ch);
     for (let y = 0; y < ch; y += 1) crop.set(mask.subarray((y0 + y) * width + x0, (y0 + y) * width + x1), y * cw);
-    const res = findTagOutlineTolerant(crop, cw, ch, sx - x0, sy - y0);
+    const res = find(crop, cw, ch, sx - x0, sy - y0, templates, pxPerUnit);
     if (!res?.ok) continue;
     const ring = res.ring.map(([x, y]) => [x + x0, y + y0]);
-    if (!signaturesMatch(outlineSignature(ring), sample)) continue;
+    const sig = outlineSignature(ring);
+    if (!res.shapeId && !samples.some((s) => signaturesMatch(sig, s))) continue;
     const xs = ring.map((p) => p[0]); const ys = ring.map((p) => p[1]);
     found.push({ ring, minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) });
   }

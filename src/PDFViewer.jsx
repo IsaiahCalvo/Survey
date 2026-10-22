@@ -541,6 +541,7 @@ import { buildSheetLayout, buildSheetRow, toStandardHeaders } from './services/e
 import { answerSetFor, excelAnswerListFormula, DEFAULT_ANSWER_SET } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
+import { setActiveSmartFillTemplate, withTemplateShape } from './survey/smartFillTemplateShapes.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,
@@ -31837,6 +31838,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return { ok: true };
   }, [documentLocked, yjsDocRole, user?.id, documentOwnerId, appTemplates, onTemplatesChange, updateSupabaseTemplateRow, sanitizeTemplateConfig, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
   applySurveyCategoryTransferRef.current = applySurveyCategoryTransfer;
+
+  // Owner 2026-10-22: Smart fill tag shapes the user teaches are saved in the
+  // survey template (template.smartFillShapes) so they travel with it. They
+  // are not part of the template's versioned definition: read and written on
+  // the latest row, whatever snapshot this document is using.
+  const saveSmartFillShapeToTemplate = useCallback(async (shape) => {
+    const latest = appTemplates.find((template) => template.id === selectedTemplate?.id) || selectedTemplate;
+    if (!latest) throw new Error('No survey template is open.');
+    const next = { ...latest, smartFillShapes: withTemplateShape(latest.smartFillShapes, shape), updatedAt: new Date().toISOString() };
+    if (next.supabaseId) await updateSupabaseTemplateRow(next.supabaseId, { config: sanitizeTemplateConfig(next), updated_at: next.updatedAt });
+    setSelectedTemplate((current) => (current?.id === next.id ? { ...current, smartFillShapes: next.smartFillShapes } : current));
+    onTemplatesChange?.(appTemplates.map((template) => template.id === next.id ? next : template));
+  }, [appTemplates, selectedTemplate, onTemplatesChange, updateSupabaseTemplateRow]);
+  const smartFillTemplateShapes = appTemplates.find((template) => template.id === selectedTemplate?.id)?.smartFillShapes
+    || selectedTemplate?.smartFillShapes;
+  useEffect(() => {
+    if (isActive === false) return undefined;
+    setActiveSmartFillTemplate({
+      templateId: selectedTemplate?.id ?? null,
+      templateName: selectedTemplate?.name || '',
+      shapes: smartFillTemplateShapes || [],
+      save: selectedTemplate ? saveSmartFillShapeToTemplate : null,
+    });
+    return () => setActiveSmartFillTemplate({});
+  }, [isActive, selectedTemplate?.id, selectedTemplate?.name, smartFillTemplateShapes, saveSmartFillShapeToTemplate]);
 
   // Takes one category id or a list. The rail deletes every ticked category in
   // ONE call: separate calls each started from the same old template, so the
