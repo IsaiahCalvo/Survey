@@ -73,4 +73,10 @@ console.log('after enter', await preview(), 'session still open', await page.loc
 await page.screenshot({ path: `${out}/9-enter-closed.png` });
 // Lasso tooltip order
 console.log('tools', await page.locator('[data-area-tool]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label'))));
+// A focused Cancel keeps its Enter while a polygon is going.
+await page.locator('[data-area-tool="polygon"]').click();
+await page.mouse.click(...at(0.2, 0.3)); await page.mouse.click(...at(0.4, 0.3));
+await page.locator('[data-area-actions]').getByRole('button', { name: 'Cancel', exact: true }).focus();
+await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+console.log('enter on focused Cancel closes the session', (await page.locator('[data-area-actions]').count()) === 0);
 await browser.close();

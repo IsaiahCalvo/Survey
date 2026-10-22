@@ -713,6 +713,8 @@ const RegionSelectionTool = ({
         setIsDrawing(false);
         setCurrentRect(null);
         setPolygonPoints([]);
+        setPolyCorners([]);
+        setPolyHover(null);
         setIsCursorOverCanvas(false);
       }
     } else {
@@ -728,6 +730,8 @@ const RegionSelectionTool = ({
       setIsDrawing(false);
       setCurrentRect(null);
       setPolygonPoints([]);
+      setPolyCorners([]);
+      setPolyHover(null);
       setIsCursorOverCanvas(false);
     }
   }, [active, initialRegions, historyKey, cloneHistorySnapshot, persistHistoryStacks, releaseInteractionPointer]);
@@ -2829,7 +2833,11 @@ const RegionSelectionTool = ({
         ['Enter', 'Escape', 'Backspace', 'Delete'].includes(event.key)
       ) {
         const actions = keyboardActionsRef.current;
-        if (actions.polygonCorners > 0) {
+        // A focused Areas button, dialog or menu keeps its own Enter, so
+        // Cancel stays Cancel while a polygon is going.
+        const focusOwnsEnter = event.key === 'Enter' &&
+          !!document.activeElement?.closest?.('[data-area-actions], [data-mobile-tool-properties], [role="dialog"], [role="menu"], [role="alertdialog"]');
+        if (actions.polygonCorners > 0 && !focusOwnsEnter) {
           stopRegionKeyboardShortcut(event);
           if (event.key === 'Enter') actions.finishPolygon();
           else if (event.key === 'Escape') actions.dropPolygon();
