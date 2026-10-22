@@ -28,8 +28,11 @@ if (typeof document !== 'undefined' && document.modelContext) {
 if (typeof window !== 'undefined') {
   Promise.all([import('./featureFlags'), import('./supabaseClient')])
     .then(([{ refreshFeatureFlags, releaseChannel }, { supabase }]) => {
-      // So nobody mistakes the nightly tab for the real app.
-      if (releaseChannel() === 'nightly' && !document.title.startsWith('Nightly')) document.title = `Nightly · ${document.title}`;
+      // So nobody mistakes Survey Nightly for the real app.
+      if (releaseChannel() === 'nightly') {
+        import('./nightlyBrand').then(({ applyNightlyBrand }) => applyNightlyBrand()).catch(() => {});
+        if (supabase) import('./nightlyGate').then(({ installNightlyGate }) => installNightlyGate(supabase)).catch(() => {});
+      }
       if (!supabase) return;
       const refresh = () => refreshFeatureFlags(supabase).catch(() => {});
       refresh();

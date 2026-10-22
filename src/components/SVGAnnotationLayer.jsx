@@ -218,6 +218,10 @@ import {
   isSnapFreeModifier, isAnnotationSnapFree, snapThreshold, snapMoveFrame, snapResizePoint, buildSnapGuides, snapRotationDegrees,
 } from '../utils/snapGuides.js';
 
+// Screen px between a selected counter's nub tip and the edge of its turn
+// grabber, so the grabber's hit pad stays off the pin itself.
+const COUNTER_GRABBER_GAP_PX = 6;
+
 const svgAnnotationDebug = (...args) => {
   if (typeof window === 'undefined' || window.__SVG_ANNOTATION_DEBUG !== true) return;
   try { console.debug(...args); } catch { /* ignore debug logging failures */ }
@@ -763,6 +767,9 @@ const SVGAnnotationLayerBody = memo(({
   zoomGenerationSignal = null,
   // Survey-marker drag-out routes through the marker store, not page objects.
   onSurveyMarkerCreated,
+  // The next Survey Marker's entity colour: a freehand marker's stroke draws
+  // in it while it is drawn (owner 2026-10-22). Null = the needs-entity blue.
+  surveyMarkerDrawColor = null,
   // Measure tools: 'length' | 'area' | 'calibrate' | null. The armed tool is
   // still 'line' / 'polygon'; this only stamps data.measure on the commit
   // (or, for 'calibrate', hands the drawn line to onMeasureCalibrate).
@@ -2817,7 +2824,7 @@ const SVGAnnotationLayerBody = memo(({
   }, []);
   // A tap on a found match adds it; returns true when the tap was used.
   // A match stays offered until a Survey marker actually lands on it, so a
-  // tap whose "Categorize Survey Marker" dialog is cancelled keeps it.
+  // tap whose new-marker card is cancelled keeps it.
   const offeredSmartFillMatches = useMemo(
     () => filterOfferedSmartFillMatches(smartFillMatches, surveyMarkers),
     [smartFillMatches, surveyMarkers],
@@ -7210,6 +7217,35 @@ const SVGAnnotationLayerBody = memo(({
     return zone ? { ...zone, markBoxes: boxes } : null;
   })();
 
+  // Hands a press on to another element as an identical pointerdown, so that
+  // element's own handlers run and capture the pointer.
+  const redispatchPointerDown = (target, e) => {
+    if (!target || typeof PointerEvent !== 'function') return false;
+    const n = e.nativeEvent || e;
+    target.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX: n.clientX,
+      clientY: n.clientY,
+      screenX: n.screenX,
+      screenY: n.screenY,
+      pointerId: n.pointerId,
+      pointerType: n.pointerType,
+      isPrimary: n.isPrimary,
+      button: n.button,
+      buttons: n.buttons,
+      width: n.width,
+      height: n.height,
+      pressure: n.pressure,
+      metaKey: n.metaKey,
+      ctrlKey: n.ctrlKey,
+      shiftKey: n.shiftKey,
+      altKey: n.altKey,
+    }));
+    return true;
+  };
+
   // The rotate grabber under a point of the zone, unless the point is on
   // the selected marks themselves (then the press is a move).
   const ROTATE_GRABBER_SELECTOR = '[data-rotation-handle="mtr"], [data-handle-hit-pad="counter-rotate"]';
@@ -7245,28 +7281,7 @@ const SVGAnnotationLayerBody = memo(({
       // pointerdown listeners therefore see this press twice; they only read
       // it (selection-dismiss ignores modifier presses, the key store reads
       // the same modifier state), so that is harmless.
-      if (rotateEl && typeof PointerEvent === 'function') {
-        const n = e.nativeEvent || e;
-        rotateEl.dispatchEvent(new PointerEvent('pointerdown', {
-          bubbles: true,
-          cancelable: true,
-          composed: true,
-          clientX: n.clientX,
-          clientY: n.clientY,
-          screenX: n.screenX,
-          screenY: n.screenY,
-          pointerId: n.pointerId,
-          pointerType: n.pointerType,
-          isPrimary: n.isPrimary,
-          button: n.button,
-          buttons: n.buttons,
-          metaKey: n.metaKey,
-          ctrlKey: n.ctrlKey,
-          shiftKey: n.shiftKey,
-          altKey: n.altKey,
-        }));
-        return;
-      }
+      if (rotateEl && redispatchPointerDown(rotateEl, e)) return;
     }
     const started = startModifierMove?.(e);
     if (started !== 'survey-marker') return;
@@ -8157,7 +8172,7 @@ const SVGAnnotationLayerBody = memo(({
           points={freehandPointsRef.current.map((point) => `${point.x},${point.y}`).join(' ')}
           fill="none"
           stroke={shapeCreation.tool === 'highlighter' ? highlightColor
-            : shapeCreation.tool === 'survey-marker-freehand' ? MARKER_FREEHAND_PREVIEW_COLOR
+            : shapeCreation.tool === 'survey-marker-freehand' ? (surveyMarkerDrawColor || MARKER_FREEHAND_PREVIEW_COLOR)
               : strokeColor}
           strokeWidth={shapeCreation.tool === 'highlighter'
             ? Math.max(Number(strokeWidth) || 3, 8)
@@ -8279,11 +8294,9 @@ const SVGAnnotationLayerBody = memo(({
             ? Number(counterHandlePreview.pointerAngle)
             : (obj.data?.pointerAngle ?? 225);
           const angleRad = (pointerAngleDeg * Math.PI) / 180;
-          // Match renderCounter's tipExtension formula exactly so the handle sits ON
-          // the visible nubbin tip, not floating beside it.
+          // renderCounter's tipExtension formula: where the visible nub ends.
           const tipExtension = radius * 0.5;
-          const tipX = cx + Math.cos(angleRad) * (radius + tipExtension);
-          const tipY = cy + Math.sin(angleRad) * (radius + tipExtension);
+          const tipDistance = radius + tipExtension;
           // UX: one on-screen handle size at every zoom (Drawboard audit
           // 2026-10-13). Radius comes from the shared HANDLE_RADIUS constant
           // so every handle is one size.
@@ -8291,6 +8304,13 @@ const SVGAnnotationLayerBody = memo(({
           // handle + its shadow stop growing on extreme zoom-out (no-op at rest).
           const is = clampInverseScale(inverseScale);
           const handleR = HANDLE_RADIUS * is;
+          // Owner 2026-10-22: the grabber floats just past the nub tip, in
+          // line with it, instead of sitting on the tail. On the tail it
+          // turned the pin when you meant to drag it, and zoomed out it
+          // covered most of the pin.
+          const grabberDistance = tipDistance + handleR + COUNTER_GRABBER_GAP_PX * is;
+          const tipX = cx + Math.cos(angleRad) * grabberDistance;
+          const tipY = cy + Math.sin(angleRad) * grabberDistance;
           // UX 2026-09-16: invisible hit pad behind the counter's rotate
           // grabber — the grabber + 4 px on a mouse (w63), 44 pt on a finger. It is the only grabber on a selected
           // counter, so nothing crowds it. The drag handlers live on both the
@@ -8301,8 +8321,32 @@ const SVGAnnotationLayerBody = memo(({
             inverseScale: clampInverseScale(inverseScale),
             minPadPageUnits: handleR * 2,
           });
+          // A press that lands on the pin itself (a finger-sized pad can
+          // reach over it) is the pin's own press: it moves the pin.
+          const pressIsOnPin = (e) => {
+            const point = svgRef.current ? screenToSVG(svgRef.current, e.clientX, e.clientY) : null;
+            return !!point && Math.hypot(point.x - cx, point.y - cy) <= tipDistance;
+          };
+          const pinId = getAnnotationRenderIdentity(obj).annotationId;
+          const pinElementUnder = (e) => {
+            if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') return null;
+            return document.elementsFromPoint(e.clientX, e.clientY).find((el) => (
+              svgRef.current?.contains?.(el)
+              && !el.closest?.('[data-counter-rotate-grabber]')
+              && el.closest?.('[data-annotation-id]')?.getAttribute('data-annotation-id') === String(pinId)
+            )) || null;
+          };
           const counterRotateHandlers = {
                 onPointerDown: (e) => {
+                  if (pressIsOnPin(e)) {
+                    const pinEl = pinElementUnder(e);
+                    if (pinEl) {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      redispatchPointerDown(pinEl, e);
+                      return;
+                    }
+                  }
                   e.stopPropagation();
                   try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
                   counterRotateDragRef.current = {
@@ -8343,7 +8387,7 @@ const SVGAnnotationLayerBody = memo(({
                 },
           };
           return (
-            <g key={`counter-rotate-wrapper-${selectedIndex}`} transform={counterDragTransform}>
+            <g key={`counter-rotate-wrapper-${selectedIndex}`} transform={counterDragTransform} data-counter-rotate-grabber="true">
               <circle
                 data-handle-hit-pad="counter-rotate"
                 cx={tipX}

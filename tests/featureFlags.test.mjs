@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
-  FEATURE_FLAGS, FLAG_CACHE_KEY, isFeatureOn, normalizeTesterEmails, refreshFeatureFlags, releaseChannel,
+  FEATURE_FLAGS, FLAG_CACHE_KEY, isBetaFlag, isFeatureOn, normalizeTesterEmails, refreshFeatureFlags, releaseChannel,
 } from '../src/featureFlags.js';
 
 function memoryStorage(seed = {}) {
@@ -36,27 +36,59 @@ test('flags: nightly turns every flag on, but a browser override still wins', ()
   assert.equal(isFeatureOn('smart-fill', { storage: memoryStorage({ 'survey.flag.smart-fill': '0' }), env }), false);
 });
 
-test('flags: older smart fill key and build env var still work', () => {
-  assert.equal(isFeatureOn('smart-fill', { storage: memoryStorage({ SMART_FILL_BETA: '1' }), env: {} }), true);
-  assert.equal(isFeatureOn('smart-fill', { storage: memoryStorage({ SMART_FILL_BETA: '0' }), env: { VITE_ENABLE_SMART_FILL: '1' } }), false);
-  assert.equal(isFeatureOn('smart-fill', { storage: memoryStorage(), env: { VITE_ENABLE_SMART_FILL: '1' } }), true);
+test('flags: older smart fill key and build env var still work on a dev server', () => {
+  const dev = { DEV: true };
+  assert.equal(isFeatureOn('smart-fill', { storage: memoryStorage({ SMART_FILL_BETA: '1' }), env: dev }), true);
+  assert.equal(isFeatureOn('smart-fill', { storage: memoryStorage({ SMART_FILL_BETA: '0' }), env: { ...dev, VITE_ENABLE_SMART_FILL: '1' } }), false);
+  assert.equal(isFeatureOn('smart-fill', { storage: memoryStorage(), env: { ...dev, VITE_ENABLE_SMART_FILL: '1' } }), true);
+});
+
+test('flags: stable never shows a beta feature, even to testers or with an override', () => {
+  const beta = Object.keys(FEATURE_FLAGS).filter((key) => FEATURE_FLAGS[key].stage === 'beta');
+  assert.ok(beta.includes('survey-agent') && beta.includes('smart-fill') && beta.includes('layers'));
+  const everything = Object.fromEntries(Object.keys(FEATURE_FLAGS).map((key) => [key, true]));
+  for (const key of beta) {
+    const def = FEATURE_FLAGS[key];
+    const storage = memoryStorage({
+      [FLAG_CACHE_KEY]: JSON.stringify(everything),
+      [`survey.flag.${key}`]: '1',
+      ...(def.legacyKey ? { [def.legacyKey]: '1' } : {}),
+    });
+    const env = def.env ? { [def.env]: '1' } : {};
+    assert.equal(isBetaFlag(key), true, key);
+    assert.equal(isFeatureOn(key, { storage, env }), false, key);
+    assert.equal(isFeatureOn(key, { storage, env: { ...env, MODE: 'production' } }), false, key);
+    assert.equal(isFeatureOn(key, { storage, env: { ...env, VITE_RELEASE_CHANNEL: 'nightly' } }), true, key);
+    // Test builds (e2e harness, native-app walks) still follow the seeded flags.
+    assert.equal(isFeatureOn(key, { storage, env: { ...env, MODE: 'e2e' } }), true, key);
+  }
+});
+
+test('flags: every flag says whether it is beta (nightly only) or rolling out on stable', () => {
+  for (const [key, def] of Object.entries(FEATURE_FLAGS)) {
+    assert.ok(def.stage === 'beta' || def.stage === 'rollout', key);
+  }
+  // Rollout flags still follow /flags on stable.
+  const storage = memoryStorage({ [FLAG_CACHE_KEY]: JSON.stringify({ 'pro-lock': true }) });
+  assert.equal(isFeatureOn('pro-lock', { storage, env: {} }), true);
+  assert.equal(isBetaFlag('pro-lock'), false);
 });
 
 test('flags: the saved server answer decides when nothing else does', async () => {
   const storage = memoryStorage();
   const supabase = { rpc: async (name) => {
     assert.equal(name, 'get_my_feature_flags');
-    return { data: { 'smart-fill': true, 'gone-flag': true }, error: null };
+    return { data: { 'pro-lock': true, 'gone-flag': true }, error: null };
   } };
   assert.equal(await refreshFeatureFlags(supabase, { storage }), true);
-  const expected = Object.fromEntries(Object.keys(FEATURE_FLAGS).map((key) => [key, key === 'smart-fill']));
+  const expected = Object.fromEntries(Object.keys(FEATURE_FLAGS).map((key) => [key, key === 'pro-lock']));
   assert.deepEqual(JSON.parse(storage.getItem(FLAG_CACHE_KEY)), expected, 'known flags only; missing ones are off');
-  assert.equal(isFeatureOn('smart-fill', { storage, env: {} }), true);
+  assert.equal(isFeatureOn('pro-lock', { storage, env: {} }), true);
   assert.equal(await refreshFeatureFlags(supabase, { storage }), false, 'same answer is not a change');
 
   const failing = { rpc: async () => ({ data: null, error: { message: 'offline' } }) };
   assert.equal(await refreshFeatureFlags(failing, { storage }), false);
-  assert.equal(isFeatureOn('smart-fill', { storage, env: {} }), true, 'an error keeps the last answer');
+  assert.equal(isFeatureOn('pro-lock', { storage, env: {} }), true, 'an error keeps the last answer');
 });
 
 test('flags: tester email list is tidied', () => {
@@ -133,6 +165,15 @@ test('flags: database rules', { skip: isRoot || !tool('initdb') || !tool('pg_ctl
     assert.equal(as(TESTER, 'tester@x.com', `select public.get_my_feature_flags() ->> 'smart-fill';`), 'true');
     assert.equal(as(ADMIN, 'boss@x.com', `select public.get_my_feature_flags() ->> 'smart-fill';`), 'false');
     assert.equal(psql(`set role anon; select public.get_my_feature_flags() ->> 'smart-fill';`), 'false');
+
+    // Survey Nightly: flag admins and listed testers only, never an AI agent or a stranger.
+    psql(readFileSync(new URL('../supabase/migrations/20261024160000_can_use_nightly.sql', import.meta.url), 'utf8'));
+    const nightly = (uid, email, claims) => as(uid, email, 'select public.can_use_nightly();', claims);
+    assert.equal(nightly(ADMIN, 'boss@x.com'), 't');
+    assert.equal(nightly(TESTER, 'tester@x.com'), 't');
+    assert.equal(nightly('33333333-3333-4333-8333-333333333333', 'someone@x.com'), 'f');
+    assert.equal(nightly(TESTER, 'tester@x.com', { client_id: 'agent' }), 'f');
+    assert.equal(psql('set role anon; select public.can_use_nightly();'), 'f');
 
     // An AI agent acting for the admin cannot change flags.
     assert.equal(as(ADMIN, 'boss@x.com', 'select public.is_feature_flag_admin();', { client_id: 'agent' }), 'f');

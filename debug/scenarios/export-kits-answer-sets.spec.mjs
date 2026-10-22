@@ -57,12 +57,10 @@ async function surveyAndExport(page, templateName, answers, { downloadTimeout = 
   const box = await layer.boundingBox();
   await page.mouse.move(box.x + 90, box.y + 100); await page.mouse.down();
   await page.mouse.move(box.x + 180, box.y + 160, { steps: 8 }); await page.mouse.up();
-  const modal = page.getByRole('dialog', { name: 'Categorize Survey Marker' });
+  const modal = page.getByRole('dialog', { name: 'New Survey Marker' });
   if (await modal.isVisible().catch(() => false)) {
-    const cat = modal.getByRole('combobox', { name: 'Category', exact: true });
-    if (await cat.count()) await cat.selectOption({ index: 1 }).catch(() => {});
-    await modal.getByRole('combobox', { name: 'Entity', exact: true }).selectOption('gw1');
-    await modal.getByRole('button', { name: 'Add Survey Marker' }).click();
+    await modal.locator('[data-survey-entity-id="gw1"]').click();
+    await modal.getByRole('option').first().click();
     await expect(modal).toBeHidden();
   }
   const rail = page.locator('.survey-rail');
