@@ -41,10 +41,13 @@ export function validateExportKit(kit) {
 }
 
 export const ANSWER_TONES = Object.freeze(['good', 'bad', 'neutral']);
+// One answer is a plain "Done" tick; six is as many buttons as fit a phone card.
+export const MIN_ANSWERS = 1;
+export const MAX_ANSWERS = 6;
 
 /** Returns a list of problems; empty means the set is usable. */
 export function validateAnswerSet(set) {
-  if (!Array.isArray(set) || set.length < 2 || set.length > 6) return ['answer set needs 2 to 6 answers'];
+  if (!Array.isArray(set) || set.length < MIN_ANSWERS || set.length > MAX_ANSWERS) return [`answer set needs ${MIN_ANSWERS} to ${MAX_ANSWERS} answers`];
   const errors = [];
   const seen = new Set();
   set.forEach((a, i) => {

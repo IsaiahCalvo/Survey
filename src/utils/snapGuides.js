@@ -14,6 +14,8 @@
  *     whole-moves a callout, so it cannot also mean "no snapping". Alt has
  *     no job mid-drag, and Drawboard's own Alt already means "free" for
  *     rotation and "from the centre" for resize.)
+ *   - the snapping switch (the rail's magnet button, Shift+S, Settings >
+ *     Annotations) turns all of it off until switched back on;
  *   - no page-edge snapping (Drawboard has none).
  *
  * All geometry is in PAGE units (the SVG viewBox), so guides are drawn in the
@@ -43,7 +45,11 @@ export function isSnapFreeModifier(event) {
   return !!(event && event.altKey);
 }
 
-/** Device preference disables alignment to other marks, separately from rotation steps. */
+/**
+ * Snapping switched off (the rail's magnet button, Shift+S, Settings) or Alt
+ * held: no lining up with other marks. Rotation drops only its right-angle
+ * magnet (snapRotationDegrees); Shift's steps still apply.
+ */
 export function isAnnotationSnapFree(event) {
   return !readAnnotationSnapping() || isSnapFreeModifier(event);
 }
@@ -338,15 +344,17 @@ export function keepsProportions(obj) {
 /**
  * Rotation feel (Drawboard, audit numbers): no key = whole degrees with a
  * magnet to 0 / 90 / 180 / 270 within 4°; Shift = hard 15° steps; Alt =
- * free. The result is NOT wrapped to [0, 360) — callers keep
+ * free. With snapping switched off (`magnet` false, the device preference)
+ * there is no right-angle magnet, only whole degrees; Shift still steps.
+ * The result is NOT wrapped to [0, 360) — callers keep
  * their own range (a group delta may be negative).
  */
-export function snapRotationDegrees(angle, { shift = false, free = false } = {}) {
+export function snapRotationDegrees(angle, { shift = false, free = false, magnet = readAnnotationSnapping() } = {}) {
   const a = Number(angle);
   if (!Number.isFinite(a) || free) return a;
   if (shift) return Math.round(a / ROTATE_SHIFT_STEP_DEG) * ROTATE_SHIFT_STEP_DEG;
   const right = Math.round(a / 90) * 90;
-  if (Math.abs(a - right) <= ROTATE_MAGNET_DEG) return right;
+  if (magnet && Math.abs(a - right) <= ROTATE_MAGNET_DEG) return right;
   return Math.round(a);
 }
 

@@ -31,6 +31,13 @@ import rotateIconSvg from './assets/rotate-icon.svg';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
+// Owner 2026-10-22: Polygon area, drawn a corner per click like Bluebeam's
+// Add Space and Photoshop's Polygonal Lasso. A click this close (screen px)
+// to the first corner closes it; a click this close to the last corner (the
+// second press of a double-click) adds nothing.
+const POLYGON_CLOSE_PX = 8;
+const POLYGON_SAME_POINT_PX = 3;
+const DRAW_TOOL_TYPES = new Set(['rectangular', 'polygon', 'freehand']);
 const REGION_HANDLE_BLUE = HANDLE_RING;
 // Unified white-fill / blue-ring handle look (shared with every other handle).
 const REGION_HANDLE_STROKE = HANDLE_RING;
@@ -157,12 +164,17 @@ const RegionSelectionTool = ({
   // journaling now happens at commit time in PDFViewer.handleRegionComplete
   // (removedRegionIds diff), so Cancel can never produce phantom journal rows.
 }) => {
-  const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'freehand' | 'move'
+  const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'polygon' | 'freehand' (Lasso) | 'move'
   const [selectionMode, setSelectionMode] = useState(REGION_OPERATIONS.ADD); // 'add' | 'subtract'
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState(null);
   const [currentRect, setCurrentRect] = useState(null);
   const [polygonPoints, setPolygonPoints] = useState([]);
+  // Polygon tool: the corners placed so far and the pointer (the rubber band).
+  const [polyCorners, setPolyCorners] = useState([]);
+  const [polyHover, setPolyHover] = useState(null);
+  const polyCornersRef = useRef([]);
+  polyCornersRef.current = polyCorners;
   const [regions, setRegions] = useState(() => []);
   const [selectedRegionIds, setSelectedRegionIds] = useState(() => new Set());
   const [interactionState, setInteractionState] = useState(null);
@@ -354,11 +366,12 @@ const RegionSelectionTool = ({
     // If drawing, don't switch modes to avoid interrupting the drag
     if (isDrawing) return toolType;
 
-    if (isCmdCtrlPressed && (toolType === 'rectangular' || toolType === 'freehand')) {
+    if (polyCorners.length > 0) return toolType;
+    if (isCmdCtrlPressed && DRAW_TOOL_TYPES.has(toolType)) {
       return 'move';
     }
     return toolType;
-  }, [toolType, isCmdCtrlPressed, isDrawing]);
+  }, [toolType, isCmdCtrlPressed, isDrawing, polyCorners.length]);
 
   // Calculate effective selection mode (override with modifier keys)
   const effectiveSelectionMode = useMemo(() => {
@@ -700,6 +713,8 @@ const RegionSelectionTool = ({
         setIsDrawing(false);
         setCurrentRect(null);
         setPolygonPoints([]);
+        setPolyCorners([]);
+        setPolyHover(null);
         setIsCursorOverCanvas(false);
       }
     } else {
@@ -715,6 +730,8 @@ const RegionSelectionTool = ({
       setIsDrawing(false);
       setCurrentRect(null);
       setPolygonPoints([]);
+      setPolyCorners([]);
+      setPolyHover(null);
       setIsCursorOverCanvas(false);
     }
   }, [active, initialRegions, historyKey, cloneHistorySnapshot, persistHistoryStacks, releaseInteractionPointer]);
@@ -765,20 +782,22 @@ const RegionSelectionTool = ({
     }
   }, [regions.length]);
 
+  // Owner 2026-10-22: the first area is picked only on the switch INTO
+  // Select. After a Delete nothing is picked again by itself, so a second
+  // Delete press never removes an area the user did not pick.
+  const prevToolTypeRef = useRef(toolType);
   useEffect(() => {
+    const enteredMove = prevToolTypeRef.current !== 'move' && toolType === 'move';
+    prevToolTypeRef.current = toolType;
     if (toolType !== 'move') {
       return;
     }
 
-    // When switching to move mode, select the first region if none selected
     setSelectedRegionIds(prevIds => {
-      if (prevIds.size > 0) {
-        // Filter out IDs that no longer exist
-        const validIds = new Set([...prevIds].filter(id => regions.some(r => r.regionId === id)));
-        if (validIds.size > 0) return validIds;
-      }
-
-      // If no valid selection, select the first region
+      const validIds = new Set([...prevIds].filter(id => regions.some(r => r.regionId === id)));
+      if (validIds.size > 0) return validIds.size === prevIds.size ? prevIds : validIds;
+      if (!enteredMove) return prevIds.size === 0 ? prevIds : new Set();
+      // Switching to Select with nothing picked: pick the first area.
       return regions.length > 0 ? new Set([regions[0].regionId]) : new Set();
     });
   }, [toolType, regions]);
@@ -1298,6 +1317,32 @@ const RegionSelectionTool = ({
     return resultRegions;
   }, []);
 
+  // Close the polygon into an area: Add or Subtract exactly as a Lasso does.
+  const commitPolygonRef = useRef(null);
+  const dropPolygon = useCallback(() => {
+    setPolyCorners([]);
+    setPolyHover(null);
+  }, []);
+  commitPolygonRef.current = (corners) => {
+    dropPolygon();
+    if (!Array.isArray(corners) || corners.length < 3) return;
+    pushUndoSnapshot();
+    const thinTolerance = getThinTolerance();
+    const newRegion = {
+      regionId: crypto.randomUUID(),
+      pageId: currentPageId,
+      shapeType: 'polygon',
+      operation: effectiveSelectionMode,
+      coordinates: corners.flatMap((point) => [point.x, point.y]),
+      ...(userId ? { createdBy: userId } : {}),
+    };
+    if (effectiveSelectionMode === REGION_OPERATIONS.ADD) {
+      setRegions((prev) => [...prev, newRegion]);
+    } else {
+      setRegions((prev) => prev.flatMap((existingRegion) => subtractRegionFromRegion(existingRegion, newRegion, { thinTolerance }) || []));
+    }
+  };
+
   const handleMouseDown = useCallback((event) => {
     if (!active || !targetElement) {
       regionDebug(
@@ -1387,6 +1432,20 @@ const RegionSelectionTool = ({
     const pointer = clientPointToPage(event.clientX, event.clientY, rect);
     if (!pointer) return;
     const { x, y } = pointer;
+    if (effectiveToolType === 'polygon') {
+      // A corner per click; the press is not a drag, so nothing waits for up.
+      const corners = polyCornersRef.current;
+      const screenGap = (p) => Math.hypot(pageToScreenX(p.x) - pageToScreenX(x), pageToScreenY(p.y) - pageToScreenY(y));
+      if (corners.length >= 3 && screenGap(corners[0]) <= POLYGON_CLOSE_PX) {
+        commitPolygonRef.current?.(corners);
+        return;
+      }
+      if (corners.length > 0 && screenGap(corners[corners.length - 1]) <= POLYGON_SAME_POINT_PX) return;
+      setPolyCorners([...corners, { x, y }]);
+      setPolyHover({ x, y });
+      return;
+    }
+
     drawGestureRef.current = { startX: event.clientX, startY: event.clientY, page: { x, y }, travelled: 0 };
 
     if (effectiveToolType === 'rectangular') {
@@ -1397,7 +1456,7 @@ const RegionSelectionTool = ({
       setIsDrawing(true);
       setPolygonPoints([{ x, y }]);
     }
-  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect, captureInteractionPointer, mobileMode, findRegionAtPagePoint]);
+  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect, captureInteractionPointer, mobileMode, findRegionAtPagePoint, pageToScreenX, pageToScreenY]);
 
   const handleMouseMove = useCallback((event) => {
     if (!active || !targetElement) return;
@@ -1432,6 +1491,11 @@ const RegionSelectionTool = ({
     const pointer = clientPointToPage(event.clientX, event.clientY, rect);
     if (!pointer) return;
     const { x, y } = pointer;
+
+    if (effectiveToolType === 'polygon' && polyCornersRef.current.length > 0) {
+      setPolyHover({ x, y });
+      return;
+    }
 
     if (interactionState) {
       // Phone: a finger that wobbles inside the tap slop is a tap (select /
@@ -1770,6 +1834,8 @@ const RegionSelectionTool = ({
   const handleMouseUp = useCallback((event) => {
     if (!active) return;
     if (!releaseInteractionPointer(event)) return;
+
+    if (effectiveToolType === 'polygon' && !interactionState) return;
 
     setIsCursorOverCanvas(false);
 
@@ -2279,6 +2345,11 @@ const RegionSelectionTool = ({
   // (phone does the same with a double-tap, see registerRegionTap).
   const handleLayerDoubleClick = useCallback((event) => {
     if (!active || mobileMode || activeTool === 'pan' || isSpacePressedRef.current) return;
+    if (toolType === 'polygon') {
+      event.preventDefault();
+      if (polyCornersRef.current.length >= 3) commitPolygonRef.current?.(polyCornersRef.current);
+      return;
+    }
     if (event.target?.closest?.('[data-region-vertex-handle], [data-region-resize-handle], [data-rotation-handle]')) return;
     const pointer = clientPointToPage(event.clientX, event.clientY);
     if (!pointer) return;
@@ -2311,11 +2382,12 @@ const RegionSelectionTool = ({
   const activeToolRef = useRef(activeTool);
   activeToolRef.current = activeTool;
   const chooseToolType = useCallback((nextToolType) => {
-    if (nextToolType !== 'move' && nextToolType !== 'rectangular' && nextToolType !== 'freehand') return;
+    if (nextToolType !== 'move' && !DRAW_TOOL_TYPES.has(nextToolType)) return;
+    dropPolygon();
     setToolType(nextToolType);
     if (nextToolType !== 'move') setLastDrawingTool(nextToolType);
     if (activeToolRef.current === 'pan' && typeof onRequestRegionTool === 'function') onRequestRegionTool();
-  }, [onRequestRegionTool]);
+  }, [onRequestRegionTool, dropPolygon]);
   const chooseSelectionMode = useCallback((nextMode) => {
     if (nextMode !== REGION_OPERATIONS.ADD && nextMode !== REGION_OPERATIONS.SUBTRACT) return;
     setSelectionMode(nextMode);
@@ -2339,6 +2411,7 @@ const RegionSelectionTool = ({
       selectionMode,
       canSetFullPage,
       canDelete: selectedRegionIds.size > 0,
+      polygonCorners: polyCorners.length,
       setToolType: chooseToolType,
       setSelectionMode: chooseSelectionMode,
       confirm: handleConfirm,
@@ -2357,6 +2430,7 @@ const RegionSelectionTool = ({
     selectionMode,
     canSetFullPage,
     selectedRegionIds,
+    polyCorners.length,
     chooseToolType,
     chooseSelectionMode,
     handleConfirm,
@@ -2699,6 +2773,15 @@ const RegionSelectionTool = ({
     contextMenuOpen: contextMenu !== null,
     closeContextMenu: () => setContextMenu(null),
     clearSelection: () => setSelectedRegionIds(new Set()),
+    deleteSelected: handleDeleteSelected,
+    polygonCorners: polyCorners.length,
+    finishPolygon: () => commitPolygonRef.current?.(polyCornersRef.current),
+    dropPolygon,
+    undoPolygonCorner: () => setPolyCorners((prev) => {
+      const next = prev.slice(0, -1);
+      if (next.length === 0) setPolyHover(null);
+      return next;
+    }),
   };
 
   // Track keyboard modifiers (Shift, Option/Alt, Space) for mode override
@@ -2737,6 +2820,39 @@ const RegionSelectionTool = ({
         stopRegionKeyboardShortcut(event);
         keyboardActionsRef.current.chooseToolType?.('move');
         return;
+      }
+      // Owner 2026-10-22: a polygon being drawn answers Enter (close it),
+      // Escape (drop it) and Backspace / Delete (take back the last corner),
+      // as Bluebeam's polygon and Photoshop's Polygonal Lasso do. With no
+      // polygon going, Delete or Backspace deletes the picked areas
+      // (Bluebeam: select the Space and press Delete).
+      if (
+        !event.metaKey && !event.ctrlKey && !event.altKey &&
+        !event.isComposing &&
+        !isEditableKeyboardTarget() &&
+        ['Enter', 'Escape', 'Backspace', 'Delete'].includes(event.key)
+      ) {
+        const actions = keyboardActionsRef.current;
+        // A focused Areas button, dialog or menu keeps its own Enter, so
+        // Cancel stays Cancel while a polygon is going.
+        const focusOwnsEnter = event.key === 'Enter' &&
+          !!document.activeElement?.closest?.('[data-area-actions], [data-mobile-tool-properties], [role="dialog"], [role="menu"], [role="alertdialog"]');
+        if (actions.polygonCorners > 0 && !focusOwnsEnter) {
+          stopRegionKeyboardShortcut(event);
+          if (event.key === 'Enter') actions.finishPolygon();
+          else if (event.key === 'Escape') actions.dropPolygon();
+          else actions.undoPolygonCorner();
+          return;
+        }
+        if (
+          (event.key === 'Delete' || event.key === 'Backspace') &&
+          actions.hasSelection && !actions.busy && !actions.contextMenuOpen &&
+          !document.activeElement?.closest?.('[role="dialog"], [role="menu"], [role="alertdialog"]')
+        ) {
+          stopRegionKeyboardShortcut(event);
+          actions.deleteSelected?.();
+          return;
+        }
       }
       if (
         event.key === 'Escape' &&
@@ -3068,7 +3184,7 @@ const RegionSelectionTool = ({
               // one cursor image (owner 2026-10-02; utils/areaDrawCursor.js).
               cursor: effectiveToolType === 'move' || !isCursorOverCanvas
                 ? 'default'
-                : ((!mobileMode && (effectiveToolType === 'rectangular' || effectiveToolType === 'freehand'))
+                : ((!mobileMode && DRAW_TOOL_TYPES.has(effectiveToolType))
                   ? areaDrawCursor(effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT ? 'subtract' : 'add')
                   : 'crosshair'),
               // Phone: the layer is see-through to touches. A finger on the page
@@ -3128,6 +3244,36 @@ const RegionSelectionTool = ({
                 strokeLinecap="round"
               />
             )}
+
+            {toolType === 'polygon' && polyCorners.length > 0 && (() => {
+              const subtract = effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT;
+              const ink = subtract ? '#E24A4A' : '#4A90E2';
+              const pts = polyCorners.map((point) => ({ x: pageToScreenX(point.x), y: pageToScreenY(point.y) }));
+              const hover = polyHover ? { x: pageToScreenX(polyHover.x), y: pageToScreenY(polyHover.y) } : null;
+              const closing = Boolean(hover && pts.length >= 3 && Math.hypot(hover.x - pts[0].x, hover.y - pts[0].y) <= POLYGON_CLOSE_PX);
+              const ring = [...pts, ...(hover && !closing ? [hover] : [])];
+              const d = ring.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+              return (
+                <g data-region-polygon-preview="true">
+                  {ring.length > 2 && <path d={`${d} Z`} fill={subtract ? 'rgba(226, 74, 74, 0.12)' : 'rgba(74, 144, 226, 0.12)'} stroke="none" />}
+                  <path d={d} fill="none" stroke={ink} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                  {ring.length > 2 && (
+                    <path d={`M ${ring[ring.length - 1].x} ${ring[ring.length - 1].y} L ${pts[0].x} ${pts[0].y}`} fill="none" stroke={ink} strokeWidth="1.5" strokeDasharray="6 5" opacity="0.7" />
+                  )}
+                  {pts.map((point, index) => (
+                    <circle
+                      key={index}
+                      cx={point.x}
+                      cy={point.y}
+                      r={index === 0 && closing ? 6 : 3.5}
+                      fill={index === 0 && closing ? ink : '#fff'}
+                      stroke={ink}
+                      strokeWidth="1.5"
+                    />
+                  ))}
+                </g>
+              );
+            })()}
 
             {/* Render unified path for all regions to show them as merged */}
             {(() => {

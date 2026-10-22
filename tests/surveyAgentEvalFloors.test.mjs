@@ -39,8 +39,19 @@ const PLANS = {
     find: { kind: 'camera', number: 6, floor: 3 },
     then: ({ item }) => [['set_answers', { item_id: item, answers: answers({ 'cam-mounted': 'Y', 'cam-cable': 'N' }) }]],
   },
+  // A status said in words is the entity, set in the same one call that
+  // finds the item by what was said (no find step).
   'camera twelve, fourth floor, not started': {
-    find: { kind: 'camera', number: 12, floor: 4 }, then: ({ item }) => [['set_entity', { item_id: item, entity_id: 'ent-none' }]],
+    direct: [['set_answers', { item_name: 'camera twelve fourth floor', entity: 'not started' }]],
+  },
+  'camera twelve, not started': {
+    direct: [['set_answers', { item_name: 'camera twelve', entity: 'Not Started' }]],
+  },
+  'show me camera twelve on the fourth floor': {
+    find: { kind: 'camera', number: 12, floor: 4 }, then: ({ item }) => [['show_item', { item_id: item }]],
+  },
+  'camera twelve fourth floor is mounted, partially complete': {
+    direct: [['set_answers', { item_name: 'camera twelve fourth floor', answers: answers({ 'cam-mounted': 'Y' }), entity: 'Partially Complete' }]],
   },
   "Add camera 7 on the fourth floor from the plan, it's partially complete": {
     find: { kind: 'camera', number: 7, floor: 4 },
@@ -60,16 +71,19 @@ function scriptedModel() {
     const said = messages.findLast((m) => m.role === 'user').content;
     const plan = PLANS[said];
     const turn = messages.slice(messages.lastIndexOf(messages.findLast((m) => m.role === 'user')) + 1);
-    const asked = turn.filter((m) => m.role === 'assistant').length;
+    // The app puts the survey context in before the first model step.
+    const asked = turn.filter((m) => m.role === 'assistant' && m.tool_calls?.[0]?.function?.name !== 'get_survey_context').length;
     const call = (n, [name, args]) => {
       assert.ok(toolNames.has(name), `not offered: ${name}`);
       return { id: `call_${asked}_${n}`, type: 'function', function: { name, arguments: JSON.stringify(args) } };
     };
+    if (asked === 0 && plan.direct) return { message: { content: '', tool_calls: plan.direct.map((c, i) => call(i, c)) } };
+    if (plan.direct) return { message: { content: 'Done.', tool_calls: [] } };
     if (asked === 0) {
       return { message: { content: '', tool_calls: [call(0, ['find_described', { description: said, wing: null, ...plan.find }])] } };
     }
     if (asked === 1) {
-      const found = JSON.parse(turn.find((m) => m.role === 'tool').content);
+      const found = JSON.parse(turn.findLast((m) => m.role === 'tool').content);
       const calls = plan.then({ item: found.items[0]?.id, plan: found.plan.find((p) => !p.already_item)?.id });
       if (calls.length) return { message: { content: '', tool_calls: calls.map((c, i) => call(i, c)) } };
       return { message: { content: 'I could not find that one.', tool_calls: [] } };

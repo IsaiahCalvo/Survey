@@ -58,6 +58,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Survey markers merge concurrent field edits',
     stage: 'rollout',
   }),
+  'custom-answers': Object.freeze({
+    label: 'Make-your-own checklist answers in templates',
+    stage: 'beta',
+  }),
   layers: Object.freeze({
     label: 'Layers panel (markup layers + PDF content opacity)',
     stage: 'beta',

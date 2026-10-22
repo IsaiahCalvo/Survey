@@ -69,10 +69,15 @@ p{margin:0 0 1em}
 .right .btn{min-height:42px;padding:0 18px;font-size:15px}
 .theme,.menu{width:42px;height:42px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer}
 .theme:hover,.menu:hover{background:var(--sheet)}
-.theme svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;grid-area:1/1;transition:transform .35s,opacity .25s}
-.theme .i-moon{fill:currentColor;stroke:none;opacity:0;transform:rotate(-60deg) scale(.6)}
-:root[data-theme="dark"] .theme .i-sun{opacity:0;transform:rotate(60deg) scale(.6)}
-:root[data-theme="dark"] .theme .i-moon{opacity:1;transform:none}
+.theme .sm{overflow:visible}
+.theme .sm *{transform-box:view-box;transform-origin:12px 12px;transition:transform .5s cubic-bezier(.3,1.4,.5,1),opacity .3s}
+.theme .sm-core{fill:currentColor;transform:scale(1)}
+.theme .sm-bite{transform:translate(12px,-12px)}
+.theme .sm-rays{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+:root[data-theme="dark"] .theme .sm-core{transform:scale(1.7)}
+:root[data-theme="dark"] .theme .sm-bite{transform:translate(4.5px,-4.5px)}
+:root[data-theme="dark"] .theme .sm-rays{opacity:0;transform:rotate(90deg) scale(.4)}
+@media (pointer:coarse){.theme,.menu{width:44px;height:44px}}
 .menu{display:none;gap:5px;align-content:center}
 .menu span{display:block;width:18px;height:2px;background:currentColor;border-radius:2px}
 .mnav{display:none}

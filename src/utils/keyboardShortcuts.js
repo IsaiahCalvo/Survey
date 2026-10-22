@@ -19,7 +19,7 @@
  * A chord is written lowercase, joined by '+': modifiers first ('mod' is Cmd
  * on a Mac and Ctrl elsewhere; 'shift'; 'alt'), then the key ('f', '0', '[',
  * '?' — Shift+/ on most layouts — or a name: 'space', 'enter', 'escape',
- * 'delete', 'backspace', 'arrows', 'click').
+ * 'delete', 'backspace', 'arrows', 'click', 'drag').
  */
 import { TOOL_SHORTCUTS } from './toolShortcuts.js';
 
@@ -56,6 +56,8 @@ export const SHORTCUT_SECTIONS = [
       // Drawboard canvas audit chunk 6: one view at a time, gliding.
       { chords: ['pageup'], label: 'Scroll up one screen' },
       { chords: ['pagedown'], label: 'Scroll down one screen' },
+      // Owner 2026-10-22: snapping had no switch anyone could find.
+      { chords: ['shift+s'], label: 'Turn snapping on or off' },
     ],
   },
   {
@@ -95,6 +97,7 @@ export const SHORTCUT_SECTIONS = [
       // UX: was "Cycle Window, Crossing, and Fence" — Space has toggled only
       // Window and Crossing (for the box and the lasso alike) since Fence left.
       { chords: ['space'], label: 'While dragging: switch Window / Crossing' },
+      { chords: ['alt+drag'], label: 'Move, resize or turn without snapping' },
     ],
   },
   {
@@ -202,6 +205,16 @@ export function isShortcutsSheetKey(event) {
   const mod = Boolean(event.metaKey || event.ctrlKey);
   if (event.key === '?' && !mod) return true;
   return mod && !event.shiftKey && (event.key === '/' || event.code === 'Slash');
+}
+
+/**
+ * Does this keydown flip snapping on or off? Shift+S, with no Cmd / Ctrl /
+ * Alt (SnappingToggle.jsx useSnappingShortcut). By key code, so a layout that
+ * types another letter there still has it.
+ */
+export function isSnappingToggleKey(event) {
+  if (!event || !event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || event.repeat) return false;
+  return event.code === 'KeyS' || event.key === 'S';
 }
 
 /** Window event the sheet listens for; anything can open it with this. */

@@ -23,6 +23,7 @@ import {
   clientToPagePoint,
   getCrossPageGhost,
   readPageLayers,
+  readPageLayersCached,
   resolveCrossPageDrop,
   resolveCrossPageStep,
   setCrossPageGhost,
@@ -94,7 +95,7 @@ export function useCrossPageMove({
         const state = begin(ds, objects);
         if (!state) return false;
         const L = latestRef.current;
-        const pages = readPageLayers();
+        const pages = readPageLayersCached(state);
         const origin = pages.find((page) => page.pageNumber === state.originPage);
         if (!origin) return false;
         const next = step(state, event, pages);

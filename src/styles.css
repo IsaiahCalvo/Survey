@@ -1399,9 +1399,9 @@ input[type="text"].survey-marker-name-inline:focus {
    Structure (src/sidebar/SpacesPanel.jsx):
      .spaces-panel__head  ........ [Exit space x] [export] [+]
                           phone: Spaces  [export] [+] Done
-     .space-card          grip 2 > Space 1 .................. (switch) trash
-       .space-card__add          [ Add pages (e.g. 3, 6-9, 12)     | + ]
-       .space-region-card        2 (switch) Region 2 ..... edit bulb trash
+     .space-card          grip 2 > Space 1 ........................ (switch) trash
+       .space-card__add   [ Add pages (e.g. 3, 6-9, 12)                | + ]
+       .space-region-card      2 Region 2 .. edit bulb move copy (switch) trash
 
    Columns: the grip sits in the Survey grip gutter (28; phone 32), the page
    count starts right after it, and everything nested starts one step (12)
@@ -1429,6 +1429,13 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-grip-pad: 4px;       /* the grip glyph's inset in it (Survey: 4) */
   --sp-step: 12px;          /* one nesting level (Survey --sv-step) */
   --sp-nest-x: calc(var(--sp-grip-w) + var(--sp-step)); /* 40 = --row-text-x */
+  /* Owner 2026-10-22: one column grid for both line kinds. --sp-lead is the
+     gutter before the count: the panel inset at rest, the grip gutter while
+     editing (the grip fills it). A region's page number sits in the chevron
+     column, its name in the space name column, and its switch and trash in
+     the space's switch and trash columns. */
+  --sp-lead: var(--sp-edge);
+  --sp-name-x: calc(var(--sp-lead) + var(--sp-num-w) + var(--sp-chev-w) + 2px);
   --sp-field-r: 8px;        /* the add-pages field's right inset */
   --sp-num-w: 14px;         /* the space's page count */
   --sp-chev-w: 16px;
@@ -1557,10 +1564,15 @@ input[type="text"].survey-marker-name-inline:focus {
    second surface. */
 
 /* ---- the space row: grip · count · arrow · name ...... switch · trash ---- */
+.spaces-panel.is-edit-mode {
+  --sp-lead: var(--sp-grip-w);
+}
+
 .space-card__head {
   display: flex;
   align-items: center;
   min-height: calc(var(--sp-row-h) - 1px); /* the hairline is inside the 32 / 44 */
+  padding-left: var(--sp-lead);
   padding-right: var(--sp-pad-r);
   box-sizing: border-box;
   cursor: pointer;
@@ -1569,6 +1581,7 @@ input[type="text"].survey-marker-name-inline:focus {
 
 /* The grip in the Survey grip gutter, its glyph at the same inset. */
 .space-card__grip {
+  margin-left: calc(-1 * var(--sp-lead));
   flex: 0 0 var(--sp-grip-w);
   width: var(--sp-grip-w) !important;
   align-self: stretch;
@@ -1582,6 +1595,7 @@ input[type="text"].survey-marker-name-inline:focus {
 .space-card__count {
   flex: 0 0 auto;
   min-width: var(--sp-num-w);
+  box-sizing: border-box;
   color: var(--text-3);
   font-size: var(--sp-small-type);
   font-weight: 500;
@@ -1742,7 +1756,7 @@ input[type="text"].space-card__name:focus-visible {
 
 /* A region's outline switch: the smaller track the region cards had. */
 .spaces-switch--sm {
-  --sp-switch-w: var(--sp-sm-switch-w);
+  /* Same column as the space switch (so the two line up), smaller track. */
   --sp-track-w: var(--sp-sm-track-w);
   --sp-track-h: var(--sp-sm-track-h);
   --sp-knob: var(--sp-sm-knob);
@@ -1807,7 +1821,8 @@ input[type="text"].space-card__name:focus-visible {
   display: flex;
   align-items: center;
   min-height: calc(var(--sp-add-h) - 1px);
-  padding: 0 var(--sp-field-r) 0 var(--sp-nest-x);
+  /* Owner 2026-10-22: the field spans the panel, the same inset each side. */
+  padding: 0 var(--sp-field-r);
   border-top: 1px solid var(--border);
 }
 
@@ -1884,7 +1899,7 @@ input[type="text"].space-card__add-input {
 /* Under the field, no hairline of its own: it belongs to the add line. */
 .space-card__error {
   margin-top: -2px;
-  padding: 0 var(--sp-field-r) 6px var(--sp-nest-x);
+  padding: 0 var(--sp-field-r) 6px var(--sp-field-r);
   color: var(--danger-text);
   font-size: var(--sp-small-type);
   font-weight: 600;
@@ -1895,7 +1910,7 @@ input[type="text"].space-card__add-input {
   display: flex;
   align-items: center;
   min-height: calc(var(--sp-line-h) - 1px);
-  padding: 0 var(--sp-field-r) 0 var(--sp-nest-x);
+  padding: 0 var(--sp-field-r) 0 var(--sp-name-x);
   border-top: 1px solid var(--border);
   color: var(--text-3);
   font-size: var(--sp-label-type);
@@ -1925,12 +1940,16 @@ input[type="text"].space-card__add-input {
 .spaces-region__page {
   appearance: none;
   flex: 0 0 auto;
-  min-width: calc(var(--sp-nest-x) + var(--sp-page-w));
+  /* Its figure is centred in the chevron column (owner 2026-10-22: "the
+     one should be under the dropdown chevron"). */
+  width: calc(var(--sp-lead) + var(--sp-num-w) + var(--sp-chev-w));
   align-self: stretch;
   display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  padding: 0 2px 0 var(--sp-nest-x);
+  justify-content: center;
+  padding: 0 0 0 calc(var(--sp-lead) + var(--sp-num-w));
+  overflow: visible;
+  white-space: nowrap;
   box-sizing: border-box;
   background: transparent;
   border: 0;
@@ -1954,7 +1973,7 @@ input[type="text"].space-card__add-input {
   align-self: stretch;
   display: flex;
   align-items: center;
-  padding-left: 4px;
+  padding-left: 2px;
 }
 
 .spaces-region__label,
@@ -2174,6 +2193,48 @@ input[type="text"].spaces-region__name-input:focus-visible {
 .spaces-export__space:active,
 .spaces-export__action:not(:disabled):active {
   background: var(--pressed);
+}
+
+/* ---- Move or copy a region (owner 2026-10-22): the Export menu's card,
+   hung under the row's button and kept inside the window by AnchoredPopover.
+   The page is the add-pages well; Up/Down step it. ------------------------ */
+.spaces-transfer--menu {
+  right: auto;
+  left: 50%;
+  transform: translate(-50%, 0);
+}
+
+.spaces-transfer__page {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px 4px;
+}
+
+.spaces-transfer__field {
+  flex: 0 0 auto;
+  width: 56px;
+}
+
+input[type="text"].spaces-transfer__input {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.spaces-transfer__of {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.spaces-transfer__hint {
+  padding: 0 8px 2px;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.spaces-export__action:disabled {
+  color: var(--text-3);
+  cursor: default;
 }
 
 /* Phone: a small sheet of its own over the Spaces sheet, standing on the dock

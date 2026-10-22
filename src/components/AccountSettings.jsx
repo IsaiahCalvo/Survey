@@ -1145,8 +1145,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                 <h3>Snapping</h3>
                 <div className="account-pref-row">
                   <div className="account-pref-copy">
-                    <div className="account-pref-title" id="account-pref-annotation-snapping">Snap to annotations</div>
-                    <p className="account-pref-description">Align marks with nearby annotations when you move or resize them. Hold Alt to move freely.</p>
+                    <div className="account-pref-title" id="account-pref-annotation-snapping">Snapping</div>
+                    <p className="account-pref-description">Line marks up with nearby annotations, pull line ends onto other ends, and stop turns at right angles. Also the magnet button beside the page controls, or Shift+S. Hold Alt while dragging to skip it once.</p>
                   </div>
                   <button type="button" className="account-switch" role="switch" aria-checked={annotationSnapping} aria-labelledby="account-pref-annotation-snapping" data-pref="annotation-snapping" onClick={() => setAnnotationSnapping(writeAnnotationSnapping(!annotationSnapping))}>
                     <span className="account-switch-track" aria-hidden="true" />

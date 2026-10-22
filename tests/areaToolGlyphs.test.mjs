@@ -16,7 +16,8 @@ test('one source: Icons.jsx and the morph read the glyphs from areaToolGlyphs.js
   assert.match(icons, /import \{ AREA_TOOL_GLYPHS, AREA_TOOL_STROKE_WIDTH \} from '\.\/utils\/areaToolGlyphs\.js';/);
   assert.match(icons, /areaRect: \(size, color, style, className\) => renderAreaToolGlyph\('areaRect'/);
   assert.match(icons, /areaFreehand: \(size, color, style, className\) => renderAreaToolGlyph\('areaFreehand'/);
-  for (const name of ['areaRect', 'areaFreehand']) {
+  assert.match(icons, /areaPolygon: \(size, color, style, className\) => renderAreaToolGlyph\('areaPolygon'/);
+  for (const name of ['areaRect', 'areaPolygon', 'areaFreehand']) {
     assert.equal(MORPH_ICONS[name].transform, AREA_TOOL_GLYPHS[name].transform);
     assert.deepEqual(MORPH_ICONS[name].paths.map((p) => p.d), AREA_TOOL_GLYPHS[name].paths.map((p) => p.d));
     // No path text anywhere else.
@@ -30,10 +31,14 @@ test('one source: Icons.jsx and the morph read the glyphs from areaToolGlyphs.js
 test('the tool bar and the phone rail use them', () => {
   const shell = read('src/AppShell.jsx');
   assert.match(shell, /tool\('rectangle', 'Rectangle area', 'areaRect'/);
-  assert.match(shell, /tool\('freehand', 'Freehand area', 'areaFreehand'/);
+  assert.match(shell, /tool\('polygon', 'Polygon area', 'areaPolygon'/);
+  assert.match(shell, /tool\('freehand', 'Lasso area', 'areaFreehand'/);
+  // Rectangle, Polygon, Lasso - in that order (owner 2026-10-22).
+  assert.ok(shell.indexOf("tool('rectangle'") < shell.indexOf("tool('polygon'") && shell.indexOf("tool('polygon'") < shell.indexOf("tool('freehand'"));
   const phone = read('src/mobile/MobilePdfViewerChrome.jsx');
   assert.match(phone, /icon="areaRect"[\s\S]{0,80}label="Rectangle area"[\s\S]{0,40}data-morph-icon="areaRect"/);
-  assert.match(phone, /icon="areaFreehand"[\s\S]{0,80}label="Freehand area"[\s\S]{0,40}data-morph-icon="areaFreehand"/);
+  assert.match(phone, /icon="areaPolygon"[\s\S]{0,80}label="Polygon area"[\s\S]{0,40}data-morph-icon="areaPolygon"/);
+  assert.match(phone, /icon="areaFreehand"[\s\S]{0,80}label="Lasso area"[\s\S]{0,40}data-morph-icon="areaFreehand"/);
 });
 
 test('optical balance: house stroke, a 20-unit box centred on the grid', () => {

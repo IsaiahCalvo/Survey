@@ -192,6 +192,8 @@ import {
   textScalesFontFor,
 } from '../utils/groupResize.js';
 import { TEXT_PADDING } from '../utils/textEditCommit.js';
+import { growTextBoxToFit, isTextSideHandle } from '../utils/textBoxFit.js';
+import { measureTextContentHeight } from '../utils/textContentMeasure.js';
 
 // Last inverse scale measured per page width (page units), shared by every
 // page layer: pages of one set share a width and a zoom.
@@ -3068,6 +3070,10 @@ export function useSVGInteraction({
             if (orig.height) target.top = newVisible.y - newH / 2;
             if (scalesFont) {
               target.fontSize = Math.round(scaledGroupFontSize(orig.fontSize, axis.x, axis.y) * 10) / 10;
+            } else if (orig.height) {
+              // Drawboard: words rewrapped by a side drag grow the box
+              // downward so no line is cut off (textBoxFit.js).
+              Object.assign(target, growTextBoxToFit(target, measureTextContentHeight(target)));
             }
           } else {
             target.scaleX = (orig.scaleX || 1) * axis.x;
@@ -5186,6 +5192,11 @@ export function useSVGInteraction({
           obj.scaleY = 1;
           obj.left = newLeft;
           obj.top = newTop;
+          // Drawboard: words rewrapped by a side drag grow the box downward
+          // so no line is cut off (textBoxFit.js).
+          if (obj.height && isTextSideHandle(ds.handleId)) {
+            Object.assign(obj, growTextBoxToFit(obj, measureTextContentHeight(obj)));
+          }
           lockTextboxSizeAfterResize(obj);
         } else if (ds.originalProps.isPointsShape) {
           // UX: polygon/polyline. `newLeft`/`newTop` are in visible-bbox space

@@ -241,6 +241,33 @@ export function readPageLayers(root = typeof document !== 'undefined' ? document
   return out;
 }
 
+// Page layers only move on screen when something scrolls, zooms or resizes, so
+// a drag reads them once and again only after one of those. A fresh read per
+// pointermove cost a document-wide querySelectorAll per frame on dense sheets.
+let layoutEpoch = 0;
+let epochListening = false;
+function listenForLayoutChanges() {
+  if (epochListening || typeof window === 'undefined' || typeof document === 'undefined') return;
+  epochListening = true;
+  const bump = () => { layoutEpoch += 1; };
+  const opts = { capture: true, passive: true };
+  document.addEventListener('scroll', bump, opts);
+  window.addEventListener('wheel', bump, opts);
+  window.addEventListener('resize', bump, opts);
+  window.addEventListener('keydown', bump, opts); // keyboard zoom
+  window.visualViewport?.addEventListener?.('resize', bump, opts);
+}
+
+/** readPageLayers, cached on `holder` until the next scroll, wheel, key or resize. */
+export function readPageLayersCached(holder, root) {
+  listenForLayoutChanges();
+  const cached = holder.pageLayers;
+  if (cached && cached.epoch === layoutEpoch && cached.pages.length > 0) return cached.pages;
+  const pages = readPageLayers(root);
+  holder.pageLayers = { epoch: layoutEpoch, pages };
+  return pages;
+}
+
 // ---------------------------------------------------------------------------
 // The carried mark's picture on the page it hovers over. Only the drag that
 // owns it writes it; each page layer reads its own page's entry.

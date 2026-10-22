@@ -425,6 +425,31 @@
    "expect": {
     "noChanges": true
    }
+  },
+  {
+   "say": "camera twelve, not started",
+   "expect": {
+    "c412": {
+     "entity": "ent-none"
+    }
+   }
+  },
+  {
+   "say": "show me camera twelve on the fourth floor",
+   "expect": {
+    "shows": "c412"
+   }
+  },
+  {
+   "say": "camera twelve fourth floor is mounted, partially complete",
+   "expect": {
+    "c412": {
+     "answers": {
+      "cam-mounted": "Y"
+     },
+     "entity": "ent-part"
+    }
+   }
   }
  ]
 }
