@@ -25,8 +25,8 @@ indices() { ev "[...document.querySelectorAll('g[data-annotation-index]')].map(g
 newidx() { ev "(() => { const old = new Set('$1'.split(',')); const n = [...document.querySelectorAll('g[data-annotation-index]')].map(g => g.getAttribute('data-annotation-index')).filter(i => !old.has(i)); return n.length === 1 ? n[0] : 'none:' + n.join(','); })()"; }
 # A committed straight line renders as a visible <line x1 y1 x2 y2> (page
 # units, svgAnnotationRenderers renderLine) inside g[data-annotation-index];
-# hit bands use stroke="transparent". Prints "x1 y1 x2 y2" in page units.
-ends() { ev "(() => { const g = document.querySelector('g[data-annotation-index=\"$1\"]'); const l = g && [...g.querySelectorAll('line')].find(l => l.getAttribute('stroke') !== 'transparent'); if (!l) return 'none'; return ['x1', 'y1', 'x2', 'y2'].map(a => (+l.getAttribute(a)).toFixed(3)).join(' '); })()"; }
+# hit bands use stroke="transparent". Prints "x1 y1 x2 y2" in screen CSS px (the line sits in a transformed group).
+ends() { ev "(() => { const g = document.querySelector('g[data-annotation-index=\"$1\"]'); const l = g && [...g.querySelectorAll('line')].find(l => l.getAttribute('stroke') !== 'transparent'); if (!l) return 'none'; const m = l.getScreenCTM(); const p = k => new DOMPoint(+l.getAttribute('x' + k), +l.getAttribute('y' + k)).matrixTransform(m); const a = p(1), b = p(2); return [a.x, a.y, b.x, b.y].map(v => v.toFixed(3)).join(' '); })()"; }
 # Device px of the line's end point $2 (1 or 2) via its screen CTM
 # (device px = CSS px * devicePixelRatio).
 endpx() { ev "(() => { const g = document.querySelector('g[data-annotation-index=\"$1\"]'); const l = [...g.querySelectorAll('line')].find(l => l.getAttribute('stroke') !== 'transparent'); const m = l.getScreenCTM(); const p = new DOMPoint(+l.getAttribute('x$2'), +l.getAttribute('y$2')).matrixTransform(m); const d = window.devicePixelRatio || 1; return Math.round(p.x * d) + ' ' + Math.round(p.y * d); })()"; }
@@ -51,7 +51,7 @@ echo "pressed tools: $(ev "[...document.querySelectorAll('[aria-pressed=true]')]
 A=$(draw $((W * 3 / 10)) $((H * 52 / 100)) $((W * 6 / 10)) $((H * 52 / 100)))
 echo "line A index: $A"
 case "$A" in none*) fail "Line A was not committed ($A); events: $(ev "(window.__pd || []).slice(-8).join(' , ')")";; esac
-EA=$(ends "$A"); echo "line A ends (page): $EA"
+EA=$(ends "$A"); echo "line A ends (screen CSS px): $EA"
 [ "$EA" != "none" ] || fail "Line A has no visible <line> element"
 AE=$(endpx "$A" 2); echo "line A end (device px): $AE"
 set -- $AE
@@ -62,11 +62,11 @@ BX=$(($1 + 6)); BY=$(($2 + 5))
 B=$(draw "$BX" "$BY" $((W * 3 / 4)) $((H * 48 / 100)))
 echo "line B index: $B"
 case "$B" in none*) fail "Line B was not committed ($B)";; esac
-EB=$(ends "$B"); echo "line B ends (page): $EB"
+EB=$(ends "$B"); echo "line B ends (screen CSS px): $EB"
 [ "$EB" != "none" ] || fail "Line B has no visible <line> element"
 ok=$(node -e "const a = process.argv[1].split(' ').map(Number), b = process.argv[2].split(' ').map(Number); const dx = b[0] - a[2], dy = b[1] - a[3]; console.log(Math.hypot(dx, dy) <= 0.5 ? 'ok' : 'off by ' + dx.toFixed(3) + ',' + dy.toFixed(3))" "$EA" "$EB")
 echo "B start vs A end: $ok"
-[ "$ok" = "ok" ] || fail "Line B start ($EB) did not snap to line A end ($EA): $ok page units (started 6,5 device px off)"
+[ "$ok" = "ok" ] || fail "Line B start ($EB) did not snap to line A end ($EA): $ok CSS px (started 6,5 device px off)"
 # Line C: 300 device px at 42 degrees (3 off 45), up and to the right, far
 # from A and B's ends so no endpoint pull applies.
 CX=$((W * 25 / 100)); CY=$((H * 58 / 100))
@@ -74,7 +74,7 @@ read -r DX DY < <(node -e "const r = 42 * Math.PI / 180; console.log(Math.round(
 C=$(draw "$CX" "$CY" $((CX + DX)) $((CY - DY)))
 echo "line C index: $C"
 case "$C" in none*) fail "Line C was not committed ($C)";; esac
-EC=$(ends "$C"); echo "line C ends (page): $EC"
+EC=$(ends "$C"); echo "line C ends (screen CSS px): $EC"
 [ "$EC" != "none" ] || fail "Line C has no visible <line> element"
 ang=$(node -e "const c = process.argv[1].split(' ').map(Number); console.log((Math.atan2(Math.abs(c[3] - c[1]), Math.abs(c[2] - c[0])) * 180 / Math.PI).toFixed(3))" "$EC")
 echo "line C angle: $ang (drawn at 42)"
