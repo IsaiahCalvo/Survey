@@ -180,8 +180,9 @@ const PLANS = [
   { name: 'Enterprise', price: '$20', per: '/user/month', note: 'Minimum 3 users', cta: 'Email us', href: MAIL, items: ['Everything in Pro', 'Live editing together', '1TB storage', 'Admin tools and single sign-on', 'Custom builds for your company'] },
 ];
 
-const ICON_SUN = '<svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>';
-const ICON_MOON = '<svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>';
+// One glyph that morphs: the sun's core grows while a masked "bite" slides in to
+// carve a crescent, and the rays spin and shrink away (site.css drives it).
+const ICON_THEME = '<svg class="sm" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><mask id="sm-cut"><rect width="24" height="24" fill="#fff"/><circle class="sm-bite" cx="12" cy="12" r="8" fill="#000"/></mask><circle class="sm-core" cx="12" cy="12" r="5" mask="url(#sm-cut)"/><g class="sm-rays"><path d="M12 1.5v2.2M12 20.3v2.2M1.5 12h2.2M20.3 12h2.2M4.6 4.6l1.5 1.5M17.9 17.9l1.5 1.5M4.6 19.4l1.5-1.5M17.9 6.1l1.5-1.5"/></g></svg>';
 
 export const ORG = { '@type': 'Organization', '@id': ORIGIN + '/#org', name: 'Survey', url: ORIGIN + '/welcome', logo: ORIGIN + '/logo512.png', email: 'isaiahcalvo123@gmail.com' };
 const SOFTWARE = {
@@ -238,7 +239,7 @@ export function page({ path, title, desc, body, schema = [], crumb, crumbs, scri
   <a class="brand" href="/welcome"><img src="/logo192.png" alt="" width="28" height="28" />Survey</a>
   <nav class="links" aria-label="Main">${nav}</nav>
   <div class="right">
-    <button class="theme" type="button" aria-label="Dark theme" aria-pressed="false">${ICON_SUN}${ICON_MOON}</button>
+    <button class="theme" type="button" aria-label="Dark theme" aria-pressed="false">${ICON_THEME}</button>
     <a class="login" href="${APP}">Log in</a>
     <a class="btn primary" href="${SIGNUP}">Start free</a>
     <button class="menu" type="button" aria-label="Menu" aria-expanded="false" aria-controls="mnav"><span></span><span></span></button>
