@@ -151,3 +151,53 @@
 @media (prefers-reduced-motion: reduce) {
   .survey-place--sheet { animation: none; }
 }
+
+/* The module in use, above its categories (only with 2+ modules). A press
+   swaps the category list for the module list. */
+.survey-place__module {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  margin: 0 2px;
+  padding: 0 8px;
+  color: var(--text-2);
+  background: var(--surface-3, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: 500 11px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.survey-place__module-word {
+  color: var(--text-3);
+}
+
+.survey-place__module-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .survey-place__module:hover {
+    background: var(--hover);
+  }
+}
+
+.survey-place__module:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.survey-place--sheet .survey-place__module {
+  height: 40px;
+  margin: 0;
+  font-size: 14px;
+}

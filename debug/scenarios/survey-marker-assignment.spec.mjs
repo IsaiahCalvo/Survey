@@ -24,6 +24,10 @@ test('Survey placement chooses module, category and entity and Reuse keeps them'
   // The entity is already picked (the first); a category row places it.
   await expect(modal.getByRole('button', { name: 'Entity Existing' })).toHaveAttribute('aria-pressed', 'true');
   await modal.getByRole('button', { name: 'Entity New' }).click();
+  // Only the marker's module is listed; the Module button switches it.
+  await expect(modal.getByRole('option', { name: /Doors/ })).toHaveCount(0);
+  await modal.getByRole('button', { name: /Change module/ }).click();
+  await modal.getByRole('option', { name: 'Proposed' }).click();
   await modal.getByRole('option', { name: /Doors/ }).click();
   await expect(modal).toBeHidden();
   await expect(page.locator('.survey-rail__entity-caret')).toHaveCount(0);

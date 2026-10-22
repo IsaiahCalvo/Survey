@@ -532,6 +532,7 @@ export const SURVEY_BAR_PARTS = Object.freeze({
   nameMin: 40, // the fewest pixels of a name worth showing ("Exis...")
   reuse: 67, // the switch and its word
   reuseCompact: 28, // the switch alone
+  markerWidth: 62, // the freehand marker's Width pill (--chrome-field-w-fontsize)
   more: 28, // the More (...) button
   moreGap: 4, // between the template menu and More
   done: 50,
@@ -617,6 +618,8 @@ export function surveyBarCentreWidth(step, sizes = {}, rowMax = ROW_MAX) {
   if (look.module !== 'more') {
     centre += (look.module === 'full' ? moduleFull : moduleShort) + P.divider;
     centre += P.divider + (look.reuse === 'full' ? P.reuse : P.reuseCompact);
+    // The freehand marker's Width (only while it shows; in More once folded).
+    if (sizes.markerWidth) centre += P.divider + P.markerWidth;
   }
   return { centre, moduleFull, moduleShort, categories };
 }
@@ -638,6 +641,7 @@ export function surveyBarCentreWidth(step, sizes = {}, rowMax = ROW_MAX) {
  * @param {number} [input.entityAllChip] the entities' "All N" chip
  * @param {number} [input.swatchGap]     the entity swatches' gutter as drawn
  *   (6px; a touch-first tablet draws the roomier colour gutter, touchTargets.css)
+ * @param {boolean} [input.markerWidth]  the freehand marker's Width pill shows
  * @returns {{ step: string, index: number, stable: boolean, centreWidth: number,
  *   rowMax: number, template: 'full'|'glyph', templateRoom: number,
  *   done: 'word'|'glyph', entityRowMax: number, entityStable: boolean,
@@ -659,9 +663,10 @@ export function planSurveyBar({
   entityCount = 0,
   entityAllChip = SURVEY_BAR_PARTS.allChip,
   swatchGap = SURVEY_BAR_PARTS.swatchGap,
+  markerWidth = false,
 }) {
   const P = SURVEY_BAR_PARTS;
-  const sizes = { moduleText, categoryCount, chip, allChip, empty };
+  const sizes = { moduleText, categoryCount, chip, allChip, empty, markerWidth: Boolean(markerWidth) };
   // The start end piece's smallest look: the template glyph, and from the
   // fold step on the More menu beside it.
   const startMin = (index) => P.templateGlyph + (surveyBarLook(index).more ? P.moreGap + P.more : 0);

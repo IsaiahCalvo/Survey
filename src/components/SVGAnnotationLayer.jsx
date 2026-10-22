@@ -190,7 +190,8 @@ import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
 import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
 import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '../utils/crossPageMove.js';
 // Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
-import { buildPolygonMarkerBounds, buildStrokeMarkerBounds, MARKER_STROKE_DEFAULT_WIDTH, markerShapePathData } from '../survey/markerShapes.js';
+import { buildDotMarkerBounds, buildPolygonMarkerBounds, buildStrokeMarkerBounds, markerShapePathData } from '../survey/markerShapes.js';
+import { getMarkerStrokeWidth, useMarkerStrokeWidth } from '../survey/markerStrokeWidth.js';
 import '../survey/smartFillBeta.js';
 import { findSimilarOnPage } from '../survey/smartFillProvider.js';
 import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
@@ -1346,6 +1347,7 @@ const SVGAnnotationLayerBody = memo(({
   // Owner 2026-10-13: how the Survey Marker tool draws (the tool-bar marker
   // group; always 'rectangle' where no picker is on screen, e.g. the phone).
   const markerDrawMode = useEffectiveMarkerDrawMode();
+  const markerStrokeWidth = useMarkerStrokeWidth();
 
   // ---------------------------------------------------------------------------
   // EDIT-12: RotationInputField visibility state machine (Phase 12 Plan 02)
@@ -2572,11 +2574,18 @@ const SVGAnnotationLayerBody = memo(({
       freehandPointsRef.current = [];
       if (tool === 'survey-marker-freehand') {
         // A freehand Survey Marker: its box plus the stroke it was drawn with
-        // (src/survey/markerShapes.js). A press that never moved draws
-        // nothing — and, like the rectangle, picks the mark it landed on.
-        const markerBounds = state.passed === false
-          ? null // never passed the drag threshold: a tap
-          : buildStrokeMarkerBounds(points, { width: MARKER_STROKE_DEFAULT_WIDTH });
+        // (src/survey/markerShapes.js), at the survey bar's Width. Owner
+        // 2026-10-22: a press that never moved (a tap) places a dot, like a
+        // pen tap; it only picks instead when it landed on a mark it may pick.
+        const markerWidth = getMarkerStrokeWidth();
+        const tapped = state.passed === false;
+        const tapPicks = state.pressFallback?.click === 'select' || state.pressFallback?.click === 'add';
+        const markerBounds = tapped
+          ? (tapPicks || state.pointerType === 'touch'
+            ? null
+            : buildDotMarkerBounds(points[0], { width: markerWidth }))
+          : (buildStrokeMarkerBounds(points, { width: markerWidth })
+            || buildDotMarkerBounds(points[0], { width: markerWidth }));
         if (markerBounds && typeof onSurveyMarkerCreated === 'function') {
           recordAnnotationCommit({
             surface: 'SVGAnnotationLayer',
@@ -7617,9 +7626,10 @@ const SVGAnnotationLayerBody = memo(({
               });
               freehandPointsRef.current = [];
               appendCoalescedPagePoints(e.nativeEvent);
-              // A marker is an object, not ink (docs/GESTURE-CONTRACT.md D2):
-              // the press must travel past the shape drag threshold (10 px
-              // finger, 6 px mouse / pen) or it is a tap - no marker.
+              // docs/GESTURE-CONTRACT.md D2: a press that travels past the
+              // shape drag threshold (10 px finger, 6 px mouse / pen) draws
+              // the stroke; one that does not is a tap - a dot marker (mouse
+              // / pen) or nothing (finger).
               setShapeCreation({
                 tool: 'survey-marker-freehand', gestureId, pointerId: e.pointerId, tick: 0, pressFallback,
                 startClient: { x: e.clientX, y: e.clientY }, pointerType: e.pointerType, passed: false,
@@ -8204,7 +8214,7 @@ const SVGAnnotationLayerBody = memo(({
               : strokeColor}
           strokeWidth={shapeCreation.tool === 'highlighter'
             ? Math.max(Number(strokeWidth) || 3, 8)
-            : shapeCreation.tool === 'survey-marker-freehand' ? MARKER_STROKE_DEFAULT_WIDTH
+            : shapeCreation.tool === 'survey-marker-freehand' ? markerStrokeWidth
               : (Number(strokeWidth) || 3)}
           strokeLinecap="round"
           strokeLinejoin="round"
