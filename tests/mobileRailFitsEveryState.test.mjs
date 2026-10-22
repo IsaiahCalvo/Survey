@@ -288,11 +288,13 @@ const states = () => {
   // CHANGE 2026-10-21 (PR #1055 on the phone): Shapes gained Cloud and Measure
   // (9 chips): 423 -> 487, re-measured live at 390x844 (Draw / Text unchanged
   // at 295); beside the survey rows 661 -> 725, recomputed from the tokens.
-  const live = { draw: 295, shape: 487, review: 295 };
+  // CHANGE 2026-10-22: Symbols removed, so Text is back to 2 chips: 295 -> 263,
+  // and beside the survey rows 533 -> 501 (the pre-KAL-407 live numbers).
+  const live = { draw: 295, shape: 487, review: 263 };
   // RULED CHANGE 2026-10-01: the same pitch as every other state (no dense
   // override), re-measured live at 390x844 with 2 categories + 5 entities:
   // Draw 533, Shapes 661, Text 501 (scrollHeight of the tool column).
-  const liveDense = { draw: 533, shape: 725, review: 533 };
+  const liveDense = { draw: 533, shape: 725, review: 501 };
   for (const [id, tools] of Object.entries(TOOL_GROUPS)) {
     out.push([
       `${id} group open`,

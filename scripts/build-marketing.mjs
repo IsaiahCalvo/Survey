@@ -129,7 +129,6 @@ const TOOLSET = [
   ['counter', 'Count markers', 'Tap each item. Every category keeps a running total.'],
   ['measureScale', 'Measure', 'Set the page scale, then measure length and area.'],
   ['callout', 'Text and callouts', 'Notes that point at the exact spot they are about.'],
-  ['library', 'Symbols', 'Drop stamps and symbols on the sheet.'],
   ['formatHighlight', 'Text markup', 'Highlight, underline, squiggle and strike through words.'],
   ['scanText', 'OCR', 'Read a scanned sheet on your device so you can search it.'],
   ['pages', 'Page tools', 'Insert, rotate, delete, merge and split pages.'],
