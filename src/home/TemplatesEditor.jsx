@@ -2037,7 +2037,7 @@ export default function TemplatesEditor({
       // Excel layout; unset means the standard export.
       ...(r.exportKitId ? { exportKitId: r.exportKitId } : {}),
       // Checklist answers; unset means Y / N / N/A.
-      ...(r.answerSet ? { answerSet: r.answerSet.map((a) => ({ value: a.value, tone: a.tone })) } : {}),
+      ...(r.answerSet ? { answerSet: r.answerSet.map((a) => ({ value: a.value, tone: a.tone, ...(a.means ? { means: a.means } : {}) })) } : {}),
       id: r.id,
       name: r.name,
       modules: mods,

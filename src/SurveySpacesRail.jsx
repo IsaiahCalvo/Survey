@@ -49,7 +49,7 @@ import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
-import { answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
+import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput from './components/TypedAnswerInput.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
@@ -1807,9 +1807,14 @@ const SurveySpacesRail = ({
           <div className="mobile-survey-detail-checklist">
             {checklist.length ? checklist.map(item => {
               const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id]?.selection;
+              // The picked answer's "means" line, under the question (no hover on a phone).
+              const means = itemKind(item) === 'choice' ? answerMeans(answerSetFor(selectedTemplate), response) : '';
               return (
                 <div key={item.id} className="mobile-survey-check-item">
-                  <span className="mobile-survey-check-text">{item.text}</span>
+                  <span className="mobile-survey-check-text">
+                    {item.text}
+                    {means && <span className="mobile-survey-check-means">{means}</span>}
+                  </span>
                   {itemKind(item) !== 'choice' ? (
                     <TypedAnswerInput
                       phone
@@ -1833,6 +1838,7 @@ const SurveySpacesRail = ({
                     ))}
                   </div>
                   )}
+
                 </div>
               );
             }) : (
@@ -4013,7 +4019,7 @@ const SurveySpacesRail = ({
                                                           />
                                                         ) : (
                                                         <div className="survey-rail__answers" role="group" aria-label={item.text || 'Checklist answer'}>
-                                                          {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => {
+                                                          {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName, means }) => {
                                                             const isAnswer = sameAnswer(isSelected, option);
                                                             const tone = answerToneName === 'good' ? 'is-yes' : answerToneName === 'bad' ? 'is-no' : 'is-na';
                                                             return (
@@ -4022,6 +4028,7 @@ const SurveySpacesRail = ({
                                                                 type="button"
                                                                 aria-pressed={isAnswer}
                                                                 className={`survey-rail__answer${isAnswer ? ` is-active ${tone}` : ''}`}
+                                                                {...(means ? tip(`${option}: ${means}`, 'below') : {})}
                                                                 onClick={(e) => {
                                                                   e.stopPropagation();
                                                                   // Shared with the mobile detail view — see

@@ -44,6 +44,8 @@ export const ANSWER_TONES = Object.freeze(['good', 'bad', 'neutral']);
 // One answer is a plain "Done" tick; six is as many buttons as fit a phone card.
 export const MIN_ANSWERS = 1;
 export const MAX_ANSWERS = 6;
+// An answer's optional "means" line: a hint on the card, read by the agents.
+export const ANSWER_MEANS_MAX = 80;
 
 /** Returns a list of problems; empty means the set is usable. */
 export function validateAnswerSet(set) {
@@ -57,6 +59,9 @@ export function validateAnswerSet(set) {
     else if (seen.has(v)) errors.push(`answers[${i}].value "${v}" repeated`);
     else seen.add(v);
     if (!ANSWER_TONES.includes(a?.tone)) errors.push(`answers[${i}].tone must be good, bad or neutral`);
+    if (a?.means !== undefined && (typeof a.means !== 'string' || a.means.length > ANSWER_MEANS_MAX)) {
+      errors.push(`answers[${i}].means must be text up to ${ANSWER_MEANS_MAX} characters`);
+    }
   });
   return errors;
 }
