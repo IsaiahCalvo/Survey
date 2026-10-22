@@ -24,7 +24,7 @@ import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
+import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
@@ -1739,11 +1739,19 @@ const SVGAnnotationLayerBody = memo(({
       const band = polyEdgeBandElRef.current;
       return band?.isConnected ? band.__polyEdgeCtx : null;
     };
+    let lastPointerDownAt = NaN;
     const onPointerDown = (e) => {
       const ctx = ctxOf();
       if (!ctx) return;
       let claimed = false;
-      if (e.pointerType === 'pen' || e.pointerType === 'touch') claimed = ctx.arm(e.clientX, e.clientY, e.target, e.pointerType, e.pointerId);
+      if (e.pointerType === 'pen' || e.pointerType === 'touch') {
+        lastPointerDownAt = performance.now();
+        claimed = ctx.arm(e.clientX, e.clientY, e.target, e.pointerType, e.pointerId);
+        // A claimed press belongs to the selected poly's side: another mark
+        // under it must not take the selection away (the menu would then
+        // edit a mark that is no longer selected).
+        if (claimed && !ctx.ownsTarget(e.target)) e.stopPropagation();
+      }
       log({ type: e.type, pointerType: e.pointerType, target: describe(e.target), x: Math.round(e.clientX), y: Math.round(e.clientY), buttons: e.buttons, claimed });
     };
     const onPointerOther = (e) => {
@@ -1755,7 +1763,7 @@ const SVGAnnotationLayerBody = memo(({
       if (!ctx) return;
       const t = e.touches?.[0];
       let claimed = false;
-      if (e.touches.length === 1 && t && !polyVertexLongPressRef.current) {
+      if (e.touches.length === 1 && t && !polyVertexLongPressRef.current && polyEdgeTouchStartMayArm(lastPointerDownAt, performance.now())) {
         claimed = ctx.arm(t.clientX, t.clientY, e.target, t.touchType === 'stylus' ? 'pen' : 'touch', null);
       }
       log({ type: e.type, target: describe(e.target), x: Math.round(t?.clientX ?? -1), y: Math.round(t?.clientY ?? -1), touches: e.touches.length, claimed });
@@ -8887,6 +8895,7 @@ const SVGAnnotationLayerBody = memo(({
           };
           const POLY_EDGE_CLAIM_SKIP = '[data-resize-handle], [data-handle-hit-pad], [data-add-vertex], [data-rotation-handle], [data-poly-vertex-insert]';
           const polyEdgeCtx = {
+            ownsTarget: (t) => Boolean(t?.closest?.(`[data-annotation-index="${selectedIndex}"], [data-poly-edge-hit]`)),
             arm: (x, y, target, pointerType, pointerId) => {
               const band = polyEdgeBandElRef.current;
               if (!band) return false;
@@ -9521,6 +9530,8 @@ const SVGAnnotationLayerBody = memo(({
               // The arming pen lifting onto the menu is not a choice, and a
               // menu inserts once however many clicks reach it.
               if (gate.pressLive() || !gate.consume(polyVertexMenu)) return;
+              // Only into the mark that is still the selected poly.
+              if (polyVertexMenu.annotationIndex !== selectedPolyIndex) { setPolyVertexMenu(null); return; }
               insertPolyVertexOnEdge(polyVertexMenu.annotationIndex, edge.segmentIndex, edge.t);
               setPolyVertexMenu(null);
             }}

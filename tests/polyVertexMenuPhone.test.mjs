@@ -135,3 +135,19 @@ test('one press, one arm, one insert', async () => {
   assert.match(src, /if \(!gate\.fire\(token\)\) return;/);
   assert.match(src, /data-poly-vertex-insert="true"[\s\S]{0,500}if \(gate\.pressLive\(\) \|\| !gate\.consume\(polyVertexMenu\)\) return;/);
 });
+
+test('a touchstart never overrules the pen pointerdown claim, and a claimed press keeps the selection', async () => {
+  const { polyEdgeTouchStartMayArm, POLY_EDGE_TOUCH_FALLBACK_MS } = await import('../src/utils/polyVertices.js');
+  // No pointer event for this contact: the touchstart fallback arms.
+  assert.equal(polyEdgeTouchStartMayArm(NaN, 1000), true);
+  // A pen pointerdown just decided (refused): the stylus touchstart must not arm.
+  assert.equal(polyEdgeTouchStartMayArm(1000, 1003), false);
+  assert.equal(polyEdgeTouchStartMayArm(1000, 1000 + POLY_EDGE_TOUCH_FALLBACK_MS + 1), true);
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(src, /polyEdgeTouchStartMayArm\(lastPointerDownAt, performance\.now\(\)\)/);
+  assert.match(src, /if \(claimed && !ctx\.ownsTarget\(e\.target\)\) e\.stopPropagation\(\);/);
+  assert.match(src, /if \(polyVertexMenu\.annotationIndex !== selectedPolyIndex\) \{ setPolyVertexMenu\(null\); return; \}/);
+  const walk = readFileSync(new URL('../.github/native-flows/android-delete-point.sh', import.meta.url), 'utf8');
+  assert.match(walk, /set -- \$xy; set -- "\$1" "\$\(\(\$2 \+ TOP\)\)"/);
+});

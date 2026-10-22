@@ -228,3 +228,17 @@ export function createPolyEdgePressGate() {
     },
   };
 }
+
+/**
+ * The touchstart fallback arms only when no pen / touch pointerdown came
+ * first for this contact (a WebView that sends no pointer events). When one
+ * did, the pointerdown claim already decided - with the pen's own tolerance -
+ * and a touchstart must not overrule it (CI emulator 2026-10-22: a pen press
+ * 52 px off the side was refused by pointerdown, then claimed by touchstart
+ * under the wider finger band, while the press selected the mark beneath).
+ */
+export const POLY_EDGE_TOUCH_FALLBACK_MS = 300;
+export function polyEdgeTouchStartMayArm(lastPointerDownAt, now) {
+  if (!Number.isFinite(lastPointerDownAt)) return true;
+  return now - lastPointerDownAt > POLY_EDGE_TOUCH_FALLBACK_MS;
+}
