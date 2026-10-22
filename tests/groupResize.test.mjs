@@ -75,9 +75,10 @@ test('a sideways mark takes the frame scales swapped', () => {
   assert.deepEqual(memberAxisScale(0, 2, 1), { x: 2, y: 1 });
 });
 
-test('the multi-selection frame shows resize grabbers (rotate stays hidden)', () => {
+test('the multi-selection frame shows resize grabbers and a rotate grabber (not with a callout)', () => {
   const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
-  assert.match(layer, /moveOnly=\{!groupCanResize\}\s*hideRotationHandle/);
+  assert.match(layer, /moveOnly=\{!groupCanResize\}/);
+  assert.match(layer, /hideRotationHandle=\{!groupCanResize \|\| groupCalloutIdSet\.size > 0\}/);
   assert.match(layer, /const groupCanResize = !groupHasLockedMember/);
   assert.match(layer, /\(groupCalloutIdSet\.size > 0\s*\|\| selectedSurveyMarkerIds\.size > 0/);
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
@@ -149,8 +150,9 @@ test('a Survey Marker box scales like a rectangle (swapped when sideways)', () =
 test('a group resize writes each Survey Marker box in the same save', async () => {
   const { resizeSurveyMarkerRecord } = await import('../src/utils/surveyMarkerFamily.js');
   const record = { id: 'm1', name: 'Door', bounds: { x: 1, y: 2, width: 3, height: 4, angle: 90 } };
-  assert.deepEqual(resizeSurveyMarkerRecord(record, { x: 5, y: 6, width: 7, height: 8, angle: 0 }).bounds,
+  assert.deepEqual(resizeSurveyMarkerRecord(record, { x: 5, y: 6, width: 7, height: 8 }).bounds,
     { x: 5, y: 6, width: 7, height: 8, angle: 90 }, 'the angle stays');
+  assert.equal(resizeSurveyMarkerRecord(record, { x: 5, y: 6, width: 7, height: 8, angle: 30 }).bounds.angle, 30, 'a group turn');
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /if \(patch\.bounds && typeof patch\.bounds === 'object'\)/);
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');

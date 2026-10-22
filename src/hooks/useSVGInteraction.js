@@ -2738,6 +2738,22 @@ export function useSVGInteraction({
         }
       }
 
+      // Survey Markers turn with the group: each box's centre orbits the
+      // pivot and its own angle takes the same turn.
+      const markerPreviews = {};
+      for (const [id, bounds] of Object.entries(ds.groupMarkerResizeOriginals || {})) {
+        const cx = bounds.x + bounds.width / 2 - pivotX;
+        const cy = bounds.y + bounds.height / 2 - pivotY;
+        const turned = ((((bounds.angle || 0) + delta) % 360) + 540) % 360 - 180;
+        markerPreviews[id] = {
+          ...bounds,
+          x: pivotX + cx * cos - cy * sin - bounds.width / 2,
+          y: pivotY + cx * sin + cy * cos - bounds.height / 2,
+          angle: turned === -180 ? 180 : turned,
+        };
+      }
+      ds.currentMarkerBounds = markerPreviews;
+
       ds.currentAnnotations = updatedAnnotations;
       ds.currentAngle = delta;
       // UX: 2026-04-20 v2 — broadcast group-rotate state so the multi-
@@ -2758,6 +2774,7 @@ export function useSVGInteraction({
           snapshotBbox: ds.groupUnionOriginal,
         },
         previewObjects: buildPreviewObjects(updatedAnnotations, ds.groupMemberOriginals),
+        ...(Object.keys(markerPreviews).length > 0 ? { markerPreviews } : {}),
       });
       setInteractionState('rotating');
 
@@ -4742,9 +4759,7 @@ export function useSVGInteraction({
           }
         });
       }
-      const markerBoundsEntries = ds.mode === 'group-resize'
-        ? Object.entries(ds.currentMarkerBounds || {})
-        : [];
+      const markerBoundsEntries = Object.entries(ds.currentMarkerBounds || {});
       const baseAnnotations = calloutPatchEntries.length > 0
         ? (nudgeLatestRef.current.annotations || annotations)
         : annotations;
@@ -5680,9 +5695,9 @@ export function useSVGInteraction({
     const groupMarkerIdList = getGroupMarkerIds();
     const selSize = (selectedIds?.size || 0) + groupCalloutIdList.length + groupMarkerIdList.length;
     if (selSize > 1 && (handleId === 'mtr' || ['tl','tr','bl','br','mt','mb','ml','mr'].includes(handleId))) {
-      // Group rotate still leaves callouts and Survey Markers out (its
-      // grabber is hidden); a group resize takes them along.
-      if (handleId === 'mtr' && (groupCalloutIdList.length > 0 || groupMarkerIdList.length > 0)) return;
+      // A callout has no turn of its own, so a selection holding one only
+      // resizes (the layer hides its rotate grabber).
+      if (handleId === 'mtr' && groupCalloutIdList.length > 0) return;
 
       const ctm = svgRef.current?.getScreenCTM();
       const ctmInverse = ctm ? ctm.inverse() : null;
@@ -5788,7 +5803,7 @@ export function useSVGInteraction({
       // (SVGAnnotationLayer), so every one here may change.
       const calloutResizeOriginals = {};
       const markerResizeOriginals = {};
-      if (handleId !== 'mtr') {
+      {
         const W = pageWidth || 1;
         const H = pageHeight || 1;
         for (const cid of groupCalloutIdList) {

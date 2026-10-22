@@ -378,7 +378,7 @@ export function translateSurveyMarkerRecord(record, dx, dy) {
   };
 }
 
-/** A marker record with its box replaced (a group resize). */
+/** A marker record with its box replaced (a group resize or rotate). */
 export function resizeSurveyMarkerRecord(record, bounds) {
   if (!record?.bounds || !bounds) return record;
   const num = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
@@ -390,6 +390,7 @@ export function resizeSurveyMarkerRecord(record, bounds) {
       y: num(bounds.y, record.bounds.y),
       width: Math.max(0, num(bounds.width, record.bounds.width)),
       height: Math.max(0, num(bounds.height, record.bounds.height)),
+      ...(Number.isFinite(Number(bounds.angle)) ? { angle: Number(bounds.angle) } : {}),
     },
   };
 }

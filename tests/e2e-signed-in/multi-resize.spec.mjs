@@ -94,7 +94,7 @@ for (const pointerType of ['mouse', 'pen']) {
     await expect(page.locator(FRAME)).toHaveCount(1);
     const grabbers = page.locator(`${FRAME} [data-resize-handle]`);
     await expect(grabbers).toHaveCount(8);
-    await expect(page.locator(`${FRAME} [data-rotation-handle]`)).toHaveCount(0);
+    await expect(page.locator(`${FRAME} [data-rotation-handle]`)).toHaveCount(1);
 
     const start = {
       rect: await boxOf(page, rectId),
@@ -445,9 +445,94 @@ test('Survey Markers in the selection resize with it; one Undo puts them back', 
     await expect.poll(async () => Math.round((await markerBoxes(page))[1].width)).toBe(Math.round(startB.width));
     expect(near((await markerBoxes(page))[0].width, startA.width, 0.01)).toBe(true);
     expect(near((await markerBoxes(page))[1].left, startB.left, 0.01)).toBe(true);
+
+    // The rotate grabber turns the markers with the group; one Undo.
+    const handle = await page.locator(`${FRAME} [data-rotation-handle="mtr"]`).boundingBox();
+    const frame2 = await page.locator(`${FRAME} [data-group-selection-hitbox]`).boundingBox();
+    const pivot = { x: frame2.x + frame2.width / 2, y: frame2.y + frame2.height / 2 };
+    const rgrab = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+    const r = Math.hypot(rgrab.x - pivot.x, rgrab.y - pivot.y);
+    await dragWith(page, 'pen', rgrab, { x: pivot.x + r, y: pivot.y });
+    await page.waitForTimeout(800);
+    const turned = await markerBoxes(page);
+    expect(near(turned[0].width, startA.height, 0.08), `turned ${JSON.stringify(turned[0])} from ${JSON.stringify(startA)}`).toBe(true);
+    expect(near(turned[0].height, startA.width, 0.08)).toBe(true);
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => Math.round((await markerBoxes(page))[0].width)).toBe(Math.round(startA.width));
   } finally {
     await admin.from('documents').delete().eq('id', seeded.docId);
     await admin.storage.from('documents').remove([seeded.filePath]);
     await admin.from('templates').delete().eq('id', seeded.templateId);
   }
+});
+
+// Drawboard: the group turns with its rotate grabber. Every mark's centre
+// orbits the frame's centre and each mark takes the same turn; one Undo.
+test('a group turns about its centre with the rotate grabber, mouse and pen', async ({ page }) => {
+  await signIn(page, E2E_ACCOUNTS.owner);
+  await openSampleDocument(page);
+  await page.waitForTimeout(1500);
+  const pageBox = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+  const at = (fx, fy) => ({ x: pageBox.x + pageBox.width * fx, y: pageBox.y + pageBox.height * fy });
+  const near = (x, y, tol = 3) => Math.abs(x - y) <= tol;
+  const centre = (b) => ({ x: b.left + b.width / 2, y: b.top + b.height / 2 });
+
+  const before = new Set(await markIds(page));
+  await drawMark(page, 'r', at(0.2, 0.64), at(0.34, 0.7));
+  const rectId = await newMarkId(page, before);
+  await drawMark(page, 'o', at(0.42, 0.62), at(0.5, 0.72));
+  const ellipseId = await newMarkId(page, before);
+  await drawMark(page, 'p', at(0.22, 0.78), at(0.46, 0.84));
+  const inkId = await newMarkId(page, before);
+  await page.keyboard.press('t');
+  await page.mouse.click(at(0.36, 0.88).x, at(0.36, 0.88).y);
+  await page.keyboard.type('Turn me');
+  await page.keyboard.press('Escape');
+  const textId = await newMarkId(page, before);
+  const ids = [rectId, ellipseId, inkId, textId];
+  await page.waitForTimeout(1200);
+
+  await selectTool(page);
+  const marquee = async () => {
+    await page.mouse.click(at(0.9, 0.97).x, at(0.9, 0.97).y);
+    await page.mouse.move(at(0.12, 0.58).x, at(0.12, 0.58).y);
+    await page.mouse.down();
+    await page.mouse.move(at(0.62, 0.95).x, at(0.62, 0.95).y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(`${FRAME} [data-rotation-handle="mtr"]`)).toHaveCount(1);
+  };
+
+  for (const pointerType of ['mouse', 'pen']) {
+    await marquee();
+    const start = {};
+    for (const id of ids) start[id] = await boxOf(page, id);
+    const frame = await page.locator(`${FRAME} [data-group-selection-hitbox]`).boundingBox();
+    const pivot = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
+    const handle = await page.locator(`${FRAME} [data-rotation-handle="mtr"]`).boundingBox();
+    const grab = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+    const r = Math.hypot(grab.x - pivot.x, grab.y - pivot.y);
+    // A quarter turn clockwise: the grabber goes from above the centre to its right.
+    await dragWith(page, pointerType, grab, { x: pivot.x + r, y: pivot.y });
+    await page.waitForTimeout(600);
+
+    for (const id of ids) {
+      const a = centre(start[id]);
+      const b = centre(await boxOf(page, id));
+      // (x, y) about the pivot turns 90° clockwise to (-y, x).
+      const want = { x: pivot.x - (a.y - pivot.y), y: pivot.y + (a.x - pivot.x) };
+      expect(near(b.x, want.x, 6) && near(b.y, want.y, 6), `${id} centre ${JSON.stringify(b)} want ${JSON.stringify(want)}`).toBe(true);
+    }
+    const turnedRect = await boxOf(page, rectId);
+    expect(near(turnedRect.width, start[rectId].height, 4), `rect turned: ${turnedRect.width} vs ${start[rectId].height}`).toBe(true);
+
+    await page.keyboard.press('Control+z');
+    for (const id of ids) {
+      await expect.poll(async () => Math.round(centre(await boxOf(page, id)).x)).toBe(Math.round(centre(start[id]).x));
+    }
+  }
+
+  await marquee();
+  await page.keyboard.press('Delete');
+  for (const id of ids) await expect(page.locator(`${PAGE} [data-annotation-id="${id}"]`)).toHaveCount(0);
+  await page.waitForTimeout(2500);
 });
