@@ -29,7 +29,9 @@ import { isUserBusy } from '../services/userActivity';
 import { preloadAnnotationImages } from '../utils/annotationImageCache.js';
 import {
   composeThumbnail,
+  composeThumbnailInSlices,
   encodeThumbnail,
+  encodeThumbnailAsync,
   releaseCanvas,
   renderPageToCanvas,
   selectPageOneMarkup,
@@ -89,16 +91,35 @@ export function useDocumentThumbnailCapture({
     return { markup, signature };
   }, []);
 
-  const write = useCallback((snapshot, base, markup, signature) => {
-    const canvas = composeThumbnail(base, markup);
-    let url;
-    try { url = encodeThumbnail(canvas); } finally { releaseCanvas(canvas); }
-    lastSignatureRef.current = signature;
+  const put = useCallback((snapshot, base, signature, url) => {
     const docId = snapshot.pdfFile?.id;
     return thumbnailStore()
       .put(snapshot.key, { url, aspect: base.aspect, signature, source: 'markup' })
       .then((ok) => { if (ok) publishThumbnailUpdate({ docId, key: snapshot.key, source: 'markup' }); return ok; });
   }, []);
+
+  // Leaving the document: encode synchronously so the write is issued before
+  // the page can go away.
+  const writeNow = useCallback((snapshot, base, markup, signature) => {
+    const canvas = composeThumbnail(base, markup);
+    let url;
+    try { url = encodeThumbnail(canvas); } finally { releaseCanvas(canvas); }
+    lastSignatureRef.current = signature;
+    return put(snapshot, base, signature, url);
+  }, [put]);
+
+  // Background capture: the markup paint yields between marks and the encode
+  // runs off the main thread, so a dense page 1 never turns into one long
+  // frame a few seconds after the document opens (~180ms on 667 marks).
+  const write = useCallback(async (snapshot, base, markup, signature) => {
+    const stale = () => latest.current.key !== snapshot.key || latest.current.pdfDoc !== snapshot.pdfDoc;
+    const canvas = await composeThumbnailInSlices(base, markup, { isCancelled: stale });
+    if (!canvas) return false;
+    let url;
+    try { url = await encodeThumbnailAsync(canvas); } finally { releaseCanvas(canvas); }
+    lastSignatureRef.current = signature;
+    return put(snapshot, base, signature, url);
+  }, [put]);
 
   /* Page geometry (cheap) and, when `withCanvas`, the bare page render
      (once per open / per page edit). */
@@ -139,17 +160,28 @@ export function useDocumentThumbnailCapture({
     if (!snapshot.key || !snapshot.pdfDoc) return;
     const cheap = await ensureBase({ withCanvas: false });
     if (!cheap) return;
-    const { signature } = signatureFor(latest.current, cheap.geometry);
+    const hashed = latest.current;
+    const first = signatureFor(hashed, cheap.geometry);
+    const { signature } = first;
     if (signature === lastSignatureRef.current) return;
-    if (!cheap.canvas) {
+    // Nothing confirmed or written since this document opened: the cached
+    // image may already show exactly this markup. Check even when the bare
+    // page is already rendered (the markup hydrating at open triggers that
+    // render), so a reopen does not repaint an up-to-date thumbnail.
+    if (lastSignatureRef.current == null) {
       const existing = await thumbnailStore().get(snapshot.key);
       if (isThumbnailCurrent(existing, signature)) { lastSignatureRef.current = signature; return; }
     }
     const base = await ensureBase({ withCanvas: true });
     if (!base) return;
+    // Hashing a dense page is tens of ms: let input in before painting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const current = latest.current;
     if (current.key !== snapshot.key || current.pdfDoc !== snapshot.pdfDoc) return;
-    const painted = signatureFor(current, base.geometry);
+    const unchanged = current.pageOneAnnotations === hashed.pageOneAnnotations
+      && current.callouts === hashed.callouts
+      && base.geometry === cheap.geometry;
+    const painted = unchanged ? first : signatureFor(current, base.geometry);
     if (painted.signature === lastSignatureRef.current) return;
     if (isUserBusy({ quietMs: 1200 })) { dirtyRef.current = true; return; }
     // w52: image marks (imported stamps) must be decoded before the
@@ -193,8 +225,8 @@ export function useDocumentThumbnailCapture({
     pendingRef.current = false;
     dirtyRef.current = false;
     if (signature === lastSignatureRef.current) return;
-    void write(snapshot, base, markup, signature).catch(() => {});
-  }, [signatureFor, write]);
+    void writeNow(snapshot, base, markup, signature).catch(() => {});
+  }, [signatureFor, writeNow]);
 
   // A document (or its bytes, after a page edit) finished opening.
   useEffect(() => {
