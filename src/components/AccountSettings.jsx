@@ -45,11 +45,13 @@ import {
   resolveSubscriptionQuery,
   SUBSCRIPTION_LOAD_FAILED_TEXT,
 } from '../utils/accountPlatform';
+import { useTooltip } from './Tooltip';
 
 const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
 const SUBSCRIPTION_TIMEOUT_MS = 10_000;
 
 export const AccountSettings = ({ isOpen, onClose }) => {
+  const tip = useTooltip();
   const {
     user,
     updateProfile,
@@ -629,7 +631,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           type="email"
                           value={email}
                           disabled
-                          title="Email cannot be changed"
+                          {...tip('Email cannot be changed', 'below')}
                           autoComplete="email"
                         />
                         <div className="account-field-hint">

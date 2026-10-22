@@ -2,15 +2,19 @@
 // (tests/fixtures/survey-agent-eval.json), shared by the live run
 // (scripts/survey-agent-eval.mjs) and the scripted-model test.
 import { findTagOnPages } from '../src/agent/planText.js';
+import { sheetFloorOf } from '../src/agent/spokenTag.js';
 
 export function memoryBridge(fixture) {
   const markers = JSON.parse(JSON.stringify(fixture.markers));
   for (const m of Object.values(markers)) m.checklistResponses = {};
   const pages = Object.entries(fixture.plan?.pages || {}).map(([page, words]) => ({ page: Number(page), words, source: 'text' }));
   let added = 0;
+  const shown = [];
   return {
     template: fixture.template,
     markers,
+    shown,
+    currentModuleId: fixture.currentModuleId || null,
     canEdit: true,
     setAnswers: (id, list) => { for (const a of list) markers[id].checklistResponses[a.checklistItemId] = { selection: a.value }; },
     setEntity: (id, entityId) => { markers[id].entityId = entityId; },
@@ -18,7 +22,9 @@ export function memoryBridge(fixture) {
     uploadMedia: async () => { throw new Error('no media in the test set'); },
     addMediaRefs: () => {},
     restoreMarker: () => {},
-    showMarker: () => {},
+    showMarker: (id) => { shown.push(id); },
+    showPlace: (page, box) => { shown.push({ page, box }); },
+    readSheets: async () => ({ pages: pages.map((p) => ({ ...p, sheet: sheetFloorOf(p.words) })), unreadPages: [] }),
     findOnPlan: async (text) => ({ matches: findTagOnPages(text, pages), unreadPages: [] }),
     getPageSize: () => fixture.plan?.pageSize || null,
     createItem: ({ name, moduleId, categoryId, entityId, page, bounds }) => {
@@ -45,6 +51,7 @@ export function evalProblems(bridge, changes, expect) {
     if (!m) { problems.push(`${name} was not added`); continue; }
     if (want.category && m.categoryId !== want.category) problems.push(`${name} category: want ${want.category}, got ${m.categoryId}`);
     if (want.page && m.pageNumber !== want.page) problems.push(`${name} page: want ${want.page}, got ${m.pageNumber}`);
+    if (want.entity && m.entityId !== want.entity) problems.push(`${name} entity: want ${want.entity}, got ${m.entityId || null}`);
     for (const [item, value] of Object.entries(want.answers || {})) {
       const got = m.checklistResponses[item]?.selection || null;
       if (got !== value) problems.push(`${name} ${item}: want ${value}, got ${got}`);
@@ -52,6 +59,10 @@ export function evalProblems(bridge, changes, expect) {
   }
   for (const [id, want] of Object.entries(expect)) {
     if (id === 'noChanges' || id === 'created') continue;
+    if (id === 'shows') {
+      if (!(bridge.shown || []).includes(want)) problems.push(`did not show ${bridge.markers[want]?.name || want}`);
+      continue;
+    }
     const m = bridge.markers[id];
     for (const [item, value] of Object.entries(want.answers || {})) {
       const got = m.checklistResponses[item]?.selection || null;

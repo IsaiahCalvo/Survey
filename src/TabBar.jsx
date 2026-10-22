@@ -124,23 +124,12 @@ function TabItem({
     onTabClose(tab.id);
   };
 
-  // KAL-65: the app's shared chip instead of the OS tooltip. The tab's own
-  // name only gets one when the strip has cut it short - a chip repeating a
-  // name you can already read, popping up instantly as the pointer crosses
-  // the strip, would be noise. The dots always explain themselves.
+  // KAL-65: the app's shared chip instead of the OS tooltip. Owner
+  // 2026-10-22: every tab shows its full name on hover, cut short or not, so
+  // you can always tell which PDF it is. The shared wait-once timing
+  // (components/Tooltip.jsx) keeps a pointer crossing the strip from
+  // flashing a chip on every tab. The dots always explain themselves.
   const tip = useTooltip();
-  const nameTip = tip(tab.name, 'below');
-  const onlyWhenCut = (show) => (show
-    ? (e) => {
-      const el = e.currentTarget;
-      if (el && el.scrollWidth > el.clientWidth) show(e);
-    }
-    : undefined);
-  const truncatedNameTip = {
-    ...nameTip,
-    onMouseEnter: onlyWhenCut(nameTip.onMouseEnter),
-    onPointerEnter: onlyWhenCut(nameTip.onPointerEnter),
-  };
 
   return (
     <div
@@ -292,7 +281,7 @@ function TabItem({
           whiteSpace: 'nowrap',
           fontWeight: isActive ? '500' : '400'
         }}
-        {...truncatedNameTip}
+        {...tip(tab.name, 'below')}
       >
         {tab.name}
       </span>

@@ -21,8 +21,10 @@ import BodyPortal from './BodyPortal';
 import Icon from '../Icons';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { COLORS, SHADOWS, Z_INDEX } from '../theme';
+import { useTooltip } from './Tooltip';
 
 export default function SpaceSelectionDialog({ open, onClose, title = 'Select space', children }) {
+  const tip = useTooltip();
   const cardRef = useRef(null);
   useFocusTrap(cardRef, open, { onEscape: onClose });
 
@@ -88,7 +90,7 @@ export default function SpaceSelectionDialog({ open, onClose, title = 'Select sp
               type="button"
               onClick={onClose}
               aria-label="Close"
-              title="Close"
+              {...tip('Close', 'below')}
               className="btn btn-icon btn-icon-sm"
               style={{
                 background: 'transparent',

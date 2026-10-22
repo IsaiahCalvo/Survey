@@ -46,11 +46,13 @@ Drawboard's rules, plus tldraw's rule where Survey can't follow Drawboard.
 - **A mark turned by an odd angle** (not 0 / 90 / 180 / 270): Drawboard shears it. Survey stores angle + scale and can't draw a shear, which is what sank the April 2026 attempt. So Survey uses **tldraw's rule**: the whole frame keeps its proportions while such a mark is selected. A mark turned 90° / 270° stretches along the page's axes (its own two scales swap).
 - **No mirroring**. A group stops when its smallest member reaches 4 page units, or its own size if it is already smaller. Drawboard mirrors, and its text ends up upside down.
 - **One Undo step**, saved field by field on top of the page as it is now, so a co-editor's change made during the drag survives (sync-safe). A list change mid-drag keeps each mark's own preview.
-- **Still move-only**: a selection that includes a callout, a Survey Marker, a locked mark or an old-style arrow (saved as a group of line + head). The frame keeps no grabbers, and a lock badge shows when a member is locked.
+- **Callouts** resize with the group: the arrow tip and bend move with the frame, and the text box acts like text (from a corner / top / bottom the frame keeps its proportions and the font scales; from a side only the width changes). Drawboard's code scales a callout's font like text; whether its corner also locks the proportions is our call, made so the words never get squashed.
+- **Survey Markers** resize with the group like rectangles (the box scales; a marker turned 90° takes the scales swapped). Saved in the same Undo step as the marks and callouts.
+- **Still move-only**: a selection that includes a locked mark or an old-style arrow (saved as a group of line + head). The frame keeps no grabbers, and a lock badge shows when a member is locked.
 
 ## Follow-ups (not in this change)
 
 1. Group **rotate** (Drawboard has it; Survey's old group-rotate code is still in the hook, hidden).
-2. Callouts and Survey Markers in a resizable group (Drawboard scales callouts like text).
+2. ~~Callouts and Survey Markers in a resizable group~~ (done 2026-10-22).
 3. Text rewrapped from a side should grow its box height to fit, as Drawboard does. Survey's single-mark side resize doesn't either.
 4. Hold **K** to scale line widths too (Drawboard).

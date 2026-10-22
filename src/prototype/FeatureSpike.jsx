@@ -17,6 +17,7 @@ import { useFrameMeter } from './spikeMetrics';
 import { createSpikeLog } from './spikeLogger';
 import { extractPdfOutlineBookmarks } from '../utils/bookmarkOutline';
 import { buildSortableBookmarkTree, BOOKMARK_INDENTATION_WIDTH } from '../sidebar/bookmarkReorderUtils';
+import { useTooltip, withOwnHandlers } from '../components/Tooltip';
 
 const FIXTURES = [
   { label: 'Real package (36pg)', url: '/debug-fixtures/Package%202%20-%20Rev%204%20--%20IC.pdf' },
@@ -41,6 +42,7 @@ function BookmarkNode({ node, depth, collapsed, onToggle, onJump }) {
   const isFolder = node.type === 'folder';
   const isOpen = !collapsed.has(node.id);
   const page = node?.dest?.pageNumber ?? node?.pageIds?.[0] ?? null;
+  const tip = useTooltip();
   return (
     <>
       <div
@@ -51,9 +53,10 @@ function BookmarkNode({ node, depth, collapsed, onToggle, onJump }) {
           cursor: 'pointer', fontSize: 13, color: '#dfe2e6', borderRadius: 4,
           userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--hover)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        title={page ? `${node.name} — page ${page}` : node.name}
+        {...withOwnHandlers(tip(page ? `${node.name} — page ${page}` : node.name, 'right'), {
+          onMouseEnter: (e) => { e.currentTarget.style.background = 'var(--hover)'; },
+          onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent'; },
+        })}
       >
         <span style={{ width: 12, opacity: 0.7, fontSize: 10 }}>
           {isFolder ? (isOpen ? '▾' : '▸') : ''}
@@ -70,6 +73,7 @@ function BookmarkNode({ node, depth, collapsed, onToggle, onJump }) {
 }
 
 export default function FeatureSpike() {
+  const tip = useTooltip();
   const [file, setFile] = useState({ src: FIXTURES[0].url, key: 1, name: FIXTURES[0].label });
   const [status, setStatus] = useState('');
   const [tree, setTree] = useState(null); // nested bookmark tree, or null until loaded
@@ -705,7 +709,7 @@ export default function FeatureSpike() {
           <button
             type="button"
             onClick={savePerformanceLog}
-            title="Save performance log (Cmd/Ctrl+Shift+L)"
+            {...tip('Save performance log (Cmd/Ctrl+Shift+L)', 'below')}
             style={{ marginLeft: 'auto', background: '#2e7d32', color: '#fff', border: 0, borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontWeight: 600 }}
           >
             Save log

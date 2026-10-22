@@ -7,6 +7,7 @@ import {
   sanitizeAnnotationSizeDraft,
 } from '../utils/annotationSize';
 import Icon from '../Icons';
+import { useTooltip } from './Tooltip';
 import './AnnotationSizeControl.css';
 
 export const ANNOTATION_SIZE_PRESETS = Object.freeze({
@@ -59,6 +60,7 @@ export default function AnnotationSizeControl({
   // still say what the number is; the menu's rows keep the unit.
   compact = false,
 }) {
+  const tip = useTooltip();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
   const [focusedPresetIndex, setFocusedPresetIndex] = useState(0);
@@ -179,7 +181,7 @@ export default function AnnotationSizeControl({
               type="button"
               className={`chrome-pill annotation-size-control__pill${isCompact ? ' chrome-pill--compact' : ''}`}
               aria-label={`${label}: ${valueLabel}`}
-              title={label}
+              {...tip(label, 'below')}
               aria-haspopup="listbox"
               disabled={disabled}
               style={width ? { '--chrome-pill-w': width } : undefined}
@@ -201,7 +203,7 @@ export default function AnnotationSizeControl({
             type="button"
             className="annotation-size-control__trigger"
             aria-label={`${label} presets`}
-            title={`${label} presets`}
+            {...tip(`${label} presets`, 'below')}
             disabled={disabled}
           >
             {/* UX 2026-09-16: this control sits beside Style / Arrowhead /

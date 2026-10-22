@@ -20,6 +20,7 @@ import { DESKTOP_RIGHT_RAIL_WIDTH } from '../utils/floatingUiGeometry.js';
 import BodyPortal from './BodyPortal.js';
 import Icon from '../Icons';
 import usePhoneLayout from '../hooks/usePhoneLayout.js';
+import { useTooltip } from './Tooltip';
 
 const COLLAPSED_DISMISS_MS = 3000;
 const EXPANDED_DISMISS_MS = 5000;
@@ -27,6 +28,7 @@ const EXIT_ANIMATION_MS = 300;
 const DESKTOP_RAIL_GAP = 20;
 
 const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
+  const tip = useTooltip();
   const [isVisible, setIsVisible] = useState(true);
   const [isExiting, setIsExiting] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -175,7 +177,7 @@ const UnsupportedAnnotationsNotice = ({ unsupportedCounts, onDismiss }) => {
           alignItems: 'center',
           justifyContent: 'center',
         }}
-        title="Dismiss"
+        {...tip('Dismiss', 'below')}
         aria-label="Dismiss"
       >
         <Icon name="close" size={16} />

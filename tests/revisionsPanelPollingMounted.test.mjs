@@ -18,6 +18,8 @@ async function loadPanel() {
   const readOnlyUrl = new URL('../src/utils/readOnlyBodyReasons.js', import.meta.url).href;
   let source = await readFile(sourceUrl, 'utf8');
   source = source
+    // The shared tooltip needs its host; these mounts test the control, not the chip.
+    .replace(/import \{[^}]*\} from '(?:\.\.?\/)+(?:components\/)?Tooltip';/, 'const useTooltip = () => () => ({}); const withOwnHandlers = (b, own = {}) => ({ ...b, ...own }); const attachTooltip = () => () => {};')
     .replace("from 'react'", `from ${JSON.stringify(reactUrl)}`)
     // The panel portals its desktop header row into the rail's title row
     // (2026-10-07 rail headers round), so it imports createPortal.

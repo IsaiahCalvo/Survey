@@ -223,6 +223,7 @@ import {
   patchSurveyMarkerRenderPages,
   surveyMarkerRenderEntry,
   translateSurveyMarkerRecord,
+  resizeSurveyMarkerRecord,
   isSurveyMarkerPlaced,
   placeSurveyMarkerRecord,
   unplaceSurveyMarkerRecord,
@@ -31317,6 +31318,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       }
     }
+    // A group resize: `bounds` = { [id]: new box }, merged onto each box.
+    if (patch.bounds && typeof patch.bounds === 'object') {
+      for (const [id, bounds] of Object.entries(patch.bounds)) {
+        const record = next[id];
+        if (!record?.bounds || !bounds || !mayEdit(record)) continue;
+        const resized = resizeSurveyMarkerRecord(record, bounds);
+        next[id] = resized;
+        const existing = changes.find((change) => change.id === id);
+        if (existing) existing.after = resized;
+        else changes.push({ id, before: current[id], after: resized });
+      }
+    }
     if (patch.stacks && typeof patch.stacks === 'object') {
       for (const [id, stack] of Object.entries(patch.stacks)) {
         const record = next[id];
@@ -37569,7 +37582,7 @@ ${pageBlocks}
                                 <button
                                   type="button"
                                   onClick={() => recognizeTextOnPage(pageNumber)}
-                                  title={`${OCR_ENGINE_NAME} runs on this device. The PDF is not uploaded. OCR files are bundled with the app.`}
+                                  {...chromeTip(`${OCR_ENGINE_NAME} runs on this device. The PDF is not uploaded. OCR files are bundled with the app.`, 'below')}
                                   style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 5, background: 'var(--surface-1)', color: 'var(--text-1)', cursor: 'pointer' }}
                                 >
                                   Recognize text on this page

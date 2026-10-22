@@ -8,6 +8,7 @@ import Icon from '../Icons';
 import { watchLightPopover } from './dismissRules';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { showToast } from '../utils/toast';
+import { useTooltip } from './Tooltip';
 
 const isIOS = () => {
   if (typeof navigator === 'undefined') return false;
@@ -46,16 +47,21 @@ const recordingFileName = (mime) => {
  * The in-app recorder. `onRecorded(file, durationMs)` gets the finished clip;
  * cancel() discards it. The microphone is released on stop, cancel and unmount.
  */
-export function useAudioRecorder({ onRecorded }) {
+// onStream(stream | null): the open mic while recording, then null (the
+// Survey agent's mic pulses with it).
+export function useAudioRecorder({ onRecorded, onStream = null }) {
   const [state, setState] = useState('idle'); // 'idle' | 'starting' | 'recording'
   const [elapsedMs, setElapsedMs] = useState(0);
   const sessionRef = useRef(null);
   const onRecordedRef = useRef(onRecorded);
   onRecordedRef.current = onRecorded;
+  const onStreamRef = useRef(onStream);
+  onStreamRef.current = onStream;
 
   const release = useCallback((session) => {
     if (!session) return;
     window.clearInterval(session.timer);
+    if (session.streamShown) { session.streamShown = false; onStreamRef.current?.(null); }
     session.stream?.getTracks?.().forEach((track) => { try { track.stop(); } catch { /* already stopped */ } });
   }, []);
 
@@ -107,6 +113,8 @@ export function useAudioRecorder({ onRecorded }) {
     };
     session.startedAt = Date.now();
     recorder.start(1000);
+    session.streamShown = true;
+    onStreamRef.current?.(session.stream);
     session.timer = window.setInterval(() => setElapsedMs(Date.now() - session.startedAt), 250);
     setState('recording');
   }, [release]);
@@ -167,6 +175,7 @@ export function SurveyAudioRecorderBar({ recorder }) {
  * camera items (a desktop browser opens a file picker for them anyway).
  */
 export function SurveyMediaUploadTile({ variant, disabled, onFiles, onRecordAudio, recording }) {
+  const tip = useTooltip();
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState(null);
   const tileRef = useRef(null);
@@ -261,7 +270,7 @@ export function SurveyMediaUploadTile({ variant, disabled, onFiles, onRecordAudi
         type="button"
         className="survey-notes__media-btn"
         aria-label="Add photo, video or audio"
-        title="Add photo, video or audio"
+        {...tip('Add photo, video or audio', 'below')}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}

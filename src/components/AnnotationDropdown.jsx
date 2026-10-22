@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import Icon from '../Icons';
+import { useTooltip } from './Tooltip';
 import './AnnotationDropdown.css';
 
 /**
@@ -54,6 +55,7 @@ export default function AnnotationDropdown({
   // with a preview can collapse; its aria-label and tooltip still name it.
   compact = false,
 }) {
+  const tip = useTooltip();
   const [focusedIndex, setFocusedIndex] = useState(0);
   const optionRefs = useRef([]);
   const keepEditorFocusForCycleRef = useRef(false);
@@ -97,6 +99,7 @@ export default function AnnotationDropdown({
   // that behaviour and still open above the right rail.
   const renderContent = (content) => <Popover.Portal>{content}</Popover.Portal>;
   const isCompact = compact && !!preview;
+  const labelTip = tip(label, 'below');
 
   return (
     <Popover.Root open={open} onOpenChange={onOpenChange}>
@@ -107,11 +110,12 @@ export default function AnnotationDropdown({
             type="button"
             className={`chrome-pill annotation-dropdown__trigger${isCompact ? ' chrome-pill--compact' : ''}`}
             aria-label={label}
-            title={label}
+            {...labelTip}
             disabled={disabled}
             {...triggerProps}
             style={width ? { '--chrome-pill-w': width, ...(triggerProps.style || {}) } : triggerProps.style}
             onMouseDown={(event) => {
+              labelTip.onMouseDown?.(event);
               triggerProps.onMouseDown?.(event);
               if (preserveFocus) {
                 keepEditorFocusForCycleRef.current = true;

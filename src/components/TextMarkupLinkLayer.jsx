@@ -2,6 +2,7 @@ import { buildTextMarkupLinkRegions } from '../utils/pdfTextMarkup.js';
 import { openExternalDestination } from '../utils/accountPlatform.js';
 import { useMoveModifierHeld } from '../utils/moveModifier.js';
 import { LINK_MODE_DISABLED, LINK_MODE_OPEN, LINK_MODE_SELECT, resolveLinkMode, shouldOpenLinkOnClick } from '../utils/linkClickPolicy.js';
+import { useTooltip } from './Tooltip';
 
 const activateLink = (region, onPageNavigate) => {
   if (region.mode === 'page') onPageNavigate?.(region.pageNumber);
@@ -19,6 +20,7 @@ export const isLinkTap = (start, event) => !start
   || Math.hypot((event?.clientX ?? 0) - start.x, (event?.clientY ?? 0) - start.y) <= LINK_TAP_SLOP_PX;
 
 export default function TextMarkupLinkLayer({ annotations, pageSize, interactionMode: toolMode = 'disabled', nativeTextSelection = false, onPageNavigate, onSelectLink }) {
+  const tip = useTooltip();
   const regions = buildTextMarkupLinkRegions(annotations, pageSize);
   // Drawboard canvas audit 2026-10-13: Cmd/Ctrl+click opens a link under any
   // tool (utils/linkClickPolicy.js). Only a page that HAS links listens for
@@ -38,7 +40,7 @@ export default function TextMarkupLinkLayer({ annotations, pageSize, interaction
           data-text-markup-link-index={region.annotationIndex}
           type="button"
           aria-label={region.mode === 'page' ? `Go to page ${region.pageNumber}` : `Open link ${region.url}`}
-          title={interactionMode === LINK_MODE_SELECT ? 'Click to select. Double-click or Cmd/Ctrl+click to open.' : undefined}
+          {...tip(interactionMode === LINK_MODE_SELECT ? 'Click to select. Double-click or Cmd/Ctrl+click to open.' : undefined, 'below')}
           onPointerDownCapture={(event) => {
             if (!interactive || event.button !== 0) return;
             event.preventDefault();

@@ -32,6 +32,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import DismissBarrier from './DismissBarrier';
 import { loadRecentColors, rememberRecentColor } from '../utils/recentColors';
 import { swatchCheckInk, swatchRingColour, needsSwatchHairline, normaliseQuickColour } from '../utils/quickStylePresets';
+import { useTooltip } from './Tooltip';
 
 /*
  * The presets row, edge to edge. Board 19's eight. The first three are the
@@ -169,11 +170,10 @@ const EyedropperGlyph = ({ size = 17 }) => (
 
 /* Every control that OPENS a colour picker (not the swatches inside one). */
 const COLOUR_TRIGGER_SELECTOR = [
-    'button[title="Edit color"]',
     'button[aria-label="Edit color"]',
-    'button[title="Text color"]',
-    'button[title="Font color"]',
-    'button[title="Text markup color and opacity"]',
+    'button[aria-label="Text color"]',
+    'button[aria-label="Font color"]',
+    'button[aria-label="Text markup color and opacity"]',
     'button[aria-label="Open Text color picker"]',
     '.quick-style__swatch',
     '.quick-style__dot--custom',
@@ -279,6 +279,7 @@ const CompactColorPicker = ({
     // — never fall through to the page or the strip behind it.
     dismissMode = 'light',
 }) => {
+  const tip = useTooltip();
     const isPhone = platform === 'phone';
     /*
      * UX 2026-09-23 (owner, Templates entity colour panel on the desktop:
@@ -960,7 +961,7 @@ const CompactColorPicker = ({
                         data-ink-swatch="true"
                         aria-label={preset}
                         aria-pressed={isSelected}
-                        title={preset}
+                        {...tip(preset, 'below')}
                         onClick={() => applyHex(preset)}
                         /* HeroUI swatch (owner 2026-09-23): hover grows the
                            colour, choosing rings it in its own colour and pops
@@ -1041,7 +1042,7 @@ const CompactColorPicker = ({
                         key={`${rowIndex}-${columnIndex}`}
                         /* Ink, not chrome — see the sibling swatch above. */
                         data-ink-swatch="true"
-                        title={title}
+                        {...tip(title, 'below')}
                         aria-label={title}
                         aria-pressed={Boolean(isSelected)}
                         onClick={() => applyHex(presetValue)}
@@ -1259,7 +1260,7 @@ const CompactColorPicker = ({
                 role="tab"
                 aria-selected={on}
                 aria-label={label}
-                title={label}
+                {...tip(label, 'below')}
                 onClick={() => setMode(id)}
                 style={{
                     flex: 1,
@@ -1448,9 +1449,9 @@ const CompactColorPicker = ({
                     <button
                         type="button"
                         aria-label="Pick a color from the page"
-                        title={eyedropperSupported
+                        {...tip(eyedropperSupported
                             ? 'Pick a color from the page'
-                            : 'Picking a color from the page needs Chrome or Edge'}
+                            : 'Picking a color from the page needs Chrome or Edge', 'below')}
                         disabled={!eyedropperSupported}
                         onClick={pickFromScreen}
                         style={{

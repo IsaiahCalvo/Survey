@@ -94,7 +94,9 @@ test('toasts use the shared toast motion (ToastHost and UndoToast), with no moti
   assert.doesNotMatch(undo, /undo-toast-fade-in/);
   const hostJsx = read('src/components/ToastHost.jsx');
   assert.match(hostJsx, /createToastStore\(\{ exitMs: \(\) => exitMs\('toast'\) \}\)/);
-  assert.match(hostJsx, /onMouseEnter=\{\(\) => store\.pause\(t\.id\)\}/);
+  // Hovering a toast still pauses it (joined with the shared tooltip's own
+  // handlers through withOwnHandlers).
+  assert.match(hostJsx, /onMouseEnter: \(\) => store\.pause\(t\.id\)/);
   assert.match(hostJsx, /className="app-toast__action"/);
   assert.match(hostJsx, /'app-toast-dismiss'/);
 });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import DismissBarrier from './DismissBarrier';
 import Icon from '../Icons';
+import { useTooltip, withOwnHandlers } from './Tooltip';
 import './PrintPanel.css';
 
 const printPanelDebug = (...args) => {
@@ -337,6 +338,7 @@ export default function PrintPanel({
   getThumbnail, // (pageNumber, { targetWidth, rotation, ... }) => Promise<{ src, width, height } | null>
   getPageContentRotation, // (pageNumber) => Promise<number> — 0/90/180/270 correction so content reads upright.
 }) {
+  const tip = useTooltip();
   const effectivePages = pages && pages.length ? pages : DEFAULT_MOCK_PAGES;
   const totalPages = effectivePages.length;
 
@@ -1016,7 +1018,8 @@ export default function PrintPanel({
           if (e.key === 'Enter') setCurrentPage(page.index);
           if (e.key === ' ') { e.preventDefault(); togglePageInclusion(page.index); }
         }}
-        title={`Page ${page.index}${included ? '' : ' (excluded — alt-click or click to include)'} · click to view, alt-click to toggle`}
+        aria-label={`Page ${page.index}${included ? '' : ' (excluded)'}`}
+        {...tip(`Page ${page.index}${included ? '' : ' (excluded — alt-click or click to include)'} · click to view, alt-click to toggle`, 'below')}
       >
         <div
           className={`pp-thumb ${page.isLandscape ? 'is-landscape' : ''} ${thumbOpts.bw ? 'is-bw' : ''}`}
@@ -1074,8 +1077,9 @@ export default function PrintPanel({
               placeholder="e.g. 2, 7-9"
               value={kSelectRange}
               onChange={(e) => setKSelectRange(clampRangeToMax(filterRangeChars(e.target.value), totalPages))}
-              onBlur={(e) => setKSelectRange(sanitizeRangeInput(e.target.value, totalPages))}
-              title={kOutOfRange ? 'Some pages are outside the selected print range' : undefined}
+              {...withOwnHandlers(tip(kOutOfRange ? 'Some pages are outside the selected print range' : undefined, 'below'), {
+                onBlur: (e) => setKSelectRange(sanitizeRangeInput(e.target.value, totalPages)),
+              })}
             />
           </div>
         );
@@ -1148,10 +1152,10 @@ export default function PrintPanel({
         <div className="pp-orient-row">
           <Dropdown value={orientation} options={ORIENT_OPTIONS} onChange={setOrientation} />
           <div className="pp-rotbtns" aria-label="Rotate content">
-            <button className="pp-rbtn" title="Rotate counter-clockwise 90°" aria-label="Rotate counter-clockwise" type="button" onClick={() => handleRotate(-90)}>
+            <button className="pp-rbtn" {...tip('Rotate counter-clockwise 90°', 'below')} aria-label="Rotate counter-clockwise" type="button" onClick={() => handleRotate(-90)}>
               <CcwArrow />
             </button>
-            <button className="pp-rbtn" title="Rotate clockwise 90°" aria-label="Rotate clockwise" type="button" onClick={() => handleRotate(90)}>
+            <button className="pp-rbtn" {...tip('Rotate clockwise 90°', 'below')} aria-label="Rotate clockwise" type="button" onClick={() => handleRotate(90)}>
               <CwArrow />
             </button>
           </div>
@@ -1438,7 +1442,7 @@ export default function PrintPanel({
                         }}
                         aria-label={`Jump to page ${pageNum}`}
                         aria-current={isCurrent ? 'page' : undefined}
-                        title={`Page ${pageNum}`}
+                        {...tip(`Page ${pageNum}`, 'below')}
                       >
                         {pageNum}
                       </button>
@@ -1598,7 +1602,7 @@ export default function PrintPanel({
                       onClick={() => setCurrentPage(pageNum)}
                       aria-label={`Jump to page ${pageNum}`}
                       aria-current={isCurrent ? 'page' : undefined}
-                      title={`Page ${pageNum}`}
+                      {...tip(`Page ${pageNum}`, 'below')}
                     >
                       {pageNum}
                     </button>

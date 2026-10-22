@@ -92,7 +92,7 @@ async function takeWarmMic() {
   return mine.mic ? mine : null;
 }
 
-export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOptions } = {}) {
+export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, onLevel, gateOptions } = {}) {
   const taken = await takeWarmMic();
   let mic = taken?.mic;
   if (!mic) {
@@ -119,7 +119,9 @@ export async function startHandsFreeMic({ onClip, onHearing, onBargeIn, gateOpti
 
   const hear = (samples) => {
     if (paused || stopped) return;
-    const result = gate.push(level(samples));
+    const loudness = level(samples);
+    onLevel?.(loudness);
+    const result = gate.push(loudness);
     if (clip) clip.push(samples);
     else {
       preRoll.push(samples);

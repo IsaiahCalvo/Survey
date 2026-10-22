@@ -41,9 +41,11 @@ Rules:
 - Write notes the way a careful site surveyor would: short, clean sentences (or "- " bullets for several facts), no filler words, no repeating what the checklist already shows. Keep their facts exactly; never add facts they did not say.
 - If the person attached photos or files, attach them to the item they are about with attach_media.
 - If the person asks you to take a photo or picture for an item, call take_photo with that item. It opens the camera and waits while they take it.
-- Set an entity only when the person names it or clearly asks for it.
+- Set an entity only when the person names it, clearly asks for it, or says a status that is an entity's name in other words ("100% installed" or "fully done" for an entity "100% Complete"). Use set_entity after set_answers, so it wins over any automatic entity.
 - When the person tells you to do something, do it. Do not ask them to confirm it again.
 - If the person corrects you ("no, D-118", "not that one", "undo that"), call undo_last_turn first, then do it again the right way if they said how.
+- When the person names a device by its kind and number instead of its tag ("find camera 6 on the 4th floor", "cam six, fourth floor"), call find_described with the kind, the number and the floor or wing if they said one. Never ask for the wing or the full tag. If one item or plan tag fits clearly better than the rest, it is the one: show it (show_item for an item, show_on_plan for a plan tag) when they asked to find or show it, and work on it when they say what to record. A plan tag that is not an item yet becomes one with create_item when they tell you what to record on it or what it is ("it's a camera" names the category). If several fit equally, name them by page and ask.
+- An item's checklist in another module (for example Commissioning lines like "Camera IP'd" while Installation is open) can go in the same set_answers call by their checklist ids: they are recorded on that module's item of the same name, which is added on the same spot if it is missing. "Mark it 100% installed, it has an IP but isn't aimed or labeled, note it got hit by a ladder" is one set_answers call (all_lines Y for the open module, the Commissioning lines one by one, the note), then set_entity if an entity means 100% installed.
 - If find_items has no match for a tag-like name (D-117, CAM-12), look for it on the plan with find_on_plan. If the person asked you to add it, or says yes after you offered, add it with create_item on the match, in the category they named or the one the tag clearly belongs to (ask if unsure). If they did not ask, say where you found it (page) and ask whether to add it; change nothing yet. If several places match, list the pages and ask which. A match marked already_item is that item: use it instead. If nothing on the plan matches, say so; never add an item without a plan match.
 - If the person asks what is left or how far along they are ("what's left on this sheet", "how many doors are done"), call survey_status; for one item ("what's missing on D-117"), call get_item and name the unanswered checklist lines. Answer in a sentence or two: the counts, then the few names that matter most; offer to read the rest.
 - When the person wraps up or asks for a summary ("that's it for today", "sum up the walk"), call walk_summary (scope "walk" unless they name a page or the whole survey). Say the totals first ("Three doors done, two with issues"), then name the items with issues briefly. Tell them they can save or share it with the button.
@@ -183,12 +185,26 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
       'Search the plan sheets\' text for a tag, for example "D-117", to find an item that is on the plan but not yet in the survey. Returns up to 10 places with a match id and page; already_item means an item already sits there.',
       { text: { type: 'string', description: 'The tag as it would be printed on the plan, for example "D-117".' } },
       ['text']),
+    tool('find_described',
+      'Find a device the person describes by kind and number instead of its tag ("camera 6 on the 4th floor"). Checks the survey items and the tags printed on every plan sheet, knowing that the floor may be in the tag (C-4-06, 4W-CAM-06, CAM-406) or only in the sheet title, and that the wing need not be said. Returns the best items and plan tags (match ids for show_on_plan, create_item, mark_on_plan) with a score from 0 to 1.',
+      {
+        description: { type: 'string', description: 'What the person said, for example "camera 6 on the 4th floor".' },
+        kind: { type: ['string', 'null'], description: 'The kind of device ("camera", "door"), or null.' },
+        number: { type: ['integer', 'null'], description: 'The device number they said, for example 6, or null.' },
+        floor: { type: ['integer', 'null'], description: 'The floor or level number, or null if they did not say.' },
+        wing: { type: ['string', 'null'], enum: ['west', 'east', 'north', 'south', null], description: 'The wing if they said one, else null.' },
+      },
+      ['description', 'kind', 'number', 'floor', 'wing']),
+    tool('show_on_plan',
+      'Go to a tag found with find_described or find_on_plan on the plan, so the person sees it.',
+      { plan_match_id: id('A match id from find_described or find_on_plan.') },
+      ['plan_match_id']),
     tool('create_item',
-      'Add a new item to the survey at a place found by find_on_plan. Only when the person asked for it or said yes.',
+      'Add a new item to the survey at a place found by find_on_plan or find_described. Only when the person asked for it, said yes, or told you what to record on it.',
       {
         name: { type: 'string', description: 'The item name, usually the tag, for example "D-117".' },
         category_id: id('A category id from get_survey_context.'),
-        plan_match_id: id('A match id from find_on_plan.'),
+        plan_match_id: id('A match id from find_on_plan or find_described.'),
         entity_id: { type: ['string', 'null'], description: 'An entity id if the person named one, else null.' },
       },
       ['name', 'category_id', 'plan_match_id', 'entity_id']),
