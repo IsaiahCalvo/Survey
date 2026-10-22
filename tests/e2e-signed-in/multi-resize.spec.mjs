@@ -545,3 +545,75 @@ test('a group turns about its centre with the rotate grabber, mouse and pen', as
   for (const id of ids) await expect(page.locator(`${PAGE} [data-annotation-id="${id}"]`)).toHaveCount(0);
   await page.waitForTimeout(2500);
 });
+
+// Drawboard: line widths stay the same in a group resize, unless K is held
+// during the drag. K (the Polyline tool's key) never switches the tool then.
+const strokeWidthOf = (page, id) => page.evaluate((markId) => {
+  const node = document.querySelector(`[data-overlay-page="1"] [data-annotation-id="${markId}"] rect[stroke-width], [data-overlay-page="1"] rect[data-annotation-id="${markId}"]`);
+  return node ? parseFloat(node.getAttribute('stroke-width')) : null;
+}, id);
+
+test('holding K during a group resize scales line widths too', async ({ page }) => {
+  await signIn(page, E2E_ACCOUNTS.owner);
+  await openSampleDocument(page);
+  await page.waitForTimeout(1500);
+  const pageBox = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+  const at = (fx, fy) => ({ x: pageBox.x + pageBox.width * fx, y: pageBox.y + pageBox.height * fy });
+
+  const before = new Set(await markIds(page));
+  await drawMark(page, 'r', at(0.2, 0.62), at(0.3, 0.7));
+  const a = await newMarkId(page, before);
+  await drawMark(page, 'r', at(0.36, 0.62), at(0.44, 0.74));
+  const b = await newMarkId(page, before);
+  await page.waitForTimeout(1200);
+
+  const marquee = async () => {
+    await page.mouse.click(at(0.9, 0.97).x, at(0.9, 0.97).y);
+    await page.mouse.move(at(0.14, 0.56).x, at(0.14, 0.56).y);
+    await page.mouse.down();
+    await page.mouse.move(at(0.6, 0.86).x, at(0.6, 0.86).y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(`${FRAME} [data-resize-handle]`)).toHaveCount(8);
+  };
+  await selectTool(page);
+  await marquee();
+  const startWidth = await strokeWidthOf(page, a);
+  expect(startWidth).toBeGreaterThan(0);
+
+  const drag = async (holdK) => {
+    const frame = await page.locator(`${FRAME} [data-group-selection-hitbox]`).boundingBox();
+    const br = await page.locator(`${FRAME} [data-resize-handle="br"]`).boundingBox();
+    const from = { x: br.x + br.width / 2, y: br.y + br.height / 2 };
+    const to = { x: from.x + frame.width, y: from.y + frame.height };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i += 1) {
+      if (holdK && i === 4) await page.keyboard.down('k');
+      await page.mouse.move(from.x + ((to.x - from.x) * i) / 12, from.y + ((to.y - from.y) * i) / 12);
+      await page.waitForTimeout(25);
+    }
+    await page.mouse.up();
+    if (holdK) await page.keyboard.up('k');
+    await page.waitForTimeout(600);
+  };
+
+  // Without K: twice the size, same line width.
+  await drag(false);
+  expect(await strokeWidthOf(page, a)).toBeCloseTo(startWidth, 1);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => strokeWidthOf(page, a)).toBeCloseTo(startWidth, 1);
+
+  // With K: the line width doubles too, and the tool is still Select.
+  await marquee();
+  await drag(true);
+  expect(await strokeWidthOf(page, a)).toBeCloseTo(startWidth * 2, 0);
+  expect(await strokeWidthOf(page, b)).toBeCloseTo(startWidth * 2, 0);
+  await expect(page.locator('[data-annotation-presentation="svg-edit"]').first()).toBeVisible();
+  await expect(page.locator(`${FRAME} [data-resize-handle]`)).toHaveCount(8);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => strokeWidthOf(page, a)).toBeCloseTo(startWidth, 1);
+
+  await page.keyboard.press('Delete');
+  for (const id of [a, b]) await expect(page.locator(`${PAGE} [data-annotation-id="${id}"]`)).toHaveCount(0);
+  await page.waitForTimeout(2500);
+});
