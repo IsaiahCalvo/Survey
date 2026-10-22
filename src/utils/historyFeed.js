@@ -189,7 +189,7 @@ const TYPE_GLYPHS = {
   arrow: 'arrow',
   polyline: 'polyline',
   polygon: 'polygon',
-  cloud: 'lineSampleCloud',
+  cloud: 'shapeCloud',
   pen: 'pen',
   highlighter: 'highlighterTool',
   text: 'textBox',

@@ -140,7 +140,7 @@ const TOOL_GROUPS = {
       // the flow is pointer-driven and has not been tuned for touch yet.
       { id: 'polygon', label: 'Polygon', icon: 'polygon' },
       // Cloud and Measure as on the desktop Shape row (see mobileShapeRail.js).
-      { id: 'cloud', label: 'Cloud', icon: 'lineSampleCloud' },
+      { id: 'cloud', label: 'Cloud', icon: 'shapeCloud' },
       { id: 'polyline', label: 'Polyline', icon: 'polyline' },
       { id: 'line', label: 'Line', icon: 'line' },
       { id: 'arrow', label: 'Arrow', icon: 'arrow' },

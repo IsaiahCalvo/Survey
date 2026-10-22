@@ -122,7 +122,7 @@ test('an open Survey Marker\'s content starts on the panel text gutter, desktop 
   assert.match(phone, /\.mobile-survey-open-notes \.survey-marker-notes \{\s*padding-left: var\(--survey-detail-x\);/);
 });
 
-test('Export to Excel is centred in the panel foot, desktop and phone', () => {
+test('Export data is centred in the panel foot, desktop and phone', () => {
   assert.match(desk, /\.survey-rail \.survey-rail__foot \{[^}]*justify-content: center;/);
   assert.match(desk, /\.survey-rail \.survey-rail__export \{\s*position: absolute;/);
   assert.match(phone, /\.mobile-survey-sheet \.mobile-survey-foot \{[^}]*justify-content: center;/);

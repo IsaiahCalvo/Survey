@@ -20,7 +20,7 @@ configureSchematicDetection({ ops: pdfjsLib.OPS, readTextContent: readPdfjsTextC
 export const SCHEMATIC_QUICK_TOOLS = Object.freeze([
   { id: 'callout', label: 'Callout', icon: 'callout' },
   { id: 'arrow', label: 'Arrow', icon: 'arrow' },
-  { id: 'cloud', label: 'Cloud', icon: 'lineSampleCloud' },
+  { id: 'cloud', label: 'Cloud', icon: 'shapeCloud' },
 ]);
 
 const KIND_TEXT = {

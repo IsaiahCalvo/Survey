@@ -39228,7 +39228,7 @@ ${pageBlocks}
                   // many-segment Line. Both are click-to-place, not drag-out.
                   { id: 'polygon', label: 'Polygon', iconName: 'polygon' },
                   // Drawboard Shape > Cloud: Rectangle + Cloud line style.
-                  { id: 'cloud', label: 'Cloud', iconName: 'lineSampleCloud' },
+                  { id: 'cloud', label: 'Cloud', iconName: 'shapeCloud' },
                   { id: 'polyline', label: 'Polyline', iconName: 'polyline' },
                   { id: 'line', label: 'Line', iconName: 'line' },
                   { id: 'arrow', label: 'Arrow', iconName: 'arrow' },

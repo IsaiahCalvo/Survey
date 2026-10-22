@@ -317,7 +317,7 @@
 
 /* ---------- FOOTER: Export (owner 2026-10-01) ---------------------------- */
 /* "The export button being so close to the X ... is just weird": Export is
-   the sheet's last line, as on desktop - "Export to Excel" (the sheet's action
+   the sheet's last line, as on desktop - "Export data" (the sheet's action
    type), and a "..." with the linked workbook's Sync when there is one. It
    steps aside while you type (a field in the sheet has focus), so the
    keyboard never has to make room for it. */
@@ -330,7 +330,7 @@
   padding: 0 calc(var(--sheet-pad-x) - 8px);
   display: flex;
   align-items: center;
-  /* Owner 2026-10-02: "Export to Excel" - glyph and word together - is
+  /* Owner 2026-10-02: "Export data" - glyph and word together - is
      centred in the line, as on desktop; the linked workbook's "..." keeps
      the right end without pushing it aside. */
   justify-content: center;

@@ -4218,12 +4218,12 @@ const SurveySpacesRail = ({
                         className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
                         onClick={() => { if (proLocked('excel')) return; if (surveyHasItems) handleExportSurveyToExcel(); }}
                         disabled={isExporting || !surveyHasItems}
-                        {...(mobileMode ? {} : tip(surveyHasItems ? 'Create an Excel workbook from this survey' : 'Add a survey item to export', 'above'))}
+                        {...(mobileMode ? {} : tip(surveyHasItems ? 'Download this survey as a spreadsheet (.xlsx) for Excel, Google Sheets or Numbers' : 'Add a survey item to export', 'above'))}
                       >
                         {isExporting
                           ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
                           : <Icon name="download" size={mobileMode ? 16 : 14} color="currentColor" />}
-                        <span>{isExporting ? 'Exporting\u2026' : 'Export to Excel'}</span>
+                        <span>{isExporting ? 'Exporting\u2026' : 'Export data'}</span>
                       </button>
                       {mobileMode ? (
                         (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (
