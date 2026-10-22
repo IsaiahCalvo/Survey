@@ -7,7 +7,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { remapSelectedIndices, resolveMenuTargets, sameMenuTargets, stampMenuTargetIds } from '../src/utils/selectionRemap.js';
+import {
+  indexRemapper, remapDragState, remapSelectedIndices, remapVisualTransform,
+  resolveMenuTargets, sameMenuTargets, stampMenuTargetIds,
+} from '../src/utils/selectionRemap.js';
 
 const mark = (id) => ({ type: 'rect', left: 0, top: 0, width: 10, height: 10, data: { id, type: 'shape' } });
 const legacy = (n) => ({ type: 'rect', left: n, top: 0, width: 10, height: 10 });
@@ -76,7 +79,8 @@ test('the delete that follows removes exactly the picked mark', () => {
 
 test('the SVG interaction hook routes every list change through the remap', () => {
   const source = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
-  assert.match(source, /import \{ remapSelectedIndices \} from '\.\.\/utils\/selectionRemap\.js';/);
+  assert.match(source, /import \{[^}]*\bremapSelectedIndices\b[^}]*\} from '\.\.\/utils\/selectionRemap\.js';/);
+  assert.match(source, /dragStateRef\.current = remapDragState\(ds, mapIndex\)/, 'a live drag follows its marks too');
   assert.match(source, /remapSelectedIndices\(selectedIds, anchor\.objects, objects\)/);
   assert.doesNotMatch(source, /if \(i > maxIdx \|\| i < 0\) return new Set\(\);/, 'the position-only rule is gone');
 });
@@ -154,4 +158,34 @@ test('menu items re-check their targets at click time and the selection remap is
   assert.ok(at > 0);
   assert.match(hook.slice(at, at + 200), /useLayoutEffect\(\(\) => \{/);
   assert.match(hook, /setSelectedIds\(\(prev\) => \(prev === remappedFrom \? next : prev\)\)/);
+});
+
+// Owner report 2026-10-22: a mark vanished while being moved. A live drag and
+// its preview hold list positions; a list change mid-drag (another screen's
+// delete, the store re-sorting after open) handed both to a neighbour.
+test('a live drag and its preview follow the dragged marks when the list changes', () => {
+  const before = [mark('a'), mark('b'), mark('c'), mark('d')];
+  const after = [before[1], before[3], before[2]]; // a deleted, c and d swapped
+  const mapIndex = indexRemapper(before, after);
+  const ds = { active: true, mode: 'group-move', annotationIndex: 2, groupOriginals: { 0: { left: 1 }, 2: { left: 3 }, 3: { left: 4 } } };
+  const moved = remapDragState(ds, mapIndex);
+  assert.equal(after[moved.annotationIndex].data.id, 'c');
+  assert.deepEqual(Object.keys(moved.groupOriginals).map((k) => after[k].data.id).sort(), ['c', 'd']);
+  assert.deepEqual(moved.groupOriginals[2], { left: 3 });
+  const vt = { id: 2, dx: 5, dy: 6, previewObjects: { 2: before[2] }, affectedIds: new Set([0, 2, 3]) };
+  const shown = remapVisualTransform(vt, mapIndex);
+  assert.equal(shown.id, 2 === moved.annotationIndex ? 2 : moved.annotationIndex);
+  assert.equal(shown.previewObjects[moved.annotationIndex], before[2]);
+  assert.deepEqual([...shown.affectedIds].map((i) => after[i].data.id).sort(), ['c', 'd']);
+  assert.equal(shown.dx, 5);
+});
+
+test('a drag on an unchanged list keeps the same objects (no re-render churn)', () => {
+  const list = [mark('a'), mark('b')];
+  const copy = [...list];
+  const mapIndex = indexRemapper(list, copy);
+  const ds = { active: true, annotationIndex: 1 };
+  const vt = { id: 1, dx: 0, dy: 0 };
+  assert.equal(remapDragState(ds, mapIndex), ds);
+  assert.equal(remapVisualTransform(vt, mapIndex), vt);
 });
