@@ -166,3 +166,56 @@ export function scaledTextBoxLength(length, k, padding) {
   const pad = Math.max(0, Number(padding) || 0);
   return Math.max(2 * pad, (size - 2 * pad) * k + 2 * pad);
 }
+
+/**
+ * A callout in a group resize. Its arrow tip and bend move with the frame;
+ * its text box acts like a text mark: from a corner / top / bottom it keeps
+ * the frame's proportions and scales its font (the box scales inside its
+ * fixed padding), from a side only the width changes and the words rewrap.
+ *
+ * @param {object} orig  page-unit snapshot: { tip, knee, box: {left, top,
+ *   width, height}, fontSize, style }
+ * @param {(x:number, y:number) => {x:number, y:number}} scalePoint
+ * @param {number} sx
+ * @param {number} sy
+ * @param {string} handleId
+ * @param {{width:number, height:number}} page
+ * @param {number} padding  the text box's side padding
+ * @returns {object} the callout patch, in page fractions
+ */
+export function scaleCalloutForGroup(orig, scalePoint, sx, sy, handleId, page, padding) {
+  const W = Number(page?.width) || 1;
+  const H = Number(page?.height) || 1;
+  const tip = scalePoint(orig.tip.x, orig.tip.y);
+  const knee = scalePoint(orig.knee.x, orig.knee.y);
+  const box = orig.box;
+  const centre = scalePoint(box.left + box.width / 2, box.top + box.height / 2);
+  const scalesFont = textScalesFontFor(handleId);
+  const width = scalesFont ? scaledTextBoxLength(box.width, sx, padding) : box.width * sx;
+  const height = box.height * sy;
+  const patch = {
+    arrowTip: { x: tip.x / W, y: tip.y / H },
+    knee: { x: knee.x / W, y: knee.y / H },
+    textBoxPosition: { x: (centre.x - width / 2) / W, y: (centre.y - height / 2) / H },
+    textBoxWidth: width / W,
+    textBoxHeight: height / H,
+  };
+  if (scalesFont) {
+    const fontSize = Math.round(scaledGroupFontSize(orig.fontSize || 12, sx, sy) * 10) / 10;
+    patch.style = { ...(orig.style || {}), fontSize };
+  }
+  return patch;
+}
+
+/**
+ * A Survey Marker's box in a group resize. Like a rectangle: the box turns
+ * about its own centre, so its centre moves with the frame and its sides take
+ * the frame's scales (swapped when it is turned 90 / 270).
+ */
+export function scaleMarkerBoundsForGroup(bounds, scalePoint, sx, sy) {
+  const axis = memberAxisScale(bounds.angle || 0, sx, sy);
+  const centre = scalePoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  const width = bounds.width * axis.x;
+  const height = bounds.height * axis.y;
+  return { ...bounds, x: centre.x - width / 2, y: centre.y - height / 2, width, height };
+}

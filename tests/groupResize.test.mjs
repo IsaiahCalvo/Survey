@@ -10,6 +10,8 @@ import {
   markNeedsUniformGroupScale,
   memberAxisScale,
   resolveGroupResizeScale,
+  scaleCalloutForGroup,
+  scaleMarkerBoundsForGroup,
   scaledGroupFontSize,
   scaledTextBoxLength,
   textScalesFontFor,
@@ -76,7 +78,8 @@ test('a sideways mark takes the frame scales swapped', () => {
 test('the multi-selection frame shows resize grabbers (rotate stays hidden)', () => {
   const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
   assert.match(layer, /moveOnly=\{!groupCanResize\}\s*hideRotationHandle/);
-  assert.match(layer, /const groupCanResize = !groupHasLockedMember\s*&& groupCalloutIdSet\.size === 0\s*&& selectedSurveyMarkerIds\.size === 0/);
+  assert.match(layer, /const groupCanResize = !groupHasLockedMember/);
+  assert.match(layer, /\(groupCalloutIdSet\.size > 0\s*\|\| selectedSurveyMarkerIds\.size > 0/);
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
   assert.match(hook, /resolveGroupResizeScale\(\{/);
   assert.match(hook, /needsUniformGroupScale: markNeedsUniformGroupScale\(obj, handleId\)/);
@@ -99,4 +102,66 @@ test('an old-style group arrow keeps the frame move-only', () => {
 test('a stamp redraws from its preview during a group resize', () => {
   const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
   assert.match(layer, /isPdfStampProxy\(renderObj\)\) \{\s*renderElement = <image \{\.\.\.getPdfStampProxySvgProps\(renderObj\)\}/);
+});
+
+// Scale about the top-left corner (0, 0).
+const about0 = (sx, sy) => (x, y) => ({ x: x * sx, y: y * sy });
+
+test('a callout moves its tip and bend and scales its box and font from a corner', () => {
+  const orig = {
+    tip: { x: 100, y: 200 }, knee: { x: 150, y: 150 },
+    box: { left: 200, top: 100, width: 112, height: 30 }, fontSize: 12, style: { fontSize: 12, bold: true },
+  };
+  const page = { width: 1000, height: 1000 };
+  const patch = scaleCalloutForGroup(orig, about0(2, 2), 2, 2, 'br', page, 6);
+  assert.deepEqual(patch.arrowTip, { x: 0.2, y: 0.4 });
+  assert.deepEqual(patch.knee, { x: 0.3, y: 0.3 });
+  assert.equal(patch.textBoxWidth, 0.212, '(112 - 12) * 2 + 12');
+  assert.equal(patch.textBoxHeight, 0.06);
+  // Centred on the scaled centre (512, 230).
+  assert.ok(Math.abs(patch.textBoxPosition.x - (512 - 106) / 1000) < 1e-9);
+  assert.ok(Math.abs(patch.textBoxPosition.y - (230 - 30) / 1000) < 1e-9);
+  assert.deepEqual(patch.style, { fontSize: 24, bold: true });
+});
+
+test('a callout from a side keeps its font and only gets wider', () => {
+  const orig = {
+    tip: { x: 100, y: 200 }, knee: { x: 150, y: 150 },
+    box: { left: 200, top: 100, width: 100, height: 30 }, fontSize: 12,
+  };
+  const patch = scaleCalloutForGroup(orig, about0(1.5, 1), 1.5, 1, 'mr', { width: 1000, height: 1000 }, 6);
+  assert.equal(patch.style, undefined);
+  assert.equal(patch.textBoxWidth, 0.15);
+  assert.equal(patch.textBoxHeight, 0.03);
+});
+
+test('a Survey Marker box scales like a rectangle (swapped when sideways)', () => {
+  assert.deepEqual(
+    scaleMarkerBoundsForGroup({ x: 10, y: 20, width: 30, height: 40, angle: 0 }, about0(2, 1), 2, 1),
+    { x: 20, y: 20, width: 60, height: 40, angle: 0 },
+  );
+  const turned = scaleMarkerBoundsForGroup({ x: 0, y: 0, width: 30, height: 10, angle: 90 }, about0(2, 1), 2, 1);
+  assert.equal(turned.width, 30, 'its own width lies along the page y axis');
+  assert.equal(turned.height, 20);
+  assert.equal(turned.x + turned.width / 2, 30, 'centre moved with the frame');
+});
+
+test('a group resize writes each Survey Marker box in the same save', async () => {
+  const { resizeSurveyMarkerRecord } = await import('../src/utils/surveyMarkerFamily.js');
+  const record = { id: 'm1', name: 'Door', bounds: { x: 1, y: 2, width: 3, height: 4, angle: 90 } };
+  assert.deepEqual(resizeSurveyMarkerRecord(record, { x: 5, y: 6, width: 7, height: 8, angle: 0 }).bounds,
+    { x: 5, y: 6, width: 7, height: 8, angle: 90 }, 'the angle stays');
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /if \(patch\.bounds && typeof patch\.bounds === 'object'\)/);
+  const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  assert.match(hook, /surveyMarkerFamily: \{ bounds: Object\.fromEntries\(markerBoundsEntries\) \}/);
+});
+
+test('a turned Survey Marker sets the frame floor on the page axes', () => {
+  const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  assert.match(hook, /markerResizeOriginals\)\.map\(\(bounds\) => \(isSideways\(bounds\.angle\)\s*\? \{ width: bounds\.height, height: bounds\.width \}/);
+  // A 100 x 10 marker turned 90° is 10 wide on the page: x may only shrink to 0.4.
+  const { minScaleX, minScaleY } = groupResizeMinimumScale([{ width: 10, height: 100 }]);
+  assert.equal(minScaleX, 0.4);
+  assert.equal(minScaleY, 0.04);
 });
