@@ -57,6 +57,15 @@ export function restAfterRefusal({ retryAfter, message }) {
   return { daily, ms: Math.min(daily ? Math.max(said, DAILY_REST_MS) : said, MAX_REST_MS) };
 }
 
+/**
+ * Groq checks each tool call against the tool's schema and answers 400
+ * (tool_use_failed) when the model's call does not fit. That is the model
+ * slipping once, not a broken request: asking again usually works.
+ */
+export function isRejectedToolCall(status, text) {
+  return status === 400 && /tool_use_failed|tool call validation failed/i.test(String(text || ''));
+}
+
 /** After a good reply: rest the model if its daily requests are nearly gone. */
 export function restWhenNearCap({ remaining, resetIn }, nearCap = NEAR_CAP_REQUESTS) {
   const left = Number(remaining);

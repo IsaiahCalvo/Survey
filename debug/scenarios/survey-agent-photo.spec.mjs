@@ -7,6 +7,10 @@ import { existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
+// A tool result the model asked for; the app puts the survey context in
+// (tool call id ctx-...) before the first step on its own.
+const isToolResult = (m) => m.role === 'tool' && !String(m.tool_call_id).startsWith('ctx-');
+
 const root = resolve(import.meta.dirname, '..', '..');
 const PDF_FILE = 'print-fidelity.pdf';
 const CHROMIUM = process.env.PW_CHROMIUM_PATH || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
@@ -57,7 +61,7 @@ function mockModel(page, calls) {
       body: JSON.stringify(json),
     });
     if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
-    const tools = body.messages.filter((m) => m.role === 'tool');
+    const tools = body.messages.filter(isToolResult);
     const call = (id, name, args) => reply({ message: { content: '', tool_calls: [
       { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
     ] } });
@@ -99,7 +103,7 @@ async function setup(page, calls) {
 
 const photoResult = (calls) => {
   const last = calls.filter((c) => c.action === 'turn').at(-1);
-  return last.messages.filter((m) => m.role === 'tool').at(-1).content;
+  return last.messages.filter(isToolResult).at(-1).content;
 };
 
 test('"Take a photo for D-117" opens the camera and sends the shot to D-117', async ({ page }) => {

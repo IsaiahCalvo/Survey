@@ -10,6 +10,10 @@ import { test, expect } from '@playwright/test';
 import { stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
+// A tool result the model asked for; the app puts the survey context in
+// (tool call id ctx-...) before the first step on its own.
+const isToolResult = (m) => m.role === 'tool' && !String(m.tool_call_id).startsWith('ctx-');
+
 const root = resolve(import.meta.dirname, '..', '..');
 const PDF_FILE = 'print-fidelity.pdf';
 
@@ -69,7 +73,7 @@ function mockModel(page, calls, status = { enabled: true, reason: null, transcri
       body: JSON.stringify(json),
     });
     if (body.action === 'status') return reply(status);
-    const tools = body.messages.filter((m) => m.role === 'tool');
+    const tools = body.messages.filter(isToolResult);
     if (tools.length === 0) {
       return reply({ message: { content: '', tool_calls: [
         { id: 'c1', type: 'function', function: { name: 'find_items', arguments: JSON.stringify({ query: 'door 117' }) } },
@@ -161,7 +165,7 @@ test('Survey agent sets an answer by item name with no separate search', async (
       body: JSON.stringify(json),
     });
     if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
-    const tools = body.messages.filter((m) => m.role === 'tool');
+    const tools = body.messages.filter(isToolResult);
     if (!tools.length) {
       return reply({ message: { content: '', tool_calls: [
         { id: 'n1', type: 'function', function: { name: 'set_answers', arguments: JSON.stringify({ item_name: 'D one seventeen', answers: [{ checklist_item_id: 'cl-power', value: 'N' }] }) } },
@@ -221,7 +225,7 @@ test('Survey agent in Spanish: the reply is asked for in Spanish and spoken in a
     });
     if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, speech: true, over_cap: false });
     if (body.action === 'speak') return reply({ audio: '', mime: 'audio/wav' });
-    const tools = body.messages.filter((m) => m.role === 'tool');
+    const tools = body.messages.filter(isToolResult);
     if (!tools.length) {
       return reply({ message: { content: '', tool_calls: [
         { id: 's1', type: 'function', function: { name: 'set_answers', arguments: JSON.stringify({ item_name: 'D-117', answers: [{ checklist_item_id: 'cl-power', value: 'N' }] }) } },
@@ -272,7 +276,7 @@ function mockPlanModel(page, calls) {
       body: JSON.stringify(json),
     });
     if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
-    const tools = body.messages.filter((m) => m.role === 'tool');
+    const tools = body.messages.filter(isToolResult);
     const call = (id, name, args) => reply({ message: { content: '', tool_calls: [
       { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
     ] } });
@@ -513,7 +517,7 @@ function mockMarkupModel(page, calls) {
       body: JSON.stringify(json),
     });
     if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
-    const tools = body.messages.filter((m) => m.role === 'tool');
+    const tools = body.messages.filter(isToolResult);
     const call = (id, name, args) => reply({ message: { content: '', tool_calls: [
       { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
     ] } });
@@ -553,7 +557,7 @@ test('With markup tools on, the agent puts a text note next to an item', async (
 
   const turns = calls.filter((c) => c.action === 'turn');
   expect(turns.every((t) => t.annotations === true)).toBe(true);
-  const results = turns.at(-1).messages.filter((m) => m.role === 'tool');
+  const results = turns.at(-1).messages.filter(isToolResult);
   expect(results[1].content).toMatch(/^Added a text note on page 1 \(id [^)]+\)\.$/);
   // The note is on page 1 beside D-117's box (x 330..480 on a 612 pt wide
   // page): no room on the right for a 160 pt note, so on the left, top-aligned.
@@ -596,7 +600,7 @@ test('With markup tools on, the agent circles an item and clouds the area on scr
     });
     if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
     const said = [...body.messages].reverse().find((m) => m.role === 'user')?.content || '';
-    const tools = body.messages.slice(body.messages.findLastIndex((m) => m.role === 'user')).filter((m) => m.role === 'tool');
+    const tools = body.messages.slice(body.messages.findLastIndex((m) => m.role === 'user')).filter(isToolResult);
     const call = (id, name, args) => reply({ message: { content: '', tool_calls: [
       { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
     ] } });
@@ -628,7 +632,7 @@ test('With markup tools on, the agent circles an item and clouds the area on scr
   await input.fill('circle D-117');
   await input.press('Enter');
   await expect(panel.getByText('Circled D-117.')).toBeVisible();
-  let results = calls.filter((c) => c.action === 'turn').at(-1).messages.filter((m) => m.role === 'tool');
+  let results = calls.filter((c) => c.action === 'turn').at(-1).messages.filter(isToolResult);
   expect(results.at(-1).content).toMatch(/^Drew a circle around D-117 on page 1 \(id [^)]+\)\.$/);
   const circleId = results.at(-1).content.match(/\(id ([^)]+)\)/)[1];
   // Around D-117's box (x 330..480, y 600..680 on page 1), holding it.
@@ -643,7 +647,7 @@ test('With markup tools on, the agent circles an item and clouds the area on scr
   await input.fill('cloud this area');
   await input.press('Enter');
   await expect(panel.getByText('Clouded that area.')).toBeVisible();
-  results = calls.filter((c) => c.action === 'turn').at(-1).messages.filter((m) => m.role === 'tool');
+  results = calls.filter((c) => c.action === 'turn').at(-1).messages.filter(isToolResult);
   expect(results.at(-1).content).toMatch(/^Drew a cloud around the area on screen on page 1 \(id [^)]+\)\.$/);
   const cloudId = results.at(-1).content.match(/\(id ([^)]+)\)/)[1];
   const cloud = (await shapes()).find((a) => a.id === cloudId);

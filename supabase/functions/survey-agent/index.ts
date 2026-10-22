@@ -43,6 +43,7 @@ import { parseBody, s } from '../_shared/inputSchema.js';
 import { ANNOTATION_AGENT_FLAG } from '../_shared/annotationAgentSpec.js';
 import {
   createModelRest,
+  isRejectedToolCall,
   modelChain,
   restAfterRefusal,
   restWhenNearCap,
@@ -358,6 +359,7 @@ Deno.serve(async (req) => {
     let res: Response | null = null;
     const chain = modelRest.available(provider.models);
     let waited = false;
+    let askedAgain = false;
     for (let i = 0; i < chain.length; i += 1) {
       const model = chain[i];
       try {
@@ -376,6 +378,13 @@ Deno.serve(async (req) => {
         modelRest.rest(model, MODEL_GONE_REST_MS);
         console.error('[survey-agent] model missing, resting a day', model);
         res = null;
+        continue;
+      }
+      if (!askedAgain && isRejectedToolCall(res.status, res.status === 400 ? await res.clone().text() : '')) {
+        askedAgain = true;
+        console.info('[survey-agent] model sent a tool call that did not fit, asking again', model);
+        res = null;
+        i -= 1;
         continue;
       }
       if (res.status !== 429) {
