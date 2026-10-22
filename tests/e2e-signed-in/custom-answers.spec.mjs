@@ -51,8 +51,9 @@ test('flag on: type 5 / 10 / 20, save, and it is still there after a reload', as
   const db = await clientFromPageSession(page);
   await expect.poll(async () => {
     const { data } = await db.from('templates').select('config').eq('name', templateName).maybeSingle();
-    return JSON.stringify(data?.config?.answerSet ?? data?.answerSet ?? null);
-  }, { timeout: 20_000 }).toBe(JSON.stringify([{ value: '5', tone: 'neutral' }, { value: '10', tone: 'neutral' }, { value: '20', tone: 'neutral' }]));
+    // jsonb does not keep key order, so compare value / tone pairs.
+    return JSON.stringify((data?.config?.answerSet || []).map((a) => [a.value, a.tone]));
+  }, { timeout: 20_000 }).toBe(JSON.stringify([['5', 'neutral'], ['10', 'neutral'], ['20', 'neutral']]));
 
   await page.reload();
   const again = await openTemplateEditor(page);
