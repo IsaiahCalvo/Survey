@@ -113,19 +113,36 @@ test('copy-drag: the move key (Cmd on a Mac, Ctrl elsewhere) at let-go copies; t
 test('copy-drag: a drop with the key down pastes copies and leaves the originals', () => {
   const hook = read('src/hooks/useSVGInteraction.js');
   // The key at let-go decides, and a copy never carries marks onto another page.
-  assert.match(hook, /const copyDrop = \(ds\.mode === 'move' \|\| ds\.mode === 'group-move'\)/);
-  assert.match(hook, /const crossPageDropped = !copyDrop &&/);
-  // Key let go over another page: the skipped cross-page preview runs first,
-  // so the drop moves there instead of staying on the first page.
-  assert.match(hook, /ds\.crossPage === undefined\) \{\n\s+crossPageMove\.preview\(ds, e, annotations\?\.objects\);/);
+  assert.match(hook, /const moveDrag = ds\.mode === 'move' \|\| ds\.mode === 'group-move';\n\s+const copyDrop = moveDrag && !ds\.orbitBase/);
+  // A copy let go over another page is pasted there; a move still moves.
+  assert.match(hook, /const crossPageDropped = crossPageCopied \|\| \(!copyDrop && moveDrag && crossPageMove\.drop\(ds, e\)\);/);
   assert.match(hook, /onCopyDragDropRef\.current\(\{ indices: \[moveIndex\] \}, actualDx, actualDy\)/);
   assert.match(hook, /if \(!groupCopied && \(dx !== 0 \|\| dy !== 0\)\) \{/);
   // Ctrl + drag on a mark that is not picked yet copies it too (Visio),
   // instead of Drawboard rule 3's box select.
   assert.match(hook, /!\(onCopyDragDrop && isCopyDragEvent\(e\)\)/);
   const layer = read('src/components/SVGAnnotationLayer.jsx');
-  assert.match(layer, /onDuplicateFamily\(pageNumber, selection, \{ dx, dy \}\)/);
+  assert.match(layer, /onDuplicateFamily\(pageNumber, selection, \{ dx, dy, toPage \}\)/);
   assert.match(layer, /data-copy-drag-original="true"/);
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /const duplicateFamilySelection = useCallback\(\(pageNumber, selection, offset = null\)/);
+  assert.match(viewer, /return commitFamilyPaste\(offset\?\.toPage \?\? pageNumber, clipboard, dx, dy\);/);
+});
+
+test('copy-drag: a lone callout or Survey Marker copies too (rides the group move)', () => {
+  const hook = read('src/hooks/useSVGInteraction.js');
+  // The group move can take just the dragged callout / marker.
+  assert.match(hook, /const startFamilyGroupMove = useCallback\(\(e, only = null\) => \{/);
+  assert.match(hook, /groupMarkerIds: only \? \(only\.markerIds \|\| \[\]\)\.map\(String\) : getGroupMarkerIds\(\{ movableOnly: true \}\)/);
+  // Ctrl / Cmd held inside a lone picked callout / marker's box.
+  assert.match(hook, /return markerIds\.length === 1 \? startFamilyGroupMove\(e, \{ markerIds \}\) : false;/);
+  assert.match(hook, /return startFamilyGroupMove\(e, \{ calloutIds: \[callout\.id\] \}\);/);
+  // Ctrl / Cmd + drag on a callout (picked or not).
+  assert.match(hook, /if \(_calCopyDrag && startFamilyGroupMoveRef\.current\?\.\(e, \{ calloutIds: \[calloutId\] \}\)\) \{/);
+  const layer = read('src/components/SVGAnnotationLayer.jsx');
+  // Ctrl / Cmd + drag on a marker (picked or not), and its original drawn in place.
+  assert.match(layer, /startFamilyGroupMove\(e, \{ markerIds: \[annotationId\] \}\);/);
+  assert.match(layer, /visualTransform\?\.copy === true && \(liveDx \|\| liveDy\) \? \(\s*<g transform=\{`translate\(\$\{-liveDx\} \$\{-liveDy\}\)`\}[^>]*data-copy-drag-original="true">/);
+  // Carried over another page: only the copy hides; the original stays.
+  assert.match(layer, /const hideForCrossPage = carriedAway && !copyDragOrigin;/);
 });

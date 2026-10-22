@@ -180,7 +180,7 @@ import {
   canMoveAnnotation,
 } from '../utils/annotationFamilyRules.js';
 // w58: hold Cmd (Mac) / Ctrl (Windows) to move the selection from anywhere in its box.
-import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes } from '../utils/moveModifier.js';
+import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes, isCopyDragEvent } from '../utils/moveModifier.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isSymbolStamp } from '../utils/symbolLibrary.js';
 import { canGroupResizeMember } from '../utils/groupResize.js';
@@ -1011,9 +1011,10 @@ const SVGAnnotationLayerBody = memo(({
     onMoveMarksToPage,
     documentId,
     // Copy-drag (Ctrl / Cmd + drag, Visio): the viewer's Duplicate, at the
-    // dragged-to spot instead of the fixed nudge.
+    // dragged-to spot instead of the fixed nudge (`toPage` when it was let
+    // go over another page).
     onCopyDragDrop: typeof onDuplicateFamily === 'function'
-      ? (selection, dx, dy) => onDuplicateFamily(pageNumber, selection, { dx, dy })
+      ? (selection, dx, dy, toPage = null) => onDuplicateFamily(pageNumber, selection, { dx, dy, toPage })
       : null,
   });
   // The picture of a mark being carried over THIS page from another one.
@@ -4762,6 +4763,16 @@ const SVGAnnotationLayerBody = memo(({
       startFamilyGroupMove(e);
       return;
     }
+    // Copy-drag (Visio): Ctrl / Cmd + drag on a lone marker picks it and
+    // drags it as a group move, whose drop copies while the key is down.
+    if (isFamilyMember && !entry.surveyMarker.lockedBy && typeof onDuplicateFamily === 'function'
+      && typeof startFamilyGroupMove === 'function' && isCopyDragEvent(e)) {
+      deselectAll();
+      onSelectedCalloutIdsChange?.(new Set());
+      setSelectedSurveyMarkerId(annotationId);
+      startFamilyGroupMove(e, { markerIds: [annotationId] });
+      return;
+    }
 
     const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const originalBounds = normalizeSurveyMarkerBounds({
@@ -4785,7 +4796,7 @@ const SVGAnnotationLayerBody = memo(({
     // dragMode: the marker's own drag is a selection gesture (rule 11).
     setSurveyMarkerPreviewBounds({ annotationId, bounds: originalBounds, dragMode: 'move' });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-  }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick, isSurveyMarkerFamilyMember, selectedSurveyMarkerIds, familySelectionSize, startFamilyGroupMove, setSelectedSurveyMarkerId]);
+  }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick, isSurveyMarkerFamilyMember, selectedSurveyMarkerIds, familySelectionSize, startFamilyGroupMove, setSelectedSurveyMarkerId, onDuplicateFamily]);
 
   const handleSurveyMarkerDoubleClick = useCallback((e, entry) => {
     if (!entry?.surveyMarker?.annotationId) return;
@@ -5066,6 +5077,32 @@ const SVGAnnotationLayerBody = memo(({
     // carries the selection handles.
     const projectedShape = projectSurveyMarkerEntryShape(entry.surveyMarker, bbox);
     const hitInteractive = annotationHitTargetsInteractive && !entry.surveyMarker.liveOverlay;
+    const paint = projectedShape ? (
+      <SurveyMarkerShapePaint
+        projected={projectedShape}
+        needsEntity={Boolean(entry.surveyMarker.needsEntity)}
+        color={bbox.fill}
+        opacity={bbox.opacity}
+        transform={rotationTransform}
+      />
+    ) : (
+      <rect
+        x={bbox.left}
+        y={bbox.top}
+        width={bbox.width}
+        height={bbox.height}
+        fill={bbox.fill}
+        stroke={bbox.stroke}
+        strokeWidth={bbox.strokeWidth}
+        strokeDasharray={Array.isArray(bbox.strokeDashArray) ? bbox.strokeDashArray.join(',') : undefined}
+        opacity={bbox.opacity}
+        transform={rotationTransform}
+        style={{
+          pointerEvents: 'none',
+          mixBlendMode: bbox.globalCompositeOperation === 'multiply' ? 'multiply' : undefined,
+        }}
+      />
+    );
 
     return (
       <g
@@ -5075,32 +5112,13 @@ const SVGAnnotationLayerBody = memo(({
         transform={liveDx || liveDy ? `translate(${liveDx} ${liveDy})` : undefined}
         style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}
       >
-        {projectedShape ? (
-          <SurveyMarkerShapePaint
-            projected={projectedShape}
-            needsEntity={Boolean(entry.surveyMarker.needsEntity)}
-            color={bbox.fill}
-            opacity={bbox.opacity}
-            transform={rotationTransform}
-          />
-        ) : (
-        <rect
-          x={bbox.left}
-          y={bbox.top}
-          width={bbox.width}
-          height={bbox.height}
-          fill={bbox.fill}
-          stroke={bbox.stroke}
-          strokeWidth={bbox.strokeWidth}
-          strokeDasharray={Array.isArray(bbox.strokeDashArray) ? bbox.strokeDashArray.join(',') : undefined}
-          opacity={bbox.opacity}
-          transform={rotationTransform}
-          style={{
-            pointerEvents: 'none',
-            mixBlendMode: bbox.globalCompositeOperation === 'multiply' ? 'multiply' : undefined,
-          }}
-        />
-        )}
+        {/* Copy-drag: the original stays where it is while its copy moves. */}
+        {visualTransform?.copy === true && (liveDx || liveDy) ? (
+          <g transform={`translate(${-liveDx} ${-liveDy})`} style={{ pointerEvents: 'none' }} data-copy-drag-original="true">
+            {paint}
+          </g>
+        ) : null}
+        {paint}
         {isHoveredSurveyMarker && !isSelectedSurveyMarker && projectedShape && (
           <SurveyMarkerShapeGlow projected={projectedShape} transform={rotationTransform} />
         )}
@@ -6306,9 +6324,11 @@ const SVGAnnotationLayerBody = memo(({
     const objTypeForEdit = String(obj.type || '').toLowerCase();
     const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.has(objTypeForEdit);
     const hideForEdit = isBeingEdited && !isInPlaceEdit && !isBboxEdit;
-    // Owner after Test 46: carried onto another page -> hidden here.
-    const hideForCrossPage = visualTransform?.crossPageAway === true
+    // Owner after Test 46: carried onto another page -> hidden here (a
+    // copy-drag hides only the copy; the original stays drawn).
+    const carriedAway = visualTransform?.crossPageAway === true
       && (visualTransform.id === i || (visualTransform.id === 'group' && visualTransform.affectedIds?.has(i)));
+    const hideForCrossPage = carriedAway && !copyDragOrigin;
 
     // UX 2026-07-14 (same-surface editor): during edit, TextEditOverlay is
     // the visible glyph surface — caret and letters share ONE CSS layout, so
@@ -6450,7 +6470,7 @@ const SVGAnnotationLayerBody = memo(({
           </g>
         )}
         {/* Actual annotation render — pointerEvents none so clicks pass to hit rect */}
-        <g style={{ pointerEvents: 'none' }}>
+        <g style={{ pointerEvents: 'none', opacity: carriedAway && copyDragOrigin ? 0 : undefined }}>
           {renderElement}
         </g>
         {/* Hover outline + hit area — line uses line-shaped hit, counter uses
