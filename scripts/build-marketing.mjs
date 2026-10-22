@@ -75,7 +75,7 @@ const FAQ = [
   ['What is Survey?', 'Survey is a PDF markup app for construction and engineering drawings. You open a drawing set in your browser, mark it up with every tool you would expect, and run site surveys on the plan that you export as a spreadsheet.'],
   ['How do site surveys work?', 'Build a checklist template once: the things you check and the questions you ask at each one. On site, drop a marker where each item is, answer Y, N or N/A, and add a note, a photo or a voice note. Export the data and you get a spreadsheet file (.xlsx) with one sheet per category plus a summary. It opens in Excel, Google Sheets, Numbers or LibreOffice. Link a Microsoft 365 workbook and edits made there come back onto the plan.'],
   ['What are spaces and regions?', 'A space is a named set of pages with a region drawn on each page. Turn it on and everything outside the region dims, so you work on one part of a sheet at a time. Markups made inside a space belong to it. We have not found this in any other PDF app.'],
-  ['Which markup tools are free?', 'All of them: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers, measuring, text, callouts, symbols, text highlight and strike-through, OCR and page tools. Drawboard PDF charges for callouts, measuring, OCR and page tools. Survey does not.'],
+  ['Which markup tools are free?', 'All of them: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers, measuring, text, callouts, text highlight and strike-through, OCR and page tools. Drawboard PDF charges for callouts, measuring, OCR and page tools. Survey does not.'],
   ['Do I need to install anything?', 'No. Survey runs in Chrome, Edge and Safari on computers, tablets and phones. Open surveytool.app and sign in.'],
   ['Does it work with a pen on a tablet?', 'Yes. Apple Pencil or any stylus draws, and your fingers pan and zoom, so you never mark the page by mistake.'],
   ['How do count markers work?', 'Pick a category, tap each item on the plan, and Survey numbers the markers and keeps a running total for every category. Export the totals as a spreadsheet when you are done.'],
@@ -83,7 +83,7 @@ const FAQ = [
   ['Can I cancel Pro any time?', 'Yes. Cancel from your account settings and keep Pro until the end of the period you paid for.'],
   ['Can my team work on the same drawings?', 'Yes. Invite people as viewers or editors. Enterprise adds live editing together, admin tools and single sign-on for $20 per user a month, with a minimum of 3 users.'],
   ['Where are my files kept?', 'Your markups save to the cloud so they sync to every device you sign in on. Read the <a href="/privacy.html">privacy policy</a> for the details.'],
-  ['Can Survey be set up for my company?', 'Yes. We build custom data exports, company markup templates, symbol sets and team roles. <a href="' + MAIL + '">Email us</a> with how your team works.'],
+  ['Can Survey be set up for my company?', 'Yes. We build custom data exports, company markup templates and team roles. <a href="' + MAIL + '">Email us</a> with how your team works.'],
 ];
 
 const TOOLS = [
@@ -377,7 +377,7 @@ ${ONLY.map(only).join('\n')}
 
 <section class="sec"><div class="wrap custom">
   <h2>Need Survey to fit how your company works?</h2>
-  <p>We build custom data exports, company survey templates, symbol sets and team roles. Tell us what your team does today and we will set it up.</p>
+  <p>We build custom data exports, company survey templates and team roles. Tell us what your team does today and we will set it up.</p>
   <a class="btn ghost" href="${MAIL}">Email us</a>
 </div></section>
 ${cta()}`,
@@ -575,19 +575,17 @@ const whatsNew = page({
 const MCP_URL = 'https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp';
 const AI_FAQ = [
   ['Which AI tools can use Survey?',
-    `Any that speak the open connector standard (MCP). Claude and ChatGPT both let you add a custom connector, which reads your drawings. An AI running inside your own browser can also mark them up. Both act for you, with your plan and your role on each drawing.`],
+    `Any that speak the open connector standard (MCP). Claude and ChatGPT both let you add a custom connector, which reads your drawings. It acts for you, with your plan and your role on each drawing.`],
   ['Does the AI get its own account?',
     `No. An agent always acts for a signed-in person and never has an account of its own. It has exactly your rights: the same role on each drawing (a viewer's agent can only read) and the same plan.`],
   ['Can Claude or ChatGPT change my drawings?',
-    `No. The Claude or ChatGPT connector only reads: it finds your projects and drawings and reads the survey items on a plan. Marking a drawing up happens with an agent running in your own browser, not through the connector.`],
-  ['Can a browser agent change my drawings without asking?',
-    `Only if you can. A browser agent has your role, so if you can only view a drawing, so can it. If you can edit, it can record answers and notes and drop count markers, as you would. Drawing-markup tools (notes, shapes, highlights) stay off until you switch them on. Before anything is deleted the agent asks you to confirm, and one Undo takes a change back.`],
+    `No. The Claude or ChatGPT connector only reads: it finds your projects and drawings and reads the survey items on a plan.`],
   ['What can no agent ever do?',
     `Pay, change your plan, delete your account, use your linked sign-ins, let other agents in, or change your email or password. Those stay with you.`],
   ['How do I stop an agent?',
-    `A Claude or ChatGPT connector, or any agent you let in with a sign-in, you remove at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>; removal is instant. An agent in your own browser runs inside your signed-in session, so it stops when you sign out of Survey, and you can switch its tools off entirely.`],
+    `A Claude or ChatGPT connector, or any agent you let in with a sign-in, you remove at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>; removal is instant.`],
   ['Where do my files go?',
-    `Nowhere new. The agent reads and writes the same Survey account you already use. An agent in your browser needs no extra sign-in at all.`],
+    `Nowhere new. The connector reads the same Survey account you already use.`],
 ];
 const AI_STEPS = [
   ['Open your AI tool\'s connector settings', 'In Claude: Settings, then Connectors, then Add custom connector. ChatGPT has the same kind of setting.'],
@@ -598,22 +596,14 @@ const AI_STEPS = [
 const useWithAi = page({
   path: '/use-with-ai', crumb: 'Use with AI',
   title: 'Use Survey with your AI | Survey',
-  desc: 'Let Claude or ChatGPT read your drawings, or an agent in your browser mark them up, all as you, with your plan and your role. What each can and cannot do, and how to turn it off.',
+  desc: 'Let Claude or ChatGPT read your drawings as you, with your plan and your role. What it can and cannot do, and how to turn it off.',
   schema: [
     { '@type': 'HowTo', name: 'How to connect Claude or ChatGPT to Survey', step: AI_STEPS.map(([n, t], i) => ({ '@type': 'HowToStep', position: i + 1, name: n, text: strip(t) })) },
     faqSchema(AI_FAQ),
   ],
   body: `<section class="page-head"><div class="wrap narrow">
   <h1>Use Survey with your AI</h1>
-  <p class="lede">Let an AI assistant work in Survey for you. It acts as you, with your plan and your role on each drawing. Reading your drawings works through a Claude or ChatGPT connector; marking them up happens with an agent running in your own browser.</p>
-</div></section>
-
-<section class="sec tight"><div class="wrap narrow">
-  <h2>Two ways to connect</h2>
-  <div class="dev-rows">
-    <article><h3>Claude or ChatGPT — reads your drawings</h3><p>Add Survey as a custom connector (steps below). It signs you in to Survey once, then finds your projects and drawings and reads the survey items on a plan. It is read-only: it does not change anything. Remove it any time at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a>.</p></article>
-    <article><h3>An agent in your browser — reads and marks up</h3><p>If your agent runs inside your browser while you are signed in to Survey, Survey gives it tools with no extra sign-in. It acts as you, with your role: it reads the drawing, and if you can edit it, records answers and notes and drops count markers. The drawing-markup tools (notes, shapes, highlights) stay off until you switch them on. It stops when you sign out.</p></article>
-  </div>
+  <p class="lede">Let Claude or ChatGPT read your drawings for you. Add Survey as a custom connector: it signs you in to Survey once, then finds your projects and drawings and reads the survey items on a plan, as you, with your plan and your role on each drawing. It is read-only: it does not change anything.</p>
 </div></section>
 
 <section class="sec tight"><div class="wrap narrow">
@@ -621,22 +611,14 @@ const useWithAi = page({
   <ol class="steps">${AI_STEPS.map(([n, t]) => `<li><h3>${n}</h3><p>${t}</p></li>`).join('')}</ol>
 </div></section>
 
-<section class="sec tight"><div class="wrap narrow feat-grid"><div>
-  <h2>Through a Claude or ChatGPT connector</h2>
+<section class="sec tight"><div class="wrap narrow">
+  <h2>What the connector can do</h2>
   <p class="fine">Read-only.</p>
   <ul class="ticks">
     <li>See the projects and drawings you can see</li>
     <li>Read the survey items on a plan</li>
   </ul>
-</div><div>
-  <h2>With an agent in your browser</h2>
-  <p class="fine">Acts with your role; needs edit rights to write.</p>
-  <ul class="ticks">
-    <li>Everything the connector can read, plus the open drawing and its markup</li>
-    <li>If you can edit: set survey answers, add notes and drop count markers</li>
-    <li>Once you switch them on: add drawing markup — notes, shapes, callouts and highlights</li>
-  </ul>
-</div></div></section>
+</div></section>
 
 <section class="sec tight"><div class="wrap narrow">
   <h2>What no agent can ever do</h2>
@@ -651,8 +633,8 @@ const useWithAi = page({
 
 <section class="sec tight"><div class="wrap narrow">
   <h2>You are always in charge</h2>
-  <p>An agent only ever has your rights. If you can only view a drawing, so can its agent. A browser agent needs edit rights to change anything, the drawing-markup tools stay off until you switch them on, and before anything is deleted the agent asks you to confirm; one Undo takes a change back.</p>
-  <p>To stop an agent: remove a Claude or ChatGPT connector, or any agent you let in with a sign-in, at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a> — removal takes effect at once. An agent in your own browser runs inside your signed-in session, so sign out of Survey to stop it; you can also switch its tools off for good.</p>
+  <p>An agent only ever has your rights. If you can only view a drawing, so can its agent.</p>
+  <p>To stop an agent: remove a Claude or ChatGPT connector, or any agent you let in with a sign-in, at <a href="${ORIGIN}/agent-link">surveytool.app/agent-link</a> — removal takes effect at once.</p>
 </div></section>
 
 <section class="sec tight"><div class="wrap narrow"><h2>Questions</h2>${faqList(AI_FAQ)}</div></section>
@@ -715,7 +697,7 @@ ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></u
 
 > Survey is a PDF markup app for construction and engineering drawings. It runs in the browser on computers, tablets and phones at ${ORIGIN}.
 
-Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, symbols, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export as a spreadsheet (.xlsx, one sheet per category plus a summary, opens in Excel, Google Sheets, Numbers or LibreOffice) and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys with data export, spaces and regions, templates, sharing with viewers and editors, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
+Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export as a spreadsheet (.xlsx, one sheet per category plus a summary, opens in Excel, Google Sheets, Numbers or LibreOffice) and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys with data export, spaces and regions, templates, sharing with viewers and editors, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
 
 ## Pages
 
@@ -724,7 +706,7 @@ Every markup tool is free: pen with pressure, highlighter, partial eraser, recta
 - [Devices](${ORIGIN}/devices): desktop, tablet and phone
 - [Pricing](${ORIGIN}/pricing): Free, Pro and Enterprise plans
 - [FAQ](${ORIGIN}/faq): common questions
-- [Use Survey with your AI](${ORIGIN}/use-with-ai): connect Claude, ChatGPT or a browser agent to act for you with your plan and role; what it can and cannot do, and how to turn it off. MCP server: ${MCP_URL}
+- [Use Survey with your AI](${ORIGIN}/use-with-ai): connect Claude or ChatGPT to read your drawings as you, with your plan and role (read-only); what it can and cannot do, and how to turn it off. MCP server: ${MCP_URL}
 ${USES.map((u) => `- [${u.name}](${ORIGIN}/use-cases/${u.slug}): ${u.desc}`).join('\n')}
 ${COMPARE.map((c) => `- [Survey vs ${c.them}](${ORIGIN}/compare/${c.slug}): ${c.desc}`).join('\n')}
 - [Free PDF tools](${ORIGIN}/tools): ${PDF_TOOLS.length} tools to merge, split, compress, OCR scans, compare two PDFs, sign, lock and convert PDFs in the browser, several files at once; no sign-in, files never leave the device
