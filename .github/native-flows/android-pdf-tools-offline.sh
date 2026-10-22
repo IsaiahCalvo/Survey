@@ -13,6 +13,11 @@ maestro test --test-output-dir "$OUT" .github/native-flows/android-pdf-tools-off
 # Let the whole file arrive, then drop the connection.
 sleep 8
 adb reverse --remove-all
+# Removing the rule keeps open connections alive (the app saved through one),
+# so restart adb to cut every tunnel.
+adb kill-server
+adb start-server
+adb wait-for-device
 PID=$(adb shell pidof com.kalvoe.survey | tr -d '\r')
 adb forward tcp:9222 "localabstract:webview_devtools_remote_$PID"
 ev() { node .github/native-flows/webview-storage.mjs --eval "$1"; }
