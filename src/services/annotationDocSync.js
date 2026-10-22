@@ -734,6 +734,7 @@ export async function openAnnotationDoc({
             persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration),
             persistenceDoc,
           );
+          skipStoreEncodeWhileLoading(state.idbProvider, persistenceDoc);
         }
         const localReady = await whenSynced(state.idbProvider, localSyncTimeoutMs);
         if (!localReady) {
@@ -1068,6 +1069,61 @@ function applyToLocalPersistence(state, update) {
   if (!state.localPersistenceDoc) return;
   if (localPersistenceNearTrim(state)) freezePersistedCandidate(state);
   Y.applyUpdate(state.localPersistenceDoc, update, HYDRATE_ORIGIN);
+}
+
+// Yjs encodes a transaction's update only for a doc with 'update' listeners,
+// and y-indexeddb's store (_storeUpdate) is the only one on the local
+// persistence doc. Round 5 (open speed): two of its encodes at open are waste.
+//  - Loading: the provider applies its stored updates under its own origin,
+//    which its store ignores, yet Yjs still re-encodes all of them (~20 MB
+//    on a dense reopen) just to hand the store bytes it drops.
+//  - Cold open: the snapshot goes into an empty doc, so the update Yjs would
+//    encode is the snapshot again (~0.5 s for 20 MB). Storing the snapshot's
+//    own bytes is the same write (one stored update; a later load applies it
+//    to the same state).
+// Both skip only the encode: every doc gets the same applyUpdate calls in
+// the same order, and the store runs at the same point.
+function idbStoreListener(provider, doc) {
+  return provider?.doc === doc && typeof provider._storeUpdate === 'function'
+    ? provider._storeUpdate
+    : null;
+}
+
+function skipStoreEncodeWhileLoading(provider, doc) {
+  const store = idbStoreListener(provider, doc);
+  if (!store || provider.synced) return;
+  doc.off('update', store);
+  provider.once('synced', () => {
+    if (!provider._destroyed) doc.on('update', store);
+  });
+}
+
+function docIsEmpty(doc) {
+  return doc.store.clients.size === 0
+    && !doc.store.pendingStructs
+    && !doc.store.pendingDs;
+}
+
+function applySnapshotToLocalPersistence(state, bytes) {
+  const doc = state.localPersistenceDoc;
+  const store = idbStoreListener(state.idbProvider, doc);
+  if (!doc || !store || !state.idbProvider.db || !docIsEmpty(doc)) {
+    applyToLocalPersistence(state, bytes);
+    return;
+  }
+  if (localPersistenceNearTrim(state)) freezePersistedCandidate(state);
+  doc.off('update', store);
+  try {
+    Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
+  } finally {
+    doc.on('update', store);
+  }
+  if (docIsEmpty(doc)) return; // nothing applied: Yjs would emit nothing
+  // IndexedDB clones the whole buffer behind a view: store exact bytes.
+  const own = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+    ? bytes
+    : bytes.slice();
+  store(own, HYDRATE_ORIGIN);
 }
 
 async function rotateCleanPersistence(state) {
@@ -2443,7 +2499,7 @@ async function loadFromBackend(state) {
         await waitForIdle();
         applyAcceptedUpdate(state, bytes);
         await waitForIdle();
-        applyToLocalPersistence(state, bytes);
+        applySnapshotToLocalPersistence(state, bytes);
       } catch (err) {
         throw new Error(`snapshot decode failed: ${err?.message || 'invalid Yjs update'}`, { cause: err });
       }
