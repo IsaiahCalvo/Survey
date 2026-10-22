@@ -263,6 +263,7 @@ const ICON_RENDERERS = {
     // (also read by the tool-group morph), so a pick swaps them there.
     areaRect: (size, color, style, className) => renderAreaToolGlyph('areaRect', size, color, style, className),
     areaFreehand: (size, color, style, className) => renderAreaToolGlyph('areaFreehand', size, color, style, className),
+    areaPolygon: (size, color, style, className) => renderAreaToolGlyph('areaPolygon', size, color, style, className),
     // Owner 2026-10-02: a Spaces region card's "edit areas" button. Hugeicons
     // Select 02 (MIT): a plus, a box drawn as edges, and three square corner
     // handles. Replaces the Draw pencil on each region card. The handles keep
