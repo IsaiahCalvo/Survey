@@ -76,7 +76,9 @@ jobs:
 
   deploy:
     if: github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main'
-    runs-on: ubuntu-latest
+    # Playwright 1.59 has no browsers for ubuntu-26.04, which ubuntu-latest
+    # became in October 2026.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout the shipped revision

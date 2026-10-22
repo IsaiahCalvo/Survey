@@ -4,7 +4,7 @@ One codebase, one database, two copies of the app.
 
 | Channel | Address | Built from | Who sees unfinished features |
 | --- | --- | --- | --- |
-| Stable | https://surveytool.app | the newest green `main` commit, at most once every 3 hours; run the workflow by hand or put `[deploy now]` in a commit message to ship an urgent fix at once (`deploy-production.yml`) | Only people a flag is turned on for at `/flags` |
+| Stable | https://surveytool.app | the newest green `main` commit, at most once every 3 hours (checked every 15 minutes, so a window opens even when no tests run); run the workflow by hand or put `[deploy now]` in a commit message to ship an urgent fix at once (`deploy-production.yml`) | Only people a flag is turned on for at `/flags` |
 | Nightly | https://surveytool-nightly.vercel.app | the same `main` commit surveytool.app is serving, once a day (the first production run of each UTC day) or on demand (`deploy-nightly.yml`) | Everyone: every flag is on (`VITE_RELEASE_CHANNEL=nightly`) |
 
 Both copies talk to the same production Supabase project, so there is never a
