@@ -336,7 +336,7 @@ import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoR
 import { registerAgentDocument } from './agent/webmcp';
 import { findHighlightQuads, ocrWordsToWords, textItemsToWords } from './agent/planText';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
-import { findSurveyMarkerAt } from './utils/surveyMarkerHitTest.js';
+import { findSurveyMarkerAt, markerPaintsAbove } from './utils/surveyMarkerHitTest.js';
 import { watchLightPopover } from './components/dismissRules.js';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
@@ -4216,6 +4216,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (isSelectionGrabPress(e)) return;
       const hit = resolveAnnotationAt(e);
       if (!hit) return;
+      // Owner 2026-10-22: a Survey Marker is picked by Pan like any mark - on
+      // empty page, or when it paints above the mark found there.
+      const marker = findSurveyMarkerAt(e);
+      if (marker && (hit.kind === 'page' || markerPaintsAbove(marker, hit))) {
+        setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+        setPendingSurveyMarkerSelection({ pageNumber: marker.pageNumber, annotationId: marker.annotationId, tick: Date.now() });
+        return;
+      }
       // Drawboard rules 2 / 8 / 12 (owner 2026-10-02, utils/selectModes.js):
       // a click picks the mark and Pan STAYS armed (the selection still moves
       // and resizes under Pan); Shift adds; a click on empty page only drops
@@ -4235,13 +4243,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return;
       }
       if (hit.kind === 'page') {
-        // Owner 2026-10-22: a Survey Marker is picked by Pan like any mark.
-        const marker = findSurveyMarkerAt(e);
-        if (marker) {
-          setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
-          setPendingSurveyMarkerSelection({ pageNumber: marker.pageNumber, annotationId: marker.annotationId, tick: Date.now() });
-          return;
-        }
         if (!e.shiftKey && hasAnyPageSelection()) clearAnnotationSelectionForContextChange('pan-empty-click');
         return;
       }
