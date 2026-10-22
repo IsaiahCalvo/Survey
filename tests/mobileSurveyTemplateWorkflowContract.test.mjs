@@ -19,7 +19,7 @@ test('mobile survey-template workflow covers persisted nested CRUD and viewer ma
     'Add module',
     'Add category',
     'Add checklist item',
-    'Delete Survey Marker',
+    'Survey Marker Delete',
     'page.reload',
     'localStorage.getItem',
   ]) assert.match(WORKFLOW, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
@@ -50,4 +50,22 @@ test('desktop category deletion uses its rendered selection control instead of s
   assert.match(DESKTOP_WORKFLOW, /locator\(':scope > span'\)\.last\(\)/);
   assert.match(DESKTOP_WORKFLOW, /!button\.disabled/);
   assert.doesNotMatch(DESKTOP_WORKFLOW, /headerBox\.x/);
+});
+
+test('phone survey-template workflow tracks the current viewer chrome', () => {
+  // The rail's select tool is named after its mode ("Rectangle Select").
+  assert.doesNotMatch(WORKFLOW, /getByRole\('button', \{ name: 'Select', exact: true \}\), 'Select (tool|marker)/);
+  assert.match(WORKFLOW, /VIEWER_SELECT_TOOL_NAME = \/\^\(\?:\(\?:Rectangle\|Lasso\|Text\) \)\?Select\$\//);
+  // No "Collapse Survey panel" chevron; the category is armed from the rail by aria-pressed.
+  assert.doesNotMatch(WORKFLOW, /Collapse Survey panel/);
+  assert.match(WORKFLOW, /\[aria-pressed="true"\]/);
+  // No floating Delete chip: delete a marker from the long-press menu.
+  assert.match(WORKFLOW, /touch\.longPress\(/);
+  assert.match(WORKFLOW, /data-annotation-context-menu/);
+});
+
+test('phone survey-template e2e is hermetic (loopback only)', () => {
+  const RUNNER = fs.readFileSync(new URL('../agent-cli/mobile-workflows/survey-template-e2e.mjs', import.meta.url), 'utf8');
+  assert.match(RUNNER, /route\.abort\('blockedbyclient'\)/);
+  assert.match(RUNNER, /assertNoBrowserErrors\(\{ ignore: \/net::ERR_BLOCKED_BY_CLIENT\/ \}\)/);
 });
