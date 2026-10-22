@@ -78,3 +78,33 @@ test('clips join into one WAV with a short gap between them', async () => {
   assert.equal(view.getInt16(44 + (1600 + 4000) * 2, true) < 0, true);
   assert.equal(await joinWavs([a]), a);
 });
+
+test('words that stop mid-sentence hold the turn a little longer, but not forever', async () => {
+  const { looksUnfinished } = await import('../src/agent/turnJoiner.js');
+  assert.equal(looksUnfinished('D-117 is installed and'), true);
+  assert.equal(looksUnfinished('mark camera 6 um'), true);
+  assert.equal(looksUnfinished('find the'), true);
+  assert.equal(looksUnfinished("it's a camera"), false);
+  assert.equal(looksUnfinished('it got hit by a,'), true);
+  assert.equal(looksUnfinished('D-117 is installed.'), false);
+  assert.equal(looksUnfinished('camera 6 on the 4th floor'), false);
+  assert.equal(looksUnfinished(''), false);
+
+  const t = fakeTimers();
+  const turns = [];
+  let heard = 'camera 6 is installed and';
+  const j = createTurnJoiner({ onTurn: (parts) => turns.push(parts.length), peek: () => heard, ...t });
+  j.add({ clip: 'a' });
+  await t.fire();
+  assert.equal(turns.length, 0, 'held: "and" leaves the sentence open');
+  assert.equal(t.pending, 1);
+  heard = 'camera 6 is installed and has an IP';
+  await t.fire();
+  assert.deepEqual(turns, [1], 'sent once the words end');
+
+  // Someone who trails off still gets an answer.
+  heard = 'um';
+  j.add({ clip: 'b' });
+  for (let i = 0; i < 10 && !turns[1]; i += 1) await t.fire();
+  assert.deepEqual(turns, [1, 1]);
+});

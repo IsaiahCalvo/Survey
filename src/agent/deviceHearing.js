@@ -108,6 +108,10 @@ export function startDeviceHearing({ lang, Recognition = deviceRecognition(), no
         waiters.add(done);
       });
     },
+    /** The words heard and not yet taken by a clip, for the unfinished-sentence wait. */
+    latestText() {
+      return finals.map((f) => f.text).filter(Boolean).join(' ');
+    },
     stop() {
       running = false;
       wake();

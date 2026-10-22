@@ -80,3 +80,12 @@ test('only desktop browsers share the mic with the device recognizer', async () 
   assert.equal(sharesMicSafely({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', maxTouchPoints: 5 }), false);
   assert.equal(sharesMicSafely({ userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 9) Chrome/141.0 Mobile', maxTouchPoints: 5 }), false);
 });
+
+test("the browser's own hearing opens no second mic stream on phones", async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../src/components/SurveyAgentPanel.jsx', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('const toggleBrowserSpeech'), src.indexOf('const canTalk'));
+  const guard = body.indexOf('if (!sharesMicSafely())');
+  assert.ok(guard > 0, 'the pulse checks the mic can be shared');
+  assert.ok(guard < body.indexOf('getUserMedia'), 'before it opens a second stream');
+});
