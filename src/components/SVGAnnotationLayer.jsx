@@ -7707,6 +7707,12 @@ const SVGAnnotationLayerBody = memo(({
         }
       }}
       onPointerMove={isInteractive ? (e) => {
+        // Lifting a moved mark into the lift layer remounts it, which drops
+        // a pointer capture it held; the page layer takes the drag back so
+        // the drop still lands here.
+        if (liftedMarks.length && !e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+          try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) { /* optional */ }
+        }
         if (surveyMarkerDragRef.current && updateSurveyMarkerDrag(e, false)) return;
         handlePointerMove(e);
       } : undefined}
@@ -9590,7 +9596,10 @@ const SVGAnnotationLayerBody = memo(({
       // The outer box clips at the page edge, like the page layer does. Snap
       // guides sit in a second, unmoved layer: redrawn every frame, they
       // would otherwise re-raster the dense page layer under them.
+      // inert: no press or release ever lands on a lifted copy (its marks
+      // set their own pointer-events, which pointerEvents: none can't undo).
       <div
+        inert=""
         data-selection-gesture={isSelectionGestureActive(interactionState, surveyMarkerPreviewBounds?.dragMode) ? 'true' : undefined}
         style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}
       >

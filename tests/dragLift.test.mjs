@@ -58,3 +58,13 @@ test('the lift layer is composited and moved by CSS only', () => {
   // Never a second page layer: readPageLayers and every page lookup key on it.
   assert.doesNotMatch(block, /data-svg-annotation-layer=/);
 });
+
+test('a lifted drag still ends on the page layer', () => {
+  // Lifting remounts the pressed mark, which drops the pointer capture it
+  // held: the page layer takes it back, and the lift layer is inert so the
+  // release never lands on a lifted copy (a counter pin's drop was lost and
+  // the next Undo removed the pin).
+  assert.match(LAYER, /if \(liftedMarks\.length && !e\.currentTarget\.hasPointerCapture\?\.\(e\.pointerId\)\) \{\s*try \{ e\.currentTarget\.setPointerCapture\(e\.pointerId\); \}/);
+  const start = LAYER.indexOf('{liftedMarks.length > 0 && (');
+  assert.match(LAYER.slice(start, start + 700), /<div\s+inert=""/);
+});
