@@ -2,7 +2,7 @@
 // template editor, are saved with the template and come back after a reload.
 // Without the flag the editor offers only today's presets.
 import { E2E_ACCOUNTS } from './accounts.mjs';
-import { clientFromPageSession, expect, signIn, test } from './helpers.mjs';
+import { adminClient, clientFromPageSession, expect, signIn, test } from './helpers.mjs';
 
 async function openTemplateEditor(page) {
   await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
@@ -10,6 +10,18 @@ async function openTemplateEditor(page) {
   await expect(answers).toBeVisible({ timeout: 30_000 });
   return answers;
 }
+
+// Every template starts on Y / N / N/A, even when an earlier run on the same
+// stack stopped halfway.
+test.beforeAll(async () => {
+  const db = adminClient();
+  const { data } = await db.from('templates').select('id, config');
+  for (const row of data || []) {
+    if (!row.config?.answerSet) continue;
+    const { answerSet: _a, ...config } = row.config;
+    await db.from('templates').update({ config }).eq('id', row.id);
+  }
+});
 
 const flag = (on) => (page) => page.addInitScript((v) => localStorage.setItem('survey.flag.custom-answers', v), on ? '1' : '0');
 
@@ -26,8 +38,9 @@ test('flag on: type 5 / 10 / 20, save, and it is still there after a reload', as
   await signIn(page, E2E_ACCOUNTS.owner);
   const answers = await openTemplateEditor(page);
   const templateName = await page.getByRole('textbox', { name: 'Template name' }).filter({ visible: true }).first().inputValue();
-  const original = await (await clientFromPageSession(page)).from('templates').select('id, name, config').eq('name', templateName).maybeSingle();
+  const save = page.getByRole('button', { name: 'Save', exact: true }).filter({ visible: true }).first();
 
+  await expect(answers).toHaveValue('yes-no-na');
   await answers.selectOption({ label: 'Make your own…' });
   const editor = page.getByTestId('answer-set-editor').filter({ visible: true });
   await expect(editor).toBeVisible();
@@ -47,10 +60,10 @@ test('flag on: type 5 / 10 / 20, save, and it is still there after a reload', as
   await expect(editor).toHaveCount(0);
   await expect(answers).toHaveValue('');
 
-  await page.getByRole('button', { name: 'Save', exact: true }).filter({ visible: true }).first().click();
+  await save.click();
   const db = await clientFromPageSession(page);
   await expect.poll(async () => {
-    const { data } = await db.from('templates').select('config').eq('name', templateName).maybeSingle();
+    const { data } = await db.from('templates').select('config').eq('name', templateName).limit(1).maybeSingle();
     // jsonb does not keep key order, so compare value / tone pairs.
     return JSON.stringify((data?.config?.answerSet || []).map((a) => [a.value, a.tone]));
   }, { timeout: 20_000 }).toBe(JSON.stringify([['5', 'neutral'], ['10', 'neutral'], ['20', 'neutral']]));
@@ -61,6 +74,12 @@ test('flag on: type 5 / 10 / 20, save, and it is still there after a reload', as
   await again.selectOption({ label: 'Edit my answers…' });
   await expect(page.getByTestId('answer-set-editor').filter({ visible: true }).getByRole('textbox', { name: 'Answer 2' })).toHaveValue('10');
 
-  // Put the seed template back for the other specs.
-  if (original.data) await db.from('templates').update({ config: original.data.config }).eq('id', original.data.id);
+  // Put the seed template back to Y / N / N/A for the other specs.
+  await page.getByTestId('answer-set-editor').filter({ visible: true }).getByRole('button', { name: 'Done' }).click();
+  await again.selectOption('yes-no-na');
+  await save.click();
+  await expect.poll(async () => {
+    const { data } = await db.from('templates').select('config').eq('name', templateName).limit(1).maybeSingle();
+    return data?.config?.answerSet ?? null;
+  }, { timeout: 20_000 }).toBe(null);
 });
