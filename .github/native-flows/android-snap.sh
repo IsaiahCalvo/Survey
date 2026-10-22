@@ -40,6 +40,17 @@ draw() {
   echo "$n"
 }
 W=$(adb shell wm size | sed 's/.*: //;s/x.*//' | tr -d '\r'); H=$(adb shell wm size | sed 's/.*x//' | tr -d '\r')
+# `adb input` takes SCREEN px, but getBoundingClientRect * dpr is WebView px:
+# below a status bar the two differ by the WebView's top offset (CI 2026-10-22:
+# a press landed 52 CSS px above the side it aimed at). Edge-to-edge WebView
+# (its height * dpr is the screen's) -> 0; else the status bar's bottom from
+# dumpsys; else the screen height minus the WebView's height.
+VH=$(ev "Math.round(window.innerHeight * (window.devicePixelRatio || 1))")
+if [ $((H - VH)) -lt 8 ]; then TOP=0; else
+  TOP=$(adb shell dumpsys window | tr -d '\r' | grep -m1 -oE 'type=statusBars frame=\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | sed -E 's/.*\]\[[0-9]+,([0-9]+)\]$/\1/' || true)
+  [ -n "$TOP" ] || TOP=$((H - VH))
+fi
+echo "screen ${W}x${H}, webview height ${VH}, top offset ${TOP}"
 # Upper-middle of the page: the page ends near 74% of the screen height and
 # earlier flows left marks near 65% on the right.
 ( pick Line ) || { pick Shapes; pick Line; }
@@ -53,7 +64,7 @@ echo "line A index: $A"
 case "$A" in none*) fail "Line A was not committed ($A); events: $(ev "(window.__pd || []).slice(-8).join(' , ')")";; esac
 EA=$(ends "$A"); echo "line A ends (screen CSS px): $EA"
 [ "$EA" != "none" ] || fail "Line A has no visible <line> element"
-AE=$(endpx "$A" 2); echo "line A end (device px): $AE"
+AE=$(endpx "$A" 2); set -- $AE; AE="$1 $(($2 + TOP))"; echo "line A end (screen px): $AE"
 set -- $AE
 # The tool stays armed after a draw, so line B is just another drag. Start
 # ~8 device px off A's end (well under 14 CSS px on any DPR >= 1); end at a
