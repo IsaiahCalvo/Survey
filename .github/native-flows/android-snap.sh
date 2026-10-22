@@ -77,7 +77,7 @@ EB=$(ends "$B"); echo "line B ends (screen CSS px): $EB"
 [ "$EB" != "none" ] || fail "Line B has no visible <line> element"
 ok=$(node -e "const a = process.argv[1].split(' ').map(Number), b = process.argv[2].split(' ').map(Number); const dx = b[0] - a[2], dy = b[1] - a[3]; console.log(Math.hypot(dx, dy) <= 0.5 ? 'ok' : 'off by ' + dx.toFixed(3) + ',' + dy.toFixed(3))" "$EA" "$EB")
 echo "B start vs A end: $ok"
-[ "$ok" = "ok" ] || fail "Line B start ($EB) did not snap to line A end ($EA): $ok CSS px (started 6,5 device px off)"
+[ "$ok" = "ok" ] || { echo "::error::Line B start ($EB) did not snap to line A end ($EA): $ok CSS px (started 6,5 device px off)"; SNAPFAIL=1; }
 # Line C: 300 device px at 42 degrees (3 off 45), up and to the right, far
 # from A and B's ends so no endpoint pull applies.
 CX=$((W * 25 / 100)); CY=$((H * 58 / 100))
@@ -91,4 +91,5 @@ ang=$(node -e "const c = process.argv[1].split(' ').map(Number); console.log((Ma
 echo "line C angle: $ang (drawn at 42)"
 shot
 node -e "process.exit(Math.abs(+process.argv[1] - 45) <= 0.5 ? 0 : 1)" "$ang" || { echo "::error::Line C angle $ang, expected 45 +/- 0.5 (drawn at 42)"; exit 1; }
+[ -z "${SNAPFAIL:-}" ] || exit 1
 echo "Snap check passed."
