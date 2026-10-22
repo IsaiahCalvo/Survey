@@ -42,6 +42,10 @@ const config: CapacitorConfig = {
     backgroundColor: '#171a21'
   },
   plugins: {
+    // CI-only (iOS): WKWebView cannot serve the app over http, so from
+    // capacitor:// the local Supabase's plain-http calls are blocked as mixed
+    // content. Native HTTP sends fetch/XHR from the app side instead.
+    ...(e2eLocalHttp ? { CapacitorHttp: { enabled: true } } : {}),
     // UX 2026-09-22 (owner bug: "the keyboard pushes the WHOLE app shell up").
     // The app manages the keyboard itself — src/mobile/keyboardViewport.js
     // measures it from visualViewport, publishes --keyboard-inset, and

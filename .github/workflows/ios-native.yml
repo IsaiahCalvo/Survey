@@ -251,7 +251,7 @@ jobs:
             timeout 300 bash .github/native-flows/android-pen-mode.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-counter-after-arrow.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-delete-point.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
-            timeout 300 bash .github/native-flows/android-snap.sh "$OUT" || echo "::warning::snap check failed (not gating yet)"
+            timeout 300 bash .github/native-flows/android-snap.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-voice-mic.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             timeout 300 bash .github/native-flows/android-undo-toast-check.sh "$OUT" || { timeout 30 adb logcat -d > "$OUT/logcat.txt"; exit 1; }
             adb reverse --remove-all
@@ -339,6 +339,8 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=8192
       - run: npx cap sync ios
+        env:
+          CAPACITOR_E2E_LOCAL_HTTP: "1"
       - name: Build app for the simulator
         run: |
           mkdir -p "$OUT"

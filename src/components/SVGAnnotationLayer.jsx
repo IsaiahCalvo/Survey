@@ -8587,6 +8587,15 @@ const SVGAnnotationLayerBody = memo(({
             neighbourSpacingPageUnits: lineHandleSpan > 0 ? lineHandleSpan / 2 : undefined,
             minPadPageUnits: handleR * 2,
           });
+          // #1130: with Line / Arrow armed, a pen / finger press on the end of
+          // the line just drawn starts the NEXT line there (snapped onto that
+          // end) instead of re-aiming the old one - chaining lines is what a
+          // press with the drawing tool on a line end means. The press falls
+          // through to the layer's creation handler. Mouse and Select keep
+          // the end grabber.
+          const lineToolChainsFromEnd = (e, handleId) => (handleId === 'p1' || handleId === 'p2')
+            && (activeTool === 'line' || activeTool === 'arrow')
+            && (e.pointerType === 'pen' || e.pointerType === 'touch');
           const renderLineHitPad = (handleId, cx, cy) => (
             <rect
               data-handle-hit-pad={handleId}
@@ -8598,7 +8607,7 @@ const SVGAnnotationLayerBody = memo(({
               fill="transparent"
               stroke="none"
               style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
-              onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, handleId); }}
+              onPointerDown={(e) => { if (lineToolChainsFromEnd(e, handleId)) return; e.stopPropagation(); handleHandlePointerDown(e, handleId); }}
             />
           );
           // Phase 15 LINE-01 / ARROW-01 — midpoint curvature handle.
@@ -8652,7 +8661,7 @@ const SVGAnnotationLayerBody = memo(({
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
                 style={handleStyle}
-                onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p1'); }}
+                onPointerDown={(e) => { if (lineToolChainsFromEnd(e, 'p1')) return; e.stopPropagation(); handleHandlePointerDown(e, 'p1'); }}
               />
               {/* End handle — same style as start handle, centered on arrowhead */}
               <circle
@@ -8663,7 +8672,7 @@ const SVGAnnotationLayerBody = memo(({
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
                 style={handleStyle}
-                onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, 'p2'); }}
+                onPointerDown={(e) => { if (lineToolChainsFromEnd(e, 'p2')) return; e.stopPropagation(); handleHandlePointerDown(e, 'p2'); }}
               />
               {/* Phase 15 midpoint curvature handle — Phase 15 LINE-01/ARROW-01.
                   Smaller r than endpoints (HANDLE_RADIUS_SECONDARY vs
