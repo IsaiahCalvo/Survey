@@ -30,7 +30,7 @@ import { createHoldToTalk } from '../agent/holdToTalk.js';
 import { createVoiceLog, loggedCaller, sendVoiceLog } from '../agent/voiceLog.js';
 import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
-import { isSureHearing, startDeviceHearing } from '../agent/deviceHearing.js';
+import { isSureHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
 import { keepScreenAwake } from '../agent/keepAwake.js';
 import { levelFromRms, setMicLevel, startStreamMeter } from '../agent/micLevel.js';
 import { AGENT_LANGS, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays, readAgentLang, writeAgentLang } from '../agent/agentLanguage.js';
@@ -859,6 +859,14 @@ export default function SurveyAgentPanel({
     speechRef.current = rec;
     setListening(true);
     rec.start();
+    if (!sharesMicSafely()) {
+      // Phones go quiet or cut the browser's hearing off when a second stream
+      // opens the mic, so the pulse follows the browser's speech events instead.
+      rec.onspeechstart = () => setMicLevel(0.7);
+      rec.onspeechend = () => setMicLevel(0, { reset: true });
+      speechMeterRef.current = { stop: () => setMicLevel(0, { reset: true }) };
+      return;
+    }
     // The browser hears for itself; a second look at the mic just for the pulse.
     navigator.mediaDevices?.getUserMedia?.({ audio: true }).then((stream) => {
       if (speechRef.current !== rec) { stream.getTracks().forEach((t) => t.stop()); return; }
