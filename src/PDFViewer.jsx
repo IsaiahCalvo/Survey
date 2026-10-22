@@ -530,6 +530,7 @@ import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
+import { shouldCaptureToolSwitchDiag } from './utils/toolSwitchDiag.js';
 import { carryMarkerShape } from './survey/markerShapes.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
@@ -5559,8 +5560,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // ---------------------------------------------------------------------------
   // TOOL-SWITCH DIAGNOSTICS (annotation render mismatch investigation)
-  // Captures a full-window screenshot + structured state dump 50ms after
-  // switching to 'eraser' or 'select'. Two slots are kept in window.__diagBuffer;
+  // Captures a full-window screenshot + structured state dump 1s after
+  // switching to 'eraser' or 'select', only while window.__APP_DEBUG or
+  // window.__DIAG_TOOL_SWITCH is on. Two slots are kept in window.__diagBuffer;
   // the Save Log button dumps both into the "Testing Logs" folder.
   // Do not remove — this is the debug harness for the eraser/selector bug.
   // ---------------------------------------------------------------------------
@@ -5587,7 +5589,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   });
 
   useEffect(() => {
-    if (activeTool !== 'eraser' && activeTool !== 'select') return;
+    // Debug-only: the capture froze heavy sheets for 300-400 ms (toolSwitchDiag.js).
+    if (!shouldCaptureToolSwitchDiag(activeTool)) return;
     const slot = activeTool;
     const t0 = performance.now();
     appDebug(`[Diag] tool-switch DETECTED -> ${slot} (scheduling t+1000ms capture)`);
