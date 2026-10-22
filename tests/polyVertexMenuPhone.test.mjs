@@ -60,3 +60,16 @@ test('a pen / touch side long-press band covers a cloud polygon\'s crowns, mouse
   assert.match(src, /insertVertexOnNearestEdge\(worldPoints, pt, polyEdgeTolerance,/);
   assert.match(src, /data-poly-edge-hit="true"[\s\S]{0,400}strokeWidth=\{polyEdgeTolerance \* 2\}/);
 });
+
+test('a pen / touch press hit-tested onto the selected poly itself still arms the side long-press', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  // The layer root's capture listener lets the side band claim the press first.
+  assert.match(src, /onPointerDownCapture=\{\(e\) => \{[\s\S]{0,400}querySelector\?\.\('\[data-poly-edge-hit\]'\)\?\.__claimPolyEdgePress\?\.\(e\)/);
+  assert.match(src, /data-poly-edge-hit="true"\s*\n\s*ref=\{\(el\) => \{ if \(el\) el\.__claimPolyEdgePress = claimPolyEdgePress\(el\); \}\}/);
+  // Pen / touch only (mouse unchanged), only on the selected mark or bare layer, only within the side tolerance.
+  const claim = src.slice(src.indexOf('const claimPolyEdgePress'), src.indexOf('const vertexFocused'));
+  assert.match(claim, /e\.pointerType !== 'pen' && e\.pointerType !== 'touch'/);
+  assert.match(claim, /data-annotation-index="\$\{selectedIndex\}"/);
+  assert.match(claim, /startPolyLongPress\(e, \{ edge: \{ segmentIndex: hit\.segmentIndex, t: hit\.t \} \}\)/);
+});
