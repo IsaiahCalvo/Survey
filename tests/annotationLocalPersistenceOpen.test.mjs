@@ -14,6 +14,7 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 
 import { openAnnotationDoc } from '../src/services/annotationDocSync.js';
 import { createMemoryAnnotationOutbox } from '../src/services/annotationDocOutbox.js';
+import { docToByPage } from '../src/services/annotationDocStore.js';
 import { gunzipBytes, pgHexToBytes } from '../src/services/annotationCheckpointCore.js';
 
 const rect = (id) => ({
@@ -32,6 +33,7 @@ const rect = (id) => ({
 function createCloud(documentId) {
   const rows = [];
   let snapshot = null;
+  const control = { failAppends: false };
   const readBuilder = () => {
     let gtSeq = null;
     let selected = '';
@@ -58,6 +60,7 @@ function createCloud(documentId) {
     supabase: {
       async rpc(name, args) {
         if (name === 'append_annotation_update') {
+          if (control.failAppends) return { data: null, error: { message: 'Failed to fetch' } };
           const existing = rows.find((row) => row.client_id === args.p_client_id && row.client_seq === args.p_client_seq);
           if (existing) return { data: [{ seq: existing.seq }], error: null };
           const row = {
@@ -72,6 +75,7 @@ function createCloud(documentId) {
           return { data: [{ seq: row.seq }], error: null };
         }
         if (name === 'store_annotation_snapshot') {
+          if (control.failAppends) return { data: null, error: { message: 'Failed to fetch' } };
           snapshot = {
             snapshot: args.p_snapshot,
             at_seq: args.p_at_seq,
@@ -106,7 +110,7 @@ function createCloud(documentId) {
       },
     },
   });
-  return { makeClient, get snapshot() { return snapshot; } };
+  return { rows, control, makeClient, get snapshot() { return snapshot; } };
 }
 
 const ids = (byPage) => Object.values(byPage || {})
@@ -270,6 +274,144 @@ test('a reopen loads the local copy without re-encoding it, and keeps storing ed
   } finally {
     watch.restore();
     await second?.destroy();
+    restoreIdb();
+  }
+});
+
+// Round 5, part 2: on a reopen the rest of the open (accepted shadow, the
+// IndexedDB copy) waits until the viewer has drawn a page, after the saved
+// copy is previewed. Only the timing moves: the same scenario with and
+// without the wait ends in the same marks, sends the same rows and stores the
+// same local copy.
+async function reopenScenario({ gate }) {
+  const restoreIdb = withFakeIndexedDb();
+  const documentId = 'local-copy-first-page';
+  const cloud = await seedCloud(documentId, ['s1', 's2']);
+  const reader = cloud.makeClient('reader');
+  const outbox = createMemoryAnnotationOutbox();
+  const dbName = `anno-${documentId}-actor-reader-g0`;
+  const events = [];
+  let second = null;
+  try {
+    const first = await openLocal(reader, { documentId, outboxStore: outbox, clientId: 'r1' });
+    first.applyByPage({ 1: { objects: [...first.getByPage()[1].objects, rect('mine')] } });
+    await first.drain();
+    // Then one made offline: only this device has it (local copy, outbox).
+    cloud.control.failAppends = true;
+    first.applyByPage({ 1: { objects: [...first.getByPage()[1].objects, rect('offline')] } });
+    await Promise.race([first.drain().catch(() => {}), new Promise((r) => setTimeout(r, 200))]);
+    await first.destroy();
+    cloud.control.failAppends = false;
+
+    // Someone else adds a mark after the snapshot (a tail row on reopen).
+    const writer = cloud.makeClient('writer');
+    const other = await openAnnotationDoc({
+      documentId,
+      supabase: writer.supabase,
+      clientId: 'w2',
+      actorUserId: writer.actor,
+      enableLocal: false,
+      enableRealtime: false,
+      doc: new Y.Doc(),
+      outboxStore: createMemoryAnnotationOutbox(),
+      snapshotRetryDelayMs: 0,
+      repairRetryDelayMs: 60_000,
+    });
+    other.applyByPage({ 1: { objects: [...other.getByPage()[1].objects, rect('theirs')] } });
+    await other.drain();
+    await other.destroy();
+    const rowsBefore = cloud.rows.length;
+
+    let release = null;
+    const opening = openAnnotationDoc({
+      documentId,
+      supabase: reader.supabase,
+      clientId: 'r2',
+      actorUserId: reader.actor,
+      enableLocal: true,
+      enableRealtime: false,
+      doc: new Y.Doc(),
+      outboxStore: outbox,
+      snapshotRetryDelayMs: 0,
+      repairRetryDelayMs: 60_000,
+      onPreview: (byPage, info) => events.push(`preview:${info?.stage}:${ids(byPage).join(',')}`),
+      whenFirstPageDrawn: gate
+        ? () => {
+          events.push('waiting-for-page');
+          return new Promise((resolve) => { release = resolve; });
+        }
+        : null,
+    }).then((handle) => { events.push('open'); return handle; });
+    if (gate) {
+      for (let i = 0; i < 50 && !release; i += 1) await new Promise((r) => setTimeout(r, 5));
+      assert.ok(release, 'the open waits for a drawn page after the preview');
+      await new Promise((r) => setTimeout(r, 30));
+      events.push('page-drawn');
+      release();
+    }
+    second = await opening;
+    await second.drain();
+    return {
+      events,
+      marks: ids(second.getByPage()),
+      rowsSent: cloud.rows.length - rowsBefore,
+      stored: ids(docToByPage(await storedCopy(dbName))),
+    };
+  } finally {
+    await second?.destroy();
+    restoreIdb();
+  }
+}
+
+test('a reopen draws the page before the shadow copies, and ends in the same state', async () => {
+  const plain = await reopenScenario({ gate: false });
+  const gated = await reopenScenario({ gate: true });
+  // The wait comes right after the saved copy is shown, and the open
+  // resolves only after the page is drawn; otherwise the same steps.
+  assert.deepEqual(gated.events.slice(0, 3), [
+    'preview:local-copy:mine,s1,s2',
+    'waiting-for-page',
+    'page-drawn',
+  ]);
+  assert.equal(gated.events.at(-1), 'open');
+  assert.deepEqual(
+    gated.events.filter((e) => e !== 'waiting-for-page' && e !== 'page-drawn'),
+    plain.events,
+  );
+  assert.deepEqual(gated.marks, ['mine', 'offline', 's1', 's2', 'theirs']);
+  assert.equal(gated.rowsSent, 1, 'the offline mark is sent once');
+  assert.deepEqual(gated.marks, plain.marks);
+  assert.equal(gated.rowsSent, plain.rowsSent, 'the same rows are sent');
+  assert.deepEqual(gated.stored, plain.stored, 'the same local copy is stored');
+});
+
+test('a page that is never drawn does not hold the open back for good', async () => {
+  const restoreIdb = withFakeIndexedDb();
+  const documentId = 'local-copy-never-drawn';
+  const cloud = await seedCloud(documentId, ['n1']);
+  const reader = cloud.makeClient('reader');
+  const outbox = createMemoryAnnotationOutbox();
+  let handle = null;
+  try {
+    const first = await openLocal(reader, { documentId, outboxStore: outbox, clientId: 'r1' });
+    await first.destroy();
+    handle = await openAnnotationDoc({
+      documentId,
+      supabase: reader.supabase,
+      clientId: 'r2',
+      actorUserId: reader.actor,
+      enableLocal: true,
+      enableRealtime: false,
+      doc: new Y.Doc(),
+      outboxStore: outbox,
+      snapshotRetryDelayMs: 0,
+      repairRetryDelayMs: 60_000,
+      onPreview: () => {},
+      whenFirstPageDrawn: () => new Promise(() => {}),
+    });
+    assert.deepEqual(ids(handle.getByPage()), ['n1']);
+  } finally {
+    await handle?.destroy();
     restoreIdb();
   }
 });

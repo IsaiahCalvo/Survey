@@ -533,6 +533,7 @@ import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } 
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
 import { shouldCaptureToolSwitchDiag } from './utils/toolSwitchDiag.js';
+import { createPageDrawnSignal } from './utils/pageDrawnSignal.js';
 import { carryMarkerShape } from './survey/markerShapes.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
@@ -1264,6 +1265,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   });
   // Page 1 of the open document has been drawn (work that can wait starts then).
   const firstPageDrawnRef = useRef({ drawn: false, resolve: null });
+  // Any page of the open document has been drawn (the annotation open waits on it).
+  const [pageDrawnSignal] = useState(createPageDrawnSignal);
   // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
   // auto-retry a hung download (dead socket after display sleep/wake) before it
   // gives up and surfaces the retryable error screen. Reset whenever a fresh
@@ -8240,6 +8243,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [scheduleTextSearchHighlightRefresh]);
 
   const handlePdfjsPageRenderComplete = useCallback((payload) => {
+    pageDrawnSignal.markDrawn();
     reconcilePdfjsScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
     if (payload?.pageNumber === 1 && !firstPageDrawnRef.current.drawn) {
@@ -8258,7 +8262,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(recordPaint);
     else setTimeout(recordPaint, 0);
-  }, [reconcilePdfjsScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
+  }, [pageDrawnSignal, reconcilePdfjsScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
 
   const handlePdfjsWrapperWheel = useCallback((event) => {
     if (!usePdfjsRenderer) return;
@@ -21559,6 +21563,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     docRole: yjsDocRole,
     // w33: no one-time store compaction write while the document is locked.
     documentLocked,
+    whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
   templateBindingAccessRef.current = {
     get: excelSyncMetaGet,
@@ -24243,6 +24248,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const docName = pdfFile.name || 'unknown';
       const analyticsLoadStartedAt = performance.now();
       firstPageDrawnRef.current = { drawn: false, resolve: null };
+      pageDrawnSignal.reset();
       firstPagePaintAnalyticsRef.current = {
         startedAt: analyticsLoadStartedAt,
         byteSizeBucket: 'unknown',

@@ -458,6 +458,10 @@ export async function openAnnotationDoc({
   // caller must not treat it as hydrated: no writes, no imports. The handle
   // (resolved later) is the authoritative read.
   onPreview = null,
+  // Open speed (round 5): optional; returns a promise that settles once the
+  // viewer has drawn a page of the PDF. After this device's saved copy is
+  // previewed, the rest of the open waits for it (FIRST_PAGE_WAIT_MS at most).
+  whenFirstPageDrawn = null,
   // w33: routine checkpoint thresholds (see CHECKPOINT_EVERY_ROWS); tests
   // shrink them: { everyRows, ownBytes, minTailRows, idleMs, dueQuietMs }.
   checkpointPolicy = null,
@@ -649,6 +653,7 @@ export async function openAnnotationDoc({
     legacyPersistenceFactory,
     localSyncTimeoutMs,
     onPreview: typeof onPreview === 'function' ? onPreview : null,
+    whenFirstPageDrawn: typeof whenFirstPageDrawn === 'function' ? whenFirstPageDrawn : null,
     eraseEffectConsumer: typeof eraseEffectConsumer === 'function'
       ? eraseEffectConsumer
       : null,
@@ -2230,7 +2235,9 @@ async function hydrateCleanAcceptedState(state) {
   // ~20 MB apply less): the open seeds it from the complete acceptedDoc,
   // which contains these updates, before anything reads it.
   for (const update of updates) Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
-  if (updates.length) await emitOpenPreview(state, 'local-copy');
+  if (updates.length && await emitOpenPreview(state, 'local-copy')) {
+    await waitForFirstPageDrawn(state);
+  }
   for (const update of updates) {
     applyAcceptedUpdate(state, update);
   }
@@ -2238,23 +2245,51 @@ async function hydrateCleanAcceptedState(state) {
 
 // w29 preview: hand the caller what the live doc holds right now, then give
 // the browser a frame to paint it before the open's next heavy step.
+// Resolves true once a preview was handed over.
 async function emitOpenPreview(state, stage) {
   const onPreview = state.onPreview;
-  if (!onPreview || state.destroyed) return;
+  if (!onPreview || state.destroyed) return false;
   let byPage;
   try {
-    if (getAnnotationsMap(state.doc).size === 0) return;
+    if (getAnnotationsMap(state.doc).size === 0) return false;
     byPage = docToByPage(state.doc);
   } catch (error) {
     console.warn('[annotationDocSync] open preview read failed', error?.message);
-    return;
+    return false;
   }
   try {
     onPreview(byPage, { stage });
   } catch (error) {
     console.warn('[annotationDocSync] open preview failed', error?.message);
-    return;
+    return false;
   }
+  await waitForPaint();
+  return true;
+}
+
+// Open speed (round 5): on a reopen the saved copy is previewed about 1 s in,
+// but the steps after it (the accepted shadow, then loading the IndexedDB
+// copy: ~2 s of main thread on a dense document) ran before the PDF's own
+// steps got a turn, so the page stayed blank until ~4 s. They now wait until
+// the viewer has drawn a page, or FIRST_PAGE_WAIT_MS. Only when they run
+// changes: the same updates go to the same docs in the same order, and the
+// handle (hydration, writes) still resolves only after all of them.
+const FIRST_PAGE_WAIT_MS = 2500;
+
+async function waitForFirstPageDrawn(state) {
+  const wait = state.whenFirstPageDrawn;
+  state.whenFirstPageDrawn = null;
+  if (!wait || state.destroyed) return;
+  let timer = null;
+  try {
+    await Promise.race([
+      Promise.resolve().then(wait).catch(() => {}),
+      new Promise((resolve) => { timer = setTimeout(resolve, FIRST_PAGE_WAIT_MS); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  // The page is drawn into its canvas; let that frame reach the screen.
   await waitForPaint();
 }
 
