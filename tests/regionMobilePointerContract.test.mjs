@@ -72,7 +72,8 @@ test('area editing uses the app\'s own Select (no second Select, no floating bar
   // And the desktop floating toolbar is gone from the tool itself.
   assert.doesNotMatch(REGION_SOURCE, /Region selection\n/);
   assert.doesNotMatch(REGION_SOURCE, />Additive<\/option>/);
-  assert.match(REGION_SOURCE, /canDelete: selectedRegionIds\.size > 0/);
+  assert.match(REGION_SOURCE, /canDeleteRegion = selectedRegionIds\.size > 0/);
+  assert.match(REGION_SOURCE, /canDelete: canDeleteRegion/);
   assert.match(REGION_SOURCE, /deleteSelected: handleDeleteSelected/);
   assert.match(
     MOBILE_CHROME_SOURCE,
