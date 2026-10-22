@@ -1973,12 +1973,24 @@ export default function App({ devPreviewReturnTab = null }) {
     // streamed open (#1097) has no File, only the library row: take the bytes
     // from the viewer's loaded pdf.js document instead of downloading again.
     let blob = file instanceof Blob && file.size > 0 ? file : null;
+    let readBytes = null;
     if (!blob) {
       try {
         const data = await leftRailApi?.pdfDoc?.getData?.();
+        readBytes = data?.byteLength ?? null;
         if (data?.byteLength > 0) blob = new Blob([data], { type: 'application/pdf' });
       } catch (err) {
         console.warn('[PdfTools] could not read the open document', err);
+      }
+      if (!blob) {
+        console.warn('[PdfTools] open tab has no bytes', JSON.stringify({
+          file: file ? (file.constructor?.name || typeof file) : null,
+          size: file?.size ?? null,
+          rail: Boolean(leftRailApi),
+          pdfDoc: leftRailApi?.pdfDoc ? (leftRailApi.pdfDoc.constructor?.name || typeof leftRailApi.pdfDoc) : null,
+          getData: typeof leftRailApi?.pdfDoc?.getData,
+          readBytes,
+        }));
       }
     }
     dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null, blob }]);

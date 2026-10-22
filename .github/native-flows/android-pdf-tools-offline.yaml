@@ -1,5 +1,5 @@
-# Opens the cached sample drawing with the local API cut off. Run after
-# android-offline-relaunch.yaml; android-pdf-tools-offline.sh runs this first.
+# Opens the sample drawing (android-pdf-tools-offline.sh runs this first, with
+# the local API reconnected, then cuts it).
 appId: com.kalvoe.survey
 name: android-pdf-tools-offline
 ---
