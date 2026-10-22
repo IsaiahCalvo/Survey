@@ -18,6 +18,8 @@ import {
     escapeLikePattern,
     pickBindingInviteRow,
     sanitizeSubject,
+    userTemplateSubject,
+    pinLinkToApp,
 } from './policy.js';
 
 // Transactional email via Brevo. Consolidated 2026-07-05 so the whole app uses
@@ -237,7 +239,9 @@ Deno.serve(async (req) => {
             }
             recipient = verdict.recipient;
         }
-        const safeSubject = sanitizeSubject(subject, 'Notification from Survey');
+        const safeSubject = caller.type === 'user'
+            ? userTemplateSubject(String(template), data || {})
+            : sanitizeSubject(subject, 'Notification from Survey');
 
         // Email templates. Every template renders through the shared branded
         // frame (supabase/functions/_shared/emailLayout.ts) — see
@@ -401,9 +405,9 @@ Deno.serve(async (req) => {
         const safeData: Record<string, unknown> = {};
         for (const [k, val] of Object.entries(data || {})) {
             if (typeof val !== 'string') { safeData[k] = val; continue; }
-            safeData[k] = URL_FIELDS.has(k)
-                ? (/^https?:\/\//i.test(val) ? escapeHtml(val) : '#')
-                : escapeHtml(val);
+            if (!URL_FIELDS.has(k)) { safeData[k] = escapeHtml(val); continue; }
+            if (caller.type === 'user') { safeData[k] = escapeHtml(pinLinkToApp(val)); continue; }
+            safeData[k] = /^https?:\/\//i.test(val) ? escapeHtml(val) : '#';
         }
         const html = getTemplate(safeData);
 

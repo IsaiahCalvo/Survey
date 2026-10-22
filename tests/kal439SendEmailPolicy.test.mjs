@@ -261,3 +261,35 @@ test('index.ts wiring: policy runs for user callers before Brevo, CORS wildcard 
   assert.match(src, /to: \[\{ email: recipient \}\]/, 'Brevo payload must use the policy-approved recipient');
   assert.match(src, /subject: safeSubject/);
 });
+
+test('user sends get a server-built subject and links pinned to our own origin', async () => {
+  const { userTemplateSubject, pinLinkToApp } = await import('../supabase/functions/send-email/policy.js');
+  assert.equal(
+    userTemplateSubject('permission-changed', { documentName: 'Plans\r\nBcc: x@y.z' }),
+    'Your access to Plans Bcc: x@y.z changed',
+  );
+  assert.equal(userTemplateSubject('access-removed', {}), 'Your access to a document was removed');
+  assert.equal(
+    userTemplateSubject('document-invite', { inviterName: 'Ann', documentName: 'Site A' }),
+    'Ann invited you to Site A on Survey',
+  );
+  assert.ok(userTemplateSubject('document-shared', { sharedByName: 'x'.repeat(300) }).length < 140);
+
+  assert.equal(pinLinkToApp('https://surveytool.app/?docId=1'), 'https://surveytool.app/?docId=1');
+  assert.equal(pinLinkToApp('https://evil.example/login?x=1#y'), 'https://surveytool.app/login?x=1#y');
+  assert.equal(pinLinkToApp('file:///Applications/Survey/index.html?docId=9'), 'https://surveytool.app/?docId=9');
+  assert.equal(pinLinkToApp('javascript:alert(1)'), 'https://surveytool.app/');
+  assert.equal(pinLinkToApp('not a url'), '#');
+  assert.equal(pinLinkToApp(''), '#');
+});
+
+test('permission-changed is not bound by a revoked invite alone', async () => {
+  const verdict = await authorizeUserSend(
+    { template: 'permission-changed', to: 'victim@example.com' },
+    deps({
+      findInviteRowForRecipient: async () => ({ revokedAt: '2026-01-01T00:00:00Z', acceptedAt: null, expiresAt: null }),
+    }),
+  );
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.status, 403);
+});

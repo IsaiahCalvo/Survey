@@ -41,3 +41,16 @@ test('the full app policy skips every marketing page', () => {
     assert.ok(appPaths.test(`/${page}`), `/${page} must get the app policy`);
   }
 });
+
+// The marketing exclusion is a whole path segment, not a prefix: /toolsx or
+// /welcome-anything is the app (served by the catch-all) and needs its policy.
+test('look-alike paths of marketing pages still get the app policy', () => {
+  const rule = vercel.headers.find((r) => r.headers.some((h) => h.key === 'Content-Security-Policy' && h.value.includes('script-src')));
+  const appPaths = new RegExp(`^${rule.source.replace(/\(\.\*\)$/, '(.*)')}$`);
+  for (const page of ['toolsx', 'welcome-anything', 'faqfoo', 'privacy.htmlx']) {
+    assert.ok(appPaths.test(`/${page}`), `/${page} must get the app policy`);
+  }
+  for (const page of ['tools/merge', 'use-cases/hospitals', 'compare/drawboard', 'welcome/']) {
+    assert.ok(!appPaths.test(`/${page}`), `/${page} must be left out of the app policy`);
+  }
+});

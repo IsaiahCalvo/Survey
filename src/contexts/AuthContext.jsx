@@ -237,8 +237,10 @@ export const AuthProvider = ({ children }) => {
     return {
       email: DEV_AUTH_RELAY_ENABLED
         ? DEV_AUTH_RELAY_EMAIL
-        : devOverride.email || import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL,
-      password: devOverride.password || import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD,
+        : devOverride.email || (import.meta.env.DEV ? import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL : undefined),
+      // DEV-only read: a production build must never inline a dev password,
+      // even if one is left in a .env file Vite loads for every mode.
+      password: devOverride.password || (import.meta.env.DEV ? import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD : undefined),
     };
   };
 

@@ -75,6 +75,7 @@ function capitalize(s) {
  *   claimInviteDelivery: (kind: string, token: string, claimId: string) => Promise<'claimed'|'busy'|'completed'|'error'>,
  *   completeInviteDelivery: (claimId: string) => Promise<boolean>,
  *   releaseInviteDelivery: (claimId: string) => Promise<boolean>,
+ *   claimSendBudget?: (recipient: string) => Promise<'allowed'|'rate_limited'|'invite_blocked_free_tier'|'error'>,
  *   newClaimId?: () => string,
  *   inviteUserByEmail: (email: string, redirectTo: string) => Promise<{ error: object|null, outcome?: 'confirmed'|'definite-failure'|'uncertain' }>,
  *   sendFallbackEmail: (payload: { to: string, subject: string, template: string, data: object }) => Promise<boolean|{ outcome: 'confirmed'|'definite-failure'|'uncertain' }>,
@@ -175,6 +176,33 @@ export async function handleSendInviteEmail(input, deps) {
 
   // Canonical, server-built — the only allowlisted origin; never client input.
   const inviteUrl = `${CANONICAL_ORIGIN}/invite/${encodeURIComponent(row.token)}`;
+
+  // The auth mailer sends with the service role, so it skips send-email's
+  // plan gate and per-person hourly cap. Charge the same budget here, or a
+  // free account could mint invite rows and mail any address without limit
+  // (and spend the project-wide auth email quota everyone's sign-in links use).
+  if (typeof deps.claimSendBudget === 'function') {
+    let budget = 'error';
+    try {
+      budget = await deps.claimSendBudget(row.target_email);
+    } catch (budgetError) {
+      console.error('[send-invite-email] send budget check failed:', budgetError);
+    }
+    if (budget !== 'allowed') {
+      try {
+        await deps.releaseInviteDelivery(claimId);
+      } catch (releaseError) {
+        console.error('[send-invite-email] delivery claim release failed:', releaseError);
+      }
+      if (budget === 'invite_blocked_free_tier') {
+        return json(403, { sent: false, retryable: false, error: 'Sharing invites require a Pro subscription' });
+      }
+      if (budget === 'rate_limited') {
+        return json(429, { sent: false, retryable: true, error: 'Too many emails sent — try again later' });
+      }
+      return json(502, { sent: false, retryable: true, error: 'Send failed' });
+    }
+  }
 
   // Branch A — no existing account: GoTrue sends the installed Invite
   // template via the auth mailer. Admin calls RETURN {data,error}; they
