@@ -3756,6 +3756,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let timer = 0;
     let overText = false;
     let press = null;
+    // The last hover position, for the rest timer's mark check (no target:
+    // resolveAnnotationAt finds the page by elementsFromPoint).
+    let lastPoint = null;
     const setState = (next) => {
       if (panTextStateRef.current === next) return;
       panTextStateRef.current = next;
@@ -3776,9 +3779,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
     const onMove = (event) => {
       const glyph = isPanTextTarget(event.target);
-      // A mark over the text owns the hover (owner 2026-10-22). Asked only
-      // near text: the hit test walks the page's marks.
-      const onMark = (glyph || overText || timer || panTextStateRef.current === 'on')
+      lastPoint = { clientX: event.clientX, clientY: event.clientY };
+      // A mark over the text owns the hover (owner 2026-10-22). The hit test
+      // walks the page's marks, so a move asks only while the I-beam shows
+      // (onto a mark it goes at once); the rest timer asks when it fires.
+      const onMark = panTextStateRef.current === 'on'
         && panTextMarkAtRef.current?.(event) === true;
       const onText = glyph && !onMark;
       // A gap between text boxes on a line: off text only once the pointer
@@ -3811,7 +3816,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (next.startTimer && !timer) {
         timer = window.setTimeout(() => {
           timer = 0;
-          if (overText && !spacePanRef.current && !panPointerRef.current) setState('on');
+          if (overText && !spacePanRef.current && !panPointerRef.current
+            && panTextMarkAtRef.current?.(lastPoint) !== true) setState('on');
         }, PAN_TEXT_HOVER_MS);
       }
     };
