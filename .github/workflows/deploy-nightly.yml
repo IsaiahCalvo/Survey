@@ -2,11 +2,12 @@ name: Deploy nightly
 
 # Nightly is a second copy of the web app with every feature flag turned on
 # (VITE_RELEASE_CHANNEL=nightly, see src/featureFlags.js). It is built from the
-# same main commit surveytool.app is serving, once a day (or on demand), so it
-# shares the one production database whose migrations that deploy already
-# applied. Once a day, not after every production deploy: Vercel's free plan
-# allows 100 deploys a day for the whole account, and a nightly copy of every
-# production deploy doubled the count and hit that cap on 2026-10-21.
+# same main commit surveytool.app is serving, right after each production
+# deploy, so nightly is always stable plus the beta features (Isaiah,
+# 2026-10-22: nightly was a day behind stable). It shares the one production
+# database whose migrations that deploy already applied. Production ships at
+# most every 3 hours, so this adds at most ~8 deploys a day to Vercel's
+# 100-a-day free cap.
 # Stable people see only flags turned on at /flags; nightly people see
 # everything. How work moves from nightly to stable: docs/RELEASE-CHANNELS.md.
 #
@@ -15,9 +16,10 @@ name: Deploy nightly
 #
 # GitHub runs this repo's cron schedules only now and then (one scheduled run
 # of any workflow on 2026-10-21 while ~350 others ran), so every finished
-# "Deploy production" run also starts it, and the first one each UTC day
-# deploys; the rest of that day skip (a day-keyed cache entry marks it done).
-# The schedule stays as a backup. Run by hand to deploy again the same day.
+# "Deploy production" run also starts it. Each run deploys only when the
+# commit surveytool.app serves differs from the one nightly last got (the
+# newest "nightly-last-" cache entry holds it). The schedule stays as a
+# backup. Run by hand to deploy again anyway.
 on:
   schedule:
     - cron: '0 10 * * *'
@@ -34,21 +36,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      key: ${{ steps.day.outputs.key }}
-      done: ${{ steps.mark.outputs.cache-hit }}
+      sha: ${{ steps.live.outputs.sha }}
+      done: ${{ steps.same.outputs.done }}
       wait: ${{ steps.capwait.outputs.wait }}
     steps:
-      - name: Today's mark
-        id: day
-        run: echo "key=nightly-deploy-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
-      - name: Already deployed today?
-        id: mark
+      - name: Find the revision production is serving
+        id: live
+        shell: bash
+        run: |
+          sha="$(curl --fail --silent --show-error https://surveytool.app/release.json | jq -r '.commit // empty')"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "surveytool.app/release.json gave no commit" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      # The newest mark holds the commit nightly last got, so a production
+      # rollback to an older commit still redeploys nightly to match.
+      - name: Which revision did nightly last get?
+        id: last
         if: github.event_name != 'workflow_dispatch'
         uses: actions/cache/restore@v4
         with:
-          path: .nightly-deploy-day
-          key: ${{ steps.day.outputs.key }}
-          lookup-only: true
+          path: .nightly-last
+          key: nightly-last-none
+          restore-keys: nightly-last-
+      - name: Already serving this revision on nightly?
+        id: same
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        env:
+          SHA: ${{ steps.live.outputs.sha }}
+        run: |
+          if [ "$(cat .nightly-last/sha 2>/dev/null)" = "$SHA" ]; then
+            echo "Nightly already has $SHA."; echo "done=true" >> "$GITHUB_OUTPUT"
+          fi
       # Production comes first: while Vercel's daily cap is refusing deploys
       # (deploy-production.yml leaves a mark), nightly waits too, so the first
       # free slot goes to surveytool.app.
@@ -80,8 +101,7 @@ jobs:
     needs: due
     if: needs.due.outputs.done != 'true' && needs.due.outputs.wait != 'true'
     # Not cancel-in-progress: with a run started after every production run,
-    # a newer run would keep cancelling the one deploying. At most one more
-    # waits, so nightly ships at most twice on a busy day.
+    # a newer run would keep cancelling the one deploying.
     concurrency:
       group: nightly-deploy
       cancel-in-progress: false
@@ -92,21 +112,10 @@ jobs:
       VERCEL_SCOPE: team_uLSMMTmD4LhtDBm9qJ8DV59v
 
     steps:
-      - name: Find the revision production is serving
-        id: live
-        shell: bash
-        run: |
-          sha="$(curl --fail --silent --show-error https://surveytool.app/release.json | jq -r '.commit // empty')"
-          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "surveytool.app/release.json gave no commit" >&2
-            exit 1
-          fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
       - name: Checkout the revision production is serving
         uses: actions/checkout@v7
         with:
-          ref: ${{ steps.live.outputs.sha }}
+          ref: ${{ needs.due.outputs.sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -126,7 +135,7 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
-          tested_sha="${{ steps.live.outputs.sha }}"
+          tested_sha="${{ needs.due.outputs.sha }}"
           npm install -g vercel@latest
           url="$(vercel deploy --yes --token "$VERCEL_TOKEN" \
             --build-env VITE_RELEASE_CHANNEL=nightly \
@@ -172,7 +181,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          tested_sha="${{ steps.live.outputs.sha }}"
+          tested_sha="${{ needs.due.outputs.sha }}"
           for attempt in $(seq 1 60); do
             live_sha="$(curl --fail --silent "https://$NIGHTLY_HOST/release.json?attempt=$attempt" | jq -r '.commit // empty' 2>/dev/null || true)"
             if [ "$live_sha" = "$tested_sha" ]; then
@@ -184,12 +193,12 @@ jobs:
           echo "$NIGHTLY_HOST did not reach revision $tested_sha" >&2
           exit 1
 
-      - name: Mark today deployed
-        run: mkdir -p .nightly-deploy-day && date -u +%FT%TZ > .nightly-deploy-day/at
+      - name: Mark this revision deployed
+        run: mkdir -p .nightly-last && echo "${{ needs.due.outputs.sha }}" > .nightly-last/sha
       - uses: actions/cache/save@v4
-        # A hand-run deploy on a day already marked would fail to save the
-        # same key again; that is harmless, so it must not turn the run red.
+        # Cache entries can't be overwritten, so each deploy saves a new key;
+        # the next run reads the newest one.
         continue-on-error: true
         with:
-          path: .nightly-deploy-day
-          key: ${{ needs.due.outputs.key }}
+          path: .nightly-last
+          key: nightly-last-${{ github.run_id }}-${{ github.run_attempt }}
