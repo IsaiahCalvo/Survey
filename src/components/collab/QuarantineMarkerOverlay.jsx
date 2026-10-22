@@ -26,6 +26,7 @@
 // shape so 30-06 can drop it in without touching Always-Protected files.
 
 import './QuarantineMarkerOverlay.css';
+import { useTooltip } from '../Tooltip';
 
 // UX: locked verbatim per 30-UI-SPEC.md Surface 2 and CONTEXT.md `<specifics>`.
 // Lowercase 'd' is intentional — softens marker so it reads as a status note,
@@ -45,6 +46,7 @@ const MARKER_LABEL = "didn't save, please try redrawing";
  *   it can be mounted per-page.
  */
 export function QuarantineMarkerOverlay({ quarantinedAnnotations = [], pageNumber }) {
+  const tip = useTooltip();
   const onThisPage = quarantinedAnnotations.filter((a) => a.pageNumber === pageNumber);
   // Defensive: render nothing when there are no markers to draw on this page.
   // Avoids emitting an empty container on every render of every page.
@@ -80,7 +82,7 @@ export function QuarantineMarkerOverlay({ quarantinedAnnotations = [], pageNumbe
               className="quarantine-marker__label"
               // HTML title attribute provides the hover tooltip fallback for
               // labels clipped by viewport edges (30-UI-SPEC.md hover tooltip).
-              title={MARKER_LABEL}
+              {...tip(MARKER_LABEL, 'below')}
             >
               {MARKER_LABEL}
             </span>

@@ -38,6 +38,7 @@ import { useMobileSheetMotion } from './useMobileSheetMotion';
 import { railDiscSlots } from './mobileSurveyRailFit.js';
 import { setMarkerDrawMode, setMarkerModeToolsShown, useShownMarkerDrawMode } from '../survey/markerDrawMode.js';
 import { getMarkerShapeProviders, subscribeMarkerShapeProviders } from '../survey/markerShapeProviders.js';
+import { useTooltip } from '../components/Tooltip';
 
 /**
  * Measures the rail room from the top of the first survey column (which never
@@ -90,6 +91,7 @@ export function useMobileSurveyRailSlots({ mainEl, anchorEl, groupOpen, bothColu
 
 /** The "All" disc that ends a long column. */
 function RailAllDisc({ total, noun, open, onOpen }) {
+  const tip = useTooltip();
   return (
     <button
       type="button"
@@ -98,7 +100,7 @@ function RailAllDisc({ total, noun, open, onOpen }) {
       aria-label={`All ${total} ${noun}`}
       aria-haspopup="dialog"
       aria-expanded={open}
-      title={`All ${total} ${noun}`}
+      {...tip(`All ${total} ${noun}`, 'below')}
       onClick={onOpen}
     >
       All
@@ -112,6 +114,7 @@ function RailAllDisc({ total, noun, open, onOpen }) {
  * armed disc hands the tool back to Pan).
  */
 export function MobileSurveyCategoryColumn({ toolbar, armed, max, columnRef, allOpen, onOpenAll, onTapCategory }) {
+  const tip = useTooltip();
   const categories = toolbar?.categories || [];
   const activeId = armed ? (toolbar?.selectedCategoryId || null) : null;
   const recents = useSurveyRecents('category', toolbar?.templateId, activeId);
@@ -130,7 +133,7 @@ export function MobileSurveyCategoryColumn({ toolbar, armed, max, columnRef, all
           className={activeId === category.id ? 'is-active' : ''}
           aria-pressed={activeId === category.id}
           aria-label={`Survey category ${category.name || 'Untitled Category'}`}
-          title={category.name || 'Untitled Category'}
+          {...tip(category.name || 'Untitled Category', 'below')}
           onClick={() => onTapCategory?.(category)}
         >
           {getCategoryGlyphLabel(category.name)}
@@ -154,6 +157,7 @@ export function selectedMarkersEntityId(markerIds, surveyMarkers) {
  * ring, calm), else the armed entity (the gold ring the phone always had).
  */
 export function MobileSurveyEntityColumn({ toolbar, armed, max, columnRef, allOpen, onOpenAll, onTapEntity }) {
+  const tip = useTooltip();
   const entities = toolbar?.entities || [];
   const selectedIds = useSelectedSurveyMarkerIds();
   const markerIds = useMemo(
@@ -185,7 +189,7 @@ export function MobileSurveyEntityColumn({ toolbar, armed, max, columnRef, allOp
             data-survey-entity-id={entity.id}
             aria-pressed={ringed}
             aria-label={`Survey entity ${entity.name || 'Untitled Entity'}`}
-            title={entity.name || 'Untitled Entity'}
+            {...tip(entity.name || 'Untitled Entity', 'below')}
             onClick={() => {
               if (markerIds.length) {
                 toolbar?.onApplyEntity?.(entity.id, markerIds);
@@ -359,6 +363,7 @@ const BUILT_IN_SHAPES = [
  * page draws in the picked shape (markerDrawMode: setMarkerModeToolsShown).
  */
 export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
+  const tip = useTooltip();
   const shown = useShownMarkerDrawMode();
   const providers = useSyncExternalStore(subscribeMarkerShapeProviders, getMarkerShapeProviders, getMarkerShapeProviders);
   const smartFill = providers.find((provider) => provider.id === 'smartFill') || null;
@@ -392,7 +397,7 @@ export function MobileMarkerShapeChip({ armed, onArm, glyph = 17 }) {
         aria-label={`Survey Marker shape: ${current.label}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={`Survey Marker shape: ${current.label}`}
+        {...tip(`Survey Marker shape: ${current.label}`, 'below')}
         onClick={toggle}
       >
         <Icon name={current.icon} size={glyph} color="currentColor" />

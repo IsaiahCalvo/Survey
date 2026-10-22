@@ -21,6 +21,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '../Icons.jsx';
+import { useTooltip } from './Tooltip';
 import './SwipeToDeleteRow.css';
 
 export const SWIPE_DELETE_ZONE = 96;
@@ -57,6 +58,7 @@ export default function SwipeToDeleteRow({
   disabled = false,
   className = '',
 }) {
+  const tip = useTooltip();
   const rootRef = useRef(null);
   const contentRef = useRef(null);
   const actionRef = useRef(null);
@@ -233,7 +235,7 @@ export default function SwipeToDeleteRow({
         type="button"
         className="swipe-row__action"
         aria-label={label}
-        title={label}
+        {...tip(label, 'below')}
         aria-hidden={open ? undefined : 'true'}
         tabIndex={open ? 0 : -1}
         onClick={handleDelete}

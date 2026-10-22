@@ -492,6 +492,7 @@ import {
   pageScaleFromObjects,
   stampMeasure,
 } from '../utils/measure/measureScale.js';
+import { useTooltip } from './Tooltip';
 
 // Measure label (Length / Area): a white pill at a fixed SCREEN size (12 px
 // text). Sizes are page units multiplied by inverseScale, so the viewBox still
@@ -791,6 +792,8 @@ const SVGAnnotationLayerBody = memo(({
   onCopyFamily = null,
   onDuplicateFamily = null,
 }) => {
+  // The app's one shared tooltip (components/Tooltip.jsx), never a native title=.
+  const layerTip = useTooltip();
 
   // Layers: a mark whose id was not on this page before a save is new, so it
   // goes on the active layer. One wrapper covers every save this layer makes.
@@ -9627,7 +9630,7 @@ const SVGAnnotationLayerBody = memo(({
             role="menuitem"
             data-poly-vertex-delete="true"
             disabled={!canDelete}
-            title={canDelete ? undefined : `A ${String(menuObj?.type || '').toLowerCase() === 'polygon' ? 'polygon needs at least 3' : 'polyline needs at least 2'} points`}
+            {...layerTip(canDelete ? undefined : `A ${String(menuObj?.type || '').toLowerCase() === 'polygon' ? 'polygon needs at least 3' : 'polyline needs at least 2'} points`, 'right')}
             onClick={() => {
               const gate = polyPressGateRef.current;
               if (gate.pressLive() || !gate.consume(polyVertexMenu)) return;

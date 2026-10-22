@@ -60,6 +60,7 @@ import { calculateViewportSafePosition } from './utils/menuPositioning';
 import { getMidpoint, shouldSnapToLinear, getCurvedPath, getCurveEndAngle } from './utils/lineGeometry';
 import { calculateCalloutConnection } from './utils/calloutGeometry';
 import { debugLog, debugWarn, isDebugEnabled, setDebugData } from './utils/pdfDebug';
+import { useTooltip } from './components/Tooltip';
 
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
@@ -2771,6 +2772,8 @@ const PageAnnotationLayer = memo(({
   isZooming = false,
   preferImmediateVisibleZoomRender = false,
 }) => {
+  // The app's one shared tooltip (components/Tooltip.jsx), never a native title=.
+  const pageTip = useTooltip();
   const canvasRef = useRef(null);
   const fabricRef = useRef(null);
   // Fires when fabricRef.current becomes a live canvas. Drives effects that
@@ -9470,7 +9473,8 @@ const PageAnnotationLayer = memo(({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
                       <button
                         onClick={() => setEditColorField(editColorField === 'fill' ? null : 'fill')}
-                        title="Text color"
+                        aria-label="Text color"
+                        {...pageTip('Text color', 'below')}
                         style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: 0, cursor: 'pointer', background: editValues.fill || '#000000' }}
                       />
                       {editColorField === 'fill' && (
@@ -9490,7 +9494,8 @@ const PageAnnotationLayer = memo(({
                       value={editValues.fontFamily || 'Arial'}
                       onChange={(e) => setEditValues(prev => ({ ...prev, fontFamily: e.target.value }))}
                       style={{ height: '24px', borderRadius: '4px', border: '1px solid #555', fontSize: '12px', cursor: 'pointer', background: '#333', color: '#ddd' }}
-                      title="Font family"
+                      aria-label="Font family"
+                      {...pageTip('Font family', 'below')}
                     >
                       <option value="Arial">Arial</option>
                       <option value="Helvetica">Helvetica</option>
@@ -9508,7 +9513,8 @@ const PageAnnotationLayer = memo(({
                       value={editValues.fontSize || 16}
                       onChange={(e) => setEditValues(prev => ({ ...prev, fontSize: parseInt(e.target.value, 10) }))}
                       style={{ width: '50px', height: '24px', borderRadius: '4px', border: '1px solid #555', padding: '0 4px', fontSize: '12px', background: '#333', color: '#ddd' }}
-                      title="Font size"
+                      aria-label="Font size"
+                      {...pageTip('Font size', 'below')}
                     />
 
                     {/* Bold */}

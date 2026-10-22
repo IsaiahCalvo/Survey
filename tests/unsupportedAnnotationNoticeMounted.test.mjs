@@ -31,6 +31,8 @@ async function loadNotice() {
   let source = await readFile(componentPath, 'utf8');
 
   source = source
+    // The shared tooltip needs its host; these mounts test the control, not the chip.
+    .replace(/import \{[^}]*\} from '(?:\.\.?\/)+(?:components\/)?Tooltip';/, 'const useTooltip = () => () => ({}); const withOwnHandlers = (b, own = {}) => ({ ...b, ...own }); const attachTooltip = () => () => {};')
     .replace(
       "import { useCallback, useEffect, useRef, useState } from 'react';",
       `import { useCallback, useEffect, useRef, useState } from ${JSON.stringify(reactUrl)};`,

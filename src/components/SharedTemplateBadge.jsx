@@ -5,8 +5,10 @@
 import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { presenceInitials } from './presenceIdentity.js';
 import { sharedTemplateLabel } from '../services/sharedTemplates.js';
+import { useTooltip } from './Tooltip';
 
 export default function SharedTemplateBadge({ sharedFrom, size = 18 }) {
+  const tip = useTooltip();
   if (!sharedFrom) return null;
   const label = sharedTemplateLabel(sharedFrom);
   const initials = sharedFrom.ownerName ? presenceInitials(sharedFrom.ownerName) : '';
@@ -16,7 +18,7 @@ export default function SharedTemplateBadge({ sharedFrom, size = 18 }) {
       data-shared-template-role={sharedFrom.role || ''}
       role="img"
       aria-label={label}
-      title={label}
+      {...tip(label, 'below')}
       style={{
         width: size,
         height: size,

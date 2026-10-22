@@ -37569,7 +37569,7 @@ ${pageBlocks}
                                 <button
                                   type="button"
                                   onClick={() => recognizeTextOnPage(pageNumber)}
-                                  title={`${OCR_ENGINE_NAME} runs on this device. The PDF is not uploaded. OCR files are bundled with the app.`}
+                                  {...chromeTip(`${OCR_ENGINE_NAME} runs on this device. The PDF is not uploaded. OCR files are bundled with the app.`, 'below')}
                                   style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 5, background: 'var(--surface-1)', color: 'var(--text-1)', cursor: 'pointer' }}
                                 >
                                   Recognize text on this page

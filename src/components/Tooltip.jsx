@@ -19,19 +19,28 @@
  * a multi-line popover panel with an arrow and interactive content, not a hint
  * chip, so it deliberately stays in CSS.
  *
- * UX intent, and why:
- *   - A tooltip must appear the instant the pointer lands. A control that only
- *     answers "what is this?" after a delay reads as having no tooltip at all,
- *     which is exactly how users described the old mixed behavior.
- *   - Every tooltip in the viewer chrome must look identical, because they sit
+ * UX intent, and why (the app's tooltip rule; docs/TOOLTIP-RULES.md):
+ *   - Wait once, then show the rest at once (owner 2026-10-22, from the UI
+ *     video "Why the best software must LIE to you", Kole Jain, 3:35). The
+ *     first chip waits TOOLTIP_DELAY_MS so a pointer passing over the chrome
+ *     on its way somewhere else does not flash a trail of chips. Once a chip
+ *     has shown, the user is reading the controls, so the next one within
+ *     TOOLTIP_WARM_MS of the last one hiding shows with no wait at all. This
+ *     replaced "every chip shows the instant the pointer lands" (KAL-65),
+ *     which made the tab strip too noisy to give every tab its full name.
+ *   - Keyboard focus shows the chip at once: tabbing to a control is a
+ *     deliberate act, never a pass-through.
+ *   - A finger or pen never raises a chip (touch is pan-only; a tap's
+ *     emulated hover arrives after the press and is ignored).
+ *   - Every tooltip in the app must look identical, because they sit
  *     millimetres apart on the same toolbars and rails.
  *   - A tooltip is decoration for screen readers. It is never the accessible
- *     name — the control carries its own `aria-label`, and the chip is
- *     `aria-hidden`. That is why dropping a native `title=` never costs a
- *     control its accessible name, provided the `aria-label` is there.
+ *     name — the control carries its own `aria-label` (or visible text), and
+ *     the chip is `aria-hidden`. That is why dropping a native `title=` never
+ *     costs a control its accessible name, provided the `aria-label` is there.
  *
- * Reference behavior matched: the Draw/Shapes/Text category buttons, which had
- * the instant chip from the start.
+ * tests/tooltipRule.test.mjs fails the build on a native `title=` tooltip or a
+ * hand-rolled chip anywhere in src/.
  */
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -56,13 +65,46 @@ export const TOOLTIP_SURFACE = {
   fontSize: '11.5px',
   letterSpacing: 0,
   fontFamily: FONT_FAMILY,
-  whiteSpace: 'nowrap',
+  // One line for a name; a sentence-long hint wraps at 320px instead of
+  // running across the screen.
+  width: 'max-content',
+  maxWidth: '320px',
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
   boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
   pointerEvents: 'none',
 };
 
 /** The empty tooltip state — hover-out resets to exactly this. */
 export const TOOLTIP_HIDDEN = { visible: false, text: '', x: 0, y: 0 };
+
+/** How long the pointer rests on a control before the FIRST chip shows. */
+export const TOOLTIP_DELAY_MS = 400;
+/** After a chip hides, the next one within this long shows with no wait. */
+export const TOOLTIP_WARM_MS = 600;
+
+/*
+ * Wait-once state, shared by every binder in the app (the viewer's, the tab
+ * strip's, the hub's) so moving from a toolbar chip to a tab chip stays warm.
+ * Only one chip is ever on screen, so one pending show is enough.
+ */
+const tooltipTiming = { pendingTimer: null, chipShown: false, warmUntil: 0 };
+const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+function cancelPendingShow() {
+  if (tooltipTiming.pendingTimer != null) clearTimeout(tooltipTiming.pendingTimer);
+  tooltipTiming.pendingTimer = null;
+}
+function noteChipHidden() {
+  cancelPendingShow();
+  if (tooltipTiming.chipShown) tooltipTiming.warmUntil = nowMs() + TOOLTIP_WARM_MS;
+  tooltipTiming.chipShown = false;
+}
+/** Test hook: forget any warm state so each test starts cold. */
+export function resetTooltipTiming() {
+  cancelPendingShow();
+  tooltipTiming.chipShown = false;
+  tooltipTiming.warmUntil = 0;
+}
 
 /**
  * Translate for each placement, given that (x, y) is the anchor point:
@@ -198,30 +240,44 @@ export function makeTooltipBinding(setTooltip) {
     if (!text) return {};
     const show = (e) => {
       const el = e?.currentTarget;
-      if (!el?.getBoundingClientRect) return;
+      if (!setTooltip || !el?.getBoundingClientRect) return;
       if (pressedControls.has(el)) return;
       // KAL-65: a button held down means something is being dragged (a row
       // by its grip, a slider, a text selection). Rows slide under the
       // pointer while they reorder; their grips must not pop chips mid-drag.
       if (e?.buttons) return;
-      if (e?.type === 'focus' && !el.matches?.(':focus-visible')) return;
-      const { x, y } = tooltipAnchorFor(el.getBoundingClientRect(), placement);
-      stopWatchingAnchor();
-      setTooltip?.({ visible: true, text, x, y, placement });
-      // UX: a shortcut may unmount the hovered control without mouseleave.
-      // Watch that anchor without replacing the control's own React ref.
-      const doc = el.ownerDocument;
-      const Observer = doc?.defaultView?.MutationObserver;
-      if (Observer && doc.body) {
-        anchorObserver = new Observer(() => {
-          if (el.isConnected) return;
-          stopWatchingAnchor();
-          setTooltip?.((current) => current?.text === text ? { ...TOOLTIP_HIDDEN } : current);
-        });
-        anchorObserver.observe(doc.body, { childList: true, subtree: true });
+      const isFocus = e?.type === 'focus';
+      if (isFocus && !el.matches?.(':focus-visible')) return;
+      const paint = () => {
+        tooltipTiming.pendingTimer = null;
+        if (!el.isConnected || pressedControls.has(el)) return;
+        const { x, y } = tooltipAnchorFor(el.getBoundingClientRect(), placement);
+        stopWatchingAnchor();
+        tooltipTiming.chipShown = true;
+        setTooltip?.({ visible: true, text, x, y, placement });
+        // UX: a shortcut may unmount the hovered control without mouseleave.
+        // Watch that anchor without replacing the control's own React ref.
+        const doc = el.ownerDocument;
+        const Observer = doc?.defaultView?.MutationObserver;
+        if (Observer && doc.body) {
+          anchorObserver = new Observer(() => {
+            if (el.isConnected) return;
+            stopWatchingAnchor();
+            noteChipHidden();
+            setTooltip?.((current) => current?.text === text ? { ...TOOLTIP_HIDDEN } : current);
+          });
+          anchorObserver.observe(doc.body, { childList: true, subtree: true });
+        }
+      };
+      cancelPendingShow();
+      // Wait once, then show the rest at once (see the rule at the top).
+      if (isFocus || tooltipTiming.chipShown || nowMs() < tooltipTiming.warmUntil) {
+        paint();
+      } else {
+        tooltipTiming.pendingTimer = setTimeout(paint, TOOLTIP_DELAY_MS);
       }
     };
-    const hide = () => { stopWatchingAnchor(); setTooltip?.({ ...TOOLTIP_HIDDEN }); };
+    const hide = () => { stopWatchingAnchor(); noteChipHidden(); setTooltip?.({ ...TOOLTIP_HIDDEN }); };
     const hideOnPress = (e) => {
       const el = e?.currentTarget;
       if (el && (typeof el === 'object' || typeof el === 'function')) {
@@ -277,6 +333,31 @@ export function withOwnHandlers(bundle, own = {}) {
 }
 
 /**
+ * For a control built outside React (a page overlay that makes its own DOM):
+ * wires the same binder's handlers as native listeners. The binder is called
+ * on each event, so it always paints through the current chip host.
+ */
+const NATIVE_TOOLTIP_EVENTS = {
+  onMouseEnter: 'mouseenter',
+  onMouseLeave: 'mouseleave',
+  onPointerEnter: 'pointerenter',
+  onPointerLeave: 'pointerleave',
+  onFocus: 'focus',
+  onBlur: 'blur',
+  onMouseDown: 'mousedown',
+  onPointerDown: 'pointerdown',
+};
+export function attachTooltip(el, tip, text, placement = 'below') {
+  if (!el?.addEventListener || typeof tip !== 'function') return () => {};
+  const listeners = Object.entries(NATIVE_TOOLTIP_EVENTS).map(([prop, type]) => {
+    const listener = (event) => tip(text, placement)[prop]?.(event);
+    el.addEventListener(type, listener);
+    return [type, listener];
+  });
+  return () => listeners.forEach(([type, listener]) => el.removeEventListener(type, listener));
+}
+
+/**
  * Hover-only bundle, for a text field whose hint ("Click to rename") is about
  * the pointer: once the caret is in the field the chip would only sit over
  * what the user is typing next to.
@@ -312,7 +393,7 @@ export function useTooltip() {
  * while a document is mounted. The home hub and the tab strip are on screen
  * without one, which is why they kept native `title=` tooltips. They now sit
  * inside one of these, so a hub control and a viewer control show the same
- * chip, with the same instant timing, whether or not a document is open.
+ * chip, with the same timing, whether or not a document is open.
  *
  * The state lives in a child (<TooltipChipHost>), not here, so a hover only
  * re-renders the chip — never the hub or tab strip wrapped by this provider.
@@ -323,7 +404,7 @@ export function useTooltip() {
  * mouseenter/focus arrive after it, so a tap never raises a chip over the
  * thing the finger just pressed.
  */
-function TooltipChipHost({ setterRef }) {
+export function TooltipChipHost({ setterRef }) {
   const [tooltip, setTooltip] = useState(TOOLTIP_HIDDEN);
   setterRef.current = setTooltip;
   return <FloatingTooltip tooltip={tooltip} />;
@@ -340,41 +421,6 @@ export function TooltipProvider({ children }) {
       {children}
       <TooltipChipHost setterRef={setterRef} />
     </TooltipContext.Provider>
-  );
-}
-
-/**
- * Anchored variant for indicators that own their own hover state and want the
- * chip positioned relative to themselves rather than to the viewport — the sync
- * status and active users indicators in the sidebar rail.
- *
- * The parent must be `position: relative`. `side` mirrors the placement names
- * used by the floating chip so the two read the same in code.
- */
-const ANCHORED_POSITION = {
-  right: { left: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' },
-  left: { right: 'calc(100% + 8px)', top: '50%', transform: 'translateY(-50%)' },
-  above: { left: '50%', bottom: 'calc(100% + 8px)', transform: 'translateX(-50%)' },
-  below: { left: '50%', top: 'calc(100% + 8px)', transform: 'translateX(-50%)' },
-};
-
-export function AnchoredTooltip({ visible = true, side = 'right', position = null, children }) {
-  if (!visible || !children) return null;
-  return (
-    <div
-      aria-hidden="true"
-      // Lets states.css section 5 leave the hint out when the chrome icon it
-      // sits inside grows or tightens (owner 2026-10-02).
-      data-anchored-tooltip=""
-      style={{
-        position: 'absolute',
-        ...(position || ANCHORED_POSITION[side] || ANCHORED_POSITION.right),
-        zIndex: 1000,
-        ...TOOLTIP_SURFACE,
-      }}
-    >
-      {children}
-    </div>
   );
 }
 

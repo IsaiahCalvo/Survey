@@ -16,9 +16,11 @@
 import { useRef } from 'react';
 import Icon from '../../Icons.jsx';
 import { useFocusTrap } from '../../hooks/useFocusTrap.js';
+import { useTooltip } from '../Tooltip';
 import './ConfirmDeleteModal.css';
 
 export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
+  const tip = useTooltip();
   const cardRef = useRef(null);
 
   // Match the app's shared modal contract: trap Tab, Escape cancels, restore
@@ -68,7 +70,7 @@ export function ConfirmDeleteModal({ plan, onConfirm, onCancel }) {
           <button
             type="button"
             className="confirm-delete-modal__close"
-            title="Close"
+            {...tip('Close', 'below')}
             aria-label="Close"
             onClick={onCancel}
           >

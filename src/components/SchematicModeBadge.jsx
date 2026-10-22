@@ -14,6 +14,7 @@ import {
   configureSchematicDetection, getSchematicResult, getSchematicStoreVersion,
   isSchematicTurnedOff, requestSchematicDetection, setSchematicTurnedOff, subscribeSchematicPages,
 } from '../utils/schematicPageStore.js';
+import { useTooltip } from './Tooltip';
 
 configureSchematicDetection({ ops: pdfjsLib.OPS, readTextContent: readPdfjsTextContent });
 
@@ -66,6 +67,7 @@ export default function SchematicModeBadge(props) {
 function SchematicModeBadgeBody({
   pdfDoc, pageNumber, fingerprint, activeTool, lineBorderStyle, onPickTool,
 }) {
+  const tip = useTooltip();
   useSyncExternalStore(subscribeSchematicPages, getSchematicStoreVersion, getSchematicStoreVersion);
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
@@ -140,7 +142,7 @@ function SchematicModeBadgeBody({
           type="button"
           data-schematic-badge="off"
           aria-label="Schematic Mode is off on this page. Turn it back on"
-          title="Schematic Mode is off on this page. Click to turn it back on."
+          {...tip('Schematic Mode is off on this page. Click to turn it back on.', 'below')}
           onClick={(event) => { stop(event); setSchematicTurnedOff(fingerprint, pageNumber, false); }}
           style={{ ...pillStyle, width: 24, padding: 0, justifyContent: 'center', opacity: 0.55 }}
         >
@@ -152,7 +154,7 @@ function SchematicModeBadgeBody({
           data-schematic-badge="on"
           aria-expanded={open}
           aria-haspopup="dialog"
-          title="This page is a drawing. Click for drawing tools."
+          {...tip('This page is a drawing. Click for drawing tools.', 'below')}
           onClick={(event) => { stop(event); setOpen((value) => !value); }}
           style={pillStyle}
         >

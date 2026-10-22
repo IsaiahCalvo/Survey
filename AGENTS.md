@@ -19,6 +19,11 @@ assume `~/.claude` loads for you). Full history and gotchas live in CLAUDE.md if
   One bundle serves web, Electron (`file://`), and Capacitor origins; auth is Bearer-JWT, so
   the wildcard is non-exploitable. Investigated + closed 2026-07-05.
 
+- **One tooltip, one behavior (`docs/TOOLTIP-RULES.md`).** Every hover hint is the shared chip
+  from `src/components/Tooltip.jsx` (`{...tip(text, side)}` from `useTooltip()`). Never a native
+  `title=`, `el.title =`, a hand-made hover box or a tooltip library. Wait once, then show the
+  rest at once; keyboard focus shows at once; touch never. `tests/tooltipRule.test.mjs` enforces it.
+
 ## High-risk files (minimum viable diff; never refactor in passing)
 
 - `src/PDFViewer.jsx` (~34k lines — viewer lifecycle, save/sync, history engine; highest risk)

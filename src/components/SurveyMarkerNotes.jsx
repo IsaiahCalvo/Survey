@@ -23,6 +23,7 @@ import {
 import { deleteSurveyMediaOrQueue, retrySurveyMediaDeletesSoon } from '../services/surveyMediaDeleteQueue';
 import SurveyMediaStrip, { mediaKindLabel } from './SurveyMediaStrip';
 import { SurveyAudioRecorderBar, SurveyMediaUploadTile, useAudioRecorder } from './SurveyMediaCapture';
+import { useTooltip } from './Tooltip';
 import './surveyMarkerNotes.css';
 
 const SAVED_TICK_MS = 1600;
@@ -47,6 +48,7 @@ const mediaErrorMessage = (error, fallback) => (error?.code && error?.message ? 
 
 /** The note, edited in place: grows with its text, saves when you leave it. */
 function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, readOnly, accessory }) {
+  const tip = useTooltip();
   const [draft, setDraft] = useState(text);
   const [savedVisible, setSavedVisible] = useState(false);
   const fieldRef = useRef(null);
@@ -164,7 +166,7 @@ function SurveyNoteField({ text, onSave, variant, autoFocus, onAutoFocused, read
           <span
             className={`survey-notes__saved${savedVisible ? ' is-visible' : ''}`}
             aria-live="polite"
-            title={savedVisible ? 'Saved' : undefined}
+            {...tip(savedVisible ? 'Saved' : undefined, 'below')}
             data-testid="survey-notes-saved"
           >
             {savedVisible ? (<><Icon name="check" size={variant === 'phone' ? 16 : 14} color="currentColor" /><span className="survey-notes__saved-word">Saved</span></>) : null}

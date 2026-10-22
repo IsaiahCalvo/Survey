@@ -59,6 +59,7 @@ import {
   textEditMarkRect,
   visibleAreaInHost,
 } from '../utils/pageAnchoredControls.js';
+import { useTooltip } from './Tooltip';
 
 const DEFAULT_FONT_FAMILY = 'Helvetica';
 
@@ -299,6 +300,7 @@ export default function TextEditOverlay({
   // Cloud (its border is then the house revision cloud); null = plain border.
   newTextCloudIntensity = null,
 }) {
+  const tip = useTooltip();
   const isCallout = !!reactCalloutId;
   const pad = TEXT_PADDING;
   const padY = isCallout ? 0 : pad;
@@ -1312,7 +1314,7 @@ export default function TextEditOverlay({
               // was no earlier text, so the box is removed instead. Matches
               // Drawboard, which pairs its tick with a cross that throws the
               // edit away.
-              title="Discard changes"
+              {...tip('Discard changes', 'below')}
               aria-label="Discard changes"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); cancelRef.current(); }}
               style={ACTION_TAP_PAD_STYLE}
@@ -1326,7 +1328,7 @@ export default function TextEditOverlay({
               // UX: tick = keep. Same commit the Escape key and a click outside
               // the box perform, given its own button so committing is never a
               // guess. Drawboard reference: round tick under the open text box.
-              title="Keep text"
+              {...tip('Keep text', 'below')}
               aria-label="Keep text"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); commitRef.current({ flush: true }); }}
               style={ACTION_TAP_PAD_STYLE}

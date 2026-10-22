@@ -187,6 +187,7 @@ const ExcelUnplacedRows = ({
   onDismiss,
   onDismissAll
 }) => {
+  const tip = useTooltip();
   if (!rows || rows.length === 0) return null;
 
   const describeRow = (row) => {
@@ -206,7 +207,7 @@ const ExcelUnplacedRows = ({
         <button
           type="button"
           className="survey-unplaced-dismiss-all"
-          title="Hide this list. Rows come back on the next sync if they still can’t be placed."
+          {...tip('Hide this list. Rows come back on the next sync if they still can’t be placed.', 'left')}
           onClick={() => onDismissAll?.()}
         >
           Dismiss all
@@ -238,7 +239,7 @@ const ExcelUnplacedRows = ({
             <button
               type="button"
               className="survey-unplaced-row-dismiss"
-              title="Hide this row. It comes back on the next sync if it still can’t be placed."
+              {...tip('Hide this row. It comes back on the next sync if it still can’t be placed.', 'left')}
               aria-label={`Dismiss ${row.itemName || 'this row'}`}
               onClick={() => onDismiss?.(row.key)}
             >
@@ -1624,7 +1625,7 @@ const SurveySpacesRail = ({
         className={`survey-agent-dots${mobileMode ? ' is-phone' : ''}${surveyAgentLive ? ' is-live' : ''}`}
         aria-label={surveyAgentView === 'chat' ? 'Back to Survey' : 'Open Survey agent chat'}
         aria-pressed={surveyAgentView === 'chat'}
-        title={surveyAgentView === 'chat' ? 'Back to Survey' : 'Survey agent chat'}
+        {...tip(surveyAgentView === 'chat' ? 'Back to Survey' : 'Survey agent chat', 'left')}
         onClick={() => (surveyAgentView === 'chat' ? hideSurveyAgentChat() : showSurveyAgentChat())}
       >
         <span className="survey-agent-dots__dot" aria-hidden="true" />
@@ -1685,7 +1686,7 @@ const SurveySpacesRail = ({
       ? `All ${total} checklist items answered, complete`
       : `${answered} of ${total} checklist items answered${no > 0 ? `, ${no} answered No` : ''}`;
     return (
-      <span className={`survey-marker-progress${state}`} aria-label={label} title={label}>
+      <span className={`survey-marker-progress${state}`} aria-label={label} {...tip(label, 'left')}>
         {done ? <Icon name="check" size={12} color="currentColor" /> : null}
         {answered}/{total}
       </span>
@@ -1916,7 +1917,7 @@ const SurveySpacesRail = ({
             className={`mobile-survey-locate${isPlaced ? '' : ' is-unplaced'}`}
             data-testid={isPlaced ? undefined : 'survey-marker-unplaced-tag'}
             aria-label={isPlaced ? 'Locate on page' : 'Not on the page. Place on page'}
-            title={isPlaced ? 'Locate on page' : 'Not on the page — tap to place'}
+            {...tip(isPlaced ? 'Locate on page' : 'Not on the page — tap to place', 'left')}
             onClick={(e) => {
               e.stopPropagation();
               if (isPlaced) {
@@ -3920,7 +3921,7 @@ const SurveySpacesRail = ({
                                                   {(noteTextValue && !isSurveyMarkerExpanded) || mediaCount > 0 || progress.total > 0 ? (
                                                     <span className="survey-rail__marker-badges">
                                                       {noteTextValue && !isSurveyMarkerExpanded ? (
-                                                        <span className="survey-marker-badge" aria-label="Has a note" title="Has a note">
+                                                        <span className="survey-marker-badge" aria-label="Has a note" {...tip('Has a note', 'left')}>
                                                           <Icon name="note" size={12} color="currentColor" />
                                                         </span>
                                                       ) : null}

@@ -34,6 +34,7 @@ import { Icon } from '../home/HubShell';
 import { C } from '../uiPalette';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import MotionPresence from './MotionPresence.jsx';
+import { useTooltip } from './Tooltip';
 
 // Literal hex colors mirror src/home/BulkModals.jsx: these overlays render
 // outside the `.survey-hub` root where the palette CSS variables aren't in
@@ -70,6 +71,7 @@ export function PromptModal({
   onSubmit,
   onCancel,
 }) {
+  const tip = useTooltip();
   const [value, setValue] = useState(defaultValue);
   const inputRef = useRef(null);
   const cardRef = useRef(null);
@@ -135,7 +137,7 @@ export function PromptModal({
               }}
             />
           </div>
-          <button onClick={onCancel} title="Close" aria-label="Close" className="dialog-close-touch-pad" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
+          <button onClick={onCancel} {...tip('Close', 'below')} aria-label="Close" className="dialog-close-touch-pad" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
         </div>
         <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onCancel} className="dialog-touch-pad" style={cancelButtonStyle}>Cancel</button>

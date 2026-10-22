@@ -37,6 +37,7 @@ import { AGENT_LANGS, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays, readA
 import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
 import SurveyAgentCamera from './SurveyAgentCamera';
+import { useTooltip } from './Tooltip';
 import './surveyAgentPanel.css';
 
 const blobToBase64 = (blob) => new Promise((resolve, reject) => {
@@ -134,6 +135,7 @@ export default function SurveyAgentPanel({
   onShowChat = () => {},
   onActivity = () => {},
 }) {
+  const tip = useTooltip();
   const [usageLeft, setUsageLeft] = useState(null);
   // The last few spoken turns with times, for "Send voice log"; sent by
   // itself once a session when hearing or the model fails.
@@ -1048,7 +1050,7 @@ export default function SurveyAgentPanel({
           type="button"
           className="survey-agent__pill"
           aria-label={`Language: ${AGENT_LANGS[lang].label}`}
-          title="English or Spanish"
+          {...tip('English or Spanish', 'left')}
           onClick={toggleLang}
         >
           {AGENT_LANGS[lang].short}
@@ -1059,7 +1061,7 @@ export default function SurveyAgentPanel({
             className="survey-agent__icon"
             aria-pressed={speakReplies}
             aria-label={speakReplies ? 'Voice on' : 'Voice off'}
-            title={speakReplies ? 'Replies are read out. Tap to stop.' : 'Replies are not read out. Tap to hear them.'}
+            {...tip(speakReplies ? 'Replies are read out. Tap to stop.' : 'Replies are not read out. Tap to hear them.', 'left')}
             onClick={toggleSpeak}
           >
             <SpeakerIcon muted={!speakReplies} />
@@ -1185,7 +1187,7 @@ export default function SurveyAgentPanel({
             }}
           />
           <div className="survey-agent__tools">
-            <button type="button" className="survey-agent__icon" aria-label="Add photos or files" title="Add photos or files" disabled={!ready} onClick={() => fileInputRef.current?.click()}>
+            <button type="button" className="survey-agent__icon" aria-label="Add photos or files" {...tip('Add photos or files', 'left')} disabled={!ready} onClick={() => fileInputRef.current?.click()}>
               <Icon name="paperclip" size={18} color="currentColor" />
             </button>
             <span className="survey-agent__spacer" />
@@ -1204,7 +1206,7 @@ export default function SurveyAgentPanel({
                 type="button"
                 className={`survey-agent__icon survey-agent__mic${recording ? ' is-on' : ''}${micHearing ? ' is-hearing' : ''}${holdUi.cancelling ? ' is-cancel' : ''}`}
                 aria-label={recording ? 'Stop and send' : 'Talk'}
-                title={holdable && !recording ? 'Tap to talk (it sends when you stop), or hold' : undefined}
+                {...tip(holdable && !recording ? 'Tap to talk (it sends when you stop), or hold' : undefined, 'left')}
                 aria-pressed={recording}
                 disabled={!ready || handsFree || (thinking && !recording)}
                 onPointerDown={holdable ? (e) => {
@@ -1240,7 +1242,7 @@ export default function SurveyAgentPanel({
               type="submit"
               className="survey-agent__send"
               aria-label="Send"
-              title="Send"
+              {...tip('Send', 'left')}
               disabled={!ready || thinking || (!draft.trim() && !pendingFiles.length)}
             >
               <ArrowUpIcon />

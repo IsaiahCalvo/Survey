@@ -5,6 +5,7 @@ import { exitMs } from '../utils/motion.js';
 import { createToastStore } from '../utils/toastQueue.js';
 import { TOAST_USER_DISMISS_EVENT } from '../utils/toast';
 import './ToastHost.css';
+import { useTooltip, withOwnHandlers } from './Tooltip';
 
 // KAL-57 — single mounted host for the in-app toast bus (see utils/toast.js).
 // Listens for 'app-toast' events, stacks them bottom-center, auto-dismisses
@@ -49,6 +50,7 @@ const TYPE_CLASS = { info: 'info', success: 'success', error: 'error', warn: 'wa
 const PHONE_TOP_CHROME_SELECTORS = ['.mobile-pdf-header', '.mobile-pdf-properties', '.survey-hub .header', '.document-lock-banner', '.storage-banner'];
 
 export default function ToastHost() {
+  const tip = useTooltip();
   const storeRef = useRef(null);
   if (storeRef.current === null) {
     storeRef.current = createToastStore({ exitMs: () => exitMs('toast') });
@@ -117,11 +119,12 @@ export default function ToastHost() {
             store.dismiss(t.id);
             window.dispatchEvent(new CustomEvent(TOAST_USER_DISMISS_EVENT, { detail: { id: t.key } }));
           }}
-          onMouseEnter={() => store.pause(t.id)}
-          onMouseLeave={() => store.resume(t.id)}
-          onFocus={() => store.pause(t.id)}
-          onBlur={() => store.resume(t.id)}
-          title="Dismiss"
+          {...withOwnHandlers(tip('Dismiss', 'above'), {
+            onMouseEnter: () => store.pause(t.id),
+            onMouseLeave: () => store.resume(t.id),
+            onFocus: () => store.pause(t.id),
+            onBlur: () => store.resume(t.id),
+          })}
         >
           <span className="app-toast__message">{t.message}</span>
           {t.action ? (

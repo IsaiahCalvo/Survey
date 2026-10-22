@@ -7,12 +7,14 @@ import {
 // Polish 3 (2026-10-04): the shared hook, not a copy of it - this file held a
 // line-for-line duplicate of useCoarsePointer's state and media-query effect.
 import useCoarsePointer from '../hooks/useCoarsePointer.js';
+import { useTooltip, withOwnHandlers } from './Tooltip';
 
 export default function PdfjsRedactionMarkLayer({ pdf, pageNumber, excludedAnnotationIds = [] }) {
   const [marks, setMarks] = useState([]);
   const [hoveredMarkId, setHoveredMarkId] = useState(null);
   const [previewMarkId, setPreviewMarkId] = useState(null);
   const isCoarsePointer = useCoarsePointer();
+  const tip = useTooltip();
 
   useEffect(() => {
     if (!isCoarsePointer || previewMarkId === null) return undefined;
@@ -61,10 +63,11 @@ export default function PdfjsRedactionMarkLayer({ pdf, pageNumber, excludedAnnot
             key={mark.id}
             role="img"
             aria-label="Marked for redaction. Covered text is still readable."
-            title="Marked for redaction — text is still readable until applied"
-            onMouseEnter={() => { if (!isCoarsePointer) setHoveredMarkId(mark.id); }}
-            onMouseLeave={() => { if (!isCoarsePointer) setHoveredMarkId(null); }}
-            onPointerDown={(event) => { if (isCoarsePointer) event.stopPropagation(); }}
+            {...withOwnHandlers(tip('Marked for redaction — text is still readable until applied', 'below'), {
+              onMouseEnter: () => { if (!isCoarsePointer) setHoveredMarkId(mark.id); },
+              onMouseLeave: () => { if (!isCoarsePointer) setHoveredMarkId(null); },
+              onPointerDown: (event) => { if (isCoarsePointer) event.stopPropagation(); },
+            })}
             onClick={(event) => {
               if (!isCoarsePointer) return;
               event.stopPropagation();

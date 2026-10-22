@@ -70,11 +70,12 @@ const chip = () => document.querySelector('body > div[aria-hidden="true"]');
 const hover = (el) => el.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
 const unhover = (el) => el.dispatchEvent(new window.MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }));
 const pointerDown = (el) => el.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
+const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 test('TooltipProvider paints one shared chip on hover and clears it on leave', async () => {
   installDom();
   const { mod, cleanup } = await loadTooltipModule();
-  const { TooltipProvider, useTooltip, TOOLTIP_SURFACE } = mod;
+  const { TooltipProvider, useTooltip, TOOLTIP_SURFACE, TOOLTIP_DELAY_MS, TOOLTIP_WARM_MS } = mod;
   let siblingRenders = 0;
   const Sibling = React.memo(() => { siblingRenders += 1; return null; });
   function MoreButton() {
@@ -92,9 +93,13 @@ test('TooltipProvider paints one shared chip on hover and clears it on leave', a
     assert.equal(chip(), null);
     const rendersBefore = siblingRenders;
 
+    // Wait once (owner 2026-10-22, docs/tooltips.md): a pointer just passing
+    // over shows nothing; resting on the control shows the chip.
     await act(async () => { hover(button); });
+    assert.equal(chip(), null, 'the first chip waits');
+    await act(async () => { await wait(TOOLTIP_DELAY_MS + 40); });
     const shown = chip();
-    assert.ok(shown, 'hover shows the chip at once (no delay)');
+    assert.ok(shown, 'resting on the control shows the chip');
     assert.equal(shown.textContent, 'More');
     assert.equal(shown.parentElement, document.body, 'portalled to body so no overflow can clip it');
     assert.equal(shown.style.background, TOOLTIP_SURFACE.background, 'same surface as every other chip');
@@ -103,9 +108,22 @@ test('TooltipProvider paints one shared chip on hover and clears it on leave', a
     await act(async () => { unhover(button); });
     assert.equal(chip(), null, 'leaving clears it immediately');
 
+    // ...then show the rest at once while the user is reading the controls.
+    await act(async () => { hover(button); });
+    assert.equal(chip()?.textContent, 'More', 'the next chip right after one hid shows with no wait');
+    await act(async () => { unhover(button); });
+
+    // Once the warm window has passed, the next chip waits again.
+    await act(async () => { await wait(TOOLTIP_WARM_MS + 60); });
+    await act(async () => { hover(button); });
+    assert.equal(chip(), null, 'cold again after the warm window');
+    await act(async () => { unhover(button); await wait(TOOLTIP_DELAY_MS + 40); });
+    assert.equal(chip(), null, 'leaving before the wait ends cancels the chip');
+
     // Mid-drag (a button held): rows slide under the pointer; no chips.
     await act(async () => {
       button.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body, buttons: 1 }));
+      await wait(TOOLTIP_DELAY_MS + 40);
     });
     assert.equal(chip(), null, 'no chip while a mouse button is held');
   } finally {
@@ -130,6 +148,7 @@ test('a touch tap never raises the chip over the control it pressed', async () =
     await act(async () => {
       pointerDown(button);
       hover(button);
+      await wait(mod.TOOLTIP_DELAY_MS + 40);
     });
     assert.equal(chip(), null, 'the emulated hover after a finger press shows nothing, not even a flash');
     await act(async () => {
@@ -168,9 +187,9 @@ test('a disabled control still explains itself to a mouse, never to a finger', a
     // React swallows mouseenter on a disabled button - this used to be silent.
     await act(async () => { hover(button); });
     assert.equal(chip(), null, 'precondition: React drops mouseenter on disabled buttons');
-    await act(async () => { pointerOver(button, 'touch'); });
+    await act(async () => { pointerOver(button, 'touch'); await wait(mod.TOOLTIP_DELAY_MS + 40); });
     assert.equal(chip(), null, 'a finger never raises the chip');
-    await act(async () => { pointerOver(button, 'mouse'); });
+    await act(async () => { pointerOver(button, 'mouse'); await wait(mod.TOOLTIP_DELAY_MS + 40); });
     assert.equal(chip()?.textContent, 'Templates is a Pro feature');
     await act(async () => { pointerOut(button, 'mouse'); });
     assert.equal(chip(), null);
