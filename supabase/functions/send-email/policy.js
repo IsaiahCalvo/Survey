@@ -125,7 +125,10 @@ export async function authorizeUserSend({ template, to }, deps) {
     bound = (!!invite && !invite.revokedAt)
       || !!(await deps.findActiveCollaboratorForRecipient(recipient));
   } else if (template === 'permission-changed') {
-    bound = !!(await deps.findActiveCollaboratorForRecipient(recipient)) || !!invite;
+    // A revoked invite is no tie: only a live collaborator or an unrevoked
+    // invite (a pending person whose role changed) may get this email.
+    bound = !!(await deps.findActiveCollaboratorForRecipient(recipient))
+      || (!!invite && !invite.revokedAt);
   } else if (template === 'access-removed') {
     // The collaborator row is hard-deleted BEFORE this email goes out, so the
     // binding leans on the surviving invite rows (email invites persist after
@@ -166,4 +169,57 @@ export function sanitizeSubject(subject, fallback) {
   const clean = subject.replace(/[\r\n\t\x00-\x1f\x7f]/g, ' ').trim();
   if (!clean) return fallback;
   return clean.length > 300 ? clean.slice(0, 300) : clean;
+}
+
+// Sharing emails go out from no-reply@surveytool.app, so a signed-in caller
+// must not choose their subject line or where their buttons point: that would
+// make the app a phishing sender. User-template subjects are rebuilt here from
+// the template, and every link is pinned to one of our own web origins.
+export const APP_ORIGIN = 'https://surveytool.app';
+const LINK_ORIGINS = new Set([
+  APP_ORIGIN,
+  'https://surveytool-nightly.vercel.app',
+  'http://localhost:5173',
+]);
+
+function subjectName(value, fallback) {
+  const clean = typeof value === 'string'
+    ? value.replace(/[\r\n\t\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim()
+    : '';
+  if (!clean) return fallback;
+  return clean.length > 80 ? `${clean.slice(0, 79)}…` : clean;
+}
+
+/** Server-built subject for a user template (the caller's subject is ignored). */
+export function userTemplateSubject(template, data = {}) {
+  const doc = subjectName(data?.documentName, 'a document');
+  switch (template) {
+    case 'document-invite':
+      return `${subjectName(data?.inviterName, 'A Survey user')} invited you to ${doc} on Survey`;
+    case 'document-shared':
+      return `${subjectName(data?.sharedByName, 'A Survey user')} shared ${doc} with you on Survey`;
+    case 'permission-changed':
+      return `Your access to ${doc} changed`;
+    case 'access-removed':
+      return `Your access to ${doc} was removed`;
+    default:
+      return 'Notification from Survey';
+  }
+}
+
+/** Keep a link on our own web origin. Any other origin (an attacker's site, or
+ * file:// / capacitor:// from the desktop and phone apps) is moved onto
+ * https://surveytool.app with the same query and hash. Unparseable → '#'. */
+export function pinLinkToApp(value) {
+  if (typeof value !== 'string' || !value.trim()) return '#';
+  let url;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return '#';
+  }
+  if (LINK_ORIGINS.has(url.origin)) return url.href;
+  const web = url.protocol === 'https:' || url.protocol === 'http:';
+  const pathname = web ? url.pathname : '/';
+  return `${APP_ORIGIN}${pathname}${url.search}${url.hash}`;
 }

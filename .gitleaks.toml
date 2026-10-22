@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+[[rules]]
+id = "supabase-secret-key"
+regex = '''sb_secret_[A-Za-z0-9_-]{20,}'''
+[[rules]]
+id = "supabase-management-token"
+regex = '''sbp_[a-f0-9]{40}'''
+[[rules]]
+id = "resend-key"
+regex = '''\bre_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}'''
+[[rules]]
+id = "service-role-word"
+regex = '''service_role["']?\s*[:=]\s*["']?eyJ[A-Za-z0-9_-]{10,}'''

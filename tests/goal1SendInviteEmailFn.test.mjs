@@ -238,3 +238,34 @@ test('GOAL-1 fn: copy fields are length-capped and defaulted; token from row is 
   equal(calls.fallback[0].data.documentName.length, 300);
   equal(calls.fallback[0].data.inviterName, 'A Survey user');
 });
+
+for (const [budget, expectStatus] of [
+  ['invite_blocked_free_tier', 403],
+  ['rate_limited', 429],
+  ['error', 502],
+]) {
+  test(`send budget ${budget} → ${expectStatus}, nothing sent and the delivery claim is released`, async () => {
+    let released = 0;
+    const { deps, calls } = makeDeps({
+      claimSendBudget: async () => budget,
+      releaseInviteDelivery: async () => { released += 1; return true; },
+    });
+    const out = await handleSendInviteEmail(post({ token: 'tok123' }), deps);
+    equal(out.status, expectStatus);
+    equal(out.body.sent, false);
+    equal(calls.invite.length, 0);
+    equal(calls.fallback.length, 0);
+    equal(released, 1);
+  });
+}
+
+test('send budget is charged to the invite row recipient before the auth mailer runs', async () => {
+  const charged = [];
+  const { deps, calls } = makeDeps({
+    claimSendBudget: async (recipient) => { charged.push([recipient, calls.invite.length]); return 'allowed'; },
+  });
+  const out = await handleSendInviteEmail(post({ token: 'tok123' }), deps);
+  equal(out.status, 200);
+  deepStrictEqual(charged, [['invitee@example.com', 0]]);
+  equal(calls.invite.length, 1);
+});
