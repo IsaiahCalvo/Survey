@@ -370,6 +370,7 @@ jobs:
         # The XCTest driver sometimes misses its start window on this slow
         # runner (twice on 2026-10-22, before any flow step); try once more.
         run: |
+          set -o pipefail
           m() { maestro --device "$UDID" test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/ios-signed-in.yaml 2>&1 | tee "$OUT/maestro-run.log"; }
           m || { grep -q 'driver not ready in time' "$OUT/maestro-run.log" && m; }
       - name: Relaunch with the API stopped (offline)
