@@ -43,6 +43,8 @@ W=$(adb shell wm size | sed 's/.*: //;s/x.*//' | tr -d '\r'); H=$(adb shell wm s
 # Upper-middle of the page: the page ends near 74% of the screen height and
 # earlier flows left marks near 65% on the right.
 ( pick Line ) || { pick Shapes; pick Line; }
+# A tap on "Line" can land while another tool stays pressed; open Shapes then.
+if ! ev "[...document.querySelectorAll('[aria-pressed=true]')].map(b => b.getAttribute('aria-label') || '').join('|')" | grep -q '\bLine\b'; then pick Shapes; pick Line; fi
 ev "(() => { window.__pd = []; const log = n => e => window.__pd.push(n + ':' + e.pointerType + '@' + e.target.tagName + '.' + String(e.target.getAttribute?.('class') || '').slice(0, 30)); ['pointerdown', 'pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, log(t), true)); return 'ok'; })()" >/dev/null
 echo "pressed tools: $(ev "[...document.querySelectorAll('[aria-pressed=true]')].map(b => b.getAttribute('aria-label') || b.textContent.trim()).join(' | ')")"
 # Line A: a horizontal-ish drag (0 degrees is itself a 45-degree step).
