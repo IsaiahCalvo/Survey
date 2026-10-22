@@ -88,3 +88,16 @@ test('number and text lines take a typed answer in the Survey rail', async ({ pa
   await expect(page.getByText('0/3', { exact: true })).toBeVisible();
   await page.waitForTimeout(2000);
 });
+
+test('the template editor shows how each line is answered', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('survey.flag.custom-answers', '1'));
+  await signIn(page, E2E_ACCOUNTS.owner);
+  await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
+  const [cable, frame, door] = E2E_SURVEY.checklist.map((c) => c.text);
+  const kindOf = (line) => page.getByRole('combobox', { name: `How "${line}" is answered` }).filter({ visible: true }).first();
+  await page.getByRole('button', { name: `Expand ${E2E_SURVEY.categoryName}` }).filter({ visible: true }).first().click();
+  await expect(kindOf(cable)).toHaveValue('number', { timeout: 30_000 });
+  await expect(page.getByRole('textbox', { name: `Unit for "${cable}"` }).filter({ visible: true }).first()).toHaveValue('ft');
+  await expect(kindOf(frame)).toHaveValue('text');
+  await expect(kindOf(door)).toHaveValue('choice');
+});
