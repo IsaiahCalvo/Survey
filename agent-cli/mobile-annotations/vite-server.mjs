@@ -39,6 +39,16 @@ async function ephemeralLoopbackUrl() {
   return `http://127.0.0.1:${port}`;
 }
 
+function stopServer(child) {
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch {
+    child.kill('SIGTERM');
+  }
+  child.stdout?.destroy();
+  child.stderr?.destroy();
+}
+
 export async function ensureViteServer(requestedBaseUrl) {
   if (requestedBaseUrl) {
     const baseUrl = String(requestedBaseUrl).replace(/\/$/, '');
@@ -56,6 +66,9 @@ export async function ensureViteServer(requestedBaseUrl) {
     '--strictPort',
   ], {
     cwd: process.cwd(),
+    // Own process group: npm does not forward SIGTERM to vite, and an orphaned
+    // vite keeps our stdout pipes open so the runner never exits.
+    detached: true,
     env: { ...process.env, BROWSER: 'none' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -65,8 +78,8 @@ export async function ensureViteServer(requestedBaseUrl) {
   try {
     await waitForServer(baseUrl, child);
   } catch (error) {
-    child.kill('SIGTERM');
+    stopServer(child);
     throw new Error(`${error.message}\n${output.slice(-4_000)}`);
   }
-  return { baseUrl, managedProcess: child };
+  return { baseUrl, managedProcess: { kill: () => stopServer(child) } };
 }
