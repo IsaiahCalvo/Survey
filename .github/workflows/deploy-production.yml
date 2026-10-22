@@ -19,11 +19,12 @@ on:
     # asserts the two are still paired, and that check runs in CI.
     workflows: ["Build and tests"]
     types: [completed]
-  # Backup only: GitHub runs this repo's cron schedules now and then at best
-  # (one scheduled run of any workflow on 2026-10-21), so the CI trigger above
-  # is what really opens each 3-hour window.
+  # So a window opens even when no tests run (quiet nights), `pick` is also
+  # asked every 15 minutes. GitHub drops many of this repo's scheduled runs,
+  # so one cron per window was not enough; `pick` skips in seconds unless the
+  # window is open and something newer is green.
   schedule:
-    - cron: '17 */3 * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 permissions:

@@ -58,7 +58,9 @@ jobs:
   journey:
     needs: due
     if: vars.LIVE_JOURNEY_ENABLED == 'true' && needs.due.outputs.checked != 'true'
-    runs-on: ubuntu-latest
+    # Playwright 1.59 has no browsers for ubuntu-26.04, which ubuntu-latest
+    # became in October 2026.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
