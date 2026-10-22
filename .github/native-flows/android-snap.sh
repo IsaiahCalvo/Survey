@@ -41,7 +41,7 @@ W=$(adb shell wm size | sed 's/.*: //;s/x.*//' | tr -d '\r'); H=$(adb shell wm s
 # earlier flows left marks near 65% on the right.
 ( pick Line ) || { pick Shapes; pick Line; }
 # Line A: a horizontal-ish drag (0 degrees is itself a 45-degree step).
-A=$(draw $((W * 3 / 10)) $((H * 35 / 100)) $((W * 6 / 10)) $((H * 35 / 100)))
+A=$(draw $((W * 3 / 10)) $((H * 52 / 100)) $((W * 6 / 10)) $((H * 52 / 100)))
 echo "line A index: $A"
 case "$A" in none*) fail "Line A was not committed ($A)";; esac
 EA=$(ends "$A"); echo "line A ends (page): $EA"
