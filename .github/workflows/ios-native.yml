@@ -366,6 +366,11 @@ jobs:
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$(find build/ios/Build/Products -maxdepth 2 -name 'App.app' | head -1)"
+          # Warm the first launch here (it can take many minutes on this runner)
+          # so Maestro's launchApp doesn't hang on it.
+          xcrun simctl launch "$UDID" com.kalvoe.survey
+          sleep 90
+          xcrun simctl terminate "$UDID" com.kalvoe.survey || true
       - name: Walk the app (signed in, Counter after Arrow, export)
         # The XCTest driver sometimes misses its start window on this slow
         # runner (twice on 2026-10-22, before any flow step); try once more.
