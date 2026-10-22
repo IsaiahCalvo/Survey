@@ -447,3 +447,18 @@ test('a shared template hides the owner\'s local Excel path, and saving puts it 
   assert.equal(rows[0].linkedExcelPath, undefined);
   assert.equal(buildAtomicTemplatePayload(rows, { ownerId: A })[0].config.linkedExcelPath, '/x.bat');
 });
+
+test('a new link, a OneDrive link or an unlink made on a shared template is kept on save', async () => {
+  const { parkForeignLocalExcelPath } = await import('../src/services/sharedTemplates.js');
+  const { sanitizeTemplateConfig } = await import('../src/utils/templateConfig.js');
+  const owner = { ownerId: A, ownerName: 'Ann', role: 'editor', canEdit: true };
+  const parked = parkForeignLocalExcelPath({ id: 't1', name: 'T', sharedFrom: owner, linkedExcelPath: '/owner/old.xlsx' });
+  assert.equal(sanitizeTemplateConfig({ ...parked, linkedExcelPath: '/me/new.xlsx' }).linkedExcelPath, '/me/new.xlsx');
+  const oneDrive = sanitizeTemplateConfig({ ...parked, isOneDrive: true, oneDriveFileId: 'abc' });
+  assert.equal(oneDrive.linkedExcelPath, undefined);
+  assert.equal(oneDrive.oneDriveFileId, 'abc');
+  assert.equal(sanitizeTemplateConfig({ ...parked, linkedExcelPath: null }).linkedExcelPath, null);
+  for (const saved of [oneDrive, stripSharedFields({ ...parked, linkedExcelPath: '/me/new.xlsx' })]) {
+    assert.ok(!('parkedOwnerExcelPath' in saved));
+  }
+});

@@ -128,10 +128,14 @@ export function parkForeignLocalExcelPath(template) {
   return { ...rest, [PARKED_OWNER_EXCEL_PATH]: linkedExcelPath };
 }
 
-/** Put a parked owner path back before the template is stored. */
+/** Put a parked owner path back before the template is stored, unless this
+ * session linked, relinked (local or OneDrive) or unlinked the workbook: the
+ * parked copy has no linkedExcelPath key at all, so any key now present is an
+ * explicit choice and wins. */
 export function unparkLocalExcelPath(config) {
   if (!config || typeof config !== 'object' || !(PARKED_OWNER_EXCEL_PATH in config)) return config;
   const { [PARKED_OWNER_EXCEL_PATH]: ownerPath, ...rest } = config;
+  if ('linkedExcelPath' in rest || rest.isOneDrive) return rest;
   return { ...rest, linkedExcelPath: ownerPath };
 }
 
