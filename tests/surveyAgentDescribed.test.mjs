@@ -306,3 +306,46 @@ test('if adding an item fails after another module was written, that write can s
   box.undo(changes);
   assert.deepEqual(markers.cx.checklistResponses, {});
 });
+
+test('set_answers finds the item by what was said and sets a status said in words, in one call', async () => {
+  const markers = {
+    c406: { name: 'C-4-06', moduleId: 'mod-install', categoryId: 'cat-cam-i', pageNumber: 4, checklistResponses: {} },
+    c412: { name: 'C-4-12', moduleId: 'mod-install', categoryId: 'cat-cam-i', pageNumber: 4, checklistResponses: {} },
+  };
+  const { bridge } = bridgeWith(markers, { readSheets: async () => ({ pages: [{ page: 4, words: [], sheet: { floor: 4 } }], unreadPages: [] }) });
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const res = await box.run('set_answers', { item_name: 'camera twelve fourth floor', answers: [{ checklist_item_id: 'i-cam', value: 'Y' }], entity: '100% complete' });
+  assert.equal(res.isError, false, res.content);
+  assert.equal(markers.c412.checklistResponses['i-cam'].selection, 'Y');
+  assert.equal(markers.c412.entityId, 'ent-done');
+  assert.match(res.content, /Set 1 answer on C-4-12 \(item id c412\)\. Set C-4-12 to 100% Complete\./);
+  assert.equal(res.changes.length, 2, 'answers, then the entity');
+  box.undo(res.changes);
+  assert.equal(markers.c412.entityId ?? null, null);
+
+  const only = await box.run('set_answers', { item_name: 'camera twelve', entity: 'GC' });
+  assert.equal(only.isError, false, only.content);
+  assert.equal(markers.c412.entityId, 'ent-gc');
+
+  const bad = await box.run('set_answers', { item_name: 'camera twelve', entity: 'nearly there' });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content, /not one of this template's entities \(GC, 100% Complete\)/);
+  assert.equal(markers.c412.entityId, 'ent-gc', 'nothing changed');
+
+  const byName = await box.run('set_entity', { item_id: 'c406', entity_id: 'gc' });
+  assert.equal(byName.isError, false, byName.content);
+  assert.equal(markers.c406.entityId, 'ent-gc');
+});
+
+test('set_answers by description refuses when two items fit as well', async () => {
+  const markers = {
+    a: { name: 'C-06', moduleId: 'mod-install', categoryId: 'cat-cam-i', pageNumber: 3, checklistResponses: {} },
+    b: { name: 'C-06', moduleId: 'mod-install', categoryId: 'cat-cam-i', pageNumber: 4, checklistResponses: {} },
+  };
+  const { bridge, calls } = bridgeWith(markers, { readSheets: async () => ({ pages: [], unreadPages: [] }) });
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const res = await box.run('set_answers', { item_name: 'camera six', answers: [{ checklist_item_id: 'i-cam', value: 'Y' }] });
+  assert.equal(res.isError, true);
+  assert.match(res.content, /Several items fit camera six: C-06 \(page 3\), C-06 \(page 4\)/);
+  assert.deepEqual(calls.filter((c) => c[0] === 'setAnswers'), []);
+});

@@ -22,6 +22,10 @@ import { existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
+// A tool result the model asked for; the app puts the survey context in
+// (tool call id ctx-...) before the first step on its own.
+const isToolResult = (m) => m.role === 'tool' && !String(m.tool_call_id).startsWith('ctx-');
+
 const root = resolve(import.meta.dirname, '..', '..');
 const PDF_FILE = 'print-fidelity.pdf';
 const CLIP = join(root, 'tests', 'fixtures', 'voice', 'two_turns_wait.wav');
@@ -140,7 +144,7 @@ function mockServer(page, log, { longVoice = false, firstClip = 0 } = {}) {
     log.turns.push(body);
     const lastUser = body.messages.map((m) => m.role).lastIndexOf('user');
     const said = body.messages[lastUser].content.toLowerCase();
-    const tools = body.messages.slice(lastUser + 1).filter((m) => m.role === 'tool');
+    const tools = body.messages.slice(lastUser + 1).filter(isToolResult);
     const call = (id, name, args) => reply({ message: { content: '', tool_calls: [
       { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
     ] } });
@@ -491,9 +495,10 @@ test('chat mic: hold to talk, slide away to cancel, tap still toggles', async ({
   if (!(await panel.isVisible())) await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
   const mic = panel.locator('.survey-agent__mic');
   await expect(mic).toBeEnabled();
-  await expect(mic).toHaveAttribute('title', 'Tap to talk (it sends when you stop), or hold');
-  // hover() waits for the chat to finish sliding in.
+  // hover() waits for the chat to finish sliding in. The hint is the app's
+  // shared tooltip chip now, not a title attribute.
   await mic.hover();
+  await expect(page.getByText('Tap to talk (it sends when you stop), or hold')).toBeVisible();
   const box = await mic.boundingBox();
   const cx = box.x + box.width / 2;
   const cy = box.y + box.height / 2;

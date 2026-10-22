@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   SURVEY_AGENT_FALLBACK_MODELS,
   createModelRest,
+  isRejectedToolCall,
   modelChain,
   parseWait,
   restAfterRefusal,
@@ -61,4 +62,10 @@ test('resting models are skipped until their time is up', () => {
   rest.rest('main', 1000); // a shorter rest never cuts a longer one
   now += 60_000;
   assert.deepEqual(rest.available(chain), ['main', 'small', 'llama']);
+});
+
+test("a tool call that does not fit the tool's schema is asked again, other 400s are not", () => {
+  assert.equal(isRejectedToolCall(400, '{"error":{"message":"tool call validation failed: parameters for tool set_answers did not match schema","code":"tool_use_failed"}}'), true);
+  assert.equal(isRejectedToolCall(400, '{"error":{"code":"model_not_found"}}'), false);
+  assert.equal(isRejectedToolCall(429, 'tool_use_failed'), false);
 });

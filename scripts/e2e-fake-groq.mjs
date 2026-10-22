@@ -3,9 +3,10 @@
 // no real model, no key and no cost. How-to: docs/E2E-SIGNED-IN.md.
 //
 // Hearing always returns FAKE_HEARD. The model sets every line of the item
-// the person named: when the last message is the person's, it calls
-// set_answers { item_name, all_lines: the first allowed answer }; after the
-// tool result it says "Done." Anything else is a 404.
+// the person named: until it has asked for set_answers in this turn (the
+// app may have put the survey context in first), it calls set_answers
+// { item_name, all_lines: the first allowed answer }; after that it says
+// "Done." Anything else is a 404.
 //
 // The stack serves this as an edge function in its own workdir only
 // (scripts/e2e-local-supabase.mjs), never deployed. It also runs on its own:
@@ -26,10 +27,12 @@ function itemNameOf(text) {
 
 export function fakeChatReply(body) {
   const messages = Array.isArray(body?.messages) ? body.messages : [];
-  const last = messages[messages.length - 1] || {};
+  const userAt = messages.map((m) => m?.role).lastIndexOf('user');
+  const last = messages[userAt] || {};
   const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
   const done = (content) => ({ choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content } }], usage });
-  if (last.role !== 'user') return done('Done.');
+  const asked = messages.slice(userAt + 1).some((m) => m?.tool_calls?.some((c) => c?.function?.name === 'set_answers'));
+  if (userAt < 0 || asked) return done('Done.');
   const setAnswers = (body?.tools || []).find((t) => t?.function?.name === 'set_answers');
   const allowed = setAnswers?.function?.parameters?.properties?.all_lines?.enum || [];
   const answer = allowed.find((v) => v !== null);

@@ -59,7 +59,8 @@ export function scriptedReply(messages) {
     if (plan.entity) calls.push(callTool(4, 'set_entity', { item_id: itemId, entity_id: plan.entity }));
     return calls.length ? reply('', calls) : reply('Done.');
   };
-  if (!lastCall) return reply('', [callTool(1, 'find_items', { query: plan.find, category_id: null })]);
+  // The app puts the survey context in before the first model step.
+  if (!lastCall || lastCall === 'get_survey_context') return reply('', [callTool(1, 'find_items', { query: plan.find, category_id: null })]);
   if (lastCall === 'find_items') {
     const top = JSON.parse(lastResult).matches[0];
     if (!top && plan.onPlan) return reply('', [callTool(5, 'find_on_plan', { text: plan.onPlan.tag })]);
