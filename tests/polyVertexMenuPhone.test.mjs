@@ -39,7 +39,7 @@ test('a long-press Add point here menu on a side keeps a 44px row on every phone
   const src = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
   // The side's touch long-press opens the edge menu, and its row uses the layout height.
   assert.match(src, /startPolyLongPress\(\{ clientX: x, clientY: y, pointerId, fromTouchStream: pointerId == null \}, \{ edge: \{ segmentIndex: hit\.segmentIndex, t: hit\.t \} \}\)/);
-  assert.match(src, /data-poly-vertex-insert="true"[\s\S]{0,400}minHeight: menuLayout\.rowHeight/);
+  assert.match(src, /data-poly-vertex-insert="true"[\s\S]{0,900}minHeight: menuLayout\.rowHeight/);
   // The page/mark long-press menu stays off a selected poly's side.
   const viewer = readFileSync(new URL('../src/components/PdfjsViewerContainer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /const onHandle = [^\n]*\[data-poly-edge-hit\]/);
@@ -101,5 +101,37 @@ test('the window-level side claim finds the side by screen position alone', asyn
   const src = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
   assert.match(src, /window\.addEventListener\('pointerdown', onPointerDown, opts\)/);
   assert.match(src, /window\.addEventListener\('touchstart', onTouchStart, opts\)/);
-  assert.match(src, /const onCancel = \(\) => \{ if \(!touchDown\) cleanup\('pointercancel'\); \}/);
+  assert.match(src, /const onCancel = \(\) => \{ if \(!touchDown\) \{ gate\.end\(\); cleanup\(.pointercancel.\); \} \}/);
+});
+
+test('one press, one arm, one insert', async () => {
+  const { createPolyEdgePressGate } = await import('../src/utils/polyVertices.js');
+  const g = createPolyEdgePressGate();
+  // adb stylus hold: window pointerdown claim, then touchstart fallback, then the layer claim - same contact.
+  const token = g.arm(158, 543, 0);
+  assert.ok(token);
+  assert.equal(g.arm(158, 543, 2), null);
+  assert.equal(g.arm(161, 545, 5), null);
+  // The timer fires once, for its own token only.
+  assert.equal(g.fire({}), false);
+  assert.equal(g.fire(token), true);
+  assert.equal(g.fire(token), false);
+  // The pen lifting onto the menu it opened is not a choice.
+  assert.equal(g.pressLive(600), true);
+  g.end();
+  assert.equal(g.pressLive(1500), false);
+  // One menu, one insert, however many clicks reach it.
+  const menu = { annotationIndex: 0, edge: { segmentIndex: 0, t: 0.3 } };
+  let inserts = 0;
+  for (let i = 0; i < 5; i += 1) if (!g.pressLive() && g.consume(menu)) inserts += 1;
+  assert.equal(inserts, 1);
+  // A new press after the lift arms again.
+  assert.ok(g.arm(158, 543, 3000));
+  // An unseen lift expires.
+  assert.equal(g.pressLive(9000), false);
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(src, /const token = gate\.arm\(e\.clientX, e\.clientY\);\s*\n[^\n]*\n\s*if \(!token\)/);
+  assert.match(src, /if \(!gate\.fire\(token\)\) return;/);
+  assert.match(src, /data-poly-vertex-insert="true"[\s\S]{0,500}if \(gate\.pressLive\(\) \|\| !gate\.consume\(polyVertexMenu\)\) return;/);
 });

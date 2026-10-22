@@ -189,3 +189,42 @@ export function polyEdgeDebugEnabled(win = typeof window !== 'undefined' ? windo
   try { if (win.localStorage?.getItem('debugPolyEdge') === '1') return true; } catch (_) { /* blocked */ }
   try { return new URLSearchParams(win.location?.search || '').get('debugPolyEdge') === '1'; } catch (_) { return false; }
 }
+
+/**
+ * One press, one arm, one menu, one edit. A stylus long-press on Android
+ * reaches the side through several paths (window pointerdown claim,
+ * touchstart fallback, the layer claim, a synthesized contextmenu), and the
+ * pen can lift onto the menu it just opened. This gate keeps them to one:
+ * - arm(x, y, now): a token for a new press, or null while the same contact
+ *   (within 8 px, not yet lifted) already holds one;
+ * - fire(token): true once, for the live token only;
+ * - end(): the contact lifted;
+ * - pressLive(now): the arming contact is still down (a click then is the
+ *   lift itself, not a choice; a lift that was never seen expires after 5 s);
+ * - consume(menu): true once per menu object (one insert / delete per menu).
+ */
+export function createPolyEdgePressGate() {
+  let active = null;
+  const consumed = new WeakSet();
+  const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  return {
+    arm(x, y, now = clock()) {
+      if (active && !active.ended && now - active.at < 5000
+        && Math.hypot(x - active.x, y - active.y) <= 8) return null;
+      active = { x, y, at: now, token: {}, ended: false, fired: false };
+      return active.token;
+    },
+    fire(token) {
+      if (!active || active.token !== token || active.fired) return false;
+      active.fired = true;
+      return true;
+    },
+    end() { if (active) active.ended = true; },
+    pressLive(now = clock()) { return Boolean(active && !active.ended && now - active.at < 5000); },
+    consume(menu) {
+      if (!menu || typeof menu !== 'object' || consumed.has(menu)) return false;
+      consumed.add(menu);
+      return true;
+    },
+  };
+}
