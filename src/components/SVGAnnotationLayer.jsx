@@ -24,7 +24,7 @@ import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
+import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
@@ -1708,6 +1708,83 @@ const SVGAnnotationLayerBody = memo(({
   const [polyVertexMenu, setPolyVertexMenu] = useState(null);
   const polyVertexLongPressRef = useRef(null);
   const polyEdgePointerTypeRef = useRef(null);
+  // The selected poly's side band element; its __polyEdgeCtx (set each render)
+  // carries the geometry and the long-press arm for the window-level claim.
+  const polyEdgeBandElRef = useRef(null);
+  // One press -> one long-press timer -> one menu -> one edit (createPolyEdgePressGate).
+  const polyPressGateRef = useRef(null);
+  if (!polyPressGateRef.current) polyPressGateRef.current = createPolyEdgePressGate();
+  // Android stylus: the pen's pointerdown on a selected side was hit-tested
+  // onto some other element (a bare <polyline>, the layer root) even though
+  // elementFromPoint gave the side band, so no band or layer handler saw it.
+  // A window capture listener claims any pen / touch press by POSITION alone,
+  // and a touchstart arms it when no pointer event came first.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const describe = (t) => {
+      const el = t && t.nodeType === 1 ? t : null;
+      if (!el) return String(t?.nodeName || t);
+      const data = [...el.attributes].filter((a) => a.name.startsWith('data-')).map((a) => a.name).join(',');
+      return `${el.tagName.toLowerCase()}${el.getAttribute('class') ? `.${el.getAttribute('class')}` : ''}[${data}]`;
+    };
+    const log = (entry) => {
+      if (!polyEdgeDebugEnabled(window)) return;
+      if (!polyEdgeBandElRef.current?.isConnected) return;
+      const row = { at: Math.round(performance.now()), ...entry };
+      (window.__polyEdgeLog ||= []).push(row);
+      // eslint-disable-next-line no-console
+      console.info('[polyEdge]', JSON.stringify(row));
+    };
+    const ctxOf = () => {
+      const band = polyEdgeBandElRef.current;
+      return band?.isConnected ? band.__polyEdgeCtx : null;
+    };
+    let lastPointerDownAt = NaN;
+    const onPointerDown = (e) => {
+      const ctx = ctxOf();
+      if (!ctx) return;
+      let claimed = false;
+      if (e.pointerType === 'pen' || e.pointerType === 'touch') {
+        lastPointerDownAt = performance.now();
+        claimed = ctx.arm(e.clientX, e.clientY, e.target, e.pointerType, e.pointerId);
+        // A claimed press belongs to the selected poly's side: another mark
+        // under it must not take the selection away (the menu would then
+        // edit a mark that is no longer selected).
+        if (claimed && !ctx.ownsTarget(e.target)) e.stopPropagation();
+      }
+      log({ type: e.type, pointerType: e.pointerType, target: describe(e.target), x: Math.round(e.clientX), y: Math.round(e.clientY), buttons: e.buttons, claimed });
+    };
+    const onPointerOther = (e) => {
+      if (e.pointerType === 'mouse') return;
+      log({ type: e.type, pointerType: e.pointerType, target: describe(e.target), x: Math.round(e.clientX), y: Math.round(e.clientY), buttons: e.buttons });
+    };
+    const onTouchStart = (e) => {
+      const ctx = ctxOf();
+      if (!ctx) return;
+      const t = e.touches?.[0];
+      let claimed = false;
+      if (e.touches.length === 1 && t && !polyVertexLongPressRef.current && polyEdgeTouchStartMayArm(lastPointerDownAt, performance.now())) {
+        claimed = ctx.arm(t.clientX, t.clientY, e.target, t.touchType === 'stylus' ? 'pen' : 'touch', null);
+      }
+      log({ type: e.type, target: describe(e.target), x: Math.round(t?.clientX ?? -1), y: Math.round(t?.clientY ?? -1), touches: e.touches.length, claimed });
+    };
+    const onTouchOther = (e) => {
+      const t = e.changedTouches?.[0];
+      log({ type: e.type, target: describe(e.target), x: Math.round(t?.clientX ?? -1), y: Math.round(t?.clientY ?? -1), touches: e.touches.length });
+    };
+    window.__polyEdgeDebugLog = log;
+    const opts = { capture: true, passive: true };
+    window.addEventListener('pointerdown', onPointerDown, opts);
+    ['pointermove', 'pointerup', 'pointercancel'].forEach((t) => window.addEventListener(t, onPointerOther, opts));
+    window.addEventListener('touchstart', onTouchStart, opts);
+    ['touchend', 'touchcancel'].forEach((t) => window.addEventListener(t, onTouchOther, opts));
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, opts);
+      ['pointermove', 'pointerup', 'pointercancel'].forEach((t) => window.removeEventListener(t, onPointerOther, opts));
+      window.removeEventListener('touchstart', onTouchStart, opts);
+      ['touchend', 'touchcancel'].forEach((t) => window.removeEventListener(t, onTouchOther, opts));
+    };
+  }, []);
   const removeFocusablePolyVertex = useCallback((annotationIndex, vertexIndex) => {
     if (typeof onSaveAnnotations !== 'function') return false;
     if (document.body.getAttribute('data-readonly') === 'true') return false;
@@ -8707,27 +8784,63 @@ const SVGAnnotationLayerBody = memo(({
           };
           // Touch/pen hold still 500 ms on a corner (Delete point) or a side
           // (Add point here); moving more than 8 px or lifting cancels it.
+          // Survives what a held Android stylus sends (adb `input stylus
+          // swipe x y x y 900`): moves within 8 px, and a pointercancel while
+          // the touch stream says the contact is still down (the browser took
+          // the touch for a gesture). Lifting, or moving further, cancels.
           const startPolyLongPress = (e, target) => {
+              const gate = polyPressGateRef.current;
+              const token = gate.arm(e.clientX, e.clientY);
+              // Same contact already armed (another path saw this press): no-op.
+              if (!token) { window.__polyEdgeDebugLog?.({ type: 'timer-dedupe', reason: 'same press already armed' }); return; }
               clearVertexLongPress();
               const start = { x: e.clientX, y: e.clientY };
-              const onMove = (ev) => {
-                if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 8) cleanup();
-              };
-              const cleanup = () => {
-                clearVertexLongPress();
+              let touchDown = Boolean(e.fromTouchStream);
+              const dbg = (what, reason) => window.__polyEdgeDebugLog?.({ type: `timer-${what}`, reason });
+              const far = (x, y) => Math.hypot(x - start.x, y - start.y) > 8;
+              const onMove = (ev) => { if (far(ev.clientX, ev.clientY)) cleanup('moved'); };
+              const onTouchMove = (ev) => { const t = ev.touches?.[0]; if (t && far(t.clientX, t.clientY)) cleanup('moved'); };
+              const onTouchStart = () => { touchDown = true; };
+              const onUp = () => { gate.end(); cleanup('lifted'); };
+              const onCancel = () => { if (!touchDown) { gate.end(); cleanup('pointercancel'); } };
+              const cleanup = (reason) => {
+                if (polyVertexLongPressRef.current?.cleanup === cleanup) {
+                  clearVertexLongPress();
+                  if (reason) dbg('cancel', reason);
+                }
+                if (reason === 'moved') gate.end();
                 window.removeEventListener('pointermove', onMove, true);
-                window.removeEventListener('pointerup', cleanup, true);
-                window.removeEventListener('pointercancel', cleanup, true);
+                window.removeEventListener('pointerup', onUp, true);
+                window.removeEventListener('pointercancel', onCancel, true);
+                window.removeEventListener('touchstart', onTouchStart, true);
+                window.removeEventListener('touchmove', onTouchMove, true);
+                window.removeEventListener('touchend', onUp, true);
+                window.removeEventListener('touchcancel', onUp, true);
               };
               window.addEventListener('pointermove', onMove, true);
-              window.addEventListener('pointerup', cleanup, true);
-              window.addEventListener('pointercancel', cleanup, true);
+              window.addEventListener('pointerup', onUp, true);
+              window.addEventListener('pointercancel', onCancel, true);
+              window.addEventListener('touchstart', onTouchStart, true);
+              window.addEventListener('touchmove', onTouchMove, true);
+              window.addEventListener('touchend', onUp, true);
+              window.addEventListener('touchcancel', onUp, true);
               polyVertexLongPressRef.current = {
+                cleanup,
                 timer: setTimeout(() => {
                   cleanup();
+                  if (!gate.fire(token)) return;
+                  // Still watch for the lift, so the pen leaving the glass on
+                  // the menu it just opened is not taken as a menu choice.
+                  const onLift = () => {
+                    gate.end();
+                    ['pointerup', 'touchend', 'touchcancel'].forEach((t) => window.removeEventListener(t, onLift, true));
+                  };
+                  ['pointerup', 'touchend', 'touchcancel'].forEach((t) => window.addEventListener(t, onLift, true));
+                  dbg('fire', 'held 500 ms');
                   setPolyVertexMenu({ annotationIndex: selectedIndex, ...target, x: start.x, y: start.y, touch: true });
                 }, 500),
               };
+              dbg('start', target.edge ? `side ${target.edge.segmentIndex} t=${target.edge.t.toFixed(2)}` : `corner ${target.vertexIndex}`);
           };
           const onVertexContextMenu = (i) => (e) => {
             e.preventDefault();
@@ -8770,15 +8883,29 @@ const SVGAnnotationLayerBody = memo(({
             const touch = polyEdgePointerTypeRef.current === 'touch' || isTouchMenuInput(contextMenuInputOf(e));
             // A touch long-press already opened (or is about to open) the menu.
             if (touch && polyVertexLongPressRef.current) return;
+            // A pen / touch long-press that already fired owns the menu.
+            if ((touch || polyEdgePointerTypeRef.current === 'pen') && polyPressGateRef.current.pressLive()) return;
             setPolyVertexMenu({ annotationIndex: selectedIndex, edge: { segmentIndex: hit.segmentIndex, t: hit.t }, x: e.clientX, y: e.clientY, touch });
           };
+          // The pen / touch long-press is armed by the window-level claim
+          // (polyEdgeBandElRef), which sees the press before this handler.
           const onEdgePointerDown = (e) => {
             polyEdgePointerTypeRef.current = e.pointerType;
-            if (e.pointerType === 'touch' || e.pointerType === 'pen') {
-              const hit = edgeHit(e);
-              if (hit) startPolyLongPress(e, { edge: { segmentIndex: hit.segmentIndex, t: hit.t } });
-            }
             handleAnnotationPointerDown(e, selectedIndex);
+          };
+          const POLY_EDGE_CLAIM_SKIP = '[data-resize-handle], [data-handle-hit-pad], [data-add-vertex], [data-rotation-handle], [data-poly-vertex-insert]';
+          const polyEdgeCtx = {
+            ownsTarget: (t) => Boolean(t?.closest?.(`[data-annotation-index="${selectedIndex}"], [data-poly-edge-hit]`)),
+            arm: (x, y, target, pointerType, pointerId) => {
+              const band = polyEdgeBandElRef.current;
+              if (!band) return false;
+              if (target?.closest?.(POLY_EDGE_CLAIM_SKIP)) return false;
+              const hit = polyEdgeHitAtClient(x, y, band.getScreenCTM?.(), worldPoints, polyEdgeTolerance, { closed: String(obj.type).toLowerCase() === 'polygon' });
+              if (!hit) return false;
+              polyEdgePointerTypeRef.current = pointerType;
+              startPolyLongPress({ clientX: x, clientY: y, pointerId, fromTouchStream: pointerId == null }, { edge: { segmentIndex: hit.segmentIndex, t: hit.t } });
+              return true;
+            },
           };
           // Android stylus (and touch-adjusted finger) presses on a side were
           // hit-tested onto the selected mark itself (or the bare layer) even
@@ -8796,8 +8923,6 @@ const SVGAnnotationLayerBody = memo(({
             if (!edgeHit(e, band)) return false;
             e.stopPropagation();
             polyEdgePointerTypeRef.current = e.pointerType;
-            const hit = edgeHit(e, band);
-            startPolyLongPress(e, { edge: { segmentIndex: hit.segmentIndex, t: hit.t } });
             handleAnnotationPointerDown(e, selectedIndex);
             return true;
           };
@@ -8834,12 +8959,12 @@ const SVGAnnotationLayerBody = memo(({
               {!modifierMoveActive && interactionState === 'idle' && worldPoints.length > 1 && (
                 <polyline
                   data-poly-edge-hit="true"
-                  ref={(el) => { if (el) el.__claimPolyEdgePress = claimPolyEdgePress(el); }}
+                  ref={(el) => { if (el) { el.__claimPolyEdgePress = claimPolyEdgePress(el); el.__polyEdgeCtx = polyEdgeCtx; polyEdgeBandElRef.current = el; } else if (polyEdgeBandElRef.current && !polyEdgeBandElRef.current.isConnected) polyEdgeBandElRef.current = null; }}
                   points={[...worldPoints, ...(String(obj.type).toLowerCase() === 'polygon' ? [worldPoints[0]] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke="transparent"
                   strokeWidth={polyEdgeTolerance * 2}
-                  style={{ pointerEvents: 'stroke', cursor: 'copy' }}
+                  style={{ pointerEvents: 'stroke', cursor: 'copy', touchAction: 'none' }}
                   onPointerDown={onEdgePointerDown}
                   onDoubleClick={onEdgeDoubleClick}
                   onContextMenu={onEdgeContextMenu}
@@ -9401,6 +9526,12 @@ const SVGAnnotationLayerBody = memo(({
             role="menuitem"
             data-poly-vertex-insert="true"
             onClick={() => {
+              const gate = polyPressGateRef.current;
+              // The arming pen lifting onto the menu is not a choice, and a
+              // menu inserts once however many clicks reach it.
+              if (gate.pressLive() || !gate.consume(polyVertexMenu)) return;
+              // Only into the mark that is still the selected poly.
+              if (polyVertexMenu.annotationIndex !== selectedPolyIndex) { setPolyVertexMenu(null); return; }
               insertPolyVertexOnEdge(polyVertexMenu.annotationIndex, edge.segmentIndex, edge.t);
               setPolyVertexMenu(null);
             }}
@@ -9419,6 +9550,8 @@ const SVGAnnotationLayerBody = memo(({
             disabled={!canDelete}
             title={canDelete ? undefined : `A ${String(menuObj?.type || '').toLowerCase() === 'polygon' ? 'polygon needs at least 3' : 'polyline needs at least 2'} points`}
             onClick={() => {
+              const gate = polyPressGateRef.current;
+              if (gate.pressLive() || !gate.consume(polyVertexMenu)) return;
               removeFocusablePolyVertex(polyVertexMenu.annotationIndex, polyVertexMenu.vertexIndex);
               setPolyVertexMenu(null);
             }}
