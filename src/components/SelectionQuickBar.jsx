@@ -15,9 +15,11 @@
 //       More    -> the right-click menu, opened on the picked mark.
 //   - It hides at once while the selection is moved, resized or rotated and
 //     comes back as soon as the gesture ends (Drawboard's timing: no fade).
-//   - It flips below the selection when there is no room above, never leaves
-//     the viewer, and follows scroll and zoom by reading the selection frame's
-//     on-screen box. It never reaches into the annotation layer's zoom
+//   - It flips below the selection when there is no room above, or when the
+//     rotate grabber is on top; it never covers a rotate grabber (a counter
+//     pin's too) or the degree box beside it; it never leaves the viewer,
+//     and follows scroll and zoom by reading the selection frame's on-screen
+//     box. It never reaches into the annotation layer's zoom
 //     handling (CLAUDE.md: the SVG viewBox owns all zoom scaling).
 //   - Several marks picked: only what applies to every one of them
 //     (utils/selectionQuickBar.js planSelectionQuickBar).
@@ -42,6 +44,7 @@ import {
   selectionCommandKey,
   selectionFrameRect,
   selectionItemSelector,
+  selectionKeepOut,
 } from '../utils/selectionQuickBar.js';
 import './SelectionQuickBar.css';
 
@@ -116,6 +119,15 @@ function viewerBounds() {
   return { left, top, right, bottom };
 }
 
+/** A grabber's turning point (data-turn-cx/cy, page units) on screen. */
+function turnCentre(grabber) {
+  const x = Number(grabber.getAttribute('data-turn-cx'));
+  const y = Number(grabber.getAttribute('data-turn-cy'));
+  const ctm = grabber.getScreenCTM?.();
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !ctm) return null;
+  return { x: ctm.a * x + ctm.c * y + ctm.e, y: ctm.b * x + ctm.d * y + ctm.f };
+}
+
 /**
  * Reads the live selection off the page: its on-screen frame, whether a
  * move / resize / rotate is running, whether the picked tool may not touch it,
@@ -124,6 +136,7 @@ function viewerBounds() {
 function readSelection(items) {
   const pages = [...new Set(items.map((item) => item.pageNumber))];
   const rects = [];
+  const handles = [];
   let gesture = false;
   let inert = false;
   let locked = false;
@@ -137,6 +150,17 @@ function readSelection(items) {
       const rect = visibleRect(overlay);
       if (rect) rects.push(rect);
     });
+    // Rotate grabbers: a shape's (where its degree box opens too) and a
+    // counter pin's, which floats out past the tail and outside the frame.
+    svg.querySelectorAll('[data-rotation-handle="mtr"], [data-counter-rotate-grabber]').forEach((grabber) => {
+      const rect = visibleRect(grabber);
+      if (!rect) return;
+      handles.push({
+        rect,
+        centre: turnCentre(grabber),
+        pill: grabber.hasAttribute('data-rotation-handle'),
+      });
+    });
   }
   // A pick drawn without the shared frame (a Survey Marker's own ring, say):
   // the picked marks' own boxes.
@@ -148,7 +172,14 @@ function readSelection(items) {
       if (rect) rects.push(rect);
     }
   }
-  return { frame: selectionFrameRect(rects), gesture, inert, locked };
+  // A degree box already open (it can be held inside the page, away from
+  // the spot selectionKeepOut keeps for it).
+  const open = [];
+  document.querySelectorAll('[data-rotation-input-field]').forEach((field) => {
+    const rect = visibleRect(field);
+    if (rect) open.push(rect);
+  });
+  return { frame: selectionFrameRect(rects), gesture, inert, locked, ...selectionKeepOut({ handles, extra: open }) };
 }
 
 const sameLook = (a, b) => a.visible === b.visible && a.side === b.side && a.locked === b.locked && a.readOnly === b.readOnly;
@@ -181,6 +212,7 @@ export default function SelectionQuickBar({
 
   // One placement pass: read the selection, place the bar, show or hide it.
   const frameRef = useRef(0);
+  const turningRef = useRef(false);
   const place = useCallback(() => {
     frameRef.current = 0;
     const bar = barRef.current;
@@ -190,9 +222,11 @@ export default function SelectionQuickBar({
     if (activeRef.current && !readOnly) {
       const selection = readSelection(itemsRef.current);
       next.locked = selection.locked;
-      if (selection.frame && !selection.gesture && !selection.inert) {
+      if (selection.frame && !selection.gesture && !turningRef.current && !selection.inert) {
         const placed = computeSelectionQuickBarPosition({
           selectionRect: selection.frame,
+          keepOut: selection.keepOut,
+          preferBelow: selection.preferBelow,
           bounds: viewerBounds(),
           barWidth: bar.offsetWidth,
           barHeight: bar.offsetHeight,
@@ -222,9 +256,22 @@ export default function SelectionQuickBar({
   useEffect(() => {
     if (!active) return undefined;
     const onAny = () => schedule();
+    // A counter pin's turn grabber is no selection gesture of the page layer
+    // (data-selection-gesture), so the bar hides itself while one is held.
+    const onPress = (event) => {
+      if (!event.target?.closest?.('[data-counter-rotate-grabber]')) return;
+      turningRef.current = true;
+      place();
+    };
+    const onRelease = () => {
+      turningRef.current = false;
+      schedule();
+    };
     window.addEventListener('scroll', onAny, true);
     window.addEventListener('resize', onAny);
-    window.addEventListener('pointerup', onAny, true);
+    window.addEventListener('pointerdown', onPress, true);
+    window.addEventListener('pointerup', onRelease, true);
+    window.addEventListener('pointercancel', onRelease, true);
     window.addEventListener('keyup', onAny, true);
     const root = shownElement('[data-testid="pdf-container"]')
       || shownElement('[data-mobile-pdf-surface="false"]')
@@ -234,14 +281,17 @@ export default function SelectionQuickBar({
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ['style', 'transform', 'viewBox', 'width', 'height', 'x', 'y', 'd', 'points', 'data-selection-gesture', 'data-selection-chrome-inert'],
+      attributeFilter: ['style', 'transform', 'viewBox', 'width', 'height', 'x', 'y', 'cx', 'cy', 'd', 'points', 'data-selection-gesture', 'data-selection-chrome-inert'],
     });
     const bodyObserver = typeof MutationObserver === 'undefined' ? null : new MutationObserver(onAny);
     bodyObserver?.observe(document.body, { attributes: true, attributeFilter: ['data-readonly'] });
     return () => {
       window.removeEventListener('scroll', onAny, true);
       window.removeEventListener('resize', onAny);
-      window.removeEventListener('pointerup', onAny, true);
+      window.removeEventListener('pointerdown', onPress, true);
+      window.removeEventListener('pointerup', onRelease, true);
+      window.removeEventListener('pointercancel', onRelease, true);
+      turningRef.current = false;
       window.removeEventListener('keyup', onAny, true);
       observer?.disconnect();
       bodyObserver?.disconnect();
@@ -250,7 +300,7 @@ export default function SelectionQuickBar({
         frameRef.current = 0;
       }
     };
-  }, [active, schedule]);
+  }, [active, place, schedule]);
 
   // A wheel over the bar scrolls (or, with Ctrl/Cmd, zooms) the page under it.
   useEffect(() => {

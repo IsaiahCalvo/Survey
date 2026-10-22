@@ -54,7 +54,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { normalizeTypedDegrees, computeInputPosition } from '../utils/rotationInputHelpers';
+import { normalizeTypedDegrees, computeInputPosition, ROTATION_PILL } from '../utils/rotationInputHelpers';
 
 // UX: project-wide font stack re-declared locally per house style (used in 14+
 // files including App.jsx:116). The 2026-04-08 Fabric.js multi-font gotcha
@@ -66,9 +66,10 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pr
 // integer + ° suffix; 28px matches the zoom-input clickable area; 16px gap
 // above mirrors the `md` spacing token (8-point scale); 4px edge margin
 // keeps the input on-screen near page edges at low zoom.
-const INPUT_WIDTH = 60;
-const INPUT_HEIGHT = 28;
-const GAP_ABOVE = 16;
+// The selection quick bar keeps clear of the same box (selectionQuickBar.js).
+const INPUT_WIDTH = ROTATION_PILL.width;
+const INPUT_HEIGHT = ROTATION_PILL.height;
+const GAP_ABOVE = ROTATION_PILL.gap;
 const EDGE_MARGIN = 4;
 
 // Debug logging toggle. Set to false to silence all [RotationInputField] logs.
@@ -579,6 +580,10 @@ function RotationInputField({
         // host div. Below Pdfjs's native page controls (>1000) per the
         // v2.0 portal architecture.
         zIndex: 101,
+        // The host overlay is pointer-events: none (so the page under it
+        // stays usable); without this the box could be seen but not clicked
+        // and a press on it landed on whatever mark lay underneath.
+        pointerEvents: 'auto',
         fontFamily: FONT_FAMILY,
         boxSizing: 'border-box',
       }}

@@ -5,6 +5,9 @@
  * Phase 12 Plan 02.
  */
 
+/** The degree box's size and its gap from the rotate grabber (UI-SPEC). */
+export const ROTATION_PILL = Object.freeze({ width: 60, height: 28, gap: 16 });
+
 /**
  * Normalize a typed degree value to an integer in [0, 360).
  * Accepts string or number. Rounds non-integers. Returns null for invalid input.
