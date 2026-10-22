@@ -66,6 +66,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Layers panel (markup layers + PDF content opacity)',
     stage: 'beta',
   }),
+  'pinned-tools': Object.freeze({
+    label: 'Pinned tools dock (favourite tools with their own colour and width)',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

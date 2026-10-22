@@ -92,6 +92,8 @@ import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } 
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
+import PinnedToolsDock, { PinIcon, getPinnedToolsStore, usePinnedTools } from './components/PinnedToolsDock.jsx';
+import { isFeatureOn } from './featureFlags.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
@@ -2014,6 +2016,10 @@ export default function App({ devPreviewReturnTab = null }) {
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   // Shift+S flips snapping (the rail's magnet button says the same).
   useSnappingShortcut(Boolean(isViewerVisible));
+  // Pinned tools dock (Survey Nightly only, beta flag 'pinned-tools'):
+  // components/PinnedToolsDock.jsx. Read once at load, like every flag.
+  const [pinnedToolsEnabled] = useState(() => isFeatureOn('pinned-tools'));
+  const pinnedTools = usePinnedTools();
   // PDFs dragged in from the computer onto an open document (owner request
   // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
   // and each opened in a new tab. Anywhere over the viewer counts, the pages
@@ -2754,6 +2760,24 @@ export default function App({ devPreviewReturnTab = null }) {
               {/* Spaces chunk B: the active space, left of Export. While it
                   shows, IT carries data-toolbar-export, so the tool bar's plan
                   (useResponsiveToolbar) keeps the tools clear of the chip. */}
+              {/* Pinned tools (Nightly): show or hide the dock, as Drawboard's
+                  "Favorites toolbar" button beside its own top-right tools.
+                  First in the cluster, so it carries data-toolbar-export:
+                  the tool bar's plan keeps clear of the cluster's left edge. */}
+              {pinnedToolsEnabled && (
+                <button
+                  type="button"
+                  data-toolbar-export="true"
+                  data-pinned-tools-toggle="true"
+                  className={`btn chrome-control ${pinnedTools.visible ? 'btn-active' : 'btn-ghost'}`}
+                  aria-pressed={pinnedTools.visible}
+                  aria-label="Pinned tools"
+                  {...chromeTip(pinnedTools.visible ? 'Hide pinned tools' : 'Show pinned tools', 'below')}
+                  onClick={() => getPinnedToolsStore().setVisible(!pinnedTools.visible)}
+                >
+                  <PinIcon size={CHROME_GLYPH} />
+                </button>
+              )}
               {activeSpaceForChip && (
                 <ActiveSpaceChip
                   data-toolbar-export="true"
@@ -4650,6 +4674,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 </div>
               );
             })}
+            {pinnedToolsEnabled && isViewerVisible && !isMobileViewer && (
+              <PinnedToolsDock api={bottomToolbarApi} tip={chromeTip} />
+            )}
             {pendingDocumentOpen && currentView !== 'viewer' && (
               // Covers the home (and takes its taps) while the PDF downloads;
               // the same quiet line, place and background as the viewer's own
