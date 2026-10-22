@@ -626,17 +626,21 @@ export function createSurveyAgentToolbox({
           ...(sheet.floor != null ? { sheet_floor: sheet.floor } : {}),
           score,
           here: !b.currentModuleId || marker.moduleId === b.currentModuleId,
+          moduleId: marker.moduleId,
         });
       }
-      // The same item in several modules: the open module's one.
+      // The same item in several modules (same name, same page): the open
+      // module's one. Same-named items on other pages, or in one module, are
+      // separate devices and all stay, so the agent can ask which.
       items.sort((x, y) => y.score - x.score || Number(y.here) - Number(x.here) || x.name.localeCompare(y.name, undefined, { numeric: true }));
-      const seenNames = new Set();
+      const keptModules = new Map();
       const shownItems = items.filter((m) => {
-        const key = normalizeItemName(m.name);
-        if (seenNames.has(key)) return false;
-        seenNames.add(key);
+        const key = `${normalizeItemName(m.name)}|${m.page}`;
+        const modules = keptModules.get(key);
+        if (modules && !modules.has(m.moduleId)) return false;
+        keptModules.set(key, (modules || new Set()).add(m.moduleId));
         return true;
-      }).slice(0, 5).map(({ here: _, ...m }) => m);
+      }).slice(0, 5).map(({ here: _, moduleId: __, ...m }) => m);
       const markers = Object.entries(b.markers || {});
       const plan = findDescribedOnPages(target, pages, { score: scoreDescribedTag })
         .map((m) => {

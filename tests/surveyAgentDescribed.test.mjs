@@ -83,6 +83,8 @@ test('tags on the sheets that fit, best first, joined across words', () => {
     sheet(8, ['THIRD', 'FLOOR'], ['C-06', 'C-07']),
     sheet(9, ['FOURTH', 'FLOOR', 'WEST'], ['C-05', 'C-06', 'D-06']),
     { page: 10, words: [word('FOURTH', 600, 560, 18), word('FLOOR', 670, 560, 18), word('C-', 40, 100), word('06', 52, 100)] },
+    // A door split the same way: its "06" is not a camera of its own.
+    { page: 11, words: [word('FOURTH', 600, 560, 18), word('FLOOR', 670, 560, 18), word('D-', 40, 100), word('06', 52, 100)] },
   ];
   const target = parseDescribedTarget('camera 6 on the 4th floor');
   const found = findDescribedOnPages(target, pages, { score: scoreDescribedTag, sheetOf: sheetFloorOf });
@@ -225,4 +227,17 @@ test('the model is told how to find by description and to fill other modules in 
   assert.match(SURVEY_AGENT_SYSTEM_PROMPT, /Never ask for the wing or the full tag/);
   assert.match(SURVEY_AGENT_SYSTEM_PROMPT, /another module/);
   assert.match(SURVEY_AGENT_SYSTEM_PROMPT, /100% Complete/);
+});
+
+test('find_described keeps same-named devices on different floors, and folds module copies', async () => {
+  const markers = {
+    a: { name: 'C-06', moduleId: 'mod-install', categoryId: 'cat-cam-i', pageNumber: 3 },
+    b: { name: 'C-06', moduleId: 'mod-install', categoryId: 'cat-cam-i', pageNumber: 4 },
+    c: { name: 'C-06', moduleId: 'mod-cx', categoryId: 'cat-cam-c', pageNumber: 4 },
+  };
+  const { bridge } = bridgeWith(markers, { readSheets: async () => ({ pages: [], unreadPages: [3, 4] }) });
+  const toolbox = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const res = await toolbox.run('find_described', { description: 'camera 6', kind: 'camera', number: 6, floor: null, wing: null });
+  const ids = JSON.parse(res.content).items.map((m) => m.id).sort();
+  assert.deepEqual(ids, ['a', 'b'], 'both floors stay; the Commissioning copy of b folds into it');
 });

@@ -358,6 +358,11 @@ export function findDescribedOnPages(target, pages, { score, sheetOf, limit = MA
     const sheet = known || (sheetOf ? sheetOf(words) : { floor: null, wing: null });
     const seen = new Set();
     for (let i = 0; i < words.length; i += 1) {
+      // The tail of a longer tag ("06" after "D-") is not a tag of its own:
+      // the run that starts at its prefix already judged the whole tag.
+      const before = words[i - 1];
+      if (before && adjacent(before.box, words[i].box)
+        && (/[-_/.]$/.test(before.text) || /^[-_/.]/.test(words[i].text) || /^[a-z]{1,4}$/i.test(before.text.trim()))) continue;
       const run = [];
       let best = null;
       for (let j = i; j < words.length && j < i + MAX_JOIN; j += 1) {
