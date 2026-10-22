@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
-  indexRemapper, remapDragState, remapSelectedIndices, remapVisualTransform,
+  indexRemapper, rebasePageCopy, remapDragState, remapSelectedIndices, remapVisualTransform,
   resolveMenuTargets, sameMenuTargets, stampMenuTargetIds,
 } from '../src/utils/selectionRemap.js';
 
@@ -80,7 +80,7 @@ test('the delete that follows removes exactly the picked mark', () => {
 test('the SVG interaction hook routes every list change through the remap', () => {
   const source = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
   assert.match(source, /import \{[^}]*\bremapSelectedIndices\b[^}]*\} from '\.\.\/utils\/selectionRemap\.js';/);
-  assert.match(source, /dragStateRef\.current = remapDragState\(ds, mapIndex\)/, 'a live drag follows its marks too');
+  assert.match(source, /const moved = remapDragState\(ds, mapIndex\)/, 'a live drag follows its marks too');
   assert.match(source, /remapSelectedIndices\(selectedIds, anchor\.objects, objects\)/);
   assert.doesNotMatch(source, /if \(i > maxIdx \|\| i < 0\) return new Set\(\);/, 'the position-only rule is gone');
 });
@@ -188,4 +188,24 @@ test('a drag on an unchanged list keeps the same objects (no re-render churn)', 
   const vt = { id: 1, dx: 0, dy: 0 };
   assert.equal(remapDragState(ds, mapIndex), ds);
   assert.equal(remapVisualTransform(vt, mapIndex), vt);
+});
+
+test('a group drop keeps each saved position on its own mark after an earlier delete', () => {
+  const before = [mark('a'), mark('b'), mark('c')];
+  const after = [before[1], before[2]]; // a deleted while b and c are dragged
+  const ds = { active: true, groupOriginals: { 1: { left: 1 }, 2: { left: 2 } }, groupIds: { 1: 'b', 2: 'c' }, startObjects: { 1: before[1] } };
+  const moved = remapDragState(ds, indexRemapper(before, after));
+  assert.deepEqual(moved.groupIds, { 0: 'b', 1: 'c' });
+  assert.deepEqual(moved.groupOriginals, { 0: { left: 1 }, 1: { left: 2 } });
+  assert.deepEqual(Object.keys(moved.startObjects), ['0']);
+});
+
+test('the drag\'s page copy is laid over the new list by id', () => {
+  const before = [mark('a'), mark('b'), mark('c')];
+  const draggedC = { ...before[2], left: 99 };
+  const copy = { objects: [before[0], before[1], draggedC] };
+  const after = { objects: [before[1], before[2], mark('d')] }; // a deleted, d added
+  const rebased = rebasePageCopy(copy, after);
+  assert.deepEqual(rebased.objects.map((o) => o.data.id), ['b', 'c', 'd']);
+  assert.equal(rebased.objects[1], draggedC, 'the counter-orbit / resize frame edits c, not its neighbour');
 });

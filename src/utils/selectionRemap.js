@@ -187,17 +187,49 @@ export function remapDragState(ds, mapIndex) {
     const at = mapIndex(ds.annotationIndex);
     if (at !== ds.annotationIndex) next = { ...next, annotationIndex: at };
   }
-  if (ds.groupOriginals && typeof ds.groupOriginals === 'object') {
-    let changed = false;
-    const originals = {};
-    for (const [key, value] of Object.entries(ds.groupOriginals)) {
-      const at = mapIndex(Number(key));
-      if (at !== Number(key)) changed = true;
-      if (at >= 0) originals[at] = value;
-    }
-    if (changed) next = { ...next, groupOriginals: originals };
+  // Every per-position map moves together: a group drop pairs groupOriginals
+  // with groupIds by key, so remapping one alone saves a mark's position onto
+  // its neighbour.
+  for (const field of ['groupOriginals', 'groupIds', 'startObjects']) {
+    const remapped = remapKeys(ds[field], mapIndex);
+    if (remapped !== ds[field]) next = { ...next, [field]: remapped };
   }
   return next;
+}
+
+function remapKeys(map, mapIndex) {
+  if (!map || typeof map !== 'object') return map;
+  let changed = false;
+  const out = {};
+  for (const [key, value] of Object.entries(map)) {
+    const at = mapIndex(Number(key));
+    if (at !== Number(key)) changed = true;
+    if (at >= 0) out[at] = value;
+  }
+  return changed ? out : map;
+}
+
+/**
+ * A drag keeps its own copy of the page (`currentAnnotations`) holding the
+ * marks it has changed so far. Lay that copy over the new list: the new
+ * list's order and marks, with the drag's copy of every mark it still holds
+ * (by id), so the next frame edits the dragged mark, not whatever now sits at
+ * its old position.
+ */
+export function rebasePageCopy(pageCopy, nextPage) {
+  if (!pageCopy || !Array.isArray(pageCopy.objects) || !Array.isArray(nextPage?.objects)) return pageCopy;
+  const copies = new Map();
+  for (const object of pageCopy.objects) {
+    const id = markIdOf(object);
+    if (id != null && !copies.has(id)) copies.set(id, object);
+  }
+  return {
+    ...nextPage,
+    objects: nextPage.objects.map((object) => {
+      const id = markIdOf(object);
+      return id != null && copies.has(id) ? copies.get(id) : object;
+    }),
+  };
 }
 
 /** The drag preview with its positions moved the same way. */

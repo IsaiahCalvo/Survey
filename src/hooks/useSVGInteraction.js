@@ -27,7 +27,9 @@ import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
-import { indexRemapper, remapDragState, remapSelectedIndices, remapVisualTransform } from '../utils/selectionRemap.js';
+import {
+  indexRemapper, rebasePageCopy, remapDragState, remapSelectedIndices, remapVisualTransform,
+} from '../utils/selectionRemap.js';
 import { trackHandleZoom, untrackHandleZoom } from '../utils/liveHandleZoom.js';
 import { resizeCalloutBox } from '../utils/markBorderOutline.js';
 // w59: one rule for where a moved mark lands (preview === save).
@@ -835,7 +837,9 @@ export function useSVGInteraction({
     const ds = dragStateRef.current;
     if (!ds?.active || !previous || !objects || previous === objects) return;
     const mapIndex = indexRemapper(previous, objects);
-    dragStateRef.current = remapDragState(ds, mapIndex);
+    const moved = remapDragState(ds, mapIndex);
+    if (moved.currentAnnotations) moved.currentAnnotations = rebasePageCopy(moved.currentAnnotations, annotations);
+    dragStateRef.current = moved;
     setVisualTransform((prev) => remapVisualTransform(prev, mapIndex));
   }, [annotations]);
   useEffect(() => {
