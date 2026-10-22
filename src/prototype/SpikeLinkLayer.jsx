@@ -62,6 +62,7 @@ export default function SpikeLinkLayer({ pdf, pageIndex, scale, rotation }) {
           key={i}
           href={l.url || '#'}
           onClick={(e) => onLink(l, e)}
+          aria-label={l.url || 'Go to page'}
           {...tip(l.url || `Go to page`, 'below')}
           style={{
             position: 'absolute', left: l.x * scale, top: l.y * scale, width: l.w * scale, height: l.h * scale,

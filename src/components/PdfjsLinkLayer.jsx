@@ -117,6 +117,7 @@ export default function PdfjsLinkLayer({
           key={i}
           href={link.url || '#'}
           onClick={(event) => handleLink(link, event)}
+          aria-label={link.url || 'Go to page'}
           {...tip(link.url || 'Go to page', 'below')}
           style={{
             position: 'absolute',

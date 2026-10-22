@@ -1018,6 +1018,7 @@ export default function PrintPanel({
           if (e.key === 'Enter') setCurrentPage(page.index);
           if (e.key === ' ') { e.preventDefault(); togglePageInclusion(page.index); }
         }}
+        aria-label={`Page ${page.index}${included ? '' : ' (excluded)'}`}
         {...tip(`Page ${page.index}${included ? '' : ' (excluded — alt-click or click to include)'} · click to view, alt-click to toggle`, 'below')}
       >
         <div
