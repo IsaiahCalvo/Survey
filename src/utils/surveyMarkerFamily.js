@@ -378,6 +378,22 @@ export function translateSurveyMarkerRecord(record, dx, dy) {
   };
 }
 
+/** A marker record with its box replaced (a group resize). */
+export function resizeSurveyMarkerRecord(record, bounds) {
+  if (!record?.bounds || !bounds) return record;
+  const num = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
+  return {
+    ...record,
+    bounds: {
+      ...record.bounds,
+      x: num(bounds.x, record.bounds.x),
+      y: num(bounds.y, record.bounds.y),
+      width: Math.max(0, num(bounds.width, record.bounds.width)),
+      height: Math.max(0, num(bounds.height, record.bounds.height)),
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Undo / redo (local annotation history lane)
 // ---------------------------------------------------------------------------

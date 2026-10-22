@@ -5022,9 +5022,10 @@ const SVGAnnotationLayerBody = memo(({
       liveDy = visualTransform.markerDelta?.dy ?? visualTransform.dy ?? 0;
     }
     const isFamilySelected = selectedSurveyMarkerIds.has(annotationId);
+    // A group resize previews each selected marker's new box.
     const preview = surveyMarkerPreviewBounds?.annotationId === annotationId
       ? surveyMarkerPreviewBounds.bounds
-      : null;
+      : (visualTransform?.id === 'group' ? visualTransform.markerPreviews?.[String(annotationId)] || null : null);
     const bbox = preview
       ? {
           ...entry.bbox,
@@ -9339,13 +9340,22 @@ const SVGAnnotationLayerBody = memo(({
             for (const entry of surveyMarkerElements) {
               const markerId = entry?.surveyMarker?.annotationId;
               if (!markerId || !selectedSurveyMarkerIds.has(markerId)) continue;
-              const bounds = boxWorldBounds({
-                left: entry.bbox.left,
-                top: entry.bbox.top,
-                width: entry.bbox.width,
-                height: entry.bbox.height,
-                angle: entry.bbox.angle || 0,
-              });
+              const resizePreview = visualTransform?.markerPreviews?.[String(markerId)] || null;
+              const bounds = boxWorldBounds(resizePreview
+                ? {
+                    left: resizePreview.x,
+                    top: resizePreview.y,
+                    width: resizePreview.width,
+                    height: resizePreview.height,
+                    angle: resizePreview.angle || 0,
+                  }
+                : {
+                    left: entry.bbox.left,
+                    top: entry.bbox.top,
+                    width: entry.bbox.width,
+                    height: entry.bbox.height,
+                    angle: entry.bbox.angle || 0,
+                  });
               if (bounds) bboxes.push({ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height });
             }
             if (bboxes.length === 0) return null;
@@ -9489,17 +9499,17 @@ const SVGAnnotationLayerBody = memo(({
                 .some((member) => member?.locked && selectedSurveyMarkerIds.has(String(member.id)));
             // 2026-10-22 (owner ask: resize several marks at once, Drawboard /
             // tldraw method in utils/groupResize.js): the frame shows its
-            // eight resize grabbers when every member can take a resize.
-            // Callouts and Survey Markers still only move with a group, and
-            // a locked member keeps the frame move-only with its lock badge.
-            // Group rotate stays hidden. An old-style arrow (a group of
-            // line + head) draws from its children, which a group resize
-            // doesn't rewrite, so it keeps the frame move-only too.
+            // eight resize grabbers when every member can take a resize;
+            // callouts and Survey Markers resize along. A locked member
+            // keeps the frame move-only with its lock badge. Group rotate
+            // stays hidden. An old-style arrow (a group of line + head)
+            // draws from its children, which a group resize doesn't
+            // rewrite, so it keeps the frame move-only too.
             const groupCanResize = !groupHasLockedMember
-              && groupCalloutIdSet.size === 0
-              && selectedSurveyMarkerIds.size === 0
               && Array.from(selectedIds).every((idx) => canGroupResizeMember(annotations?.objects?.[idx]))
-              && Array.from(selectedIds).some((idx) => canMoveAnnotation(annotations?.objects?.[idx]));
+              && (groupCalloutIdSet.size > 0
+                || selectedSurveyMarkerIds.size > 0
+                || Array.from(selectedIds).some((idx) => canMoveAnnotation(annotations?.objects?.[idx])));
             return (
               <g
                 key="group-selection-wrapper"

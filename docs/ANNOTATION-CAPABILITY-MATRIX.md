@@ -40,8 +40,8 @@ final; no dashed box around selected callouts; no new chrome.
 | Region / space shape | ✓ (region tool) | region tool | region tool | ✓ | ✓ per vertex | ✓ | D: regions are page structure, not marks | ✗ | n/a |
 
 Multi-selection: move ✓; ★ resize ✓ with the frame's eight grabbers
-(Drawboard rules, docs/research/MULTI-SELECT-RESIZE-2026-10-22.md; not with a
-callout, Survey Marker or locked mark in it); rotate still hidden; z-order ★ moves the whole selection as one block, shapes and
+(Drawboard rules, docs/research/MULTI-SELECT-RESIZE-2026-10-22.md; callouts
+and Survey Markers resize along; not with a locked mark in it); rotate still hidden; z-order ★ moves the whole selection as one block, shapes and
 callouts mixed (menu and keyboard, one Undo step). ☆ Survey Markers are
 members too: marquee / lasso / Shift-click pick them with marks, a drag or an
 arrow-key nudge moves marks and markers together, and a move, restack or

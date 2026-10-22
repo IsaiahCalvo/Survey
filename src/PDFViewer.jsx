@@ -223,6 +223,7 @@ import {
   patchSurveyMarkerRenderPages,
   surveyMarkerRenderEntry,
   translateSurveyMarkerRecord,
+  resizeSurveyMarkerRecord,
   isSurveyMarkerPlaced,
   placeSurveyMarkerRecord,
   unplaceSurveyMarkerRecord,
@@ -31315,6 +31316,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           next[id] = moved;
           changes.push({ id, before: record, after: moved });
         }
+      }
+    }
+    // A group resize: `bounds` = { [id]: new box }, merged onto each box.
+    if (patch.bounds && typeof patch.bounds === 'object') {
+      for (const [id, bounds] of Object.entries(patch.bounds)) {
+        const record = next[id];
+        if (!record?.bounds || !bounds || !mayEdit(record)) continue;
+        const resized = resizeSurveyMarkerRecord(record, bounds);
+        next[id] = resized;
+        const existing = changes.find((change) => change.id === id);
+        if (existing) existing.after = resized;
+        else changes.push({ id, before: current[id], after: resized });
       }
     }
     if (patch.stacks && typeof patch.stacks === 'object') {

@@ -183,6 +183,8 @@ import {
   markNeedsUniformGroupScale,
   memberAxisScale,
   resolveGroupResizeScale,
+  scaleCalloutForGroup,
+  scaleMarkerBoundsForGroup,
   scaledGroupFontSize,
   scaledTextBoxLength,
   textScalesFontFor,
@@ -3027,6 +3029,26 @@ export function useSVGInteraction({
         }
       }
 
+      // Callouts and Survey Markers ride along (groupResize.js); their live
+      // look comes from the previews below, the store changes on release.
+      const calloutPreviews = {};
+      for (const [cid, orig] of Object.entries(ds.groupCalloutResizeOriginals || {})) {
+        calloutPreviews[cid] = scaleCalloutForGroup(
+          orig, scalePoint, sx, sy, ds.handleId,
+          { width: pageWidth || 1, height: pageHeight || 1 }, TEXT_PADDING,
+        );
+      }
+      const markerPreviews = {};
+      for (const [id, bounds] of Object.entries(ds.groupMarkerResizeOriginals || {})) {
+        markerPreviews[id] = scaleMarkerBoundsForGroup(bounds, scalePoint, sx, sy);
+      }
+      const familyPreviews = {
+        ...(Object.keys(calloutPreviews).length > 0 ? { calloutPreviews } : {}),
+        ...(Object.keys(markerPreviews).length > 0 ? { markerPreviews } : {}),
+      };
+      ds.currentCalloutPatches = calloutPreviews;
+      ds.currentMarkerBounds = markerPreviews;
+
       ds.currentAnnotations = updatedAnnotations;
       ds.currentResize = { sx, sy, ax, ay };
 
@@ -3054,6 +3076,7 @@ export function useSVGInteraction({
             height: Math.abs(persist.snapH * sy),
           },
           previewObjects: buildPreviewObjects(updatedAnnotations, ds.groupMemberOriginals),
+          ...familyPreviews,
         });
       } else {
         setVisualTransform({
@@ -3061,6 +3084,7 @@ export function useSVGInteraction({
           dx: 0,
           dy: 0,
           previewObjects: buildPreviewObjects(updatedAnnotations, ds.groupMemberOriginals),
+          ...familyPreviews,
         });
       }
       if (groupResizeSnapOn) {
@@ -4693,22 +4717,57 @@ export function useSVGInteraction({
       });
     } else if ((ds.mode === 'group-rotate' || ds.mode === 'group-resize')
                && ds.groupMemberOriginals) {
+      // A group resize's callouts are written FIRST and rendered (flushSync),
+      // so the page save below is built on a page that already holds them and
+      // closes ONE undo step for marks, callouts and Survey Markers together
+      // (same order as the group move). Each callout patch lands on the
+      // callout as it is now; its style keeps any change made meanwhile.
+      const calloutPatchEntries = ds.mode === 'group-resize'
+        ? Object.entries(ds.currentCalloutPatches || {})
+        : [];
+      if (calloutPatchEntries.length > 0 && typeof onUpdateCalloutLive === 'function') {
+        flushSync(() => {
+          for (const [cid, patch] of calloutPatchEntries) {
+            const current = (callouts || []).find((c) => c && c.id === cid);
+            onUpdateCalloutLive(cid, patch.style
+              ? { ...patch, style: { ...(current?.style || {}), fontSize: patch.style.fontSize } }
+              : patch);
+          }
+        });
+      }
+      const markerBoundsEntries = ds.mode === 'group-resize'
+        ? Object.entries(ds.currentMarkerBounds || {})
+        : [];
+      const baseAnnotations = calloutPatchEntries.length > 0
+        ? (nudgeLatestRef.current.annotations || annotations)
+        : annotations;
       // Per-field sync (2026-09-24): only the members' own changes, written
       // onto the page as it is now (see the vertex branch above).
       const merged = ds.currentAnnotations
-        ? mergeDraggedMarksOntoPage(annotations, ds.currentAnnotations, ds.startObjects)
+        ? mergeDraggedMarksOntoPage(baseAnnotations, ds.currentAnnotations, ds.startObjects)
         : null;
-      if (merged) {
-        roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
-        // KAL-397: a text box resized with the group keeps its new size.
-        if (ds.mode === 'group-resize') {
-          for (const i of merged.indexes || []) lockTextboxSizeAfterResize(merged.annotations?.objects?.[i]);
+      if (merged || calloutPatchEntries.length > 0 || markerBoundsEntries.length > 0) {
+        const pageToSave = merged ? merged.annotations : deepClone(baseAnnotations);
+        if (merged) {
+          roundCommittedAnnotationsGeometry(merged.annotations, merged.indexes);
+          // KAL-397: a text box resized with the group keeps its new size.
+          if (ds.mode === 'group-resize') {
+            for (const i of merged.indexes || []) lockTextboxSizeAfterResize(merged.annotations?.objects?.[i]);
+          }
         }
-        onSaveAnnotations(merged.annotations, {
+        onSaveAnnotations(pageToSave, {
           source: 'object:modified',
           action: ds.mode,
           checkpointPolicy: 'normal',
+          ...(markerBoundsEntries.length > 0
+            ? { surveyMarkerFamily: { bounds: Object.fromEntries(markerBoundsEntries) } }
+            : {}),
         });
+      }
+      // Closes the callout step when no save above closed it (a no-op
+      // otherwise), as the group move does.
+      if (typeof onUpdateCallout === 'function') {
+        for (const [cid] of calloutPatchEntries) onUpdateCallout(cid, {});
       }
       // UX: 2026-04-21 v11 — PowerPoint approach for rotate too: the
       // tilted frame is a live-preview during the drag, but on pointerup
@@ -5604,30 +5663,14 @@ export function useSVGInteraction({
     // Live commits use checkpointPolicy: 'skip' so each frame writes to the
     // store without spamming the undo stack; pointerup commits with 'normal'
     // for one undo entry per drag (matches counter-orbit pattern).
-    const selSize = (selectedIds?.size || 0) + (
-      selectedCalloutIds instanceof Set ? selectedCalloutIds.size :
-      Array.isArray(selectedCalloutIds) ? selectedCalloutIds.length : 0
-    );
+    const groupCalloutIdList = selectedCalloutIds instanceof Set ? Array.from(selectedCalloutIds)
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+    const groupMarkerIdList = getGroupMarkerIds();
+    const selSize = (selectedIds?.size || 0) + groupCalloutIdList.length + groupMarkerIdList.length;
     if (selSize > 1 && (handleId === 'mtr' || ['tl','tr','bl','br','mt','mb','ml','mr'].includes(handleId))) {
-      // Defensive: callouts in selection → handles should be hidden, but if
-      // a stale render somehow let one through, bail out so the user can't
-      // accidentally scale/rotate a callout in a group.
-      const hasCallout = (() => {
-        const set = selectedCalloutIds;
-        if (!set) return false;
-        const arr = set instanceof Set ? Array.from(set) : (Array.isArray(set) ? set : []);
-        return arr.length > 0;
-      })();
-      if (hasCallout) {
-        try {
-          diagLog('[GroupTransformDiag] blocked-by-callout ' + JSON.stringify({
-            ts: new Date().toISOString(), handleId,
-            selectedIds: Array.from(selectedIds || []),
-            selectedCalloutIds: (selectedCalloutIds instanceof Set ? Array.from(selectedCalloutIds) : selectedCalloutIds || []),
-          }));
-        } catch (_) {}
-        return;
-      }
+      // Group rotate still leaves callouts and Survey Markers out (its
+      // grabber is hidden); a group resize takes them along.
+      if (handleId === 'mtr' && (groupCalloutIdList.length > 0 || groupMarkerIdList.length > 0)) return;
 
       const ctm = svgRef.current?.getScreenCTM();
       const ctmInverse = ctm ? ctm.inverse() : null;
@@ -5727,6 +5770,49 @@ export function useSVGInteraction({
         if (aabb) memberWorldAABBs.push(aabb);
       }
 
+      // 2026-10-22: callouts and Survey Markers resize with the group too
+      // (groupResize.js). A callout's text box acts like a text mark; a
+      // marker's box like a rectangle. Locked ones keep the frame move-only
+      // (SVGAnnotationLayer), so every one here may change.
+      const calloutResizeOriginals = {};
+      const markerResizeOriginals = {};
+      if (handleId !== 'mtr') {
+        const W = pageWidth || 1;
+        const H = pageHeight || 1;
+        for (const cid of groupCalloutIdList) {
+          const c = (callouts || []).find((cc) => cc && cc.id === cid);
+          if (!c || isUserLocked(c) || !c.arrowTip || !c.knee || !c.textBoxPosition) continue;
+          if (Number.isFinite(Number(c.pageNumber)) && Number(c.pageNumber) !== Number(pageNumber)) continue;
+          const pageBox = getCalloutPageBox(c, W, H);
+          if (pageBox) memberWorldAABBs.push(pageBox);
+          calloutResizeOriginals[cid] = {
+            tip: { x: c.arrowTip.x * W, y: c.arrowTip.y * H },
+            knee: { x: c.knee.x * W, y: c.knee.y * H },
+            box: {
+              left: c.textBoxPosition.x * W,
+              top: c.textBoxPosition.y * H,
+              width: (Number(c.textBoxWidth) || 0) * W,
+              height: (Number(c.textBoxHeight) || 0) * H,
+            },
+            fontSize: Number(c.style?.fontSize) || 12,
+            style: c.style || {},
+          };
+        }
+        const markerIds = new Set(getGroupMarkerIds({ movableOnly: true }));
+        for (const member of (getSurveyMarkerMembers?.() || [])) {
+          if (!member || !markerIds.has(String(member.id)) || !member.box) continue;
+          const bounds = boxWorldBounds(member.box);
+          if (bounds) memberWorldAABBs.push(bounds);
+          markerResizeOriginals[member.id] = {
+            x: member.box.left,
+            y: member.box.top,
+            width: member.box.width,
+            height: member.box.height,
+            angle: member.box.angle || 0,
+          };
+        }
+      }
+
       if (memberWorldAABBs.length === 0) return;
       const unionLeft = Math.min(...memberWorldAABBs.map((b) => b.left));
       const unionTop = Math.min(...memberWorldAABBs.map((b) => b.top));
@@ -5820,11 +5906,18 @@ export function useSVGInteraction({
             },
         groupStartAngle: startAngle,
         pivotSource,
-        groupResizeKeepsProportions: !isRotate && Object.values(memberOriginals)
-          .some((member) => member.needsUniformGroupScale),
-        groupResizeMinScale: isRotate ? null : groupResizeMinimumScale(
-          Object.values(memberOriginals).map((member) => ({ width: member.aabbWidth, height: member.aabbHeight })),
+        groupCalloutResizeOriginals: calloutResizeOriginals,
+        groupMarkerResizeOriginals: markerResizeOriginals,
+        groupResizeKeepsProportions: !isRotate && (
+          Object.values(memberOriginals).some((member) => member.needsUniformGroupScale)
+          || (Object.keys(calloutResizeOriginals).length > 0 && textScalesFontFor(handleId))
+          || Object.values(markerResizeOriginals).some((bounds) => markNeedsUniformGroupScale({ type: 'rect', angle: bounds.angle }, handleId))
         ),
+        groupResizeMinScale: isRotate ? null : groupResizeMinimumScale([
+          ...Object.values(memberOriginals).map((member) => ({ width: member.aabbWidth, height: member.aabbHeight })),
+          ...Object.values(calloutResizeOriginals).map((callout) => callout.box),
+          ...Object.values(markerResizeOriginals),
+        ]),
       };
 
       try {
@@ -6321,7 +6414,7 @@ export function useSVGInteraction({
       };
       diagLog('[BboxScaleDiag] start ' + JSON.stringify(startPayload));
     } catch (err) { console.warn('[BboxScaleDiag] start log failed', err); }
-  }, [selectedIds, annotations, svgRef]);
+  }, [selectedIds, annotations, svgRef, selectedCalloutIds, callouts, getGroupMarkerIds, getSurveyMarkerMembers, pageWidth, pageHeight, pageNumber]);
 
   // ---------------------------------------------------------------------------
   // Group delete (Plan 03): remove all selected annotations
