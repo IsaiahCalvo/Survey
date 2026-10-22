@@ -193,9 +193,9 @@ export function scoreDescribedTag(target, text, { category = null, pageFloor = n
   const floor = target.floor;
   let numberAt = -1;
   let embeddedFloor = false;
-  for (let i = digits.length - 1; i >= 0; i -= 1) {
-    if (Number(digits[i]) === n) { numberAt = i; break; }
-  }
+  // The device number is the last group; groups before it are the floor
+  // ("C-4-06" is camera 6 on floor 4, never camera 4).
+  if (Number(digits[digits.length - 1]) === n) numberAt = digits.length - 1;
   // CAM-406: floor 4, camera 06.
   if (numberAt < 0 && floor != null) {
     const f = String(floor);
@@ -220,9 +220,11 @@ export function scoreDescribedTag(target, text, { category = null, pageFloor = n
   const codeLetters = letters.filter((l) => !isWingLetter(l) || letters.length === 1);
   if (floor != null) {
     if (embeddedFloor || others.includes(floor)) score += 0.3;
+    // A floor written in the tag wins over the sheet's title: a fourth-floor
+    // sheet can show a third-floor device.
+    else if (others.length) return 0;
     else if (pageFloor === floor) score += 0.25;
     else if (pageFloor != null) return 0;
-    else if (others.length) return 0;
   } else if (others.length || pageFloor != null) {
     // No floor said: any floor may be it, but fewer leftover numbers fit better.
     score -= 0.05;

@@ -46,6 +46,11 @@ test('the floor can be in the tag, glued to the number, or only on the sheet', (
   assert.ok(scoreDescribedTag(target, 'Camera 6', { pageFloor: 4 }) >= 0.9, 'an item named the long way');
   assert.ok(scoreDescribedTag(target, '06', { category: 'Camera', pageFloor: 4 }) >= 0.9, 'the category says camera');
   assert.equal(scoreDescribedTag(target, '06', { category: 'Door', pageFloor: 4 }), 0);
+  // The number is the last group, never the floor group before it.
+  assert.equal(scoreDescribedTag(parseDescribedTarget('camera 4 on the 6th floor'), 'C-4-06', { pageFloor: 4 }), 0);
+  assert.equal(scoreDescribedTag(parseDescribedTarget('camera 4'), 'C-4-06'), 0);
+  // A floor written in the tag wins over the sheet it sits on.
+  assert.equal(scoreDescribedTag(target, 'C-3-06', { pageFloor: 4 }), 0, 'a third-floor tag on a fourth-floor sheet');
   const west = parseDescribedTarget('camera 6 fourth floor west');
   assert.ok(scoreDescribedTag(west, '4W-CAM-06') > scoreDescribedTag(west, '4E-CAM-06'), 'the wing said wins when both fit');
   assert.ok(scoreDescribedTag(parseDescribedTarget('cam four oh six'), 'C-4-06') >= 0.8, '"four oh six" reads the groups together');
