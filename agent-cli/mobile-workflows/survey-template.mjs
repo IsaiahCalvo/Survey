@@ -1,4 +1,6 @@
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// The rail's select tool is named after its mode (selectModes.js).
+const VIEWER_SELECT_TOOL_NAME = /^(?:(?:Rectangle|Lasso|Text) )?Select$/;
 
 export const TEMPLATE_WORKFLOW_STORAGE_KEY = 'mobileWorkflowTemplates';
 export const TEMPLATE_WORKFLOW_ROUTE = '/?hubPreview=1&workflowE2E=1&tab=templates&mobileNav=tabs&nativeShell=expo';
@@ -141,7 +143,7 @@ async function saveTemplate(page, touch) {
   await page.getByRole('button', { name: 'Save', exact: true }).waitFor({ state: 'hidden', timeout: 10_000 });
 }
 
-async function dragBetween(touch, from, to, label, { axis = 'vertical', holdMs = 0 } = {}) {
+async function dragBetween(touch, from, to, label, { axis = 'vertical', holdMs = 0, endFraction = 0.5 } = {}) {
   const explicitHandleBox = await from.evaluate((node) => {
     const handle = node.matches?.('[data-drag-rearrange-handle]')
       ? node
@@ -155,7 +157,7 @@ async function dragBetween(touch, from, to, label, { axis = 'vertical', holdMs =
   const start = { x: fromBox.x + fromBox.width / 2, y: fromBox.y + fromBox.height / 2 };
   const end = axis === 'horizontal'
     ? { x: toBox.x + toBox.width / 2, y: start.y }
-    : { x: start.x, y: toBox.y + toBox.height / 2 };
+    : { x: start.x, y: toBox.y + toBox.height * endFraction };
   if (holdMs > 0) {
     await touch.start(start);
     await new Promise((resolve) => setTimeout(resolve, holdMs));
@@ -455,6 +457,7 @@ async function coverEntitiesAndReload({ page, touch, baseUrl, ids, artifacts }) 
     reorderedOwnerRow.locator('xpath=..'),
     firstEntityRow.locator('xpath=..'),
     'entity touch reorder',
+    { endFraction: 0.15 },
   );
   await page.waitForTimeout(1_000);
   await modal.getByRole('button', { name: 'Close', exact: true }).click();
@@ -679,26 +682,34 @@ async function armCreatedSurveyInViewer({ page, touch, ids }) {
   const state = await Promise.race([
     chooser.first().waitFor({ state: 'visible', timeout: 10_000 }).then(() => 'chooser'),
     category.first().waitFor({ state: 'visible', timeout: 10_000 }).then(() => 'category'),
+    page.locator('[aria-label^="Survey category "]:visible').first()
+      .waitFor({ state: 'visible', timeout: 10_000 }).then(() => 'rail'),
   ]);
   if (state === 'chooser') {
     const templateButton = invariant(await firstVisible(page.getByRole('button', { name: new RegExp(ids.templateName) })), 'Created survey template is not visible');
     await templateButton.click();
   }
-  // A template with one category arms it on pick and closes the sheet; the
-  // rail's category disc then names it. Otherwise pick the category.
-  const armed = page.locator(`[aria-label="Survey category ${ids.categoryName}"]:visible`);
-  await page.waitForTimeout(1_500); // the sheet's close animation after arming
-  if (!await armed.first().isVisible().catch(() => false)) {
-    await category.first().waitFor({ state: 'visible', timeout: 10_000 });
-    const visibleCategory = invariant(await firstVisible(category), 'Created survey category is not visible');
-    await visibleCategory.click();
+  // The sheet's category rows now carry a "+ Place" action instead of a
+  // pick-to-arm row, and the rail always shows every category disc, so arm
+  // the category from the rail and read aria-pressed, not mere visibility.
+  await page.waitForTimeout(1_500); // the sheet's open/close animation
+  const surveyToggle = page.locator('button[aria-label="Open survey"][aria-expanded="true"]:visible');
+  if (await surveyToggle.count()) {
+    await surveyToggle.first().click();
+    await page.locator('button[aria-label="Open survey"][aria-expanded="false"]:visible').first()
+      .waitFor({ state: 'visible', timeout: 10_000 });
+    await page.waitForTimeout(600);
   }
-  const collapse = await firstVisible(page.getByRole('button', { name: 'Collapse Survey panel' }));
-  if (collapse) await collapse.click();
+  const disc = page.locator(`[aria-label="Survey category ${ids.categoryName}"]:visible`).first();
+  await disc.waitFor({ state: 'visible', timeout: 10_000 });
+  if (await disc.getAttribute('aria-pressed') !== 'true') await disc.click();
+  await page.locator(`[aria-label="Survey category ${ids.categoryName}"][aria-pressed="true"]:visible`).first()
+    .waitFor({ state: 'visible', timeout: 10_000 });
   // A template with entities needs one picked on the phone rail, or the
   // placement asks for it in the Categorize dialog instead of committing.
   const entity = await firstVisible(page.locator('[aria-label^="Survey entity "]'));
-  if (entity) await entity.click();
+  // A second tap on the armed disc disarms it; tap only an unarmed one.
+  if (entity && await entity.getAttribute('aria-pressed') !== 'true') await entity.click();
 }
 
 async function openCreatedSurveyInViewer({ page, touch, ids, baseUrl }) {
@@ -773,7 +784,7 @@ async function runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts }) {
     if (!markerId) await wait(500);
   }
   invariant(markerId, 'Created Survey Marker has no stable persisted id ' + JSON.stringify(await markerStorage(page)).slice(0, 600));
-  const [markerKey, markerMap] = invariant(entries.find(([, records]) => records?.[markerId]), 'Survey Marker missing from exact storage');
+  const [markerKey, markerMap] = invariant((await markerStorage(page)).find(([, records]) => records?.[markerId]), 'Survey Marker missing from exact storage');
   let marker = markerMap[markerId];
   // Survey Marker records are scoped by module/category; the selected
   // template owns those ids but is intentionally not duplicated on the row.
@@ -791,13 +802,7 @@ async function runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts }) {
   invariant(marker?.name === originalName, 'Created Survey Marker missing after first hard reload');
   await armCreatedSurveyInViewer({ page, touch, ids });
 
-  const collapse = await firstVisible(page.getByRole('button', { name: 'Collapse Survey panel' }));
-  if (collapse) {
-    await tapLocator(touch, collapse, 'Collapse Survey panel');
-    await page.getByRole('button', { name: 'Expand Survey panel' })
-      .waitFor({ state: 'visible', timeout: 5_000 });
-  }
-  await tapLocator(touch, page.getByRole('button', { name: 'Select', exact: true }), 'Select tool');
+  await tapLocator(touch, page.getByRole('button', { name: VIEWER_SELECT_TOOL_NAME }), 'Select tool');
   const hit = page.locator(`[data-survey-marker-id="${markerId}"] [data-survey-marker-hit-target="true"]`);
   const renamed = `${originalName} mobile edited`;
   const rename = page.getByRole('textbox', { name: `Rename ${originalName}` });
@@ -825,16 +830,17 @@ async function runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts }) {
   // Rehydrate the created template, select marker, delete by >=44px touch UI,
   // then reload and assert exact persisted absence.
   await armCreatedSurveyInViewer({ page, touch, ids });
-  await tapLocator(touch, page.getByRole('button', { name: 'Select', exact: true }), 'Select marker after reload');
+  await tapLocator(touch, page.getByRole('button', { name: VIEWER_SELECT_TOOL_NAME }), 'Select marker after reload');
   const rehydratedHit = page.locator(`[data-survey-marker-id="${markerId}"] [data-survey-marker-hit-target="true"]`);
   await rehydratedHit.waitFor({ state: 'visible', timeout: 10_000 });
   const selectedBox = invariant(await rehydratedHit.boundingBox(), 'Reloaded marker has no hit target');
-  await touch.tap({ x: selectedBox.x + selectedBox.width / 2, y: selectedBox.y + selectedBox.height / 2 });
-  await wait(400);
-  const deleteButton = await firstVisible(page.getByRole('button', { name: 'Delete Survey Marker', exact: true }));
-  invariant(deleteButton, 'Selected marker has no touch Delete action');
-  const deleteBox = invariant(await deleteButton.boundingBox(), 'Survey Marker Delete has no bounds');
-  invariant(deleteBox.width >= 44 && deleteBox.height >= 44, 'Survey Marker Delete is below 44px touch size');
+  // Owner 2026-10-01: a selected Survey Marker has no floating Delete chip;
+  // on touch, Delete lives on the long-press menu (>=44px rows on phones).
+  await touch.longPress({ x: selectedBox.x + selectedBox.width / 2, y: selectedBox.y + selectedBox.height / 2 });
+  const deleteItem = page.locator('[data-annotation-context-menu] [role="menuitem"][aria-label="Delete"], [data-annotation-context-menu] [role="menuitem"]:text-is("Delete")').first();
+  await deleteItem.waitFor({ state: 'visible', timeout: 10_000 });
+  const deleteBox = invariant(await deleteItem.boundingBox(), 'Survey Marker Delete has no bounds');
+  invariant(deleteBox.height >= 44, `Survey Marker Delete row is below 44px touch size (${deleteBox.height})`);
   await touch.tap({ x: deleteBox.x + deleteBox.width / 2, y: deleteBox.y + deleteBox.height / 2 });
   await page.waitForFunction(({ key, id }) => !JSON.parse(localStorage.getItem(key) || '{}')?.[id], { key: markerKey, id: markerId });
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });

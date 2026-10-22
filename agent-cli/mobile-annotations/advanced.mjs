@@ -1,3 +1,4 @@
+import { SELECT_TOOL_NAME } from './constants.mjs';
 import assert from 'node:assert/strict';
 import {
   annotationGeometry,
@@ -85,7 +86,7 @@ async function firstVisible(locator) {
 }
 
 async function activateSelect(page, touch) {
-  const button = page.getByRole('button', { name: 'Select', exact: true });
+  const button = page.getByRole('button', { name: SELECT_TOOL_NAME });
   assert.equal(await button.count(), 1, 'Exactly one Select tool must exist');
   await tapLocator(touch, button, 'Select tool');
 }

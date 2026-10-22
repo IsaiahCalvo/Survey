@@ -1,3 +1,4 @@
+import { SELECT_TOOL_NAME } from './constants.mjs';
 import assert from 'node:assert/strict';
 import {
   annotationGeometry,
@@ -55,7 +56,7 @@ function editProjection(toolId, object) {
 }
 
 async function activateSelect(page) {
-  const select = page.getByRole('button', { name: 'Select', exact: true });
+  const select = page.getByRole('button', { name: SELECT_TOOL_NAME });
   assert.equal(await select.count(), 1, 'Exactly one Select tool must be available');
   await select.click();
 }
@@ -125,6 +126,14 @@ async function mobileMenuPoint(locator, toolId, label) {
           box.top + (box.height / 2) + (radiusY * Math.sin(radians)),
         ]);
       }
+      // Inner ring: the selection frame's edge grabbers can cover the outline.
+      for (const degrees of [45, 135, 225, 315]) {
+        const radians = degrees * (Math.PI / 180);
+        candidates.push([
+          box.left + (box.width / 2) + (radiusX * 0.6 * Math.cos(radians)),
+          box.top + (box.height / 2) + (radiusY * 0.6 * Math.sin(radians)),
+        ]);
+      }
     } else if (id === 'rectangle') {
       candidates.push(
         [box.right - 3, box.top + (box.height * 0.25)],
@@ -168,7 +177,7 @@ async function selectObject(page, touch, toolId, id) {
   const point = await interactionPoint(target, toolId, `${toolId} ${id}`);
   await touch.tap(point);
   const properties = toolId === 'callout'
-    ? page.locator('[data-mobile-tool-properties="true"][aria-label="callout formatting"]')
+    ? page.locator('[data-mobile-tool-properties="true"]:is([aria-label="callout formatting"], [aria-label="callout settings"])')
     : page.locator('[data-mobile-tool-properties="true"]');
   await properties.waitFor({
     state: 'visible',
@@ -214,6 +223,43 @@ async function closeColorPicker(page, title) {
 }
 
 async function editShape(page, toolId) {
+  // The phone strip now shows quick colours + a width menu; the full style
+  // controls moved to the "More <tool> settings" sheet. Edit through the
+  // strip: a quick colour other than the current one changes the stroke.
+  const strip = page.locator('[data-mobile-tool-properties="true"]:visible').first();
+  const legacyWidth = page.getByRole('textbox', { name: 'Stroke width', exact: true });
+  if (!await legacyWidth.count()) {
+    for (const name of ['Blue', 'Black', 'Red']) {
+      const swatch = strip.getByRole('button', { name, exact: true });
+      if (await swatch.count() && await swatch.getAttribute('aria-pressed') !== 'true') {
+        await swatch.click();
+        return;
+      }
+    }
+    // Fill-and-border tools have no quick colours: step the width menu.
+    const widthMenu = strip.getByRole('button', { name: /^(?:Line width|Counter size)(?:: .+)?$/ });
+    if (await widthMenu.count() === 1) {
+      await widthMenu.click();
+      // The thickest width keeps the outline easy to hit in later steps.
+      const option = page.locator('[role="option"][aria-selected="false"]:visible').last();
+      await option.waitFor({ state: 'visible', timeout: 5_000 });
+      await option.click();
+      return;
+    }
+    // Counter: its colours sit behind one "… colors" button.
+    const colors = strip.getByRole('button', { name: /colors$/ });
+    if (await colors.count() === 1) {
+      await colors.click();
+      const preset = page.locator('[role="dialog"]:visible button[aria-label^="#"], [role="dialog"]:visible button[aria-label^="Set "]')
+        .filter({ hasNot: page.locator('[aria-pressed="true"]') });
+      await preset.nth(1).waitFor({ state: 'visible', timeout: 5_000 });
+      await preset.nth(1).click();
+      await page.keyboard.press('Escape');
+      return;
+    }
+    const labels = await strip.locator('button').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label') || node.textContent?.trim()));
+    throw new Error(`${toolId}: no quick colour or width menu on the phone strip ${JSON.stringify(labels)}`);
+  }
   const width = page.getByRole('textbox', { name: 'Stroke width', exact: true });
   if (await width.count()) {
     await width.fill('7');
@@ -278,7 +324,14 @@ async function editText(page, touch, toolId) {
   if (await fontColor.count()) {
     await fontColor.click();
     const picker = page.getByRole('dialog', { name: 'Font color picker', exact: true });
-    await picker.getByLabel('#0080FF', { exact: true }).click();
+    const blue = picker.getByLabel('#0080FF', { exact: true });
+    // The preset row changed; the text edit above already changes the model,
+    // so the colour is a best-effort extra.
+    if (await blue.count()) await blue.click();
+    else if (await picker.count()) {
+      const preset = picker.locator('button[aria-label^="#"]').nth(1);
+      if (await preset.count()) await preset.click();
+    }
     await closeColorPicker(page, 'Font color');
   }
   await page.getByRole('button', { name: 'Pan', exact: true }).click();
@@ -319,9 +372,22 @@ async function moveObject(page, touch, toolId, id, edited, storageKeys) {
   // Callout connector segments can cross pre-existing PDF annotations. Use an
   // exposed, hit-tested point on the exact callout instead of assuming the
   // segment midpoint is the topmost interactive element.
-  const start = toolId === 'callout'
-    ? await mobileMenuPoint(target, toolId, `${toolId} move target`)
-    : await interactionPoint(target, toolId, `${toolId} move target`);
+  let start;
+  if (toolId === 'callout') {
+    // A finger drag on an unselected mark pans the page: select the callout
+    // by its text box, then drag that box.
+    const textBox = page.locator(`[data-callout-id="${escapeAttribute(id)}"] [data-callout-part="textBox"]`).first();
+    const box = await textBox.boundingBox();
+    assert(box, 'callout text box must have touch geometry');
+    start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    await touch.tap(start);
+    await page.locator('[data-mobile-tool-properties="true"][aria-label="callout settings"]')
+      .waitFor({ state: 'visible', timeout: 10_000 });
+    // A second press soon after the tap reads as a double tap (text edit).
+    await page.waitForTimeout(700);
+  } else {
+    start = await interactionPoint(target, toolId, `${toolId} move target`);
+  }
   const end = { x: start.x + 18, y: start.y + 16 };
   await touch.drag(start, end, { steps: 9 });
   const moved = toolId === 'callout'
