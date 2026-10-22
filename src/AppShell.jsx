@@ -15,6 +15,7 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
+import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
 import { captureTabSource, isCurrentTabSource } from './utils/tabSourceIdentity.js';
@@ -2011,6 +2012,8 @@ export default function App({ devPreviewReturnTab = null }) {
   }, []);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
+  // Shift+S flips snapping (the rail's magnet button says the same).
+  useSnappingShortcut(Boolean(isViewerVisible));
   // PDFs dragged in from the computer onto an open document (owner request
   // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
   // and each opened in a new tab. Anywhere over the viewer counts, the pages
@@ -5072,6 +5075,21 @@ export default function App({ devPreviewReturnTab = null }) {
                         style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
                       >
                         <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    )} />
+                    {/* Owner 2026-10-22: snapping's switch, beside the grid
+                        (Bluebeam keeps SNAP and GRID side by side too). */}
+                    <SnappingToggle render={({ on, toggle }) => (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        aria-label="Snapping"
+                        aria-pressed={on}
+                        data-snapping-toggle="true"
+                        {...chromeTip(snappingLabel(on), 'left')}
+                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
                       </button>
                     )} />
                     {/* drawboardAudit C2: the Pencil-only switch sits where

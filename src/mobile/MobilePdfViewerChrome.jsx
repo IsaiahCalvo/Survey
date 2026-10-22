@@ -6,6 +6,7 @@ import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
 import PageGridToggle from '../components/PageGridToggle';
+import SnappingToggle from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
@@ -1218,6 +1219,20 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                     onClick={toggle}
                   >
                     <span>Page grid</span>
+                    {on && <Icon name="check" size={14} color="currentColor" />}
+                  </button>
+                </div>
+              )} />
+              <SnappingToggle render={({ on, toggle }) => (
+                <div className="mobile-pdf-header__zoom-fits">
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    data-snapping-toggle="true"
+                    className={on ? 'is-active' : ''}
+                    onClick={toggle}
+                  >
+                    <span>Snapping</span>
                     {on && <Icon name="check" size={14} color="currentColor" />}
                   </button>
                 </div>

@@ -6,9 +6,11 @@
  *    on the same page within DRAW_SNAP_SCREEN_PX screen pixels. Endpoint snap
  *    wins over the angle lock (a corner you aim at is the stronger intent).
  * Alt (or the device "snap to marks" preference off) disables the endpoint
- * pull; Shift still locks the angle. Pure page-unit math, no DOM.
+ * pull, and the preference off also drops the touch angle assist; Shift
+ * still locks the angle. Pure page-unit math, no DOM.
  */
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
+import { readAnnotationSnapping } from './annotationPreferences.js';
 
 export const DRAW_SNAP_SCREEN_PX = 8;
 // Touch / pen (no Shift, a fingertip covers the target): a wider endpoint
@@ -149,7 +151,8 @@ export function drawSnapEventOptions(e, inverseScale) {
   return {
     shiftKey: !!e?.shiftKey,
     tolPage: drawSnapScreenPx(e) * (Number.isFinite(inv) && inv > 0 ? inv : 1),
-    angleAssistDeg: coarse ? TOUCH_ANGLE_ASSIST_DEG : 0,
+    // Snapping switched off (the rail's magnet / Shift+S): no angle assist.
+    angleAssistDeg: coarse && readAnnotationSnapping() ? TOUCH_ANGLE_ASSIST_DEG : 0,
     coarse,
   };
 }

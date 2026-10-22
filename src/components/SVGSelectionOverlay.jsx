@@ -459,7 +459,14 @@ const SVGSelectionOverlay = memo(({
 
           {/* Rotation handle (mtr) */}
           {!horizontalResizeOnly && !hideRotationHandle && (
-          <g className="rotation-handle" data-rotation-handle="mtr">
+          <g
+            className="rotation-handle"
+            data-rotation-handle="mtr"
+            // The turning point, so the selection quick bar can tell which
+            // side the grabber (and its degree box) is on.
+            data-turn-cx={cx}
+            data-turn-cy={cy}
+          >
             {/* Invisible hit pad — same grab area rule as the resize
                 grabbers, drawn under the visible circle. */}
             {renderHitPad('mtr', handles.mtr, rotationHitPad, 'crosshair')}

@@ -8415,7 +8415,7 @@ const SVGAnnotationLayerBody = memo(({
                 },
           };
           return (
-            <g key={`counter-rotate-wrapper-${selectedIndex}`} transform={counterDragTransform} data-counter-rotate-grabber="true">
+            <g key={`counter-rotate-wrapper-${selectedIndex}`} transform={counterDragTransform} data-counter-rotate-grabber="true" data-turn-cx={cx} data-turn-cy={cy}>
               <circle
                 data-handle-hit-pad="counter-rotate"
                 cx={tipX}
