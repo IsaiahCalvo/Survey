@@ -213,6 +213,22 @@ tr:last-child>*{border-bottom:0}
 .kicker a{color:inherit;text-decoration:none}
 .kicker a:hover{text-decoration:underline}
 
+/* "only in Survey" blocks, the free tool grid and the side-by-side table */
+.feat .kicker{margin-bottom:12px}
+.lead-in{padding:88px 0 0}
+.lead-in .head{margin-bottom:0}
+.duo{display:grid;gap:16px}
+.duo .shot:last-child{width:88%;margin:-40px 0 0 auto;position:relative;box-shadow:0 1px 0 rgba(20,26,43,.06),0 24px 50px -24px rgba(20,26,43,.55)}
+.strips{display:grid;gap:12px;max-width:1200px;margin:0 auto 32px}
+.strips img{width:100%;border-radius:12px;background:#1b222c;box-shadow:0 1px 0 rgba(20,26,43,.06),0 10px 30px -18px rgba(20,26,43,.4)}
+.toolgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.toolgrid>div{background:var(--sheet);border-radius:var(--r-card);padding:22px 24px}
+.toolgrid h3{font-size:18px;margin-bottom:4px}
+.toolgrid p{color:var(--soft);margin:0;font-size:15px}
+.tier{font-weight:600}
+.vs-tbl table{min-width:0}
+.vs-tbl tbody th{padding-right:8px}
+
 /* footer: dark, like drawboard.com */
 .foot{background:var(--navy);color:var(--on-navy-soft);padding:72px 0 40px;font-size:15px}
 .foot .brand{color:#fff}
@@ -236,7 +252,7 @@ tr:last-child>*{border-bottom:0}
   .steps{grid-template-columns:1fr 1fr}
   .trio{max-width:600px;margin:0 auto}
   .plans{max-width:560px;margin:0 auto}
-  .grid6{grid-template-columns:1fr 1fr}
+  .grid6,.toolgrid{grid-template-columns:1fr 1fr}
   .custom{grid-template-columns:1fr;padding:48px}
   .panel{padding:48px}
   .sec{padding:80px 0}
@@ -261,7 +277,11 @@ tr:last-child>*{border-bottom:0}
   .sec{padding:64px 0}
   .head{margin-bottom:32px}
   .right .btn.primary{display:none}
-  .grid6,.fgrid,.steps,.narrow .steps,.narrow .dev-rows{grid-template-columns:1fr}
+  .grid6,.toolgrid,.fgrid,.steps,.narrow .steps,.narrow .dev-rows{grid-template-columns:1fr}
+  .duo .shot:last-child{width:94%;margin-top:-20px}
+  .strips{display:none}
+  .vs-tbl th,.vs-tbl td{padding:12px 10px;font-size:14px}
+  .vs-tbl thead th{font-size:15px}
   .custom,.panel{padding:32px 24px;border-radius:20px}
   .cta-band{padding:64px 24px;border-radius:20px}
   .band{padding-bottom:64px}
