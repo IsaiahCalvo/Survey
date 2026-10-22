@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { growTextBoxToFit, isTextSideHandle } from '../src/utils/textBoxFit.js';
+import { growTextBoxToFit, isTextSideHandle, probeStyleValue } from '../src/utils/textBoxFit.js';
 
 test('only the left / right grabbers rewrap', () => {
   assert.equal(isTextSideHandle('ml'), true);
@@ -31,4 +31,12 @@ test('single and group side resizes grow text to fit', () => {
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
   assert.match(hook, /if \(obj\.height && isTextSideHandle\(ds\.handleId\)\) \{\s*Object\.assign\(obj, growTextBoxToFit\(obj, measureTextContentHeight\(obj\)\)\);/);
   assert.match(hook, /Object\.assign\(target, growTextBoxToFit\(target, measureTextContentHeight\(target\)\)\);/);
+});
+
+test('the measuring probe keeps a numeric font weight unitless, so bold text measures bold', () => {
+  assert.equal(probeStyleValue('fontWeight', 700), '700');
+  assert.equal(probeStyleValue('lineHeight', 1.2), '1.2');
+  assert.equal(probeStyleValue('fontSize', 14), '14px');
+  assert.equal(probeStyleValue('fontWeight', 'bold'), 'bold');
+  assert.match(readFileSync(new URL('../src/utils/textContentMeasure.js', import.meta.url), 'utf8'), /probe\.style\[key\] = probeStyleValue\(key, value\)/);
 });

@@ -38,3 +38,10 @@ export function growTextBoxToFit(obj, naturalInnerHeight, padding = TEXT_PADDING
     height: needed,
   };
 }
+
+// A React style value as a DOM style string: React writes these keys as bare
+// numbers (a bold 700 weight must not become "700px"); any other number is px.
+const UNITLESS_STYLE_KEYS = new Set(['lineHeight', 'fontWeight', 'opacity', 'zIndex', 'flex', 'flexGrow', 'flexShrink']);
+export function probeStyleValue(key, value) {
+  return typeof value === 'number' && !UNITLESS_STYLE_KEYS.has(key) ? `${value}px` : String(value);
+}

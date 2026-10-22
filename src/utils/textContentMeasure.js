@@ -3,6 +3,7 @@
 // can grow the box to fit (textBoxFit.js). Browser only: returns null when
 // there is no document.
 import { TEXT_PADDING, buildPlainTextContentStyle } from './svgAnnotationRenderers.jsx';
+import { probeStyleValue } from './textBoxFit.js';
 
 let probe = null;
 
@@ -39,7 +40,7 @@ export function measureTextContentHeight(obj) {
     position: 'fixed', left: '-10000px', top: '0', visibility: 'hidden', pointerEvents: 'none',
   });
   for (const [key, value] of Object.entries(style)) {
-    probe.style[key] = typeof value === 'number' && key !== 'lineHeight' ? `${value}px` : String(value);
+    probe.style[key] = probeStyleValue(key, value);
   }
   probe.style.height = 'auto';
   probe.style.overflow = 'visible';
