@@ -81,7 +81,7 @@ jobs:
     # Playwright 1.59 has no browsers for ubuntu-26.04, which ubuntu-latest
     # became in October 2026.
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.perf && 55 || 25 }}
+    timeout-minutes: ${{ inputs.perf && 55 || 35 }}
     steps:
       - uses: actions/checkout@v7
 

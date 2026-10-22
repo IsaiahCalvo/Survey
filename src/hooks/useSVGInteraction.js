@@ -5428,9 +5428,27 @@ export function useSVGInteraction({
     setInteractionState('idle');
   }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable, getSurveyMarkerMembers, updateSelectedMarkers, clearSelectedMarkers, clampMarkerGroupDelta, getGroupMarkerBoxes, applySnapGuides, snapMoveDelta, ensureSingleMoveSnap, ensureGroupMoveSnap]);
 
+  // A move that will not be saved leaves nothing on screen: the mark goes
+  // back to where it is stored at once (Escape, a lost pointer, a long-press
+  // menu), instead of staying where the pointer left it until a later redraw
+  // snaps it back.
+  const dropActiveMoveDrag = useCallback(() => {
+    const ds = dragStateRef.current;
+    if (!ds?.active || (ds.mode !== 'move' && ds.mode !== 'group-move')) return false;
+    crossPageMove.end(ds);
+    dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined };
+    justDraggedAtRef.current = Date.now();
+    setVisualTransform(null);
+    setInteractionState('idle');
+    return true;
+  }, [crossPageMove]);
+
   const handlePointerCancel = useCallback((e) => {
     applySnapGuides(null);
     const ds = dragStateRef.current;
+    // The browser took the pointer (a system gesture, a touch it turned into
+    // a scroll): the move is not saved, so its preview must not stay behind.
+    if (dropActiveMoveDrag()) return;
     if (!ds.active || ds.mode !== 'text-markup-horizontal') return;
     if (ds.pointerId != null && e.pointerId != null && ds.pointerId !== e.pointerId) return;
     try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
@@ -5444,13 +5462,21 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [applySnapGuides]);
+  }, [applySnapGuides, dropActiveMoveDrag]);
 
   // Canvas audit chunk 2: a guide never outlives its drag (Escape, a lost
   // pointer, a cross-page hand-off all end in 'idle').
   useEffect(() => {
     if (interactionState === 'idle') applySnapGuides(null);
   }, [interactionState, applySnapGuides]);
+
+  // L1 (docs/GESTURE-CONTRACT.md): a finger or pen held still on the selected
+  // mark opens its menu, and that press is not a move. Without this the move
+  // kept following the finger under the open menu and was never saved.
+  useEffect(() => {
+    window.addEventListener('survey-long-press', dropActiveMoveDrag);
+    return () => window.removeEventListener('survey-long-press', dropActiveMoveDrag);
+  }, [dropActiveMoveDrag]);
 
   // Owner after Test 46 (2026-10-06): Escape mid-drag puts a moving mark back
   // where it started (nothing is saved, the pick stays). And a mark carried
@@ -5462,16 +5488,7 @@ export function useSVGInteraction({
       const ds = dragStateRef.current;
       return ds?.active && (ds.mode === 'move' || ds.mode === 'group-move') ? ds : null;
     };
-    const cancelMoveDrag = () => {
-      const ds = activeMoveDrag();
-      if (!ds) return false;
-      crossPageMove.end(ds);
-      dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined };
-      justDraggedAtRef.current = Date.now();
-      setVisualTransform(null);
-      setInteractionState('idle');
-      return true;
-    };
+    const cancelMoveDrag = dropActiveMoveDrag;
     // The viewer's Escape asks live gestures to cancel first (its seam); the
     // key listener covers tools where the viewer does not listen.
     const onCancelGesture = (event) => {
@@ -5497,7 +5514,7 @@ export function useSVGInteraction({
       window.removeEventListener('pointermove', onWindowPointer, true);
       window.removeEventListener('pointerup', onWindowPointer, true);
     };
-  }, [interactionState, handlePointerMove, handlePointerUp, crossPageMove, svgRef]);
+  }, [interactionState, handlePointerMove, handlePointerUp, dropActiveMoveDrag, svgRef]);
 
   // Pointer capture normally sends the release back to this page's SVG. At
   // low zoom, a drag can cross into a sibling page before the browser grants

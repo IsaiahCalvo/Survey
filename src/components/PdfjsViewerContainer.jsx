@@ -4599,6 +4599,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // The event carries the input so the menu takes its 44px touch rows.
     const press = createLongPressTracker({
       onFire: ({ x, y, input }) => {
+        // A move the press started under the finger is dropped first (L1).
+        window.dispatchEvent(new CustomEvent('survey-long-press', { detail: { x, y, input } }));
         const target = document.elementFromPoint(x, y) || el;
         const ev = new MouseEvent('contextmenu', {
           bubbles: true,
