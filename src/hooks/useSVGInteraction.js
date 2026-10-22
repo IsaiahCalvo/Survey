@@ -173,6 +173,7 @@ import {
 } from '../utils/resizeMinimum.js';
 import { resolveTextDoubleClick } from '../utils/selectModes.js';
 import { useCrossPageMove } from './useCrossPageMove.js';
+import { isCopyDragEvent, subscribeMoveModifier, getMoveModifierHeld } from '../utils/moveModifier.js';
 import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 import { lockTextboxSizeAfterResize } from '../utils/annotationPreferences.js';
 import {
@@ -316,6 +317,13 @@ function ensureGroupMoveStart(ds, { objects, callouts, pageWidth, pageHeight, ma
  *   callback (calloutId, patch) => void fired once on pointerup to capture
  *   the undo checkpoint (live paint already updated the store).
  */
+// The copy cursor (arrow with a plus) on the whole page while a drop would
+// copy: the drag's pointer capture sits on whichever element was pressed.
+function showCopyDragCursor(on) {
+  if (typeof document === 'undefined') return;
+  document.body?.classList?.toggle('survey-copy-drag', on === true);
+}
+
 export function useSVGInteraction({
   svgRef,
   annotations,
@@ -393,6 +401,10 @@ export function useSVGInteraction({
   // marks stay clamped to their page (legacy mounts unchanged).
   onMoveMarksToPage = null,
   documentId = null,
+  // Copy-drag (Visio's Ctrl+drag, utils/moveModifier.js isCopyDragEvent): a
+  // move let go with Ctrl / Cmd down copies instead. The viewer pastes the
+  // copies: (selection, dx, dy) => true when copied. Absent -> always a move.
+  onCopyDragDrop = null,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -549,6 +561,33 @@ export function useSVGInteraction({
   const crossPageMove = useCrossPageMove({
     svgRef, pageNumber, documentId, onMoveMarksToPage, setVisualTransform, selectedCount: selectedIds?.size ?? 0,
   });
+  const onCopyDragDropRef = useRef(onCopyDragDrop);
+  onCopyDragDropRef.current = onCopyDragDrop;
+  // Copy-drag: is this move drag a copy right now (the key is read from each
+  // pointer event, and from the key itself below)? A counter swung with
+  // Shift first (orbitBase) only moves: its new pose is not saved yet.
+  const resolveCopyDrag = useCallback((ds, e) => {
+    const copy = !ds.orbitBase && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e);
+    if (copy !== Boolean(ds.copyDrag)) {
+      ds.copyDrag = copy;
+      showCopyDragCursor(copy);
+    }
+    // A copy stays on its own page: no picture carried onto another one.
+    if (copy) crossPageMove.end(ds);
+    return copy;
+  }, [crossPageMove]);
+  // Pressing or letting go of Ctrl / Cmd mid-drag flips the drop between copy
+  // and move at once, before the pointer moves again (Visio).
+  useEffect(() => subscribeMoveModifier(() => {
+    const ds = dragStateRef.current;
+    if (!ds?.active || (ds.mode !== 'move' && ds.mode !== 'group-move')) return;
+    if (ds.orbitBase || typeof onCopyDragDropRef.current !== 'function') return;
+    const copy = getMoveModifierHeld();
+    if (copy === Boolean(ds.copyDrag)) return;
+    ds.copyDrag = copy;
+    showCopyDragCursor(copy);
+    setVisualTransform((prev) => (prev && !prev.crossPageAway ? { ...prev, copy } : prev));
+  }), []);
   // Drawboard rule 7: the last two presses on marks ({ key, wasSelected, at,
   // pointerType }, newest first) and when each picked mark joined the
   // selection (key -> ms) — read by the double-click handler to tell text
@@ -1645,7 +1684,10 @@ export function useSVGInteraction({
     // resolveToolPress): under Select a press on a mark that was NOT selected
     // picks it, but a drag from there is a box / lasso select — it never moves
     // a mark that was not already selected. Drag the selection to move it.
-    if (!wasAlreadySelected && activeTool === 'select' && svgRef.current) {
+    // Copy-drag is the exception: Ctrl / Cmd + drag on any mark copies it
+    // (Visio), picked or not.
+    if (!wasAlreadySelected && activeTool === 'select' && svgRef.current
+      && !(onCopyDragDrop && isCopyDragEvent(e))) {
       beginAreaSelectFromMark(e);
       return;
     }
@@ -2472,9 +2514,10 @@ export function useSVGInteraction({
       // Canvas audit chunk 2: edges / centres pull to other marks within
       // 6 screen px (Alt = free); the release saves the same snapped delta.
       ensureSingleMoveSnap(ds);
+      const copyDrag = resolveCopyDrag(ds, e);
       // Owner after Test 46: a mark that may change pages follows the pointer
       // off its page (clipped) and jumps to the next page once fully off.
-      if (crossPageMove.preview(ds, e, annotations?.objects, ds.orbitBase ? null : (pdx, pdy, away) => {
+      if (!copyDrag && crossPageMove.preview(ds, e, annotations?.objects, ds.orbitBase ? null : (pdx, pdy, away) => {
         if (away) {
           applySnapGuides(null);
           return { dx: pdx, dy: pdy };
@@ -2506,7 +2549,8 @@ export function useSVGInteraction({
           },
         });
       } else {
-        setVisualTransform({ id: ds.annotationIndex, dx: shown.dx, dy: shown.dy });
+        // copy: the mark is also drawn where it stays (SVGAnnotationLayer).
+        setVisualTransform({ id: ds.annotationIndex, dx: shown.dx, dy: shown.dy, copy: copyDrag });
       }
       setInteractionState('dragging');
     } else if (ds.mode === 'counter-orbit') {
@@ -2579,7 +2623,8 @@ export function useSVGInteraction({
       });
       // Canvas audit chunk 2: the selection snaps as one by its combined frame.
       ensureGroupMoveSnap(ds);
-      if (crossPageMove.preview(ds, e, annotations?.objects, (pdx, pdy, away) => {
+      const copyDrag = resolveCopyDrag(ds, e);
+      if (!copyDrag && crossPageMove.preview(ds, e, annotations?.objects, (pdx, pdy, away) => {
         if (away) {
           applySnapGuides(null);
           return { dx: pdx, dy: pdy };
@@ -2613,6 +2658,7 @@ export function useSVGInteraction({
       setVisualTransform({
         id: 'group', // special sentinel for group drag
         dx, dy,
+        copy: copyDrag,
         affectedIds: new Set(Object.keys(ds.groupOriginals).map(Number)),
         affectedCalloutIds: affectedCalloutIdsSet,
         // w53: Survey Markers in the selection ride the same translate
@@ -4243,7 +4289,7 @@ export function useSVGInteraction({
       }
       setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta, callouts, getGroupMarkerBoxes, applySnapGuides, collectSnapTargets, snapMoveDelta, showMoveGuides, ensureSingleMoveSnap, ensureGroupMoveSnap]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta, callouts, getGroupMarkerBoxes, applySnapGuides, collectSnapTargets, snapMoveDelta, showMoveGuides, ensureSingleMoveSnap, resolveCopyDrag, ensureGroupMoveSnap]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
@@ -4480,7 +4526,16 @@ export function useSVGInteraction({
 
     // Owner after Test 46: let go over another page -> the marks move there
     // (one save, one undo step — PDFViewer handleMoveMarksToPage).
-    const crossPageDropped = (ds.mode === 'move' || ds.mode === 'group-move') && crossPageMove.drop(ds, e);
+    // Copy-drag: Ctrl / Cmd down at let-go -> the marks stay and a copy lands
+    // where they were dragged to (one paste, one Undo step, the copy picked).
+    const copyDrop = (ds.mode === 'move' || ds.mode === 'group-move') && !ds.orbitBase
+      && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e);
+    // A copy-drag skips the cross-page preview, so one turned back into a
+    // move (key let go) over another page reads where it is now first.
+    if (!copyDrop && (ds.mode === 'move' || ds.mode === 'group-move') && ds.crossPage === undefined) {
+      crossPageMove.preview(ds, e, annotations?.objects);
+    }
+    const crossPageDropped = !copyDrop && (ds.mode === 'move' || ds.mode === 'group-move') && crossPageMove.drop(ds, e);
     if (crossPageDropped) {
       try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
       justDraggedAtRef.current = Date.now();
@@ -4521,7 +4576,10 @@ export function useSVGInteraction({
             reason: 'held-at-page-edge', mode: 'move', type: obj?.data?.type || obj?.type, id: ds.markId, dx, dy, pageNumber,
           });
         }
-        if (obj && (actualDx !== 0 || actualDy !== 0 || ds.orbitBase)) {
+        if (obj && copyDrop && (actualDx !== 0 || actualDy !== 0)) {
+          onCopyDragDropRef.current({ indices: [moveIndex] }, actualDx, actualDy);
+          justDraggedAtRef.current = Date.now();
+        } else if (obj && (actualDx !== 0 || actualDy !== 0 || ds.orbitBase)) {
           // Deep clone annotations and apply position update
           const updatedAnnotations = deepClone(annotations);
           const targetObj = updatedAnnotations.objects[moveIndex];
@@ -4831,6 +4889,20 @@ export function useSVGInteraction({
       if (groupBeyond && dx === 0 && dy === 0) {
         reportDroppedMove({ reason: 'held-at-page-edge', mode: 'group-move', dx: rawGroupDx, dy: rawGroupDy, pageNumber });
       }
+      // Copy-drag: exactly what the drag carried (locked members stayed put,
+      // so they are not copied either) is pasted by the same delta.
+      const groupCopied = copyDrop && (dx !== 0 || dy !== 0) && (() => {
+        const indices = Object.keys(ds.groupOriginals)
+          .map((idxStr) => resolveMarkIndex(annotations?.objects, Number(idxStr), ds.groupIds?.[idxStr] ?? null))
+          .filter((idx) => idx >= 0);
+        onCopyDragDropRef.current({
+          indices,
+          calloutIds: Object.keys(ds.groupCalloutOriginals || {}),
+          markerIds: Array.isArray(ds.groupMarkerIds) ? ds.groupMarkerIds : [],
+        }, dx, dy);
+        justDraggedAtRef.current = Date.now();
+        return true;
+      })();
 
       // TEST-PLAN item 55 (2026-10-06): the selected callouts are written
       // FIRST and rendered (flushSync), so the page save below is built on a
@@ -4838,7 +4910,7 @@ export function useSVGInteraction({
       // selection — marks, callouts and Survey Markers — as the arrow-key
       // nudge does (commitNudgeBurst). Writing them after the save made a
       // second step: one Undo put the shapes back and left the callouts moved.
-      const groupCalloutEntries = (dx !== 0 || dy !== 0) && ds.groupCalloutOriginals
+      const groupCalloutEntries = !groupCopied && (dx !== 0 || dy !== 0) && ds.groupCalloutOriginals
         ? Object.entries(ds.groupCalloutOriginals)
         : [];
       if (groupCalloutEntries.length > 0 && typeof onUpdateCalloutLive === 'function') {
@@ -4856,7 +4928,7 @@ export function useSVGInteraction({
           }
         });
       }
-      if (dx !== 0 || dy !== 0) {
+      if (!groupCopied && (dx !== 0 || dy !== 0)) {
         const updatedAnnotations = deepClone(groupCalloutEntries.length > 0
           ? (nudgeLatestRef.current.annotations || annotations)
           : annotations);
@@ -5452,6 +5524,7 @@ export function useSVGInteraction({
     }
 
     crossPageMove.end(ds);
+    if (ds.copyDrag) showCopyDragCursor(false);
     // Reset drag state
     dragStateRef.current = {
       active: false, mode: null, handleId: null, startSVGPoint: null,
@@ -5497,7 +5570,8 @@ export function useSVGInteraction({
     const ds = dragStateRef.current;
     if (!ds?.active || (ds.mode !== 'move' && ds.mode !== 'group-move')) return false;
     crossPageMove.end(ds);
-    dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined };
+    if (ds.copyDrag) showCopyDragCursor(false);
+    dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined, copyDrag: false };
     justDraggedAtRef.current = Date.now();
     setVisualTransform(null);
     setInteractionState('idle');

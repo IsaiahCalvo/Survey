@@ -1010,6 +1010,11 @@ const SVGAnnotationLayerBody = memo(({
     onSelectedSurveyMarkerIdsChange: setSelectedSurveyMarkerIds,
     onMoveMarksToPage,
     documentId,
+    // Copy-drag (Ctrl / Cmd + drag, Visio): the viewer's Duplicate, at the
+    // dragged-to spot instead of the fixed nudge.
+    onCopyDragDrop: typeof onDuplicateFamily === 'function'
+      ? (selection, dx, dy) => onDuplicateFamily(pageNumber, selection, { dx, dy })
+      : null,
   });
   // The picture of a mark being carried over THIS page from another one.
   const crossPageGhost = useSyncExternalStore(
@@ -5735,6 +5740,18 @@ const SVGAnnotationLayerBody = memo(({
       )
         ? `translate(${visualTransform.dx || 0}, ${visualTransform.dy || 0})`
         : undefined;
+      // Copy-drag: the callout also stays drawn where it is.
+      const calloutCopyOrigin = groupMoveTransform && visualTransform.copy === true
+        ? (
+          <g
+            transform={`translate(${-(visualTransform.dx || 0)}, ${-(visualTransform.dy || 0)})`}
+            style={{ pointerEvents: 'none' }}
+            data-copy-drag-original="true"
+          >
+            {element}
+          </g>
+        )
+        : null;
 
       // w52: a SELECTED callout's handles + hit zone are drawn above every
       // mark (like shape handles), not in its stack slot, so a mark stacked
@@ -5755,6 +5772,7 @@ const SVGAnnotationLayerBody = memo(({
             style={{ pointerEvents: 'none' }}
             transform={groupMoveTransform}
           >
+            {calloutCopyOrigin}
             {element}
           </g>
         );
@@ -5798,6 +5816,7 @@ const SVGAnnotationLayerBody = memo(({
           onPointerEnter={() => handleCalloutPointerEnter(displayCallout.id)}
           onPointerLeave={() => handleCalloutPointerLeave(displayCallout.id)}
         >
+          {calloutCopyOrigin}
           {element}
           {liftHandles ? null : hitTargets}
         </g>
@@ -6259,6 +6278,11 @@ const SVGAnnotationLayerBody = memo(({
       }
       return undefined;
     })();
+    const copyDragOrigin = visualTransform?.copy === true
+      && !visualTransform.previewObjects
+      && (visualTransform.id === i || (visualTransform.id === 'group' && visualTransform.affectedIds?.has(i)))
+      ? `translate(${-(visualTransform.dx || 0)}, ${-(visualTransform.dy || 0)})`
+      : null;
     if (obj?.data?.measure && (renderObj !== obj || computedTransform)) {
       liveMeasureLabels.set(i, {
         label: buildMeasureLabel(renderObj, effectiveMeasureScale),
@@ -6416,6 +6440,13 @@ const SVGAnnotationLayerBody = memo(({
               data-cloud-glow="true"
               style={{ pointerEvents: 'none' }}
             />
+          </g>
+        )}
+        {/* Copy-drag: the original stays where it is while its copy follows
+            the pointer — drawn here, undoing the wrapper's move translate. */}
+        {copyDragOrigin && (
+          <g transform={copyDragOrigin} style={{ pointerEvents: 'none' }} data-copy-drag-original="true">
+            {renderElement}
           </g>
         )}
         {/* Actual annotation render — pointerEvents none so clicks pass to hit rect */}

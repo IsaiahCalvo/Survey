@@ -354,6 +354,7 @@ import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
+import { useBrushAdjustGesture } from './hooks/useBrushAdjustGesture.js';
 import { useLiveCursorBroadcast } from './hooks/useLiveCursorBroadcast.js';
 import RemoteCursorLayer from './components/collab/RemoteCursorLayer.jsx';
 import { useDocumentToolPreferences, useDocuments, useStorage, useTemplates } from './hooks/useDatabase';
@@ -9451,6 +9452,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setEraserSize(clamped);
     }
   }, [handleEraserSizeFocusChange, publishToolbarDraft]);
+
+  // Photoshop's on-page brush drag (Alt + right-drag, or Ctrl + Alt + drag):
+  // left / right = the armed tool's width, up / down = its opacity, set as the
+  // toolbar sets them (utils/brushAdjustGesture.js). Only while the bar works
+  // for the armed tool, never for a picked mark.
+  useBrushAdjustGesture({
+    enabled: isActive !== false && activeTool === pickBarTool,
+    getContainer: () => contentRef.current || containerRef.current || null,
+    tool: activeTool,
+    width: activeTool === 'eraser' ? eraserSize : strokeWidth,
+    opacity: strokeOpacity,
+    color: getHexFromColor(strokeColor) || strokeColor,
+    minWidth: 1,
+    maxWidth: activeTool === 'eraser' ? 100 : 50,
+    decimals: activeTool === 'eraser' ? 0 : ANNOTATION_WIDTH_DECIMALS,
+    onCommit: ({ width, opacity }) => {
+      if (width != null) {
+        const commitWidth = activeTool === 'eraser' ? handleEraserSizeInputBlur : handleStrokeWidthInputBlur;
+        commitWidth({ currentTarget: { value: String(width) } });
+      }
+      if (opacity != null) handleStrokeOpacityChange(opacity);
+    },
+  });
 
   // Item copy state (was transfer)
   const [transferState, setTransferState] = useState(null); // { mode: 'select'|'prompt'|'checklist', sourceSpaceId, items, destSpaceId }
@@ -32430,8 +32454,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   copyFamilySelectionRef.current = copyFamilySelection;
 
   // Duplicate (Cmd+D, right-click Duplicate): a copy of the selection 16
-  // page units down-right of it; the clipboard is left alone.
-  const duplicateFamilySelection = useCallback((pageNumber, selection) => {
+  // page units down-right of it; the clipboard is left alone. Copy-drag
+  // (Ctrl / Cmd + drag, Visio) passes `offset` = how far it was dragged.
+  const duplicateFamilySelection = useCallback((pageNumber, selection, offset = null) => {
     const collected = collectFamilySelection(pageNumber, selection);
     const { width, height } = pageSizeFor(pageNumber);
     const clipboard = buildFamilyClipboard({
@@ -32445,7 +32470,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageHeight: height,
     });
     if (!clipboard) return false;
-    return commitFamilyPaste(pageNumber, clipboard, DUPLICATE_OFFSET_PAGE_UNITS, DUPLICATE_OFFSET_PAGE_UNITS);
+    const dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
+    const dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
+    return commitFamilyPaste(pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
 
   // w53: a saved marker is a family member; one still being placed is not.
