@@ -43,10 +43,12 @@ W=$(adb shell wm size | sed 's/.*: //;s/x.*//' | tr -d '\r'); H=$(adb shell wm s
 # Upper-middle of the page: the page ends near 74% of the screen height and
 # earlier flows left marks near 65% on the right.
 ( pick Line ) || { pick Shapes; pick Line; }
+ev "(() => { window.__pd = []; const log = n => e => window.__pd.push(n + ':' + e.pointerType + '@' + e.target.tagName + '.' + String(e.target.getAttribute?.('class') || '').slice(0, 30)); ['pointerdown', 'pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, log(t), true)); return 'ok'; })()" >/dev/null
+echo "pressed tools: $(ev "[...document.querySelectorAll('[aria-pressed=true]')].map(b => b.getAttribute('aria-label') || b.textContent.trim()).join(' | ')")"
 # Line A: a horizontal-ish drag (0 degrees is itself a 45-degree step).
 A=$(draw $((W * 3 / 10)) $((H * 52 / 100)) $((W * 6 / 10)) $((H * 52 / 100)))
 echo "line A index: $A"
-case "$A" in none*) fail "Line A was not committed ($A)";; esac
+case "$A" in none*) fail "Line A was not committed ($A); events: $(ev "(window.__pd || []).slice(-8).join(' , ')")";; esac
 EA=$(ends "$A"); echo "line A ends (page): $EA"
 [ "$EA" != "none" ] || fail "Line A has no visible <line> element"
 AE=$(endpx "$A" 2); echo "line A end (device px): $AE"
