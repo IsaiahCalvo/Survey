@@ -2008,9 +2008,11 @@ export default function TemplatesEditor({
     }));
     const { exportKitId: _oldKit, answerSet: _oldAnswers, smartFillShapes: _oldShapes, ...originalRest } = original;
     // Smart fill shapes: the live list (a drawing may have added one since this
-    // editor opened) minus the ones removed here.
+    // editor opened) minus the ones removed here. A template not saved yet (a
+    // duplicate) has no live row, so it keeps the shapes it was made with.
     const removedShapes = new Set(r.removedSmartFillShapeIds || []);
-    const shapes = (Array.isArray(_oldShapes) ? _oldShapes : []).filter((shape) => !removedShapes.has(shape?.id));
+    const liveShapes = (original.id ? _oldShapes : r.smartFillShapes) || [];
+    const shapes = (Array.isArray(liveShapes) ? liveShapes : []).filter((shape) => !removedShapes.has(shape?.id));
     return {
       ...originalRest,
       ...(shapes.length ? { smartFillShapes: shapes } : {}),

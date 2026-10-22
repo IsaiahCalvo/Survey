@@ -373,7 +373,7 @@ export function signaturesMatch(a, b) {
   return either > 0 && both / either >= MATCH_MIN_OVERLAP;
 }
 
-function candidateCells(mask, width, height, sample) {
+function candidateCells(mask, width, height, samples) {
   const label = new Int32Array(width * height).fill(-1);
   const queue = new Int32Array(width * height);
   const cells = [];
@@ -398,10 +398,11 @@ function candidateCells(mask, width, height, sample) {
     if (touches) continue;
     const w = maxX - minX + 1; const h = maxY - minY + 1;
     // A cell inside the tag is at most the tag's size, and not tiny next to it
-    // (a tag split by a divider has cells about half its size).
-    if (w > sample.width * 1.2 || h > sample.height * 1.2) continue;
-    if (w < sample.width * 0.2 && h < sample.height * 0.2) continue;
-    cells.push({ seed: start });
+    // (a tag split by a divider has cells about half its size). Any sample's
+    // size will do: small and big tag shapes can be searched for together.
+    const fits = samples.some((sample) => w <= sample.width * 1.2 && h <= sample.height * 1.2
+      && (w >= sample.width * 0.2 || h >= sample.height * 0.2));
+    if (fits) cells.push({ seed: start });
   }
   return cells;
 }
@@ -419,7 +420,7 @@ function candidateCells(mask, width, height, sample) {
 export function findSimilarTags(mask, width, height, sample, { maxCandidates = 400, templates = null, pxPerUnit = 0, outlineAt = null } = {}) {
   const samples = (Array.isArray(sample) ? sample : [sample]).filter((s) => s?.width > 0);
   if (!samples.length) return [];
-  // The candidate cells must fit the biggest sample.
+  // The crop around a candidate must hold the biggest sample.
   const span = { width: Math.max(...samples.map((s) => s.width)), height: Math.max(...samples.map((s) => s.height)) };
   // Cells come from the plain mask and from the gap-closed masks too, so a tag
   // whose border has a small break (which a tap closes, closedGaps 1-2) is
@@ -427,7 +428,7 @@ export function findSimilarTags(mask, width, height, sample, { maxCandidates = 4
   // seed is valid for the normal engine below, which re-verifies every cell.
   const cells = [];
   for (const r of [0, 1, 2]) {
-    cells.push(...candidateCells(r ? dilateMask(mask, width, height, r) : mask, width, height, span));
+    cells.push(...candidateCells(r ? dilateMask(mask, width, height, r) : mask, width, height, samples));
   }
   const found = [];
   const pad = Math.ceil(Math.max(span.width, span.height) * 1.5) + 8;
