@@ -48,6 +48,7 @@ import { useConfirmDialog, usePromptDialog } from './components/dialogPrompts';
 import { readBlobAsArrayBuffer } from './utils/blobArrayBuffer.js';
 import { addedToProjectMessage, asPdfFile, isUploadableProjectId, rejectedFilesMessage, splitDroppedFiles } from './utils/fileDrop.js';
 import { freeDocumentName } from './tools/inApp.js';
+import { canReachServer } from './utils/serverReachable.js';
 import { ToolError } from './tools/errors.js';
 import { FONT_FAMILY, hexToRgba, hasNameConflict } from './viewerShared.js';
 
@@ -2155,6 +2156,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   const savePdfToolResults = async (files) => {
     const projectId = pdfTools?.docs[0]?.project_id || null;
     const targetProjectId = isUploadableProjectId(projectId) ? projectId : null;
+    // Offline, each cloud request sits in retries for about 30 s and the
+    // dialog stays locked on "Saving…" for minutes; say so right away instead.
+    if (!(await canReachServer(import.meta.env.VITE_SUPABASE_URL))) {
+      throw new Error(files.length > 1 ? 'Not saved. Download them instead, or try again when you are online.' : 'Not saved. Download it instead, or try again when you are online.');
+    }
     let notSaved = 0;
     setActiveUploads((count) => count + 1);
     try {

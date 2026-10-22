@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
-# PDF tools with no network (#1029): run after android-offline-relaunch.yaml,
-# with adb reverse removed so the local API is gone. Opens the cached sample
-# drawing, rotates it, checks Save fails with the offline message, downloads
-# (share sheet), then compresses and downloads again. Usage: <script> OUT_DIR
+# PDF tools with no network (#1029): the tools must work on a document that is
+# already open when the connection drops. Runs after android-offline-relaunch.yaml.
+# A cloud document can't be opened from scratch offline (the device keeps no
+# copy it may use without the server's access check, see pdfByteCache.js), so
+# reconnect the local API, open the sample drawing, then cut it again. Then:
+# rotate, check Save fails with the offline message, download (share sheet),
+# compress and download again. Usage: <script> OUT_DIR
 set -euo pipefail
 OUT="$1"
+adb reverse tcp:54421 tcp:54421
 maestro test --test-output-dir "$OUT" .github/native-flows/android-pdf-tools-offline.yaml
+# Let the whole file arrive, then drop the connection.
+sleep 8
+adb reverse --remove-all
+# Removing the rule keeps open connections alive (the app saved through one),
+# so restart adb to cut every tunnel.
+adb kill-server
+adb start-server
+adb wait-for-device
 PID=$(adb shell pidof com.kalvoe.survey | tr -d '\r')
 adb forward tcp:9222 "localabstract:webview_devtools_remote_$PID"
 ev() { node .github/native-flows/webview-storage.mjs --eval "$1"; }
@@ -21,6 +33,8 @@ wait_button() {
     [ "$r" = "yes" ] && return 0; sleep 1
   done
   echo "dialog: $(ev "(() => (document.querySelector('.pdft-card')?.innerText || 'no dialog').replace(/\\s+/g, ' ').slice(0, 400))()")"
+  echo "detail: $(ev "(() => document.querySelector('.pdft-error[data-detail]')?.dataset.detail || 'none')()")"
+  timeout 20 adb logcat -d | grep -i "PdfTools" | tail -5 || true
   echo "::error::no '$1' button after $2s"; adb exec-out screencap -p > "$OUT/pdf-tools-stuck.png"; exit 1
 }
 # Download hands the file to Android's share sheet; check it shows, then close it.
@@ -50,11 +64,12 @@ pick "Run"
 wait_button "Save as new document" 120
 adb exec-out screencap -p > "$OUT/21-offline-rotated.png"
 pick "Save as new document"
-for _ in $(seq 1 30); do
+for _ in $(seq 1 60); do
   msg=$(ev "(() => document.querySelector('.pdft-error')?.textContent || '')()")
   [ -n "$msg" ] && break; sleep 1
 done
 echo "save offline: $msg"
+[ -n "$msg" ] || { echo "dialog: $(ev "(() => document.querySelector('.pdft-card')?.innerText || '')()")"; adb logcat -d | grep -i "PdfTools\|chromium" | tail -40; }
 case "$msg" in *"Not saved. Download it instead"*) ;; *) echo "::error::Save offline did not say 'Not saved. Download it instead' ($msg)"; exit 1 ;; esac
 adb exec-out screencap -p > "$OUT/22-offline-save-refused.png"
 pick "Download"

@@ -57,8 +57,9 @@ function usePageThumbs(getBytes, wanted) {
         }
         (pdf.loadingTask || pdf).destroy?.();
         if (!dead) setDone(true);
-      } catch {
-        if (!dead) setError('The pages could not be shown. The file may be damaged.');
+      } catch (err) {
+        console.error('[PdfTools] page pictures failed', err);
+        if (!dead) setError({ text: 'The pages could not be shown. The file may be damaged.', detail: String(err?.message || err) });
       }
     })();
     return () => { dead = true; };
@@ -67,7 +68,7 @@ function usePageThumbs(getBytes, wanted) {
 }
 
 function PageGrid({ thumbs, error, order, setOrder, rotateOnly }) {
-  if (error) return <p className="pdft-error">{error}</p>;
+  if (error) return <p className="pdft-error" data-detail={error.detail}>{error.text}</p>;
   if (!thumbs || !order.length) return <p className="pdft-note"><Spinner size={14} color="currentColor" /> Loading pages…</p>;
   const move = (k, d) => setOrder((o) => {
     const n = [...o];
