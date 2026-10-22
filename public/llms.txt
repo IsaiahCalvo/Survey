@@ -1,18 +1,18 @@
 # Survey
 
-> Survey is a PDF markup app for construction and engineering drawings. It runs in the browser on Mac, Windows, iPad, Android tablets and phones at https://surveytool.app.
+> Survey is a PDF markup app for construction and engineering drawings. It runs in the browser on computers, tablets and phones at https://surveytool.app.
 
-Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, symbols, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export to Excel, one sheet per category plus a summary, and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys to Excel and back, spaces and regions, templates, sharing with viewers and editors, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
+Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, symbols, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export as a spreadsheet (.xlsx, one sheet per category plus a summary, opens in Excel, Google Sheets, Numbers or LibreOffice) and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys with data export, spaces and regions, templates, sharing with viewers and editors, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
 
 ## Pages
 
 - [Home](https://surveytool.app/welcome): what Survey is and who it is for
-- [Features](https://surveytool.app/features): site surveys to Excel and back, spaces and regions, templates, every markup tool free, count markers, Survey vs Drawboard PDF
+- [Features](https://surveytool.app/features): site surveys with data export, spaces and regions, templates, every markup tool free, count markers, Survey vs Drawboard PDF
 - [Devices](https://surveytool.app/devices): desktop, tablet and phone
 - [Pricing](https://surveytool.app/pricing): Free, Pro and Enterprise plans
 - [FAQ](https://surveytool.app/faq): common questions
 - [Use Survey with your AI](https://surveytool.app/use-with-ai): connect Claude, ChatGPT or a browser agent to act for you with your plan and role; what it can and cannot do, and how to turn it off. MCP server: https://cvamwtpsuvxvjdnotbeg.supabase.co/functions/v1/survey-mcp
-- [Field surveys](https://surveytool.app/use-cases/field-surveys): Walk a site with the plans on your iPad, count what is there, tag what needs work and send the totals to Excel.
+- [Field surveys](https://surveytool.app/use-cases/field-surveys): Walk a site with the plans on a tablet, count what is there, tag what needs work and export the totals as data.
 - [Punch lists](https://surveytool.app/use-cases/punch-lists): Mark punch items right on the floor plan with numbered markers and notes, then share the marked-up set with your team.
 - [As-builts](https://surveytool.app/use-cases/as-builts): Red-line the drawings with what was really built: moved walls, rerouted runs, added fixtures. Keep it with the project.
 - [Survey vs Bluebeam Revu](https://surveytool.app/compare/bluebeam): An honest look at Survey and Bluebeam Revu for marking up and counting on construction drawings: what each does best and who each one fits.

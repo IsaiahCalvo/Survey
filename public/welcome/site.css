@@ -126,10 +126,15 @@ p{margin:0 0 1em}
 .ticks li{padding:7px 0 7px 32px;position:relative;font-size:17px}
 .ticks li::before{content:"";position:absolute;left:0;top:9px;width:20px;height:20px;border-radius:50%;background:var(--ink) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/13px no-repeat}
 :root[data-theme="dark"] .ticks li::before{background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%230f131c' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
-.devices{position:relative;padding-right:72px}
-.devices.wide{max-width:960px;margin:0 auto}
-.dev-tab{margin:0;border:10px solid #1b222c;border-radius:20px;overflow:hidden;box-shadow:var(--shadow);background:#1b222c}
-.dev-ph{margin:0;position:absolute;right:0;bottom:-24px;width:25%;border:6px solid #1b222c;border-radius:24px;overflow:hidden;box-shadow:var(--shadow);background:#1b222c}
+/* computer, tablet and phone, side by side: each a real capture at that
+   device's own size, in a plain frame, named underneath */
+.devs{display:grid;grid-template-columns:5.2fr 3.7fr 1.3fr;gap:32px;align-items:end;margin:48px 0 0}
+.dev{margin:0;min-width:0}
+.dev .scr{overflow:hidden;background:#1b222c;box-shadow:var(--shadow)}
+.dev-pc .scr{border-radius:12px;border:1px solid rgba(255,255,255,.08);padding-top:26px;background:#1b222c radial-gradient(circle at 18px 13px,#4a5263 4px,transparent 4.5px),radial-gradient(circle at 34px 13px,#4a5263 4px,transparent 4.5px),radial-gradient(circle at 50px 13px,#4a5263 4px,transparent 4.5px) no-repeat}
+.dev-tab .scr{border:12px solid #1b222c;border-radius:26px}
+.dev-ph .scr{border:6px solid #1b222c;border-radius:28px}
+.dev figcaption{margin-top:16px;text-align:center;font-weight:600;font-size:16px;color:var(--soft)}
 
 .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;align-items:stretch}
 .plan{display:flex;flex-direction:column;background:var(--sheet);border-radius:var(--r-card);padding:32px;position:relative}
@@ -219,11 +224,11 @@ tr:last-child>*{border-bottom:0}
 .lead-in .head{margin-bottom:0}
 .duo{display:grid;gap:16px}
 .duo .shot:last-child{width:88%;margin:-40px 0 0 auto;position:relative;box-shadow:0 1px 0 rgba(20,26,43,.06),0 24px 50px -24px rgba(20,26,43,.55)}
-.strips{display:grid;gap:12px;max-width:1200px;margin:0 auto 32px}
-.strips img{width:100%;border-radius:12px;background:#1b222c;box-shadow:0 1px 0 rgba(20,26,43,.06),0 10px 30px -18px rgba(20,26,43,.4)}
 .toolgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 .toolgrid>div{background:var(--sheet);border-radius:var(--r-card);padding:22px 24px}
 .toolgrid h3{font-size:18px;margin-bottom:4px}
+.tool-ic{display:grid;place-items:center;width:44px;height:44px;border-radius:10px;background:var(--paper);color:var(--ink);margin-bottom:16px;box-shadow:0 0 0 1px var(--rule)}
+.tool-ic svg,.tool-ic span{width:24px;height:24px}
 .toolgrid p{color:var(--soft);margin:0;font-size:15px}
 .tier{font-weight:600}
 .vs-tbl table{min-width:0}
@@ -253,6 +258,8 @@ tr:last-child>*{border-bottom:0}
   .trio{max-width:600px;margin:0 auto}
   .plans{max-width:560px;margin:0 auto}
   .grid6,.toolgrid{grid-template-columns:1fr 1fr}
+  .devs{grid-template-columns:3.7fr 1.3fr}
+  .dev-pc{grid-column:1/-1}
   .custom{grid-template-columns:1fr;padding:48px}
   .panel{padding:48px}
   .sec{padding:80px 0}
@@ -277,15 +284,20 @@ tr:last-child>*{border-bottom:0}
   .sec{padding:64px 0}
   .head{margin-bottom:32px}
   .right .btn.primary{display:none}
-  .grid6,.toolgrid,.fgrid,.steps,.narrow .steps,.narrow .dev-rows{grid-template-columns:1fr}
+  .grid6,.fgrid,.steps,.narrow .steps,.narrow .dev-rows{grid-template-columns:1fr}
+  .toolgrid{gap:10px}
+  .toolgrid>div{padding:16px}
+  .toolgrid h3{font-size:16px}
+  .toolgrid p{font-size:14px}
+  .tool-ic{margin-bottom:12px}
   .duo .shot:last-child{width:94%;margin-top:-20px}
-  .strips{display:none}
+  .devs{grid-template-columns:1fr 1fr;gap:20px}
+  .dev-pc{grid-column:1/-1}
   .vs-tbl th,.vs-tbl td{padding:12px 10px;font-size:14px}
   .vs-tbl thead th{font-size:15px}
   .custom,.panel{padding:32px 24px;border-radius:20px}
   .cta-band{padding:64px 24px;border-radius:20px}
   .band{padding-bottom:64px}
-  .devices{padding-right:44px}
   .plan{padding:24px}
   .page-head{padding:56px 0 24px}
   .feat{padding:48px 0}

@@ -3,6 +3,11 @@
 // deploy here, in plain words, then run `node scripts/build-marketing.mjs`.
 // Work still behind a feature flag stays off this list until it is on for all.
 export const WHATS_NEW = [
+  { date: '2026-10-22', items: [
+    'The survey Export button now says Export data. It downloads a spreadsheet that opens in Excel, Google Sheets or Numbers.',
+    'The Revision cloud tool has a new, clearer cloud icon.',
+    'New pictures on the website, taken in the real app on a computer, a tablet and a phone.',
+  ] },
   { date: '2026-10-21', items: [
     'A fresh look for the website: cleaner type and spacing.',
     'Free PDF tools: RTF, HTML, DOCX, BMP and GIF to PDF, and the tools are faster and lighter on big scanned drawing sets.',

@@ -7,6 +7,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TOOLS as PDF_TOOLS, TOOL_PATHS } from './free-tools-catalog.mjs';
 import { WHATS_NEW } from './whats-new.mjs';
 
+// The app's own tool glyphs (scripts/dump-marketing-icons.mjs renders them).
+const ICONS = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'marketing-icons.json'), 'utf8'));
+
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 export const ORIGIN = 'https://surveytool.app';
 // Inlined so first paint doesn't wait on a stylesheet request.
@@ -34,9 +37,9 @@ const NAV = [
 
 const USES = [
   { slug: 'field-surveys', name: 'Field surveys', title: 'Field surveys on drawings',
-    desc: 'Walk a site with the plans on your iPad, count what is there, tag what needs work and send the totals to Excel.',
-    lead: 'Take the drawing set to site on an iPad or phone, mark what you find and count it as you go.',
-    steps: [['Load the plans', 'Upload the PDF set once. It is on every device you sign in on.'], ['Walk and tap', 'Make a category for each thing you check, like outlets or fire doors, and tap each one on the plan. Survey numbers them and keeps the totals.'], ['Note what you see', 'Add a callout or a cloud where something is wrong, right on the sheet.'], ['Send the results', 'Export the counts to Excel for the report or the estimate.']] },
+    desc: 'Walk a site with the plans on a tablet, count what is there, tag what needs work and export the totals as data.',
+    lead: 'Take the drawing set to site on a tablet or phone, mark what you find and count it as you go.',
+    steps: [['Load the plans', 'Upload the PDF set once. It is on every device you sign in on.'], ['Walk and tap', 'Make a category for each thing you check, like outlets or fire doors, and tap each one on the plan. Survey numbers them and keeps the totals.'], ['Note what you see', 'Add a callout or a cloud where something is wrong, right on the sheet.'], ['Send the results', 'Export the counts as a spreadsheet for the report or the estimate.']] },
   { slug: 'punch-lists', name: 'Punch lists', title: 'Punch lists on the floor plan',
     desc: 'Mark punch items right on the floor plan with numbered markers and notes, then share the marked-up set with your team.',
     lead: 'Put every punch item where it is on the plan, numbered, so nobody hunts for it.',
@@ -54,14 +57,14 @@ const COMPARE = [
     desc: 'An honest look at Survey and Bluebeam Revu for marking up and counting on construction drawings: what each does best and who each one fits.',
     intro: 'Bluebeam Revu is the long-time standard for PDF markup in construction, with deep measurement, takeoff and document tools. Survey is a simpler app that runs in the browser and focuses on markup and counting.',
     themBest: ['Full measurement and quantity takeoff tools', 'A large set of document tools: compare sheets, batch edits, forms', 'Wide use across big general contractors'],
-    usBest: ['Runs in any browser, nothing to install', 'A free plan, and Pro at $9.99 a month', 'Tap-to-count markers with running totals and Excel export', 'Made to work with Apple Pencil and touch'],
+    usBest: ['Runs in any browser, nothing to install', 'A free plan, and Pro at $9.99 a month', 'Tap-to-count markers with running totals you can export', 'Made for a pen and touch'],
     pick: 'Pick Bluebeam if you need full takeoff and measurement, or your company already runs on it. Pick Survey if you want quick markup and counting on any device without installing anything or paying much.' },
   { slug: 'drawboard', them: 'Drawboard PDF', table: true,
     desc: 'Survey and Drawboard PDF side by side: the same markup tools, which ones cost money in each, and what Survey does that Drawboard does not.',
-    intro: 'Drawboard PDF is a well-known markup app for Windows and iPad. Survey gives you the same markup tools in the browser, free, and adds site surveys that go to Excel and back, and spaces and regions.',
+    intro: 'Drawboard PDF is a well-known markup app for Windows and iPad. Survey gives you the same markup tools in the browser, free, and adds site surveys that export as data, and spaces and regions.',
     themBest: ['A native Windows and iPad app with a polished pen feel', 'Years of use in design offices', 'Drawboard Projects, a separate product, adds review workflows and issue tracking for design teams'],
-    usBest: ['Every markup tool is free, including callouts, measuring, OCR and page tools, which Drawboard puts behind PRO', 'Site surveys on the plan that export to Excel and come back', 'Spaces and regions: work on one part of a sheet at a time', 'Count markers with running totals', 'Runs in any browser on Mac, Windows, iPad, Android and phones', 'Pro is $9.99 a month, with a free plan that has no time limit'],
-    pick: 'Pick Drawboard if you want a native Windows or iPad app and your team already uses it. Pick Survey if you want the same markup tools free in the browser, or you walk sites and want the survey to land in Excel.' },
+    usBest: ['Every markup tool is free, including callouts, measuring, OCR and page tools, which Drawboard puts behind PRO', 'Site surveys on the plan that export as a spreadsheet you can open anywhere', 'Spaces and regions: work on one part of a sheet at a time', 'Count markers with running totals', 'Runs in any browser on a computer, tablet or phone', 'Pro is $9.99 a month, with a free plan that has no time limit'],
+    pick: 'Pick Drawboard if you want a native Windows or iPad app and your team already uses it. Pick Survey if you want the same markup tools free in the browser, or you walk sites and want the survey answers as data.' },
 ];
 
 export const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -69,28 +72,28 @@ export const strip = (s) => s.replace(/<[^>]+>/g, '');
 
 // One list feeds the visible FAQ and the FAQPage schema, so they never drift.
 const FAQ = [
-  ['What is Survey?', 'Survey is a PDF markup app for construction and engineering drawings. You open a drawing set in your browser, mark it up with every tool you would expect, and run site surveys on the plan that go straight to Excel and come back.'],
-  ['How do site surveys work?', 'Build a checklist template once: the things you check and the questions you ask at each one. On site, drop a marker where each item is, answer Y, N or N/A, and add a note, a photo or a voice note. Export to Excel and you get one sheet per category plus a summary. Link a Microsoft 365 workbook and changes made in Excel come back onto the plan.'],
+  ['What is Survey?', 'Survey is a PDF markup app for construction and engineering drawings. You open a drawing set in your browser, mark it up with every tool you would expect, and run site surveys on the plan that you export as a spreadsheet.'],
+  ['How do site surveys work?', 'Build a checklist template once: the things you check and the questions you ask at each one. On site, drop a marker where each item is, answer Y, N or N/A, and add a note, a photo or a voice note. Export the data and you get a spreadsheet file (.xlsx) with one sheet per category plus a summary. It opens in Excel, Google Sheets, Numbers or LibreOffice. Link a Microsoft 365 workbook and edits made there come back onto the plan.'],
   ['What are spaces and regions?', 'A space is a named set of pages with a region drawn on each page. Turn it on and everything outside the region dims, so you work on one part of a sheet at a time. Markups made inside a space belong to it. We have not found this in any other PDF app.'],
   ['Which markup tools are free?', 'All of them: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers, measuring, text, callouts, symbols, text highlight and strike-through, OCR and page tools. Drawboard PDF charges for callouts, measuring, OCR and page tools. Survey does not.'],
-  ['Do I need to install anything?', 'No. Survey runs in Chrome, Edge and Safari on Mac, Windows, iPad, Android tablets and phones. Open surveytool.app and sign in.'],
-  ['Does it work on iPad with Apple Pencil?', 'Yes. The Pencil draws and your fingers pan and zoom, so you never mark the page by mistake.'],
-  ['How do count markers work?', 'Pick a category, tap each item on the plan, and Survey numbers the markers and keeps a running total for every category. Export the totals to Excel when you are done.'],
+  ['Do I need to install anything?', 'No. Survey runs in Chrome, Edge and Safari on computers, tablets and phones. Open surveytool.app and sign in.'],
+  ['Does it work with a pen on a tablet?', 'Yes. Apple Pencil or any stylus draws, and your fingers pan and zoom, so you never mark the page by mistake.'],
+  ['How do count markers work?', 'Pick a category, tap each item on the plan, and Survey numbers the markers and keeps a running total for every category. Export the totals as a spreadsheet when you are done.'],
   ['Is Survey free?', 'Yes. The Free plan gives you 1 project, 5 documents and 100MB of storage with no card needed. Pro is $9.99 a month or $99 a year for unlimited projects and documents, 10GB of storage and every survey tool.'],
   ['Can I cancel Pro any time?', 'Yes. Cancel from your account settings and keep Pro until the end of the period you paid for.'],
   ['Can my team work on the same drawings?', 'Yes. Invite people as viewers or editors. Enterprise adds live editing together, admin tools and single sign-on for $20 per user a month, with a minimum of 3 users.'],
   ['Where are my files kept?', 'Your markups save to the cloud so they sync to every device you sign in on. Read the <a href="/privacy.html">privacy policy</a> for the details.'],
-  ['Can Survey be set up for my company?', 'Yes. We build custom Excel exports, company markup templates, symbol sets and team roles. <a href="' + MAIL + '">Email us</a> with how your team works.'],
+  ['Can Survey be set up for my company?', 'Yes. We build custom data exports, company markup templates, symbol sets and team roles. <a href="' + MAIL + '">Email us</a> with how your team works.'],
 ];
 
 const TOOLS = [
-  { id: 'count', name: 'Count markers', img: 'app-counts.webp', w: 960, h: 600, alt: 'Numbered count markers on desks in an open office floor plan',
+  { id: 'count', name: 'Count markers', img: 'app-counts.webp', w: 960, h: 600, alt: 'Count markers numbered 1 to 10 on the desks of an open office',
     lead: 'Tap each item on the plan and Survey numbers it and keeps the total.',
-    body: 'Make a category for each thing you count: desks, outlets, sprinklers, doors. Every tap adds a numbered marker, and the totals for each category stay in view. Send them to Excel in one step.' },
-  { id: 'pen', name: 'Pen and highlighter', img: 'app-pen.webp', w: 960, h: 600, alt: 'A highlighted room name and a hand-drawn pen circle on a plan',
+    body: 'Make a category for each thing you count: desks, outlets, sprinklers, doors. Every tap adds a numbered marker, and the totals for each category stay in view. Export them as a spreadsheet in one step.' },
+  { id: 'pen', name: 'Pen and highlighter', img: 'app-pen.webp', w: 1280, h: 800, alt: 'A pen circle drawn around the lift and the break room name highlighted on a floor plan',
     lead: 'Write on drawings the way you would on paper.',
     body: 'Smooth ink that follows Apple Pencil, a mouse or a finger. The highlighter sits behind the linework so the drawing stays readable. The eraser takes off just what you rub out.' },
-  { id: 'shapes', name: 'Shapes, clouds and arrows', img: 'app-shapes.webp', w: 960, h: 600, alt: 'A revision cloud around a meeting room table and an arrow pointing at a fire door',
+  { id: 'shapes', name: 'Shapes, clouds and arrows', img: 'app-shapes.webp', w: 1280, h: 800, alt: 'A revision cloud around the meeting room table, an arrow to a fire door, count markers on desks and a callout that says Move counter to east wall',
     lead: 'Box it, cloud it, point at it.',
     body: 'Rectangles, ellipses, revision clouds, lines, polylines and arrows, each with its own color and line weight. Select one to move it, resize it or change its style.' },
   { id: 'plan', name: 'The whole drawing set', img: 'app-markup.webp', w: 1600, h: 1000, alt: 'A full floor plan with markups in Survey', srcset: '/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w',
@@ -100,11 +103,11 @@ const TOOLS = [
 
 // The three things no other PDF app does. Real screenshots from the app.
 const ONLY = [
-  { id: 'surveys', kicker: 'Only in Survey', name: 'Site surveys that go to Excel and back',
+  { id: 'surveys', kicker: 'Only in Survey', name: 'Site surveys that turn into data',
     lead: 'Walk the site with the plan. Every answer lands in a spreadsheet.',
-    body: 'Build a checklist template once: the things you check and the questions you ask at each one. On site, drop a marker where each outlet, fitting or door is, answer Y, N or N/A, and add a note, a photo or a voice note. Export to Excel and you get one sheet per category plus a summary. Link a Microsoft 365 workbook and changes made in Excel come back onto the plan.',
-    img: 'survey.webp', w: 1600, h: 1000, alt: 'Survey with a floor plan on the left and the survey panel on the right: Data point 2 answered Patched Y, Tested N, with the note "Patch lead missing at desk 14"', srcset: '/welcome/survey-800.webp 800w, /welcome/survey.webp 1600w',
-    img2: 'excel.webp', w2: 1600, h2: 611, alt2: 'The exported workbook in Excel: a Data point sheet with Item, Patched, Tested, Entity and Notes columns, and a tab for every category' },
+    body: 'Build a checklist template once: the things you check and the questions you ask at each one. On site, drop a marker where each outlet, fitting or door is, answer Y, N or N/A, and add a note, a photo or a voice note. Export the data and you get a spreadsheet with one sheet per category plus a summary, ready for Excel, Google Sheets or anything that reads a spreadsheet. Link a Microsoft 365 workbook and edits made there come back onto the plan.',
+    img: 'survey.webp', w: 1600, h: 1000, alt: 'Survey with a floor plan on the left and the survey panel on the right: outlets and data points marked on the plan, and Data point 2 answered Patched Y, Tested N, with the note "Patch lead missing at desk 14. Re-check Friday."', srcset: '/welcome/survey-800.webp 800w, /welcome/survey.webp 1600w',
+    img2: 'sheet.webp', w2: 1600, h2: 669, alt2: 'The exported spreadsheet: an Outlet sheet with Item, Faceplate fitted, Tested, Labelled, Entity and Notes columns, and a tab for every category plus a Summary' },
   { id: 'spaces', kicker: 'Only in Survey', name: 'Spaces and regions',
     lead: 'Work on one part of a sheet at a time.',
     body: 'Name a space, pick its pages and draw a region on each one, as a rectangle or freehand. Turn the space on and everything outside the region dims. Markups made inside a space belong to it, so one sheet can carry the fit-out, the demolition and the services as separate work. Export a space on its own. We have not found this in any other PDF app.',
@@ -116,24 +119,20 @@ const ONLY = [
 ];
 
 // Every markup tool, free. Checked against the app: nothing here is gated.
+// Each card shows the tool's own toolbar icon.
 const TOOLSET = [
-  ['Pen', 'Pressure ink that follows Apple Pencil, a mouse or a finger.'],
-  ['Highlighter', 'Sits behind the linework so the drawing stays readable.'],
-  ['Partial eraser', 'Rub out part of a stroke and the rest stays.'],
-  ['Shapes', 'Rectangle, ellipse, polygon, polyline, line and arrow.'],
-  ['Revision cloud', 'Cloud a change the way you would on paper.'],
-  ['Count markers', 'Tap each item. Every category keeps a running total.'],
-  ['Measure', 'Set the page scale, then measure length and area.'],
-  ['Text and callouts', 'Notes that point at the exact spot they are about.'],
-  ['Symbols', 'Drop stamps and symbols on the sheet.'],
-  ['Text markup', 'Highlight, underline, squiggle and strike through words.'],
-  ['OCR', 'Read a scanned sheet on your device so you can search it.'],
-  ['Page tools', 'Insert, rotate, delete, merge and split pages.'],
-];
-const STRIPS = [
-  ['tools-draw.webp', 'The drawing toolbar: pen, highlighter, eraser, shapes and count tools'],
-  ['tools-shapes.webp', 'The shapes toolbar: rectangle, ellipse, polygon, cloud, polyline, line and arrow'],
-  ['tools-text.webp', 'The text toolbar: text, callout, highlight, underline and strike-through'],
+  ['pen', 'Pen', 'Pressure ink that follows a pen, a mouse or a finger.'],
+  ['highlighter', 'Highlighter', 'Sits behind the linework so the drawing stays readable.'],
+  ['eraser', 'Partial eraser', 'Rub out part of a stroke and the rest stays.'],
+  ['shapes', 'Shapes', 'Rectangle, ellipse, polygon, polyline, line and arrow.'],
+  ['shapeCloud', 'Revision cloud', 'Cloud a change the way you would on paper.'],
+  ['counter', 'Count markers', 'Tap each item. Every category keeps a running total.'],
+  ['measureScale', 'Measure', 'Set the page scale, then measure length and area.'],
+  ['callout', 'Text and callouts', 'Notes that point at the exact spot they are about.'],
+  ['library', 'Symbols', 'Drop stamps and symbols on the sheet.'],
+  ['formatHighlight', 'Text markup', 'Highlight, underline, squiggle and strike through words.'],
+  ['scanText', 'OCR', 'Read a scanned sheet on your device so you can search it.'],
+  ['pages', 'Page tools', 'Insert, rotate, delete, merge and split pages.'],
 ];
 
 // Side by side with Drawboard PDF. Drawboard's column comes from drawboard.com
@@ -151,7 +150,7 @@ const VS = [
   ['OCR', 'Free', 'PRO'],
   ['Merge and split', 'Free', 'PRO'],
   ['Count markers with totals', 'Free', 'Not listed'],
-  ['Site surveys to Excel and back', 'Pro', 'Not listed'],
+  ['Site surveys with data export', 'Pro', 'Not listed'],
   ['Spaces and regions', 'Pro', 'Not listed'],
   ['Survey templates', 'Pro', 'Not listed'],
   ['Live editing together', 'Enterprise', 'PRO'],
@@ -159,7 +158,7 @@ const VS = [
 
 const MORE = [
   ['Share with your team', 'Invite people as viewers or editors. Everyone sees the same markups. Pro.'],
-  ['Excel export', 'Counts and survey answers straight into a workbook. Pro.'],
+  ['Data export', 'Counts and survey answers as a spreadsheet for Excel, Google Sheets or Numbers. Spaces also export as CSV. Pro.'],
   ['Microsoft 365 and OneDrive', 'Open drawings from OneDrive and keep a survey workbook in sync. Pro.'],
   ['Undo history', 'Step back through every change on a sheet.'],
   ['Big sheets stay quick', 'Zoom from the whole sheet down to one dimension.'],
@@ -178,7 +177,7 @@ const FREE_TOOL_PICKS = [
 
 const PLANS = [
   { name: 'Free', price: '$0', per: '/month', note: 'For trying Survey on one project', cta: 'Start free', items: ['1 project', '5 documents', '100MB storage', 'Every markup tool, including callouts, measuring and OCR', 'Count markers with totals', 'Works on every device'] },
-  { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', cta: 'Start free, upgrade in the app', best: true, items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Site surveys to Excel and back', 'Spaces and regions', 'Templates', 'Share with viewers and editors', 'OneDrive'] },
+  { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', cta: 'Start free, upgrade in the app', best: true, items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Site surveys with data export', 'Spaces and regions', 'Templates', 'Share with viewers and editors', 'OneDrive'] },
   { name: 'Enterprise', price: '$20', per: '/user/month', note: 'Minimum 3 users', cta: 'Email us', href: MAIL, items: ['Everything in Pro', 'Live editing together', '1TB storage', 'Admin tools and single sign-on', 'Custom builds for your company'] },
 ];
 
@@ -189,7 +188,7 @@ export const ORG = { '@type': 'Organization', '@id': ORIGIN + '/#org', name: 'Su
 const SOFTWARE = {
   '@type': 'SoftwareApplication', '@id': ORIGIN + '/#app', name: 'Survey', url: ORIGIN + '/',
   applicationCategory: 'BusinessApplication', operatingSystem: 'Web browser, macOS, Windows, iPadOS, Android',
-  description: 'PDF markup app for construction drawings. Every markup tool free. Site surveys that export to Excel and come back, spaces and regions, count markers.',
+  description: 'PDF markup app for construction drawings. Every markup tool free. Site surveys that export as a spreadsheet, spaces and regions, count markers.',
   publisher: { '@id': ORIGIN + '/#org' },
   offers: [
     { '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' },
@@ -253,7 +252,7 @@ ${body}
 </main>
 <footer class="foot"><div class="wrap">
   <div class="fgrid">
-    <div><a class="brand" href="/welcome"><img src="/logo192.png" alt="" width="28" height="28" />Survey</a><p>PDF markup for construction drawings. Every tool free. Site surveys to Excel and back.</p></div>
+    <div><a class="brand" href="/welcome"><img src="/logo192.png" alt="" width="28" height="28" />Survey</a><p>PDF markup for construction drawings. Every tool free. Site surveys you can export as data.</p></div>
     <div><h2 class="fh">Product</h2><a href="/features">Features</a><a href="/devices">Devices</a><a href="/pricing">Pricing</a><a href="/faq">FAQ</a><a href="/use-with-ai">Use with AI</a><a href="/whats-new">What's new</a></div>
     <div><h2 class="fh">Use cases</h2>${USES.map((u) => `<a href="/use-cases/${u.slug}">${u.name}</a>`).join('')}</div>
     <div><h2 class="fh">Compare</h2>${COMPARE.map((c) => `<a href="/compare/${c.slug}">Survey vs ${c.them.split(' ')[0]}</a>`).join('')}</div>${TOOL_LINKS.length ? `
@@ -283,8 +282,14 @@ const vsTable = () => `<div class="tbl vs-tbl"><table>
   </table></div>
   <p class="fine">Drawboard's column is from drawboard.com in October 2026. "Not listed" means it is not on their feature list. Check their site for current facts.</p>`;
 
-const toolGrid = () => `<div class="strips">${STRIPS.map(([img, alt]) => `<img src="/welcome/${img}" srcset="/welcome/${img.replace('.webp', '-720.webp')} 720w, /welcome/${img} 1440w" sizes="(max-width: 980px) 92vw, 1200px" width="1440" height="102" loading="lazy" decoding="async" alt="${esc(alt)}" />`).join('')}</div>
-  <div class="toolgrid">${TOOLSET.map(([h, p]) => `<div><h3>${h}</h3><p>${p}</p></div>`).join('')}</div>`;
+const toolGrid = () => `<div class="toolgrid">${TOOLSET.map(([icon, h, p]) => `<div><span class="tool-ic">${ICONS[icon]}</span><h3>${h}</h3><p>${p}</p></div>`).join('')}</div>`;
+
+// Computer, tablet and phone: real captures at each size, named underneath.
+const devs = () => `<div class="devs">
+  <figure class="dev dev-pc"><div class="scr"><img src="/welcome/app-markup.webp" srcset="/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w" sizes="(max-width: 980px) 92vw, 640px" width="1600" height="1000" loading="lazy" decoding="async" alt="Survey in a browser on a computer, showing a marked-up floor plan" /></div><figcaption>Computer</figcaption></figure>
+  <figure class="dev dev-tab"><div class="scr"><img src="/welcome/app-tablet.webp" srcset="/welcome/app-tablet-800.webp 800w, /welcome/app-tablet.webp 1600w" sizes="(max-width: 980px) 70vw, 460px" width="1600" height="1112" loading="lazy" decoding="async" alt="Survey on a tablet with the Shapes row open and the Cloud tool picked" /></div><figcaption>Tablet</figcaption></figure>
+  <figure class="dev dev-ph"><div class="scr"><img src="/welcome/app-phone.webp" width="780" height="1688" loading="lazy" decoding="async" alt="Survey on a phone, zoomed in on the open office with count markers and a callout" /></div><figcaption>Phone</figcaption></figure>
+</div>`;
 
 const plans = () => `<div class="plans">${PLANS.map((p) => `
   <article class="plan${p.best ? ' best' : ''}">
@@ -308,19 +313,19 @@ export const cta = (h = 'Bring your next drawing set') => `<section class="band"
 // ---------- Home ----------
 const home = page({
   path: '/welcome',
-  title: 'Survey: PDF markup for construction drawings, site surveys to Excel',
-  desc: 'Mark up construction drawings with every tool free. Run site surveys on the plan that export to Excel and come back. Spaces and regions, count markers, teams. Browser, iPad and phone.',
+  title: 'Survey: PDF markup and site surveys for construction drawings',
+  desc: 'Mark up construction drawings with every tool free. Run site surveys on the plan and export the answers as a spreadsheet. Spaces and regions, count markers, teams. Computer, tablet and phone.',
   schema: [SOFTWARE, { '@type': 'WebSite', '@id': ORIGIN + '/#site', name: 'Survey', url: ORIGIN + '/welcome', publisher: { '@id': ORIGIN + '/#org' } }],
   body: `<section class="hero"><div class="wrap hero-grid">
   <div class="hero-copy">
     <p class="kicker">PDF markup for construction drawings</p>
-    <h1>Mark up the plans. Survey the site. Send it to Excel.</h1>
-    <p class="lede">Every markup tool is free, including the ones other apps charge for. Then Survey does what no other PDF app does: site surveys on the plan that go to Excel and back, and spaces that let you work on one part of a sheet at a time.</p>
+    <h1>Mark up the plans. Survey the site. Export the data.</h1>
+    <p class="lede">Every markup tool is free, including the ones other apps charge for. Then Survey does what no other PDF app does: site surveys on the plan that export as a spreadsheet, and spaces that let you work on one part of a sheet at a time.</p>
     <div class="cta"><a class="btn primary lg" href="${SIGNUP}">Open Survey free</a><a class="btn ghost lg" href="#surveys">See how surveys work</a></div>
-    <p class="fine">No card. No install. Mac · Windows · iPad · Android · iPhone</p>
+    <p class="fine">No card. No install. Computer, tablet and phone.</p>
   </div>
   <div class="hero-stage">
-    <div class="frame"><img src="/welcome/survey.webp" srcset="/welcome/survey-800.webp 800w, /welcome/survey.webp 1600w" sizes="(max-width: 980px) 92vw, 760px" width="1600" height="1000" fetchpriority="high" decoding="async" alt="Survey showing a floor plan with survey markers and the survey panel: checklist answers, a note and an Export to Excel button" /></div>
+    <div class="frame"><img src="/welcome/hero.webp" srcset="/welcome/hero-800.webp 800w, /welcome/hero.webp 1600w" sizes="(max-width: 980px) 92vw, 760px" width="1600" height="1000" fetchpriority="high" decoding="async" alt="Survey with a marked-up floor plan: a revision cloud around the meeting room, numbered count markers on the desks, an arrow to a fire door and a callout that says Move counter to east wall" /></div>
   </div>
 </div></section>
 
@@ -347,21 +352,17 @@ ${ONLY.map(only).join('\n')}
   <div>
     <h2>Work on the same drawings as a team</h2>
     <p>Invite people as viewers or editors. Everyone sees the same markups and the same survey answers, on whatever device they have. Enterprise teams edit together live.</p>
-    <ul class="ticks"><li>Viewers read, editors mark up</li><li>Survey answers from every walk land in one workbook</li><li>Live editing together on Enterprise</li></ul>
+    <ul class="ticks"><li>Viewers read, editors mark up</li><li>Survey answers from every walk land in one spreadsheet</li><li>Live editing together on Enterprise</li></ul>
     <a class="btn ghost" href="/pricing">See the plans</a>
   </div>
   <figure class="shot"><img src="/welcome/access.webp" srcset="/welcome/access-600.webp 600w, /welcome/access.webp 1200w" sizes="(max-width: 980px) 92vw, 560px" width="1200" height="836" loading="lazy" decoding="async" alt="The Document Access dialog: an owner, two editors and a viewer on A-201 Level 2 Floor Plan.pdf, with an Invite button" /></figure>
 </div></div></section>
 
-<section class="sec tight"><div class="wrap"><div class="panel split-grid">
-  <div>
-    <h2>Desk, iPad and phone</h2>
-    <p>Survey runs in the browser, so there is nothing to install. The same project and the same markups follow you from the desk to the site. On iPad, Apple Pencil draws and your fingers move the sheet.</p>
-    <ul class="ticks"><li>Mac and Windows in the browser</li><li>iPad and Android tablets</li><li>iPhone and Android phones</li></ul>
-    <a class="btn ghost" href="/devices">How it works on each device</a>
-  </div>
-  <div class="devices"><figure class="dev-tab"><img src="/welcome/app-markup-800.webp" width="800" height="500" loading="lazy" decoding="async" alt="Survey on a tablet showing a marked-up floor plan" /></figure><figure class="dev-ph"><img src="/welcome/app-phone.webp" width="780" height="1688" loading="lazy" decoding="async" alt="Survey on a phone showing a floor plan" /></figure></div>
-</div></div></section>
+<section class="sec tight"><div class="wrap">
+  <div class="head"><h2>Computer, tablet and phone</h2><p>Survey runs in the browser, so there is nothing to install. The same project and the same markups follow you from the desk to the site. On a tablet, the pen draws and your fingers move the sheet.</p></div>
+  ${devs()}
+  <p class="more-link"><a href="/devices">How it works on each device</a></p>
+</div></section>
 
 <section class="sec"><div class="wrap">
   <div class="head"><h2>How much does Survey cost?</h2><p>Every markup tool is free, with no time limit. Pro adds surveys, spaces, templates and sharing for $9.99 a month.</p></div>
@@ -377,7 +378,7 @@ ${ONLY.map(only).join('\n')}
 
 <section class="sec"><div class="wrap custom">
   <h2>Need Survey to fit how your company works?</h2>
-  <p>We build custom Excel exports, company survey templates, symbol sets and team roles. Tell us what your team does today and we will set it up.</p>
+  <p>We build custom data exports, company survey templates, symbol sets and team roles. Tell us what your team does today and we will set it up.</p>
   <a class="btn ghost" href="${MAIL}">Email us</a>
 </div></section>
 ${cta()}`,
@@ -386,8 +387,8 @@ ${cta()}`,
 // ---------- Features ----------
 const features = page({
   path: '/features', crumb: 'Features',
-  title: 'Features: site surveys to Excel, spaces, every markup tool free | Survey',
-  desc: 'Site surveys on the plan that export to Excel and come back, spaces and regions, templates, count markers, pen, partial eraser, polygon, callouts, measuring and OCR. All markup tools free.',
+  title: 'Features: site surveys, data export, spaces, every markup tool free | Survey',
+  desc: 'Site surveys on the plan that export as a spreadsheet, spaces and regions, templates, count markers, pen, partial eraser, polygon, callouts, measuring and OCR. All markup tools free.',
   schema: [SOFTWARE],
   body: `<section class="page-head"><div class="wrap">
   <h1>Everything you do on a drawing set, in one app</h1>
@@ -423,21 +424,21 @@ ${cta('Try every tool on your own drawings')}`,
 // ---------- Devices ----------
 const devices = page({
   path: '/devices', crumb: 'Devices',
-  title: 'Survey on desktop, iPad and phone | Survey',
-  desc: 'Survey runs in the browser on Mac, Windows, iPad, Android tablets and phones. Your projects and markups sync to every device.',
+  title: 'Survey on computer, tablet and phone | Survey',
+  desc: 'Survey runs in the browser on a computer, tablet or phone. Your projects and markups sync to every device.',
   body: `<section class="page-head"><div class="wrap">
   <h1>One project on every screen</h1>
   <p class="lede">Survey runs in your browser, so there is nothing to install. Sign in on any device and your drawings and markups are there.</p>
 </div></section>
 <section class="sec"><div class="wrap dev-rows">
-  <article><h2>At your desk</h2><p>Use Chrome, Edge or Safari on Mac or Windows. A mouse or trackpad draws, the scroll wheel zooms, and keyboard shortcuts switch tools.</p></article>
-  <article><h2>On an iPad or Android tablet</h2><p>Apple Pencil or a stylus draws, and your fingers pan and zoom, so you never mark a sheet by mistake. Add Survey to your home screen to open it like an app.</p></article>
+  <article><h2>On a computer</h2><p>Use Chrome, Edge or Safari on Mac or Windows. A mouse or trackpad draws, the scroll wheel zooms, and keyboard shortcuts switch tools.</p></article>
+  <article><h2>On a tablet</h2><p>Apple Pencil or any stylus draws, and your fingers pan and zoom, so you never mark a sheet by mistake. Add Survey to your home screen to open it like an app.</p></article>
   <article><h2>On your phone</h2><p>Check a sheet, drop a count marker or read a note on site. The tools fit a small screen.</p></article>
 </div></section>
-<section class="sec"><div class="wrap devices wide"><figure class="dev-tab"><img src="/welcome/app-markup.webp" srcset="/welcome/app-markup-800.webp 800w, /welcome/app-markup.webp 1600w" sizes="(max-width: 900px) 80vw, 760px" width="1600" height="1000" loading="lazy" decoding="async" alt="Survey on a tablet showing a marked-up floor plan" /></figure><figure class="dev-ph"><img src="/welcome/app-phone.webp" width="780" height="1688" loading="lazy" decoding="async" alt="Survey on a phone showing a floor plan" /></figure></div></section>
+<section class="sec tight"><div class="wrap">${devs()}</div></section>
 <section class="sec"><div class="wrap head">
   <h2>Are there apps to download?</h2>
-  <p>Not yet. iPhone, iPad and Android apps, and Mac and Windows apps, are on the way. Until then the browser version does everything.</p>
+  <p>Not yet. Phone, tablet and desktop apps are on the way. Until then the browser version does everything.</p>
 </div></section>
 ${cta()}`,
 });
@@ -449,7 +450,7 @@ const ROWS = [
   ['Storage', '100MB', '10GB', '1TB'],
   ['Every markup tool: pen, eraser, shapes, callouts, measure, OCR', 'Yes', 'Yes', 'Yes'],
   ['Count markers with totals', 'Yes', 'Yes', 'Yes'],
-  ['Site surveys to Excel and back', '', 'Yes', 'Yes'],
+  ['Site surveys with data export', '', 'Yes', 'Yes'],
   ['Spaces and regions', '', 'Yes', 'Yes'],
   ['Survey templates', '', 'Yes', 'Yes'],
   ['Share with viewers and editors', '', 'Yes', 'Yes'],
@@ -678,7 +679,7 @@ const usePages = Object.fromEntries(USES.map((u) => [`use-cases/${u.slug}/index.
   schema: [{ '@type': 'HowTo', name: `How to do ${u.name.toLowerCase()} with Survey`, step: u.steps.map(([n, t], i) => ({ '@type': 'HowToStep', position: i + 1, name: n, text: t })) }],
   body: `<section class="page-head"><div class="wrap"><p class="kicker"><a href="/use-cases">Use cases</a></p><h1>${u.title}</h1><p class="lede">${u.lead}</p></div></section>
 <section class="sec tight"><div class="wrap"><h2>How does it work?</h2><ol class="steps">${u.steps.map(([n, t]) => `<li><h3>${n}</h3><p>${t}</p></li>`).join('')}</ol></div></section>
-<section class="sec tight"><div class="wrap feat-grid"><div><h2>The tools you'll use</h2><p>Count markers, the pen and highlighter, clouds and arrows, and text callouts. Every markup tool is free. Site surveys that export to Excel are on Pro.</p><a class="btn ghost" href="/features">See every tool</a></div>${shot(TOOLS[0])}</div></section>
+<section class="sec tight"><div class="wrap feat-grid"><div><h2>The tools you'll use</h2><p>Count markers, the pen and highlighter, clouds and arrows, and text callouts. Every markup tool is free. Site surveys with data export are on Pro.</p><a class="btn ghost" href="/features">See every tool</a></div>${shot(TOOLS[0])}</div></section>
 ${cta()}`,
 })]));
 const comparePages = Object.fromEntries(COMPARE.map((c) => [`compare/${c.slug}/index.html`, page({
@@ -713,14 +714,14 @@ ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></u
 
   writeFileSync(join(root, 'llms.txt'), `# Survey
 
-> Survey is a PDF markup app for construction and engineering drawings. It runs in the browser on Mac, Windows, iPad, Android tablets and phones at ${ORIGIN}.
+> Survey is a PDF markup app for construction and engineering drawings. It runs in the browser on computers, tablets and phones at ${ORIGIN}.
 
-Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, symbols, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export to Excel, one sheet per category plus a summary, and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys to Excel and back, spaces and regions, templates, sharing with viewers and editors, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
+Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, symbols, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export as a spreadsheet (.xlsx, one sheet per category plus a summary, opens in Excel, Google Sheets, Numbers or LibreOffice) and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys with data export, spaces and regions, templates, sharing with viewers and editors, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
 
 ## Pages
 
 - [Home](${ORIGIN}/welcome): what Survey is and who it is for
-- [Features](${ORIGIN}/features): site surveys to Excel and back, spaces and regions, templates, every markup tool free, count markers, Survey vs Drawboard PDF
+- [Features](${ORIGIN}/features): site surveys with data export, spaces and regions, templates, every markup tool free, count markers, Survey vs Drawboard PDF
 - [Devices](${ORIGIN}/devices): desktop, tablet and phone
 - [Pricing](${ORIGIN}/pricing): Free, Pro and Enterprise plans
 - [FAQ](${ORIGIN}/faq): common questions

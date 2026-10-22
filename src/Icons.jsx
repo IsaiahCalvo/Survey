@@ -437,6 +437,20 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Owner 2026-10-22: the Cloud TOOL button (desktop Shape row, phone shape
+    // rail, Schematic badge, history rows) draws Hugeicons "Cloud" (MIT,
+    // hugeicons.com/icon/cloud). The line-style menu keeps the scallop sample
+    // below, since there it names a line style, not the tool. Like the
+    // selection cursor, the Hugeicons ink runs 21.5 units wide, so it is
+    // scaled 0.93 about the centre and stroked 1.61 (resolves to the house 1.5).
+    shapeCloud: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <g transform="translate(12 12) scale(0.93) translate(-12 -12)">
+          <path d="M17.4776 10.0001C17.485 10 17.4925 10 17.5 10C19.9853 10 22 12.0147 22 14.5C22 16.9853 19.9853 19 17.5 19H7C4.23858 19 2 16.7614 2 14C2 11.4003 3.98398 9.26407 6.52042 9.0227M17.4776 10.0001C17.4924 9.83536 17.5 9.66856 17.5 9.5C17.5 6.46243 15.0376 4 12 4C9.12324 4 6.76233 6.20862 6.52042 9.0227M17.4776 10.0001C17.3753 11.1345 16.9286 12.1696 16.2428 13M6.52042 9.0227C6.67826 9.00768 6.83823 9 7 9C8.12582 9 9.16474 9.37209 10.0005 10" stroke={color} strokeWidth="1.61" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+      </svg>
+    ),
+
     /* PASS 7 (board 15): the LINE-STYLE samples. Each one is the line it names,
        drawn across a 24x12 field so the menu row and the pill preview show the
        same drawing at two sizes. Cloud is the Drawboard-style scallop with three

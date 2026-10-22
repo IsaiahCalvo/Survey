@@ -265,7 +265,7 @@
 /* ---------- FOOTER: Export (owner 2026-10-01) ---------------------------
    "The export button being so close to the X close button for survey is just
    weird": Export left the header for the panel's foot, one 40px line with a
-   hairline above it, just over the zoom / page footer. "Export to Excel" is a
+   hairline above it, just over the zoom / page footer. "Export data" is a
    quiet glyph-and-word; a linked workbook's actions sit behind a "..." at the
    right. Its menu opens upwards. */
 .survey-rail .survey-rail__foot {
@@ -277,7 +277,7 @@
   padding: 0 calc(var(--sv-edge) - 6px) 0 calc(var(--sv-edge) - 6px);
   display: flex;
   align-items: stretch;
-  /* Owner 2026-10-02: "Export to Excel" - glyph and word together - is
+  /* Owner 2026-10-02: "Export data" - glyph and word together - is
      centred in the line, as on the phone. A linked workbook's "..." keeps
      the right end (absolute, below), so it never pushes the export aside. */
   justify-content: center;
