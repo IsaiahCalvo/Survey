@@ -864,7 +864,9 @@ export default function SurveyAgentPanel({
     if (!sharesMicSafely()) {
       // Phones go quiet or cut the browser's hearing off when a second stream
       // opens the mic, so the pulse follows the browser's speech events instead.
-      rec.onspeechstart = () => setMicLevel(0.7);
+      // No stream readings follow, so set the level outright instead of easing
+      // toward it (one eased step only reaches 0.42).
+      rec.onspeechstart = () => setMicLevel(0.7, { reset: true });
       rec.onspeechend = () => setMicLevel(0, { reset: true });
       speechMeterRef.current = { stop: () => setMicLevel(0, { reset: true }) };
       return;

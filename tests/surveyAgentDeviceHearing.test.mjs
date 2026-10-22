@@ -88,4 +88,6 @@ test("the browser's own hearing opens no second mic stream on phones", async () 
   const guard = body.indexOf('if (!sharesMicSafely())');
   assert.ok(guard > 0, 'the pulse checks the mic can be shared');
   assert.ok(guard < body.indexOf('getUserMedia'), 'before it opens a second stream');
+  // No readings follow a speech event, so an eased step would stall short of the level.
+  assert.match(body, /onspeechstart = \(\) => setMicLevel\([\d.]+, \{ reset: true \}\)/);
 });
