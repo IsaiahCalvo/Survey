@@ -40,6 +40,16 @@ draw() {
   echo "$n"
 }
 W=$(adb shell wm size | sed 's/.*: //;s/x.*//' | tr -d '\r'); H=$(adb shell wm size | sed 's/.*x//' | tr -d '\r')
+# `adb input` takes SCREEN px; CSS px * dpr is WebView px. Below a status
+# bar they differ by the WebView's top offset (same rule as
+# android-delete-point.sh): edge-to-edge -> 0, else the status bar bottom from
+# dumpsys, else screen height minus WebView height.
+VH=$(ev "Math.round(window.innerHeight * (window.devicePixelRatio || 1))")
+if [ $((H - VH)) -lt 8 ]; then TOP=0; else
+  TOP=$(adb shell dumpsys window | tr -d '\r' | grep -m1 -oE 'type=statusBars frame=\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]' | sed -E 's/.*\]\[[0-9]+,([0-9]+)\]$/\1/' || true)
+  [ -n "$TOP" ] || TOP=$((H - VH))
+fi
+echo "screen ${W}x${H}, webview height ${VH}, top offset ${TOP}"
 # Upper-middle of the page: the page ends near 74% of the screen height and
 # earlier flows left marks near 65% on the right.
 ( pick Line ) || { pick Shapes; pick Line; }
@@ -58,7 +68,8 @@ set -- $AE
 # The tool stays armed after a draw, so line B is just another drag. Start
 # ~8 device px off A's end (well under 14 CSS px on any DPR >= 1); end at a
 # free angle (~62 degrees) so the assist does not matter for B.
-BX=$(($1 + 6)); BY=$(($2 + 5))
+BX=$(($1 + 6)); BY=$(($2 + TOP + 5))
+echo "line B press (screen px): $BX $BY (A end + 6,5 device px, top offset $TOP)"
 B=$(draw "$BX" "$BY" $((W * 3 / 4)) $((H * 48 / 100)))
 echo "line B index: $B"
 case "$B" in none*) fail "Line B was not committed ($B)";; esac
@@ -66,6 +77,10 @@ EB=$(ends "$B"); echo "line B ends (screen CSS px): $EB"
 [ "$EB" != "none" ] || fail "Line B has no visible <line> element"
 ok=$(node -e "const a = process.argv[1].split(' ').map(Number), b = process.argv[2].split(' ').map(Number); const dx = b[0] - a[2], dy = b[1] - a[3]; console.log(Math.hypot(dx, dy) <= 0.5 ? 'ok' : 'off by ' + dx.toFixed(3) + ',' + dy.toFixed(3))" "$EA" "$EB")
 echo "B start vs A end: $ok"
+# #1130: line A was still selected; the press on its end must start B there,
+# not re-aim A.
+EA2=$(ends "$A"); echo "line A ends after B (screen CSS px): $EA2"
+[ "$EA2" = "$EA" ] || fail "Line A moved when line B started on its end ($EA -> $EA2)"
 [ "$ok" = "ok" ] || fail "Line B start ($EB) did not snap to line A end ($EA): $ok CSS px (started 6,5 device px off)"
 # Line C: 300 device px at 42 degrees (3 off 45), up and to the right, far
 # from A and B's ends so no endpoint pull applies.
