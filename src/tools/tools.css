@@ -10,20 +10,34 @@
 .tcard .ticon{color:var(--ink);width:28px;height:28px;margin-bottom:14px}
 .tcard h3{margin:0 0 4px;font-size:19px}
 .tcard p{margin:0;color:var(--soft);font-size:15px;line-height:1.45}
-.tgroup h2{font-size:28px;margin-bottom:20px}
-.tgroup+.tgroup{padding-top:8px}
-.tgroup[hidden],.tcard[hidden]{display:none}
-.hub-find-sec{padding-bottom:0}
-.hub-find input{width:100%;font:inherit;font-size:17px;padding:14px 18px;border:1px solid var(--rule);border-radius:10px;background:var(--paper);color:inherit}
+.hub-head{padding:48px 0 20px}
+.hub-head h1{font-size:clamp(32px,4.4vw,48px);max-width:none}
+.hub-head .lede{font-size:18px}
+.hub-sec{padding:0 0 56px}
+.hub-find input{width:100%;font:inherit;font-size:17px;padding:12px 16px;border:1px solid var(--rule);border-radius:10px;background:var(--paper);color:inherit}
 .hub-find input:focus{outline:2px solid var(--accent);outline-offset:1px}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.chip{font:inherit;font-size:14px;min-height:40px;padding:8px 14px;border:1px solid var(--rule);border-radius:999px;background:var(--sheet);color:inherit;cursor:pointer}
-/* Selected states follow the app's rule (tests/selectedStateGoldInkOnly.test.mjs): no gold
-   fill, border or ring on a pressed control, so pressed chips and choices use ink. */
-.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
 .hub-none{margin:16px 0 0;color:var(--soft)}
-.hub-find-sec{padding-top:0}
-@media (max-width:640px){.chips{flex-wrap:nowrap;overflow-x:auto;margin-right:-16px;padding-right:16px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}.chip{flex:none}}
+.hub-sec h2{font-size:15px;font-weight:600;letter-spacing:0;margin:0 0 6px;color:var(--soft)}
+.hub-sec ul{list-style:none;margin:0;padding:0}
+.hub-top{margin-top:20px}
+.hub-top ul{display:flex;flex-wrap:wrap;gap:4px 20px}
+.tcols{columns:4 210px;column-gap:28px;margin-top:24px;padding-top:20px;border-top:1px solid var(--rule)}
+.tcol{break-inside:avoid;padding-bottom:20px}
+.trow{display:flex;align-items:center;gap:10px;min-height:38px;padding:3px 6px 3px 0;color:var(--ink);text-decoration:none;font-size:15px;line-height:1.25;border-radius:8px}
+.trow:hover{text-decoration:underline;text-underline-offset:3px}
+.trow:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tico{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--sheet)}
+.tico .ticon{width:18px;height:18px}
+.hub-sec [hidden]{display:none}
+/* Phones: two rows across inside each group, 44px tall to tap. */
+@media (max-width:560px){
+  .hub-head{padding:36px 0 14px}
+  .tcols{columns:1;margin-top:16px;padding-top:14px}
+  .tcol{padding-bottom:14px}
+  .hub-sec ul,.hub-top ul{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+  .trow{min-height:44px;font-size:14px;gap:8px}
+  .tico{width:28px;height:28px}
+}
 .why{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}
 .why>div{background:var(--sheet);border-radius:var(--r-card);padding:28px}
 .why h3{margin:0 0 6px;font-size:20px}

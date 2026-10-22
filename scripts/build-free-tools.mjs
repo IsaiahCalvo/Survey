@@ -62,6 +62,9 @@ const ALSO = {
 };
 const keys = (t) => `${t.name} ${t.short} ${t.id.replace(/-/g, ' ')} ${ALSO[t.id] || ''} ${t.trade?.keys || ''}`.toLowerCase().replace(/"/g, '');
 const card = (t) => `<a class="tcard" href="/tools/${t.id}" data-k="${keys(t)}">${icon(t.icon, t.iconSvg)}<h3>${t.name}</h3><p>${t.short}</p></a>`;
+// Hub rows: a small icon and the name, like Drawboard's and Stirling's lists,
+// so all the tools fit on about one screen. The one-line summary is the tooltip.
+const row = (t) => `<li><a class="trow" href="/tools/${t.id}" title="${t.short.replace(/"/g, '&quot;')}" data-k="${keys(t)}"><span class="tico">${icon(t.icon, t.iconSvg)}</span>${t.name}</a></li>`;
 const byId = (id) => TOOLS.find((t) => t.id === id);
 
 // Tools that go together, shown first under "More free PDF tools".
@@ -202,29 +205,28 @@ const hub = page({
   title: 'Free PDF tools: merge, compress, OCR, convert | Survey',
   desc: `${TOOLS.length} free PDF tools that run in your browser: merge, split, compress, OCR, compare, sign, lock and convert Word or images to PDF. No sign-up, no upload.`,
   schema: [{ '@type': 'ItemList', name: 'Free PDF tools', itemListElement: TOOLS.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: t.name, url: `${ORIGIN}/tools/${t.id}` })) }, faqSchema(HUB_FAQ)],
-  body: `<section class="page-head"><div class="wrap">
+  body: `<section class="page-head hub-head"><div class="wrap">
   <p class="kicker">Free PDF tools</p>
   <h1>Every PDF tool you need, free</h1>
-  <p class="lede">${TOOLS.length} tools to merge, split, shrink, read scans, compare, sign, lock and convert PDFs right in your browser. No sign-up, and your files never leave your device.</p>
+  <p class="lede">${TOOLS.length} tools that run in your browser. No sign-up, and your files never leave your device.</p>
 </div></section>
-<section class="sec tight hub-find-sec"><div class="wrap">
+<section class="hub-sec"><div class="wrap">
   <div class="hub-find" data-hub hidden>
     <input type="search" id="tool-search" placeholder="Search ${TOOLS.length} tools" aria-label="Search the free PDF tools" autocomplete="off" />
-    <div class="chips" role="group" aria-label="Show tools for">
-      <button type="button" class="chip" data-g="" aria-pressed="true">All</button>${GROUPS.map(([g, label]) => `<button type="button" class="chip" data-g="${g}" aria-pressed="false">${label}</button>`).join('')}
-    </div>
     <p class="hub-none" role="status" hidden>No tool matches that. Try another word, or <a href="/tools">see all tools</a>.</p>
   </div>
+  <div class="hub-top" data-group="popular">
+    <h2>Most used</h2>
+    <ul>${POPULAR.map(byId).map(row).join('')}</ul>
+  </div>
+  <div class="tcols">
+${GROUPS.map(([g, label]) => `    <div class="tcol" data-group="${g}">
+      <h2>${label}</h2>
+      <ul>${TOOLS.filter((t) => t.group === g).map(row).join('')}</ul>
+    </div>`).join('\n')}
+  </div>
 </div></section>
-<section class="sec tight tgroup" data-group="popular"><div class="wrap">
-  <h2>Most used</h2>
-  <div class="tgrid">${POPULAR.map(byId).map(card).join('')}</div>
-</div></section>
-${GROUPS.map(([g, label]) => `<section class="sec tight tgroup" data-group="${g}"><div class="wrap">
-  <h2>${label}</h2>
-  <div class="tgrid">${TOOLS.filter((t) => t.group === g).map(card).join('')}</div>
-</div></section>`).join('\n')}
-<section class="sec"><div class="wrap">${why()}</div></section>
+<section class="sec tight"><div class="wrap">${why()}</div></section>
 <section class="sec"><div class="wrap narrow"><h2>Questions</h2>${faqList(HUB_FAQ)}</div></section>
 ${APP_PITCH}`,
   scripts: SCRIPT,
