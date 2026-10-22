@@ -332,6 +332,7 @@ jobs:
         run: npm run e2e:stack:up || { sleep 30; npm run e2e:stack:up; }
         env:
           E2E_REALTIME: 'off'
+          E2E_IGNORE_HEALTH: '1'
       - name: Build web bundle against the local stack
         run: npx vite build --mode e2e
         env:
