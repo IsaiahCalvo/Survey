@@ -156,3 +156,12 @@ test('a group resize writes each Survey Marker box in the same save', async () =
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
   assert.match(hook, /surveyMarkerFamily: \{ bounds: Object\.fromEntries\(markerBoundsEntries\) \}/);
 });
+
+test('a turned Survey Marker sets the frame floor on the page axes', () => {
+  const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  assert.match(hook, /markerResizeOriginals\)\.map\(\(bounds\) => \(isSideways\(bounds\.angle\)\s*\? \{ width: bounds\.height, height: bounds\.width \}/);
+  // A 100 x 10 marker turned 90° is 10 wide on the page: x may only shrink to 0.4.
+  const { minScaleX, minScaleY } = groupResizeMinimumScale([{ width: 10, height: 100 }]);
+  assert.equal(minScaleX, 0.4);
+  assert.equal(minScaleY, 0.04);
+});

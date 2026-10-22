@@ -179,6 +179,7 @@ import {
   groupResizeMinimumScale,
   handleAffectsX,
   handleAffectsY,
+  isSideways,
   isTextMark,
   markNeedsUniformGroupScale,
   memberAxisScale,
@@ -5916,7 +5917,11 @@ export function useSVGInteraction({
         groupResizeMinScale: isRotate ? null : groupResizeMinimumScale([
           ...Object.values(memberOriginals).map((member) => ({ width: member.aabbWidth, height: member.aabbHeight })),
           ...Object.values(calloutResizeOriginals).map((callout) => callout.box),
-          ...Object.values(markerResizeOriginals),
+          // The floor works on the page's axes: a marker turned 90° has its
+          // own width along the page's height.
+          ...Object.values(markerResizeOriginals).map((bounds) => (isSideways(bounds.angle)
+            ? { width: bounds.height, height: bounds.width }
+            : bounds)),
         ]),
       };
 
