@@ -309,7 +309,7 @@ jobs:
       BUNDLE_ID: com.kalvoe.survey
       # The Intel runner also hosts the Colima VM, so Maestro's iOS driver
       # starts slowly; its default wait is too short there.
-      MAESTRO_DRIVER_STARTUP_TIMEOUT: '600000'
+      MAESTRO_DRIVER_STARTUP_TIMEOUT: '900000'
       MAESTRO_CLI_NO_ANALYTICS: '1'
     steps:
       - uses: actions/checkout@v7
@@ -367,7 +367,11 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$(find build/ios/Build/Products -maxdepth 2 -name 'App.app' | head -1)"
       - name: Walk the app (signed in, Counter after Arrow, export)
-        run: maestro --device "$UDID" test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/ios-signed-in.yaml
+        # The XCTest driver sometimes misses its start window on this slow
+        # runner (twice on 2026-10-22, before any flow step); try once more.
+        run: |
+          m() { maestro --device "$UDID" test --format junit --output "$OUT/report.xml" --test-output-dir "$OUT" .github/native-flows/ios-signed-in.yaml 2>&1 | tee "$OUT/maestro-run.log"; }
+          m || { grep -q 'driver not ready in time' "$OUT/maestro-run.log" && m; }
       - name: Relaunch with the API stopped (offline)
         run: |
           docker ps -q | xargs docker pause
