@@ -113,11 +113,33 @@ export function splitTemplatesForSave(templates = []) {
   return { own, shared };
 }
 
+// A linked Excel file on the owner's computer is a path on THEIR disk, and the
+// template's config is data the owner or any editor can write. The desktop app
+// reads, overwrites and opens that path, so on a template shared with me it is
+// parked under another key: nothing in the app uses it, and it goes back in
+// place when the template is saved so the owner keeps their link.
+const PARKED_OWNER_EXCEL_PATH = 'parkedOwnerExcelPath';
+
+/** Hide the owner's local Excel path on a template shared with me. */
+export function parkForeignLocalExcelPath(template) {
+  if (!template || typeof template !== 'object' || !template.sharedFrom) return template;
+  if (template.isOneDrive || !template.linkedExcelPath) return template;
+  const { linkedExcelPath, ...rest } = template;
+  return { ...rest, [PARKED_OWNER_EXCEL_PATH]: linkedExcelPath };
+}
+
+/** Put a parked owner path back before the template is stored. */
+export function unparkLocalExcelPath(config) {
+  if (!config || typeof config !== 'object' || !(PARKED_OWNER_EXCEL_PATH in config)) return config;
+  const { [PARKED_OWNER_EXCEL_PATH]: ownerPath, ...rest } = config;
+  return { ...rest, linkedExcelPath: ownerPath };
+}
+
 /** Drop the fields that are about this app session, not the template. */
 export function stripSharedFields(template) {
   if (!template || typeof template !== 'object') return template;
   const { sharedFrom, supabaseId, ...rest } = template;
-  return rest;
+  return unparkLocalExcelPath(rest);
 }
 
 const stableJson = (value) => {
