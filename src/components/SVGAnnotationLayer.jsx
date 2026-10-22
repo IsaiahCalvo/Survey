@@ -7342,7 +7342,13 @@ const SVGAnnotationLayerBody = memo(({
       // a tool press - no stroke, shape, marker, selection or erase. Taken in
       // the capture phase so no mark's own handler sees it either; a stroke
       // already under way ignores it (its listeners follow its own pointerId).
-      onPointerDownCapture={(e) => { if (isPalmContact(e)) { e.stopPropagation(); e.preventDefault(); } }}
+      onPointerDownCapture={(e) => {
+        if (isPalmContact(e)) { e.stopPropagation(); e.preventDefault(); return; }
+        // A pen / finger press near a selected poly's side belongs to that
+        // side even when the browser hit-tests it onto the mark beneath the
+        // side band (Android stylus): see claimPolyEdgePress.
+        e.currentTarget.querySelector?.('[data-poly-edge-hit]')?.__claimPolyEdgePress?.(e);
+      }}
       onPointerDown={(e) => {
         if (isInteractive) {
           // Form-widget click hand-down, step 1 of 2 (see formWidgetClickRef).
@@ -8743,8 +8749,8 @@ const SVGAnnotationLayerBody = memo(({
             : 0;
           const polyEdgeTolerance = (vTouchHitR || vHandleR * 2) + polyEdgeReach;
           // Double-click is mouse/pen; a finger long-presses the side instead.
-          const edgeHit = (e) => {
-            const ctm = e.currentTarget.getScreenCTM?.();
+          const edgeHit = (e, band = e.currentTarget) => {
+            const ctm = band?.getScreenCTM?.();
             if (!ctm) return null;
             const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
             return insertVertexOnNearestEdge(worldPoints, pt, polyEdgeTolerance, { closed: String(obj.type).toLowerCase() === 'polygon' });
@@ -8773,6 +8779,27 @@ const SVGAnnotationLayerBody = memo(({
               if (hit) startPolyLongPress(e, { edge: { segmentIndex: hit.segmentIndex, t: hit.t } });
             }
             handleAnnotationPointerDown(e, selectedIndex);
+          };
+          // Android stylus (and touch-adjusted finger) presses on a side were
+          // hit-tested onto the selected mark itself (or the bare layer) even
+          // though elementFromPoint reported the side band, so the side's
+          // long-press never armed and the press started a move instead. The
+          // layer root's capture listener asks the band to claim any pen /
+          // touch press within its tolerance, whatever element it landed on.
+          const claimPolyEdgePress = (band) => (e) => {
+            if (e.pointerType !== 'pen' && e.pointerType !== 'touch') return false;
+            const t = e.target;
+            if (t?.closest?.('[data-poly-edge-hit], [data-resize-handle], [data-handle-hit-pad], [data-add-vertex], [data-rotation-handle], [data-poly-vertex-insert]')) return false;
+            const root = e.currentTarget;
+            const onSelf = t === root || Boolean(t?.closest?.(`[data-annotation-index="${selectedIndex}"]`));
+            if (!onSelf) return false;
+            if (!edgeHit(e, band)) return false;
+            e.stopPropagation();
+            polyEdgePointerTypeRef.current = e.pointerType;
+            const hit = edgeHit(e, band);
+            startPolyLongPress(e, { edge: { segmentIndex: hit.segmentIndex, t: hit.t } });
+            handleAnnotationPointerDown(e, selectedIndex);
+            return true;
           };
           const vertexFocused = (i) => focusedPolyVertex?.annotationIndex === selectedIndex && focusedPolyVertex.vertexIndex === i;
           // UX 2026-09-09 (Drawboard PDF, defect 4): a polygon / polyline
@@ -8807,6 +8834,7 @@ const SVGAnnotationLayerBody = memo(({
               {!modifierMoveActive && interactionState === 'idle' && worldPoints.length > 1 && (
                 <polyline
                   data-poly-edge-hit="true"
+                  ref={(el) => { if (el) el.__claimPolyEdgePress = claimPolyEdgePress(el); }}
                   points={[...worldPoints, ...(String(obj.type).toLowerCase() === 'polygon' ? [worldPoints[0]] : [])].map((p) => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke="transparent"
