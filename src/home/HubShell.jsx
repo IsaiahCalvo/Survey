@@ -11,6 +11,8 @@ import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { openKeyboardShortcuts } from '../utils/keyboardShortcuts.js';
 import { useTooltip } from '../components/Tooltip';
 import { isDocumentDrag, readDocumentDragIds } from './documentSelection.js';
+import { releaseChannel } from '../featureFlags.js';
+import { NIGHTLY_COLOR } from '../nightlyBrand.js';
 
 const IS_MAC = typeof navigator !== 'undefined'
   && /(Mac|iPhone|iPod|iPad)/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
@@ -610,7 +612,9 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
     <div className={`survey-hub hub-tab-${tab} ${mobileNavMode === 'rail' ? 'hub-mobile-nav-rail' : ''} ${expoNativeShell ? 'hub-native-shell-expo' : ''}`} {...dropProps}>
       <div className="shell">
         <aside className="side">
-          <div className="brand"><span className="brand-dot"></span>Survey</div>
+          {releaseChannel() === 'nightly'
+            ? <div className="brand"><span className="brand-dot" style={{ background: NIGHTLY_COLOR }}></span>Survey Nightly</div>
+            : <div className="brand"><span className="brand-dot"></span>Survey</div>}
           <nav className="nav">
             {primaryNavItems.map(([key, icon, label, disabled]) => (
               key === 'projects' && projectDrop
