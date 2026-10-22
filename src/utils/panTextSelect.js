@@ -103,6 +103,22 @@ export function resolvePanTextSelectionChange({ state, selectionLive }) {
   return state;
 }
 
+/**
+ * Does the mark under the pointer take the hover from the PDF text beneath it?
+ * Owner 2026-10-22: under Pan a mark lying over text is what the pointer is
+ * on, so it shows the halo and the grab hand (a click picks it), never the
+ * I-beam; the I-beam shows only where no mark covers the text. A text markup
+ * (highlight, underline, strikeout...) lies on its own text and keeps it.
+ * `hit` is annotationHitTest's resolveAnnotationAt result; `mark` is the
+ * page object it names (annotation hits only).
+ */
+export function markTakesPanTextHover(hit, mark = null) {
+  if (!hit) return false;
+  if (hit.kind === 'callout' || hit.kind === 'counter' || hit.kind === 'group') return true;
+  if (hit.kind !== 'annotation') return false;
+  return mark?.data?.type !== 'text-markup';
+}
+
 /** Is a DOM node one of the text layer's glyph boxes (not an image stand-in)? */
 export function isPanTextTarget(target) {
   const node = target?.nodeType === 3 ? target.parentElement : target;

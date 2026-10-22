@@ -16,6 +16,7 @@ import {
   isHoverPointer,
   isPanTextTarget,
   isTextSelectionCaptureTool,
+  markTakesPanTextHover,
   panTextLeaveWaits,
   panTextOwnsPress,
   resolvePanTextHover,
@@ -136,7 +137,7 @@ test('wiring: the viewer, the pan press, the text layer and the quick menu follo
 test('a press is handed to text selection only on a glyph, and scrolling drops the I-beam (Codex #832)', () => {
   const src = read('../src/components/PdfjsViewerContainer.jsx');
   // The text layer root takes presses while the I-beam shows; its blank part must still pan.
-  assert.match(src, /onTextLayer: isPanTextTarget\(event\.target\),/);
+  assert.match(src, /onTextLayer: isPanTextTarget\(event\.target\) && panTextMarkAtRef\.current\?\.\(event\) !== true,/);
   assert.doesNotMatch(src, /onTextLayer: Boolean\(event\.target\?\.closest\?\.\('\.pdfjsTextLayer'\)\)/);
   // Scroll / zoom under a still pointer: back to off (or keep), never mid-press.
   assert.match(src, /const onScroll = \(\) => \{\s*if \(press \|\| panTextStateRef\.current !== 'on'\) return;[\s\S]{0,160}setState\(hasLivePdfTextSelection\(window\.getSelection\?\.\(\)\) \? 'keep' : 'off'\);/);
@@ -165,4 +166,32 @@ test('a click off text clears a Pan selection even inside the leave grace (Bugbo
   const src = read('../src/components/PdfjsViewerContainer.jsx');
   assert.match(src, /if \(!start \|\| start\.onText \|\| panTextStateRef\.current === 'off'\) return;\s*if \(!hasLivePdfTextSelection\(window\.getSelection\?\.\(\)\)\) return;/);
   assert.doesNotMatch(src, /panTextStateRef\.current !== 'keep'\) return;/);
+});
+
+// Owner 2026-10-22: "when I hover over an annotation but that annotation is
+// also over text, the cursor turns into a text cursor which is wrong ... It
+// should only show the text cursor if there's no annotation already over it."
+test('a mark over text takes the hover from it; a text markup keeps the I-beam', () => {
+  const ink = { data: { type: 'ink' } };
+  const highlight = { data: { type: 'text-markup', markupType: 'highlight', selectionGroupId: 'g1' } };
+  assert.equal(markTakesPanTextHover(null), false, 'no hit: the text keeps the I-beam');
+  assert.equal(markTakesPanTextHover({ kind: 'page', pageNumber: 1 }), false, 'bare page');
+  assert.equal(markTakesPanTextHover({ kind: 'annotation', pageNumber: 1, annotationIndex: 0 }, ink), true);
+  assert.equal(markTakesPanTextHover({ kind: 'annotation', pageNumber: 1, annotationIndex: 0 }), true, 'unknown mark still covers the text');
+  assert.equal(markTakesPanTextHover({ kind: 'annotation', pageNumber: 1, annotationIndex: 2 }, highlight), false, 'a highlight lies on its own text');
+  assert.equal(markTakesPanTextHover({ kind: 'callout', pageNumber: 1, calloutId: 'c' }), true);
+  assert.equal(markTakesPanTextHover({ kind: 'counter', pageNumber: 1 }), true);
+  assert.equal(markTakesPanTextHover({ kind: 'group', pageNumber: 1, groupIndices: [0, 1] }), true);
+});
+
+test('wiring: the pan-text hover, its press and the click-clear all ask whether a mark covers the text', () => {
+  const src = read('../src/components/PdfjsViewerContainer.jsx');
+  // Hover: a glyph under a mark is not text; onto a mark the I-beam goes at once (no word-gap grace).
+  assert.match(src, /const glyph = isPanTextTarget\(event\.target\);[\s\S]{0,240}&& panTextMarkAtRef\.current\?\.\(event\) === true;\s*const onText = glyph && !onMark;/);
+  assert.match(src, /if \(!onMark && panTextLeaveWaits\(\{/);
+  // Press: a mark over the glyph never hands the press to text selection.
+  assert.match(src, /onText: isPanTextTarget\(event\.target\) && panTextMarkAtRef\.current\?\.\(event\) !== true,/);
+  // The viewer answers with the same hit test as the Pan halo.
+  assert.match(VIEWER, /const panTextMarkAt = useCallback\(\(event\) => \{\s*const hit = resolveAnnotationAt\(event\);[\s\S]{0,240}return markTakesPanTextHover\(hit, mark\);/);
+  assert.match(VIEWER, /panTextMarkAt=\{panTextMarkAt\}/);
 });

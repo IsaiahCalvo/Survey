@@ -110,7 +110,7 @@ import TextMarkupLinkLayer from './components/TextMarkupLinkLayer';
 import PdfjsFormLayer from './components/PdfjsFormLayer';
 import TextSelectionActionBar from './components/TextSelectionActionBar';
 import TextSelectionQuickMenu from './components/TextSelectionQuickMenu';
-import { deviceCanHover, isTextSelectionCaptureTool, shouldMountPanTextLayer } from './utils/panTextSelect.js';
+import { deviceCanHover, isTextSelectionCaptureTool, markTakesPanTextHover, shouldMountPanTextLayer } from './utils/panTextSelect.js';
 import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
@@ -4478,6 +4478,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // pick marks (Shapes, Text, Counter — own group only since 2026-10-04) show
   // the same blue halo over a mark a click would pick, with their own cursor
   // kept (no pointer hand).
+  // Owner 2026-10-22: under Pan a mark lying over PDF text owns the hover, so
+  // the text under it shows no I-beam and a press there never selects text.
+  // Same hit test as the halo above, so I-beam and halo never both show.
+  const panTextMarkAt = useCallback((event) => {
+    const hit = resolveAnnotationAt(event);
+    const mark = hit?.kind === 'annotation'
+      ? annotationsByPageRef.current?.[hit.pageNumber]?.objects?.[hit.annotationIndex]
+      : null;
+    return markTakesPanTextHover(hit, mark);
+  }, []);
   const eraserWholeModeRef = useRef(false);
   useEffect(() => {
     // Pan shows the blue halo over a mark a click would pick, as Drawboard's
@@ -37111,6 +37121,7 @@ ${pageBlocks}
                     textSelectionLayerActive={activeTool === 'text-select'}
                     textSelectionLayerInteractive={activeTool === 'text-select' && textSelectManipulationPageNumber == null}
                     panTextHoverSelect={shouldMountPanTextLayer({ toolIsPan: activeTool === 'pan', canHover: deviceCanHover() })}
+                    panTextMarkAt={panTextMarkAt}
                     onDocumentLoaded={handlePdfjsDocumentLoad}
                     onDocumentLoadFailed={handlePdfjsDocumentLoadFailed}
                     onPageChanged={handlePdfjsPageChange}

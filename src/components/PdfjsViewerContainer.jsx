@@ -1379,6 +1379,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Pan over text (utils/panTextSelect.js): mount the text layer under Pan so a
   // mouse / pen resting on text can select it, as Drawboard's Pan does.
   panTextHoverSelect = false,
+  // (event) => true when a mark covers the PDF text under the pointer: that
+  // text takes no I-beam under Pan (utils/panTextSelect.js markTakesPanTextHover).
+  panTextMarkAt = null,
   className = '',
   style = {},
   pageTransformations = {},
@@ -1588,6 +1591,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const panPointerRef = useRef(null);
   // 'off' | 'on' | 'keep' (utils/panTextSelect.js); mirrored to data-pan-text.
   const panTextStateRef = useRef('off');
+  const panTextMarkAtRef = useRef(panTextMarkAt);
+  panTextMarkAtRef.current = panTextMarkAt;
   const panDeltaRef = useRef({ x: 0, y: 0 });
   const panRafRef = useRef(0);
   // Shared flick physics (src/utils/panMomentum.js) drives BOTH the mobile
@@ -3770,10 +3775,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       selectionLive: hasLivePdfTextSelection(window.getSelection?.()),
     });
     const onMove = (event) => {
-      const onText = isPanTextTarget(event.target);
+      const glyph = isPanTextTarget(event.target);
+      // A mark over the text owns the hover (owner 2026-10-22). Asked only
+      // near text: the hit test walks the page's marks.
+      const onMark = (glyph || overText || timer || panTextStateRef.current === 'on')
+        && panTextMarkAtRef.current?.(event) === true;
+      const onText = glyph && !onMark;
       // A gap between text boxes on a line: off text only once the pointer
-      // stays off it for PAN_TEXT_LEAVE_GRACE_MS (Bugbot #832).
-      if (panTextLeaveWaits({
+      // stays off it for PAN_TEXT_LEAVE_GRACE_MS (Bugbot #832). Onto a mark
+      // the I-beam goes at once, so a press there never selects text.
+      if (!onMark && panTextLeaveWaits({
         toolIsPan: interactionModeRef.current === 'Pan',
         spaceHeld: spacePanRef.current || Boolean(panPointerRef.current),
         pointerType: event.pointerType,
@@ -3815,7 +3826,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // A click (no drag) on the page away from the text clears a Pan selection,
     // like a click on the page under Text Select.
     const onDown = (event) => {
-      press = { x: event.clientX, y: event.clientY, onText: isPanTextTarget(event.target) };
+      press = {
+        x: event.clientX,
+        y: event.clientY,
+        onText: isPanTextTarget(event.target) && panTextMarkAtRef.current?.(event) !== true,
+      };
     };
     const onUp = (event) => {
       const start = press;
@@ -3883,7 +3898,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         button: event.button,
         // A glyph only: the text layer root also takes presses while the
         // I-beam shows, and a press on its blank part must still pan (Codex #832).
-        onTextLayer: isPanTextTarget(event.target),
+        // A mark over the glyph takes the press (owner 2026-10-22).
+        onTextLayer: isPanTextTarget(event.target) && panTextMarkAtRef.current?.(event) !== true,
       })) return;
       const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
       const route = resolveViewerPressRoute({
