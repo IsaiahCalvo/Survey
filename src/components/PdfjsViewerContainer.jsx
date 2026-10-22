@@ -1590,6 +1590,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // The last fit: { mode, viewW, viewH, pageW, pageH, pageIndex } (see
   // shouldAutoRefit). Cleared when a new document loads.
   const lastFitRef = useRef(null);
+  const autoFitModeRef = useRef(null);
   // zoomToScale is declared further down; the side-panel measurer reaches it
   // through this ref.
   const zoomToScaleRef = useRef(null);
@@ -2338,7 +2339,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         lastBandW: lastFit.bandW,
         bandDriven: lastFit.bandDriven,
       })) return;
+      // Tag the commit so the app keeps its fit mode instead of reading
+      // this self-run re-fit as a manual zoom (onZoomChanged fitMode).
+      autoFitModeRef.current = lastFit.mode;
       zoomToScaleRef.current?.(lastFit.mode, { auto: true, band: true });
+      if (Math.abs(scaleRef.current - s) <= 1e-4) autoFitModeRef.current = null;
     };
     const schedule = () => {
       if (!raf) raf = requestAnimationFrame(measure);
@@ -5103,7 +5108,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       cb.current.onZoomChanged?.({
         zoomValue: Math.round(scale * 100),
         raw: { fromPct: Math.round(from * 100), toPct: Math.round(scale * 100), scale },
+        fitMode: autoFitModeRef.current,
       });
+      autoFitModeRef.current = null;
     }
   }, [scale]);
 

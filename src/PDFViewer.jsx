@@ -8240,7 +8240,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setZoomInputValue(String(Math.round(nextScale * 100)));
     }
 
-    const sourceMode = pdfjsZoomSourceRef.current;
+    // payload.fitMode: the viewer re-fit itself to the band between side panels.
+    const autoFitMode = { fit: ZOOM_MODES.FIT_PAGE, fitw: ZOOM_MODES.FIT_WIDTH, fith: ZOOM_MODES.FIT_HEIGHT }[payload?.fitMode];
+    const sourceMode = pdfjsZoomSourceRef.current || autoFitMode;
     const nextMode = sourceMode && sourceMode !== ZOOM_MODES.MANUAL
       ? sourceMode
       : ZOOM_MODES.MANUAL;
