@@ -28,6 +28,7 @@ import { normalizeAngle, snapAngleToNearest45 } from './utils/svgTransformMath';
 import { getSelectionHandleVisualMetrics, getAdaptiveSelectionHandleSpec } from './utils/selectionHandleVisibility.js';
 import RotationInputField from './components/RotationInputField';
 import rotateIconSvg from './assets/rotate-icon.svg';
+import { keyboardControlProps } from './utils/keyboardActivation.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
@@ -3737,6 +3738,7 @@ const RegionSelectionTool = ({
               fontFamily: FONT_FAMILY
             }}
             onClick={selectedRegionIds.size > 0 ? handleCopy : undefined}
+            {...keyboardControlProps(null, { role: 'menuitem', disabled: !(selectedRegionIds.size > 0) })}
             onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
@@ -3753,6 +3755,7 @@ const RegionSelectionTool = ({
               fontFamily: FONT_FAMILY
             }}
             onClick={selectedRegionIds.size > 0 ? handleCut : undefined}
+            {...keyboardControlProps(null, { role: 'menuitem', disabled: !(selectedRegionIds.size > 0) })}
             onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
@@ -3762,6 +3765,7 @@ const RegionSelectionTool = ({
             role="menuitem"
             style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-2)', fontFamily: FONT_FAMILY }}
             onClick={handlePaste}
+            {...keyboardControlProps(null, { role: 'menuitem' })}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
@@ -3780,6 +3784,7 @@ const RegionSelectionTool = ({
               background: 'transparent'
             }}
             onClick={contextMenu.canMerge ? handleMergeSelected : undefined}
+            {...keyboardControlProps(null, { role: 'menuitem', disabled: !contextMenu.canMerge })}
             onMouseEnter={(e) => {
               if (contextMenu.canMerge) e.currentTarget.style.background = 'var(--hover)';
             }}
@@ -3800,6 +3805,7 @@ const RegionSelectionTool = ({
               fontFamily: FONT_FAMILY
             }}
             onClick={contextMenu.canUnmerge ? handleSeparateRegion : undefined}
+            {...keyboardControlProps(null, { role: 'menuitem', disabled: !contextMenu.canUnmerge })}
             onMouseEnter={(e) => {
               if (contextMenu.canUnmerge) e.currentTarget.style.background = 'var(--hover)';
             }}

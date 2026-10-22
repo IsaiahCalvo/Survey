@@ -59,6 +59,7 @@ import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
 import { publishSideRoom } from './sidebar/panelLayoutStore.js';
 import { useProLock } from './hooks/useProLock.js';
+import { keyboardControlProps } from './utils/keyboardActivation.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -4458,6 +4459,7 @@ const SurveySpacesRail = ({
                             }}
                             role="menuitem"
                             className="survey-rail__menu-item"
+                            {...keyboardControlProps(null, { role: 'menuitem' })}
                           >
                             <Icon name="document" size={14} color="currentColor" />
                             Open Excel
@@ -4469,6 +4471,7 @@ const SurveySpacesRail = ({
                             }}
                             role="menuitem"
                             className="survey-rail__menu-item"
+                            {...keyboardControlProps(null, { role: 'menuitem' })}
                           >
                             <Icon name="upload" size={14} color="currentColor" />
                             Push to Excel
@@ -4484,6 +4487,7 @@ const SurveySpacesRail = ({
                             }}
                             role="menuitem"
                             className="survey-rail__menu-item"
+                            {...keyboardControlProps(null, { role: 'menuitem' })}
                           >
                             <Icon name="download" size={14} color="currentColor" />
                             Pull from Excel
@@ -4505,6 +4509,7 @@ const SurveySpacesRail = ({
                               }}
                               role="menuitem"
                               className="survey-rail__menu-item"
+                              {...keyboardControlProps(null, { role: 'menuitem' })}
                               style={{
                                 // Calm gold (2026-10-01): a live link is the house
                                 // "ok" green, beside warning amber and error red.
@@ -4561,6 +4566,7 @@ const SurveySpacesRail = ({
                               }}
                               role="menuitem"
                               className="survey-rail__menu-item"
+                              {...keyboardControlProps(null, { role: 'menuitem' })}
                               style={{
                                 color: verifying ? 'var(--warning)' : (verdictColor || 'var(--text-2)'),
                                 cursor: verifying ? 'wait' : 'pointer'

@@ -45,6 +45,7 @@ import { isPhoneLayout } from '../utils/layoutMode.js';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
 import { resolveProjectDropTarget } from '../utils/fileDrop.js';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -919,6 +920,7 @@ export default function ProjectsFolderTree({
         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setFileMenu({ id: f.id, rect: { left: event.clientX, right: event.clientX + 168, top: event.clientY, bottom: event.clientY } }); setTeamMenu(null); }}
         className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}${fileSelect && isChecked ? ' is-selected' : ''}`}
         onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
+        {...keyboardControlProps()}
       >
         {dragHandle}
         <span className="projects-mobile-file-icon"><Icon name="doc" size={15} contentType="document" /></span>
@@ -1035,6 +1037,7 @@ export default function ProjectsFolderTree({
                     data-project-id={p.id}
                     onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTeamMenu({ id: p.id, rect: { left: event.clientX, right: event.clientX + 184, top: event.clientY, bottom: event.clientY } }); setFileMenu(null); }}
                     onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
+                    {...keyboardControlProps()}
                     style={{
                       display: 'grid',
                       gridTemplateColumns: '28px 1fr auto',
@@ -1221,6 +1224,7 @@ export default function ProjectsFolderTree({
                             className="projects-file-grid"
         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setFileMenu({ id: f.id, rect: { left: event.clientX, right: event.clientX + 168, top: event.clientY, bottom: event.clientY } }); setTeamMenu(null); }}
                             onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
+                            {...keyboardControlProps()}
                             style={{
                               // UX 2026-09-17 (owner ruling): a ticked row lifts a
                               // surface step, never a warm gold wash.
@@ -1734,6 +1738,7 @@ export default function ProjectsFolderTree({
               key={`mobile-project-${p.id}`}
               className={`mobile-project-card${jobsEdit && isSel ? ' is-selected' : ''}${isOpen ? ' is-open' : ''}`}
               onClick={() => { if (jobsEdit) toggleProjSel(p.id); else setOpenId(p.id); }}
+              {...keyboardControlProps()}
             >
               <div style={{ minWidth: 0 }}>
                 <div className="mobile-card-title">{p.name}</div>
@@ -1890,6 +1895,7 @@ export default function ProjectsFolderTree({
                   <div
                     key={`mobile-file-${f.id}`}
                     onClick={() => { if (fileSelect) { toggleFileSel(f.id); return; } onOpenDocument && onOpenDocument(f); }}
+                    {...keyboardControlProps()}
                     style={{
                       display: 'grid',
                       gridTemplateColumns: '1fr 28px',
