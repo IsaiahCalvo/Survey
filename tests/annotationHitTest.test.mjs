@@ -703,3 +703,68 @@ test('SVG geometry miss and diag log failures are swallowed', () => {
     globalThis.window = originalWindow;
   }
 });
+
+// Speed 2026-10-22: the costly isPointInStroke only runs on marks whose box,
+// grown by the stroke, is near the point. scripts/perf/hit-test-bench.mjs
+// (140 pen strokes): 3.2 -> 0.76 ms per call on blank page, 1.75 -> 0.46 on a stroke.
+const strokeTarget = ({ index, rect, strokeWidth, scale = 1, calls, attrs = {} }) => {
+  const carrier = new MockElement({ 'data-annotation-index': String(index) }, rect);
+  const target = new MockElement(
+    { 'data-path-hit-target': 'true', fill: 'none', 'stroke-width': String(strokeWidth), ...attrs },
+    rect,
+    { stroke: () => { calls.n += 1; return true; } },
+  );
+  target.getScreenCTM = () => ({ a: scale, b: 0, c: 0, d: scale, inverse: () => ({}) });
+  target.parent = carrier;
+  carrier.children.push(target);
+  return carrier;
+};
+
+test('pan fallback: a mark whose stroke box is far from the point is not stroke-tested', () => {
+  const calls = { n: 0 };
+  const far = strokeTarget({ index: 0, rect: { left: 500, top: 500, right: 600, bottom: 510, width: 100, height: 10 }, strokeWidth: 6, calls });
+  const result = runResolve(makeEnv({ wrapperChildren: [far] }), 200, 200);
+  assert.equal(result.kind, 'page');
+  assert.equal(calls.n, 0, 'isPointInStroke skipped');
+});
+
+test('pan fallback: the box grows by the stroke (and its scale), so a stroke edge just outside the bare box still hits', () => {
+  // Geometry box ends at y=300; a 10-unit stroke at 2x reaches 10 px past it.
+  const calls = { n: 0 };
+  const near = strokeTarget({ index: 3, rect: { left: 200, top: 290, right: 400, bottom: 300, width: 200, height: 10 }, strokeWidth: 10, scale: 2, calls });
+  const result = runResolve(makeEnv({ wrapperChildren: [near] }), 300, 309);
+  assert.equal(result.kind, 'annotation');
+  assert.equal(result.annotationIndex, 3);
+  assert.equal(calls.n, 1);
+  // A screen-width stroke (non-scaling) grows by its own width only.
+  const flat = { n: 0 };
+  const screenStroke = strokeTarget({ index: 5, rect: { left: 200, top: 290, right: 400, bottom: 300, width: 200, height: 10 }, strokeWidth: 4, scale: 50, calls: flat, attrs: { 'vector-effect': 'non-scaling-stroke' } });
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [screenStroke] }), 300, 320).kind, 'page');
+  assert.equal(flat.n, 0);
+});
+
+test('pan fallback: no readable stroke width or scale means no shortcut', () => {
+  const calls = { n: 0 };
+  const noWidth = strokeTarget({ index: 1, rect: { left: 500, top: 500, right: 600, bottom: 510, width: 100, height: 10 }, strokeWidth: 'inherit', calls });
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [noWidth] }), 200, 200).kind, 'annotation');
+  assert.equal(calls.n, 1);
+});
+
+test('pan fallback: the box grows by the path\'s own miter limit (Codex #1145: imported paths use 10)', () => {
+  // A 10-unit stroke with miter limit 10 reaches 50 px past the bare box; the
+  // default limit 4 would stop at 22 px.
+  const calls = { n: 0 };
+  const sharp = strokeTarget({ index: 7, rect: { left: 200, top: 290, right: 400, bottom: 300, width: 200, height: 10 }, strokeWidth: 10, calls, attrs: { 'stroke-miterlimit': '10' } });
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [sharp] }), 300, 345).annotationIndex, 7);
+  assert.equal(calls.n, 1);
+  const defaults = { n: 0 };
+  const plain = strokeTarget({ index: 8, rect: { left: 200, top: 290, right: 400, bottom: 300, width: 200, height: 10 }, strokeWidth: 10, calls: defaults });
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [plain] }), 300, 345).kind, 'page');
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [plain] }), 300, 321).annotationIndex, 8, 'default miter limit 4 reaches 20 px (+2)');
+  // A round join reaches only sqrt(2) half-widths.
+  const round = { n: 0 };
+  const rounded = strokeTarget({ index: 9, rect: { left: 200, top: 290, right: 400, bottom: 300, width: 200, height: 10 }, strokeWidth: 10, calls: round, attrs: { 'stroke-linejoin': 'round' } });
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [rounded] }), 300, 315).kind, 'page');
+  assert.equal(round.n, 0);
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [rounded] }), 300, 308).annotationIndex, 9);
+});

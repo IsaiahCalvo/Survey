@@ -202,12 +202,42 @@ export function resolveAnnotationAt(e, { acceptMark = null } = {}) {
       && e.clientY >= r.top && e.clientY <= r.bottom;
   };
 
+  // Speed (2026-10-22): isPointInStroke on a long ink path is the costly
+  // part of this walk (~2-3 ms per call at 140 strokes, run once a frame by
+  // the Pan halo). A mark whose box, grown by its stroke, misses the point
+  // cannot contain it. getBoundingClientRect leaves the stroke out, so grow
+  // it by the farthest the stroke reaches from the path: a miter join's tip
+  // reaches miterlimit x half the width (SVG default limit 4; imported paths
+  // carry their own, e.g. 10), a round / bevel join or a square cap's corner
+  // within sqrt(2) x half the width. No readable width means no shortcut.
+  const svgBoxNearPoint = (el, ctm) => {
+    if (typeof el.getBoundingClientRect !== 'function') return true;
+    const width = parseFloat(el.getAttribute?.('stroke-width'));
+    if (!Number.isFinite(width)) return true;
+    const scale = el.getAttribute?.('vector-effect') === 'non-scaling-stroke'
+      ? 1
+      : Math.max(Math.hypot(ctm.a, ctm.b), Math.hypot(ctm.c, ctm.d));
+    if (!Number.isFinite(scale)) return true;
+    const join = el.getAttribute?.('stroke-linejoin');
+    let reach = Math.SQRT2;
+    if (join !== 'round' && join !== 'bevel') {
+      const limit = parseFloat(el.getAttribute?.('stroke-miterlimit') ?? '4');
+      if (!Number.isFinite(limit)) return true;
+      reach = Math.max(limit, Math.SQRT2);
+    }
+    const margin = (reach * Math.max(width, 0) * scale) / 2 + 2;
+    const r = el.getBoundingClientRect();
+    return e.clientX >= r.left - margin && e.clientX <= r.right + margin
+      && e.clientY >= r.top - margin && e.clientY <= r.bottom + margin;
+  };
+
   const svgGeometryContainsPoint = (el) => {
     if (!el || !el.ownerSVGElement || typeof el.ownerSVGElement.createSVGPoint !== 'function') {
       return false;
     }
     const ctm = typeof el.getScreenCTM === 'function' ? el.getScreenCTM() : null;
     if (!ctm) return false;
+    if (!svgBoxNearPoint(el, ctm)) return false;
     try {
       const pt = el.ownerSVGElement.createSVGPoint();
       pt.x = e.clientX;
