@@ -106,3 +106,13 @@ test('only the exact diagnostics folder may be cleared', () => {
   }
   assert.equal(isClearableDirectory(testLogs, []), false);
 });
+
+test('only spreadsheet files may be handed to the operating system to open', () => {
+  const { isOpenableSpreadsheet } = require('../src/electron/fsPathGuard.cjs');
+  for (const ok of ['C:\\Users\\a\\Survey.xlsx', '/Users/a/Book.XLSM', '/tmp/x.xls', '/tmp/x.csv', '/tmp/x.xlsb']) {
+    assert.equal(isOpenableSpreadsheet(ok), true, ok);
+  }
+  for (const bad of ['C:\\Users\\a\\Downloads\\x.bat', '/tmp/run.command', '/tmp/x.app', '/tmp/x.sh', '/tmp/x.xlsx.exe', '/tmp/noext', '', null]) {
+    assert.equal(isOpenableSpreadsheet(bad), false, String(bad));
+  }
+});

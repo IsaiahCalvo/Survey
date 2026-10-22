@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Survey Nightly tab icon: the Survey mark in violet with a moon, so the
+       nightly tab never passes for surveytool.app. -->
+  <style>
+    .m { stroke: #6d28d9; } .moon { fill: #6d28d9; }
+    @media (prefers-color-scheme: dark) { .m { stroke: #a78bfa; } .moon { fill: #a78bfa; } }
+  </style>
+  <g class="m" fill="none" stroke-width="52" stroke-linecap="round">
+  <circle cx="256" cy="256" r="230"/>
+  <line x1="256" y1="30" x2="256" y2="90"/>
+  <line x1="256" y1="482" x2="256" y2="422"/>
+  <line x1="30" y1="256" x2="90" y2="256"/>
+  <line x1="482" y1="256" x2="422" y2="256"/>
+  </g>
+  <path class="moon" d="M300 150a110 110 0 1 0 70 190a90 90 0 1 1 -70 -190z"/>
+</svg>

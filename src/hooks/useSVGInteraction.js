@@ -27,7 +27,9 @@ import { deepClone } from '../utils/deepClone.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { roundCommittedAnnotationsGeometry } from '../utils/annotationCommitRounding.js';
 import { mergeDraggedMarksOntoPage } from '../utils/dragCommitMerge.js';
-import { remapSelectedIndices } from '../utils/selectionRemap.js';
+import {
+  indexRemapper, rebasePageCopy, remapDragState, remapSelectedIndices, remapVisualTransform,
+} from '../utils/selectionRemap.js';
 import { trackHandleZoom, untrackHandleZoom } from '../utils/liveHandleZoom.js';
 import { resizeCalloutBox } from '../utils/markBorderOutline.js';
 // w59: one rule for where a moved mark lands (preview === save).
@@ -173,6 +175,19 @@ import { resolveTextDoubleClick } from '../utils/selectModes.js';
 import { useCrossPageMove } from './useCrossPageMove.js';
 import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 import { lockTextboxSizeAfterResize } from '../utils/annotationPreferences.js';
+import {
+  groupResizeMinimumScale,
+  handleAffectsX,
+  handleAffectsY,
+  isTextMark,
+  markNeedsUniformGroupScale,
+  memberAxisScale,
+  resolveGroupResizeScale,
+  scaledGroupFontSize,
+  scaledTextBoxLength,
+  textScalesFontFor,
+} from '../utils/groupResize.js';
+import { TEXT_PADDING } from '../utils/textEditCommit.js';
 
 // Last inverse scale measured per page width (page units), shared by every
 // page layer: pages of one set share a width and a zoom.
@@ -823,6 +838,23 @@ export function useSVGInteraction({
     const remappedFrom = selectedIds;
     setSelectedIds((prev) => (prev === remappedFrom ? next : prev));
   }, [annotations, selectedIds]);
+  // A live drag follows its marks by id the same way (remapDragState): when
+  // the list changes mid-drag (a delete on another screen, the store's
+  // re-order after open), its positions would otherwise hand the drag and its
+  // preview to a neighbour, and the dragged mark sat still or looked gone.
+  const dragListRef = useRef(null);
+  useLayoutEffect(() => {
+    const objects = annotations?.objects ?? null;
+    const previous = dragListRef.current;
+    dragListRef.current = objects;
+    const ds = dragStateRef.current;
+    if (!ds?.active || !previous || !objects || previous === objects) return;
+    const mapIndex = indexRemapper(previous, objects);
+    const moved = remapDragState(ds, mapIndex);
+    if (moved.currentAnnotations) moved.currentAnnotations = rebasePageCopy(moved.currentAnnotations, annotations);
+    dragStateRef.current = moved;
+    setVisualTransform((prev) => remapVisualTransform(prev, mapIndex));
+  }, [annotations]);
   useEffect(() => {
     if (dragStateRef.current?.active) return;
     setHoveredId(null);
@@ -2797,9 +2829,11 @@ export function useSVGInteraction({
         };
       };
 
-      const ax = ds.anchorX;
-      const ay = ds.anchorY;
       const u = ds.groupUnionOriginal;
+      // Drawboard: Alt grows the frame from its centre, like one mark.
+      const fromCentre = !!e.altKey;
+      const ax = fromCentre ? u.cx : ds.anchorX;
+      const ay = fromCentre ? u.cy : ds.anchorY;
 
       // Reference frame for computing sx/sy. When a persisted rotation
       // exists, the "original handle" + "anchor" live on the tilted frame
@@ -2841,14 +2875,15 @@ export function useSVGInteraction({
       const origDx = (origHx - anchorLocal.x) || 1;
       const origDy = (origHy - anchorLocal.y) || 1;
       // Affected axes per handle ID.
-      const affectsX = !['mt', 'mb'].includes(ds.handleId);
-      const affectsY = !['ml', 'mr'].includes(ds.handleId);
+      const affectsX = handleAffectsX(ds.handleId);
+      const affectsY = handleAffectsY(ds.handleId);
+      const keepProportions = e.shiftKey || !!ds.groupResizeKeepsProportions;
       // Live pointer offsets in LOCAL coords (sign preserves drag direction).
       let liveDx = pointerLocal.x - anchorLocal.x;
       let liveDy = pointerLocal.y - anchorLocal.y;
       // Canvas audit chunk 2: an upright group's dragged edge(s) pull to
       // other marks' edges within 6 screen px (not with Shift or Alt).
-      const groupResizeSnapOn = !hasPersistRot && !e.shiftKey && !e.altKey;
+      const groupResizeSnapOn = !hasPersistRot && !keepProportions && !e.altKey;
       if (groupResizeSnapOn) {
         resetSnapIfNewDrag(ds);
         if (ds.resizeSnapTargets === undefined) {
@@ -2861,36 +2896,19 @@ export function useSVGInteraction({
         liveDx += off.dx;
         liveDy += off.dy;
       }
-      // Compute scale factors. For uniform corners, optionally Shift-lock
-      // to uniform scale by averaging |sx| and |sy|.
-      let sx = affectsX ? (origDx === 0 ? 1 : liveDx / origDx) : 1;
-      let sy = affectsY ? (origDy === 0 ? 1 : liveDy / origDy) : 1;
-      const groupContainsPath = Object.values(ds.groupMemberOriginals).some(
-        (member) => member?.objType === 'path',
-      );
-      // Imported/legacy paths preserve the exact requested page affine,
-      // including signed sub-0.05 scales. A group containing one must use
-      // that same affine for every member or the group tears apart.
-      if (!groupContainsPath) {
-        if (Math.abs(sx) < 0.05) sx = (sx < 0 ? -0.05 : 0.05);
-        if (Math.abs(sy) < 0.05) sy = (sy < 0 ? -0.05 : 0.05);
-      }
-      // Shift = uniform scale on corner handles, following the BIGGER move
-      // (canvas audit chunk 3, Drawboard) so the corner stays under the pointer.
-      if (e.shiftKey && affectsX && affectsY) {
-        const locked = lockAspectToBiggerMove(sx, sy, 1, 1);
-        sx = locked.scaleX;
-        sy = locked.scaleY;
-      }
-      if (groupContainsPath) {
-        if (sx === 0) sx = Number.MIN_VALUE;
-        if (sy === 0) sy = Number.MIN_VALUE;
-      }
-      // w63: a group flips through the fixed corner like one mark does, and
-      // its frame never gets thinner than 4 page units (or its own starting
-      // size) — so it can't collapse to a dot on the way through.
-      if (affectsX) sx = clampResizeScale(sx, { rawSize: origDx, allowFlip: true });
-      if (affectsY) sy = clampResizeScale(sy, { rawSize: origDy, allowFlip: true });
+      // Drawboard rules + tldraw's tilted-mark rule (utils/groupResize.js):
+      // an edge scales one axis; Shift, a photo, text (not from a side) or a
+      // mark tilted off a right angle keeps the proportions, following the
+      // bigger move. A group never mirrors, and no member gets thinner than
+      // 4 page units (or its own size) on the way down.
+      const { sx, sy } = resolveGroupResizeScale({
+        handleId: ds.handleId,
+        sx: origDx === 0 ? 1 : liveDx / origDx,
+        sy: origDy === 0 ? 1 : liveDy / origDy,
+        keepProportions,
+        minScaleX: ds.groupResizeMinScale?.minScaleX || 0,
+        minScaleY: ds.groupResizeMinScale?.minScaleY || 0,
+      });
 
       // Helper: take a WORLD point (wx, wy), rotate into local frame, scale
       // around the LOCAL anchor by (sx, sy), then rotate back to world.
@@ -2968,38 +2986,44 @@ export function useSVGInteraction({
           target.scaleY = 1;
           target.radius = newR;
         } else {
-          // UX: 2026-04-21 v9 — scale the shape's VISIBLE CENTER in world
-          // (not its origin directly). Then back out the new origin so
-          // that `origin + rotate(offset) = visible_center_new`. This
-          // handles rotated individual shapes: simply scaling the origin
-          // in world leaves a residue equal to the rotation-scale
-          // commutator, which the user saw as "shapes colliding at
-          // intermediate angles" — the residue is zero at 0°/180° but
-          // grows as the shape's angle moves off those. For un-rotated
-          // shapes this reduces to the v8 origin-scale formula.
-          const orig_offset_x = orig.aabbCenterX - orig.left;
-          const orig_offset_y = orig.aabbCenterY - orig.top;
-          const angleRad = ((orig.angle || 0) * Math.PI) / 180;
-          const cA = Math.cos(angleRad);
-          const sA = Math.sin(angleRad);
-          // Un-rotate offset into shape's local bbox frame.
-          const localOffX = cA * orig_offset_x + sA * orig_offset_y;
-          const localOffY = -sA * orig_offset_x + cA * orig_offset_y;
-          // Scale local offset by (sx, sy) — this matches the
-          // scaleX/scaleY multipliers we're about to apply to the shape.
-          const scaledLocalOffX = localOffX * sx;
-          const scaledLocalOffY = localOffY * sy;
-          // Rotate scaled local offset back to world.
-          const newOffsetX = cA * scaledLocalOffX - sA * scaledLocalOffY;
-          const newOffsetY = sA * scaledLocalOffX + cA * scaledLocalOffY;
-          // Scale the visible center in world, then derive the new
-          // origin so the shape's `origin + rotated(offset)` formula
-          // reproduces the expected new visible center.
+          // Scale the shape's VISIBLE CENTER in world, then place the
+          // origin from it.
+          //
+          // These renderers place `left/top` at the UNROTATED
+          // top-left and turn the shape about its own centre, so the
+          // centre-from-origin offset is unrotated too and grows by the
+          // mark's own axis scales. A mark turned 90 / 270 takes the frame's
+          // scales swapped; any other tilt only ever sees a uniform scale
+          // (groupResize.js), so it never shears.
+          const axis = memberAxisScale(orig.angle, sx, sy);
           const newVisible = scalePoint(orig.aabbCenterX, orig.aabbCenterY);
-          target.left = newVisible.x - newOffsetX;
-          target.top = newVisible.y - newOffsetY;
-          target.scaleX = (orig.scaleX || 1) * Math.abs(sx);
-          target.scaleY = (orig.scaleY || 1) * Math.abs(sy);
+          target.left = newVisible.x - (orig.aabbCenterX - orig.left) * axis.x;
+          target.top = newVisible.y - (orig.aabbCenterY - orig.top) * axis.y;
+          if (orig.isText) {
+            // Text reflows instead of stretching: the box takes the scale.
+            // From a corner / top / bottom the font scales with the frame
+            // (Drawboard) and so does the box inside its fixed padding; from
+            // a side only the width changes and the words rewrap.
+            const boxW = (orig.width || 0) * Math.abs(orig.scaleX || 1);
+            const boxH = (orig.height || 0) * Math.abs(orig.scaleY || 1);
+            const scalesFont = orig.fontSize != null && textScalesFontFor(ds.handleId);
+            const newW = scalesFont ? scaledTextBoxLength(boxW, axis.x, TEXT_PADDING) : boxW * axis.x;
+            const newH = scalesFont ? scaledTextBoxLength(boxH, axis.y, TEXT_PADDING) : boxH * axis.y;
+            target.width = newW;
+            if (orig.height) target.height = newH;
+            target.scaleX = 1;
+            target.scaleY = 1;
+            // The box turns about its own centre, so it sits centred on the
+            // scaled centre.
+            target.left = newVisible.x - newW / 2;
+            if (orig.height) target.top = newVisible.y - newH / 2;
+            if (scalesFont) {
+              target.fontSize = Math.round(scaledGroupFontSize(orig.fontSize, axis.x, axis.y) * 10) / 10;
+            }
+          } else {
+            target.scaleX = (orig.scaleX || 1) * axis.x;
+            target.scaleY = (orig.scaleY || 1) * axis.y;
+          }
         }
       }
 
@@ -5409,9 +5433,27 @@ export function useSVGInteraction({
     setInteractionState('idle');
   }, [annotations, pageWidth, pageHeight, onSaveAnnotations, svgRef, onUpdateCallout, onUpdateCalloutLive, callouts, applyMarqueeState, cancelLasso, deselectAll, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, viewerId, documentOwnerId, pageNumber, getSelectableAnnotationIndices, inverseScale, isCalloutSelectable, getSurveyMarkerMembers, updateSelectedMarkers, clearSelectedMarkers, clampMarkerGroupDelta, getGroupMarkerBoxes, applySnapGuides, snapMoveDelta, ensureSingleMoveSnap, ensureGroupMoveSnap]);
 
+  // A move that will not be saved leaves nothing on screen: the mark goes
+  // back to where it is stored at once (Escape, a lost pointer, a long-press
+  // menu), instead of staying where the pointer left it until a later redraw
+  // snaps it back.
+  const dropActiveMoveDrag = useCallback(() => {
+    const ds = dragStateRef.current;
+    if (!ds?.active || (ds.mode !== 'move' && ds.mode !== 'group-move')) return false;
+    crossPageMove.end(ds);
+    dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined };
+    justDraggedAtRef.current = Date.now();
+    setVisualTransform(null);
+    setInteractionState('idle');
+    return true;
+  }, [crossPageMove]);
+
   const handlePointerCancel = useCallback((e) => {
     applySnapGuides(null);
     const ds = dragStateRef.current;
+    // The browser took the pointer (a system gesture, a touch it turned into
+    // a scroll): the move is not saved, so its preview must not stay behind.
+    if (dropActiveMoveDrag()) return;
     if (!ds.active || ds.mode !== 'text-markup-horizontal') return;
     if (ds.pointerId != null && e.pointerId != null && ds.pointerId !== e.pointerId) return;
     try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
@@ -5425,13 +5467,21 @@ export function useSVGInteraction({
     };
     setVisualTransform(null);
     setInteractionState('idle');
-  }, [applySnapGuides]);
+  }, [applySnapGuides, dropActiveMoveDrag]);
 
   // Canvas audit chunk 2: a guide never outlives its drag (Escape, a lost
   // pointer, a cross-page hand-off all end in 'idle').
   useEffect(() => {
     if (interactionState === 'idle') applySnapGuides(null);
   }, [interactionState, applySnapGuides]);
+
+  // L1 (docs/GESTURE-CONTRACT.md): a finger or pen held still on the selected
+  // mark opens its menu, and that press is not a move. Without this the move
+  // kept following the finger under the open menu and was never saved.
+  useEffect(() => {
+    window.addEventListener('survey-long-press', dropActiveMoveDrag);
+    return () => window.removeEventListener('survey-long-press', dropActiveMoveDrag);
+  }, [dropActiveMoveDrag]);
 
   // Owner after Test 46 (2026-10-06): Escape mid-drag puts a moving mark back
   // where it started (nothing is saved, the pick stays). And a mark carried
@@ -5443,16 +5493,7 @@ export function useSVGInteraction({
       const ds = dragStateRef.current;
       return ds?.active && (ds.mode === 'move' || ds.mode === 'group-move') ? ds : null;
     };
-    const cancelMoveDrag = () => {
-      const ds = activeMoveDrag();
-      if (!ds) return false;
-      crossPageMove.end(ds);
-      dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined };
-      justDraggedAtRef.current = Date.now();
-      setVisualTransform(null);
-      setInteractionState('idle');
-      return true;
-    };
+    const cancelMoveDrag = dropActiveMoveDrag;
     // The viewer's Escape asks live gestures to cancel first (its seam); the
     // key listener covers tools where the viewer does not listen.
     const onCancelGesture = (event) => {
@@ -5478,7 +5519,7 @@ export function useSVGInteraction({
       window.removeEventListener('pointermove', onWindowPointer, true);
       window.removeEventListener('pointerup', onWindowPointer, true);
     };
-  }, [interactionState, handlePointerMove, handlePointerUp, crossPageMove, svgRef]);
+  }, [interactionState, handlePointerMove, handlePointerUp, dropActiveMoveDrag, svgRef]);
 
   // Pointer capture normally sends the release back to this page's SVG. At
   // low zoom, a drag can cross into a sibling page before the browser grants
@@ -5677,6 +5718,11 @@ export function useSVGInteraction({
           aabbTop: aabb ? aabb.top : (obj.top || 0),
           aabbWidth: aabb ? aabb.width : (obj.width || 0),
           aabbHeight: aabb ? aabb.height : (obj.height || 0),
+          fontSize: typeof obj.fontSize === 'number' ? obj.fontSize : null,
+          isText: isTextMark(obj),
+          // Group resize: a tilted mark, a photo or (from a corner / top /
+          // bottom grabber) text keeps the whole frame's proportions.
+          needsUniformGroupScale: markNeedsUniformGroupScale(obj, handleId),
         };
         if (aabb) memberWorldAABBs.push(aabb);
       }
@@ -5774,6 +5820,11 @@ export function useSVGInteraction({
             },
         groupStartAngle: startAngle,
         pivotSource,
+        groupResizeKeepsProportions: !isRotate && Object.values(memberOriginals)
+          .some((member) => member.needsUniformGroupScale),
+        groupResizeMinScale: isRotate ? null : groupResizeMinimumScale(
+          Object.values(memberOriginals).map((member) => ({ width: member.aabbWidth, height: member.aabbHeight })),
+        ),
       };
 
       try {

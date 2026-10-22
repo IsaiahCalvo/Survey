@@ -23,7 +23,7 @@ import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensat
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
-import { ownerDisplayName, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
+import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useDocuments, useProjects, useStorage, useTemplates } from './hooks/useDatabase';
@@ -241,7 +241,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       // A template shared with me (through a document or a template invite)
       // carries its owner and my role; it saves through its own row.
       const sharedFrom = sharedFromRow(templateRow);
-      return {
+      return parkForeignLocalExcelPath({
         ...storedConfig,
         ...(sharedFrom ? { sharedFrom } : {}),
         id: templateId,
@@ -249,7 +249,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         name: config.name || templateRow.name || 'Untitled Template',
         createdAt: config.createdAt || templateRow.created_at || templateRow.updated_at || new Date().toISOString(),
         updatedAt: config.updatedAt || templateRow.updated_at || config.createdAt || templateRow.created_at || new Date().toISOString()
-      };
+      });
     });
 
     // Get IDs of templates that exist in Supabase

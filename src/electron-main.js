@@ -8,12 +8,35 @@ const os = require('os');
 const { isTrustedElectronAnalyticsSender } = require('./electronAnalyticsBridge');
 const { writeFileAtomic } = require('./electron/atomicFileWriter.cjs');
 const { createTrustedIpcMain } = require('./electron/trustedIpc.cjs');
-const { isClearableDirectory, isPathAllowed } = require('./electron/fsPathGuard.cjs');
+const { isClearableDirectory, isOpenableSpreadsheet, isPathAllowed } = require('./electron/fsPathGuard.cjs');
 
 const DEV_PORT = process.env.DEV_PORT || '5173';
 const SURVEY_ANALYTICS_PROXY_URL = 'https://surveytool.app/api/analytics/track';
 const SURVEY_ANALYTICS_MAX_BYTES = 32 * 1024;
 let surveyMainWindow = null;
+
+const SIGN_IN_HOSTS = new Set([
+  'login.microsoftonline.com',
+  'login.live.com',
+  'login.microsoft.com',
+  'accounts.google.com',
+  'supabase.com',
+]);
+
+function isSignInHost(host) {
+  return SIGN_IN_HOSTS.has(host) || host.endsWith('.supabase.co') || host.endsWith('.microsoftonline.com');
+}
+
+function isAllowedMainWindowUrl(parsedUrl) {
+  if (parsedUrl.protocol === 'file:') return true; // checked above: only dist/index.html
+  if (process.env.NODE_ENV === 'development'
+      && parsedUrl.protocol === 'http:'
+      && (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1')
+      && parsedUrl.port === String(DEV_PORT)) {
+    return true;
+  }
+  return parsedUrl.protocol === 'https:' && isSignInHost(parsedUrl.hostname.toLowerCase());
+}
 
 // KAL-369: every IPC handler below is registered through this wrapper, so a
 // call is served only when it comes from the Survey app page in the main
@@ -408,6 +431,16 @@ function createWindow() {
           }).catch(err => {
             console.error('Error loading OAuth callback:', err);
           });
+        }
+        return;
+      }
+
+      // The main window holds the app's file bridge, so it only ever shows the
+      // app itself or a sign-in page. Any other web page opens in the browser.
+      if (!isAllowedMainWindowUrl(parsedUrl)) {
+        event.preventDefault();
+        if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
+          shell.openExternal(parsedUrl.href);
         }
       }
     } catch (err) {
@@ -985,6 +1018,9 @@ ipcMain.handle('dialog:saveFile', async (event, { title, defaultPath, filters, d
 ipcMain.handle('shell:openPath', async (event, filePath) => {
   if (typeof filePath !== 'string' || !filePath) {
     return 'Invalid file path';
+  }
+  if (!isOpenableSpreadsheet(filePath)) {
+    return 'Only spreadsheet files can be opened';
   }
   assertAllowedPath(filePath);
   // On macOS, use the native 'open' command which works more reliably than shell.openPath.

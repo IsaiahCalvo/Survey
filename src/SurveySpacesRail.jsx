@@ -36,7 +36,8 @@ import { surveyAgentBridge } from './agent/surveyAgentTools.js';
 import { unlockPlayback } from './agent/agentVoice.js';
 import { warmUpHandsFreeMic } from './agent/handsFreeMic.js';
 import { activeAgentDocument } from './agent/webmcp.js';
-import { findTagInDocument, findTagsLikeInDocument } from './agent/planText.js';
+import { findTagInDocument, findTagsLikeInDocument, readDocumentSheets } from './agent/planText.js';
+import { sheetFloorOf } from './agent/spokenTag.js';
 import { SHEET_DETENT_STANDARD, endSheetReveal, revealInSheet, useMobileSheetMotion } from './mobile/useMobileSheetMotion';
 import { useSheetFocus } from './mobile/useSheetFocus';
 // Phone Survey panel look (layout B, one card divided). Every rule in it is
@@ -1605,6 +1606,9 @@ const SurveySpacesRail = ({
       // Phase 2: tags on the plan, and adding them as items (PDFViewer's handle).
       findOnPlan: (text) => findTagInDocument(activeAgentDocument(), text),
       findAllOnPlan: (like, page) => findTagsLikeInDocument(activeAgentDocument(), like, page),
+      // find_described: every sheet's words and the floor its title shows.
+      readSheets: () => readDocumentSheets(activeAgentDocument(), sheetFloorOf),
+      showPlace: (page, box) => handleLocateItemOnPDF({ pageNumber: page, bounds: box }),
       getCurrentPage: () => activeAgentDocument()?.getCurrentPage?.() || null,
       getPageSize: (page) => activeAgentDocument()?.getPageSize?.(page) || null,
       createItem: (spec) => activeAgentDocument()?.createSurveyMarker?.(spec) || null,

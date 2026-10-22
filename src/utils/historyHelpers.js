@@ -9,6 +9,7 @@
 import { HISTORY_OBJECT_CHANGE_PREVIEW_LIMIT, HISTORY_PAGE_PREVIEW_LIMIT, getHistoryObjectDiffType, getHistoryObjectSignature, hashHistoryString, toHistoryObjectDebug } from '../viewerShared.js';
 import { normalizePageRegions } from './annotationVisibilityRules.js';
 import { normalizeCanvasJsonForHistory } from './historyNormalization.js';
+import { isSharedSnapshotPage } from './historySnapshotShare.js';
 
 export { normalizeCanvasJsonForHistory };
 
@@ -18,13 +19,89 @@ export function normalizeHistoryReason(reason) {
   return trimmed || 'unspecified';
 }
 
-export function getHistoryFingerprint(value) {
+// Speed 2026-10-22: a full undo checkpoint fingerprinted the whole document
+// as one JSON string about nine times (the snapshot, the last checkpoint, the
+// checkpoint's own hash, then the summary and the delta of both sides) - on
+// Package 2 (~22 MB of marks) ~1 s per action, ~4 s on a slow CPU. A plain
+// object's fingerprint is now built from its children's, and the fingerprint
+// of a shared snapshot page (never edited in place) is kept, so an unchanged
+// page is serialized once, ever.
+// `bytes` is still the exact JSON length and `serialized` the exact JSON
+// (built only when read); `hash` is a hash of the children's hashes.
+const fingerprintCache = new WeakMap();
+
+const isPlainObject = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (typeof value.toJSON === 'function') return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+};
+
+const leafFingerprint = (value) => {
   const serialized = JSON.stringify(value ?? null);
-  return {
-    serialized,
-    hash: hashHistoryString(serialized),
-    bytes: serialized.length
-  };
+  return { serialized, hash: hashHistoryString(serialized), bytes: serialized.length, parts: null };
+};
+
+function fingerprintOf(value) {
+  // Snapshot pages are never edited in place, so their fingerprint can be kept.
+  const cacheable = isSharedSnapshotPage(value);
+  if (cacheable) {
+    const hit = fingerprintCache.get(value);
+    if (hit) return hit;
+  }
+  let fingerprint;
+  if (isPlainObject(value)) {
+    const parts = [];
+    let bytes = 2;
+    for (const key of Object.keys(value)) {
+      const child = value[key];
+      // JSON.stringify leaves these keys out.
+      if (child === undefined || typeof child === 'function' || typeof child === 'symbol') continue;
+      const keyJson = JSON.stringify(key);
+      const childFingerprint = fingerprintOf(child);
+      bytes += (parts.length ? 1 : 0) + keyJson.length + 1 + childFingerprint.bytes;
+      parts.push([keyJson, childFingerprint]);
+    }
+    let serialized = null;
+    fingerprint = {
+      get serialized() {
+        if (serialized === null) serialized = `{${parts.map(([k, c]) => `${k}:${c.serialized}`).join(',')}}`;
+        return serialized;
+      },
+      hash: hashHistoryString(`{${parts.map(([k, c]) => `${k}:${c.hash}/${c.bytes}`).join(',')}}`),
+      bytes,
+      parts,
+    };
+  } else {
+    fingerprint = leafFingerprint(value);
+  }
+  if (cacheable) fingerprintCache.set(value, fingerprint);
+  return fingerprint;
+}
+
+export function getHistoryFingerprint(value) {
+  return fingerprintOf(value);
+}
+
+/** Same JSON? Compares child by child, so unchanged pages cost nothing. */
+export function historyFingerprintsEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.hash !== b.hash || a.bytes !== b.bytes) return false;
+  if (a.parts && b.parts) {
+    if (a.parts.length !== b.parts.length) return false;
+    for (let i = 0; i < a.parts.length; i += 1) {
+      if (a.parts[i][0] !== b.parts[i][0]) return false;
+      if (!historyFingerprintsEqual(a.parts[i][1], b.parts[i][1])) return false;
+    }
+    return true;
+  }
+  return a.serialized === b.serialized;
+}
+
+/** Same JSON for two history values (e.g. two states of one page)? */
+export function historyValuesEqual(a, b) {
+  if (a === b) return true;
+  return historyFingerprintsEqual(getHistoryFingerprint(a ?? null), getHistoryFingerprint(b ?? null));
 }
 
 export function summarizeAnnotationPageTransitionForDebug(previousPageState, nextPageState) {
@@ -226,7 +303,7 @@ export function summarizeHistoryDelta(fromState, toState) {
     const changedPages = [];
     const pageKeys = new Set([...Object.keys(fromPages), ...Object.keys(toPages)]);
     pageKeys.forEach((pageKey) => {
-      if (JSON.stringify(fromPages[pageKey] || null) !== JSON.stringify(toPages[pageKey] || null)) {
+      if (!historyValuesEqual(fromPages[pageKey] || null, toPages[pageKey] || null)) {
         changedPages.push(pageKey);
       }
     });

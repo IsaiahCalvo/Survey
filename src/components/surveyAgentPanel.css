@@ -1,5 +1,9 @@
 /* Survey agent chat (KAL-527). Desktop: a card at the bottom right, left of
-   the Survey panel. Phone: a sheet across the bottom of the screen. */
+   the Survey panel. Phone: a sheet across the bottom of the screen.
+   Look (owner 2026-10-22, after vercel/chatbot and 21st.dev's thinking prompt
+   input): the agent's replies are plain text beside a small gold spark, the
+   person's are soft bubbles, and the composer is one rounded box with the
+   tools along its bottom edge. App tokens only, so it stays in the theme. */
 .survey-agent {
   position: fixed;
   right: 300px;
@@ -7,14 +11,14 @@
   z-index: 9050;
   width: 360px;
   max-width: calc(100vw - 32px);
-  height: min(520px, calc(100vh - 96px));
+  height: min(560px, calc(100vh - 96px));
   display: flex;
   flex-direction: column;
-  background: var(--panel-bg, var(--surface-1, #fff));
+  background: var(--panel-bg, var(--surface-1, #1c2027));
   color: var(--text-1);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  border-radius: var(--radius-lg, 16px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
   font-size: 14px;
   overflow: hidden;
 }
@@ -24,40 +28,64 @@
   bottom: 0;
   width: auto;
   max-width: none;
-  height: min(70vh, 560px);
-  border-radius: 14px 14px 0 0;
+  height: min(72vh, 600px);
+  border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* Header: name, then small controls. */
 .survey-agent__head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 10px 10px 10px 12px;
   border-bottom: 1px solid var(--border);
 }
-.survey-agent__title { font-weight: 600; flex: 1; }
-.survey-agent__voice {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-2);
-  font-size: 12px;
-  padding: 2px 8px;
-  min-height: 28px;
-  margin-right: 4px;
-  cursor: pointer;
-}
-.survey-agent__voice[aria-pressed="true"] { color: var(--text-1); border-color: var(--border-strong, var(--border)); }
+.survey-agent__title { font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .survey-agent__beta {
   margin-left: 6px;
   padding: 1px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-pill, 999px);
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-2);
-  background: var(--surface-3, rgba(0, 0, 0, 0.06));
+  color: var(--accent, #d8a84e);
+  background: var(--accent-soft, rgba(216, 168, 78, 0.14));
 }
+.survey-agent__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--accent, #d8a84e);
+  background: var(--accent-soft, rgba(216, 168, 78, 0.14));
+}
+.survey-agent__badge.is-big { width: 40px; height: 40px; }
+.survey-agent__badge.is-big svg { width: 20px; height: 20px; }
+.survey-agent__badge.is-spinning svg { animation: survey-agent-spin 1.6s linear infinite; }
+@keyframes survey-agent-spin { to { transform: rotate(360deg); } }
+.survey-agent__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.survey-agent__pill:hover:not(:disabled) { background: var(--hover, rgba(255, 255, 255, 0.05)); color: var(--text-1); }
+.survey-agent__pill:disabled { opacity: 0.45; cursor: default; }
+.survey-agent__pill-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
 .survey-agent__icon {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -65,85 +93,127 @@
   height: 32px;
   flex: none;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md, 8px);
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
 }
 .survey-agent.is-phone .survey-agent__icon { width: 44px; height: 44px; }
-.survey-agent__icon:hover:not(:disabled) { background: var(--hover, rgba(0, 0, 0, 0.05)); }
+.survey-agent__icon:hover:not(:disabled) { background: var(--hover, rgba(255, 255, 255, 0.05)); color: var(--text-1); }
 .survey-agent__icon:disabled { opacity: 0.4; cursor: default; }
-.survey-agent__mic.is-on { color: #fff; background: var(--accent-red, #d92d20); }
-/* Held on a phone: no scrolling, text picking or long-press menu. */
-.survey-agent__mic { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-.survey-agent__mic.is-cancel { color: #fff; background: var(--text-muted, #667085); }
-.survey-agent__hold-hint {
-  position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px);
-  padding: 6px 10px; border-radius: 8px; font-size: 13px; text-align: center;
-  color: #fff; background: rgba(16, 24, 40, 0.88); pointer-events: none;
-}
+.survey-agent__icon[aria-pressed="false"] { color: var(--text-3); }
+
+/* Messages. */
 .survey-agent__list {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 14px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
+.survey-agent__empty {
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 2px;
+}
+.survey-agent__hello { margin: 4px 0 0; font-size: 18px; font-weight: 600; color: var(--text-1); }
 .survey-agent__hint, .survey-agent__status {
   margin: 0;
   color: var(--text-3);
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
-.survey-agent__status { padding: 6px 12px; border-top: 1px solid var(--border); }
-.survey-agent__log {
-  align-self: flex-start;
-  margin: 2px 12px;
-  padding: 2px 6px;
-  border: 0;
-  background: none;
-  color: var(--text-3);
-  font-size: 11px;
-  text-decoration: underline;
+.survey-agent__suggestions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: 100%; margin-top: 6px; }
+.survey-agent__suggestion {
+  text-align: left;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
   cursor: pointer;
 }
-.survey-agent__log:disabled { opacity: 0.6; cursor: default; }
-.survey-agent__msg { display: flex; flex-direction: column; gap: 6px; }
-.survey-agent__msg.is-user { align-items: flex-end; }
+.survey-agent__suggestion:hover:not(:disabled) { color: var(--text-1); border-color: var(--border-strong, var(--border)); background: var(--hover, rgba(255, 255, 255, 0.05)); }
+.survey-agent__suggestion:disabled { opacity: 0.5; cursor: default; }
+.survey-agent__status { padding: 6px 12px; }
+.survey-agent__msg { display: flex; align-items: flex-start; gap: 8px; }
+.survey-agent__msg.is-user { justify-content: flex-end; }
+.survey-agent__body { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
+.survey-agent__msg.is-user .survey-agent__body { align-items: flex-end; max-width: 85%; }
+.survey-agent__msg.is-agent .survey-agent__body,
+.survey-agent__msg.is-error .survey-agent__body { flex: 1; }
 .survey-agent__bubble {
-  max-width: 85%;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-1);
+}
+.survey-agent__msg.is-agent .survey-agent__bubble { padding-top: 2px; }
+.survey-agent__msg.is-user .survey-agent__bubble {
+  padding: 8px 12px;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--surface-3, rgba(255, 255, 255, 0.08));
+}
+.survey-agent__msg.is-error .survey-agent__bubble {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
   padding: 8px 10px;
   border-radius: 10px;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  background: var(--surface-2, rgba(0, 0, 0, 0.05));
+  color: var(--danger-text, #e57f7b);
+  background: var(--danger-soft, rgba(217, 90, 86, 0.16));
 }
-.survey-agent__msg.is-user .survey-agent__bubble { background: var(--accent-soft, #e8f0fe); }
-.survey-agent__msg.is-error .survey-agent__bubble { color: var(--accent-red, #b42318); }
-.survey-agent__bubble.is-typing { color: var(--text-3); }
+.survey-agent__msg.is-error .survey-agent__bubble > svg { flex: none; margin-top: 3px; }
 .survey-agent__files { margin-top: 4px; font-size: 12px; color: var(--text-3); }
+.survey-agent__shimmer {
+  padding-top: 3px;
+  font-weight: 500;
+  background: linear-gradient(90deg, var(--text-3) 0%, var(--text-1) 50%, var(--text-3) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: survey-agent-shimmer 1.6s linear infinite;
+}
+@keyframes survey-agent-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 .survey-agent__changes {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
   font-size: 13px;
 }
-.survey-agent__changes ul { margin: 0; padding-left: 16px; flex: 1; }
-.survey-agent__changes.is-undone ul { text-decoration: line-through; color: var(--text-3); }
+.survey-agent__changes ul { margin: 0; padding: 0; list-style: none; flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.survey-agent__changes li { display: flex; gap: 6px; align-items: flex-start; color: var(--text-2); }
+.survey-agent__changes li > svg { flex: none; margin-top: 3px; color: var(--success-text, #6fae8e); }
+.survey-agent__changes.is-undone li { text-decoration: line-through; color: var(--text-3); }
+.survey-agent__changes.is-undone li > svg { color: var(--text-3); }
 .survey-agent__undo {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid var(--border-strong, var(--border));
-  border-radius: 8px;
+  border-radius: var(--radius-pill, 999px);
   background: transparent;
   color: var(--text-1);
-  padding: 4px 10px;
-  min-height: 32px;
+  padding: 0 10px;
+  min-height: 28px;
+  font-size: 12px;
   cursor: pointer;
 }
+.survey-agent__undo:hover { background: var(--hover, rgba(255, 255, 255, 0.05)); }
+.survey-agent__save { align-self: flex-start; }
+.survey-agent__undone { flex: none; color: var(--text-3); font-size: 12px; }
 .survey-agent__camera {
   display: flex;
   flex-direction: column;
@@ -161,62 +231,120 @@
   background: #000;
 }
 .survey-agent__camera-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.survey-agent__save { align-self: flex-start; }
-.survey-agent__undone { flex: none; color: var(--text-3); font-size: 12px; }
-.survey-agent__pending { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 12px 0; }
+
+/* Composer: one rounded box, typing on top, tools along the bottom. */
+.survey-agent__composer { padding: 8px 10px 10px; }
+.survey-agent__box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 16px;
+  background: var(--panel-well, var(--surface-0, rgba(0, 0, 0, 0.15)));
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.survey-agent__box:focus-within { border-color: var(--accent, #d8a84e); box-shadow: 0 0 0 3px var(--accent-soft, rgba(216, 168, 78, 0.14)); }
+.survey-agent__box.is-recording { border-color: var(--danger, #d95a56); box-shadow: 0 0 0 3px var(--danger-soft, rgba(217, 90, 86, 0.16)); }
+.survey-agent__input {
+  min-width: 0;
+  min-height: 40px;
+  max-height: 140px;
+  resize: none;
+  padding: 10px 12px 2px;
+  border: 0;
+  outline: none;
+  font: inherit;
+  /* 16px on phones so iOS does not zoom the page on focus. */
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text-1);
+  background: transparent;
+}
+.survey-agent__input::placeholder { color: var(--text-3); }
+.survey-agent__tools { display: flex; align-items: center; gap: 2px; padding: 4px 6px 6px; }
+.survey-agent__spacer { flex: 1; }
+.survey-agent__log {
+  margin-right: 4px;
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.survey-agent__log:disabled { opacity: 0.6; cursor: default; }
+.survey-agent__send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  margin-left: 2px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent, #d8a84e);
+  color: var(--accent-text, #15110a);
+  cursor: pointer;
+}
+.survey-agent__send:hover:not(:disabled) { background: var(--accent-light, #edc26d); }
+.survey-agent.is-phone .survey-agent__send { width: 44px; height: 44px; }
+.survey-agent__send:disabled { background: var(--surface-3, rgba(255, 255, 255, 0.08)); color: var(--text-3); cursor: default; }
+.survey-agent__pending { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
 .survey-agent__chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 2px 4px 2px 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-pill, 999px);
   font-size: 12px;
-  background: var(--surface-2, rgba(0, 0, 0, 0.05));
+  color: var(--text-2);
+  background: var(--surface-3, rgba(255, 255, 255, 0.08));
 }
 .survey-agent__chip button { border: 0; background: transparent; color: var(--text-2); cursor: pointer; display: inline-flex; }
-.survey-agent__composer {
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  padding: 8px;
-  border-top: 1px solid var(--border);
+
+/* The mic: red while it records, and a ring that grows with the voice it
+   hears (--survey-mic-level, 0 to 1, written by src/agent/micLevel.js). */
+.survey-agent__mic { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.survey-agent__mic.is-on { color: var(--on-danger, #fff); background: var(--danger-fill, #a8403c); border-radius: 50%; }
+.survey-agent__mic.is-cancel { color: #fff; background: var(--text-3, #667085); }
+.survey-agent__mic > svg { position: relative; }
+.survey-agent__mic-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--danger, #d95a56);
+  opacity: 0;
+  transform: scale(1);
+  pointer-events: none;
 }
-.survey-agent__input {
-  flex: 1;
-  min-width: 0;
-  min-height: 32px;
-  max-height: 120px;
-  resize: none;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font: inherit;
-  /* 16px on phones so iOS does not zoom the page on focus. */
-  font-size: 16px;
-  color: var(--text-1);
-  background: var(--panel-well, transparent);
+.survey-agent__mic.is-on .survey-agent__mic-ring {
+  opacity: calc(0.15 + var(--survey-mic-level, 0) * 0.35);
+  transform: scale(calc(1 + var(--survey-mic-level, 0) * 0.55));
+  transition: transform 80ms linear, opacity 80ms linear;
 }
-.survey-agent__send {
-  flex: none;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--accent, #2563eb);
-  color: var(--accent-text, #fff);
-  font-weight: 600;
-  cursor: pointer;
+.survey-agent__hold-hint {
+  position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px);
+  padding: 6px 10px; border-radius: 8px; font-size: 13px; text-align: center;
+  color: #fff; background: rgba(16, 24, 40, 0.88); pointer-events: none;
 }
-.survey-agent.is-phone .survey-agent__send { min-height: 44px; }
-.survey-agent__send:disabled { opacity: 0.45; cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+  .survey-agent__shimmer, .survey-agent__badge.is-spinning svg { animation: none !important; }
+  .survey-agent__shimmer { color: var(--text-2); background: none; }
+}
 
 /* Hands-free: a live line saying what the agent is doing, so a person
    walking the site can tell at a glance whether to talk. */
 .survey-agent__handsfree[aria-pressed="true"] {
-  color: #fff;
-  background: var(--accent-red, #d92d20);
+  color: var(--on-danger, #fff);
+  background: var(--danger-fill, #a8403c);
   border-color: transparent;
+}
+.survey-agent__handsfree[aria-pressed="true"] .survey-agent__pill-dot {
+  background: #fff;
+  animation: survey-agent-pulse 1.2s ease-in-out infinite;
 }
 .survey-agent__live {
   display: flex;
@@ -236,9 +364,15 @@
   background: var(--text-3);
 }
 .survey-agent__live.is-listening .survey-agent__dot { background: var(--accent-green, #12b76a); }
-.survey-agent__live.is-hearing .survey-agent__dot { background: var(--accent-red, #d92d20); animation: survey-agent-pulse 0.9s ease-in-out infinite; }
-.survey-agent__live.is-working .survey-agent__dot { background: var(--accent, #2563eb); animation: survey-agent-pulse 1.4s ease-in-out infinite; }
-.survey-agent__live.is-speaking .survey-agent__dot { background: var(--accent, #2563eb); }
+.survey-agent__live.is-hearing .survey-agent__dot {
+  background: var(--danger, #d95a56);
+  transform: scale(calc(1 + var(--survey-mic-level, 0) * 0.9));
+  box-shadow: 0 0 0 calc(var(--survey-mic-level, 0) * 6px) var(--danger-soft, rgba(217, 90, 86, 0.16));
+  transition: transform 80ms linear, box-shadow 80ms linear;
+}
+.survey-agent__live.is-listening .survey-agent__dot { transform: scale(calc(1 + var(--survey-mic-level, 0) * 0.5)); transition: transform 80ms linear; }
+.survey-agent__live.is-working .survey-agent__dot { background: var(--accent, #d8a84e); animation: survey-agent-pulse 1.4s ease-in-out infinite; }
+.survey-agent__live.is-speaking .survey-agent__dot { background: var(--accent, #d8a84e); }
 @keyframes survey-agent-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) {
   .survey-agent__dot { animation: none !important; }
@@ -249,9 +383,10 @@
 .survey-agent.is-phone { font-size: 15px; }
 .survey-agent.is-phone .survey-agent__head { gap: 6px; padding: 8px 8px 8px 12px; }
 .survey-agent.is-phone .survey-agent__title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.survey-agent.is-phone .survey-agent__voice { min-height: 44px; padding: 0 12px; font-size: 14px; margin-right: 0; }
-.survey-agent.is-phone .survey-agent__bubble { max-width: 92%; }
+.survey-agent.is-phone .survey-agent__pill { min-height: 44px; padding: 0 12px; font-size: 14px; }
+.survey-agent.is-phone .survey-agent__msg.is-user .survey-agent__body { max-width: 92%; }
 .survey-agent.is-phone .survey-agent__undo { min-height: 44px; padding: 0 14px; }
+.survey-agent.is-phone .survey-agent__suggestion { padding: 12px 14px; font-size: 15px; }
 .survey-agent.is-phone .survey-agent__live { padding: 12px; font-size: 16px; }
 .survey-agent.is-phone .survey-agent__dot { width: 14px; height: 14px; }
 @media (max-width: 380px) {
@@ -276,7 +411,7 @@
 /* The panel is 320px wide: one header line, no wrapping. */
 .survey-agent.is-inline .survey-agent__head { gap: 4px; }
 .survey-agent.is-inline .survey-agent__title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.survey-agent.is-inline .survey-agent__voice { white-space: nowrap; margin-right: 0; }
+
 .survey-agent.is-inline .survey-agent__beta { display: none; }
 /* Phone: below the sheet's grab handle, so a swipe down still closes it. */
 .survey-agent.is-inline.is-phone { top: 35px; }
@@ -288,6 +423,16 @@
 #chrome-right-host .survey-agent-mic.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording {
   color: var(--accent-text, #fff) !important;
   background-color: var(--accent, #d8a84e) !important;
+}
+/* ...and a ring that grows with the voice it hears (owner 2026-10-22: "it
+   should pulse when it hears sound"). */
+.survey-agent-mic.is-recording,
+#chrome-right-host .survey-agent-mic.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording.is-recording {
+  box-shadow: 0 0 0 calc(2px + var(--survey-mic-level, 0) * 9px) var(--accent-soft-strong, rgba(216, 168, 78, 0.2)) !important;
+  transition: box-shadow 80ms linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .survey-agent-mic.is-recording { transition: none; }
 }
 
 /* The typing dots beside the mic, like a phone's "someone is typing": they

@@ -39,8 +39,9 @@ final; no dashed box around selected callouts; no new chrome.
 | Survey Marker | ✓ ☆ Shift-click adds / Alt-click removes, with marks and callouts | ☆ | ☆ | ✓ ☆ moves with the whole selection (drag any member) | ✓ alone; D in a group (the group frame is move-only for every type) | ✓ alone; D in a group | ☆ one stack with marks (menu + Cmd+]/[) | ★ ☆ with the selection | n/a |
 | Region / space shape | ✓ (region tool) | region tool | region tool | ✓ | ✓ per vertex | ✓ | D: regions are page structure, not marks | ✗ | n/a |
 
-Multi-selection: move ✓; resize/rotate handles hidden on purpose (group
-transform frame); z-order ★ moves the whole selection as one block, shapes and
+Multi-selection: move ✓; ★ resize ✓ with the frame's eight grabbers
+(Drawboard rules, docs/research/MULTI-SELECT-RESIZE-2026-10-22.md; not with a
+callout, Survey Marker or locked mark in it); rotate still hidden; z-order ★ moves the whole selection as one block, shapes and
 callouts mixed (menu and keyboard, one Undo step). ☆ Survey Markers are
 members too: marquee / lasso / Shift-click pick them with marks, a drag or an
 arrow-key nudge moves marks and markers together, and a move, restack or
@@ -147,7 +148,7 @@ Both are pinned by `tests/pdfSaveExportContract.test.mjs`.
    nudge, stack, right-click menu, Delete, one Undo step). Still open:
    (a) another user's Survey Marker is blocked from delete instead of
    confirmed like marks (a marker permission rule — owner's nod);
-   (b) group resize / rotate stay hidden for every type;
+   (b) group rotate stays hidden; group resize skips selections with Survey Markers;
    (c) a selection of markers + callouts only (no marks) moves as two Undo
    steps (callouts keep their own commit);
    (d) moving a Survey Marker makes a linked Excel read "not synced" (bounds

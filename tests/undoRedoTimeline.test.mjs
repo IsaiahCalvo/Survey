@@ -759,7 +759,7 @@ test('PDFViewer follows the timeline rules', () => {
   const pushLocal = between('const pushLocalAnnotationHistoryAction = useCallback(', '\n  }, [');
   assert.match(pushLocal, /clearLegacyRedoForNewStep\(/, 'a local step clears the legacy Redo');
   const checkpoint = between('const addHistoryCheckpoint = useCallback(', '\n  }, [');
-  assert.equal((checkpoint.match(/clearLocalRedoForNewStep\(/g) || []).length, 3, 'every legacy step clears the local Redo');
+  assert.equal((checkpoint.match(/clearLocalRedoForNewStep\(/g) || []).length, 4, 'every legacy step clears the local Redo');
   const undo = between('const handleUndo = useCallback(', '\n\t  }, [');
   const redo = between('const handleRedo = useCallback(', '\n\t  }, [');
   for (const [name, body] of [['undo', undo], ['redo', redo]]) {

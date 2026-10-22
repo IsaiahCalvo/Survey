@@ -99,7 +99,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
         );
         if (!mountedRef.current || !sameInputs(jobInputs, latestInputsRef.current)) return false;
 
-        loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(bytes) });
+        loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
         loadingTaskRef.current = loadingTask;
         const pdf = await loadingTask.promise;
         if (!mountedRef.current) return false;

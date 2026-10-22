@@ -1,13 +1,23 @@
 // src/featureFlags.js — one switch board for unfinished features.
 //
-// New work ships in the code but stays hidden until its flag is on. A flag is
-// on for this browser when the first of these that answers says so:
+// New work ships in the code but stays hidden until its flag is on. Each flag
+// has a stage:
+//   beta    - an unfinished feature. Only Survey Nightly shows it. The stable
+//             app (surveytool.app) never does, whatever /flags says and even
+//             for testers: Isaiah wants the app people pay for free of beta.
+//   rollout - ready for stable. /flags turns it on for testers, then everyone.
+// A flag is on for this browser when the first of these that answers says so:
+//   0. a beta flag in a stable production build: always off
 //   1. localStorage 'survey.flag.<key>' = '1' / '0' (or the flag's older key)
 //   2. the nightly build (VITE_RELEASE_CHANNEL=nightly) turns every flag on
 //   3. a build-wide env var, where the flag has one
 //   4. the server's answer for this person, saved from the last load
 //      (feature_flags table: off, testers only, or on for everyone)
 //   5. default: off
+// Test builds skip step 0 so tests can still turn beta flags on: dev servers
+// (vite dev) and `--mode e2e` builds (the e2e harness and the native-app walks,
+// which run against a throwaway local database, never production). Moving a feature to stable = change its stage to
+// 'rollout' (docs/RELEASE-CHANNELS.md).
 // Features read their flag once at load, so a change made at /flags shows on
 // the next reload. To add a flag: add it here and insert its row in a
 // migration (see supabase/migrations/20261021030000_feature_flags.sql).
@@ -17,30 +27,40 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Smart fill',
     legacyKey: 'SMART_FILL_BETA',
     env: 'VITE_ENABLE_SMART_FILL',
+    stage: 'beta',
   }),
   'survey-agent': Object.freeze({
     label: 'Survey agent',
     legacyKey: 'SURVEY_AGENT_BETA',
     env: 'VITE_ENABLE_SURVEY_AGENT',
+    stage: 'beta',
   }),
   'annotation-agent': Object.freeze({
     label: 'Agent annotation writes',
     env: 'VITE_ENABLE_ANNOTATION_AGENT',
+    stage: 'beta',
   }),
+  // Read by the survey-mcp edge function, not the app: Claude or ChatGPT
+  // connectors write only for people this flag is on for at /flags.
   'survey-connector-writes': Object.freeze({
     label: 'Outside connector survey writes',
+    stage: 'beta',
   }),
   'pro-lock': Object.freeze({
     label: 'Lock Pro features for Free plan',
+    stage: 'rollout',
   }),
   'legacy-collab-retired': Object.freeze({
     label: 'Retire the legacy collab layer (step 1)',
+    stage: 'rollout',
   }),
   'survey-marker-fields': Object.freeze({
     label: 'Survey markers merge concurrent field edits',
+    stage: 'rollout',
   }),
   layers: Object.freeze({
     label: 'Layers panel (markup layers + PDF content opacity)',
+    stage: 'beta',
   }),
 });
 
@@ -86,9 +106,18 @@ export function releaseChannel(env = readEnv()) {
   return env?.VITE_RELEASE_CHANNEL === 'nightly' ? 'nightly' : 'stable';
 }
 
+function isTestBuild(env) {
+  return env?.DEV === true || env?.MODE === 'e2e';
+}
+
+export function isBetaFlag(key) {
+  return FEATURE_FLAGS[key]?.stage === 'beta';
+}
+
 export function isFeatureOn(key, { storage = safeStorage(), env = readEnv() } = {}) {
   const def = FEATURE_FLAGS[key];
   if (!def) return false;
+  if (def.stage === 'beta' && releaseChannel(env) !== 'nightly' && !isTestBuild(env)) return false;
   let own = read(storage, FLAG_OVERRIDE_PREFIX + key);
   if (own !== '1' && own !== '0' && def.legacyKey) own = read(storage, def.legacyKey);
   if (own === '1') return true;

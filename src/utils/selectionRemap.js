@@ -155,3 +155,110 @@ export function sameMenuTargets(a, b) {
   const gb = Array.isArray(b.groupIndices) ? b.groupIndices : [];
   return ga.length === gb.length && ga.every((index, at) => index === gb[at]);
 }
+
+/**
+ * A live drag holds list positions too: the dragged mark's index, a group
+ * drag's per-mark originals, and the preview (`visualTransform`) that paints
+ * the moving marks. When the list changes mid-drag (another screen deletes or
+ * adds a mark earlier in the list, the store re-orders after it opens), those
+ * positions point at other marks: the preview moved a neighbour or nothing,
+ * the dragged mark sat still or looked gone, and the drop saved to the wrong
+ * place (owner report 2026-10-22). Follow the marks by id instead.
+ *
+ * @returns {(index: number) => number} old position → new position (-1 gone)
+ */
+export function indexRemapper(previousObjects, nextObjects) {
+  const cache = new Map();
+  return (index) => {
+    if (!Number.isInteger(index)) return index;
+    if (!cache.has(index)) {
+      const moved = remapSelectedIndices(new Set([index]), previousObjects, nextObjects);
+      cache.set(index, moved.size ? [...moved][0] : -1);
+    }
+    return cache.get(index);
+  };
+}
+
+/** The drag state with its positions moved to the marks' new positions. */
+export function remapDragState(ds, mapIndex) {
+  if (!ds) return ds;
+  let next = ds;
+  if (Number.isInteger(ds.annotationIndex)) {
+    const at = mapIndex(ds.annotationIndex);
+    if (at !== ds.annotationIndex) next = { ...next, annotationIndex: at };
+  }
+  // Every per-position map moves together: a group drop pairs groupOriginals
+  // with groupIds by key, so remapping one alone saves a mark's position onto
+  // its neighbour.
+  for (const field of ['groupOriginals', 'groupIds', 'startObjects', 'groupMemberOriginals']) {
+    const remapped = remapKeys(ds[field], mapIndex);
+    if (remapped !== ds[field]) next = { ...next, [field]: remapped };
+  }
+  return next;
+}
+
+function remapKeys(map, mapIndex) {
+  if (!map || typeof map !== 'object') return map;
+  let changed = false;
+  const out = {};
+  for (const [key, value] of Object.entries(map)) {
+    const at = mapIndex(Number(key));
+    if (at !== Number(key)) changed = true;
+    if (at >= 0) out[at] = value;
+  }
+  return changed ? out : map;
+}
+
+/**
+ * A drag keeps its own copy of the page (`currentAnnotations`) holding the
+ * marks it has changed so far. Lay that copy over the new list: the new
+ * list's order and marks, with the drag's copy of every mark it still holds
+ * (by id), so the next frame edits the dragged mark, not whatever now sits at
+ * its old position.
+ */
+export function rebasePageCopy(pageCopy, nextPage) {
+  if (!pageCopy || !Array.isArray(pageCopy.objects) || !Array.isArray(nextPage?.objects)) return pageCopy;
+  const copies = new Map();
+  for (const object of pageCopy.objects) {
+    const id = markIdOf(object);
+    if (id != null && !copies.has(id)) copies.set(id, object);
+  }
+  return {
+    ...nextPage,
+    objects: nextPage.objects.map((object) => {
+      const id = markIdOf(object);
+      return id != null && copies.has(id) ? copies.get(id) : object;
+    }),
+  };
+}
+
+/** The drag preview with its positions moved the same way. */
+export function remapVisualTransform(vt, mapIndex) {
+  if (!vt) return vt;
+  let next = vt;
+  if (Number.isInteger(vt.id)) {
+    const at = mapIndex(vt.id);
+    if (at !== vt.id) next = { ...next, id: at };
+  }
+  if (vt.previewObjects && typeof vt.previewObjects === 'object') {
+    let changed = false;
+    const previews = {};
+    for (const [key, value] of Object.entries(vt.previewObjects)) {
+      const at = mapIndex(Number(key));
+      if (at !== Number(key)) changed = true;
+      if (at >= 0) previews[at] = value;
+    }
+    if (changed) next = { ...next, previewObjects: previews };
+  }
+  if (vt.affectedIds instanceof Set) {
+    const ids = new Set();
+    let changed = false;
+    for (const index of vt.affectedIds) {
+      const at = mapIndex(index);
+      if (at !== index) changed = true;
+      if (at >= 0) ids.add(at);
+    }
+    if (changed) next = { ...next, affectedIds: ids };
+  }
+  return next;
+}

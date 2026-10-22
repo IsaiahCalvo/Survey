@@ -1,4 +1,4 @@
-import { sharedFromRow } from '../services/sharedTemplates.js';
+import { parkForeignLocalExcelPath, sharedFromRow, unparkLocalExcelPath } from '../services/sharedTemplates.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -50,7 +50,8 @@ export function buildAtomicTemplatePayload(templates, { ownerId } = {}) {
 
     // `sharedFrom` is this session's note that a template was shared with me;
     // it is never part of the stored template.
-    const { supabaseId, sharedFrom: _sharedFrom, ...config } = template || {};
+    const { supabaseId, sharedFrom: _sharedFrom, ...parkedConfig } = template || {};
+    const config = unparkLocalExcelPath(parkedConfig);
     if (supabaseId != null && !UUID_PATTERN.test(supabaseId)) {
       throw new TypeError('Template snapshot row id must be a UUID.');
     }
@@ -81,7 +82,7 @@ export function mapAuthoritativeTemplateRows(rows) {
     const { ballInCourtEntities, sharedFrom: _storedSharedFrom, ...currentConfig } = config;
     // A row shared with me carries who shared it (never read from config).
     const sharedFrom = sharedFromRow(row);
-    return {
+    return parkForeignLocalExcelPath({
       ...currentConfig,
       ...(sharedFrom ? { sharedFrom } : {}),
       entities: currentConfig.entities ?? ballInCourtEntities ?? [],
@@ -90,7 +91,7 @@ export function mapAuthoritativeTemplateRows(rows) {
       name: currentConfig.name || row.name || 'Untitled Template',
       createdAt: currentConfig.createdAt || row.created_at || row.updated_at,
       updatedAt: currentConfig.updatedAt || row.updated_at || currentConfig.createdAt || row.created_at,
-    };
+    });
   });
 }
 

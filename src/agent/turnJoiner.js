@@ -5,7 +5,28 @@
 // clip. Each clip is heard (turned into words) as soon as it is cut, so
 // the wait mostly overlaps hearing.
 
-export const TURN_GRACE_MS = 1000;
+// Owner 2026-10-22: still cut off mid-thought at 1 s (on top of the mic's
+// own 1.1 s of quiet before it cuts a clip).
+export const TURN_GRACE_MS = 1400;
+// Words that leave a sentence open ("D-117 is installed and", "the",
+// "um"): the turn waits this much longer, up to UNFINISHED_MAX_MS in all.
+export const UNFINISHED_EXTRA_MS = 1500;
+export const UNFINISHED_MAX_MS = 4500;
+
+const OPEN_ENDINGS = new Set([
+  'and', 'but', 'or', 'so', 'then', 'also', 'plus', 'because', 'with', 'without', 'to', 'for', 'of', 'on', 'in', 'at', 'by', 'from',
+  'the', 'a', 'an', 'its', "it's", 'is', 'are', 'was', 'has', 'have', 'had', 'hasn\'t', 'isn\'t', 'not', 'no', 'that', 'this', 'which',
+  'um', 'uh', 'umm', 'uhh', 'er', 'like', 'find',
+  'y', 'e', 'el', 'la', 'de', 'que', 'con', 'pero', 'o',
+]);
+
+/** Whether heard words stop where a sentence cannot end ("... and", "the", "um"). */
+export function looksUnfinished(text) {
+  const words = String(text || '').trim().toLowerCase().replace(/[.!?]+$/, '').split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  if (/[,;:-]$/.test(String(text).trim())) return true;
+  return OPEN_ENDINGS.has(words[words.length - 1].replace(/[^a-z'áéíóúñ]/g, ''));
+}
 
 // Under the survey-agent function's 4 MiB audio limit (about 110 s of
 // 16 kHz speech): a turn this big goes out before the next clip joins it.
@@ -15,22 +36,48 @@ export const TURN_MAX_BYTES = 3_500_000;
  * onTurn(parts) gets the parts of one turn, in order, each what add() was
  * given with its `text` promise settled.
  */
-export function createTurnJoiner({ onTurn, graceMs = TURN_GRACE_MS, maxBytes = TURN_MAX_BYTES, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+/**
+ * peek(): the words heard so far in this turn when the parts carry none yet
+ * (the web mic's clips are heard once the turn goes out), for the
+ * unfinished-sentence wait.
+ */
+export function createTurnJoiner({
+  onTurn, graceMs = TURN_GRACE_MS, maxBytes = TURN_MAX_BYTES, setTimer = setTimeout, clearTimer = clearTimeout,
+  peek = null, extraMs = UNFINISHED_EXTRA_MS, maxExtraMs = UNFINISHED_MAX_MS,
+} = {}) {
   let parts = [];
   let timer = null;
   let hearing = false;
+  let extra = 0;
   const stopTimer = () => { if (timer !== null) { clearTimer(timer); timer = null; } };
+  // The newest words: the last part's own, else what peek() has heard.
+  const heardSoFar = () => {
+    const last = parts[parts.length - 1];
+    if (typeof last?.text === 'string' && last.text.trim()) return last.text;
+    try { return String(peek?.() || ''); } catch { return ''; }
+  };
+  // The quiet moment is over: send, unless the words so far stop mid-sentence.
+  const due = () => {
+    timer = null;
+    if (extra < maxExtraMs && looksUnfinished(heardSoFar())) {
+      extra += extraMs;
+      timer = setTimer(due, extraMs);
+      return undefined;
+    }
+    return flush();
+  };
   const flush = async () => {
     stopTimer();
     if (!parts.length) return;
     const taken = parts;
     parts = [];
+    extra = 0;
     const texts = await Promise.all(taken.map((p) => Promise.resolve(p.text).catch(() => '')));
     onTurn(taken.map((p, i) => ({ ...p, text: texts[i] })));
   };
   const wait = () => {
     stopTimer();
-    if (!hearing && parts.length) timer = setTimer(flush, graceMs);
+    if (!hearing && parts.length) timer = setTimer(due, graceMs);
   };
   return {
     /** A clip was cut (or words came in): { text: string | Promise, ... }. */
@@ -45,7 +92,7 @@ export function createTurnJoiner({ onTurn, graceMs = TURN_GRACE_MS, maxBytes = T
     /** Send what is held now (the person stopped hands-free). */
     flush,
     /** Drop what is held. */
-    clear() { stopTimer(); parts = []; },
+    clear() { stopTimer(); parts = []; extra = 0; },
     get holding() { return parts.length; },
   };
 }

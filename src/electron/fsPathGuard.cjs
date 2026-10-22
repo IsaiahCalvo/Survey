@@ -86,4 +86,15 @@ function isClearableDirectory(candidate, clearableDirectories = [], { pathApi = 
   ));
 }
 
-module.exports = { isClearableDirectory, isPathAllowed, isWithin, resolveRealPath };
+// shell:openPath hands a file to the operating system, which RUNS programs and
+// scripts. The app only ever opens linked Excel workbooks this way, and a
+// template's linked path is data another person can edit (shared templates),
+// so only spreadsheet files may be opened.
+const OPENABLE_EXTENSIONS = new Set(['.xlsx', '.xlsm', '.xlsb', '.xls', '.csv']);
+
+function isOpenableSpreadsheet(filePath) {
+  if (typeof filePath !== 'string' || !filePath) return false;
+  return OPENABLE_EXTENSIONS.has(nodePath.extname(filePath).toLowerCase());
+}
+
+module.exports = { isClearableDirectory, isOpenableSpreadsheet, isPathAllowed, isWithin, resolveRealPath };

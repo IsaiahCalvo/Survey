@@ -7,7 +7,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import { supabase } from '../supabaseClient';
 import { AuthModal } from '../components/AuthModal';
 import { C } from '../uiPalette';
-import { FEATURE_FLAGS, normalizeTesterEmails, refreshFeatureFlags, releaseChannel } from '../featureFlags';
+import { FEATURE_FLAGS, isBetaFlag, normalizeTesterEmails, refreshFeatureFlags, releaseChannel } from '../featureFlags';
 import '../styles/tokens.css';
 import '../styles/motion.css';
 
@@ -42,7 +42,14 @@ function FlagRow({ flag, onSave }) {
 
   return (
     <div style={{ borderTop: `1px solid ${C.rule}`, padding: '16px 0' }}>
-      <div style={{ fontWeight: 600 }}>{FEATURE_FLAGS[flag.key]?.label || flag.key}</div>
+      <div style={{ fontWeight: 600 }}>
+        {FEATURE_FLAGS[flag.key]?.label || flag.key}
+        {isBetaFlag(flag.key) && (
+          <span style={{ marginLeft: 8, padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600, color: C.ink, border: `1px solid ${C.rule}` }}>
+            Nightly only
+          </span>
+        )}
+      </div>
       {flag.description && <div style={{ fontSize: 13, color: C.inkSoft, margin: '4px 0 10px' }}>{flag.description}</div>}
       <div role="radiogroup" aria-label={`Who sees ${flag.key}`} style={{ display: 'flex', gap: 8 }}>
         {MODES.map((m) => (
@@ -130,7 +137,9 @@ export default function FeatureFlagsPage() {
       <h2 style={{ marginTop: 0 }}>Feature switches</h2>
       <p style={{ color: C.inkSoft, marginTop: 0 }}>
         Unfinished features stay hidden until you turn them on here.
-        {releaseChannel() === 'nightly' ? ' This is the nightly copy, where every feature is on no matter what you pick.' : ''}
+        Features marked Nightly only show in Survey Nightly and never on surveytool.app, whatever you pick;
+        they reach surveytool.app once they are moved to stable in the code.
+        {releaseChannel() === 'nightly' ? ' This is Survey Nightly, where every feature is on no matter what you pick.' : ''}
       </p>
       {flags.map((f) => <FlagRow key={f.key} flag={f} onSave={saveFlag} />)}
       {flags.length === 0 && !message && <p style={{ color: C.inkSoft }}>No features are waiting behind a switch.</p>}

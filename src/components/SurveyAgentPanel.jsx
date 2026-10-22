@@ -30,8 +30,9 @@ import { createHoldToTalk } from '../agent/holdToTalk.js';
 import { createVoiceLog, loggedCaller, sendVoiceLog } from '../agent/voiceLog.js';
 import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
-import { isSureHearing, startDeviceHearing } from '../agent/deviceHearing.js';
+import { isSureHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
 import { keepScreenAwake } from '../agent/keepAwake.js';
+import { levelFromRms, setMicLevel, startStreamMeter } from '../agent/micLevel.js';
 import { AGENT_LANGS, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays, readAgentLang, writeAgentLang } from '../agent/agentLanguage.js';
 import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
@@ -66,6 +67,33 @@ const HANDS_FREE_TEXT = {
   working: 'Working...',
   speaking: 'Speaking. Talk to cut in.',
 };
+
+// Ideas on an empty chat, sent as they are when tapped.
+const SUGGESTIONS = [
+  'Find camera 6 on the 4th floor',
+  'D-117 is installed but has no power',
+  "What's left on this sheet?",
+];
+
+const SparkleIcon = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+    <path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9L12 2.5zM18.5 15l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9.9-2.6z" />
+  </svg>
+);
+const SpeakerIcon = ({ muted }) => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+    {muted ? <path d="M16 9.5l5 5M21 9.5l-5 5" /> : <path d="M15.5 9a4.5 4.5 0 010 6M18 6.5a8 8 0 010 11" />}
+  </svg>
+);
+const ArrowUpIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" />
+  </svg>
+);
+
+// A tapped mic sends once the person has been quiet this long after talking.
+const TAP_END_SILENCE_MS = 1600;
 
 let nextId = 1;
 const newId = (prefix) => `${prefix}${nextId++}`;
@@ -175,6 +203,7 @@ export default function SurveyAgentPanel({
   const historyRef = useRef([]);
   const listRef = useRef(null);
   const fileInputRef = useRef(null);
+  const inputRef = useRef(null);
   const speechRef = useRef(null);
 
   useEffect(() => {
@@ -204,6 +233,14 @@ export default function SurveyAgentPanel({
     if (el) el.scrollTop = el.scrollHeight;
   }, [entries, busy]);
 
+  // The box grows with what is typed, up to its CSS max height.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
+
   useEffect(() => () => {
     try { speechRef.current?.abort?.(); } catch { /* already stopped */ }
     handsFreeRef.current = false;
@@ -211,6 +248,9 @@ export default function SurveyAgentPanel({
     deviceHearingRef.current?.stop();
     pttHearingRef.current?.stop();
     awakeRef.current?.release();
+    pttMeterRef.current?.stop();
+    speechMeterRef.current?.stop();
+    setMicLevel(0, { reset: true });
     stopSpeaking();
     // A turn waiting on the camera gets "no photo" rather than hanging.
     photoResolveRef.current?.(null);
@@ -547,7 +587,19 @@ export default function SurveyAgentPanel({
     enqueue({ clip, durationMs, files: [], entryId, docKey: surveyAgentBridge.current?.waitKey || null });
   };
 
+  // Tap or hold to talk: the mic pulses with the voice, and a tap (not a
+  // hold) ends by itself once the person stops talking.
+  const pttMeterRef = useRef(null);
+  const [pttHearing, setPttHearing] = useState(false);
+  const onPttSpeechRef = useRef(() => {});
   const recorder = useAudioRecorder({
+    onStream: (stream) => {
+      pttMeterRef.current?.stop();
+      pttMeterRef.current = stream
+        ? startStreamMeter(stream, { onSpeech: (said) => onPttSpeechRef.current(said), gateOptions: { endSilenceMs: TAP_END_SILENCE_MS } })
+        : null;
+      if (!stream) setPttHearing(false);
+    },
     onRecorded: async (file, durationMs) => {
       voiceLog.turn('recorded', { ms: durationMs });
       const hearing = pttHearingRef.current;
@@ -582,6 +634,7 @@ export default function SurveyAgentPanel({
     deviceHearingRef.current = null;
     awakeRef.current?.release();
     awakeRef.current = null;
+    setMicLevel(0, { reset: true });
     stopSpeaking();
   }, []);
 
@@ -665,9 +718,17 @@ export default function SurveyAgentPanel({
   };
   const onJoinedTurnRef = useRef(onJoinedTurn);
   onJoinedTurnRef.current = onJoinedTurn;
-  if (!joinerRef.current) joinerRef.current = createTurnJoiner({ onTurn: (parts) => onJoinedTurnRef.current(parts) });
+  if (!joinerRef.current) {
+    joinerRef.current = createTurnJoiner({
+      onTurn: (parts) => onJoinedTurnRef.current(parts),
+      // What the device heard so far: a turn that stops on "and" waits on.
+      peek: () => deviceHearingRef.current?.latestText?.() || '',
+    });
+  }
   const onHearingChange = (on) => {
     setHearing(on);
+    // The phone's own hearing gives no loudness: a steady pulse while it hears.
+    if (micRef.current?.native) setMicLevel(on ? 0.7 : 0, { reset: !on });
     // A new log turn only when nothing is held for joining: clips joined
     // into one message stay in one log turn.
     if (!on) voiceLog.event('speech_end');
@@ -730,6 +791,7 @@ export default function SurveyAgentPanel({
         onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
         onHearing: (on) => onHearingChange(on),
         onBargeIn: () => stopSpeaking(),
+        onLevel: (v) => setMicLevel(levelFromRms(v)),
       });
       voiceLog.event('mic_started', { native: Boolean(micRef.current.native) });
       if (!micRef.current.native) deviceHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
@@ -756,6 +818,7 @@ export default function SurveyAgentPanel({
         onClip: (clip, ms, info) => onHandsFreeClipRef.current(clip, ms, info),
         onHearing: (on) => onHearingChange(on),
         onBargeIn: () => stopSpeaking(),
+        onLevel: (v) => setMicLevel(levelFromRms(v)),
       });
     } catch {
       stopHandsFree();
@@ -763,6 +826,7 @@ export default function SurveyAgentPanel({
     }
   };
 
+  const speechMeterRef = useRef(null);
   const toggleBrowserSpeech = () => {
     const Recognition = browserSpeech();
     if (!Recognition) return;
@@ -787,6 +851,8 @@ export default function SurveyAgentPanel({
     rec.onerror = () => {};
     rec.onend = () => {
       speechRef.current = null;
+      speechMeterRef.current?.stop();
+      speechMeterRef.current = null;
       setListening(false);
       // Send what is in the box, so a word fixed while listening is kept.
       const typed = draftRef.current.trim();
@@ -795,6 +861,20 @@ export default function SurveyAgentPanel({
     speechRef.current = rec;
     setListening(true);
     rec.start();
+    if (!sharesMicSafely()) {
+      // Phones go quiet or cut the browser's hearing off when a second stream
+      // opens the mic, so the pulse follows the browser's speech events instead.
+      rec.onspeechstart = () => setMicLevel(0.7);
+      rec.onspeechend = () => setMicLevel(0, { reset: true });
+      speechMeterRef.current = { stop: () => setMicLevel(0, { reset: true }) };
+      return;
+    }
+    // The browser hears for itself; a second look at the mic just for the pulse.
+    navigator.mediaDevices?.getUserMedia?.({ audio: true }).then((stream) => {
+      if (speechRef.current !== rec) { stream.getTracks().forEach((t) => t.stop()); return; }
+      const meter = startStreamMeter(stream);
+      speechMeterRef.current = { stop: () => { meter.stop(); stream.getTracks().forEach((t) => t.stop()); } };
+    }).catch(() => {});
   };
 
   const canTalk = Boolean(status?.transcription) || Boolean(browserSpeech());
@@ -847,6 +927,13 @@ export default function SurveyAgentPanel({
     });
   }
   const holdable = Boolean(status?.transcription);
+  onPttSpeechRef.current = (said) => {
+    setPttHearing(said === 'start');
+    if (said === 'end' && !holdUi.holding && recorder.state === 'recording') {
+      voiceLog.event('tap_speech_end');
+      recorder.stop();
+    }
+  };
   // Only the finger that started the press counts: a second touch must not
   // take over (and send what the first was cancelling).
   const holdPointerRef = useRef(null);
@@ -932,6 +1019,8 @@ export default function SurveyAgentPanel({
     return () => document.removeEventListener('pointerdown', outside, true);
   }, [view, host, onClose]);
 
+  const thinking = busy || transcribing;
+  const micHearing = handsFree ? livePhase === 'hearing' : pttHearing || listening;
   const panel = (
     <section
       ref={sectionRef}
@@ -942,22 +1031,24 @@ export default function SurveyAgentPanel({
       hidden={view !== 'chat'}
     >
       <header className="survey-agent__head">
+        <span className="survey-agent__badge" aria-hidden="true"><SparkleIcon /></span>
         <span className="survey-agent__title">Survey agent <span className="survey-agent__beta">Beta</span></span>
         {status?.transcription && canHandsFree() && (
           <button
             type="button"
-            className="survey-agent__voice survey-agent__handsfree"
+            className="survey-agent__pill survey-agent__handsfree"
             aria-pressed={handsFree}
             aria-label={handsFree ? 'Stop hands-free' : 'Hands-free'}
             disabled={!ready && !handsFree}
             onClick={handsFree ? stopHandsFree : startHandsFree}
           >
-            {handsFree ? (mobileMode || host ? 'Stop' : 'Stop hands-free') : 'Hands-free'}
+            <span className="survey-agent__pill-dot" aria-hidden="true" />
+            {handsFree ? 'Stop' : 'Hands-free'}
           </button>
         )}
         <button
           type="button"
-          className="survey-agent__voice"
+          className="survey-agent__pill"
           aria-label={`Language: ${AGENT_LANGS[lang].label}`}
           {...tip('English or Spanish', 'left')}
           onClick={toggleLang}
@@ -967,11 +1058,13 @@ export default function SurveyAgentPanel({
         {canSpeakReplies() && (
           <button
             type="button"
-            className="survey-agent__voice"
+            className="survey-agent__icon"
             aria-pressed={speakReplies}
+            aria-label={speakReplies ? 'Voice on' : 'Voice off'}
+            {...tip(speakReplies ? 'Replies are read out. Tap to stop.' : 'Replies are not read out. Tap to hear them.', 'left')}
             onClick={toggleSpeak}
           >
-            {speakReplies ? 'Voice on' : 'Voice off'}
+            <SpeakerIcon muted={!speakReplies} />
           </button>
         )}
         <button type="button" className="survey-agent__icon" aria-label={host ? 'Back to Survey' : 'Close Survey agent'} onClick={onClose}>
@@ -980,35 +1073,63 @@ export default function SurveyAgentPanel({
       </header>
       <div className="survey-agent__list" ref={listRef} aria-live="polite">
         {!entries.length && (
-          <p className="survey-agent__hint">
-            Say or type what you see, for example: &ldquo;D-117, cables pulled, card reader missing, no power.&rdquo; Add photos with the clip.
-          </p>
+          <div className="survey-agent__empty">
+            <span className="survey-agent__badge is-big" aria-hidden="true"><SparkleIcon /></span>
+            <p className="survey-agent__hello">What do you see?</p>
+            <p className="survey-agent__hint">
+              Talk or type about an item and I fill in its checklist, note, entity and photos. Add photos with the clip.
+            </p>
+            <div className="survey-agent__suggestions">
+              {SUGGESTIONS.map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  className="survey-agent__suggestion"
+                  disabled={!ready || thinking}
+                  onClick={() => { unlockPlayback(); sendAndSpeak(text); }}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {entries.map((entry) => (
           <div key={entry.id} className={`survey-agent__msg is-${entry.role}`}>
-            <div className="survey-agent__bubble">
-              {entry.text}
-              {entry.waiting ? <div className="survey-agent__files">Waiting for signal</div> : null}
-              {entry.files?.length ? <div className="survey-agent__files">{entry.files.join(', ')}</div> : null}
-            </div>
-            {entry.changes?.length ? (
-              <div className={`survey-agent__changes${entry.undone ? ' is-undone' : ''}`} data-testid="survey-agent-changes">
-                <ul>
-                  {entry.changes.map((change, i) => <li key={i}>{change.label}</li>)}
-                </ul>
-                {entry.undone
-                  ? <span className="survey-agent__undone">{entry.undone === 'partly' ? 'Undone, later edits kept' : 'Undone'}</span>
-                  : <button type="button" className="survey-agent__undo" onClick={() => undoEntry(entry)}>Undo</button>}
+            {entry.role === 'agent' && <span className="survey-agent__badge" aria-hidden="true"><SparkleIcon /></span>}
+            <div className="survey-agent__body">
+              <div className="survey-agent__bubble">
+                {entry.role === 'error' && <Icon name="warningCircle" size={14} color="currentColor" />}
+                <span>{entry.text}</span>
+                {entry.waiting ? <div className="survey-agent__files">Waiting for signal</div> : null}
+                {entry.files?.length ? <div className="survey-agent__files">{entry.files.join(', ')}</div> : null}
               </div>
-            ) : null}
-            {entry.summary ? (
-              <button type="button" className="survey-agent__undo survey-agent__save" onClick={() => saveSummary(entry.summary)}>
-                Save summary
-              </button>
-            ) : null}
+              {entry.changes?.length ? (
+                <div className={`survey-agent__changes${entry.undone ? ' is-undone' : ''}`} data-testid="survey-agent-changes">
+                  <ul>
+                    {entry.changes.map((change, i) => (
+                      <li key={i}><Icon name="check" size={12} color="currentColor" /><span>{change.label}</span></li>
+                    ))}
+                  </ul>
+                  {entry.undone
+                    ? <span className="survey-agent__undone">{entry.undone === 'partly' ? 'Undone, later edits kept' : 'Undone'}</span>
+                    : <button type="button" className="survey-agent__undo" onClick={() => undoEntry(entry)}><Icon name="undo" size={12} color="currentColor" />Undo</button>}
+                </div>
+              ) : null}
+              {entry.summary ? (
+                <button type="button" className="survey-agent__undo survey-agent__save" onClick={() => saveSummary(entry.summary)}>
+                  Save summary
+                </button>
+              ) : null}
+            </div>
           </div>
         ))}
-        {(busy || transcribing) && <div className="survey-agent__msg is-agent"><div className="survey-agent__bubble is-typing">Working...</div></div>}
+        {thinking && (
+          <div className="survey-agent__msg is-agent is-thinking" role="status">
+            <span className="survey-agent__badge is-spinning" aria-hidden="true"><SparkleIcon /></span>
+            <span className="survey-agent__shimmer">{transcribing ? 'Listening back...' : 'Working...'}</span>
+          </div>
+        )}
       </div>
       {handsFreeText && (
         <p className={`survey-agent__live is-${livePhase}`} role="status">
@@ -1026,99 +1147,113 @@ export default function SurveyAgentPanel({
         />
       )}
       {statusText && <p className="survey-agent__status" role="status">{statusText}</p>}
-      {entries.length > 0 && (
-        <button
-          type="button"
-          className="survey-agent__log"
-          disabled={logState === 'sending'}
-          onClick={() => sendLogRef.current('manual')}
-        >
-          {logState === 'sent' ? 'Voice log sent' : logState === 'failed' ? 'Could not send. Try again' : logState === 'sending' ? 'Sending…' : 'Send voice log'}
-        </button>
-      )}
-      {pendingFiles.length > 0 && (
-        <div className="survey-agent__pending">
-          {pendingFiles.map((f) => (
-            <span key={f.id} className="survey-agent__chip">
-              {f.name}
-              <button type="button" aria-label={`Remove ${f.name}`} onClick={() => removePending(f.id)}>
-                <Icon name="close" size={12} color="currentColor" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
       <form
         className="survey-agent__composer"
         onSubmit={(e) => { e.preventDefault(); unlockPlayback(); sendAndSpeak(draft); }}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,video/*,audio/*"
-          multiple
-          hidden
-          onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
-        />
-        <button type="button" className="survey-agent__icon" aria-label="Add photos or files" disabled={!ready} onClick={() => fileInputRef.current?.click()}>
-          <Icon name="paperclip" size={18} color="currentColor" />
-        </button>
-        <textarea
-          className="survey-agent__input"
-          rows={1}
-          value={draft}
-          placeholder={recording ? 'Listening...' : 'Type or tap the mic'}
-          aria-label="Message the Survey agent"
-          disabled={!ready}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); unlockPlayback(); sendAndSpeak(draft); }
-          }}
-        />
-        {canTalk && (
-          <button
-            type="button"
-            className={`survey-agent__icon survey-agent__mic${recording ? ' is-on' : ''}${holdUi.cancelling ? ' is-cancel' : ''}`}
-            aria-label={recording ? 'Stop and send' : 'Talk'}
-            {...tip(holdable && !recording ? 'Hold to talk, or tap' : undefined, 'left')}
-            aria-pressed={recording}
-            disabled={!ready || handsFree || ((busy || transcribing) && !recording)}
-            onPointerDown={holdable ? (e) => {
-              if (e.button !== 0) return;
-              e.preventDefault();
-              if (holdPointerRef.current !== null) return;
-              holdPointerRef.current = e.pointerId;
-              try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* pointer already gone */ }
-              unlockPlayback();
-              holdRef.current.down(e.clientX, e.clientY, e.timeStamp);
-            } : undefined}
-            onPointerMove={holdable ? (e) => { if (ownPointer(e)) holdRef.current.move(e.clientX, e.clientY, e.timeStamp); } : undefined}
-            onPointerUp={holdable ? (e) => {
-              if (!ownPointer(e)) return;
-              holdPointerRef.current = null;
-              holdRef.current.up(e.timeStamp);
-            } : undefined}
-            onPointerCancel={holdable ? (e) => {
-              if (!ownPointer(e)) return;
-              holdPointerRef.current = null;
-              holdRef.current.abort();
-            } : undefined}
-            onContextMenu={holdable ? (e) => e.preventDefault() : undefined}
-            // A pointer press is handled above; a keyboard press (detail 0)
-            // or the browser's own speech still toggles here.
-            onClick={(e) => { if (!holdable || e.detail === 0) toggleTalk(); }}
-          >
-            <Icon name="mic" size={18} color="currentColor" />
-          </button>
-        )}
-        {holdUi.holding && (
-          <span className="survey-agent__hold-hint" role="status">
-            {holdUi.cancelling ? 'Let go to cancel' : 'Let go to send. Slide away to cancel.'}
-          </span>
-        )}
-        <button type="submit" className="survey-agent__send" disabled={!ready || busy || transcribing || (!draft.trim() && !pendingFiles.length)}>
-          Send
-        </button>
+        <div className={`survey-agent__box${recording ? ' is-recording' : ''}`}>
+          {pendingFiles.length > 0 && (
+            <div className="survey-agent__pending">
+              {pendingFiles.map((f) => (
+                <span key={f.id} className="survey-agent__chip">
+                  <Icon name={f.kind === 'video' ? 'video' : f.kind === 'audio' ? 'mic' : 'image'} size={12} color="currentColor" />
+                  {f.name}
+                  <button type="button" aria-label={`Remove ${f.name}`} onClick={() => removePending(f.id)}>
+                    <Icon name="close" size={12} color="currentColor" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*,audio/*"
+            multiple
+            hidden
+            onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+          />
+          <textarea
+            ref={inputRef}
+            className="survey-agent__input"
+            rows={1}
+            value={draft}
+            placeholder={recording ? (micHearing ? 'Hearing you...' : 'Listening...') : handsFree ? 'Hands-free is on. Just talk.' : 'Ask, or say what you see'}
+            aria-label="Message the Survey agent"
+            disabled={!ready}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); unlockPlayback(); sendAndSpeak(draft); }
+            }}
+          />
+          <div className="survey-agent__tools">
+            <button type="button" className="survey-agent__icon" aria-label="Add photos or files" {...tip('Add photos or files', 'left')} disabled={!ready} onClick={() => fileInputRef.current?.click()}>
+              <Icon name="paperclip" size={18} color="currentColor" />
+            </button>
+            <span className="survey-agent__spacer" />
+            {logState !== null || entries.length > 0 ? (
+              <button
+                type="button"
+                className="survey-agent__log"
+                disabled={logState === 'sending'}
+                onClick={() => sendLogRef.current('manual')}
+              >
+                {logState === 'sent' ? 'Voice log sent' : logState === 'failed' ? 'Could not send. Try again' : logState === 'sending' ? 'Sending…' : 'Send voice log'}
+              </button>
+            ) : null}
+            {canTalk && (
+              <button
+                type="button"
+                className={`survey-agent__icon survey-agent__mic${recording ? ' is-on' : ''}${micHearing ? ' is-hearing' : ''}${holdUi.cancelling ? ' is-cancel' : ''}`}
+                aria-label={recording ? 'Stop and send' : 'Talk'}
+                {...tip(holdable && !recording ? 'Tap to talk (it sends when you stop), or hold' : undefined, 'left')}
+                aria-pressed={recording}
+                disabled={!ready || handsFree || (thinking && !recording)}
+                onPointerDown={holdable ? (e) => {
+                  if (e.button !== 0) return;
+                  e.preventDefault();
+                  if (holdPointerRef.current !== null) return;
+                  holdPointerRef.current = e.pointerId;
+                  try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* pointer already gone */ }
+                  unlockPlayback();
+                  holdRef.current.down(e.clientX, e.clientY, e.timeStamp);
+                } : undefined}
+                onPointerMove={holdable ? (e) => { if (ownPointer(e)) holdRef.current.move(e.clientX, e.clientY, e.timeStamp); } : undefined}
+                onPointerUp={holdable ? (e) => {
+                  if (!ownPointer(e)) return;
+                  holdPointerRef.current = null;
+                  holdRef.current.up(e.timeStamp);
+                } : undefined}
+                onPointerCancel={holdable ? (e) => {
+                  if (!ownPointer(e)) return;
+                  holdPointerRef.current = null;
+                  holdRef.current.abort();
+                } : undefined}
+                onContextMenu={holdable ? (e) => e.preventDefault() : undefined}
+                // A pointer press is handled above; a keyboard press (detail 0)
+                // or the browser's own speech still toggles here.
+                onClick={(e) => { if (!holdable || e.detail === 0) toggleTalk(); }}
+              >
+                <span className="survey-agent__mic-ring" aria-hidden="true" />
+                <Icon name="mic" size={18} color="currentColor" />
+              </button>
+            )}
+            <button
+              type="submit"
+              className="survey-agent__send"
+              aria-label="Send"
+              {...tip('Send', 'left')}
+              disabled={!ready || thinking || (!draft.trim() && !pendingFiles.length)}
+            >
+              <ArrowUpIcon />
+            </button>
+          </div>
+          {holdUi.holding && (
+            <span className="survey-agent__hold-hint" role="status">
+              {holdUi.cancelling ? 'Let go to cancel' : 'Let go to send. Slide away to cancel.'}
+            </span>
+          )}
+        </div>
       </form>
     </section>
   );

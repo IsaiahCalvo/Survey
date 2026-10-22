@@ -194,7 +194,8 @@ test('layer: grabbers hide while the key is held, rotate grabber stays, zone sit
   assert.ok(svgEnd > zoneAt && layerSrc.slice(zoneAt, svgEnd).split('\n').length < 25, 'move zone is the last thing in the page svg');
   // A press on a rotate grabber outside the marks is handed to it.
   assert.match(layerSrc, /if \(isPointInBoxes\(pagePoint, modifierMoveZone\?\.markBoxes\)\) return null;/);
-  assert.match(layerSrc, /rotateEl\.dispatchEvent\(new PointerEvent\('pointerdown'/);
+  assert.match(layerSrc, /redispatchPointerDown\(rotateEl, e\)/);
+  assert.match(layerSrc, /target\.dispatchEvent\(new PointerEvent\('pointerdown'/);
   // Text Select keeps native text drags; only the Select tool gets the zone.
   assert.match(layerSrc, /if \(!moveModifierHeld \|\| activeTool !== 'select' \|\| !isSelectTool\) return false;/);
 });

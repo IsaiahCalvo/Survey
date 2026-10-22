@@ -1,7 +1,8 @@
 // Entries for the public "What's new" page (/whats-new), newest first. Only
 // changes people can see in a live build. Add the notes from each production
 // deploy here, in plain words, then run `node scripts/build-marketing.mjs`.
-// Work still behind a feature flag stays off this list until it is on for all.
+// Work still behind a feature flag stays off this list until it is on for all,
+// and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-22', items: [
     'The survey Export button now says Export data. It downloads a spreadsheet that opens in Excel, Google Sheets or Numbers.',
@@ -50,8 +51,7 @@ export const WHATS_NEW = [
     'The free tools page has categories, puts the most used tools first and links related tools.',
     'Free PDF tools: 17 more, including OCR (make a scan searchable), compare two PDFs, repair, extract images, grayscale, booklet and pages per sheet. Many tools now take several files at once and give back one ZIP. The tools page has a search box.',
     'A PDF you just uploaded on a phone now opens straight away, without a "Couldn\'t open this PDF" screen.',
-    'On small phones, the Survey Marker shape menu (Rectangle, Freehand, Smart fill) can be tapped again, and messages no longer cover Done or Pan.',
-    'Tapping away the Smart fill "Check it, then Apply" message now also clears the blue preview outline.',
+    'On small phones, the Survey Marker shape menu (Rectangle, Freehand) can be tapped again, and messages no longer cover Done or Pan.',
     'Invite links: if you sign in or make an account from an invite, you land in the shared document instead of your home page.',
     'Pens: drawing starts as "Pencil or Touch". The first time you draw with a pen, Survey switches to "Pencil only" so your hand doesn\'t leave marks.',
     'Free PDF tools: Word to PDF, plus sign, password protect, unlock and TIFF to PDF. Each tool can open its result in Survey.',

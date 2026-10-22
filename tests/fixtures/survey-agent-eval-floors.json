@@ -1,0 +1,430 @@
+{
+ "about": "Bake-off test set in the shape of a real camera job (made-up tags, no customer data): an Installation and a Commissioning module, camera and door tags by floor, sheets titled by floor and wing. Each case is one thing a person says; expect lists the survey after the turn. Run: GROQ_API_KEY=... SURVEY_AGENT_EVAL_FIXTURE=tests/fixtures/survey-agent-eval-floors.json node scripts/survey-agent-eval.mjs",
+ "template": {
+  "name": "Security",
+  "answerSet": [
+   {
+    "value": "Y",
+    "tone": "good"
+   },
+   {
+    "value": "N",
+    "tone": "bad"
+   },
+   {
+    "value": "N/A",
+    "tone": "neutral"
+   }
+  ],
+  "entities": [
+   {
+    "id": "ent-done",
+    "name": "100% Complete",
+    "color": "#16a34a"
+   },
+   {
+    "id": "ent-part",
+    "name": "Partially Complete",
+    "color": "#f59e0b"
+   },
+   {
+    "id": "ent-none",
+    "name": "Not Started",
+    "color": "#ef4444"
+   }
+  ],
+  "modules": [
+   {
+    "id": "mod-install",
+    "name": "Installation",
+    "categories": [
+     {
+      "id": "cat-cam",
+      "name": "Camera",
+      "checklist": [
+       {
+        "id": "cam-mounted",
+        "text": "Camera mounted"
+       },
+       {
+        "id": "cam-cable",
+        "text": "Cable terminated"
+       },
+       {
+        "id": "cam-power",
+        "text": "Has power"
+       }
+      ]
+     },
+     {
+      "id": "cat-door",
+      "name": "Door",
+      "checklist": [
+       {
+        "id": "door-reader",
+        "text": "Card reader installed"
+       },
+       {
+        "id": "door-lock",
+        "text": "Lock installed"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "mod-cx",
+    "name": "Commissioning",
+    "categories": [
+     {
+      "id": "cx-cam",
+      "name": "Camera",
+      "checklist": [
+       {
+        "id": "cx-ip",
+        "text": "Has IP address"
+       },
+       {
+        "id": "cx-aimed",
+        "text": "Camera aimed"
+       },
+       {
+        "id": "cx-label",
+        "text": "Labeled"
+       }
+      ]
+     },
+     {
+      "id": "cx-door",
+      "name": "Door",
+      "checklist": [
+       {
+        "id": "cx-door-test",
+        "text": "Door tested"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "markers": {
+  "c406": {
+   "name": "C-4-06",
+   "moduleId": "mod-install",
+   "categoryId": "cat-cam",
+   "pageNumber": 4,
+   "bounds": {
+    "x": 110,
+    "y": 190,
+    "width": 40,
+    "height": 24
+   }
+  },
+  "c306": {
+   "name": "C-3-06",
+   "moduleId": "mod-install",
+   "categoryId": "cat-cam",
+   "pageNumber": 3,
+   "bounds": {
+    "x": 110,
+    "y": 190,
+    "width": 40,
+    "height": 24
+   }
+  },
+  "c412": {
+   "name": "C-4-12",
+   "moduleId": "mod-install",
+   "categoryId": "cat-cam",
+   "pageNumber": 4,
+   "bounds": {
+    "x": 400,
+    "y": 300,
+    "width": 40,
+    "height": 24
+   }
+  },
+  "d406": {
+   "name": "D-4-06",
+   "moduleId": "mod-install",
+   "categoryId": "cat-door",
+   "pageNumber": 4,
+   "bounds": {
+    "x": 250,
+    "y": 120,
+    "width": 40,
+    "height": 24
+   }
+  }
+ },
+ "currentModuleId": "mod-install",
+ "plan": {
+  "pageSize": {
+   "width": 792,
+   "height": 612
+  },
+  "pages": {
+   "3": [
+    {
+     "text": "C-3-06",
+     "box": {
+      "x": 120,
+      "y": 200,
+      "width": 36,
+      "height": 8
+     }
+    },
+    {
+     "text": "C-3-07",
+     "box": {
+      "x": 300,
+      "y": 210,
+      "width": 36,
+      "height": 8
+     }
+    },
+    {
+     "text": "D-3-01",
+     "box": {
+      "x": 200,
+      "y": 90,
+      "width": 36,
+      "height": 8
+     }
+    },
+    {
+     "text": "THIRD",
+     "box": {
+      "x": 500,
+      "y": 560,
+      "width": 30,
+      "height": 18
+     }
+    },
+    {
+     "text": "FLOOR",
+     "box": {
+      "x": 570,
+      "y": 560,
+      "width": 30,
+      "height": 18
+     }
+    },
+    {
+     "text": "PLAN",
+     "box": {
+      "x": 640,
+      "y": 560,
+      "width": 24,
+      "height": 18
+     }
+    },
+    {
+     "text": "-",
+     "box": {
+      "x": 710,
+      "y": 560,
+      "width": 12,
+      "height": 18
+     }
+    },
+    {
+     "text": "SECURITY",
+     "box": {
+      "x": 780,
+      "y": 560,
+      "width": 48,
+      "height": 18
+     }
+    }
+   ],
+   "4": [
+    {
+     "text": "C-4-06",
+     "box": {
+      "x": 120,
+      "y": 200,
+      "width": 36,
+      "height": 8
+     }
+    },
+    {
+     "text": "C-4-07",
+     "box": {
+      "x": 300,
+      "y": 210,
+      "width": 36,
+      "height": 8
+     }
+    },
+    {
+     "text": "C-4-12",
+     "box": {
+      "x": 410,
+      "y": 310,
+      "width": 36,
+      "height": 8
+     }
+    },
+    {
+     "text": "D-4-06",
+     "box": {
+      "x": 260,
+      "y": 130,
+      "width": 36,
+      "height": 8
+     }
+    },
+    {
+     "text": "FOURTH",
+     "box": {
+      "x": 500,
+      "y": 560,
+      "width": 36,
+      "height": 18
+     }
+    },
+    {
+     "text": "FLOOR",
+     "box": {
+      "x": 570,
+      "y": 560,
+      "width": 30,
+      "height": 18
+     }
+    },
+    {
+     "text": "PLAN",
+     "box": {
+      "x": 640,
+      "y": 560,
+      "width": 24,
+      "height": 18
+     }
+    },
+    {
+     "text": "-",
+     "box": {
+      "x": 710,
+      "y": 560,
+      "width": 12,
+      "height": 18
+     }
+    },
+    {
+     "text": "WEST",
+     "box": {
+      "x": 780,
+      "y": 560,
+      "width": 24,
+      "height": 18
+     }
+    },
+    {
+     "text": "WING",
+     "box": {
+      "x": 850,
+      "y": 560,
+      "width": 24,
+      "height": 18
+     }
+    }
+   ]
+  }
+ },
+ "cases": [
+  {
+   "say": "Find camera 6 on the 4th floor",
+   "expect": {
+    "noChanges": true,
+    "shows": "c406"
+   }
+  },
+  {
+   "say": "camera six fourth floor, it's 100% installed",
+   "expect": {
+    "c406": {
+     "entity": "ent-done"
+    }
+   }
+  },
+  {
+   "say": "camera 6 on the 4th floor has an IP, hasn't been aimed and isn't labeled",
+   "expect": {
+    "created": {
+     "C-4-06": {
+      "category": "cx-cam",
+      "page": 4,
+      "answers": {
+       "cx-ip": "Y",
+       "cx-aimed": "N",
+       "cx-label": "N"
+      }
+     }
+    }
+   }
+  },
+  {
+   "say": "Camera six on four is mounted and has power, add a note it got hit by a ladder",
+   "expect": {
+    "c406": {
+     "answers": {
+      "cam-mounted": "Y",
+      "cam-power": "Y"
+     },
+     "noteIncludes": [
+      "ladder"
+     ]
+    }
+   }
+  },
+  {
+   "say": "the camera on the third floor number six is mounted but the cable isn't terminated",
+   "expect": {
+    "c306": {
+     "answers": {
+      "cam-mounted": "Y",
+      "cam-cable": "N"
+     }
+    }
+   }
+  },
+  {
+   "say": "camera twelve, fourth floor, not started",
+   "expect": {
+    "c412": {
+     "entity": "ent-none"
+    }
+   }
+  },
+  {
+   "say": "Add camera 7 on the fourth floor from the plan, it's partially complete",
+   "expect": {
+    "created": {
+     "C-4-07": {
+      "category": "cat-cam",
+      "page": 4,
+      "entity": "ent-part"
+     }
+    }
+   }
+  },
+  {
+   "say": "door six fourth floor lock is installed",
+   "expect": {
+    "d406": {
+     "answers": {
+      "door-lock": "Y"
+     }
+    }
+   }
+  },
+  {
+   "say": "find camera 9 on the 4th floor",
+   "expect": {
+    "noChanges": true
+   }
+  }
+ ]
+}
