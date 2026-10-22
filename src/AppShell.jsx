@@ -4012,6 +4012,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   variant="pill"
                   unit="pt"
                   width="var(--chrome-field-w)"
+                  // The size card paints its sample in the colour the tool
+                  // will draw; the eraser and the counter pin preview a dot.
+                  color={bottomToolbarApi.activeTool === 'eraser'
+                    ? '#9ca3af'
+                    : (bottomToolbarApi.selectionMixed?.strokeColor ? undefined : (bottomToolbarApi.selectedStrokeColor ?? bottomToolbarApi.strokeColor))}
+                  previewShape={bottomToolbarApi.activeTool === 'eraser' || bottomToolbarApi.contextTool === 'counter' ? 'dot' : 'stroke'}
                   preview={bottomToolbarApi.activeTool === 'eraser' ? (
                     <span
                       aria-hidden="true"

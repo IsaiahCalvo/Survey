@@ -73,6 +73,7 @@ import { resolvePickBarValues } from './utils/pickBarValues.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import AnnotationDropdown from './components/AnnotationDropdown';
+import AnnotationSizeControl from './components/AnnotationSizeControl';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
 import useSurveyBarFit from './hooks/useSurveyBarFit';
 import { surveyBarLook } from './utils/responsiveToolbar.js';
@@ -40147,29 +40148,46 @@ ${pageBlocks}
                 </button>
               );
               const markerWidthValue = pickedMarkerWidth != null ? Math.round(pickedMarkerWidth) : markerStrokeWidth;
-              const markerWidths = MARKER_STROKE_WIDTHS.includes(markerWidthValue)
-                ? MARKER_STROKE_WIDTHS
-                : [...MARKER_STROKE_WIDTHS, markerWidthValue].sort((a, b) => a - b);
+              const applyMarkerWidth = (value) => {
+                const width = Number(value);
+                if (!Number.isFinite(width) || width <= 0) return;
+                setMarkerStrokeWidth(width);
+                if (pickedMarkerBounds && pickedSurveyMarker) {
+                  const next = restyleStrokeMarkerBounds(pickedMarkerBounds, width);
+                  if (next) {
+                    handleSurveyMarkerBoundsChange(pickedSurveyMarker.pageNumber, pickedSurveyMarker.annotationId, next, { action: 'stroke-width' });
+                  }
+                }
+              };
+              // The same size card as every other Width in the chrome.
               const markerWidthMenu = surveyBarShowsMarkerWidth ? (
-                <AnnotationDropdown
-                  open={surveyMarkerWidthMenuOpen}
-                  onOpenChange={setSurveyMarkerWidthMenuOpen}
-                  label="Freehand marker width"
-                  value={markerWidthValue}
-                  options={markerWidths.map((width) => ({ value: width, label: `${width} pt` }))}
-                  onSelect={(width) => {
-                    setMarkerStrokeWidth(width);
-                    if (pickedMarkerBounds && pickedSurveyMarker) {
-                      const next = restyleStrokeMarkerBounds(pickedMarkerBounds, width);
-                      if (next) {
-                        handleSurveyMarkerBoundsChange(pickedSurveyMarker.pageNumber, pickedSurveyMarker.annotationId, next, { action: 'stroke-width' });
-                      }
-                    }
-                  }}
-                  width="var(--chrome-field-w-fontsize)"
-                  contentWidth="var(--chrome-field-w-fontsize)"
-                  dataMarker="data-survey-marker-width-menu"
-                />
+                <span data-survey-marker-width-menu="true" style={{ display: 'contents' }}>
+                  <AnnotationSizeControl
+                    open={surveyMarkerWidthMenuOpen}
+                    onOpenChange={setSurveyMarkerWidthMenuOpen}
+                    label="Freehand marker width"
+                    value={markerWidthValue}
+                    min={1}
+                    max={64}
+                    presets={MARKER_STROKE_WIDTHS}
+                    onValueCommit={applyMarkerWidth}
+                    variant="pill"
+                    unit="pt"
+                    width="var(--chrome-field-w)"
+                    preview={(
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          display: 'block',
+                          width: '12px',
+                          height: 0,
+                          borderTop: `${Math.max(1, Math.min(6, Math.round(markerWidthValue / 4)))}px solid currentColor`,
+                          borderRadius: '1px',
+                        }}
+                      />
+                    )}
+                  />
+                </span>
               ) : null;
               const moreItems = look.more ? [
                 { id: 'survey-module', label: 'Module', node: moduleMenu(true) },

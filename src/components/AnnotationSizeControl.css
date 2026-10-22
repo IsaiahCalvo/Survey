@@ -200,6 +200,196 @@
   cursor: default;
 }
 
+/* 2026-10-22 (owner: the old 12-row list "looks like shit"; keep the dropdown
+   and the typed number): the pill's menu is a SIZE CARD, after Drawboard PDF's
+   pen card - a sample of the stroke on paper, in the colour it will draw; a
+   thickness slider with the typed number beside it; quick picks under them. */
+.annotation-size-control__popover[data-size-card='true'] {
+  width: 232px;
+  padding: 8px;
+}
+
+.annotation-size-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.annotation-size-card__sample {
+  height: 64px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  /* Paper, so black ink reads and the sample looks like the page it lands on. */
+  background: #f7f7f4;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-3);
+}
+
+.annotation-size-card__sample svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.annotation-size-card__dot {
+  display: block;
+  border-radius: 50%;
+}
+
+.annotation-size-card__mixed {
+  color: #6b7280;
+  font: 500 11.5px/1 var(--font-ui);
+}
+
+.annotation-size-card__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.annotation-size-card__slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.annotation-size-card__slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--text-2) var(--size-card-fill, 0%), var(--surface-3) var(--size-card-fill, 0%));
+}
+
+.annotation-size-card__slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--text-2) var(--size-card-fill, 0%), var(--surface-3) var(--size-card-fill, 0%));
+}
+
+.annotation-size-card__slider::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text-1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.annotation-size-card__slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--text-1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.annotation-size-card__slider:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.annotation-size-card__field {
+  width: 60px;
+  height: var(--chrome-field-h, 24px);
+  padding: 0 7px 0 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  color: var(--text-1);
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: text;
+}
+
+.annotation-size-card__field:focus-within {
+  border-color: var(--text-3);
+}
+
+.annotation-size-card__field > input {
+  width: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: 600 12px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.annotation-size-card__unit {
+  color: var(--text-3);
+  font: 500 11px/1 var(--font-ui);
+}
+
+.annotation-size-card__chips {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 2px;
+}
+
+.annotation-size-card__chip {
+  height: 40px;
+  padding: 3px 0 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: 500 10.5px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.annotation-size-card__chip-dot {
+  height: 18px;
+  display: grid;
+  place-items: center;
+}
+
+.annotation-size-card__chip-dot > span {
+  display: block;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@media (hover: hover) {
+  .annotation-size-card__chip:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
+}
+
+.annotation-size-card__chip:focus-visible {
+  color: var(--text-1);
+  background: var(--hover);
+  outline: 0;
+}
+
+/* The current pick is gold, like the current row in every chrome menu. */
+.annotation-size-card__chip.is-active {
+  color: var(--accent);
+}
+
 @keyframes annotation-size-popover-in {
   from { opacity: 0; transform: translateY(-5px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }

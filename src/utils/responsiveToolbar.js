@@ -532,7 +532,7 @@ export const SURVEY_BAR_PARTS = Object.freeze({
   nameMin: 40, // the fewest pixels of a name worth showing ("Exis...")
   reuse: 67, // the switch and its word
   reuseCompact: 28, // the switch alone
-  markerWidth: 62, // the freehand marker's Width pill (--chrome-field-w-fontsize)
+  markerWidth: 72, // the freehand marker's Width pill (--chrome-field-w)
   more: 28, // the More (...) button
   moreGap: 4, // between the template menu and More
   done: 50,
