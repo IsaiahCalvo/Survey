@@ -41,6 +41,16 @@ export function textScalesFontFor(handleId) {
 }
 
 /**
+ * Can this mark take a group resize? An old-style arrow (type 'group': a
+ * line child plus a head) draws from its children's endpoints, which the
+ * group resize doesn't rewrite, so a selection holding one only moves.
+ */
+export function canGroupResizeMember(obj) {
+  if (!obj) return true;
+  return String(obj.type || '').toLowerCase() !== 'group';
+}
+
+/**
  * Must the whole selection keep its proportions because of this mark?
  * A tilted mark (not a right angle), a photo / stamp, or text (unless the
  * grabber is a left / right side).

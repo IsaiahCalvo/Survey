@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  canGroupResizeMember,
   groupResizeMinimumScale,
   isSideways,
   markNeedsUniformGroupScale,
@@ -85,4 +86,17 @@ test('a text box scales inside its fixed padding', () => {
   assert.equal(scaledTextBoxLength(112, 0.5, 6), 62, '(112 - 12) * 0.5 + 12');
   assert.equal(scaledTextBoxLength(112, 2, 6), 212);
   assert.equal(scaledTextBoxLength(10, 0.1, 6), 12, 'never under the padding');
+});
+
+test('an old-style group arrow keeps the frame move-only', () => {
+  assert.equal(canGroupResizeMember(rect()), true);
+  assert.equal(canGroupResizeMember({ type: 'line' }), true);
+  assert.equal(canGroupResizeMember({ type: 'group', objects: [{ type: 'line' }] }), false);
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(layer, /\.every\(\(idx\) => canGroupResizeMember\(annotations\?\.objects\?\.\[idx\]\)\)/);
+});
+
+test('a stamp redraws from its preview during a group resize', () => {
+  const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
+  assert.match(layer, /isPdfStampProxy\(renderObj\)\) \{\s*renderElement = <image \{\.\.\.getPdfStampProxySvgProps\(renderObj\)\}/);
 });

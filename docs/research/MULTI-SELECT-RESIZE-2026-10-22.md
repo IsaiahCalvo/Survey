@@ -46,7 +46,7 @@ Drawboard's rules, plus tldraw's rule where Survey can't follow Drawboard.
 - **A mark turned by an odd angle** (not 0 / 90 / 180 / 270): Drawboard shears it. Survey stores angle + scale and can't draw a shear, which is what sank the April 2026 attempt. So Survey uses **tldraw's rule**: the whole frame keeps its proportions while such a mark is selected. A mark turned 90° / 270° stretches along the page's axes (its own two scales swap).
 - **No mirroring**. A group stops when its smallest member reaches 4 page units, or its own size if it is already smaller. Drawboard mirrors, and its text ends up upside down.
 - **One Undo step**, saved field by field on top of the page as it is now, so a co-editor's change made during the drag survives (sync-safe). A list change mid-drag keeps each mark's own preview.
-- **Still move-only**: a selection that includes a callout, a Survey Marker or a locked mark. The frame keeps no grabbers, and a lock badge shows when a member is locked.
+- **Still move-only**: a selection that includes a callout, a Survey Marker, a locked mark or an old-style arrow (saved as a group of line + head). The frame keeps no grabbers, and a lock badge shows when a member is locked.
 
 ## Follow-ups (not in this change)
 

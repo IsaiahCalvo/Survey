@@ -182,6 +182,7 @@ import {
 import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes } from '../utils/moveModifier.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isSymbolStamp } from '../utils/symbolLibrary.js';
+import { canGroupResizeMember } from '../utils/groupResize.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
 import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
@@ -5988,6 +5989,8 @@ const SVGAnnotationLayerBody = memo(({
         renderElement = renderCounter(renderObj, i);
       } else if (previewType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
         renderElement = renderPath(renderObj, i);
+      } else if (isPdfStampProxy(renderObj)) {
+        renderElement = <image {...getPdfStampProxySvgProps(renderObj)} data-pdf-stamp-proxy="true" data-symbol-stamp={isSymbolStamp(renderObj) ? renderObj.data.symbolStamp.id : undefined} />;
       } else if (previewType === 'rect') {
         renderElement = renderRect(renderObj, i);
       } else if (previewType === 'line') {
@@ -9445,10 +9448,13 @@ const SVGAnnotationLayerBody = memo(({
             // eight resize grabbers when every member can take a resize.
             // Callouts and Survey Markers still only move with a group, and
             // a locked member keeps the frame move-only with its lock badge.
-            // Group rotate stays hidden.
+            // Group rotate stays hidden. An old-style arrow (a group of
+            // line + head) draws from its children, which a group resize
+            // doesn't rewrite, so it keeps the frame move-only too.
             const groupCanResize = !groupHasLockedMember
               && groupCalloutIdSet.size === 0
               && selectedSurveyMarkerIds.size === 0
+              && Array.from(selectedIds).every((idx) => canGroupResizeMember(annotations?.objects?.[idx]))
               && Array.from(selectedIds).some((idx) => canMoveAnnotation(annotations?.objects?.[idx]));
             return (
               <g
