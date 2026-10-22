@@ -87,6 +87,7 @@ ev "(() => { window.__pd = []; const log = n => e => window.__pd.push(n + ':' + 
 # select tool first, as a user would.
 ( pick Select ) || ( pick "Rectangle Select" ) || true
 echo "points after picking select: $(count)"
+ev "(() => { try { localStorage.setItem('debugPolyEdge', '1'); } catch {} window.__polyEdgeLog = []; return 'ok'; })()" >/dev/null
 adb shell input stylus swipe "$1" "$2" "$1" "$2" 900
 sleep 1
 r=$(ev "(() => { const b = document.querySelector('[data-poly-vertex-insert]'); if (!b) return 'no menu'; if (b.disabled) return 'disabled'; b.click(); return 'ok'; })()")
@@ -96,5 +97,5 @@ adb exec-out screencap -p > "$OUT/19-add-point.png"
 [ "$r" = "ok" ] || { echo "::warning::Long-press on side did not open Add point here ($r) at $xy; events: $(ev "(window.__pd || []).join(' , ')"); menu items: $(ev "[...document.querySelectorAll('[role=menuitem]')].map(e => e.textContent.trim()).join(' | ') || 'none'")"; exit 0; }
 after=$(count)
 echo "points after add: $after"
-[ "$after" = "$((before + 1))" ] || { echo "::error::Point count $before -> $after, expected $((before + 1))"; exit 1; }
+[ "$after" = "$((before + 1))" ] || { echo "::error::Point count $before -> $after, expected $((before + 1))"; echo "polyEdge log: $(ev "JSON.stringify((window.__polyEdgeLog || []).slice(-60))")"; echo "events: $(ev "(window.__pd || []).join(' , ')")"; exit 1; }
 echo "Add point check passed."
