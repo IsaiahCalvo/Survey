@@ -4674,8 +4674,8 @@ export default function App({ devPreviewReturnTab = null }) {
                 </div>
               );
             })}
-            {pinnedToolsEnabled && isViewerVisible && !isMobileViewer && (
-              <PinnedToolsDock api={bottomToolbarApi} tip={chromeTip} />
+            {pinnedToolsEnabled && isViewerVisible && (
+              <PinnedToolsDock api={bottomToolbarApi} tip={chromeTip} phone={isMobileViewer} />
             )}
             {pendingDocumentOpen && currentView !== 'viewer' && (
               // Covers the home (and takes its taps) while the PDF downloads;

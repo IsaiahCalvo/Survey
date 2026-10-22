@@ -95,10 +95,13 @@ function GripIcon({ vertical }) {
   );
 }
 
-export default function PinnedToolsDock({ api, tip, store: suppliedStore }) {
+export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone = false }) {
   const store = suppliedStore || getPinnedToolsStore();
   const state = usePinnedTools(store);
-  const { placement, pins, visible } = state;
+  const { pins, visible } = state;
+  // The phone has one place for it: a row above its bottom bar. The saved
+  // desktop placement is left alone.
+  const placement = phone ? 'bottom' : state.placement;
   const [dockDrag, setDockDrag] = useState(null); // { target } while the grip is carried
   // While carried over a zone, the dock already takes that zone's shape.
   const shapePlacement = dockDrag?.target || placement;
@@ -442,7 +445,26 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore }) {
     el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [pinDrag]);
 
-  if (!visible || !api) return null;
+  if (!api) return null;
+  if (!visible) {
+    if (!phone) return null;
+    // The phone has no top-bar toggle: hidden, the dock folds to one button.
+    return (
+      <div className="pinned-dock-shell is-bottom is-phone" data-pinned-dock-shell="bottom">
+        <div className="pinned-dock is-horizontal">
+          <button
+            type="button"
+            className="btn chrome-subcontrol btn-ghost pinned-dock__folded"
+            aria-label="Show pinned tools"
+            data-pinned-tools-show="true"
+            onClick={() => store.setVisible(true)}
+          >
+            <PinIcon size={18} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const session = sessionRef.current;
   const activeTool = api.activeTool;
@@ -467,7 +489,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore }) {
   return (
     <>
       {zones}
-      <div ref={shellRef} className={`pinned-dock-shell is-${placement}`} data-pinned-dock-shell={placement}>
+      <div ref={shellRef} className={`pinned-dock-shell is-${placement}${phone ? ' is-phone' : ''}`} data-pinned-dock-shell={placement}>
         <div
           ref={dockRef}
           className={`pinned-dock ${vertical ? 'is-vertical' : 'is-horizontal'}${dockDrag ? ' is-dragging' : ''}`}
@@ -511,8 +533,14 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore }) {
                       onPointerDown: (event) => onPinPointerDown(event, pin, index),
                       onKeyDown: (event) => onPinKeyDown(event, pin, index),
                     })}
-                    onClick={() => {
+                    onClick={(event) => {
                       if (suppressClickRef.current) return;
+                      // A phone has no right-click: tapping the armed pin
+                      // again opens its menu (as Drawboard does).
+                      if (phone && pressed) {
+                        openMenu('pin', event.currentTarget, { pinId: pin.id });
+                        return;
+                      }
                       arm(pin);
                     }}
                     onContextMenu={(event) => {
@@ -566,6 +594,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore }) {
           >
             <Icon name="moreHorizontal" size={16} color="currentColor" />
           </button>
+          {phone ? null : (
           <button
             type="button"
             className="btn chrome-subcontrol btn-ghost pinned-dock__grip"
@@ -579,6 +608,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore }) {
           >
             <GripIcon vertical={vertical} />
           </button>
+          )}
         </div>
       </div>
       {menu ? createPortal(
@@ -586,6 +616,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore }) {
           menuRef={menuRef}
           menu={menu}
           placement={placement}
+          phone={phone}
           pins={pins}
           editing={editing}
           currentKind={currentKind}
@@ -626,7 +657,7 @@ function menuPosition(rect, placement, width = 240) {
 }
 
 function PinnedToolsMenu({
-  menuRef, menu, placement, pins, editing, currentKind, onPinCurrent, onAdd, onUnpin, onDuplicate,
+  menuRef, menu, placement, phone, pins, editing, currentKind, onPinCurrent, onAdd, onUnpin, onDuplicate,
   onPlacement, onToggleEditing, onHide, api,
 }) {
   const width = menu.kind === 'add' ? 264 : 200;
@@ -648,14 +679,18 @@ function PinnedToolsMenu({
   if (menu.kind === 'settings') {
     return (
       <div ref={menuRef} role="menu" aria-label="Pinned tools menu" className="pinned-dock-menu" style={style} data-pinned-tools-settings="true">
-        <div className="pinned-dock-menu__heading">Dock</div>
-        {[['left', 'Left'], ['bottom', 'Bottom'], ['right', 'Right']].map(([value, label]) => (
-          <button key={value} type="button" role="menuitemradio" aria-checked={placement === value} onClick={() => onPlacement(value)}>
-            <span className="pinned-dock-menu__check">{placement === value ? <Icon name="check" size={14} color="currentColor" /> : null}</span>
-            <span>{label}</span>
-          </button>
-        ))}
-        <div className="pinned-dock-menu__rule" />
+        {phone ? null : (
+          <>
+            <div className="pinned-dock-menu__heading">Dock</div>
+            {[['left', 'Left'], ['bottom', 'Bottom'], ['right', 'Right']].map(([value, label]) => (
+              <button key={value} type="button" role="menuitemradio" aria-checked={placement === value} onClick={() => onPlacement(value)}>
+                <span className="pinned-dock-menu__check">{placement === value ? <Icon name="check" size={14} color="currentColor" /> : null}</span>
+                <span>{label}</span>
+              </button>
+            ))}
+            <div className="pinned-dock-menu__rule" />
+          </>
+        )}
         <button type="button" role="menuitem" onClick={onToggleEditing} disabled={!pins.length && !editing}>
           <Icon name="edit" size={14} color="currentColor" /><span>{editing ? 'Done editing pins' : 'Edit pins'}</span>
         </button>
