@@ -35,6 +35,8 @@ import {
   getSideRoom,
   leftPanelWidth,
   readPanelLayout,
+  requestRightPanelYield,
+  resolveNarrowPanelYield,
   subscribeSideRoom,
   writePanelLayout,
 } from './sidebar/panelLayoutStore.js';
@@ -277,6 +279,23 @@ const PDFSidebar = React.forwardRef(({
   // The open panel's width: the one fixed width (260), the same for every
   // tab; only a window too small for it narrows it.
   const panelWidth = leftPanelWidth(viewportWidth, sideRoom);
+  // Desktop/tablet pass 2026-10-21 (item 1): on a window too narrow for this
+  // panel AND the Survey panel, the one opened last stays and the other
+  // closes, so the page keeps a usable slot instead of a 200px strip.
+  const wasCollapsedRef = React.useRef(isCollapsed);
+  React.useEffect(() => {
+    const leftJustOpened = wasCollapsedRef.current && !isCollapsed;
+    wasCollapsedRef.current = isCollapsed;
+    if (mobileMode) return;
+    const yieldSide = resolveNarrowPanelYield({
+      viewportWidth,
+      room: sideRoom,
+      leftOpen: !isCollapsed,
+      leftJustOpened,
+    });
+    if (yieldSide === 'left') setIsCollapsed(true);
+    else if (yieldSide === 'right') requestRightPanelYield();
+  }, [isCollapsed, mobileMode, sideRoom, viewportWidth]);
   // Desktop (owner 2026-10-07, Drawboard rail): a closed panel stays drawn for
   // the slide that carries it back under the rail, instead of vanishing in
   // one frame. A timer, not animationend, ends it, so reduced motion (no

@@ -75,6 +75,7 @@ import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import AnnotationDropdown from './components/AnnotationDropdown';
 import AnnotationSizeControl from './components/AnnotationSizeControl';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
+import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import useSurveyBarFit from './hooks/useSurveyBarFit';
 import { surveyBarLook } from './utils/responsiveToolbar.js';
 import SurveyCategoryChips from './components/SurveyCategoryChips';
@@ -8241,7 +8242,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setZoomInputValue(String(Math.round(nextScale * 100)));
     }
 
-    const sourceMode = pdfjsZoomSourceRef.current;
+    // payload.fitMode: the viewer re-fit itself to the band between side panels.
+    const autoFitMode = { fit: ZOOM_MODES.FIT_PAGE, fitw: ZOOM_MODES.FIT_WIDTH, fith: ZOOM_MODES.FIT_HEIGHT }[payload?.fitMode];
+    const sourceMode = pdfjsZoomSourceRef.current || autoFitMode;
     const nextMode = sourceMode && sourceMode !== ZOOM_MODES.MANUAL
       ? sourceMode
       : ZOOM_MODES.MANUAL;
@@ -8456,6 +8459,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     entityCount: (selectedTemplate?.entities || []).length,
     markerWidth: surveyBarShowsMarkerWidth,
   });
+  // Desktop/tablet pass 2026-10-21 (item 4): the survey bar takes its own
+  // space above the page (data-viewer-top-push, PdfjsViewerContainer) instead
+  // of covering the page's top.
+  const surveyBarTopOverlayRef = useViewerTopOverlayRef();
+  const surveyBarFitRef = surveyBarFit.ref;
+  const surveyBarRef = useCallback((node) => {
+    surveyBarFitRef(node);
+    surveyBarTopOverlayRef(node);
+  }, [surveyBarFitRef, surveyBarTopOverlayRef]);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
@@ -40261,7 +40273,8 @@ ${pageBlocks}
 
               return (
                 <div
-                  ref={surveyBarFit.ref}
+                  ref={surveyBarRef}
+                  data-viewer-top-push="true"
                   className="survey-subrow"
                   data-survey-bar-step={look.step}
                   data-survey-template={surveyBarFit.plan.template}
