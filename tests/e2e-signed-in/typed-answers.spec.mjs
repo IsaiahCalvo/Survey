@@ -36,6 +36,13 @@ async function openSurveyItem(page, { reopened = false } = {}) {
     await expect(chooser.or(category).first()).toBeVisible({ timeout: 30_000 });
     if (await chooser.isVisible()) await page.getByText(E2E_SURVEY.templateName, { exact: true }).last().click();
   }
+  // A document keeps the template version it was surveyed with; take the
+  // version this spec just wrote.
+  await page.getByRole('button', { name: /^Survey template: .*Switch template$/ }).filter({ visible: true }).first().click();
+  await page.getByRole('menuitem', { name: E2E_SURVEY.templateName }).or(page.getByRole('menuitemradio', { name: E2E_SURVEY.templateName })).or(page.getByRole('option', { name: E2E_SURVEY.templateName })).first().click();
+  const latest = page.getByRole('button', { name: 'Use latest version' });
+  if (await latest.waitFor({ timeout: 3_000 }).then(() => true, () => false)) await latest.click();
+  await expect(category).toBeVisible();
   const expand = page.getByRole('button', { name: 'Expand marker details' }).first();
   if (!(await expand.isVisible().catch(() => false))) await category.click();
   await expand.click();

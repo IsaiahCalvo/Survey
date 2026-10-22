@@ -1,8 +1,13 @@
 const PREFIX = 'survey:templateBinding:';
 const stable = (value) => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().filter((key) => value[key] !== undefined && typeof value[key] !== 'function').map((key) => [key, stable(value[key])])) : value;
+// The template's own answer list counts as part of its version. It joins the
+// fingerprint only when set, so a template without one keeps the fingerprint
+// older bindings stored.
+const legacyFingerprint = (template) => JSON.stringify(stable({ name: template?.name, modules: template?.modules || template?.spaces || [], entities: template?.entities || [] }));
 export function templateFingerprint(template) {
-  return JSON.stringify(stable({ name: template?.name, modules: template?.modules || template?.spaces || [], entities: template?.entities || [] }));
+  if (!template?.answerSet) return legacyFingerprint(template);
+  return JSON.stringify(stable({ name: template?.name, modules: template?.modules || template?.spaces || [], entities: template?.entities || [], answerSet: template.answerSet }));
 }
 export function templateBindingKey(documentKey, userId, templateId) { return `${PREFIX}${userId || 'local'}:${documentKey}:${templateId}`; }
 export function readTemplateBinding(key, storage) { try { return JSON.parse(storage?.getItem(key) || 'null'); } catch { return null; } }
@@ -16,7 +21,12 @@ export function bindUsedTemplate(template, prior = null) {
 export function needsTemplateVersionChoice(binding, latest) {
   if (!binding?.used || !binding.snapshot || !latest) return false;
   const fingerprint = templateFingerprint(latest);
-  return fingerprint !== binding.fingerprint && fingerprint !== binding.reviewedFingerprint;
+  if (fingerprint === binding.fingerprint || fingerprint === binding.reviewedFingerprint) return false;
+  // A binding stored before answer lists joined the fingerprint: same
+  // modules and the snapshot's answers unchanged is the same version.
+  const legacy = legacyFingerprint(latest);
+  const sameAnswers = JSON.stringify(stable(binding.snapshot.answerSet ?? null)) === JSON.stringify(stable(latest.answerSet ?? null));
+  return !((legacy === binding.fingerprint && sameAnswers) || legacy === binding.reviewedFingerprint);
 }
 export function acceptTemplateVersion(binding, latest, useLatest) {
   return useLatest
