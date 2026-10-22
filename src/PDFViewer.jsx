@@ -12617,7 +12617,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setRedoHistory(nextHistory.redoHistory);
       clearLocalRedoForNewStep(normalizedReason);
       lastCheckpointHashRef.current = null;
-      pushHistoryDebugEvent('checkpoint_added_survey_marker', {
+      // Same event as a full checkpoint, so the History panel and the saved
+      // history row ("created a survey marker") see no difference.
+      pushHistoryDebugEvent('checkpoint_added', {
+        suppressHistoryRow: context?.suppressHistoryRow === true,
         checkpointId,
         order: checkpointId,
         timestamp: checkpointMeta.createdAt,
@@ -12631,6 +12634,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         undoDepth: nextHistory.undoHistory.length,
         redoDepth: 0,
         summary: checkpointMeta.summary,
+        delta: checkpointMeta.delta,
         snapshotHash: checkpointMeta.snapshotHash,
         snapshotBytes: 0,
       });

@@ -55,3 +55,24 @@ test('a template with no entities has none', () => {
   assert.equal(resolveNextSurveyEntity([], 'el'), null);
   assert.equal(resolveNextSurveyEntity(undefined), null);
 });
+
+// Codex review on #1152: the fast Survey Marker checkpoint must emit an event
+// the History service records, or "created a survey marker" drops out of the
+// History panel.
+test('the fast Survey Marker checkpoint still writes its History row', async () => {
+  const fs = await import('node:fs');
+  const source = fs.readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  const start = source.indexOf('if (skipFingerprint) {');
+  assert.ok(start > 0, 'the survey-marker checkpoint branch exists');
+  const branch = source.slice(start, source.indexOf('\n      return;\n    }', start));
+  const emitted = branch.match(/pushHistoryDebugEvent\('([a-z_]+)'/)?.[1];
+  assert.equal(emitted, 'checkpoint_added');
+  const { buildHistoryEventRowFromDebugEvent } = await import('../src/services/documentHistoryService.js');
+  const row = buildHistoryEventRowFromDebugEvent({
+    type: emitted, reason: 'highlight:create', checkpointId: 7, order: 7, pageNumber: 3,
+    timestamp: '2026-10-22T19:00:00.000Z', context: { pageNumber: 3, annotationId: 'surveyMarker-1' },
+  }, { documentId: 'doc-1', user: { id: 'u1', user_metadata: { first_name: 'Isaiah' } } });
+  assert.ok(row, 'a History row is built');
+  assert.match(row.summary, /created a survey marker on page 3/);
+  assert.equal(row.annotation_id, 'surveyMarker-1');
+});
