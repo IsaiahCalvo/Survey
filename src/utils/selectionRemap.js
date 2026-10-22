@@ -190,7 +190,7 @@ export function remapDragState(ds, mapIndex) {
   // Every per-position map moves together: a group drop pairs groupOriginals
   // with groupIds by key, so remapping one alone saves a mark's position onto
   // its neighbour.
-  for (const field of ['groupOriginals', 'groupIds', 'startObjects']) {
+  for (const field of ['groupOriginals', 'groupIds', 'startObjects', 'groupMemberOriginals']) {
     const remapped = remapKeys(ds[field], mapIndex);
     if (remapped !== ds[field]) next = { ...next, [field]: remapped };
   }

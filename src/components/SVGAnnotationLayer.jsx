@@ -182,6 +182,7 @@ import {
 import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes } from '../utils/moveModifier.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isSymbolStamp } from '../utils/symbolLibrary.js';
+import { canGroupResizeMember } from '../utils/groupResize.js';
 import { isClientPointNearRect } from '../utils/selectionPointerOwnership.js';
 import { forwardClickToFormWidget, liveFormWidgetAtPoint } from '../utils/formWidgetPointerTargets.js';
 import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
@@ -5995,6 +5996,8 @@ const SVGAnnotationLayerBody = memo(({
         renderElement = renderCounter(renderObj, i);
       } else if (previewType === 'path' && Array.isArray(renderObj.path) && renderObj.path.length > 0) {
         renderElement = renderPath(renderObj, i);
+      } else if (isPdfStampProxy(renderObj)) {
+        renderElement = <image {...getPdfStampProxySvgProps(renderObj)} data-pdf-stamp-proxy="true" data-symbol-stamp={isSymbolStamp(renderObj) ? renderObj.data.symbolStamp.id : undefined} />;
       } else if (previewType === 'rect') {
         renderElement = renderRect(renderObj, i);
       } else if (previewType === 'line') {
@@ -9484,6 +9487,19 @@ const SVGAnnotationLayerBody = memo(({
                 .some((c) => c && groupCalloutIdSet.has(String(c.id)) && isUserLocked(c)))
               || (surveyMarkerMembersRef.current || [])
                 .some((member) => member?.locked && selectedSurveyMarkerIds.has(String(member.id)));
+            // 2026-10-22 (owner ask: resize several marks at once, Drawboard /
+            // tldraw method in utils/groupResize.js): the frame shows its
+            // eight resize grabbers when every member can take a resize.
+            // Callouts and Survey Markers still only move with a group, and
+            // a locked member keeps the frame move-only with its lock badge.
+            // Group rotate stays hidden. An old-style arrow (a group of
+            // line + head) draws from its children, which a group resize
+            // doesn't rewrite, so it keeps the frame move-only too.
+            const groupCanResize = !groupHasLockedMember
+              && groupCalloutIdSet.size === 0
+              && selectedSurveyMarkerIds.size === 0
+              && Array.from(selectedIds).every((idx) => canGroupResizeMember(annotations?.objects?.[idx]))
+              && Array.from(selectedIds).some((idx) => canMoveAnnotation(annotations?.objects?.[idx]));
             return (
               <g
                 key="group-selection-wrapper"
@@ -9502,15 +9518,10 @@ const SVGAnnotationLayerBody = memo(({
                   onHandleDrag={(e, handleId) => handleHandlePointerDown(e, handleId)}
                   isGroupSelection={false}
                   strokeOpacity={0.6}
-                  // UX: 2026-04-21 — multi-selection frame is ALWAYS move-
-                  // only. Group rotate / group resize handles are hidden
-                  // app-wide until the matrix-per-shape rewrite ships. The
-                  // dashed frame remains visible so the user still sees what
-                  // is selected, and drag-to-move still works because that
-                  // initiates from a member-shape pointerdown (not from the
-                  // overlay's handles). Do NOT re-enable without an explicit
-                  // user waiver — see handoff 2026-04-21.
-                  moveOnly={true}
+                  // Drag-to-move starts from a member's pointerdown, not
+                  // from the frame, so a move-only frame still moves.
+                  moveOnly={!groupCanResize}
+                  hideRotationHandle
                   // Owner ruling 2026-09-28: a lock on the group frame when
                   // any selected member is locked (it stays put in a move).
                   locked={groupHasLockedMember}

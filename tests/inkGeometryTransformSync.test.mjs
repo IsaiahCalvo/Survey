@@ -277,12 +277,12 @@ test('real SVG commit seams use object transforms for move and resize', () => {
   assert.match(source, /action:\s*'group-move'[\s\S]*?commitInkObjectMove|commitInkObjectMove[\s\S]*?action:\s*'group-move'/);
   assert.match(source, /action:\s*'scale'[\s\S]*?commitInkObjectResize|commitInkObjectResize[\s\S]*?action:\s*'scale'/);
   assert.match(source, /groupPageMatrix[\s\S]*?applyPageAffineToInkObject/);
-  assert.match(
-    source,
-    /groupContainsPath[\s\S]*?!groupContainsPath[\s\S]*?Math\.abs\(sx\)\s*<\s*0\.05[\s\S]*?sx\s*===\s*0[\s\S]*?Number\.MIN_VALUE/,
-    // w63: the group then also takes the shared 4-unit floor (clampResizeScale).
-    'a path-containing group keeps signed sub-0.05 scale (no 5 % snap) and guards singular zero',
-  );
+  // 2026-10-22 (multi-select resize, Drawboard rules): a group never mirrors
+  // and stops when its smallest member reaches 4 page units; the scale is
+  // never zero, so the group's page matrix stays invertible for ink.
+  assert.match(source, /const \{ sx, sy \} = resolveGroupResizeScale\(\{[\s\S]*?minScaleX: ds\.groupResizeMinScale/);
+  const groupResize = readFileSync(new URL('../src/utils/groupResize.js', import.meta.url), 'utf8');
+  assert.match(groupResize, /const MIN_GROUP_SCALE = 1e-6;/, 'a group scale is never zero');
   assert.match(source, /pathResizePageMatrix[\s\S]*?applyPageAffineToInkObject/);
   // RULED 2026-09-28 (w63, owner-directed): a single path resize still keeps
   // its SIGN (it flips through) and never snaps to 10 %, but it now stops at
