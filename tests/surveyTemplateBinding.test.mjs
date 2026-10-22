@@ -109,4 +109,8 @@ test('a changed answer list is a new template version; older bindings do not pro
   assert.equal(needsTemplateVersionChoice(legacy, { ...withSizes, answerSet: sizes.map((a) => ({ tone: a.tone, value: a.value })) }), false);
   assert.equal(needsTemplateVersionChoice(legacy, { ...withSizes, answerSet: sizes.slice(0, 1) }), true);
   assert.equal(needsTemplateVersionChoice(acceptTemplateVersion(binding, { ...withSizes, answerSet: sizes.slice(0, 1) }, false), { ...withSizes, answerSet: sizes.slice(0, 1) }), false);
+  // Kept (reviewed) before the change: a later answer-only edit still asks.
+  const reviewed = { ...binding, fingerprint: 'older', reviewedFingerprint: templateFingerprint(original) };
+  assert.equal(needsTemplateVersionChoice(reviewed, withSizes), false);
+  assert.equal(needsTemplateVersionChoice(reviewed, { ...withSizes, answerSet: sizes.slice(0, 1) }), true);
 });

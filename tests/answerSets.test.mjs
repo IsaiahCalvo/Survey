@@ -182,3 +182,10 @@ test('a number read back from Excel (10) still matches the answer "10"', async (
   assert.equal(sameAnswer(undefined, 'undefined'), false);
   assert.equal(isDoneAnswer(DEFAULT_ANSWER_SET, undefined), false);
 });
+
+test('a Number line goes to Excel as a real number; other answers stay text', async () => {
+  const { buildSheetRow } = await import('../src/services/exportFormats/sheetLayout.js');
+  const kit = { columns: [{ field: 'name' }, { field: 'checklist' }] };
+  const items = [{ id: 'h', kind: 'number' }, { id: 't', kind: 'text' }, { id: 'c' }, { id: 'e', kind: 'number' }];
+  assert.deepEqual(buildSheetRow(kit, items, { name: 'D-1' }, { h: '1200', t: '42', c: '10', e: '' }), ['D-1', 1200, '42', '10', '']);
+});

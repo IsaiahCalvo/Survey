@@ -22,11 +22,13 @@ export function needsTemplateVersionChoice(binding, latest) {
   if (!binding?.used || !binding.snapshot || !latest) return false;
   const fingerprint = templateFingerprint(latest);
   if (fingerprint === binding.fingerprint || fingerprint === binding.reviewedFingerprint) return false;
-  // A binding stored before answer lists joined the fingerprint: same
-  // modules and the snapshot's answers unchanged is the same version.
+  // A binding stored (or reviewed) before answer lists joined the
+  // fingerprint: same modules and the snapshot's answers unchanged is the
+  // same version. Changed answers ask once; the choice then stores a full
+  // fingerprint.
   const legacy = legacyFingerprint(latest);
   const sameAnswers = JSON.stringify(stable(binding.snapshot.answerSet ?? null)) === JSON.stringify(stable(latest.answerSet ?? null));
-  return !((legacy === binding.fingerprint && sameAnswers) || legacy === binding.reviewedFingerprint);
+  return !((legacy === binding.fingerprint || legacy === binding.reviewedFingerprint) && sameAnswers);
 }
 export function acceptTemplateVersion(binding, latest, useLatest) {
   return useLatest

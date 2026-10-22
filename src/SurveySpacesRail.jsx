@@ -1672,7 +1672,8 @@ const SurveySpacesRail = ({
     const active = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const responses = surveyMarkers?.[annotationId]?.checklistResponses || {};
     const answered = active.filter((item) => Boolean(responses[item.id]?.selection)).length;
-    const no = active.filter((item) => responses[item.id]?.selection === 'N').length;
+    // A typed text line answered "N" (a direction, say) is not a No.
+    const no = active.filter((item) => itemKind(item) === 'choice' && responses[item.id]?.selection === 'N').length;
     return { answered, total: active.length, no };
   };
   // The "answered/total" count. Owner 2026-10-01 (after a design debate):
