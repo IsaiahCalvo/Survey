@@ -83,6 +83,7 @@ import { getMarkHitBandWidth, getSvgMatrixMaxScale, resolveHandleHitPadPageSize 
 import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
 import { canToolGrabSelection, isSelectFamilyTool, isSelectionGestureActive } from '../utils/selectModes.js';
+import { liftedMoveIndices as liftedMoveIndicesFor, liftTranslate } from '../utils/dragLift.js';
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
 import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
@@ -7369,6 +7370,20 @@ const SVGAnnotationLayerBody = memo(({
     return out;
   })();
 
+  // Perf (dense sheets): moved marks paint in their own composited layer,
+  // shifted by a CSS translate (utils/dragLift.js).
+  const liftedMoveIndices = liftedMoveIndicesFor(visualTransform);
+  const liftedMarks = liftedMoveIndices
+    ? stackedMarks
+      .filter((element) => liftedMoveIndices.has(element?.props?.['data-annotation-index']))
+      .map((element) => cloneElement(element, { transform: undefined }))
+    : [];
+  const pageMarks = liftedMarks.length
+    ? stackedMarks.filter((element) => !liftedMoveIndices.has(element?.props?.['data-annotation-index']))
+    : stackedMarks;
+  // Filled while the page layer renders (the group frame), drawn in the lift layer.
+  let liftedGroupFrame = null;
+
   const uniformTextMarkupElements = useMemo(() => {
     const groups = new Map();
     for (const entry of stagedAnnotations) {
@@ -7696,6 +7711,12 @@ const SVGAnnotationLayerBody = memo(({
         }
       }}
       onPointerMove={isInteractive ? (e) => {
+        // Lifting a moved mark into the lift layer remounts it, which drops
+        // a pointer capture it held; the page layer takes the drag back so
+        // the drop still lands here.
+        if (liftedMarks.length && !e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+          try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) { /* optional */ }
+        }
         if (surveyMarkerDragRef.current && updateSurveyMarkerDrag(e, false)) return;
         handlePointerMove(e);
       } : undefined}
@@ -7749,7 +7770,7 @@ const SVGAnnotationLayerBody = memo(({
       {/* w53: Survey Markers draw inside stackedMarks, each in its place in
           the page's one stack. They are stored outside annotations.objects,
           so renderSurveyMarkerEntry owns their click, move and resize. */}
-      {stackedMarks}
+      {pageMarks}
       {/* Owner 2026-10-01: selecting a Survey Marker never shows a floating
           Delete chip beside it (phone or desktop, one or many). Delete stays
           on the long-press / right-click menu, the Delete key and the Survey
@@ -8222,7 +8243,7 @@ const SVGAnnotationLayerBody = memo(({
           pointerEvents="none"
         />
       )}
-      <SnapGuidesLayer guides={snapGuides} inverseScale={inverseScale} />
+      {!liftedMarks.length && <SnapGuidesLayer guides={snapGuides} inverseScale={inverseScale} />}
       {drawSnapEndpoint && (
         <SnapGuidesLayer guides={{ lines: [], points: [], endpoint: drawSnapEndpoint }} inverseScale={inverseScale} />
       )}
@@ -9513,7 +9534,7 @@ const SVGAnnotationLayerBody = memo(({
               && (groupCalloutIdSet.size > 0
                 || selectedSurveyMarkerIds.size > 0
                 || Array.from(selectedIds).some((idx) => canMoveAnnotation(annotations?.objects?.[idx])));
-            return (
+            const groupFrame = (
               <g
                 key="group-selection-wrapper"
                 transform={groupDragTransform}
@@ -9555,6 +9576,12 @@ const SVGAnnotationLayerBody = memo(({
                 />
               </g>
             );
+            // A lifted group move carries its frame along in the lift layer.
+            if (liftedMarks.length && visualTransform?.id === 'group' && !totalAngle) {
+              liftedGroupFrame = cloneElement(groupFrame, { transform: undefined });
+              return null;
+            }
+            return groupFrame;
           })()}
         </>
       )}
@@ -9578,6 +9605,49 @@ const SVGAnnotationLayerBody = memo(({
         />
       )}
     </svg>
+    {liftedMarks.length > 0 && (
+      // The outer box clips at the page edge, like the page layer does. Snap
+      // guides sit in a second, unmoved layer: redrawn every frame, they
+      // would otherwise re-raster the dense page layer under them.
+      // inert: no press or release ever lands on a lifted copy (its marks
+      // set their own pointer-events, which pointerEvents: none can't undo).
+      <div
+        inert=""
+        data-selection-gesture={isSelectionGestureActive(interactionState, surveyMarkerPreviewBounds?.dragMode) ? 'true' : undefined}
+        style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}
+      >
+        <svg
+          aria-hidden="true"
+          viewBox={`0 0 ${width} ${height}`}
+          width="100%"
+          height="100%"
+          preserveAspectRatio="none"
+          style={{ position: 'absolute', top: 0, left: 0, overflow: 'visible', pointerEvents: 'none', willChange: 'transform' }}
+        >
+          <SnapGuidesLayer guides={snapGuides} inverseScale={inverseScale} />
+        </svg>
+        <svg
+          data-svg-annotation-lift={pageNumber}
+          aria-hidden="true"
+          viewBox={`0 0 ${width} ${height}`}
+          width="100%"
+          height="100%"
+          preserveAspectRatio="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            overflow: 'visible',
+            pointerEvents: 'none',
+            willChange: 'transform',
+            transform: liftTranslate(visualTransform, width, height),
+          }}
+        >
+          {liftedMarks}
+          {liftedGroupFrame}
+        </svg>
+      </div>
+    )}
     {/* EDIT-12 (Phase 12 Plan 02): RotationInputField portals into the
         overlay div that hosts SVGAnnotationLayer. Sits as a sibling to the
         <svg> in the React tree so it can co-receive parent state updates,
