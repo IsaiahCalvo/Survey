@@ -122,6 +122,7 @@ import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, is
 import { planSurveyCategoryTransferRestore, surveyCategoryTransferCheckpoint, surveyCategoryTransferStepId } from './utils/surveyCategoryTransferHistory';
 import { moveSurveyCategories } from './utils/surveyCategoryMove';
 import SurveyMarkerPlacementDialog from './components/SurveyMarkerPlacementDialog';
+import { resolveNextSurveyEntity } from './survey/nextSurveyEntity.js';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import TextLayer from './TextLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
@@ -8419,14 +8420,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // desktop opens in the Survey rail with its name field focused - no Entity /
   // Name pop-ups. { id, tick } asks the rail to focus that marker's name.
   const [surveyMarkerNameFocusRequest, setSurveyMarkerNameFocusRequest] = useState(null);
-  // The entity last picked for a Survey Marker on desktop (the rail's Entity
-  // menu); a new desktop marker starts with it, like the phone's entity disc.
-  const lastSurveyEntityIdRef = useRef(null);
-  // 2026-10-13 (entity bar): the bar rings it, and on desktop it is also the
-  // entity disc's pick, so the bar, the panel and the next marker agree.
+  // The entity last picked for a Survey Marker (the rail's Entity menu, the
+  // entity bar); a new marker starts with it (nextSurveyEntity). The bar rings
+  // it, and on desktop it is also the entity disc's pick, so the bar, the
+  // panel and the next marker agree.
   const [lastSurveyEntityId, setLastSurveyEntityId] = useState(null);
   const rememberSurveyEntity = useCallback((entityId) => {
-    lastSurveyEntityIdRef.current = entityId || null;
     setLastSurveyEntityId(entityId || null);
     if (!mobileMode) setMobileSurveyEntityId(entityId || null);
   }, [mobileMode]);
@@ -12198,6 +12197,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     pendingSurveyMarkerUi: capturePendingSurveyMarkerUi(pendingSurveyMarkerUiRef.current),
   }), []);
 
+  // A new Survey Marker's checkpoint: no page changes, so every page is kept
+  // by reference (page states are values - see getAnnotationPageHistorySnapshot)
+  // instead of copied; the first full copy of Package 2 cost ~170 ms.
+  const getSurveyMarkerHistorySnapshot = useCallback(() => ({
+    annotationsByPage: { ...(annotationsByPageRef.current || {}) },
+    surveyMarkers: deepClone(surveyMarkersRef.current || {}),
+    spaces: deepClone(spacesRef.current || []),
+    callouts: deepClone(deriveCalloutsFromByPage(annotationsByPageRef.current || {})),
+    pendingSurveyMarkerUi: capturePendingSurveyMarkerUi(pendingSurveyMarkerUiRef.current),
+  }), []);
+
   const getAnnotationPageHistorySnapshot = useCallback((pageNumber) => {
     const pageKey = String(pageNumber);
     const annotationsState = annotationsByPageRef.current || {};
@@ -12479,10 +12489,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const useFastAnnotationCheckpoint =
       context?.checkpointMode === 'annotation-create-fast'
       && Number.isFinite(Number(context?.pageNumber));
+    // Owner 2026-10-22 (the Survey Marker pop-up "takes forever"): a new
+    // Survey Marker always changes the document, so its checkpoint skips the
+    // duplicate check's whole-document fingerprint and summaries, and keeps
+    // the pages by reference. On Package 2 (~22 MB of marks as JSON) they
+    // held the pop-up ~1 s after the pen lifted (~4 s on a 4x slower CPU).
+    const skipFingerprint = !snapshotOverride && context?.checkpointMode === 'survey-marker-create';
     const currentState = snapshotOverride
       ? deepClone(snapshotOverride)
       : useFastAnnotationCheckpoint
       ? getAnnotationPageHistorySnapshot(context.pageNumber)
+      : skipFingerprint
+      ? getSurveyMarkerHistorySnapshot()
       : getHistorySnapshot();
 
     if (useFastAnnotationCheckpoint) {
@@ -12566,6 +12584,56 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           snapshotHash: checkpointMeta.snapshotHash
         });
       }
+      return;
+    }
+
+    if (skipFingerprint) {
+      const checkpointId = historyCheckpointSeqRef.current + 1;
+      const sanitizedContext = { ...context };
+      delete sanitizedContext.checkpointMode;
+      const previousRedoDepth = redoHistoryRef.current.length;
+      const checkpointMeta = {
+        checkpointId,
+        createdAt: new Date().toISOString(),
+        reason: normalizedReason,
+        context: sanitizedContext,
+        summary: { mode: 'survey-marker-create', pageNumber: context.pageNumber ?? null },
+        delta: { changedPagesPreview: [] },
+        snapshotHash: `survey-marker-create:${checkpointId}`,
+        snapshotBytes: 0
+      };
+      const nextHistory = appendLegacyHistoryCheckpoint({
+        undoHistory: undoHistoryRef.current,
+        undoMeta: undoHistoryMetaRef.current,
+        entry: currentState,
+        meta: checkpointMeta,
+      });
+      historyCheckpointSeqRef.current = checkpointId;
+      undoHistoryRef.current = nextHistory.undoHistory;
+      undoHistoryMetaRef.current = nextHistory.undoMeta;
+      redoHistoryRef.current = nextHistory.redoHistory;
+      redoHistoryMetaRef.current = nextHistory.redoMeta;
+      setUndoHistory(nextHistory.undoHistory);
+      setRedoHistory(nextHistory.redoHistory);
+      clearLocalRedoForNewStep(normalizedReason);
+      lastCheckpointHashRef.current = null;
+      pushHistoryDebugEvent('checkpoint_added_survey_marker', {
+        checkpointId,
+        order: checkpointId,
+        timestamp: checkpointMeta.createdAt,
+        historySource: 'legacy history',
+        receivedStack: 'legacyUndoHistory',
+        clearedRedoStack: previousRedoDepth > 0 ? 'legacyRedoHistory' : null,
+        clearedRedoEntries: previousRedoDepth,
+        ...summarizeHistoryMetaForLog(checkpointMeta),
+        reason: checkpointMeta.reason,
+        context: checkpointMeta.context,
+        undoDepth: nextHistory.undoHistory.length,
+        redoDepth: 0,
+        summary: checkpointMeta.summary,
+        snapshotHash: checkpointMeta.snapshotHash,
+        snapshotBytes: 0,
+      });
       return;
     }
 
@@ -12655,7 +12723,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         snapshotHash: checkpointMeta.snapshotHash
       });
     }
-  }, [clearLocalRedoForNewStep, createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
+  }, [clearLocalRedoForNewStep, createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, getSurveyMarkerHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
   // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
   // the documents-table user_id attached to pdfFile at Dashboard load time
@@ -26098,6 +26166,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     () => selectedTemplate?.entities || [],
     [selectedTemplate]
   );
+  // Owner 2026-10-22: a Survey Marker always has an entity - the one picked
+  // last, else the template's first - so a freehand stroke draws in that
+  // entity's colour from its first point (it was a generic blue until the
+  // marker got an entity). The entity bar and the phone's discs ring it.
+  const nextSurveyEntity = useMemo(
+    () => resolveNextSurveyEntity(mobileSurveyEntities, mobileSurveyEntityId, lastSurveyEntityId),
+    [mobileSurveyEntities, mobileSurveyEntityId, lastSurveyEntityId]
+  );
+  const nextSurveyEntityColor = nextSurveyEntity
+    ? (normalizeSurveyMarkerColor(nextSurveyEntity.color)
+      || nextSurveyEntity.color
+      || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY))
+    : null;
+  const nextSurveyEntityRef = useRef(nextSurveyEntity);
+  nextSurveyEntityRef.current = nextSurveyEntity;
   const handleMobileSurveyModuleSelect = useCallback((moduleId) => {
     setSelectedModuleId(moduleId || null);
     setSelectedCategoryId(null);
@@ -26430,7 +26513,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         entities: mobileSurveyEntities,
         selectedModuleId,
         selectedCategoryId,
-        selectedEntityId: mobileSurveyEntityId,
+        selectedEntityId: nextSurveyEntity?.id || null,
         onSelectModule: handleMobileSurveyModuleSelect,
         onSelectCategory: handleMobileSurveyCategorySelect,
         onSelectEntity: handleMobileSurveyEntitySelect,
@@ -32665,7 +32748,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageNumber,
       hasPendingLocationItem: Boolean(pendingLocationItem),
       selectedCategoryId: selectedCategoryId || null,
-      annotationId: newMarkerId
+      annotationId: newMarkerId,
+      checkpointMode: 'survey-marker-create'
     });
 
     const pageRegionId = getPageSurveyRegionId(pageNumber);
@@ -32740,12 +32824,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Unique ID for this surveyMarker (generated up-front for the checkpoint stamp)
     const annotationId = newMarkerId;
     const moduleName = getModuleName(selectedTemplate, effectiveModuleId);
-    const mobileSelectedEntity = (selectedTemplate?.entities || []).find(
-      (entity) => entity.id === mobileSurveyEntityId
-    ) || null;
-    const mobileSelectedEntityColor = mobileSelectedEntity
-      ? (normalizeSurveyMarkerColor(mobileSelectedEntity.color)
-        || mobileSelectedEntity.color
+    // The entity the marker starts with: the one picked last (phone disc or
+    // desktop entity bar / rail menu), else the template's first.
+    const chosenEntity = nextSurveyEntityRef.current;
+    const chosenEntityColor = chosenEntity
+      ? (normalizeSurveyMarkerColor(chosenEntity.color)
+        || chosenEntity.color
         || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY))
       : null;
 
@@ -32771,8 +32855,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         },
         {
           needsCategory: !selectedCategoryId, // Flag to indicate it needs category selection
-          ...(mobileSelectedEntityColor
-            ? { color: mobileSelectedEntityColor, needsEntity: false }
+          ...(chosenEntityColor
+            ? { color: chosenEntityColor, needsEntity: false }
             : { needsEntity: true })
         }
       );
@@ -32788,9 +32872,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     // If a category is already selected, place the Survey Marker straight
     // away with its default name and open it in the Survey panel.
-    const chosenEntity = mobileSelectedEntity || (!mobileMode
-      ? (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null
-      : null);
     if (selectedCategoryId && (chosenEntity || !(selectedTemplate.entities || []).length)) {
       // UX (mobile demo parity): commit instantly with the default name and
       // open the marker (demo App.tsx:1155). Owner 2026-10-01 ("Yes, inline
@@ -32798,15 +32879,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // new marker opens in the rail with its name field focused and its
       // Entity menu right there. Escape on that untouched name takes the
       // placement back (one Undo step, SurveySpacesRail). The entity it starts
-      // with: the phone's entity disc, else (desktop) the last one picked.
-      const placementEntity = mobileSelectedEntity || (!mobileMode
-        ? (selectedTemplate?.entities || []).find((entity) => entity.id === lastSurveyEntityIdRef.current) || null
-        : null);
-      const placementEntityColor = placementEntity
-        ? (normalizeSurveyMarkerColor(placementEntity.color)
-          || placementEntity.color
-          || hexToRgba('#E3D1FB', DEFAULT_SURVEY_MARKER_OPACITY))
-        : null;
+      // with: chosenEntity above (the last one picked, else the first).
+      const placementEntity = chosenEntity;
+      const placementEntityColor = chosenEntityColor;
       // Phone: a Smart fill marker keeps the tool armed and the sheet shut, so
       // its "Find more" toast survives and the found outlines stay tappable.
       const smartFillOnPhone = mobileMode && createOptions?.smartFill === true;
@@ -32852,12 +32927,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           ...(chosenEntity ? {
             entityId: chosenEntity.id,
             entityName: chosenEntity.name,
-            entityColor: chosenEntity.color,
+            entityColor: chosenEntityColor,
           } : {})
         });
       }
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, mobileSurveyEntityId, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
 
   // WebMCP: an agent adds Survey markers through the same path as a drawn
   // box (history, sync, server role check). Only the active tab answers.
@@ -38184,6 +38259,7 @@ ${pageBlocks}
                                   cloudIntensity={newMarkStyle.cloudIntensity}
                                   zoomGeneration={zoomGeneration}
                                   onSurveyMarkerCreated={getSvgLayerPageHandlers(pageNumber).onSurveyMarkerCreated}
+                                  surveyMarkerDrawColor={nextSurveyEntityColor}
                                 />
                               </div>
                               )}
@@ -40148,7 +40224,7 @@ ${pageBlocks}
               <SurveyEntityBar
                 templateId={selectedTemplate.id}
                 entities={selectedTemplate.entities}
-                nextEntityId={mobileSurveyEntityId || lastSurveyEntityId}
+                nextEntityId={nextSurveyEntity?.id || null}
                 surveyMarkers={surveyMarkers}
                 onPick={handleSurveyEntityBarPick}
                 tip={chromeTip}
@@ -40773,6 +40849,7 @@ ${pageBlocks}
             marker={pendingSurveyMarker}
             template={selectedTemplate}
             categoryId={selectedCategoryId}
+            mobile={mobileMode}
             onCancel={() => cancelSurveyMarkerPlacement(pendingSurveyMarker.id)}
             onConfirm={(marker, categoryId) => {
               commitMobileSurveyMarker(marker, categoryId);
