@@ -14,7 +14,7 @@ const api = () => {
 test('phone Shapes strip offers Cloud and Measure', () => {
   assert.deepEqual(MOBILE_MEASURE_ITEMS.map((m) => m.key), ['length', 'area', 'scale']);
   const chrome = readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
-  assert.match(chrome, /\{ id: 'cloud', label: 'Cloud', icon: 'lineSampleCloud' \}/);
+  assert.match(chrome, /\{ id: 'cloud', label: 'Cloud', icon: 'shapeCloud' \}/);
   assert.match(chrome, /\{ id: 'measure', label: 'Measure', icon: 'measureScale', measure: true \}/);
 });
 
