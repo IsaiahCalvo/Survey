@@ -13,3 +13,11 @@ test('template duplication persists immediately so mobile list copies cannot hid
   assert.match(duplicate, /setDirty\(false\)/);
   assert.match(duplicate, /setDirty\(true\)/);
 });
+
+test('a duplicated template keeps its Smart fill tag shapes when it is first saved', () => {
+  const start = source.indexOf('smartFillShapes: _oldShapes');
+  assert.ok(start >= 0);
+  const body = source.slice(start, start + 800);
+  // No saved row yet (a duplicate): keep the shapes it was copied with.
+  assert.match(body, /original\.id \? _oldShapes : r\.smartFillShapes/);
+});

@@ -193,7 +193,15 @@ import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '
 import { buildDotMarkerBounds, buildPolygonMarkerBounds, buildStrokeMarkerBounds, markerShapePathData } from '../survey/markerShapes.js';
 import { getMarkerStrokeWidth, useMarkerStrokeWidth } from '../survey/markerStrokeWidth.js';
 import '../survey/smartFillBeta.js';
-import { findSimilarOnPage } from '../survey/smartFillProvider.js';
+import { findSimilarOnPage, outlineInBox, prewarmSmartFillPage } from '../survey/smartFillProvider.js';
+import { makeTemplateShape } from '../survey/smartFillTemplates.js';
+import {
+  getSmartFillTeachArmed,
+  getSmartFillTemplateName,
+  getSmartFillTemplateShapes,
+  saveSmartFillTemplateShape,
+  setSmartFillTeachArmed,
+} from '../survey/smartFillTemplateShapes.js';
 import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
 import { SMART_FILL_CLEAR_MATCHES_EVENT, shouldClearSmartFillMatches } from '../survey/smartFillMatchEvents.js';
 import { offeredSmartFillMatches as filterOfferedSmartFillMatches, isSmartFillMatchSourceGone } from '../utils/smartFillMatches.js';
@@ -206,7 +214,7 @@ const showSmartFillFindToast = (message, type, options) => {
   return showToast(message, type, options);
 };
 import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
-import { isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
+import { getMarkerShapePdfDocument, isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
 import {
   MARKER_FREEHAND_PREVIEW_COLOR,
   projectSurveyMarkerEntryShape,
@@ -2716,6 +2724,30 @@ const SVGAnnotationLayerBody = memo(({
   // through the normal create path: category, entity, undo).
   const [smartFillMatches, setSmartFillMatches] = useState([]);
   const smartFillScanAbortRef = useRef(null);
+  // Owner 2026-10-22: read this page's own drawing (its tag outlines) as
+  // soon as Smart fill is armed and the page is on screen, so the first tap
+  // answers at once. Pages off screen wait: pdf.js reads one page at a time,
+  // and a 36-sheet set would put the page in view behind all the others.
+  useEffect(() => {
+    if (!smartFillLive) return undefined;
+    const warm = () => {
+      Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber))
+        .then((pdfPage) => prewarmSmartFillPage(pdfPage))
+        .catch(() => {});
+    };
+    const el = svgRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      warm();
+      return undefined;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      warm();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pageNumber, smartFillLive]);
   useEffect(() => {
     if (!smartFillLive) smartFillAbortRef.current?.abort?.();
     if (!smartFillLive) clearSmartFillPreview();
@@ -2780,18 +2812,112 @@ const SVGAnnotationLayerBody = memo(({
     });
   }, [clearSmartFillPreview, height, onSurveyMarkerCreated, pageNumber, width]);
 
+  // Owner 2026-10-22: "Teach a tag shape". When Smart fill misses a tag, the
+  // user drags a box round it; the outline inside is shown for a check, and
+  // Save shape keeps it in the survey template (so Smart fill looks for that
+  // shape on every drawing), adds the Survey Marker and offers Find more.
+  const [smartFillTeachBox, setSmartFillTeachBox] = useState(null);
+  const finishSmartFillTeach = useCallback((box) => {
+    const x = Math.min(box.x0, box.x1);
+    const y = Math.min(box.y0, box.y1);
+    const w = Math.abs(box.x1 - box.x0);
+    const h = Math.abs(box.y1 - box.y0);
+    if (w < 4 || h < 4) {
+      showToast('Teach a tag shape: drag a box around the tag Smart fill missed.', 'info', { id: 'smart-fill-no-match' });
+      return;
+    }
+    const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
+    Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber)).catch(() => null)
+      .then((pdfPage) => outlineInBox({ box: { x, y, width: w, height: h }, pageSize: { width, height }, pdfPage: pdfPage || null, pageCanvas }))
+      .then((found) => {
+        if (!smartFillLiveRef.current) return;
+        if (!found?.ok) {
+          showToast('Teach a tag shape: that box is too small. Drag around the whole tag.', 'info', { id: 'smart-fill-no-match' });
+          return;
+        }
+        const markerBounds = buildPolygonMarkerBounds({ type: 'Polygon', coordinates: [found.ring] });
+        if (!markerBounds || typeof onSurveyMarkerCreated !== 'function') return;
+        const apply = () => {
+          if (!smartFillLiveRef.current) return;
+          setSmartFillPreview(null);
+          const count = getSmartFillTemplateShapes().length;
+          const shape = makeTemplateShape(found.ring, { name: `Tag shape ${count + 1}`, source: found.source });
+          const where = getSmartFillTemplateName();
+          setSmartFillTeachArmed(false);
+          recordAnnotationCommit({
+            surface: 'SVGAnnotationLayer',
+            source: 'survey-marker:create',
+            action: 'survey-marker-smart-fill-teach',
+            pageNumber,
+          });
+          onSurveyMarkerCreated(markerBounds, { smartFill: true });
+          const sample = saveSmartFillSample(found.ring);
+          void saveSmartFillTemplateShape(shape).then((saved) => {
+            const said = !saved?.ok
+              ? 'Survey Marker added, but the tag shape could not be saved.'
+              : saved.where === 'template'
+                ? `Saved to ${where}. Smart fill now looks for this shape on every drawing.`
+                : 'Saved in this browser. Smart fill now looks for this shape here.';
+            showSmartFillFindToast(said, saved?.ok ? 'success' : 'error', {
+              id: 'smart-fill-find',
+              duration: Infinity,
+              action: { label: 'Find more', onClick: () => findMoreLikeThisRef.current?.(sample, markerBounds) },
+            });
+          });
+        };
+        setSmartFillPreview({ bounds: markerBounds, apply });
+        showToast('Is this the whole tag? Save it so Smart fill finds this shape next time.', 'info', {
+          id: 'smart-fill-preview',
+          duration: Infinity,
+          action: { label: 'Save shape', onClick: apply },
+        });
+      });
+  }, [height, onSurveyMarkerCreated, pageNumber, width]);
+  const startSmartFillTeach = useCallback((point, pointerId) => {
+    smartFillAbortRef.current?.abort?.();
+    clearSmartFillPreview();
+    let box = { x0: point.x, y0: point.y, x1: point.x, y1: point.y };
+    setSmartFillTeachBox(box);
+    const svg = svgRef.current;
+    const stop = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      setSmartFillTeachBox(null);
+    };
+    const onMove = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      const p = screenToSVG(svg, ev.clientX, ev.clientY);
+      if (!p) return;
+      box = { ...box, x1: p.x, y1: p.y };
+      setSmartFillTeachBox(box);
+    };
+    const onUp = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      stop();
+      finishSmartFillTeach(box);
+    };
+    const onCancel = (ev) => { if (ev.pointerId === pointerId) stop(); };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+  }, [clearSmartFillPreview, finishSmartFillTeach]);
+
   const findMoreLikeThisRef = useRef(null);
   const smartFillMatchSourceRef = useRef(null);
   const surveyMarkersRef = useRef(surveyMarkers);
   surveyMarkersRef.current = surveyMarkers;
   findMoreLikeThisRef.current = (sample, skipBounds = null, { quietIfNone = false } = {}) => {
-    if (!sample || !smartFillLiveRef.current) return;
+    // Taught tag shapes are searched for too, with or without a last sample.
+    if ((!sample && !getSmartFillTemplateShapes().length) || !smartFillLiveRef.current) return;
     smartFillScanAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     smartFillScanAbortRef.current = controller;
     const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
     if (!quietIfNone) showSmartFillFindToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find', duration: Infinity });
-    findSimilarOnPage({ pageCanvas, pageSize: { width, height }, sample, signal: controller?.signal || null }).then((res) => {
+    Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber)).catch(() => null).then((pdfPage) => findSimilarOnPage({
+      pageCanvas, pageSize: { width, height }, sample, pdfPage: pdfPage || null, signal: controller?.signal || null,
+    })).then((res) => {
       if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
       if (!res.ok) {
         if (quietIfNone) return;
@@ -7686,7 +7812,8 @@ const SVGAnnotationLayerBody = memo(({
                 startClient: { x: e.clientX, y: e.clientY }, pointerType: e.pointerType, passed: false,
               });
             } else if (point && markerDrawMode === 'smartFill') {
-              if (!applySmartFillMatchAt(point)) startSmartFill(point);
+              if (getSmartFillTeachArmed()) startSmartFillTeach(point, e.pointerId);
+              else if (!applySmartFillMatchAt(point)) startSmartFill(point);
             }
             e.preventDefault();
             return;
@@ -8196,6 +8323,21 @@ const SVGAnnotationLayerBody = memo(({
           stroke="#4A90E2"
           strokeWidth={2 * clampInverseScale(inverseScale)}
           strokeDasharray="4,3"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
+      {/* Smart fill beta: the box being dragged round a tag to teach it. */}
+      {smartFillTeachBox && (
+        <rect
+          data-smart-fill-teach-box="true"
+          x={Math.min(smartFillTeachBox.x0, smartFillTeachBox.x1)}
+          y={Math.min(smartFillTeachBox.y0, smartFillTeachBox.y1)}
+          width={Math.abs(smartFillTeachBox.x1 - smartFillTeachBox.x0)}
+          height={Math.abs(smartFillTeachBox.y1 - smartFillTeachBox.y0)}
+          fill="rgba(74, 144, 226, 0.08)"
+          stroke="#4A90E2"
+          strokeWidth={1.5 * clampInverseScale(inverseScale)}
+          strokeDasharray="5,4"
           style={{ pointerEvents: 'none' }}
         />
       )}

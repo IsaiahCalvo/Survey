@@ -107,6 +107,7 @@ import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
+import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
 import { templateCategoryEmptyText } from './templateEmptyText.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
@@ -297,8 +298,43 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
     ...(t?.exportKitId ? { exportKitId: t.exportKitId } : {}),
     ...(t?.answerSet ? { answerSet: t.answerSet } : {}),
+    // Smart fill tag shapes taught on drawings (beta); the editor only removes them.
+    ...(Array.isArray(t?.smartFillShapes) && t.smartFillShapes.length ? { smartFillShapes: t.smartFillShapes } : {}),
   };
 });
+
+/* Smart fill (beta, owner 2026-10-22): the tag shapes this template has
+   learned. Each is taught on a drawing ("Teach a tag shape"); here they can
+   only be seen and removed. */
+function SmartFillShapeChips({ shapes, onRemove, tip, hoverOnly }) {
+  if (!shapes.length) return null;
+  return (
+    <div data-smart-fill-shapes="true" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 4 }}>
+      <span style={{ fontSize: 11, color: 'var(--text-2)' }}>Smart fill shapes</span>
+      {shapes.map((shape) => {
+        const w = 18;
+        const h = Math.max(6, Math.min(24, (w * shape.height) / Math.max(0.01, shape.width)));
+        const d = shape.ring.map(([u, v], i) => `${i ? 'L' : 'M'}${(u * w).toFixed(1)} ${(v * h).toFixed(1)}`).join(' ') + 'Z';
+        return (
+          <button
+            key={shape.id}
+            type="button"
+            className="btn btn-ghost"
+            aria-label={`Remove ${shape.name || 'tag shape'}`}
+            onClick={() => onRemove(shape.id)}
+            {...hoverOnly(tip(`${shape.name || 'Tag shape'} (${Math.round(shape.width)} x ${Math.round(shape.height)} pt). Click to remove.`))}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '1px 4px', border: '1px solid var(--rule)', borderRadius: 4, minHeight: 0 }}
+          >
+            <svg width={w} height={h} viewBox={`-1 -1 ${w + 2} ${h + 2}`} aria-hidden="true">
+              <path d={d} fill="rgba(74, 144, 226, 0.25)" stroke="#4A90E2" strokeWidth="1" />
+            </svg>
+            <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--text-2)' }}>×</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 const templateOrderKeyForUser = (user) => `${TEMPLATE_ORDER_STORAGE_KEY}:${user?.id || user?.email || 'local'}`;
 
@@ -791,6 +827,7 @@ export default function TemplatesEditor({
   getChecklistItemUsageCount = null,
 }) {
   const tip = useTooltip();
+  const smartFillBeta = isSmartFillBetaEnabled();
   /* ---- mutable working data ----
      Seeded from the `templates` prop, then owned locally so every editor
      action below actually mutates it. Re-seeded from the prop only while the
@@ -1970,9 +2007,16 @@ export default function TemplatesEditor({
         }),
       })),
     }));
-    const { exportKitId: _oldKit, answerSet: _oldAnswers, ...originalRest } = original;
+    const { exportKitId: _oldKit, answerSet: _oldAnswers, smartFillShapes: _oldShapes, ...originalRest } = original;
+    // Smart fill shapes: the live list (a drawing may have added one since this
+    // editor opened) minus the ones removed here. A template not saved yet (a
+    // duplicate) has no live row, so it keeps the shapes it was made with.
+    const removedShapes = new Set(r.removedSmartFillShapeIds || []);
+    const liveShapes = (original.id ? _oldShapes : r.smartFillShapes) || [];
+    const shapes = (Array.isArray(liveShapes) ? liveShapes : []).filter((shape) => !removedShapes.has(shape?.id));
     return {
       ...originalRest,
+      ...(shapes.length ? { smartFillShapes: shapes } : {}),
       // Excel layout; unset means the standard export.
       ...(r.exportKitId ? { exportKitId: r.exportKitId } : {}),
       // Checklist answers; unset means Y / N / N/A.
@@ -2502,6 +2546,15 @@ export default function TemplatesEditor({
                   {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
                   style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
                 />
+                {/* Smart fill (beta): tag shapes taught on drawings. */}
+                {smartFillBeta && (
+                  <SmartFillShapeChips
+                    shapes={(tpl.smartFillShapes || []).filter((shape) => !(tpl.removedSmartFillShapeIds || []).includes(shape.id))}
+                    onRemove={(id) => mutateTpl(tpl.id, (t) => ({ ...t, removedSmartFillShapeIds: [...(t.removedSmartFillShapeIds || []), id] }))}
+                    tip={tip}
+                    hoverOnly={hoverOnly}
+                  />
+                )}
               </div>
             </div>
             {answerListEditor(tpl, false)}
