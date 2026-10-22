@@ -1,3 +1,4 @@
+import { SELECT_TOOL_NAME } from './constants.mjs';
 import { openRealMobileViewer } from './viewer.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -212,7 +213,7 @@ export async function runSurveyMarkerLifecycle({
     );
   }
   await collapseSurveySheet(page);
-  await clickVisible(page.getByRole('button', { name: 'Select', exact: true }), 'Select tool');
+  await clickVisible(page.getByRole('button', { name: SELECT_TOOL_NAME }), 'Select tool');
   const editHitBox = await markerHitBox(page, id);
   const editPoint = { x: editHitBox.x + editHitBox.width / 2, y: editHitBox.y + editHitBox.height / 2 };
   await touch.tap(editPoint);
@@ -232,7 +233,7 @@ export async function runSurveyMarkerLifecycle({
   await collapseSurveySheet(page);
 
   // Move uses the real SVG hit target and trusted touch-generated pointer events.
-  await clickVisible(page.getByRole('button', { name: 'Select', exact: true }), 'Select tool');
+  await clickVisible(page.getByRole('button', { name: SELECT_TOOL_NAME }), 'Select tool');
   let hitBox = await markerHitBox(page, id);
   let start = { x: hitBox.x + hitBox.width / 2, y: hitBox.y + hitBox.height / 2 };
   await touch.tap(start);
