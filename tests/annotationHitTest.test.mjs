@@ -749,3 +749,22 @@ test('pan fallback: no readable stroke width or scale means no shortcut', () => 
   assert.equal(runResolve(makeEnv({ wrapperChildren: [noWidth] }), 200, 200).kind, 'annotation');
   assert.equal(calls.n, 1);
 });
+
+test('pan fallback: the box grows by the path\'s own miter limit (Codex #1145: imported paths use 10)', () => {
+  // A 10-unit stroke with miter limit 10 reaches 50 px past the bare box; the
+  // default limit 4 would stop at 22 px.
+  const calls = { n: 0 };
+  const sharp = strokeTarget({ index: 7, rect: { left: 200, top: 290, right: 400, bottom: 300, width: 200, height: 10 }, strokeWidth: 10, calls, attrs: { 'stroke-miterlimit': '10' } });
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [sharp] }), 300, 345).annotationIndex, 7);
+  assert.equal(calls.n, 1);
+  const defaults = { n: 0 };
+  const plain = strokeTarget({ index: 8, rect: { left: 200, top: 290, right: 400, bottom: 300, width: 200, height: 10 }, strokeWidth: 10, calls: defaults });
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [plain] }), 300, 345).kind, 'page');
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [plain] }), 300, 321).annotationIndex, 8, 'default miter limit 4 reaches 20 px (+2)');
+  // A round join reaches only sqrt(2) half-widths.
+  const round = { n: 0 };
+  const rounded = strokeTarget({ index: 9, rect: { left: 200, top: 290, right: 400, bottom: 300, width: 200, height: 10 }, strokeWidth: 10, calls: round, attrs: { 'stroke-linejoin': 'round' } });
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [rounded] }), 300, 315).kind, 'page');
+  assert.equal(round.n, 0);
+  assert.equal(runResolve(makeEnv({ wrapperChildren: [rounded] }), 300, 308).annotationIndex, 9);
+});
