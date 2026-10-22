@@ -255,3 +255,20 @@ export function packLineWorldPoints(p1, p2) {
     x1: p1.x - cx, y1: p1.y - cy, x2: p2.x - cx, y2: p2.y - cy,
   };
 }
+
+/**
+ * Drawboard: holding K while resizing scales line widths with the frame (by
+ * the smaller of the two scales). Without K they stay the same.
+ */
+export function scaledGroupLineWidth(width, sx, sy) {
+  const w = Number(width) || 0;
+  const k = Math.min(Math.abs(sx), Math.abs(sy));
+  if (!(w > 0) || !Number.isFinite(k) || k <= 0) return w;
+  return Math.max(0.1, Math.round(w * k * 100) / 100);
+}
+
+/** The K key with no modifier (it picks the Polyline tool otherwise). */
+export function isGroupLineWidthKey(event) {
+  return (event?.key === 'k' || event?.key === 'K')
+    && !event.metaKey && !event.ctrlKey && !event.altKey;
+}

@@ -42,7 +42,7 @@ Drawboard's rules, plus tldraw's rule where Survey can't follow Drawboard.
 - **Corner**: free stretch. **Edge**: one axis. **Alt**: from the centre. **Shift**: keeps proportions, following the bigger move. All as Drawboard.
 - **Text in the selection** keeps the proportions (corner / top / bottom) and **scales its font** with the frame, rounded to 0.1. The box scales inside its fixed padding so the words don't rewrap. From a **left / right side**, only the width changes and the words rewrap. All as Drawboard.
 - **Photos / stamps** keep the proportions, as Drawboard.
-- **Line widths** don't change, as Drawboard. Each type resizes exactly like its own single-mark resize.
+- **Line widths** don't change, as Drawboard, unless **K** is held: then they scale with the smaller of the two stretches. Each type resizes exactly like its own single-mark resize.
 - **A mark turned by an odd angle** (not 0 / 90 / 180 / 270): Drawboard shears it. Survey stores angle + scale and can't draw a shear, which is what sank the April 2026 attempt. So Survey uses **tldraw's rule**: the whole frame keeps its proportions while such a mark is selected. A mark turned 90° / 270° stretches along the page's axes (its own two scales swap).
 - **No mirroring**. A group stops when its smallest member reaches 4 page units, or its own size if it is already smaller. Drawboard mirrors, and its text ends up upside down.
 - **One Undo step**, saved field by field on top of the page as it is now, so a co-editor's change made during the drag survives (sync-safe). A list change mid-drag keeps each mark's own preview.
@@ -55,4 +55,4 @@ Drawboard's rules, plus tldraw's rule where Survey can't follow Drawboard.
 1. ~~Group **rotate**~~ (done 2026-10-22; not with a callout in the selection).
 2. ~~Callouts and Survey Markers in a resizable group~~ (done 2026-10-22).
 3. ~~Text rewrapped from a side should grow its box height to fit~~ (done 2026-10-22: alone and in a group, the box grows downward and never shrinks; `utils/textBoxFit.js`).
-4. Hold **K** to scale line widths too (Drawboard).
+4. ~~Hold **K** to scale line widths too (Drawboard)~~ (done 2026-10-22: shapes, lines, pen strokes and callout lines; K is taken only while a group resize is under way, so the Polyline shortcut still works).

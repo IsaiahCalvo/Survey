@@ -188,3 +188,18 @@ test('a drawn line turns and scales from its drawn ends, not its stored offsets'
   assert.match(hook, /packLineWorldPoints\(rotPt\(p1\.x, p1\.y\), rotPt\(p2\.x, p2\.y\)\)/);
   assert.match(hook, /packLineWorldPoints\(scalePoint\(p1\.x, p1\.y\), scalePoint\(p2\.x, p2\.y\)\)/);
 });
+
+test('K scales line widths by the smaller scale', async () => {
+  const { scaledGroupLineWidth, isGroupLineWidthKey } = await import('../src/utils/groupResize.js');
+  assert.equal(scaledGroupLineWidth(2, 1.5, 3), 3);
+  assert.equal(scaledGroupLineWidth(2, 0.5, 0.5), 1);
+  assert.equal(scaledGroupLineWidth(0, 2, 2), 0, 'no line stays no line');
+  assert.equal(isGroupLineWidthKey({ key: 'k' }), true);
+  assert.equal(isGroupLineWidthKey({ key: 'K', shiftKey: true }), true);
+  assert.equal(isGroupLineWidthKey({ key: 'k', ctrlKey: true }), false);
+  const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  assert.match(hook, /if \(scaleLineWidths && orig\.strokeWidth > 0\) \{\s*target\.strokeWidth = scaledGroupLineWidth\(orig\.strokeWidth, sx, sy\);/);
+  // K is the Polyline tool's key: during a group resize it is taken first.
+  assert.match(hook, /window\.addEventListener\('keydown', onKeyDown, true\);/);
+  assert.match(hook, /if \(!ds\?\.active \|\| ds\.mode !== 'group-resize'\) return;\s*groupResizeLineKeyRef\.current = true;\s*e\.preventDefault\(\);\s*e\.stopImmediatePropagation\(\);/);
+});

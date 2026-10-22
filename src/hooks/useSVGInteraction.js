@@ -189,6 +189,8 @@ import {
   lineWorldPoints,
   packLineWorldPoints,
   scaledGroupFontSize,
+  scaledGroupLineWidth,
+  isGroupLineWidthKey,
   scaledTextBoxLength,
   textScalesFontFor,
 } from '../utils/groupResize.js';
@@ -1119,6 +1121,32 @@ export function useSVGInteraction({
   // or a widget that owns arrow keys, the right-click menu is open, a
   // Cmd/Ctrl/Alt chord is held, the document is read-only, or a pointer
   // gesture is in progress.
+  // Drawboard: K held during a group resize also scales line widths. K is
+  // the Polyline tool's key, so while a group resize runs it is taken here
+  // (capture phase) and never switches the tool.
+  const groupResizeLineKeyRef = useRef(false);
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (!isGroupLineWidthKey(e)) return;
+      const ds = dragStateRef.current;
+      if (!ds?.active || ds.mode !== 'group-resize') return;
+      groupResizeLineKeyRef.current = true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    const onKeyUp = (e) => {
+      if (e.key === 'k' || e.key === 'K') groupResizeLineKeyRef.current = false;
+    };
+    const onBlur = () => { groupResizeLineKeyRef.current = false; };
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
   const nudgeLatestRef = useRef({});
   nudgeLatestRef.current = {
     annotations,
@@ -2935,6 +2963,7 @@ export function useSVGInteraction({
         transformedOrigin.y,
       ];
 
+      const scaleLineWidths = groupResizeLineKeyRef.current;
       const updatedAnnotations = cloneAnnotations(annotations);
       for (const idxStr of Object.keys(ds.groupMemberOriginals)) {
         const idx = Number(idxStr);
@@ -3021,6 +3050,10 @@ export function useSVGInteraction({
             target.scaleY = (orig.scaleY || 1) * axis.y;
           }
         }
+        // Drawboard: hold K to scale line widths with the frame too.
+        if (scaleLineWidths && orig.strokeWidth > 0) {
+          target.strokeWidth = scaledGroupLineWidth(orig.strokeWidth, sx, sy);
+        }
       }
 
       // Callouts and Survey Markers ride along (groupResize.js); their live
@@ -3031,6 +3064,13 @@ export function useSVGInteraction({
           orig, scalePoint, sx, sy, ds.handleId,
           { width: pageWidth || 1, height: pageHeight || 1 }, TEXT_PADDING,
         );
+        if (scaleLineWidths && orig.style?.lineThickness > 0) {
+          const patch = calloutPreviews[cid];
+          patch.style = {
+            ...(patch.style || orig.style),
+            lineThickness: scaledGroupLineWidth(orig.style.lineThickness, sx, sy),
+          };
+        }
       }
       const markerPreviews = {};
       for (const [id, bounds] of Object.entries(ds.groupMarkerResizeOriginals || {})) {
@@ -4723,8 +4763,14 @@ export function useSVGInteraction({
         flushSync(() => {
           for (const [cid, patch] of calloutPatchEntries) {
             const current = (callouts || []).find((c) => c && c.id === cid);
+            // Only the style fields the resize changed land on the
+            // callout's style as it is now.
+            const styleChange = {};
+            for (const key of ['fontSize', 'lineThickness']) {
+              if (patch.style?.[key] != null) styleChange[key] = patch.style[key];
+            }
             onUpdateCalloutLive(cid, patch.style
-              ? { ...patch, style: { ...(current?.style || {}), fontSize: patch.style.fontSize } }
+              ? { ...patch, style: { ...(current?.style || {}), ...styleChange } }
               : patch);
           }
         });
@@ -5760,6 +5806,7 @@ export function useSVGInteraction({
           aabbWidth: aabb ? aabb.width : (obj.width || 0),
           aabbHeight: aabb ? aabb.height : (obj.height || 0),
           fontSize: typeof obj.fontSize === 'number' ? obj.fontSize : null,
+          strokeWidth: typeof obj.strokeWidth === 'number' ? obj.strokeWidth : null,
           isText: isTextMark(obj),
           // Group resize: a tilted mark, a photo or (from a corner / top /
           // bottom grabber) text keeps the whole frame's proportions.
@@ -5952,6 +5999,7 @@ export function useSVGInteraction({
       // axis-aligned; if the user wants a tilt back, they rotate again.
       if (!isRotate) {
         setPersistedGroupTransform(null);
+        groupResizeLineKeyRef.current = false;
       }
       setInteractionState(isRotate ? 'rotating' : 'resizing');
       return;
