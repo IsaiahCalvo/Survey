@@ -240,9 +240,13 @@ export function scoreDescribedTag(target, text, { category = null, pageFloor = n
     score -= 0.05;
   }
   if (target.wing) {
-    if (letters.includes(target.wing) || pageWing === target.wing) score += 0.05;
-    else if (pageWing && pageWing !== target.wing) score -= 0.25;
-    else if (letters.some((l) => isWingLetter(l) && l !== target.wing && letters.length > 1)) score -= 0.1;
+    // A wing written in the tag ("4E-CAM-06") wins over the sheet it sits on.
+    const tagWing = letters.length > 1 ? letters.find(isWingLetter) : null;
+    if (tagWing) {
+      if (tagWing !== target.wing) return 0;
+      score += 0.05;
+    } else if (pageWing === target.wing) score += 0.05;
+    else if (pageWing) score -= 0.25;
   }
   return Math.max(0, Math.min(1, Math.round(score * 100) / 100));
 }

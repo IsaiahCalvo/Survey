@@ -273,20 +273,26 @@ export function createSurveyAgentToolbox({
     }
     return null;
   };
-  const answerInModule = async (b, itemId, marker, other, answers) => {
+  // Where the other module's answers go: its item on the same spot, or a
+  // new one there. Throws, writing nothing, when neither can be.
+  const siblingFor = (b, itemId, marker, other) => {
     const moduleName = other.module.name || 'the other module';
-    const changes = [];
     const siblings = Object.entries(b.markers || {}).filter(([id, m]) => id !== itemId && m?.moduleId === other.module.id
       && m.categoryId === other.category.id && sameName(m.name, marker.name) && samePlace(m, marker));
     if (siblings.length > 1) {
-      throw new ToolError(`${nameOf(marker)} has ${siblings.length} ${moduleName} items in the same place. Nothing changed for ${moduleName}; ask which one.`);
+      throw new ToolError(`${nameOf(marker)} has ${siblings.length} ${moduleName} items in the same place. Nothing changed; ask which one.`);
     }
-    let sibling = siblings[0];
+    if (!siblings.length && (!marker.pageNumber || !marker.bounds || typeof b.createItem !== 'function')) {
+      throw new ToolError(`${nameOf(marker)} has no ${moduleName} item yet, and it is not on the plan to add one. Nothing changed.`);
+    }
+    return siblings[0] || null;
+  };
+  const answerInModule = async (b, itemId, marker, other, answers) => {
+    const moduleName = other.module.name || 'the other module';
+    const changes = [];
+    let sibling = siblingFor(b, itemId, marker, other);
     let live = b;
     if (!sibling) {
-      if (!marker.pageNumber || !marker.bounds || typeof b.createItem !== 'function') {
-        throw new ToolError(`${nameOf(marker)} has no ${moduleName} item yet, and it is not on the plan to add one. Nothing changed for ${moduleName}.`);
-      }
       const newId = b.createItem({ name: marker.name || nameOf(marker), moduleId: other.module.id, categoryId: other.category.id, entityId: null, page: marker.pageNumber, bounds: marker.bounds });
       if (!newId) throw new ToolError(`Could not add ${nameOf(marker)} to ${moduleName}.`);
       changes.push(createdChange(b, newId, `Added ${nameOf(marker)} to ${moduleName}`));
@@ -446,9 +452,23 @@ export function createSurveyAgentToolbox({
       const own = named.filter((a) => checklist.has(a.checklist_item_id));
       const given = new Set(own.map((a) => a.checklist_item_id));
       const list = [...own, ...(allLines ? lines.filter((l) => !given.has(l.id)).map((l) => ({ checklist_item_id: l.id, value: allLines })) : [])];
+      // Every other module is checked before anything is written, so a turn
+      // never half-writes and then reports only the failure.
+      for (const { entry: other } of elsewhere.values()) siblingFor(b, itemId, marker, other);
       const siblingChanges = [];
       for (const { entry: other, answers: theirs } of elsewhere.values()) {
-        siblingChanges.push(await answerInModule(b, itemId, marker, other, theirs));
+        try {
+          siblingChanges.push(await answerInModule(b, itemId, marker, other, theirs));
+        } catch (err) {
+          // Adding the item failed after earlier modules were written: stop
+          // here, and hand back what was written so it can still be undone.
+          const done = siblingChanges.flatMap((c) => c.changes);
+          if (!done.length) throw err;
+          return {
+            content: `${siblingChanges.map((c) => c.text).join(' ')} ${err?.message || 'The rest failed.'} Nothing else changed.`,
+            ...(done.length === 1 ? { change: done[0] } : { changes: done }),
+          };
+        }
       }
       const responses = marker.checklistResponses || {};
       const fields = list.map((a) => ({ type: 'answer', id: a.checklist_item_id, before: clone(responses[a.checklist_item_id]), after: a.value }));

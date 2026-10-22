@@ -53,6 +53,8 @@ test('the floor can be in the tag, glued to the number, or only on the sheet', (
   assert.equal(scoreDescribedTag(target, 'C-3-06', { pageFloor: 4 }), 0, 'a third-floor tag on a fourth-floor sheet');
   const west = parseDescribedTarget('camera 6 fourth floor west');
   assert.ok(scoreDescribedTag(west, '4W-CAM-06') > scoreDescribedTag(west, '4E-CAM-06'), 'the wing said wins when both fit');
+  assert.equal(scoreDescribedTag(west, '4E-CAM-06', { pageFloor: 4, pageWing: 'w' }), 0, 'an east tag on a west sheet is not the west camera');
+  assert.ok(scoreDescribedTag(west, '4W-CAM-06', { pageFloor: 4, pageWing: 'e' }) > 0, 'a west tag on an east sheet still is');
   assert.ok(scoreDescribedTag(parseDescribedTarget('cam four oh six'), 'C-4-06') >= 0.8, '"four oh six" reads the groups together');
   assert.deepEqual(tagParts('4W-CAM-06'), { letters: ['w', 'cam'], digits: ['4', '06'] });
 });
@@ -265,4 +267,42 @@ test("another floor's same-named item in the other module is not this camera's c
   assert.equal(created.length, 1, 'added on page 4, beside the camera');
   assert.deepEqual(calls.filter((c) => c[0] === 'setAnswers'), [['setAnswers', 'cx4', 'c-ip=Y']]);
   assert.deepEqual(markers.cx3.checklistResponses, {}, 'the third-floor camera is untouched');
+});
+
+const THREE_MODULES = {
+  ...TEMPLATE,
+  modules: [
+    ...TEMPLATE.modules,
+    { id: 'mod-punch', name: 'Punch', categories: [{ id: 'cat-cam-p', name: 'Camera', checklist: [{ id: 'p-fix', text: 'Fixed' }] }] },
+  ],
+};
+
+test('when one other module cannot take its answers, no module is written', async () => {
+  const markers = {
+    m6: { name: 'C-06', moduleId: 'mod-install', categoryId: 'cat-cam-i', pageNumber: 4, bounds: { x: 100, y: 120, width: 30, height: 30 }, checklistResponses: {} },
+    cx: { name: 'C-06', moduleId: 'mod-cx', categoryId: 'cat-cam-c', pageNumber: 4, bounds: { x: 100, y: 120, width: 30, height: 30 }, checklistResponses: {} },
+  };
+  // No createItem: Punch has no item and none can be added.
+  const { bridge, calls } = bridgeWith(markers, { template: THREE_MODULES });
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const res = await box.run('set_answers', { item_id: 'm6', answers: [{ checklist_item_id: 'c-ip', value: 'Y' }, { checklist_item_id: 'p-fix', value: 'Y' }] });
+  assert.equal(res.isError, true);
+  assert.match(res.content, /no Punch item/);
+  assert.deepEqual(calls.filter((c) => c[0] === 'setAnswers'), [], 'Commissioning was not written first');
+});
+
+test('if adding an item fails after another module was written, that write can still be undone', async () => {
+  const markers = {
+    m6: { name: 'C-06', moduleId: 'mod-install', categoryId: 'cat-cam-i', pageNumber: 4, bounds: { x: 100, y: 120, width: 30, height: 30 }, checklistResponses: {} },
+    cx: { name: 'C-06', moduleId: 'mod-cx', categoryId: 'cat-cam-c', pageNumber: 4, bounds: { x: 100, y: 120, width: 30, height: 30 }, checklistResponses: {} },
+  };
+  const { bridge } = bridgeWith(markers, { template: THREE_MODULES, createItem: () => null });
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const res = await box.run('set_answers', { item_id: 'm6', answers: [{ checklist_item_id: 'c-ip', value: 'Y' }, { checklist_item_id: 'p-fix', value: 'Y' }] });
+  assert.match(res.content, /Could not add C-06 to Punch\. Nothing else changed\./);
+  assert.equal(markers.cx.checklistResponses['c-ip'].selection, 'Y');
+  const changes = res.changes || [res.change];
+  assert.ok(changes.length >= 1, 'the Commissioning write comes back for Undo');
+  box.undo(changes);
+  assert.deepEqual(markers.cx.checklistResponses, {});
 });
