@@ -167,3 +167,24 @@ test('a turned Survey Marker sets the frame floor on the page axes', () => {
   assert.equal(minScaleX, 0.4);
   assert.equal(minScaleY, 0.04);
 });
+
+test('a drawn line turns and scales from its drawn ends, not its stored offsets', async () => {
+  const { lineWorldPoints, packLineWorldPoints } = await import('../src/utils/groupResize.js');
+  const { getLineEndpoints } = await import('../src/utils/svgBoundingBox.js');
+  // (100,100)-(200,100) as buildLineCommitJSON stores it.
+  const line = { type: 'Line', left: 100, top: 100, width: 100, height: 0, x1: -50, y1: 0, x2: 50, y2: 0 };
+  const { p1, p2 } = lineWorldPoints(line);
+  assert.deepEqual([p1, p2], [{ x: 100, y: 100 }, { x: 200, y: 100 }]);
+  // A quarter turn clockwise about (200, 200) lands it at (300,100)-(300,200).
+  const turn = (p) => ({ x: 200 - (p.y - 200), y: 200 + (p.x - 200) });
+  const packed = packLineWorldPoints(turn(p1), turn(p2));
+  const ends = getLineEndpoints(packed);
+  for (const [k, v] of Object.entries({ x1: 300, y1: 100, x2: 300, y2: 200 })) assert.ok(Math.abs(ends[k] - v) < 1e-9, `${k} ${ends[k]}`);
+  assert.equal(packed.angle, 0);
+  // A line with a turn of its own: its drawn ends include that turn.
+  const tilted = lineWorldPoints({ ...line, angle: 90 });
+  assert.ok(Math.abs(tilted.p1.x - 150) < 1e-9 && Math.abs(tilted.p1.y - 50) < 1e-9, JSON.stringify(tilted.p1));
+  const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  assert.match(hook, /packLineWorldPoints\(rotPt\(p1\.x, p1\.y\), rotPt\(p2\.x, p2\.y\)\)/);
+  assert.match(hook, /packLineWorldPoints\(scalePoint\(p1\.x, p1\.y\), scalePoint\(p2\.x, p2\.y\)\)/);
+});

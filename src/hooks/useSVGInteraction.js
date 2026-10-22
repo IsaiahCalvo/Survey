@@ -186,6 +186,8 @@ import {
   resolveGroupResizeScale,
   scaleCalloutForGroup,
   scaleMarkerBoundsForGroup,
+  lineWorldPoints,
+  packLineWorldPoints,
   scaledGroupFontSize,
   scaledTextBoxLength,
   textScalesFontFor,
@@ -2675,36 +2677,16 @@ export function useSVGInteraction({
         };
 
         if (objType === 'line') {
-          // UX: 2026-04-21 — Line rotation needs WORLD endpoints, not the
-          // raw stored values. The line renderer paints at
-          // (obj.x1 + obj.left, obj.y1 + obj.top), so after a prior group-
-          // move bumps obj.left/top, the raw x1/y1 numbers no longer match
-          // the visible world position. Rotating the raw values around the
-          // group pivot would land the line in a wrong spot (visible bug:
-          // after rotate-then-move, the second rotate flings the line out
-          // of alignment with the rest of the group).
-          // Fix: convert to world before rotating, then bake the rotated
-          // world endpoints back as raw values with obj.left/top reset to
-          // zero. The line's curvature midpoint is already absolute world
-          // coords, so it rotates directly.
-          if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
-            const wx1 = orig.x1 + (orig.left || 0);
-            const wy1 = orig.y1 + (orig.top || 0);
-            const wx2 = orig.x2 + (orig.left || 0);
-            const wy2 = orig.y2 + (orig.top || 0);
-            const p1 = rotPt(wx1, wy1);
-            const p2 = rotPt(wx2, wy2);
-            target.left = 0;
-            target.top = 0;
-            target.x1 = p1.x; target.y1 = p1.y;
-            target.x2 = p2.x; target.y2 = p2.y;
+          // Turn the line's drawn ends and bend (lineWorldPoints), then
+          // write them back in the drawn-line form with no turn of its own.
+          if (orig.linePoints) {
+            const { p1, p2, mid } = orig.linePoints;
+            Object.assign(target, packLineWorldPoints(rotPt(p1.x, p1.y), rotPt(p2.x, p2.y)));
+            if (mid) {
+              const m = rotPt(mid.x, mid.y);
+              target.data = { ...(target.data || {}), midpoint: { x: m.x, y: m.y } };
+            }
           }
-          if (orig.midpoint) {
-            const m = rotPt(orig.midpoint.x, orig.midpoint.y);
-            target.data = { ...(target.data || {}), midpoint: { x: m.x, y: m.y } };
-          }
-          // For arrows + curved lines the rendered tangent reads from the
-          // endpoints, so no separate angle update needed for line/arrow.
         } else if (orig.dataType === 'counter') {
           // Counter pin: bubble center is at (left + radius, top + radius).
           const r = (orig.radius || 14) * Math.abs(orig.scaleX || 1);
@@ -2970,27 +2952,15 @@ export function useSVGInteraction({
             ),
           );
         } else if (objType === 'line') {
-          // UX: 2026-04-21 — Same world-vs-local-endpoint fix as group-
-          // rotate. Lines render at (x1 + left, y1 + top); rescaling the
-          // raw values around the anchor breaks if obj.left/top is non-
-          // zero. Convert to world, scale (in local rotated frame when a
-          // persisted rotation exists), then write back with left/top
-          // reset to zero.
-          if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
-            const wx1 = orig.x1 + (orig.left || 0);
-            const wy1 = orig.y1 + (orig.top || 0);
-            const wx2 = orig.x2 + (orig.left || 0);
-            const wy2 = orig.y2 + (orig.top || 0);
-            const p1 = scalePoint(wx1, wy1);
-            const p2 = scalePoint(wx2, wy2);
-            target.left = 0;
-            target.top = 0;
-            target.x1 = p1.x; target.y1 = p1.y;
-            target.x2 = p2.x; target.y2 = p2.y;
-          }
-          if (orig.midpoint) {
-            const mp = scalePoint(orig.midpoint.x, orig.midpoint.y);
-            target.data = { ...(target.data || {}), midpoint: { x: mp.x, y: mp.y } };
+          // Scale the line's drawn ends and bend (lineWorldPoints), then
+          // write them back in the drawn-line form with no turn of its own.
+          if (orig.linePoints) {
+            const { p1, p2, mid } = orig.linePoints;
+            Object.assign(target, packLineWorldPoints(scalePoint(p1.x, p1.y), scalePoint(p2.x, p2.y)));
+            if (mid) {
+              const mp = scalePoint(mid.x, mid.y);
+              target.data = { ...(target.data || {}), midpoint: { x: mp.x, y: mp.y } };
+            }
           }
         } else if (orig.dataType === 'counter') {
           // Counter pin: scale center position; scale radius by uniform avg
@@ -5771,6 +5741,7 @@ export function useSVGInteraction({
           x2: typeof obj.x2 === 'number' ? obj.x2 : null,
           y2: typeof obj.y2 === 'number' ? obj.y2 : null,
           midpoint: obj?.data?.midpoint ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y } : null,
+          linePoints: String(obj.type || '').toLowerCase() === 'line' ? lineWorldPoints(obj) : null,
           pointerAngle: typeof obj?.data?.pointerAngle === 'number' ? obj.data.pointerAngle : null,
           // Member's renderer rotation pivot — used by group-rotate as
           // both the orbit point (orbit it around union center by delta)

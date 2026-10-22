@@ -77,6 +77,8 @@ for (const pointerType of ['mouse', 'pen']) {
     const rectId = await newMarkId(page, before);
     await drawMark(page, 'o', at(0.36, 0.62), at(0.46, 0.72));
     const ellipseId = await newMarkId(page, before);
+    await drawMark(page, 'l', at(0.32, 0.84), at(0.56, 0.86));
+    const lineId = await newMarkId(page, before);
 
     await page.keyboard.press('t');
     await page.mouse.click(at(0.22, 0.78).x, at(0.22, 0.78).y);
@@ -99,6 +101,7 @@ for (const pointerType of ['mouse', 'pen']) {
     const start = {
       rect: await boxOf(page, rectId),
       ellipse: await boxOf(page, ellipseId),
+      line: await boxOf(page, lineId),
       text: await boxOf(page, textId),
       font: await textFontSize(page, textId),
     };
@@ -115,6 +118,7 @@ for (const pointerType of ['mouse', 'pen']) {
     const after = {
       rect: await boxOf(page, rectId),
       ellipse: await boxOf(page, ellipseId),
+      line: await boxOf(page, lineId),
       text: await boxOf(page, textId),
       font: await textFontSize(page, textId),
     };
@@ -128,6 +132,9 @@ for (const pointerType of ['mouse', 'pen']) {
     expect(near(after.rect.top, start.rect.top, 0.01)).toBe(true);
     // The marks spread apart with the frame.
     expect(after.ellipse.left - after.rect.left).toBeGreaterThan((start.ellipse.left - start.rect.left) * 1.4);
+    // A drawn line stretches with the frame and stays in its place in it.
+    expect(near(after.line.width, start.line.width * 1.5), `line width ${start.line.width} -> ${after.line.width}`).toBe(true);
+    expect(near(after.line.left - after.rect.left, (start.line.left - start.rect.left) * 1.5), `line left ${start.line.left} -> ${after.line.left}`).toBe(true);
 
     // One Undo puts every mark back.
     await page.keyboard.press('Control+z');
@@ -484,12 +491,14 @@ test('a group turns about its centre with the rotate grabber, mouse and pen', as
   const ellipseId = await newMarkId(page, before);
   await drawMark(page, 'p', at(0.22, 0.78), at(0.46, 0.84));
   const inkId = await newMarkId(page, before);
+  await drawMark(page, 'l', at(0.48, 0.75), at(0.6, 0.77));
+  const lineId = await newMarkId(page, before);
   await page.keyboard.press('t');
   await page.mouse.click(at(0.36, 0.88).x, at(0.36, 0.88).y);
   await page.keyboard.type('Turn me');
   await page.keyboard.press('Escape');
   const textId = await newMarkId(page, before);
-  const ids = [rectId, ellipseId, inkId, textId];
+  const ids = [rectId, ellipseId, inkId, lineId, textId];
   await page.waitForTimeout(1200);
 
   await selectTool(page);
