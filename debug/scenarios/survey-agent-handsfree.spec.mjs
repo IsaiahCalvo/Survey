@@ -5,8 +5,11 @@
 // caught instead of played, and the spoken correction "no, D-118" moves
 // the answer from D-117 to D-118.
 //
-// tests/fixtures/voice/two_turns.wav: generator noise, "D one seventeen,
-// card reader installed.", a 2 s pause, "No, D one eighteen.".
+// tests/fixtures/voice/two_turns_wait.wav: generator noise, "D one seventeen,
+// card reader installed.", a 4.3 s pause (time to hear the reply, now that
+// the mic waits about 2.5 s of quiet before it sends), "No, D one eighteen.".
+// It is two_turns.wav with 2 s more of its own background noise in the pause
+// and 3 s more at the end (the capture starts over when the file ends).
 //
 // Speech to text: by default the mock returns what the clip says, in order.
 // Set SURVEY_AGENT_STT_URL to a local speech-to-text server (POST WAV bytes,
@@ -21,7 +24,7 @@ import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..', '..');
 const PDF_FILE = 'print-fidelity.pdf';
-const CLIP = join(root, 'tests', 'fixtures', 'voice', 'two_turns.wav');
+const CLIP = join(root, 'tests', 'fixtures', 'voice', 'two_turns_wait.wav');
 // As speech to text really writes them: the app puts the names back.
 const SAID = ['D 117, card reader installed.', 'No, D1-18.'];
 // What the server voice sends back: a real WAV (a soft tone). 0.4 s by
@@ -219,6 +222,8 @@ test('hands-free: talk, hear the reply, talk again, and a spoken correction move
   await expect(panel.getByText(/set card reader to Y on D-118/)).toBeVisible({ timeout: 30_000 });
   await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d118')).toBe('Y');
   await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d117')).toBe(null);
+  // The second reply is said before hands-free is stopped below.
+  await expect.poll(() => log.speak.length, { timeout: 15_000 }).toBe(2);
   // A tap outside the chat goes back to the Survey panel, still listening.
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').click({ position: { x: 20, y: 20 } });
   await expect(panel).toBeHidden();
@@ -486,7 +491,7 @@ test('chat mic: hold to talk, slide away to cancel, tap still toggles', async ({
   if (!(await panel.isVisible())) await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
   const mic = panel.locator('.survey-agent__mic');
   await expect(mic).toBeEnabled();
-  await expect(mic).toHaveAttribute('title', 'Hold to talk, or tap');
+  await expect(mic).toHaveAttribute('title', 'Tap to talk (it sends when you stop), or hold');
   // hover() waits for the chat to finish sliding in.
   await mic.hover();
   const box = await mic.boundingBox();
