@@ -19,14 +19,12 @@ test('Survey placement chooses module, category and entity and Reuse keeps them'
   const layer = page.locator('[data-svg-annotation-layer]').first();
   const draw = async (y) => { const box = await layer.boundingBox(); await page.mouse.move(box.x + 90, box.y + y); await page.mouse.down(); await page.mouse.move(box.x + 180, box.y + y + 60, { steps: 8 }); await page.mouse.up(); };
   await draw(100);
-  const modal = page.getByRole('dialog', { name: 'Categorize Survey Marker' });
+  const modal = page.getByRole('dialog', { name: 'New Survey Marker' });
   await expect(modal).toBeVisible();
-  await expect(modal.getByRole('button', { name: 'Add Survey Marker' })).toBeDisabled();
-  await modal.getByRole('combobox', { name: 'Module', exact: true }).selectOption('proposed');
-  await modal.getByRole('combobox', { name: 'Category', exact: true }).selectOption('doors');
-  await expect(modal.getByRole('button', { name: 'Add Survey Marker' })).toBeDisabled();
-  await modal.getByRole('combobox', { name: 'Entity', exact: true }).selectOption('new');
-  await modal.getByRole('button', { name: 'Add Survey Marker' }).click();
+  // The entity is already picked (the first); a category row places it.
+  await expect(modal.getByRole('button', { name: 'Entity Existing' })).toHaveAttribute('aria-pressed', 'true');
+  await modal.getByRole('button', { name: 'Entity New' }).click();
+  await modal.getByRole('option', { name: /Doors/ }).click();
   await expect(modal).toBeHidden();
   await expect(page.locator('.survey-rail__entity-caret')).toHaveCount(0);
   const rail = page.locator('.survey-rail');
@@ -172,7 +170,7 @@ test.describe('phone Survey assignment', () => {
   for (const [layout, route, viewport] of [
     ['mobile Safari', '/mobile', { width: 390, height: 664 }],
     ['native app', '/mobile', { width: 390, height: 844 }],
-  ]) test(`module/category/entity dialog fits and saves in ${layout}`, async ({ page, context }) => {
+  ]) test(`a marker drawn with a category armed is placed with an entity in ${layout}`, async ({ page, context }) => {
     await page.setViewportSize(viewport);
     await context.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, (route) => route.abort());
     await context.addInitScript((value) => localStorage.setItem('mobileWorkflowTemplates', JSON.stringify(value)), templates);
@@ -186,17 +184,10 @@ test.describe('phone Survey assignment', () => {
     const bounds = await page.locator('[data-svg-annotation-layer]').first().boundingBox();
     const x = Math.max(60, bounds.x + 50), y = Math.max(100, bounds.y + 100);
     await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 100, y + 70, { steps: 8 }); await page.mouse.up();
-    const modal = page.getByRole('dialog', { name: 'Categorize Survey Marker' });
-    await expect(modal).toBeVisible();
-    const rect = await modal.boundingBox();
-    expect(rect.x).toBeGreaterThanOrEqual(0); expect(rect.x + rect.width).toBeLessThanOrEqual(390);
-    expect(rect.y + rect.height).toBeLessThanOrEqual(viewport.height);
-    await modal.getByRole('combobox', { name: 'Module', exact: true }).selectOption('proposed');
-    await modal.getByRole('combobox', { name: 'Category', exact: true }).selectOption('doors');
-    await modal.getByRole('combobox', { name: 'Entity', exact: true }).selectOption('new');
-    await modal.getByRole('button', { name: 'Add Survey Marker' }).tap();
-    await expect(modal).toBeHidden();
+    // Owner 2026-10-22: a marker always has an entity (the first when none
+    // is picked), so with a category armed it is placed at once - no card.
     await expect(page.locator('[data-survey-marker-id]')).toHaveCount(1);
+    await expect(page.getByRole('dialog', { name: 'New Survey Marker' })).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 });

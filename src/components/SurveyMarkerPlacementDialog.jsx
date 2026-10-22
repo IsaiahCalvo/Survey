@@ -1,55 +1,131 @@
-import { useState, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { useFocusTrap } from '../hooks/useFocusTrap';
-import { COLORS, SHADOWS } from '../theme';
+import { getCategoryGlyphLabel } from '../viewerShared.js';
+import SurveyPickList from './SurveyPickList';
+import { SurveyEntitySwatch } from './SurveyEntityBar';
+import { placeSurveyMarkerCard } from '../survey/markerPlacementCard.js';
+import './SurveyMarkerPlacementDialog.css';
 
-// Category and entity are one decision. Already chosen toolbar values seed
-// the form, and Reuse can still place the next marker without another prompt.
-export default function SurveyMarkerPlacementDialog({ marker, template, categoryId, onCancel, onConfirm }) {
-  const modules = template.modules || template.spaces || [];
-  const [moduleId, setModuleId] = useState(marker.moduleId || modules[0]?.id || '');
-  const [category, setCategory] = useState(categoryId || '');
-  const [entityId, setEntityId] = useState(marker.entityId || '');
-  const categories = modules.find((entry) => entry.id === moduleId)?.categories || [];
-  const entities = template.entities || [];
+/**
+ * The card that opens when a Survey Marker is drawn with no category armed
+ * (owner 2026-10-22: the old centred form "doesn't look native"). It is the
+ * app's own popover - the survey bars' list surface, 26px rows, category
+ * initials, entity discs - sitting beside the marker, not a blurred modal.
+ *
+ * Intended UX: the entity is already picked (the last one used, else the
+ * first) and shows as the ringed disc; a disc changes it. Picking a category
+ * row places the marker at once - one press, no Add button. Escape, the X or
+ * a press off the card takes the marker back. On the phone it is a bottom
+ * sheet with the sheet's 44px rows.
+ */
+export default function SurveyMarkerPlacementDialog({ marker, template, categoryId, mobile = false, onCancel, onConfirm }) {
+  const modules = useMemo(() => template.modules || template.spaces || [], [template]);
+  const entities = useMemo(() => (template.entities || []).filter((entity) => entity && entity.id != null), [template]);
+  const [entityId, setEntityId] = useState(() => (
+    entities.some((entity) => entity.id === marker.entityId) ? marker.entityId : (entities[0]?.id || '')
+  ));
   const ref = useRef(null);
-  useFocusTrap(ref, true, { onEscape: onCancel });
-  const valid = categories.some((entry) => entry.id === category)
-    && (!entities.length || entities.some((entry) => entry.id === entityId));
-  const field = { display: 'grid', gap: 6, marginTop: 14, fontSize: 13 };
-  const input = { boxSizing: 'border-box', minWidth: 0, width: '100%', padding: '10px 12px', background: COLORS.modal.panel, color: COLORS.modal.textPrimary, border: `1px solid ${COLORS.modal.borderStrong}`, borderRadius: 6 };
+  // The list puts focus on its find field or first row itself (desktop); the
+  // phone sheet opens with no focus, so no keyboard jumps up.
+  useFocusTrap(ref, true, { onEscape: onCancel, autoFocus: false });
+  const [position, setPosition] = useState(null);
+
+  // The marker's own module first, then the rest, each as a section.
+  const sections = useMemo(() => {
+    const first = modules.find((module) => module.id === marker.moduleId) || modules[0] || null;
+    const ordered = first ? [first, ...modules.filter((module) => module !== first)] : modules;
+    return ordered
+      .filter((module) => (module.categories || []).length > 0)
+      .map((module) => ({
+        id: module.id,
+        label: modules.length > 1 ? (module.name || 'Untitled module') : null,
+        items: module.categories.map((category) => ({
+          id: category.id,
+          label: category.name || 'Untitled category',
+          glyph: getCategoryGlyphLabel(category.name),
+          moduleId: module.id,
+        })),
+      }));
+  }, [modules, marker.moduleId]);
+
+  useLayoutEffect(() => {
+    if (mobile || typeof document === 'undefined') return;
+    const card = ref.current?.getBoundingClientRect();
+    const node = document.querySelector(`[data-survey-marker-id="${CSS.escape(String(marker.id))}"]`);
+    const rect = node?.getBoundingClientRect() || null;
+    setPosition(placeSurveyMarkerCard(rect && rect.width > 0 ? rect : null, { width: card?.width, height: card?.height }, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    }));
+  }, [marker.id, mobile]);
+
+  const place = (item) => {
+    const entity = entities.find((entry) => entry.id === entityId);
+    onConfirm({
+      ...marker,
+      moduleId: item.moduleId,
+      ...(entity ? { entityId: entity.id, entityName: entity.name, entityColor: entity.color } : {}),
+    }, item.id);
+  };
+
+  const entity = entities.find((entry) => entry.id === entityId) || null;
   // Portalled to <body>: inside the viewer's z 5000 stacking context the
-  // desktop rails (5600) painted over the scrim and stayed clickable, so a
-  // category could be deleted from the rail under this open dialog.
-  const node = <div onClick={onCancel} style={{ position: 'fixed', inset: 0, zIndex: 10001, background: COLORS.modal.overlay, backdropFilter: 'blur(8px)', display: 'grid', placeItems: 'center', padding: 20 }}>
-    <form ref={ref} role="dialog" aria-modal="true" aria-labelledby="survey-marker-categorize-dialog-title" onClick={(event) => event.stopPropagation()} onSubmit={(event) => {
-      event.preventDefault();
-      if (!valid) return;
-      const entity = entities.find((entry) => entry.id === entityId);
-      onConfirm({ ...marker, moduleId, ...(entity ? { entityId: entity.id, entityName: entity.name, entityColor: entity.color } : {}) }, category);
-    }} style={{ boxSizing: 'border-box', maxHeight: 'calc(100dvh - 40px)', overflowY: 'auto', width: 'min(440px, calc(100vw - 40px))', maxWidth: '100%', background: COLORS.modal.surface, color: COLORS.modal.textPrimary, padding: 24, border: `1px solid ${COLORS.modal.border}`, borderRadius: 8, boxShadow: SHADOWS.xl }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h3 id="survey-marker-categorize-dialog-title" style={{ margin: 0, fontSize: 18 }}>Categorize Survey Marker</h3>
-        <button type="button" className="btn btn-icon" aria-label="Cancel Survey Marker" onClick={onCancel}><Icon name="close" size={18} /></button>
+  // desktop rails (5600) painted over it and stayed clickable, so a category
+  // could be deleted from the rail under this open card.
+  const node = (
+    <div
+      className={`survey-place-scrim${mobile ? ' is-sheet' : ''}`}
+      onPointerDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}
+    >
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="survey-marker-place-title"
+        data-survey-marker-placement="true"
+        className={`survey-place annotation-dropdown__popover${mobile ? ' survey-place--sheet' : ''}`}
+        style={mobile ? undefined : {
+          left: position?.left ?? -9999,
+          top: position?.top ?? -9999,
+          visibility: position ? 'visible' : 'hidden',
+        }}
+      >
+        <div className="survey-place__head">
+          <span id="survey-marker-place-title" className="survey-place__title">New Survey Marker</span>
+          <button type="button" className="survey-place__close" aria-label="Cancel Survey Marker" onClick={onCancel}>
+            <Icon name="close" size={12} color="currentColor" />
+          </button>
+        </div>
+        {entities.length > 0 && (
+          <div className="survey-place__entities" role="group" aria-label="Entity">
+            <div className="survey-place__swatches quick-style quick-style--colours">
+              {entities.map((entry) => (
+                <SurveyEntitySwatch
+                  key={entry.id}
+                  entity={entry}
+                  current={entry.id === entityId}
+                  onPick={() => setEntityId(entry.id)}
+                />
+              ))}
+            </div>
+            <span className="survey-place__entity-name">{entity?.name || 'Untitled entity'}</span>
+          </div>
+        )}
+        <div className="survey-place__hint">Pick a category to place it</div>
+        <SurveyPickList
+          sections={sections}
+          currentId={categoryId || null}
+          ariaLabel="Category"
+          searchPlaceholder="Find a category"
+          emptyText="This module has no categories"
+          variant={mobile ? 'sheet' : 'popover'}
+          autoFocus={!mobile}
+          onPick={(item) => place(item)}
+        />
       </div>
-      <p style={{ color: COLORS.modal.textMuted, fontSize: 13 }}>Choose the module, category and entity for this Survey Marker.</p>
-      <label style={field}>Module<select aria-label="Module" value={moduleId} style={input} onChange={(event) => { setModuleId(event.target.value); setCategory(''); }}>
-        {modules.map((entry) => <option key={entry.id} value={entry.id}>{entry.name || 'Untitled module'}</option>)}
-      </select></label>
-      <label style={field}>Category<select aria-label="Category" value={category} style={input} onChange={(event) => setCategory(event.target.value)}>
-        <option value="">Choose a category</option>
-        {categories.map((entry) => <option key={entry.id} value={entry.id}>{entry.name || 'Untitled category'}</option>)}
-      </select></label>
-      {entities.length ? <label style={field}>Entity<select aria-label="Entity" value={entityId} style={input} onChange={(event) => setEntityId(event.target.value)}>
-        <option value="">Choose an entity</option>
-        {entities.map((entry) => <option key={entry.id} value={entry.id}>{entry.name || 'Untitled entity'}</option>)}
-      </select></label> : <p style={{ fontSize: 13, color: COLORS.modal.textMuted }}>This template has no entities.</p>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 22 }}>
-        <button type="button" className="btn btn-default" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="btn btn-primary" disabled={!valid}>Add Survey Marker</button>
-      </div>
-    </form>
-  </div>;
+    </div>
+  );
   return typeof document !== 'undefined' && document.body ? createPortal(node, document.body) : node;
 }

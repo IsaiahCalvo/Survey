@@ -767,6 +767,9 @@ const SVGAnnotationLayerBody = memo(({
   zoomGenerationSignal = null,
   // Survey-marker drag-out routes through the marker store, not page objects.
   onSurveyMarkerCreated,
+  // The next Survey Marker's entity colour: a freehand marker's stroke draws
+  // in it while it is drawn (owner 2026-10-22). Null = the needs-entity blue.
+  surveyMarkerDrawColor = null,
   // Measure tools: 'length' | 'area' | 'calibrate' | null. The armed tool is
   // still 'line' / 'polygon'; this only stamps data.measure on the commit
   // (or, for 'calibrate', hands the drawn line to onMeasureCalibrate).
@@ -2821,7 +2824,7 @@ const SVGAnnotationLayerBody = memo(({
   }, []);
   // A tap on a found match adds it; returns true when the tap was used.
   // A match stays offered until a Survey marker actually lands on it, so a
-  // tap whose "Categorize Survey Marker" dialog is cancelled keeps it.
+  // tap whose new-marker card is cancelled keeps it.
   const offeredSmartFillMatches = useMemo(
     () => filterOfferedSmartFillMatches(smartFillMatches, surveyMarkers),
     [smartFillMatches, surveyMarkers],
@@ -8169,7 +8172,7 @@ const SVGAnnotationLayerBody = memo(({
           points={freehandPointsRef.current.map((point) => `${point.x},${point.y}`).join(' ')}
           fill="none"
           stroke={shapeCreation.tool === 'highlighter' ? highlightColor
-            : shapeCreation.tool === 'survey-marker-freehand' ? MARKER_FREEHAND_PREVIEW_COLOR
+            : shapeCreation.tool === 'survey-marker-freehand' ? (surveyMarkerDrawColor || MARKER_FREEHAND_PREVIEW_COLOR)
               : strokeColor}
           strokeWidth={shapeCreation.tool === 'highlighter'
             ? Math.max(Number(strokeWidth) || 3, 8)
