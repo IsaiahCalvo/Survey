@@ -83,7 +83,7 @@ for (const pointerType of ['mouse', 'pen']) {
     const width = page.getByRole('button', { name: 'Freehand marker width' });
     await expect(width).toBeVisible();
     await width.click();
-    await page.locator('[data-annotation-dropdown-popover]').getByText('24 pt', { exact: true }).click();
+    await page.locator('[data-annotation-size-popover]').getByRole('option', { name: '24 pt', exact: true }).click();
     await expect(width).toHaveText(/24 pt/);
     await press(page, pointerType, [at(150, 430)]);
     await expect(card).toBeVisible();
@@ -115,7 +115,7 @@ for (const pointerType of ['mouse', 'pen']) {
     await press(page, pointerType, [at(200, 570)]);
     await expect(width).toHaveText(/24 pt/);
     await width.click();
-    await page.locator('[data-annotation-dropdown-popover]').getByText('8 pt', { exact: true }).click();
+    await page.locator('[data-annotation-size-popover]').getByRole('option', { name: '8 pt', exact: true }).click();
     await expect(stroke.locator('[data-survey-marker-shape="stroke"]')).toHaveAttribute('stroke-width', '8');
     await page.keyboard.press('Control+z');
     await expect(stroke.locator('[data-survey-marker-shape="stroke"]')).toHaveAttribute('stroke-width', '24');
