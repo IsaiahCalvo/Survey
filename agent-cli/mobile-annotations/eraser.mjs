@@ -53,10 +53,16 @@ async function createPen(page, touch, storageKeys, {
   const beforeIds = new Set(await annotationIds(page));
   await activateGroupedTool(page, 'Draw', 'Pen');
 
-  const width = page.getByRole('textbox', { name: 'Stroke width', exact: true });
-  assert.equal(await width.count(), 1, 'Pen Width input must be available');
-  await width.fill('10');
-  await width.press('Tab');
+  // The phone pen strip sets width from its width menu (no text field now).
+  const strip = page.locator('[data-mobile-tool-properties="true"]:visible').first();
+  const widthMenu = strip.getByRole('button', { name: /^(?:Line width|Stroke width|Width)(?:: .+)?$/ });
+  assert.equal(await widthMenu.count(), 1, 'Pen width menu must be available');
+  await widthMenu.click();
+  const options = page.locator('[role="option"]:visible');
+  await options.first().waitFor({ state: 'visible', timeout: 5_000 });
+  const ten = options.filter({ hasText: /^\s*10\s*(?:pt)?\s*$/ });
+  if (await ten.count()) await ten.first().click();
+  else await options.last().click();
 
   const box = await visiblePageBox(page);
   const y = box.visibleTop + ((box.visibleBottom - box.visibleTop) * yFraction);
@@ -108,28 +114,28 @@ async function activateEraser(page, { mode, size }) {
     state: 'visible',
     timeout: 10_000,
   });
-  const desiredMode = mode === 'entire' ? 'Full Stroke' : 'Partial Erase';
-  const modeTrigger = page.getByRole('button', { name: /^Eraser mode(?:: .+)?$/ });
-  assert.equal(await modeTrigger.count(), 1, 'Mobile Eraser mode control must be available');
-  if ((await modeTrigger.textContent())?.trim() !== desiredMode) {
-    await modeTrigger.click();
-    const option = page.getByRole('option', { name: desiredMode, exact: true });
-    assert.equal(await option.count(), 1, `${desiredMode} option must be available`);
-    await option.click();
-  }
-  // The option closes its popover before React commits the selected label.
-  // Poll the actual mobile control instead of sampling that intermediate frame.
-  await page.waitForFunction(({ label }) => {
-    const controls = [...document.querySelectorAll('button')];
-    const trigger = controls.find((button) => button.getAttribute('aria-label')?.startsWith('Eraser mode'));
-    return trigger?.textContent?.trim() === label;
-  }, { label: desiredMode }, { timeout: 5_000 });
+  // The phone strip leads with a Partial/Whole toggle and a size menu of
+  // presets (no free text field).
+  const strip = page.locator('[data-mobile-tool-properties="true"]:visible').first();
+  const modeButton = strip.getByRole('group', { name: 'Eraser mode' })
+    .getByRole('button', { name: mode === 'entire' ? 'Erase the whole mark' : 'Partial erase', exact: true });
+  assert.equal(await modeButton.count(), 1, 'Mobile Eraser mode control must be available');
+  if (await modeButton.getAttribute('aria-pressed') !== 'true') await modeButton.click();
+  await strip.locator('[role="group"][aria-label="Eraser mode"] button[aria-pressed="true"]')
+    .filter({ hasText: mode === 'entire' ? 'Whole' : 'Partial' })
+    .waitFor({ state: 'visible', timeout: 5_000 });
 
-  const width = page.getByRole('textbox', { name: 'Eraser size', exact: true });
-  assert.equal(await width.count(), 1, 'Eraser Width input must be available');
-  await width.fill(String(size));
-  await width.press('Tab');
-  assert.equal(await width.inputValue(), String(size), 'Eraser diameter must commit');
+  const sizeMenu = strip.getByRole('button', { name: /^Eraser size(?:: .+)?$/ });
+  assert.equal(await sizeMenu.count(), 1, 'Eraser size menu must be available');
+  await sizeMenu.click();
+  const option = page.getByRole('option', { name: String(size), exact: true });
+  await option.first().waitFor({ state: 'visible', timeout: 5_000 });
+  await option.first().click();
+  await page.waitForFunction((expected) => {
+    const trigger = [...document.querySelectorAll('[data-mobile-tool-properties="true"] button')]
+      .find((button) => button.getAttribute('aria-label')?.startsWith('Eraser size'));
+    return trigger?.textContent?.includes(expected) || trigger?.getAttribute('aria-label')?.includes(expected);
+  }, String(size), { timeout: 5_000 });
 }
 
 function crossingPoints(box, inset = 12) {
@@ -303,7 +309,7 @@ export async function runEraserLifecycle({
 
   // Partial erase: prove the live mid-drag preview exists while committed app
   // state remains untouched, then release and prove the same stable ID changes.
-  await activateEraser(page, { mode: 'partial', size: 18 });
+  await activateEraser(page, { mode: 'partial', size: 16 });
   const partialBox = await page.locator(selectorFor(partialTarget.id)).boundingBox();
   assert(partialBox, 'Partial-erase Pen must remain rendered');
   const partialPoints = crossingPoints(partialBox);
