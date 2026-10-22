@@ -54,5 +54,5 @@ Drawboard's rules, plus tldraw's rule where Survey can't follow Drawboard.
 
 1. Group **rotate** (Drawboard has it; Survey's old group-rotate code is still in the hook, hidden).
 2. ~~Callouts and Survey Markers in a resizable group~~ (done 2026-10-22).
-3. Text rewrapped from a side should grow its box height to fit, as Drawboard does. Survey's single-mark side resize doesn't either.
+3. ~~Text rewrapped from a side should grow its box height to fit~~ (done 2026-10-22: alone and in a group, the box grows downward and never shrinks; `utils/textBoxFit.js`).
 4. Hold **K** to scale line widths too (Drawboard).
