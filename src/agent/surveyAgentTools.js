@@ -258,6 +258,14 @@ export function createSurveyAgentToolbox({
   // The same item in another module: its marker there, or a new one on the
   // same spot. Waits for the panel to show a new one before answering it.
   const sameName = (a, c) => normalizeItemName(a) === normalizeItemName(c);
+  // Tags repeat floor to floor ("C-06" on every sheet): a copy in another
+  // module is the same device only on the same page, on the same spot.
+  const overlaps = (a, c) => a.x < c.x + c.width && c.x < a.x + a.width && a.y < c.y + c.height && c.y < a.y + a.height;
+  const samePlace = (a, c) => {
+    if (a.pageNumber == null || c.pageNumber == null) return a.pageNumber == null && c.pageNumber == null;
+    if (a.pageNumber !== c.pageNumber) return false;
+    return !a.bounds || !c.bounds || overlaps(a.bounds, c.bounds);
+  };
   const waitForMarker = async (id) => {
     for (let i = 0; i < 40; i += 1) {
       if (getBridge()?.markers?.[id]) return getBridge();
@@ -268,8 +276,12 @@ export function createSurveyAgentToolbox({
   const answerInModule = async (b, itemId, marker, other, answers) => {
     const moduleName = other.module.name || 'the other module';
     const changes = [];
-    let sibling = Object.entries(b.markers || {}).find(([id, m]) => id !== itemId && m?.moduleId === other.module.id
-      && m.categoryId === other.category.id && sameName(m.name, marker.name));
+    const siblings = Object.entries(b.markers || {}).filter(([id, m]) => id !== itemId && m?.moduleId === other.module.id
+      && m.categoryId === other.category.id && sameName(m.name, marker.name) && samePlace(m, marker));
+    if (siblings.length > 1) {
+      throw new ToolError(`${nameOf(marker)} has ${siblings.length} ${moduleName} items in the same place. Nothing changed for ${moduleName}; ask which one.`);
+    }
+    let sibling = siblings[0];
     let live = b;
     if (!sibling) {
       if (!marker.pageNumber || !marker.bounds || typeof b.createItem !== 'function') {

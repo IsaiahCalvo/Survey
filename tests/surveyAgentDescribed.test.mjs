@@ -85,10 +85,14 @@ test('tags on the sheets that fit, best first, joined across words', () => {
     { page: 10, words: [word('FOURTH', 600, 560, 18), word('FLOOR', 670, 560, 18), word('C-', 40, 100), word('06', 52, 100)] },
     // A door split the same way: its "06" is not a camera of its own.
     { page: 11, words: [word('FOURTH', 600, 560, 18), word('FLOOR', 670, 560, 18), word('D-', 40, 100), word('06', 52, 100)] },
+    // Camera 6 split after its floor: its "C-4-" alone is not camera 4.
+    { page: 12, words: [word('FOURTH', 600, 560, 18), word('FLOOR', 670, 560, 18), word('C-4-', 40, 100), word('06', 59.2, 100)] },
   ];
   const target = parseDescribedTarget('camera 6 on the 4th floor');
   const found = findDescribedOnPages(target, pages, { score: scoreDescribedTag, sheetOf: sheetFloorOf });
-  assert.deepEqual(found.map((m) => [m.page, m.text]), [[9, 'C-06'], [10, 'C- 06']]);
+  assert.deepEqual(found.map((m) => [m.page, m.text]), [[12, 'C-4- 06'], [9, 'C-06'], [10, 'C- 06']]);
+  const four = findDescribedOnPages(parseDescribedTarget('camera 4 on the 4th floor'), pages, { score: scoreDescribedTag, sheetOf: sheetFloorOf });
+  assert.deepEqual(four, []);
   assert.equal(found[0].sheetFloor, 4);
 });
 
@@ -240,4 +244,25 @@ test('find_described keeps same-named devices on different floors, and folds mod
   const res = await toolbox.run('find_described', { description: 'camera 6', kind: 'camera', number: 6, floor: null, wing: null });
   const ids = JSON.parse(res.content).items.map((m) => m.id).sort();
   assert.deepEqual(ids, ['a', 'b'], 'both floors stay; the Commissioning copy of b folds into it');
+});
+
+test("another floor's same-named item in the other module is not this camera's copy", async () => {
+  const markers = {
+    m6: { name: 'C-06', moduleId: 'mod-install', categoryId: 'cat-cam-i', pageNumber: 4, bounds: { x: 100, y: 120, width: 30, height: 30 }, checklistResponses: {} },
+    cx3: { name: 'C-06', moduleId: 'mod-cx', categoryId: 'cat-cam-c', pageNumber: 3, bounds: { x: 100, y: 120, width: 30, height: 30 }, checklistResponses: {} },
+  };
+  const created = [];
+  const { bridge, calls } = bridgeWith(markers, {
+    createItem: (spec) => {
+      created.push(spec);
+      markers.cx4 = { name: spec.name, moduleId: spec.moduleId, categoryId: spec.categoryId, pageNumber: spec.page, bounds: spec.bounds, checklistResponses: {} };
+      return 'cx4';
+    },
+  });
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const res = await box.run('set_answers', { item_id: 'm6', answers: [{ checklist_item_id: 'c-ip', value: 'Y' }] });
+  assert.equal(res.isError, false, res.content);
+  assert.equal(created.length, 1, 'added on page 4, beside the camera');
+  assert.deepEqual(calls.filter((c) => c[0] === 'setAnswers'), [['setAnswers', 'cx4', 'c-ip=Y']]);
+  assert.deepEqual(markers.cx3.checklistResponses, {}, 'the third-floor camera is untouched');
 });

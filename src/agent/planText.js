@@ -371,6 +371,9 @@ export function findDescribedOnPages(target, pages, { score, sheetOf, limit = MA
         const text = run.map((w) => w.text).join(' ');
         // A tag is short; a sentence with a number in it is not one.
         if (compact(text).length > 14 || !/\d/.test(text)) continue;
+        // The tag goes on into the next word ("C-4-" "06"): only the whole of it counts.
+        const after = words[j + 1];
+        if (after && adjacent(words[j].box, after.box) && (/[-_/.]$/.test(words[j].text) || /^[-_/.]/.test(after.text))) continue;
         const s = score(target, text, { pageFloor: sheet.floor, pageWing: sheet.wing });
         if (s >= min && (!best || s > best.score)) best = { score: s, text, run: [...run] };
       }
