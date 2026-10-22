@@ -1,0 +1,109 @@
+name: Security scans
+
+# Two cheap scans that run on every pull request and once a week:
+#   1. gitleaks looks for keys or passwords committed to git. On a pull request
+#      it scans only that pull request's commits; the weekly run scans the whole
+#      history. This repository is public, so a committed key is a leaked key.
+#      Known non-secrets from the past live in .gitleaksignore; extra rules for
+#      Supabase / Resend keys live in .gitleaks.toml.
+#   2. Trivy checks the npm lock files for packages with known HIGH or CRITICAL
+#      holes that already have a fixed version.
+#
+# Both tools are downloaded as release binaries pinned to a version AND a
+# sha256, not through their GitHub Actions. In March 2026 the trivy-action tags
+# were hijacked and a poisoned Trivy release (0.69.4) was published; a pinned
+# checksum means a re-tagged or swapped download fails here instead of running
+# with this repository's token.
+#
+# This workflow is not part of "Build and tests", so a new advisory never blocks
+# the production deploy. A failed weekly run opens an issue labelled "alert".
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-scans-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_VERSION: 8.28.0
+  GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
+  TRIVY_VERSION: 0.69.3
+  TRIVY_SHA256: 1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75
+
+jobs:
+  secrets:
+    name: Leaked keys (gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar xzf gitleaks.tgz -C "$RUNNER_TEMP" gitleaks
+
+      - name: Scan this pull request's commits
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner \
+            --log-opts="${BASE_SHA}..${HEAD_SHA}" .
+
+      - name: Scan full history
+        if: github.event_name != 'pull_request'
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner .
+
+  packages:
+    name: Known package holes (Trivy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Trivy
+        run: |
+          curl -sSfL -o trivy.tgz "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tgz" | sha256sum -c -
+          tar xzf trivy.tgz -C "$RUNNER_TEMP" trivy
+
+      # mobile-demos/ is parked reference code that is never built or shipped.
+      - name: Scan lock files
+        run: |
+          "$RUNNER_TEMP/trivy" fs --scanners vuln --severity HIGH,CRITICAL \
+            --ignore-unfixed --exit-code 1 --skip-version-check \
+            --skip-dirs mobile-demos --skip-dirs node_modules .
+
+  alert:
+    name: Open an alert on a failed weekly scan
+    needs: [secrets, packages]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" --label alert \
+            --title "Weekly security scan failed" \
+            --body "The weekly gitleaks / Trivy scan found something. Details: $RUN_URL"
