@@ -50,6 +50,7 @@ import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
+import { reportKitFor } from './services/reportKits/index.js';
 import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput from './components/TypedAnswerInput.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
@@ -598,12 +599,15 @@ const SurveySpacesRail = ({
   // Nightly 'survey-report': a PowerPoint report beside Export data.
   const [surveyReportOn] = useState(() => isFeatureOn('survey-report'));
   const [isReporting, setIsReporting] = useState(false);
+  // The report layout comes from the live template: it is an output choice,
+  // not part of the template version a document keeps.
+  const reportKitOf = () => reportKitFor(availableSurveyTemplates.find((t) => t.id === selectedTemplate?.id) || selectedTemplate);
   const handleSurveyReport = async () => {
     if (proLocked('excel') || isReporting) return;
     setIsReporting(true);
     try {
       const { downloadSurveyReport } = await import('./services/surveyReportPptx.js');
-      await downloadSurveyReport({ template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '' });
+      await downloadSurveyReport({ template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf() });
     } catch (error) {
       console.error('Failed to create the survey report', error);
     } finally {
@@ -4286,7 +4290,7 @@ const SurveySpacesRail = ({
                           className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
                           onClick={() => { if (surveyHasItems) handleSurveyReport(); }}
                           disabled={isReporting || !surveyHasItems}
-                          {...(mobileMode ? {} : tip(surveyHasItems ? 'Download a PowerPoint report: progress chart per category and the items with issues' : 'Add a survey item to make a report', 'above'))}
+                          {...(mobileMode ? {} : tip(surveyHasItems ? `Download a PowerPoint report (${reportKitOf().label}). Pick the layout in the template.` : 'Add a survey item to make a report', 'above'))}
                         >
                           {isReporting
                             ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />

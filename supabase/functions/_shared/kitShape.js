@@ -40,6 +40,32 @@ export function validateExportKit(kit) {
   return errors;
 }
 
+// Report kits: the blocks a survey report draws, in order. The engine knows
+// these blocks only, so a kit can never ask for something the app cannot draw.
+export const REPORT_BLOCK_TYPES = Object.freeze(['cover', 'totals', 'chart', 'table', 'issues']);
+export const REPORT_CHART_STYLES = Object.freeze(['stacked', 'pie']);
+export const REPORT_MAX_BLOCKS = 10;
+
+/** Returns a list of problems; empty means the report kit is valid. */
+export function validateReportKit(kit) {
+  const errors = [];
+  if (!kit || typeof kit !== 'object') return ['kit must be an object'];
+  if (typeof kit.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(kit.id)) errors.push('id must be lower-case-kebab');
+  if (kit.kind !== 'reportKit') errors.push('kind must be "reportKit"');
+  if (typeof kit.version !== 'string' || !SEMVER.test(kit.version)) errors.push('version must be x.y.z');
+  if (!Number.isInteger(kit.minEngine) || kit.minEngine < 1) errors.push('minEngine must be a positive integer');
+  if (typeof kit.label !== 'string' || !kit.label.trim()) errors.push('label required');
+  if (!Array.isArray(kit.blocks) || kit.blocks.length === 0 || kit.blocks.length > REPORT_MAX_BLOCKS) {
+    errors.push(`blocks must hold 1 to ${REPORT_MAX_BLOCKS} blocks`);
+  } else {
+    kit.blocks.forEach((b, i) => {
+      if (!b || !REPORT_BLOCK_TYPES.includes(b.type)) errors.push(`blocks[${i}].type unknown`);
+      else if (b.type === 'chart' && b.style !== undefined && !REPORT_CHART_STYLES.includes(b.style)) errors.push(`blocks[${i}].style must be stacked or pie`);
+    });
+  }
+  return errors;
+}
+
 export const ANSWER_TONES = Object.freeze(['good', 'bad', 'neutral']);
 // One answer is a plain "Done" tick; six is as many buttons as fit a phone card.
 export const MIN_ANSWERS = 1;
