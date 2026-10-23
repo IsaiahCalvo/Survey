@@ -19,7 +19,8 @@
 // and reports when it landed (thumbAt, ms after the click) and its size.
 // REOPEN=1 times a second open of the same document in the same browser
 // profile (IndexedDB / HTTP cache warm, thumbnail already current).
-// PROFILE=<file.cpuprofile> records a CPU profile of the first run instead.
+// PROFILE=<file.cpuprofile> records a CPU profile of the first run instead
+// (of its reopen with REOPEN=1).
 // NET=<latency ms>/<down Mbps> throttles the page's network (e.g. 150/9).
 // NO_WARMUP=1 skips the untimed warm-up run (interleaved A/B loops).
 // TIMERS=<ms> logs every long animation frame over <ms> (default 80) with its
@@ -262,7 +263,8 @@ async function oneRun(browser, size, { profile = null } = {}) {
     });
   }
   await signIn(page);
-  let result = await openAndSettle(page, context, size, { profile });
+  // With REOPEN=1, PROFILE records the reopen instead of the first open.
+  let result = await openAndSettle(page, context, size, { profile: process.env.REOPEN ? null : profile });
   if (process.env.REOPEN) {
     // Close the document (back to Home, same profile), then open it again.
     const close = size === 'phone'
@@ -274,7 +276,7 @@ async function oneRun(browser, size, { profile = null } = {}) {
     await page.waitForTimeout(1500);
     // The probe's rAF loop stopped once the first open was timed.
     await page.evaluate(() => window.__bigOpenRestart?.());
-    result = await openAndSettle(page, context, size, {});
+    result = await openAndSettle(page, context, size, { profile });
   }
   await context.close();
   return result;
