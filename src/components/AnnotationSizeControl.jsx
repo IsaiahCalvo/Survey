@@ -156,7 +156,6 @@ export default function AnnotationSizeControl({
     'data-draft-yields-keys': 'true',
     inputMode: allowsDecimals ? 'decimal' : 'numeric',
     pattern: allowsDecimals ? '[0-9.]*' : '[0-9]*',
-    title: label,
     disabled,
     value: customValue,
     onChange: (event) => updateDraft(event.target.value),
@@ -397,10 +396,12 @@ function SizeCard({
           step={1}
           value={position}
           style={{ '--size-card-fill': `${(position / SIZE_SLIDER_STEPS) * 100}%` }}
-          onPointerDown={() => { slidingRef.current = true; onFocusChange?.(true); }}
+          // Only a real value change (onChange) marks the slider dirty, so a
+          // Tab or click that moves nothing never commits over a mixed width.
+          onPointerDown={() => onFocusChange?.(true)}
           onPointerUp={endSlide}
           onPointerCancel={endSlide}
-          onKeyDown={() => { slidingRef.current = true; onFocusChange?.(true); }}
+          onKeyDown={() => onFocusChange?.(true)}
           onKeyUp={endSlide}
           onBlur={endSlide}
           onChange={(event) => {
