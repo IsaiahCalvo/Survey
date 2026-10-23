@@ -1,6 +1,7 @@
 /**
  * AnswerSetEditor — type a template's own checklist answers (nightly flag
- * 'custom-answers'): 1 to 6 answers, each marked Good, Problem or Neutral.
+ * 'custom-answers'): 1 to 6 answers, each marked Good, Problem or Neutral,
+ * with an optional "means" line.
  * Good and Neutral answers count as done; Problem answers show as issues.
  *
  * The typed list is a local draft. It reaches the template only while it is
@@ -11,7 +12,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './HubShell';
 import {
-  ITEM_UNIT_MAX, MAX_ANSWERS, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
+  ANSWER_MEANS_MAX, ITEM_UNIT_MAX, MAX_ANSWERS, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
 } from '../services/answerSets.js';
 
 const TONE_OPTIONS = [
@@ -25,15 +26,17 @@ const fieldStyle = {
   border: '1px solid var(--rule)', borderRadius: 4, padding: '3px 6px', minWidth: 0,
 };
 
+const toDraft = (a) => ({ value: a.value, tone: a.tone, means: a.means || '' });
+
 export default function AnswerSetEditor({ set, onCommit, onClose, phone = false }) {
-  const [draft, setDraft] = useState(() => set.map((a) => ({ value: a.value, tone: a.tone })));
+  const [draft, setDraft] = useState(() => set.map(toDraft));
   // The set this editor last wrote. Any other change from outside (Cancel,
   // a reload, picking a preset) replaces the draft.
   const lastWritten = useRef(set);
   useEffect(() => {
     if (sameAnswerSet(set, lastWritten.current)) return;
     lastWritten.current = set;
-    setDraft(set.map((a) => ({ value: a.value, tone: a.tone })));
+    setDraft(set.map(toDraft));
   }, [set]);
 
   const update = (next) => {
@@ -55,9 +58,10 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false 
     >
       <p className="micro" style={{ margin: 0 }}>
         Your answers. Good and Neutral count as done; Problem shows as an issue.
+        A "means" line shows as a hint on the answer and helps the voice agent pick it.
       </p>
       {draft.map((a, i) => (
-        <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div key={i} style={{ display: 'flex', flexWrap: phone ? 'wrap' : 'nowrap', gap: 6, alignItems: 'center' }}>
           <input
             aria-label={`Answer ${i + 1}`}
             value={a.value}
@@ -65,6 +69,17 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false 
             placeholder={`Answer ${i + 1}`}
             onChange={(e) => update(draft.map((d, j) => (j === i ? { ...d, value: e.target.value } : d)))}
             style={{ ...fieldStyle, flex: 1, fontSize: phone ? 14 : 12, height: phone ? 36 : undefined }}
+          />
+          <input
+            aria-label={`What answer ${i + 1} means`}
+            value={a.means}
+            maxLength={ANSWER_MEANS_MAX}
+            placeholder="Means… (optional)"
+            onChange={(e) => update(draft.map((d, j) => (j === i ? { ...d, means: e.target.value } : d)))}
+            style={{
+              ...fieldStyle, flex: phone ? '1 1 100%' : 2, order: phone ? 1 : 0,
+              fontSize: phone ? 14 : 12, height: phone ? 36 : undefined, color: 'var(--text-2, var(--ink))',
+            }}
           />
           <select
             aria-label={`Answer ${i + 1} counts as`}
@@ -87,7 +102,7 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false 
         <button
           type="button"
           disabled={draft.length >= MAX_ANSWERS}
-          onClick={() => update([...draft, { value: '', tone: 'neutral' }])}
+          onClick={() => update([...draft, { value: '', tone: 'neutral', means: '' }])}
           style={{
             padding: '4px 10px', border: '1px dashed var(--rule-strong)', background: 'transparent',
             color: 'var(--ink-muted)', borderRadius: 2, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',

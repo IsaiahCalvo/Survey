@@ -14,6 +14,8 @@ test.beforeAll(async () => {
   const lines = config.modules[0].categories[0].checklist;
   lines[0] = { ...lines[0], kind: 'number', unit: 'ft' };
   lines[1] = { ...lines[1], kind: 'text' };
+  // Today's answers, with a "means" line on Y.
+  config.answerSet = [{ value: 'Y', tone: 'good', means: 'fully in and working' }, { value: 'N', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }];
   const { error } = await db.from('templates').update({ config }).eq('id', E2E_SURVEY.templateId);
   if (error) throw error;
 });
@@ -46,7 +48,7 @@ async function openSurveyItem(page, { reopened = false } = {}) {
     }
   }
   // A document keeps the template version it was surveyed with; take the
-  // version this spec just wrote.
+  // version this spec just wrote (kinds, units, meanings).
   await page.getByRole('button', { name: /^Survey template: .*Switch template$/ }).filter({ visible: true }).first().click();
   await page.getByRole('menuitem', { name: E2E_SURVEY.templateName }).or(page.getByRole('menuitemradio', { name: E2E_SURVEY.templateName })).or(page.getByRole('option', { name: E2E_SURVEY.templateName })).first().click();
   await takeLatest(page);
@@ -66,6 +68,9 @@ test('number and text lines take a typed answer in the Survey rail', async ({ pa
   // The pick-one line keeps its buttons; the other two get boxes.
   await expect(page.getByRole('group', { name: door }).getByRole('button', { name: 'Y', exact: true })).toBeVisible();
   await expect(box(page, cable)).toBeVisible();
+  // An answer's "means" line is its hint.
+  await page.getByRole('group', { name: door }).getByRole('button', { name: 'Y', exact: true }).hover();
+  await expect(page.getByText('Y: fully in and working')).toBeVisible();
   await expect(page.getByText('ft', { exact: true })).toBeVisible();
 
   // Start blank (a rerun on the same stack finds the last run's answers).

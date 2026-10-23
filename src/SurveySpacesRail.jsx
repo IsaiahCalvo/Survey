@@ -17,6 +17,7 @@ import SurveyCategoryMoveDialog from './components/SurveyCategoryMoveDialog';
 import CreateCategoryModal from './components/CreateCategoryModal';
 import Spinner from './components/Spinner';
 import { useTooltip } from './components/Tooltip';
+import { isFeatureOn } from './featureFlags.js';
 import DragRearrangeHandle from './reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from './reorder/SortableRearrangeList';
 import { moveItemById } from './reorder/flatReorderUtils.js';
@@ -49,7 +50,7 @@ import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
-import { answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
+import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput from './components/TypedAnswerInput.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
@@ -594,6 +595,21 @@ const SurveySpacesRail = ({
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
   const proLocked = useProLock();
+  // Nightly 'survey-report': a PowerPoint report beside Export data.
+  const [surveyReportOn] = useState(() => isFeatureOn('survey-report'));
+  const [isReporting, setIsReporting] = useState(false);
+  const handleSurveyReport = async () => {
+    if (proLocked('excel') || isReporting) return;
+    setIsReporting(true);
+    try {
+      const { downloadSurveyReport } = await import('./services/surveyReportPptx.js');
+      await downloadSurveyReport({ template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '' });
+    } catch (error) {
+      console.error('Failed to create the survey report', error);
+    } finally {
+      setIsReporting(false);
+    }
+  };
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
   // band between panels): the open desktop panel covers the right ~272px of the
   // PDF, so it registers as a side panel. Fits then size and centre the page in
@@ -1807,9 +1823,14 @@ const SurveySpacesRail = ({
           <div className="mobile-survey-detail-checklist">
             {checklist.length ? checklist.map(item => {
               const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id]?.selection;
+              // The picked answer's "means" line, under the question (no hover on a phone).
+              const means = itemKind(item) === 'choice' ? answerMeans(answerSetFor(selectedTemplate), response) : '';
               return (
                 <div key={item.id} className="mobile-survey-check-item">
-                  <span className="mobile-survey-check-text">{item.text}</span>
+                  <span className="mobile-survey-check-text">
+                    {item.text}
+                    {means && <span className="mobile-survey-check-means">{means}</span>}
+                  </span>
                   {itemKind(item) !== 'choice' ? (
                     <TypedAnswerInput
                       phone
@@ -1833,6 +1854,7 @@ const SurveySpacesRail = ({
                     ))}
                   </div>
                   )}
+
                 </div>
               );
             }) : (
@@ -4013,7 +4035,7 @@ const SurveySpacesRail = ({
                                                           />
                                                         ) : (
                                                         <div className="survey-rail__answers" role="group" aria-label={item.text || 'Checklist answer'}>
-                                                          {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => {
+                                                          {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName, means }) => {
                                                             const isAnswer = sameAnswer(isSelected, option);
                                                             const tone = answerToneName === 'good' ? 'is-yes' : answerToneName === 'bad' ? 'is-no' : 'is-na';
                                                             return (
@@ -4022,6 +4044,7 @@ const SurveySpacesRail = ({
                                                                 type="button"
                                                                 aria-pressed={isAnswer}
                                                                 className={`survey-rail__answer${isAnswer ? ` is-active ${tone}` : ''}`}
+                                                                {...(means ? tip(`${option}: ${means}`, 'below') : {})}
                                                                 onClick={(e) => {
                                                                   e.stopPropagation();
                                                                   // Shared with the mobile detail view — see
@@ -4257,6 +4280,20 @@ const SurveySpacesRail = ({
                           : <Icon name="download" size={mobileMode ? 16 : 14} color="currentColor" />}
                         <span>{isExporting ? 'Exporting\u2026' : 'Export data'}</span>
                       </button>
+                      {surveyReportOn && (
+                        <button
+                          type="button"
+                          className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
+                          onClick={() => { if (surveyHasItems) handleSurveyReport(); }}
+                          disabled={isReporting || !surveyHasItems}
+                          {...(mobileMode ? {} : tip(surveyHasItems ? 'Download a PowerPoint report: progress chart per category and the items with issues' : 'Add a survey item to make a report', 'above'))}
+                        >
+                          {isReporting
+                            ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
+                            : <Icon name="document" size={mobileMode ? 16 : 14} color="currentColor" />}
+                          <span>{isReporting ? 'Making report\u2026' : 'Report'}</span>
+                        </button>
+                      )}
                       {mobileMode ? (
                         (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (
                           <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>

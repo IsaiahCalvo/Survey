@@ -189,3 +189,40 @@ test('a Number line goes to Excel as a real number; other answers stay text', as
   const items = [{ id: 'h', kind: 'number' }, { id: 't', kind: 'text' }, { id: 'c' }, { id: 'e', kind: 'number' }];
   assert.deepEqual(buildSheetRow(kit, items, { name: 'D-1' }, { h: '1200', t: '42', c: '10', e: '' }), ['D-1', 1200, '42', '10', '']);
 });
+
+test('an answer can carry a "means" line: kept, checked, shown, read by Excel and the agent', async () => {
+  const {
+    cleanAnswerSet, answerSetProblem, sameAnswerSet, answerMeans, excelValidationFor, answerPresetIdOf, ANSWER_MEANS_MAX,
+  } = await import('../src/services/answerSets.js');
+  const { answerSetMeaning } = await import('../supabase/functions/_shared/surveyAgentMeaning.js');
+  const { templateFingerprint } = await import('../src/home/templatesEditorReload.js');
+  const draft = [
+    { value: 'Pass', tone: 'good', means: '  works on first try ' },
+    { value: 'Fail', tone: 'bad', means: '' },
+  ];
+  const set = cleanAnswerSet(draft);
+  assert.deepEqual(set, [{ value: 'Pass', tone: 'good', means: 'works on first try' }, { value: 'Fail', tone: 'bad' }]);
+  assert.deepEqual(validateAnswerSet(set), []);
+  assert.notEqual(validateAnswerSet([{ value: 'Pass', tone: 'good', means: 5 }]).length, 0);
+  assert.match(answerSetProblem([{ value: 'Pass', tone: 'good', means: 'x'.repeat(ANSWER_MEANS_MAX + 1) }]), /meaning/);
+  assert.equal(sameAnswerSet(set, cleanAnswerSet([{ value: 'Pass', tone: 'good' }, { value: 'Fail', tone: 'bad' }])), false);
+  assert.equal(answerPresetIdOf([{ value: 'Y', tone: 'good', means: 'in' }, { value: 'N', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }]), '');
+  assert.equal(answerMeans(set, 'Pass'), 'works on first try');
+  assert.equal(answerMeans(set, 'Fail'), '');
+  assert.equal(answerMeans(set, undefined), '');
+
+  // Excel: the cell's hint lists the meanings; no meanings, no hint (today's file).
+  const rule = excelValidationFor({ text: 'Lock' }, set);
+  assert.equal(rule.showInputMessage, true);
+  assert.equal(rule.prompt, 'Pass: works on first try');
+  assert.equal(excelValidationFor({ text: 'Lock' }, DEFAULT_ANSWER_SET).showInputMessage, undefined);
+
+  // The agent hears the template's own meaning, even on Y / N / N/A.
+  assert.match(answerSetMeaning(set), /"Pass" for works on first try/);
+  assert.equal(answerSetMeaning(DEFAULT_ANSWER_SET), null);
+  assert.match(answerSetMeaning([{ value: 'Y', tone: 'good', means: 'fully in' }, { value: 'N', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }]), /fully in/);
+
+  // Editing only a meaning still marks the template as changed.
+  const tpl = (answerSet) => ({ id: 't', name: 'T', modules: [], answerSet });
+  assert.notEqual(templateFingerprint(tpl(set)), templateFingerprint(tpl(set.map(({ means: _m, ...a }) => a))));
+});

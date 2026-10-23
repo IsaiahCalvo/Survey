@@ -56,7 +56,7 @@ export function registerExportKit(kit) {
   const entry = Object.freeze({
     ...kit,
     columns: Object.freeze(kit.columns.map((c) => Object.freeze({ ...c }))),
-    ...(Array.isArray(kit.answerSet) ? { answerSet: Object.freeze(kit.answerSet.map((a) => Object.freeze({ value: a?.value, tone: a?.tone }))) } : {}),
+    ...(Array.isArray(kit.answerSet) ? { answerSet: Object.freeze(kit.answerSet.map((a) => Object.freeze({ value: a?.value, tone: a?.tone, ...(typeof a?.means === 'string' && a.means ? { means: a.means } : {}) }))) } : {}),
   });
   kits.set(entry.id, entry);
   notify();

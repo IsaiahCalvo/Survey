@@ -8,10 +8,10 @@
  * An export kit may carry a set too (`kit.answerSet`); the template's own wins.
  */
 import { getExportKit } from './exportFormats/registry.js';
-import { checklistItemKind, typedAnswerFor, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
+import { ANSWER_MEANS_MAX, checklistItemKind, typedAnswerFor, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
 import { categoriesOf, checklistOf, modulesOf } from './templateConfigShape.js';
 
-export { ANSWER_TONES, MIN_ANSWERS, MAX_ANSWERS, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
+export { ANSWER_MEANS_MAX, ANSWER_TONES, MIN_ANSWERS, MAX_ANSWERS, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
 
 export const DEFAULT_ANSWER_SET = Object.freeze([
   Object.freeze({ value: 'Y', tone: 'good' }),
@@ -84,7 +84,7 @@ export function answerSetPresets({ extras = false } = {}) {
   return extras ? [...ANSWER_SET_PRESETS, ...EXTRA_ANSWER_SET_PRESETS] : ANSWER_SET_PRESETS;
 }
 
-const setKey = (set) => JSON.stringify(set.map((a) => [a.value, a.tone]));
+const setKey = (set) => JSON.stringify(set.map((a) => (a.means ? [a.value, a.tone, a.means] : [a.value, a.tone])));
 
 /** The preset id a set matches; '' when it is the template's own list. */
 export function answerPresetIdOf(set, presets = ANSWER_SET_PRESETS) {
@@ -99,7 +99,10 @@ export function answerPresetIdOf(set, presets = ANSWER_SET_PRESETS) {
  */
 export function cleanAnswerSet(draft) {
   if (!Array.isArray(draft)) return null;
-  const set = draft.map((a) => ({ value: String(a?.value ?? '').trim(), tone: a?.tone }));
+  const set = draft.map((a) => {
+    const means = String(a?.means ?? '').trim();
+    return { value: String(a?.value ?? '').trim(), tone: a?.tone, ...(means ? { means } : {}) };
+  });
   return validateAnswerSet(set).length ? null : set;
 }
 
@@ -111,7 +114,14 @@ export function answerSetProblem(draft) {
   if (values.some((v) => /[",]/.test(v))) return 'Answers can\'t have commas or quotes (Excel lists break on them).';
   if (values.some((v) => v.length > 20)) return 'Keep each answer to 20 characters.';
   if (new Set(values).size !== values.length) return 'Two answers have the same name.';
+  if (draft.some((a) => String(a?.means ?? '').trim().length > ANSWER_MEANS_MAX)) return `Keep each meaning to ${ANSWER_MEANS_MAX} characters.`;
   return cleanAnswerSet(draft) ? '' : 'This list can\'t be used.';
+}
+
+/** The "means" line of the picked answer, or ''. */
+export function answerMeans(set, selection) {
+  if (selection == null || selection === '') return '';
+  return (set || []).find((a) => sameAnswer(a.value, selection))?.means || '';
 }
 
 /** True when two sets have the same answers and tones in the same order. */
@@ -209,7 +219,16 @@ export function excelValidationFor(item, set) {
     error: set === DEFAULT_ANSWER_SET
       ? 'Please select Y, N, or N/A'
       : `Please select ${set.map((a) => a.value).join(', ')}`,
+    ...excelMeansPrompt(set),
   };
+}
+
+// Answers with a "means" line show it as the cell's input hint. Excel caps a
+// hint at 255 characters.
+function excelMeansPrompt(set) {
+  const lines = (set || []).filter((a) => a.means).map((a) => `${a.value}: ${a.means}`);
+  if (!lines.length) return {};
+  return { showInputMessage: true, promptTitle: 'Answers', prompt: lines.join('\n').slice(0, 255) };
 }
 
 const TONE_FILL = Object.freeze({ good: 'FFCEEED0', bad: 'FFF6C9CE', neutral: 'FFA6A6A6' });
