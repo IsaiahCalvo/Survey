@@ -309,11 +309,11 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
 /* Smart fill (beta, owner 2026-10-22): the tag shapes this template has
    learned. Each is taught on a drawing ("Teach a tag shape"); here they can
    only be seen and removed. */
-function SmartFillShapeChips({ shapes, onRemove, tip, hoverOnly }) {
+function SmartFillShapeChips({ shapes, onRemove, tip, hoverOnly, phone = false }) {
   if (!shapes.length) return null;
   return (
-    <div data-smart-fill-shapes="true" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 4, marginTop: 4 }}>
-      <span style={{ fontSize: 11, color: 'var(--text-2)' }}>Smart fill shapes</span>
+    <div data-smart-fill-shapes="true" className={phone ? 'templates-mobile-option' : undefined} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: phone ? 'flex-start' : 'flex-end', alignItems: 'center', gap: phone ? 8 : 4, marginTop: phone ? 0 : 4, paddingBlock: phone ? 6 : 0 }}>
+      <span style={{ fontSize: phone ? 14 : 11, color: 'var(--text-2)' }}>Smart fill shapes</span>
       {shapes.map((shape) => {
         const w = 18;
         const h = Math.max(6, Math.min(24, (w * shape.height) / Math.max(0.01, shape.width)));
@@ -326,7 +326,8 @@ function SmartFillShapeChips({ shapes, onRemove, tip, hoverOnly }) {
             aria-label={`Remove ${shape.name || 'tag shape'}`}
             onClick={() => onRemove(shape.id)}
             {...hoverOnly(tip(`${shape.name || 'Tag shape'} (${Math.round(shape.width)} x ${Math.round(shape.height)} pt). Click to remove.`))}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '1px 4px', border: '1px solid var(--rule)', borderRadius: 4, minHeight: 0 }}
+            // Phone: 44px tap targets, like the other per-template rows.
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 2, padding: phone ? '0 8px' : '1px 4px', border: '1px solid var(--rule)', borderRadius: 4, minHeight: phone ? 44 : 0, minWidth: phone ? 44 : undefined }}
           >
             <svg width={w} height={h} viewBox={`-1 -1 ${w + 2} ${h + 2}`} aria-hidden="true">
               <path d={d} fill="rgba(74, 144, 226, 0.25)" stroke="#4A90E2" strokeWidth="1" />
@@ -3291,6 +3292,15 @@ export default function TemplatesEditor({
                   <select aria-label="Checklist answers" {...answerPickerProps(tpl)} />
                 </label>
                 {answerListEditor(tpl, true)}
+                {smartFillBeta && (
+                  <SmartFillShapeChips
+                    phone
+                    shapes={(tpl.smartFillShapes || []).filter((shape) => !(tpl.removedSmartFillShapeIds || []).includes(shape.id))}
+                    onRemove={(id) => mutateTpl(tpl.id, (t) => ({ ...t, removedSmartFillShapeIds: [...(t.removedSmartFillShapeIds || []), id] }))}
+                    tip={tip}
+                    hoverOnly={hoverOnly}
+                  />
+                )}
               </div>
 
               <section className="templates-mobile-section templates-mobile-modules-section">
