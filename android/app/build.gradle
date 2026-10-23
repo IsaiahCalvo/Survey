@@ -24,6 +24,10 @@ android {
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.kalvoe.survey"
+        // CI Nightly build: own app id so it installs next to the stable app.
+        if (project.hasProperty("surveyNightly")) {
+            applicationIdSuffix ".nightly"
+        }
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // versionCode/versionName are set by `npm run native:version` from package.json.

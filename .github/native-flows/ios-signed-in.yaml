@@ -4,11 +4,11 @@
 appId: com.kalvoe.survey
 name: ios-signed-in
 ---
-- launchApp:
-    clearState: true
+# Freshly installed, so no clearState (it hung 16 min on the Mac runner).
+- launchApp
 - extendedWaitUntil:
     visible: "Welcome back"
-    timeout: 120000
+    timeout: 300000
 - takeScreenshot: 01-sign-in
 # The slow simulator drops keystrokes (a field came out empty or one
 # character, 2026-10-22), so paste both fields instead of typing them.

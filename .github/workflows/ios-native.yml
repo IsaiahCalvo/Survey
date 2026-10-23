@@ -325,7 +325,7 @@ jobs:
       - name: Start Docker (Colima)
         run: |
           brew install colima docker
-          colima start --cpu 4 --memory 10 --disk 40
+          colima start --cpu 2 --memory 7 --disk 40
           echo "DOCKER_HOST=unix://$HOME/.colima/default/docker.sock" >> "$GITHUB_ENV"
       # The Colima VM is slow: realtime never passes its health check there
       # (the walk does not need it), and storage can miss the first one.
@@ -333,14 +333,22 @@ jobs:
         run: npm run e2e:stack:up || { sleep 30; npm run e2e:stack:up; }
         env:
           E2E_REALTIME: 'off'
+          E2E_EDGE_RUNTIME: 'off'
           E2E_IGNORE_HEALTH: '1'
       - name: Build web bundle against the local stack
         run: npx vite build --mode e2e
         env:
           NODE_OPTIONS: --max-old-space-size=8192
-      - run: npx cap sync ios
-        env:
-          CAPACITOR_E2E_LOCAL_HTTP: "1"
+      # WKWebView can't serve the app over http, and from capacitor:// the
+      # local Supabase's plain-http calls are blocked as mixed content (the
+      # sign-in error "{}"; native HTTP didn't cover auth). So load the app
+      # from a local http server instead, the same way dev live reload does.
+      - name: Serve the bundle over local http and point the app at it
+        run: |
+          nohup npx vite preview --mode e2e --host 127.0.0.1 --port 4173 --strictPort > "$RUNNER_TEMP/preview.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:4173/ >/dev/null && break; sleep 2; done
+          curl -sf http://127.0.0.1:4173/ >/dev/null
+          CAPACITOR_SERVER_URL=http://127.0.0.1:4173 npx cap sync ios
       - name: Build app for the simulator
         run: |
           mkdir -p "$OUT"
@@ -366,6 +374,11 @@ jobs:
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$(find build/ios/Build/Products -maxdepth 2 -name 'App.app' | head -1)"
+          # Warm the first launch here (it can take many minutes on this runner)
+          # so Maestro's launchApp doesn't hang on it.
+          xcrun simctl launch "$UDID" com.kalvoe.survey
+          sleep 90
+          xcrun simctl terminate "$UDID" com.kalvoe.survey || true
       - name: Walk the app (signed in, Counter after Arrow, export)
         # The XCTest driver sometimes misses its start window on this slow
         # runner (twice on 2026-10-22, before any flow step); try once more.

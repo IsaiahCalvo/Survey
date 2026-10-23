@@ -1,0 +1,79 @@
+name: Mobile app builds
+
+# Keeps the phone apps in step with the web: after every production ship a
+# fresh "Survey" Android app is built from the same commit, and after every
+# Nightly ship a "Survey Nightly" app (VITE_RELEASE_CHANNEL=nightly, its own
+# app id so both install side by side). Each lands on a rolling GitHub
+# release (app-stable / app-nightly) so testers always grab the latest APK.
+# iOS needs an Apple developer account to install outside the simulator, so
+# it gets built and walked in ios-native.yml only, until store accounts exist.
+
+on:
+  workflow_run:
+    workflows: ['Deploy production', 'Deploy nightly']
+    types: [completed]
+  # A PR that changes this file builds the Nightly app without publishing it.
+  pull_request:
+    paths: ['.github/workflows/mobile-app-builds.yml', 'android/app/build.gradle']
+  workflow_dispatch:
+    inputs:
+      channel:
+        type: choice
+        options: [stable, nightly]
+        default: nightly
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-app-builds-${{ github.event.workflow_run.name || inputs.channel || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || github.event_name == 'pull_request' && 'nightly' || (github.event.workflow_run.name == 'Deploy nightly' && 'nightly' || 'stable') }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Build web bundle
+        run: |
+          if [ "$CHANNEL" = nightly ]; then export VITE_RELEASE_CHANNEL=nightly; fi
+          npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - run: npx cap sync android
+      - name: Name the Nightly app
+        if: env.CHANNEL == 'nightly'
+        run: sed -i 's#>Survey<#>Survey Nightly<#g' android/app/src/main/res/values/strings.xml
+      - name: Build APK
+        run: |
+          cd android
+          if [ "$CHANNEL" = nightly ]; then ./gradlew --no-daemon assembleDebug -PsurveyNightly=true; else ./gradlew --no-daemon assembleDebug; fi
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/survey-$CHANNEL.apk"
+      - name: Publish to the rolling release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="app-$CHANNEL"
+          notes="Latest $CHANNEL Android app, built from $SHA on $(date -u +%FT%TZ)."
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --prerelease --target "$SHA" --title "Survey app ($CHANNEL)" --notes "$notes"
+          gh release edit "$tag" --notes "$notes"
+          gh release upload "$tag" "survey-$CHANNEL.apk" --clobber
