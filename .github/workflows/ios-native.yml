@@ -339,9 +339,16 @@ jobs:
         run: npx vite build --mode e2e
         env:
           NODE_OPTIONS: --max-old-space-size=8192
-      - run: npx cap sync ios
-        env:
-          CAPACITOR_E2E_LOCAL_HTTP: "1"
+      # WKWebView can't serve the app over http, and from capacitor:// the
+      # local Supabase's plain-http calls are blocked as mixed content (the
+      # sign-in error "{}"; native HTTP didn't cover auth). So load the app
+      # from a local http server instead, the same way dev live reload does.
+      - name: Serve the bundle over local http and point the app at it
+        run: |
+          nohup npx vite preview --mode e2e --host 127.0.0.1 --port 4173 --strictPort > "$RUNNER_TEMP/preview.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:4173/ >/dev/null && break; sleep 2; done
+          curl -sf http://127.0.0.1:4173/ >/dev/null
+          CAPACITOR_SERVER_URL=http://127.0.0.1:4173 npx cap sync ios
       - name: Build app for the simulator
         run: |
           mkdir -p "$OUT"
