@@ -40,7 +40,7 @@
    scrollbars.
 */
 import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
-import { DEFAULT_ANSWER_SET, answerPresetIdOf, answerSetPresets } from '../services/answerSets.js';
+import { DEFAULT_ANSWER_SET, ITEM_ANSWER_KEYS, answerPresetIdOf, answerSetPresets, itemAnswerFields } from '../services/answerSets.js';
 import { isFeatureOn } from '../featureFlags.js';
 import AnswerSetEditor, { ItemKindPicker } from './AnswerSetEditor.jsx';
 import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
@@ -263,9 +263,8 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
           text,
         };
         if (it && typeof it === 'object') {
-          // Text / number items (nightly 'custom-answers'); pick-one stays bare.
-          if (it.kind === 'text' || it.kind === 'number') base.kind = it.kind;
-          if (it.kind === 'number' && typeof it.unit === 'string' && it.unit) base.unit = it.unit;
+          // Typed answer kinds (nightly 'custom-answers'); pick-one stays bare.
+          Object.assign(base, itemAnswerFields(it));
           if (it.archived === true) base.archived = true;
           if (typeof it.archivedAt === 'string') base.archivedAt = it.archivedAt;
           if (typeof it.lastKnownLabel === 'string') {
@@ -1765,16 +1764,15 @@ export default function TemplatesEditor({
     }));
   };
   const renameItem = (ci, itemId, text) => renameItemInModule(openMod, ci, itemId, text);
-  /* Text / number items (nightly 'custom-answers'). Answers already given
-     keep their text; only how the card asks for the next one changes. */
-  const setItemKind = (ci, itemId, kind, unit) => mutateCategoryInModule(openMod, ci, (c) => ({
+  /* Typed answer kinds (nightly 'custom-answers'). Answers already given
+     keep their text; only how the card asks for the next one changes.
+     `fields` is the item's whole answer settings ({} for pick-one). */
+  const setItemKind = (ci, itemId, fields) => mutateCategoryInModule(openMod, ci, (c) => ({
     ...c,
     items: c.items.map((it) => {
       if (it.id !== itemId) return it;
-      const { kind: _k, unit: _u, ...rest } = it;
-      if (kind === 'text') return { ...rest, kind };
-      if (kind === 'number') return unit ? { ...rest, kind, unit } : { ...rest, kind };
-      return rest;
+      const rest = Object.fromEntries(Object.entries(it).filter(([k]) => !ITEM_ANSWER_KEYS.includes(k)));
+      return { ...rest, ...itemAnswerFields(fields) };
     }),
   }));
 
@@ -2009,8 +2007,7 @@ export default function TemplatesEditor({
           /* Persist archived metadata so KAL-44 archive survives save/reload.
              Active items round-trip the simple shape unchanged. */
           const out = { id: it.id, text: it.text };
-          if (it.kind === 'text' || it.kind === 'number') out.kind = it.kind;
-          if (it.kind === 'number' && it.unit) out.unit = it.unit;
+          Object.assign(out, itemAnswerFields(it));
           if (it.archived === true) {
             out.archived = true;
             if (typeof it.archivedAt === 'string') out.archivedAt = it.archivedAt;
@@ -2809,7 +2806,7 @@ export default function TemplatesEditor({
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => discardFreshItem(i, it.id))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
-                                {customAnswers && <ItemKindPicker item={it} onChange={(kind, unit) => setItemKind(i, it.id, kind, unit)} />}
+                                {customAnswers && <ItemKindPicker item={it} onChange={(fields) => setItemKind(i, it.id, fields)} />}
                                 <button
                                   aria-label="Delete item" {...tip('Delete item')}
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
@@ -3494,7 +3491,7 @@ export default function TemplatesEditor({
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => discardFreshItem(ci, it.id))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
-                                            {customAnswers && <ItemKindPicker phone item={it} onChange={(kind, unit) => setItemKind(ci, it.id, kind, unit)} />}
+                                            {customAnswers && <ItemKindPicker phone item={it} onChange={(fields) => setItemKind(ci, it.id, fields)} />}
                                             <button type="button" aria-label="Delete item" {...tip('Delete item')} onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
                                           </SwipeToDeleteRow>

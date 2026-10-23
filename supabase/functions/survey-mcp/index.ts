@@ -26,7 +26,7 @@ import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../_shared/surveyMar
 import { bytesToPgHex, pgHexToBytes } from '../_shared/pgBytea.js';
 import { applyUndoDescriptor, noteObjectOf, UNDO_KINDS } from '../_shared/surveyUndoApply.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
-import { checklistItemKind, typedAnswerFor } from '../_shared/kitShape.js';
+import { itemAnswerFor, itemAnswerHint, itemAnswerSpec } from '../_shared/kitShape.js';
 import { agentClientId } from '../_shared/agentSession.ts';
 
 const CONNECTOR_WRITES_FLAG = 'survey-connector-writes';
@@ -67,7 +67,7 @@ class ToolError extends Error {}
 
 const text = (value: unknown) => ({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 1) }] });
 
-type Category = { id: string; name: string; checklist: { id: string; text: string; answer_kind?: string; unit?: string }[] };
+type Category = { id: string; name: string; checklist: ({ id: string; text: string; answer_kind?: string } & Record<string, unknown>)[] };
 
 // Category and checklist names come from the templates the person can see.
 // Templates linked to the document go first, so when two templates reuse a
@@ -124,12 +124,12 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
             .filter((it) => it && (it as Record<string, unknown>).archived !== true && (it as Record<string, unknown>).id)
             .map((it) => {
               const item = it as Record<string, unknown>;
-              const kind = checklistItemKind(item);
               return {
                 id: String(item.id),
                 text: String(item.text ?? item.name ?? ''),
-                // Text / number lines take what was said, not an answer-set value.
-                ...(kind !== 'choice' ? { answer_kind: kind, ...(item.unit ? { unit: String(item.unit) } : {}) } : {}),
+                // Typed lines (text, number, score, count, date) take what was
+                // said, not an answer-set value; their settings come along.
+                ...itemAnswerSpec(item),
               };
             }),
         });
@@ -298,7 +298,7 @@ const WRITE_TOOLS = [
             type: 'object',
             properties: {
               checklist_item_id: { type: 'string', description: 'A checklist item id from get_survey_context.' },
-              value: { type: 'string', description: 'The answer value, from the template (e.g. Y, N, N/A). For a checklist item with answer_kind text, the text; for number, the number only.' },
+              value: { type: 'string', description: 'The answer value, from the template (e.g. Y, N, N/A). For a checklist item with an answer_kind: text, the text; number or count, the number only; score, a whole number from 1 to its scale; date, YYYY-MM-DD.' },
             },
             required: ['checklist_item_id', 'value'],
           },
@@ -700,8 +700,9 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
           const line = category.checklist.find((c) => c.id === clId);
           let value = String(row.value ?? '');
           if (line?.answer_kind) {
-            const typed = typedAnswerFor(line.answer_kind, value);
-            if (typed === null) throw new ToolError(`"${value}" is not a number. "${line.text}" takes a number${line.unit ? ` in ${line.unit}` : ''}.`);
+            const typedLine = { ...line, kind: line.answer_kind };
+            const typed = itemAnswerFor(typedLine, value);
+            if (typed === null) throw new ToolError(`"${value}" does not fit "${line.text}": ${itemAnswerHint(typedLine)}.`);
             value = typed;
           }
           if (!value) throw new ToolError('Each answer needs a value.');
