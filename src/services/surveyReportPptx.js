@@ -11,7 +11,6 @@ const INK = '1F2329';
 const MUTED = '5B6270';
 const RULE = 'D9DCE1';
 const FONT = 'Arial';
-export const ISSUE_ROWS_PER_SLIDE = 12;
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -28,8 +27,6 @@ export function surveyReportPlan({ template, markers, documentName = '', when = 
     item: issue.name,
     lines: issue.lines.map((l) => `${l.text}: ${l.answer}`).join('; '),
   })));
-  const issuePages = [];
-  for (let i = 0; i < issueRows.length; i += ISSUE_ROWS_PER_SLIDE) issuePages.push(issueRows.slice(i, i + ISSUE_ROWS_PER_SLIDE));
   return {
     title,
     subtitle: [documentName, when.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })].filter(Boolean).join(' · '),
@@ -50,7 +47,7 @@ export function surveyReportPlan({ template, markers, documentName = '', when = 
       ],
     },
     categoryRows: summary.categories.map((c) => [c.name, c.items, c.done, c.partly, c.notStarted, c.issues.length]),
-    issuePages,
+    issueRows,
   };
 }
 
@@ -116,22 +113,21 @@ export function buildSurveyReport(PptxGenJS, input) {
     });
   }
 
-  // Items with issues.
-  if (!plan.issuePages.length) {
-    const none = pptx.addSlide();
-    text(none, 'Issues', { x: 0.6, y: 0.4, w: 12, h: 0.6, fontSize: 28, bold: true });
-    text(none, 'No issues found.', { x: 0.6, y: 1.2, w: 12, h: 0.5, fontSize: 16, color: MUTED });
-  }
-  plan.issuePages.forEach((rows, page) => {
-    const slide = pptx.addSlide();
-    const suffix = plan.issuePages.length > 1 ? ` (${page + 1} of ${plan.issuePages.length})` : '';
-    text(slide, `Issues${suffix}`, { x: 0.6, y: 0.4, w: 12, h: 0.6, fontSize: 28, bold: true });
+  // Items with issues. One cell can hold many problem lines, so the table
+  // splits by its drawn height (a tall row can carry on to the next slide)
+  // and repeats its header on each continuation slide.
+  const issues = pptx.addSlide();
+  text(issues, 'Issues', { x: 0.6, y: 0.4, w: 12, h: 0.6, fontSize: 28, bold: true });
+  if (!plan.issueRows.length) {
+    text(issues, 'No issues found.', { x: 0.6, y: 1.2, w: 12, h: 0.5, fontSize: 16, color: MUTED });
+  } else {
     const head = ['Category', 'Item', 'Lines with a problem answer'].map((h) => ({ text: h, options: { bold: true, color: MUTED } }));
-    slide.addTable([head, ...rows.map((r) => [{ text: r.category }, { text: r.item }, { text: r.lines }])], {
-      x: 0.6, y: 1.2, w: 12.1, colW: [2.6, 2.4, 7.1],
+    issues.addTable([head, ...plan.issueRows.map((r) => [{ text: r.category }, { text: r.item }, { text: r.lines }])], {
+      x: 0.6, y: 1.2, w: 12.1, h: 5.9, colW: [2.6, 2.4, 7.1],
       fontFace: FONT, fontSize: 11, color: INK, border: { type: 'solid', pt: 0.5, color: RULE }, valign: 'top',
+      autoPage: true, autoPageRepeatHeader: true, autoPageHeaderRows: 1, autoPageSlideStartY: 0.6,
     });
-  });
+  }
 
   return pptx;
 }

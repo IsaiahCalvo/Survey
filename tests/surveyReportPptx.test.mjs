@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import PptxGenJS from 'pptxgenjs';
 import JSZip from 'jszip';
 import {
-  ISSUE_ROWS_PER_SLIDE, buildSurveyReport, surveyReportFileName, surveyReportPlan,
+  buildSurveyReport, surveyReportFileName, surveyReportPlan,
 } from '../src/services/surveyReportPptx.js';
 
 const template = {
@@ -31,20 +31,27 @@ test('the plan holds the totals, a chart row per used category and the issues', 
   assert.deepEqual(plan.tiles.map((t) => t.value), [4, 2, 1, 1, 1]);
   assert.deepEqual(plan.chart.categories, ['Door', 'Camera']);
   assert.deepEqual(plan.chart.series.map((s) => s.values), [[2, 0], [1, 0], [0, 1]]);
-  assert.deepEqual(plan.issuePages, [[{ category: 'Door', item: 'D-2', lines: 'Lock works: Fail' }]]);
+  assert.deepEqual(plan.issueRows, [{ category: 'Door', item: 'D-2', lines: 'Lock works: Fail' }]);
 });
 
-test('issues split over slides; the deck is a real PowerPoint file', async () => {
+const slideFiles = (zip) => Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f));
+const build = async (t, markers) => JSZip.loadAsync(await buildSurveyReport(PptxGenJS, { template: t, markers }).write({ outputType: 'nodebuffer' }));
+
+test('issues split over slides by height; the deck is a real PowerPoint file', async () => {
   const markers = {};
-  for (let i = 0; i < ISSUE_ROWS_PER_SLIDE + 3; i++) markers[`d${i}`] = marker(`D-${i}`, 'door', { a: 'Fail' });
-  const plan = surveyReportPlan({ template, markers });
-  assert.deepEqual(plan.issuePages.map((p) => p.length), [ISSUE_ROWS_PER_SLIDE, 3]);
-  const buffer = await buildSurveyReport(PptxGenJS, { template, markers }).write({ outputType: 'nodebuffer' });
-  const zip = await JSZip.loadAsync(buffer);
-  const slides = Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f));
-  // Cover, progress, by category, two issue slides.
-  assert.equal(slides.length, 5);
+  for (let i = 0; i < 30; i++) markers[`d${i}`] = marker(`D-${i}`, 'door', { a: 'Fail' });
+  assert.equal(surveyReportPlan({ template, markers }).issueRows.length, 30);
+  const zip = await build(template, markers);
+  // Cover, progress, by category, then the issues table over more than one slide.
+  assert.ok(slideFiles(zip).length >= 5, `got ${slideFiles(zip).length} slides`);
   assert.ok(Object.keys(zip.files).some((f) => /^ppt\/charts\/chart\d+\.xml$/.test(f)), 'a native chart');
+});
+
+test('one item with very many problem lines carries on to the next slide', async () => {
+  const checklist = Array.from({ length: 80 }, (_, i) => ({ id: `q${i}`, text: `Check number ${i} on the door frame and closer` }));
+  const big = { ...template, modules: [{ id: 'm', name: 'Installation', categories: [{ id: 'door', name: 'Door', checklist }] }] };
+  const zip = await build(big, { d: marker('D-1', 'door', Object.fromEntries(checklist.map((c) => [c.id, 'Fail']))) });
+  assert.ok(slideFiles(zip).length >= 5, `got ${slideFiles(zip).length} slides`);
 });
 
 test('an empty survey still makes a deck, and file names are safe', async () => {
