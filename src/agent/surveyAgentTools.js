@@ -3,7 +3,7 @@
 // answers it through the Survey panel's own writes (the "bridge" the panel
 // publishes), so sync, Excel rows, auto-entity and role checks behave exactly
 // as if the person had tapped. Every write returns a change with an undo.
-import { answerSetFor } from '../services/answerSets.js';
+import { answerSetFor, itemKind, typedAnswer } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
 import { MARK_COLOR_HEX, normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { markBox, visiblePageBox } from './planView.js';
@@ -414,7 +414,7 @@ export function createSurveyAgentToolbox({
             ...(multiModule ? { module: module.name } : {}),
             item_count: counts.get(category.id) || 0,
             ...(examples.has(category.id) ? { example_item: examples.get(category.id) } : {}),
-            checklist: activeChecklist(category).map((item) => ({ id: item.id, text: itemText(item) })),
+            checklist: activeChecklist(category).map((item) => ({ id: item.id, text: itemText(item), ...(itemKind(item) !== 'choice' ? { answer_kind: itemKind(item), ...(item.unit ? { unit: item.unit } : {}) } : {}) })),
           })),
           entities: entitiesOf(b.template).map((e) => ({ id: e.id, name: e.name })),
           // What plain talk means in each module ("it's installed", "it works").
@@ -484,6 +484,7 @@ export function createSurveyAgentToolbox({
           checklist: entry ? activeChecklist(entry.category).map((item) => ({
             id: item.id,
             text: itemText(item),
+            ...(itemKind(item) !== 'choice' ? { answer_kind: itemKind(item), ...(item.unit ? { unit: item.unit } : {}) } : {}),
             answer: responses[item.id]?.selection || null,
           })) : [],
           note: noteTextOf(marker.note),
@@ -503,7 +504,7 @@ export function createSurveyAgentToolbox({
       const marker = markerOf(b, itemId);
       const entry = categoryIndex(b.template).find(marker.moduleId, marker.categoryId);
       const addition = String(note || '').trim();
-      const named = Array.isArray(answers) ? answers : [];
+      const named = (Array.isArray(answers) ? answers : []).map((a) => ({ ...a }));
       const entity = entityFor(b, entitySaid);
       if (!named.length && !allLines && !addition && !entity) throw new ToolError('No answers given (and no note or entity).');
       if ((named.length || allLines) && !entry) throw new ToolError('This item has no category in the template, so it has no checklist.');
@@ -515,8 +516,16 @@ export function createSurveyAgentToolbox({
       // that module's item of the same name, added at the same spot if the
       // person has not placed it there yet.
       const elsewhere = new Map();
+      // Text and number lines take what was said, not a listed answer.
+      const lineById = new Map(categoryIndex(b.template).list.flatMap(({ category }) => activeChecklist(category)).map((l) => [l.id, l]));
       for (const a of named) {
-        if (!allowed.includes(a?.value)) throw new ToolError(`"${a?.value}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);
+        const line = checklist.get(a?.checklist_item_id) || lineById.get(a?.checklist_item_id);
+        if (line && itemKind(line) !== 'choice') {
+          const typed = typedAnswer(line, a.value);
+          if (typed === null) throw new ToolError(`"${a.value}" is not a number. "${itemText(line)}" takes a number${line.unit ? ` in ${line.unit}` : ''}.`);
+          if (!typed) throw new ToolError(`"${itemText(line)}" needs a value.`);
+          a.value = typed;
+        } else if (!allowed.includes(a?.value)) throw new ToolError(`"${a?.value}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);
         if (checklist.has(a?.checklist_item_id)) continue;
         const other = entry && categoryIndex(b.template).list.find(({ module, category }) => module.id !== entry.module.id
           && sameName(category.name, entry.category.name)
@@ -528,7 +537,7 @@ export function createSurveyAgentToolbox({
       if (allLines && !allowed.includes(allLines)) throw new ToolError(`"${allLines}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);
       const own = named.filter((a) => checklist.has(a.checklist_item_id));
       const given = new Set(own.map((a) => a.checklist_item_id));
-      const list = [...own, ...(allLines ? lines.filter((l) => !given.has(l.id)).map((l) => ({ checklist_item_id: l.id, value: allLines })) : [])];
+      const list = [...own, ...(allLines ? lines.filter((l) => !given.has(l.id) && itemKind(l) === 'choice').map((l) => ({ checklist_item_id: l.id, value: allLines })) : [])];
       // Every other module is checked before anything is written, so a turn
       // never half-writes and then reports only the failure.
       for (const { entry: other } of elsewhere.values()) siblingFor(b, itemId, marker, other);

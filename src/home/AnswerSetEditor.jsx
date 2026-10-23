@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './HubShell';
 import {
-  MAX_ANSWERS, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
+  ITEM_UNIT_MAX, MAX_ANSWERS, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
 } from '../services/answerSets.js';
 
 const TONE_OPTIONS = [
@@ -111,5 +111,44 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false 
       </div>
       {problem && <p role="alert" className="micro" style={{ margin: 0, color: 'var(--danger, #c0392b)' }}>{problem}</p>}
     </div>
+  );
+}
+
+const KIND_OPTIONS = [
+  { value: 'choice', label: 'Pick one' },
+  { value: 'text', label: 'Text' },
+  { value: 'number', label: 'Number' },
+];
+
+/**
+ * How one checklist item is answered: the template's buttons (Pick one), a
+ * text box, or a number with an optional unit ("ft", "V").
+ */
+export function ItemKindPicker({ item, onChange, phone = false }) {
+  const kind = item.kind === 'text' || item.kind === 'number' ? item.kind : 'choice';
+  const size = { fontSize: phone ? 13 : 11, height: phone ? 32 : undefined };
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+      <select
+        aria-label={`How "${item.text || 'this item'}" is answered`}
+        value={kind}
+        onChange={(e) => onChange(e.target.value, kind === 'number' ? item.unit : '')}
+        style={{ ...fieldStyle, ...size, padding: '1px 4px', color: 'var(--text-2)' }}
+      >
+        {KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+      </select>
+      {kind === 'number' && (
+        <input
+          aria-label={`Unit for "${item.text || 'this item'}"`}
+          defaultValue={item.unit || ''}
+          key={item.unit || ''}
+          maxLength={ITEM_UNIT_MAX}
+          placeholder="unit"
+          onBlur={(e) => { const u = e.currentTarget.value.trim(); if (u !== (item.unit || '')) onChange('number', u); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+          style={{ ...fieldStyle, ...size, width: phone ? 56 : 44, padding: '1px 4px' }}
+        />
+      )}
+    </span>
   );
 }

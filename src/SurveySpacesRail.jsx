@@ -49,7 +49,8 @@ import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
-import { answerSetFor, answerTone } from './services/answerSets.js';
+import { answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
+import TypedAnswerInput from './components/TypedAnswerInput.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
@@ -1679,7 +1680,8 @@ const SurveySpacesRail = ({
     const active = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const responses = surveyMarkers?.[annotationId]?.checklistResponses || {};
     const answered = active.filter((item) => Boolean(responses[item.id]?.selection)).length;
-    const no = active.filter((item) => responses[item.id]?.selection === 'N').length;
+    // A typed text line answered "N" (a direction, say) is not a No.
+    const no = active.filter((item) => itemKind(item) === 'choice' && responses[item.id]?.selection === 'N').length;
     return { answered, total: active.length, no };
   };
   // The "answered/total" count. Owner 2026-10-01 (after a design debate):
@@ -1808,13 +1810,21 @@ const SurveySpacesRail = ({
               return (
                 <div key={item.id} className="mobile-survey-check-item">
                   <span className="mobile-survey-check-text">{item.text}</span>
+                  {itemKind(item) !== 'choice' ? (
+                    <TypedAnswerInput
+                      phone
+                      item={item}
+                      value={response}
+                      onCommit={(v) => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, v)}
+                    />
+                  ) : (
                   <div className="mobile-survey-check-group">
                     {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => (
                       <button
                         key={option}
                         type="button"
-                        className={`mobile-survey-check-btn${response === option ? ` is-active is-${answerToneName === 'good' ? 'yes' : answerToneName === 'bad' ? 'no' : 'na'}` : ''}`}
-                        aria-pressed={response === option}
+                        className={`mobile-survey-check-btn${sameAnswer(response, option) ? ` is-active is-${answerToneName === 'good' ? 'yes' : answerToneName === 'bad' ? 'no' : 'na'}` : ''}`}
+                        aria-pressed={sameAnswer(response, option)}
                         aria-label={`${item.text} ${option}`}
                         onClick={() => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, option)}
                       >
@@ -1822,6 +1832,7 @@ const SurveySpacesRail = ({
                       </button>
                     ))}
                   </div>
+                  )}
                 </div>
               );
             }) : (
@@ -3994,9 +4005,16 @@ const SurveySpacesRail = ({
                                                         <span className="survey-rail__detail-text">
                                                           {item.text}
                                                         </span>
+                                                        {itemKind(item) !== 'choice' ? (
+                                                          <TypedAnswerInput
+                                                            item={item}
+                                                            value={isSelected}
+                                                            onCommit={(v) => applyChecklistResponseSelection(annotationId, selectedModuleId, category, surveyMarker.name || '', item.id, v)}
+                                                          />
+                                                        ) : (
                                                         <div className="survey-rail__answers" role="group" aria-label={item.text || 'Checklist answer'}>
                                                           {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => {
-                                                            const isAnswer = isSelected === option;
+                                                            const isAnswer = sameAnswer(isSelected, option);
                                                             const tone = answerToneName === 'good' ? 'is-yes' : answerToneName === 'bad' ? 'is-no' : 'is-na';
                                                             return (
                                                               <button
@@ -4017,6 +4035,7 @@ const SurveySpacesRail = ({
                                                             );
                                                           })}
                                                         </div>
+                                                        )}
                                                       </div>
                                                     );
                                                   })

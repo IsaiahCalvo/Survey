@@ -76,3 +76,23 @@ export function publishProblems(kit) {
   if (kit && BUILT_IN_KIT_IDS.includes(kit.id)) errors.push(`${kit.id} is built into the app; pick another id`);
   return errors;
 }
+
+// Checklist item kinds: pick-one (the answer set), or a typed text / number.
+export const TYPED_ANSWER_MAX = 200;
+
+/** An item's kind: 'text', 'number', or 'choice' (the default). */
+export function checklistItemKind(item) {
+  return item?.kind === 'text' || item?.kind === 'number' ? item.kind : 'choice';
+}
+
+/**
+ * A typed answer as saved: '' for blank, the trimmed text, or a plain number
+ * ("1,200" -> "1200"). null when a number item gets no number.
+ */
+export function typedAnswerFor(kind, raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  if (kind !== 'number') return s.slice(0, TYPED_ANSWER_MAX);
+  const n = Number(s.replace(/,/g, ''));
+  return Number.isFinite(n) && /\d/.test(s) ? String(n) : null;
+}
