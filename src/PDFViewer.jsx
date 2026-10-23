@@ -543,7 +543,7 @@ import { usePickedSurveyMarker } from './survey/usePickedSurveyMarker.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
-import { buildSheetLayout, buildSheetRow, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
+import { buildSheetLayout, buildSheetRow, excelCellAnswer, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
 import { answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
