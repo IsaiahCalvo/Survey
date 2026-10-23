@@ -165,14 +165,15 @@ export function excelAnswerListFormula(set) {
  * Item kinds (nightly 'custom-answers'). A checklist item is pick-one by
  * default (the template's answer set). `item.kind` makes it take a typed
  * answer instead: text, number (unit, min, max), score (1..5 or 1..10, an
- * issue line), count (whole number, min, max) or date (issue once past).
+ * issue line), count (whole number, min, max), date (issue once past) or
+ * pick many (its own options, each good / bad / neutral).
  * Answers stay plain strings in `selection`, so sync, import, history and the
  * row fingerprints need no change. The rules live in kitShape.js so the
  * agent and the connector share them.
  */
 export {
   ITEM_ANSWER_KEYS, ITEM_KINDS, ITEM_UNIT_MAX, SCORE_SCALES, TYPED_ANSWER_MAX, dateAnswerOf, itemAnswerFields, itemAnswerHint,
-  itemAnswerSpec, scoreScaleOf,
+  itemAnswerSpec, manyOptionsOf, manyPicked, scoreScaleOf,
   typedAnswerIsIssue,
 } from '../../supabase/functions/_shared/kitShape.js';
 
@@ -222,6 +223,9 @@ export function excelValidationFor(item, set) {
   }
   if (kind === 'count') return rule('whole', 'between', [0, 1e9], 'Invalid count', 'Please enter a whole number, 0 or more');
   if (kind === 'date') return rule('date', 'greaterThan', [new Date(Date.UTC(1900, 0, 1))], 'Invalid date', 'Please enter a date');
+  if (kind === 'many') {
+    return { ...rule('textLength', 'lessThanOrEqual', [255], 'Too long', 'Please keep it to 255 characters'), prompt: `${hint}, separated by commas`.slice(0, 255) };
+  }
   return {
     type: 'list',
     allowBlank: true,

@@ -9,9 +9,14 @@
  *   line lights red. Pressing the lit score again clears it.
  * - count: - box +.
  * - date: the system date picker.
+ * - many: its options as chips; each press turns one on or off. A lit chip
+ *   takes its option's tone (a bad option lights red).
  */
 import { useState } from 'react';
-import { itemKind, scoreScaleOf, typedAnswer, typedAnswerIsIssue, TYPED_ANSWER_MAX } from '../services/answerSets.js';
+import { useTooltip } from './Tooltip';
+import {
+  itemKind, manyOptionsOf, manyPicked, scoreScaleOf, typedAnswer, typedAnswerIsIssue, TYPED_ANSWER_MAX,
+} from '../services/answerSets.js';
 
 const boxStyle = (phone, width, align = 'left') => ({
   width,
@@ -97,6 +102,41 @@ function ScoreAnswer({ item, saved, onCommit, phone }) {
   );
 }
 
+const TONE_CLASS = { good: 'is-yes', bad: 'is-no', neutral: 'is-na' };
+
+function ManyAnswer({ item, saved, onCommit, phone }) {
+  const tip = useTooltip();
+  const options = manyOptionsOf(item);
+  const picked = manyPicked(item, saved);
+  const label = item?.text || 'Checklist';
+  const group = phone ? 'mobile-survey-check-group' : 'survey-rail__answers';
+  const button = phone ? 'mobile-survey-check-btn' : 'survey-rail__answer';
+  return (
+    <div className={group} role="group" aria-label={`${label} options`} style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+      {options.map((o) => {
+        const on = picked.has(o.value);
+        return (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={on}
+            aria-label={`${label} ${o.value}`}
+            {...(o.means ? tip(`${o.value}: ${o.means}`, 'below') : {})}
+            className={`${button}${on ? ` is-active ${TONE_CLASS[o.tone] || 'is-na'}` : ''}`}
+            onClick={(e) => {
+              stop(e);
+              const next = options.filter((x) => (x.value === o.value ? !on : picked.has(x.value))).map((x) => x.value).join(', ');
+              onCommit(next);
+            }}
+          >
+            {o.value}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function CountAnswer({ item, saved, onCommit, phone }) {
   const n = saved === '' ? null : Number(saved);
   const button = phone ? 'mobile-survey-check-btn' : 'survey-rail__answer';
@@ -131,6 +171,7 @@ export default function TypedAnswerInput({ item, value, onCommit, className, pho
   let control;
   if (kind === 'score') control = <ScoreAnswer item={item} saved={saved} onCommit={onCommit} phone={phone} />;
   else if (kind === 'count') control = <CountAnswer item={item} saved={saved} onCommit={onCommit} phone={phone} />;
+  else if (kind === 'many') control = <ManyAnswer item={item} saved={saved} onCommit={onCommit} phone={phone} />;
   else if (kind === 'date') {
     control = (
       <input

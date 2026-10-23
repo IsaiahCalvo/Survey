@@ -29,7 +29,7 @@ const fieldStyle = {
 
 const toDraft = (a) => ({ value: a.value, tone: a.tone, means: a.means || '' });
 
-export default function AnswerSetEditor({ set, onCommit, onClose, phone = false }) {
+export default function AnswerSetEditor({ set, onCommit, onClose, phone = false, intro = null }) {
   const [draft, setDraft] = useState(() => set.map(toDraft));
   // The set this editor last wrote. Any other change from outside (Cancel,
   // a reload, picking a preset) replaces the draft.
@@ -58,8 +58,12 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false 
       style={{ padding: pad, borderBottom: '1px solid var(--rule)', display: 'flex', flexDirection: 'column', gap: 6 }}
     >
       <p className="micro" style={{ margin: 0 }}>
-        Your answers. Good and Neutral count as done; Problem shows as an issue.
-        A "means" line shows as a hint on the answer and helps the voice agent pick it.
+        {intro || (
+          <>
+            Your answers. Good and Neutral count as done; Problem shows as an issue.
+            A "means" line shows as a hint on the answer and helps the voice agent pick it.
+          </>
+        )}
       </p>
       {draft.map((a, i) => (
         <div key={i} style={{ display: 'flex', flexWrap: phone ? 'wrap' : 'nowrap', gap: 6, alignItems: 'center' }}>
@@ -137,6 +141,7 @@ const KIND_OPTIONS = [
   { value: 'score', label: 'Score' },
   { value: 'count', label: 'Count' },
   { value: 'date', label: 'Date' },
+  { value: 'many', label: 'Pick many' },
 ];
 
 // A small box that commits on blur / Enter: a number (blank = not set) or text.
@@ -174,6 +179,7 @@ function SettingBox({ label, value, onCommit, width, size, placeholder, text = f
  */
 export function ItemKindPicker({ item, onChange, phone = false }) {
   const tip = useTooltip();
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const fields = itemAnswerFields(item);
   const kind = fields.kind || 'choice';
   const name = item.text || 'this item';
@@ -217,6 +223,36 @@ export function ItemKindPicker({ item, onChange, phone = false }) {
             {Array.from({ length: fields.scale - 1 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>Issue at {n} or lower</option>)}
           </select>
         </>
+      )}
+      {kind === 'many' && (
+        <span style={{ position: 'relative' }}>
+          <button
+            type="button"
+            aria-expanded={optionsOpen}
+            aria-label={`Options for "${name}"`}
+            onClick={() => setOptionsOpen((v) => !v)}
+            style={{ ...selectStyle, cursor: 'pointer' }}
+          >
+            Options ({fields.options.length})
+          </button>
+          {optionsOpen && (
+            <div
+              style={{
+                position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 20, width: 'min(420px, 90vw)',
+                background: 'var(--paper-card, var(--surface-2))', border: '1px solid var(--rule)', borderRadius: 6,
+                boxShadow: '0 6px 24px rgba(0,0,0,0.18)', textAlign: 'left',
+              }}
+            >
+              <AnswerSetEditor
+                phone={phone}
+                set={fields.options}
+                onCommit={(options) => set({ options })}
+                onClose={() => setOptionsOpen(false)}
+                intro="The options people can pick, any number of them. Any pick counts as done; a Problem option shows as an issue."
+              />
+            </div>
+          )}
+        </span>
       )}
       {kind === 'date' && (
         <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: size.fontSize, color: 'var(--text-2)' }}>
