@@ -471,7 +471,9 @@ export default function HubPreview() {
             templatesLoadError={loadErrors.templates}
             onRetryTemplates={() => retryLoad('templates')}
             members={MOCK_MEMBERS}
-            user={{ name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
+            // id 'u1' owns the fixture projects/documents, so owner-only
+            // actions (rename/share/delete, Projects select bar) stay live.
+            user={{ id: 'u1', name: 'Isaiah Calvo', email: 'isaiahcalvo123@gmail.com' }}
             isPro
             initialTab={initialTab}
             initialMobileDetailOpen={initialMobileDetailOpen}

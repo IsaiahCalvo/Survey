@@ -22,6 +22,7 @@
 
 import { chromium } from 'playwright';
 import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 const DOC_NAME = process.argv[2] || 'SE-011 Security Shop Drawing Rev2 - 05.06.25.pdf';
@@ -35,7 +36,7 @@ const check = (name, pass, detail = '') => {
 };
 
 const browser = await chromium.launch({ headless: HEADLESS });
-const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
 if (FORCE_FLAG !== null) {
   await ctx.addInitScript((v) => { try { window.localStorage.setItem('CALLOUTS_SHARED_STORE', v); } catch { /* */ } }, FORCE_FLAG);
 }

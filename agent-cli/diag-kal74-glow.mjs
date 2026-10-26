@@ -8,6 +8,7 @@ import { createSupabaseMock } from './lib/supabaseMock.mjs';
 import {
   buildFixtures, createHistoryStore, createRevisionStore, buildKal48RpcHandlers, DOC_NAME,
 } from './lib/kal74Fixtures.mjs';
+import { assertNoProdEnv, guardContext } from './lib/blockNonLoopback.mjs';
 
 const PORT = Number(process.env.PORT || 5176);
 const BASE = `http://localhost:${PORT}/`;
@@ -15,6 +16,7 @@ const PDF_FIXTURE = 'debug/fixtures/se011.pdf';
 const log = (...a) => console.log(...a);
 
 async function startVite() {
+  assertNoProdEnv();
   const child = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
     cwd: process.cwd(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -39,7 +41,7 @@ async function main() {
       readHandlerOverrides: historyStore.readOverrides,
       onMutation: historyStore.onMutation,
     });
-    const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+    const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
     const page = await ctx.newPage();
     await mock.register(page);
     page.on('dialog', (d) => d.accept().catch(() => {}));

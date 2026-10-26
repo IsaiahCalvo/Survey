@@ -657,8 +657,14 @@ export function subscribeToDocumentPresence(documentId, onPresenceEvent, { onSub
 /**
  * Get collaborators for a document
  */
+// Only a real document row (uuid id) can have collaborators or an owner
+// profile. Local/preview fixture ids ('d3') would always get a 400 from
+// PostgREST, so they are answered locally without a request.
+const DOCUMENT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isDocumentUuid = (id) => typeof id === 'string' && DOCUMENT_UUID_RE.test(id);
+
 export async function getDocumentCollaborators(documentId) {
-  if (!documentId) return { data: [], error: null };
+  if (!isDocumentUuid(documentId)) return { data: [], error: null };
 
   const { data, error } = await supabase
     .from('document_collaborators')
@@ -689,7 +695,7 @@ let ownerProfileRpcUnavailable = false;
 const OWNER_PROFILE_UNAVAILABLE_CODES = new Set(['PGRST202', '42883', '42501', 'PGRST301', '401', '403', '404']);
 
 export async function getDocumentOwnerProfile(documentId) {
-  if (!documentId || ownerProfileRpcUnavailable) return null;
+  if (!isDocumentUuid(documentId) || ownerProfileRpcUnavailable) return null;
   try {
     const { data, error } = await supabase.rpc('get_document_owner_profile', { doc_id: documentId });
     if (error) {

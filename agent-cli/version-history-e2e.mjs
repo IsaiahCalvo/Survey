@@ -52,6 +52,7 @@ import {
   buildFixtures, createHistoryStore, createRevisionStore, buildKal48RpcHandlers,
   DOC_ID, DOC_NAME, FIXTURE_ANNOTATION_IDS,
 } from './lib/kal74Fixtures.mjs';
+import { assertNoProdEnv, guardContext } from './lib/blockNonLoopback.mjs';
 
 const PORT = Number(process.env.PORT || 5176);
 const BASE = `http://localhost:${PORT}/`;
@@ -104,6 +105,7 @@ const knownBug = (cond, label, bugNote) => {
 };
 
 async function startVite() {
+  assertNoProdEnv();
   const child = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
     cwd: process.cwd(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -151,7 +153,7 @@ async function main() {
       onMutation: historyStore.onMutation,
     });
 
-    const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+    const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
     const page = await ctx.newPage();
     const logs = [];
     page.on('console', (m) => logs.push(m.text()));

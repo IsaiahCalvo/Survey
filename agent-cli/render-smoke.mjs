@@ -12,6 +12,7 @@
 // ponytail: hardcoded selectors/timeouts; lift to args if a second caller needs them.
 import { chromium } from 'playwright';
 import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 const DOC_NAME = process.argv[2] || 'Package 2 - Rev 4 -- IC.pdf';
@@ -21,7 +22,7 @@ const OUT = new URL('./render-smoke-result.png', import.meta.url).pathname;
 const fail = (msg) => { console.error(`\n❌ FAIL: ${msg}`); process.exitCode = 1; };
 
 const browser = await chromium.launch({ headless: HEADLESS });
-const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
 const page = await ctx.newPage();
 
 const consoleErrors = [];

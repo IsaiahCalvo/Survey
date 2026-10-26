@@ -19,6 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 let PNG;
 try {
@@ -43,7 +44,7 @@ let stepIndex = 0;
 const step = (msg) => console.log(`[${++stepIndex}] ${msg}`);
 
 const browser = await chromium.launch({ headless: HEADLESS });
-const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 }, deviceScaleFactor: 2 });
+const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 }, deviceScaleFactor: 2 }));
 const page = await ctx.newPage();
 
 const getClip = async () => {

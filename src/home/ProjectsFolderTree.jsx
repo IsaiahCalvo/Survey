@@ -593,15 +593,15 @@ export default function ProjectsFolderTree({
   const nameDirty = !!(draftProject && nameDraft.value.trim() && nameDraft.value.trim() !== draftProject.name);
   const editProjectName = useCallback((id, value) => setNameDraft({ id, value }), []);
   const cancelProjectName = useCallback(() => setNameDraft(null), []);
+  // Not inside a setNameDraft updater: updaters run during render, and
+  // renameProject calls the parent's onRenameProject (a setState up the tree).
   const saveProjectName = useCallback(() => {
-    setNameDraft((draft) => {
-      if (!draft) return null;
-      const name = draft.value.trim();
-      const project = projectById.get(draft.id);
-      if (project && name && name !== project.name) renameProject(draft.id, name);
-      return null;
-    });
-  }, [projectById, renameProject]);
+    if (!nameDraft) return;
+    const name = nameDraft.value.trim();
+    const project = projectById.get(nameDraft.id);
+    setNameDraft(null);
+    if (project && name && name !== project.name) renameProject(nameDraft.id, name);
+  }, [nameDraft, projectById, renameProject]);
   // A draft belongs to one project. Once that project is no longer the one on
   // screen (desktop panel or phone drill-down), the draft is dropped rather
   // than carried across to another project's name.
