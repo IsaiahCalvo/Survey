@@ -1,3 +1,4 @@
+import { moveGroupFocus } from '../utils/radioGroupKeys.js';
 import './StrokeStyleCards.css';
 
 /*
@@ -149,7 +150,7 @@ export function LineStyleCard({ label = 'Style', value, mixed, options, onSelect
       <Paper mixed={mixed}>
         <StrokeSample width={212} height={44} pad={14} strokePx={paperPx(widthPt)} color={ink} paper={PAPER} dash={value} endHead={endHead} startHead={startHead} />
       </Paper>
-      <div className="stroke-card__tiles" role="radiogroup" aria-label={label} style={{ '--stroke-card-cols': options.length }}>
+      <div className="stroke-card__tiles" role="radiogroup" onKeyDown={moveGroupFocus} aria-label={label} style={{ '--stroke-card-cols': options.length }}>
         {options.map((option) => (
           <Tile key={option.value} active={!mixed && option.value === value} label={option.label} testValue={option.value} onPick={() => onSelect(option.value)}>
             <StrokeSample width={40} height={16} pad={3} strokePx={2} dash={option.value} />
@@ -195,7 +196,7 @@ export function ArrowEndsCard({
         />
       </Paper>
       {showEnds && (
-        <div className="stroke-card__ends" role="radiogroup" aria-label="Which ends">
+        <div className="stroke-card__ends" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Which ends">
           {[['end', 'End'], ['both', 'Both ends']].map(([value, word]) => {
             const active = !endsMixed && head !== 'none' && ends === value;
             return (
@@ -215,7 +216,7 @@ export function ArrowEndsCard({
           })}
         </div>
       )}
-      <div className="stroke-card__tiles" role="radiogroup" aria-label="Arrowhead" style={{ '--stroke-card-cols': 3 }}>
+      <div className="stroke-card__tiles" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Arrowhead" style={{ '--stroke-card-cols': 3 }}>
         {headOptions.map((option) => (
           <Tile key={option.value} active={!headMixed && option.value === head} label={option.label} testValue={option.value} onPick={() => onHead(option.value)}>
             <StrokeSample width={40} height={16} pad={3} strokePx={1.5} endHead={option.value} startHead={both && option.value !== 'none' ? option.value : 'none'} />

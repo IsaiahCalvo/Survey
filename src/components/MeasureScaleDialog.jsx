@@ -10,6 +10,7 @@ import { Icon } from '../home/HubShell';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import MotionPresence from './MotionPresence.jsx';
 import { useTooltip } from './Tooltip';
+import { moveGroupFocus } from '../utils/radioGroupKeys.js';
 import './MeasureScaleDialog.css';
 
 // Set page scale (Drawboard "Set page scale" / Calibrate). With a drawn
@@ -101,18 +102,18 @@ export default function MeasureScaleDialog({ pageNumber, lengthPt = null, curren
                   style={{ fontSize: 16 }}
                 />
                 <div className="measure-scale__label">Unit</div>
-                <div className="measure-scale__chips measure-scale__chips--units" role="radiogroup" aria-label="Unit" data-measure-unit="true">
+                <div className="measure-scale__chips measure-scale__chips--units" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Unit" data-measure-unit="true">
                   {Object.keys(MEASURE_UNITS).map((u) => chip(u, MEASURE_UNITS[u].label, unit === u, () => setUnit(u), { 'data-measure-unit-option': u }))}
                 </div>
               </>
             ) : (
               <>
                 <div className="measure-scale__label">Architectural</div>
-                <div className="measure-scale__chips" role="radiogroup" aria-label="Architectural scale" data-measure-preset="true">
+                <div className="measure-scale__chips" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Architectural scale" data-measure-preset="true">
                   {IMPERIAL.map((p) => chip(p.id, p.label, preset === p.id, () => setPreset(p.id), { 'data-measure-preset-option': p.id }))}
                 </div>
                 <div className="measure-scale__label">Ratio</div>
-                <div className="measure-scale__chips" role="radiogroup" aria-label="Ratio scale">
+                <div className="measure-scale__chips" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Ratio scale">
                   {OTHER.map((p) => chip(p.id, p.label, preset === p.id, () => setPreset(p.id), { 'data-measure-preset-option': p.id }))}
                 </div>
                 <button type="button" className="measure-scale__calibrate" data-measure-start-calibrate="true" onClick={onCalibrate}>

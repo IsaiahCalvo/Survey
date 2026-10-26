@@ -67,6 +67,18 @@ test('row 2 swaps between regular and text settings; the arrow and scale pickers
   await expect(row.getByRole('button', { name: 'Style', exact: true })).toContainText('Dashed');
   await row.getByRole('button', { name: 'Style', exact: true }).click();
   await page.locator('[data-line-style-card] [data-stroke-tile="solid"]').click();
+  // Arrow keys and Home/End move between the tiles, as the old lists did.
+  await row.getByRole('button', { name: 'Style', exact: true }).click();
+  await style.locator('[data-stroke-tile="solid"]').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(style.locator('[data-stroke-tile="dashed"]')).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(style.locator('[data-stroke-tile]').last()).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(style.locator('[data-stroke-tile="solid"]')).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(style.locator('[data-stroke-tile]').last()).toBeFocused();
+  await page.keyboard.press('Escape');
 
   // #13: Set page scale.
   await page.locator('[data-measure-tool="menu"]').click();

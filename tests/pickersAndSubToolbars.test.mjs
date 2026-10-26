@@ -58,3 +58,14 @@ test('#18 the Layers panel has no slider', () => {
   assert.doesNotMatch(layers, /type="range"/);
   assert.match(layers, /const PDF_OPACITY_STEPS = \[\[100, '100%'\], \[75, '75%'\], \[50, '50%'\], \[25, '25%'\], \[0, 'Off'\]\];/);
 });
+
+test('picker cards and the scale dialog move focus with arrow keys', () => {
+  const keys = read('../src/utils/radioGroupKeys.js');
+  assert.match(keys, /ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1/);
+  for (const file of ['../src/components/StrokeStyleCards.jsx', '../src/components/MeasureScaleDialog.jsx']) {
+    const src = read(file);
+    const groups = src.match(/role="radiogroup"[^>]*>/g) || [];
+    assert.ok(groups.length > 0, file);
+    for (const group of groups) assert.match(group, /onKeyDown=\{moveGroupFocus\}/, file);
+  }
+});
