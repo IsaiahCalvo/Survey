@@ -155,7 +155,8 @@ test('wiring: every mark save, the eraser, print and the review bundle honor lay
   assert.match(viewer, /hiddenLayerIds=\{hiddenLayerIds\}\n\s+zoomGeneration=\{zoomGeneration\}/);
   // Print and the review bundle skip hidden layers like Export PDF / XFDF.
   assert.match(viewer, /annotationsByPage: withoutHiddenLayers\(printableAnnotationsByPageRef\.current \|\| \{\}, hiddenLayerIdsRef\.current\)/);
-  assert.equal((viewer.match(/annotationsByPage: withoutHiddenLayers\(annotationsByPage, hiddenLayerIds\)/g) || []).length, 2);
+  // XFDF, the review bundle, and the Export PDF dialog's "pages with marks".
+  assert.equal((viewer.match(/annotationsByPage: withoutHiddenLayers\(annotationsByPage, hiddenLayerIds\)/g) || []).length, 3);
 });
 
 test('text-markup transactions: new highlight groups on any page get the active layer', () => {
