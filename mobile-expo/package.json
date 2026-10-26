@@ -36,5 +36,8 @@
     "web": "expo start --web",
     "check": "tsc --noEmit && expo config --type public"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "zod": "^4.6.6"
+  }
 }
