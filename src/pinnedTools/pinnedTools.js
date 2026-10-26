@@ -307,6 +307,49 @@ export function chooseDockPlacement(bounds, width, height, current = null, exitB
   return center <= side ? 'left' : 'right';
 }
 
+const smoothstep = (t) => t * t * (3 - 2 * t);
+const clamp01 = (t) => Math.min(1, Math.max(0, t));
+
+/**
+ * The magnet (walkthu getMagnetizedTranslation): how far to pull the carried
+ * dock toward the zone it would land in. `bounds` is where the grip alone
+ * would put it (box in page-area pixels), `home` the zone's centre. The pull
+ * grows smoothly from nothing at the middle of the page area to most of the
+ * way at the edge (86% at the sides, 56% for the bottom band), and the sides
+ * let go of the dock's height as it nears the bottom band so the two magnets
+ * never fight. Returns the { x, y } to add.
+ */
+export function magnetPull(bounds, target, width, height, home) {
+  if (!target || !home || !(width > 0) || !(height > 0)) return { x: 0, y: 0 };
+  const { side, bottom } = snapDistances(width, height);
+  const raw = target === 'left'
+    ? 1 - bounds.left / Math.max(1, side)
+    : target === 'right'
+      ? (bounds.right - (width - side)) / Math.max(1, side)
+      : 1 - (height - bounds.bottom) / Math.max(1, bottom);
+  const strength = smoothstep(clamp01(raw)) * (target === 'bottom' ? 0.56 : 0.86);
+  if (target === 'bottom') {
+    return { x: 0, y: (home.bottom - bounds.bottom) * strength };
+  }
+  const nearBottom = smoothstep(clamp01((bounds.bottom - (height - bottom * 2)) / Math.max(1, bottom)));
+  const pull = strength * (1 - nearBottom);
+  const cx = (bounds.left + bounds.right) / 2;
+  const cy = (bounds.top + bounds.bottom) / 2;
+  return { x: (home.x - cx) * pull, y: (home.y - cy) * pull };
+}
+
+/**
+ * Where a pin sits in slots once the dragged one lands at `to` (an index
+ * among the other pins): the others close up behind it and open a gap in
+ * front of it. Returns the slot shift (-1, 0 or 1) for the pin at `index`.
+ */
+export function reorderShift(index, from, to) {
+  if (from < 0 || index === from) return 0;
+  const among = index > from ? index - 1 : index;
+  const final = among < to ? among : among + 1;
+  return final - index;
+}
+
 /** How long the drop glide lasts: longer for a longer trip (walkthu's rule). */
 export function dropDurationMs(from, to) {
   const dx = (to.left + to.width / 2) - (from.left + from.width / 2);

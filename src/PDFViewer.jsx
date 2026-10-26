@@ -321,7 +321,7 @@ import {
 } from './services/excelSyncClient';
 import { enqueueWriteback } from './services/rowIdWritebackQueue';
 import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
-import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
+import { buildCounterSeriesDeletionUpdates, buildCounterSeriesOrderUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, canSnapshotToolSettings, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, historyFingerprintsEqual, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { pageOperationCheckpoint, pageOperationStepId } from './utils/pageOperationHistory.js';
@@ -3498,6 +3498,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleCounterGroupUpdateRef = useRef(null);
   const handleDeleteCounterSeriesRef = useRef(null);
   const handleRenameCounterSeriesRef = useRef(null);
+  const handleRecolorCounterSeriesRef = useRef(null);
+  const handleReorderCounterSeriesRef = useRef(null);
   const counterSeriesActiveRef = useRef(isActive);
   counterSeriesActiveRef.current = isActive;
   const commitTextMarkupDocumentTransactionRef = useRef(null);
@@ -3533,6 +3535,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   ), []);
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
+  ), []);
+  const handleRecolorCounterSeriesFromToolbar = useCallback((seriesId, paint) => (
+    handleRecolorCounterSeriesRef.current?.(seriesId, paint) || { ok: false, reason: 'unavailable' }
+  ), []);
+  const handleReorderCounterSeriesFromToolbar = useCallback((orderedIds) => (
+    handleReorderCounterSeriesRef.current?.(orderedIds) || { ok: false, reason: 'unavailable' }
   ), []);
   // `refit` (optional): runs on the patched object before it is saved, in the
   // same write - the text bar uses it to grow a text box to fit a bigger font
@@ -26689,6 +26697,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       onSwitchCounterSeries: handleSwitchCounterSeries,
       onDeleteCounterSeries: handleDeleteCounterSeriesFromToolbar,
       onRenameCounterSeries: handleRenameCounterSeriesFromToolbar,
+      onRecolorCounterSeries: handleRecolorCounterSeriesFromToolbar,
+      onReorderCounterSeries: handleReorderCounterSeriesFromToolbar,
       selectedCounterSeriesId,
       selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
       selectedCounterSeriesStart: selectedCounterSeriesId
@@ -26828,6 +26838,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleSwitchCounterSeries,
     handleDeleteCounterSeriesFromToolbar,
     handleRenameCounterSeriesFromToolbar,
+    handleRecolorCounterSeriesFromToolbar,
+    handleReorderCounterSeriesFromToolbar,
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
@@ -29816,6 +29828,66 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return { ok: true };
   }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
   handleRenameCounterSeriesRef.current = handleRenameCounterSeries;
+
+  // The counts list (beta 'counter-list', CounterSeriesMenu): recolour a
+  // whole count's pin and number from its row. Same rules as a rename.
+  const handleRecolorCounterSeries = useCallback((seriesId, paint) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
+    const patch = {};
+    if (typeof paint?.fill === 'string' && paint.fill) patch.fill = paint.fill;
+    if (typeof paint?.numberColor === 'string' && paint.numberColor) patch.numberColor = paint.numberColor;
+    if (!Object.keys(patch).length) return { ok: false, reason: 'invalid-paint' };
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
+    if (!permission.ok) return permission;
+    handleCounterGroupUpdateRef.current?.(seriesId, patch);
+    // The count new pins land in: the tool's own colours follow it.
+    if (activeCounterSeriesIdRef.current === seriesId) {
+      if (patch.fill) setFillColor(patch.fill);
+      if (patch.numberColor) setStrokeColor(patch.numberColor);
+    }
+    return { ok: true };
+  }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
+  handleRecolorCounterSeriesRef.current = handleRecolorCounterSeries;
+
+  // The counts list's drag to reorder: every pin carries its count's place
+  // (buildCounterSeriesOrderUpdates), saved as ONE undo step over all pages.
+  const handleReorderCounterSeries = useCallback((orderedIds) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
+    const allPages = annotationsByPageRef.current || {};
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    for (const seriesId of Array.isArray(orderedIds) ? orderedIds : []) {
+      const permission = checkCounterSeriesEdit(allPages, seriesId, { viewerId, documentOwnerId });
+      if (!permission.ok) return permission;
+    }
+    const plan = buildCounterSeriesOrderUpdates(allPages, orderedIds);
+    if (!plan.ok) return plan;
+    if (plan.updates.length === 0) return { ok: true };
+    const pageActions = plan.updates.map(({ pageKey, json }) => {
+      const numericKey = Number(pageKey);
+      const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+      return buildAnnotationHistoryAction({ pageNumber, previousPage: allPages[pageKey], nextPage: json });
+    }).filter(Boolean);
+    const scoped = filterAnnotationHistoryActionByOwner(
+      { type: 'fabric:document-batch', actions: pageActions },
+      viewerId,
+      documentOwnerId,
+    );
+    plan.updates.forEach(({ pageKey, json }) => {
+      const numericKey = Number(pageKey);
+      const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+      handleSaveAnnotations(pageNumber, json, {
+        source: 'counter:series-reorder',
+        action: 'counter-series-reorder',
+        checkpointPolicy: 'skip',
+      });
+      endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
+    });
+    if (scoped?.actions?.length) pushLocalAnnotationHistoryAction(scoped);
+    setCounterUITick((tick) => tick + 1);
+    return { ok: true };
+  }, [documentOwnerId, handleSaveAnnotations, pushLocalAnnotationHistoryAction, user?.id, yjsUndoCtx?.userId]);
+  handleReorderCounterSeriesRef.current = handleReorderCounterSeries;
 
   // Request deletion of one complete counter series. The existing shared
   // confirmation modal handles both ordinary and cross-author series. The

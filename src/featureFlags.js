@@ -74,6 +74,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Pinned tools dock (favourite tools with their own colour and width)',
     stage: 'beta',
   }),
+  'counter-list': Object.freeze({
+    label: 'Counts list: rename, recolour and reorder counts in one place',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

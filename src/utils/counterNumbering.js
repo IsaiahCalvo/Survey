@@ -125,9 +125,12 @@ export function buildCounterSeriesDeletionUpdates(annotationsByPage, seriesId) {
 /**
  * Returns the ordered list of counter series found across all pages.
  * Series order is by the earliest createdAt of any pin in the series, so
- * "Count 1" is always the oldest series, "Count 2" the next, etc.
+ * "Count 1" is always the oldest series, "Count 2" the next, etc. — unless the
+ * counts were dragged into another order in the counts list (beta
+ * 'counter-list'): then each pin carries data.seriesOrder and that wins; a
+ * count started since then has none and follows the ordered ones.
  *
- * Each entry: { seriesId, color, numberColor, label, count, firstCreatedAt }
+ * Each entry: { seriesId, color, numberColor, label, count, firstCreatedAt, order }
  */
 export function getCounterSeriesList(annotationsByPage) {
   if (!annotationsByPage || typeof annotationsByPage !== 'object') {
@@ -149,11 +152,14 @@ export function getCounterSeriesList(annotationsByPage) {
           numberColor: obj.data.numberColor || '#ffffff',
           firstCreatedAt: Number(obj.data.createdAt) || 0,
           name: String(obj.data.seriesName || '').trim(),
+          order: null,
           count: 0,
         });
       }
       const entry = groups.get(key);
       entry.count += 1;
+      const order = Number(obj.data.seriesOrder);
+      if (obj.data.seriesOrder != null && Number.isFinite(order) && entry.order == null) entry.order = order;
       if (!entry.name && obj.data.seriesName) entry.name = String(obj.data.seriesName).trim();
       const ts = Number(obj.data.createdAt) || 0;
       if (ts && ts < entry.firstCreatedAt) entry.firstCreatedAt = ts;
@@ -163,14 +169,57 @@ export function getCounterSeriesList(annotationsByPage) {
     }
   }
 
-  const sorted = Array.from(groups.values()).sort(
-    (a, b) => a.firstCreatedAt - b.firstCreatedAt
-  );
+  const sorted = Array.from(groups.values()).sort((a, b) => {
+    if (a.order != null && b.order != null && a.order !== b.order) return a.order - b.order;
+    if ((a.order != null) !== (b.order != null)) return a.order != null ? -1 : 1;
+    return a.firstCreatedAt - b.firstCreatedAt;
+  });
 
   return sorted.map((entry, i) => ({
     ...entry,
     label: entry.name || `Count ${i + 1}`,
   }));
+}
+
+/**
+ * The page writes that put the counts in `orderedIds` order (the counts list's
+ * drag to reorder): every pin gets data.seriesOrder, its count's place. A count
+ * still named by its place ("Count 2") keeps that name as its own, so moving
+ * it does not quietly rename it or the others. Pages with nothing to change
+ * are left out. `orderedIds` must name every count exactly once.
+ *
+ * Returns { ok, reason?, updates: [{ pageKey, json }] }.
+ */
+export function buildCounterSeriesOrderUpdates(annotationsByPage, orderedIds) {
+  const list = getCounterSeriesList(annotationsByPage);
+  const ids = Array.isArray(orderedIds) ? orderedIds.map(String) : [];
+  if (
+    ids.length !== list.length
+    || new Set(ids).size !== ids.length
+    || list.some((series) => !ids.includes(String(series.seriesId)))
+  ) {
+    return { ok: false, reason: 'series-changed', updates: [] };
+  }
+  const place = new Map(ids.map((id, index) => [id, index]));
+  const labelOf = new Map(list.map((series) => [String(series.seriesId), series.label]));
+  const updates = [];
+  for (const pageKey of Object.keys(annotationsByPage || {})) {
+    const page = annotationsByPage[pageKey];
+    if (!page || !Array.isArray(page.objects)) continue;
+    let touched = false;
+    const objects = page.objects.map((obj) => {
+      if (obj?.data?.type !== 'counter' || !obj.data.seriesId) return obj;
+      const id = String(obj.data.seriesId);
+      if (!place.has(id)) return obj;
+      const seriesOrder = place.get(id);
+      const seriesName = String(obj.data.seriesName || '').trim() || labelOf.get(id);
+      if (obj.data.seriesOrder === seriesOrder && obj.data.seriesName === seriesName) return obj;
+      touched = true;
+      return { ...obj, data: { ...obj.data, seriesOrder, seriesName } };
+    });
+    if (touched) updates.push({ pageKey, json: { ...page, objects } });
+  }
+  return { ok: true, updates };
 }
 
 export function resolveCounterSeriesPaint(
