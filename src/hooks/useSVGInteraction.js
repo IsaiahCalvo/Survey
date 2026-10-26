@@ -555,6 +555,20 @@ export function useSVGInteraction({
       && pointerType === 'touch';
   }, []);
 
+  // A box select belongs to the pointer that began it. A finger's tap that
+  // picked a mark (rule 3) arms one, and when the pick re-renders the page
+  // the tap's release can land outside this layer and never end it; the next
+  // finger then had its drag swallowed by that stale box (phone callout move,
+  // 2026-10-26). A press from another pointer drops it, as the lasso hands
+  // off above; a resting palm never drops a pen's box.
+  const dropForeignMarquee = useCallback((e) => {
+    const current = marqueeStateRef.current;
+    if (!current || current.pointerId == null || current.pointerId === e.pointerId) return;
+    if (current.pointerType === 'pen' && e.pointerType === 'touch') return;
+    try { svgRef.current?.releasePointerCapture?.(current.pointerId); } catch (_) { /* optional */ }
+    applyMarqueeState(null);
+  }, [applyMarqueeState, svgRef]);
+
   // UX: when a drag commits (move or group-move with > 2px delta), stamp
   // this ref with `Date.now()`. The browser's native `dblclick` event fires
   // when two pointerdowns land on the same target within ~300-500ms — a
@@ -1503,6 +1517,7 @@ export function useSVGInteraction({
         altHeld: false,
         active: false,
         pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
         keepOnClick: true,
       });
     }
@@ -1512,6 +1527,7 @@ export function useSVGInteraction({
 
   const handleAnnotationPointerDown = useCallback((e, index) => {
     e.stopPropagation();
+    dropForeignMarquee(e);
     if (dragStateRef.current?.active && dragStateRef.current.annotationIndex === index) {
       return;
     }
@@ -1861,7 +1877,7 @@ export function useSVGInteraction({
         ensureMoveStart(dragStateRef.current, annotations?.objects);
       }
     }
-  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount, activeTool, beginAreaSelectFromMark]);
+  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount, activeTool, beginAreaSelectFromMark, dropForeignMarquee]);
 
   /**
    * Hover enter: show blue outline preview.
@@ -1987,6 +2003,7 @@ export function useSVGInteraction({
    * and the SVG root catches clicks anywhere inside them.
    */
   const handleSvgPointerDown = useCallback((e) => {
+    dropForeignMarquee(e);
     const activeTextRangeDrag = dragStateRef.current;
     if (
       activeTextRangeDrag?.mode === 'text-markup-horizontal'
@@ -2405,6 +2422,7 @@ export function useSVGInteraction({
         altHeld: !!e.altKey,
         active: false,
         pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
       });
       try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
       // Intentionally no deselectAll() here. If the user releases under
@@ -2417,7 +2435,7 @@ export function useSVGInteraction({
       deselectAll();
       clearSelectedMarkers();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark, dropForeignMarquee]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -2452,7 +2470,7 @@ export function useSVGInteraction({
     // can't escape the page), and flip `active` once we cross the 5 px
     // min-drag threshold. Short-circuits before annotation drag math.
     const mq = marqueeStateRef.current;
-    if (mq) {
+    if (mq && (mq.pointerId == null || mq.pointerId === e.pointerId)) {
       const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
       const clampedX = Math.max(0, Math.min(pageWidth, pt.x));
       const clampedY = Math.max(0, Math.min(pageHeight, pt.y));
@@ -4494,7 +4512,7 @@ export function useSVGInteraction({
     //   - Above-threshold release: resolve hits, apply selection per
     //     modifier rules, clear marquee state.
     const mq = marqueeStateRef.current;
-    if (mq) {
+    if (mq && (mq.pointerId == null || mq.pointerId === e.pointerId)) {
       const wasActive = mq.active;
       applyMarqueeState(null);
       try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
@@ -5827,6 +5845,7 @@ export function useSVGInteraction({
    */
   const handleHandlePointerDown = useCallback((e, handleId) => {
     e.stopPropagation();
+    dropForeignMarquee(e);
     const activeTextRangeDrag = dragStateRef.current;
     if (
       activeTextRangeDrag?.mode === 'text-markup-horizontal'
@@ -6621,7 +6640,7 @@ export function useSVGInteraction({
       };
       diagLog('[BboxScaleDiag] start ' + JSON.stringify(startPayload));
     } catch (err) { console.warn('[BboxScaleDiag] start log failed', err); }
-  }, [selectedIds, annotations, svgRef, selectedCalloutIds, callouts, getGroupMarkerIds, getSurveyMarkerMembers, pageWidth, pageHeight, pageNumber]);
+  }, [selectedIds, annotations, svgRef, selectedCalloutIds, callouts, getGroupMarkerIds, getSurveyMarkerMembers, pageWidth, pageHeight, pageNumber, dropForeignMarquee]);
 
   // ---------------------------------------------------------------------------
   // Group delete (Plan 03): remove all selected annotations
