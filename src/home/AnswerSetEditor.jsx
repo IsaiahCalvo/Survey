@@ -11,8 +11,9 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './HubShell';
+import { hoverOnly, useTooltip } from '../components/Tooltip';
 import {
-  ANSWER_MEANS_MAX, ITEM_UNIT_MAX, MAX_ANSWERS, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
+  ANSWER_MEANS_MAX, ITEM_UNIT_MAX, MAX_ANSWERS, SCORE_SCALES, itemAnswerFields, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
 } from '../services/answerSets.js';
 
 const TONE_OPTIONS = [
@@ -133,36 +134,95 @@ const KIND_OPTIONS = [
   { value: 'choice', label: 'Pick one' },
   { value: 'text', label: 'Text' },
   { value: 'number', label: 'Number' },
+  { value: 'score', label: 'Score' },
+  { value: 'count', label: 'Count' },
+  { value: 'date', label: 'Date' },
 ];
+
+// A small box that commits on blur / Enter: a number (blank = not set) or text.
+function SettingBox({ label, value, onCommit, width, size, placeholder, text = false, maxLength }) {
+  const shown = value === undefined || value === null ? '' : String(value);
+  const tip = useTooltip();
+  return (
+    <input
+      aria-label={label}
+      {...hoverOnly(tip(label))}
+      defaultValue={shown}
+      key={shown}
+      maxLength={maxLength}
+      inputMode={text ? 'text' : 'decimal'}
+      placeholder={placeholder}
+      onBlur={(e) => {
+        const raw = e.currentTarget.value.trim();
+        if (text) { if (raw !== shown) onCommit(raw); return; }
+        const n = raw === '' ? undefined : Number(raw.replace(/,/g, ''));
+        if (n !== undefined && !Number.isFinite(n)) { e.currentTarget.value = shown; return; }
+        if (String(n ?? '') !== shown) onCommit(n);
+      }}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      style={{ ...fieldStyle, ...size, width, padding: '1px 4px' }}
+    />
+  );
+}
 
 /**
  * How one checklist item is answered: the template's buttons (Pick one), a
- * text box, or a number with an optional unit ("ft", "V").
+ * text box, a number (unit, fine range), a score (1-5 or 1-10, the score at
+ * or below which it is an issue), a count (fine range) or a date (an issue
+ * once past). `onChange` gets the item's whole answer settings
+ * ({ kind, ...settings }, {} for pick-one), cleaned by itemAnswerFields.
  */
 export function ItemKindPicker({ item, onChange, phone = false }) {
-  const kind = item.kind === 'text' || item.kind === 'number' ? item.kind : 'choice';
+  const tip = useTooltip();
+  const fields = itemAnswerFields(item);
+  const kind = fields.kind || 'choice';
+  const name = item.text || 'this item';
   const size = { fontSize: phone ? 13 : 11, height: phone ? 32 : undefined };
+  const set = (patch) => onChange(itemAnswerFields({ ...fields, kind, ...patch }));
+  const small = phone ? 48 : 36;
+  const selectStyle = { ...fieldStyle, ...size, padding: '1px 4px', color: 'var(--text-2)' };
+  const range = (kind === 'number' || kind === 'count') && (
+    <>
+      <SettingBox label={`Lowest fine value for "${name}"`} placeholder="min" value={fields.min} width={small} size={size} onCommit={(min) => set({ min })} />
+      <SettingBox label={`Highest fine value for "${name}"`} placeholder="max" value={fields.max} width={small} size={size} onCommit={(max) => set({ max })} />
+    </>
+  );
   return (
-    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
       <select
-        aria-label={`How "${item.text || 'this item'}" is answered`}
+        aria-label={`How "${name}" is answered`}
         value={kind}
-        onChange={(e) => onChange(e.target.value, kind === 'number' ? item.unit : '')}
-        style={{ ...fieldStyle, ...size, padding: '1px 4px', color: 'var(--text-2)' }}
+        onChange={(e) => onChange(e.target.value === 'choice' ? {} : itemAnswerFields({ ...fields, kind: e.target.value }))}
+        style={selectStyle}
       >
         {KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
       </select>
       {kind === 'number' && (
-        <input
-          aria-label={`Unit for "${item.text || 'this item'}"`}
-          defaultValue={item.unit || ''}
-          key={item.unit || ''}
-          maxLength={ITEM_UNIT_MAX}
-          placeholder="unit"
-          onBlur={(e) => { const u = e.currentTarget.value.trim(); if (u !== (item.unit || '')) onChange('number', u); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-          style={{ ...fieldStyle, ...size, width: phone ? 56 : 44, padding: '1px 4px' }}
-        />
+        <SettingBox text label={`Unit for "${name}"`} placeholder="unit" value={fields.unit} maxLength={ITEM_UNIT_MAX} width={phone ? 56 : 44} size={size} onCommit={(unit) => set({ unit })} />
+      )}
+      {range}
+      {kind === 'score' && (
+        <>
+          <select aria-label={`Score scale for "${name}"`} value={fields.scale} onChange={(e) => set({ scale: Number(e.target.value) })} style={selectStyle}>
+            {SCORE_SCALES.map((n) => <option key={n} value={n}>1-{n}</option>)}
+          </select>
+          <select
+            aria-label={`Issue at or below, for "${name}"`}
+            {...hoverOnly(tip('A score at or below this is an issue'))}
+            value={fields.issueAt ?? ''}
+            onChange={(e) => set({ issueAt: e.target.value ? Number(e.target.value) : undefined })}
+            style={selectStyle}
+          >
+            <option value="">No issue line</option>
+            {Array.from({ length: fields.scale - 1 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>Issue at {n} or lower</option>)}
+          </select>
+        </>
+      )}
+      {kind === 'date' && (
+        <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: size.fontSize, color: 'var(--text-2)' }}>
+          <input type="checkbox" checked={fields.issueIfPast === true} onChange={(e) => set({ issueIfPast: e.target.checked })} />
+          Issue once past
+        </label>
       )}
     </span>
   );

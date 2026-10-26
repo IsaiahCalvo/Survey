@@ -82,12 +82,74 @@ export function publishProblems(kit) {
   return errors;
 }
 
-// Checklist item kinds: pick-one (the answer set), or a typed text / number.
+// Checklist item kinds: pick-one (the answer set) or a typed answer. Every
+// answer is saved as a plain string in the item's `selection`:
+//   text   the text                  number  "8.5"  (unit, min, max)
+//   score  "3" on 1..scale (5 or 10, issueAt)
+//   count  "4", a whole number >= 0 (min, max)
+//   date   "2026-10-22" (issueIfPast)
 export const TYPED_ANSWER_MAX = 200;
+export const ITEM_KINDS = Object.freeze(['choice', 'text', 'number', 'score', 'count', 'date']);
+export const ITEM_UNIT_MAX = 12;
+export const SCORE_SCALES = Object.freeze([5, 10]);
+// Every item field that belongs to its answer settings (see itemAnswerFields).
+export const ITEM_ANSWER_KEYS = Object.freeze(['kind', 'unit', 'min', 'max', 'scale', 'issueAt', 'issueIfPast']);
 
-/** An item's kind: 'text', 'number', or 'choice' (the default). */
+/** An item's kind: one of ITEM_KINDS, 'choice' (the default) when unknown. */
 export function checklistItemKind(item) {
-  return item?.kind === 'text' || item?.kind === 'number' ? item.kind : 'choice';
+  return item?.kind && item.kind !== 'choice' && ITEM_KINDS.includes(item.kind) ? item.kind : 'choice';
+}
+
+const finite = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const whole = (v) => (Number.isInteger(v) ? v : null);
+
+/** A score item's top score (5 unless set to 10). */
+export const scoreScaleOf = (item) => (item?.scale === 10 ? 10 : 5);
+
+/**
+ * The answer settings an item keeps, cleaned, for its kind: {} for pick-one,
+ * else { kind, ...settings }. The template editor saves exactly this, and the
+ * version fingerprint and the agent read it.
+ */
+export function itemAnswerFields(item) {
+  const kind = checklistItemKind(item);
+  if (kind === 'choice') return {};
+  const out = { kind };
+  if (kind === 'number') {
+    const unit = typeof item.unit === 'string' ? item.unit.trim().slice(0, ITEM_UNIT_MAX) : '';
+    if (unit) out.unit = unit;
+  }
+  if (kind === 'number' || kind === 'count') {
+    const pick = kind === 'count' ? (v) => (whole(v) !== null && v >= 0 ? v : null) : finite;
+    const min = pick(item.min);
+    const max = pick(item.max);
+    if (min !== null) out.min = min;
+    if (max !== null && (min === null || max >= min)) out.max = max;
+  }
+  if (kind === 'score') {
+    out.scale = scoreScaleOf(item);
+    const at = whole(item.issueAt);
+    if (at !== null && at >= 1 && at < out.scale) out.issueAt = at;
+  }
+  if (kind === 'date' && item.issueIfPast === true) out.issueIfPast = true;
+  return out;
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const isoDay = (y, m, d) => {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? `${y}-${pad2(m)}-${pad2(d)}` : null;
+};
+
+/** A date answer as "YYYY-MM-DD" from "2026-10-22", "10/22/2026" or a Date; null if none. */
+export function dateAnswerOf(raw) {
+  if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw.toISOString().slice(0, 10);
+  const s = String(raw ?? '').trim();
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/.exec(s);
+  if (m) return isoDay(+m[1], +m[2], +m[3]);
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s); // US month/day/year
+  if (m) return isoDay(+m[3], +m[1], +m[2]);
+  return null;
 }
 
 /**
@@ -100,4 +162,62 @@ export function typedAnswerFor(kind, raw) {
   if (kind !== 'number') return s.slice(0, TYPED_ANSWER_MAX);
   const n = Number(s.replace(/,/g, ''));
   return Number.isFinite(n) && /\d/.test(s) ? String(n) : null;
+}
+
+/**
+ * Any non-pick-one answer as saved: '' for blank, the clean value, or null
+ * when it does not fit the item (a score off the scale, a count below 0, a
+ * date that is not a date). Pick-one answers are not handled here.
+ */
+export function itemAnswerFor(item, raw) {
+  const kind = checklistItemKind(item);
+  if (raw == null || String(raw).trim() === '') return '';
+  if (kind === 'date') return dateAnswerOf(raw);
+  if (kind === 'score' || kind === 'count') {
+    const n = Number(String(raw).trim().replace(/,/g, ''));
+    if (!Number.isInteger(n)) return null;
+    if (kind === 'score') return n >= 1 && n <= scoreScaleOf(item) ? String(n) : null;
+    return n >= 0 ? String(n) : null;
+  }
+  return typedAnswerFor(kind, raw);
+}
+
+/** Today as "YYYY-MM-DD" in local time (a date answer's "past" is local). */
+export const localToday = (now = new Date()) => `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+
+/**
+ * Whether a non-pick-one answer is an issue: a number or count outside its
+ * min / max, a score at or below its issue line, a date already past when
+ * the item says so. Text never is.
+ */
+export function typedAnswerIsIssue(item, raw, today = localToday()) {
+  const value = itemAnswerFor(item, raw);
+  if (!value) return false;
+  const f = itemAnswerFields(item);
+  if (f.kind === 'number' || f.kind === 'count') {
+    const n = Number(value);
+    return (f.min !== undefined && n < f.min) || (f.max !== undefined && n > f.max);
+  }
+  if (f.kind === 'score') return f.issueAt !== undefined && Number(value) <= f.issueAt;
+  if (f.kind === 'date') return f.issueIfPast === true && value < today;
+  return false;
+}
+
+const range = (f) => (f.min !== undefined && f.max !== undefined ? ` from ${f.min} to ${f.max}`
+  : f.min !== undefined ? ` of at least ${f.min}` : f.max !== undefined ? ` up to ${f.max}` : '');
+
+/** One line on what an item asks for ("Score 1-5", "Number in ft, 7 to 9"); '' for pick-one and text. */
+export function itemAnswerHint(item) {
+  const f = itemAnswerFields(item);
+  if (f.kind === 'number') return `Number${f.unit ? ` in ${f.unit}` : ''}${f.min !== undefined || f.max !== undefined ? `; fine${range(f)}` : ''}`;
+  if (f.kind === 'count') return `Count${f.min !== undefined || f.max !== undefined ? `; fine${range(f)}` : ''}`;
+  if (f.kind === 'score') return `Score 1-${f.scale}${f.issueAt !== undefined ? `; ${f.issueAt} or lower is an issue` : ''}`;
+  if (f.kind === 'date') return f.issueIfPast ? 'Date; an issue once it has passed' : 'Date';
+  return '';
+}
+
+/** What the survey agent and the connector are told about a line's answer. */
+export function itemAnswerSpec(item) {
+  const { kind, ...rest } = itemAnswerFields(item);
+  return kind ? { answer_kind: kind, ...rest } : {};
 }
