@@ -1,6 +1,6 @@
-// Nightly 'survey-report': the Survey panel's Report button downloads a
-// PowerPoint deck of the survey (cover, progress chart, issues); CSV
-// downloads the same report as a table.
+// Nightly 'survey-report': the Survey panel's Report menu downloads the
+// survey report as a PowerPoint deck (cover, progress chart, issues), a PDF,
+// an Excel workbook with a chart, or a CSV table.
 import JSZip from 'jszip';
 import { E2E_ACCOUNTS, E2E_SURVEY } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
@@ -24,13 +24,38 @@ async function openSurvey(page) {
   await expect(category).toBeVisible({ timeout: 30_000 });
 }
 
+async function pickReport(page, format) {
+  await page.getByRole('button', { name: 'Report', exact: true }).click();
+  await page.getByRole('menu', { name: 'Report format' }).getByRole('menuitem', { name: format }).click();
+}
+
+test('flag on: the PDF report and the Excel report with a chart', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('survey.flag.survey-report', '1'));
+  await signIn(page, E2E_ACCOUNTS.owner);
+  await openSurvey(page);
+  const fs = await import('node:fs/promises');
+
+  let download = page.waitForEvent('download', { timeout: 60_000 });
+  await pickReport(page, 'PDF (.pdf)');
+  const pdf = await download;
+  expect(pdf.suggestedFilename()).toBe(`${E2E_SURVEY.templateName} report.pdf`);
+  expect((await fs.readFile(await pdf.path())).subarray(0, 5).toString()).toBe('%PDF-');
+
+  download = page.waitForEvent('download', { timeout: 60_000 });
+  await pickReport(page, 'Excel with chart (.xlsx)');
+  const xlsx = await download;
+  expect(xlsx.suggestedFilename()).toBe(`${E2E_SURVEY.templateName} report.xlsx`);
+  const zip = await JSZip.loadAsync(await fs.readFile(await xlsx.path()));
+  expect(await zip.file('xl/charts/chart1.xml').async('string')).toContain(E2E_SURVEY.categoryName);
+  expect(zip.file('xl/worksheets/sheet3.xml')).not.toBeNull(); // Summary, Issues, Items
+});
+
 test('flag off: no Report button', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('survey.flag.survey-report', '0'));
   await signIn(page, E2E_ACCOUNTS.owner);
   await openSurvey(page);
   await expect(page.getByRole('button', { name: 'Export data' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Report', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Report as CSV' })).toHaveCount(0);
 });
 
 test('flag on: CSV downloads the report as a table, one row per item', async ({ page }) => {
@@ -38,7 +63,7 @@ test('flag on: CSV downloads the report as a table, one row per item', async ({ 
   await signIn(page, E2E_ACCOUNTS.owner);
   await openSurvey(page);
   const download = page.waitForEvent('download', { timeout: 60_000 });
-  await page.getByRole('button', { name: 'Report as CSV' }).click();
+  await pickReport(page, 'CSV table (.csv)');
   const file = await download;
   expect(file.suggestedFilename()).toBe(`${E2E_SURVEY.templateName} report.csv`);
   const rows = (await (await import('node:fs/promises')).readFile(await file.path(), 'utf8')).replace(/^\uFEFF/, '').trim().split('\r\n');
@@ -52,7 +77,7 @@ test('flag on: Report downloads a PowerPoint deck of the survey', async ({ page 
   await signIn(page, E2E_ACCOUNTS.owner);
   await openSurvey(page);
   const download = page.waitForEvent('download', { timeout: 60_000 });
-  await page.getByRole('button', { name: 'Report', exact: true }).click();
+  await pickReport(page, 'PowerPoint (.pptx)');
   const file = await download;
   expect(file.suggestedFilename()).toBe(`${E2E_SURVEY.templateName} report.pptx`);
   const zip = await JSZip.loadAsync(await (await import('node:fs/promises')).readFile(await file.path()));
@@ -83,7 +108,7 @@ test('the template\'s report layout picks the blocks: Issues list is a cover and
     await page.getByText('Documents', { exact: true }).filter({ visible: true }).first().click();
     await openSurvey(page);
     const download = page.waitForEvent('download', { timeout: 60_000 });
-    await page.getByRole('button', { name: 'Report', exact: true }).click();
+    await pickReport(page, 'PowerPoint (.pptx)');
     const file = await download;
     const zip = await JSZip.loadAsync(await (await import('node:fs/promises')).readFile(await file.path()));
     const slides = Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f));

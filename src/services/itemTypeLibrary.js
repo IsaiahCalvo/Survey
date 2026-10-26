@@ -21,6 +21,8 @@ export const ITEM_TYPE_LIBRARY = Object.freeze([
   { id: 'temperature', label: 'Temperature (°F)', fields: { kind: 'number', unit: '°F' } },
   { id: 'serial', label: 'Serial number', fields: { kind: 'text' } },
   { id: 'note', label: 'Note', fields: { kind: 'text' } },
+  { id: 'photo-of-label', label: 'Photo of label', fields: { kind: 'photo' } },
+  { id: 'sign-off', label: 'Sign-off', fields: { kind: 'signature' } },
 ].map((t) => Object.freeze(t)));
 
 export const itemTypeById = (id) => ITEM_TYPE_LIBRARY.find((t) => t.id === id) || null;

@@ -116,8 +116,14 @@ export function publishProblems(kit) {
 //   count  "4", a whole number >= 0 (min, max)
 //   date   "2026-10-22" (issueIfPast)
 //   many   "Rust, Crack": any of its own options (an answer set), in order
+//   photo      "2 photos": the photos live on the item's note media, each
+//              tagged with the line's id (lineId)
+//   signature  "Signed 2026-10-26": the signature is a PNG on the note media
 export const TYPED_ANSWER_MAX = 200;
-export const ITEM_KINDS = Object.freeze(['choice', 'text', 'number', 'score', 'count', 'date', 'many']);
+export const ITEM_KINDS = Object.freeze(['choice', 'text', 'number', 'score', 'count', 'date', 'many', 'photo', 'signature']);
+// Lines only a person in the app can fill (a camera, a hand): the agents and
+// imports may not set them.
+export const APP_ONLY_KINDS = Object.freeze(['photo', 'signature']);
 export const ITEM_UNIT_MAX = 12;
 export const SCORE_SCALES = Object.freeze([5, 10]);
 // Every item field that belongs to its answer settings (see itemAnswerFields).
@@ -218,6 +224,8 @@ export function itemAnswerFor(item, raw) {
   if (raw == null || String(raw).trim() === '') return '';
   if (kind === 'date') return dateAnswerOf(raw);
   if (kind === 'many') return manyAnswerOf(item, raw);
+  if (kind === 'photo') return photoAnswerOf(raw);
+  if (kind === 'signature') return signatureAnswerOf(raw);
   if (kind === 'score' || kind === 'count') {
     const n = Number(String(raw).trim().replace(/,/g, ''));
     if (!Number.isInteger(n)) return null;
@@ -225,6 +233,20 @@ export function itemAnswerFor(item, raw) {
     return n >= 0 ? String(n) : null;
   }
   return typedAnswerFor(kind, raw);
+}
+
+/** A photo line's answer for n photos: "1 photo", "3 photos", '' for none. */
+export const photoAnswerText = (n) => (n > 0 ? `${n} photo${n === 1 ? '' : 's'}` : '');
+/** A signature line's answer: "Signed YYYY-MM-DD". */
+export const signatureAnswerText = (day) => `Signed ${day}`;
+function photoAnswerOf(raw) {
+  const m = /^(\d+) photos?$/i.exec(String(raw).trim());
+  return m && Number(m[1]) > 0 ? photoAnswerText(Number(m[1])) : null;
+}
+function signatureAnswerOf(raw) {
+  const m = /^signed(?: (\d{4}-\d{2}-\d{2}))?$/i.exec(String(raw).trim());
+  if (!m) return null;
+  return m[1] ? (dateAnswerOf(m[1]) ? signatureAnswerText(m[1]) : null) : 'Signed';
 }
 
 /**
@@ -291,6 +313,8 @@ export function itemAnswerHint(item) {
   if (f.kind === 'score') return `Score 1-${f.scale}${f.issueAt !== undefined ? `; ${f.issueAt} or lower is an issue` : ''}`;
   if (f.kind === 'date') return f.issueIfPast ? 'Date; an issue once it has passed' : 'Date';
   if (f.kind === 'many') return `Pick any of ${f.options.map((o) => o.value).join(', ')}`;
+  if (f.kind === 'photo') return 'Photo; taken in the app';
+  if (f.kind === 'signature') return 'Signature; signed in the app';
   return '';
 }
 

@@ -9,7 +9,7 @@
  */
 import { getExportKit } from './exportFormats/registry.js';
 import {
-  ANSWER_MEANS_MAX, checklistItemKind, itemAnswerFor, itemAnswerHint, scoreScaleOf, typedAnswerIsIssue, validateAnswerSet,
+  ANSWER_MEANS_MAX, APP_ONLY_KINDS as APP_ONLY_KINDS_LIST, checklistItemKind, itemAnswerFor, itemAnswerHint, scoreScaleOf, typedAnswerIsIssue, validateAnswerSet,
 } from '../../supabase/functions/_shared/kitShape.js';
 import { categoriesOf, checklistOf, modulesOf } from './templateConfigShape.js';
 
@@ -169,18 +169,20 @@ export function excelAnswerListFormula(set) {
  * default (the template's answer set). `item.kind` makes it take a typed
  * answer instead: text, number (unit, min, max), score (1..5 or 1..10, an
  * issue line), count (whole number, min, max), date (issue once past) or
- * pick many (its own options, each good / bad / neutral).
+ * pick many (its own options, each good / bad / neutral), photo or
+ * signature (filled in the app; the image is on the item's note media).
  * Answers stay plain strings in `selection`, so sync, import, history and the
  * row fingerprints need no change. The rules live in kitShape.js so the
  * agent and the connector share them.
  */
 export {
-  ITEM_ANSWER_KEYS, ITEM_KINDS, ITEM_UNIT_MAX, SCORE_SCALES, TYPED_ANSWER_MAX, dateAnswerOf, itemAnswerFields, itemAnswerHint,
-  itemAnswerSpec, manyOptionsOf, manyPicked, scoreScaleOf,
+  APP_ONLY_KINDS, ITEM_ANSWER_KEYS, ITEM_KINDS, ITEM_UNIT_MAX, SCORE_SCALES, TYPED_ANSWER_MAX, dateAnswerOf, itemAnswerFields, itemAnswerHint,
+  itemAnswerSpec, manyOptionsOf, manyPicked, photoAnswerText, scoreScaleOf, signatureAnswerText,
   typedAnswerIsIssue,
 } from '../../supabase/functions/_shared/kitShape.js';
 
 export const itemKind = checklistItemKind;
+const APP_ONLY_KINDS_SET = new Set(APP_ONLY_KINDS_LIST);
 
 /**
  * A typed answer as it should be saved: '' for blank, else the clean value
@@ -211,7 +213,8 @@ export function isItemIssue(item, set, value, today) {
 /** The Excel cell rule for an item's column, or null for none (text). */
 export function excelValidationFor(item, set) {
   const kind = itemKind(item);
-  if (kind === 'text') return null;
+  // Photo and signature cells only report what the app holds.
+  if (kind === 'text' || APP_ONLY_KINDS_SET.has(kind)) return null;
   const hint = itemAnswerHint(item);
   const rule = (type, operator, formulae, errorTitle, error) => ({
     type, operator, allowBlank: true, formulae, showErrorMessage: true, errorStyle: 'error', errorTitle, error,

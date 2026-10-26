@@ -547,7 +547,7 @@ import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
 import { buildSheetLayout, buildSheetRow, excelCellAnswer, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
-import { answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
+import { APP_ONLY_KINDS, answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
 import { setActiveSmartFillTemplate, withTemplateShape } from './survey/smartFillTemplateShapes.js';
@@ -17870,7 +17870,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         const trimmedText = colText.toString().trim();
         const checklistItem = checklistItems.find(c => c.text === trimmedText);
-        if (checklistItem) {
+        // Photo and signature lines only report what the app holds.
+        if (checklistItem && !APP_ONLY_KINDS.includes(itemKind(checklistItem))) {
           colToChecklistId[index] = checklistItem.id;
         }
       });
@@ -18517,7 +18518,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         const trimmedText = colText.toString().trim();
         const checklistItem = checklistItems.find(c => c.text === trimmedText);
-        if (checklistItem) {
+        // Photo and signature lines only report what the app holds.
+        if (checklistItem && !APP_ONLY_KINDS.includes(itemKind(checklistItem))) {
           colToChecklistId[index] = checklistItem.id;
         }
       });

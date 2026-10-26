@@ -252,7 +252,9 @@ export function noteHasLegacyMedia(note) {
   return normalizeNoteMedia(note).some((item) => !item.path && typeof item.legacyDataUrl === 'string' && item.legacyDataUrl.startsWith('data:'));
 }
 
-const REF_FIELDS = ['id', 'kind', 'mime', 'path', 'name', 'size', 'durationMs', 'width', 'height', 'createdBy', 'createdAt'];
+// lineId: the checklist line a photo or signature answers (nightly
+// 'custom-answers'); such media is shown on that line, not in the note strip.
+const REF_FIELDS = ['id', 'kind', 'mime', 'path', 'name', 'size', 'durationMs', 'width', 'height', 'createdBy', 'createdAt', 'lineId'];
 const toStoredRef = (ref) => {
   const stored = {};
   for (const key of REF_FIELDS) {

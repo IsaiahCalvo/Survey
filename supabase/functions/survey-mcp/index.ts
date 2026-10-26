@@ -26,7 +26,7 @@ import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../_shared/surveyMar
 import { bytesToPgHex, pgHexToBytes } from '../_shared/pgBytea.js';
 import { applyUndoDescriptor, noteObjectOf, UNDO_KINDS } from '../_shared/surveyUndoApply.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
-import { itemAnswerFor, itemAnswerHint, itemAnswerSpec } from '../_shared/kitShape.js';
+import { APP_ONLY_KINDS, itemAnswerFor, itemAnswerHint, itemAnswerSpec } from '../_shared/kitShape.js';
 import { agentClientId } from '../_shared/agentSession.ts';
 
 const CONNECTOR_WRITES_FLAG = 'survey-connector-writes';
@@ -699,6 +699,9 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
           if (!checklistIds.has(clId)) throw new ToolError(`${clId} is not on the ${category.name} checklist. Use get_survey_context for its checklist ids.`);
           const line = category.checklist.find((c) => c.id === clId);
           let value = String(row.value ?? '');
+          if (line?.answer_kind && APP_ONLY_KINDS.includes(line.answer_kind)) {
+            throw new ToolError(`"${line.text}" is a ${line.answer_kind} line: it is filled in the Survey app.`);
+          }
           if (line?.answer_kind) {
             const typedLine = { ...line, kind: line.answer_kind };
             const typed = itemAnswerFor(typedLine, value);
