@@ -37,7 +37,7 @@ async function runDevice(server, device) {
     const sentinel = '__mobileWorkflowTemplatesInitialized';
     if (!sessionStorage.getItem(sentinel)) {
       localStorage.setItem(key, '[]');
-      localStorage.removeItem('surveyHub.templateOrder:isaiahcalvo123@gmail.com');
+      Object.keys(localStorage).filter((k) => k.startsWith('surveyHub.templateOrder:')).forEach((k) => localStorage.removeItem(k));
       sessionStorage.setItem(sentinel, '1');
     }
   }, TEMPLATE_WORKFLOW_STORAGE_KEY);
