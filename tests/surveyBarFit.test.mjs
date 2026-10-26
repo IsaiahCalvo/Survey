@@ -2,11 +2,13 @@
 // the panel pushes the sub-toolbar out of place ... The sub-toolbar must
 // remain fixed." / "The things in the center should stay in the center. The
 // peripherals on the left and right, like the templates dropdown and the done
-// button, those can move in and out." The survey bar's centre group (module
-// menu, category chips, Reuse) is pinned to the tool bar's centre; only the
-// end pieces (template menu, Done) follow the panels and give ground first
-// (src/utils/responsiveToolbar.js planSurveyBar, measured by
+// button, those can move in and out." The survey bar's centre group (entity
+// swatches, module menu, category chips, Width) is pinned to the tool bar's
+// centre; only the end pieces (template menu, Done) follow the panels and give
+// ground first (src/utils/responsiveToolbar.js planSurveyBar, measured by
 // src/hooks/useSurveyBarFit.js). These pin the plan.
+// Owner 2026-10-26: one row, not two - the entity swatches moved up from their
+// own bar to open the centre group, and Reuse is gone.
 // (Was: the 2026-10-07 plan that inset the WHOLE bar by an open panel and
 // re-centred it in what was left - the very shift the owner reported.)
 import { test } from 'node:test';
@@ -34,32 +36,47 @@ const at = (window, { left = false, right = false } = {}, sizes = SAMPLE) => pla
 const COMBOS = [{}, { left: true }, { right: true }, { left: true, right: true }];
 
 test('the centre gives ground in this order, and never drops the chips', () => {
-  assert.deepEqual(SURVEY_BAR_STEPS, ['full', 'short-module', 'compact-reuse', 'fold', 'tight', 'fewer']);
+  assert.deepEqual(SURVEY_BAR_STEPS, ['full', 'short-module', 'fold', 'tight', 'fewer']);
   const looks = SURVEY_BAR_STEPS.map((step) => surveyBarLook(step));
-  assert.deepEqual(looks.map((l) => l.module), ['full', 'short', 'short', 'more', 'more', 'more']);
-  assert.deepEqual(looks.map((l) => l.reuse), ['full', 'full', 'compact', 'more', 'more', 'more']);
-  assert.deepEqual(looks.map((l) => l.tight), [false, false, false, false, true, true]);
-  assert.deepEqual(looks.map((l) => l.fewer), [false, false, false, false, false, true]);
+  assert.deepEqual(looks.map((l) => l.module), ['full', 'short', 'more', 'more', 'more']);
+  assert.deepEqual(looks.map((l) => l.tight), [false, false, false, true, true]);
+  assert.deepEqual(looks.map((l) => l.fewer), [false, false, false, false, true]);
+  assert.ok(looks.every((l) => !('reuse' in l)), 'Reuse is gone');
   const widths = SURVEY_BAR_STEPS.map((step) => surveyBarCentreWidth(step, SAMPLE).centre);
-  // module 149 + rule 17, chips 96, rule 17 + Reuse 67; folded, the chips alone
-  // (the module menu and Reuse wait in More at the left end).
-  assert.equal(widths[0], 149 + 17 + 96 + 17 + 67);
-  assert.equal(widths[3], 96);
-  assert.equal(widths[4], 92); // 4px gutters
-  for (let i = 1; i < 5; i += 1) assert.ok(widths[i] < widths[i - 1], `${SURVEY_BAR_STEPS[i]} ${widths[i]}`);
+  // module 149 + rule 17, chips 96; folded, the chips alone (the module menu
+  // waits in More at the left end).
+  assert.equal(widths[0], 149 + 17 + 96);
+  assert.equal(widths[2], 96);
+  assert.equal(widths[3], 92); // 4px gutters
+  for (let i = 1; i < 4; i += 1) assert.ok(widths[i] < widths[i - 1], `${SURVEY_BAR_STEPS[i]} ${widths[i]}`);
 });
 
-test('opening or closing either side panel never changes the centre group (1440 and 1100)', () => {
-  for (const window of [1440, 1280, 1100, 1024]) {
-    const plans = COMBOS.map((combo) => at(window, combo));
+test('the entity swatches open the centre group, with a rule after them, and stay when it folds', () => {
+  const sizes = { ...SAMPLE, entityCount: 4 };
+  const swatches = 4 * 22 + 3 * 6 + 17;
+  for (const step of SURVEY_BAR_STEPS) {
+    assert.equal(surveyBarCentreWidth(step, sizes).centre - surveyBarCentreWidth(step, SAMPLE).centre, swatches, step);
+  }
+  // No entities: no swatches and no rule.
+  assert.equal(surveyBarCentreWidth('full', { ...SAMPLE, entityCount: 0 }).entities, 0);
+  // Above 8, 7 swatches and "All N" - and the last step may draw fewer.
+  assert.equal(surveyBarCentreWidth('full', { ...SAMPLE, entityCount: 20, entityAllChip: 45 }).entities, 7 * 28 + 45 + 17);
+  assert.equal(surveyBarCentreWidth('fewer', { ...SAMPLE, entityCount: 20, entityAllChip: 45 }, 8, 3).entities, 2 * 28 + 45 + 17);
+});
+
+test('opening or closing either side panel never changes the centre group (1440 to 1024)', () => {
+  for (const [window, sizes] of [[1440, SAMPLE], [1280, SAMPLE], [1100, SAMPLE], [1024, SAMPLE], [1440, { ...SAMPLE, entityCount: 4 }], [1100, { ...SAMPLE, entityCount: 4 }]]) {
+    const plans = COMBOS.map((combo) => at(window, combo, sizes));
     assert.ok(plans.every((p) => p.stable), `${window} stable`);
     assert.equal(new Set(plans.map((p) => p.step)).size, 1, `${window}: ${plans.map((p) => p.step)}`);
     assert.equal(new Set(plans.map((p) => p.centreWidth)).size, 1);
     assert.ok(plans.every((p) => p.rowMax === 8 && p.entityRowMax === 8));
   }
   assert.equal(at(1440).step, 'full');
-  assert.equal(at(1100).step, 'compact-reuse');
+  assert.equal(at(1100).step, 'full');
   assert.equal(at(1024).step, 'fold');
+  assert.equal(at(1440, {}, { ...SAMPLE, entityCount: 4 }).step, 'full');
+  assert.equal(at(1100, {}, { ...SAMPLE, entityCount: 4 }).step, 'fold');
 });
 
 test('the end pieces move with the panels and give ground first', () => {
@@ -71,12 +88,16 @@ test('the end pieces move with the panels and give ground first', () => {
   }
   // The template's room shrinks by exactly the left panel; the centre does not move.
   assert.equal(at(1440).templateRoom, SURVEY_BAR_PARTS.templateMax);
-  assert.equal(at(1440, { left: true }).templateRoom, Math.floor(672 - 346 / 2 - 8 - 8 - 272));
-  // 1100 with both panels: Done becomes its check, the name ellipsises.
+  assert.equal(at(1440, { left: true }).templateRoom, Math.floor(672 - 262 / 2 - 8 - 8 - 272));
+  // 1100 with both panels: Done becomes its check, the name goes to its glyph.
   const both = at(1100, { left: true, right: true });
   assert.equal(both.done, 'glyph');
-  assert.equal(both.template, 'full');
+  assert.equal(both.template, 'glyph');
   assert.ok(both.templateRoom < SURVEY_BAR_PARTS.templateChrome + SAMPLE.templateText);
+  // With the right panel only, the name keeps room and Done its check.
+  const right = at(1100, { right: true });
+  assert.equal(right.template, 'full');
+  assert.equal(right.done, 'glyph');
 });
 
 test('nothing overlaps or runs under a panel, at any width and panel state', () => {
@@ -136,26 +157,37 @@ test('a narrow window plans for the panels actually open, and only loses chips t
   const both = at(900, { left: true, right: true });
   assert.equal(both.step, 'fewer');
   assert.ok(both.rowMax >= 1 && both.rowMax < 8, JSON.stringify(both));
-  // The entity bar follows the same rule in its own room.
-  assert.equal(at(1100, { left: true, right: true }, { ...SAMPLE, entityCount: 40 }).entityRowMax, 8);
-  assert.ok(at(900, { left: true, right: true }, { ...SAMPLE, entityCount: 40 }).entityRowMax < 8);
+  // The swatches share the centre's room with the chips: the row drawing more
+  // slots gives one up first, so 3 chips stay whole while 40 entities shrink.
+  const many = { ...SAMPLE, entityCount: 40, entityAllChip: 45 };
+  assert.equal(at(1440, { left: true, right: true }, many).entityRowMax, 8);
+  const crowded = at(1100, { left: true, right: true }, many);
+  assert.equal(crowded.step, 'fewer');
+  assert.equal(crowded.rowMax, 8);
+  assert.ok(crowded.entityRowMax >= 1 && crowded.entityRowMax < 8, JSON.stringify(crowded));
+  assert.ok(at(900, { left: true, right: true }, many).entityRowMax < crowded.entityRowMax);
 });
 
-test('the entity row is planned with the swatch gutter as drawn (a touch tablet opens it to 18px)', () => {
-  // iPad portrait, Survey panel open: 928px bar, centre 464, 136px each side
-  // of it before the Survey panel. 10 entities: on 6px gutters 7 + "All 10"
-  // fit; on the tablet's 18px gutters they would run ~50px under the panel.
+test('the swatches are planned with their gutter as drawn (a touch tablet opens it to 18px)', () => {
+  // iPad portrait, Survey panel open: 928px bar, centre 464, 96px each side
+  // of it before Done and the Survey panel. 10 entities: the roomier tablet
+  // gutters draw no more swatches than the desk's 6px ones, and the centre
+  // still fits.
   const ipad = { barWidth: 928, centre: 464, insetLeft: 208, insetRight: 320, ...SAMPLE, entityCount: 10, entityAllChip: 45 };
   const desk = planSurveyBar(ipad);
   const tablet = planSurveyBar({ ...ipad, swatchGap: 18 });
-  assert.equal(desk.entityRowMax, 8);
-  assert.ok(tablet.entityRowMax < desk.entityRowMax, JSON.stringify(tablet));
-  const row = (max, gap) => surveyRowWidth({ count: 10, item: SURVEY_BAR_PARTS.swatch, gap, allChip: 45, max });
-  assert.ok(row(tablet.entityRowMax, 18) <= 2 * (928 - 320 - SURVEY_BAR_PARTS.inset - 464));
+  assert.ok(tablet.entityRowMax <= desk.entityRowMax, JSON.stringify(tablet));
+  const P = SURVEY_BAR_PARTS;
+  const half = Math.min(464 - 208 - P.inset - P.templateGlyph - P.moreGap - P.more - P.gap, 928 - 320 - P.inset - P.doneGlyph - P.gap - 464);
+  for (const [plan, gap] of [[desk, 6], [tablet, 18]]) {
+    const width = surveyBarCentreWidth(plan.step, { ...SAMPLE, entityCount: 10, entityAllChip: 45, swatchGap: gap }, plan.rowMax, plan.entityRowMax).centre;
+    assert.equal(width, plan.centreWidth);
+    assert.ok(width + P.slack <= 2 * half, `${gap}: ${width}`);
+  }
   // Left out or junk: the 6px gutter.
   assert.deepEqual(planSurveyBar({ ...ipad, swatchGap: undefined }), desk);
   assert.deepEqual(planSurveyBar({ ...ipad, swatchGap: NaN }), desk);
-  // The hook reads the gutter off the drawn entity row.
+  // The hook reads the gutter off the drawn swatches.
   assert.match(fs.readFileSync(new URL('../src/hooks/useSurveyBarFit.js', import.meta.url), 'utf8'), /getComputedStyle\(entityRowEl\)\.columnGap/);
 });
 
@@ -165,14 +197,19 @@ test('the plan depends only on its inputs (never on what is drawn now)', () => {
   }
 });
 
-test('the viewer draws the plan: a pinned centre group, end pieces, entity bar', () => {
+test('the viewer draws the plan: one row, a pinned centre group with the swatches first, end pieces', () => {
   const viewer = fs.readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /useSurveyBarFit\(\{/);
   assert.match(viewer, /data-survey-bar-step=\{look\.step\}/);
   assert.match(viewer, /className="survey-subrow__centre"/);
   assert.match(viewer, /compact=\{surveyBarFit\.plan\.template === 'glyph'\}/);
   assert.match(viewer, /<ToolbarOverflowMenu items=\{moreItems\}/);
-  assert.match(viewer, /<SurveyEntityBar/);
+  // The swatches open the centre group; no third bar under it, no Reuse.
+  const centreAt = viewer.indexOf('className="survey-subrow__centre"');
+  assert.ok(viewer.indexOf('<SurveyEntityBar', centreAt) > centreAt);
+  assert.ok(viewer.indexOf('<SurveyEntityBar', centreAt) < viewer.indexOf('{moduleMenu(false)}', centreAt));
+  assert.doesNotMatch(viewer, /'survey-entity-row'/);
+  assert.doesNotMatch(viewer, /Reuse category|surveyKeepCategoryActive/);
   assert.match(viewer, /max=\{surveyBarFit\.plan\.rowMax\}/);
   assert.match(viewer, /max=\{surveyBarFit\.plan\.entityRowMax\}/);
   // Done is drawn unconditionally (never folded).
@@ -180,8 +217,7 @@ test('the viewer draws the plan: a pinned centre group, end pieces, entity bar',
   const css = fs.readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   const centre = css.slice(css.indexOf('.survey-subrow__centre {'));
   assert.match(centre.slice(0, centre.indexOf('}')), /left: var\(--survey-centre-x, 50%\);\s*transform: translateX\(-50%\);/);
-  const entity = css.slice(css.indexOf('.survey-entitybar .survey-entitybar__centre {'));
-  assert.match(entity.slice(0, entity.indexOf('}')), /left: var\(--survey-centre-x, 50%\);/);
+  assert.doesNotMatch(css, /\.survey-entitybar \{|\.survey-subrow__keep/);
   // The hook reads the tool bar's own centre (the group icons), as rows 2/3.
   const hook = fs.readFileSync(new URL('../src/hooks/useSurveyBarFit.js', import.meta.url), 'utf8');
   assert.match(hook, /#chrome-top-host \[data-tool-toolbar\]/);

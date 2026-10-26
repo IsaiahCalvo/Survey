@@ -3,6 +3,9 @@
 // next entity's colour (there always is one: the last used, else the first),
 // the new-marker card opens beside it right after the pen lifts (it took ~1 s,
 // ~4 s on a slower CPU), a category row places it, and Undo takes it back.
+// Owner 2026-10-26: one survey bar (entity swatches, module, categories, no
+// Reuse), the first category already armed, and the card's title is the
+// marker's editable name ("Camera 1"): Enter or a press off the card places it.
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -83,6 +86,11 @@ function watchCardOpen(page) {
   });
 }
 
+// Every Survey Marker's name, from the Survey panel's name fields.
+function markerNames(page) {
+  return page.evaluate(() => Array.from(document.querySelectorAll('input[data-survey-marker-name-input]'), (el) => el.value));
+}
+
 async function drawStroke(page, pointerType, x, y) {
   const cdp = await page.context().newCDPSession(page);
   const send = (type, px, py, buttons) => cdp.send('Input.dispatchMouseEvent', {
@@ -105,6 +113,22 @@ for (const pointerType of ['mouse', 'pen']) {
       await openSurvey(page, seeded);
       // No entity picked yet: the first one is the next marker's.
       await expect(page.getByRole('button', { name: 'Entity GC' })).toHaveAttribute('aria-pressed', 'true');
+      // One survey bar: the swatches sit in its centre group, before the
+      // module menu and the chips; no Reuse, no third bar; the module's first
+      // category is armed.
+      const centre = page.locator('.survey-subrow__centre');
+      await expect(centre.getByRole('button', { name: 'Entity GC' })).toBeVisible();
+      await expect(page.locator('.survey-entitybar')).toHaveCount(0);
+      await expect(page.getByRole('switch', { name: 'Reuse category' })).toHaveCount(0);
+      await expect(centre.getByRole('button', { name: 'Camera', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      const [swatchBox, moduleBox, chipBox] = await Promise.all([
+        centre.getByRole('button', { name: 'Entity GC' }).boundingBox(),
+        centre.locator('[data-survey-module-menu], .survey-subrow__module').first().boundingBox(),
+        centre.getByRole('button', { name: 'Camera', exact: true }).boundingBox(),
+      ]);
+      expect(swatchBox.x).toBeLessThan(moduleBox.x);
+      expect(moduleBox.x).toBeLessThan(chipBox.x);
+      expect(Math.abs(swatchBox.y + swatchBox.height / 2 - (chipBox.y + chipBox.height / 2))).toBeLessThan(2);
 
       const box = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
       await watchCardOpen(page);
@@ -123,6 +147,10 @@ for (const pointerType of ['mouse', 'pen']) {
       const [m, c] = [await marker.boundingBox(), await card.boundingBox()];
       expect(c.x >= m.x + m.width || c.x + c.width <= m.x || c.y >= m.y + m.height).toBe(true);
 
+      // Its title is the name, ready to type over: the armed category's next.
+      const name = card.getByRole('textbox', { name: 'Survey Marker name' });
+      await expect(name).toHaveValue('Camera 1');
+      await expect(name).toBeFocused();
       // Only the module in use is listed (owner 2026-10-22).
       await expect(card.getByRole('option', { name: /Access Point/ })).toHaveCount(0);
       // Another entity recolours the marker on the page at once, then a
@@ -131,8 +159,8 @@ for (const pointerType of ['mouse', 'pen']) {
       await expect(marker.locator('[data-survey-marker-shape="stroke"]')).toHaveAttribute('stroke', ELECTRICAL_GREEN);
       await card.getByRole('option', { name: /Card Reader/ }).click();
       await expect(card).toBeHidden();
-      // It opens in the rail with its name field focused.
-      await expect.poll(() => page.evaluate(() => document.activeElement?.value)).toBe('Card Reader 1');
+      // It is named after the category it was placed in.
+      await expect.poll(() => markerNames(page)).toContain('Card Reader 1');
       await expect(marker.locator('[data-survey-marker-shape="stroke"]')).toHaveAttribute('stroke', ELECTRICAL_GREEN);
       // The bar now rings it for the next marker.
       await expect(page.getByRole('button', { name: 'Entity Electrical' }).first()).toHaveAttribute('aria-pressed', 'true');
@@ -145,6 +173,41 @@ for (const pointerType of ['mouse', 'pen']) {
     }
   });
 }
+
+test('the card names the marker: typed + Enter, or untouched and a press off the card', async ({ page }) => {
+  test.setTimeout(180_000);
+  const admin = adminClient();
+  const seeded = await seed(admin);
+  try {
+    await openSurvey(page, seeded);
+    const box = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+    const card = page.getByRole('dialog', { name: 'New Survey Marker' });
+
+    // Typed over, Enter places it with that name, in the armed category.
+    await drawStroke(page, 'mouse', box.x + box.width * 0.3, box.y + box.height * 0.6);
+    await expect(card).toBeVisible();
+    await expect(card.getByRole('textbox', { name: 'Survey Marker name' })).toHaveValue('Camera 1');
+    await page.keyboard.type('Lobby camera');
+    await page.keyboard.press('Enter');
+    await expect(card).toBeHidden();
+    await expect.poll(() => markerNames(page)).toContain('Lobby camera');
+    // The category stays armed for the next marker (Reuse is gone).
+    await expect(page.locator('.survey-subrow__centre').getByRole('button', { name: 'Camera', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+    // Untouched, a press off the card places it with the default name.
+    await drawStroke(page, 'mouse', box.x + box.width * 0.3, box.y + box.height * 0.3);
+    await expect(card).toBeVisible();
+    await expect(card.getByRole('textbox', { name: 'Survey Marker name' })).toHaveValue('Camera 1');
+    const c = await card.boundingBox();
+    const offX = c.x > box.x + box.width / 2 ? box.x + 40 : Math.min(box.x + box.width - 40, c.x + c.width + 120);
+    await page.mouse.click(offX, box.y + box.height * 0.9);
+    await expect(card).toBeHidden();
+    await expect.poll(() => markerNames(page)).toContain('Camera 1');
+    await expect(page.locator('[data-overlay-page="1"] [data-survey-marker-kind="stroke"]')).toHaveCount(2);
+  } finally {
+    await cleanup(admin, seeded);
+  }
+});
 
 test('Escape on the new-marker card takes the drawn marker back', async ({ page }) => {
   test.setTimeout(180_000);
