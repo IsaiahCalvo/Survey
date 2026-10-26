@@ -1,25 +1,26 @@
-// Smart fill (beta) on the real Schneider drawing set, Package 2 - Rev 4
-// (owner report 2026-10-22: "it's not filling Schneider tags consistently").
-// Tags that touch a wall, a leader line or the next tag used to leak or say
-// "too big"; Smart fill now reads the drawing's own tag outlines. And when a
-// tag is missed, "Teach a tag shape" boxes it, saves the shape in the survey
-// template, and Find more finds every tag like it.
+// Smart fill (beta) on Schneider-style tags (owner report 2026-10-22: "it's
+// not filling Schneider tags consistently"). Tags that touch a wall, a leader
+// line or the next tag used to leak or say "too big"; Smart fill now reads the
+// drawing's own tag outlines. And when a tag is missed, "Teach a tag shape"
+// boxes it, saves the shape in the survey template, and Find more finds every
+// tag like it. The sheet is made up (debug/smart-fill/make-tag-sheet.mjs): this
+// repo is public, so no customer drawing may be checked in.
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { E2E_ACCOUNTS, E2E_PROJECT } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
 
-const FIXTURE = 'debug/fixtures/package2-rev4.pdf';
-// Sheet SEC-B01E-P2 (page 7), page units. Each touches a wall or another tag.
-const PAGE = 7;
+// Tag boxes in page units, from the script that draws the sheet.
+const FIXTURE = 'debug/fixtures/tag-sheet.pdf';
+const PAGE = 1;
 const PAGE_WIDTH = 1224;
 const TAGS = {
-  'C95 (touches a wall)': [263.9, 513.2, 284.2, 533.4],
-  'C27 (overlaps C26)': [82, 549.7, 102.2, 569.9],
-  'C93 (touches C94)': [83.5, 496.4, 103.7, 516.7],
+  'touches a wall': [289.9, 509.9, 310.1, 530.1],
+  'overlaps the next tag': [89.9, 549.9, 110.1, 570.1],
+  'touches the next tag': [89.9, 496.4, 110.1, 516.6],
 };
-const R1224 = [294.7, 553.1, 314.9, 573.3];
+const TEACH = [609.9, 159.9, 630.1, 180.1];
 
 async function seed(admin) {
   const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
@@ -27,7 +28,7 @@ async function seed(admin) {
   const docId = randomUUID();
   const templateId = randomUUID();
   const templateName = `E2E Smart fill ${Date.now()}`;
-  const docName = `E2E Package 2 SF ${Date.now()}.pdf`;
+  const docName = `E2E Tag sheet SF ${Date.now()}.pdf`;
   const bytes = fs.readFileSync(path.resolve(FIXTURE));
   const filePath = `${ownerId}/${docId}.pdf`;
   const up = await admin.storage.from('documents').upload(filePath, new Blob([bytes], { type: 'application/pdf' }), {
@@ -44,7 +45,7 @@ async function seed(admin) {
   if (template.error) throw template.error;
   const doc = await admin.from('documents').insert({
     id: docId, user_id: ownerId, project_id: E2E_PROJECT.id, name: docName,
-    file_path: filePath, file_size: bytes.length, page_count: 36,
+    file_path: filePath, file_size: bytes.length, page_count: 1,
   });
   if (doc.error) throw doc.error;
   return { docId, docName, filePath, templateId, templateName };
@@ -125,8 +126,8 @@ test('Teach a tag shape saves it in the template, and Find more finds every tag 
     const sheet = await openSmartFill(page, seeded);
     await page.getByRole('button', { name: 'Teach a tag shape' }).click();
     await expect(page.getByRole('button', { name: 'Teach a tag shape' })).toHaveAttribute('aria-pressed', 'true');
-    // Box the door tag with a little room around it.
-    const s = await toScreen(sheet, [R1224[0] - 3, R1224[1] - 3, R1224[2] + 3, R1224[3] + 3]);
+    // Box a tag with a little room around it.
+    const s = await toScreen(sheet, [TEACH[0] - 3, TEACH[1] - 3, TEACH[2] + 3, TEACH[3] + 3]);
     await page.mouse.move(s.x0, s.y0);
     await page.mouse.down();
     await page.mouse.move((s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, { steps: 4 });
@@ -135,8 +136,8 @@ test('Teach a tag shape saves it in the template, and Find more finds every tag 
     const preview = page.locator('[data-smart-fill-preview="true"]');
     await expect(preview).toBeVisible({ timeout: 10_000 });
     const b = await outlineBox(preview);
-    expect(Math.abs(b.x0 - R1224[0])).toBeLessThan(1);
-    expect(Math.abs(b.x1 - b.x0 - (R1224[2] - R1224[0]))).toBeLessThan(1);
+    expect(Math.abs(b.x0 - TEACH[0])).toBeLessThan(1);
+    expect(Math.abs(b.x1 - b.x0 - (TEACH[2] - TEACH[0]))).toBeLessThan(1);
 
     await page.getByRole('button', { name: 'Save shape' }).click();
     const card = page.getByRole('dialog', { name: 'New Survey Marker' });
