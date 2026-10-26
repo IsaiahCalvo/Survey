@@ -2907,6 +2907,18 @@ export const getObjectGeometryBounds = (obj) => {
         if (!obj.path) return null;
         const strokeWidth = (obj.strokeWidth || 1) / 2;
         let currentX = 0, currentY = 0;
+        // 2026-10-26 (owner, SE-011): window (L→R) containment must place the
+        // path with the renderer's own affine, exactly like the crossing test
+        // (getPathTransform). The bare (left, top) matrix ignored pathOffset,
+        // so a center-v1 pen stroke landed hundreds of points away from where
+        // it draws, never fit inside the box, and Cmd+X left it behind.
+        const pathTransform = getPathTransform(obj);
+        const [pa, pb, pc, pd, pe, pf] = pathTransform.matrix;
+        const transformPoint = (x, y) => {
+          const lx = x - pathTransform.pathOffset.x;
+          const ly = y - pathTransform.pathOffset.y;
+          return { x: pa * lx + pc * ly + pe, y: pb * lx + pd * ly + pf };
+        };
 
         for (const cmd of obj.path) {
           const command = cmd[0];
