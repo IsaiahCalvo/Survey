@@ -379,6 +379,20 @@ jobs:
           xcrun simctl launch "$UDID" com.kalvoe.survey
           sleep 90
           xcrun simctl terminate "$UDID" com.kalvoe.survey || true
+      # Sign-in showed "{}" (auth-js's message for a 502/503 from the API
+      # gateway): the auth container can die on this slow VM after seeding.
+      # Prove a real password sign-in works first; restart auth if not.
+      - name: Check sign-in against the local stack
+        run: |
+          set -a; . ./.env.e2e; set +a
+          try() { curl -sf -m 30 -X POST "$VITE_SUPABASE_URL/auth/v1/token?grant_type=password" \
+            -H "apikey: $VITE_SUPABASE_ANON_KEY" -H 'Content-Type: application/json' \
+            -d '{"email":"e2e-owner@example.com","password":"E2e-local-only-123!"}' -o /dev/null; }
+          for i in 1 2 3 4 5 6; do try && { echo "sign-in OK"; exit 0; }
+            docker ps -a --format '{{.Names}} {{.Status}}' | tee -a "$OUT/docker-ps.txt"
+            docker ps -a --format '{{.Names}}' | grep -E 'auth|kong' | xargs -n1 docker restart; sleep 30; done
+          docker ps -a --format '{{.Names}}' | grep auth | xargs -n1 docker logs --tail 200 > "$OUT/auth.log" 2>&1
+          echo "::error::password sign-in against the local stack keeps failing"; exit 1
       - name: Walk the app (signed in, Counter after Arrow, export)
         # The XCTest driver sometimes misses its start window on this slow
         # runner (twice on 2026-10-22, before any flow step); try once more.
