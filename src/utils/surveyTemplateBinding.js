@@ -75,3 +75,22 @@ export function observeUnusedSurveyTemplateUpdate(observation, { binding, active
     update,
   };
 }
+
+// Owner 2026-10-26: module order belongs to the template and is shared by the
+// home Templates page and the Survey panel. A newer template that differs only
+// in the ORDER of its modules is the same version in a new order: the
+// document follows it without asking "keep or use latest?". Returns `active`
+// with its modules in `latest`'s order, or null when anything else differs
+// (or nothing does).
+export function followModuleOrder(active, latest) {
+  if (!active || !latest || active.id !== latest.id) return null;
+  if (templateFingerprint(active) === templateFingerprint(latest)) return null;
+  const modules = active.modules || active.spaces || [];
+  const order = (latest.modules || latest.spaces || []).map((module) => module?.id);
+  const byId = new Map(modules.map((module) => [module?.id, module]));
+  if (order.length !== modules.length || byId.size !== modules.length) return null;
+  const next = order.map((id) => byId.get(id));
+  if (next.some((module) => !module)) return null;
+  const candidate = { ...active, modules: next, ...(active.spaces ? { spaces: next } : {}) };
+  return templateFingerprint(candidate) === templateFingerprint(latest) ? candidate : null;
+}
