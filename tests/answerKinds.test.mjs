@@ -132,7 +132,7 @@ test('the survey agent sees each line\'s settings and is held to them', async ()
 });
 
 test('Pick many: its own options, saved in order, an issue when a Problem option is picked', async () => {
-  const { manyOptionsOf } = await import('../src/services/answerSets.js');
+  const { manyOptionsOf, manyPicked } = await import('../src/services/answerSets.js');
   const defects = { id: 'x', text: 'Defects', kind: 'many', options: [{ value: 'None', tone: 'good' }, { value: 'Rust', tone: 'bad' }, { value: 'Label faded', tone: 'neutral' }] };
   assert.equal(itemKind(defects), 'many');
   assert.deepEqual(itemAnswerFields(defects).options.map((o) => o.value), ['None', 'Rust', 'Label faded']);
@@ -140,6 +140,10 @@ test('Pick many: its own options, saved in order, an issue when a Problem option
   assert.deepEqual(manyOptionsOf({ kind: 'many', options: [{ value: 'a,b', tone: 'bad' }] }).map((o) => o.value), ['None', 'Damaged', 'Missing']);
   assert.equal(typedAnswer(defects, 'label FADED; rust'), 'Rust, Label faded');
   assert.equal(typedAnswer(defects, 'Rust, Dent'), null);
+  // An option may hold a semicolon; a saved answer splits on commas first.
+  const other = { ...defects, options: [...defects.options, { value: 'Other; see notes', tone: 'neutral' }] };
+  assert.equal(typedAnswer(other, 'Rust, Other; see notes'), 'Rust, Other; see notes');
+  assert.deepEqual([...manyPicked(other, 'Other; see notes')], ['Other; see notes']);
   assert.equal(typedAnswer(defects, ''), '');
   assert.equal(isItemDone(defects, DEFAULT_ANSWER_SET, 'None'), true);
   assert.equal(isItemIssue(defects, DEFAULT_ANSWER_SET, 'Label faded'), false);

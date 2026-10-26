@@ -1030,8 +1030,7 @@ export default function TemplatesEditor({
   /* The baseline a save makes once it lands: exactly the copy it sent. */
   const exportKitOptions = useSyncExternalStore(subscribeExportKits, listExportKits);
   /* Checklist answers: a preset, or (nightly 'custom-answers') the
-     template's own typed list. `answerEditorFor` is the template whose list
-     editor is open. */
+     template's own typed list. */
   const [customAnswers] = useState(() => isFeatureOn('custom-answers'));
   // Report layout per template (nightly 'survey-report').
   const [surveyReport] = useState(() => isFeatureOn('survey-report'));
@@ -1049,12 +1048,14 @@ export default function TemplatesEditor({
   const answerPresets = answerSetPresets({ extras: customAnswers });
   const [answerEditorFor, setAnswerEditorFor] = useState(null);
   const ownAnswerSetOf = (t) => t.answerSet || getExportKit(t.exportKitId)?.answerSet;
-  const answerPickerProps = (t) => {
+  // `answerEditorFor` is { id, phone }: the desktop and phone layouts are both
+  // mounted, and only the one that opened the dialog may show it.
+  const answerPickerProps = (t, phone = false) => {
     const presetId = answerPresetIdOf(ownAnswerSetOf(t), answerPresets);
     return {
       value: presetId,
       onChange: (e) => {
-        if (e.target.value === OWN_ANSWERS) { setAnswerEditorFor(t.id); return; }
+        if (e.target.value === OWN_ANSWERS) { setAnswerEditorFor({ id: t.id, phone }); return; }
         if (!e.target.value) return; // "Custom" is the list already in use
         const preset = answerPresets.find((p) => p.id === e.target.value);
         mutateTpl(t.id, (cur) => {
@@ -1071,7 +1072,7 @@ export default function TemplatesEditor({
   };
   // The answer list opens as a dialog over the editor, seeded with the list
   // in use (a preset too, so a preset can be changed after picking it).
-  const answerListEditor = (t, phone) => (customAnswers && answerEditorFor === t.id ? (
+  const answerListEditor = (t, phone) => (customAnswers && answerEditorFor?.id === t.id && answerEditorFor.phone === phone ? (
     <AnswerSetEditor
       key={t.id}
       phone={phone}
@@ -3320,7 +3321,7 @@ export default function TemplatesEditor({
                 )}
                 <label className="templates-mobile-option">
                   <span>Answers</span>
-                  <select aria-label="Checklist answers" {...answerPickerProps(tpl)} />
+                  <select aria-label="Checklist answers" {...answerPickerProps(tpl, true)} />
                 </label>
                 {answerListEditor(tpl, true)}
                 {smartFillBeta && (

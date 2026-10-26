@@ -235,15 +235,21 @@ export function itemAnswerFor(item, raw) {
  */
 export function manyAnswerOf(item, raw) {
   const options = manyOptionsOf(item);
-  const parts = String(raw ?? '').split(/[,;]/).map((p) => p.trim().toLowerCase()).filter(Boolean);
-  if (!parts.length) return '';
-  const picked = new Set();
-  for (const p of parts) {
-    const hit = options.find((o) => o.value.toLowerCase() === p);
-    if (!hit) return null;
-    picked.add(hit.value);
-  }
-  return options.filter((o) => picked.has(o.value)).map((o) => o.value).join(', ');
+  const text = String(raw ?? '');
+  // Saved answers are joined with ", ". A typed "A; B" works too, unless an
+  // option itself holds a semicolon ("Other; see notes"), so commas go first.
+  const pick = (separator) => {
+    const parts = text.split(separator).map((p) => p.trim().toLowerCase()).filter(Boolean);
+    const picked = new Set();
+    for (const p of parts) {
+      const hit = options.find((o) => o.value.toLowerCase() === p);
+      if (!hit) return null;
+      picked.add(hit.value);
+    }
+    return options.filter((o) => picked.has(o.value)).map((o) => o.value).join(', ');
+  };
+  if (!text.trim()) return '';
+  return pick(',') ?? pick(/[,;]/);
 }
 
 /** The options a Pick many answer holds, as a Set of their values. */
