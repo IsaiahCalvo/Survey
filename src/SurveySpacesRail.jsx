@@ -1688,6 +1688,14 @@ const SurveySpacesRail = ({
     </>
   ) : null;
 
+  // Photo and Signature lines keep their image on the marker's note media.
+  const lineMediaProps = (annotationId) => ({
+    note: surveyMarkers?.[annotationId]?.note,
+    documentId: pdfFile?.id || null,
+    markerId: annotationId,
+    canEdit: canEditSurveyMarkers !== false,
+    onUpdateNote: (updater, options) => updateSurveyMarkerNote(annotationId, updater, options),
+  });
   const renderSurveyMarkerNotes = (annotationId, variant) => (
     <SurveyMarkerNotes
       key={annotationId}
@@ -1849,6 +1857,7 @@ const SurveySpacesRail = ({
                       phone
                       item={item}
                       value={response}
+                      media={lineMediaProps(annotationId)}
                       onCommit={(v) => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, v)}
                     />
                   ) : answerSetFor(selectedTemplate).length > CHOICE_BUTTONS_MAX ? (
@@ -4052,6 +4061,7 @@ const SurveySpacesRail = ({
                                                           <TypedAnswerInput
                                                             item={item}
                                                             value={isSelected}
+                                                            media={lineMediaProps(annotationId)}
                                                             onCommit={(v) => applyChecklistResponseSelection(annotationId, selectedModuleId, category, surveyMarker.name || '', item.id, v)}
                                                           />
                                                         ) : answerSetFor(selectedTemplate).length > CHOICE_BUTTONS_MAX ? (

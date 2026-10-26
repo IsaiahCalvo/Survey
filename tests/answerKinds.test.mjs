@@ -21,7 +21,7 @@ test('each kind keeps only its own clean settings', () => {
   assert.deepEqual(itemAnswerFields({ kind: 'count', min: -1, max: 2.5 }), { kind: 'count' });
   assert.deepEqual(itemAnswerFields({ kind: 'number', unit: ' V ', min: 10, max: 5 }), { kind: 'number', unit: 'V', min: 10 });
   assert.deepEqual(itemAnswerFields({ kind: 'date', issueIfPast: 'yes' }), { kind: 'date' });
-  assert.deepEqual(itemAnswerFields({ kind: 'photo' }), {});
+  assert.deepEqual(itemAnswerFields({ kind: 'video' }), {});
   assert.deepEqual(itemAnswerSpec(count), { answer_kind: 'count', min: 2, max: 6 });
   assert.deepEqual(itemAnswerSpec({ id: 'p' }), {});
 });
@@ -156,4 +156,43 @@ test('Pick many: its own options, saved in order, an issue when a Problem option
   const { templateFingerprint } = await import('../src/home/templatesEditorReload.js');
   const t = (item) => ({ name: 'T', modules: [{ id: 'm', name: 'M', categories: [{ id: 'c', name: 'C', items: [{ id: 'i', text: 'x', ...item }] }] }], roster: [] });
   assert.notEqual(templateFingerprint(t(defects)), templateFingerprint(t({ ...defects, options: defects.options.slice(0, 2) })));
+});
+
+test('Photo and Signature lines: the answer follows the media; agents and imports cannot set them', async () => {
+  const { APP_ONLY_KINDS, photoAnswerText, signatureAnswerText } = await import('../src/services/answerSets.js');
+  const photo = { id: 'p', text: 'Label photo', kind: 'photo' };
+  const sign = { id: 'g', text: 'Sign-off', kind: 'signature' };
+  assert.deepEqual(APP_ONLY_KINDS, ['photo', 'signature']);
+  assert.deepEqual(itemAnswerFields(photo), { kind: 'photo' });
+  assert.equal(photoAnswerText(1), '1 photo');
+  assert.equal(photoAnswerText(3), '3 photos');
+  assert.equal(typedAnswer(photo, '2 PHOTOS'), '2 photos');
+  assert.equal(typedAnswer(photo, '0 photos'), null);
+  assert.equal(typedAnswer(photo, 'yes'), null);
+  assert.equal(typedAnswer(sign, signatureAnswerText('2026-10-26')), 'Signed 2026-10-26');
+  assert.equal(typedAnswer(sign, 'Signed 2026-02-30'), null);
+  assert.equal(isItemDone(photo, DEFAULT_ANSWER_SET, '1 photo'), true);
+  assert.equal(isItemDone(sign, DEFAULT_ANSWER_SET, ''), false);
+  assert.equal(isItemIssue(photo, DEFAULT_ANSWER_SET, '1 photo', '2026-10-26'), false);
+  assert.equal(itemAnswerHint(sign), 'Signature; signed in the app');
+  assert.equal(excelValidationFor(photo, DEFAULT_ANSWER_SET), null);
+
+  const { lineMediaAnswer, lineMediaOf } = await import('../src/services/lineMedia.js');
+  const note = { media: [{ id: 'a', path: 'd/m/a.jpg', kind: 'photo', lineId: 'p' }, { id: 'b', path: 'd/m/b.jpg', kind: 'photo' }] };
+  assert.deepEqual(lineMediaOf(note, 'p').map((m) => m.id), ['a']);
+  assert.equal(lineMediaAnswer(photo, lineMediaOf(note, 'p')), '1 photo');
+  assert.equal(lineMediaAnswer(photo, []), '');
+  const signed = lineMediaAnswer(sign, [{ id: 's', createdAt: '2026-10-26T15:00:00Z' }]);
+  assert.match(signed, /^Signed 2026-10-2[67]$/);
+  const { buildNoteWithMedia } = await import('../src/services/surveyMediaService.js');
+  assert.equal(buildNoteWithMedia({}, note.media).media[0].lineId, 'p', 'the line tag is saved with the photo');
+
+  const { createSurveyAgentToolbox } = await import('../src/agent/surveyAgentTools.js');
+  const template = { name: 'T', modules: [{ id: 'm', name: 'M', categories: [{ id: 'c', name: 'C', checklist: [photo] }] }] };
+  const markers = { x: { name: 'X-1', moduleId: 'm', categoryId: 'c', checklistResponses: {} } };
+  const bridge = { template, markers, documentId: 'doc', canEdit: true, selectedMarkerId: null, setAnswers: () => {} };
+  const box = createSurveyAgentToolbox({ getBridge: () => bridge });
+  const res = await box.run('set_answers', { item_id: 'x', answers: [{ checklist_item_id: 'p', value: '1 photo' }] });
+  assert.equal(res.isError, true);
+  assert.match(res.content, /photo line: it is filled in the app/);
 });

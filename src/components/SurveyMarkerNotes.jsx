@@ -198,7 +198,8 @@ export default function SurveyMarkerNotes({
   const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
-  const items = useMemo(() => normalizeNoteMedia(note || {}), [note]);
+  // A Photo or Signature line's media shows on its line, not here.
+  const items = useMemo(() => normalizeNoteMedia(note || {}).filter((item) => !item.lineId), [note]);
 
   const saveText = useCallback((text) => {
     onUpdateNote((prev) => ({ ...prev, text }));
