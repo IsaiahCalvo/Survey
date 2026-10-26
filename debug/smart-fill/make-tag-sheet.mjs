@@ -21,6 +21,10 @@ export const TAG_SHEET = {
   },
   teach: [609.9, 159.9, 630.1, 180.1],
   gridCount: 48,
+  // A revision cloud drawn the Schneider way (separate arcs, end to start)
+  // round this box, its scallops bulging out by 4; one tag sits inside it.
+  cloud: [640, 640, 1000, 740],
+  cloudTag: [689.9, 679.9, 710.1, 700.1],
 };
 
 const K = 0.5522847498;
@@ -88,6 +92,25 @@ async function build() {
   for (let i = 0; i < TAG_SHEET.gridCount; i += 1) {
     tag(gx + (i % 8) * 60, gy + Math.floor(i / 8) * 80);
   }
+  // The revision cloud: one path per scallop, each starting where the last
+  // one ended, like the Schneider sets draw them.
+  const [c0, c1, c2, c3] = TAG_SHEET.cloud;
+  const corners = [[c0, c1], [c2, c1], [c2, c3], [c0, c3]];
+  const normals = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  for (let side = 0; side < 4; side += 1) {
+    const [ax, ay] = corners[side];
+    const [bx, by] = corners[(side + 1) % 4];
+    const [nx, ny] = normals[side];
+    const len = Math.hypot(bx - ax, by - ay);
+    const count = Math.max(2, Math.round(len / 20));
+    for (let i = 0; i < count; i += 1) {
+      const px = ax + ((bx - ax) * i) / count; const py = ay + ((by - ay) * i) / count;
+      const qx = ax + ((bx - ax) * (i + 1)) / count; const qy = ay + ((by - ay) * (i + 1)) / count;
+      path(`M ${px} ${py} C ${px + nx * 5.3} ${py + ny * 5.3} ${qx + nx * 5.3} ${qy + ny * 5.3} ${qx} ${qy}`);
+    }
+  }
+  const [ix, iy] = centre(TAG_SHEET.cloudTag);
+  tag(ix, iy);
   return doc.save({ useObjectStreams: false });
 }
 

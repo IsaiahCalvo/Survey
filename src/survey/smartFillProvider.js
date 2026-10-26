@@ -8,6 +8,8 @@
  *      however the tag touches walls, leader lines or the next tag.
  *   2. the pixels around the tap (smartFillEngine.js), first looking for a
  *      tag shape the user taught (smartFillTemplates.js), then flood fill.
+ * Revision clouds answer at step 1 too: clouds drawn in the PDF
+ * (smartFillVector.js) and cloud marks on the page (smartFillClouds.js).
  * Returns { polygons } in page units, or null with `reason` reported through
  * onNoMatch so the page can say "No outline found".
  */
@@ -17,6 +19,7 @@ import { adaptiveInkMaskFromRgba, findSimilarTags, outlineSignature, signaturesM
 import { extractClosedShapes, pickShapeAtPoint, pixelsBeatVector, shapeToPolygon, vectorAnswerIsTagSized } from './smartFillVector.js';
 import { findOutlineWithTemplates, outlineFromBox, vectorShapeMatchesTemplate } from './smartFillTemplates.js';
 import { getSmartFillTemplateShapes } from './smartFillTemplateShapes.js';
+import { cloudMarkShapes } from './smartFillClouds.js';
 
 // --- The page's own drawing ---------------------------------------------------
 // One read per page (pdf.js hands back its cached operator list when it has
@@ -236,9 +239,13 @@ export async function readSmartFillOutlineAsync(context) {
     ? pickShapeAtPoint(shapes, point, { prefer: templates.length ? (v) => vectorShapeMatchesTemplate(v, templates) : null })
     : null);
   // The drawing gets most of the time; the pixels keep at least 1 s.
+  // Cloud marks on the page (a reviewer's imported cloud, or one drawn in
+  // Survey) count like clouds in the drawing: a tap inside one fills it.
+  const marks = cloudMarkShapes(context.marks);
+  const withMarks = (list) => (marks.length ? [...(list || []), ...marks] : list);
   let shapes = context.pdfPage ? await vectorShapesBy(context.pdfPage, deadline - 1000) : null;
   if (context.signal?.aborted) return { ok: false, reason: 'aborted' };
-  let picked = pick(shapes);
+  let picked = pick(withMarks(shapes));
   if (vectorAnswerIsTagSized(picked)) {
     return { ok: true, polygons: shapeToPolygon(picked), method: 'vector' };
   }
@@ -249,7 +256,7 @@ export async function readSmartFillOutlineAsync(context) {
   if (!shapes && context.pdfPage && !pixels.ok) {
     shapes = await vectorShapesBy(context.pdfPage, start + LATE_VECTOR_LIMIT_MS);
     if (context.signal?.aborted) return { ok: false, reason: 'aborted' };
-    picked = pick(shapes);
+    picked = pick(withMarks(shapes));
     if (vectorAnswerIsTagSized(picked)) return { ok: true, polygons: shapeToPolygon(picked), method: 'vector' };
   }
   if (!picked) return pixels.ok ? { ...pixels, method: 'pixels' } : pixels;

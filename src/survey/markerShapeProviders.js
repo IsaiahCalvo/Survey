@@ -116,7 +116,7 @@ export function getMarkerShapePdfDocument() {
  * Run a provider for one press. Resolves to the provider's result or null;
  * never throws (a provider failure is logged and reads as "nothing here").
  */
-export async function runMarkerShapeProvider(id, { pageNumber, point, pageSize = null, pageCanvas = null, signal = null } = {}) {
+export async function runMarkerShapeProvider(id, { pageNumber, point, pageSize = null, pageCanvas = null, marks = null, signal = null } = {}) {
   const provider = getMarkerShapeProvider(id);
   if (!provider) return null;
   let pdfPage = null;
@@ -141,6 +141,7 @@ export async function runMarkerShapeProvider(id, { pageNumber, point, pageSize =
       pdfPage,
       viewport,
       pageCanvas,
+      marks,
       signal,
     });
     if (signal?.aborted) return null;

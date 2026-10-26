@@ -21,6 +21,10 @@ const TAGS = {
   'touches the next tag': [89.9, 496.4, 110.1, 516.6],
 };
 const TEACH = [609.9, 159.9, 630.1, 180.1];
+// A revision cloud drawn as separate arcs (its scallops reach 4 past the box
+// it is drawn round), with a tag inside it.
+const CLOUD = [636, 636, 1004, 744];
+const CLOUD_TAG = [689.9, 679.9, 710.1, 700.1];
 
 async function seed(admin) {
   const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
@@ -81,6 +85,21 @@ async function outlineBox(locator) {
   });
 }
 
+// Scroll the viewer until a page-unit box is on screen, then map it.
+async function onScreen(page, sheet, area) {
+  const view = page.viewportSize();
+  for (let i = 0; i < 6; i += 1) {
+    const s = await toScreen(sheet, area);
+    const below = s.y1 - (view.height - 60);
+    const above = 60 - s.y0;
+    if (below <= 0 && above <= 0) return s;
+    await page.mouse.move(view.width / 2, view.height / 2);
+    await page.mouse.wheel(0, below > 0 ? below : -above);
+    await page.waitForTimeout(300);
+  }
+  return toScreen(sheet, area);
+}
+
 async function toScreen(sheet, [x0, y0, x1, y1]) {
   const box = await sheet.boundingBox();
   const k = box.width / PAGE_WIDTH;
@@ -105,6 +124,18 @@ test('a tap fills each touching Schneider tag exactly, then Apply makes it a Sur
       expect(Math.abs(b.y0 - tag[1]), `${name} top`).toBeLessThan(1);
       expect(Math.abs(b.x1 - tag[2]), `${name} right`).toBeLessThan(1);
       expect(Math.abs(b.y1 - tag[3]), `${name} bottom`).toBeLessThan(1);
+    }
+    // Inside a revision cloud: a tap off the tag fills the cloud, a tap on
+    // the tag still fills just the tag.
+    for (const [name, want, at] of [['cloud', CLOUD, [0.75, 0.6]], ['tag in the cloud', CLOUD_TAG, [0.35, 0.7]]]) {
+      const s = await onScreen(page, sheet, want);
+      await page.mouse.click(s.x0 + (s.x1 - s.x0) * at[0], s.y0 + (s.y1 - s.y0) * at[1]);
+      const preview = page.locator('[data-smart-fill-preview="true"]');
+      await expect(preview, name).toBeVisible({ timeout: 10_000 });
+      const b = await outlineBox(preview);
+      for (const [i, side] of [[0, 'x0'], [1, 'y0'], [2, 'x1'], [3, 'y1']]) {
+        expect(Math.abs(b[side] - want[i]), `${name} ${side}`).toBeLessThan(1);
+      }
     }
     // The last one becomes a marker.
     await page.getByRole('button', { name: 'Apply' }).click();

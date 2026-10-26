@@ -2805,6 +2805,8 @@ const SVGAnnotationLayerBody = memo(({
       point,
       pageSize: { width, height },
       pageCanvas,
+      // Cloud marks on this page fill like clouds in the drawing.
+      marks: annotationsRef.current?.objects || null,
       signal: controller?.signal || null,
     }).then((result) => {
       if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
