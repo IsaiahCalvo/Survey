@@ -68,6 +68,9 @@ export default function AnnotationSizeControl({
   // width, 'dot' for a round size (eraser rubber, counter pin).
   color,
   previewShape = 'stroke',
+  // Owner 2026-10-26 (#11): the sample also draws the line's dash, so the
+  // card shows the line the tool will really draw.
+  dash = 'solid',
 }) {
   const tip = useTooltip();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
@@ -252,6 +255,7 @@ export default function AnnotationSizeControl({
               mixed={mixed}
               color={color}
               previewShape={previewShape}
+              dash={dash}
               inputProps={inputProps}
               allowsDecimals={allowsDecimals}
               onDraft={updateDraft}
@@ -326,6 +330,7 @@ function SizeCard({
   mixed,
   color,
   previewShape,
+  dash,
   inputProps,
   allowsDecimals,
   onDraft,
@@ -380,7 +385,17 @@ function SizeCard({
           <span className="annotation-size-card__dot" style={{ width: dotPx, height: dotPx, background: paint }} />
         ) : (
           <svg viewBox="0 0 200 64" preserveAspectRatio="xMidYMid meet">
-            <path d={wave} fill="none" stroke={paint} strokeWidth={samplePx} strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d={wave}
+              fill="none"
+              stroke={paint}
+              strokeWidth={samplePx}
+              strokeDasharray={dash === 'dashed'
+                ? `${Math.max(4, samplePx * 3)} ${Math.max(3, samplePx * 2)}`
+                : dash === 'dotted' ? `0 ${Math.max(4, samplePx * 2.2)}` : undefined}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         )}
       </div>
@@ -437,9 +452,14 @@ function SizeCard({
       <div className="annotation-size-card__chips" role="listbox" aria-label={`${label} presets`}>
         {presets.map((preset, index) => {
           const active = !mixed && Number(valueText) === preset;
-          // Dots grow by rank, not by value: a 10 and a 12 pt dot drawn to
+          // Marks grow by rank, not by value: a 10 and a 12 pt line drawn to
           // scale look the same at this size, and the number says the rest.
-          const size = Math.round(2 + (presets.length > 1 ? index / (presets.length - 1) : 0) * 18);
+          // A line width shows a short LINE of that weight (owner 2026-10-26,
+          // #11: a dot said nothing about a stroke); a round size (eraser,
+          // counter pin) keeps its dot.
+          const rank = presets.length > 1 ? index / (presets.length - 1) : 0;
+          const size = Math.round(2 + rank * 18);
+          const lineWeight = Math.round((1 + rank * 7) * 2) / 2;
           return (
             <button
               key={preset}
@@ -455,7 +475,9 @@ function SizeCard({
               onClick={() => onCommit(preset, { close: true })}
             >
               <span className="annotation-size-card__chip-dot" aria-hidden="true">
-                <span style={{ width: `${size}px`, height: `${size}px` }} />
+                {previewShape === 'dot'
+                  ? <span style={{ width: `${size}px`, height: `${size}px` }} />
+                  : <span className="annotation-size-card__chip-line" style={{ height: `${lineWeight}px` }} />}
               </span>
               <span className="annotation-size-card__chip-value" aria-hidden="true">{preset}</span>
             </button>

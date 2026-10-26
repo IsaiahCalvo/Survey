@@ -60,13 +60,15 @@ test('only numeric size menus render an input and all annotation menus are mutua
   assert.match(sizeControl, /onOpenChange/);
   assert.match(appShell, /open=\{openAnnotationDropdown === 'size'\}/);
   assert.match(appShell, /label="Style"/);
-  assert.match(appShell, /label="Arrowhead"/);
+  // DELIBERATE ASSERTION CHANGE (2026-10-26, owner issue note #11): one pill
+  // carries the arrowhead and the arrow ends ("Arrow ends" on an arrow,
+  // "Arrowhead" on a callout, which has one end).
+  assert.match(appShell, /label=\{isArrow \? 'Arrow ends' : 'Arrowhead'\}/);
   // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7): the ERASER's two kinds are
   // a segmented toggle on board 13, not a dropdown, and ARROW ENDS became a
   // dropdown of three on board 10 — so this list swaps one for the other. The
   // point of the list is that every menu in the chrome goes through the one
   // exclusive layer, which both of those still do.
-  assert.match(appShell, /label="Arrow ends"/);
   assert.match(appShell, /data-eraser-mode-toggle="true"/);
   assert.match(appShell, /label="Counter series"/);
   assert.match(appShell, /label="Font"/);

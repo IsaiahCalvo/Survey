@@ -1,0 +1,202 @@
+/* Set page scale (owner 2026-10-26, #13): the app's dialog card - the one
+   scrim and blur, --surface-2 card, dialog corner and shadow, the footer bar
+   ConfirmModal draws (src/home/BulkModals.jsx). Choices are chips, the
+   current one gold, like every other pick in the app. */
+.measure-scale__scrim {
+  position: fixed;
+  inset: 0;
+  /* Above the viewer (z 5000) and its chrome. */
+  z-index: 1000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--overlay-scrim);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-family: var(--font-ui);
+}
+
+.measure-scale__card {
+  width: 400px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-dialog);
+}
+
+.measure-scale__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 4px;
+}
+
+.measure-scale__title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.measure-scale__sub {
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.measure-scale__body {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 18px 18px;
+}
+
+.measure-scale__label {
+  margin: 14px 0 6px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.measure-scale__chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.measure-scale__chips--units {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+.measure-scale__chip {
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--text-2);
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: 600 12px/1.1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 90ms ease-out, background-color 100ms ease-out;
+}
+
+@media (hover: hover) {
+  .measure-scale__chip:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
+}
+
+.measure-scale__chip:active {
+  transform: scale(0.95);
+}
+
+/* The current pick: gold ink only (tests/selectedStateGoldInkOnly). */
+.measure-scale__chip.is-active {
+  color: var(--accent);
+}
+
+.measure-scale__chip:focus-visible,
+.measure-scale__calibrate:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.measure-scale__field {
+  min-height: 44px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 12px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.measure-scale__field:focus {
+  border-color: var(--text-3);
+}
+
+.measure-scale__calibrate {
+  min-height: 52px;
+  margin-top: 16px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-1);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 90ms ease-out, background-color 100ms ease-out;
+}
+
+@media (hover: hover) {
+  .measure-scale__calibrate:hover { background: var(--hover); }
+}
+
+.measure-scale__calibrate:active {
+  transform: scale(0.98);
+}
+
+.measure-scale__calibrate-glyph {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  color: var(--text-2);
+  background: var(--surface-3);
+  border-radius: 8px;
+}
+
+.measure-scale__calibrate-title,
+.measure-scale__calibrate-sub {
+  display: block;
+}
+
+.measure-scale__calibrate-title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.measure-scale__calibrate-sub {
+  margin-top: 3px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.measure-scale__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+}
+
+.measure-scale__btn {
+  min-width: 72px;
+}
+
+@media (pointer: coarse) {
+  .measure-scale__btn { height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .measure-scale__chip,
+  .measure-scale__calibrate { transition: none; }
+}

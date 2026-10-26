@@ -1,0 +1,126 @@
+/* Owner 2026-10-26 (#11): the Style and Ends pickers are cards like the Width
+   card (AnnotationSizeControl.css): the line on paper first, then the choices
+   as drawn tiles. Same width, padding, paper and gold-for-current rule. */
+.annotation-dropdown__popover.stroke-card-popover {
+  width: 232px;
+  max-width: calc(100vw - 24px);
+  padding: 8px;
+}
+
+.stroke-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stroke-card__paper {
+  height: 52px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  /* Paper, the same strip the Width card draws on. */
+  background: #f7f7f4;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.stroke-card__mixed {
+  color: #6b7280;
+  font: 500 11.5px/1 var(--font-ui);
+}
+
+.stroke-card__tiles {
+  display: grid;
+  grid-template-columns: repeat(var(--stroke-card-cols, 3), 1fr);
+  gap: 2px;
+}
+
+.stroke-card__tile {
+  height: 44px;
+  padding: 5px 0 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: 600 10.5px/1 var(--font-ui);
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: transform 90ms ease-out;
+}
+
+.stroke-card__tile:active {
+  transform: scale(0.94);
+}
+
+.stroke-card__tile-sample {
+  height: 16px;
+  display: grid;
+  place-items: center;
+  line-height: 0;
+}
+
+.stroke-card__tile-label {
+  white-space: nowrap;
+}
+
+.stroke-card__ends {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.stroke-card__end {
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font: 600 11px/1 var(--font-ui);
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: transform 90ms ease-out;
+}
+
+.stroke-card__end:active {
+  transform: scale(0.96);
+}
+
+/* Gold word and gold glyph, and nothing else - the chrome's segmented rule. */
+.stroke-card__end.is-active {
+  color: var(--accent);
+}
+
+@media (hover: hover) {
+  .stroke-card__tile:hover,
+  .stroke-card__end:not(.is-active):hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
+}
+
+.stroke-card__tile:focus-visible,
+.stroke-card__end:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* The current pick is gold, like the current row in every chrome menu. */
+.stroke-card__tile.is-active {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stroke-card__tile,
+  .stroke-card__end { transition: none; }
+}

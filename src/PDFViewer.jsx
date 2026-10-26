@@ -26652,6 +26652,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // The selected text box / callout's own text style while one is
       // selected, else the tool's defaults (see selectedTextTarget above).
       textStyleDefaults: selectedTextTarget ? selectedTextTarget.style : textStyleDefaults,
+      // Which text box / callout that is, so the bar opens on its regular
+      // settings each time a different one is picked (owner 2026-10-26).
+      textFormatTargetKey: selectedTextTarget?.key ?? null,
       onTextStyleDefaultsChange: handleTextStyleSourceChange,
       // Review 2026-09-23: callout text is always vertically centred (the
       // renderer and the editor ignore verticalAlign), so the top / middle /
@@ -40234,18 +40237,8 @@ ${pageBlocks}
                     variant="pill"
                     unit="pt"
                     width="var(--chrome-field-w)"
-                    preview={(
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          display: 'block',
-                          width: '12px',
-                          height: 0,
-                          borderTop: `${Math.max(1, Math.min(6, Math.round(markerWidthValue / 4)))}px solid currentColor`,
-                          borderRadius: '1px',
-                        }}
-                      />
-                    )}
+                    // Owner 2026-10-26 (#33): no stroke drawing in the pill;
+                    // it cut the number off. The card draws the stroke.
                   />
                 </span>
               ) : null;

@@ -28,6 +28,7 @@ import QuietLoading, { openingLabel } from './components/QuietLoading';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
+import { ArrowEndsCard, LineStyleCard, StrokeSample } from './components/StrokeStyleCards';
 import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
 import { isPaintSelectionMixed } from './utils/selectionRestyle.js';
 import BodyPortal from './components/BodyPortal.js';
@@ -449,24 +450,6 @@ const ARROWHEAD_MENU_OPTIONS = Object.freeze(ARROWHEAD_MENU_ORDER.map((value) =>
   label: ARROWHEAD_SHORT_LABELS[value],
   icon: ARROWHEAD_MENU_ICONS[value],
 })));
-
-/*
- * PASS 7 (boards 10 + 16, owner ruling): ARROW ENDS is one dropdown with three
- * values and the same three Lucide glyphs on desktop and in the phone sheet.
- * It writes the two pieces of state the app already has:
- *   End  — the head sits on the finish only        (bothEnds off)
- *   Both — the head is mirrored onto the start too (bothEnds on)
- *   None — no head at either end                   (head style 'none')
- * so nothing new is stored, and picking a head in the Arrowhead pill moves this
- * control back off None by itself.
- */
-const ARROW_ENDS_OPTIONS = Object.freeze([
-  Object.freeze({ value: 'end', label: 'End', icon: 'moveRight' }),
-  Object.freeze({ value: 'both', label: 'Both', icon: 'moveHorizontal' }),
-  // `arrowEndsNone` is the set's own minus: the same 2 -> 22 rule the other two
-  // ends draw, which is what board 16 shows and what "all the same length" means.
-  Object.freeze({ value: 'none', label: 'None', icon: 'arrowEndsNone' }),
-]);
 
 /*
  * PASS 7 (2026-09-22, owner ruling): a text mark's BLEND — the one setting the
@@ -935,11 +918,6 @@ export default function App({ devPreviewReturnTab = null }) {
   const setShowStyleMenu = useCallback((next) => setDropdownOpen('style', next), [setDropdownOpen]);
   const showCounterSeriesMenu = openAnnotationDropdown === 'counter-series';
   const setShowCounterSeriesMenu = useCallback((next) => setDropdownOpen('counter-series', next), [setDropdownOpen]);
-  // PASS 7: Arrow ends (End / Both / None) is a dropdown of its own now, and the
-  // eraser's two kinds moved out of a dropdown into a segmented toggle — so
-  // 'eraser-type' is gone from this list and 'arrow-ends' takes its place.
-  const showArrowEndsMenu = openAnnotationDropdown === 'arrow-ends';
-  const setShowArrowEndsMenu = useCallback((next) => setDropdownOpen('arrow-ends', next), [setDropdownOpen]);
   // PASS 7 (2026-09-22): the text-mark BLEND pill — the last native <select> in
   // the desktop chrome, now the same dropdown every other setting uses.
   const showBlendMenu = openAnnotationDropdown === 'blend';
@@ -1020,8 +998,29 @@ export default function App({ devPreviewReturnTab = null }) {
   // about to be created with is as worth seeing as the formatting it already has,
   // and the user used to have to draw a box and double-click into it to find out
   // what font the next one would use.
-  const [showTextFormatBar, setShowTextFormatBar] = useState(true);
+  // Owner 2026-10-26: a picked or armed text box / callout shows its REGULAR
+  // settings (colour, width, style) first; "Aa" swaps the text settings into
+  // the same row in their place, and swaps them back out. So the bar starts
+  // hidden, and goes back to hidden whenever text leaves the row or a
+  // different text box / callout is picked.
+  const [showTextFormatBar, setShowTextFormatBar] = useState(false);
   const textFormatSource = resolveTextFormatting(bottomToolbarApi);
+  const textFormatTargetKey = bottomToolbarApi?.textFormatTargetKey ?? null;
+  const hasTextFormatSource = !!textFormatSource;
+  const lastTextFormatTargetRef = useRef(null);
+  useEffect(() => {
+    if (!hasTextFormatSource) {
+      lastTextFormatTargetRef.current = null;
+      setShowTextFormatBar(false);
+      return;
+    }
+    // Opening the picked box for typing drops the key (the editor takes
+    // over); only a NEW pick resets the row.
+    if (textFormatTargetKey && textFormatTargetKey !== lastTextFormatTargetRef.current) {
+      if (lastTextFormatTargetRef.current !== null) setShowTextFormatBar(false);
+      lastTextFormatTargetRef.current = textFormatTargetKey;
+    }
+  }, [hasTextFormatSource, textFormatTargetKey]);
   // UX 2026-09-23 (owner: text colour opacity everywhere text colour is
   // picked). The text colour carries its own opacity (utils/textColorOpacity):
   // the picker edits both, and a quick dot changes the colour but keeps the
@@ -1188,7 +1187,6 @@ export default function App({ devPreviewReturnTab = null }) {
       }
       if (!insideDropdown && !inside('[data-style-menu]')) setShowStyleMenu(false);
       if (!insideDropdown && !inside('[data-arrowhead-menu]')) setShowArrowheadMenu(false);
-      if (!insideDropdown && !inside('[data-arrow-ends-menu]')) setShowArrowEndsMenu(false);
       if (!inside('[data-font-color-picker]')) setShowFontColorPicker(false);
       if (!insideDropdown && !inside('[data-font-family-menu]')) setShowFontFamilyMenu(false);
       if (!insideDropdown && !inside('[data-font-size-menu]')) setShowFontSizeMenu(false);
@@ -1235,7 +1233,6 @@ export default function App({ devPreviewReturnTab = null }) {
     setCounterSeriesContextMenu(null);
     setShowStyleMenu(false);
     setShowArrowheadMenu(false);
-    setShowArrowEndsMenu(false);
   }, [bottomToolbarApi?.contextTool]);
 
   /*
@@ -2606,7 +2603,17 @@ export default function App({ devPreviewReturnTab = null }) {
 
   const toolbarOverflowItems = [];
   toolbarOverflowSlotsRef.current = [];
+  // Owner 2026-10-26: with the text settings swapped in, row 2 holds them and
+  // the Aa that swaps them back - none of the regular settings.
+  const textSettingsSwapped = showTextFormatting && !surveyRowShown;
+  // The Style and Ends cards draw their sample in the colour and width the
+  // tool will draw (owner 2026-10-26, #11), like the Width card.
+  const strokeCardColor = bottomToolbarApi?.selectionMixed?.strokeColor
+    ? undefined
+    : (bottomToolbarApi?.selectedStrokeColor ?? bottomToolbarApi?.strokeColor);
+  const strokeCardWidth = bottomToolbarApi?.strokeWidthInputValue;
   const toolbarSlot = (id, render, { canCompact = true, label } = {}) => {
+    if (textSettingsSwapped && id !== 'aa') return null;
     if (toolbarPlan.overflow.includes(id)) {
       const definition = slotDefinition(id);
       toolbarOverflowSlotsRef.current.push({ id, divider: id === 'aa', canCompact });
@@ -3700,7 +3707,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 )}
                 {/* 2026-05-25: Eraser hides the color swatch entirely — only
                     the diameter input below remains visible for that tool. */}
-                {bottomToolbarApi.activeTool !== 'eraser' && (
+                {bottomToolbarApi.activeTool !== 'eraser' && !textSettingsSwapped && (
                   <>
                 {/* PASS 7 (boards 8-12, owner rulings) — THE COLOUR CLUSTER.
                     Both controls in here are the shared ones the phone strip
@@ -4028,11 +4035,9 @@ export default function App({ devPreviewReturnTab = null }) {
                   onOpenChange={(open) => setDropdownOpen('size', open)}
                   // PASS 7 (boards 8-13, owner ruling "width is a dropdown
                   // ONLY"): the pill presentation. Every numeric setting in the
-                  // bar carries its unit, so "2" reads "2 pt". The line width
-                  // leads with a stroke drawn at the weight it will paint; the
-                  // eraser leads with a dot, because what it sets is the size of
-                  // a round rubber; the counter's pin size leads with nothing,
-                  // because a pin has no line to preview.
+                  // bar carries its unit, so "2" reads "2 pt". Owner 2026-10-26
+                  // (#33): the pill is the number alone - the small stroke
+                  // drawn before it cut "12.5 pt" off; the card draws it.
                   variant="pill"
                   unit="pt"
                   width="var(--chrome-field-w)"
@@ -4042,23 +4047,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     ? '#9ca3af'
                     : (bottomToolbarApi.selectionMixed?.strokeColor ? undefined : (bottomToolbarApi.selectedStrokeColor ?? bottomToolbarApi.strokeColor))}
                   previewShape={bottomToolbarApi.activeTool === 'eraser' || bottomToolbarApi.contextTool === 'counter' ? 'dot' : 'stroke'}
-                  preview={bottomToolbarApi.activeTool === 'eraser' ? (
-                    <span
-                      aria-hidden="true"
-                      style={{ display: 'block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor' }}
-                    />
-                  ) : bottomToolbarApi.contextTool === 'counter' ? null : (
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        display: 'block',
-                        width: '12px',
-                        height: 0,
-                        borderTop: `${Math.max(1, Math.min(6, Math.round(Number(bottomToolbarApi.strokeWidthInputValue) || 1)))}px solid currentColor`,
-                        borderRadius: '1px',
-                      }}
-                    />
-                  )}
+                  dash={bottomToolbarApi.activeTool === 'eraser' ? 'solid' : (bottomToolbarApi.lineBorderStyle || 'solid')}
                 />
                 ), {
                   canCompact: !(bottomToolbarApi.activeTool !== 'eraser' && bottomToolbarApi.selectionMixed?.width),
@@ -4145,6 +4134,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   // (no row ticked) until one is chosen for all of them.
                   const styleMixed = !!bottomToolbarApi.selectionMixed?.lineStyle;
                   if (bottomToolbarApi.selectionCapabilities?.lineStyle === false) return null;
+                  const styleOptions = LINE_STYLE_OPTIONS.filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle);
                   return toolbarSlot('style', (compact) => (
                   <AnnotationDropdown
                     compact={compact}
@@ -4153,24 +4143,33 @@ export default function App({ devPreviewReturnTab = null }) {
                     label="Style"
                     value={styleMixed ? '__mixed' : styleValue}
                     triggerContent={styleMixed ? 'Mixed' : undefined}
-                    options={LINE_STYLE_OPTIONS.filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle)}
+                    options={styleOptions}
                     onSelect={bottomToolbarApi.setLineBorderStyle}
                     dataMarker="data-style-menu"
                     /* PASS 7 (boards 9-12 + 15): the pill shows the LINE it
-                       will draw, then names it; every row in its menu is the
-                       same drawing at the menu's 24px sample width. */
+                       will draw, then names it. */
                     preview={<Icon name={LINE_STYLE_SAMPLE_ICONS[styleValue] || 'lineSampleSolid'} size={18} color="currentColor" />}
-                    renderOption={(option) => (
-                      <>
-                        <span className="annotation-dropdown__sample" aria-hidden="true">
-                          <Icon name={LINE_STYLE_SAMPLE_ICONS[option.value]} size={24} color="currentColor" />
-                        </span>
-                        <span>{option.label}</span>
-                      </>
-                    )}
                     width="var(--chrome-field-w-style)"
                     contentWidth="var(--chrome-field-w-style)"
-                  />
+                    contentClassName="stroke-card-popover"
+                  >
+                    {/* Owner 2026-10-26 (#11): a card like the Width card -
+                        the line on paper in the tool's colour and width,
+                        then the styles as drawn tiles. */}
+                    <LineStyleCard
+                      value={styleValue}
+                      mixed={styleMixed}
+                      options={styleOptions}
+                      onSelect={(next) => {
+                        bottomToolbarApi.setLineBorderStyle(next);
+                        setShowStyleMenu(false);
+                      }}
+                      color={strokeCardColor}
+                      widthPt={strokeCardWidth}
+                      endHead={bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout' ? (bottomToolbarApi.arrowheadStyle || 'none') : 'none'}
+                      startHead={bottomToolbarApi.contextTool === 'arrow' && bottomToolbarApi.arrowBothEnds ? (bottomToolbarApi.arrowheadStyle || 'none') : 'none'}
+                    />
+                  </AnnotationDropdown>
                   ), { canCompact: !styleMixed });
                   })()
                 )}
@@ -4217,102 +4216,91 @@ export default function App({ devPreviewReturnTab = null }) {
                     />
                   </label>
                 ), { canCompact: false })}
-                {/* 2026-05-25: Arrow tool (or selected callout) — custom
-                    arrowhead menu that always opens downward and shows every
-                    option at once (native select scrolls / picks its own
-                    direction). Callouts have their own arrowhead end so the
-                    same picker drives both. */}
+                {/* Owner 2026-10-26 (#11): ONE arrow-ends pill replaces the
+                    Arrowhead and Arrow ends pills. Side by side they read
+                    "Solid" (the line) "Solid" (the head) "End", and "no head"
+                    was offered twice. The pill draws the arrow as it will be;
+                    its card holds which ends (End / Both ends, arrow only - a
+                    callout has one end) and the head tiles, None among them.
+                    It writes the same two pieces of state as before (head
+                    style, both ends), so nothing new is stored. */}
                 {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
-                  const live = bottomToolbarApi.arrowheadStyle;
+                  const live = bottomToolbarApi.arrowheadStyle || 'none';
                   const options = ARROWHEAD_MENU_OPTIONS.some((option) => option.value === live)
                     ? ARROWHEAD_MENU_OPTIONS
-                    : [{ value: live, label: ARROWHEAD_SHORT_LABELS[live] || 'Arrowhead', icon: 'arrowheadOpen' }, ...ARROWHEAD_MENU_OPTIONS];
-                  const iconFor = (value) => options.find((option) => option.value === value)?.icon || 'arrowheadSolid';
+                    : [{ value: live, label: ARROWHEAD_SHORT_LABELS[live] || 'Arrowhead' }, ...ARROWHEAD_MENU_OPTIONS];
+                  const isArrow = bottomToolbarApi.contextTool === 'arrow' && !!bottomToolbarApi.setArrowBothEnds;
                   const headMixed = !!bottomToolbarApi.selectionMixed?.arrowheadStyle;
+                  // w41: picked arrows with different ends read "Mixed".
+                  const endsMixed = isArrow && !!bottomToolbarApi.selectionMixed?.arrowBothEnds;
+                  const both = isArrow && live !== 'none' && !!bottomToolbarApi.arrowBothEnds;
+                  const anyMixed = headMixed || endsMixed;
+                  const setEnds = (next) => {
+                    // w41: several picked arrows take the ends in one
+                    // write, each keeping its own head style.
+                    if (typeof bottomToolbarApi.setGroupArrowEnds === 'function') {
+                      bottomToolbarApi.setGroupArrowEnds(next);
+                      return;
+                    }
+                    if (next === 'none') {
+                      bottomToolbarApi.setArrowheadStyle?.('none');
+                      return;
+                    }
+                    // Coming back from no head: the line needs a head again
+                    // before "which ends" can mean anything, so restore the
+                    // default filled head.
+                    if (bottomToolbarApi.arrowheadStyle === 'none') {
+                      bottomToolbarApi.setArrowheadStyle?.('solidTriangle');
+                    }
+                    bottomToolbarApi.setArrowBothEnds(next === 'both');
+                  };
+                  const pillLabel = anyMixed
+                    ? 'Mixed'
+                    : (options.find((option) => option.value === live)?.label || 'Arrowhead');
                   return toolbarSlot('arrowhead', (compact) => (
                   <AnnotationDropdown
                     compact={compact}
                     open={showArrowheadMenu}
                     onOpenChange={setShowArrowheadMenu}
-                    label="Arrowhead"
-                    value={headMixed ? '__mixed' : live}
-                    triggerContent={headMixed ? 'Mixed' : undefined}
+                    label={isArrow ? 'Arrow ends' : 'Arrowhead'}
+                    value={anyMixed ? '__mixed' : live}
+                    triggerContent={pillLabel}
                     options={options}
                     onSelect={bottomToolbarApi.setArrowheadStyle}
                     dataMarker="data-arrowhead-menu"
-                    /* PASS 7 (boards 10 + 15): the pill draws the head it will
-                       put on the line, and each row draws its own. */
-                    preview={<Icon name={iconFor(live)} size={15} color="currentColor" />}
-                    renderOption={(option) => (
-                      <>
-                        <span className="annotation-dropdown__sample" aria-hidden="true">
-                          <Icon name={option.icon} size={16} color="currentColor" />
-                        </span>
-                        <span>{option.label}</span>
-                      </>
+                    preview={(
+                      <StrokeSample
+                        width={22}
+                        height={14}
+                        pad={1}
+                        strokePx={1.5}
+                        endHead={anyMixed ? 'vShape' : live}
+                        startHead={!anyMixed && both ? live : 'none'}
+                        headScale={0.8}
+                      />
                     )}
                     width="var(--chrome-field-w-arrowhead)"
                     contentWidth="var(--chrome-field-w-arrowhead)"
-                  />
-                  ), { canCompact: !headMixed });
-                })()}
-                {/* PASS 7 (boards 10 + 16, owner ruling): ARROW ENDS is a
-                    dropdown of three — End, Both, None — replacing the "both
-                    ends" on/off button. A toggle could only say "both or not",
-                    so "no head at all" had to be found in the Arrowhead list
-                    instead; the three ends now sit together in one control, with
-                    the identical glyphs the phone's arrow sheet shows. Arrow
-                    tool only (a callout has one end). */}
-                {bottomToolbarApi.contextTool === 'arrow' && bottomToolbarApi.setArrowBothEnds && (() => {
-                  const endsValue = bottomToolbarApi.arrowheadStyle === 'none'
-                    ? 'none'
-                    : (bottomToolbarApi.arrowBothEnds ? 'both' : 'end');
-                  const iconFor = (value) => ARROW_ENDS_OPTIONS.find((option) => option.value === value)?.icon || 'moveRight';
-                  // w41: picked arrows with different ends read "Mixed".
-                  const endsMixed = !!(bottomToolbarApi.selectionMixed?.arrowBothEnds
-                    || bottomToolbarApi.selectionMixed?.arrowheadStyle);
-                  return toolbarSlot('ends', (compact) => (
-                  <AnnotationDropdown
-                    compact={compact}
-                    open={showArrowEndsMenu}
-                    onOpenChange={setShowArrowEndsMenu}
-                    label="Arrow ends"
-                    value={endsMixed ? '__mixed' : endsValue}
-                    triggerContent={endsMixed ? 'Mixed' : undefined}
-                    options={ARROW_ENDS_OPTIONS}
-                    onSelect={(next) => {
-                      // w41: several picked arrows take the ends in one
-                      // write, each keeping its own head style.
-                      if (typeof bottomToolbarApi.setGroupArrowEnds === 'function') {
-                        bottomToolbarApi.setGroupArrowEnds(next);
-                        return;
-                      }
-                      if (next === 'none') {
-                        bottomToolbarApi.setArrowheadStyle?.('none');
-                        return;
-                      }
-                      // Coming back from None: the line needs a head again
-                      // before "which ends" can mean anything, so restore the
-                      // default solid head the boards show.
-                      if (bottomToolbarApi.arrowheadStyle === 'none') {
-                        bottomToolbarApi.setArrowheadStyle?.('solidTriangle');
-                      }
-                      bottomToolbarApi.setArrowBothEnds(next === 'both');
-                    }}
-                    dataMarker="data-arrow-ends-menu"
-                    preview={<Icon name={iconFor(endsValue)} size={15} color="currentColor" />}
-                    renderOption={(option) => (
-                      <>
-                        <span className="annotation-dropdown__sample" aria-hidden="true">
-                          <Icon name={option.icon} size={16} color="currentColor" />
-                        </span>
-                        <span>{option.label}</span>
-                      </>
-                    )}
-                    width="var(--chrome-field-w-ends)"
-                    contentWidth="var(--chrome-field-w-ends)"
-                  />
-                  ), { canCompact: !endsMixed });
+                    contentClassName="stroke-card-popover"
+                  >
+                    <ArrowEndsCard
+                      head={live}
+                      ends={isArrow ? (both ? 'both' : 'end') : null}
+                      headMixed={headMixed}
+                      endsMixed={endsMixed}
+                      headOptions={options}
+                      onHead={(next) => {
+                        if (isArrow && next === 'none') setEnds('none');
+                        else bottomToolbarApi.setArrowheadStyle(next);
+                        setShowArrowheadMenu(false);
+                      }}
+                      onEnds={setEnds}
+                      color={strokeCardColor}
+                      widthPt={strokeCardWidth}
+                      dash={bottomToolbarApi.lineBorderStyle || 'solid'}
+                    />
+                  </AnnotationDropdown>
+                  ), { canCompact: !anyMixed });
                 })()}
                 {/* PASS 7 (2026-09-22 review): the rule that closes the value
                     group before "Aa". Every other group in bars 1-3 is fenced
