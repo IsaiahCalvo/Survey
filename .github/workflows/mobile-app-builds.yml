@@ -102,6 +102,8 @@ jobs:
         run: |
           tag="app-$CHANNEL"
           notes="Latest $CHANNEL Android app, built from ${{ steps.live.outputs.sha }} on $(date -u +%FT%TZ)."
-          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --prerelease --target "${{ steps.live.outputs.sha }}" --title "Survey app ($CHANNEL)" --notes "$notes"
-          gh release edit "$tag" --notes "$notes"
+          # Notes name the built commit and gate later skips, so write them
+          # only after the APK upload succeeds.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --prerelease --target "${{ steps.live.outputs.sha }}" --title "Survey app ($CHANNEL)" --notes "First build in progress."
           gh release upload "$tag" "survey-$CHANNEL.apk" --clobber
+          gh release edit "$tag" --notes "$notes"
