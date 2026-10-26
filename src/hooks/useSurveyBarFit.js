@@ -7,8 +7,8 @@ import { publishSideRoom } from '../sidebar/panelLayoutStore.js';
  * The survey bar's layout (owner 2026-10-13: "the panel pushes the
  * sub-toolbar out of place ... The sub-toolbar must remain fixed").
  *
- * Intended UX: the bar's centre group (module menu, category chips, Reuse)
- * sits on the tool bar's own centre - the Draw / Shapes / Text icons - and
+ * Intended UX: the bar's centre group (entity swatches, module menu, category
+ * chips, the freehand marker's Width) sits on the tool bar's own centre - the Draw / Shapes / Text icons - and
  * never moves when a side panel opens or closes; only the end pieces (the
  * template menu, Done) move in and out with the panels, giving ground first
  * when room runs short. Nothing overlaps or runs under an open panel. The
@@ -22,11 +22,11 @@ import { publishSideRoom } from '../sidebar/panelLayoutStore.js';
  * back and forth.
  *
  * The centre's spot is written as a CSS variable on the survey row slot
- * (both survey rows inherit it): --survey-centre-x, the tool bar's centre in
- * bar coordinates; and on the bar itself: --survey-template-room,
+ * (the row inherits it): --survey-centre-x, the tool bar's centre in bar
+ * coordinates; and on the bar itself: --survey-template-room,
  * --survey-module-short. `plan.rowMax` / `plan.entityRowMax` are how many
- * slots the category and entity rows may draw (8, fewer only as a narrow
- * window's last resort).
+ * slots the category chips and the entity swatches may draw (8, fewer only as
+ * a narrow window's last resort).
  *
  * Returns { ref, plan }: put `ref` on the .survey-subrow element.
  */
@@ -91,7 +91,7 @@ export default function useSurveyBarFit({ enabled, insetLeft = 0, insetRight = 0
     // The swatches' gutter as drawn: a touch-first tablet opens it to the
     // colour discs' roomier one (touchTargets.css), and the entity row must
     // be planned with it or its end runs under the Survey panel.
-    const entityRowEl = bar.closest('#chrome-survey-row-slot')?.querySelector('.survey-entitybar__centre');
+    const entityRowEl = bar.querySelector('.survey-entitybar__centre');
     const swatchGap = entityRowEl ? parseFloat(window.getComputedStyle(entityRowEl).columnGap) : NaN;
     const next = planSurveyBar({
       barWidth: barRect.width,

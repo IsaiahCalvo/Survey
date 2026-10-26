@@ -1398,19 +1398,17 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
       <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement" ref={topOverlayRef}>
         {/* App-styled dropdown (OWNER DECISION 3) replaces the OS module roller. */}
         {/* Owner 2026-09-30 (survey bar design, decided after a design review):
-              [ Module v ] (switch) Reuse   (centred)
+              [ Module v ]   (centred)
             - The pill is exactly as wide as its LONGEST module name
               (fitOptions: every name sits invisibly in one grid cell), so
-              switching module never moves the switch; it shrinks and
+              switching module never moves anything; it shrinks and
               ellipsises only when the row runs out of room.
-            - "Keep active" is the desktop survey row's plateless switch,
-              relabelled "Repeat", then "Reuse" (owner 2026-10-01): it keeps
-              the CATEGORY armed after a Survey Marker is placed (PDFViewer
-              clears selectedCategoryId otherwise).
+            - (The "Reuse" switch is gone, owner 2026-10-26: the category
+              always stays picked, the first one by default.)
             Owner 2026-10-07 (survey bar round, after a debate - the floating
             Survey chip under the top bar is gone): the strip names the mode
             itself and is the way out, the desktop bar's twin:
-              [glyph template v]  [ Module v ] (switch) Reuse   Done
+              [glyph template v]  [ Module v ]   Done
             The template is a menu (switch template); it is the one item
             that gives way when the strip runs out of room (ellipsis). "Done"
             leaves Survey with an Undo toast; 44px finger target. */}
@@ -1454,18 +1452,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
           options={(survey.modules || []).map((module) => ({ value: module.id, label: module.name || 'Untitled Module' }))}
           onChange={(value) => survey.onSelectModule?.(value)}
         />
-        <button
-          type="button"
-          className="mobile-pdf-properties__keep"
-          role="switch"
-          aria-checked={Boolean(survey.keepCategoryActive)}
-          aria-label="Reuse category"
-          onClick={() => survey.onKeepCategoryActiveChange?.(!survey.keepCategoryActive)}
-        >
-          <span className="mobile-pdf-properties__keep-track" aria-hidden="true" />
-          <span>Reuse</span>
-        </button>
-        {/* A rule keeps "Reuse" and "Done" from reading as one phrase. */}
+        {/* A rule keeps the module and "Done" from reading as one phrase. */}
         <span aria-hidden="true" className="mobile-pdf-properties__divider mobile-pdf-properties__done-rule" />
         <button
           type="button"

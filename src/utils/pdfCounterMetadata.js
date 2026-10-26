@@ -55,6 +55,7 @@ export function buildPdfCounterMetadata(fabricObj, pageNumber = null) {
       name: data.seriesName ?? null,
       color: data.seriesColor ?? fabricObj.fill ?? data.color ?? null,
       start: data.seriesStart ?? null,
+      order: data.seriesOrder ?? null,
     },
     group: {
       id: data.groupId ?? data.counterGroupId ?? null,
@@ -67,6 +68,7 @@ export function buildPdfCounterMetadata(fabricObj, pageNumber = null) {
       seriesName: data.seriesName ?? null,
       seriesColor: data.seriesColor ?? null,
       seriesStart: data.seriesStart ?? null,
+      seriesOrder: data.seriesOrder ?? null,
       groupId: data.groupId ?? null,
       counterGroupId: data.counterGroupId ?? null,
       sequence: data.sequence ?? null,

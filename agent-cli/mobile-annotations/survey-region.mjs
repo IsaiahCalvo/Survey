@@ -189,8 +189,9 @@ export async function runSurveyMarkerLifecycle({
     { x: box.x + box.width * 0.58, y: box.top + (box.bottom - box.top) * 0.48 },
     { steps: 12 },
   );
-  // Mobile intentionally skips the desktop name modal: it auto-names,
-  // persists immediately, opens marker detail, and returns to Pan.
+  // The new-marker sheet opens with the auto name; tapping off it places the marker.
+  await page.locator('text=/Enter places it|Tap outside/').first().waitFor({ timeout: 5_000 });
+  await touch.tap({ x: box.x + box.width * 0.5, y: 140 });
   const id = invariant(await newMarkerId(page, beforeIds), 'Survey Marker create returned no stable id');
   let marker = await waitForMarkerRecord(
     page,
