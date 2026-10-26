@@ -324,6 +324,13 @@ test('hands-free: the device hears what it is sure of, only an unsure clip goes 
   await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
   await expect(panel.getByText(/set card reader to Y on D-118/)).toBeVisible({ timeout: 30_000 });
   await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d118')).toBe('Y');
+  // Typed words get a Send beside Stop, without ending hands-free.
+  const box = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await box.fill('typed');
+  await expect(panel.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Stop hands-free' })).toBeVisible();
+  await box.fill('');
+  await expect(panel.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Stop hands-free' }).click();
 
   // One clip went to the server (the unsure one), not two.

@@ -1049,8 +1049,12 @@ export default function SurveyAgentPanel({
 
   const thinking = busy || transcribing;
   // The right-hand button is hands-free until there is something to send.
+  // While hands-free is on, typed words or a file get a Send beside Stop, so
+  // they can go without ending the voice session (Codex review on #1199).
   const handsFreeAvailable = Boolean(status?.transcription) && canHandsFree();
-  const showSend = !handsFree && (!handsFreeAvailable || Boolean(draft.trim()) || pendingFiles.length > 0);
+  const hasContent = Boolean(draft.trim()) || pendingFiles.length > 0;
+  const showSend = hasContent || (!handsFree && !handsFreeAvailable);
+  const showHandsFree = handsFree || (handsFreeAvailable && !showSend);
   const micHearing = handsFree ? livePhase === 'hearing' : pttHearing || listening;
   const panel = (
     <section
@@ -1273,7 +1277,7 @@ export default function SurveyAgentPanel({
                 {recording ? <ArrowUpIcon /> : <Icon name="mic" size={18} color="currentColor" />}
               </button>
             )}
-            {recording && !handsFree ? null : showSend ? (
+            {!(recording && !handsFree) && showSend && (
               <button
                 type="submit"
                 className="survey-agent__send"
@@ -1283,7 +1287,8 @@ export default function SurveyAgentPanel({
               >
                 <ArrowUpIcon />
               </button>
-            ) : (
+            )}
+            {!(recording && !handsFree) && showHandsFree && (
               <button
                 type="button"
                 className={`survey-agent__send survey-agent__handsfree${handsFree ? ' is-on' : ''}`}
