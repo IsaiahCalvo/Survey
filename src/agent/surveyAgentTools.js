@@ -3,7 +3,7 @@
 // answers it through the Survey panel's own writes (the "bridge" the panel
 // publishes), so sync, Excel rows, auto-entity and role checks behave exactly
 // as if the person had tapped. Every write returns a change with an undo.
-import { answerSetFor, itemKind, typedAnswer } from '../services/answerSets.js';
+import { answerSetFor, itemAnswerHint, itemAnswerSpec, itemKind, typedAnswer } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
 import { MARK_COLOR_HEX, normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { markBox, visiblePageBox } from './planView.js';
@@ -414,7 +414,7 @@ export function createSurveyAgentToolbox({
             ...(multiModule ? { module: module.name } : {}),
             item_count: counts.get(category.id) || 0,
             ...(examples.has(category.id) ? { example_item: examples.get(category.id) } : {}),
-            checklist: activeChecklist(category).map((item) => ({ id: item.id, text: itemText(item), ...(itemKind(item) !== 'choice' ? { answer_kind: itemKind(item), ...(item.unit ? { unit: item.unit } : {}) } : {}) })),
+            checklist: activeChecklist(category).map((item) => ({ id: item.id, text: itemText(item), ...itemAnswerSpec(item) })),
           })),
           entities: entitiesOf(b.template).map((e) => ({ id: e.id, name: e.name })),
           // What plain talk means in each module ("it's installed", "it works").
@@ -484,7 +484,7 @@ export function createSurveyAgentToolbox({
           checklist: entry ? activeChecklist(entry.category).map((item) => ({
             id: item.id,
             text: itemText(item),
-            ...(itemKind(item) !== 'choice' ? { answer_kind: itemKind(item), ...(item.unit ? { unit: item.unit } : {}) } : {}),
+            ...itemAnswerSpec(item),
             answer: responses[item.id]?.selection || null,
           })) : [],
           note: noteTextOf(marker.note),
@@ -516,13 +516,13 @@ export function createSurveyAgentToolbox({
       // that module's item of the same name, added at the same spot if the
       // person has not placed it there yet.
       const elsewhere = new Map();
-      // Text and number lines take what was said, not a listed answer.
+      // Typed lines (text, number, score, count, date) take what was said, not a listed answer.
       const lineById = new Map(categoryIndex(b.template).list.flatMap(({ category }) => activeChecklist(category)).map((l) => [l.id, l]));
       for (const a of named) {
         const line = checklist.get(a?.checklist_item_id) || lineById.get(a?.checklist_item_id);
         if (line && itemKind(line) !== 'choice') {
           const typed = typedAnswer(line, a.value);
-          if (typed === null) throw new ToolError(`"${a.value}" is not a number. "${itemText(line)}" takes a number${line.unit ? ` in ${line.unit}` : ''}.`);
+          if (typed === null) throw new ToolError(`"${a.value}" does not fit "${itemText(line)}": ${itemAnswerHint(line)}.`);
           if (!typed) throw new ToolError(`"${itemText(line)}" needs a value.`);
           a.value = typed;
         } else if (!allowed.includes(a?.value)) throw new ToolError(`"${a?.value}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);

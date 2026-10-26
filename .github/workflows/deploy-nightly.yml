@@ -17,9 +17,11 @@ name: Deploy nightly
 # GitHub runs this repo's cron schedules only now and then (one scheduled run
 # of any workflow on 2026-10-21 while ~350 others ran), so every finished
 # "Deploy production" run also starts it. Each run deploys only when the
-# commit surveytool.app serves differs from the one nightly last got (the
-# newest "nightly-last-" cache entry holds it). The schedule stays as a
-# backup. Run by hand to deploy again anyway.
+# commit surveytool.app serves differs from the one the nightly address
+# points at (Vercel keeps it on the deployment as meta.nightlySha). Not a
+# cache mark: runs started by workflow_run can get a read-only Actions cache,
+# and on 2026-10-22 marks stopped saving and every run redeployed. The schedule
+# stays as a backup. Run by hand to deploy again anyway.
 on:
   schedule:
     - cron: '0 10 * * *'
@@ -37,7 +39,6 @@ jobs:
     timeout-minutes: 2
     outputs:
       sha: ${{ steps.live.outputs.sha }}
-      done: ${{ steps.same.outputs.done }}
       wait: ${{ steps.capwait.outputs.wait }}
     steps:
       - name: Find the revision production is serving
@@ -50,26 +51,6 @@ jobs:
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-      # The newest mark holds the commit nightly last got, so a production
-      # rollback to an older commit still redeploys nightly to match.
-      - name: Which revision did nightly last get?
-        id: last
-        if: github.event_name != 'workflow_dispatch'
-        uses: actions/cache/restore@v4
-        with:
-          path: .nightly-last
-          key: nightly-last-none
-          restore-keys: nightly-last-
-      - name: Already serving this revision on nightly?
-        id: same
-        if: github.event_name != 'workflow_dispatch'
-        shell: bash
-        env:
-          SHA: ${{ steps.live.outputs.sha }}
-        run: |
-          if [ "$(cat .nightly-last/sha 2>/dev/null)" = "$SHA" ]; then
-            echo "Nightly already has $SHA."; echo "done=true" >> "$GITHUB_OUTPUT"
-          fi
       # Production comes first: while Vercel's daily cap is refusing deploys
       # (deploy-production.yml leaves a mark), nightly waits too, so the first
       # free slot goes to surveytool.app.
@@ -99,9 +80,10 @@ jobs:
 
   deploy:
     needs: due
-    if: needs.due.outputs.done != 'true' && needs.due.outputs.wait != 'true'
+    if: needs.due.outputs.wait != 'true'
     # Not cancel-in-progress: with a run started after every production run,
-    # a newer run would keep cancelling the one deploying.
+    # a newer run would keep cancelling the one deploying. The check below
+    # runs inside this lock, so a queued run sees the deploy before it.
     concurrency:
       group: nightly-deploy
       cancel-in-progress: false
@@ -112,17 +94,38 @@ jobs:
       VERCEL_SCOPE: team_uLSMMTmD4LhtDBm9qJ8DV59v
 
     steps:
+      # Compares with what the nightly address serves now, so a production
+      # rollback to an older commit still moves nightly to match.
+      - name: Is nightly already on this revision?
+        id: current
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          SHA: ${{ needs.due.outputs.sha }}
+        run: |
+          api="https://api.vercel.com"
+          auth="Authorization: Bearer $VERCEL_TOKEN"
+          id="$(curl --fail --silent --show-error -H "$auth" "$api/v4/aliases/$NIGHTLY_HOST?teamId=$VERCEL_SCOPE" | jq -r '.deploymentId // empty' || true)"
+          have=""
+          [ -n "$id" ] && have="$(curl --fail --silent --show-error -H "$auth" "$api/v13/deployments/$id?teamId=$VERCEL_SCOPE" | jq -r '.meta.nightlySha // empty' || true)"
+          echo "Nightly serves ${have:-an unknown revision}; production serves $SHA."
+          if [ "$have" = "$SHA" ]; then echo "same=true" >> "$GITHUB_OUTPUT"; fi
+
       - name: Checkout the revision production is serving
+        if: steps.current.outputs.same != 'true'
         uses: actions/checkout@v7
         with:
           ref: ${{ needs.due.outputs.sha }}
 
       - name: Setup Node.js
+        if: steps.current.outputs.same != 'true'
         uses: actions/setup-node@v7
         with:
           node-version: '24'
 
       - name: Deploy a nightly preview of the production project
+        if: steps.current.outputs.same != 'true'
         # The Vercel token can reach only the production project (creating a
         # separate nightly project returned 403), so nightly is a preview
         # deployment of that project, built by Vercel from this checkout the
@@ -141,7 +144,8 @@ jobs:
             --build-env VITE_RELEASE_CHANNEL=nightly \
             --build-env VITE_SUPABASE_URL="$VITE_SUPABASE_URL" \
             --build-env VITE_SUPABASE_ANON_KEY="$VITE_SUPABASE_ANON_KEY" \
-            --build-env VERCEL_GIT_COMMIT_SHA="$tested_sha")"
+            --build-env VERCEL_GIT_COMMIT_SHA="$tested_sha" \
+            --meta nightlySha="$tested_sha")"
           echo "Deployed $url"
           # `vercel alias set` looks up the token's user and fails ("User not
           # found") for this team-scoped token, so alias through the REST API.
@@ -154,6 +158,7 @@ jobs:
           echo
 
       - name: Let sign-in links come back to nightly
+        if: steps.current.outputs.same != 'true'
         # Adds the nightly address to Supabase Auth's redirect allow list once,
         # so Google sign-in and email links return to nightly, not production.
         shell: bash
@@ -175,6 +180,7 @@ jobs:
           echo "Allowed: $entry"
 
       - name: Verify nightly serves this revision
+        if: steps.current.outputs.same != 'true'
         # Informational: nightly stays behind Vercel's preview sign-in on
         # purpose, so this anonymous read usually gets Vercel's login page.
         # It passes only if that protection is ever lifted.
@@ -192,13 +198,3 @@ jobs:
           done
           echo "$NIGHTLY_HOST did not reach revision $tested_sha" >&2
           exit 1
-
-      - name: Mark this revision deployed
-        run: mkdir -p .nightly-last && echo "${{ needs.due.outputs.sha }}" > .nightly-last/sha
-      - uses: actions/cache/save@v4
-        # Cache entries can't be overwritten, so each deploy saves a new key;
-        # the next run reads the newest one.
-        continue-on-error: true
-        with:
-          path: .nightly-last
-          key: nightly-last-${{ github.run_id }}-${{ github.run_attempt }}
