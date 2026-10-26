@@ -38,6 +38,7 @@ import {
   buildFixtures,
   DOC_A_ID, DOC_B_ID, DOC_A_NAME, DOC_B_NAME, TEMPLATE_NAME, MODULE_NAME,
 } from './lib/kal92Fixtures.mjs';
+import { assertNoProdEnv, guardContext } from './lib/blockNonLoopback.mjs';
 
 const PORT = Number(process.env.PORT || 5199);
 const BASE = `http://localhost:${PORT}/`;
@@ -55,6 +56,7 @@ const expect = (cond, label) => {
 
 // ---------- harness-owned vite server ----------
 async function startVite() {
+  assertNoProdEnv();
   const child = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
     cwd: process.cwd(),
     env: { ...process.env },
@@ -85,7 +87,7 @@ async function main() {
     const fixtures = buildFixtures();
     const mock = createSupabaseMock({ fixtures, pdfPath: PDF_FIXTURE, log });
 
-    const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+    const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
     const page = await ctx.newPage();
     const logs = [];
     page.on('console', (m) => logs.push(m.text()));

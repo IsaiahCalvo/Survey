@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
+import { assertNoProdEnv } from '../lib/blockNonLoopback.mjs';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -59,6 +60,7 @@ export async function ensureViteServer(requestedBaseUrl) {
   const baseUrl = await ephemeralLoopbackUrl();
 
   const url = new URL(baseUrl);
+  assertNoProdEnv();
   const child = spawn('npm', [
     'run', 'dev:ui', '--',
     '--host', url.hostname,

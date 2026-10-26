@@ -11,6 +11,7 @@
 // toolbar's zoom-out control n times first, so the same flow can be checked at a
 // non-100% scale.
 import { chromium } from 'playwright';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 const PORT = process.env.W3_PORT || '5362';
 const PHONE = process.env.W3_VIEWPORT === 'phone';
@@ -18,12 +19,12 @@ const ZOOM_STEPS = Number(process.env.W3_ZOOM_OUT || 0); // ctrl+- style zoom-ou
 const viewport = PHONE ? { width: 390, height: 844 } : { width: 1440, height: 900 };
 
 const browser = await chromium.launch({ headless: true });
-const ctx = await browser.newContext({
+const ctx = await guardContext(browser.newContext({
   viewport,
   hasTouch: PHONE,
   isMobile: PHONE,
   deviceScaleFactor: PHONE ? 3 : 1,
-});
+}));
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('PAGEERROR ' + e.message));

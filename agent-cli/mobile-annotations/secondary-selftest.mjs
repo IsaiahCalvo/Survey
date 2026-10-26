@@ -11,6 +11,7 @@ import { addExactStorageCleanup, exactStorageKeys, persistedSnapshot } from './s
 import { createTouchDriver } from './touch.mjs';
 import { ensureViteServer } from './vite-server.mjs';
 import { createAnnotation, openRealMobileViewer } from './viewer.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 const FIXTURE_NAME = 'text-search-glyph-lab.pdf';
 const DEFAULT_ROUTE = `/?testPdf=${FIXTURE_NAME}&mobileNav=tabs&nativeShell=expo`;
@@ -106,7 +107,10 @@ async function groupMenuPoint(page) {
   const group = page.locator('[data-group-selection-bbox="true"]');
   await group.waitFor({ state: 'visible', timeout: 10_000 });
   return group.evaluate((node) => {
-    const box = node.getBoundingClientRect();
+    // Sample the union-bbox hitbox the app's resolver uses, not the whole
+    // frame: the frame also holds the rotate grabber and handle pads, where a
+    // long-press opens the page menu instead of the group's.
+    const box = (node.querySelector('[data-group-selection-hitbox="true"]') || node).getBoundingClientRect();
     // A hollow mark's inside is not in elementsFromPoint, but the app's hit
     // test still picks it (and opens that mark's own menu), so stay outside
     // every mark's box, not just its painted pixels.
@@ -260,9 +264,15 @@ async function runCounterSeries(page, touch, baseUrl) {
     const start = await overlay.evaluate((node, preferred) => {
       const box = node.getBoundingClientRect();
       const fractions = [preferred, [0.82, 0.56], [0.18, 0.55], [0.82, 0.76], [0.18, 0.76], [0.5, 0.82], [0.5, 0.18]];
+      for (let yf = 0.1; yf < 0.95; yf += 0.08) for (let xf = 0.1; xf < 0.95; xf += 0.08) fractions.push([xf, yf]);
       for (const [xFraction, yFraction] of fractions) {
         const point = { x: box.left + box.width * xFraction, y: box.top + box.height * yFraction };
-        if (document.elementFromPoint(point.x, point.y) === node) return point;
+        // Keep clear of existing marks too: a touch near one (or its
+        // finger-sized handle pads) selects it instead of placing a counter.
+        const nearMark = [...document.querySelectorAll('g[data-anno-id], [data-callout-id]')]
+          .map((mark) => mark.getBoundingClientRect())
+          .some((r) => point.x >= r.left - 24 && point.x <= r.right + 24 && point.y >= r.top - 24 && point.y <= r.bottom + 24);
+        if (!nearMark && document.elementFromPoint(point.x, point.y) === node) return point;
       }
       return null;
     }, [xFraction, yFraction]);
@@ -420,13 +430,11 @@ async function runBookmarksAndPages(page, baseUrl) {
 
   await page.getByRole('button', { name: 'Page 3 actions', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
-  // The app's own confirm dialog (useConfirmDialog), not window.confirm.
-  await page.getByRole('button', { name: 'Delete page', exact: true }).click();
+  // #1098: page delete is immediate with an Undo toast, no confirm dialog.
   await page.waitForFunction((count) => document.querySelectorAll('.mobile-page-card').length === count, initialPageCount + 1);
   await page.getByRole('button', { name: 'Page 1 actions', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
-  // The app's own confirm dialog (useConfirmDialog), not window.confirm.
-  await page.getByRole('button', { name: 'Delete page', exact: true }).click();
+  // #1098: page delete is immediate with an Undo toast, no confirm dialog.
   await page.waitForFunction((count) => document.querySelectorAll('.mobile-page-card').length === count, initialPageCount);
   snapshot = await persistedSnapshot(page, storageKeys);
   assert(snapshot.sidebar.bookmarks.every((bookmark) => JSON.stringify(bookmark.pageIds) === '[1]'));
@@ -500,7 +508,7 @@ try {
   const server = await ensureViteServer(null);
   managedProcess = server.managedProcess;
   browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
+  const context = await guardContext(browser.newContext({
     acceptDownloads: true,
     deviceScaleFactor: 3,
     hasTouch: true,
@@ -508,7 +516,7 @@ try {
     locale: 'en-US',
     screen: MOBILE_VIEWPORT,
     viewport: MOBILE_VIEWPORT,
-  });
+  }));
   await addExactStorageCleanup(context, storageKeys, artifacts.runId);
   page = await context.newPage();
   artifacts.captureBrowserProblems(page);

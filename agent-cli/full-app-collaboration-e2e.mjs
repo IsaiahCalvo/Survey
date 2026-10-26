@@ -6,6 +6,7 @@ import {
   createCollaborationEvidence,
   finalizeCollaborationEvidence,
 } from './full-app-collaboration-contract.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 const invariant = (value, message) => {
   if (!value) throw new Error(message);
@@ -312,14 +313,14 @@ export async function runProjectCollaboration({
     evidence.revokedInviteIds.push(revokedInvite.row.id);
     evidence.coverage.revoke = 'covered';
 
-    inviteeContext = await browser.newContext({
+    inviteeContext = await guardContext(browser.newContext({
       viewport: surfaceConfig.viewport,
       screen: surfaceConfig.viewport,
       isMobile: surfaceConfig.isMobile,
       hasTouch: surfaceConfig.hasTouch,
       deviceScaleFactor: surfaceConfig.deviceScaleFactor,
       locale: 'en-US',
-    });
+    }));
     await installLeasedBrowserAccount(inviteeContext, { accountIndex: inviteeAccountIndex });
     const pageInvitee = await inviteeContext.newPage();
     await pageInvitee.goto(`${serverBaseUrl}/invite/${encodeURIComponent(acceptedInvite.row.token)}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });

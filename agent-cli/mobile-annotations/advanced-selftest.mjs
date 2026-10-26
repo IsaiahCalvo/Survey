@@ -11,6 +11,7 @@ import { addExactStorageCleanup, exactStorageKeys } from './storage.mjs';
 import { createTouchDriver } from './touch.mjs';
 import { ensureViteServer } from './vite-server.mjs';
 import { openRealMobileViewer } from './viewer.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 const requested = process.argv.slice(2).filter((arg) => !arg.startsWith('-'));
 const fixturePath = path.resolve('debug', 'fixtures', FIXTURE_NAME);
@@ -34,14 +35,14 @@ try {
   const server = await ensureViteServer(null);
   managedProcess = server.managedProcess;
   browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
+  const context = await guardContext(browser.newContext({
     deviceScaleFactor: 3,
     hasTouch: true,
     isMobile: true,
     locale: 'en-US',
     screen: MOBILE_VIEWPORT,
     viewport: MOBILE_VIEWPORT,
-  });
+  }));
   await addExactStorageCleanup(context, storageKeys, artifacts.runId);
   page = await context.newPage();
   artifacts.captureBrowserProblems(page);

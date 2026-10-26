@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 let PNG;
 try { ({ PNG } = await import('pngjs')); } catch { console.error('pngjs missing'); process.exit(2); }
@@ -22,7 +23,7 @@ fs.rmSync(ART_DIR, { recursive: true, force: true });
 fs.mkdirSync(ART_DIR, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
+const ctx = await guardContext(browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 }));
 const page = await ctx.newPage();
 
 const diffPixels = (a, b) => {

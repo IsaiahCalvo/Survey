@@ -66,6 +66,6 @@ test('phone survey-template workflow tracks the current viewer chrome', () => {
 
 test('phone survey-template e2e is hermetic (loopback only)', () => {
   const RUNNER = fs.readFileSync(new URL('../agent-cli/mobile-workflows/survey-template-e2e.mjs', import.meta.url), 'utf8');
-  assert.match(RUNNER, /route\.abort\('blockedbyclient'\)/);
+  assert.match(RUNNER, /guardContext\(browser\.newContext\(/);
   assert.match(RUNNER, /assertNoBrowserErrors\(\{ ignore: \/net::ERR_BLOCKED_BY_CLIENT\/ \}\)/);
 });

@@ -25,6 +25,19 @@ test('the shared row keeps All, Duplicate, Move, Copy, Share, Delete in order', 
 // ends with the dialog's own Done button, like every modal footer.
 const MODAL_FOOTERS = new Set(['src/home/TemplatesEditor.jsx#templates-module-edit-actions']);
 
+// The real end of a JSX tag: the first `/>` or `>` outside its {...} props
+// (an onClick body holds arrows and its own tags).
+function tagEnd(source, at) {
+  let depth = 0;
+  for (let i = at; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') depth -= 1;
+    else if (depth === 0 && ch === '>' && source[i - 1] !== '=') return i + 1;
+  }
+  return source.length;
+}
+
 test('every Select/Done toggle sits before its select-mode row', () => {
   const files = ['src/home/TemplatesEditor.jsx', 'src/home/ProjectsFolderTree.jsx', 'src/home/DocumentsLedger.jsx', 'src/SurveySpacesRail.jsx'];
   let rows = 0;
@@ -41,7 +54,7 @@ test('every Select/Done toggle sits before its select-mode row', () => {
         assert.ok(MODAL_FOOTERS.has(`${file}#templates-module-edit-actions`));
       } else {
         assert.match(before, /action="select"[\s\S]*?(label=\{[^}]*'Done'|label="Done")/, `${file}: a Select/Done toggle precedes the row at ${at}`);
-        const end = source.indexOf('/>', at);
+        const end = tagEnd(source, at);
         const after = source.slice(end, end + 600);
         const close = after.search(/<\/(div|span|SectionIconActions)>|\) : \(/);
         assert.doesNotMatch(after.slice(0, close < 0 ? after.length : close), /action="select"/, `${file}: no Done after the row at ${at}`);

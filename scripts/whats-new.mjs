@@ -4,7 +4,28 @@
 // Work still behind a feature flag stays off this list until it is on for all,
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
+  { date: '2026-10-23', items: [
+    'Ctrl + drag copies a single callout or Survey Marker too, and can drop the copy on another page.',
+    'Hold K while you resize a group to scale its line widths along with it.',
+    'The line width box no longer saves a value when you Tab past it.',
+    'Phones: a long press no longer opens a stray menu.',
+  ] },
   { date: '2026-10-22', items: [
+    'Ctrl + drag (Cmd on a Mac) a mark to copy it. Let go of the key before you drop to move it instead.',
+    'Change a pen\'s width and opacity on the page: Alt + right-drag (Ctrl + Option + drag on a Mac) sideways for width, up and down for opacity.',
+    'A new line width picker: a sample stroke, a slider, a box to type a number and quick picks.',
+    'Resize or turn several marks at once with the selection frame\'s grabbers. Callouts and Survey Markers come along.',
+    'Survey Marker: the new-marker card opens at once, shows the entity colour while you draw, and Pan can pick markers.',
+    'Regions: a new Polygon area tool, the Delete key removes an area, a clearer toolbar and a Move or copy menu.',
+    'A text box you narrow from its side grows taller to fit its words.',
+    'The selection bar keeps clear of the rotate grabber, and snapping has an on/off switch.',
+    'The keyboard reaches every clickable row, header and menu item.',
+    'Hover hints look and act the same everywhere, and PDF tabs show their full name on hover.',
+    'The page fits again when you open or close a side panel, and the Survey bar no longer covers the page.',
+    'Big drawing sets: no freeze after picking Select or Eraser, faster Undo, smoother dragging on crowded sheets and no stall after opening.',
+    'Pressing a pin\'s tail moves the pin.',
+    'Phones: bigger tap areas on survey discs.',
+    'The website has an animated sun and moon switch for light and dark.',
     'The survey Export button now says Export data. It downloads a spreadsheet that opens in Excel, Google Sheets or Numbers.',
     'The Revision cloud tool has a new, clearer cloud icon.',
     'New pictures on the website, taken in the real app on a computer, a tablet and a phone.',

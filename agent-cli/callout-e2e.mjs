@@ -22,6 +22,7 @@
 
 import { chromium } from 'playwright';
 import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 const APP_URL  = process.env.APP_URL || 'http://localhost:5173';
 const DOC_NAME = process.argv[2]    || 'Package 2 - Rev 4 -- IC.pdf';
@@ -37,7 +38,7 @@ const fail = (msg) => {
 };
 
 const browser = await chromium.launch({ headless: HEADLESS });
-const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
 // Callout-unification keystone: flip the shared-store flag ON before any app
 // code runs (calloutsInSharedStore() reads this localStorage key first). Survives
 // reloads (init script runs on every navigation) so the persistence check below

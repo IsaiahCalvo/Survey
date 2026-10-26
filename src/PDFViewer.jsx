@@ -120,8 +120,10 @@ import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
-import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, isRetainedSurveyTemplate, isSurveyTemplateRestorationReady, hasSurveyTemplateMarks, startSurveyTemplateObservation, observeUnusedSurveyTemplateUpdate, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
+import { acceptTemplateVersion, bindUsedTemplate, followModuleOrder, needsTemplateVersionChoice, isRetainedSurveyTemplate, isSurveyTemplateRestorationReady, hasSurveyTemplateMarks, startSurveyTemplateObservation, observeUnusedSurveyTemplateUpdate, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
 import { planSurveyCategoryTransferRestore, surveyCategoryTransferCheckpoint, surveyCategoryTransferStepId } from './utils/surveyCategoryTransferHistory';
+import { planSurveyMarkerTransfer } from './utils/surveyMarkerTransfer.js';
+import { notifyTemplatesChanged } from './hooks/libraryChangeBus.js';
 import { moveSurveyCategories } from './utils/surveyCategoryMove';
 import SurveyMarkerPlacementDialog from './components/SurveyMarkerPlacementDialog';
 import { resolveNextSurveyEntity } from './survey/nextSurveyEntity.js';
@@ -6158,7 +6160,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const latest = templates.find((template) => template.id === id || template.supabaseId === id);
     const editingSelected = selectedTemplate && (selectedTemplate.id === id || selectedTemplate.supabaseId === id);
     if (editingSelected && latest && templateFingerprint(latest) !== templateFingerprint(selectedTemplate)) return Promise.reject(new Error('Use the latest template before updating its shared definition.'));
-    return updateSupabaseTemplateRow(id, changes);
+    // The home Templates page reads its own list: tell it to read again, so a
+    // change made in the Survey panel (module or category order, a moved
+    // category) shows there without a reload.
+    return updateSupabaseTemplateRow(id, changes).then((result) => {
+      notifyTemplatesChanged();
+      return result;
+    });
   }, [templates, selectedTemplate, updateSupabaseTemplateRow]);
   const hasSwitchedToSurveyMarkerRef = useRef(false);
   const [toolbarHeights, setToolbarHeights] = useState({ top: 56, bottom: 56 });
@@ -6181,15 +6189,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
+  // The version of a template this document opens: the one it kept (with the
+  // latest module order when only the order changed), else the latest.
+  const surveyTemplateVersionForDocument = useCallback((template) => {
+    if (!template) return null;
+    const binding = readSurveyTemplateBinding(template.id);
+    if (!binding?.used) return template;
+    return followModuleOrder(binding.snapshot, template) || binding.snapshot;
+  }, [readSurveyTemplateBinding]);
   const handleSelectSurveyTemplate = useCallback((template, options = {}) => {
     if (!template) return;
-    const binding = readSurveyTemplateBinding(template.id);
+    let binding = readSurveyTemplateBinding(template.id);
+    // Only the module order changed (Templates page or another screen): the
+    // document takes the new order without asking.
+    const reordered = binding?.used ? followModuleOrder(binding.snapshot, template) : null;
+    if (reordered) {
+      binding = acceptTemplateVersion(binding, reordered, true);
+      storeSurveyTemplateBinding(template.id, binding);
+    }
     if (needsTemplateVersionChoice(binding, template) || (options.forceVersionChoice && binding?.used && templateFingerprint(template) !== binding.fingerprint)) {
       setPendingTemplateVersion({ binding, latest: template });
       return;
     }
     enterSurveyTemplateVersion(binding?.used ? binding.snapshot : template);
-  }, [readSurveyTemplateBinding, enterSurveyTemplateVersion]);
+  }, [readSurveyTemplateBinding, storeSurveyTemplateBinding, enterSurveyTemplateVersion]);
 
   const requireCurrentSurveyTemplate = useCallback(() => {
     const latest = appTemplates.find((template) => template.id === selectedTemplate?.id);
@@ -21680,6 +21703,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSelectedModuleId(module?.id || null);
     setSelectedCategoryId((id) => (module?.categories || []).some((category) => category.id === id) ? id : null);
   }, [selectedTemplate, showSurveyPanel, appTemplates, selectedModuleId, currentSurveyTemplateHasMarks, surveyTemplateRestorationReady, readSurveyTemplateBinding]);
+  // The open survey follows a module reorder made elsewhere (Templates page,
+  // another screen) at once: same version, new order (followModuleOrder).
+  useLayoutEffect(() => {
+    if (!selectedTemplate) return;
+    const reordered = followModuleOrder(selectedTemplate, appTemplates.find((template) => template.id === selectedTemplate.id));
+    if (!reordered) return;
+    setSelectedTemplate(reordered);
+    const binding = readSurveyTemplateBinding(selectedTemplate.id);
+    if (binding?.used) storeSurveyTemplateBinding(selectedTemplate.id, acceptTemplateVersion(binding, reordered, true));
+  }, [selectedTemplate, appTemplates, readSurveyTemplateBinding, storeSurveyTemplateBinding]);
   // Layers panel ('layers' flag): the layer list rides the synced doc meta;
   // the active layer is this screen's own choice.
   const [layersEnabled] = useState(() => isFeatureOn('layers'));
@@ -31552,6 +31585,48 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [applySurveyMarkerFamilyAction, documentOwnerId, user?.id]);
   commitSurveyMarkerFamilyPatchRef.current = commitSurveyMarkerFamilyPatch;
 
+  // Survey panel Move / Copy (owner 2026-10-26): Survey Markers go to another
+  // category - in this module, another module or another template. One Undo
+  // step; the same lock / ownership gate as a drag. The panel then shows where
+  // they went.
+  const handleTransferSurveyMarkers = useCallback(({ mode, ids, templateId, moduleId, categoryId }) => {
+    if (documentLocked || yjsDocRole === 'viewer') return { ok: false, reason: 'This document is read-only.' };
+    // Another template opens in the version this document kept (the picker
+    // lists that version), so check the category is really there first.
+    const current = selectedTemplateRef.current;
+    const otherTemplate = Boolean(templateId) && templateId !== current?.id;
+    const destination = otherTemplate
+      ? surveyTemplateVersionForDocument(templates.find((entry) => entry?.id === templateId))
+      : current;
+    const destinationModule = (destination?.modules || destination?.spaces || []).find((mod) => mod?.id === moduleId);
+    if (!(destinationModule?.categories || []).some((cat) => cat?.id === categoryId)) {
+      return { ok: false, reason: 'That category is not in the version of the template this document uses.' };
+    }
+    const viewerId = user?.id ?? null;
+    const plan = planSurveyMarkerTransfer({
+      mode, ids, moduleId, categoryId,
+      markers: surveyMarkersRef.current || {},
+      mayEdit: (record) => !isUserLocked(record) && (
+        !viewerId || !documentOwnerId || canModifySurveyMarker({ surveyMarker: record, viewerId, documentOwnerId })
+      ),
+      mintId: () => `surveyMarker-${crypto.randomUUID()}`,
+      userId: viewerId,
+    });
+    if (!plan.ok) return plan;
+    const action = buildSurveyMarkerHistoryAction(plan.changes);
+    if (!action) return { ok: false, reason: 'Nothing to change.' };
+    // A marker's Excel row is keyed by its module and category: re-export.
+    if (selectedTemplateRef.current?.linkedExcelPath) pendingExcelSyncAfterDeleteRefBridge.current = true;
+    applySurveyMarkerFamilyAction(action);
+    pushLocalAnnotationHistoryAction(action);
+    // Open the version the markers were placed in, without the "keep or use
+    // latest" question: cancelling that would leave them out of sight.
+    if (otherTemplate) enterSurveyTemplateVersion(destination);
+    setSelectedModuleId(moduleId);
+    setExpandedCategories((expanded) => ({ ...expanded, [categoryId]: true }));
+    return { ok: true, ids: plan.ids };
+  }, [documentLocked, yjsDocRole, user?.id, documentOwnerId, templates, surveyTemplateVersionForDocument, applySurveyMarkerFamilyAction, pushLocalAnnotationHistoryAction, enterSurveyTemplateVersion]);
+
   // Set true by handleSurveyMarkerDeleted once a delete commits; the effect
   // below watches surveyMarkers and re-exports the linked Excel so the
   // deleted marker's row is removed there too (otherwise the next document
@@ -31908,6 +31983,41 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
   }, [requireCurrentSurveyTemplate, selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig]);
+
+  // Owner 2026-10-26: drag a module tab in the Survey panel to reorder the
+  // template's modules, the same order the home Templates page shows.
+  const handleReorderSurveyModules = useCallback((activeId, overId) => {
+    if (!requireCurrentSurveyTemplate()) return;
+    if (!selectedTemplate || !activeId || !overId || activeId === overId) return;
+    const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
+    const updatedModules = moveItemById(sourceModules, activeId, overId);
+    if (updatedModules === sourceModules) return;
+    const updatedTemplate = {
+      ...selectedTemplate,
+      modules: updatedModules,
+      spaces: updatedModules,
+      updatedAt: new Date().toISOString()
+    };
+    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+    setSelectedTemplate(updatedTemplate);
+    // The document keeps the template version it was surveyed with: this
+    // order is now that version.
+    const binding = readSurveyTemplateBinding(updatedTemplate.id);
+    if (binding?.used) storeSurveyTemplateBinding(updatedTemplate.id, acceptTemplateVersion(binding, updatedTemplate, true));
+    if (handleTemplatesChange && appTemplates) {
+      handleTemplatesChange(appTemplates.map(t =>
+        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId) ? updatedTemplate : t
+      ));
+    }
+    if (updateSupabaseTemplate && supabaseTemplateId) {
+      updateSupabaseTemplate(supabaseTemplateId, {
+        config: sanitizeTemplateConfig(updatedTemplate),
+        updated_at: updatedTemplate.updatedAt
+      }).catch(err => {
+        console.warn('Failed to persist survey module order:', err);
+      });
+    }
+  }, [requireCurrentSurveyTemplate, selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, readSurveyTemplateBinding, storeSurveyTemplateBinding]);
 
   const handleMoveSurveyCategories = useCallback((categoryIds, destinationId) => {
     if (!requireCurrentSurveyTemplate()) return { ok: false, reason: 'Use the latest template before changing its categories.' };
@@ -36468,6 +36578,9 @@ ${pageBlocks}
       deleteAnnotations,
       deleteCategory: handleDeleteSurveyCategoryDefinition,
       handleMoveSurveyCategories,
+      transferSurveyMarkers: handleTransferSurveyMarkers,
+      surveyTemplateVersionForDocument,
+      reorderSurveyModules: handleReorderSurveyModules,
       canEditSurveyCategories: !documentLocked && yjsDocRole !== 'viewer' && !surveyTemplateIsRetained,
       canModifySurveyMarkerItem: (id) => !documentLocked && yjsDocRole !== 'viewer' && canModifySurveyMarker({ surveyMarker: surveyMarkers[id], viewerId: user?.id, documentOwnerId }),
       duplicateSurveyMarker: (id) => { const marker = surveyMarkers[id]; if (marker?.pageNumber) duplicateFamilySelection(marker.pageNumber, { markerIds: [id] }); },
@@ -36625,6 +36738,9 @@ ${pageBlocks}
     deleteAnnotations,
     handleDeleteSurveyCategoryDefinition,
     handleMoveSurveyCategories,
+    handleTransferSurveyMarkers,
+    surveyTemplateVersionForDocument,
+    handleReorderSurveyModules,
     surveyTemplateIsRetained,
     documentLocked,
     yjsDocRole,
@@ -40443,7 +40559,7 @@ ${pageBlocks}
         {/* Space Selection Modal */}
         {/* Portalled to document.body by SpaceSelectionDialog so it sits above
             both rails and the toolbars instead of under them. */}
-        {showSpaceSelection && (<SpaceSelectionDialog open onClose={() => setShowSpaceSelection(false)}>
+        {showSpaceSelection && (<SpaceSelectionDialog open title="Copy to a module" onClose={() => setShowSpaceSelection(false)}>
                 {appTemplates.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
                     <p>No templates available. Please create a template first.</p>
@@ -40460,7 +40576,7 @@ ${pageBlocks}
                   if (allSpaces.length === 0) {
                     return (
                       <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
-                        <p>No spaces available in any template.</p>
+                        <p>No modules in any template.</p>
                       </div>
                     );
                   }

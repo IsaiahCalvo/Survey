@@ -43,6 +43,7 @@ const SHELL_WITH_OPTION_ROWS = [
   'src/components/ExcelSyncConfirmModal.jsx',
   'src/components/NewColumnsModal.jsx',
   'src/components/OneDriveFileSaveModal.jsx',
+  'src/components/SurveyMarkerTransferDialog.jsx',
 ];
 
 test('the option-row dialogs sit on the shell with hub buttons', () => {
