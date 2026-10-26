@@ -1,6 +1,5 @@
-// A made-up shop drawing for Smart fill tests (2026-10-26). The repo is public,
-// so tests must not ship a customer's drawings; this sheet copies what makes
-// Schneider tags hard instead: divided-circle tags (each circle four curves,
+// A made-up shop drawing for Smart fill tests (2026-10-26): one small sheet
+// that copies what makes Schneider tags hard, so tests stay fast: divided-circle tags (each circle four curves,
 // like a CAD export) that touch a wall, overlap the next tag, or sit flush
 // against it, leader lines into the tags, and a grid of the same tag for
 // Find more. Writes debug/fixtures/tag-sheet.pdf (one ANSI B sheet, 1224 x

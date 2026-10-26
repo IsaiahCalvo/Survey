@@ -8,6 +8,10 @@
  * here; the Smart fill provider and the page layer read them without the page
  * layers carrying the template. With no template open (or none that can be
  * saved), shapes are kept in this browser instead.
+ *
+ * The Smart fill shapes menu (SmartFillShapesMenu.jsx) lists, renames and
+ * removes them; `save` takes an updater (list -> list) so all three go
+ * through the one template write.
  */
 import { useSyncExternalStore } from 'react';
 import { isTemplateShape, MAX_TEMPLATE_SHAPES } from './smartFillTemplates.js';
@@ -32,13 +36,14 @@ function loadLocal() {
 }
 
 /**
- * PDFViewer: the open survey template's shapes and how to save one into it.
- * `save(shape)` resolves once stored; null = this template can't be saved.
+ * PDFViewer: the open survey template's shapes and how to change them.
+ * `save(update)` stores `update(shapes)` and resolves once stored; null =
+ * this template can't be saved.
  */
 export function setActiveSmartFillTemplate({ templateId = null, templateName = '', shapes = [], save = null } = {}) {
   const clean = Array.isArray(shapes) ? shapes.filter(isTemplateShape) : [];
   const same = active.templateId === templateId && active.save === save
-    && active.shapes.length === clean.length && active.shapes.every((s, i) => s.id === clean[i].id);
+    && active.shapes.length === clean.length && active.shapes.every((s, i) => s.id === clean[i].id && s.name === clean[i].name);
   active = { templateId, templateName, shapes: clean, save: typeof save === 'function' ? save : null };
   if (!same) emit();
 }
@@ -63,7 +68,7 @@ export async function saveSmartFillTemplateShape(shape) {
   if (!isTemplateShape(shape)) return { ok: false, where: null };
   if (active.save) {
     try {
-      await active.save(shape);
+      await active.save((list) => withTemplateShape(list, shape));
       return { ok: true, where: 'template' };
     } catch {
       // Fall through: keep it in this browser so the teaching isn't lost.
@@ -85,19 +90,117 @@ export function withTemplateShape(list, shape) {
   return [shape, ...current.filter((s) => s.id !== shape.id)].slice(0, MAX_TEMPLATE_SHAPES);
 }
 
+/** Every taught shape with where it is kept ('template' | 'browser'). */
+export function listSmartFillShapes() {
+  const ids = new Set(active.shapes.map((s) => s.id));
+  const local = typeof window === 'undefined' ? [] : loadLocal();
+  return [
+    ...active.shapes.map((shape) => ({ shape, where: 'template' })),
+    ...local.filter((s) => !ids.has(s.id)).map((shape) => ({ shape, where: 'browser' })),
+  ];
+}
+
+let listCache = { key: null, list: [] };
+function listSnapshot() {
+  const list = listSmartFillShapes();
+  const key = list.map(({ shape, where }) => `${where}:${shape.id}:${shape.name}`).join('|');
+  if (key !== listCache.key) listCache = { key, list };
+  return listCache.list;
+}
+function subscribeShapes(listener) {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(SMART_FILL_SHAPES_CHANGED_EVENT, listener);
+  return () => window.removeEventListener(SMART_FILL_SHAPES_CHANGED_EVENT, listener);
+}
+const EMPTY = [];
+/** React: the shape list, kept current. */
+export function useSmartFillShapes() {
+  return useSyncExternalStore(subscribeShapes, listSnapshot, () => EMPTY);
+}
+
+async function changeShapes(id, update) {
+  if (active.save && active.shapes.some((s) => s.id === id)) {
+    try {
+      await active.save((list) => update(Array.isArray(list) ? list.filter(isTemplateShape) : []));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  try {
+    const local = loadLocal();
+    if (!local.some((s) => s.id === id)) return false;
+    window.localStorage.setItem(LOCAL_KEY, JSON.stringify(update(local)));
+    emit();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Rename a taught shape. Resolves true once stored. */
+export function renameSmartFillShape(id, name) {
+  const clean = String(name || '').trim().slice(0, 60);
+  if (!clean) return Promise.resolve(false);
+  return changeShapes(id, (list) => list.map((s) => (s.id === id ? { ...s, name: clean } : s)));
+}
+
+/**
+ * Remove a taught shape. Resolves to { ok, undo } where undo() puts it back
+ * where it was.
+ */
+export async function removeSmartFillShape(id) {
+  let removed = null;
+  let at = -1;
+  const ok = await changeShapes(id, (list) => {
+    at = list.findIndex((s) => s.id === id);
+    removed = at >= 0 ? list[at] : null;
+    return list.filter((s) => s.id !== id);
+  });
+  if (!ok || !removed) return { ok: false, undo: null };
+  const shape = removed;
+  const index = at;
+  const undo = async () => {
+    const putBack = (list) => {
+      const rest = list.filter((s) => s.id !== shape.id);
+      return [...rest.slice(0, index), shape, ...rest.slice(index)].slice(0, MAX_TEMPLATE_SHAPES);
+    };
+    if (active.save) {
+      try { await active.save(putBack); return true; } catch { /* keep it in this browser */ }
+    }
+    try {
+      window.localStorage.setItem(LOCAL_KEY, JSON.stringify(putBack(loadLocal())));
+      emit();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  return { ok: true, undo };
+}
+
 // --- "Teach a tag shape" (the box tool) -------------------------------------
-// Armed from the tool bar; the next drag on a page boxes a tag to teach.
+// Armed from the tool bar; the next drag on a page boxes a tag to teach. With
+// a preset (a picked outline: 'circle', 'hexagon', ...) the box sizes that
+// outline instead of reading one from the drawing.
 let teachArmed = false;
+let teachPreset = null;
 const teachListeners = new Set();
 
 export function getSmartFillTeachArmed() {
   return teachArmed;
 }
 
-export function setSmartFillTeachArmed(armed) {
+export function getSmartFillTeachPreset() {
+  return teachArmed ? teachPreset : null;
+}
+
+export function setSmartFillTeachArmed(armed, { preset = null } = {}) {
   const next = Boolean(armed);
-  if (next === teachArmed) return;
+  const nextPreset = next ? preset || null : null;
+  if (next === teachArmed && nextPreset === teachPreset) return;
   teachArmed = next;
+  teachPreset = nextPreset;
   for (const listener of [...teachListeners]) {
     try { listener(); } catch { /* a listener's failure is its own */ }
   }
@@ -116,4 +219,6 @@ export function useSmartFillTeachArmed() {
 export function resetSmartFillTemplateShapesForTests() {
   active = { templateId: null, templateName: '', shapes: [], save: null };
   teachArmed = false;
+  teachPreset = null;
+  listCache = { key: null, list: [] };
 }

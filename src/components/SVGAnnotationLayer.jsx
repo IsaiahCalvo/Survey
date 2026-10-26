@@ -199,9 +199,10 @@ import { buildDotMarkerBounds, buildPolygonMarkerBounds, buildStrokeMarkerBounds
 import { getMarkerStrokeWidth, useMarkerStrokeWidth } from '../survey/markerStrokeWidth.js';
 import '../survey/smartFillBeta.js';
 import { findSimilarOnPage, outlineInBox, prewarmSmartFillPage } from '../survey/smartFillProvider.js';
-import { makeTemplateShape } from '../survey/smartFillTemplates.js';
+import { findShapePreset, makeTemplateShape, presetRingInBox } from '../survey/smartFillTemplates.js';
 import {
   getSmartFillTeachArmed,
+  getSmartFillTeachPreset,
   getSmartFillTemplateName,
   getSmartFillTemplateShapes,
   saveSmartFillTemplateShape,
@@ -2859,8 +2860,14 @@ const SVGAnnotationLayerBody = memo(({
       return;
     }
     const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
-    Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber)).catch(() => null)
-      .then((pdfPage) => outlineInBox({ box: { x, y, width: w, height: h }, pageSize: { width, height }, pdfPage: pdfPage || null, pageCanvas }))
+    // A picked outline (Smart fill shapes menu) takes the box's size; with
+    // none, the outline is read from the drawing inside the box.
+    const preset = findShapePreset(getSmartFillTeachPreset());
+    const read = preset
+      ? Promise.resolve({ ok: true, ring: presetRingInBox(preset.id, { x, y, width: w, height: h }), source: 'picked' })
+      : Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber)).catch(() => null)
+        .then((pdfPage) => outlineInBox({ box: { x, y, width: w, height: h }, pageSize: { width, height }, pdfPage: pdfPage || null, pageCanvas }));
+    read
       .then((found) => {
         if (!smartFillLiveRef.current) return;
         if (!found?.ok) {
@@ -2873,7 +2880,7 @@ const SVGAnnotationLayerBody = memo(({
           if (!smartFillLiveRef.current) return;
           setSmartFillPreview(null);
           const count = getSmartFillTemplateShapes().length;
-          const shape = makeTemplateShape(found.ring, { name: `Tag shape ${count + 1}`, source: found.source });
+          const shape = makeTemplateShape(found.ring, { name: `${preset ? preset.label : 'Tag shape'} ${count + 1}`, source: found.source });
           const where = getSmartFillTemplateName();
           setSmartFillTeachArmed(false);
           recordAnnotationCommit({
@@ -2898,7 +2905,10 @@ const SVGAnnotationLayerBody = memo(({
           });
         };
         setSmartFillPreview({ bounds: markerBounds, apply });
-        showToast('Is this the whole tag? Save it so Smart fill finds this shape next time.', 'info', {
+        dismissToast('smart-fill-no-match');
+        showToast(preset
+          ? `Does this ${preset.label.toLowerCase()} fit the tag? Save it so Smart fill looks for it on every drawing.`
+          : 'Is this the whole tag? Save it so Smart fill finds this shape next time.', 'info', {
           id: 'smart-fill-preview',
           duration: Infinity,
           action: { label: 'Save shape', onClick: apply },
@@ -8465,6 +8475,25 @@ const SVGAnnotationLayerBody = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* ...and the picked outline it sizes, if one was picked. */}
+      {smartFillTeachBox && getSmartFillTeachPreset() && (() => {
+        const ring = presetRingInBox(getSmartFillTeachPreset(), {
+          x: Math.min(smartFillTeachBox.x0, smartFillTeachBox.x1),
+          y: Math.min(smartFillTeachBox.y0, smartFillTeachBox.y1),
+          width: Math.abs(smartFillTeachBox.x1 - smartFillTeachBox.x0),
+          height: Math.abs(smartFillTeachBox.y1 - smartFillTeachBox.y0),
+        });
+        return ring ? (
+          <polygon
+            data-smart-fill-teach-preset="true"
+            points={ring.map(([px, py]) => `${px},${py}`).join(' ')}
+            fill="none"
+            stroke="#4A90E2"
+            strokeWidth={1.5 * clampInverseScale(inverseScale)}
+            style={{ pointerEvents: 'none' }}
+          />
+        ) : null;
+      })()}
       {/* Smart fill beta: the found outline, waiting for Apply. */}
       {smartFillPreview && (
         <path

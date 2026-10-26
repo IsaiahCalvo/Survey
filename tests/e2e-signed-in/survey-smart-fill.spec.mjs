@@ -3,8 +3,8 @@
 // line or the next tag used to leak or say "too big"; Smart fill now reads the
 // drawing's own tag outlines. And when a tag is missed, "Teach a tag shape"
 // boxes it, saves the shape in the survey template, and Find more finds every
-// tag like it. The sheet is made up (debug/smart-fill/make-tag-sheet.mjs): this
-// repo is public, so no customer drawing may be checked in.
+// tag like it. The sheet is a small made-up one (debug/smart-fill/make-tag-
+// sheet.mjs) that copies what makes Schneider tags hard, so the test stays fast.
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -192,6 +192,64 @@ test('Teach a tag shape saves it in the template, and Find more finds every tag 
     await page.getByRole('button', { name: 'Find more' }).click();
     await expect.poll(() => page.locator(`[data-overlay-page="${PAGE}"] [data-smart-fill-match="true"]`).count(), { timeout: 30_000 })
       .toBeGreaterThan(40);
+  } finally {
+    await cleanup(admin, seeded);
+  }
+});
+
+test('Smart fill shapes: a picked outline sized over one tag is saved, renamed, removed and put back', async ({ page }) => {
+  test.setTimeout(240_000);
+  const admin = adminClient();
+  const seeded = await seed(admin);
+  const templateShapes = async () => {
+    const { data } = await admin.from('templates').select('config').eq('id', seeded.templateId).single();
+    return data?.config?.smartFillShapes || [];
+  };
+  try {
+    const sheet = await openSmartFill(page, seeded);
+    await page.getByRole('button', { name: 'Smart fill shapes', exact: true }).click();
+    const menu = page.getByRole('dialog', { name: 'Smart fill shapes' });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByText(`Saved in ${seeded.templateName}`)).toBeVisible();
+    await expect(menu.getByText(/No shapes yet/)).toBeVisible();
+    await page.screenshot({ path: 'test-results/smart-fill-shapes-empty.png' });
+
+    // Pick the circle; the next box dragged over one tag sizes it.
+    await menu.getByRole('button', { name: /^Circle/ }).click();
+    await expect(menu).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Teach a tag shape' })).toHaveAttribute('aria-pressed', 'true');
+    const s = await toScreen(sheet, TEACH);
+    await page.mouse.move(s.x0, s.y0);
+    await page.mouse.down();
+    await page.mouse.move((s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, { steps: 4 });
+    await expect(page.locator('[data-smart-fill-teach-preset="true"]')).toBeVisible();
+    await page.mouse.move(s.x1, s.y1, { steps: 4 });
+    await page.mouse.up();
+    const preview = page.locator('[data-smart-fill-preview="true"]');
+    await expect(preview).toBeVisible({ timeout: 10_000 });
+    const b = await outlineBox(preview);
+    expect(Math.abs(b.x0 - TEACH[0])).toBeLessThan(1.5);
+    expect(Math.abs(b.x1 - TEACH[2])).toBeLessThan(1.5);
+    await page.getByRole('button', { name: 'Save shape' }).click();
+    const card = page.getByRole('dialog', { name: 'New Survey Marker' });
+    await card.getByRole('option', { name: /Camera/ }).click();
+    await expect(card).toBeHidden();
+    await expect.poll(async () => (await templateShapes()).map((x) => x.name), { timeout: 20_000 }).toEqual(['Circle 1']);
+
+    // Listed in the menu; renamed in place.
+    await page.getByRole('button', { name: 'Smart fill shapes', exact: true }).click();
+    await expect(menu.locator('[data-smart-fill-shape]')).toHaveCount(1);
+    const name = menu.getByRole('textbox', { name: 'Name of Circle 1' });
+    await name.fill('Device tag');
+    await name.press('Enter');
+    await expect.poll(async () => (await templateShapes()).map((x) => x.name), { timeout: 20_000 }).toEqual(['Device tag']);
+    await page.screenshot({ path: 'test-results/smart-fill-shapes-list.png' });
+
+    // Removed at once; Undo puts it back.
+    await menu.getByRole('button', { name: 'Remove Device tag' }).click();
+    await expect.poll(async () => (await templateShapes()).length, { timeout: 20_000 }).toBe(0);
+    await page.locator('.app-toast__action', { hasText: 'Undo' }).click();
+    await expect.poll(async () => (await templateShapes()).map((x) => x.name), { timeout: 20_000 }).toEqual(['Device tag']);
   } finally {
     await cleanup(admin, seeded);
   }

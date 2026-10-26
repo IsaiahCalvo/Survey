@@ -282,3 +282,58 @@ export function findOutlineWithTemplates(mask, width, height, seedX, seedY, temp
   }
   return findTagOutlineTolerant(mask, width, height, seedX, seedY);
 }
+
+// --- Shapes the user picks instead of teaching (owner 2026-10-26: "a UI for
+// allowing users to create custom shapes that get filled") -------------------
+// For a tag Smart fill can't outline from the drawing (a scan, or one drawn
+// as loose lines), the user picks its outline here and drags a box over one
+// tag to size it. Each preset is a ring in the unit box.
+const polygonRing = (sides, turn = 0) => Array.from({ length: sides }, (_, i) => {
+  const a = turn + (i / sides) * Math.PI * 2;
+  return [0.5 + 0.5 * Math.cos(a), 0.5 + 0.5 * Math.sin(a)];
+});
+const circleRing = () => polygonRing(48);
+const pillRing = () => {
+  // Round ends on a box twice as wide as tall, in the unit box.
+  const pts = [];
+  for (let i = 0; i <= 12; i += 1) {
+    const a = -Math.PI / 2 + (i / 12) * Math.PI;
+    pts.push([0.75 + 0.25 * Math.cos(a), 0.5 + 0.5 * Math.sin(a)]);
+  }
+  for (let i = 0; i <= 12; i += 1) {
+    const a = Math.PI / 2 + (i / 12) * Math.PI;
+    pts.push([0.25 + 0.25 * Math.cos(a), 0.5 + 0.5 * Math.sin(a)]);
+  }
+  return pts;
+};
+
+export const SHAPE_PRESETS = Object.freeze([
+  { id: 'circle', label: 'Circle', ring: circleRing() },
+  { id: 'square', label: 'Square', ring: [[0, 0], [1, 0], [1, 1], [0, 1]] },
+  { id: 'diamond', label: 'Diamond', ring: [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]] },
+  { id: 'hexagon', label: 'Hexagon', ring: polygonRing(6) },
+  { id: 'octagon', label: 'Octagon', ring: polygonRing(8, Math.PI / 8) },
+  { id: 'triangle', label: 'Triangle', ring: [[0.5, 0], [1, 1], [0, 1]] },
+  { id: 'pill', label: 'Pill', ring: pillRing() },
+]);
+
+export function findShapePreset(id) {
+  return SHAPE_PRESETS.find((preset) => preset.id === id) || null;
+}
+
+/** A preset's outline stretched over a box (page units), or null. */
+export function presetRingInBox(id, { x, y, width, height }) {
+  const preset = findShapePreset(id);
+  if (!preset || !(width > 0 && height > 0)) return null;
+  // The unit rings above touch all four sides except the polygons, which
+  // are drawn on a circle: stretch every ring to fill the box.
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const [u, v] of preset.ring) {
+    if (u < minX) minX = u; if (u > maxX) maxX = u;
+    if (v < minY) minY = v; if (v > maxY) maxY = v;
+  }
+  return preset.ring.map(([u, v]) => [
+    x + ((u - minX) / (maxX - minX)) * width,
+    y + ((v - minY) / (maxY - minY)) * height,
+  ]);
+}

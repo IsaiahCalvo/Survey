@@ -554,7 +554,7 @@ import { buildSheetLayout, buildSheetRow, excelCellAnswer, toStandardHeaders } f
 import { APP_ONLY_KINDS, answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
-import { setActiveSmartFillTemplate, withTemplateShape } from './survey/smartFillTemplateShapes.js';
+import { setActiveSmartFillTemplate } from './survey/smartFillTemplateShapes.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,
@@ -31964,10 +31964,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // survey template (template.smartFillShapes) so they travel with it. They
   // are not part of the template's versioned definition: read and written on
   // the latest row, whatever snapshot this document is using.
-  const saveSmartFillShapeToTemplate = useCallback(async (shape) => {
+  // `update` turns the template's shape list into the new one (add, rename,
+  // remove: smartFillTemplateShapes.js).
+  const saveSmartFillShapeToTemplate = useCallback(async (update) => {
     const latest = appTemplates.find((template) => template.id === selectedTemplate?.id) || selectedTemplate;
     if (!latest) throw new Error('No survey template is open.');
-    const next = { ...latest, smartFillShapes: withTemplateShape(latest.smartFillShapes, shape), updatedAt: new Date().toISOString() };
+    const next = { ...latest, smartFillShapes: update(Array.isArray(latest.smartFillShapes) ? latest.smartFillShapes : []), updatedAt: new Date().toISOString() };
     if (next.supabaseId) await updateSupabaseTemplateRow(next.supabaseId, { config: sanitizeTemplateConfig(next), updated_at: next.updatedAt });
     setSelectedTemplate((current) => (current?.id === next.id ? { ...current, smartFillShapes: next.smartFillShapes } : current));
     onTemplatesChange?.(appTemplates.map((template) => template.id === next.id ? next : template));
