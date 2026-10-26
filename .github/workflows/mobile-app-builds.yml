@@ -47,7 +47,9 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"; echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
-          host=surveytool.app; [ "$CHANNEL" = nightly ] && host=surveytool-nightly.vercel.app
+          # Nightly is built from the commit prod serves too (deploy-nightly.yml),
+          # and the Nightly host sits behind Vercel sign-in, so ask prod for both.
+          host=surveytool.app
           sha="$(curl --fail --silent --show-error "https://$host/release.json?t=$(date +%s)" | jq -r '.commit // empty')"
           [ -n "$sha" ] || { echo "::error::$host/release.json gave no commit"; exit 1; }
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
