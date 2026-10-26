@@ -14,7 +14,9 @@ name: Live journey check
 # GitHub runs this repo's cron schedules only now and then (one scheduled run
 # of any workflow on 2026-10-21 while ~350 others ran), so every finished
 # "Build and tests" run also starts it. The first run in each UTC hour walks
-# the path; the rest of that hour skip (an hour-keyed cache entry marks it).
+# the path; the rest of that hour skip (they look for an earlier run this hour
+# whose journey job ran). Not a cache mark: runs started by workflow_run can
+# get a read-only Actions cache, so marks don't always save.
 on:
   schedule:
     - cron: '23 * * * *'
@@ -24,6 +26,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   issues: write
 
@@ -40,20 +43,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      key: ${{ steps.when.outputs.key }}
-      checked: ${{ steps.mark.outputs.cache-hit }}
+      checked: ${{ steps.mark.outputs.checked }}
     steps:
-      - name: This hour's mark
-        id: when
-        run: echo "key=live-journey-$(date -u +%Y%m%d%H)" >> "$GITHUB_OUTPUT"
+      # Runs share one concurrency group, so any earlier run has finished.
       - name: Already done this hour?
         id: mark
         if: github.event_name != 'workflow_dispatch'
-        uses: actions/cache/restore@v4
-        with:
-          path: .live-journey-check-mark
-          key: ${{ steps.when.outputs.key }}
-          lookup-only: true
+        shell: bash
+        run: |
+          since="$(date -u +%Y-%m-%dT%H:00:00Z)"
+          ids="$(gh api "repos/$GH_REPO/actions/workflows/live-journey-check.yml/runs?created=>=$since&per_page=100" \
+            --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id")"
+          for id in $ids; do
+            if gh api "repos/$GH_REPO/actions/runs/$id/jobs" \
+                --jq '.jobs[] | select(.name == "journey" and .conclusion != null and .conclusion != "skipped") | .id' | grep -q .; then
+              echo "Run $id already walked the path this hour."; echo "checked=true" >> "$GITHUB_OUTPUT"; break
+            fi
+          done
 
   journey:
     needs: due
@@ -119,14 +125,3 @@ jobs:
           elif [ -n "$open" ]; then
             gh issue close "$open" --comment "Passed again at $(date -u +%FT%TZ)."
           fi
-
-      # Marked even on a failure, so one bad hour raises one comment, not one
-      # per CI run.
-      - name: Mark this hour done
-        if: always()
-        run: mkdir -p .live-journey-check-mark && date -u +%FT%TZ > .live-journey-check-mark/at
-      - if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: .live-journey-check-mark
-          key: ${{ needs.due.outputs.key }}
