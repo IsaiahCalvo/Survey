@@ -109,7 +109,7 @@ test('the survey bar plans room for the Width pill, and folds it into More', asy
   const plain = surveyBarCentreWidth('full', sizes).centre;
   const withWidth = surveyBarCentreWidth('full', { ...sizes, markerWidth: true }).centre;
   assert.equal(withWidth - plain, SURVEY_BAR_PARTS.divider + SURVEY_BAR_PARTS.markerWidth);
-  // Folded (module and Reuse in More), the pill goes with them.
+  // Folded (the module menu in More), the pill goes with it.
   assert.equal(surveyBarCentreWidth('fold', { ...sizes, markerWidth: true }).centre, surveyBarCentreWidth('fold', sizes).centre);
   // A window where the bar just fits without the pill gives ground with it.
   const input = { barWidth: 900, centre: 450, templateText: 80, moduleText: 60, categoryCount: 4 };

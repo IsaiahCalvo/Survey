@@ -1791,8 +1791,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 .mobile-pdf-properties__more,
 .mobile-pdf-properties__text-button,
 .mobile-pdf-properties__segmented > button,
-.mobile-pdf-properties--actions > button,
-.mobile-pdf-properties__keep {
+.mobile-pdf-properties--actions > button {
   position: relative;
 }
 
@@ -1805,8 +1804,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 .mobile-pdf-properties__edit::after,
 .mobile-pdf-properties__more::after,
 .mobile-pdf-properties__text-button::after,
-.mobile-pdf-properties--actions > button::after,
-.mobile-pdf-properties__keep::after {
+.mobile-pdf-properties--actions > button::after {
   content: '';
   position: absolute;
   inset-block: -5px -19px;
@@ -1926,7 +1924,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 
 /* SURVEY STRIP (owner 2026-09-30: "Keep Active looks bad - a box around a
    checkbox with text"; the module pill is far wider than it needs).
-      [ Module v ] (switch) Reuse
+      [ Module v ]
 
    The pill is as wide as its LONGEST option (MobileStyledSelect fitOptions) and
    may shrink to 72px, ellipsising, when the row runs out of room.
@@ -1965,12 +1963,12 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 /* Owner 2026-10-07 (survey bar round): the strip runs edge to edge -
-     [glyph template v]   [ Module v ] (switch) Reuse   Done
+     [glyph template v]   [ Module v ]   Done
    The template opens the strip on the left, "Done" closes it on the right,
-   and the module pill + Reuse sit centred between them (auto margins). The
+   and the module pill sits centred between them (auto margins). The
    template name gives way FIRST when the strip runs short (a far larger
    shrink factor than the module pill's), down to the glyph, a letter or two
-   and its chevron; Reuse and Done never shrink. Checked at 375 and 390. */
+   and its chevron; Done never shrinks. Checked at 375 and 390. */
 .mobile-pdf-properties--survey > .mobile-pdf-properties__survey-template {
   flex: 0 50 auto;
   min-width: 52px;
@@ -2023,73 +2021,6 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 
 .mobile-pdf-properties__done:active {
   background: var(--pressed);
-}
-
-/* "Reuse" (was "Keep active", then "Repeat"; it keeps the CATEGORY armed
-   after a marker is placed): the desktop survey row's switch (.survey-subrow__keep in
-   src/styles.css) at the strip's scale - a 24x14 track with a 10px knob, then
-   the word in the strip's 11px/600, 6px apart. No plate, no border. Off: a
-   --surface-3 track with an inset --border-strong ring, word --text-2. On: a
-   neutral --text-2 ink track (survey calm gold 2026-10-01: Reuse is a setting,
-   gold is kept for the armed category), knob +10px, word --text-1. One button; its 44px pad is the
-   shared -5/-19/-2 above. */
-.mobile-pdf-properties__keep {
-  height: var(--mobile-strip-control-h);
-  padding: 0 2px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-2);
-  background: transparent;
-  border: 0;
-  font: 600 var(--mobile-strip-type)/1 var(--font-ui);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-
-.mobile-pdf-properties__keep[aria-checked='true'] {
-  color: var(--text-1);
-}
-
-.mobile-pdf-properties__keep-track {
-  position: relative;
-  flex: 0 0 auto;
-  width: 24px;
-  height: 14px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  background: var(--surface-3);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-  transition: background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.mobile-pdf-properties__keep-track::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s ease;
-}
-
-.mobile-pdf-properties__keep[aria-checked='true'] .mobile-pdf-properties__keep-track {
-  background: var(--text-2);
-  box-shadow: none;
-}
-
-.mobile-pdf-properties__keep[aria-checked='true'] .mobile-pdf-properties__keep-track::after {
-  transform: translateX(10px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mobile-pdf-properties__keep-track,
-  .mobile-pdf-properties__keep-track::after {
-    transition: none;
-  }
 }
 
 /* MobileStyledSelect fitOptions: every option label stacked in one grid cell,

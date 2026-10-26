@@ -876,7 +876,7 @@ button,
 /* ==========================================================================
    SURVEY SUB-ROW (desktop, owner 2026-09-23: "doesn't look like the rest of
    the dropdowns ... make it look more aesthetic and intentional")
-   [glyph template v] ...... [Module v] | (C)(D)(AC) | Reuse ...... Done
+   [glyph template v] ... (E)(E) | [Module v] | (C)(D)(AC) | Width ... Done
    Every size is a chrome token: the pills are .chrome-pill (AnnotationDropdown),
    the chips are .chrome-subcontrol, the rules are .chrome-divider.
    ========================================================================== */
@@ -885,7 +885,8 @@ button,
      things in the center should stay in the center. The peripherals on the
      left and right ... can move in and out"; "It should sit centered, just
      like the other annotation tools sit centered"):
-     - the CENTRE group (module menu, chips, Reuse) is pinned to the tool
+     - the CENTRE group (entity swatches, module menu, chips, Width) is
+       pinned to the tool
        bar's centre (--survey-centre-x, the Draw / Shapes / Text icons' centre,
        set by useSurveyBarFit on the row slot) and never moves when a side
        panel opens or closes;
@@ -930,8 +931,9 @@ button,
   gap: 4px;
 }
 
-/* The More (...) menu that takes the module menu and Reuse in a narrow bar:
-   it joins the template menu at the left end, so the centre is the chips. */
+/* The More (...) menu that takes the module menu (and Width) in a narrow bar:
+   it joins the template menu at the left end, so the centre is the swatches
+   and the chips. */
 .survey-subrow__more {
   flex: 0 0 auto;
   margin-left: 4px;
@@ -971,7 +973,7 @@ button,
   margin-left: auto;
 }
 
-.survey-subrow__reuse {
+.survey-subrow__width {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -1127,28 +1129,18 @@ button,
   max-width: min(300px, calc(100vw - 24px));
 }
 
-/* THE ENTITY BAR (desktop, owner 2026-10-13: "Display entities as swatches in
-   a separate bar, matching the current mobile layout"). The third 36px bar,
-   under the survey bar: the template's entities as the tool bar's own colour
-   discs (QuickColourDots - the colour's own ring and a check, no gold),
-   centred on the same spot as the survey bar's centre group, so it never moves
-   when a side panel opens either. Swatch names show on hover. */
-.survey-entitybar {
-  position: relative;
-  width: 100%;
-  height: var(--chrome-bar-h);
-  box-sizing: border-box;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-  cursor: default;
+/* THE ENTITY SWATCHES (desktop; owner 2026-10-13 "Display entities as
+   swatches", owner 2026-10-26 "put them on the left" of the one survey bar):
+   the template's entities as the tool bar's own colour discs (QuickColourDots
+   - the colour's own ring and a check, no gold), opening the centre group
+   before the module menu, a rule after them. Names show on hover. */
+.survey-subrow__entities {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
 }
 
-.survey-entitybar .survey-entitybar__centre {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--survey-centre-x, 50%);
-  transform: translateX(-50%);
+.survey-subrow__entities .survey-entitybar__centre {
   display: flex;
   align-items: center;
   /* Planned with the swatches' 6px gutter (SURVEY_BAR_PARTS.swatchGap); a
@@ -1186,76 +1178,6 @@ button,
   padding: 0 6px;
   color: var(--text-3);
   font: 600 11px/1 var(--font-ui);
-}
-
-/* "Keep active": the app's switch (the Spaces one) at the chrome's 20px pill
-   height, then its word. The whole control is one button with an invisible
-   pad; hover brightens the word, never a plate. On = a neutral ink track. */
-.survey-subrow__keep {
-  height: var(--chrome-field-h);
-  padding: 0 2px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-2);
-  background: transparent;
-  border: 0;
-  border-radius: var(--chrome-radius);
-  font: 600 11px/1 var(--font-ui);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-@media (hover: hover) {
-  .survey-subrow__keep:hover {
-    color: var(--text-1);
-  }
-}
-
-.survey-subrow__keep:active {
-  background: transparent;
-}
-
-.survey-subrow__keep:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-
-.survey-subrow__track {
-  position: relative;
-  flex: 0 0 auto;
-  width: 24px;
-  height: 14px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  background: var(--surface-3);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-  transition: background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.survey-subrow__track::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s ease;
-}
-
-.survey-subrow__keep[aria-checked='true'] .survey-subrow__track {
-  /* Survey calm gold (2026-10-01): Reuse is a setting, not "what a touch on
-     the page will do now", so ON is a neutral ink track, not gold. */
-  background: var(--text-2);
-  box-shadow: none;
-}
-
-.survey-subrow__keep[aria-checked='true'] .survey-subrow__track::after {
-  transform: translateX(10px);
 }
 
 /* Survey calm gold (2026-10-01): the current module in the survey bar's menu
@@ -1301,9 +1223,7 @@ button,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .survey-subrow,
-  .survey-subrow__track,
-  .survey-subrow__track::after {
+  .survey-subrow {
     transition: none;
   }
 }
@@ -1700,7 +1620,7 @@ input[type="text"].space-card__name:focus-visible {
 }
 
 /* ---- switches: the column is the hit area, the track is drawn inside ----
-   ON is the app's calm neutral "on" (the Survey "Reuse" switch, --text-2
+   ON is the app's calm neutral "on" (a --text-2
    track), never gold (owner 2026-10-02). */
 .spaces-switch {
   position: relative;

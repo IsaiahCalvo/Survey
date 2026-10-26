@@ -80,17 +80,17 @@
     right: -3px;
   }
 
-  /* The survey bar and the entity bar (batch-7 tablet check 2026-10-13: the
-     "All N" chips and Reuse took a finger only on their 28px / 22px box).
+  /* The survey bar (batch-7 tablet check 2026-10-13: the "All N" chips took
+     a finger only on their 28px box).
      Their chips, swatches, template pill and More already get the zones
-     above (the row slot sits in #chrome-sub-toolbar-host). These two are
-     plain buttons: the bar's height, and 2px each side - inside half the
+     above (the row slot sits in #chrome-sub-toolbar-host). "All N" is a
+     plain button: the bar's height, and 2px each side - inside half the
      tightest gutter they sit in (4px, planSurveyBar 'tight'), so the plan's
      widths and the centring are untouched. */
-  #chrome-survey-row-slot :is(.survey-row-all, .survey-subrow__keep) {
+  #chrome-survey-row-slot .survey-row-all {
     position: relative;
   }
-  #chrome-survey-row-slot :is(.survey-row-all, .survey-subrow__keep)::after {
+  #chrome-survey-row-slot .survey-row-all::after {
     content: '';
     position: absolute;
     top: calc(50% - var(--chrome-bar-h) / 2);

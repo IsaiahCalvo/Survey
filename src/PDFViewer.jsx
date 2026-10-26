@@ -8431,7 +8431,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(null); // Category selected for highlighting
-  const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
   // Desktop survey sub-row: whether the Survey module menu is open.
   const [surveyModuleMenuOpen, setSurveyModuleMenuOpen] = useState(false);
   const [surveyMarkerWidthMenuOpen, setSurveyMarkerWidthMenuOpen] = useState(false);
@@ -26301,6 +26300,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveCategoryDropdown('survey');
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
+  // Owner 2026-10-26 ("By default, the first category is selected"): in
+  // Survey a category is always picked - one of the module in use, else that
+  // module's first - so a drawn marker already has its category, module and
+  // entity (Reuse, which cleared it after each marker, is gone).
+  useEffect(() => {
+    if (!showSurveyPanel || !selectedTemplate) return;
+    const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
+    const module = modules.find((entry) => entry.id === selectedModuleId) || modules[0] || null;
+    const categories = module?.categories || [];
+    if (categories.some((category) => category.id === selectedCategoryId)) return;
+    const first = categories[0]?.id || null;
+    if (first !== selectedCategoryId) setSelectedCategoryId(first);
+  }, [showSurveyPanel, selectedTemplate, selectedModuleId, selectedCategoryId]);
 
   useEffect(() => {
     if (!mobileSurveyEntityId) return;
@@ -26605,8 +26617,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onApplyEntity: handleMobileSurveyEntityApply,
         onArmMarker: handleMobileSurveyArmMarker,
         surveyMarkers,
-        keepCategoryActive: surveyKeepCategoryActive,
-        onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
         // Owner 2026-10-07 (survey bar round): the strip opens with the
         // template's name (a menu to switch template) and ends with "Done",
         // which leaves Survey with an Undo toast.
@@ -26805,7 +26815,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleMobileSurveyEntityApply,
     handleMobileSurveyArmMarker,
     surveyMarkers,
-    surveyKeepCategoryActive,
     appTemplates,
     handleSwitchSurveyTemplateById,
     handleLeaveSurvey,
@@ -33087,69 +33096,36 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
     });
 
-    // If a category is already selected, place the Survey Marker straight
-    // away with its default name and open it in the Survey panel.
-    if (selectedCategoryId && (chosenEntity || !(selectedTemplate.entities || []).length)) {
-      // UX (mobile demo parity): commit instantly with the default name and
-      // open the marker (demo App.tsx:1155). Owner 2026-10-01 ("Yes, inline
-      // like phone"): desktop too - the Entity and Name pop-ups are gone; the
-      // new marker opens in the rail with its name field focused and its
-      // Entity menu right there. Escape on that untouched name takes the
-      // placement back (one Undo step, SurveySpacesRail). The entity it starts
-      // with: chosenEntity above (the last one picked, else the first).
-      const placementEntity = chosenEntity;
-      const placementEntityColor = chosenEntityColor;
-      // Phone: a Smart fill marker keeps the tool armed and the sheet shut, so
-      // its "Find more" toast survives and the found outlines stay tappable.
-      const smartFillOnPhone = mobileMode && createOptions?.smartFill === true;
-      commitMobileSurveyMarker({
-        id: annotationId,
-        // Owner ruling 2026-09-28: the creator stamp (lock rights).
-        ...(user?.id ? { userId: user.id } : {}),
-        pageNumber,
-        bounds,
-        moduleId: effectiveModuleId,
-        regionId: pageRegionId,
-        ...(placementEntity ? {
-          entityId: placementEntity.id,
-          entityName: placementEntity.name,
-          entityColor: placementEntityColor,
-        } : {})
-      }, selectedCategoryId, { openPanel: !smartFillOnPhone });
-      if (!mobileMode) {
-        setSurveyMarkerNameFocusRequest({ id: annotationId, tick: Date.now() });
-      }
-
-      if (!surveyKeepCategoryActive && !smartFillOnPhone) {
-        setSelectedCategoryId(null);
-        setMobileSurveyEntityId(null);
-        // UX (mobile demo parity): with "Keep active" unchecked, the tool
-        // reverts to pan after each placement (demo App.tsx:1156-1161) so the
-        // next touch scrolls the page instead of drawing another Survey
-        // Marker. Desktop keeps the survey-marker tool armed (unchanged).
-        if (mobileMode) setActiveTool('pan');
-      }
+    const placedMarker = {
+      id: annotationId,
+      // Owner ruling 2026-09-28: the creator stamp (lock rights).
+      ...(user?.id ? { userId: user.id } : {}),
+      pageNumber,
+      bounds,
+      moduleId: effectiveModuleId,
+      regionId: pageRegionId,
+      ...(chosenEntity ? {
+        entityId: chosenEntity.id,
+        entityName: chosenEntity.name,
+        entityColor: chosenEntityColor,
+      } : {})
+    };
+    // Phone: a Smart fill marker places at once and keeps the tool armed and
+    // the sheet shut, so its "Find more" toast survives and the found
+    // outlines stay tappable. An agent's marker places at once too.
+    const smartFillOnPhone = mobileMode && createOptions?.smartFill === true;
+    const placeAtOnce = smartFillOnPhone || createOptions?.direct === true;
+    if (placeAtOnce && selectedCategoryId && (chosenEntity || !(selectedTemplate.entities || []).length)) {
+      commitMobileSurveyMarker(placedMarker, selectedCategoryId, { openPanel: !smartFillOnPhone });
       if (!smartFillOnPhone) setShowSurveyPanel(true);
-    } else {
-      // No category selected, show category selection modal (only if survey panel is visible)
-      if (showSurveyPanel) {
-        setPendingSurveyMarker({
-          id: annotationId,
-          // Owner ruling 2026-09-28: the creator stamp (lock rights).
-          ...(user?.id ? { userId: user.id } : {}),
-          pageNumber,
-          bounds,
-          moduleId: effectiveModuleId,
-          regionId: pageRegionId,
-          ...(chosenEntity ? {
-            entityId: chosenEntity.id,
-            entityName: chosenEntity.name,
-            entityColor: chosenEntityColor,
-          } : {})
-        });
-      }
+    } else if (showSurveyPanel) {
+      // Owner 2026-10-26: every drawn marker opens its card beside it - the
+      // category (the armed one, the first by default), module and entity are
+      // already picked and can still be changed there, and its name ("Camera
+      // 7") is ready to type over. Enter, or a press off the card, places it.
+      setPendingSurveyMarker(placedMarker);
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
 
   // WebMCP: an agent adds Survey markers through the same path as a drawn
   // box (history, sync, server role check). Only the active tab answers.
@@ -33220,7 +33196,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       getPageSize: (page) => agentMarkerStateRef.current.pageSizes?.[page] || null,
       addSurveyMarker: (page, bounds) => {
         recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:create', action: 'survey-marker-agent', pageNumber: page });
-        agentMarkerStateRef.current.handleSurveyMarkerCreated(page, bounds);
+        agentMarkerStateRef.current.handleSurveyMarkerCreated(page, bounds, { direct: true });
       },
       // Survey agent (find_on_plan): a page's words with boxes, from the
       // text layer, else from text recognition the person already ran.
@@ -40201,26 +40177,28 @@ ${pageBlocks}
                    Now the sub-row's own tool chip (28px, no fill; chosen = gold
                    glyph only, like every other tool) - they were 30px grey discs
                    that turned solid gold.
-                 - KEEP ACTIVE: after a Survey Marker is placed, keep the same
-                   category armed so the next drag places another one; off, the
-                   category is cleared after each placement. Now the app's switch
-                   (the Spaces one, drawn to the 20px pill height) with its word -
-                   it was a native checkbox.
+                 - (Reuse, the "keep the category armed" switch, is gone:
+                   owner 2026-10-26 - the category always stays picked, the
+                   first one by default.)
                  The category chips stay on the bar's centre and the two side groups
                  hang off them, as before, so the chips never move when the module
                  name changes. Rules are the shared .chrome-divider. */
               /* Owner 2026-10-13 ("the panel pushes the sub-toolbar out of
                  place ... The things in the center should stay in the center"):
-                 the CENTRE group - module menu, category chips, Reuse - sits on
-                 the tool bar's centre and never moves when a side panel opens or
-                 closes; only the two END pieces (template menu, Done) move in and
-                 out with the panels, and give ground first in a narrow window
-                 (template name -> glyph, Done -> check). Then the centre:
-                 shorter module name, Reuse without its word, module + Reuse into
-                 a More menu beside the template menu, tighter chips, and last
-                 fewer chips before "All N" - nothing hidden (planSurveyBar in
-                 utils/responsiveToolbar.js; measured by useSurveyBarFit). Which
-                 chips show is decided by count (SurveyCategoryChips). */
+                 the CENTRE group sits on the tool bar's centre and never moves
+                 when a side panel opens or closes; only the two END pieces
+                 (template menu, Done) move in and out with the panels, and give
+                 ground first in a narrow window (template name -> glyph, Done ->
+                 check). Then the centre: shorter module name, module (+ Width)
+                 into a More menu beside the template menu, tighter chips, and
+                 last fewer chips and swatches before "All N" - nothing hidden
+                 (planSurveyBar in utils/responsiveToolbar.js; measured by
+                 useSurveyBarFit). Which chips show is decided by count
+                 (SurveyCategoryChips).
+                 Owner 2026-10-26 ("I honestly don't see a reason why we need
+                 this to be in two different rows"): ONE row - the entity
+                 swatches open the centre group ("put them on the left"), then
+                 the module menu, the category chips and the freehand Width. */
               const look = surveyBarLook(surveyBarFit.plan.step);
               const moduleMenu = (inMore) => (
                 <AnnotationDropdown
@@ -40251,8 +40229,11 @@ ${pageBlocks}
                     label: module.name || 'Untitled module'
                   }))}
                   onSelect={(moduleId) => {
+                    // A module's first category is picked with it (owner
+                    // 2026-10-26: "By default, the first category is selected").
+                    const nextModule = modules.find((module) => module.id === moduleId) || null;
                     setSelectedModuleId(moduleId || null);
-                    setSelectedCategoryId(null);
+                    setSelectedCategoryId(nextModule?.categories?.[0]?.id || null);
                     setActiveTool('survey-marker');
                   }}
                   disabled={modules.length === 0}
@@ -40260,24 +40241,6 @@ ${pageBlocks}
                   contentWidth="var(--radix-popover-trigger-width)"
                   dataMarker="data-survey-module-menu"
                 />
-              );
-              const reuseSwitch = (inMore) => (
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={surveyKeepCategoryActive}
-                  aria-label="Reuse category"
-                  className="survey-subrow__keep tertiary"
-                  onClick={() => setSurveyKeepCategoryActive((on) => !on)}
-                  {...chromeTip('Reuse the category: keep it armed after placing a Survey Marker', 'below')}
-                >
-                  <span className="survey-subrow__track" aria-hidden="true" />
-                  {/* Owner 2026-09-30: "Keep active" -> "Repeat"; 2026-10-01:
-                      "Repeat" -> "Reuse" (it keeps the CATEGORY armed), same
-                      word as the phone bar. In More the row names it; the
-                      compact bar keeps the switch alone. */}
-                  {inMore || look.reuse === 'compact' ? null : <span>Reuse</span>}
-                </button>
               );
               const markerWidthValue = pickedMarkerWidth != null ? Math.round(pickedMarkerWidth) : markerStrokeWidth;
               const applyMarkerWidth = (value) => {
@@ -40323,7 +40286,6 @@ ${pageBlocks}
               ) : null;
               const moreItems = look.more ? [
                 { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
-                { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
                 ...(markerWidthMenu ? [{ id: 'survey-marker-width', label: 'Width', node: markerWidthMenu }] : []),
               ] : [];
 
@@ -40358,8 +40320,9 @@ ${pageBlocks}
                       compact={surveyBarFit.plan.template === 'glyph'}
                       className="survey-subrow__template"
                     />
-                    {/* Narrow: the module menu and Reuse wait in More, beside
-                        the template menu, so the centre is the chips alone. */}
+                    {/* Narrow: the module menu (and Width) wait in More, beside
+                        the template menu, so the centre is the swatches and
+                        the chips. */}
                     {look.more && (
                       <div className="survey-subrow__more">
                         <ToolbarOverflowMenu items={moreItems} tooltip={chromeTip('More', 'below')} />
@@ -40368,6 +40331,17 @@ ${pageBlocks}
                   </div>
 
                   <div className="survey-subrow__centre" data-survey-bar-centre="true">
+                    {!mobileMode && (selectedTemplate?.entities || []).length > 0 && (
+                      <SurveyEntityBar
+                        templateId={selectedTemplate.id}
+                        entities={selectedTemplate.entities}
+                        nextEntityId={nextSurveyEntity?.id || null}
+                        surveyMarkers={surveyMarkers}
+                        onPick={handleSurveyEntityBarPick}
+                        tip={chromeTip}
+                        max={surveyBarFit.plan.entityRowMax}
+                      />
+                    )}
                     {!look.more && (
                       <div className="survey-subrow__module">
                         {moduleMenu(false)}
@@ -40388,14 +40362,8 @@ ${pageBlocks}
                         setActiveTool('survey-marker');
                       }}
                     />
-                    {!look.more && (
-                      <div className="survey-subrow__reuse">
-                        <div className="chrome-divider" aria-hidden="true" />
-                        {reuseSwitch(false)}
-                      </div>
-                    )}
                     {markerWidthMenu && !look.more && (
-                      <div className="survey-subrow__reuse" data-survey-marker-width="true">
+                      <div className="survey-subrow__width" data-survey-marker-width="true">
                         <div className="chrome-divider" aria-hidden="true" />
                         {markerWidthMenu}
                       </div>
@@ -40457,31 +40425,12 @@ ${pageBlocks}
           }
           // Desktop: Survey placement and annotation formatting share the
           // subtoolbar. The Survey button restores placement without changing
-          // the template, module, category, entity, or Reuse choice.
+          // the template, module, category or entity choice.
           const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection, surveyMarkerPicked })))
             ? 'survey'
             : (activeCategoryDropdown && activeCategoryDropdown !== 'survey' && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
           if (subRowGroup && subRowHost) {
             rows.push(renderSubRow(subRowGroup, subRowHost, false));
-          }
-          // Owner 2026-10-13: the template's entities as swatches in a third
-          // bar under the survey bar (desktop; none when it has no entities).
-          // A picked marker shows its own entity on its floating bar; this bar
-          // picks the NEXT marker's, so it shows only with the tool armed.
-          if (subRowGroup === 'survey' && subRowHost && !mobileMode && activeTool === 'survey-marker' && (selectedTemplate?.entities || []).length > 0) {
-            rows.push(createPortal(
-              <SurveyEntityBar
-                templateId={selectedTemplate.id}
-                entities={selectedTemplate.entities}
-                nextEntityId={nextSurveyEntity?.id || null}
-                surveyMarkers={surveyMarkers}
-                onPick={handleSurveyEntityBarPick}
-                tip={chromeTip}
-                max={surveyBarFit.plan.entityRowMax}
-              />,
-              subRowHost,
-              'survey-entity-row'
-            ));
           }
           return rows;
         })()}
@@ -41101,13 +41050,21 @@ ${pageBlocks}
             mobile={mobileMode}
             onCancel={() => cancelSurveyMarkerPlacement(pendingSurveyMarker.id)}
             onEntityChange={(entity) => recolorPendingSurveyMarker(pendingSurveyMarker.id, entity)}
+            defaultNameFor={(categoryId, moduleId) => generateDefaultSurveyMarkerName(
+              getCategoryName(selectedTemplate, moduleId, categoryId),
+              Object.values(surveyMarkers).filter((marker) => marker.categoryId === categoryId),
+            )}
             onConfirm={(marker, categoryId) => {
+              // The name was given on the card, so the panel only opens on
+              // the marker (no name field focused there).
               commitMobileSurveyMarker(marker, categoryId);
               rememberSurveyEntity(marker.entityId);
               setSelectedModuleId(marker.moduleId);
-              setSelectedCategoryId(surveyKeepCategoryActive ? categoryId : null);
-              if (!mobileMode) setSurveyMarkerNameFocusRequest({ id: marker.id, tick: Date.now() });
-              else if (!surveyKeepCategoryActive) setActiveTool('pan');
+              // The category stays picked for the next marker.
+              setSelectedCategoryId(categoryId);
+              // Phone: the next touch scrolls the page again (touch is pan
+              // first); "+ Place" or the marker menu arms the tool.
+              if (mobileMode) setActiveTool('pan');
               setPendingSurveyMarker(null);
             }}
           />

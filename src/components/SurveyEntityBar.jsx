@@ -7,11 +7,11 @@ import { needsSwatchHairline, swatchCheckInk, swatchRingColour } from '../utils/
 import './QuickStyleControls.css';
 
 /**
- * The survey ENTITY bar (desktop, owner 2026-10-13: "Display entities as
- * swatches in a separate bar, matching the current mobile layout"). A third
- * 36px bar under the survey bar, its swatches centred on the same spot as the
- * survey bar's centre group (the tool bar's centre, --survey-centre-x), so it
- * never moves when a side panel opens or closes either.
+ * The survey bar's ENTITY swatches (desktop). Owner 2026-10-13: "Display
+ * entities as swatches ... matching the current mobile layout"; owner
+ * 2026-10-26: one survey bar, not two ("put them on the left"), so they open
+ * the survey bar's centre group, before the module menu, with a rule after
+ * them - pinned to the tool bar's centre with the rest of that group.
  *
  * Intended UX - "the same as clicking a swatch for any other annotation tool,
  * except there is no colour picker":
@@ -23,7 +23,7 @@ import './QuickStyleControls.css';
  * The swatches are the tool bar's colour discs (QuickColourDots: the colour's
  * own ring and a check, no gold); the name shows on hover (the shared
  * tooltip). Above 8 entities: 7 swatches and "All N" (SurveyOverflowRow). A
- * template with no entities shows no bar.
+ * template with no entities draws nothing (and no rule).
  *
  * @param {Array<{id, name, color}>} entities
  * @param {string|null} nextEntityId   the entity a new marker starts with
@@ -50,10 +50,9 @@ export default function SurveyEntityBar({ templateId, entities, nextEntityId, su
 
   return (
     <div
-      className="survey-entitybar survey-surface-in"
-      data-chrome-strip="true"
+      className="survey-subrow__entities"
       data-survey-entity-bar="true"
-      role="toolbar"
+      role="group"
       aria-label="Survey entities"
     >
       <SurveyOverflowRow
@@ -77,14 +76,15 @@ export default function SurveyEntityBar({ templateId, entities, nextEntityId, su
           />
         )}
       />
+      <div className="chrome-divider" aria-hidden="true" />
     </div>
   );
 }
 
 /**
  * One entity swatch: the tool bar's colour disc (the colour's own ring and a
- * check when it is the current one, no gold), named on hover. Shared by this
- * bar and the selection quick bar (components/SelectionQuickBar.jsx), which
+ * check when it is the current one, no gold), named on hover. Shared by the
+ * survey bar, the new-marker card and the selection quick bar (components/SelectionQuickBar.jsx), which
  * shows a picked Survey Marker's entities the same way.
  */
 export function SurveyEntitySwatch({ entity, current = false, tip, tipSide = 'below', onPick }) {

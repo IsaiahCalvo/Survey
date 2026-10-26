@@ -473,18 +473,23 @@ export function planTextRowStep(span, { verticalAlign = true } = {}) {
 }
 
 /**
- * SURVEY BAR (the strip under the tool bar in Survey).
- *   [gold glyph + template v] .......  [Module v] | (C)(D)(AC) | Reuse  ....... [Done]
- *    ^ start end piece                 ^------- the CENTRE group -------^        ^ end piece
+ * SURVEY BAR (the strip under the tool bar in Survey). One row (owner
+ * 2026-10-26: "I honestly don't see a reason why we need this to be in two
+ * different rows ... Just have it be the dropdown for the module, the option
+ * to choose a category. Get rid of the reuse and move the stroke picker in
+ * over there ... put [entities] on the left"):
+ *   [gold glyph + template v] ...  (E)(E)(E) | [Module v] | (C)(D)(AC) | Width  ... [Done]
+ *    ^ start end piece             ^-------------- the CENTRE group --------------^    ^ end piece
  * Owner 2026-10-13: "When you ... open the survey panel, the panel pushes the
  * sub-toolbar out of place ... The sub-toolbar must remain fixed." / "The
  * things in the center should stay in the center. The peripherals on the left
  * and right, like the templates dropdown and the done button, those can move
  * in and out." / "It should sit centered, just like the other annotation tools
  * sit centered." So:
- *   - the CENTRE group (module menu, category chips, Reuse) is centred on the
- *     tool bar's own centre (the Draw / Shapes / Text icons - the same centre
- *     rows 2 and 3 use) and NEVER moves when a side panel opens or closes;
+ *   - the CENTRE group (entity swatches, module menu, category chips, and the
+ *     freehand marker's Width while it shows) is centred on the tool bar's own
+ *     centre (the Draw / Shapes / Text icons) and NEVER moves when a side
+ *     panel opens or closes;
  *   - the two END pieces (template menu at the left end, Done at the right)
  *     sit at the edges of what the open panels leave visible, and move in and
  *     out with them.
@@ -495,28 +500,26 @@ export function planTextRowStep(span, { verticalAlign = true } = {}) {
  * glyph. Then the centre, which stays centred whatever it shows:
  *   0 full           everything at its natural width;
  *   1 short-module   the module name ends in "..." (down to a few letters);
- *   2 compact-reuse  Reuse keeps its switch and drops its word (the tooltip
- *                    and the accessible name still say "Reuse category");
- *   3 fold           the module menu and Reuse move into a "..." (More) menu
- *                    that joins the template menu at the left end (so the
- *                    centre is the chips alone);
- *   4 tight          the chips' gutters tighten (6px -> 4px);
- *   5 fewer          last resort (a narrow window): fewer chips before the
- *                    "All N" chip - every category is still one click away
- *                    in its list. (Lead decision 2026-10-13: the old sideways
- *                    scroll, which hid chips out of sight, is gone.)
+ *   2 fold           the module menu (and Width) move into a "..." (More)
+ *                    menu that joins the template menu at the left end (so
+ *                    the centre is the swatches and the chips);
+ *   3 tight          the chips' gutters tighten (6px -> 4px);
+ *   4 fewer          last resort (a narrow window): fewer chips and swatches
+ *                    before their "All N" - every category and entity is
+ *                    still one click away in its list. (Lead decision
+ *                    2026-10-13: the old sideways scroll, which hid chips out
+ *                    of sight, is gone.)
  * The centre's step is planned for the WORST case - both side panels open -
  * so opening or closing a panel never changes what it shows, only the window
- * width does. Only when that worst case would leave fewer than 4 chips and
- * "All N" (a narrow window, under ~1000px) is it planned for the panels
+ * width does. Only when that worst case would leave fewer than 4 chips (or
+ * swatches) and "All N" (a narrow window) is it planned for the panels
  * actually open, so a narrow window with its panels shut does not lose
  * chips for nothing.
  * Which chips show is otherwise decided by COUNT, never by width
  * (utils/surveyPickLists.js): up to 8, all; above 8, 7 and "All N". The
- * entity bar under it (planSurveyBar's `entityRowMax`) follows the same rule
- * in its own room.
+ * entity swatches follow the same rule.
  */
-export const SURVEY_BAR_STEPS = ['full', 'short-module', 'compact-reuse', 'fold', 'tight', 'fewer'];
+export const SURVEY_BAR_STEPS = ['full', 'short-module', 'fold', 'tight', 'fewer'];
 
 export const SURVEY_BAR_PARTS = Object.freeze({
   inset: 8, // the bar's own inset at each end
@@ -530,8 +533,6 @@ export const SURVEY_BAR_PARTS = Object.freeze({
   moduleChrome: 42,
   moduleMax: 220,
   nameMin: 40, // the fewest pixels of a name worth showing ("Exis...")
-  reuse: 67, // the switch and its word
-  reuseCompact: 28, // the switch alone
   markerWidth: 72, // the freehand marker's Width pill (--chrome-field-w)
   more: 28, // the More (...) button
   moreGap: 4, // between the template menu and More
@@ -582,18 +583,17 @@ export function surveyRowMaxFor(room, row) {
 /**
  * What the survey bar's centre draws at `step`.
  * @returns {{ step: string, index: number, module: 'full'|'short'|'more',
- *   reuse: 'full'|'compact'|'more', more: boolean, tight: boolean, fewer: boolean }}
+ *   more: boolean, tight: boolean, fewer: boolean }}
  */
 export function surveyBarLook(step) {
   const at = typeof step === 'number' ? step : Math.max(0, SURVEY_BAR_STEPS.indexOf(step));
   return {
     step: SURVEY_BAR_STEPS[at],
     index: at,
-    module: at >= 3 ? 'more' : at >= 1 ? 'short' : 'full',
-    reuse: at >= 3 ? 'more' : at >= 2 ? 'compact' : 'full',
-    more: at >= 3,
-    tight: at >= 4,
-    fewer: at >= 5,
+    module: at >= 2 ? 'more' : at >= 1 ? 'short' : 'full',
+    more: at >= 2,
+    tight: at >= 3,
+    fewer: at >= 4,
   };
 }
 
@@ -602,30 +602,65 @@ const categoryRow = ({ categoryCount = 0, chip = SURVEY_BAR_PARTS.chip, allChip 
   count: categoryCount, item: chip, gap, allChip, empty,
 });
 
+/** The entity swatches' row (none drawn for a template with no entities). */
+const entityRow = ({ entityCount = 0, entityAllChip = SURVEY_BAR_PARTS.allChip, swatchGap = SURVEY_BAR_PARTS.swatchGap } = {}) => ({
+  count: entityCount,
+  item: SURVEY_BAR_PARTS.swatch,
+  gap: Number.isFinite(swatchGap) && swatchGap >= 0 ? swatchGap : SURVEY_BAR_PARTS.swatchGap,
+  allChip: entityAllChip,
+  empty: 0,
+});
+
+/** The entity swatches and the rule after them (0 with no entities). */
+const entitiesWidth = (sizes, max) => (sizes.entityCount > 0
+  ? surveyRowWidth({ ...entityRow(sizes), max }) + SURVEY_BAR_PARTS.divider
+  : 0);
+
 /**
- * The centre group's width at `step` (`rowMax`: the chips' row limit, 8
- * except at the last step). `moduleText` is the LONGEST module name's text
- * width (the pill is sized to it).
- * @returns {{ centre: number, moduleFull: number, moduleShort: number, categories: number }}
+ * The centre group's width at `step` (`rowMax` / `entityRowMax`: the chips'
+ * and swatches' row limits, 8 except at the last step). `moduleText` is the
+ * LONGEST module name's text width (the pill is sized to it).
+ * @returns {{ centre: number, moduleFull: number, moduleShort: number, categories: number, entities: number }}
  */
-export function surveyBarCentreWidth(step, sizes = {}, rowMax = ROW_MAX) {
+export function surveyBarCentreWidth(step, sizes = {}, rowMax = ROW_MAX, entityRowMax = ROW_MAX) {
   const P = SURVEY_BAR_PARTS;
   const look = surveyBarLook(step);
   const moduleFull = Math.min(P.moduleMax, P.moduleChrome + (sizes.moduleText || 0));
   const moduleShort = Math.min(moduleFull, P.moduleChrome + P.nameMin);
   const categories = surveyRowWidth({ ...categoryRow(sizes, look.tight ? P.chipGapTight : P.chipGap), max: rowMax });
-  let centre = categories;
+  const entities = entitiesWidth(sizes, entityRowMax);
+  let centre = entities + categories;
   if (look.module !== 'more') {
     centre += (look.module === 'full' ? moduleFull : moduleShort) + P.divider;
-    centre += P.divider + (look.reuse === 'full' ? P.reuse : P.reuseCompact);
     // The freehand marker's Width (only while it shows; in More once folded).
     if (sizes.markerWidth) centre += P.divider + P.markerWidth;
   }
-  return { centre, moduleFull, moduleShort, categories };
+  return { centre, moduleFull, moduleShort, categories, entities };
 }
 
 /**
- * Plan the survey bar and the entity bar under it (all in bar coordinates, px).
+ * The most chips and swatches the last step's centre fits in `room`: both
+ * rows start at 8 and the one drawing more slots gives one up first (the
+ * swatches on a tie), never below the "All N" chip alone.
+ */
+function fitRows(room, sizes) {
+  const P = SURVEY_BAR_PARTS;
+  const width = (rowMax, entityRowMax) => surveyBarCentreWidth(SURVEY_BAR_STEPS.length - 1, sizes, rowMax, entityRowMax).centre + P.slack;
+  let rowMax = ROW_MAX;
+  let entityRowMax = ROW_MAX;
+  while (width(rowMax, entityRowMax) > room) {
+    // The slots each row draws now (a row whose items all show draws fewer).
+    const chips = Math.min(rowMax, sizes.categoryCount || 0);
+    const swatches = sizes.entityCount > 0 ? Math.min(entityRowMax, sizes.entityCount) : 0;
+    if (chips <= 1 && swatches <= 1) return { rowMax: 0, entityRowMax: 0 };
+    if (swatches >= chips) entityRowMax = swatches - 1;
+    else rowMax = chips - 1;
+  }
+  return { rowMax, entityRowMax };
+}
+
+/**
+ * Plan the survey bar (all in bar coordinates, px).
  * @param {object} input
  * @param {number} input.barWidth
  * @param {number} input.centre       the tool bar's centre
@@ -643,9 +678,8 @@ export function surveyBarCentreWidth(step, sizes = {}, rowMax = ROW_MAX) {
  *   (6px; a touch-first tablet draws the roomier colour gutter, touchTargets.css)
  * @param {boolean} [input.markerWidth]  the freehand marker's Width pill shows
  * @returns {{ step: string, index: number, stable: boolean, centreWidth: number,
- *   rowMax: number, template: 'full'|'glyph', templateRoom: number,
- *   done: 'word'|'glyph', entityRowMax: number, entityStable: boolean,
- *   moduleShort: number }}
+ *   rowMax: number, entityRowMax: number, template: 'full'|'glyph',
+ *   templateRoom: number, done: 'word'|'glyph', moduleShort: number }}
  */
 export function planSurveyBar({
   barWidth,
@@ -666,7 +700,10 @@ export function planSurveyBar({
   markerWidth = false,
 }) {
   const P = SURVEY_BAR_PARTS;
-  const sizes = { moduleText, categoryCount, chip, allChip, empty, markerWidth: Boolean(markerWidth) };
+  const sizes = {
+    moduleText, categoryCount, chip, allChip, empty, markerWidth: Boolean(markerWidth),
+    entityCount: Number(entityCount) || 0, entityAllChip, swatchGap,
+  };
   // The start end piece's smallest look: the template glyph, and from the
   // fold step on the More menu beside it.
   const startMin = (index) => P.templateGlyph + (surveyBarLook(index).more ? P.moreGap + P.more : 0);
@@ -677,55 +714,46 @@ export function planSurveyBar({
     barWidth - right - P.inset - P.doneGlyph - P.gap - centre,
   );
   const last = SURVEY_BAR_STEPS.length - 1;
-  // The first step that fits, and at the last step the most chips that do.
+  // The first step that fits, and at the last step the most chips and
+  // swatches that do.
   const pick = (left, right) => {
     for (let index = 0; index < last; index += 1) {
       if (surveyBarCentreWidth(index, sizes).centre + P.slack <= 2 * halfRoom(left, right, index)) {
-        return { index, rowMax: ROW_MAX };
+        return { index, rowMax: ROW_MAX, entityRowMax: ROW_MAX };
       }
     }
-    const rowMax = surveyRowMaxFor(2 * halfRoom(left, right, last), categoryRow(sizes, P.chipGapTight));
-    return { index: last, rowMax };
+    return { index: last, ...fitRows(2 * halfRoom(left, right, last), sizes) };
   };
   const worstL = Math.max(insetLeft, insetLeftMax);
   const worstR = Math.max(insetRight, insetRightMax);
-  let { index, rowMax } = pick(worstL, worstR);
+  let { index, rowMax, entityRowMax } = pick(worstL, worstR);
   let stable = true;
-  if (index === last && rowMax < ROW_STABLE_MIN) {
-    // Not even 4 chips and "All N" sit beside both panels (a narrow window):
-    // plan for the panels actually open, so shut panels never cost chips.
-    ({ index, rowMax } = pick(insetLeft, insetRight));
+  if (index === last && Math.min(rowMax, entityRowMax) < ROW_STABLE_MIN) {
+    // Not even 4 chips (or swatches) and "All N" sit beside both panels (a
+    // narrow window): plan for the panels actually open, so shut panels never
+    // cost chips.
+    ({ index, rowMax, entityRowMax } = pick(insetLeft, insetRight));
     rowMax = Math.max(1, rowMax);
+    entityRowMax = Math.max(1, entityRowMax);
     stable = false;
   }
-  const { centre: natural, moduleShort } = surveyBarCentreWidth(index, sizes, rowMax);
+  const { centre: natural, moduleShort } = surveyBarCentreWidth(index, sizes, rowMax, entityRowMax);
   const drawnHalf = natural / 2;
   // The start side's room (the template menu, and More once folded).
   const templateRoom = Math.max(0, Math.floor(centre - drawnHalf - P.gap - insetLeft - P.inset));
   const moreRoom = surveyBarLook(index).more ? P.moreGap + P.more : 0;
   const templateNeed = P.templateChrome + Math.min(templateText, P.nameMin) + moreRoom;
   const doneRoom = barWidth - insetRight - P.inset - P.gap - (centre + drawnHalf);
-  // The entity bar under it: centred on the same spot, never under a panel,
-  // planned for the worst case the same way.
-  const entityRoom = (left, right) => 2 * Math.min(centre - left - P.inset, barWidth - right - P.inset - centre);
-  const entityRow = { count: entityCount, item: P.swatch, gap: Number.isFinite(swatchGap) && swatchGap >= 0 ? swatchGap : P.swatchGap, allChip: entityAllChip };
-  let entityRowMax = surveyRowMaxFor(entityRoom(worstL, worstR), entityRow);
-  let entityStable = true;
-  if (entityRowMax < ROW_STABLE_MIN) {
-    entityRowMax = Math.max(1, surveyRowMaxFor(entityRoom(insetLeft, insetRight), entityRow));
-    entityStable = false;
-  }
   return {
     step: SURVEY_BAR_STEPS[index],
     index,
     stable,
     centreWidth: natural,
     rowMax,
+    entityRowMax,
     template: templateRoom >= templateNeed ? 'full' : 'glyph',
     templateRoom: Math.min(templateRoom, P.templateMax + moreRoom),
     done: doneRoom >= P.done ? 'word' : 'glyph',
-    entityRowMax,
-    entityStable,
     moduleShort,
   };
 }

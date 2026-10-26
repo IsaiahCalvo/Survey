@@ -88,11 +88,11 @@ test('zones never reach into a neighbour: half the gutter each side, the rail zo
   assert.ok((CSS.match(/:not\(:is\(\[role='dialog'\], \[role='menu'\], \[role='listbox'\]\) \*\)/g) || []).length >= 6);
 });
 
-test('the survey bar\'s "All N" chips and Reuse take a finger: the bar\'s height, inside the tightest gutter (batch-7 tablet check)', () => {
+test('the survey bar\'s "All N" chips take a finger: the bar\'s height, inside the tightest gutter (batch-7 tablet check)', () => {
   const tier1 = topLevelBlocks(TOUCH_CSS).find((x) => x.prelude === '@media (any-pointer: coarse)');
   const body = stripComments(tier1.body);
-  assert.match(body, /#chrome-survey-row-slot :is\(\.survey-row-all, \.survey-subrow__keep\) \{\s*position: relative;\s*\}/);
-  assert.match(body, /#chrome-survey-row-slot :is\(\.survey-row-all, \.survey-subrow__keep\)::after \{\s*content: '';\s*position: absolute;\s*top: calc\(50% - var\(--chrome-bar-h\) \/ 2\);\s*bottom: calc\(50% - var\(--chrome-bar-h\) \/ 2\);\s*left: -2px;\s*right: -2px;/);
+  assert.match(body, /#chrome-survey-row-slot \.survey-row-all \{\s*position: relative;\s*\}/);
+  assert.match(body, /#chrome-survey-row-slot \.survey-row-all::after \{\s*content: '';\s*position: absolute;\s*top: calc\(50% - var\(--chrome-bar-h\) \/ 2\);\s*bottom: calc\(50% - var\(--chrome-bar-h\) \/ 2\);\s*left: -2px;\s*right: -2px;/);
 });
 
 test('the tool bar plan keeps the wider loadout clear of Export', () => {
