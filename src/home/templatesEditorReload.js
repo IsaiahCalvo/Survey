@@ -1,9 +1,10 @@
 /* BL-23 — pure helpers for TemplatesEditor's prop-reload guard, legacy-row id
    stability, and title-rename commit semantics.
 
-   This module is deliberately dependency-free (zero imports) so the Node test
+   This module imports only plain modules (no components) so the Node test
    suite exercises the REAL code (tests/templatesEditorReloadGuard.test.mjs) —
    component files resolve only under vite (BL-22 round-3 lesson). */
+import { itemAnswerFields } from '../../supabase/functions/_shared/kitShape.js';
 
 /* Decide what to do with a freshly-built working copy when the host republishes
    the `templates` prop.
@@ -143,8 +144,13 @@ export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) =
           const row = it.archived === true
             ? [it.id, it.text ?? '', true, it.archivedAt ?? null, it.lastKnownLabel || it.text || null]
             : [it.id, it.text ?? ''];
-          // Answer kind; left out for pick-one items so older prints are unchanged.
-          return it.kind === 'text' || it.kind === 'number' ? [...row, ['kind', it.kind, it.unit || '']] : row;
+          // Answer kind and its settings; left out for pick-one items so older
+          // prints are unchanged, and text / number keep their earlier shape.
+          const f = itemAnswerFields(it);
+          if (!f.kind) return row;
+          const { kind, unit, ...more } = f;
+          const tail = ['kind', kind, unit || ''];
+          return [...row, Object.keys(more).length ? [...tail, Object.entries(more).sort()] : tail];
         }),
     ]),
   ]),
@@ -154,6 +160,8 @@ export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) =
   }),
   // Excel layout (export kit); left out when unset so older prints are unchanged.
   ...(template?.exportKitId ? [template.exportKitId] : []),
+  // Report layout (report kit); left out when unset (the full report).
+  ...(template?.reportKitId ? [['report', template.reportKitId]] : []),
   // Checklist answer set; left out when unset (Y / N / N/A).
   ...(template?.answerSet ? [['answers', template.answerSet.map((a) => (a.means ? [a.value, a.tone, a.means] : [a.value, a.tone]))]] : []),
 ]);

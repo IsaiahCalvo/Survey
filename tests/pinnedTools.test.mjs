@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
-  PINNABLE_TOOLS, chooseDockPlacement, createPinnedToolsStore, dropDurationMs, makePin, movePin,
-  pinBadge, pinDescription, pinFaceColor, pinKindForTool, pinStyleFor, reorderIndexAt,
+  PINNABLE_TOOLS, chooseDockPlacement, createPinnedToolsStore, dropDurationMs, magnetPull, makePin, movePin,
+  pinBadge, pinDescription, pinFaceColor, pinKindForTool, pinStyleFor, reorderIndexAt, reorderShift,
   sanitizePinnedToolsState,
 } from '../src/pinnedTools/pinnedTools.js';
 import { armPin, endPinSession, pinEditFromViewer, sessionStatus, startingStyleFor } from '../src/pinnedTools/pinSession.js';
@@ -193,4 +193,50 @@ test('pinned tools: another document tab ends the pin and the first viewer gets 
   viewer.owner = 'viewer-2';
   assert.equal(sessionStatus(session, viewer.api(), 5), 'end');
   assert.equal(sessionStatus(session, null, 5), 'end');
+});
+
+// Item 1 of the 2026-10-26 note: "how it feels like the magnet works" in
+// walkthu. The pull is walkthu's getMagnetizedTranslation.
+test('pinned tools: the zone pulls the carried dock in, harder near the edge', () => {
+  const W = 1000;
+  const H = 800;
+  const box = (left, top, w = 42, h = 200) => ({ left, right: left + w, top, bottom: top + h });
+  const leftHome = { x: 31, y: 418, bottom: 518 };
+  // With its edge at the middle of the page area there is no pull at all.
+  const mid = magnetPull(box(500, 300), 'left', W, H, leftHome);
+  assert.ok(Math.abs(mid.x) < 1e-9 && Math.abs(mid.y) < 1e-9);
+  // Closer to the edge, a stronger share of the way home.
+  const far = magnetPull(box(300, 300), 'left', W, H, leftHome);
+  const near = magnetPull(box(60, 300), 'left', W, H, leftHome);
+  const share = (pull, b) => pull.x / (leftHome.x - (b.left + b.right) / 2);
+  assert.ok(share(far, box(300, 300)) > 0 && share(far, box(300, 300)) < share(near, box(60, 300)));
+  assert.ok(share(near, box(60, 300)) <= 0.86 + 1e-9, 'never all the way: the grip stays near the pointer');
+  // Right is the mirror image.
+  const right = magnetPull(box(1000 - 60 - 42, 300), 'right', W, H, { x: 1000 - 31, y: 418, bottom: 518 });
+  assert.ok(right.x > 0);
+  // The bottom band pulls only down, at most 56% of the way.
+  const home = { x: 500, y: 767, bottom: 788 };
+  const low = magnetPull({ left: 400, right: 600, top: 740, bottom: 782 }, 'bottom', W, H, home);
+  assert.equal(low.x, 0);
+  assert.ok(low.y > 0 && low.y <= (788 - 782) * 0.56 + 1e-9);
+  // Near the bottom band the side magnet lets go of the height.
+  const sideLow = magnetPull(box(40, 560, 42, 200), 'left', W, H, leftHome);
+  assert.ok(Math.abs(sideLow.y) < 1e-9 && Math.abs(sideLow.x) < 1e-9);
+  assert.deepEqual(magnetPull(box(10, 10), null, W, H, leftHome), { x: 0, y: 0 });
+});
+
+test('pinned tools: the other pins slide aside to open the dragged pin\'s slot', () => {
+  // [A, B, C, D]: A dragged to the third place -> [B, C, A, D].
+  assert.deepEqual([0, 1, 2, 3].map((i) => reorderShift(i, 0, 2)), [0, -1, -1, 0]);
+  // D dragged to the front -> [D, A, B, C].
+  assert.deepEqual([0, 1, 2, 3].map((i) => reorderShift(i, 3, 0)), [1, 1, 1, 0]);
+  // Dropped where it started: nothing moves.
+  assert.deepEqual([0, 1, 2, 3].map((i) => reorderShift(i, 1, 1)), [0, 0, 0, 0]);
+  assert.equal(reorderShift(2, -1, 0), 0);
+});
+
+test('pinned tools: the dock toggle draws Lucide\'s pin', () => {
+  const source = readFileSync(new URL('../src/components/PinnedToolsDock.jsx', import.meta.url), 'utf8');
+  assert.match(source, /M9 10\.76a2 2 0 0 1-1\.11 1\.79l-1\.78\.9A2 2 0 0 0 5 15\.24V16/);
+  assert.doesNotMatch(source, /M9 4h6l-1 6 3 3H7l3-3-1-6Z/);
 });

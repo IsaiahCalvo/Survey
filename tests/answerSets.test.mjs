@@ -25,8 +25,9 @@ test('a template set is used; a broken one falls back to the default', () => {
   assert.equal(isDoneAnswer(pass, 'Y'), false);
   assert.equal(answerSetFor({ answerSet: [{ value: 'a,b', tone: 'good' }, { value: 'c', tone: 'bad' }] }), DEFAULT_ANSWER_SET);
   assert.equal(answerSetFor({ answerSet: [] }), DEFAULT_ANSWER_SET);
-  const seven = Array.from({ length: 7 }, (_, i) => ({ value: `A${i}`, tone: 'good' }));
-  assert.equal(answerSetFor({ answerSet: seven }), DEFAULT_ANSWER_SET);
+  const many = (n) => Array.from({ length: n }, (_, i) => ({ value: `A${i}`, tone: 'good' }));
+  assert.equal(answerSetFor({ answerSet: many(20) }).length, 20);
+  assert.equal(answerSetFor({ answerSet: many(21) }), DEFAULT_ANSWER_SET);
   assert.ok(validateAnswerSet([{ value: 'A', tone: 'good' }, { value: 'A', tone: 'bad' }]).length);
   assert.ok(validateAnswerSet([{ value: 'A', tone: 'great' }, { value: 'B', tone: 'bad' }]).length);
 });
