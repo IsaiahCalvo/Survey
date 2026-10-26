@@ -345,7 +345,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                   aria-label="Add pages (e.g. 3, 6-9, 12)"
                   onChange={(e) => onPageInputChange(space.id, sanitizePageRangeInput(e.target.value))}
                   inputMode="numeric"
-                  pattern="[0-9,-]*"
+                  pattern="[0-9,\-]*"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();

@@ -134,10 +134,24 @@ async function selectAnnotation(page, touch, id, toolId) {
 async function enterBboxMode(page, touch, id, toolId) {
   await selectAnnotation(page, touch, id, toolId);
   const enter = page.getByRole('button', { name: 'Resize and rotate', exact: true });
+  // The control lives in the tool's "..." settings sheet, not on the strip.
+  if (!await enter.count()) {
+    await tapLocator(touch, page.getByRole('button', { name: /^More .* settings$/ }).first(), `${toolId} more settings`);
+    await enter.first().waitFor({ state: 'visible', timeout: 5_000 }).catch(() => {});
+    await page.waitForTimeout(500); // let the sheet finish sliding up before tapping inside it
+  }
   assert.equal(await enter.count(), 1, `${toolId}: mobile Resize and rotate control must exist`);
   await tapLocator(touch, enter, `${toolId} Resize and rotate`);
   await page.locator('.svg-selection-overlay [data-resize-handle="br"]')
     .waitFor({ state: 'visible', timeout: 10_000 });
+  // The settings sheet slides away after the tap; wait until it no longer
+  // covers the handles before dragging them.
+  await page.waitForFunction(() => {
+    const h = document.querySelector('.svg-selection-overlay [data-resize-handle="br"]')?.getBoundingClientRect();
+    if (!h) return false;
+    const hit = document.elementFromPoint(h.x + h.width / 2, h.y + h.height / 2);
+    return !hit?.closest('.mobile-tool-sheet, .mobile-pdf-sheet-backdrop');
+  }, null, { timeout: 5_000 });
 }
 
 async function waitForAnnotationProjectionChange(page, key, id, before, timeoutMs = 10_000) {
@@ -211,7 +225,17 @@ async function dragResizeHandle(page, touch) {
     'No visible bottom-right resize handle exists');
   const box = invariant(await handle.boundingBox(), 'Bottom-right resize handle has no touch bounds');
   const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  await touch.drag(start, { x: start.x + 28, y: start.y + 24 }, { steps: 12 });
+  // Drag outward from the frame centre so a rotated frame (a counter's pin
+  // points along pointerAngle) still grows.
+  const frame = await selectionFrame(page).catch(() => null);
+  let dir = { x: 28, y: 24 };
+  if (frame) {
+    const dx = start.x - (frame.x + frame.width / 2);
+    const dy = start.y - (frame.y + frame.height / 2);
+    const len = Math.hypot(dx, dy);
+    if (len > 1) dir = { x: (dx / len) * 37, y: (dy / len) * 37 };
+  }
+  await touch.drag(start, { x: start.x + dir.x, y: start.y + dir.y }, { steps: 12 });
 }
 
 async function dragRotationHandle(page, touch) {
