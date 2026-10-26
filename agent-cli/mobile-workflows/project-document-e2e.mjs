@@ -254,7 +254,9 @@ async function runDevice(device, baseUrl) {
 
       await activate(fileSelectScope.getByRole('button', { name: 'Select', exact: true }), touch, device);
       await activate(page.locator('[data-document-id="d3"]:visible').first(), touch, device);
-      await activate(fileSelectScope.getByRole('button', { name: 'Move/Copy', exact: true }), touch, device);
+      // The select bar's Move/Copy split into separate Move and Copy actions
+      // (shared SelectModeButtons, ae09f9eee); each opens the same dialog.
+      await activate(fileSelectScope.getByRole('button', { name: 'Copy', exact: true }), touch, device);
       let dialog = page.getByRole('dialog', { name: 'Move or copy documents', exact: true });
       await activate(dialog.getByRole('button', { name: 'Copy', exact: true }), touch, device);
       await activate(dialog.getByRole('button', { name: 'Lab Reno — MEP', exact: true }), touch, device);
@@ -266,7 +268,7 @@ async function runDevice(device, baseUrl) {
       );
 
       await activate(page.locator('[data-document-id="d3"]:visible').first(), touch, device);
-      await activate(fileSelectScope.getByRole('button', { name: 'Move/Copy', exact: true }), touch, device);
+      await activate(fileSelectScope.getByRole('button', { name: 'Move', exact: true }), touch, device);
       dialog = page.getByRole('dialog', { name: 'Move or copy documents', exact: true });
       await activate(dialog.getByRole('button', { name: 'Move', exact: true }), touch, device);
       await activate(dialog.getByRole('button', { name: 'MEP Phase 2', exact: true }), touch, device);
@@ -335,7 +337,7 @@ async function runDevice(device, baseUrl) {
     assert.equal(primary.mime_type, 'application/pdf', `${device}: uploaded MIME`);
 
     await openProject(page, touch, device, project.id);
-    const title = page.getByLabel(device === 'mobile' ? 'Tap to rename' : 'Click to rename', { exact: true });
+    const title = page.getByLabel(device === 'mobile' ? 'Tap to rename' : 'Project name', { exact: true });
     await title.fill(renamedProject);
     await title.press('Enter');
     model = await waitForWorkflowModel(page, '(state, id) => state.projects.some((project) => project.id === id && project.name.endsWith(" renamed"))', project.id);
