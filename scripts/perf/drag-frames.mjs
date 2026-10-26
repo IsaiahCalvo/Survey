@@ -129,9 +129,33 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
   const before = await leftOf();
   const send = (type, x, y, buttons) => cdp.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons, clickCount: 1, modifiers: shift ? 8 : 0 });
   await send('mouseMoved', from.x, from.y, 0);
-  if (profile) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 200 }); await cdp.send('Profiler.start'); }
+  // TRACE=1 with PROFILE= records a Chrome trace (script / style / layout / paint / raster) instead.
+  const trace = profile && process.env.TRACE ? profile.replace(/\.cpuprofile$/, '.trace.json') : null;
+  if (trace) await page.context().browser().startTracing(page, { path: trace, categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'blink', 'cc', 'gpu', 'viz'] });
+  else if (profile) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 200 }); await cdp.send('Profiler.start'); }
   await send('mousePressed', from.x, from.y, 1);
   await startSampling(page);
+  // MUTATIONS=1: count what the DOM changes during the moves (which nodes a frame repaints).
+  if (process.env.MUTATIONS) {
+    await page.evaluate(() => {
+      const counts = new Map();
+      const describe = (n) => {
+        const el = n.nodeType === 1 ? n : n.parentElement;
+        if (!el) return '?';
+        const attrs = [...el.attributes].filter((a) => a.name.startsWith('data-')).map((a) => a.name).slice(0, 2).join(',');
+        const owner = el.closest('[data-svg-annotation-lift]') ? 'lift' : el.closest('[data-svg-annotation-layer]') ? 'layer' : 'html';
+        return `${owner} ${el.tagName.toLowerCase()}[${attrs}]`;
+      };
+      window.__mutations = counts;
+      window.__mo = new MutationObserver((list) => {
+        for (const m of list) {
+          const k = `${m.type}${m.attributeName ? `:${m.attributeName}` : ''} ${describe(m.target)}`;
+          counts.set(k, (counts.get(k) || 0) + 1);
+        }
+      });
+      window.__mo.observe(document.body, { subtree: true, attributes: true, childList: true, characterData: true });
+    });
+  }
   const t0 = Date.now();
   for (let i = 1; i <= MOVES; i += 1) {
     const tick = Date.now();
@@ -141,8 +165,12 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
   }
   const wall = Date.now() - t0;
   const stats = await stopSampling(page);
+  if (process.env.MUTATIONS) {
+    stats.mutations = await page.evaluate(() => { window.__mo.disconnect(); return [...window.__mutations].sort((x, y) => y[1] - x[1]).slice(0, 15).map(([k, v]) => `${v} ${k}`); });
+  }
   stats.watchedMovedPx = (await leftOf()) - before;
-  if (profile) { const { profile: cpu } = await cdp.send('Profiler.stop'); fs.writeFileSync(profile, JSON.stringify(cpu)); }
+  if (trace) await page.context().browser().stopTracing();
+  else if (profile) { const { profile: cpu } = await cdp.send('Profiler.stop'); fs.writeFileSync(profile, JSON.stringify(cpu)); }
   await send('mouseReleased', from.x + dx, from.y + dy, 0);
   return { ...stats, wall };
 }

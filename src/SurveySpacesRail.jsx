@@ -17,6 +17,7 @@ import SurveyCategoryMoveDialog from './components/SurveyCategoryMoveDialog';
 import CreateCategoryModal from './components/CreateCategoryModal';
 import Spinner from './components/Spinner';
 import { useTooltip } from './components/Tooltip';
+import { isFeatureOn } from './featureFlags.js';
 import DragRearrangeHandle from './reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from './reorder/SortableRearrangeList';
 import { moveItemById } from './reorder/flatReorderUtils.js';
@@ -49,7 +50,8 @@ import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
-import { answerSetFor, answerTone } from './services/answerSets.js';
+import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
+import TypedAnswerInput from './components/TypedAnswerInput.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
@@ -57,8 +59,9 @@ import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
 import { removeSurveyMarkersFromPages } from './utils/surveyMarkerPageRemoval.js';
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
-import { publishSideRoom } from './sidebar/panelLayoutStore.js';
+import { publishSideRoom, subscribeRightPanelYield } from './sidebar/panelLayoutStore.js';
 import { useProLock } from './hooks/useProLock.js';
+import { keyboardControlProps } from './utils/keyboardActivation.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 
@@ -592,6 +595,21 @@ const SurveySpacesRail = ({
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
   const proLocked = useProLock();
+  // Nightly 'survey-report': a PowerPoint report beside Export data.
+  const [surveyReportOn] = useState(() => isFeatureOn('survey-report'));
+  const [isReporting, setIsReporting] = useState(false);
+  const handleSurveyReport = async () => {
+    if (proLocked('excel') || isReporting) return;
+    setIsReporting(true);
+    try {
+      const { downloadSurveyReport } = await import('./services/surveyReportPptx.js');
+      await downloadSurveyReport({ template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '' });
+    } catch (error) {
+      console.error('Failed to create the survey report', error);
+    } finally {
+      setIsReporting(false);
+    }
+  };
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
   // band between panels): the open desktop panel covers the right ~272px of the
   // PDF, so it registers as a side panel. Fits then size and centre the page in
@@ -641,6 +659,13 @@ const SurveySpacesRail = ({
     // The left panel's width limit reads the same cover (panelLayoutStore.js).
     publishSideRoom({ rightCover: mobileMode ? 0 : (desktopSurveyPanelShown ? 48 + 320 : 48) });
   }, [mobileMode, desktopSurveyPanelShown]);
+  // Desktop/tablet pass 2026-10-21 (item 1): the left panel was just opened
+  // beside this panel on a window too narrow for both - this one gives way
+  // (PDFSidebar, resolveNarrowPanelYield). Survey itself stays on.
+  useEffect(() => {
+    if (mobileMode) return undefined;
+    return subscribeRightPanelYield(() => setIsSurveyPanelCollapsed(true));
+  }, [mobileMode]);
   useEffect(() => () => {
     publishSideRoom({ rightCover: 48 });
     // Gone: later UI reading the token falls back to its own default.
@@ -1671,7 +1696,8 @@ const SurveySpacesRail = ({
     const active = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const responses = surveyMarkers?.[annotationId]?.checklistResponses || {};
     const answered = active.filter((item) => Boolean(responses[item.id]?.selection)).length;
-    const no = active.filter((item) => responses[item.id]?.selection === 'N').length;
+    // A typed text line answered "N" (a direction, say) is not a No.
+    const no = active.filter((item) => itemKind(item) === 'choice' && responses[item.id]?.selection === 'N').length;
     return { answered, total: active.length, no };
   };
   // The "answered/total" count. Owner 2026-10-01 (after a design debate):
@@ -1797,16 +1823,29 @@ const SurveySpacesRail = ({
           <div className="mobile-survey-detail-checklist">
             {checklist.length ? checklist.map(item => {
               const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id]?.selection;
+              // The picked answer's "means" line, under the question (no hover on a phone).
+              const means = itemKind(item) === 'choice' ? answerMeans(answerSetFor(selectedTemplate), response) : '';
               return (
                 <div key={item.id} className="mobile-survey-check-item">
-                  <span className="mobile-survey-check-text">{item.text}</span>
+                  <span className="mobile-survey-check-text">
+                    {item.text}
+                    {means && <span className="mobile-survey-check-means">{means}</span>}
+                  </span>
+                  {itemKind(item) !== 'choice' ? (
+                    <TypedAnswerInput
+                      phone
+                      item={item}
+                      value={response}
+                      onCommit={(v) => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, v)}
+                    />
+                  ) : (
                   <div className="mobile-survey-check-group">
                     {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => (
                       <button
                         key={option}
                         type="button"
-                        className={`mobile-survey-check-btn${response === option ? ` is-active is-${answerToneName === 'good' ? 'yes' : answerToneName === 'bad' ? 'no' : 'na'}` : ''}`}
-                        aria-pressed={response === option}
+                        className={`mobile-survey-check-btn${sameAnswer(response, option) ? ` is-active is-${answerToneName === 'good' ? 'yes' : answerToneName === 'bad' ? 'no' : 'na'}` : ''}`}
+                        aria-pressed={sameAnswer(response, option)}
                         aria-label={`${item.text} ${option}`}
                         onClick={() => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, option)}
                       >
@@ -1814,6 +1853,8 @@ const SurveySpacesRail = ({
                       </button>
                     ))}
                   </div>
+                  )}
+
                 </div>
               );
             }) : (
@@ -3986,9 +4027,16 @@ const SurveySpacesRail = ({
                                                         <span className="survey-rail__detail-text">
                                                           {item.text}
                                                         </span>
+                                                        {itemKind(item) !== 'choice' ? (
+                                                          <TypedAnswerInput
+                                                            item={item}
+                                                            value={isSelected}
+                                                            onCommit={(v) => applyChecklistResponseSelection(annotationId, selectedModuleId, category, surveyMarker.name || '', item.id, v)}
+                                                          />
+                                                        ) : (
                                                         <div className="survey-rail__answers" role="group" aria-label={item.text || 'Checklist answer'}>
-                                                          {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName }) => {
-                                                            const isAnswer = isSelected === option;
+                                                          {answerSetFor(selectedTemplate).map(({ value: option, tone: answerToneName, means }) => {
+                                                            const isAnswer = sameAnswer(isSelected, option);
                                                             const tone = answerToneName === 'good' ? 'is-yes' : answerToneName === 'bad' ? 'is-no' : 'is-na';
                                                             return (
                                                               <button
@@ -3996,6 +4044,7 @@ const SurveySpacesRail = ({
                                                                 type="button"
                                                                 aria-pressed={isAnswer}
                                                                 className={`survey-rail__answer${isAnswer ? ` is-active ${tone}` : ''}`}
+                                                                {...(means ? tip(`${option}: ${means}`, 'below') : {})}
                                                                 onClick={(e) => {
                                                                   e.stopPropagation();
                                                                   // Shared with the mobile detail view — see
@@ -4009,6 +4058,7 @@ const SurveySpacesRail = ({
                                                             );
                                                           })}
                                                         </div>
+                                                        )}
                                                       </div>
                                                     );
                                                   })
@@ -4230,6 +4280,20 @@ const SurveySpacesRail = ({
                           : <Icon name="download" size={mobileMode ? 16 : 14} color="currentColor" />}
                         <span>{isExporting ? 'Exporting\u2026' : 'Export data'}</span>
                       </button>
+                      {surveyReportOn && (
+                        <button
+                          type="button"
+                          className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
+                          onClick={() => { if (surveyHasItems) handleSurveyReport(); }}
+                          disabled={isReporting || !surveyHasItems}
+                          {...(mobileMode ? {} : tip(surveyHasItems ? 'Download a PowerPoint report: progress chart per category and the items with issues' : 'Add a survey item to make a report', 'above'))}
+                        >
+                          {isReporting
+                            ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
+                            : <Icon name="document" size={mobileMode ? 16 : 14} color="currentColor" />}
+                          <span>{isReporting ? 'Making report\u2026' : 'Report'}</span>
+                        </button>
+                      )}
                       {mobileMode ? (
                         (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (
                           <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
@@ -4458,6 +4522,7 @@ const SurveySpacesRail = ({
                             }}
                             role="menuitem"
                             className="survey-rail__menu-item"
+                            {...keyboardControlProps(null, { role: 'menuitem' })}
                           >
                             <Icon name="document" size={14} color="currentColor" />
                             Open Excel
@@ -4469,6 +4534,7 @@ const SurveySpacesRail = ({
                             }}
                             role="menuitem"
                             className="survey-rail__menu-item"
+                            {...keyboardControlProps(null, { role: 'menuitem' })}
                           >
                             <Icon name="upload" size={14} color="currentColor" />
                             Push to Excel
@@ -4484,6 +4550,7 @@ const SurveySpacesRail = ({
                             }}
                             role="menuitem"
                             className="survey-rail__menu-item"
+                            {...keyboardControlProps(null, { role: 'menuitem' })}
                           >
                             <Icon name="download" size={14} color="currentColor" />
                             Pull from Excel
@@ -4505,6 +4572,7 @@ const SurveySpacesRail = ({
                               }}
                               role="menuitem"
                               className="survey-rail__menu-item"
+                              {...keyboardControlProps(null, { role: 'menuitem' })}
                               style={{
                                 // Calm gold (2026-10-01): a live link is the house
                                 // "ok" green, beside warning amber and error red.
@@ -4561,6 +4629,7 @@ const SurveySpacesRail = ({
                               }}
                               role="menuitem"
                               className="survey-rail__menu-item"
+                              {...keyboardControlProps(null, { role: 'menuitem' })}
                               style={{
                                 color: verifying ? 'var(--warning)' : (verdictColor || 'var(--text-2)'),
                                 cursor: verifying ? 'wait' : 'pointer'

@@ -65,9 +65,10 @@ const isDefaultSet = (values) => values.length === 3 && values[0] === 'Y' && val
 export function answerSetMeaning(set) {
   const list = (Array.isArray(set) ? set : []).map((a) => (typeof a === 'string' ? { value: a } : a)).filter((a) => a?.value);
   const values = list.map((a) => a.value);
-  if (!values.length || isDefaultSet(values)) return null;
+  if (!values.length || (isDefaultSet(values) && !list.some((a) => a.means))) return null;
   const words = list.map((a) => {
-    const hint = ANSWER_WORDS[String(a.value).toLowerCase()];
+    // The template's own "means" line wins over the built-in word list.
+    const hint = (typeof a.means === 'string' && a.means.trim()) || ANSWER_WORDS[String(a.value).toLowerCase()];
     return hint ? `"${a.value}" for ${hint}` : `"${a.value}"`;
   });
   const tone = (a) => a.tone || KNOWN_TONE[String(a.value).toLowerCase()];

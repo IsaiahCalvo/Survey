@@ -41,10 +41,15 @@ export function validateExportKit(kit) {
 }
 
 export const ANSWER_TONES = Object.freeze(['good', 'bad', 'neutral']);
+// One answer is a plain "Done" tick; six is as many buttons as fit a phone card.
+export const MIN_ANSWERS = 1;
+export const MAX_ANSWERS = 6;
+// An answer's optional "means" line: a hint on the card, read by the agents.
+export const ANSWER_MEANS_MAX = 80;
 
 /** Returns a list of problems; empty means the set is usable. */
 export function validateAnswerSet(set) {
-  if (!Array.isArray(set) || set.length < 2 || set.length > 6) return ['answer set needs 2 to 6 answers'];
+  if (!Array.isArray(set) || set.length < MIN_ANSWERS || set.length > MAX_ANSWERS) return [`answer set needs ${MIN_ANSWERS} to ${MAX_ANSWERS} answers`];
   const errors = [];
   const seen = new Set();
   set.forEach((a, i) => {
@@ -54,6 +59,9 @@ export function validateAnswerSet(set) {
     else if (seen.has(v)) errors.push(`answers[${i}].value "${v}" repeated`);
     else seen.add(v);
     if (!ANSWER_TONES.includes(a?.tone)) errors.push(`answers[${i}].tone must be good, bad or neutral`);
+    if (a?.means !== undefined && (typeof a.means !== 'string' || a.means.length > ANSWER_MEANS_MAX)) {
+      errors.push(`answers[${i}].means must be text up to ${ANSWER_MEANS_MAX} characters`);
+    }
   });
   return errors;
 }
@@ -72,4 +80,24 @@ export function publishProblems(kit) {
   if (kit && kit.answerSet !== undefined) errors.push(...validateAnswerSet(kit.answerSet));
   if (kit && BUILT_IN_KIT_IDS.includes(kit.id)) errors.push(`${kit.id} is built into the app; pick another id`);
   return errors;
+}
+
+// Checklist item kinds: pick-one (the answer set), or a typed text / number.
+export const TYPED_ANSWER_MAX = 200;
+
+/** An item's kind: 'text', 'number', or 'choice' (the default). */
+export function checklistItemKind(item) {
+  return item?.kind === 'text' || item?.kind === 'number' ? item.kind : 'choice';
+}
+
+/**
+ * A typed answer as saved: '' for blank, the trimmed text, or a plain number
+ * ("1,200" -> "1200"). null when a number item gets no number.
+ */
+export function typedAnswerFor(kind, raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  if (kind !== 'number') return s.slice(0, TYPED_ANSWER_MAX);
+  const n = Number(s.replace(/,/g, ''));
+  return Number.isFinite(n) && /\d/.test(s) ? String(n) : null;
 }

@@ -1330,6 +1330,14 @@
   overflow-wrap: anywhere;
 }
 
+/* The picked answer's "means" line under the question. */
+.mobile-survey-sheet .mobile-survey-check-means {
+  display: block;
+  color: var(--text-3, var(--text-2));
+  font-size: 12px;
+  line-height: 16px;
+}
+
 /* Y / N / N/A sit in one grey well (a control, so it reads as one); the
    answers are words with invisible hit areas and the chosen one is lit ink. */
 .mobile-survey-sheet .mobile-survey-check-group {

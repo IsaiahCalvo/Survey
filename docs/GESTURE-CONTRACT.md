@@ -164,7 +164,9 @@ a drag that starts there pans (8 px slop).
 callout and the region tools create a shape only after the pointer has moved
 more than 6 px (mouse / pen) or 10 px (finger); less is a click (select the
 mark under it, or nothing). Ink (Pen, Highlighter) has no threshold: a tap
-leaves a dot. *(Thresholds: dbInputA's part of this round.)*
+leaves a dot. The Survey Marker's Freehand mode is ink-like here (owner
+2026-10-22): a mouse click or pen tap places a round dot marker; a finger tap
+places nothing. *(Thresholds: dbInputA's part of this round.)*
 
 **D3 Palm.** A touch whose contact is larger than about 120 CSS px (pointer
 `width`/`height` or touch `radiusX`/`radiusY`) is never a tool press: no ink,

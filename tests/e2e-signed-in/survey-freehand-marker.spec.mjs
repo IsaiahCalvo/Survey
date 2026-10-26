@@ -64,8 +64,8 @@ async function openSurvey(page, seeded) {
   await expect(page.locator('.survey-pdfjs-page-div[data-page-number="1"] canvas').first()).toBeVisible({ timeout: 60_000 });
   await page.getByRole('button', { name: 'Survey', exact: true }).click();
   await page.getByRole('button', { name: new RegExp(seeded.templateName) }).click();
-  await page.getByRole('button', { name: 'Freehand marker' }).click();
-  await expect(page.getByRole('button', { name: 'Freehand marker' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Freehand marker', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Freehand marker', exact: true })).toHaveAttribute('aria-pressed', 'true');
 }
 
 // Times, inside the page, pointer up -> the card is in the DOM.
@@ -123,8 +123,12 @@ for (const pointerType of ['mouse', 'pen']) {
       const [m, c] = [await marker.boundingBox(), await card.boundingBox()];
       expect(c.x >= m.x + m.width || c.x + c.width <= m.x || c.y >= m.y + m.height).toBe(true);
 
-      // Another entity, then a category row: placed at once.
+      // Only the module in use is listed (owner 2026-10-22).
+      await expect(card.getByRole('option', { name: /Access Point/ })).toHaveCount(0);
+      // Another entity recolours the marker on the page at once, then a
+      // category row places it.
       await card.getByRole('button', { name: 'Entity Electrical' }).click();
+      await expect(marker.locator('[data-survey-marker-shape="stroke"]')).toHaveAttribute('stroke', ELECTRICAL_GREEN);
       await card.getByRole('option', { name: /Card Reader/ }).click();
       await expect(card).toBeHidden();
       // It opens in the rail with its name field focused.

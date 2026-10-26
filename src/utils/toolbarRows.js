@@ -47,9 +47,16 @@ export function isAreaEditing(api) {
   return Boolean(api && (api.regionEditing || api.activeTool === 'region-edit'));
 }
 
-/** Survey stays open while its controls give way to annotation formatting. */
+/**
+ * Survey stays open while its controls give way to annotation formatting.
+ * The survey bar shows with the Survey Marker tool armed, and (owner
+ * 2026-10-22) while a Survey Marker is picked under Select or Pan, as a picked
+ * counter shows the counter's bar.
+ */
 export function showsSurveyRow(api) {
-  return Boolean(api?.showSurveyPanel && api.activeTool === 'survey-marker' && !isAreaEditing(api));
+  return Boolean(api?.showSurveyPanel
+    && (api.activeTool === 'survey-marker' || api.surveyMarkerPicked)
+    && !isAreaEditing(api));
 }
 
 /** The tool groups whose tools sit in the tool bar. */

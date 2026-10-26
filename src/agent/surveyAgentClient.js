@@ -163,20 +163,62 @@ export function compactHistory(history, { maxMessages = 60, maxChars = 60_000 } 
   return out.length <= maxMessages && sizeOf(out) <= maxChars ? out : turns.slice(-whole).flat();
 }
 
+const hasContext = (messages) => messages.some((m) => m.tool_calls?.some((c) => c.function?.name === 'get_survey_context'));
+
+// A reply that says something was done or shown. Plain "I couldn't..." or
+// "nothing changed" replies are not claims.
+const CLAIMS_SHOWN = /\b(showing|shown|here it is|pulled (it )?up|took you|zoomed|on screen now)\b/i;
+// First-person or leading verbs only ("Set it to...", "I've added..."), so a
+// read-only answer ("D-117 is marked N") is not taken for a claim.
+const CLAIMS_WRITE = /(?:^|[.!]\s+|\bI(?:'ve| have)?\s+(?:also\s+)?)(?:recorded|marked|set|added|noted|saved|updated|attached|logged|changed|cleared)\b/i;
+// Not "not" alone: an entity can be "Not Started".
+const DENIES = /\b(did not|didn't|could not|couldn't|cannot|can't|unable|nothing|no changes?|have not|haven't|was not|wasn't|not (?:find|found|sure|able))\b|\?\s*$/i;
+const SHOW_TOOLS = new Set(['show_item', 'show_on_plan']);
+
+/** What the reply claims that no tool did this turn: 'show', 'write' or null. */
+export function unbackedClaim(reply, { shown = false, wrote = false } = {}) {
+  const text = String(reply || '');
+  if (!text || DENIES.test(text)) return null;
+  if (!shown && CLAIMS_SHOWN.test(text)) return 'show';
+  if (!wrote && CLAIMS_WRITE.test(text)) return 'write';
+  return null;
+}
+
+const CLAIM_CHECK = {
+  show: 'Check: your reply says you showed it, but no show tool ran this turn. Call show_item or show_on_plan now, or say plainly you did not show it.',
+  write: 'Check: your reply says you recorded something, but nothing changed this turn. Call the tool now, or say plainly that nothing changed.',
+};
+
 /**
  * history: the conversation so far (OpenAI chat shape: user, assistant with
  * tool_calls, tool), not changed on error. Returns { history, reply, changes }
  * where changes are the writes this turn made, oldest first.
  */
-export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, annotations = false, lang = 'en', maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
+export async function runSurveyAgentTurn({ history = [], userText, call, toolbox, answerValues, typedLines = false, annotations = false, lang = 'en', maxSteps = SURVEY_AGENT_LIMITS.maxToolSteps }) {
   const messages = [...compactHistory(history), { role: 'user', content: userText }];
   const changes = [];
   // A summary a tool made this turn ({ title, text }), for the person to save.
   let summary = null;
+  // The survey context goes in up front, as if the model had asked for it:
+  // that saves a whole model step (the full prompt again) on a new chat.
+  if (!hasContext(messages)) {
+    const ctx = await toolbox.run('get_survey_context', {});
+    if (!ctx.isError) {
+      const id = `ctx-${messages.length}`;
+      messages.push(
+        { role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name: 'get_survey_context', arguments: '{}' } }] },
+        { role: 'tool', tool_call_id: id, content: ctx.content },
+      );
+    }
+  }
+  let shown = false;
+  // A reply claiming what no tool did gets one check; it and the check are
+  // left out of the history kept.
+  let checked = null;
   for (let step = 0; step < maxSteps; step += 1) {
     let response;
     try {
-      response = await call({ action: 'turn', messages, answer_values: answerValues, ...(annotations ? { annotations: true } : {}), ...(lang && lang !== 'en' ? { lang } : {}) });
+      response = await call({ action: 'turn', messages, answer_values: answerValues, ...(typedLines ? { typed_lines: true } : {}), ...(annotations ? { annotations: true } : {}), ...(lang && lang !== 'en' ? { lang } : {}) });
     } catch (err) {
       // The caller keeps its old history; it still needs this turn's writes for Undo.
       err.changes = changes;
@@ -186,8 +228,19 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
     const calls = (Array.isArray(response?.message?.tool_calls) ? response.message.tool_calls : [])
       .filter((c) => c?.id && c?.function?.name);
     if (!calls.length) {
-      messages.push({ role: 'assistant', content: reply || '(no reply)' });
-      return { history: messages, reply: reply || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary };
+      const claim = unbackedClaim(reply, { shown, wrote: changes.length > 0 });
+      if (claim && !checked) {
+        checked = messages.length;
+        messages.push({ role: 'assistant', content: reply }, { role: 'user', content: CLAIM_CHECK[claim] });
+        continue;
+      }
+      if (checked != null) messages.splice(checked, 2);
+      // Still claiming after the check: say what is true instead.
+      const said = !claim ? reply
+        : claim === 'show' ? (changes.length ? 'Done, but I did not show it.' : 'I did not show it.')
+          : 'I did not change anything.';
+      messages.push({ role: 'assistant', content: said || '(no reply)' });
+      return { history: messages, reply: said || (changes.length ? 'Done.' : 'I did not change anything.'), changes, summary };
     }
     messages.push({
       role: 'assistant',
@@ -206,6 +259,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
       const result = args
         ? await toolbox.run(c.function.name, args)
         : { content: 'The tool input was not valid JSON. Try again.', isError: true };
+      if (!result.isError && SHOW_TOOLS.has(c.function.name)) shown = true;
       if (result.change) changes.push(result.change);
       if (result.changes) changes.push(...result.changes);
       if (result.summary) summary = result.summary;
@@ -215,6 +269,7 @@ export async function runSurveyAgentTurn({ history = [], userText, call, toolbox
     }
   }
   // Too many steps: close the turn so the conversation stays valid.
+  if (checked != null) messages.splice(checked, 2);
   messages.push({ role: 'assistant', content: 'I stopped there; that took too many steps.' });
   return { history: messages, reply: 'I stopped there; that took too many steps. Check what I changed below.', changes, summary };
 }

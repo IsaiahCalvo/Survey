@@ -5,7 +5,7 @@ One codebase, one database, two copies of the app.
 | Channel | Address | Built from | Who sees unfinished features |
 | --- | --- | --- | --- |
 | Stable (**Survey**) | https://surveytool.app | the newest green `main` commit, at most once every 3 hours (checked every 15 minutes, so a window opens even when no tests run); run the workflow by hand or put `[deploy now]` in a commit message to ship an urgent fix at once (`deploy-production.yml`) | Nobody sees a **beta** flag, not even testers. **Rollout** flags follow `/flags` |
-| **Survey Nightly** | https://surveytool-nightly.vercel.app | the same `main` commit surveytool.app is serving, once a day (the first production run of each UTC day) or on demand (`deploy-nightly.yml`) | Every flag is on (`VITE_RELEASE_CHANNEL=nightly`). Only flag admins and testers listed at `/flags` may use it |
+| **Survey Nightly** | https://surveytool-nightly.vercel.app | the same `main` commit surveytool.app is serving, right after each production deploy, or on demand (`deploy-nightly.yml`) | Every flag is on (`VITE_RELEASE_CHANNEL=nightly`). Only flag admins and testers listed at `/flags` may use it |
 
 Survey Nightly looks different on purpose: the tab says "Survey Nightly", the
 icon is violet with a moon (`public/nightly/`), and a thin violet line with a

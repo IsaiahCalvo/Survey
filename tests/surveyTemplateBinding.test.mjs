@@ -95,3 +95,22 @@ test('explicit entry anchors a cold update but never overrides an unknown select
   const missingOther = observeUnusedSurveyTemplateUpdate(selected, { active: other, latest: null });
   assert.equal(missingOther.observation, null);
 });
+
+test('a changed answer list is a new template version; older bindings do not prompt for nothing', () => {
+  const sizes = [{ value: 'S', tone: 'neutral' }, { value: 'L', tone: 'neutral' }];
+  const withSizes = { ...original, answerSet: sizes };
+  assert.equal(templateFingerprint(original), templateFingerprint({ ...original, answerSet: undefined }));
+  const binding = bindUsedTemplate(withSizes);
+  assert.equal(needsTemplateVersionChoice(binding, withSizes), false);
+  assert.equal(needsTemplateVersionChoice(binding, { ...withSizes, answerSet: [...sizes, { value: 'XL', tone: 'neutral' }] }), true);
+  assert.equal(needsTemplateVersionChoice(binding, original), true);
+  // Stored before answer lists were part of the fingerprint.
+  const legacy = { ...binding, fingerprint: templateFingerprint(original) };
+  assert.equal(needsTemplateVersionChoice(legacy, { ...withSizes, answerSet: sizes.map((a) => ({ tone: a.tone, value: a.value })) }), false);
+  assert.equal(needsTemplateVersionChoice(legacy, { ...withSizes, answerSet: sizes.slice(0, 1) }), true);
+  assert.equal(needsTemplateVersionChoice(acceptTemplateVersion(binding, { ...withSizes, answerSet: sizes.slice(0, 1) }, false), { ...withSizes, answerSet: sizes.slice(0, 1) }), false);
+  // Kept (reviewed) before the change: a later answer-only edit still asks.
+  const reviewed = { ...binding, fingerprint: 'older', reviewedFingerprint: templateFingerprint(original) };
+  assert.equal(needsTemplateVersionChoice(reviewed, withSizes), false);
+  assert.equal(needsTemplateVersionChoice(reviewed, { ...withSizes, answerSet: sizes.slice(0, 1) }), true);
+});

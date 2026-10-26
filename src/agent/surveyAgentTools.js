@@ -3,7 +3,7 @@
 // answers it through the Survey panel's own writes (the "bridge" the panel
 // publishes), so sync, Excel rows, auto-entity and role checks behave exactly
 // as if the person had tapped. Every write returns a change with an undo.
-import { answerSetFor } from '../services/answerSets.js';
+import { answerSetFor, itemKind, typedAnswer } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
 import { MARK_COLOR_HEX, normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { markBox, visiblePageBox } from './planView.js';
@@ -165,12 +165,88 @@ export function createSurveyAgentToolbox({
     // commissioning): the one in the module open in the panel.
     const here = (exact.length ? exact : scored).filter((m) => b.currentModuleId && b.markers[m.id]?.moduleId === b.currentModuleId);
     if (here.length === 1 && (exact.length ? exact : scored).every((m) => m.id === here[0].id || b.markers[m.id]?.moduleId !== b.currentModuleId)) return here[0].id;
-    if (!scored.length) throw new ToolError(`No item named ${heard}. Check with find_items or find_on_plan; nothing changed.`);
+    if (!scored.length) return null;
     const names = (exact.length ? exact : scored).map((m) => m.name).sort((a, b2) => a.localeCompare(b2, undefined, { numeric: true }));
     throw new ToolError(`Several items match ${heard}: ${names.slice(0, 5).join(', ')}. Ask which one; nothing changed.`);
   };
   const writable = (b) => {
     if (b.canEdit === false) throw new ToolError('This person can only view this document, so nothing can be changed.');
+  };
+  // An entity by id or by its name as said ("not started" for "Not Started").
+  const entityFor = (b, value) => {
+    const said = String(value ?? '').trim();
+    if (!said) return null;
+    const list = entitiesOf(b.template);
+    const key = normalizeItemName(said);
+    const found = list.find((e) => e.id === said) || list.find((e) => normalizeItemName(e.name) === key);
+    if (!found) throw new ToolError(`"${said}" is not one of this template's entities (${list.map((e) => e.name).join(', ') || 'it has none'}). Nothing changed.`);
+    return found;
+  };
+  const entityChange = (b, itemId, entity) => {
+    const marker = markerOf(b, itemId);
+    const field = { type: 'entity', before: marker.entityId || null, after: entity?.id || null };
+    b.setEntity(itemId, entity?.id || null);
+    return {
+      content: entity ? `Set ${nameOf(marker)} to ${entity.name}.` : `Cleared the entity on ${nameOf(marker)}.`,
+      change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: entity ${entity ? entity.name : 'cleared'}`, fields: [field] },
+    };
+  };
+  // Items that fit a described device ("camera 6, fourth floor"), best first.
+  // The same item in several modules (same name, same page) is kept once, the
+  // open module's; same-named items on other pages are separate devices.
+  const describedItems = async (b, target) => {
+    const { pages = [], unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
+    const sheetOfPage = new Map(pages.map((p) => [p.page, p.sheet || {}]));
+    const { find } = categoryIndex(b.template);
+    const items = [];
+    for (const [id, marker] of Object.entries(b.markers || {})) {
+      if (!marker) continue;
+      const entry = find(marker.moduleId, marker.categoryId);
+      const sheet = sheetOfPage.get(marker.pageNumber) || {};
+      const score = scoreDescribedTag(target, marker.name, { category: entry?.category?.name, pageFloor: sheet.floor ?? null, pageWing: sheet.wing ?? null });
+      if (score < 0.5) continue;
+      items.push({
+        id,
+        name: nameOf(marker),
+        category: entry?.category?.name || null,
+        ...(entry?.module?.name ? { module: entry.module.name } : {}),
+        page: marker.pageNumber || null,
+        ...(sheet.floor != null ? { sheet_floor: sheet.floor } : {}),
+        score,
+        here: !b.currentModuleId || marker.moduleId === b.currentModuleId,
+        moduleId: marker.moduleId,
+      });
+    }
+    items.sort((x, y) => y.score - x.score || Number(y.here) - Number(x.here) || x.name.localeCompare(y.name, undefined, { numeric: true }));
+    const keptModules = new Map();
+    const kept = items.filter((m) => {
+      const key = `${normalizeItemName(m.name)}|${m.page}`;
+      const modules = keptModules.get(key);
+      if (modules && !modules.has(m.moduleId)) return false;
+      keptModules.set(key, (modules || new Set()).add(m.moduleId));
+      return true;
+    });
+    return { items: kept, pages, unreadPages };
+  };
+  // set_answers' item_name: the item by name, or else by description
+  // ("camera twelve fourth floor" is C-4-12), when one clearly fits best.
+  const itemIdFor = async (b, name) => {
+    const heard = String(name || '').trim();
+    const byName = markerIdByName(b, heard);
+    if (byName) return byName;
+    const target = parseDescribedTarget(heard);
+    if (target?.number != null && target.kind) {
+      const { items } = await describedItems(b, target);
+      const [best, next] = items;
+      // A lone fit is enough ("camera twelve" when there is one camera 12,
+      // whatever floor); with others, it must be clearly the best.
+      if (best && (next ? best.score >= 0.8 && next.score < best.score - 0.1 : best.score >= 0.6)) return best.id;
+      if (best && next) {
+        const list = items.slice(0, 5).map((m) => `${m.name}${m.page ? ` (page ${m.page})` : ''}`).join(', ');
+        throw new ToolError(`Several items fit ${heard}: ${list}. Ask which one; nothing changed.`);
+      }
+    }
+    throw new ToolError(`No item named ${heard}. Check with find_items, find_described or find_on_plan; nothing changed.`);
   };
   const nameOf = (marker) => marker?.name || 'Unnamed item';
   // Uploads files to an item's note, as a person adding them would.
@@ -338,7 +414,7 @@ export function createSurveyAgentToolbox({
             ...(multiModule ? { module: module.name } : {}),
             item_count: counts.get(category.id) || 0,
             ...(examples.has(category.id) ? { example_item: examples.get(category.id) } : {}),
-            checklist: activeChecklist(category).map((item) => ({ id: item.id, text: itemText(item) })),
+            checklist: activeChecklist(category).map((item) => ({ id: item.id, text: itemText(item), ...(itemKind(item) !== 'choice' ? { answer_kind: itemKind(item), ...(item.unit ? { unit: item.unit } : {}) } : {}) })),
           })),
           entities: entitiesOf(b.template).map((e) => ({ id: e.id, name: e.name })),
           // What plain talk means in each module ("it's installed", "it works").
@@ -408,6 +484,7 @@ export function createSurveyAgentToolbox({
           checklist: entry ? activeChecklist(entry.category).map((item) => ({
             id: item.id,
             text: itemText(item),
+            ...(itemKind(item) !== 'choice' ? { answer_kind: itemKind(item), ...(item.unit ? { unit: item.unit } : {}) } : {}),
             answer: responses[item.id]?.selection || null,
           })) : [],
           note: noteTextOf(marker.note),
@@ -420,15 +497,16 @@ export function createSurveyAgentToolbox({
     // Answers and a note in one step: "D-117 is installed but has no power"
     // sets the installation lines and notes the power. all_lines answers
     // every line the person did not name one by one ("everything's in").
-    async set_answers({ item_id: givenId, item_name: itemName, answers, all_lines: allLines = null, note = null } = {}) {
+    async set_answers({ item_id: givenId, item_name: itemName, answers, all_lines: allLines = null, note = null, entity: entitySaid = null } = {}) {
       const b = bridge();
       writable(b);
-      const itemId = givenId || markerIdByName(b, itemName);
+      const itemId = givenId || await itemIdFor(b, itemName);
       const marker = markerOf(b, itemId);
       const entry = categoryIndex(b.template).find(marker.moduleId, marker.categoryId);
       const addition = String(note || '').trim();
-      const named = Array.isArray(answers) ? answers : [];
-      if (!named.length && !allLines && !addition) throw new ToolError('No answers given.');
+      const named = (Array.isArray(answers) ? answers : []).map((a) => ({ ...a }));
+      const entity = entityFor(b, entitySaid);
+      if (!named.length && !allLines && !addition && !entity) throw new ToolError('No answers given (and no note or entity).');
       if ((named.length || allLines) && !entry) throw new ToolError('This item has no category in the template, so it has no checklist.');
       const lines = entry ? activeChecklist(entry.category) : [];
       const checklist = new Map(lines.map((item) => [item.id, item]));
@@ -438,8 +516,16 @@ export function createSurveyAgentToolbox({
       // that module's item of the same name, added at the same spot if the
       // person has not placed it there yet.
       const elsewhere = new Map();
+      // Text and number lines take what was said, not a listed answer.
+      const lineById = new Map(categoryIndex(b.template).list.flatMap(({ category }) => activeChecklist(category)).map((l) => [l.id, l]));
       for (const a of named) {
-        if (!allowed.includes(a?.value)) throw new ToolError(`"${a?.value}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);
+        const line = checklist.get(a?.checklist_item_id) || lineById.get(a?.checklist_item_id);
+        if (line && itemKind(line) !== 'choice') {
+          const typed = typedAnswer(line, a.value);
+          if (typed === null) throw new ToolError(`"${a.value}" is not a number. "${itemText(line)}" takes a number${line.unit ? ` in ${line.unit}` : ''}.`);
+          if (!typed) throw new ToolError(`"${itemText(line)}" needs a value.`);
+          a.value = typed;
+        } else if (!allowed.includes(a?.value)) throw new ToolError(`"${a?.value}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);
         if (checklist.has(a?.checklist_item_id)) continue;
         const other = entry && categoryIndex(b.template).list.find(({ module, category }) => module.id !== entry.module.id
           && sameName(category.name, entry.category.name)
@@ -451,7 +537,7 @@ export function createSurveyAgentToolbox({
       if (allLines && !allowed.includes(allLines)) throw new ToolError(`"${allLines}" is not an allowed answer. Allowed: ${allowed.join(', ')}.`);
       const own = named.filter((a) => checklist.has(a.checklist_item_id));
       const given = new Set(own.map((a) => a.checklist_item_id));
-      const list = [...own, ...(allLines ? lines.filter((l) => !given.has(l.id)).map((l) => ({ checklist_item_id: l.id, value: allLines })) : [])];
+      const list = [...own, ...(allLines ? lines.filter((l) => !given.has(l.id) && itemKind(l) === 'choice').map((l) => ({ checklist_item_id: l.id, value: allLines })) : [])];
       // Every other module is checked before anything is written, so a turn
       // never half-writes and then reports only the failure.
       for (const { entry: other } of elsewhere.values()) siblingFor(b, itemId, marker, other);
@@ -494,9 +580,23 @@ export function createSurveyAgentToolbox({
         ? { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: ${said.join('; ')}`, fields }
         : null;
       const elsewhereText = siblingChanges.map((c) => c.text).join(' ');
+      // The entity goes last, once the app has applied any automatic entity
+      // the answers set, so the one the person said wins.
+      const idNote = givenId ? '' : ` (item id ${itemId})`;
+      let entitySet = null;
+      if (entity) {
+        if (list.length) await new Promise((resolve) => setTimeout(resolve, 0));
+        entitySet = entityChange(b, itemId, entity);
+      }
       return {
-        content: [what ? `Set ${what} on ${nameOf(marker)}${givenId ? '' : ` (item id ${itemId})`}.` : '', elsewhereText].filter(Boolean).join(' '),
-        ...((all) => (all.length === 1 ? { change: all[0] } : { changes: all }))([...(ownChange ? [ownChange] : []), ...siblingChanges.flatMap((c) => c.changes)]),
+        content: [
+          what ? `Set ${what} on ${nameOf(marker)}${idNote}.` : '',
+          elsewhereText,
+          entitySet ? (what ? entitySet.content : entitySet.content.replace(/\.$/, `${idNote}.`)) : '',
+        ].filter(Boolean).join(' '),
+        ...((all) => (all.length === 1 ? { change: all[0] } : { changes: all }))([
+          ...(ownChange ? [ownChange] : []), ...siblingChanges.flatMap((c) => c.changes), ...(entitySet ? [entitySet.change] : []),
+        ]),
       };
     },
 
@@ -526,15 +626,8 @@ export function createSurveyAgentToolbox({
     set_entity({ item_id: itemId, entity_id: entityId } = {}) {
       const b = bridge();
       writable(b);
-      const marker = markerOf(b, itemId);
-      const entity = entityId ? entitiesOf(b.template).find((e) => e.id === entityId) : null;
-      if (entityId && !entity) throw new ToolError(`${entityId} is not one of this template's entities.`);
-      const field = { type: 'entity', before: marker.entityId || null, after: entity?.id || null };
-      b.setEntity(itemId, entity?.id || null);
-      return {
-        content: entity ? `Set ${nameOf(marker)} to ${entity.name}.` : `Cleared the entity on ${nameOf(marker)}.`,
-        change: { itemId, documentId: b.documentId || null, label: `${nameOf(marker)}: entity ${entity ? entity.name : 'cleared'}`, fields: [field] },
-      };
+      markerOf(b, itemId);
+      return entityChange(b, itemId, entityFor(b, entityId));
     },
 
     async attach_media({ item_id: itemId, attachment_ids: ids } = {}) {
@@ -639,40 +732,8 @@ export function createSurveyAgentToolbox({
         wing: ({ west: 'w', east: 'e', north: 'n', south: 's' })[String(wing || '').toLowerCase()] || parsed.wing || null,
       };
       if (target.number == null) throw new ToolError('Say the number of the one to find, for example camera 6.');
-      const { pages = [], unreadPages = [] } = typeof b.readSheets === 'function' ? await b.readSheets() : {};
-      const sheetOfPage = new Map(pages.map((p) => [p.page, p.sheet || {}]));
-      const { find } = categoryIndex(b.template);
-      const items = [];
-      for (const [id, marker] of Object.entries(b.markers || {})) {
-        if (!marker) continue;
-        const entry = find(marker.moduleId, marker.categoryId);
-        const sheet = sheetOfPage.get(marker.pageNumber) || {};
-        const score = scoreDescribedTag(target, marker.name, { category: entry?.category?.name, pageFloor: sheet.floor ?? null, pageWing: sheet.wing ?? null });
-        if (score < 0.5) continue;
-        items.push({
-          id,
-          name: nameOf(marker),
-          category: entry?.category?.name || null,
-          ...(entry?.module?.name ? { module: entry.module.name } : {}),
-          page: marker.pageNumber || null,
-          ...(sheet.floor != null ? { sheet_floor: sheet.floor } : {}),
-          score,
-          here: !b.currentModuleId || marker.moduleId === b.currentModuleId,
-          moduleId: marker.moduleId,
-        });
-      }
-      // The same item in several modules (same name, same page): the open
-      // module's one. Same-named items on other pages, or in one module, are
-      // separate devices and all stay, so the agent can ask which.
-      items.sort((x, y) => y.score - x.score || Number(y.here) - Number(x.here) || x.name.localeCompare(y.name, undefined, { numeric: true }));
-      const keptModules = new Map();
-      const shownItems = items.filter((m) => {
-        const key = `${normalizeItemName(m.name)}|${m.page}`;
-        const modules = keptModules.get(key);
-        if (modules && !modules.has(m.moduleId)) return false;
-        keptModules.set(key, (modules || new Set()).add(m.moduleId));
-        return true;
-      }).slice(0, 5).map(({ here: _, moduleId: __, ...m }) => m);
+      const { items, pages, unreadPages } = await describedItems(b, target);
+      const shownItems = items.slice(0, 5).map(({ here: _, moduleId: __, ...m }) => m);
       const markers = Object.entries(b.markers || {});
       const plan = findDescribedOnPages(target, pages, { score: scoreDescribedTag })
         .map((m) => {

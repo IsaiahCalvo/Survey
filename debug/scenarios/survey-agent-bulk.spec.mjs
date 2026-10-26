@@ -7,6 +7,10 @@ import { test, expect } from '@playwright/test';
 import { stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
+// A tool result the model asked for; the app puts the survey context in
+// (tool call id ctx-...) before the first step on its own.
+const isToolResult = (m) => m.role === 'tool' && !String(m.tool_call_id).startsWith('ctx-');
+
 const root = resolve(import.meta.dirname, '..', '..');
 const PDF_FILE = 'door-tags.pdf';
 
@@ -47,7 +51,7 @@ function mockModel(page, calls) {
       body: JSON.stringify(json),
     });
     if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
-    const tools = body.messages.filter((m) => m.role === 'tool');
+    const tools = body.messages.filter(isToolResult);
     const call = (id, name, args) => reply({ message: { content: '', tool_calls: [
       { id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
     ] } });
@@ -89,7 +93,7 @@ test('"Add all doors on this sheet" adds every new door tag on the page, and Und
   await expect(panel.getByText('Added five doors on this sheet.')).toBeVisible();
 
   const turns = calls.filter((c) => c.action === 'turn');
-  const results = turns.at(-1).messages.filter((m) => m.role === 'tool');
+  const results = turns.at(-1).messages.filter(isToolResult);
   expect(JSON.parse(results[0].content)).toMatchObject({ page_on_screen: 1 });
   expect(results[1].content).toBe('Found 6 tags like D-101 on page 1. Added 5 as Doors: D-102, D-103, D-104, D-105, D-106. 1 was already an item.');
   await expect.poll(() => markerNames(page)).toEqual(['D-101@1', 'D-102@1', 'D-103@1', 'D-104@1', 'D-105@1', 'D-106@1']);
@@ -122,7 +126,7 @@ test('"What\'s left on this sheet?" reads the page\'s progress back', async ({ p
     calls.push(body);
     const reply = (json) => route.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify(json) });
     if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
-    const tools = body.messages.filter((m) => m.role === 'tool');
+    const tools = body.messages.filter(isToolResult);
     if (!tools.length) {
       return reply({ message: { content: '', tool_calls: [
         { id: 's1', type: 'function', function: { name: 'survey_status', arguments: JSON.stringify({ page: null, all_pages: false }) } },
@@ -143,7 +147,7 @@ test('"What\'s left on this sheet?" reads the page\'s progress back', async ({ p
   await input.press('Enter');
   await expect(panel.getByText('One of two doors is done.')).toBeVisible();
 
-  const result = JSON.parse(calls.filter((c) => c.action === 'turn').at(-1).messages.find((m) => m.role === 'tool').content);
+  const result = JSON.parse(calls.filter((c) => c.action === 'turn').at(-1).messages.find(isToolResult).content);
   expect(result).toEqual({
     scope: 'page 1',
     items: 2,
@@ -179,7 +183,7 @@ test('"Sum up the walk" gives a summary with the items that have issues, and Sav
     calls.push(body);
     const reply = (json) => route.fulfill({ status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' }, body: JSON.stringify(json) });
     if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, over_cap: false });
-    if (!body.messages.some((m) => m.role === 'tool')) {
+    if (!body.messages.some(isToolResult)) {
       return reply({ message: { content: '', tool_calls: [
         { id: 'w1', type: 'function', function: { name: 'walk_summary', arguments: JSON.stringify({ scope: 'walk', page: null }) } },
       ] } });
@@ -200,7 +204,7 @@ test('"Sum up the walk" gives a summary with the items that have issues, and Sav
   await expect(panel.getByText('Two of three doors done, one with issues')).toBeVisible();
 
   // Nothing was worked on in this chat, so it covers the whole survey.
-  const result = JSON.parse(calls.filter((c) => c.action === 'turn').at(-1).messages.find((m) => m.role === 'tool').content);
+  const result = JSON.parse(calls.filter((c) => c.action === 'turn').at(-1).messages.find(isToolResult).content);
   expect(result).toMatchObject({
     scope: 'the whole survey',
     totals: { items: 3, done: 2, partly: 0, notStarted: 1, withIssues: 1 },

@@ -25,3 +25,7 @@ export const TOOL_MATRIX = Object.freeze([
 export const IMPLEMENTED_TOOL_IDS = Object.freeze(
   TOOL_MATRIX.filter((row) => row.implemented).map((row) => row.id),
 );
+
+// The phone rail's select tool is named after its current mode
+// (src/utils/selectModes.js: "Rectangle Select", "Lasso Select", "Text Select").
+export const SELECT_TOOL_NAME = /^(?:(?:Rectangle|Lasso|Text) )?Select$/;

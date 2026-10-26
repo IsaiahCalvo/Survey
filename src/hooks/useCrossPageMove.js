@@ -11,6 +11,8 @@
  *   - drops: on another page it hands the moved marks to the viewer
  *     (onMoveMarksToPage), which saves the move as ONE change and ONE undo
  *     step on both pages. Anything else falls back to the in-page move;
+ *   - copy-drags (Ctrl / Cmd held, Visio): the same preview with the
+ *     original left drawn in place, and `land` says where the copy goes;
  *   - cancels (Escape): the picture goes away and the mark stays put.
  * The returned object is stable, so the interaction callbacks keep their deps.
  */
@@ -23,6 +25,7 @@ import {
   clientToPagePoint,
   getCrossPageGhost,
   readPageLayers,
+  readPageLayersCached,
   resolveCrossPageDrop,
   resolveCrossPageStep,
   setCrossPageGhost,
@@ -86,15 +89,44 @@ export function useCrossPageMove({
       size: { width: state.startBox.width, height: state.startBox.height },
     });
 
+    /**
+     * pointerup: where the marks land on another page, or null when they
+     * stay on their own. { toPage, dx, dy, indices, ids } — dx / dy in page
+     * units from where they started.
+     */
+    const land = (ds, event) => {
+      const state = ds.crossPage;
+      if (!state || state.hostPage === state.originPage) return null;
+      const pages = readPageLayers();
+      const last = step(state, event, pages);
+      const landing = resolveCrossPageDrop({
+        pages,
+        originPage: state.originPage,
+        hostPage: last.hostPage,
+        box: last.box,
+      });
+      if (!landing) return null;
+      return {
+        toPage: landing.pageNumber,
+        dx: landing.box.left - state.startBox.left,
+        dy: landing.box.top - state.startBox.top,
+        indices: state.indices,
+        ids: state.ids,
+      };
+    };
+
     return {
+      land,
+
       /** pointermove of a move / group-move. true = this hook drew the frame. */
       // `adjust(dx, dy, away)` (optional) may change the delta drawn on the
       // mark's own page — the canvas-audit snapping (useSVGInteraction).
-      preview(ds, event, objects, adjust = null) {
+      // `copy`: a copy-drag, so the original stays drawn where it is.
+      preview(ds, event, objects, adjust = null, copy = false) {
         const state = begin(ds, objects);
         if (!state) return false;
         const L = latestRef.current;
-        const pages = readPageLayers();
+        const pages = readPageLayersCached(state);
         const origin = pages.find((page) => page.pageNumber === state.originPage);
         if (!origin) return false;
         const next = step(state, event, pages);
@@ -103,14 +135,15 @@ export function useCrossPageMove({
         state.box = next.box;
         const away = next.hostPage !== state.originPage;
         // On its own page the mark is drawn where the pointer puts it (no
-        // page clamp — the page clips it). Away, it is hidden there.
+        // page clamp — the page clips it). Away, it is hidden there (a
+        // copy-drag's original stays drawn).
         const at = clientToPagePoint(origin.matrix, event.clientX, event.clientY);
         let dx = at.x - ds.startSVGPoint.x;
         let dy = at.y - ds.startSVGPoint.y;
         if (typeof adjust === 'function') ({ dx, dy } = adjust(dx, dy, away));
         L.setVisualTransform(ds.mode === 'group-move'
-          ? { id: 'group', dx, dy, affectedIds: new Set(state.indices), crossPageAway: away }
-          : { id: ds.annotationIndex, dx, dy, crossPageAway: away });
+          ? { id: 'group', dx, dy, copy, affectedIds: new Set(state.indices), crossPageAway: away }
+          : { id: ds.annotationIndex, dx, dy, copy, crossPageAway: away });
         setCrossPageGhost(away ? {
           documentId: L.documentId ?? null,
           originPage: state.originPage,
@@ -125,23 +158,15 @@ export function useCrossPageMove({
       /** pointerup. true = the marks were moved to another page (saved). */
       drop(ds, event) {
         const state = ds.crossPage;
-        if (!state || state.hostPage === state.originPage) return false;
-        const L = latestRef.current;
-        const pages = readPageLayers();
-        const last = step(state, event, pages);
-        const landing = resolveCrossPageDrop({
-          pages,
-          originPage: state.originPage,
-          hostPage: last.hostPage,
-          box: last.box,
-        });
+        const landing = land(ds, event);
         if (!landing) return false;
-        const tx = landing.box.left - state.startBox.left;
-        const ty = landing.box.top - state.startBox.top;
+        const L = latestRef.current;
+        const tx = landing.dx;
+        const ty = landing.dy;
         const moved = { objects: state.marks.map((mark, k) => translateMovedMark(mark, state.starts[k], tx, ty)) };
         roundCommittedAnnotationsGeometry(moved, moved.objects.map((_, k) => k));
         const ok = L.onMoveMarksToPage({
-          toPage: landing.pageNumber,
+          toPage: landing.toPage,
           marks: moved.objects.map((object, k) => ({ id: state.ids[k], object })),
         });
         return ok === true;

@@ -1,0 +1,304 @@
+/* The pinned tools dock (PinnedToolsDock.jsx; beta 'pinned-tools').
+   The dock is a floating bar on the page area, like Drawboard PDF's favourites
+   bar: the shared panel surface, hairline border and popover shadow, 28px
+   tool buttons (the tool bar's own .chrome-subcontrol), 4px of air around
+   them. Left / right: a column centred on the page area's height. Bottom: a
+   row centred along its width. A long list scrolls inside the dock. */
+
+.pinned-dock-shell {
+  position: absolute;
+  z-index: 5200;
+  display: flex;
+  pointer-events: none;
+}
+.pinned-dock-shell.is-left,
+.pinned-dock-shell.is-right {
+  /* Clear of the settings row that lies over the top of the page area. */
+  top: calc(var(--chrome-bar-h) + 12px);
+  bottom: 12px;
+  align-items: center;
+}
+.pinned-dock-shell.is-left { left: 10px; }
+.pinned-dock-shell.is-right { right: 14px; }
+.pinned-dock-shell.is-bottom {
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  justify-content: center;
+}
+
+.pinned-dock {
+  position: relative;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  max-width: 100%;
+  max-height: 100%;
+  box-sizing: border-box;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-popover);
+  user-select: none;
+  -webkit-user-select: none;
+  will-change: transform;
+}
+.pinned-dock.is-vertical { flex-direction: column; }
+.pinned-dock.is-horizontal { flex-direction: row; }
+.pinned-dock.is-dragging { pointer-events: none; }
+
+.pinned-dock__pins {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: none;
+}
+.pinned-dock__pins::-webkit-scrollbar { display: none; }
+.pinned-dock.is-vertical .pinned-dock__pins { flex-direction: column; }
+.pinned-dock.is-horizontal .pinned-dock__pins { flex-direction: row; }
+
+.pinned-dock__slot {
+  position: relative;
+  flex: none;
+  display: flex;
+}
+.pinned-dock__slot.is-dragged {
+  z-index: 1;
+  opacity: 0.7;
+}
+.pinned-dock__slot.has-drop-line::before,
+.pinned-dock__end-line {
+  content: '';
+  flex: none;
+  background: var(--accent);
+  border-radius: 1px;
+}
+.pinned-dock__slot.has-drop-line::before { position: absolute; }
+.pinned-dock.is-vertical .pinned-dock__slot.has-drop-line::before { left: 3px; right: 3px; top: -2px; height: 2px; }
+.pinned-dock.is-horizontal .pinned-dock__slot.has-drop-line::before { top: 3px; bottom: 3px; left: -2px; width: 2px; }
+.pinned-dock.is-vertical .pinned-dock__end-line { width: 22px; height: 2px; }
+.pinned-dock.is-horizontal .pinned-dock__end-line { width: 2px; height: 22px; }
+
+/* A pin is a little larger than a tool-bar button so its width figure has
+   its own corner: the glyph sits a touch down-left of centre. */
+.pinned-dock__pin.chrome-subcontrol {
+  position: relative;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+}
+/* The armed pin: the app's "chosen" gold, as a ring, since the glyph keeps
+   the pin's own colour. A pseudo-element, so no button plate rule hides it. */
+.pinned-dock__pin[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--chrome-radius, 6px);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+.pinned-dock__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.pinned-dock__pin .pinned-dock__glyph { transform: translate(-2px, 2px); }
+/* The pin's width, top-right in small bold figures (Drawboard's bar). */
+.pinned-dock__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 8px;
+  font: 700 8px/9px var(--font-ui);
+  color: var(--text-3);
+  text-align: right;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  z-index: 1;
+}
+.pinned-dock__pin[aria-pressed='true'] .pinned-dock__badge { color: var(--text-1); }
+
+.pinned-dock__remove {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.pinned-dock__rule { flex: none; background: var(--border); }
+.pinned-dock.is-vertical .pinned-dock__rule { width: 16px; height: 1px; margin: 2px 0; }
+.pinned-dock.is-horizontal .pinned-dock__rule { width: 1px; height: 16px; margin: 0 2px; }
+
+.pinned-dock__grip {
+  cursor: grab;
+  touch-action: none;
+  color: var(--text-3);
+}
+.pinned-dock__grip:active { cursor: grabbing; }
+
+/* Drop zones while the dock is dragged (walkthu: a dim veil, dashed slots,
+   the one it will land in lit). */
+.pinned-dock-zones {
+  position: absolute;
+  inset: 0;
+  z-index: 5150;
+  pointer-events: none;
+  background: var(--overlay-scrim);
+  animation: pinned-dock-zones-in 200ms ease-out;
+}
+@keyframes pinned-dock-zones-in { from { opacity: 0; } to { opacity: 1; } }
+.pinned-dock-zone {
+  position: absolute;
+  border: 2px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border-radius: var(--radius-md, 8px);
+  opacity: 0.7;
+  transition: background-color 200ms ease-out, opacity 200ms ease-out, border-color 200ms ease-out;
+}
+.pinned-dock-zone.is-target {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  opacity: 1;
+}
+.pinned-dock-zone.is-left,
+.pinned-dock-zone.is-right {
+  top: 50%;
+  width: 42px;
+  height: min(288px, 60%);
+  transform: translateY(-50%);
+}
+.pinned-dock-zone.is-left { left: 10px; }
+.pinned-dock-zone.is-right { right: 14px; }
+.pinned-dock-zone.is-bottom {
+  left: 50%;
+  bottom: 12px;
+  height: 42px;
+  width: min(360px, 70%);
+  transform: translateX(-50%);
+}
+
+/* Menus: the shared popover surface (as the Pencil-only menu). */
+.pinned-dock-menu {
+  position: fixed;
+  z-index: 6000;
+  box-sizing: border-box;
+  padding: 4px;
+  overflow: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-popover);
+  font-family: var(--font-ui);
+}
+.pinned-dock-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 4px 8px 4px 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-2);
+  font: 400 12px/16px var(--font-ui);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pinned-dock-menu button:disabled { color: var(--text-disabled); cursor: default; }
+@media (hover: hover) {
+  .pinned-dock-menu button:not(:disabled):hover { background: var(--hover); color: var(--text-1); }
+}
+.pinned-dock-menu button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.pinned-dock-menu button[aria-checked='true'] { color: var(--text-1); }
+.pinned-dock-menu button.is-danger { color: var(--danger-text); }
+.pinned-dock-menu__check { width: 14px; display: inline-flex; justify-content: center; flex: none; }
+.pinned-dock-menu__heading {
+  padding: 6px 8px 2px;
+  font: 600 10px/14px var(--font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.pinned-dock-menu__rule { height: 1px; margin: 4px 2px; background: var(--border); }
+.pinned-dock-menu__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+}
+.pinned-dock-menu__grid button {
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: 6px 2px;
+  text-align: center;
+  font-size: 11px;
+  white-space: normal;
+}
+.pinned-dock-menu__current { min-height: 40px; }
+.pinned-dock-menu__face {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--chrome-radius, 6px);
+  background: var(--surface-3);
+}
+.pinned-dock-menu__text { display: flex; flex-direction: column; min-width: 0; }
+.pinned-dock-menu__sub {
+  color: var(--text-3);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pinned-dock-zones { animation: none; }
+  .pinned-dock-zone { transition: none; }
+}
+
+/* Phone: one row standing on the phone's bottom bar (the page area runs
+   under that bar; mobilePdfViewer.css --mobile-dock-bar-height), finger-sized
+   pins, no grip. Under the phone sheets (6500), so an open sheet covers it. */
+.pinned-dock-shell.is-phone {
+  left: 8px;
+  right: 8px;
+  bottom: calc(var(--mobile-dock-bar-height, 46px) + 8px);
+  z-index: 5700;
+}
+.pinned-dock-shell.is-phone .pinned-dock__pin.chrome-subcontrol {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+}
+.pinned-dock-shell.is-phone .pinned-dock__pins { touch-action: pan-x; }
+.pinned-dock__folded.chrome-subcontrol {
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  justify-content: center;
+}

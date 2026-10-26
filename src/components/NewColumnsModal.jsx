@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import { getOtherSurveysUsingTemplate } from '../hooks/useDatabase';
 import { showToast } from '../utils/toast';
@@ -323,7 +324,7 @@ const NewColumnsModal = ({
         </div>
 
         {/* Option selection */}
-        <div style={{ marginBottom: '24px' }}>
+        <div role="radiogroup" aria-label="How would you like to handle these new columns?" style={{ marginBottom: '24px' }}>
           <div style={{
             fontSize: TYPOGRAPHY.fontSize.sm,
             fontWeight: TYPOGRAPHY.fontWeight.medium,
@@ -337,6 +338,7 @@ const NewColumnsModal = ({
           {/* Option A: Create new template */}
           <div
             onClick={() => setSelectedOption('newTemplate')}
+            {...keyboardControlProps(null, { role: 'radio', checked: selectedOption === 'newTemplate' })}
             onMouseEnter={(e) => {
               if (selectedOption !== 'newTemplate') {
                 e.currentTarget.style.background = COLORS.modal.panelHover;
@@ -425,6 +427,7 @@ const NewColumnsModal = ({
           {/* Option B: Modify this template */}
           <div
             onClick={() => canModifyTemplate && setSelectedOption('modifyTemplate')}
+            {...keyboardControlProps(null, { role: 'radio', checked: selectedOption === 'modifyTemplate', disabled: !canModifyTemplate })}
             onMouseEnter={(e) => {
               if (canModifyTemplate && selectedOption !== 'modifyTemplate') {
                 e.currentTarget.style.background = COLORS.modal.panelHover;

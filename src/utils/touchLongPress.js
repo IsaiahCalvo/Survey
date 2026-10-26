@@ -67,6 +67,16 @@ export const isTouchMenuInput = (input) => input === 'touch' || input === 'pen';
  * One press at a time: start / move / cancel, fire once after `delayMs` held
  * within `slopPx`. Timers are injected so the tests run without a clock.
  */
+// Whether a pointer event moves or ends the armed press. A finger's touch
+// events stop reaching the scroller when the element it landed on is
+// re-rendered away mid-gesture (a selected mark redraws while it moves), so
+// the finger's pointer stream must also move/lift the press, or the menu opens
+// after the finger is already up.
+export function pointerDrivesLongPress(event, penId) {
+  if (event?.pointerType === 'touch') return true;
+  return event?.pointerType === 'pen' && penId != null && event.pointerId === penId;
+}
+
 export function createLongPressTracker({
   onFire,
   delayMs = LONG_PRESS_MS,

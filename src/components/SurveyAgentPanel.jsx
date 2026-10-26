@@ -15,7 +15,7 @@ import { createPortal } from 'react-dom';
 import Icon from '../Icons';
 import { supabase } from '../supabaseClient';
 import { classifyMediaFile } from '../services/surveyMediaService';
-import { answerSetFor } from '../services/answerSets.js';
+import { answerSetFor, templateHasTypedItems } from '../services/answerSets.js';
 import { createSurveyAgentToolbox, surveyAgentBridge } from '../agent/surveyAgentTools.js';
 import { buildAnnotationTools } from '../agent/annotationTools.js';
 import { ANNOTATION_AGENT_FLAG } from '../../supabase/functions/_shared/annotationAgentSpec.js';
@@ -329,6 +329,7 @@ export default function SurveyAgentPanel({
         call,
         toolbox: turnToolbox,
         answerValues: answerSetFor(bridge.template).map((a) => a.value),
+        typedLines: templateHasTypedItems(bridge.template),
         annotations,
         lang: langRef.current,
       });

@@ -77,6 +77,8 @@ for (const pointerType of ['mouse', 'pen']) {
     const rectId = await newMarkId(page, before);
     await drawMark(page, 'o', at(0.36, 0.62), at(0.46, 0.72));
     const ellipseId = await newMarkId(page, before);
+    await drawMark(page, 'l', at(0.32, 0.84), at(0.56, 0.86));
+    const lineId = await newMarkId(page, before);
 
     await page.keyboard.press('t');
     await page.mouse.click(at(0.22, 0.78).x, at(0.22, 0.78).y);
@@ -94,11 +96,12 @@ for (const pointerType of ['mouse', 'pen']) {
     await expect(page.locator(FRAME)).toHaveCount(1);
     const grabbers = page.locator(`${FRAME} [data-resize-handle]`);
     await expect(grabbers).toHaveCount(8);
-    await expect(page.locator(`${FRAME} [data-rotation-handle]`)).toHaveCount(0);
+    await expect(page.locator(`${FRAME} [data-rotation-handle]`)).toHaveCount(1);
 
     const start = {
       rect: await boxOf(page, rectId),
       ellipse: await boxOf(page, ellipseId),
+      line: await boxOf(page, lineId),
       text: await boxOf(page, textId),
       font: await textFontSize(page, textId),
     };
@@ -115,6 +118,7 @@ for (const pointerType of ['mouse', 'pen']) {
     const after = {
       rect: await boxOf(page, rectId),
       ellipse: await boxOf(page, ellipseId),
+      line: await boxOf(page, lineId),
       text: await boxOf(page, textId),
       font: await textFontSize(page, textId),
     };
@@ -128,6 +132,9 @@ for (const pointerType of ['mouse', 'pen']) {
     expect(near(after.rect.top, start.rect.top, 0.01)).toBe(true);
     // The marks spread apart with the frame.
     expect(after.ellipse.left - after.rect.left).toBeGreaterThan((start.ellipse.left - start.rect.left) * 1.4);
+    // A drawn line stretches with the frame and stays in its place in it.
+    expect(near(after.line.width, start.line.width * 1.5), `line width ${start.line.width} -> ${after.line.width}`).toBe(true);
+    expect(near(after.line.left - after.rect.left, (start.line.left - start.rect.left) * 1.5), `line left ${start.line.left} -> ${after.line.left}`).toBe(true);
 
     // One Undo puts every mark back.
     await page.keyboard.press('Control+z');
@@ -445,9 +452,168 @@ test('Survey Markers in the selection resize with it; one Undo puts them back', 
     await expect.poll(async () => Math.round((await markerBoxes(page))[1].width)).toBe(Math.round(startB.width));
     expect(near((await markerBoxes(page))[0].width, startA.width, 0.01)).toBe(true);
     expect(near((await markerBoxes(page))[1].left, startB.left, 0.01)).toBe(true);
+
+    // The rotate grabber turns the markers with the group; one Undo.
+    const handle = await page.locator(`${FRAME} [data-rotation-handle="mtr"]`).boundingBox();
+    const frame2 = await page.locator(`${FRAME} [data-group-selection-hitbox]`).boundingBox();
+    const pivot = { x: frame2.x + frame2.width / 2, y: frame2.y + frame2.height / 2 };
+    const rgrab = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+    const r = Math.hypot(rgrab.x - pivot.x, rgrab.y - pivot.y);
+    await dragWith(page, 'pen', rgrab, { x: pivot.x + r, y: pivot.y });
+    await page.waitForTimeout(800);
+    const turned = await markerBoxes(page);
+    expect(near(turned[0].width, startA.height, 0.08), `turned ${JSON.stringify(turned[0])} from ${JSON.stringify(startA)}`).toBe(true);
+    expect(near(turned[0].height, startA.width, 0.08)).toBe(true);
+    await page.keyboard.press('Control+z');
+    await expect.poll(async () => Math.round((await markerBoxes(page))[0].width)).toBe(Math.round(startA.width));
   } finally {
     await admin.from('documents').delete().eq('id', seeded.docId);
     await admin.storage.from('documents').remove([seeded.filePath]);
     await admin.from('templates').delete().eq('id', seeded.templateId);
   }
+});
+
+// Drawboard: the group turns with its rotate grabber. Every mark's centre
+// orbits the frame's centre and each mark takes the same turn; one Undo.
+test('a group turns about its centre with the rotate grabber, mouse and pen', async ({ page }) => {
+  await signIn(page, E2E_ACCOUNTS.owner);
+  await openSampleDocument(page);
+  await page.waitForTimeout(1500);
+  const pageBox = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+  const at = (fx, fy) => ({ x: pageBox.x + pageBox.width * fx, y: pageBox.y + pageBox.height * fy });
+  const near = (x, y, tol = 3) => Math.abs(x - y) <= tol;
+  const centre = (b) => ({ x: b.left + b.width / 2, y: b.top + b.height / 2 });
+
+  const before = new Set(await markIds(page));
+  await drawMark(page, 'r', at(0.2, 0.64), at(0.34, 0.7));
+  const rectId = await newMarkId(page, before);
+  await drawMark(page, 'o', at(0.42, 0.62), at(0.5, 0.72));
+  const ellipseId = await newMarkId(page, before);
+  await drawMark(page, 'p', at(0.22, 0.78), at(0.46, 0.84));
+  const inkId = await newMarkId(page, before);
+  await drawMark(page, 'l', at(0.48, 0.75), at(0.6, 0.77));
+  const lineId = await newMarkId(page, before);
+  await page.keyboard.press('t');
+  await page.mouse.click(at(0.36, 0.88).x, at(0.36, 0.88).y);
+  await page.keyboard.type('Turn me');
+  await page.keyboard.press('Escape');
+  const textId = await newMarkId(page, before);
+  const ids = [rectId, ellipseId, inkId, lineId, textId];
+  await page.waitForTimeout(1200);
+
+  await selectTool(page);
+  const marquee = async () => {
+    await page.mouse.click(at(0.9, 0.97).x, at(0.9, 0.97).y);
+    await page.mouse.move(at(0.12, 0.58).x, at(0.12, 0.58).y);
+    await page.mouse.down();
+    await page.mouse.move(at(0.62, 0.95).x, at(0.62, 0.95).y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(`${FRAME} [data-rotation-handle="mtr"]`)).toHaveCount(1);
+  };
+
+  for (const pointerType of ['mouse', 'pen']) {
+    await marquee();
+    const start = {};
+    for (const id of ids) start[id] = await boxOf(page, id);
+    const frame = await page.locator(`${FRAME} [data-group-selection-hitbox]`).boundingBox();
+    const pivot = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
+    const handle = await page.locator(`${FRAME} [data-rotation-handle="mtr"]`).boundingBox();
+    const grab = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+    const r = Math.hypot(grab.x - pivot.x, grab.y - pivot.y);
+    // A quarter turn clockwise: the grabber goes from above the centre to its right.
+    await dragWith(page, pointerType, grab, { x: pivot.x + r, y: pivot.y });
+    await page.waitForTimeout(600);
+
+    for (const id of ids) {
+      const a = centre(start[id]);
+      const b = centre(await boxOf(page, id));
+      // (x, y) about the pivot turns 90° clockwise to (-y, x).
+      const want = { x: pivot.x - (a.y - pivot.y), y: pivot.y + (a.x - pivot.x) };
+      expect(near(b.x, want.x, 6) && near(b.y, want.y, 6), `${id} centre ${JSON.stringify(b)} want ${JSON.stringify(want)}`).toBe(true);
+    }
+    const turnedRect = await boxOf(page, rectId);
+    expect(near(turnedRect.width, start[rectId].height, 4), `rect turned: ${turnedRect.width} vs ${start[rectId].height}`).toBe(true);
+
+    await page.keyboard.press('Control+z');
+    for (const id of ids) {
+      await expect.poll(async () => Math.round(centre(await boxOf(page, id)).x)).toBe(Math.round(centre(start[id]).x));
+    }
+  }
+
+  await marquee();
+  await page.keyboard.press('Delete');
+  for (const id of ids) await expect(page.locator(`${PAGE} [data-annotation-id="${id}"]`)).toHaveCount(0);
+  await page.waitForTimeout(2500);
+});
+
+// Drawboard: line widths stay the same in a group resize, unless K is held
+// during the drag. K (the Polyline tool's key) never switches the tool then.
+const strokeWidthOf = (page, id) => page.evaluate((markId) => {
+  const node = document.querySelector(`[data-overlay-page="1"] [data-annotation-id="${markId}"] rect[stroke-width], [data-overlay-page="1"] rect[data-annotation-id="${markId}"]`);
+  return node ? parseFloat(node.getAttribute('stroke-width')) : null;
+}, id);
+
+test('holding K during a group resize scales line widths too', async ({ page }) => {
+  await signIn(page, E2E_ACCOUNTS.owner);
+  await openSampleDocument(page);
+  await page.waitForTimeout(1500);
+  const pageBox = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+  const at = (fx, fy) => ({ x: pageBox.x + pageBox.width * fx, y: pageBox.y + pageBox.height * fy });
+
+  const before = new Set(await markIds(page));
+  await drawMark(page, 'r', at(0.2, 0.62), at(0.3, 0.7));
+  const a = await newMarkId(page, before);
+  await drawMark(page, 'r', at(0.36, 0.62), at(0.44, 0.74));
+  const b = await newMarkId(page, before);
+  await page.waitForTimeout(1200);
+
+  const marquee = async () => {
+    await page.mouse.click(at(0.9, 0.97).x, at(0.9, 0.97).y);
+    await page.mouse.move(at(0.14, 0.56).x, at(0.14, 0.56).y);
+    await page.mouse.down();
+    await page.mouse.move(at(0.6, 0.86).x, at(0.6, 0.86).y, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.locator(`${FRAME} [data-resize-handle]`)).toHaveCount(8);
+  };
+  await selectTool(page);
+  await marquee();
+  const startWidth = await strokeWidthOf(page, a);
+  expect(startWidth).toBeGreaterThan(0);
+
+  const drag = async (holdK) => {
+    const frame = await page.locator(`${FRAME} [data-group-selection-hitbox]`).boundingBox();
+    const br = await page.locator(`${FRAME} [data-resize-handle="br"]`).boundingBox();
+    const from = { x: br.x + br.width / 2, y: br.y + br.height / 2 };
+    const to = { x: from.x + frame.width, y: from.y + frame.height };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i += 1) {
+      if (holdK && i === 4) await page.keyboard.down('k');
+      await page.mouse.move(from.x + ((to.x - from.x) * i) / 12, from.y + ((to.y - from.y) * i) / 12);
+      await page.waitForTimeout(25);
+    }
+    await page.mouse.up();
+    if (holdK) await page.keyboard.up('k');
+    await page.waitForTimeout(600);
+  };
+
+  // Without K: twice the size, same line width.
+  await drag(false);
+  expect(await strokeWidthOf(page, a)).toBeCloseTo(startWidth, 1);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => strokeWidthOf(page, a)).toBeCloseTo(startWidth, 1);
+
+  // With K: the line width doubles too, and the tool is still Select.
+  await marquee();
+  await drag(true);
+  expect(await strokeWidthOf(page, a)).toBeCloseTo(startWidth * 2, 0);
+  expect(await strokeWidthOf(page, b)).toBeCloseTo(startWidth * 2, 0);
+  await expect(page.locator('[data-annotation-presentation="svg-edit"]').first()).toBeVisible();
+  await expect(page.locator(`${FRAME} [data-resize-handle]`)).toHaveCount(8);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => strokeWidthOf(page, a)).toBeCloseTo(startWidth, 1);
+
+  await page.keyboard.press('Delete');
+  for (const id of [a, b]) await expect(page.locator(`${PAGE} [data-annotation-id="${id}"]`)).toHaveCount(0);
+  await page.waitForTimeout(2500);
 });

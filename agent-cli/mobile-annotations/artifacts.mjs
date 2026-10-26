@@ -46,9 +46,10 @@ export class ArtifactRecorder {
     this.final = { ...this.final, ...value };
   }
 
-  assertNoBrowserErrors() {
-    if (this.browserProblems.length) {
-      throw new Error(`Browser errors:\n${this.browserProblems.join('\n')}`);
+  assertNoBrowserErrors({ ignore = null } = {}) {
+    const problems = ignore ? this.browserProblems.filter((line) => !ignore.test(line)) : this.browserProblems;
+    if (problems.length) {
+      throw new Error(`Browser errors:\n${problems.join('\n')}`);
     }
   }
 

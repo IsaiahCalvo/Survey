@@ -60,6 +60,7 @@ import { PICK_ANY_TOOLS } from '../utils/selectModes.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { PageMenuList } from '../sidebar/PageActionsMenu.jsx';
 import { availableActions, buildCanvasPageItems, buildPageMenuItems, runPageMenuAction } from '../sidebar/pageMenuItems.js';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 // w61: `getPageObjects(pageNumber)` (optional) returns the page's mark list,
 // so the menu can note which marks it was opened on (by id) and still act on
@@ -1348,6 +1349,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                 role="menuitem"
                 aria-disabled={it.disabled ? 'true' : undefined}
                 onClick={it.disabled ? undefined : it.onClick}
+                {...keyboardControlProps(null, { role: 'menuitem', disabled: it.disabled })}
                 // UX: disabled items (e.g. Paste when the clipboard is
                 // empty) render in muted gray with a default cursor and no
                 // hover surveyMarker — the user can see the option exists but

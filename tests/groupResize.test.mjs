@@ -75,9 +75,10 @@ test('a sideways mark takes the frame scales swapped', () => {
   assert.deepEqual(memberAxisScale(0, 2, 1), { x: 2, y: 1 });
 });
 
-test('the multi-selection frame shows resize grabbers (rotate stays hidden)', () => {
+test('the multi-selection frame shows resize grabbers and a rotate grabber (not with a callout)', () => {
   const layer = readFileSync(new URL('../src/components/SVGAnnotationLayer.jsx', import.meta.url), 'utf8');
-  assert.match(layer, /moveOnly=\{!groupCanResize\}\s*hideRotationHandle/);
+  assert.match(layer, /moveOnly=\{!groupCanResize\}/);
+  assert.match(layer, /hideRotationHandle=\{!groupCanResize \|\| groupCalloutIdSet\.size > 0\}/);
   assert.match(layer, /const groupCanResize = !groupHasLockedMember/);
   assert.match(layer, /\(groupCalloutIdSet\.size > 0\s*\|\| selectedSurveyMarkerIds\.size > 0/);
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
@@ -149,8 +150,9 @@ test('a Survey Marker box scales like a rectangle (swapped when sideways)', () =
 test('a group resize writes each Survey Marker box in the same save', async () => {
   const { resizeSurveyMarkerRecord } = await import('../src/utils/surveyMarkerFamily.js');
   const record = { id: 'm1', name: 'Door', bounds: { x: 1, y: 2, width: 3, height: 4, angle: 90 } };
-  assert.deepEqual(resizeSurveyMarkerRecord(record, { x: 5, y: 6, width: 7, height: 8, angle: 0 }).bounds,
+  assert.deepEqual(resizeSurveyMarkerRecord(record, { x: 5, y: 6, width: 7, height: 8 }).bounds,
     { x: 5, y: 6, width: 7, height: 8, angle: 90 }, 'the angle stays');
+  assert.equal(resizeSurveyMarkerRecord(record, { x: 5, y: 6, width: 7, height: 8, angle: 30 }).bounds.angle, 30, 'a group turn');
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /if \(patch\.bounds && typeof patch\.bounds === 'object'\)/);
   const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
@@ -164,4 +166,44 @@ test('a turned Survey Marker sets the frame floor on the page axes', () => {
   const { minScaleX, minScaleY } = groupResizeMinimumScale([{ width: 10, height: 100 }]);
   assert.equal(minScaleX, 0.4);
   assert.equal(minScaleY, 0.04);
+});
+
+test('a drawn line turns and scales from its drawn ends, not its stored offsets', async () => {
+  const { lineWorldPoints, packLineWorldPoints } = await import('../src/utils/groupResize.js');
+  const { getLineEndpoints } = await import('../src/utils/svgBoundingBox.js');
+  // (100,100)-(200,100) as buildLineCommitJSON stores it.
+  const line = { type: 'Line', left: 100, top: 100, width: 100, height: 0, x1: -50, y1: 0, x2: 50, y2: 0 };
+  const { p1, p2 } = lineWorldPoints(line);
+  assert.deepEqual([p1, p2], [{ x: 100, y: 100 }, { x: 200, y: 100 }]);
+  // A quarter turn clockwise about (200, 200) lands it at (300,100)-(300,200).
+  const turn = (p) => ({ x: 200 - (p.y - 200), y: 200 + (p.x - 200) });
+  const packed = packLineWorldPoints(turn(p1), turn(p2));
+  const ends = getLineEndpoints(packed);
+  for (const [k, v] of Object.entries({ x1: 300, y1: 100, x2: 300, y2: 200 })) assert.ok(Math.abs(ends[k] - v) < 1e-9, `${k} ${ends[k]}`);
+  assert.equal(packed.angle, 0);
+  // A line with a turn of its own: its drawn ends include that turn.
+  const tilted = lineWorldPoints({ ...line, angle: 90 });
+  assert.ok(Math.abs(tilted.p1.x - 150) < 1e-9 && Math.abs(tilted.p1.y - 50) < 1e-9, JSON.stringify(tilted.p1));
+  const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  assert.match(hook, /packLineWorldPoints\(rotPt\(p1\.x, p1\.y\), rotPt\(p2\.x, p2\.y\)\)/);
+  assert.match(hook, /packLineWorldPoints\(scalePoint\(p1\.x, p1\.y\), scalePoint\(p2\.x, p2\.y\)\)/);
+});
+
+test('K scales line widths by the smaller scale', async () => {
+  const { scaledGroupLineWidth, isGroupLineWidthKey } = await import('../src/utils/groupResize.js');
+  assert.equal(scaledGroupLineWidth(2, 1.5, 3), 3);
+  assert.equal(scaledGroupLineWidth(2, 0.5, 0.5), 1);
+  assert.equal(scaledGroupLineWidth(0, 2, 2), 0, 'no line stays no line');
+  assert.equal(isGroupLineWidthKey({ key: 'k' }), true);
+  assert.equal(isGroupLineWidthKey({ key: 'K', shiftKey: true }), true);
+  assert.equal(isGroupLineWidthKey({ key: 'k', ctrlKey: true }), false);
+  const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  // A pen stroke already scales its width with its ink transform: K must not scale it twice.
+  assert.match(hook, /if \(scaleLineWidths && objType !== 'path' && orig\.strokeWidth > 0\) \{\s*target\.strokeWidth = scaledGroupLineWidth\(orig\.strokeWidth, sx, sy\);/);
+  // On release a callout gets only the style keys the resize changed, so a
+  // thickness someone else set meanwhile is kept when K was not held.
+  assert.match(hook, /if \(next != null && next !== startStyle\[key\]\) styleChange\[key\] = next;/);
+  // K is the Polyline tool's key: during a group resize it is taken first.
+  assert.match(hook, /window\.addEventListener\('keydown', onKeyDown, true\);/);
+  assert.match(hook, /if \(!ds\?\.active \|\| ds\.mode !== 'group-resize'\) return;\s*groupResizeLineKeyRef\.current = true;\s*e\.preventDefault\(\);\s*e\.stopImmediatePropagation\(\);/);
 });

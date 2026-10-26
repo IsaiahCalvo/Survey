@@ -139,9 +139,13 @@ export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) =
       c.name,
       (c.items || [])
         .filter((it) => !(ignoreItemIds && ignoreItemIds.has(it.id)))
-        .map((it) => (it.archived === true
-          ? [it.id, it.text ?? '', true, it.archivedAt ?? null, it.lastKnownLabel || it.text || null]
-          : [it.id, it.text ?? ''])),
+        .map((it) => {
+          const row = it.archived === true
+            ? [it.id, it.text ?? '', true, it.archivedAt ?? null, it.lastKnownLabel || it.text || null]
+            : [it.id, it.text ?? ''];
+          // Answer kind; left out for pick-one items so older prints are unchanged.
+          return it.kind === 'text' || it.kind === 'number' ? [...row, ['kind', it.kind, it.unit || '']] : row;
+        }),
     ]),
   ]),
   (template?.roster || []).map((e) => {
@@ -151,7 +155,7 @@ export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) =
   // Excel layout (export kit); left out when unset so older prints are unchanged.
   ...(template?.exportKitId ? [template.exportKitId] : []),
   // Checklist answer set; left out when unset (Y / N / N/A).
-  ...(template?.answerSet ? [['answers', template.answerSet.map((a) => [a.value, a.tone])]] : []),
+  ...(template?.answerSet ? [['answers', template.answerSet.map((a) => (a.means ? [a.value, a.tone, a.means] : [a.value, a.tone]))]] : []),
 ]);
 
 export const fingerprintTemplates = (templates, maps = {}, ignoreItemIds = null) => {

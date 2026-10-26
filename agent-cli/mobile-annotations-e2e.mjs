@@ -168,6 +168,10 @@ async function run() {
     screen: MOBILE_VIEWPORT,
     viewport: MOBILE_VIEWPORT,
   });
+  // Hermetic: only loopback is reachable (the signed-out dev route still asks
+  // the configured Supabase for flags/profiles, which 401s).
+  await context.route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname)
+    && url.protocol !== 'data:' && url.protocol !== 'blob:', (route) => route.abort('blockedbyclient'));
   await addExactStorageCleanup(context, storageKeys, artifacts.runId);
   page = await context.newPage();
   artifacts.captureBrowserProblems(page);
@@ -227,7 +231,7 @@ async function run() {
     viewerReadyBudgetMs: options.viewerReadyBudgetMs,
     viewerReadyMs,
   });
-  artifacts.assertNoBrowserErrors();
+  artifacts.assertNoBrowserErrors({ ignore: /net::ERR_BLOCKED_BY_CLIENT/ });
 }
 
 try {

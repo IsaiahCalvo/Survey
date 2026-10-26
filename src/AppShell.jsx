@@ -15,6 +15,7 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
+import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
 import { captureTabSource, isCurrentTabSource } from './utils/tabSourceIdentity.js';
@@ -91,6 +92,8 @@ import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } 
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
+import PinnedToolsDock, { PinIcon, getPinnedToolsStore, usePinnedTools } from './components/PinnedToolsDock.jsx';
+import { isFeatureOn } from './featureFlags.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
@@ -2011,6 +2014,12 @@ export default function App({ devPreviewReturnTab = null }) {
   }, []);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
+  // Shift+S flips snapping (the rail's magnet button says the same).
+  useSnappingShortcut(Boolean(isViewerVisible));
+  // Pinned tools dock (Survey Nightly only, beta flag 'pinned-tools'):
+  // components/PinnedToolsDock.jsx. Read once at load, like every flag.
+  const [pinnedToolsEnabled] = useState(() => isFeatureOn('pinned-tools'));
+  const pinnedTools = usePinnedTools();
   // PDFs dragged in from the computer onto an open document (owner request
   // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
   // and each opened in a new tab. Anywhere over the viewer counts, the pages
@@ -2516,8 +2525,10 @@ export default function App({ devPreviewReturnTab = null }) {
         aria-label="Area tools"
         style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-tool-gap)' }}
       >
+        {/* Owner 2026-10-22: Rectangle, Polygon, Lasso - in that order. */}
         {tool('rectangle', 'Rectangle area', 'areaRect', drawing && regionApi.toolType === 'rectangular', () => regionApi.setToolType?.('rectangular'))}
-        {tool('freehand', 'Freehand area', 'areaFreehand', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
+        {tool('polygon', 'Polygon area', 'areaPolygon', drawing && regionApi.toolType === 'polygon', () => regionApi.setToolType?.('polygon'))}
+        {tool('freehand', 'Lasso area', 'areaFreehand', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
         <div className="chrome-divider" />
         {tool('add', 'Add to area', 'plus', regionApi.selectionMode === 'add', () => regionApi.setSelectionMode?.('add'))}
         {tool('subtract', 'Subtract from area', 'minus', regionApi.selectionMode === 'subtract', () => regionApi.setSelectionMode?.('subtract'))}
@@ -2540,33 +2551,53 @@ export default function App({ devPreviewReturnTab = null }) {
         </div>
       );
     }
+    // Owner 2026-10-22: the bold "Regions" word read as a button and did
+    // nothing. In its place a quiet line says how the armed tool works
+    // (Bluebeam / Photoshop polygon rules: click each corner, close on the
+    // first corner, Enter or a double-click). It keeps one width, so the
+    // buttons beside it never shift as the words change. Then what can be
+    // done to the areas, then how to leave.
+    const corners = regionApi.polygonCorners || 0;
+    const hint = areasPanArmed
+      ? 'Drag to move around the page'
+      : regionApi.toolType === 'move'
+        ? (regionApi.canDelete ? 'Drag to move · Delete removes it' : 'Click an area to pick it')
+        : regionApi.toolType === 'polygon'
+          ? (corners === 0
+            ? 'Click each corner'
+            : (corners < 3 ? 'Click the next corner · Backspace takes one back' : 'Click the first corner or press Enter to close'))
+          : regionApi.toolType === 'freehand'
+            ? 'Drag around the area'
+            : 'Drag to draw an area';
     return (
       <div data-area-actions="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-        <span style={{ color: 'var(--text-2)', fontSize: '12px', fontWeight: 600, marginRight: '4px' }}>Regions</span>
+        <span data-area-hint="true" aria-live="polite" style={{ color: 'var(--text-3)', fontSize: '12px', fontWeight: 400, marginRight: '8px', whiteSpace: 'nowrap', width: '288px', flex: '0 1 auto', minWidth: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hint}</span>
         <button
           type="button"
           className="btn btn-sm btn-default"
           disabled={!regionApi.canDelete}
           onClick={regionApi.deleteSelected}
-          {...chromeTip(regionApi.canDelete ? 'Delete the picked regions' : 'Pick a region with Select to delete it', 'below')}
+          aria-label="Delete area"
+          {...chromeTip(regionApi.canDelete ? 'Delete the picked area (Delete)' : 'Pick an area to delete it', 'below')}
         >
-          Delete region
+          Delete
         </button>
-        {regionApi.canSetFullPage && (
-          <button
-            type="button"
-            className="btn btn-sm btn-default"
-            onClick={regionApi.setFullPage}
-            {...chromeTip('Use the whole page as the region', 'below')}
-          >
-            Full page
-          </button>
-        )}
+        {/* Always drawn (greyed when the area already is the page), so the
+            row never shifts. */}
+        <button
+          type="button"
+          className="btn btn-sm btn-default"
+          disabled={!regionApi.canSetFullPage}
+          onClick={regionApi.setFullPage}
+          {...chromeTip(regionApi.canSetFullPage ? 'Use the whole page as the area' : 'The area already is the whole page', 'below')}
+        >
+          Full page
+        </button>
         <div className="chrome-divider" />
         <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
           Cancel
         </button>
-        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the regions (Enter)', 'below')}>
+        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
           Done
         </button>
       </div>
@@ -2729,6 +2760,24 @@ export default function App({ devPreviewReturnTab = null }) {
               {/* Spaces chunk B: the active space, left of Export. While it
                   shows, IT carries data-toolbar-export, so the tool bar's plan
                   (useResponsiveToolbar) keeps the tools clear of the chip. */}
+              {/* Pinned tools (Nightly): show or hide the dock, as Drawboard's
+                  "Favorites toolbar" button beside its own top-right tools.
+                  First in the cluster, so it carries data-toolbar-export:
+                  the tool bar's plan keeps clear of the cluster's left edge. */}
+              {pinnedToolsEnabled && (
+                <button
+                  type="button"
+                  data-toolbar-export="true"
+                  data-pinned-tools-toggle="true"
+                  className={`btn chrome-control ${pinnedTools.visible ? 'btn-active' : 'btn-ghost'}`}
+                  aria-pressed={pinnedTools.visible}
+                  aria-label="Pinned tools"
+                  {...chromeTip(pinnedTools.visible ? 'Hide pinned tools' : 'Show pinned tools', 'below')}
+                  onClick={() => getPinnedToolsStore().setVisible(!pinnedTools.visible)}
+                >
+                  <PinIcon size={CHROME_GLYPH} />
+                </button>
+              )}
               {activeSpaceForChip && (
                 <ActiveSpaceChip
                   data-toolbar-export="true"
@@ -3987,6 +4036,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   variant="pill"
                   unit="pt"
                   width="var(--chrome-field-w)"
+                  // The size card paints its sample in the colour the tool
+                  // will draw; the eraser and the counter pin preview a dot.
+                  color={bottomToolbarApi.activeTool === 'eraser'
+                    ? '#9ca3af'
+                    : (bottomToolbarApi.selectionMixed?.strokeColor ? undefined : (bottomToolbarApi.selectedStrokeColor ?? bottomToolbarApi.strokeColor))}
+                  previewShape={bottomToolbarApi.activeTool === 'eraser' || bottomToolbarApi.contextTool === 'counter' ? 'dot' : 'stroke'}
                   preview={bottomToolbarApi.activeTool === 'eraser' ? (
                     <span
                       aria-hidden="true"
@@ -4625,6 +4680,9 @@ export default function App({ devPreviewReturnTab = null }) {
                 </div>
               );
             })}
+            {pinnedToolsEnabled && isViewerVisible && (
+              <PinnedToolsDock api={bottomToolbarApi} tip={chromeTip} phone={isMobileViewer} />
+            )}
             {pendingDocumentOpen && currentView !== 'viewer' && (
               // Covers the home (and takes its taps) while the PDF downloads;
               // the same quiet line, place and background as the viewer's own
@@ -5050,6 +5108,21 @@ export default function App({ devPreviewReturnTab = null }) {
                         style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
                       >
                         <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
+                      </button>
+                    )} />
+                    {/* Owner 2026-10-22: snapping's switch, beside the grid
+                        (Bluebeam keeps SNAP and GRID side by side too). */}
+                    <SnappingToggle render={({ on, toggle }) => (
+                      <button
+                        type="button"
+                        onClick={toggle}
+                        aria-label="Snapping"
+                        aria-pressed={on}
+                        data-snapping-toggle="true"
+                        {...chromeTip(snappingLabel(on), 'left')}
+                        style={{ ...footerBtn(), color: on ? 'var(--text-1)' : 'var(--text-3)' }}
+                      >
+                        <SnappingGlyph size={RAIL_CONTROL_GLYPH} off={!on} />
                       </button>
                     )} />
                     {/* drawboardAudit C2: the Pencil-only switch sits where

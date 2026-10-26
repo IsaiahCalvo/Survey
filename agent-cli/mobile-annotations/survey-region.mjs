@@ -1,3 +1,4 @@
+import { SELECT_TOOL_NAME } from './constants.mjs';
 import { openRealMobileViewer } from './viewer.mjs';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -100,7 +101,16 @@ async function collapseSurveySheet(page) {
   if (collapse) {
     await collapse.click();
     await collapse.waitFor({ state: 'hidden' });
+    return;
   }
+  // The phone Survey sheet has no collapse button now: its rail toggle closes it.
+  await page.waitForTimeout(600); // the sheet's open animation
+  const toggle = await firstVisible(page.locator('button[aria-label="Open survey"][aria-expanded="true"]'));
+  if (!toggle) return;
+  await toggle.click();
+  await page.locator('button[aria-label="Open survey"][aria-expanded="false"]:visible').first()
+    .waitFor({ state: 'visible', timeout: 10_000 });
+  await page.waitForTimeout(600);
 }
 
 async function openSurveyCategory(page) {
@@ -112,13 +122,16 @@ async function openSurveyCategory(page) {
       'KAL-436 test template',
     );
   }
-  const walls = await waitForFirstVisible(
-    page.locator('button.survey-marker-category-main', { hasText: 'Walls' }),
-    15_000,
-  );
-  invariant(walls, 'Survey test category Walls did not render');
-  await walls.click();
+  // Sheet rows now carry "+ Place" and only expand; the rail's category disc
+  // arms placement (aria-pressed).
   await collapseSurveySheet(page);
+  const disc = invariant(
+    await waitForFirstVisible(page.locator('[aria-label="Survey category Walls"]'), 15_000),
+    'Survey test category Walls did not render on the rail',
+  );
+  if (await disc.getAttribute('aria-pressed') !== 'true') await disc.click();
+  await page.locator('[aria-label="Survey category Walls"][aria-pressed="true"]:visible').first()
+    .waitFor({ state: 'visible', timeout: 10_000 });
 }
 
 async function pageDrawingBox(page) {
@@ -212,7 +225,7 @@ export async function runSurveyMarkerLifecycle({
     );
   }
   await collapseSurveySheet(page);
-  await clickVisible(page.getByRole('button', { name: 'Select', exact: true }), 'Select tool');
+  await clickVisible(page.getByRole('button', { name: SELECT_TOOL_NAME }), 'Select tool');
   const editHitBox = await markerHitBox(page, id);
   const editPoint = { x: editHitBox.x + editHitBox.width / 2, y: editHitBox.y + editHitBox.height / 2 };
   await touch.tap(editPoint);
@@ -232,7 +245,7 @@ export async function runSurveyMarkerLifecycle({
   await collapseSurveySheet(page);
 
   // Move uses the real SVG hit target and trusted touch-generated pointer events.
-  await clickVisible(page.getByRole('button', { name: 'Select', exact: true }), 'Select tool');
+  await clickVisible(page.getByRole('button', { name: SELECT_TOOL_NAME }), 'Select tool');
   let hitBox = await markerHitBox(page, id);
   let start = { x: hitBox.x + hitBox.width / 2, y: hitBox.y + hitBox.height / 2 };
   await touch.tap(start);
@@ -373,6 +386,15 @@ async function tapLocator(touch, locator, label) {
   return target;
 }
 
+// The phone area rail has no Select mode now: a tap on an area with a draw
+// tool armed selects it and switches to move.
+async function selectRegionByTap(page, touch, regionId) {
+  const area = page.locator(`div[data-region-selection-ui="true"] svg path[data-region-id="${String(regionId).replace(/["\\]/g, '\\$&')}"]`).first();
+  await area.waitFor({ state: 'attached', timeout: 10_000 });
+  const box = invariant(await area.boundingBox(), `Region ${regionId} has no touch bounds`);
+  await touch.tap({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+}
+
 async function closeDocumentPanelWithTouch(page, touch) {
   const closePanel = await firstVisible(page.getByRole('button', { name: 'Close document panel' }));
   if (!closePanel) return;
@@ -384,8 +406,11 @@ async function closeDocumentPanelWithTouch(page, touch) {
 async function enterRegionEditor(page, touch, spaceId) {
   await openSpaces(page);
   const row = await expandSpaceRow(page, spaceId);
-  await row.getByRole('button', { name: 'Edit region areas on the page' }).click();
-  await page.getByRole('toolbar', { name: 'Region editing' }).waitFor({ state: 'visible' });
+  // The per-page region button shows only in the panel's Edit mode now.
+  const editSpaces = await firstVisible(page.getByRole('button', { name: 'Edit Spaces', exact: true }));
+  if (editSpaces) await editSpaces.click();
+  await row.getByRole('button', { name: /^(Draw a region|Edit the regions) on page 1$/ }).click();
+  await page.getByRole('toolbar', { name: 'Area editing' }).waitFor({ state: 'visible' });
   await closeDocumentPanelWithTouch(page, touch);
 }
 
@@ -393,7 +418,7 @@ async function expandSpaceRow(page, id) {
   const row = page.locator(`[data-space-sortable-row-id="${String(id).replace(/["\\]/g, '\\$&')}"]`);
   await row.waitFor({ state: 'visible' });
   if (!await row.getByPlaceholder('Add pages (e.g. 3, 6-9, 12)').isVisible().catch(() => false)) {
-    await clickVisible(row.locator('button[title="Expand"]'), `Expand space ${id}`);
+    await clickVisible(row.locator('button.space-card__chevron[aria-expanded="false"]'), `Expand space ${id}`);
   }
   return row;
 }
@@ -417,7 +442,7 @@ export async function runSpaceLifecycle({ page, touch, storageKeys, artifacts = 
   ), [...before]), 'Space create returned no stable id');
   const name = `Mobile space ${Date.now().toString(36)}`;
   let row = page.locator(`[data-space-sortable-row-id="${String(id).replace(/["\\]/g, '\\$&')}"]`);
-  const rename = row.locator('input.space-name-inline');
+  const rename = row.locator('input.space-card__name:not([readonly])');
   await rename.fill(name);
   await rename.press('Enter');
   row = await expandSpaceRow(page, id);
@@ -440,15 +465,14 @@ export async function runSpaceLifecycle({ page, touch, storageKeys, artifacts = 
 
   await openSpaces(page);
   const deleteRow = page.locator(`[data-space-sortable-row-id="${String(id).replace(/["\\]/g, '\\$&')}"]`);
-  const dialogAccepted = new Promise((resolve) => {
-    page.once('dialog', async (dialog) => {
-      invariant(dialog.type() === 'confirm', `Space delete raised ${dialog.type()}, expected confirm`);
-      await dialog.accept();
-      resolve(true);
-    });
-  });
-  await deleteRow.locator('button.space-card-delete-button').click();
-  await dialogAccepted;
+  // Delete lives behind the panel's Edit mode now and confirms in an in-app
+  // dialog that names what the cascade removes.
+  const editSpaces = await firstVisible(page.getByRole('button', { name: 'Edit Spaces', exact: true }));
+  if (editSpaces) await editSpaces.click();
+  await deleteRow.getByRole('button', { name: /^Delete / }).click();
+  const confirm = page.getByRole('dialog').filter({ hasText: /^Delete / }).last();
+  await confirm.waitFor({ state: 'visible', timeout: 10_000 });
+  await confirm.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.waitForFunction(({ key, targetSpaceId }) => (
     !JSON.parse(localStorage.getItem(key) || '{}')?.spaces?.some((space) => space?.id === targetSpaceId)
   ), { key: storageKeys.sidebar, targetSpaceId: id });
@@ -541,7 +565,7 @@ export async function runRegionLifecycle({ page, touch, storageKeys, spaceId, ar
 
   await tapLocator(
     touch,
-    page.getByRole('toolbar', { name: 'Region editing' }).getByRole('button', { name: 'Confirm', exact: true }),
+    page.getByRole('toolbar', { name: 'Area editing' }).getByRole('button', { name: 'Done', exact: true }),
     'Region Confirm button',
   );
   const sidebar = await waitForStorage(
@@ -563,10 +587,12 @@ export async function runRegionLifecycle({ page, touch, storageKeys, spaceId, ar
 
   // Re-enter, choose the new mobile Select mode, then move with trusted touch.
   await enterRegionEditor(page, touch, spaceId);
-  await tapLocator(touch, page.getByRole('button', { name: 'Select region' }), 'Select region tool');
+  await selectRegionByTap(page, touch, regionId);
   const selectedPath = page.locator('div[data-region-selection-ui="true"] svg path[stroke="#F5A623"]').first();
   await selectedPath.waitFor({ state: 'visible', timeout: 5_000 });
   const originalPath = await selectedPath.getAttribute('d');
+  // Undo/redo restore the area but drop its selection; read it by id.
+  const areaSelector = `div[data-region-selection-ui="true"] svg path[data-region-id="${String(regionId).replace(/["\\]/g, '\\$&')}"]`;
   const selectedBox = invariant(await selectedPath.boundingBox(), 'Selected Region has no touch bounds');
   const selectedCenter = { x: selectedBox.x + selectedBox.width / 2, y: selectedBox.y + selectedBox.height / 2 };
   await touch.drag(selectedCenter, { x: selectedCenter.x + 22, y: selectedCenter.y + 14 }, { steps: 10 });
@@ -587,9 +613,9 @@ export async function runRegionLifecycle({ page, touch, storageKeys, spaceId, ar
   )), null, { timeout: 5_000 });
   invariant(await visibleUndo.isEnabled(), 'Region Undo stayed disabled after touch move');
   await tapLocator(touch, undo, 'Region Undo button');
-  await page.waitForFunction((expected) => (
-    document.querySelector('div[data-region-selection-ui="true"] svg path[stroke="#F5A623"]')?.getAttribute('d') === expected
-  ), originalPath);
+  await page.waitForFunction(({ selector, expected }) => (
+    document.querySelector(selector)?.getAttribute('d') === expected
+  ), { selector: areaSelector, expected: originalPath });
   const redo = page.getByRole('button', { name: 'Redo', exact: true });
   const visibleRedo = invariant(await firstVisible(redo), 'Visible Region Redo button missing');
   await page.waitForFunction(() => [...document.querySelectorAll('button')].some((button) => (
@@ -599,15 +625,17 @@ export async function runRegionLifecycle({ page, touch, storageKeys, spaceId, ar
   )), null, { timeout: 5_000 });
   invariant(await visibleRedo.isEnabled(), 'Region Redo stayed disabled after Undo');
   await tapLocator(touch, redo, 'Region Redo button');
-  await page.waitForFunction((expected) => (
-    document.querySelector('div[data-region-selection-ui="true"] svg path[stroke="#F5A623"]')?.getAttribute('d') === expected
-  ), movedPath);
+  await page.waitForFunction(({ selector, expected }) => (
+    document.querySelector(selector)?.getAttribute('d') === expected
+  ), { selector: areaSelector, expected: movedPath });
   await tapLocator(touch, undo, 'Region second Undo button');
-  await page.waitForFunction((expected) => (
-    document.querySelector('div[data-region-selection-ui="true"] svg path[stroke="#F5A623"]')?.getAttribute('d') === expected
-  ), originalPath);
+  await page.waitForFunction(({ selector, expected }) => (
+    document.querySelector(selector)?.getAttribute('d') === expected
+  ), { selector: areaSelector, expected: originalPath });
 
   // Move again and commit so reload proves the transformed coordinates.
+  await selectRegionByTap(page, touch, regionId);
+  await selectedPath.waitFor({ state: 'visible', timeout: 5_000 });
   const undoBox = invariant(await selectedPath.boundingBox(), 'Region lost bounds after Undo');
   const undoCenter = { x: undoBox.x + undoBox.width / 2, y: undoBox.y + undoBox.height / 2 };
   await touch.drag(undoCenter, { x: undoCenter.x + 26, y: undoCenter.y + 16 }, { steps: 10 });
@@ -616,7 +644,7 @@ export async function runRegionLifecycle({ page, touch, storageKeys, spaceId, ar
   ), originalPath);
   await tapLocator(
     touch,
-    page.getByRole('toolbar', { name: 'Region editing' }).getByRole('button', { name: 'Confirm', exact: true }),
+    page.getByRole('toolbar', { name: 'Area editing' }).getByRole('button', { name: 'Done', exact: true }),
     'Region Confirm after move',
   );
   await page.waitForFunction(({ key, targetSpaceId, targetRegionId, priorCoordinates }) => {
@@ -646,35 +674,35 @@ export async function runRegionLifecycle({ page, touch, storageKeys, spaceId, ar
 
   // Re-enter Select, delete via the new touch control, commit, and reload.
   await enterRegionEditor(page, touch, spaceId);
-  await tapLocator(touch, page.getByRole('button', { name: 'Select region' }), 'Select region before delete');
-  const deleteButton = page.getByRole('toolbar', { name: 'Region editing' })
+  await selectRegionByTap(page, touch, regionId);
+  const deleteButton = page.getByRole('toolbar', { name: 'Area editing' })
     .getByRole('button', { name: 'Delete', exact: true });
   await deleteButton.waitFor({ state: 'visible' });
   await page.waitForFunction(() => {
-    const toolbar = document.querySelector('[role="toolbar"][aria-label="Region editing"]');
+    const toolbar = document.querySelector('[role="toolbar"][aria-label="Area editing"]');
     return [...(toolbar?.querySelectorAll('button') || [])]
       .some((button) => button.textContent?.trim() === 'Delete' && !button.disabled);
   });
   invariant(await deleteButton.isEnabled(), 'Region Delete stayed disabled after selecting a region');
   await tapLocator(touch, deleteButton, 'Region Delete button');
-  await selectedPath.waitFor({ state: 'hidden', timeout: 5_000 });
+  await page.locator(areaSelector).waitFor({ state: 'detached', timeout: 5_000 });
   await page.waitForFunction(() => {
     const button = document.querySelector('button[aria-label="Undo"]');
     return Boolean(button && !button.disabled);
   });
   invariant(await undo.isEnabled(), 'Region Undo stayed disabled after Delete');
   await tapLocator(touch, undo, 'Undo Region delete');
-  await selectedPath.waitFor({ state: 'visible', timeout: 5_000 });
+  await page.locator(areaSelector).waitFor({ state: 'attached', timeout: 5_000 });
   await page.waitForFunction(() => {
     const button = document.querySelector('button[aria-label="Redo"]');
     return Boolean(button && !button.disabled);
   });
   invariant(await redo.isEnabled(), 'Region Redo stayed disabled after undo-delete');
   await tapLocator(touch, redo, 'Redo Region delete');
-  await selectedPath.waitFor({ state: 'hidden', timeout: 5_000 });
+  await page.locator(areaSelector).waitFor({ state: 'detached', timeout: 5_000 });
   await tapLocator(
     touch,
-    page.getByRole('toolbar', { name: 'Region editing' }).getByRole('button', { name: 'Confirm', exact: true }),
+    page.getByRole('toolbar', { name: 'Area editing' }).getByRole('button', { name: 'Done', exact: true }),
     'Region Confirm after delete',
   );
   await page.waitForFunction(({ key, targetSpaceId, targetRegionId }) => {

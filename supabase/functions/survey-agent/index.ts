@@ -43,6 +43,7 @@ import { parseBody, s } from '../_shared/inputSchema.js';
 import { ANNOTATION_AGENT_FLAG } from '../_shared/annotationAgentSpec.js';
 import {
   createModelRest,
+  isRejectedToolCall,
   modelChain,
   restAfterRefusal,
   restWhenNearCap,
@@ -169,6 +170,7 @@ Deno.serve(async (req) => {
     messages: s.array(s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }), { max: SURVEY_AGENT_LIMITS.maxMessages * 2, optional: true }),
     answer_values: s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }),
     annotations: s.boolean({ optional: true }),
+    typed_lines: s.boolean({ optional: true }),
     lang: s.enum([...SURVEY_AGENT_LANGUAGES], { optional: true }),
   }, parsedJson);
   if (!parsed.ok) return json(400, { error: 'bad_request', detail: parsed.error });
@@ -350,7 +352,7 @@ Deno.serve(async (req) => {
     }
     const request = {
       messages: [...surveyAgentSystemMessages(body.lang), ...(clean.messages || [])],
-      tools: buildSurveyAgentTools(body.answer_values, { annotations, markupOpen: markupOpenInTurn(clean.messages) }),
+      tools: buildSurveyAgentTools(body.answer_values, { annotations, markupOpen: markupOpenInTurn(clean.messages), typedLines: body.typed_lines === true }),
       tool_choice: 'auto',
       temperature: 0.2,
       max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,
@@ -358,6 +360,7 @@ Deno.serve(async (req) => {
     let res: Response | null = null;
     const chain = modelRest.available(provider.models);
     let waited = false;
+    let askedAgain = false;
     for (let i = 0; i < chain.length; i += 1) {
       const model = chain[i];
       try {
@@ -376,6 +379,13 @@ Deno.serve(async (req) => {
         modelRest.rest(model, MODEL_GONE_REST_MS);
         console.error('[survey-agent] model missing, resting a day', model);
         res = null;
+        continue;
+      }
+      if (!askedAgain && isRejectedToolCall(res.status, res.status === 400 ? await res.clone().text() : '')) {
+        askedAgain = true;
+        console.info('[survey-agent] model sent a tool call that did not fit, asking again', model);
+        res = null;
+        i -= 1;
         continue;
       }
       if (res.status !== 429) {

@@ -263,6 +263,7 @@ const ICON_RENDERERS = {
     // (also read by the tool-group morph), so a pick swaps them there.
     areaRect: (size, color, style, className) => renderAreaToolGlyph('areaRect', size, color, style, className),
     areaFreehand: (size, color, style, className) => renderAreaToolGlyph('areaFreehand', size, color, style, className),
+    areaPolygon: (size, color, style, className) => renderAreaToolGlyph('areaPolygon', size, color, style, className),
     // Owner 2026-10-02: a Spaces region card's "edit areas" button. Hugeicons
     // Select 02 (MIT): a plus, a box drawn as edges, and three square corner
     // handles. Replaces the Draw pencil on each region card. The handles keep
@@ -438,7 +439,7 @@ const ICON_RENDERERS = {
     ),
 
     // Owner 2026-10-22: the Cloud TOOL button (desktop Shape row, phone shape
-    // rail, Schematic badge, history rows) draws Hugeicons "Cloud" (MIT,
+    // rail, history rows) draws Hugeicons "Cloud" (MIT,
     // hugeicons.com/icon/cloud). The line-style menu keeps the scallop sample
     // below, since there it names a line style, not the tool. Like the
     // selection cursor, the Hugeicons ink runs 21.5 units wide, so it is

@@ -1,3 +1,4 @@
+import { SELECT_TOOL_NAME } from './constants.mjs';
 import assert from 'node:assert/strict';
 import { openRealMobileViewer } from './viewer.mjs';
 import { runSpaceLifecycle } from './survey-region.mjs';
@@ -149,7 +150,7 @@ async function selectMarker(page, touch, id) {
     await backdrop.click({ force: true });
     await backdrop.waitFor({ state: 'hidden', timeout: 5_000 });
   }
-  const selectTool = page.getByRole('button', { name: 'Select', exact: true });
+  const selectTool = page.getByRole('button', { name: SELECT_TOOL_NAME });
   await selectTool.click();
   // Tool changes intentionally clear the previous page selection in a layout
   // effect. Wait for that state transition to paint before touching the marker,

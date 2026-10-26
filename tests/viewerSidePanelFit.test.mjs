@@ -111,9 +111,12 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
   const container = read('../src/components/PdfjsViewerContainer.jsx');
   const zoomTo = container.slice(container.indexOf('const zoomToScale = useCallback('), container.indexOf('const goToPage = useCallback('));
   assert.match(zoomTo, /const auto = isFit && options\?\.auto === true;/);
-  assert.match(zoomTo, /if \(auto && !shouldAutoRefit\(lastFit, fitRecord\)\) return;/);
+  // 2026-10-21 (desktop pass item 1): a band re-fit (refitForBand) bypasses
+  // the keep-the-view rule and centres the page in the band.
+  assert.match(zoomTo, /const band = auto && options\?\.band === true;/);
+  assert.match(zoomTo, /if \(auto && !band && !shouldAutoRefit\(lastFit, fitRecord\)\) return;/);
   assert.match(zoomTo, /viewportW: bandW,/);
-  assert.match(zoomTo, /if \(!isFit \|\| auto \|\| !dimsPtRef\.current\.length\) return;/, 'an automatic re-fit stops before landing');
+  assert.match(zoomTo, /if \(!isFit \|\| \(auto && !band\) \|\| !dimsPtRef\.current\.length\) return;/, 'an automatic re-fit stops before landing');
   // 2026-10-04: the fit landing moved into pageNavigationMath.resolveFitPageLanding
   // (shared with the typed page jump), which centres through the same helper.
   assert.match(zoomTo, /resolveFitPageLanding\(\{[\s\S]{0,400}insets: side,/);

@@ -9,12 +9,14 @@ import {
   chordKeycaps,
   documentedChords,
   isShortcutsSheetKey,
+  isSnappingToggleKey,
   shortcutSectionsFor,
   toolChord,
 } from '../src/utils/keyboardShortcuts.js';
 import { TOOL_SHORTCUTS } from '../src/utils/toolShortcuts.js';
 import { isRedoKeyEvent, isUndoKeyEvent } from '../src/utils/undoRedoHotkeys.js';
 import { isTypingTarget, nudgeDeltaForKey } from '../src/utils/annotationFamilyRules.js';
+import { isAnnotationSnapFree, isSnapFreeModifier } from '../src/utils/snapGuides.js';
 
 // KAL-444: the keyboard shortcuts sheet must tell the truth in both
 // directions. (1) Every row it shows has a key handler that does what the row
@@ -193,11 +195,23 @@ const HANDLED = {
   click: () => /addPolyDraftPoint\(draft, resolveCreationSnap\(last, point, e\)\)/.test(SRC.svg),
   'shift+click': () => /addPolyDraftPoint\(draft, resolveCreationSnap\(last, point, e\)\)/.test(SRC.svg)
     && /if \(e\.shiftKey\) \{[\s\S]{0,900}setSelectedIds/.test(SRC.interaction),
+  // Visio's Ctrl / Cmd + drag to copy, and Photoshop's Alt + right-drag (Mac:
+  // Control + Option + drag) for the width and opacity.
+  'mod+drag': () => /const copyDrop = moveDrag && !ds\.orbitBase/.test(SRC.interaction)
+    && /onCopyDragDropRef\.current\(\{ indices: \[moveIndex\] \}/.test(SRC.interaction),
+  'alt+right-drag': () => /if \(event\.button === 2\) return true;/.test(read('src/utils/brushAdjustGesture.js')),
+  'ctrl+alt+drag': () => /return event\.button === 0 && event\.ctrlKey === true;/.test(read('src/utils/brushAdjustGesture.js')),
   'alt+click': () => /if \(e\.altKey\) \{\s*setSelectedIds\(\(previous\) => \{\s*const next = new Set\(previous\);\s*next\.delete\(index\)/.test(SRC.interaction),
   'mod+a': () => /\(event\.metaKey \|\| event\.ctrlKey\) && !event\.altKey && !event\.shiftKey && String\(event\.key\)\.toLowerCase\(\) === 'a'/.test(SRC.pages),
   'mod+p': () => /const isP = e\.key === 'p'/.test(SRC.viewer) && /openPanel\('window keydown'\)/.test(SRC.viewer),
   'mod+shift+p': () => /openPanel\('window keydown shift', \{ withMarkup: true \}\)/.test(SRC.viewer),
   // Desktop app only: the menu accelerator, and a renderer that listens.
+  // Snapping (owner 2026-10-22): Shift+S flips the device switch; Alt held
+  // mid-drag skips it for that drag.
+  'shift+s': () => isSnappingToggleKey(ev('S', { shiftKey: true }))
+    && !isSnappingToggleKey(ev('s')) && !isSnappingToggleKey(ev('S', { shiftKey: true, ctrlKey: true }))
+    && /useSnappingShortcut\(/.test(SRC.shell),
+  'alt+drag': () => isSnapFreeModifier({ altKey: true }) && isAnnotationSnapFree({ altKey: true }),
   'mod+o': () => /accelerator: 'CmdOrCtrl\+O'/.test(SRC.electron) && /electronAPI\.onOpenPdfMenu\(/.test(SRC.dashboard),
   'mod+shift+e': () => /accelerator: 'CmdOrCtrl\+Shift\+E'/.test(SRC.electron) && /electronAPI\.onExportAnnotatedPdfMenu\(/.test(SRC.viewer),
 };

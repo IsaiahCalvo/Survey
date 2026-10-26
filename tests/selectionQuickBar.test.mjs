@@ -20,6 +20,8 @@ import {
   selectionCommandKey,
   selectionFrameRect,
   selectionItemSelector,
+  selectionKeepOut,
+  rotationPillRect,
 } from '../src/utils/selectionQuickBar.js';
 import { QUICK_MENU_GAP } from '../src/utils/textSelectionQuickMenu.js';
 
@@ -57,6 +59,69 @@ test('placement: a selection taller than the view pins the bar inside it', () =>
 test('placement: hidden when the selection is out of view', () => {
   assert.equal(computeSelectionQuickBarPosition({ selectionRect: { left: 300, top: 950, right: 500, bottom: 1100 }, bounds: VIEWER, ...BAR }), null);
   assert.equal(computeSelectionQuickBarPosition({ selectionRect: null, bounds: VIEWER, ...BAR }), null);
+});
+
+// Owner 2026-10-22: the bar sat on the counter pin's turn grabber and on the
+// degree box beside a shape's rotate grabber.
+const hits = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+const barRect = (p) => ({ left: p.left, top: p.top, right: p.left + BAR.barWidth, bottom: p.top + BAR.barHeight });
+
+test('keep-out: an upright shape (grabber on top) puts the bar below, clear of the grabber and its degree box', () => {
+  const sel = { left: 528, top: 560, right: 749, bottom: 747 };
+  const grabber = { left: 630, top: 560, right: 646, bottom: 576 };
+  const { keepOut, preferBelow } = selectionKeepOut({ handles: [{ rect: grabber, centre: { x: 638, y: 660 }, pill: true }] });
+  assert.equal(preferBelow, true);
+  const pill = rotationPillRect(grabber, { x: 638, y: 660 });
+  assert.ok(pill.bottom <= grabber.top, 'the degree box opens above the grabber');
+  const p = computeSelectionQuickBarPosition({ selectionRect: sel, keepOut, preferBelow, bounds: VIEWER, ...BAR });
+  assert.equal(p.side, 'below');
+  assert.equal(p.top, sel.bottom + QUICK_MENU_GAP);
+  for (const r of [grabber, pill]) assert.ok(!hits(barRect(p), r));
+});
+
+test('keep-out: upside down (grabber underneath) puts the bar above', () => {
+  const sel = { left: 528, top: 400, right: 749, bottom: 600 };
+  const grabber = { left: 630, top: 584, right: 646, bottom: 600 };
+  const { keepOut, preferBelow } = selectionKeepOut({ handles: [{ rect: grabber, centre: { x: 638, y: 490 }, pill: true }] });
+  assert.equal(preferBelow, false);
+  const p = computeSelectionQuickBarPosition({ selectionRect: sel, keepOut, preferBelow, bounds: VIEWER, ...BAR });
+  assert.equal(p.side, 'above');
+  assert.equal(p.top, sel.top - QUICK_MENU_GAP - BAR.barHeight);
+});
+
+test('keep-out: a counter pin\'s grabber outside the frame is cleared too', () => {
+  // Pin bubble 620-650; its tail points up, the grabber floats above it.
+  const sel = { left: 620, top: 500, right: 650, bottom: 530 };
+  const grabber = { left: 627, top: 455, right: 643, bottom: 471 };
+  const { keepOut, preferBelow } = selectionKeepOut({ handles: [{ rect: grabber, centre: { x: 635, y: 515 } }] });
+  assert.equal(keepOut.length, 1, 'no degree box for a pin');
+  const p = computeSelectionQuickBarPosition({ selectionRect: sel, keepOut, preferBelow, bounds: VIEWER, ...BAR });
+  assert.equal(p.side, 'below');
+  assert.ok(!hits(barRect(p), grabber));
+  // Tail sideways: above, and above the grabber's reach as well.
+  const side = { left: 680, top: 507, right: 696, bottom: 523 };
+  const s2 = selectionKeepOut({ handles: [{ rect: side, centre: { x: 635, y: 515 } }] });
+  assert.equal(s2.preferBelow, false);
+  const p2 = computeSelectionQuickBarPosition({ selectionRect: sel, keepOut: s2.keepOut, preferBelow: s2.preferBelow, bounds: VIEWER, ...BAR });
+  assert.equal(p2.side, 'above');
+  assert.ok(!hits(barRect(p2), side));
+});
+
+test('keep-out: no room below either way, the bar goes above everything it must keep clear of', () => {
+  const sel = { left: 528, top: 700, right: 749, bottom: 880 };
+  const grabber = { left: 630, top: 700, right: 646, bottom: 716 };
+  const { keepOut, preferBelow } = selectionKeepOut({ handles: [{ rect: grabber, centre: { x: 638, y: 790 }, pill: true }] });
+  const p = computeSelectionQuickBarPosition({ selectionRect: sel, keepOut, preferBelow, bounds: VIEWER, ...BAR });
+  assert.equal(p.side, 'above');
+  for (const r of keepOut) assert.ok(!hits(barRect(p), r));
+});
+
+test('keep-out: pinned, it covers the selection before a grabber', () => {
+  const sel = { left: 300, top: 0, right: 900, bottom: 2000 };
+  const grabber = { left: 590, top: 860, right: 610, bottom: 880 };
+  const p = computeSelectionQuickBarPosition({ selectionRect: sel, keepOut: [grabber], bounds: VIEWER, ...BAR });
+  assert.equal(p.side, 'pinned');
+  assert.ok(!hits(barRect(p), grabber));
 });
 
 test('frame: the union of the page overlays', () => {
