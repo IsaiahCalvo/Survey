@@ -80,3 +80,10 @@ export function isGuardBlockedRequest(request) {
   const failure = request.failure?.()?.errorText || '';
   return !isLoopbackUrl(request.url()) && failure.includes('ERR_BLOCKED_BY_CLIENT');
 }
+
+// The browser's "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT" console
+// line for a request guardContext aborted (its location is the blocked URL).
+export function isGuardBlockedConsoleMessage(message) {
+  return /ERR_BLOCKED_BY_CLIENT/.test(message.text())
+    && !isLoopbackUrl(message.location?.()?.url || '');
+}
