@@ -130,3 +130,30 @@ test('the survey agent sees each line\'s settings and is held to them', async ()
     s: '4', n: '3', d: '2027-10-22', ok: 'Y',
   });
 });
+
+test('Pick many: its own options, saved in order, an issue when a Problem option is picked', async () => {
+  const { manyOptionsOf, manyPicked } = await import('../src/services/answerSets.js');
+  const defects = { id: 'x', text: 'Defects', kind: 'many', options: [{ value: 'None', tone: 'good' }, { value: 'Rust', tone: 'bad' }, { value: 'Label faded', tone: 'neutral' }] };
+  assert.equal(itemKind(defects), 'many');
+  assert.deepEqual(itemAnswerFields(defects).options.map((o) => o.value), ['None', 'Rust', 'Label faded']);
+  // Broken options fall back to the starting ones, so a line always has options.
+  assert.deepEqual(manyOptionsOf({ kind: 'many', options: [{ value: 'a,b', tone: 'bad' }] }).map((o) => o.value), ['None', 'Damaged', 'Missing']);
+  assert.equal(typedAnswer(defects, 'label FADED; rust'), 'Rust, Label faded');
+  assert.equal(typedAnswer(defects, 'Rust, Dent'), null);
+  // An option may hold a semicolon; a saved answer splits on commas first.
+  const other = { ...defects, options: [...defects.options, { value: 'Other; see notes', tone: 'neutral' }] };
+  assert.equal(typedAnswer(other, 'Rust, Other; see notes'), 'Rust, Other; see notes');
+  assert.deepEqual([...manyPicked(other, 'Other; see notes')], ['Other; see notes']);
+  assert.equal(typedAnswer(defects, ''), '');
+  assert.equal(isItemDone(defects, DEFAULT_ANSWER_SET, 'None'), true);
+  assert.equal(isItemIssue(defects, DEFAULT_ANSWER_SET, 'Label faded'), false);
+  assert.equal(isItemIssue(defects, DEFAULT_ANSWER_SET, 'Rust, Label faded'), true);
+  assert.equal(itemAnswerHint(defects), 'Pick any of None, Rust, Label faded');
+  const rule = excelValidationFor(defects, DEFAULT_ANSWER_SET);
+  assert.equal(rule.type, 'textLength');
+  assert.equal(rule.prompt, 'Pick any of None, Rust, Label faded, separated by commas');
+  assert.deepEqual(itemAnswerSpec(defects).options.map((o) => o.tone), ['good', 'bad', 'neutral']);
+  const { templateFingerprint } = await import('../src/home/templatesEditorReload.js');
+  const t = (item) => ({ name: 'T', modules: [{ id: 'm', name: 'M', categories: [{ id: 'c', name: 'C', items: [{ id: 'i', text: 'x', ...item }] }] }], roster: [] });
+  assert.notEqual(templateFingerprint(t(defects)), templateFingerprint(t({ ...defects, options: defects.options.slice(0, 2) })));
+});

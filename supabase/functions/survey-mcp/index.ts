@@ -127,7 +127,7 @@ async function categoryNames(db: SupabaseClient, documentId: string) {
               return {
                 id: String(item.id),
                 text: String(item.text ?? item.name ?? ''),
-                // Typed lines (text, number, score, count, date) take what was
+                // Typed lines (text, number, score, count, date, many) take what was
                 // said, not an answer-set value; their settings come along.
                 ...itemAnswerSpec(item),
               };
@@ -298,7 +298,7 @@ const WRITE_TOOLS = [
             type: 'object',
             properties: {
               checklist_item_id: { type: 'string', description: 'A checklist item id from get_survey_context.' },
-              value: { type: 'string', description: 'The answer value, from the template (e.g. Y, N, N/A). For a checklist item with an answer_kind: text, the text; number or count, the number only; score, a whole number from 1 to its scale; date, YYYY-MM-DD.' },
+              value: { type: 'string', description: 'The answer value, from the template (e.g. Y, N, N/A). For a checklist item with an answer_kind: text, the text; number or count, the number only; score, a whole number from 1 to its scale; date, YYYY-MM-DD; many, any of its options joined with commas.' },
             },
             required: ['checklist_item_id', 'value'],
           },

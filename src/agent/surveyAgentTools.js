@@ -516,7 +516,7 @@ export function createSurveyAgentToolbox({
       // that module's item of the same name, added at the same spot if the
       // person has not placed it there yet.
       const elsewhere = new Map();
-      // Typed lines (text, number, score, count, date) take what was said, not a listed answer.
+      // Typed lines (text, number, score, count, date, many) take what was said, not a listed answer.
       const lineById = new Map(categoryIndex(b.template).list.flatMap(({ category }) => activeChecklist(category)).map((l) => [l.id, l]));
       for (const a of named) {
         const line = checklist.get(a?.checklist_item_id) || lineById.get(a?.checklist_item_id);

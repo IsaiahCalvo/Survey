@@ -67,6 +67,7 @@ export const ANSWER_SET_PRESETS = Object.freeze([
 // More ready-made sets, shown only with the nightly 'custom-answers' flag.
 const freezeSet = (pairs) => Object.freeze(pairs.map(([value, tone]) => Object.freeze({ value, tone })));
 export const EXTRA_ANSWER_SET_PRESETS = Object.freeze([
+  Object.freeze({ id: 'yes-no-na-words', label: 'Yes / No / N/A', answers: freezeSet([['Yes', 'good'], ['No', 'bad'], ['N/A', 'neutral']]) }),
   Object.freeze({ id: 'yes-no', label: 'Y / N', answers: freezeSet([['Y', 'good'], ['N', 'bad']]) }),
   Object.freeze({ id: 'done', label: 'Done', answers: freezeSet([['Done', 'good']]) }),
   Object.freeze({
@@ -156,6 +157,8 @@ export function isDoneAnswer(set, value) {
   return tone === 'good' || tone === 'neutral';
 }
 
+// Excel's limit on a typed-in drop-down list, quotes included.
+export const EXCEL_LIST_MAX = 257;
 /** The Excel dropdown list for the set, e.g. '"Y,N,N/A"'. */
 export function excelAnswerListFormula(set) {
   return `"${set.map((a) => a.value).join(',')}"`;
@@ -165,14 +168,15 @@ export function excelAnswerListFormula(set) {
  * Item kinds (nightly 'custom-answers'). A checklist item is pick-one by
  * default (the template's answer set). `item.kind` makes it take a typed
  * answer instead: text, number (unit, min, max), score (1..5 or 1..10, an
- * issue line), count (whole number, min, max) or date (issue once past).
+ * issue line), count (whole number, min, max), date (issue once past) or
+ * pick many (its own options, each good / bad / neutral).
  * Answers stay plain strings in `selection`, so sync, import, history and the
  * row fingerprints need no change. The rules live in kitShape.js so the
  * agent and the connector share them.
  */
 export {
   ITEM_ANSWER_KEYS, ITEM_KINDS, ITEM_UNIT_MAX, SCORE_SCALES, TYPED_ANSWER_MAX, dateAnswerOf, itemAnswerFields, itemAnswerHint,
-  itemAnswerSpec, scoreScaleOf,
+  itemAnswerSpec, manyOptionsOf, manyPicked, scoreScaleOf,
   typedAnswerIsIssue,
 } from '../../supabase/functions/_shared/kitShape.js';
 
@@ -222,10 +226,32 @@ export function excelValidationFor(item, set) {
   }
   if (kind === 'count') return rule('whole', 'between', [0, 1e9], 'Invalid count', 'Please enter a whole number, 0 or more');
   if (kind === 'date') return rule('date', 'greaterThan', [new Date(Date.UTC(1900, 0, 1))], 'Invalid date', 'Please enter a date');
+  if (kind === 'many') {
+    return { ...rule('textLength', 'lessThanOrEqual', [255], 'Too long', 'Please keep it to 255 characters'), prompt: `${hint}, separated by commas`.slice(0, 255) };
+  }
+  const list = excelAnswerListFormula(set);
+  if (list.length > EXCEL_LIST_MAX) {
+    // Excel refuses a typed-in list this long: keep the answers' length rule
+    // and name them in the cell's hint instead.
+    return {
+      type: 'textLength',
+      operator: 'lessThanOrEqual',
+      allowBlank: true,
+      formulae: [20],
+      showErrorMessage: true,
+      errorStyle: 'error',
+      errorTitle: 'Invalid selection',
+      error: 'Please type one of the answers',
+      showInputMessage: true,
+      promptTitle: 'Answers',
+      prompt: `Pick one of ${set.map((a) => a.value).join(', ')}`.slice(0, 255),
+      ...excelMeansPrompt(set),
+    };
+  }
   return {
     type: 'list',
     allowBlank: true,
-    formulae: [excelAnswerListFormula(set)],
+    formulae: [list],
     showErrorMessage: true,
     errorStyle: 'error',
     errorTitle: 'Invalid selection',

@@ -40,10 +40,37 @@ export function validateExportKit(kit) {
   return errors;
 }
 
+// Report kits: the blocks a survey report draws, in order. The engine knows
+// these blocks only, so a kit can never ask for something the app cannot draw.
+export const REPORT_BLOCK_TYPES = Object.freeze(['cover', 'totals', 'chart', 'table', 'issues']);
+export const REPORT_CHART_STYLES = Object.freeze(['stacked', 'pie']);
+export const REPORT_MAX_BLOCKS = 10;
+
+/** Returns a list of problems; empty means the report kit is valid. */
+export function validateReportKit(kit) {
+  const errors = [];
+  if (!kit || typeof kit !== 'object') return ['kit must be an object'];
+  if (typeof kit.id !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(kit.id)) errors.push('id must be lower-case-kebab');
+  if (kit.kind !== 'reportKit') errors.push('kind must be "reportKit"');
+  if (typeof kit.version !== 'string' || !SEMVER.test(kit.version)) errors.push('version must be x.y.z');
+  if (!Number.isInteger(kit.minEngine) || kit.minEngine < 1) errors.push('minEngine must be a positive integer');
+  if (typeof kit.label !== 'string' || !kit.label.trim()) errors.push('label required');
+  if (!Array.isArray(kit.blocks) || kit.blocks.length === 0 || kit.blocks.length > REPORT_MAX_BLOCKS) {
+    errors.push(`blocks must hold 1 to ${REPORT_MAX_BLOCKS} blocks`);
+  } else {
+    kit.blocks.forEach((b, i) => {
+      if (!b || !REPORT_BLOCK_TYPES.includes(b.type)) errors.push(`blocks[${i}].type unknown`);
+      else if (b.type === 'chart' && b.style !== undefined && !REPORT_CHART_STYLES.includes(b.style)) errors.push(`blocks[${i}].style must be stacked or pie`);
+    });
+  }
+  return errors;
+}
+
 export const ANSWER_TONES = Object.freeze(['good', 'bad', 'neutral']);
-// One answer is a plain "Done" tick; six is as many buttons as fit a phone card.
+// One answer is a plain "Done" tick. Up to six show as buttons on a card; a
+// longer list shows as a drop-down (CHOICE_BUTTONS_MAX in the app).
 export const MIN_ANSWERS = 1;
-export const MAX_ANSWERS = 6;
+export const MAX_ANSWERS = 20;
 // An answer's optional "means" line: a hint on the card, read by the agents.
 export const ANSWER_MEANS_MAX = 80;
 
@@ -88,12 +115,28 @@ export function publishProblems(kit) {
 //   score  "3" on 1..scale (5 or 10, issueAt)
 //   count  "4", a whole number >= 0 (min, max)
 //   date   "2026-10-22" (issueIfPast)
+//   many   "Rust, Crack": any of its own options (an answer set), in order
 export const TYPED_ANSWER_MAX = 200;
-export const ITEM_KINDS = Object.freeze(['choice', 'text', 'number', 'score', 'count', 'date']);
+export const ITEM_KINDS = Object.freeze(['choice', 'text', 'number', 'score', 'count', 'date', 'many']);
 export const ITEM_UNIT_MAX = 12;
 export const SCORE_SCALES = Object.freeze([5, 10]);
 // Every item field that belongs to its answer settings (see itemAnswerFields).
-export const ITEM_ANSWER_KEYS = Object.freeze(['kind', 'unit', 'min', 'max', 'scale', 'issueAt', 'issueIfPast']);
+export const ITEM_ANSWER_KEYS = Object.freeze(['kind', 'unit', 'min', 'max', 'scale', 'issueAt', 'issueIfPast', 'options']);
+// A Pick many line's starting options, until the template owner types their own.
+export const DEFAULT_MANY_OPTIONS = Object.freeze([
+  Object.freeze({ value: 'None', tone: 'good' }),
+  Object.freeze({ value: 'Damaged', tone: 'bad' }),
+  Object.freeze({ value: 'Missing', tone: 'bad' }),
+]);
+
+/** A Pick many line's options: its own answer set when usable, else the starting ones. */
+export function manyOptionsOf(item) {
+  const own = Array.isArray(item?.options) ? item.options.map((o) => {
+    const means = typeof o?.means === 'string' ? o.means.trim() : '';
+    return { value: typeof o?.value === 'string' ? o.value.trim() : '', tone: o?.tone, ...(means ? { means } : {}) };
+  }) : null;
+  return own && validateAnswerSet(own).length === 0 ? own : DEFAULT_MANY_OPTIONS.map((o) => ({ ...o }));
+}
 
 /** An item's kind: one of ITEM_KINDS, 'choice' (the default) when unknown. */
 export function checklistItemKind(item) {
@@ -132,6 +175,7 @@ export function itemAnswerFields(item) {
     if (at !== null && at >= 1 && at < out.scale) out.issueAt = at;
   }
   if (kind === 'date' && item.issueIfPast === true) out.issueIfPast = true;
+  if (kind === 'many') out.options = manyOptionsOf(item);
   return out;
 }
 
@@ -173,6 +217,7 @@ export function itemAnswerFor(item, raw) {
   const kind = checklistItemKind(item);
   if (raw == null || String(raw).trim() === '') return '';
   if (kind === 'date') return dateAnswerOf(raw);
+  if (kind === 'many') return manyAnswerOf(item, raw);
   if (kind === 'score' || kind === 'count') {
     const n = Number(String(raw).trim().replace(/,/g, ''));
     if (!Number.isInteger(n)) return null;
@@ -181,6 +226,34 @@ export function itemAnswerFor(item, raw) {
   }
   return typedAnswerFor(kind, raw);
 }
+
+/**
+ * A Pick many answer as saved: the picked options in the item's order,
+ * joined with ", " (options never hold commas). Matches ignore case and
+ * accept ";" too ("rust; CRACK" -> "Rust, Crack"); null when a part is not
+ * one of the options.
+ */
+export function manyAnswerOf(item, raw) {
+  const options = manyOptionsOf(item);
+  const text = String(raw ?? '');
+  // Saved answers are joined with ", ". A typed "A; B" works too, unless an
+  // option itself holds a semicolon ("Other; see notes"), so commas go first.
+  const pick = (separator) => {
+    const parts = text.split(separator).map((p) => p.trim().toLowerCase()).filter(Boolean);
+    const picked = new Set();
+    for (const p of parts) {
+      const hit = options.find((o) => o.value.toLowerCase() === p);
+      if (!hit) return null;
+      picked.add(hit.value);
+    }
+    return options.filter((o) => picked.has(o.value)).map((o) => o.value).join(', ');
+  };
+  if (!text.trim()) return '';
+  return pick(',') ?? pick(/[,;]/);
+}
+
+/** The options a Pick many answer holds, as a Set of their values. */
+export const manyPicked = (item, raw) => new Set((manyAnswerOf(item, raw) || '').split(', ').filter(Boolean));
 
 /** Today as "YYYY-MM-DD" in local time (a date answer's "past" is local). */
 export const localToday = (now = new Date()) => `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
@@ -200,6 +273,10 @@ export function typedAnswerIsIssue(item, raw, today = localToday()) {
   }
   if (f.kind === 'score') return f.issueAt !== undefined && Number(value) <= f.issueAt;
   if (f.kind === 'date') return f.issueIfPast === true && value < today;
+  if (f.kind === 'many') {
+    const picked = manyPicked(item, value);
+    return f.options.some((o) => o.tone === 'bad' && picked.has(o.value));
+  }
   return false;
 }
 
@@ -213,6 +290,7 @@ export function itemAnswerHint(item) {
   if (f.kind === 'count') return `Count${f.min !== undefined || f.max !== undefined ? `; fine${range(f)}` : ''}`;
   if (f.kind === 'score') return `Score 1-${f.scale}${f.issueAt !== undefined ? `; ${f.issueAt} or lower is an issue` : ''}`;
   if (f.kind === 'date') return f.issueIfPast ? 'Date; an issue once it has passed' : 'Date';
+  if (f.kind === 'many') return `Pick any of ${f.options.map((o) => o.value).join(', ')}`;
   return '';
 }
 

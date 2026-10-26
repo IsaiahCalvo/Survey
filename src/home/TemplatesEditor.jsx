@@ -40,6 +40,7 @@
    scrollbars.
 */
 import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
+import { DEFAULT_REPORT_KIT_ID, listReportKits } from '../services/reportKits/index.js';
 import { DEFAULT_ANSWER_SET, ITEM_ANSWER_KEYS, answerPresetIdOf, answerSetPresets, itemAnswerFields } from '../services/answerSets.js';
 import { isFeatureOn } from '../featureFlags.js';
 import AnswerSetEditor, { ItemKindPicker } from './AnswerSetEditor.jsx';
@@ -299,6 +300,7 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     // A template someone shared with me: its owner's face shows on the row.
     ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
     ...(t?.exportKitId ? { exportKitId: t.exportKitId } : {}),
+    ...(t?.reportKitId ? { reportKitId: t.reportKitId } : {}),
     ...(t?.answerSet ? { answerSet: t.answerSet } : {}),
     // Smart fill tag shapes taught on drawings (beta); the editor only removes them.
     ...(Array.isArray(t?.smartFillShapes) && t.smartFillShapes.length ? { smartFillShapes: t.smartFillShapes } : {}),
@@ -1028,21 +1030,33 @@ export default function TemplatesEditor({
   /* The baseline a save makes once it lands: exactly the copy it sent. */
   const exportKitOptions = useSyncExternalStore(subscribeExportKits, listExportKits);
   /* Checklist answers: a preset, or (nightly 'custom-answers') the
-     template's own typed list. `answerEditorFor` is the template whose list
-     editor is open. */
+     template's own typed list. */
   const [customAnswers] = useState(() => isFeatureOn('custom-answers'));
+  // Report layout per template (nightly 'survey-report').
+  const [surveyReport] = useState(() => isFeatureOn('survey-report'));
+  const reportKitPickerProps = (tpl) => ({
+    value: tpl.reportKitId || DEFAULT_REPORT_KIT_ID,
+    onChange: (e) => {
+      const v = e.target.value;
+      mutateTpl(tpl.id, (t) => {
+        const { reportKitId: _r, ...rest } = t;
+        return v === DEFAULT_REPORT_KIT_ID ? rest : { ...rest, reportKitId: v };
+      });
+    },
+    children: listReportKits().map((k) => <option key={k.id} value={k.id}>{k.label}</option>),
+  });
   const answerPresets = answerSetPresets({ extras: customAnswers });
   const [answerEditorFor, setAnswerEditorFor] = useState(null);
   const ownAnswerSetOf = (t) => t.answerSet || getExportKit(t.exportKitId)?.answerSet;
-  const answerPickerProps = (t) => {
+  // `answerEditorFor` is { id, phone }: the desktop and phone layouts are both
+  // mounted, and only the one that opened the dialog may show it.
+  const answerPickerProps = (t, phone = false) => {
     const presetId = answerPresetIdOf(ownAnswerSetOf(t), answerPresets);
-    const editing = customAnswers && answerEditorFor === t.id;
     return {
-      value: editing ? '' : presetId,
+      value: presetId,
       onChange: (e) => {
-        if (e.target.value === OWN_ANSWERS) { setAnswerEditorFor(t.id); return; }
+        if (e.target.value === OWN_ANSWERS) { setAnswerEditorFor({ id: t.id, phone }); return; }
         if (!e.target.value) return; // "Custom" is the list already in use
-        setAnswerEditorFor(null);
         const preset = answerPresets.find((p) => p.id === e.target.value);
         mutateTpl(t.id, (cur) => {
           const { answerSet: _a, ...rest } = cur;
@@ -1050,16 +1064,19 @@ export default function TemplatesEditor({
         });
       },
       children: [
-        (editing || !presetId) && <option key="custom" value="">Custom</option>,
+        !presetId && <option key="custom" value="">Custom</option>,
         ...answerPresets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>),
-        customAnswers && !editing && <option key={OWN_ANSWERS} value={OWN_ANSWERS}>{presetId ? 'Make your own…' : 'Edit my answers…'}</option>,
+        customAnswers && <option key={OWN_ANSWERS} value={OWN_ANSWERS}>Edit answers…</option>,
       ],
     };
   };
-  const answerListEditor = (t, phone) => (customAnswers && answerEditorFor === t.id ? (
+  // The answer list opens as a dialog over the editor, seeded with the list
+  // in use (a preset too, so a preset can be changed after picking it).
+  const answerListEditor = (t, phone) => (customAnswers && answerEditorFor?.id === t.id && answerEditorFor.phone === phone ? (
     <AnswerSetEditor
       key={t.id}
       phone={phone}
+      modal={{ kicker: 'Checklist answers', title: t.name || 'Template' }}
       set={ownAnswerSetOf(t) || DEFAULT_ANSWER_SET}
       onCommit={(set) => mutateTpl(t.id, (cur) => ({ ...cur, answerSet: set }))}
       onClose={() => setAnswerEditorFor(null)}
@@ -2022,7 +2039,7 @@ export default function TemplatesEditor({
         }),
       })),
     }));
-    const { exportKitId: _oldKit, answerSet: _oldAnswers, smartFillShapes: _oldShapes, ...originalRest } = original;
+    const { exportKitId: _oldKit, reportKitId: _oldReport, answerSet: _oldAnswers, smartFillShapes: _oldShapes, ...originalRest } = original;
     // Smart fill shapes: the live list (a drawing may have added one since this
     // editor opened) minus the ones removed here. A template not saved yet (a
     // duplicate) has no live row, so it keeps the shapes it was made with.
@@ -2034,6 +2051,8 @@ export default function TemplatesEditor({
       ...(shapes.length ? { smartFillShapes: shapes } : {}),
       // Excel layout; unset means the standard export.
       ...(r.exportKitId ? { exportKitId: r.exportKitId } : {}),
+      // Report layout (nightly 'survey-report'); unset means the full report.
+      ...(r.reportKitId ? { reportKitId: r.reportKitId } : {}),
       // Checklist answers; unset means Y / N / N/A.
       ...(r.answerSet ? { answerSet: r.answerSet.map((a) => ({ value: a.value, tone: a.tone, ...(a.means ? { means: a.means } : {}) })) } : {}),
       id: r.id,
@@ -2552,6 +2571,16 @@ export default function TemplatesEditor({
                   >
                     {exportKitOptions.map((k) => <option key={k.id} value={k.id}>{k.label || k.id}</option>)}
                   </select>
+                )}
+                {/* Report layout (report kit) for the Report button. */}
+                {surveyReport && (
+                  <select
+                    className="hub-report-kit"
+                    aria-label="Report layout"
+                    {...reportKitPickerProps(tpl)}
+                    {...hoverOnly(tip('What the PowerPoint report for this template shows.'))}
+                    style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
+                  />
                 )}
                 {/* Checklist answers for this template (default Y / N / N/A). */}
                 <select
@@ -3284,9 +3313,15 @@ export default function TemplatesEditor({
                     </select>
                   </label>
                 )}
+                {surveyReport && (
+                  <label className="templates-mobile-option">
+                    <span>Report layout</span>
+                    <select aria-label="Report layout" {...reportKitPickerProps(tpl)} />
+                  </label>
+                )}
                 <label className="templates-mobile-option">
                   <span>Answers</span>
-                  <select aria-label="Checklist answers" {...answerPickerProps(tpl)} />
+                  <select aria-label="Checklist answers" {...answerPickerProps(tpl, true)} />
                 </label>
                 {answerListEditor(tpl, true)}
                 {smartFillBeta && (

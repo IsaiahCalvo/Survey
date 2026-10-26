@@ -160,6 +160,8 @@ export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) =
   }),
   // Excel layout (export kit); left out when unset so older prints are unchanged.
   ...(template?.exportKitId ? [template.exportKitId] : []),
+  // Report layout (report kit); left out when unset (the full report).
+  ...(template?.reportKitId ? [['report', template.reportKitId]] : []),
   // Checklist answer set; left out when unset (Y / N / N/A).
   ...(template?.answerSet ? [['answers', template.answerSet.map((a) => (a.means ? [a.value, a.tone, a.means] : [a.value, a.tone]))]] : []),
 ]);

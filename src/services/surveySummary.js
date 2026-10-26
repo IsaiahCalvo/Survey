@@ -10,14 +10,16 @@ const activeChecklist = (category) => checklistOf(category)
   .filter((item) => item && item.archived !== true && item.id);
 
 const nameOf = (marker) => String(marker?.name || '').trim() || 'Unnamed item';
+const statusOf = (i) => (i.total && i.answered === i.total ? 'done' : i.answered ? 'partly' : 'notStarted');
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
 /**
  * markers: { id: marker }. itemIds: only these items (an end-of-walk
  * summary of what was worked on), or null for all. page: only items on
- * that page. Categories with no items in scope are left out.
+ * that page. Categories with no items in scope are left out. rows: also
+ * list each category's items ({ name, status, answered, total, issues }).
  */
-export function summarizeSurvey({ template, markers, itemIds = null, page = null } = {}) {
+export function summarizeSurvey({ template, markers, itemIds = null, page = null, rows = false } = {}) {
   const set = answerSetFor(template);
   const wanted = itemIds ? new Set(itemIds) : null;
   const byCategory = new Map();
@@ -49,6 +51,7 @@ export function summarizeSurvey({ template, markers, itemIds = null, page = null
         partly: items.filter((i) => i.answered && i.answered < i.total).length,
         notStarted: items.filter((i) => !i.answered).length,
         issues: items.filter((i) => i.issues.length).map((i) => ({ id: i.id, name: i.name, lines: i.issues })),
+        ...(rows ? { rows: items.map((i) => ({ ...i, status: statusOf(i) })) } : {}),
       };
     });
   const sum = (key) => categories.reduce((n, c) => n + c[key], 0);
