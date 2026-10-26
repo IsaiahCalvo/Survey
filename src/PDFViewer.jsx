@@ -543,7 +543,7 @@ import { usePickedSurveyMarker } from './survey/usePickedSurveyMarker.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
-import { buildSheetLayout, buildSheetRow, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
+import { buildSheetLayout, buildSheetRow, excelCellAnswer, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
 import { answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
@@ -19498,8 +19498,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           worksheet.eachRow((row, rowNumber) => {
             const rowData = [];
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-              // Number cells (a Number line's answer) come back as text, like the app saves them.
-              rowData[colNumber - 1] = typeof cell.value === 'number' ? String(cell.value) : cell.value;
+              // Number and date cells come back as text, like the app saves them.
+              rowData[colNumber - 1] = excelCellAnswer(cell.value);
             });
             // TRUE 1-based sheet row (eachRow skips empty rows, so the jsonData index
             // is "nth non-empty row", NOT the sheet row). Non-index expando on the row
@@ -19732,8 +19732,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           worksheet.eachRow((row, rowNumber) => {
             const rowData = [];
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-              // Number cells (a Number line's answer) come back as text, like the app saves them.
-              rowData[colNumber - 1] = typeof cell.value === 'number' ? String(cell.value) : cell.value;
+              // Number and date cells come back as text, like the app saves them.
+              rowData[colNumber - 1] = excelCellAnswer(cell.value);
             });
             // TRUE 1-based sheet row (eachRow skips empty rows, so the jsonData index
             // is "nth non-empty row", NOT the sheet row). Non-index expando on the row

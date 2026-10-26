@@ -1319,14 +1319,15 @@ input[type="text"].survey-marker-name-inline:focus {
    Structure (src/sidebar/SpacesPanel.jsx):
      .spaces-panel__head  ........ [Exit space x] [export] [+]
                           phone: Spaces  [export] [+] Done
-     .space-card          grip 2 > Space 1 ........................ (switch) trash
+     .space-card          grip > Space 1 ........................ (switch) trash
+                                3 regions
        .space-card__add   [ Add pages (e.g. 3, 6-9, 12)                | + ]
-       .space-region-card      2 Region 2 .. edit bulb move copy (switch) trash
+       .space-region-card   2 Region 2 ........... edit bulb move (switch) trash
 
-   Columns: the grip sits in the Survey grip gutter (28; phone 32), the page
-   count starts right after it, and everything nested starts one step (12)
-   further in: --sp-nest-x = 40 on desktop (the rows' text line, --row-text-x),
-   44 on the phone. The add-pages field is the one recessed well
+   Columns: the grip sits in the Survey grip gutter (28; phone 32), always
+   (owner 2026-10-26), so edit mode moves nothing; the fold arrow follows it
+   and a region's page number sits under the arrow. Out of edit mode the
+   trash column stays, empty, for the same reason. The add-pages field is the one recessed well
    (--panel-well, the Survey notes box's well); nothing else paints a fill.
 
    States are the Survey rows' (states.css tokens): hover (desktop pointer
@@ -1350,14 +1351,13 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-step: 12px;          /* one nesting level (Survey --sv-step) */
   --sp-nest-x: calc(var(--sp-grip-w) + var(--sp-step)); /* 40 = --row-text-x */
   /* Owner 2026-10-22: one column grid for both line kinds. --sp-lead is the
-     gutter before the count: the panel inset at rest, the grip gutter while
-     editing (the grip fills it). A region's page number sits in the chevron
-     column, its name in the space name column, and its switch and trash in
-     the space's switch and trash columns. */
-  --sp-lead: var(--sp-edge);
-  --sp-name-x: calc(var(--sp-lead) + var(--sp-num-w) + var(--sp-chev-w) + 2px);
+     grip gutter before the fold arrow, the same in and out of edit mode
+     (owner 2026-10-26: "there should be no shifting"). A region's page number
+     sits in the chevron column, its name in the space name column, and its
+     switch and trash in the space's switch and trash columns. */
+  --sp-lead: var(--sp-grip-w);
+  --sp-name-x: calc(var(--sp-lead) + var(--sp-chev-w) + 2px);
   --sp-field-r: 8px;        /* the add-pages field's right inset */
-  --sp-num-w: 14px;         /* the space's page count */
   --sp-chev-w: 16px;
   --sp-page-w: 22px;        /* a region's page number */
   --sp-col-w: 24px;         /* a glyph button's column */
@@ -1382,6 +1382,7 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-label-type: 12px;
   --sp-field-type: 12px;
   --sp-small-type: 11px;
+  --sp-caption-type: 10px;  /* the region count under a space's name */
   --sp-title-type: 13px;
   --sp-status-type: 11px;
 }
@@ -1483,11 +1484,7 @@ input[type="text"].survey-marker-name-inline:focus {
    (states.css), which also hides this hairline, so nothing here paints a
    second surface. */
 
-/* ---- the space row: grip · count · arrow · name ...... switch · trash ---- */
-.spaces-panel.is-edit-mode {
-  --sp-lead: var(--sp-grip-w);
-}
-
+/* ---- the space row: grip · arrow · name ............. switch · trash ---- */
 .space-card__head {
   display: flex;
   align-items: center;
@@ -1510,18 +1507,28 @@ input[type="text"].survey-marker-name-inline:focus {
   box-sizing: border-box;
 }
 
-/* The page count: a plain small muted figure, no circle, right after the
-   grip gutter (a region's page number sits one step further in). */
+/* The name with its region count under it (owner 2026-10-26: "something a
+   little more minimal ... smaller and underneath"). */
+.space-card__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-left: 2px;
+  padding: 3px 0;
+}
+
 .space-card__count {
-  flex: 0 0 auto;
-  min-width: var(--sp-num-w);
-  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
   color: var(--text-3);
-  font-size: var(--sp-small-type);
+  font-size: var(--sp-caption-type);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
-  text-align: left;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .space-card__chevron {
@@ -1557,7 +1564,6 @@ input[type="text"].survey-marker-name-inline:focus {
   flex: 0 1 auto;
   min-width: 1ch;
   max-width: 100%;
-  margin-left: 2px;
 }
 
 .space-card__name-fit::after,
@@ -1721,6 +1727,11 @@ input[type="text"].space-card__name:focus-visible {
   color: var(--danger);
 }
 
+/* The trash column, kept empty out of edit mode. */
+.space-card__spare {
+  pointer-events: none;
+}
+
 .spaces-region__marks.is-on:not([aria-disabled='true']) {
   color: var(--accent);
 }
@@ -1862,12 +1873,12 @@ input[type="text"].space-card__add-input {
   flex: 0 0 auto;
   /* Its figure is centred in the chevron column (owner 2026-10-22: "the
      one should be under the dropdown chevron"). */
-  width: calc(var(--sp-lead) + var(--sp-num-w) + var(--sp-chev-w));
+  width: calc(var(--sp-lead) + var(--sp-chev-w));
   align-self: stretch;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 0 0 calc(var(--sp-lead) + var(--sp-num-w));
+  padding: 0 0 0 var(--sp-lead);
   overflow: visible;
   white-space: nowrap;
   box-sizing: border-box;

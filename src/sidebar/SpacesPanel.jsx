@@ -4,11 +4,11 @@
  *
  * Default-exports the SpacesPanel component; internal SpaceSortableCard renders
  * each space as a flat line in the panel, like a Survey category (owner
- * 2026-10-02, "integrated within the panel as separate rows"): grip, page
- * count, fold arrow, click-to-rename name, switch and delete; open, an
- * "Add pages" line (parsePageRangeInput) with a quiet [+], then one nested
- * line per page ("region") with page number, outline switch, name, edit
- * areas, marks bulb and remove.
+ * 2026-10-02, "integrated within the panel as separate rows"): grip, fold
+ * arrow, click-to-rename name with its small region count under it, switch
+ * and delete; open, an "Add pages" line (parsePageRangeInput) with a quiet
+ * [+], then one nested line per page ("region") with page number, name, edit
+ * areas, marks bulb, move or copy, outline switch and remove.
  * SpacesExportPanel is the "Export <space>" menu (desktop) / sheet (phone).
  * Spaces reorder via dnd-kit SortableRearrangeList with optimistic ordering
  * and frame-capture debug hooks.
@@ -51,7 +51,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   isSelected,
   isExpanded,
   pageCount,
-  regionCount,
   pageInputValue,
   pageError,
   onToggleExpand,
@@ -82,6 +81,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   selectedModuleId = null,
   mobileMode = false,
   editMode = false,
+  canManageSpaces = false,
 }) {
   // KAL-65: sidebar controls use the app's instant shared tooltip, never a
   // native title= (the OS tooltip takes ~1.5s and is OS-styled, so mixing the
@@ -197,9 +197,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
   const onToggleVisibility = isSurveyVisibilityContext
     ? onToggleSurveyAnnotations
     : onToggleCanvasAnnotations;
-  // Spaces chunk A: the row counts PAGES (it counted drawn areas, so a space
-  // listing two pages could read 0); the full "3 pages · 2 areas" is its name.
-  const regionCountLabel = formatSpaceCountLabel(pageCount, regionCount);
+  // Owner 2026-10-26: the count of regions (one per page) is a small quiet
+  // line under the name, not a figure in front of the arrow.
+  const regionCountLabel = formatSpaceCountLabel(pageCount);
   // A space with no pages would hide every page: it cannot be turned on until
   // it has some (an active one can always be turned off).
   const isSwitchBlocked = !isActive && pageCount === 0;
@@ -232,7 +232,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           aria-expanded={isExpanded}
           onClick={() => onToggleExpand(space.id)}
         >
-          {editMode && <DragRearrangeHandle
+          {/* Owner 2026-10-26: the grip is always there to rearrange (not
+              only in edit mode), so nothing moves when edit mode starts. */}
+          {canManageSpaces && <DragRearrangeHandle
             {...dragHandleProps}
             className="space-card__grip"
             data-space-drag-handle
@@ -241,17 +243,6 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             onClick={(e) => e.stopPropagation()}
             style={{ width: undefined, height: undefined, color: 'var(--text-3)' }}
           />}
-
-          {/* The page count, a plain muted figure (no circle). Its name and
-              tooltip say "3 pages · 2 areas". */}
-          <span
-            className="space-card__count"
-            data-space-meta
-            aria-label={regionCountLabel}
-            {...tip(regionCountLabel, 'below')}
-          >
-            {pageCount}
-          </span>
 
           <button
             type="button"
@@ -269,6 +260,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
           {/* Click to rename (the layout the owner had). Enter or a click
               away saves; Escape puts the name back; an unchanged or refused
               name is not saved. */}
+          <span className="space-card__title">
           <span className="space-card__name-fit" data-value={space.name || ' '}>
             <input
               ref={spaceNameInputRef}
@@ -304,6 +296,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               }}
             />
           </span>
+          <span className="space-card__count" data-space-meta>{regionCountLabel}</span>
+          </span>
 
           <span className="space-card__fill" aria-hidden="true" />
 
@@ -324,7 +318,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             <span className="spaces-switch__knob" />
           </div>
 
-          {editMode && <button
+          {editMode ? <button
             type="button"
             className="space-card__icon space-card__delete"
             data-glyph-only=""
@@ -336,7 +330,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             }}
           >
             <Icon name="trash" size={14} color="currentColor" />
-          </button>}
+          </button> : (canManageSpaces && <span className="space-card__icon space-card__spare" aria-hidden="true" />)}
         </div>
 
         {isExpanded && (
@@ -495,7 +489,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           )}
                         </div>
 
-                        {editMode && <button
+                        {/* Owner 2026-10-26: Edit region and Move or copy are
+                            always on the line, not only in edit mode. */}
+                        {canManageSpaces && <button
                           type="button"
                           className={`space-card__icon spaces-region__edit${isActiveRegionEdit ? ' is-on' : ''}`}
                           data-glyph-only=""
@@ -542,7 +538,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                         {/* Owner 2026-10-22: one Move or copy button that opens
                             the panel's own menu (the Export menu's look), not
                             a bare browser form. */}
-                        {editMode && onTransferRegion && (
+                        {canManageSpaces && onTransferRegion && (
                           <button
                             type="button"
                             className={`space-card__icon${isTransferOpenFor?.(space.id, page.pageId) ? ' is-on' : ''}`}
@@ -578,7 +574,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           <span className="spaces-switch__knob" />
                         </div>
 
-                        {editMode && <button
+                        {/* Out of edit mode the trash column stays, empty, so
+                            nothing on the line moves when edit mode starts. */}
+                        {editMode ? <button
                           type="button"
                           className="space-card__icon space-card__delete"
                           data-glyph-only=""
@@ -591,7 +589,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                           }}
                         >
                           <Icon name="trash" size={14} color="currentColor" />
-                        </button>}
+                        </button> : (canManageSpaces && <span className="space-card__icon space-card__spare" aria-hidden="true" />)}
                       </li>
                     );
                   })}
@@ -1625,12 +1623,11 @@ const SpacesPanel = ({
               const isSelected = selectedSpaceId === space.id;
               const isExpanded = expandedSpaces.has(space.id);
               const pageCount = space.assignedPages?.length || 0;
-              const regionCount = space.assignedPages?.reduce((sum, p) => sum + (p.regions?.length || 0), 0) || 0;
               return (
                 <SortableRearrangeRow
                   key={space.id}
                   id={space.id}
-                  disabled={!editMode || !canManageSpaces || !onReorderSpaces}
+                  disabled={!canManageSpaces || !onReorderSpaces}
                   animateLayoutChanges={animateSpaceLayoutChanges}
                   draggingOpacity={1}
                   transition={null}
@@ -1639,6 +1636,7 @@ const SpacesPanel = ({
                     <SpaceSortableCard
                       space={space}
                       editMode={editMode}
+                      canManageSpaces={canManageSpaces}
                       dragHandleProps={{ ...attributes, ...listeners }}
                       isDragging={isDragging}
                       isRearranging={isRearrangingSpaces}
@@ -1646,7 +1644,6 @@ const SpacesPanel = ({
                       isSelected={isSelected}
                       isExpanded={isExpanded}
                       pageCount={pageCount}
-                      regionCount={regionCount}
                       pageInputValue={pageInputs[space.id] || ''}
                       pageError={pageErrors[space.id]}
                       onToggleExpand={handleToggleExpand}

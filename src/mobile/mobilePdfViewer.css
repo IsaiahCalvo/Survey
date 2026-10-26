@@ -4482,7 +4482,6 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   --sp-grip-pad: 12px;      /* the Survey sheet grip inset: its glyph on the 16px gutter */
   --sp-step: 12px;
   --sp-field-r: 12px;
-  --sp-num-w: 18px;
   --sp-chev-w: 28px;
   --sp-page-w: 26px;
   --sp-col-w: 40px;
@@ -4509,6 +4508,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   --sp-label-type: 14px;
   --sp-field-type: 16px;
   --sp-small-type: 12px;
+  --sp-caption-type: 12px;
   font-family: var(--sheet-font);
 }
 

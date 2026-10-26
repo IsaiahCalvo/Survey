@@ -6,7 +6,7 @@
  * handleExportSurveyToExcel in PDFViewer.jsx builds inline today
  * (tests/exportFormatsRegistry.test.mjs pins that).
  */
-import { checklistItemKind } from '../../../supabase/functions/_shared/kitShape.js';
+import { checklistItemKind, dateAnswerOf } from '../../../supabase/functions/_shared/kitShape.js';
 
 export function buildSheetLayout(kit, checklistItems = []) {
   const headerRow = [];
@@ -35,13 +35,27 @@ export function buildSheetLayout(kit, checklistItems = []) {
   return { headerRow, columnMapping, colOf, firstChecklistCol, lastChecklistCol };
 }
 
-// A Number line's answer goes in as a real number, so SUM and friends work.
+// Number, score and count answers go in as real numbers (so SUM and friends
+// work) and a date answer as a real date.
+const NUMBER_KINDS = new Set(['number', 'score', 'count']);
 const cellAnswer = (item, answer) => {
   if (answer == null || answer === '') return '';
-  if (checklistItemKind(item) !== 'number') return answer;
+  const kind = checklistItemKind(item);
+  if (kind === 'date') {
+    const day = dateAnswerOf(answer);
+    return day ? new Date(`${day}T00:00:00Z`) : answer;
+  }
+  if (!NUMBER_KINDS.has(kind)) return answer;
   const n = Number(answer);
   return Number.isFinite(n) ? n : answer;
 };
+
+/** A cell read back from Excel as the text the app saves (10 -> "10", a date -> "2026-10-22"). */
+export function excelCellAnswer(value) {
+  if (typeof value === 'number') return String(value);
+  if (value instanceof Date) return dateAnswerOf(value) ?? value;
+  return value;
+}
 
 /** One data row in the kit's column order. `cells` holds a value per field. */
 export function buildSheetRow(kit, checklistItems, cells, answers = {}) {
