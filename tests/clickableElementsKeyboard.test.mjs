@@ -34,6 +34,7 @@ const ALLOWED = {
   'src/components/DuplicateUploadModal.jsx': 1,
   'src/components/ExcelLockedModal.jsx': 1,
   'src/components/ExcelSyncConfirmModal.jsx': 1,
+  'src/components/ExportPdfDialog.jsx': 1,
   'src/components/KeyboardShortcutsOverlay.jsx': 1,
   'src/components/NewColumnsModal.jsx': 1,
   'src/components/OneDriveFileSaveModal.jsx': 1,
