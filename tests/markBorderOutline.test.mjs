@@ -130,7 +130,8 @@ test('wiring: the layer hands clouded text boxes / callout boxes the shared geom
   assert.match(layer, /markBorderCloudGeometry\(renderObj\)/, 'text box glow');
   assert.match(layer, /annotationIsHovered && !cloudGlowGeometry && \(/, 'no box rect under the cloud glow');
   assert.match(layer, /calloutBoxCloudGeometry\(callout, \{/, 'callout halo follows the humps');
-  assert.match(layer, /calloutBoxHandleLayout\(callout, calloutVisibleBox\(callout, W, H\)\)/, 'callout grabbers');
+  assert.match(layer, /const visBox = showChrome \? calloutVisibleBox\(callout, W, H\) : null;/, 'callout grabbers');
+  assert.match(layer, /calloutBoxHandleLayout\(callout, visBox\)/, 'callout grabbers');
   assert.match(layer, /handlePartAttributes=\{\(id\) => \(\{ 'data-callout-part': `textBox-\$\{id\}` \}\)\}/);
   const overlay = readFileSync(new URL('../src/components/SVGSelectionOverlay.jsx', import.meta.url), 'utf8');
   assert.match(overlay, /const pressHandler = \(id\) => \(delegateHandlePress \? undefined :/);

@@ -3408,6 +3408,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dragging = Boolean(panPointerRef.current);
     const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
     el.dataset.spacePan = dragging ? 'dragging' : (armed ? 'armed' : 'off');
+    // Held Space pans from anywhere; the Pan tool lets a selection's grabbers
+    // keep their own cursor (the style block below).
+    el.dataset.panSource = spacePanRef.current ? 'space' : 'tool';
     el.style.cursor = dragging ? 'grabbing' : (armed ? 'grab' : '');
     // Pan over text: while the I-beam shows (or a Pan text selection is live)
     // no ancestor of the text may be user-select:none, or the browser refuses
@@ -5673,7 +5676,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         [data-mobile-pdf-surface]:not([data-space-pan='dragging']),
         [data-mobile-pdf-surface]:not([data-space-pan='dragging']) > [data-pdfjs-content] { cursor: grab; }
         :where([data-mobile-pdf-surface] .survey-pdfjs-page-div) { cursor: auto; }
-        [data-space-pan='armed'], [data-space-pan='armed'] * { cursor: grab !important; }
+        /* Pan is a selection mode (Drawboard): under the Pan TOOL a selected
+           mark's grabbers still resize / turn / re-aim it, so they keep the
+           cursor they declare (utils/handleCursors.js). Held Space pans from
+           anywhere, so it keeps the hand everywhere. */
+        [data-space-pan='armed'],
+        [data-space-pan='armed'] *:not([data-pan-source='tool'] svg[data-svg-annotation-layer] :is([data-resize-handle], [data-handle-hit-pad], [data-rotation-handle], [data-rotation-handle] *, [data-callout-leader-grabber], [data-callout-handle-overlay] :is([data-callout-part='knee'], [data-callout-part='arrowTip']))) { cursor: grab !important; }
         /* Pan opens links on a click, so a link shows the hand (utils/linkClickPolicy.js). */
         [data-space-pan='armed'] :is([data-text-markup-link], [data-pdfjs-link-layer] a) { cursor: pointer !important; }
         [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }

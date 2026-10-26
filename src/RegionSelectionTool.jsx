@@ -29,6 +29,7 @@ import { getSelectionHandleVisualMetrics, getAdaptiveSelectionHandleSpec } from 
 import RotationInputField from './components/RotationInputField';
 import { createStableActions } from './utils/stableActionProxy.js';
 import rotateIconSvg from './assets/rotate-icon.svg';
+import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR, resizeHandleCursor } from './utils/handleCursors.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -982,14 +983,14 @@ const RegionSelectionTool = ({
   useEffect(() => () => clearRotPillTimers(), [clearRotPillTimers]);
 
   const resizeHandles = useMemo(() => ([
-    { key: 'nw', cursor: 'nwse-resize', offsetX: 0, offsetY: 0 },
-    { key: 'n', cursor: 'ns-resize', offsetX: 0.5, offsetY: 0 },
-    { key: 'ne', cursor: 'nesw-resize', offsetX: 1, offsetY: 0 },
-    { key: 'e', cursor: 'ew-resize', offsetX: 1, offsetY: 0.5 },
-    { key: 'se', cursor: 'nwse-resize', offsetX: 1, offsetY: 1 },
-    { key: 's', cursor: 'ns-resize', offsetX: 0.5, offsetY: 1 },
-    { key: 'sw', cursor: 'nesw-resize', offsetX: 0, offsetY: 1 },
-    { key: 'w', cursor: 'ew-resize', offsetX: 0, offsetY: 0.5 }
+    { key: 'nw', offsetX: 0, offsetY: 0 },
+    { key: 'n', offsetX: 0.5, offsetY: 0 },
+    { key: 'ne', offsetX: 1, offsetY: 0 },
+    { key: 'e', offsetX: 1, offsetY: 0.5 },
+    { key: 'se', offsetX: 1, offsetY: 1 },
+    { key: 's', offsetX: 0.5, offsetY: 1 },
+    { key: 'sw', offsetX: 0, offsetY: 1 },
+    { key: 'w', offsetX: 0, offsetY: 0.5 }
   ]), []);
 
   // Outline path in overlay px. Curved (freehand) points draw as a smooth
@@ -3412,7 +3413,7 @@ const RegionSelectionTool = ({
                 day-one chrome in SVGSelectionOverlay.jsx (no connector line
                 since 2026-10-02): white-fill/blue-ring
                 circle (r = rotationR), rotate icon at 70% of the circle
-                diameter, crosshair cursor, drop shadow. data-rotation-handle
+                diameter, the turn grabber's cursor, drop shadow. data-rotation-handle
                 ="mtr" is what RotationInputField anchors to. The whole group
                 rotates with the shape during a rotate drag, exactly like the
                 standard overlay's rotated <g>. */}
@@ -3475,7 +3476,7 @@ const RegionSelectionTool = ({
                       strokeWidth={1}
                       style={{
                         filter: 'drop-shadow(0 2px 5px rgba(0,0,0,0.1))',
-                        cursor: 'crosshair',
+                        cursor: ROTATE_HANDLE_CURSOR,
                         pointerEvents: 'auto'
                       }}
                       onPointerDown={(event) => handleRotatePointerDown(selectedRegion, event)}
@@ -3611,7 +3612,7 @@ const RegionSelectionTool = ({
                       background: REGION_HANDLE_FILL,
                       border: `1px solid ${REGION_HANDLE_STROKE}`,
                       boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-                      cursor: 'crosshair',
+                      cursor: GRAB_HANDLE_CURSOR,
                       pointerEvents: 'auto',
                       zIndex: 100003
                     }}
@@ -3698,7 +3699,8 @@ const RegionSelectionTool = ({
                           boxShadow: isHorizontalPill || isVerticalPill
                             ? '0 2px 4px rgba(0,0,0,0.15)'
                             : '0 1px 3px rgba(0,0,0,0.15)',
-                          cursor: handle.cursor,
+                          // Drawboard: the arrow turns with the area.
+                          cursor: resizeHandleCursor(handle.key, chromeAngle || 0),
                           pointerEvents: 'auto',
                           zIndex: 100003
                         }}

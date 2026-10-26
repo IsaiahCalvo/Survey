@@ -67,7 +67,8 @@ import {
 // focus sits; only a real typing surface keeps those keys for itself — and
 // (2026-09-10) not even that when it is a numeric chrome field that opted out.
 import { draftOwnsKeyboard, releaseFocusForDraftTool } from '../utils/draftKeyboardTarget.js';
-import { calculateCalloutConnection } from '../utils/calloutGeometry';
+import { calculateCalloutConnection, calloutAnchorSidesForKnee } from '../utils/calloutGeometry';
+import { layoutCalloutLeaderGrabbers, leaderGrabberHitRadius } from '../utils/calloutLeaderGrabbers.js';
 import { historyTypeKey } from '../utils/historyFeed.js';
 import { broadcastPageSelection } from '../utils/historyMarkFilter.js';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
@@ -98,6 +99,7 @@ import useInputModality from '../hooks/useInputModality.js';
 // createCallout) — do NOT replace with the null stub.
 import { createCallout } from './Callout/types';
 import { screenToSVG, normalizeAngle, clampInverseScale } from '../utils/svgTransformMath';
+import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR } from '../utils/handleCursors.js';
 // Unified renderer phase 2 — SVG-native creation commit builders (byte-stable
 // twins of the retired FabricDrawingCanvas serialization) + gesture diag.
 import {
@@ -5440,8 +5442,33 @@ const SVGAnnotationLayerBody = memo(({
       tbX, tbY, tbW, tbH,
       { x: kX, y: kY },
       { x: atX, y: atY },
-      0
+      0,
+      callout.textBoxAnchor || null,
     );
+    // The selected callout's text-box grabbers and leader grabbers, placed
+    // on the box and leader exactly as renderCallout draws them (its box is
+    // taller by the descender strip).
+    const showChrome = isSelected && showHandles;
+    const visBox = showChrome ? calloutVisibleBox(callout, W, H) : null;
+    const boxLayout = visBox ? calloutBoxHandleLayout(callout, visBox) : null;
+    const calloutSegmentR = HANDLE_RADIUS_SECONDARY * clampInverseScale(inverseScale);
+    const leaderGrabbers = visBox ? layoutCalloutLeaderGrabbers({
+      conn: calculateCalloutConnection(
+        visBox.x, visBox.y, visBox.width, visBox.height,
+        { x: kX, y: kY },
+        { x: atX, y: atY },
+        0,
+        callout.textBoxAnchor || null,
+      ),
+      knee: { x: kX, y: kY },
+      arrowTip: { x: atX, y: atY },
+      boxGrabbers: Object.values(boxLayout?.anchors || {}),
+      radius: calloutHandleR,
+      secondaryRadius: calloutSegmentR,
+      attachMovable: calloutAnchorSidesForKnee(
+        { x: kX, y: kY }, visBox.x, visBox.y, visBox.x + visBox.width, visBox.y + visBox.height,
+      ).length > 0,
+    }) : null;
     return (
       <g
         key={`callout-hit-${callout.id}`}
@@ -5485,7 +5512,7 @@ const SVGAnnotationLayerBody = memo(({
           cy={atY}
           r={calloutHitR}
           fill="transparent"
-          style={{ cursor: 'grab', pointerEvents: 'all' }}
+          style={{ cursor: GRAB_HANDLE_CURSOR, pointerEvents: 'all' }}
         />
         {/* UX: Phase 15 UAT-3 (2026-04-18) — knee hit target tracks the
             AUTO-ROUTED midpoint (effectiveKnee) when idle so users grab
@@ -5502,7 +5529,7 @@ const SVGAnnotationLayerBody = memo(({
           // only be grabbed by landing on it.
           r={calloutHitR}
           fill="transparent"
-          style={{ cursor: 'grab', pointerEvents: 'all' }}
+          style={{ cursor: GRAB_HANDLE_CURSOR, pointerEvents: 'all' }}
         />
         {/* UX: Phase 15 UAT-3 (2026-04-17) — visible drag chrome when the
             callout is selected. Knee + arrow tip use combined-tools'
@@ -5644,24 +5671,63 @@ const SVGAnnotationLayerBody = memo(({
                 data, so no rotate grabber. Each carries data-callout-part
                 textBox-<id> and lets the press bubble to the delegated
                 callout handler (useSVGInteraction 'textBoxResize'). */}
-            {(() => {
-              const layout = calloutBoxHandleLayout(callout, calloutVisibleBox(callout, W, H));
-              if (!layout) return null;
+            {boxLayout && (
+              <SVGSelectionOverlay
+                bbox={boxLayout.bbox}
+                handleAnchors={boxLayout.anchors}
+                frameRect={boxLayout.frame}
+                alwaysShowResizeHandles={!!boxLayout.frame}
+                hideBoundingBox={!boxLayout.frame}
+                padding={0}
+                inverseScale={inverseScale}
+                hideRotationHandle
+                delegateHandlePress
+                handlePartAttributes={(id) => ({ 'data-callout-part': `textBox-${id}` })}
+              />
+            )}
+            {/* Owner 2026-10-26: the leader's attach point on the box (slides
+                along the border) and a grabber halfway along each leader
+                line (moves that line as one piece) - utils/calloutLeaderGrabbers.js.
+                Drawn last so a grabber stepped clear of a box corner is never
+                under that corner's press pad. */}
+            {leaderGrabbers && ['attach', 'segBox', 'segTip'].map((part) => {
+              const at = leaderGrabbers[part];
+              if (!at) return null;
+              const dotR = part === 'attach' ? calloutHandleR : calloutSegmentR;
+              const others = [
+                { x: atX, y: atY }, { x: kX, y: kY },
+                ...Object.values(boxLayout?.anchors || {}),
+                leaderGrabbers.attach, leaderGrabbers.segBox, leaderGrabbers.segTip,
+              ].filter((p) => p && p !== at);
+              const hitR = leaderGrabberHitRadius(at, calloutHitR, dotR, others);
               return (
-                <SVGSelectionOverlay
-                  bbox={layout.bbox}
-                  handleAnchors={layout.anchors}
-                  frameRect={layout.frame}
-                  alwaysShowResizeHandles={!!layout.frame}
-                  hideBoundingBox={!layout.frame}
-                  padding={0}
-                  inverseScale={inverseScale}
-                  hideRotationHandle
-                  delegateHandlePress
-                  handlePartAttributes={(id) => ({ 'data-callout-part': `textBox-${id}` })}
-                />
+                <g key={`callout-leader-${part}`} data-callout-part={part}>
+                  <circle
+                    data-handle-hit-pad={`callout-${part}`}
+                    cx={at.x}
+                    cy={at.y}
+                    r={hitR}
+                    fill="transparent"
+                    style={{ cursor: GRAB_HANDLE_CURSOR, pointerEvents: 'all', touchAction: 'none' }}
+                  />
+                  <circle
+                    data-callout-leader-grabber={part}
+                    cx={at.x}
+                    cy={at.y}
+                    r={dotR}
+                    fill={HANDLE_FILL}
+                    stroke={ringColor}
+                    strokeWidth={1.5}
+                    vectorEffect="non-scaling-stroke"
+                    style={{
+                      filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
+                      cursor: GRAB_HANDLE_CURSOR,
+                      pointerEvents: 'all',
+                    }}
+                  />
+                </g>
               );
-            })()}
+            })}
           </>
         )}
       </g>
@@ -5929,6 +5995,10 @@ const SVGAnnotationLayerBody = memo(({
             key={`callout-handles-${displayCallout.id || i}`}
             data-callout-handle-overlay="true"
             transform={groupMoveTransform}
+            // A pen press here must never start a text selection: one left
+            // behind by a drag turns the next grabber press into a native
+            // drag-and-drop that swallows the rest of the stroke.
+            style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
             data-edit-entry-kind={editEntryTargetsMounted ? 'callout' : undefined}
             data-pan-edit-entry={editEntryTargetsMounted ? 'true' : undefined}
             onPointerEnter={() => handleCalloutPointerEnter(displayCallout.id)}
@@ -8626,7 +8696,7 @@ const SVGAnnotationLayerBody = memo(({
                 r={counterHitPad / 2}
                 fill="transparent"
                 stroke="none"
-                style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+                style={{ cursor: ROTATE_HANDLE_CURSOR, pointerEvents: 'auto', touchAction: 'none' }}
                 {...counterRotateHandlers}
               />
               <circle
@@ -8639,10 +8709,11 @@ const SVGAnnotationLayerBody = memo(({
                 vectorEffect="non-scaling-stroke"
                 style={{
                   // UX: rotation handle is the only interactive chrome in counter
-                  // selection mode (Shottr UX). Cursor 'grab' signals draggability;
-                  // pointer-events 'auto' so it remains hit-testable even though the
-                  // surrounding SVG layer flips to pointer-events:none in edit mode.
-                  cursor: 'grab',
+                  // selection mode (Shottr UX). The turn grabber's pointing hand
+                  // (utils/handleCursors.js); pointer-events 'auto' so it remains
+                  // hit-testable even though the surrounding SVG layer flips to
+                  // pointer-events:none in edit mode.
+                  cursor: ROTATE_HANDLE_CURSOR,
                   pointerEvents: 'auto',
                   // UX: same scale as handleR above (clamped, so the shadow
                   // stops growing on extreme zoom-out). Matches SVGSelectionOverlay.
@@ -8860,7 +8931,7 @@ const SVGAnnotationLayerBody = memo(({
           const handleR = HANDLE_RADIUS * handleIs;
           const handleStyle = {
             filter: `drop-shadow(0 ${1 * handleIs}px ${3 * handleIs}px rgba(0,0,0,0.15))`,
-            cursor: 'grab',
+            cursor: GRAB_HANDLE_CURSOR,
             pointerEvents: 'auto',
           };
           // UX 2026-09-16: an invisible pad behind each endpoint / bend grabber
@@ -8896,7 +8967,7 @@ const SVGAnnotationLayerBody = memo(({
               rx={lineHitPad / 4}
               fill="transparent"
               stroke="none"
-              style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+              style={{ cursor: GRAB_HANDLE_CURSOR, pointerEvents: 'auto', touchAction: 'none' }}
               onPointerDown={(e) => { if (lineToolChainsFromEnd(e, handleId)) return; e.stopPropagation(); handleHandlePointerDown(e, handleId); }}
             />
           );
@@ -8913,8 +8984,8 @@ const SVGAnnotationLayerBody = memo(({
           // UX: 3rd handle, visibly smaller than endpoints (r=5 vs r=7) to
           // signal "secondary control" per 15-UI-SPEC §A. Same white-fill /
           // blue-ring / drop-shadow as the endpoints so the visual language
-          // is unified. cursor:'grab' so all three handles share grabbable
-          // semantics. Dispatches handleId='midpoint' to the existing hook
+          // is unified. All three show the point grabbers' pointing hand
+          // (utils/handleCursors.js). Dispatches handleId='midpoint' to the existing hook
           // dispatcher — wired in useSVGInteraction.js Plan 15-03 Task 3.
           // The curve-bend handle is intentionally a touch smaller than the
           // primary handles (HANDLE_RADIUS_SECONDARY vs HANDLE_RADIUS) so it
@@ -9059,7 +9130,7 @@ const SVGAnnotationLayerBody = memo(({
           }) / 2;
           const vHandleStyle = {
             filter: `drop-shadow(0 ${1 * vHandleIs}px ${3 * vHandleIs}px rgba(0,0,0,0.15))`,
-            cursor: 'grab',
+            cursor: GRAB_HANDLE_CURSOR,
             pointerEvents: 'auto',
           };
           const clearVertexLongPress = () => {
@@ -9297,7 +9368,7 @@ const SVGAnnotationLayerBody = memo(({
                       fill="transparent"
                       stroke="none"
                       data-poly-vertex-index={i}
-                      style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      style={{ pointerEvents: 'auto', cursor: GRAB_HANDLE_CURSOR }}
                       onPointerDown={onVertexPointerDown(i)}
                       onContextMenu={onVertexContextMenu(i)}
                     />
@@ -9763,6 +9834,8 @@ const SVGAnnotationLayerBody = memo(({
                   // Owner ruling 2026-09-28: a lock on the group frame when
                   // any selected member is locked (it stays put in a move).
                   locked={groupHasLockedMember}
+                  // The frame turns in this wrapper, not in its bbox.
+                  cursorRotationOffset={totalAngle}
                 />
                 {/* Invisible hit-test rect so the resolver's
                     getBoundingClientRect fallback has a concrete

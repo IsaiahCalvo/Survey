@@ -226,7 +226,7 @@ function constrainKneePosition(proposedKnee, arrowTip, boxLeft, boxTop, boxRight
 }
 
 /**
- * Calculate the connection geometry for a callout
+ * The default connection geometry for a callout (no pinned attach point)
  * Returns the start points for line 1 (textbox to knee) and line 2 (knee to arrow)
  *
  * @param {number} boxLeft - Left edge of the textbox
@@ -238,7 +238,7 @@ function constrainKneePosition(proposedKnee, arrowTip, boxLeft, boxTop, boxRight
  * @param {number} [borderWidth=0] - Border width to account for
  * @returns {{ line1Start: { x: number, y: number }, shouldHideLine1: boolean, line2Start: { x: number, y: number }, effectiveKnee: { x: number, y: number } }}
  */
-export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, arrowTip, borderWidth = 0) => {
+const calculateAutoCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, arrowTip, borderWidth = 0) => {
   // Account for border width
   const adjustedBoxLeft = boxLeft + borderWidth;
   const adjustedBoxTop = boxTop + borderWidth;
@@ -627,6 +627,109 @@ export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, ar
   if (arrowTip) shouldHideLine1 = false;
 
   return { line1Start, shouldHideLine1, line2Start, effectiveKnee };
+};
+
+/*
+ * Leader attach point (owner 2026-10-26: "we don't have a handle for where the
+ * first line connects to the text box ... a lot of callout tools do").
+ *
+ * By default the knee-to-box line meets the box at the point of the box
+ * nearest the knee. Dragging the attach grabber pins it anywhere along the
+ * box's border instead. The pin is stored on the callout as
+ * `textBoxAnchor: { side, t }`: which side ('top' | 'right' | 'bottom' |
+ * 'left') and how far along it (0..1, left-to-right or top-to-bottom). Being
+ * relative to the box, it rides along when the box is moved or resized.
+ *
+ * A pin is only used while the knee is outside that side (beyond its line), so
+ * the knee-to-box line can never cut through the box. When the knee is moved
+ * round to another side the default point takes over again; the pin is kept
+ * and comes back if the knee does. Callouts without a pin draw exactly as
+ * before.
+ */
+export const CALLOUT_ANCHOR_SIDES = ['top', 'right', 'bottom', 'left'];
+const ANCHOR_SIDE_EPSILON = 0.5;
+
+/** A stored anchor as { side, t } with t in [0, 1], or null if unusable. */
+export function normalizeCalloutBoxAnchor(anchor) {
+  if (!anchor || typeof anchor !== 'object') return null;
+  if (!CALLOUT_ANCHOR_SIDES.includes(anchor.side)) return null;
+  const t = Number(anchor.t);
+  if (!Number.isFinite(t)) return null;
+  return { side: anchor.side, t: Math.max(0, Math.min(1, t)) };
+}
+
+/** The page point of an anchor on the box (left, top, right, bottom). */
+export function calloutBoxAnchorPoint(anchor, left, top, right, bottom) {
+  const a = normalizeCalloutBoxAnchor(anchor);
+  if (!a) return null;
+  if (a.side === 'top') return { x: left + (right - left) * a.t, y: top };
+  if (a.side === 'bottom') return { x: left + (right - left) * a.t, y: bottom };
+  if (a.side === 'left') return { x: left, y: top + (bottom - top) * a.t };
+  return { x: right, y: top + (bottom - top) * a.t };
+}
+
+/** The box sides the knee lies outside of (beyond that side's line). */
+export function calloutAnchorSidesForKnee(knee, left, top, right, bottom) {
+  if (!knee || !Number.isFinite(knee.x) || !Number.isFinite(knee.y)) return [];
+  const sides = [];
+  if (knee.y < top - ANCHOR_SIDE_EPSILON) sides.push('top');
+  if (knee.x > right + ANCHOR_SIDE_EPSILON) sides.push('right');
+  if (knee.y > bottom + ANCHOR_SIDE_EPSILON) sides.push('bottom');
+  if (knee.x < left - ANCHOR_SIDE_EPSILON) sides.push('left');
+  return sides;
+}
+
+/**
+ * The anchor nearest `point` on the sides the knee lies outside of — where the
+ * attach grabber goes while it is dragged. Null when the knee is inside or on
+ * the box (no side can take a pin).
+ */
+export function projectPointToCalloutBoxAnchor(point, knee, left, top, right, bottom) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+  const sides = calloutAnchorSidesForKnee(knee, left, top, right, bottom);
+  const w = right - left;
+  const h = bottom - top;
+  let best = null;
+  for (const side of sides) {
+    const horizontal = side === 'top' || side === 'bottom';
+    const span = horizontal ? w : h;
+    const along = horizontal ? point.x - left : point.y - top;
+    const t = span > 0 ? Math.max(0, Math.min(1, along / span)) : 0.5;
+    const anchor = { side, t };
+    const p = calloutBoxAnchorPoint(anchor, left, top, right, bottom);
+    const d = Math.hypot(p.x - point.x, p.y - point.y);
+    if (!best || d < best.d) best = { anchor, d };
+  }
+  return best ? best.anchor : null;
+}
+
+/**
+ * The connection geometry for a callout: where line 1 (box to knee) and
+ * line 2 (knee to arrow tip) start, and the knee they meet at. The optional
+ * `anchor` is the callout's pinned attach point (see above).
+ *
+ * @param {number} boxLeft
+ * @param {number} boxTop
+ * @param {number} boxW
+ * @param {number} boxH
+ * @param {{ x: number, y: number }} knee
+ * @param {{ x: number, y: number }} [arrowTip]
+ * @param {number} [borderWidth=0]
+ * @param {{ side: string, t: number } | null} [anchor]
+ */
+export const calculateCalloutConnection = (boxLeft, boxTop, boxW, boxH, knee, arrowTip, borderWidth = 0, anchor = null) => {
+  const conn = calculateAutoCalloutConnection(boxLeft, boxTop, boxW, boxH, knee, arrowTip, borderWidth);
+  if (!anchor || !knee) return conn;
+  // Only when the knee was not re-routed: a re-route means the knee sits in
+  // or behind the box, where the default point is the only clean one.
+  if (Math.hypot(conn.effectiveKnee.x - knee.x, conn.effectiveKnee.y - knee.y) > 0.01) return conn;
+  const left = boxLeft + borderWidth;
+  const top = boxTop + borderWidth;
+  const right = boxLeft + boxW + borderWidth;
+  const bottom = boxTop + boxH + borderWidth;
+  const a = normalizeCalloutBoxAnchor(anchor);
+  if (!a || !calloutAnchorSidesForKnee(knee, left, top, right, bottom).includes(a.side)) return conn;
+  return { ...conn, line1Start: calloutBoxAnchorPoint(a, left, top, right, bottom), shouldHideLine1: false };
 };
 
 // Export helper functions for potential external use
