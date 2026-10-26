@@ -5145,6 +5145,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
       ...(counterMetadata.series?.name != null ? { seriesName: counterMetadata.series.name } : {}),
       ...(counterMetadata.series?.color != null ? { seriesColor: counterMetadata.series.color } : {}),
       ...(counterMetadata.series?.start != null ? { seriesStart: counterMetadata.series.start } : {}),
+      ...(counterMetadata.series?.order != null ? { seriesOrder: counterMetadata.series.order } : {}),
       ...(counterMetadata.group?.id != null ? { groupId: counterMetadata.group.id } : {}),
       ...(counterMetadata.group?.sequence != null ? { sequence: counterMetadata.group.sequence } : {}),
       ...(counterMetadata.data?.numberColor != null ? { numberColor: counterMetadata.data.numberColor } : {}),
