@@ -97,6 +97,15 @@ async function readMarker(page) {
   }, MARKER_ID);
 }
 
+
+// The fixture's "Redactions are not applied" notice sits over the chat's foot,
+// where the box's buttons are. Dismissing it is a tap outside the chat, so
+// open the chat again.
+async function clearFixtureNotice(page, panel) {
+  await page.getByRole('button', { name: 'Dismiss' }).first().click({ timeout: 5_000 }).catch(() => {});
+  if (!(await panel.isVisible())) await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+}
+
 test('Survey agent fills an item from a typed message and undoes it', async ({ page }) => {
   const calls = [];
   const data = await seed();
@@ -192,47 +201,32 @@ test('Survey agent sets an answer by item name with no separate search', async (
   expect(calls.filter((c) => c.action === 'turn')).toHaveLength(2);
 });
 
-// Spanish: picked in the chat, sent with each turn so the model answers in
-// Spanish, and spoken by the device in a Spanish voice (the server voice
-// speaks English only).
-test('Survey agent in Spanish: the reply is asked for in Spanish and spoken in a Spanish voice', async ({ page }) => {
+// The box (owner 2026-10-26, after ChatGPT's phone chat box): English only;
+// attach and read-aloud on the left, talk and hands-free on the right inside
+// the box; typing turns hands-free into Send; talking turns the typing line
+// into a waveform with Cancel, and the mic becomes stop-and-send.
+test('Survey agent box: English only, voice buttons inside the box, waveform while talking', async ({ page }) => {
   const calls = [];
   const data = await seed();
   await page.addInitScript(({ template, data: d }) => {
     localStorage.setItem('SURVEY_AGENT_BETA', '1');
-    localStorage.setItem('survey.agent.speak', '1');
+    localStorage.setItem('survey.agent.speak', '0');
     localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
     localStorage.setItem(d.key, JSON.stringify(d.markers));
-    window.__spoken = [];
-    class Utterance { constructor(text) { this.text = text; } }
-    window.SpeechSynthesisUtterance = Utterance;
-    Object.defineProperty(window, 'speechSynthesis', {
-      configurable: true,
-      value: { speak(u) { window.__spoken.push([u.text, u.lang]); setTimeout(() => u.onend?.(), 50); }, cancel() {} },
-    });
+    // A stand-in for the browser's own speech: hears "door 117 has no power"
+    // as it goes, and ends (sending) on stop, or ends with nothing on abort.
+    class FakeRecognition {
+      start() {
+        window.__recLang = this.lang;
+        setTimeout(() => this.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript: 'door 117 has no power' }], { isFinal: false })] }), 50);
+      }
+      stop() { setTimeout(() => this.onend?.(), 10); }
+      abort() { setTimeout(() => this.onend?.(), 10); }
+    }
+    window.webkitSpeechRecognition = FakeRecognition;
+    window.SpeechRecognition = FakeRecognition;
   }, { template: TEMPLATE, data });
-  await page.route('**/functions/v1/survey-agent', async (route) => {
-    if (route.request().method() === 'OPTIONS') {
-      await route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
-      return;
-    }
-    const body = route.request().postDataJSON();
-    calls.push(body);
-    const reply = (json) => route.fulfill({
-      status: 200,
-      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
-      body: JSON.stringify(json),
-    });
-    if (body.action === 'status') return reply({ enabled: true, reason: null, transcription: false, speech: true, over_cap: false });
-    if (body.action === 'speak') return reply({ audio: '', mime: 'audio/wav' });
-    const tools = body.messages.filter(isToolResult);
-    if (!tools.length) {
-      return reply({ message: { content: '', tool_calls: [
-        { id: 's1', type: 'function', function: { name: 'set_answers', arguments: JSON.stringify({ item_name: 'D-117', answers: [{ checklist_item_id: 'cl-power', value: 'N' }] }) } },
-      ] } });
-    }
-    return reply({ message: { content: 'D-117: sin energía, marqué N.', tool_calls: [] } });
-  });
+  await mockModel(page, calls);
 
   await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
   await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
@@ -240,23 +234,70 @@ test('Survey agent in Spanish: the reply is asked for in Spanish and spoken in a
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
   await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
   const panel = page.getByRole('region', { name: 'Survey agent' });
-  await panel.getByRole('button', { name: 'Language: English' }).click();
-  await expect(panel.getByRole('button', { name: 'Language: Español' })).toHaveText('ES');
   const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
   await expect(input).toBeEnabled();
-  await input.fill('D-117 no tiene energía');
-  await input.press('Enter');
 
-  await expect(panel.getByText('D-117: sin energía, marqué N.')).toBeVisible();
-  await expect.poll(async () => (await readMarker(page))?.checklistResponses?.['cl-power']?.selection).toBe('N');
+  await clearFixtureNotice(page, panel);
+  // No language switch anywhere; the voice buttons live in the box.
+  await expect(panel.getByRole('button', { name: /Language/ })).toHaveCount(0);
+  const box = panel.locator('.survey-agent__box');
+  await expect(box.getByRole('button', { name: 'Add photos or files' })).toBeVisible();
+  await expect(box.getByRole('button', { name: 'Talk' })).toBeVisible();
+  await expect(box.getByRole('button', { name: 'Send' })).toBeDisabled();
+
+  // Talk, then Cancel: the line is a waveform, nothing is sent.
+  await box.getByRole('button', { name: 'Talk' }).click();
+  await expect(box.locator('.survey-agent__wave')).toBeVisible();
+  await expect(input).toHaveCount(0);
+  await expect(box.getByText('door 117 has no power')).toBeVisible();
+  await box.screenshot({ path: 'test-results/survey-agent-wave.png' });
+  await box.getByRole('button', { name: 'Cancel' }).click();
+  await expect(panel.getByRole('textbox', { name: 'Message the Survey agent' })).toHaveValue('');
+  expect(calls.filter((c) => c.action === 'turn')).toHaveLength(0);
+
+  // Talk, then the red mic sends what was heard.
+  await box.getByRole('button', { name: 'Talk' }).click();
+  await expect(box.getByText('door 117 has no power')).toBeVisible();
+  await box.getByRole('button', { name: 'Stop and send' }).click();
+  await expect(panel.getByText('D-117: power is N and I added a note.')).toBeVisible();
+  expect(await page.evaluate(() => window.__recLang)).toMatch(/^en-/);
   const turns = calls.filter((c) => c.action === 'turn');
-  expect(turns.length).toBe(2);
-  expect(turns.every((t) => t.lang === 'es')).toBe(true);
-  // Spoken by the device in Spanish; the English server voice is not asked.
-  await expect.poll(() => page.evaluate(() => window.__spoken)).toEqual([['D 117: sin energía, marqué N.', 'es-US']]);
-  expect(calls.filter((c) => c.action === 'speak')).toHaveLength(0);
-  // Remembered for next time.
-  expect(await page.evaluate(() => localStorage.getItem('survey.agent.lang'))).toBe('es');
+  expect(turns.length).toBeGreaterThan(0);
+  expect(turns.every((t) => !t.lang || t.lang === 'en')).toBe(true);
+});
+
+// With server hearing on, the right-hand button is hands-free until there is
+// something to send.
+test('Survey agent box: hands-free sits in the box and turns into Send while typing', async ({ page }) => {
+  const calls = [];
+  const data = await seed();
+  await page.addInitScript(({ template, data: d }) => {
+    localStorage.setItem('SURVEY_AGENT_BETA', '1');
+    localStorage.setItem('survey.agent.speak', '0');
+    localStorage.setItem('mobileWorkflowTemplates', JSON.stringify([template]));
+    localStorage.setItem(d.key, JSON.stringify(d.markers));
+  }, { template: TEMPLATE, data });
+  await mockModel(page, calls, { enabled: true, reason: null, transcription: true, over_cap: false });
+
+  await page.goto(`/?testPdf=${encodeURIComponent(PDF_FILE)}&surveyTemplateWorkflowE2E=1`);
+  await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').waitFor({ state: 'visible', timeout: 60_000 });
+  await page.getByRole('button', { name: 'Survey', exact: true }).click();
+  await page.getByRole('button', { name: /Door Agent Template/ }).click();
+  await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+  const panel = page.getByRole('region', { name: 'Survey agent' });
+  const box = panel.locator('.survey-agent__box');
+  const input = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await expect(input).toBeEnabled();
+  await clearFixtureNotice(page, panel);
+  await expect(box.getByRole('button', { name: 'Hands-free' })).toBeEnabled();
+  await expect(panel.locator('.survey-agent__head').getByRole('button', { name: 'Hands-free' })).toHaveCount(0);
+  await expect(box.getByRole('button', { name: 'Send' })).toHaveCount(0);
+  await input.fill('door 117 has no power');
+  await expect(box.getByRole('button', { name: 'Hands-free' })).toHaveCount(0);
+  await expect(box.getByRole('button', { name: 'Send' })).toBeEnabled();
+  await input.fill('');
+  await expect(box.getByRole('button', { name: 'Hands-free' })).toBeVisible();
+  await panel.screenshot({ path: 'test-results/survey-agent-box.png' });
 });
 
 // Phase 2 (KAL-528): the model finds a tag on the plan and adds it as an item.
