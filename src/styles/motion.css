@@ -123,3 +123,17 @@
 [data-motion-state="closing"] * {
   pointer-events: none !important;
 }
+
+/* A document shown again (Home and back) stays exactly as it was left (owner
+   2026-10-26, item 38): the viewer comes back from display: none, which
+   restarts these entry animations, so for a moment they run at 0s and land
+   at once. src/hooks/useViewerReturnQuiet.js sets and clears the mark. */
+:root[data-viewer-returning] :is(
+  .survey-surface-in,
+  .survey-entitybar,
+  .chrome-row-drop-in,
+  .left-rail__panel,
+  #survey-rail-panel
+) {
+  animation-duration: 0s !important;
+}

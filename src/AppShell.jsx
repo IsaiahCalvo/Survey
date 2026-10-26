@@ -79,6 +79,7 @@ import { useAuth } from './contexts/AuthContext';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
 import useFileDropZone from './hooks/useFileDropZone.js';
+import useViewerReturnQuiet from './hooks/useViewerReturnQuiet.js';
 import FileDropOverlay from './components/FileDropOverlay.jsx';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { startsInSignUp, useOptionalAuth } from './components/OptionalAuthPrompt';
@@ -2016,6 +2017,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   // Shift+S flips snapping (the rail's magnet button says the same).
   useSnappingShortcut(Boolean(isViewerVisible));
+  useViewerReturnQuiet(Boolean(isViewerVisible));
   // Pinned tools dock (Survey Nightly only, beta flag 'pinned-tools'):
   // components/PinnedToolsDock.jsx. Read once at load, like every flag.
   const [pinnedToolsEnabled] = useState(() => isFeatureOn('pinned-tools'));
