@@ -82,16 +82,15 @@ test('confirm text states the real consequence; a bare page needs no confirm', (
   assert.equal(buildDeleteSpaceConfirm({ spaceName: 'E', pageCount: 0, impact: null }).message, 'No marks are deleted.');
 });
 
-test('row count label counts pages, areas apart', () => {
-  assert.equal(formatSpaceCountLabel(3, 2), '3 pages · 2 areas');
-  assert.equal(formatSpaceCountLabel(1, 0), '1 page');
-  assert.equal(formatSpaceCountLabel(0, 0), '0 pages');
+test('row count is a small region line under the space name', () => {
+  // DELIBERATE CHANGE (owner 2026-10-26): the count left the front of the row
+  // ("something a little more minimal ... smaller and underneath").
+  assert.equal(formatSpaceCountLabel(3), '3 regions');
+  assert.equal(formatSpaceCountLabel(1), '1 region');
+  assert.equal(formatSpaceCountLabel(0), 'No regions');
   const panel = read('src/sidebar/SpacesPanel.jsx');
-  // DELIBERATE CHANGE (owner 2026-10-02, Spaces cards restored): the row
-  // shows the PAGE count as a plain muted figure again (the layout he had);
-  // the whole "3 pages · 2 areas" label is its accessible name and tooltip.
-  assert.match(panel, /data-space-meta\s+aria-label=\{regionCountLabel\}\s+\{\.\.\.tip\(regionCountLabel, 'below'\)\}\s*>\s*\{pageCount\}\s*<\/span>/, 'the visible count is the page count, named by the page / area label');
-  assert.match(panel, /formatSpaceCountLabel\(pageCount, regionCount\)/);
+  assert.match(panel, /<\/span>\s*<span className="space-card__count" data-space-meta>\{regionCountLabel\}<\/span>\s*<\/span>/, 'the count sits under the name, inside the title');
+  assert.match(panel, /formatSpaceCountLabel\(pageCount\)/);
 });
 
 test('page removal is one Undo step: Undo puts the page and its cascaded marks back, Redo removes them', () => {
