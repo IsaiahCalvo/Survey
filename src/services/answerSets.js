@@ -67,6 +67,7 @@ export const ANSWER_SET_PRESETS = Object.freeze([
 // More ready-made sets, shown only with the nightly 'custom-answers' flag.
 const freezeSet = (pairs) => Object.freeze(pairs.map(([value, tone]) => Object.freeze({ value, tone })));
 export const EXTRA_ANSWER_SET_PRESETS = Object.freeze([
+  Object.freeze({ id: 'yes-no-na-words', label: 'Yes / No / N/A', answers: freezeSet([['Yes', 'good'], ['No', 'bad'], ['N/A', 'neutral']]) }),
   Object.freeze({ id: 'yes-no', label: 'Y / N', answers: freezeSet([['Y', 'good'], ['N', 'bad']]) }),
   Object.freeze({ id: 'done', label: 'Done', answers: freezeSet([['Done', 'good']]) }),
   Object.freeze({
@@ -156,6 +157,8 @@ export function isDoneAnswer(set, value) {
   return tone === 'good' || tone === 'neutral';
 }
 
+// Excel's limit on a typed-in drop-down list, quotes included.
+export const EXCEL_LIST_MAX = 257;
 /** The Excel dropdown list for the set, e.g. '"Y,N,N/A"'. */
 export function excelAnswerListFormula(set) {
   return `"${set.map((a) => a.value).join(',')}"`;
@@ -226,10 +229,29 @@ export function excelValidationFor(item, set) {
   if (kind === 'many') {
     return { ...rule('textLength', 'lessThanOrEqual', [255], 'Too long', 'Please keep it to 255 characters'), prompt: `${hint}, separated by commas`.slice(0, 255) };
   }
+  const list = excelAnswerListFormula(set);
+  if (list.length > EXCEL_LIST_MAX) {
+    // Excel refuses a typed-in list this long: keep the answers' length rule
+    // and name them in the cell's hint instead.
+    return {
+      type: 'textLength',
+      operator: 'lessThanOrEqual',
+      allowBlank: true,
+      formulae: [20],
+      showErrorMessage: true,
+      errorStyle: 'error',
+      errorTitle: 'Invalid selection',
+      error: 'Please type one of the answers',
+      showInputMessage: true,
+      promptTitle: 'Answers',
+      prompt: `Pick one of ${set.map((a) => a.value).join(', ')}`.slice(0, 255),
+      ...excelMeansPrompt(set),
+    };
+  }
   return {
     type: 'list',
     allowBlank: true,
-    formulae: [excelAnswerListFormula(set)],
+    formulae: [list],
     showErrorMessage: true,
     errorStyle: 'error',
     errorTitle: 'Invalid selection',

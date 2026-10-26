@@ -11,11 +11,14 @@
  * - date: the system date picker.
  * - many: its options as chips; each press turns one on or off. A lit chip
  *   takes its option's tone (a bad option lights red).
+ *
+ * ChoiceSelect is the pick-one control for a template list too long for a
+ * row of buttons (more than CHOICE_BUTTONS_MAX answers).
  */
 import { useState } from 'react';
 import { useTooltip } from './Tooltip';
 import {
-  itemKind, manyOptionsOf, manyPicked, scoreScaleOf, typedAnswer, typedAnswerIsIssue, TYPED_ANSWER_MAX,
+  itemKind, manyOptionsOf, manyPicked, sameAnswer, scoreScaleOf, typedAnswer, typedAnswerIsIssue, TYPED_ANSWER_MAX,
 } from '../services/answerSets.js';
 
 const boxStyle = (phone, width, align = 'left') => ({
@@ -103,6 +106,28 @@ function ScoreAnswer({ item, saved, onCommit, phone }) {
 }
 
 const TONE_CLASS = { good: 'is-yes', bad: 'is-no', neutral: 'is-na' };
+
+export const CHOICE_BUTTONS_MAX = 6;
+
+export function ChoiceSelect({ item, set, value, onCommit, phone = false }) {
+  const saved = value == null ? '' : String(value);
+  const picked = set.find((a) => sameAnswer(a.value, saved));
+  return (
+    <select
+      aria-label={`${item?.text || 'Checklist'} answer`}
+      value={picked ? picked.value : ''}
+      onClick={stop}
+      onChange={(e) => { if (e.target.value !== saved) onCommit(e.target.value); }}
+      style={{
+        ...boxStyle(phone, phone ? 150 : 120),
+        color: picked?.tone === 'bad' ? 'var(--danger-text)' : 'var(--text-1)',
+      }}
+    >
+      <option value="">–</option>
+      {set.map((a) => <option key={a.value} value={a.value}>{a.value}</option>)}
+    </select>
+  );
+}
 
 function ManyAnswer({ item, saved, onCommit, phone }) {
   const tip = useTooltip();

@@ -1,20 +1,24 @@
 /**
  * AnswerSetEditor — type a template's own checklist answers (nightly flag
- * 'custom-answers'): 1 to 6 answers, each marked Good, Problem or Neutral,
- * with an optional "means" line.
+ * 'custom-answers'): 1 to MAX_ANSWERS answers, each marked Good, Problem or
+ * Neutral, with an optional "means" line.
  * Good and Neutral answers count as done; Problem answers show as issues.
  *
- * The typed list is a local draft. It reaches the template only while it is
- * usable (answerSets.cleanAnswerSet), so a half-typed list never replaces the
- * last good one and nothing downstream (card buttons, Excel drop-down, agent)
- * ever sees a broken set.
+ * The typed list is a local draft. Only a usable list
+ * (answerSets.cleanAnswerSet) ever reaches the template, so nothing
+ * downstream (card buttons, Excel drop-down, agent) sees a broken set.
+ * Inline, a usable list is written as you type. With `modal` it opens as a
+ * dialog and is written once, on Save; Cancel keeps the old list.
  */
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './HubShell';
+import useModalFocusTrap from './useModalFocusTrap';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import {
   ANSWER_MEANS_MAX, ITEM_UNIT_MAX, MAX_ANSWERS, SCORE_SCALES, itemAnswerFields, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
 } from '../services/answerSets.js';
+import { ITEM_TYPE_LIBRARY, itemTypeById } from '../services/itemTypeLibrary.js';
 
 const TONE_OPTIONS = [
   { value: 'good', label: 'Good' },
@@ -27,9 +31,15 @@ const fieldStyle = {
   border: '1px solid var(--rule)', borderRadius: 4, padding: '3px 6px', minWidth: 0,
 };
 
+const stopEvent = (e) => e.stopPropagation();
+
 const toDraft = (a) => ({ value: a.value, tone: a.tone, means: a.means || '' });
 
-export default function AnswerSetEditor({ set, onCommit, onClose, phone = false, intro = null }) {
+/**
+ * modal: { kicker, title } opens the editor as a dialog with Cancel / Save.
+ */
+export default function AnswerSetEditor({ set, onCommit, onClose, phone = false, intro = null, modal = null }) {
+  const tip = useTooltip();
   const [draft, setDraft] = useState(() => set.map(toDraft));
   // The set this editor last wrote. Any other change from outside (Cancel,
   // a reload, picking a preset) replaces the draft.
@@ -39,23 +49,36 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
     lastWritten.current = set;
     setDraft(set.map(toDraft));
   }, [set]);
+  const dialogRef = useRef(null);
+  const closeRef = useRef(null);
+  useModalFocusTrap({ active: Boolean(modal), containerRef: dialogRef, initialFocusRef: closeRef, onClose });
 
   const update = (next) => {
     setDraft(next);
+    if (modal) return;
     const clean = cleanAnswerSet(next);
     if (clean && !sameAnswerSet(clean, lastWritten.current)) {
       lastWritten.current = clean;
       onCommit(clean);
     }
   };
+  const save = () => {
+    const clean = cleanAnswerSet(draft);
+    if (!clean) return;
+    if (!sameAnswerSet(clean, set)) onCommit(clean);
+    onClose();
+  };
   const problem = answerSetProblem(draft);
-  const pad = phone ? '8px 16px 12px' : '8px 18px 10px';
+  const pad = modal ? '14px 16px' : phone ? '8px 16px 12px' : '8px 18px 10px';
 
-  return (
+  const body = (
     <div
       className="hub-answer-set-editor"
       data-testid="answer-set-editor"
-      style={{ padding: pad, borderBottom: '1px solid var(--rule)', display: 'flex', flexDirection: 'column', gap: 6 }}
+      style={{
+        padding: pad, borderBottom: modal ? 0 : '1px solid var(--rule)', display: 'flex', flexDirection: 'column', gap: 6,
+        ...(modal ? { maxHeight: 'min(60vh, 520px)', overflowY: 'auto' } : {}),
+      }}
     >
       <p className="micro" style={{ margin: 0 }}>
         {intro || (
@@ -117,22 +140,64 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
           <Icon name="plus" size={12} /> Add answer
         </button>
         <span className="micro" style={{ flex: 1 }}>{draft.length} of {MAX_ANSWERS}</span>
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={Boolean(problem)}
-          style={{
-            padding: '4px 12px', border: '1px solid var(--rule)', background: 'transparent',
-            color: 'var(--ink)', borderRadius: 4, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          Done
-        </button>
+        {!modal && (
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={Boolean(problem)}
+            style={{
+              padding: '4px 12px', border: '1px solid var(--rule)', background: 'transparent',
+              color: 'var(--ink)', borderRadius: 4, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Done
+          </button>
+        )}
       </div>
       {problem && <p role="alert" className="micro" style={{ margin: 0, color: 'var(--danger, #c0392b)' }}>{problem}</p>}
     </div>
   );
+  if (!modal) return body;
+  return createPortal(
+    // A portal still bubbles React events to the row that opened it (drag,
+    // select), so they stop here.
+    <div
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      onPointerDown={stopEvent}
+      onMouseDown={stopEvent}
+      onKeyDown={stopEvent}
+      style={{ position: 'fixed', inset: 0, background: 'var(--overlay-scrim)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5600 }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={modal.title}
+        data-modal-focus-layer="true"
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: phone ? 'calc(100vw - 32px)' : 560, maxWidth: 'calc(100vw - 32px)', overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)' }}
+      >
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 11, letterSpacing: 0, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'var(--font-ui)' }}>{modal.kicker}</p>
+            <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: 'var(--font-ui)' }}>{modal.title}</h3>
+          </div>
+          <button type="button" ref={closeRef} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
+        </div>
+        {body}
+        <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} className="hub-btn">Cancel</button>
+          <button type="button" onClick={save} disabled={Boolean(problem)} className="hub-btn hub-btn--primary">Save</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
+
+// Ready types share the kind list; their values carry this prefix.
+const TYPE_PREFIX = 'type:';
 
 const KIND_OPTIONS = [
   { value: 'choice', label: 'Pick one' },
@@ -198,10 +263,20 @@ export function ItemKindPicker({ item, onChange, phone = false }) {
       <select
         aria-label={`How "${name}" is answered`}
         value={kind}
-        onChange={(e) => onChange(e.target.value === 'choice' ? {} : itemAnswerFields({ ...fields, kind: e.target.value }))}
+        onChange={(e) => {
+          const v = e.target.value;
+          const ready = v.startsWith(TYPE_PREFIX) ? itemTypeById(v.slice(TYPE_PREFIX.length)) : null;
+          if (ready) onChange(itemAnswerFields(ready.fields));
+          else onChange(v === 'choice' ? {} : itemAnswerFields({ ...fields, kind: v }));
+        }}
         style={selectStyle}
       >
-        {KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+        <optgroup label="Answered as">
+          {KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+        </optgroup>
+        <optgroup label="Ready types">
+          {ITEM_TYPE_LIBRARY.map((t) => <option key={t.id} value={`${TYPE_PREFIX}${t.id}`}>{t.label}</option>)}
+        </optgroup>
       </select>
       {kind === 'number' && (
         <SettingBox text label={`Unit for "${name}"`} placeholder="unit" value={fields.unit} maxLength={ITEM_UNIT_MAX} width={phone ? 56 : 44} size={size} onCommit={(unit) => set({ unit })} />
@@ -225,9 +300,10 @@ export function ItemKindPicker({ item, onChange, phone = false }) {
         </>
       )}
       {kind === 'many' && (
-        <span style={{ position: 'relative' }}>
+        <span>
           <button
             type="button"
+            aria-haspopup="dialog"
             aria-expanded={optionsOpen}
             aria-label={`Options for "${name}"`}
             onClick={() => setOptionsOpen((v) => !v)}
@@ -236,21 +312,14 @@ export function ItemKindPicker({ item, onChange, phone = false }) {
             Options ({fields.options.length})
           </button>
           {optionsOpen && (
-            <div
-              style={{
-                position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 20, width: 'min(420px, 90vw)',
-                background: 'var(--paper-card, var(--surface-2))', border: '1px solid var(--rule)', borderRadius: 6,
-                boxShadow: '0 6px 24px rgba(0,0,0,0.18)', textAlign: 'left',
-              }}
-            >
-              <AnswerSetEditor
-                phone={phone}
-                set={fields.options}
-                onCommit={(options) => set({ options })}
-                onClose={() => setOptionsOpen(false)}
-                intro="The options people can pick, any number of them. Any pick counts as done; a Problem option shows as an issue."
-              />
-            </div>
+            <AnswerSetEditor
+              phone={phone}
+              modal={{ kicker: 'Pick many options', title: name }}
+              set={fields.options}
+              onCommit={(options) => set({ options })}
+              onClose={() => setOptionsOpen(false)}
+              intro="The options people can pick, any number of them. Any pick counts as done; a Problem option shows as an issue."
+            />
           )}
         </span>
       )}

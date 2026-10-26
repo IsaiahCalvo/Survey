@@ -1051,13 +1051,11 @@ export default function TemplatesEditor({
   const ownAnswerSetOf = (t) => t.answerSet || getExportKit(t.exportKitId)?.answerSet;
   const answerPickerProps = (t) => {
     const presetId = answerPresetIdOf(ownAnswerSetOf(t), answerPresets);
-    const editing = customAnswers && answerEditorFor === t.id;
     return {
-      value: editing ? '' : presetId,
+      value: presetId,
       onChange: (e) => {
         if (e.target.value === OWN_ANSWERS) { setAnswerEditorFor(t.id); return; }
         if (!e.target.value) return; // "Custom" is the list already in use
-        setAnswerEditorFor(null);
         const preset = answerPresets.find((p) => p.id === e.target.value);
         mutateTpl(t.id, (cur) => {
           const { answerSet: _a, ...rest } = cur;
@@ -1065,16 +1063,19 @@ export default function TemplatesEditor({
         });
       },
       children: [
-        (editing || !presetId) && <option key="custom" value="">Custom</option>,
+        !presetId && <option key="custom" value="">Custom</option>,
         ...answerPresets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>),
-        customAnswers && !editing && <option key={OWN_ANSWERS} value={OWN_ANSWERS}>{presetId ? 'Make your own…' : 'Edit my answers…'}</option>,
+        customAnswers && <option key={OWN_ANSWERS} value={OWN_ANSWERS}>Edit answers…</option>,
       ],
     };
   };
+  // The answer list opens as a dialog over the editor, seeded with the list
+  // in use (a preset too, so a preset can be changed after picking it).
   const answerListEditor = (t, phone) => (customAnswers && answerEditorFor === t.id ? (
     <AnswerSetEditor
       key={t.id}
       phone={phone}
+      modal={{ kicker: 'Checklist answers', title: t.name || 'Template' }}
       set={ownAnswerSetOf(t) || DEFAULT_ANSWER_SET}
       onCommit={(set) => mutateTpl(t.id, (cur) => ({ ...cur, answerSet: set }))}
       onClose={() => setAnswerEditorFor(null)}

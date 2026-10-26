@@ -1,10 +1,14 @@
 // Nightly 'custom-answers': a Pick many line. Its own options show as chips
 // on the Survey rail; any number can be on; a Problem option lights red.
+// The template's own list here has eight answers, so its pick-one lines show
+// a drop-down instead of a row of buttons.
 import { E2E_ACCOUNTS, E2E_SURVEY } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
 
 let original = null;
 const OPTIONS = [{ value: 'None', tone: 'good' }, { value: 'Rust', tone: 'bad' }, { value: 'Label faded', tone: 'neutral' }];
+const LONG_LIST = ['OK', 'Loose', 'Cracked', 'Bent', 'Missing', 'Rusted', 'Dirty', 'Painted']
+  .map((value, i) => ({ value, tone: i === 0 ? 'good' : i === 6 ? 'neutral' : 'bad' }));
 
 test.beforeAll(async () => {
   const db = adminClient();
@@ -13,6 +17,7 @@ test.beforeAll(async () => {
   const config = structuredClone(original);
   const lines = config.modules[0].categories[0].checklist;
   lines[0] = { ...lines[0], kind: 'many', options: OPTIONS };
+  config.answerSet = LONG_LIST;
   const { error } = await db.from('templates').update({ config }).eq('id', E2E_SURVEY.templateId);
   if (error) throw error;
 });
@@ -59,7 +64,7 @@ test('a Pick many line takes any of its options', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('survey.flag.custom-answers', '1'));
   await signIn(page, E2E_ACCOUNTS.owner);
   await openSurveyItem(page);
-  const [cable] = E2E_SURVEY.checklist.map((c) => c.text);
+  const [cable, frame] = E2E_SURVEY.checklist.map((c) => c.text);
   const chip = (value) => page.getByRole('group', { name: `${cable} options` }).getByRole('button', { name: `${cable} ${value}`, exact: true });
   const clear = async () => {
     for (const o of OPTIONS) if (await chip(o.value).getAttribute('aria-pressed') === 'true') await chip(o.value).click();
@@ -82,6 +87,14 @@ test('a Pick many line takes any of its options', async ({ page }) => {
   await expect(chip('Rust')).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 });
   await expect(chip('Label faded')).toHaveAttribute('aria-pressed', 'true');
 
+  // Eight answers: a drop-down, not eight buttons.
+  const frameList = page.getByRole('combobox', { name: `${frame} answer` });
+  await expect(frameList.locator('option')).toHaveCount(LONG_LIST.length + 1);
+  await frameList.selectOption('Loose');
+  await expect(page.getByText('2/3', { exact: true })).toBeVisible();
+  await frameList.selectOption('');
+  await expect(page.getByText('1/3', { exact: true })).toBeVisible();
+
   // Leave the seeded item blank for the walks that use it.
   await clear();
   await expect(page.getByText('0/3', { exact: true })).toBeVisible();
@@ -103,7 +116,15 @@ test('the template editor edits a Pick many line\'s options', async ({ page }) =
   const options = visible(page.getByRole('button', { name: `Options for "${cable}"` }));
   await expect(options).toHaveText('Options (3)');
   await options.click();
-  const editor = visible(page.getByTestId('answer-set-editor'));
+  const editor = page.getByRole('dialog', { name: cable });
   await expect(editor.getByRole('textbox', { name: 'Answer 2', exact: true })).toHaveValue('Rust');
   await expect(editor.getByText(/any number of them/)).toBeVisible();
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+  await expect(editor).toHaveCount(0);
+
+  // A ready type fills in the line's settings in one pick.
+  const how = visible(page.getByRole('combobox', { name: `How "${cable}" is answered` }));
+  await how.selectOption({ label: 'Expiry date' });
+  await expect(how).toHaveValue('date');
+  await expect(visible(page.getByRole('checkbox', { name: 'Issue once past' }))).toBeChecked();
 });

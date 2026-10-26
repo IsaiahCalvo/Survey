@@ -52,6 +52,7 @@ const ALLOWED = {
   'src/components/dialogPrompts.jsx': 1,
   'src/components/revisions/RevisionsPanel.jsx': 3,
   'src/home/AccessManagementModal.jsx': 1,
+  'src/home/AnswerSetEditor.jsx': 1,
   'src/home/BulkModals.jsx': 3,
   'src/home/CreateProjectModal.jsx': 1,
   'src/home/DocumentsLedger.jsx': 1,

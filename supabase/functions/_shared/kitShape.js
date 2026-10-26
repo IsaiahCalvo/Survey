@@ -67,9 +67,10 @@ export function validateReportKit(kit) {
 }
 
 export const ANSWER_TONES = Object.freeze(['good', 'bad', 'neutral']);
-// One answer is a plain "Done" tick; six is as many buttons as fit a phone card.
+// One answer is a plain "Done" tick. Up to six show as buttons on a card; a
+// longer list shows as a drop-down (CHOICE_BUTTONS_MAX in the app).
 export const MIN_ANSWERS = 1;
-export const MAX_ANSWERS = 6;
+export const MAX_ANSWERS = 20;
 // An answer's optional "means" line: a hint on the card, read by the agents.
 export const ANSWER_MEANS_MAX = 80;
 
