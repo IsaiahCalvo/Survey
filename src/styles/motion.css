@@ -97,8 +97,7 @@
     [style*="position: fixed"]:has(> [role="alertdialog"][aria-modal="true"]),
     .documents-mobile-detail-scrim,
     .templates-mobile-modal-scrim,
-    .create-project-modal-scrim,
-    .apply-redactions-backdrop
+    .create-project-modal-scrim
   ) {
     animation: sv-fade-in var(--motion-dialog) var(--ease-out);
   }

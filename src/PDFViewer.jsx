@@ -40338,7 +40338,7 @@ ${pageBlocks}
                       onClick={handleLeaveSurvey}
                       {...chromeTip('Leave Survey', 'below')}
                     >
-                      {surveyBarFit.plan.done === 'glyph' ? <Icon name="check" size={16} color="currentColor" /> : 'Done'}
+                      {surveyBarFit.plan.done === 'glyph' ? <Icon name="checkCheck" size={16} color="currentColor" /> : 'Done'}
                     </button>
                   </div>
                 </div>

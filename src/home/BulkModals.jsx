@@ -15,6 +15,7 @@ import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
 import { renameSelectionRange } from './documentSelection.js';
 import MotionPresence from '../components/MotionPresence.jsx';
+import DialogCard from '../components/DialogCard.jsx';
 
 
 const overlay = {
@@ -145,25 +146,14 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
 }
 
 export function ConfirmModal({ open, onClose, title = 'Are you sure?', message = '', confirmLabel = 'Confirm', busyLabel = null, danger = false, onConfirm }) {
-  const tip = useTooltip();
-  const cardRef = useRef(null);
   // KAL-73: when onConfirm returns a promise (bulk delete etc.), the modal
   // stays up with a ring + participle label until it settles. Synchronous
   // confirms keep the old close-immediately behavior — no one-frame spinner.
   const [submitting, setSubmitting] = useState(false);
 
-  // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
-  // dialog, Escape closes it, and focus returns to whatever opened it. This is
-  // the destructive confirm gate, so letting Tab escape onto the rows being
-  // deleted was the worst place in the app to lose focus.
-  useFocusTrap(cardRef, open, { onEscape: submitting ? undefined : onClose });
-
   useEffect(() => {
     if (open) setSubmitting(false);
   }, [open]);
-
-  // Closed: MotionPresence plays the exit of the last open card (motion.css).
-  if (!open) return <MotionPresence open={false} />;
 
   const handleConfirm = async () => {
     if (submitting) return;
@@ -175,18 +165,19 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
     onClose();
   };
 
+  // The app's one dialog shell (src/components/DialogCard.jsx). Accessibility
+  // (KAL-66) comes with it: Tab stays inside, Escape closes, focus returns to
+  // the opener - this is the destructive confirm gate, the worst place in the
+  // app to let Tab escape onto the rows being deleted.
   return (
-    <MotionPresence open>
-    <div onClick={submitting ? undefined : onClose} style={overlay}>
-      <div ref={cardRef} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined} onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}>
-        <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
-            {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
-          </div>
-          <button disabled={submitting} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
-        </div>
-        <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+    <DialogCard
+      open={open}
+      title={title}
+      message={message}
+      onClose={onClose}
+      busy={submitting}
+      footer={(
+        <>
           <button disabled={submitting} onClick={onClose} className="hub-btn dialog-touch-pad">Cancel</button>
           {/* A delete confirm is still the dialog's primary action, so it keeps
               the filled shape and only swaps gold for the destructive red
@@ -199,10 +190,9 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
             {submitting && <Spinner size={14} color="currentColor" />}
             {submitting ? (busyLabel || `${confirmLabel}…`) : confirmLabel}
           </button>
-        </div>
-      </div>
-    </div>
-    </MotionPresence>
+        </>
+      )}
+    />
   );
 }
 

@@ -103,8 +103,13 @@ test('toasts use the shared toast motion (ToastHost and UndoToast), with no moti
 
 test('the shared dialogs keep their card for the exit through MotionPresence', () => {
   const bulk = read('src/home/BulkModals.jsx');
-  assert.equal(bulk.split('if (!open) return <MotionPresence open={false} />;').length - 1, 3, 'MoveCopy, Confirm, Rename');
-  assert.equal(bulk.split('<MotionPresence open>').length - 1, 3);
+  assert.equal(bulk.split('if (!open) return <MotionPresence open={false} />;').length - 1, 2, 'MoveCopy, Rename');
+  assert.equal(bulk.split('<MotionPresence open>').length - 1, 2);
+  // Confirm (and every dialog on the one shell) gets it from DialogCard.
+  assert.match(bulk, /export function ConfirmModal[\s\S]*?<DialogCard\s+open=\{open\}/);
+  const card = read('src/components/DialogCard.jsx');
+  assert.match(card, /if \(!open\) return <MotionPresence open=\{false\} \/>;/);
+  assert.match(card, /<MotionPresence open>/);
   const prompts = read('src/components/dialogPrompts.jsx');
   assert.match(prompts, /if \(!open\) return <MotionPresence open=\{false\} \/>;/);
   assert.match(prompts, /<MotionPresence open>/);

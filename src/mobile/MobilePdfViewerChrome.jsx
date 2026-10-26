@@ -638,9 +638,12 @@ function MobileStripSegmented({ ariaLabel, value, options, onChange, width }) {
             aria-label={option.ariaLabel || option.label}
             className={active ? 'is-active' : ''}
             onClick={() => onChange?.(option.value)}
+            data-press-label=""
           >
-            {option.icon ? <Icon name={option.icon} size={12} color="currentColor" /> : null}
-            {option.label}
+            <span>
+              {option.icon ? <Icon name={option.icon} size={12} color="currentColor" /> : null}
+              {option.label}
+            </span>
           </button>
         );
       })}
@@ -2244,8 +2247,9 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
             if (api.canEnterTextEdit || api.richTextEditor) api.onEnterTextEdit();
             else openSheet('text');
           }}
+          data-press-label=""
         >
-          Aa
+          <span>Aa</span>
         </button>
       )}
       {/* "..." at the end of every tool strip opens that tool's settings panel

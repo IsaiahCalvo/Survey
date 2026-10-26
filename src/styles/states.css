@@ -230,6 +230,21 @@
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
+/* RINGS ONLY WHILE THE KEYBOARD MOVES FOCUS (owner 2026-10-26: "sometimes
+   buttons get a white border around them ... I don't know how to trigger
+   it"). Chrome lights :focus-visible on a CLICKED button the moment any key is
+   pressed while it holds focus - a tool shortcut, Delete, Ctrl+Z - and on a
+   row a script focuses after a key press. src/utils/focusRingSource.js sets
+   <html data-focus-ring="pointer"> on every press and "keyboard" on Tab or an
+   arrow key that moves focus; while it says pointer, no ring is drawn. Text
+   fields keep their focus look (the caret is there). The box-shadow rings are
+   the few controls that draw their ring that way. */
+html[data-focus-ring='pointer'] :focus-visible:not(textarea, select, [contenteditable], [contenteditable] *, input:not([type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='color'], [type='file'])) {
+  outline: none !important;
+}
+html[data-focus-ring='pointer'] :is(.tab-strip-list__open, .hero-swatch, .documents-row-check, .app-toast__action):focus-visible {
+  box-shadow: none !important;
+}
 
 /* A press should not also animate. The global `.btn` hover lifts the button by
    1px; without this the lift and the press fight and the control jitters. */
@@ -368,6 +383,37 @@
 }
 @media (prefers-reduced-motion: reduce) {
   :is(#chrome-top-host, #chrome-sub-toolbar-host, .tab-bar, [data-chrome-rail], .survey-rail__head, .mobile-pdf-header, .mobile-pdf-tools, .mobile-pdf-dock) :is([data-glyph-only], .chrome-icon-btn) > * {
+    scale: none !important;
+    transition: none !important;
+  }
+}
+
+/* WORD BUTTONS PRESS LIKE THE ICONS (owner 2026-10-26: "most buttons have an
+   animation when you click down on them. They get bigger and smaller ... The
+   A and A for text formatting don't have that, and the eraser for ...
+   switching between portion and whole doesn't have that. They should.").
+   A chrome button whose face is a WORD - the "Aa" text-formatting toggle, the
+   eraser's Partial / Whole and the phone strip's segmented toggles - marks
+   itself data-press-label and wraps its face in one span. That span takes THE
+   MODEL's motion above: 108% on a mouse hover, 92% on press, 120ms out / 80ms
+   in, nothing under reduced motion. The button keeps its own plate rules. */
+[data-press-label] > span:not([data-anchored-tooltip]) {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
+  transition: scale 120ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  [data-press-label]:not(:disabled):not([aria-disabled='true']):hover > span:not([data-anchored-tooltip]) {
+    scale: 1.08;
+  }
+}
+[data-press-label]:not(:disabled):not([aria-disabled='true']):active > span:not([data-anchored-tooltip]) {
+  scale: 0.92;
+  transition-duration: 80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-press-label] > span {
     scale: none !important;
     transition: none !important;
   }
