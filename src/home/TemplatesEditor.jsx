@@ -100,6 +100,7 @@ import {
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { CALM_STRIP_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { restrictToHorizontalAxis } from '../reorder/axisLock.js';
+import useTabOverflow from '../reorder/useTabOverflow.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { countLabel } from './countLabel.js';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
@@ -424,7 +425,7 @@ function SortableModuleTab({
       // gold, no scale, no inner block behind its label or count.
       data-drag-lifted={isDragging ? '' : undefined}
       style={{
-        transform: CSS.Transform.toString(transform),
+        transform: CSS.Translate.toString(transform),
         transition: tabTransition || undefined,
         display: 'flex',
         alignItems: 'center',
@@ -534,10 +535,27 @@ function SortableModuleTabs({
   onReorderModules,
   onOpenMenu,
   showCounts = true,
+  // Desktop (owner 2026-10-26): the tabs that fit, then a "+N" menu with the
+  // rest. The phone row keeps scrolling sideways.
+  fit = false,
   children,
 }) {
   const [activeId, setActiveId] = useState(null);
   const dragClampBoundsRef = useRef(null);
+  const rowRef = useRef(null);
+  const measureRef = useRef(null);
+  const [moreMenu, setMoreMenu] = useState(null);
+  const ids = modules.map((mod) => mod.id);
+  const openId = modules[openMod]?.id ?? null;
+  const { visible, hidden } = useTabOverflow({
+    ids,
+    activeId: openId,
+    rowRef,
+    measureRef,
+    enabled: fit,
+    contentKey: `${showCounts}:${modules.map((mod) => `${mod.name}:${(mod.categories || []).length}`).join('|')}`,
+  });
+  const indexOf = new Map(modules.map((mod, mi) => [mod.id, mi]));
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 5 } }),
@@ -584,17 +602,18 @@ function SortableModuleTabs({
         setActiveId(null);
       }}
     >
-      <SortableContext items={modules.map((mod) => mod.id)} strategy={horizontalListSortingStrategy}>
+      <SortableContext items={visible} strategy={horizontalListSortingStrategy}>
         <div
+          ref={rowRef}
           data-module-tab-list={String(activeId ?? '')}
-          style={{ display: 'flex', alignItems: 'stretch', gap: 0, borderBottom: '1px solid var(--rule)', minHeight: 26 }}
+          style={{ display: 'flex', alignItems: 'stretch', gap: 0, borderBottom: '1px solid var(--rule)', minHeight: 26, ...(fit ? { position: 'relative', overflowX: 'clip' } : null) }}
         >
-          {modules.map((mod, mi) => (
+          {visible.map((id) => modules[indexOf.get(id)]).filter(Boolean).map((mod) => (
             <SortableModuleTab
               key={mod.id}
               mod={mod}
-              index={mi}
-              isOn={openMod === mi}
+              index={indexOf.get(mod.id)}
+              isOn={openMod === indexOf.get(mod.id)}
               catCount={(mod.categories || []).length}
               showCount={showCounts}
               isRenaming={modRename === mod.id}
@@ -605,12 +624,67 @@ function SortableModuleTabs({
               onOpenMenu={onOpenMenu}
             />
           ))}
+          {fit && hidden.length > 0 && (
+            <button
+              type="button"
+              className="module-tab-more"
+              aria-haspopup="menu"
+              aria-expanded={Boolean(moreMenu)}
+              aria-label={`${hidden.length} more module${hidden.length === 1 ? '' : 's'}`}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setMoreMenu((m) => (m ? null : rect));
+              }}
+              style={MODULE_TAB_MORE_STYLE}
+            >
+              +{hidden.length}<span style={{ fontSize: 10, lineHeight: 1 }}>▾</span>
+            </button>
+          )}
+          {fit && (
+            /* The hidden copy the row is measured from: each tab's own box
+               (12px each side, count 6px after the label), not draggable. */
+            <div ref={measureRef} aria-hidden="true" style={{ position: 'absolute', top: 0, left: 0, display: 'flex', width: 'max-content', visibility: 'hidden', pointerEvents: 'none' }}>
+              {modules.map((mod, mi) => (
+                <div key={mod.id} data-measure-tab={mod.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', height: 32, maxWidth: 220, boxSizing: 'border-box', flex: '0 0 auto' }}>
+                  <span style={{ fontSize: 12, fontWeight: openMod === mi ? 500 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{mod.name}</span>
+                  {showCounts ? <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', flex: 'none' }}>{(mod.categories || []).length}</span> : null}
+                </div>
+              ))}
+              <span data-measure-more="" style={MODULE_TAB_MORE_STYLE}>+{Math.max(hidden.length, 9)}<span style={{ fontSize: 10, lineHeight: 1 }}>▾</span></span>
+            </div>
+          )}
           {children}
         </div>
       </SortableContext>
+      {moreMenu && (
+        <MoreMenu
+          anchorRect={moreMenu}
+          onClose={() => setMoreMenu(null)}
+          items={hidden.map((id) => ({ label: modules[indexOf.get(id)]?.name || 'Untitled module', onClick: () => onOpenModule(indexOf.get(id)) }))}
+        />
+      )}
     </DndContext>
   );
 }
+
+const MODULE_TAB_MORE_STYLE = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  flex: '0 0 auto',
+  height: 32,
+  padding: '0 10px',
+  boxSizing: 'border-box',
+  marginBottom: -1,
+  border: 0,
+  borderBottom: '2px solid transparent',
+  background: 'transparent',
+  color: 'var(--ink-muted)',
+  fontFamily: 'inherit',
+  fontSize: 12,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+};
 
 /* ============================================================
    Fixed-position "more" menu, portalled to document.body.
@@ -2604,6 +2678,7 @@ export default function TemplatesEditor({
                   onCancelRename={() => setModRename(null)}
                   onReorderModules={reorderMods}
                   onOpenMenu={(id, rect) => setModMenu({ id, rect })}
+                  fit
                 />
               </div>
 
