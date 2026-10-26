@@ -540,6 +540,7 @@ import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './u
 import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
 import { shouldCaptureToolSwitchDiag } from './utils/toolSwitchDiag.js';
 import { createPageDrawnSignal } from './utils/pageDrawnSignal.js';
+import { polySplineStep } from './utils/polySpline.js';
 import { carryMarkerShape, MARKER_STROKE_WIDTHS, restyleStrokeMarkerBounds, strokeMarkerWidth } from './survey/markerShapes.js';
 import { setMarkerStrokeWidth, useMarkerStrokeWidth } from './survey/markerStrokeWidth.js';
 import { useShownMarkerDrawMode } from './survey/markerDrawMode.js';
@@ -26735,6 +26736,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // disagree on - the bar shows those as mixed (no colour ringed, a dash
       // in Width, "Mixed" in the style menus) until the user sets them.
       selectionCapabilities,
+      // One picked polyline: whether it is curved (the Curve switch, Nightly).
+      selectedPolyline: !groupSummary && selectedType === 'polyline' ? { curved: polySplineStep(selectedAnnot) > 0 } : null,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
       selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,

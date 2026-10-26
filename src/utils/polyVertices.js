@@ -2,6 +2,7 @@
 // right-click a corner > Delete point, Alt/Option-click, Delete/Backspace on a
 // focused corner, long-press on touch). Pure so it can be tested in node.
 import { POLY_MIN_POINTS } from './polyDraft.js';
+import { insertSplineCorner, keepPivot, polySplineStep, removeSplineCorner } from './polySpline.js';
 
 const polyKind = (obj) => {
   const type = String(obj?.type || '').toLowerCase();
@@ -15,6 +16,9 @@ export function polyVertexMinimum(obj) {
 }
 
 export function canRemovePolyVertex(obj) {
+  const step = polySplineStep(obj);
+  // A curved polyline counts its clicked corners, not its curve samples.
+  if (step) return (obj.points.length - 1) / step + 1 > polyVertexMinimum(obj);
   return Array.isArray(obj?.points) && obj.points.length > polyVertexMinimum(obj);
 }
 
@@ -41,6 +45,11 @@ const centre = (points) => {
 export function removePolyVertex(obj, index) {
   if (!canRemovePolyVertex(obj)) return null;
   if (!Number.isInteger(index) || index < 0 || index >= obj.points.length) return null;
+  const step = polySplineStep(obj);
+  if (step) {
+    const curve = removeSplineCorner(obj.points, step, index);
+    return curve ? keepPivot(obj, obj.points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 })), curve) : null;
+  }
   const oldPoints = obj.points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 }));
   const points = oldPoints.filter((_, i) => i !== index);
   const scaleX = Number(obj.scaleX ?? 1) || 1;
@@ -129,6 +138,14 @@ export function insertPolyVertex(obj, segmentIndex, t) {
   const points = obj.points.map((p) => ({ x: Number(p?.x) || 0, y: Number(p?.y) || 0 }));
   const a = points[segmentIndex];
   const b = points[(segmentIndex + 1) % n];
+  const step = polySplineStep(obj);
+  if (step) {
+    // The side is one short piece of the drawn curve: the new corner goes on
+    // the curve there, between the clicked corners either side of it.
+    const at = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+    const curve = insertSplineCorner(points, step, Math.floor(segmentIndex / step), at);
+    return curve ? keepPivot(obj, points, curve) : null;
+  }
   points.splice(segmentIndex + 1, 0, { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) });
   const next = { ...obj, points };
   if (obj.data?.pdfCloudVertexState) {

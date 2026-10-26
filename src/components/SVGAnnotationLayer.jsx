@@ -24,6 +24,8 @@ import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
+import { POLYLINE_CURVE_SET_EVENT, polySplineStep, setPolylineCurve, splineSpanMidpoint } from '../utils/polySpline.js';
+import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
@@ -1447,6 +1449,7 @@ const SVGAnnotationLayerBody = memo(({
   // ---------------------------------------------------------------------------
   const [polyDraft, setPolyDraft] = useState(null);
   const polyDraftRef = useRef(null);
+  const { on: polylineCurve } = usePolylineCurve();
   useEffect(() => { polyDraftRef.current = polyDraft; }, [polyDraft]);
 
   // Coalesced page-space sampling with the fabric canvas's exact 0.2-page-px
@@ -1845,10 +1848,30 @@ const SVGAnnotationLayerBody = memo(({
     const updated = deepClone(annotations);
     updated.objects[annotationIndex] = next;
     onSaveAnnotations(updated, { source: 'object:modified', action: 'vertex-insert', checkpointPolicy: 'normal' });
-    setFocusedPolyVertex({ annotationIndex, vertexIndex: segmentIndex + 1 });
+    const step = polySplineStep(obj);
+    setFocusedPolyVertex({ annotationIndex, vertexIndex: step ? (Math.floor(segmentIndex / step) + 1) * step : segmentIndex + 1 });
     return true;
   }, [annotations, onSaveAnnotations]);
   const selectedPolyIndex = selectedIds.size === 1 ? Array.from(selectedIds)[0] : null;
+  // The toolbar's Curve switch on a picked polyline (Nightly). Every page
+  // hears it; only the page holding the one picked polyline acts.
+  useEffect(() => {
+    if (selectedPolyIndex == null) return undefined;
+    const onSet = (event) => {
+      if (typeof onSaveAnnotations !== 'function') return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      const obj = annotations?.objects?.[selectedPolyIndex];
+      if (!obj || isUserLocked(obj)) return;
+      const next = setPolylineCurve(obj, !!event?.detail?.curved);
+      if (!next) return;
+      const updated = deepClone(annotations);
+      updated.objects[selectedPolyIndex] = next;
+      onSaveAnnotations(updated, { source: 'object:modified', action: 'polyline-curve', checkpointPolicy: 'normal' });
+      setFocusedPolyVertex(null);
+    };
+    window.addEventListener(POLYLINE_CURVE_SET_EVENT, onSet);
+    return () => window.removeEventListener(POLYLINE_CURVE_SET_EVENT, onSet);
+  }, [annotations, onSaveAnnotations, selectedPolyIndex]);
   useEffect(() => {
     if (focusedPolyVertex && focusedPolyVertex.annotationIndex !== selectedPolyIndex) setFocusedPolyVertex(null);
     if (polyVertexMenu && polyVertexMenu.annotationIndex !== selectedPolyIndex) setPolyVertexMenu(null);
@@ -3053,6 +3076,7 @@ const SVGAnnotationLayerBody = memo(({
       selectedModuleId,
       stampRegionId,
       activeRegionId,
+      curve: polylineCurve,
     });
     if (!builtJson) return false;
     const rawJson = (tool === 'polygon' && measureMode === 'area')
@@ -3082,7 +3106,7 @@ const SVGAnnotationLayerBody = memo(({
   }, [
     effectiveMeasureScale, measureMode,
     activeRegionId, activeTool, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
-    lineBorderStyle, onSaveAnnotations, pageNumber, selectAnnotation, selectedModuleId,
+    lineBorderStyle, onSaveAnnotations, pageNumber, polylineCurve, selectAnnotation, selectedModuleId,
     selectedSpaceId, spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
   ]);
 
@@ -8316,6 +8340,7 @@ const SVGAnnotationLayerBody = memo(({
           strokeWidth: Number(strokeWidth) || 3,
           lineBorderStyle,
           cloudIntensity,
+          curve: polylineCurve,
         });
         const controls = polyDraftFinishControlPoints(polyDraft);
         const canClose = canClosePolyDraft(polyDraft);
@@ -9136,15 +9161,20 @@ const SVGAnnotationLayerBody = memo(({
           // vertex handles + shadows stop growing on extreme zoom-out (no-op at rest).
           const vHandleIs = clampInverseScale(inverseScale);
           const vHandleR = HANDLE_RADIUS * vHandleIs;
+          // A curved polyline stores its drawn curve; only every step-th
+          // point is a clicked corner with a handle (polySpline.js).
+          const splineStep = polySplineStep(obj);
+          const isCorner = (i) => !splineStep || i % splineStep === 0;
+          const cornerWorldPoints = splineStep ? worldPoints.filter((_, i) => isCorner(i)) : worldPoints;
           // UX 2026-09-16: an invisible hit disc sits behind each vertex dot so
           // the corner can be grabbed without landing on the 11 px dot — 32 px
           // wide on a mouse (Drawboard PDF measures 34 x 34 on its handles),
           // 44 pt on a finger (Apple HIG). Screen-constant via the clamped
           // inverse scale. It shrinks when two corners sit closer together than
           // a full pad, so the nearer corner always wins the press.
-          const vNeighbourSpacing = worldPoints.length > 1
-            ? worldPoints.reduce((best, wp, i) => {
-              const prev = worldPoints[(i - 1 + worldPoints.length) % worldPoints.length];
+          const vNeighbourSpacing = cornerWorldPoints.length > 1
+            ? cornerWorldPoints.reduce((best, wp, i) => {
+              const prev = cornerWorldPoints[(i - 1 + cornerWorldPoints.length) % cornerWorldPoints.length];
               const gap = Math.hypot(wp.x - prev.x, wp.y - prev.y);
               return gap > 0 && gap < best ? gap : best;
             }, Infinity)
@@ -9371,11 +9401,13 @@ const SVGAnnotationLayerBody = memo(({
                   Hidden while a corner is being dragged (they would trail the
                   old outline) and on sides too short to fit one beside the
                   corner dots. */}
-              {!modifierMoveActive && interactionState === 'idle' && worldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? worldPoints.length : -1).map((wp, i) => {
-                const next = worldPoints[(i + 1) % worldPoints.length];
+              {!modifierMoveActive && interactionState === 'idle' && cornerWorldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? cornerWorldPoints.length : -1).map((wp, i) => {
+                const next = cornerWorldPoints[(i + 1) % cornerWorldPoints.length];
                 if (Math.hypot(next.x - wp.x, next.y - wp.y) < vHandleR * 6) return null;
-                const x = (wp.x + next.x) / 2;
-                const y = (wp.y + next.y) / 2;
+                // On a curve the "+" sits on the curve, halfway between corners.
+                const onCurve = splineStep ? splineSpanMidpoint(worldPoints, splineStep, i) : null;
+                const x = onCurve ? onCurve.x : (wp.x + next.x) / 2;
+                const y = onCurve ? onCurve.y : (wp.y + next.y) / 2;
                 return <g key={`insert-vertex-${i}`} role="button" aria-label="Add vertex" data-add-vertex={i} onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, `insert-vertex-${i}`); }} style={{ cursor: 'crosshair', pointerEvents: 'auto' }}>
                   <circle cx={x} cy={y} r={vTouchHitR || vHandleR * 2} fill="transparent" />
                   <circle cx={x} cy={y} r={vHandleR * 0.75} fill={HANDLE_FILL} stroke={HANDLE_RING} strokeWidth={vHandleIs} />
@@ -9383,7 +9415,7 @@ const SVGAnnotationLayerBody = memo(({
                 </g>;
               })}
               {/* w58: Cmd / Ctrl held -> corner grabbers hide (move instead). */}
-              {!modifierMoveActive && worldPoints.map((wp, i) => (
+              {!modifierMoveActive && worldPoints.map((wp, i) => isCorner(i) && (
                 <g key={`vertex-${i}`}>
                   {vTouchHitR > 0 && (
                     <circle

@@ -11,6 +11,7 @@
  */
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 import { readAnnotationSnapping } from './annotationPreferences.js';
+import { polySplineStep } from './polySpline.js';
 
 export const DRAW_SNAP_SCREEN_PX = 8;
 // Touch / pen (no Shift, a fingertip covers the target): a wider endpoint
@@ -132,7 +133,10 @@ export function collectEndpointCandidates(objects, { excludeIndex = -1, own = nu
     if (type === 'line') pts = lineWorldEndpoints(obj);
     else if (type === 'polygon' || type === 'polyline') pts = polyWorldPoints(obj);
     if (!pts) return;
+    // A curved polyline offers its clicked corners, not every curve sample.
+    const step = polySplineStep(obj);
     pts.forEach((p, i) => {
+      if (step && i % step !== 0) return;
       if (own && own.index === index && own.skip?.has(i)) return;
       if (Number.isFinite(p.x) && Number.isFinite(p.y)) out.push(p);
     });

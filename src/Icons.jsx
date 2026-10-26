@@ -757,6 +757,16 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Polyline "Curve" switch (Nightly, 2026-10-26): one smooth bend between
+    // two corner rings, the Polyline glyph's own stroke and node circle.
+    polylineCurve: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M6.2 15.4C9 6.5 15 17.5 17.8 8.6" fill="none" stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" />
+        {nodeCircle('polyline-curve-node-0', 5, 17.5, color)}
+        {nodeCircle('polyline-curve-node-1', 19, 6.5, color)}
+      </svg>
+    ),
+
     // UX 2026-09-16: the diagonal now runs 3..21, the same span as the Rectangle
     // glyph's box, so Line and Arrow fill their buttons like their neighbours. On
     // the old 5..19 diagonal they measured 22% smaller than Rectangle and 30%

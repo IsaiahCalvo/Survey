@@ -86,6 +86,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Page grid spacing: fine, normal, wide or custom (paper or drawing units)',
     stage: 'beta',
   }),
+  'spline-polyline': Object.freeze({
+    label: 'Curved polyline: bend smoothly through the clicked corners',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
