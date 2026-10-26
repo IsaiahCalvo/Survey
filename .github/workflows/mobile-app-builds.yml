@@ -36,21 +36,45 @@ jobs:
     timeout-minutes: 40
     env:
       CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || github.event_name == 'pull_request' && 'nightly' || (github.event.workflow_run.name == 'Deploy nightly' && 'nightly' || 'stable') }}
-      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
+      # Build what the site actually serves (its release.json), not the
+      # commit that triggered us: the prod workflow runs every 15 minutes and
+      # most runs ship nothing. Skip when the release already has that commit.
+      - name: Find the live commit
+        id: live
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"; echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          host=surveytool.app; [ "$CHANNEL" = nightly ] && host=surveytool-nightly.vercel.app
+          sha="$(curl --fail --silent --show-error "https://$host/release.json?t=$(date +%s)" | jq -r '.commit // empty')"
+          [ -n "$sha" ] || { echo "::error::$host/release.json gave no commit"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          built="$(gh release view "app-$CHANNEL" -R "$REPO" --json body -q .body 2>/dev/null | grep -oE 'built from [0-9a-f]{40}' | cut -d' ' -f3 || true)"
+          if [ "$built" = "$sha" ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
+            echo "app-$CHANNEL already has $sha; nothing to build"; echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v7
+        if: steps.live.outputs.build == 'true'
         with:
-          ref: ${{ env.SHA }}
+          ref: ${{ steps.live.outputs.sha }}
       - uses: actions/setup-node@v7
+        if: steps.live.outputs.build == 'true'
         with:
           node-version: '24'
           cache: npm
       - uses: actions/setup-java@v4
+        if: steps.live.outputs.build == 'true'
         with:
           distribution: temurin
           java-version: '21'
       - run: npm ci
+        if: steps.live.outputs.build == 'true'
       - name: Build web bundle
+        if: steps.live.outputs.build == 'true'
         run: |
           if [ "$CHANNEL" = nightly ]; then export VITE_RELEASE_CHANNEL=nightly; fi
           npm run build
@@ -59,21 +83,23 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
       - run: npx cap sync android
+        if: steps.live.outputs.build == 'true'
       - name: Name the Nightly app
-        if: env.CHANNEL == 'nightly'
+        if: steps.live.outputs.build == 'true' && env.CHANNEL == 'nightly'
         run: sed -i 's#>Survey<#>Survey Nightly<#g' android/app/src/main/res/values/strings.xml
       - name: Build APK
+        if: steps.live.outputs.build == 'true'
         run: |
           cd android
           if [ "$CHANNEL" = nightly ]; then ./gradlew --no-daemon assembleDebug -PsurveyNightly=true; else ./gradlew --no-daemon assembleDebug; fi
           cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/survey-$CHANNEL.apk"
       - name: Publish to the rolling release
-        if: github.event_name != 'pull_request'
+        if: steps.live.outputs.build == 'true' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="app-$CHANNEL"
-          notes="Latest $CHANNEL Android app, built from $SHA on $(date -u +%FT%TZ)."
-          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --prerelease --target "$SHA" --title "Survey app ($CHANNEL)" --notes "$notes"
+          notes="Latest $CHANNEL Android app, built from ${{ steps.live.outputs.sha }} on $(date -u +%FT%TZ)."
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --prerelease --target "${{ steps.live.outputs.sha }}" --title "Survey app ($CHANNEL)" --notes "$notes"
           gh release edit "$tag" --notes "$notes"
           gh release upload "$tag" "survey-$CHANNEL.apk" --clobber
