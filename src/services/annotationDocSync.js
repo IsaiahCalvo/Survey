@@ -462,6 +462,8 @@ export async function openAnnotationDoc({
   // viewer has drawn a page of the PDF. After this device's saved copy is
   // previewed, the rest of the open waits for it (FIRST_PAGE_WAIT_MS at most).
   whenFirstPageDrawn = null,
+  // Only a saved copy at least this big waits (tests lower it).
+  firstPageWaitMinBytes = FIRST_PAGE_WAIT_MIN_BYTES,
   // w33: routine checkpoint thresholds (see CHECKPOINT_EVERY_ROWS); tests
   // shrink them: { everyRows, ownBytes, minTailRows, idleMs, dueQuietMs }.
   checkpointPolicy = null,
@@ -654,6 +656,9 @@ export async function openAnnotationDoc({
     localSyncTimeoutMs,
     onPreview: typeof onPreview === 'function' ? onPreview : null,
     whenFirstPageDrawn: typeof whenFirstPageDrawn === 'function' ? whenFirstPageDrawn : null,
+    firstPageWaitMinBytes: Number.isFinite(firstPageWaitMinBytes)
+      ? firstPageWaitMinBytes
+      : FIRST_PAGE_WAIT_MIN_BYTES,
     eraseEffectConsumer: typeof eraseEffectConsumer === 'function'
       ? eraseEffectConsumer
       : null,
@@ -2236,7 +2241,8 @@ async function hydrateCleanAcceptedState(state) {
   // which contains these updates, before anything reads it.
   for (const update of updates) Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
   if (updates.length && await emitOpenPreview(state, 'local-copy')) {
-    await waitForFirstPageDrawn(state);
+    const savedBytes = updates.reduce((sum, update) => sum + update.byteLength, 0);
+    if (savedBytes >= state.firstPageWaitMinBytes) await waitForFirstPageDrawn(state);
   }
   for (const update of updates) {
     applyAcceptedUpdate(state, update);
@@ -2275,6 +2281,10 @@ async function emitOpenPreview(state, stage) {
 // changes: the same updates go to the same docs in the same order, and the
 // handle (hydration, writes) still resolves only after all of them.
 const FIRST_PAGE_WAIT_MS = 2500;
+// A small saved copy's shadow work is a few ms: waiting for the page there
+// only delays when the page takes input (clicks land on the preview blocker).
+// ~1 MB of saved copy is ~0.1 s of shadow work on a dense document.
+const FIRST_PAGE_WAIT_MIN_BYTES = 1024 * 1024;
 
 async function waitForFirstPageDrawn(state) {
   const wait = state.whenFirstPageDrawn;

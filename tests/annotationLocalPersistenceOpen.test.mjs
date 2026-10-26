@@ -283,7 +283,7 @@ test('a reopen loads the local copy without re-encoding it, and keeps storing ed
 // copy is previewed. Only the timing moves: the same scenario with and
 // without the wait ends in the same marks, sends the same rows and stores the
 // same local copy.
-async function reopenScenario({ gate }) {
+async function reopenScenario({ gate, minBytes = 0 }) {
   const restoreIdb = withFakeIndexedDb();
   const documentId = 'local-copy-first-page';
   const cloud = await seedCloud(documentId, ['s1', 's2']);
@@ -335,6 +335,7 @@ async function reopenScenario({ gate }) {
       snapshotRetryDelayMs: 0,
       repairRetryDelayMs: 60_000,
       onPreview: (byPage, info) => events.push(`preview:${info?.stage}:${ids(byPage).join(',')}`),
+      firstPageWaitMinBytes: minBytes,
       whenFirstPageDrawn: gate
         ? () => {
           events.push('waiting-for-page');
@@ -342,7 +343,7 @@ async function reopenScenario({ gate }) {
         }
         : null,
     }).then((handle) => { events.push('open'); return handle; });
-    if (gate) {
+    if (gate && !minBytes) {
       for (let i = 0; i < 50 && !release; i += 1) await new Promise((r) => setTimeout(r, 5));
       assert.ok(release, 'the open waits for a drawn page after the preview');
       await new Promise((r) => setTimeout(r, 30));
@@ -407,6 +408,7 @@ test('a page that is never drawn does not hold the open back for good', async ()
       snapshotRetryDelayMs: 0,
       repairRetryDelayMs: 60_000,
       onPreview: () => {},
+      firstPageWaitMinBytes: 0,
       whenFirstPageDrawn: () => new Promise(() => {}),
     });
     assert.deepEqual(ids(handle.getByPage()), ['n1']);
@@ -414,4 +416,15 @@ test('a page that is never drawn does not hold the open back for good', async ()
     await handle?.destroy();
     restoreIdb();
   }
+});
+
+// A small saved copy's shadow work is a few ms, so it never waits for the
+// page: a click right after a reload must not land on the preview blocker for
+// up to 2.5 s (e2e selection-bar-clearance deleted nothing after a reload).
+test('a small saved copy does not wait for a drawn page', async () => {
+  const gated = await reopenScenario({ gate: true, minBytes: 1024 * 1024 });
+  assert.ok(!gated.events.includes('waiting-for-page'), 'no wait for a small copy');
+  const plain = await reopenScenario({ gate: false });
+  assert.deepEqual(gated.events, plain.events);
+  assert.deepEqual(gated.marks, plain.marks);
 });
