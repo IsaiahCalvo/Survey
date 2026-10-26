@@ -11,10 +11,10 @@
  * Calls onConfirm(option, { categoryName, newTemplateName }) or onClose (Cancel).
  * Structure/theme/a11y modeled closely on NewColumnsModal.jsx.
  */
-import { useState, useEffect, useRef } from 'react';
-import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useState, useEffect } from 'react';
+import DialogCard from './DialogCard.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
-import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
+import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
 import { getOtherSurveysUsingTemplate } from '../hooks/useDatabase';
 import { showToast } from '../utils/toast';
 
@@ -36,11 +36,7 @@ const CreateCategoryModal = ({
   const [nameError, setNameError] = useState('');
   const [otherSurveys, setOtherSurveys] = useState([]);
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
-  const dialogRef = useRef(null);
 
-  // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
-  // it on Escape, and returns focus to whatever opened it.
-  useFocusTrap(dialogRef, isOpen, { onEscape: onClose });
 
   // Reset state when modal opens
   useEffect(() => {
@@ -151,66 +147,24 @@ const CreateCategoryModal = ({
     });
   };
 
+  // The app's one dialog shell (src/components/DialogCard.jsx, owner
+  // 2026-10-26: every dialog follows the same design).
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: COLORS.modal.overlay,
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000,
-      }}
-      onClick={onClose}
+    <DialogCard
+      title="Create category"
+      message={moduleName
+        ? `Name the new category for ${moduleName}, then choose where to save it.`
+        : 'Name the new category, then choose where to save it.'}
+      onClose={onClose}
+      width={460}
+      zIndex={10000}
+      footer={(
+        <>
+          <button type="button" className="hub-btn dialog-touch-pad" onClick={onClose}>Cancel</button>
+          <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={handleConfirm} disabled={!canConfirm}>Create category</button>
+        </>
+      )}
     >
-      <div
-        style={{
-          background: COLORS.modal.surface,
-          borderRadius: BORDERS.radius.dialog,
-          padding: '24px',
-          maxWidth: '500px',
-          width: '90%',
-          maxHeight: '80vh',
-          overflow: 'auto',
-          boxShadow: SHADOWS.xl,
-          border: `1px solid ${COLORS.modal.border}`,
-        }}
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div style={{ marginBottom: '16px' }}>
-          <h3 style={{
-            margin: 0,
-            fontSize: TYPOGRAPHY.fontSize['2xl'],
-            fontWeight: TYPOGRAPHY.fontWeight.semibold,
-            color: COLORS.text.secondary,
-            fontFamily: TYPOGRAPHY.fontFamily.default,
-            marginBottom: '8px',
-          }}>
-            Create category
-          </h3>
-          <p style={{
-            margin: 0,
-            fontSize: TYPOGRAPHY.fontSize.md,
-            color: COLORS.text.muted,
-            fontFamily: TYPOGRAPHY.fontFamily.default,
-            lineHeight: TYPOGRAPHY.lineHeight.normal,
-          }}>
-            {moduleName
-              ? `Name the new category for ${moduleName}, then choose where to save it.`
-              : 'Name the new category, then choose where to save it.'}
-          </p>
-        </div>
-
         {/* Category name input */}
         <div style={{ marginBottom: '16px' }}>
           <div style={{
@@ -454,65 +408,7 @@ const CreateCategoryModal = ({
             )}
           </div>
         </div>
-
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '8px 16px',
-              background: COLORS.background.elevated,
-              color: COLORS.text.tertiary,
-              border: `1px solid ${COLORS.border.default}`,
-              borderRadius: BORDERS.radius.md,
-              fontSize: TYPOGRAPHY.fontSize.md,
-              fontWeight: TYPOGRAPHY.fontWeight.medium,
-              cursor: 'pointer',
-              fontFamily: TYPOGRAPHY.fontFamily.default,
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
-              e.currentTarget.style.borderColor = COLORS.modal.borderActive;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = COLORS.background.elevated;
-              e.currentTarget.style.borderColor = COLORS.border.default;
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={!canConfirm}
-            style={{
-              padding: '8px 16px',
-              background: canConfirm ? COLORS.modal.primaryButton : COLORS.modal.primaryButtonDisabled,
-              color: COLORS.text.primary,
-              border: `1px solid ${canConfirm ? COLORS.modal.borderActive : COLORS.border.default}`,
-              borderRadius: BORDERS.radius.md,
-              fontSize: TYPOGRAPHY.fontSize.md,
-              fontWeight: TYPOGRAPHY.fontWeight.medium,
-              cursor: canConfirm ? 'pointer' : 'not-allowed',
-              fontFamily: TYPOGRAPHY.fontFamily.default,
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!canConfirm) return;
-              e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
-              e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
-            }}
-            onMouseLeave={(e) => {
-              if (!canConfirm) return;
-              e.currentTarget.style.background = COLORS.modal.primaryButton;
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          >
-            Create category
-          </button>
-        </div>
-      </div>
-    </div>
+    </DialogCard>
   );
 };
 

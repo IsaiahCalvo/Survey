@@ -60,9 +60,9 @@ test('the dialog corner token exists and the dialog cards use it', () => {
     assert.ok(file, rel);
     assert.match(file.text, /var\(--radius-dialog\)/, rel);
   }
-  // ExcelLocked, DuplicateUpload and TemplateOverwriteWarning moved onto
+  // The Excel, OneDrive, category, overwrite and duplicate dialogs moved onto
   // DialogCard (2026-10-26), which carries the token itself.
-  for (const rel of ['NewColumnsModal', 'CreateCategoryModal', 'ExcelSyncConfirmModal', 'OneDriveFileSaveModal', 'KeyboardShortcutsOverlay', 'DialogCard']) {
+  for (const rel of ['KeyboardShortcutsOverlay', 'DialogCard']) {
     const file = files.find(({ path }) => path.endsWith(`${rel}.jsx`));
     assert.match(file.text, /borderRadius: (BORDERS\.radius\.dialog|'var\(--radius-dialog\)')/, rel);
   }

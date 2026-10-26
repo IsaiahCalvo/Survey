@@ -63,7 +63,7 @@ test('Aa only toggles the bar: its label, size and the main row never depend on 
   assert.ok(start > 0, 'the Aa slot exists');
   const button = appShell.slice(start, appShell.indexOf('</button>', start));
   // Fixed label; the only style that follows the toggle is its colour.
-  assert.match(button, />\s*Aa\s*$/);
+  assert.match(button, />\s*(<span>)?Aa(<\/span>)?\s*$/);
   const styleBlock = button.slice(button.indexOf('style={{'), button.indexOf('}}', button.indexOf('style={{')));
   const toggleDependent = styleBlock.split('\n').filter((line) => /showTextFormatting/.test(line));
   assert.deepEqual(toggleDependent.map((line) => line.trim().split(':')[0]), ['color']);

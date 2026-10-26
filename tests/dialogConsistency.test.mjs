@@ -35,3 +35,21 @@ test('these dialogs use the shell and the hub buttons, never the old look', () =
   }
   assert.match(read('src/home/BulkModals.jsx'), /export function ConfirmModal[\s\S]*?<DialogCard/);
 });
+
+// These keep their own option rows inside, but the card, header and footer
+// are the shell's.
+const SHELL_WITH_OPTION_ROWS = [
+  'src/components/CreateCategoryModal.jsx',
+  'src/components/ExcelSyncConfirmModal.jsx',
+  'src/components/NewColumnsModal.jsx',
+  'src/components/OneDriveFileSaveModal.jsx',
+];
+
+test('the option-row dialogs sit on the shell with hub buttons', () => {
+  for (const file of SHELL_WITH_OPTION_ROWS) {
+    const source = read(file);
+    assert.match(source, /import DialogCard from '\.\/DialogCard\.jsx';/, file);
+    assert.match(source, /<DialogCard[\s\S]*footer=\{\(\s*<>\s*<button type="button" className="hub-btn dialog-touch-pad"/, file);
+    assert.doesNotMatch(source, /background: COLORS\.modal\.overlay|useFocusTrap\(/, file);
+  }
+});

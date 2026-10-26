@@ -5,9 +5,9 @@
  * chars, enforces .xlsx) and embeds OneDriveFolderBrowser for destination selection, then
  * calls onSave({ fileName, folder }). Used by the Excel export flow to save to OneDrive.
  */
-import { useState, useEffect, useRef } from 'react';
-import { useFocusTrap } from '../hooks/useFocusTrap';
-import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
+import { useState, useEffect } from 'react';
+import DialogCard from './DialogCard.jsx';
+import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
 import OneDriveFolderBrowser from './OneDriveFolderBrowser';
 import { showToast } from '../utils/toast';
 
@@ -22,7 +22,6 @@ const OneDriveFileSaveModal = ({
   const [fileName, setFileName] = useState(defaultFileName);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [fileNameError, setFileNameError] = useState('');
-  const dialogRef = useRef(null);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -33,9 +32,6 @@ const OneDriveFileSaveModal = ({
     }
   }, [isOpen, defaultFileName]);
 
-  // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
-  // it on Escape, and returns focus to whatever opened it.
-  useFocusTrap(dialogRef, isOpen, { onEscape: onClose });
 
   // Validate filename
   const validateFileName = (name) => {
@@ -108,56 +104,21 @@ const OneDriveFileSaveModal = ({
     return selectedFolder.folderName || 'Selected folder';
   };
 
+  // The app's one dialog shell (src/components/DialogCard.jsx, owner
+  // 2026-10-26: every dialog follows the same design).
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: COLORS.modal.overlay,
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000,
-      }}
-      onClick={onClose}
+    <DialogCard
+      title={title}
+      onClose={onClose}
+      width={560}
+      zIndex={10000}
+      footer={(
+        <>
+          <button type="button" className="hub-btn dialog-touch-pad" onClick={onClose}>Cancel</button>
+          <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={handleSave} disabled={!selectedFolder || !fileName.trim() || fileNameError}>Save</button>
+        </>
+      )}
     >
-      <div
-        style={{
-          background: COLORS.modal.surface,
-          borderRadius: BORDERS.radius.dialog,
-          padding: '24px',
-          maxWidth: '600px',
-          width: '90%',
-          maxHeight: '90vh',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: SHADOWS.xl,
-          border: `1px solid ${COLORS.modal.border}`,
-        }}
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div style={{ marginBottom: '16px' }}>
-          <h3 style={{
-            margin: 0,
-            fontSize: TYPOGRAPHY.fontSize['2xl'],
-            fontWeight: TYPOGRAPHY.fontWeight.semibold,
-            color: COLORS.text.secondary,
-            fontFamily: TYPOGRAPHY.fontFamily.default,
-          }}>
-            {title}
-          </h3>
-        </div>
-
         {/* File name input */}
         <div style={{ marginBottom: '16px' }}>
           <div style={{
@@ -244,65 +205,7 @@ const OneDriveFileSaveModal = ({
             {getDisplayPath()}
           </div>
         </div>
-
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '10px 20px',
-              background: COLORS.background.elevated,
-              color: COLORS.text.tertiary,
-              border: `1px solid ${COLORS.border.default}`,
-              borderRadius: BORDERS.radius.md,
-              fontSize: TYPOGRAPHY.fontSize.md,
-              fontWeight: TYPOGRAPHY.fontWeight.medium,
-              cursor: 'pointer',
-              fontFamily: TYPOGRAPHY.fontFamily.default,
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
-              e.currentTarget.style.borderColor = COLORS.modal.borderActive;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = COLORS.background.elevated;
-              e.currentTarget.style.borderColor = COLORS.border.default;
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!selectedFolder || !fileName.trim() || fileNameError}
-            style={{
-              padding: '10px 20px',
-              background: (selectedFolder && fileName.trim() && !fileNameError) ? COLORS.modal.primaryButton : COLORS.modal.primaryButtonDisabled,
-              color: COLORS.text.primary,
-              border: `1px solid ${(selectedFolder && fileName.trim() && !fileNameError) ? COLORS.modal.borderActive : COLORS.border.default}`,
-              borderRadius: BORDERS.radius.md,
-              fontSize: TYPOGRAPHY.fontSize.md,
-              fontWeight: TYPOGRAPHY.fontWeight.medium,
-              cursor: (selectedFolder && fileName.trim() && !fileNameError) ? 'pointer' : 'not-allowed',
-              fontFamily: TYPOGRAPHY.fontFamily.default,
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!selectedFolder || !fileName.trim() || fileNameError) return;
-              e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
-              e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
-            }}
-            onMouseLeave={(e) => {
-              if (!selectedFolder || !fileName.trim() || fileNameError) return;
-              e.currentTarget.style.background = COLORS.modal.primaryButton;
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
+    </DialogCard>
   );
 };
 

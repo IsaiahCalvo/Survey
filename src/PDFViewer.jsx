@@ -88,6 +88,7 @@ import LightweightAnnotationOverlay from './components/LightweightAnnotationOver
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
 import NewColumnsModal from './components/NewColumnsModal';
 import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
+import DialogCard from './components/DialogCard.jsx';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import PageAnnotationLayer, { ARROWHEAD_STYLES } from './PageAnnotationLayer';
 import PrintPanel from './components/PrintPanel';
@@ -41827,55 +41828,17 @@ ${pageBlocks}
         }
       </div >
 
-      {/* Export Location Choice Modal */}
+      {/* Export Location Choice Modal: the app's one dialog shell (owner
+          2026-10-26: every dialog follows the same design). */}
       {showExportLocationModal && exportPendingData && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: COLORS.modal.overlay,
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10000,
-          animation: 'fadeIn 0.2s ease-out'
-        }}>
-          <div style={{
-            background: COLORS.modal.surface,
-            borderRadius: BORDERS.radius.xl,
-            padding: '24px',
-            maxWidth: '460px',
-            width: '90%',
-            boxShadow: SHADOWS.xl,
-            border: `1px solid ${COLORS.modal.border}`,
-            fontFamily: FONT_FAMILY,
-            animation: 'fadeIn 0.2s ease-out'
-          }}>
-            <h2 style={{
-              color: COLORS.modal.textPrimary,
-              marginBottom: '8px',
-              fontSize: TYPOGRAPHY.fontSize['3xl'],
-              fontWeight: TYPOGRAPHY.fontWeight.semibold,
-              letterSpacing: '-0.01em',
-              lineHeight: TYPOGRAPHY.lineHeight.tight,
-              fontFamily: FONT_FAMILY
-            }}>
-              Choose export location
-            </h2>
-            <p style={{
-              color: COLORS.modal.textMuted,
-              marginBottom: '18px',
-              lineHeight: TYPOGRAPHY.lineHeight.normal,
-              fontSize: TYPOGRAPHY.fontSize.lg,
-              letterSpacing: '-0.01em',
-              fontFamily: FONT_FAMILY
-            }}>
-              Choose where to export this Excel file.
-            </p>
+        <DialogCard
+          title="Choose export location"
+          message="Choose where to export this Excel file."
+          onClose={() => { setShowExportLocationModal(false); setExportPendingData(null); setIsExporting(false); }}
+          width={420}
+          zIndex={10000}
+          footer={<button type="button" className="hub-btn dialog-touch-pad" onClick={() => { setShowExportLocationModal(false); setExportPendingData(null); setIsExporting(false); }}>Cancel</button>}
+        >
             <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
               <button
                 onClick={async () => {
@@ -42070,45 +42033,8 @@ ${pageBlocks}
                   </div>
                 )}
               </button>
-              <button
-                onClick={() => {
-                  setShowExportLocationModal(false);
-                  setExportPendingData(null);
-                  setIsExporting(false);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  background: COLORS.modal.secondaryButton,
-                  border: `1px solid ${COLORS.modal.borderStrong}`,
-                  borderRadius: BORDERS.radius.md,
-                  color: COLORS.text.tertiary,
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  letterSpacing: '-0.01em',
-                  marginTop: '2px',
-                  fontFamily: FONT_FAMILY
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
-                  e.currentTarget.style.borderColor = COLORS.modal.borderActive;
-                  e.currentTarget.style.color = COLORS.modal.textPrimary;
-                  e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = COLORS.modal.secondaryButton;
-                  e.currentTarget.style.borderColor = COLORS.modal.borderStrong;
-                  e.currentTarget.style.color = COLORS.text.tertiary;
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                Cancel
-              </button>
             </div>
-          </div>
-        </div>
+        </DialogCard>
       )}
 
       {/* OneDrive File Save Modal */}
