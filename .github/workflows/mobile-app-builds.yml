@@ -1,0 +1,109 @@
+name: Mobile app builds
+
+# Keeps the phone apps in step with the web: after every production ship a
+# fresh "Survey" Android app is built from the same commit, and after every
+# Nightly ship a "Survey Nightly" app (VITE_RELEASE_CHANNEL=nightly, its own
+# app id so both install side by side). Each lands on a rolling GitHub
+# release (app-stable / app-nightly) so testers always grab the latest APK.
+# iOS needs an Apple developer account to install outside the simulator, so
+# it gets built and walked in ios-native.yml only, until store accounts exist.
+
+on:
+  workflow_run:
+    workflows: ['Deploy production', 'Deploy nightly']
+    types: [completed]
+  # A PR that changes this file builds the Nightly app without publishing it.
+  pull_request:
+    paths: ['.github/workflows/mobile-app-builds.yml', 'android/app/build.gradle']
+  workflow_dispatch:
+    inputs:
+      channel:
+        type: choice
+        options: [stable, nightly]
+        default: nightly
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-app-builds-${{ github.event.workflow_run.name || inputs.channel || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || github.event_name == 'pull_request' && 'nightly' || (github.event.workflow_run.name == 'Deploy nightly' && 'nightly' || 'stable') }}
+    steps:
+      # Build what the site actually serves (its release.json), not the
+      # commit that triggered us: the prod workflow runs every 15 minutes and
+      # most runs ship nothing. Skip when the release already has that commit.
+      - name: Find the live commit
+        id: live
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"; echo "build=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # Nightly is built from the commit prod serves too (deploy-nightly.yml),
+          # and the Nightly host sits behind Vercel sign-in, so ask prod for both.
+          host=surveytool.app
+          sha="$(curl --fail --silent --show-error "https://$host/release.json?t=$(date +%s)" | jq -r '.commit // empty')"
+          [ -n "$sha" ] || { echo "::error::$host/release.json gave no commit"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          built="$(gh release view "app-$CHANNEL" -R "$REPO" --json body -q .body 2>/dev/null | grep -oE 'built from [0-9a-f]{40}' | cut -d' ' -f3 || true)"
+          if [ "$built" = "$sha" ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
+            echo "app-$CHANNEL already has $sha; nothing to build"; echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v7
+        if: steps.live.outputs.build == 'true'
+        with:
+          ref: ${{ steps.live.outputs.sha }}
+      - uses: actions/setup-node@v7
+        if: steps.live.outputs.build == 'true'
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v4
+        if: steps.live.outputs.build == 'true'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+        if: steps.live.outputs.build == 'true'
+      - name: Build web bundle
+        if: steps.live.outputs.build == 'true'
+        run: |
+          if [ "$CHANNEL" = nightly ]; then export VITE_RELEASE_CHANNEL=nightly; fi
+          npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - run: npx cap sync android
+        if: steps.live.outputs.build == 'true'
+      - name: Name the Nightly app
+        if: steps.live.outputs.build == 'true' && env.CHANNEL == 'nightly'
+        run: sed -i 's#>Survey<#>Survey Nightly<#g' android/app/src/main/res/values/strings.xml
+      - name: Build APK
+        if: steps.live.outputs.build == 'true'
+        run: |
+          cd android
+          if [ "$CHANNEL" = nightly ]; then ./gradlew --no-daemon assembleDebug -PsurveyNightly=true; else ./gradlew --no-daemon assembleDebug; fi
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/survey-$CHANNEL.apk"
+      - name: Publish to the rolling release
+        if: steps.live.outputs.build == 'true' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="app-$CHANNEL"
+          notes="Latest $CHANNEL Android app, built from ${{ steps.live.outputs.sha }} on $(date -u +%FT%TZ)."
+          # Notes name the built commit and gate later skips, so write them
+          # only after the APK upload succeeds.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --prerelease --target "${{ steps.live.outputs.sha }}" --title "Survey app ($CHANNEL)" --notes "First build in progress."
+          gh release upload "$tag" "survey-$CHANNEL.apk" --clobber
+          gh release edit "$tag" --notes "$notes"

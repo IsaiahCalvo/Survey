@@ -24,6 +24,10 @@ android {
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.kalvoe.survey"
+        // CI Nightly build: own app id so it installs next to the stable app.
+        if (project.hasProperty("surveyNightly")) {
+            applicationIdSuffix ".nightly"
+        }
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // versionCode/versionName are set by `npm run native:version` from package.json.
@@ -37,6 +41,15 @@ android {
         }
     }
     signingConfigs {
+        // Fixed key for the CI tester APKs (mobile-app-builds.yml), so each
+        // new build installs over the last one. Debug builds only; store
+        // builds use the release key above.
+        debug {
+            storeFile file('ci-debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
         if (hasReleaseSigning) {
             release {
                 storeFile rootProject.file(releaseSigning.storeFile)
