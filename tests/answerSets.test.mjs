@@ -121,7 +121,7 @@ test('text and number items: saved answer, done, issue and Excel rule', async ()
   const text = { id: 'a', text: 'Serial', kind: 'text' };
   const num = { id: 'b', text: 'Height', kind: 'number', unit: 'ft' };
   const pick = { id: 'c', text: 'Installed' };
-  assert.deepEqual([text, num, pick, { kind: 'photo' }].map(itemKind), ['text', 'number', 'choice', 'choice']);
+  assert.deepEqual([text, num, pick, { kind: 'video' }].map(itemKind), ['text', 'number', 'choice', 'choice']);
   assert.equal(typedAnswer(text, '  SN-1 '), 'SN-1');
   assert.equal(typedAnswer(num, '1,200'), '1200');
   assert.equal(typedAnswer(num, ' 8.5 '), '8.5');

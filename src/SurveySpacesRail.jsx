@@ -53,6 +53,7 @@ import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { reportKitFor } from './services/reportKits/index.js';
 import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput, { CHOICE_BUTTONS_MAX, ChoiceSelect } from './components/TypedAnswerInput.jsx';
+import SurveyReportMenu from './components/SurveyReportMenu.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
@@ -596,31 +597,25 @@ const SurveySpacesRail = ({
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
   const proLocked = useProLock();
-  // Nightly 'survey-report': a PowerPoint report beside Export data.
+  // Nightly 'survey-report': a report beside Export data (PowerPoint, PDF, Excel or CSV).
   const [surveyReportOn] = useState(() => isFeatureOn('survey-report'));
   const [isReporting, setIsReporting] = useState(false);
   // The report layout comes from the live template: it is an output choice,
   // not part of the template version a document keeps.
   const reportKitOf = () => reportKitFor(availableSurveyTemplates.find((t) => t.id === selectedTemplate?.id) || selectedTemplate);
-  const handleSurveyReport = async () => {
+  const handleSurveyReport = async (format = 'pptx') => {
     if (proLocked('excel') || isReporting) return;
     setIsReporting(true);
     try {
-      const { downloadSurveyReport } = await import('./services/surveyReportPptx.js');
-      await downloadSurveyReport({ template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf() });
+      const input = { template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf() };
+      if (format === 'pdf') await (await import('./services/surveyReportPdf.js')).downloadSurveyReportPdf(input);
+      else if (format === 'xlsx') await (await import('./services/surveyReportXlsx.js')).downloadSurveyReportXlsx(input);
+      else if (format === 'csv') (await import('./services/surveyReportCsv.js')).downloadSurveyReportCsv(input);
+      else await (await import('./services/surveyReportPptx.js')).downloadSurveyReport(input);
     } catch (error) {
       console.error('Failed to create the survey report', error);
     } finally {
       setIsReporting(false);
-    }
-  };
-  const handleSurveyReportCsv = async () => {
-    if (proLocked('excel')) return;
-    try {
-      const { downloadSurveyReportCsv } = await import('./services/surveyReportCsv.js');
-      downloadSurveyReportCsv({ template: selectedTemplate, markers: surveyMarkers });
-    } catch (error) {
-      console.error('Failed to create the survey report CSV', error);
     }
   };
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
@@ -4319,31 +4314,14 @@ const SurveySpacesRail = ({
                         <span>{isExporting ? 'Exporting\u2026' : 'Export data'}</span>
                       </button>
                       {surveyReportOn && (
-                        <button
-                          type="button"
+                        <SurveyReportMenu
                           className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
-                          onClick={() => { if (surveyHasItems) handleSurveyReport(); }}
-                          disabled={isReporting || !surveyHasItems}
-                          {...(mobileMode ? {} : tip(surveyHasItems ? `Download a PowerPoint report (${reportKitOf().label}). Pick the layout in the template.` : 'Add a survey item to make a report', 'above'))}
-                        >
-                          {isReporting
-                            ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
-                            : <Icon name="document" size={mobileMode ? 16 : 14} color="currentColor" />}
-                          <span>{isReporting ? 'Making report\u2026' : 'Report'}</span>
-                        </button>
-                      )}
-                      {surveyReportOn && (
-                        <button
-                          type="button"
-                          className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
-                          onClick={() => { if (surveyHasItems) handleSurveyReportCsv(); }}
+                          phone={mobileMode}
                           disabled={!surveyHasItems}
-                          aria-label="Report as CSV"
-                          {...(mobileMode ? {} : tip(surveyHasItems ? 'Download the report as a CSV table: one row per item with its status and issues' : 'Add a survey item to make a report', 'above'))}
-                        >
-                          <Icon name="listChecks" size={mobileMode ? 16 : 14} color="currentColor" />
-                          <span>CSV</span>
-                        </button>
+                          busy={isReporting}
+                          hint={surveyHasItems ? `Download a report (${reportKitOf().label}) as PowerPoint, PDF, Excel or CSV. Pick the layout in the template.` : 'Add a survey item to make a report'}
+                          onPick={handleSurveyReport}
+                        />
                       )}
                       {mobileMode ? (
                         (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (
