@@ -1512,7 +1512,10 @@ const SurveySpacesRail = ({
   // patch is functional, so a text save and an upload finishing at the same
   // moment both land. `requireExisting`: an upload that finishes after its
   // Survey Marker was deleted must not bring a stub of it back.
-  const updateSurveyMarkerNote = useCallback((annotationId, updater, { requireExisting = false } = {}) => {
+  // `lineAnswer`: a Photo or Signature line's { lineId, answerOf(nextNote) },
+  // written in the same update so the answer lands even if the line's
+  // control is gone by the time an upload finishes.
+  const updateSurveyMarkerNote = useCallback((annotationId, updater, { requireExisting = false, lineAnswer = null } = {}) => {
     if (!annotationId) return;
     setSurveyMarkers(prev => {
       const existing = prev?.[annotationId];
@@ -1533,11 +1536,18 @@ const SurveySpacesRail = ({
       }
       const nextNote = updater(prevNote);
       if (!nextNote || nextNote === prevNote) return prev;
+      const answered = lineAnswer ? {
+        checklistResponses: {
+          ...existing?.checklistResponses,
+          [lineAnswer.lineId]: { ...existing?.checklistResponses?.[lineAnswer.lineId], selection: lineAnswer.answerOf(nextNote) },
+        },
+      } : {};
       return {
         ...prev,
         [annotationId]: {
           ...(existing || {}),
-          note: nextNote
+          note: nextNote,
+          ...answered,
         }
       };
     });

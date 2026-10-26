@@ -9,9 +9,10 @@
  * photos out; this control shows them on their line.
  *
  * The line's saved answer is a plain string that follows the media:
- * "2 photos" or "Signed 2026-10-26" ('' with none). An effect writes it
- * whenever the media and the answer disagree (after an upload lands, after
- * a removal), so the answer never claims a photo that is not there.
+ * "2 photos" or "Signed 2026-10-26" ('' with none). It is written in the
+ * same note patch as the media (an upload can land after this control is
+ * gone); an effect also mends a mismatch it sees, so the answer never claims
+ * a photo that is not there.
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -107,9 +108,11 @@ function SignaturePad({ title, phone, onSave, onClose }) {
   };
   const save = () => {
     setSaving(true);
-    canvasRef.current.toBlob((blob) => {
+    canvasRef.current.toBlob(async (blob) => {
       if (!blob) { setSaving(false); showToast('Couldn\'t read the signature. Try again.', 'error'); return; }
-      onSave(new File([blob], 'signature.png', { type: 'image/png' }));
+      // onSave closes the pad when it worked; after a failure, try again.
+      const ok = await onSave(new File([blob], 'signature.png', { type: 'image/png' }));
+      if (!ok) setSaving(false);
     }, 'image/png');
   };
 
@@ -188,12 +191,14 @@ export default function LineMediaAnswer({ item, value, onCommit, phone = false, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canEdit, answer, saved]);
 
+  // The line's answer is written with the media itself (the note patch).
+  const lineAnswer = { lineId: item.id, answerOf: (nextNote) => lineMediaAnswer(item, lineMediaOf(nextNote, item.id)) };
   const upload = async (file, extra = {}) => {
     if (!documentId) { showToast('Save this document to your account before adding photos.', 'warn'); return false; }
     setBusy(true);
     try {
       const ref = await uploadSurveyMedia({ documentId, markerId, file, kind: 'photo' });
-      onUpdateNote((prev) => buildNoteWithMedia(prev, [...normalizeNoteMedia(prev), { ...ref, lineId: item.id, ...extra }]), { requireExisting: true });
+      onUpdateNote((prev) => buildNoteWithMedia(prev, [...normalizeNoteMedia(prev), { ...ref, lineId: item.id, ...extra }]), { requireExisting: true, lineAnswer });
       return true;
     } catch (error) {
       console.warn('[surveyMedia] line upload failed', error);
@@ -204,7 +209,7 @@ export default function LineMediaAnswer({ item, value, onCommit, phone = false, 
     }
   };
   const remove = (ref) => {
-    onUpdateNote((prev) => buildNoteWithMedia(prev, normalizeNoteMedia(prev).filter((m) => m.id !== ref.id)), { requireExisting: true });
+    onUpdateNote((prev) => buildNoteWithMedia(prev, normalizeNoteMedia(prev).filter((m) => m.id !== ref.id)), { requireExisting: true, lineAnswer });
     if (ref.path) void deleteSurveyMediaOrQueue(ref);
   };
   const buttonClass = phone ? 'mobile-survey-check-btn' : 'survey-rail__answer';
@@ -246,6 +251,7 @@ export default function LineMediaAnswer({ item, value, onCommit, phone = false, 
             onSave={async (file) => {
               const ok = await upload(file, { name: `${label} signature` });
               if (ok && mountedRef.current) setSigning(false);
+              return ok;
             }}
           />
         )}

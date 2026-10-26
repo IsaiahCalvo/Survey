@@ -73,23 +73,37 @@ export async function buildSurveyReportPdf(PDFLib, input) {
     const cols = fractions.map((f) => f * w);
     const pad = 5;
     const lineH = size * 1.25;
+    const top = PAGE[1] - M - 44;
     let page = newPage(title);
-    let y = PAGE[1] - M - 44;
+    let y = top;
+    const continuePage = () => {
+      page = newPage(`${title} (continued)`);
+      y = top;
+      drawRow(head, { header: true });
+    };
+    // A row taller than what is left goes to the next page; a row taller
+    // than a whole page is split across pages, line by line.
     const drawRow = (cells, { header = false } = {}) => {
-      const wrapped = cells.map((c, i) => wrap(c, size, cols[i] - 2 * pad, header ? bold : font));
-      const h = Math.max(...wrapped.map((l) => l.length)) * lineH + 2 * pad;
-      if (y - h < M) {
-        page = newPage(`${title} (continued)`);
-        y = PAGE[1] - M - 44;
-        if (!header) drawRow(head, { header: true });
+      const f = header ? bold : font;
+      let wrapped = cells.map((c, i) => wrap(c, size, cols[i] - 2 * pad, f));
+      let fresh = header;
+      for (;;) {
+        const tall = Math.max(...wrapped.map((l) => l.length));
+        const room = Math.floor((y - M - 2 * pad) / lineH);
+        if (!fresh && tall > room) { continuePage(); fresh = true; continue; }
+        const n = Math.min(tall, Math.max(1, room));
+        let x = M;
+        wrapped.forEach((lines, i) => {
+          lines.slice(0, n).forEach((l, j) => text(page, l, x + pad, y - pad - size - j * lineH + 2, { size, f, color: header ? MUTED : INK }));
+          x += cols[i];
+        });
+        y -= n * lineH + 2 * pad;
+        page.drawLine({ start: { x: M, y }, end: { x: M + w, y }, thickness: 0.5, color: RULE });
+        if (n >= tall) return;
+        wrapped = wrapped.map((lines) => lines.slice(n));
+        continuePage();
+        fresh = true;
       }
-      let x = M;
-      wrapped.forEach((lines, i) => {
-        lines.forEach((l, j) => text(page, l, x + pad, y - pad - size - j * lineH + 2, { size, f: header ? bold : font, color: header ? MUTED : INK }));
-        x += cols[i];
-      });
-      y -= h;
-      page.drawLine({ start: { x: M, y }, end: { x: M + w, y }, thickness: 0.5, color: RULE });
     };
     drawRow(head, { header: true });
     rows.forEach((r) => drawRow(r));

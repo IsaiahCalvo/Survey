@@ -39,3 +39,14 @@ test('an empty survey still makes a report', async () => {
   assert.equal(await pages('full-report', { template, markers: {} }), 3);
   assert.equal(surveyReportPdfFileName({ name: 'A/B: C' }), 'A B C report.pdf');
 });
+
+test('an issue row taller than a page is split across pages, nothing dropped', async () => {
+  const checklist = Array.from({ length: 120 }, (_, i) => ({ id: `q${i}`, text: `Question number ${i} about the door hardware` }));
+  const big = { name: 'Big', modules: [{ id: 'm', name: 'M', categories: [{ id: 'c', name: 'Doors', checklist }] }] };
+  const responses = Object.fromEntries(checklist.map((q) => [q.id, { selection: 'N' }]));
+  const bytes = await buildSurveyReportPdf(PDFLib, { template: big, markers: { x: { name: 'D-1', categoryId: 'c', checklistResponses: responses } }, kit: getReportKit('issues-report') });
+  const doc = await PDFLib.PDFDocument.load(bytes);
+  // Cover, then the one tall Issues row over several pages.
+  assert.ok(doc.getPageCount() >= 3, `pages: ${doc.getPageCount()}`);
+  if (process.env.SURVEY_REPORT_PDF_OUT) writeFileSync(`${process.env.SURVEY_REPORT_PDF_OUT}/tall-row.pdf`, bytes);
+});
