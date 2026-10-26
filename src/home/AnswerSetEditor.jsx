@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './HubShell';
+import { hoverOnly, useTooltip } from '../components/Tooltip';
 import {
   ANSWER_MEANS_MAX, ITEM_UNIT_MAX, MAX_ANSWERS, SCORE_SCALES, itemAnswerFields, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
 } from '../services/answerSets.js';
@@ -141,10 +142,11 @@ const KIND_OPTIONS = [
 // A small box that commits on blur / Enter: a number (blank = not set) or text.
 function SettingBox({ label, value, onCommit, width, size, placeholder, text = false, maxLength }) {
   const shown = value === undefined || value === null ? '' : String(value);
+  const tip = useTooltip();
   return (
     <input
       aria-label={label}
-      title={label}
+      {...hoverOnly(tip(label))}
       defaultValue={shown}
       key={shown}
       maxLength={maxLength}
@@ -171,6 +173,7 @@ function SettingBox({ label, value, onCommit, width, size, placeholder, text = f
  * ({ kind, ...settings }, {} for pick-one), cleaned by itemAnswerFields.
  */
 export function ItemKindPicker({ item, onChange, phone = false }) {
+  const tip = useTooltip();
   const fields = itemAnswerFields(item);
   const kind = fields.kind || 'choice';
   const name = item.text || 'this item';
@@ -205,7 +208,7 @@ export function ItemKindPicker({ item, onChange, phone = false }) {
           </select>
           <select
             aria-label={`Issue at or below, for "${name}"`}
-            title="A score at or below this is an issue"
+            {...hoverOnly(tip('A score at or below this is an issue'))}
             value={fields.issueAt ?? ''}
             onChange={(e) => set({ issueAt: e.target.value ? Number(e.target.value) : undefined })}
             style={selectStyle}

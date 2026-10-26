@@ -65,7 +65,7 @@ function ScoreAnswer({ item, saved, onCommit, phone }) {
         aria-label={`${label} score`}
         value={saved}
         onClick={stop}
-        onChange={(e) => { if (e.target.value) onCommit(e.target.value); }}
+        onChange={(e) => { if (e.target.value !== saved) onCommit(e.target.value); }}
         style={boxStyle(phone, phone ? 72 : 56)}
       >
         <option value="">–</option>
