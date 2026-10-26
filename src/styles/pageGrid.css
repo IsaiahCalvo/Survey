@@ -7,14 +7,16 @@
  * Pinned to the page div's own pseudo-element it painted over the markup.
  * Sized in PDF points times the page's own --survey-page-scale,
  * so it follows zoom with no JavaScript and is never part of an export or the
- * saved PDF. 36pt (half-inch) cells; pointer-events off so it never takes input.
+ * saved PDF. 36pt (half-inch) cells unless the grid settings say otherwise; pointer-events off so it never takes input.
  */
 html[data-page-grid="on"] .survey-pdfjs-page-div > .survey-pdfjs-page-canvas + div::after {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
-    --page-grid-step: calc(var(--survey-page-scale, 1) * 36px);
+    /* Cell size in PDF points: the page's own drawing-size step, else the
+       shared step (src/utils/pageGrid.js), else the half inch. */
+    --page-grid-step: calc(var(--survey-page-scale, 1) * var(--page-grid-pt, var(--page-grid-base-pt, 36)) * 1px);
     background-image:
         linear-gradient(to right, rgba(37, 99, 235, 0.16) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(37, 99, 235, 0.16) 1px, transparent 1px);

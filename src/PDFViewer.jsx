@@ -367,6 +367,7 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
 import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
@@ -21730,6 +21731,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const binding = readSurveyTemplateBinding(selectedTemplate.id);
     if (binding?.used) storeSurveyTemplateBinding(selectedTemplate.id, acceptTemplateVersion(binding, reordered, true));
   }, [selectedTemplate, appTemplates, readSurveyTemplateBinding, storeSurveyTemplateBinding]);
+
+  // Page grid spacing ('grid-settings' flag): applies the saved spacing, and
+  // for drawing sizes (ft, m) gives each page div its own step from that
+  // page's measure scale (utils/pageGrid.js).
+  const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
+  const [gridSettings, setGridSettings] = useState(() => loadPageGridSettings());
+  useEffect(() => {
+    if (!gridSettingsEnabled) return undefined;
+    applyPageGridSettings(gridSettings);
+    const onChange = (e) => setGridSettings(e.detail || loadPageGridSettings());
+    window.addEventListener(PAGE_GRID_SETTINGS_EVENT, onChange);
+    return () => window.removeEventListener(PAGE_GRID_SETTINGS_EVENT, onChange);
+  }, [gridSettingsEnabled, gridSettings]);
+  useEffect(() => {
+    if (!gridSettingsEnabled) return;
+    applyPageGridPageSteps(gridSettings, (pageNumber) => (
+      pageScaleFromObjects(annotationsByPage?.[pageNumber]?.objects) || measureScales[pageNumber] || null
+    ));
+  }, [gridSettingsEnabled, gridSettings, annotationsByPage, measureScales, numPages]);
   // Layers panel ('layers' flag): the layer list rides the synced doc meta;
   // the active layer is this screen's own choice.
   const [layersEnabled] = useState(() => isFeatureOn('layers'));

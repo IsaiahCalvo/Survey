@@ -6,6 +6,8 @@ import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
 import PageGridToggle from '../components/PageGridToggle';
+import { PageGridSettingsPanel } from '../components/PageGridSettings';
+import { isFeatureOn } from '../featureFlags.js';
 import SnappingToggle from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
@@ -40,7 +42,6 @@ import { formatPageTotal } from '../utils/pageTotalLabel.js';
 import { MOBILE_MEASURE_ITEMS, applyMobileMeasurePick, applyMobileShapePick, isMobileShapeToolActive } from './mobileShapeRail.js';
 import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
-import { isFeatureOn } from '../featureFlags.js';
 import { OPEN_EXPORT_PDF_EVENT } from '../utils/exportPdfModes.js';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
@@ -1228,6 +1229,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                     <span>Page grid</span>
                     {on && <Icon name="check" size={14} color="currentColor" />}
                   </button>
+                  {/* Nightly (flag 'grid-settings'): the spacing, under the row. */}
+                  {on && isFeatureOn('grid-settings') && <PageGridSettingsPanel on={on} toggle={toggle} phone showSwitch={false} />}
                 </div>
               )} />
               <SnappingToggle render={({ on, toggle }) => (

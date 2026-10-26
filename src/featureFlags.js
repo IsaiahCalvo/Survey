@@ -82,6 +82,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Export PDF choices: annotated, flattened or plain, and which pages',
     stage: 'beta',
   }),
+  'grid-settings': Object.freeze({
+    label: 'Page grid spacing: fine, normal, wide or custom (paper or drawing units)',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
