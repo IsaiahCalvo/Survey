@@ -6180,6 +6180,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
+  // The version of a template this document opens: the one it kept (with the
+  // latest module order when only the order changed), else the latest.
+  const surveyTemplateVersionForDocument = useCallback((template) => {
+    if (!template) return null;
+    const binding = readSurveyTemplateBinding(template.id);
+    if (!binding?.used) return template;
+    return followModuleOrder(binding.snapshot, template) || binding.snapshot;
+  }, [readSurveyTemplateBinding]);
   const handleSelectSurveyTemplate = useCallback((template, options = {}) => {
     if (!template) return;
     let binding = readSurveyTemplateBinding(template.id);
@@ -31501,6 +31509,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // they went.
   const handleTransferSurveyMarkers = useCallback(({ mode, ids, templateId, moduleId, categoryId }) => {
     if (documentLocked || yjsDocRole === 'viewer') return { ok: false, reason: 'This document is read-only.' };
+    // Another template opens in the version this document kept (the picker
+    // lists that version), so check the category is really there first.
+    const current = selectedTemplateRef.current;
+    const otherTemplate = Boolean(templateId) && templateId !== current?.id;
+    const destination = otherTemplate
+      ? surveyTemplateVersionForDocument(templates.find((entry) => entry?.id === templateId))
+      : current;
+    const destinationModule = (destination?.modules || destination?.spaces || []).find((mod) => mod?.id === moduleId);
+    if (!(destinationModule?.categories || []).some((cat) => cat?.id === categoryId)) {
+      return { ok: false, reason: 'That category is not in the version of the template this document uses.' };
+    }
     const viewerId = user?.id ?? null;
     const plan = planSurveyMarkerTransfer({
       mode, ids, moduleId, categoryId,
@@ -31518,14 +31537,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (selectedTemplateRef.current?.linkedExcelPath) pendingExcelSyncAfterDeleteRefBridge.current = true;
     applySurveyMarkerFamilyAction(action);
     pushLocalAnnotationHistoryAction(action);
-    if (templateId && templateId !== selectedTemplateRef.current?.id) {
-      handleSwitchSurveyTemplateById(templateId);
-    } else {
-      setSelectedModuleId(moduleId);
-      setExpandedCategories((current) => ({ ...current, [categoryId]: true }));
-    }
+    // Open the version the markers were placed in, without the "keep or use
+    // latest" question: cancelling that would leave them out of sight.
+    if (otherTemplate) enterSurveyTemplateVersion(destination);
+    setSelectedModuleId(moduleId);
+    setExpandedCategories((expanded) => ({ ...expanded, [categoryId]: true }));
     return { ok: true, ids: plan.ids };
-  }, [documentLocked, yjsDocRole, user?.id, documentOwnerId, applySurveyMarkerFamilyAction, pushLocalAnnotationHistoryAction, handleSwitchSurveyTemplateById]);
+  }, [documentLocked, yjsDocRole, user?.id, documentOwnerId, templates, surveyTemplateVersionForDocument, applySurveyMarkerFamilyAction, pushLocalAnnotationHistoryAction, enterSurveyTemplateVersion]);
 
   // Set true by handleSurveyMarkerDeleted once a delete commits; the effect
   // below watches surveyMarkers and re-exports the linked Excel so the
@@ -36512,6 +36530,7 @@ ${pageBlocks}
       deleteCategory: handleDeleteSurveyCategoryDefinition,
       handleMoveSurveyCategories,
       transferSurveyMarkers: handleTransferSurveyMarkers,
+      surveyTemplateVersionForDocument,
       reorderSurveyModules: handleReorderSurveyModules,
       canEditSurveyCategories: !documentLocked && yjsDocRole !== 'viewer' && !surveyTemplateIsRetained,
       canModifySurveyMarkerItem: (id) => !documentLocked && yjsDocRole !== 'viewer' && canModifySurveyMarker({ surveyMarker: surveyMarkers[id], viewerId: user?.id, documentOwnerId }),
@@ -36671,6 +36690,7 @@ ${pageBlocks}
     handleDeleteSurveyCategoryDefinition,
     handleMoveSurveyCategories,
     handleTransferSurveyMarkers,
+    surveyTemplateVersionForDocument,
     handleReorderSurveyModules,
     surveyTemplateIsRetained,
     documentLocked,

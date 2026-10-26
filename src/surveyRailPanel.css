@@ -551,6 +551,18 @@
   animation: none;
 }
 
+/* A name wider than the whole rail shrinks with an ellipsis, so the "+N"
+   button always stays in the row (nothing scrolls here to reach it). */
+.survey-rail .survey-rail__tabs.survey-rail__tabs--fit > button {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.survey-rail .survey-rail__tabs.survey-rail__tabs--fit > button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .survey-rail .survey-rail__tabs > button.survey-rail__tabs-more {
   flex: 0 0 auto;
   min-width: 0;

@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { E2E_ACCOUNTS, E2E_DOCUMENT, E2E_PROJECT } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
 
-const MODULE_NAMES = ['Installation', 'Rough-in', 'Trim out', 'Punch list', 'Closeout', 'Testing', 'Commissioning', 'Warranty', 'Extra long module name here'];
+const MODULE_NAMES = ['Installation', 'Rough-in', 'Trim out', 'Punch list', 'Closeout', 'Testing', 'Commissioning', 'Warranty', 'Extra long module name here that runs well past the width of the Survey panel on any screen'];
 
 test.describe.configure({ mode: 'serial' });
 
@@ -49,7 +49,16 @@ test.beforeAll(async () => {
   if (tpl.error) throw tpl.error;
   const link = await admin.from('document_templates').insert({ document_id: documentId, template_id: templateId, linked_by: uid });
   if (link.error) throw link.error;
-  seeded = { templateId, documentId, documentName, templateName, filePath };
+  // A second template whose newest version added a category this document
+  // has not taken (it kept the older version: see the last test).
+  const otherTemplateId = randomUUID();
+  const otherTemplateName = `Other Kit ${stamp % 100000}`;
+  const other = await admin.from('templates').insert({ id: otherTemplateId, user_id: uid, name: otherTemplateName, config: { modules: [{ id: 'other-mod', name: 'Other module', categories: [
+    { id: 'other-kept', name: 'Kept category', checklist: [{ id: 'other-cl-a', text: 'Checked' }] },
+    { id: 'other-new', name: 'Newer category', checklist: [{ id: 'other-cl-b', text: 'Checked' }] },
+  ] }], entities: [] } });
+  if (other.error) throw other.error;
+  seeded = { templateId, documentId, documentName, templateName, filePath, uid, otherTemplateId, otherTemplateName };
 });
 
 test.afterAll(async () => {
@@ -59,6 +68,7 @@ test.afterAll(async () => {
   await admin.from('documents').delete().eq('id', seeded.documentId);
   await admin.storage.from('documents').remove([seeded.filePath]);
   await admin.from('templates').delete().eq('id', seeded.templateId);
+  await admin.from('templates').delete().eq('id', seeded.otherTemplateId);
 });
 
 // Three markers, D-1..D-3, in Installation / Door (written the way the app
@@ -195,6 +205,18 @@ test('module tabs: what fits, then +N; drag reorders the template on both screen
   await page.getByRole('menuitem', { name: 'Warranty' }).click();
   await expect(tabs.getByRole('tab', { name: 'Warranty' })).toHaveAttribute('aria-selected', 'true');
 
+  // A name wider than the panel shrinks (ellipsis): "+N" stays in the row.
+  await more.click();
+  await page.getByRole('menuitem', { name: /^Extra long module name/ }).click();
+  await expect(tabs.getByRole('tab', { name: /^Extra long module name/ })).toHaveAttribute('aria-selected', 'true');
+  const rowBox = await tabs.boundingBox();
+  const moreBox = await more.boundingBox();
+  expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 0.5);
+  if (await tabs.getByRole('tab', { name: 'Installation' }).count() === 0) {
+    await more.click();
+    await page.getByRole('menuitem', { name: 'Installation' }).click();
+  }
+
   await tabs.getByRole('tab', { name: 'Installation' }).click();
   await dragBetween(page, tabs.getByRole('tab', { name: 'Rough-in' }), tabs.getByRole('tab', { name: 'Installation' }));
   await page.mouse.up();
@@ -230,4 +252,37 @@ test('module tabs: what fits, then +N; drag reorders the template on both screen
   await page.getByText(seeded.documentName.slice(0, 24)).first().click();
   await expect.poll(async () => (await moduleTabs(page).getByRole('tab').allInnerTexts()).slice(0, 2)).toEqual(['Trim out', 'Rough-in']);
   await expect(page.getByRole('button', { name: 'Keep previous version' })).toHaveCount(0);
+});
+
+test('Move to another template lists the version this document kept, and opens it', async ({ page }) => {
+  // This document already used "Other Kit" before its "Newer category" was
+  // added, and chose to keep that version.
+  await page.evaluate(({ uid, documentId, templateId, name }) => {
+    const snapshot = { id: templateId, name, modules: [{ id: 'other-mod', name: 'Other module', categories: [
+      { id: 'other-kept', name: 'Kept category', checklist: [{ id: 'other-cl-a', text: 'Checked' }] },
+    ] }], entities: [] };
+    localStorage.setItem(`survey:templateBinding:${uid}:${documentId}:${templateId}`, JSON.stringify({ used: true, snapshot, fingerprint: 'kept', reviewedFingerprint: null }));
+  }, { uid: seeded.uid, documentId: seeded.documentId, templateId: seeded.otherTemplateId, name: seeded.otherTemplateName });
+  await seedMarkers(page);
+  await openSurvey(page);
+  // The test before reordered the modules: the markers are in Installation.
+  await moduleTabs(page).getByRole('tab', { name: 'Installation' }).click();
+  await page.getByRole('button', { name: 'Show Survey Markers in Door' }).click();
+  await page.locator('#highlight-item-surveyMarker-fix-0').click({ button: 'right', position: { x: 12, y: 10 } });
+  await page.getByRole('menuitem', { name: 'Move to…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Move 1 Survey Marker' });
+  await dialog.getByRole('combobox', { name: 'Template' }).selectOption({ label: seeded.otherTemplateName });
+  const categories = await dialog.getByRole('combobox', { name: 'Category' }).locator('option').allInnerTexts();
+  expect(categories).toEqual(['Kept category']);
+  await dialog.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  // The kept version opens straight away (no "keep or use latest" question),
+  // with the marker in its category.
+  await expect(page.getByRole('button', { name: 'Keep previous version' })).toHaveCount(0);
+  await expect(page.locator('[data-survey-category-id="other-kept"] [id^="highlight-item-"]')).toHaveCount(1);
+  await expect(page.locator('[data-survey-category-id="other-new"]')).toHaveCount(0);
+  await expect.poll(async () => {
+    const marker = (await readMarkers(page))['surveyMarker-fix-0'];
+    return `${marker.moduleId}/${marker.categoryId}`;
+  }, { timeout: 20_000 }).toBe('other-mod/other-kept');
 });

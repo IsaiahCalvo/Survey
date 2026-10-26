@@ -463,6 +463,7 @@ const SurveySpacesRail = ({
   deleteCategory = () => {},
   handleMoveSurveyCategories,
   transferSurveyMarkers,
+  surveyTemplateVersionForDocument,
   reorderSurveyModules,
   duplicateSurveyMarker,
   canEditSurveyCategories = false,
@@ -4860,7 +4861,7 @@ const SurveySpacesRail = ({
               mode={markerTransfer.mode}
               count={markerTransfer.ids.length}
               currentTemplate={selectedTemplate}
-              templates={availableSurveyTemplates}
+              templates={availableSurveyTemplates.map((template) => surveyTemplateVersionForDocument?.(template) || template)}
               from={{ templateId: selectedTemplate?.id ?? null, moduleId: selectedModuleId, categoryId: markerTransfer.categoryId }}
               onConfirm={(target) => {
                 const result = transferSurveyMarkers?.({ mode: markerTransfer.mode, ids: markerTransfer.ids, ...target });
