@@ -15,7 +15,11 @@ export const isAnnotationTransformHandleLocked = (annotation, handleId) => {
   const isTextRangeHandle = annotation?.data?.type === 'text-markup'
     && ['ml', 'mr'].includes(handleId);
   if (isTextRangeHandle) return false;
-  if (handleId === 'mtr') return Boolean(annotation.lockRotation);
+  // Owner 2026-10-26: a counter pin's turn handle (double-click) must turn it.
+  // Every counter is drawn with lockRotation, which only keeps its round body
+  // from spinning; the handle turns the pointer (data.pointerAngle), the same
+  // value the typed rotation box already sets. A user lock still blocks it.
+  if (handleId === 'mtr') return annotation?.data?.type === 'counter' ? false : Boolean(annotation.lockRotation);
   if (['ml', 'mr'].includes(handleId)) return Boolean(annotation.lockScalingX);
   if (['mt', 'mb'].includes(handleId)) return Boolean(annotation.lockScalingY);
   if (['tl', 'tr', 'bl', 'br'].includes(handleId)) {
