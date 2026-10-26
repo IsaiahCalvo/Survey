@@ -15,40 +15,53 @@ import './SurveyMarkerPlacementDialog.css';
  * initials, entity discs - sitting beside the marker, not a blurred modal.
  *
  * Intended UX: the entity is already picked (the last one used, else the
- * first) and shows as the ringed disc; a disc changes it. Picking a category
- * row places the marker at once - one press, no Add button. Escape, the X or
- * a press off the card takes the marker back. On the phone it is a bottom
- * sheet with the sheet's 44px rows.
+ * first) and shows as the ringed disc; a disc changes it, and the marker on
+ * the page takes the new colour at once (onEntityChange). Only the module in
+ * use is listed (owner 2026-10-22: "only show the module that is selected and
+ * the categories within that module"); with more than one module, the module
+ * button above the list swaps it for the module list, and a pick there brings
+ * back that module's categories. Picking a category row places the marker at
+ * once - one press, no Add button. Escape, the X or a press off the card takes
+ * the marker back. On the phone it is a bottom sheet with the sheet's 44px
+ * rows.
  */
-export default function SurveyMarkerPlacementDialog({ marker, template, categoryId, mobile = false, onCancel, onConfirm }) {
+export default function SurveyMarkerPlacementDialog({ marker, template, categoryId, mobile = false, onCancel, onConfirm, onEntityChange }) {
   const modules = useMemo(() => template.modules || template.spaces || [], [template]);
   const entities = useMemo(() => (template.entities || []).filter((entity) => entity && entity.id != null), [template]);
   const [entityId, setEntityId] = useState(() => (
     entities.some((entity) => entity.id === marker.entityId) ? marker.entityId : (entities[0]?.id || '')
   ));
   const ref = useRef(null);
+  const [moduleId, setModuleId] = useState(() => (
+    modules.find((entry) => entry.id === marker.moduleId) || modules[0] || null
+  )?.id ?? null);
+  const [choosingModule, setChoosingModule] = useState(false);
   // The list puts focus on its find field or first row itself (desktop); the
-  // phone sheet opens with no focus, so no keyboard jumps up.
-  useFocusTrap(ref, true, { onEscape: onCancel, autoFocus: false });
+  // phone sheet opens with no focus, so no keyboard jumps up. Escape with the
+  // module list open only closes the list (one thing per Escape).
+  useFocusTrap(ref, true, {
+    onEscape: () => (choosingModule ? setChoosingModule(false) : onCancel()),
+    autoFocus: false,
+  });
   const [position, setPosition] = useState(null);
 
-  // The marker's own module first, then the rest, each as a section.
-  const sections = useMemo(() => {
-    const first = modules.find((module) => module.id === marker.moduleId) || modules[0] || null;
-    const ordered = first ? [first, ...modules.filter((module) => module !== first)] : modules;
-    return ordered
-      .filter((module) => (module.categories || []).length > 0)
-      .map((module) => ({
-        id: module.id,
-        label: modules.length > 1 ? (module.name || 'Untitled module') : null,
-        items: module.categories.map((category) => ({
-          id: category.id,
-          label: category.name || 'Untitled category',
-          glyph: getCategoryGlyphLabel(category.name),
-          moduleId: module.id,
-        })),
-      }));
-  }, [modules, marker.moduleId]);
+  const currentModule = modules.find((entry) => entry.id === moduleId) || modules[0] || null;
+
+  const sections = useMemo(() => (currentModule ? [{
+    id: currentModule.id,
+    label: null,
+    items: (currentModule.categories || []).map((category) => ({
+      id: category.id,
+      label: category.name || 'Untitled category',
+      glyph: getCategoryGlyphLabel(category.name),
+      moduleId: currentModule.id,
+    })),
+  }] : []), [currentModule]);
+  const moduleSections = useMemo(() => [{
+    id: 'modules',
+    label: null,
+    items: modules.map((entry) => ({ id: entry.id, label: entry.name || 'Untitled module' })),
+  }], [modules]);
 
   useLayoutEffect(() => {
     if (mobile || typeof document === 'undefined') return;
@@ -60,6 +73,12 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
       height: window.innerHeight,
     }));
   }, [marker.id, mobile]);
+
+  const pickEntity = (entry) => {
+    if (entry.id === entityId) return;
+    setEntityId(entry.id);
+    onEntityChange?.(entry);
+  };
 
   const place = (item) => {
     const entity = entities.find((entry) => entry.id === entityId);
@@ -85,6 +104,7 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
         aria-modal="true"
         aria-labelledby="survey-marker-place-title"
         data-survey-marker-placement="true"
+        data-survey-place-choosing={choosingModule ? 'true' : undefined}
         className={`survey-place annotation-dropdown__popover${mobile ? ' survey-place--sheet' : ''}`}
         style={mobile ? undefined : {
           left: position?.left ?? -9999,
@@ -106,24 +126,57 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
                   key={entry.id}
                   entity={entry}
                   current={entry.id === entityId}
-                  onPick={() => setEntityId(entry.id)}
+                  onPick={() => pickEntity(entry)}
                 />
               ))}
             </div>
             <span className="survey-place__entity-name">{entity?.name || 'Untitled entity'}</span>
           </div>
         )}
-        <div className="survey-place__hint">Pick a category to place it</div>
-        <SurveyPickList
-          sections={sections}
-          currentId={categoryId || null}
-          ariaLabel="Category"
-          searchPlaceholder="Find a category"
-          emptyText="This module has no categories"
-          variant={mobile ? 'sheet' : 'popover'}
-          autoFocus={!mobile}
-          onPick={(item) => place(item)}
-        />
+        {modules.length > 1 && (
+          <button
+            type="button"
+            className="survey-place__module"
+            aria-label={`Module: ${currentModule?.name || 'Untitled module'}. Change module`}
+            aria-expanded={choosingModule}
+            data-survey-place-module="true"
+            onClick={() => setChoosingModule((open) => !open)}
+          >
+            <span className="survey-place__module-word">Module</span>
+            <span className="survey-place__module-name">{currentModule?.name || 'Untitled module'}</span>
+            <Icon name={choosingModule ? 'chevronUp' : 'chevronDown'} size={9} color="currentColor" />
+          </button>
+        )}
+        {choosingModule ? (
+          <SurveyPickList
+            key="modules"
+            sections={moduleSections}
+            currentId={currentModule?.id || null}
+            ariaLabel="Module"
+            searchPlaceholder="Find a module"
+            variant={mobile ? 'sheet' : 'popover'}
+            autoFocus={!mobile}
+            onPick={(item) => {
+              setModuleId(item.id);
+              setChoosingModule(false);
+            }}
+          />
+        ) : (
+          <>
+            <div className="survey-place__hint">Pick a category to place it</div>
+            <SurveyPickList
+              key={`categories:${currentModule?.id || ''}`}
+              sections={sections}
+              currentId={categoryId || null}
+              ariaLabel="Category"
+              searchPlaceholder="Find a category"
+              emptyText="This module has no categories"
+              variant={mobile ? 'sheet' : 'popover'}
+              autoFocus={!mobile}
+              onPick={(item) => place(item)}
+            />
+          </>
+        )}
       </div>
     </div>
   );

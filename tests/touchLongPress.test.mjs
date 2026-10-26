@@ -16,6 +16,7 @@ import {
   isTouchMenuInput,
   longPressMayArm,
   markLongPressEvent,
+  pointerDrivesLongPress,
 } from '../src/utils/touchLongPress.js';
 import { DRAW_MODES } from '../src/utils/pencilMode.js';
 
@@ -133,4 +134,15 @@ test('wiring: a menu opened by touch on the desktop layout gets 44 px rows; the 
   assert.match(menu, /data-touch-rows=\{touchRows \? 'true' : undefined\}/);
   const css = read('src/styles/touchTargets.css');
   assert.match(css, /\[data-annotation-context-menu\]\[data-touch-rows='true'\] \[role='menuitem'\] \{[^}]*min-height: 44px;/);
+});
+
+test('a finger lift on the pointer stream cancels the press (touch target re-rendered away)', () => {
+  assert.equal(pointerDrivesLongPress({ pointerType: 'touch', pointerId: 7 }, null), true);
+  assert.equal(pointerDrivesLongPress({ pointerType: 'pen', pointerId: 3 }, 3), true);
+  assert.equal(pointerDrivesLongPress({ pointerType: 'pen', pointerId: 4 }, 3), false);
+  assert.equal(pointerDrivesLongPress({ pointerType: 'pen', pointerId: 3 }, null), false);
+  assert.equal(pointerDrivesLongPress({ pointerType: 'mouse', pointerId: 1 }, null), false);
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/components/PdfjsViewerContainer.jsx'), 'utf8');
+  assert.match(src, /const onPenEnd = \(event\) => \{\s*if \(!pointerDrivesLongPress\(event, penId\)\) return;/);
+  assert.match(src, /const onPenMove = \(event\) => \{\s*if \(pointerDrivesLongPress\(event, penId\)\) press\.move/);
 });

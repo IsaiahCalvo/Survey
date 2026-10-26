@@ -122,6 +122,16 @@ test('find more like this: a box with a 2px border gap is still found', () => {
   assert.equal(rings.length, 2);
 });
 
+test('find more like this: a small and a big tag shape are searched for together', () => {
+  const { mask, rect } = canvas(300, 200);
+  rect(20, 20, 31, 31); // small tag
+  rect(150, 40, 250, 140); // big tag
+  const small = outlineSignature([[20, 20], [32, 20], [32, 32], [20, 32]]);
+  const big = outlineSignature([[150, 40], [251, 40], [251, 141], [150, 141]]);
+  assert.equal(findSimilarTags(mask, 300, 200, small).length, 1);
+  assert.equal(findSimilarTags(mask, 300, 200, [small, big]).length, 2);
+});
+
 test('signatures: a circle does not match a square of the same size', () => {
   const square = outlineSignature([[0, 0], [20, 0], [20, 20], [0, 20]]);
   const circle = outlineSignature(Array.from({ length: 40 }, (_, i) => [10 + 10 * Math.cos(i / 40 * 2 * Math.PI), 10 + 10 * Math.sin(i / 40 * 2 * Math.PI)]));

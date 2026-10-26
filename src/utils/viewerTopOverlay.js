@@ -156,3 +156,44 @@ export function resolveVerticalPlacement({ containerHeight = 0, rawTotalHeight =
 export function resolvePageLandingScrollTop({ padTop = 0, pageTop = 0, fixedTopInset = 0, overlayInset = 0 } = {}) {
   return Math.max(0, finite(padTop) + finite(pageTop) - finite(fixedTopInset) - finite(overlayInset));
 }
+
+/**
+ * A strip marked data-viewer-top-push (the Survey bar) takes its own space
+ * above the page instead of lying over it (desktop/tablet pass 2026-10-21,
+ * item 4: the bar covered the page title). When such a strip appears or grows
+ * by N px, the view scrolls up by N px (as far as it can), so whatever was at
+ * the top of the view moves down below the bar; when it shrinks or goes away,
+ * the scroll it added is taken back. `applied` is how much push is in force.
+ */
+export function resolvePushStripScroll({ scrollTop = 0, prevInset = 0, nextInset = 0, applied = 0 } = {}) {
+  const st = Math.max(0, finite(scrollTop));
+  const prev = Math.max(0, finite(prevInset));
+  const next = Math.max(0, finite(nextInset));
+  const done = Math.max(0, finite(applied));
+  if (next > prev) {
+    const push = Math.min(st, next - prev);
+    return { scrollTop: st - push, applied: done + push };
+  }
+  if (next < prev) {
+    const back = Math.min(done, prev - next);
+    return { scrollTop: st + back, applied: done - back };
+  }
+  return { scrollTop: st, applied: done };
+}
+
+/** How tall the push strips (data-viewer-top-push) at the top of the scroller are. */
+export function computePushStripInset(scrollerRect, stripRects = []) {
+  if (!scrollerRect) return 0;
+  const top = finite(scrollerRect.top);
+  const bottom = finite(scrollerRect.bottom);
+  let inset = 0;
+  for (const rect of stripRects) {
+    if (!rect) continue;
+    const rTop = finite(rect.top);
+    const rBottom = finite(rect.bottom);
+    if (!(rBottom - rTop > 0.5) || !(finite(rect.right) - finite(rect.left) > 0.5)) continue;
+    if (rTop > top + 2) continue;
+    inset = Math.max(inset, Math.min(bottom, rBottom) - top);
+  }
+  return Math.round(Math.max(0, inset));
+}

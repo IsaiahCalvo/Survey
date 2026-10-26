@@ -82,7 +82,7 @@ test('PDFViewer draws a group\'s tools into the tool bar, keyed on the picked ma
   assert.match(pdfViewer, /TOOL_BAR_GROUPS\.includes\(toolBarGroup\) && subToolsHostEl/);
   // Desktop Survey controls yield to the picked annotation's formatting.
   // The phone keeps its Survey rail; its controls do not use these rows.
-  assert.match(pdfViewer, /mobileMode \|\| showsSurveyRow\(\{ activeTool, showSurveyPanel, regionEditing: showRegionSelection \}\)/);
+  assert.match(pdfViewer, /mobileMode \|\| showsSurveyRow\(\{ activeTool, showSurveyPanel, regionEditing: showRegionSelection, surveyMarkerPicked \}\)/);
   assert.match(pdfViewer, /if \(subRowGroup && subRowHost\) \{\s*rows\.push\(renderSubRow\(subRowGroup, subRowHost, false\)\);/);
   for (const group of ['draw', 'shape', 'review', 'survey']) {
     assert.match(pdfViewer, new RegExp(`\\{subRowCategory === '${group}' && `), group);

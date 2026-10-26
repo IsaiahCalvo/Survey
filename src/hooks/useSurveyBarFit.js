@@ -52,13 +52,13 @@ const toolBarCluster = () => (typeof document === 'undefined'
   ? null
   : document.querySelector('#chrome-top-host [data-tool-toolbar]'));
 
-export default function useSurveyBarFit({ enabled, insetLeft = 0, insetRight = 0, templateName = '', moduleNames = [], categoriesKey = '', categoryCount = 0, entityCount = 0 }) {
+export default function useSurveyBarFit({ enabled, insetLeft = 0, insetRight = 0, templateName = '', moduleNames = [], categoriesKey = '', categoryCount = 0, entityCount = 0, markerWidth = false }) {
   const [bar, setBar] = useState(null);
   const [plan, setPlan] = useState(DEFAULT_SURVEY_BAR_PLAN);
   const planRef = useRef(plan);
   planRef.current = plan;
   const inputRef = useRef(null);
-  inputRef.current = { insetLeft, insetRight, templateName, moduleNames, categoryCount, entityCount };
+  inputRef.current = { insetLeft, insetRight, templateName, moduleNames, categoryCount, entityCount, markerWidth };
   // The widest category chip seen for this list (most are 28px; two or three
   // initials can stretch one). Only ever grows, so the plan cannot flip as
   // fewer chips are drawn.
@@ -68,7 +68,7 @@ export default function useSurveyBarFit({ enabled, insetLeft = 0, insetRight = 0
     if (!enabled || !bar || typeof window === 'undefined') return false;
     const barRect = bar.getBoundingClientRect();
     if (!(barRect.width > 0)) return false;
-    const { insetLeft: l, insetRight: r, templateName: name, moduleNames: modules, categoryCount: cats, entityCount: ents } = inputRef.current;
+    const { insetLeft: l, insetRight: r, templateName: name, moduleNames: modules, categoryCount: cats, entityCount: ents, markerWidth: widthPill } = inputRef.current;
     // The tool bar's centre: the group icons' box (it already carries the
     // window-width shift useResponsiveToolbar may give it), as rows 2 and 3.
     const clusterRect = toolBarCluster()?.getBoundingClientRect();
@@ -107,6 +107,7 @@ export default function useSurveyBarFit({ enabled, insetLeft = 0, insetRight = 0
       entityCount: Number(ents) || 0,
       entityAllChip: allText(Number(ents) || 0),
       swatchGap: Number.isFinite(swatchGap) ? swatchGap : undefined,
+      markerWidth: Boolean(widthPill),
     });
     const centreX = `${Math.round(centre * 2) / 2}px`;
     bar.style.setProperty('--survey-template-room', `${next.templateRoom}px`);
@@ -134,7 +135,7 @@ export default function useSurveyBarFit({ enabled, insetLeft = 0, insetRight = 0
 
   // A name, a module, the categories or a panel changed: re-plan before paint.
   const modulesKey = (moduleNames || []).join('\u0000');
-  useLayoutEffect(() => { replan(); }, [replan, insetLeft, insetRight, templateName, modulesKey, categoriesKey, categoryCount, entityCount]);
+  useLayoutEffect(() => { replan(); }, [replan, insetLeft, insetRight, templateName, modulesKey, categoriesKey, categoryCount, entityCount, markerWidth]);
 
   // Leaving Survey: the slot's variables go with the bar.
   useEffect(() => {

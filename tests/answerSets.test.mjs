@@ -114,3 +114,115 @@ test("'custom-answers' is a beta flag (nightly only) with a migration row", asyn
   const sql = readdirSync(dir).filter((f) => f.endsWith('.sql')).map((f) => readFileSync(new URL(f, dir), 'utf8')).join('\n');
   assert.match(sql, /\('custom-answers', 'off'/);
 });
+
+test('text and number items: saved answer, done, issue and Excel rule', async () => {
+  const { itemKind, typedAnswer, isItemDone, isItemIssue, excelValidationFor, excelAnswerFills, templateHasTypedItems } = await import('../src/services/answerSets.js');
+  const text = { id: 'a', text: 'Serial', kind: 'text' };
+  const num = { id: 'b', text: 'Height', kind: 'number', unit: 'ft' };
+  const pick = { id: 'c', text: 'Installed' };
+  assert.deepEqual([text, num, pick, { kind: 'photo' }].map(itemKind), ['text', 'number', 'choice', 'choice']);
+  assert.equal(typedAnswer(text, '  SN-1 '), 'SN-1');
+  assert.equal(typedAnswer(num, '1,200'), '1200');
+  assert.equal(typedAnswer(num, ' 8.5 '), '8.5');
+  assert.equal(typedAnswer(num, 'eight'), null);
+  assert.equal(typedAnswer(num, ''), '');
+  assert.equal(isItemDone(text, DEFAULT_ANSWER_SET, 'N'), true);
+  assert.equal(isItemDone(num, DEFAULT_ANSWER_SET, ''), false);
+  assert.equal(isItemDone(pick, DEFAULT_ANSWER_SET, 'N'), false);
+  assert.equal(isItemIssue(text, DEFAULT_ANSWER_SET, 'N'), false);
+  assert.equal(isItemIssue(pick, DEFAULT_ANSWER_SET, 'N'), true);
+  assert.equal(excelValidationFor(text, DEFAULT_ANSWER_SET), null);
+  assert.equal(excelValidationFor(num, DEFAULT_ANSWER_SET).type, 'decimal');
+  assert.match(excelValidationFor(num, DEFAULT_ANSWER_SET).error, /\(ft\)/);
+  // Pick-one keeps today's exact rule.
+  assert.deepEqual(excelValidationFor(pick, DEFAULT_ANSWER_SET), {
+    type: 'list', allowBlank: true, formulae: ['"Y,N,N/A"'], showErrorMessage: true,
+    errorStyle: 'error', errorTitle: 'Invalid selection', error: 'Please select Y, N, or N/A',
+  });
+  assert.deepEqual(excelAnswerFills(DEFAULT_ANSWER_SET), [
+    { value: 'Y', argb: 'FFCEEED0' }, { value: 'N', argb: 'FFF6C9CE' }, { value: 'N/A', argb: 'FFA6A6A6' },
+  ]);
+  const tpl = (items) => ({ modules: [{ categories: [{ checklist: items }] }] });
+  assert.equal(templateHasTypedItems(tpl([pick])), false);
+  assert.equal(templateHasTypedItems(tpl([pick, num])), true);
+});
+
+test('auto Complete waits for text and number items to be filled', async () => {
+  const { resolveAutoCompleteEntity } = await import('../src/utils/surveyAutoEntity.js');
+  const checklist = [{ id: 'a' }, { id: 'b', kind: 'number' }];
+  const entities = [{ id: 'e1', name: 'Complete' }];
+  assert.equal(resolveAutoCompleteEntity({ checklist, responses: { a: { selection: 'Y' } }, entities }), null);
+  assert.equal(resolveAutoCompleteEntity({ checklist, responses: { a: { selection: 'Y' }, b: { selection: '8' } }, entities })?.id, 'e1');
+});
+
+test('summary never counts a typed answer as an issue', async () => {
+  const { summarizeSurvey } = await import('../src/services/surveySummary.js');
+  const template = { modules: [{ id: 'm', categories: [{ id: 'c', name: 'Doors', checklist: [{ id: 'a', text: 'Serial', kind: 'text' }, { id: 'b', text: 'Hung' }] }] }] };
+  const markers = { x: { name: 'D-1', categoryId: 'c', checklistResponses: { a: { selection: 'N' }, b: { selection: 'N' } } } };
+  const s = summarizeSurvey({ template, markers });
+  assert.deepEqual(s.categories[0].issues[0].lines.map((l) => l.text), ['Hung']);
+});
+
+test('template fingerprint and the agent tool schema follow item kinds', async () => {
+  const { templateFingerprint } = await import('../src/home/templatesEditorReload.js');
+  const t = (kind) => ({ name: 'T', modules: [{ id: 'm', name: 'M', categories: [{ id: 'c', name: 'C', items: [{ id: 'i', text: 'x', ...(kind ? { kind } : {}) }] }] }], roster: [] });
+  assert.notEqual(templateFingerprint(t('number')), templateFingerprint(t()));
+  const { buildSurveyAgentTools } = await import('../supabase/functions/_shared/surveyAgentSpec.js');
+  const valueOf = (opts) => buildSurveyAgentTools(['Y', 'N', 'N/A'], opts).find((x) => x.function.name === 'set_answers')
+    .function.parameters.properties.answers.items.properties.value;
+  assert.deepEqual(valueOf().enum, ['Y', 'N', 'N/A']);
+  assert.equal(valueOf({ typedLines: true }).enum, undefined);
+});
+
+test('a number read back from Excel (10) still matches the answer "10"', async () => {
+  const { answerTone, isDoneAnswer, sameAnswer } = await import('../src/services/answerSets.js');
+  const sizes = [{ value: '5', tone: 'neutral' }, { value: '10', tone: 'bad' }];
+  assert.equal(answerTone(sizes, 10), 'bad');
+  assert.equal(isDoneAnswer(sizes, 5), true);
+  assert.equal(sameAnswer(undefined, 'undefined'), false);
+  assert.equal(isDoneAnswer(DEFAULT_ANSWER_SET, undefined), false);
+});
+
+test('a Number line goes to Excel as a real number; other answers stay text', async () => {
+  const { buildSheetRow } = await import('../src/services/exportFormats/sheetLayout.js');
+  const kit = { columns: [{ field: 'name' }, { field: 'checklist' }] };
+  const items = [{ id: 'h', kind: 'number' }, { id: 't', kind: 'text' }, { id: 'c' }, { id: 'e', kind: 'number' }];
+  assert.deepEqual(buildSheetRow(kit, items, { name: 'D-1' }, { h: '1200', t: '42', c: '10', e: '' }), ['D-1', 1200, '42', '10', '']);
+});
+
+test('an answer can carry a "means" line: kept, checked, shown, read by Excel and the agent', async () => {
+  const {
+    cleanAnswerSet, answerSetProblem, sameAnswerSet, answerMeans, excelValidationFor, answerPresetIdOf, ANSWER_MEANS_MAX,
+  } = await import('../src/services/answerSets.js');
+  const { answerSetMeaning } = await import('../supabase/functions/_shared/surveyAgentMeaning.js');
+  const { templateFingerprint } = await import('../src/home/templatesEditorReload.js');
+  const draft = [
+    { value: 'Pass', tone: 'good', means: '  works on first try ' },
+    { value: 'Fail', tone: 'bad', means: '' },
+  ];
+  const set = cleanAnswerSet(draft);
+  assert.deepEqual(set, [{ value: 'Pass', tone: 'good', means: 'works on first try' }, { value: 'Fail', tone: 'bad' }]);
+  assert.deepEqual(validateAnswerSet(set), []);
+  assert.notEqual(validateAnswerSet([{ value: 'Pass', tone: 'good', means: 5 }]).length, 0);
+  assert.match(answerSetProblem([{ value: 'Pass', tone: 'good', means: 'x'.repeat(ANSWER_MEANS_MAX + 1) }]), /meaning/);
+  assert.equal(sameAnswerSet(set, cleanAnswerSet([{ value: 'Pass', tone: 'good' }, { value: 'Fail', tone: 'bad' }])), false);
+  assert.equal(answerPresetIdOf([{ value: 'Y', tone: 'good', means: 'in' }, { value: 'N', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }]), '');
+  assert.equal(answerMeans(set, 'Pass'), 'works on first try');
+  assert.equal(answerMeans(set, 'Fail'), '');
+  assert.equal(answerMeans(set, undefined), '');
+
+  // Excel: the cell's hint lists the meanings; no meanings, no hint (today's file).
+  const rule = excelValidationFor({ text: 'Lock' }, set);
+  assert.equal(rule.showInputMessage, true);
+  assert.equal(rule.prompt, 'Pass: works on first try');
+  assert.equal(excelValidationFor({ text: 'Lock' }, DEFAULT_ANSWER_SET).showInputMessage, undefined);
+
+  // The agent hears the template's own meaning, even on Y / N / N/A.
+  assert.match(answerSetMeaning(set), /"Pass" for works on first try/);
+  assert.equal(answerSetMeaning(DEFAULT_ANSWER_SET), null);
+  assert.match(answerSetMeaning([{ value: 'Y', tone: 'good', means: 'fully in' }, { value: 'N', tone: 'bad' }, { value: 'N/A', tone: 'neutral' }]), /fully in/);
+
+  // Editing only a meaning still marks the template as changed.
+  const tpl = (answerSet) => ({ id: 't', name: 'T', modules: [], answerSet });
+  assert.notEqual(templateFingerprint(tpl(set)), templateFingerprint(tpl(set.map(({ means: _m, ...a }) => a))));
+});

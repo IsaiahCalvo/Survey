@@ -62,8 +62,16 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Make-your-own checklist answers in templates',
     stage: 'beta',
   }),
+  'survey-report': Object.freeze({
+    label: 'Survey report as a PowerPoint deck (cover, progress chart, issues)',
+    stage: 'beta',
+  }),
   layers: Object.freeze({
     label: 'Layers panel (markup layers + PDF content opacity)',
+    stage: 'beta',
+  }),
+  'pinned-tools': Object.freeze({
+    label: 'Pinned tools dock (favourite tools with their own colour and width)',
     stage: 'beta',
   }),
 });

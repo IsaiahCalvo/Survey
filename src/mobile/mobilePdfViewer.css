@@ -1145,6 +1145,21 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   font-weight: 700;
 }
 
+/* The survey discs paint at the disc size (24px) but take a finger: like the
+   rail's sub-tools, an invisible pad fills the gap between discs and the
+   column's width, so each disc's target is the whole slot it sits in. */
+.mobile-pdf-tools__survey-categories button,
+.mobile-pdf-tools__survey-entities button {
+  position: relative;
+}
+.mobile-pdf-tools__survey-categories button::after,
+.mobile-pdf-tools__survey-entities button::after {
+  content: '';
+  position: absolute;
+  inset-block: calc(var(--rail-sub-gap, var(--mobile-rail-sub-gap)) / -2 - 1px);
+  inset-inline: calc((var(--mobile-rail-sub-w) - var(--mobile-rail-disc)) / -2);
+}
+
 /* The active category's LETTER turns gold; the disc it sits on does not fill.
    (Owner ruling 2026-09-17.) */
 .mobile-pdf-tools__survey-categories button.is-active {

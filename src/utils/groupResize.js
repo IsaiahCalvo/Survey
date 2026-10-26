@@ -17,6 +17,7 @@
 // two scales swapped.
 import { isRightAngle, keepsProportions, lockAspectToBiggerMove } from './snapGuides.js';
 import { MIN_RESIZE_PAGE_UNITS } from './resizeMinimum.js';
+import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
 
 const CORNERS = new Set(['tl', 'tr', 'bl', 'br']);
 const MIN_GROUP_SCALE = 1e-6;
@@ -218,4 +219,56 @@ export function scaleMarkerBoundsForGroup(bounds, scalePoint, sx, sy) {
   const width = bounds.width * axis.x;
   const height = bounds.height * axis.y;
   return { ...bounds, x: centre.x - width / 2, y: centre.y - height / 2, width, height };
+}
+
+// A line's ends (and bend) on the page as drawn. Stored ends are offsets
+// from the line's box centre, and a turned line spins about its curve box,
+// so a group turn or resize must start from these, not the raw x1/y1.
+export function lineWorldPoints(obj) {
+  const ep = getLineEndpoints(obj);
+  const mid = obj?.data?.midpoint ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y } : null;
+  const points = { p1: { x: ep.x1, y: ep.y1 }, p2: { x: ep.x2, y: ep.y2 }, mid };
+  const angle = Number(obj?.angle) || 0;
+  if (!angle) return points;
+  const c = computeLineBboxCenter(ep, mid);
+  const rad = (angle * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const turn = (p) => p && {
+    x: c.x + (p.x - c.x) * cos - (p.y - c.y) * sin,
+    y: c.y + (p.x - c.x) * sin + (p.y - c.y) * cos,
+  };
+  return { p1: turn(points.p1), p2: turn(points.p2), mid: turn(mid) };
+}
+
+// Page ends back in the drawn-line form buildLineCommitJSON writes: the
+// chord's box, ends as offsets from its centre, and no turn of its own.
+export function packLineWorldPoints(p1, p2) {
+  const left = Math.min(p1.x, p2.x);
+  const top = Math.min(p1.y, p2.y);
+  const width = Math.abs(p2.x - p1.x);
+  const height = Math.abs(p2.y - p1.y);
+  const cx = left + width / 2;
+  const cy = top + height / 2;
+  return {
+    left, top, width, height, angle: 0,
+    x1: p1.x - cx, y1: p1.y - cy, x2: p2.x - cx, y2: p2.y - cy,
+  };
+}
+
+/**
+ * Drawboard: holding K while resizing scales line widths with the frame (by
+ * the smaller of the two scales). Without K they stay the same.
+ */
+export function scaledGroupLineWidth(width, sx, sy) {
+  const w = Number(width) || 0;
+  const k = Math.min(Math.abs(sx), Math.abs(sy));
+  if (!(w > 0) || !Number.isFinite(k) || k <= 0) return w;
+  return Math.max(0.1, Math.round(w * k * 100) / 100);
+}
+
+/** The K key with no modifier (it picks the Polyline tool otherwise). */
+export function isGroupLineWidthKey(event) {
+  return (event?.key === 'k' || event?.key === 'K')
+    && !event.metaKey && !event.ctrlKey && !event.altKey;
 }

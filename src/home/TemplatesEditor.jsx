@@ -42,7 +42,7 @@
 import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
 import { DEFAULT_ANSWER_SET, answerPresetIdOf, answerSetPresets } from '../services/answerSets.js';
 import { isFeatureOn } from '../featureFlags.js';
-import AnswerSetEditor from './AnswerSetEditor.jsx';
+import AnswerSetEditor, { ItemKindPicker } from './AnswerSetEditor.jsx';
 import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
@@ -107,7 +107,9 @@ import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
+import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
 import { templateCategoryEmptyText } from './templateEmptyText.js';
+import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 // The "make your own" choice in the checklist-answers picker.
 const OWN_ANSWERS = '__own__';
@@ -261,6 +263,9 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
           text,
         };
         if (it && typeof it === 'object') {
+          // Text / number items (nightly 'custom-answers'); pick-one stays bare.
+          if (it.kind === 'text' || it.kind === 'number') base.kind = it.kind;
+          if (it.kind === 'number' && typeof it.unit === 'string' && it.unit) base.unit = it.unit;
           if (it.archived === true) base.archived = true;
           if (typeof it.archivedAt === 'string') base.archivedAt = it.archivedAt;
           if (typeof it.lastKnownLabel === 'string') {
@@ -296,8 +301,44 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
     ...(t?.exportKitId ? { exportKitId: t.exportKitId } : {}),
     ...(t?.answerSet ? { answerSet: t.answerSet } : {}),
+    // Smart fill tag shapes taught on drawings (beta); the editor only removes them.
+    ...(Array.isArray(t?.smartFillShapes) && t.smartFillShapes.length ? { smartFillShapes: t.smartFillShapes } : {}),
   };
 });
+
+/* Smart fill (beta, owner 2026-10-22): the tag shapes this template has
+   learned. Each is taught on a drawing ("Teach a tag shape"); here they can
+   only be seen and removed. */
+function SmartFillShapeChips({ shapes, onRemove, tip, hoverOnly, phone = false }) {
+  if (!shapes.length) return null;
+  return (
+    <div data-smart-fill-shapes="true" className={phone ? 'templates-mobile-option' : undefined} style={{ display: 'flex', flexWrap: 'wrap', justifyContent: phone ? 'flex-start' : 'flex-end', alignItems: 'center', gap: phone ? 8 : 4, marginTop: phone ? 0 : 4, paddingBlock: phone ? 6 : 0 }}>
+      <span style={{ fontSize: phone ? 14 : 11, color: 'var(--text-2)' }}>Smart fill shapes</span>
+      {shapes.map((shape) => {
+        const w = 18;
+        const h = Math.max(6, Math.min(24, (w * shape.height) / Math.max(0.01, shape.width)));
+        const d = shape.ring.map(([u, v], i) => `${i ? 'L' : 'M'}${(u * w).toFixed(1)} ${(v * h).toFixed(1)}`).join(' ') + 'Z';
+        return (
+          <button
+            key={shape.id}
+            type="button"
+            className="btn btn-ghost"
+            aria-label={`Remove ${shape.name || 'tag shape'}`}
+            onClick={() => onRemove(shape.id)}
+            {...hoverOnly(tip(`${shape.name || 'Tag shape'} (${Math.round(shape.width)} x ${Math.round(shape.height)} pt). Click to remove.`))}
+            // Phone: 44px tap targets, like the other per-template rows.
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 2, padding: phone ? '0 8px' : '1px 4px', border: '1px solid var(--rule)', borderRadius: 4, minHeight: phone ? 44 : 0, minWidth: phone ? 44 : undefined }}
+          >
+            <svg width={w} height={h} viewBox={`-1 -1 ${w + 2} ${h + 2}`} aria-hidden="true">
+              <path d={d} fill="rgba(74, 144, 226, 0.25)" stroke="#4A90E2" strokeWidth="1" />
+            </svg>
+            <span aria-hidden="true" style={{ fontSize: 11, color: 'var(--text-2)' }}>×</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 const templateOrderKeyForUser = (user) => `${TEMPLATE_ORDER_STORAGE_KEY}:${user?.id || user?.email || 'local'}`;
 
@@ -790,6 +831,7 @@ export default function TemplatesEditor({
   getChecklistItemUsageCount = null,
 }) {
   const tip = useTooltip();
+  const smartFillBeta = isSmartFillBetaEnabled();
   /* ---- mutable working data ----
      Seeded from the `templates` prop, then owned locally so every editor
      action below actually mutates it. Re-seeded from the prop only while the
@@ -1724,6 +1766,18 @@ export default function TemplatesEditor({
     }));
   };
   const renameItem = (ci, itemId, text) => renameItemInModule(openMod, ci, itemId, text);
+  /* Text / number items (nightly 'custom-answers'). Answers already given
+     keep their text; only how the card asks for the next one changes. */
+  const setItemKind = (ci, itemId, kind, unit) => mutateCategoryInModule(openMod, ci, (c) => ({
+    ...c,
+    items: c.items.map((it) => {
+      if (it.id !== itemId) return it;
+      const { kind: _k, unit: _u, ...rest } = it;
+      if (kind === 'text') return { ...rest, kind };
+      if (kind === 'number') return unit ? { ...rest, kind, unit } : { ...rest, kind };
+      return rest;
+    }),
+  }));
 
   /* UX (KAL-69): required-row commit rules, shared by the desktop and mobile
      copies of the checklist and entity rows so they can never drift apart.
@@ -1956,6 +2010,8 @@ export default function TemplatesEditor({
           /* Persist archived metadata so KAL-44 archive survives save/reload.
              Active items round-trip the simple shape unchanged. */
           const out = { id: it.id, text: it.text };
+          if (it.kind === 'text' || it.kind === 'number') out.kind = it.kind;
+          if (it.kind === 'number' && it.unit) out.unit = it.unit;
           if (it.archived === true) {
             out.archived = true;
             if (typeof it.archivedAt === 'string') out.archivedAt = it.archivedAt;
@@ -1969,13 +2025,20 @@ export default function TemplatesEditor({
         }),
       })),
     }));
-    const { exportKitId: _oldKit, answerSet: _oldAnswers, ...originalRest } = original;
+    const { exportKitId: _oldKit, answerSet: _oldAnswers, smartFillShapes: _oldShapes, ...originalRest } = original;
+    // Smart fill shapes: the live list (a drawing may have added one since this
+    // editor opened) minus the ones removed here. A template not saved yet (a
+    // duplicate) has no live row, so it keeps the shapes it was made with.
+    const removedShapes = new Set(r.removedSmartFillShapeIds || []);
+    const liveShapes = (original.id ? _oldShapes : r.smartFillShapes) || [];
+    const shapes = (Array.isArray(liveShapes) ? liveShapes : []).filter((shape) => !removedShapes.has(shape?.id));
     return {
       ...originalRest,
+      ...(shapes.length ? { smartFillShapes: shapes } : {}),
       // Excel layout; unset means the standard export.
       ...(r.exportKitId ? { exportKitId: r.exportKitId } : {}),
       // Checklist answers; unset means Y / N / N/A.
-      ...(r.answerSet ? { answerSet: r.answerSet.map((a) => ({ value: a.value, tone: a.tone })) } : {}),
+      ...(r.answerSet ? { answerSet: r.answerSet.map((a) => ({ value: a.value, tone: a.tone, ...(a.means ? { means: a.means } : {}) })) } : {}),
       id: r.id,
       name: r.name,
       modules: mods,
@@ -2345,6 +2408,7 @@ export default function TemplatesEditor({
                       data-drag-rearrange-row
                       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTplMenu({ id: t.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                       onClick={() => { if (tplEdit) toggleTplSel(t.id); else { setSelected(t.id); setOpenCat(-1); setOpenMod(0); } }}
+                      {...keyboardControlProps()}
                       style={{
                         display: 'grid',
                         gridTemplateColumns: '28px 1fr auto',
@@ -2500,6 +2564,15 @@ export default function TemplatesEditor({
                   {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
                   style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
                 />
+                {/* Smart fill (beta): tag shapes taught on drawings. */}
+                {smartFillBeta && (
+                  <SmartFillShapeChips
+                    shapes={(tpl.smartFillShapes || []).filter((shape) => !(tpl.removedSmartFillShapeIds || []).includes(shape.id))}
+                    onRemove={(id) => mutateTpl(tpl.id, (t) => ({ ...t, removedSmartFillShapeIds: [...(t.removedSmartFillShapeIds || []), id] }))}
+                    tip={tip}
+                    hoverOnly={hoverOnly}
+                  />
+                )}
               </div>
             </div>
             {answerListEditor(tpl, false)}
@@ -2618,6 +2691,8 @@ export default function TemplatesEditor({
                         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setCatMenu({ id: c.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
                         className={`tpl-cat-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
                         onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : i); }}
+                        {...keyboardControlProps()}
+                        aria-label={c.name}
                       >
                         <DragRearrangeHandle
                           {...attributes}
@@ -2715,7 +2790,7 @@ export default function TemplatesEditor({
                               <div
                                 data-drag-rearrange-row
                                 style={{
-                                  display: 'grid', gridTemplateColumns: '24px 1fr 16px',
+                                  display: 'grid', gridTemplateColumns: customAnswers ? '24px 1fr auto 16px' : '24px 1fr 16px',
                                   alignItems: 'center', gap: 6, padding: '3px 0',
                                   borderBottom: j === items.length - 1 ? 0 : '1px dashed var(--rule)',
                                 }}
@@ -2735,6 +2810,7 @@ export default function TemplatesEditor({
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => discardFreshItem(i, it.id))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
+                                {customAnswers && <ItemKindPicker item={it} onChange={(kind, unit) => setItemKind(i, it.id, kind, unit)} />}
                                 <button
                                   aria-label="Delete item" {...tip('Delete item')}
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
@@ -2896,6 +2972,8 @@ export default function TemplatesEditor({
                         className={`card-line tpl-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
                         aria-expanded={entityEdit ? undefined : isOpen}
                         onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
+                        {...keyboardControlProps()}
+                        aria-label={r.role}
                         style={{
                           transition: isDragging ? 'none' : 'background 0.15s ease, opacity 0.15s ease',
                         }}
@@ -3214,6 +3292,15 @@ export default function TemplatesEditor({
                   <select aria-label="Checklist answers" {...answerPickerProps(tpl)} />
                 </label>
                 {answerListEditor(tpl, true)}
+                {smartFillBeta && (
+                  <SmartFillShapeChips
+                    phone
+                    shapes={(tpl.smartFillShapes || []).filter((shape) => !(tpl.removedSmartFillShapeIds || []).includes(shape.id))}
+                    onRemove={(id) => mutateTpl(tpl.id, (t) => ({ ...t, removedSmartFillShapeIds: [...(t.removedSmartFillShapeIds || []), id] }))}
+                    tip={tip}
+                    hoverOnly={hoverOnly}
+                  />
+                )}
               </div>
 
               <section className="templates-mobile-section templates-mobile-modules-section">
@@ -3345,6 +3432,8 @@ export default function TemplatesEditor({
                                 className={`templates-mobile-category-row${open ? ' is-open' : ''}${catEdit ? ' is-selecting' : ''}${catEdit && isSel ? ' is-selected' : ''}`}
                                 aria-expanded={catEdit ? undefined : open}
                                 onClick={() => { if (catEdit) toggleCatSel(c.id); else setOpenCat(open ? -1 : ci); }}
+                                {...keyboardControlProps()}
+                                aria-label={c.name}
                               >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} />
                                 <button
@@ -3404,7 +3493,7 @@ export default function TemplatesEditor({
                                           /* Owner 2026-10-02: swipe left for a trash
                                              behind the row - the same delete as its x. */
                                           <SwipeToDeleteRow label="Delete item" onDelete={() => deleteItem(ci, it.id)}>
-                                          <div data-drag-rearrange-row className="templates-mobile-item-row">
+                                          <div data-drag-rearrange-row className="templates-mobile-item-row" style={customAnswers ? { gridTemplateColumns: '44px minmax(0, 1fr) auto 44px' } : undefined}>
                                             <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
                                             <input
                                               className="templates-mobile-inline-input hub-rename"
@@ -3415,6 +3504,7 @@ export default function TemplatesEditor({
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => discardFreshItem(ci, it.id))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
+                                            {customAnswers && <ItemKindPicker phone item={it} onChange={(kind, unit) => setItemKind(ci, it.id, kind, unit)} />}
                                             <button type="button" aria-label="Delete item" {...tip('Delete item')} onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
                                           </SwipeToDeleteRow>
@@ -3557,6 +3647,8 @@ export default function TemplatesEditor({
                                 className={`templates-mobile-entity-row${isOpen ? ' is-open' : ''}${entityEdit ? ' is-selecting' : ''}${entityEdit && isSel ? ' is-selected' : ''}`}
                                 aria-expanded={entityEdit ? undefined : isOpen}
                                 onClick={(e) => { if (entityEdit) toggleEntitySel(r.id); else foldColor(isOpen ? null : r.id, e.currentTarget); }}
+                                {...keyboardControlProps()}
+                                aria-label={r.role}
                               >
                                 <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 24, height: 24 }} collapseOpen={isOpen && foldingColor !== r.id} onCollapse={() => foldColor(null)} />
                                 <button

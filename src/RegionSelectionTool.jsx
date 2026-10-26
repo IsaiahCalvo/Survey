@@ -27,7 +27,9 @@ import { HANDLE_FILL, HANDLE_RING, HANDLE_RADIUS } from './utils/handleStyle';
 import { normalizeAngle, snapAngleToNearest45 } from './utils/svgTransformMath';
 import { getSelectionHandleVisualMetrics, getAdaptiveSelectionHandleSpec } from './utils/selectionHandleVisibility.js';
 import RotationInputField from './components/RotationInputField';
+import { createStableActions } from './utils/stableActionProxy.js';
 import rotateIconSvg from './assets/rotate-icon.svg';
+import { keyboardControlProps } from './utils/keyboardActivation.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
@@ -2400,6 +2402,25 @@ const RegionSelectionTool = ({
   // AppShell draws the desktop Areas tools from it, MobilePdfViewerChrome the
   // phone rail and strip. (The prop keeps its old "mobile" name so the viewer
   // wiring did not have to change.)
+  // Actions go up as stable wrappers over the latest handlers: publishing the
+  // handlers themselves re-ran this effect on every identity change and looped
+  // with the viewer's re-render (Maximum update depth exceeded).
+  const regionToolbarActionsRef = useRef(null);
+  regionToolbarActionsRef.current = {
+    setToolType: chooseToolType,
+    setSelectionMode: chooseSelectionMode,
+    confirm: handleConfirm,
+    cancel: handleCancel,
+    deleteSelected: handleDeleteSelected,
+    setFullPage: handleSetFullPage,
+    confirmFullPage: applyFullPage,
+    cancelFullPage: cancelFullPageConfirm,
+  };
+  const regionToolbarActions = useMemo(() => createStableActions(regionToolbarActionsRef, [
+    'setToolType', 'setSelectionMode', 'confirm', 'cancel', 'deleteSelected',
+    'setFullPage', 'confirmFullPage', 'cancelFullPage',
+  ]), []);
+  const canDeleteRegion = selectedRegionIds.size > 0;
   useEffect(() => {
     if (typeof onMobileToolbarApiChange !== 'function') return;
     if (!active) {
@@ -2410,18 +2431,11 @@ const RegionSelectionTool = ({
       toolType,
       selectionMode,
       canSetFullPage,
-      canDelete: selectedRegionIds.size > 0,
+      canDelete: canDeleteRegion,
       polygonCorners: polyCorners.length,
-      setToolType: chooseToolType,
-      setSelectionMode: chooseSelectionMode,
-      confirm: handleConfirm,
-      cancel: handleCancel,
-      deleteSelected: handleDeleteSelected,
-      setFullPage: handleSetFullPage,
       // Inline full-page confirm step (see handleSetFullPage).
       fullPageConfirmPending: isFullPageConfirmPending,
-      confirmFullPage: applyFullPage,
-      cancelFullPage: cancelFullPageConfirm,
+      ...regionToolbarActions,
     });
   }, [
     active,
@@ -2429,17 +2443,10 @@ const RegionSelectionTool = ({
     toolType,
     selectionMode,
     canSetFullPage,
-    selectedRegionIds,
+    canDeleteRegion,
     polyCorners.length,
-    chooseToolType,
-    chooseSelectionMode,
-    handleConfirm,
-    handleCancel,
-    handleDeleteSelected,
-    handleSetFullPage,
     isFullPageConfirmPending,
-    applyFullPage,
-    cancelFullPageConfirm,
+    regionToolbarActions,
   ]);
 
   const handleContextMenu = useCallback((event) => {
@@ -3737,6 +3744,7 @@ const RegionSelectionTool = ({
               fontFamily: FONT_FAMILY
             }}
             onClick={selectedRegionIds.size > 0 ? handleCopy : undefined}
+            {...keyboardControlProps(null, { role: 'menuitem', disabled: !(selectedRegionIds.size > 0) })}
             onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
@@ -3753,6 +3761,7 @@ const RegionSelectionTool = ({
               fontFamily: FONT_FAMILY
             }}
             onClick={selectedRegionIds.size > 0 ? handleCut : undefined}
+            {...keyboardControlProps(null, { role: 'menuitem', disabled: !(selectedRegionIds.size > 0) })}
             onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
@@ -3762,6 +3771,7 @@ const RegionSelectionTool = ({
             role="menuitem"
             style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-2)', fontFamily: FONT_FAMILY }}
             onClick={handlePaste}
+            {...keyboardControlProps(null, { role: 'menuitem' })}
             onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
             onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
@@ -3780,6 +3790,7 @@ const RegionSelectionTool = ({
               background: 'transparent'
             }}
             onClick={contextMenu.canMerge ? handleMergeSelected : undefined}
+            {...keyboardControlProps(null, { role: 'menuitem', disabled: !contextMenu.canMerge })}
             onMouseEnter={(e) => {
               if (contextMenu.canMerge) e.currentTarget.style.background = 'var(--hover)';
             }}
@@ -3800,6 +3811,7 @@ const RegionSelectionTool = ({
               fontFamily: FONT_FAMILY
             }}
             onClick={contextMenu.canUnmerge ? handleSeparateRegion : undefined}
+            {...keyboardControlProps(null, { role: 'menuitem', disabled: !contextMenu.canUnmerge })}
             onMouseEnter={(e) => {
               if (contextMenu.canUnmerge) e.currentTarget.style.background = 'var(--hover)';
             }}

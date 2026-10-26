@@ -20,6 +20,9 @@
  *   - Modifier held + press OUTSIDE the selection box -> whatever that press
  *     did before (plain click on a mark selects it; on a callout it grabs the
  *     whole callout; on bare page it starts the marquee).
+ *   - Modifier still held when the drag is let go -> a COPY lands there and
+ *     the marks stay put (Visio's Ctrl + drag, owner 2026-10-22,
+ *     isCopyDragEvent below). Let go of the key before dropping to move.
  *   - Keyboard shortcuts (Cmd+C / V / Z, z-order) are never touched: this
  *     module only watches the key, it never consumes it.
  *
@@ -57,6 +60,18 @@ export function isMacLikePlatform(nav = (typeof navigator !== 'undefined' ? navi
 export function isMoveModifierEvent(event, mac = isMacLikePlatform()) {
   if (!event) return false;
   return mac ? event.metaKey === true : (event.ctrlKey === true && event.altKey !== true);
+}
+
+/**
+ * Copy-drag (owner 2026-10-22, copied from Visio): a move drag that is let go
+ * with the same key down (Ctrl on Windows, Cmd on a Mac) leaves the marks
+ * where they were and drops a copy where the pointer is. The key's state at
+ * let-go decides, as in Visio and PowerPoint: press it mid-drag to copy, let
+ * go of it before dropping to move. Touch never copies (touch is pan-only).
+ */
+export function isCopyDragEvent(event, mac = isMacLikePlatform()) {
+  if (!event || event.pointerType === 'touch') return false;
+  return isMoveModifierEvent(event, mac);
 }
 
 /**

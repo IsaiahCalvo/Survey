@@ -195,6 +195,12 @@ const HANDLED = {
   click: () => /addPolyDraftPoint\(draft, resolveCreationSnap\(last, point, e\)\)/.test(SRC.svg),
   'shift+click': () => /addPolyDraftPoint\(draft, resolveCreationSnap\(last, point, e\)\)/.test(SRC.svg)
     && /if \(e\.shiftKey\) \{[\s\S]{0,900}setSelectedIds/.test(SRC.interaction),
+  // Visio's Ctrl / Cmd + drag to copy, and Photoshop's Alt + right-drag (Mac:
+  // Control + Option + drag) for the width and opacity.
+  'mod+drag': () => /const copyDrop = moveDrag && !ds\.orbitBase/.test(SRC.interaction)
+    && /onCopyDragDropRef\.current\(\{ indices: \[moveIndex\] \}/.test(SRC.interaction),
+  'alt+right-drag': () => /if \(event\.button === 2\) return true;/.test(read('src/utils/brushAdjustGesture.js')),
+  'ctrl+alt+drag': () => /return event\.button === 0 && event\.ctrlKey === true;/.test(read('src/utils/brushAdjustGesture.js')),
   'alt+click': () => /if \(e\.altKey\) \{\s*setSelectedIds\(\(previous\) => \{\s*const next = new Set\(previous\);\s*next\.delete\(index\)/.test(SRC.interaction),
   'mod+a': () => /\(event\.metaKey \|\| event\.ctrlKey\) && !event\.altKey && !event\.shiftKey && String\(event\.key\)\.toLowerCase\(\) === 'a'/.test(SRC.pages),
   'mod+p': () => /const isP = e\.key === 'p'/.test(SRC.viewer) && /openPanel\('window keydown'\)/.test(SRC.viewer),

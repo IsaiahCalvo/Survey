@@ -172,3 +172,33 @@ export function shouldAutoRefit(last, next, tolerance = 0.5) {
     (key) => Math.abs(finite(last[key]) - finite(next[key])) > tolerance,
   );
 }
+
+/**
+ * Whether a side panel opening or closing should re-fit the page to the band
+ * between the panels (desktop/tablet pass 2026-10-21, item 1: at 820px the
+ * Survey panel and a left panel together left the fitted page half under the
+ * panels with no re-fit). Only asked while the view is still the last fit
+ * (no zoom since). Re-fits when:
+ *   - the page now runs under a panel (outside the band), or
+ *   - the band grew back after a re-fit this rule made, so the page returns
+ *     to its full fitted size when the panel closes.
+ * A page that still sits clear of the panels never moves, as before.
+ */
+export function shouldRefitForBand({
+  pageLeft = 0,
+  pageWidth = 0,
+  viewportWidth = 0,
+  insets = NO_SIDE_INSETS,
+  lastBandW = 0,
+  bandDriven = false,
+  tolerance = 1,
+} = {}) {
+  const bandLeft = finite(insets?.left);
+  const bandRight = finite(viewportWidth) - finite(insets?.right);
+  const bandW = bandRight - bandLeft;
+  if (!(bandW > 0) || !(finite(pageWidth) > 0)) return false;
+  const left = finite(pageLeft);
+  const right = left + finite(pageWidth);
+  if (left < bandLeft - tolerance || right > bandRight + tolerance) return true;
+  return bandDriven === true && bandW > finite(lastBandW) + tolerance;
+}

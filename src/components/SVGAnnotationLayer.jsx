@@ -180,7 +180,7 @@ import {
   canMoveAnnotation,
 } from '../utils/annotationFamilyRules.js';
 // w58: hold Cmd (Mac) / Ctrl (Windows) to move the selection from anywhere in its box.
-import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes } from '../utils/moveModifier.js';
+import { useMoveModifierHeld, resolveModifierMoveZone, isPointInBoxes, isCopyDragEvent } from '../utils/moveModifier.js';
 import { getPdfStampProxySvgProps, isPdfStampProxy } from '../utils/pdfStampProxy.js';
 import { isSymbolStamp } from '../utils/symbolLibrary.js';
 import { canGroupResizeMember } from '../utils/groupResize.js';
@@ -190,9 +190,18 @@ import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
 import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
 import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '../utils/crossPageMove.js';
 // Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
-import { buildPolygonMarkerBounds, buildStrokeMarkerBounds, MARKER_STROKE_DEFAULT_WIDTH, markerShapePathData } from '../survey/markerShapes.js';
+import { buildDotMarkerBounds, buildPolygonMarkerBounds, buildStrokeMarkerBounds, markerShapePathData } from '../survey/markerShapes.js';
+import { getMarkerStrokeWidth, useMarkerStrokeWidth } from '../survey/markerStrokeWidth.js';
 import '../survey/smartFillBeta.js';
-import { findSimilarOnPage } from '../survey/smartFillProvider.js';
+import { findSimilarOnPage, outlineInBox, prewarmSmartFillPage } from '../survey/smartFillProvider.js';
+import { makeTemplateShape } from '../survey/smartFillTemplates.js';
+import {
+  getSmartFillTeachArmed,
+  getSmartFillTemplateName,
+  getSmartFillTemplateShapes,
+  saveSmartFillTemplateShape,
+  setSmartFillTeachArmed,
+} from '../survey/smartFillTemplateShapes.js';
 import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
 import { SMART_FILL_CLEAR_MATCHES_EVENT, shouldClearSmartFillMatches } from '../survey/smartFillMatchEvents.js';
 import { offeredSmartFillMatches as filterOfferedSmartFillMatches, isSmartFillMatchSourceGone } from '../utils/smartFillMatches.js';
@@ -205,7 +214,7 @@ const showSmartFillFindToast = (message, type, options) => {
   return showToast(message, type, options);
 };
 import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
-import { isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
+import { getMarkerShapePdfDocument, isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
 import {
   MARKER_FREEHAND_PREVIEW_COLOR,
   projectSurveyMarkerEntryShape,
@@ -1009,6 +1018,12 @@ const SVGAnnotationLayerBody = memo(({
     onSelectedSurveyMarkerIdsChange: setSelectedSurveyMarkerIds,
     onMoveMarksToPage,
     documentId,
+    // Copy-drag (Ctrl / Cmd + drag, Visio): the viewer's Duplicate, at the
+    // dragged-to spot instead of the fixed nudge (`toPage` when it was let
+    // go over another page).
+    onCopyDragDrop: typeof onDuplicateFamily === 'function'
+      ? (selection, dx, dy, toPage = null) => onDuplicateFamily(pageNumber, selection, { dx, dy, toPage })
+      : null,
   });
   // The picture of a mark being carried over THIS page from another one.
   const crossPageGhost = useSyncExternalStore(
@@ -1346,6 +1361,7 @@ const SVGAnnotationLayerBody = memo(({
   // Owner 2026-10-13: how the Survey Marker tool draws (the tool-bar marker
   // group; always 'rectangle' where no picker is on screen, e.g. the phone).
   const markerDrawMode = useEffectiveMarkerDrawMode();
+  const markerStrokeWidth = useMarkerStrokeWidth();
 
   // ---------------------------------------------------------------------------
   // EDIT-12: RotationInputField visibility state machine (Phase 12 Plan 02)
@@ -2572,11 +2588,18 @@ const SVGAnnotationLayerBody = memo(({
       freehandPointsRef.current = [];
       if (tool === 'survey-marker-freehand') {
         // A freehand Survey Marker: its box plus the stroke it was drawn with
-        // (src/survey/markerShapes.js). A press that never moved draws
-        // nothing — and, like the rectangle, picks the mark it landed on.
-        const markerBounds = state.passed === false
-          ? null // never passed the drag threshold: a tap
-          : buildStrokeMarkerBounds(points, { width: MARKER_STROKE_DEFAULT_WIDTH });
+        // (src/survey/markerShapes.js), at the survey bar's Width. Owner
+        // 2026-10-22: a press that never moved (a tap) places a dot, like a
+        // pen tap; it only picks instead when it landed on a mark it may pick.
+        const markerWidth = getMarkerStrokeWidth();
+        const tapped = state.passed === false;
+        const tapPicks = state.pressFallback?.click === 'select' || state.pressFallback?.click === 'add';
+        const markerBounds = tapped
+          ? (tapPicks || state.pointerType === 'touch'
+            ? null
+            : buildDotMarkerBounds(points[0], { width: markerWidth }))
+          : (buildStrokeMarkerBounds(points, { width: markerWidth })
+            || buildDotMarkerBounds(points[0], { width: markerWidth }));
         if (markerBounds && typeof onSurveyMarkerCreated === 'function') {
           recordAnnotationCommit({
             surface: 'SVGAnnotationLayer',
@@ -2701,6 +2724,30 @@ const SVGAnnotationLayerBody = memo(({
   // through the normal create path: category, entity, undo).
   const [smartFillMatches, setSmartFillMatches] = useState([]);
   const smartFillScanAbortRef = useRef(null);
+  // Owner 2026-10-22: read this page's own drawing (its tag outlines) as
+  // soon as Smart fill is armed and the page is on screen, so the first tap
+  // answers at once. Pages off screen wait: pdf.js reads one page at a time,
+  // and a 36-sheet set would put the page in view behind all the others.
+  useEffect(() => {
+    if (!smartFillLive) return undefined;
+    const warm = () => {
+      Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber))
+        .then((pdfPage) => prewarmSmartFillPage(pdfPage))
+        .catch(() => {});
+    };
+    const el = svgRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      warm();
+      return undefined;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      warm();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pageNumber, smartFillLive]);
   useEffect(() => {
     if (!smartFillLive) smartFillAbortRef.current?.abort?.();
     if (!smartFillLive) clearSmartFillPreview();
@@ -2765,18 +2812,112 @@ const SVGAnnotationLayerBody = memo(({
     });
   }, [clearSmartFillPreview, height, onSurveyMarkerCreated, pageNumber, width]);
 
+  // Owner 2026-10-22: "Teach a tag shape". When Smart fill misses a tag, the
+  // user drags a box round it; the outline inside is shown for a check, and
+  // Save shape keeps it in the survey template (so Smart fill looks for that
+  // shape on every drawing), adds the Survey Marker and offers Find more.
+  const [smartFillTeachBox, setSmartFillTeachBox] = useState(null);
+  const finishSmartFillTeach = useCallback((box) => {
+    const x = Math.min(box.x0, box.x1);
+    const y = Math.min(box.y0, box.y1);
+    const w = Math.abs(box.x1 - box.x0);
+    const h = Math.abs(box.y1 - box.y0);
+    if (w < 4 || h < 4) {
+      showToast('Teach a tag shape: drag a box around the tag Smart fill missed.', 'info', { id: 'smart-fill-no-match' });
+      return;
+    }
+    const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
+    Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber)).catch(() => null)
+      .then((pdfPage) => outlineInBox({ box: { x, y, width: w, height: h }, pageSize: { width, height }, pdfPage: pdfPage || null, pageCanvas }))
+      .then((found) => {
+        if (!smartFillLiveRef.current) return;
+        if (!found?.ok) {
+          showToast('Teach a tag shape: that box is too small. Drag around the whole tag.', 'info', { id: 'smart-fill-no-match' });
+          return;
+        }
+        const markerBounds = buildPolygonMarkerBounds({ type: 'Polygon', coordinates: [found.ring] });
+        if (!markerBounds || typeof onSurveyMarkerCreated !== 'function') return;
+        const apply = () => {
+          if (!smartFillLiveRef.current) return;
+          setSmartFillPreview(null);
+          const count = getSmartFillTemplateShapes().length;
+          const shape = makeTemplateShape(found.ring, { name: `Tag shape ${count + 1}`, source: found.source });
+          const where = getSmartFillTemplateName();
+          setSmartFillTeachArmed(false);
+          recordAnnotationCommit({
+            surface: 'SVGAnnotationLayer',
+            source: 'survey-marker:create',
+            action: 'survey-marker-smart-fill-teach',
+            pageNumber,
+          });
+          onSurveyMarkerCreated(markerBounds, { smartFill: true });
+          const sample = saveSmartFillSample(found.ring);
+          void saveSmartFillTemplateShape(shape).then((saved) => {
+            const said = !saved?.ok
+              ? 'Survey Marker added, but the tag shape could not be saved.'
+              : saved.where === 'template'
+                ? `Saved to ${where}. Smart fill now looks for this shape on every drawing.`
+                : 'Saved in this browser. Smart fill now looks for this shape here.';
+            showSmartFillFindToast(said, saved?.ok ? 'success' : 'error', {
+              id: 'smart-fill-find',
+              duration: Infinity,
+              action: { label: 'Find more', onClick: () => findMoreLikeThisRef.current?.(sample, markerBounds) },
+            });
+          });
+        };
+        setSmartFillPreview({ bounds: markerBounds, apply });
+        showToast('Is this the whole tag? Save it so Smart fill finds this shape next time.', 'info', {
+          id: 'smart-fill-preview',
+          duration: Infinity,
+          action: { label: 'Save shape', onClick: apply },
+        });
+      });
+  }, [height, onSurveyMarkerCreated, pageNumber, width]);
+  const startSmartFillTeach = useCallback((point, pointerId) => {
+    smartFillAbortRef.current?.abort?.();
+    clearSmartFillPreview();
+    let box = { x0: point.x, y0: point.y, x1: point.x, y1: point.y };
+    setSmartFillTeachBox(box);
+    const svg = svgRef.current;
+    const stop = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      setSmartFillTeachBox(null);
+    };
+    const onMove = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      const p = screenToSVG(svg, ev.clientX, ev.clientY);
+      if (!p) return;
+      box = { ...box, x1: p.x, y1: p.y };
+      setSmartFillTeachBox(box);
+    };
+    const onUp = (ev) => {
+      if (ev.pointerId !== pointerId) return;
+      stop();
+      finishSmartFillTeach(box);
+    };
+    const onCancel = (ev) => { if (ev.pointerId === pointerId) stop(); };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+  }, [clearSmartFillPreview, finishSmartFillTeach]);
+
   const findMoreLikeThisRef = useRef(null);
   const smartFillMatchSourceRef = useRef(null);
   const surveyMarkersRef = useRef(surveyMarkers);
   surveyMarkersRef.current = surveyMarkers;
   findMoreLikeThisRef.current = (sample, skipBounds = null, { quietIfNone = false } = {}) => {
-    if (!sample || !smartFillLiveRef.current) return;
+    // Taught tag shapes are searched for too, with or without a last sample.
+    if ((!sample && !getSmartFillTemplateShapes().length) || !smartFillLiveRef.current) return;
     smartFillScanAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     smartFillScanAbortRef.current = controller;
     const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
     if (!quietIfNone) showSmartFillFindToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find', duration: Infinity });
-    findSimilarOnPage({ pageCanvas, pageSize: { width, height }, sample, signal: controller?.signal || null }).then((res) => {
+    Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber)).catch(() => null).then((pdfPage) => findSimilarOnPage({
+      pageCanvas, pageSize: { width, height }, sample, pdfPage: pdfPage || null, signal: controller?.signal || null,
+    })).then((res) => {
       if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
       if (!res.ok) {
         if (quietIfNone) return;
@@ -4748,6 +4889,16 @@ const SVGAnnotationLayerBody = memo(({
       startFamilyGroupMove(e);
       return;
     }
+    // Copy-drag (Visio): Ctrl / Cmd + drag on a lone marker picks it and
+    // drags it as a group move, whose drop copies while the key is down.
+    if (isFamilyMember && !entry.surveyMarker.lockedBy && typeof onDuplicateFamily === 'function'
+      && typeof startFamilyGroupMove === 'function' && isCopyDragEvent(e)) {
+      deselectAll();
+      onSelectedCalloutIdsChange?.(new Set());
+      setSelectedSurveyMarkerId(annotationId);
+      startFamilyGroupMove(e, { markerIds: [annotationId] });
+      return;
+    }
 
     const startPoint = screenToSVG(svgRef.current, e.clientX, e.clientY);
     const originalBounds = normalizeSurveyMarkerBounds({
@@ -4771,7 +4922,7 @@ const SVGAnnotationLayerBody = memo(({
     // dragMode: the marker's own drag is a selection gesture (rule 11).
     setSurveyMarkerPreviewBounds({ annotationId, bounds: originalBounds, dragMode: 'move' });
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch (_) {}
-  }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick, isSurveyMarkerFamilyMember, selectedSurveyMarkerIds, familySelectionSize, startFamilyGroupMove, setSelectedSurveyMarkerId]);
+  }, [deselectAll, isSelectTool, normalizeSurveyMarkerBounds, onSelectedCalloutIdsChange, onSurveyMarkerDoubleClick, isSurveyMarkerFamilyMember, selectedSurveyMarkerIds, familySelectionSize, startFamilyGroupMove, setSelectedSurveyMarkerId, onDuplicateFamily]);
 
   const handleSurveyMarkerDoubleClick = useCallback((e, entry) => {
     if (!entry?.surveyMarker?.annotationId) return;
@@ -5052,6 +5203,32 @@ const SVGAnnotationLayerBody = memo(({
     // carries the selection handles.
     const projectedShape = projectSurveyMarkerEntryShape(entry.surveyMarker, bbox);
     const hitInteractive = annotationHitTargetsInteractive && !entry.surveyMarker.liveOverlay;
+    const paint = projectedShape ? (
+      <SurveyMarkerShapePaint
+        projected={projectedShape}
+        needsEntity={Boolean(entry.surveyMarker.needsEntity)}
+        color={bbox.fill}
+        opacity={bbox.opacity}
+        transform={rotationTransform}
+      />
+    ) : (
+      <rect
+        x={bbox.left}
+        y={bbox.top}
+        width={bbox.width}
+        height={bbox.height}
+        fill={bbox.fill}
+        stroke={bbox.stroke}
+        strokeWidth={bbox.strokeWidth}
+        strokeDasharray={Array.isArray(bbox.strokeDashArray) ? bbox.strokeDashArray.join(',') : undefined}
+        opacity={bbox.opacity}
+        transform={rotationTransform}
+        style={{
+          pointerEvents: 'none',
+          mixBlendMode: bbox.globalCompositeOperation === 'multiply' ? 'multiply' : undefined,
+        }}
+      />
+    );
 
     return (
       <g
@@ -5061,32 +5238,13 @@ const SVGAnnotationLayerBody = memo(({
         transform={liveDx || liveDy ? `translate(${liveDx} ${liveDy})` : undefined}
         style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}
       >
-        {projectedShape ? (
-          <SurveyMarkerShapePaint
-            projected={projectedShape}
-            needsEntity={Boolean(entry.surveyMarker.needsEntity)}
-            color={bbox.fill}
-            opacity={bbox.opacity}
-            transform={rotationTransform}
-          />
-        ) : (
-        <rect
-          x={bbox.left}
-          y={bbox.top}
-          width={bbox.width}
-          height={bbox.height}
-          fill={bbox.fill}
-          stroke={bbox.stroke}
-          strokeWidth={bbox.strokeWidth}
-          strokeDasharray={Array.isArray(bbox.strokeDashArray) ? bbox.strokeDashArray.join(',') : undefined}
-          opacity={bbox.opacity}
-          transform={rotationTransform}
-          style={{
-            pointerEvents: 'none',
-            mixBlendMode: bbox.globalCompositeOperation === 'multiply' ? 'multiply' : undefined,
-          }}
-        />
-        )}
+        {/* Copy-drag: the original stays where it is while its copy moves. */}
+        {visualTransform?.copy === true && (liveDx || liveDy) ? (
+          <g transform={`translate(${-liveDx} ${-liveDy})`} style={{ pointerEvents: 'none' }} data-copy-drag-original="true">
+            {paint}
+          </g>
+        ) : null}
+        {paint}
         {isHoveredSurveyMarker && !isSelectedSurveyMarker && projectedShape && (
           <SurveyMarkerShapeGlow projected={projectedShape} transform={rotationTransform} />
         )}
@@ -5726,6 +5884,18 @@ const SVGAnnotationLayerBody = memo(({
       )
         ? `translate(${visualTransform.dx || 0}, ${visualTransform.dy || 0})`
         : undefined;
+      // Copy-drag: the callout also stays drawn where it is.
+      const calloutCopyOrigin = groupMoveTransform && visualTransform.copy === true
+        ? (
+          <g
+            transform={`translate(${-(visualTransform.dx || 0)}, ${-(visualTransform.dy || 0)})`}
+            style={{ pointerEvents: 'none' }}
+            data-copy-drag-original="true"
+          >
+            {element}
+          </g>
+        )
+        : null;
 
       // w52: a SELECTED callout's handles + hit zone are drawn above every
       // mark (like shape handles), not in its stack slot, so a mark stacked
@@ -5746,6 +5916,7 @@ const SVGAnnotationLayerBody = memo(({
             style={{ pointerEvents: 'none' }}
             transform={groupMoveTransform}
           >
+            {calloutCopyOrigin}
             {element}
           </g>
         );
@@ -5789,6 +5960,7 @@ const SVGAnnotationLayerBody = memo(({
           onPointerEnter={() => handleCalloutPointerEnter(displayCallout.id)}
           onPointerLeave={() => handleCalloutPointerLeave(displayCallout.id)}
         >
+          {calloutCopyOrigin}
           {element}
           {liftHandles ? null : hitTargets}
         </g>
@@ -6250,6 +6422,11 @@ const SVGAnnotationLayerBody = memo(({
       }
       return undefined;
     })();
+    const copyDragOrigin = visualTransform?.copy === true
+      && !visualTransform.previewObjects
+      && (visualTransform.id === i || (visualTransform.id === 'group' && visualTransform.affectedIds?.has(i)))
+      ? `translate(${-(visualTransform.dx || 0)}, ${-(visualTransform.dy || 0)})`
+      : null;
     if (obj?.data?.measure && (renderObj !== obj || computedTransform)) {
       liveMeasureLabels.set(i, {
         label: buildMeasureLabel(renderObj, effectiveMeasureScale),
@@ -6273,9 +6450,11 @@ const SVGAnnotationLayerBody = memo(({
     const objTypeForEdit = String(obj.type || '').toLowerCase();
     const isInPlaceEdit = isBeingEdited && EDIT_IN_PLACE_TYPES.has(objTypeForEdit);
     const hideForEdit = isBeingEdited && !isInPlaceEdit && !isBboxEdit;
-    // Owner after Test 46: carried onto another page -> hidden here.
-    const hideForCrossPage = visualTransform?.crossPageAway === true
+    // Owner after Test 46: carried onto another page -> hidden here (a
+    // copy-drag hides only the copy; the original stays drawn).
+    const carriedAway = visualTransform?.crossPageAway === true
       && (visualTransform.id === i || (visualTransform.id === 'group' && visualTransform.affectedIds?.has(i)));
+    const hideForCrossPage = carriedAway && !copyDragOrigin;
 
     // UX 2026-07-14 (same-surface editor): during edit, TextEditOverlay is
     // the visible glyph surface — caret and letters share ONE CSS layout, so
@@ -6409,8 +6588,15 @@ const SVGAnnotationLayerBody = memo(({
             />
           </g>
         )}
+        {/* Copy-drag: the original stays where it is while its copy follows
+            the pointer — drawn here, undoing the wrapper's move translate. */}
+        {copyDragOrigin && (
+          <g transform={copyDragOrigin} style={{ pointerEvents: 'none' }} data-copy-drag-original="true">
+            {renderElement}
+          </g>
+        )}
         {/* Actual annotation render — pointerEvents none so clicks pass to hit rect */}
-        <g style={{ pointerEvents: 'none' }}>
+        <g style={{ pointerEvents: 'none', opacity: carriedAway && copyDragOrigin ? 0 : undefined }}>
           {renderElement}
         </g>
         {/* Hover outline + hit area — line uses line-shaped hit, counter uses
@@ -7617,15 +7803,17 @@ const SVGAnnotationLayerBody = memo(({
               });
               freehandPointsRef.current = [];
               appendCoalescedPagePoints(e.nativeEvent);
-              // A marker is an object, not ink (docs/GESTURE-CONTRACT.md D2):
-              // the press must travel past the shape drag threshold (10 px
-              // finger, 6 px mouse / pen) or it is a tap - no marker.
+              // docs/GESTURE-CONTRACT.md D2: a press that travels past the
+              // shape drag threshold (10 px finger, 6 px mouse / pen) draws
+              // the stroke; one that does not is a tap - a dot marker (mouse
+              // / pen) or nothing (finger).
               setShapeCreation({
                 tool: 'survey-marker-freehand', gestureId, pointerId: e.pointerId, tick: 0, pressFallback,
                 startClient: { x: e.clientX, y: e.clientY }, pointerType: e.pointerType, passed: false,
               });
             } else if (point && markerDrawMode === 'smartFill') {
-              if (!applySmartFillMatchAt(point)) startSmartFill(point);
+              if (getSmartFillTeachArmed()) startSmartFillTeach(point, e.pointerId);
+              else if (!applySmartFillMatchAt(point)) startSmartFill(point);
             }
             e.preventDefault();
             return;
@@ -8138,6 +8326,21 @@ const SVGAnnotationLayerBody = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
+      {/* Smart fill beta: the box being dragged round a tag to teach it. */}
+      {smartFillTeachBox && (
+        <rect
+          data-smart-fill-teach-box="true"
+          x={Math.min(smartFillTeachBox.x0, smartFillTeachBox.x1)}
+          y={Math.min(smartFillTeachBox.y0, smartFillTeachBox.y1)}
+          width={Math.abs(smartFillTeachBox.x1 - smartFillTeachBox.x0)}
+          height={Math.abs(smartFillTeachBox.y1 - smartFillTeachBox.y0)}
+          fill="rgba(74, 144, 226, 0.08)"
+          stroke="#4A90E2"
+          strokeWidth={1.5 * clampInverseScale(inverseScale)}
+          strokeDasharray="5,4"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
       {/* Smart fill beta: the found outline, waiting for Apply. */}
       {smartFillPreview && (
         <path
@@ -8204,7 +8407,7 @@ const SVGAnnotationLayerBody = memo(({
               : strokeColor}
           strokeWidth={shapeCreation.tool === 'highlighter'
             ? Math.max(Number(strokeWidth) || 3, 8)
-            : shapeCreation.tool === 'survey-marker-freehand' ? MARKER_STROKE_DEFAULT_WIDTH
+            : shapeCreation.tool === 'survey-marker-freehand' ? markerStrokeWidth
               : (Number(strokeWidth) || 3)}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -9525,8 +9728,7 @@ const SVGAnnotationLayerBody = memo(({
             // tldraw method in utils/groupResize.js): the frame shows its
             // eight resize grabbers when every member can take a resize;
             // callouts and Survey Markers resize along. A locked member
-            // keeps the frame move-only with its lock badge. Group rotate
-            // stays hidden. An old-style arrow (a group of line + head)
+            // keeps the frame move-only with its lock badge. An old-style arrow (a group of line + head)
             // draws from its children, which a group resize doesn't
             // rewrite, so it keeps the frame move-only too.
             const groupCanResize = !groupHasLockedMember
@@ -9555,7 +9757,9 @@ const SVGAnnotationLayerBody = memo(({
                   // Drag-to-move starts from a member's pointerdown, not
                   // from the frame, so a move-only frame still moves.
                   moveOnly={!groupCanResize}
-                  hideRotationHandle
+                  // Drawboard: the group turns with its rotate grabber. A
+                  // callout has no turn of its own, so it keeps it hidden.
+                  hideRotationHandle={!groupCanResize || groupCalloutIdSet.size > 0}
                   // Owner ruling 2026-09-28: a lock on the group frame when
                   // any selected member is locked (it stays put in a move).
                   locked={groupHasLockedMember}

@@ -69,6 +69,14 @@ and is auto-created at session start.
 
 - **One tooltip, one behavior — `docs/TOOLTIP-RULES.md`.** Every hover hint is the shared chip from `src/components/Tooltip.jsx` (`const tip = useTooltip(); <button aria-label="…" {...tip('…', 'below')}>`). Never a native `title=`, `el.title =`, a hand-made hover box or a tooltip library. Timing is "wait once, then show the rest at once" (owner 2026-10-22, from the UI video he shared): the first chip waits `TOOLTIP_DELAY_MS`, the next within `TOOLTIP_WARM_MS` shows at once; keyboard focus shows at once; touch never shows one. Join a control's own hover/focus/press handlers with `withOwnHandlers`. `tests/tooltipRule.test.mjs` fails the build on a break.
 
+## Issue tracker
+
+Survey work is tracked in Linear under the **Kal Voe** team (key `KAL`) and the
+**Survey** project. Every Survey ticket you create must be filed in the Survey
+project, never left without a project and never filed under Plot, Walkthru,
+Takeoff or another project. If an old ticket or note comes from another
+project, check with the owner before building it into Survey.
+
 ## Codebase Hygiene — Fallow Audit (standing practice)
 
 Run the fallow audit periodically on your own judgment (after landing a sizeable

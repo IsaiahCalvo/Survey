@@ -73,7 +73,9 @@ import { resolvePickBarValues } from './utils/pickBarValues.js';
 import FabricEraserCanvas from './components/FabricEraserCanvas';
 import FormFieldPropertiesPanel from './components/FormFieldPropertiesPanel';
 import AnnotationDropdown from './components/AnnotationDropdown';
+import AnnotationSizeControl from './components/AnnotationSizeControl';
 import ToolbarOverflowMenu from './components/ToolbarOverflowMenu';
+import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import useSurveyBarFit from './hooks/useSurveyBarFit';
 import { surveyBarLook } from './utils/responsiveToolbar.js';
 import SurveyCategoryChips from './components/SurveyCategoryChips';
@@ -114,7 +116,6 @@ import { deviceCanHover, isTextSelectionCaptureTool, markTakesPanTextHover, shou
 import { copyTextSelection } from './utils/textSelectionQuickMenu.js';
 import ApplyRedactionsModal from './components/ApplyRedactionsModal';
 import OcrTextLayer from './components/OcrTextLayer';
-import SchematicModeBadge from './components/SchematicModeBadge';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
@@ -337,6 +338,7 @@ import { recordAnnotationCommit, recordAnnotationSyncPush, recordAnnotationUndoR
 import { registerAgentDocument } from './agent/webmcp';
 import { findHighlightQuads, ocrWordsToWords, textItemsToWords } from './agent/planText';
 import { resolveAnnotationAt } from './utils/annotationHitTest';
+import { findSurveyMarkerAt, markerPaintsAbove } from './utils/surveyMarkerHitTest.js';
 import { watchLightPopover } from './components/dismissRules.js';
 import { resolveEditTypeForAnnotation } from './utils/annotationEditRoute';
 import { buildCaretAnchor, createDoubleTapTracker, editEntryKeyForHit, shouldHandleDoubleTapEntry } from './utils/doubleTapEditEntry';
@@ -354,6 +356,7 @@ import { useAnnotationDoc } from './hooks/useAnnotationDoc.js';
 import { useAuth } from './contexts/AuthContext';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDocumentPresenceList } from './hooks/useDocumentPresenceList.js';
+import { useBrushAdjustGesture } from './hooks/useBrushAdjustGesture.js';
 import { useLiveCursorBroadcast } from './hooks/useLiveCursorBroadcast.js';
 import RemoteCursorLayer from './components/collab/RemoteCursorLayer.jsx';
 import { useDocumentToolPreferences, useDocuments, useStorage, useTemplates } from './hooks/useDatabase';
@@ -534,14 +537,18 @@ import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './u
 import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
 import { shouldCaptureToolSwitchDiag } from './utils/toolSwitchDiag.js';
 import { createPageDrawnSignal } from './utils/pageDrawnSignal.js';
-import { carryMarkerShape } from './survey/markerShapes.js';
+import { carryMarkerShape, MARKER_STROKE_WIDTHS, restyleStrokeMarkerBounds, strokeMarkerWidth } from './survey/markerShapes.js';
+import { setMarkerStrokeWidth, useMarkerStrokeWidth } from './survey/markerStrokeWidth.js';
+import { useShownMarkerDrawMode } from './survey/markerDrawMode.js';
+import { usePickedSurveyMarker } from './survey/usePickedSurveyMarker.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
 import { buildSheetLayout, buildSheetRow, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
-import { answerSetFor, excelAnswerListFormula, DEFAULT_ANSWER_SET } from './services/answerSets.js';
+import { answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
+import { setActiveSmartFillTemplate, withTemplateShape } from './survey/smartFillTemplateShapes.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,
@@ -4216,6 +4223,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (isSelectionGrabPress(e)) return;
       const hit = resolveAnnotationAt(e);
       if (!hit) return;
+      // Owner 2026-10-22: a Survey Marker is picked by Pan like any mark - on
+      // empty page, or when it paints above the mark found there.
+      const marker = findSurveyMarkerAt(e);
+      if (marker && (hit.kind === 'page' || markerPaintsAbove(marker, hit))) {
+        setSelectedCalloutIds((previous) => (previous instanceof Set && previous.size === 0 ? previous : new Set()));
+        setPendingSurveyMarkerSelection({ pageNumber: marker.pageNumber, annotationId: marker.annotationId, tick: Date.now() });
+        return;
+      }
       // Drawboard rules 2 / 8 / 12 (owner 2026-10-02, utils/selectModes.js):
       // a click picks the mark and Pan STAYS armed (the selection still moves
       // and resizes under Pan); Shift adds; a click on empty page only drops
@@ -8231,7 +8246,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setZoomInputValue(String(Math.round(nextScale * 100)));
     }
 
-    const sourceMode = pdfjsZoomSourceRef.current;
+    // payload.fitMode: the viewer re-fit itself to the band between side panels.
+    const autoFitMode = { fit: ZOOM_MODES.FIT_PAGE, fitw: ZOOM_MODES.FIT_WIDTH, fith: ZOOM_MODES.FIT_HEIGHT }[payload?.fitMode];
+    const sourceMode = pdfjsZoomSourceRef.current || autoFitMode;
     const nextMode = sourceMode && sourceMode !== ZOOM_MODES.MANUAL
       ? sourceMode
       : ZOOM_MODES.MANUAL;
@@ -8413,6 +8430,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
   // Desktop survey sub-row: whether the Survey module menu is open.
   const [surveyModuleMenuOpen, setSurveyModuleMenuOpen] = useState(false);
+  const [surveyMarkerWidthMenuOpen, setSurveyMarkerWidthMenuOpen] = useState(false);
+  // Owner 2026-10-22: a Survey Marker picked under Select or Pan brings up the
+  // survey bar, as a picked counter brings up the counter's bar.
+  const pickedSurveyMarker = usePickedSurveyMarker();
+  const surveyMarkerPicked = Boolean(pickedSurveyMarker) && (isSelectFamilyTool(activeTool) || activeTool === 'pan');
+  const markerStrokeWidth = useMarkerStrokeWidth();
+  const shownMarkerDrawMode = useShownMarkerDrawMode();
+  // Owner 2026-10-22: the freehand marker's stroke width on the survey bar -
+  // the next marker's (Survey Marker armed in Freehand) or the picked
+  // freehand marker's (restyled at once, one Undo step).
+  const pickedMarkerBounds = surveyMarkerPicked
+    ? surveyMarkers?.[pickedSurveyMarker?.annotationId]?.bounds || null
+    : null;
+  const pickedMarkerWidth = pickedMarkerBounds ? strokeMarkerWidth(pickedMarkerBounds) : null;
+  const surveyBarShowsMarkerWidth = pickedMarkerWidth != null
+    || (activeTool === 'survey-marker' && shownMarkerDrawMode === 'freehand');
   // ...and its template menu (owner 2026-10-07, the bar's first item).
   const [surveyTemplateMenuOpen, setSurveyTemplateMenuOpen] = useState(false);
   surveyBarLiveRef.current = { selectedTemplate, selectedModuleId, selectedCategoryId, rightRailCollapsed, appTemplates };
@@ -8429,7 +8462,17 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     categoriesKey: surveyBarCategories.map((category) => `${category.id}:${category.name}`).join('|'),
     categoryCount: surveyBarCategories.length,
     entityCount: (selectedTemplate?.entities || []).length,
+    markerWidth: surveyBarShowsMarkerWidth,
   });
+  // Desktop/tablet pass 2026-10-21 (item 4): the survey bar takes its own
+  // space above the page (data-viewer-top-push, PdfjsViewerContainer) instead
+  // of covering the page's top.
+  const surveyBarTopOverlayRef = useViewerTopOverlayRef();
+  const surveyBarFitRef = surveyBarFit.ref;
+  const surveyBarRef = useCallback((node) => {
+    surveyBarFitRef(node);
+    surveyBarTopOverlayRef(node);
+  }, [surveyBarFitRef, surveyBarTopOverlayRef]);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null); // Currently selected space for survey interactions
   const [pendingSurveyMarkerName, setPendingSurveyMarkerName] = useState(null); // { surveyMarker, categoryId } when prompting for name
   const [surveyMarkerNameInput, setSurveyMarkerNameInput] = useState(null); // Name prompt input; null = untouched (show category-derived default), any string ('' included) = user's text
@@ -8503,6 +8546,40 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     updateToolPreference,
     getToolPreference,
   } = useDocumentToolPreferences(pdfId, pdfFile?.id);
+
+  // Pinned tools (beta 'pinned-tools', components/PinnedToolsDock.jsx): the
+  // dock reads a tool's remembered settings and writes a pin's settings as the
+  // tool's own, so arming the tool then draws with them. Stroke settings sit
+  // under the Cloud key while a cloud line is chosen (paintPreferenceKey).
+  // Read through a ref so the published functions never go stale.
+  const toolStyleIoRef = useRef(null);
+  toolStyleIoRef.current = { getToolPreference, updateToolPreference, lineBorderStyle };
+  const readToolStyle = useCallback((tool, lineStyle) => {
+    const io = toolStyleIoRef.current;
+    const line = lineStyle || io.lineBorderStyle;
+    const strokeKey = line === 'cloud' && toolSupportsCloudBorderStyle(tool) ? 'cloud' : tool;
+    const own = io.getToolPreference(tool);
+    const stroke = io.getToolPreference(strokeKey);
+    return {
+      strokeColor: stroke.strokeColor ?? own.strokeColor,
+      strokeOpacity: stroke.strokeOpacity ?? own.strokeOpacity,
+      strokeWidth: stroke.strokeWidth ?? own.strokeWidth,
+      fillColor: own.fillColor,
+      fillOpacity: own.fillOpacity,
+      lineStyle: line,
+    };
+  }, []);
+  const writeToolStyle = useCallback((tool, style = {}) => {
+    const io = toolStyleIoRef.current;
+    const lineStyle = style.lineStyle || io.lineBorderStyle;
+    if (style.lineStyle && style.lineStyle !== io.lineBorderStyle) setLineBorderStyle(style.lineStyle);
+    const strokeKey = lineStyle === 'cloud' && toolSupportsCloudBorderStyle(tool) ? 'cloud' : tool;
+    const pick = (fields) => Object.fromEntries(fields.filter((f) => style[f] !== undefined).map((f) => [f, style[f]]));
+    const stroke = pick(['strokeColor', 'strokeOpacity', 'strokeWidth']);
+    const fill = pick(['fillColor', 'fillOpacity']);
+    if (Object.keys(stroke).length) io.updateToolPreference(strokeKey, stroke);
+    if (Object.keys(fill).length) io.updateToolPreference(tool, fill);
+  }, []);
 
   // Input field state for stroke width (fixes "Sticky 1" bug)
   // Separate state allows input to be empty while typing
@@ -9427,6 +9504,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setEraserSize(clamped);
     }
   }, [handleEraserSizeFocusChange, publishToolbarDraft]);
+
+  // Photoshop's on-page brush drag (Alt + right-drag, or Ctrl + Alt + drag):
+  // left / right = the armed tool's width, up / down = its opacity, set as the
+  // toolbar sets them (utils/brushAdjustGesture.js). Only while the bar works
+  // for the armed tool, never for a picked mark.
+  useBrushAdjustGesture({
+    enabled: isActive !== false && activeTool === pickBarTool,
+    getContainer: () => contentRef.current || containerRef.current || null,
+    tool: activeTool,
+    width: activeTool === 'eraser' ? eraserSize : strokeWidth,
+    opacity: strokeOpacity,
+    color: getHexFromColor(strokeColor) || strokeColor,
+    minWidth: 1,
+    maxWidth: activeTool === 'eraser' ? 100 : 50,
+    decimals: activeTool === 'eraser' ? 0 : ANNOTATION_WIDTH_DECIMALS,
+    onCommit: ({ width, opacity }) => {
+      if (width != null) {
+        const commitWidth = activeTool === 'eraser' ? handleEraserSizeInputBlur : handleStrokeWidthInputBlur;
+        commitWidth({ currentTarget: { value: String(width) } });
+      }
+      if (opacity != null) handleStrokeOpacityChange(opacity);
+    },
+  });
 
   // Item copy state (was transfer)
   const [transferState, setTransferState] = useState(null); // { mode: 'select'|'prompt'|'checklist', sourceSpaceId, items, destSpaceId }
@@ -16146,20 +16246,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Add Data Validation for Checklist Items
             if (lastChecklistCol >= firstChecklistCol) { // At least one checklist column exists
               for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
-                const colLetter = String.fromCharCode(64 + col); // Convert to letter (A, B, C...)
+                // Pick-one items get the answer list; number items a number
+                // rule; text items none.
+                const rule = excelValidationFor(checklistItems[col - firstChecklistCol], answerSetFor(selectedTemplate));
+                if (!rule) continue;
                 worksheet.getColumn(col).eachCell((cell, rowNum) => {
                   if (rowNum > 1) { // Skip header
-                    cell.dataValidation = {
-                      type: 'list',
-                      allowBlank: true,
-                      formulae: [excelAnswerListFormula(answerSetFor(selectedTemplate))],
-                      showErrorMessage: true,
-                      errorStyle: 'error',
-                      errorTitle: 'Invalid selection',
-                      error: answerSetFor(selectedTemplate) === DEFAULT_ANSWER_SET
-                        ? 'Please select Y, N, or N/A'
-                        : `Please select ${answerSetFor(selectedTemplate).map((a) => a.value).join(', ')}`
-                    };
+                    cell.dataValidation = { ...rule, formulae: [...rule.formulae] };
                   }
                 });
               }
@@ -16187,70 +16280,32 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               }
             }
 
-            // Add Conditional Formatting for Checklist Items (Y, N, N/A)
+            // Color checklist answers by tone (Y green, N red, N/A grey by
+            // default). Text and number columns get no colors.
             if (lastChecklistCol >= firstChecklistCol) {
               for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
+                if (itemKind(checklistItems[col - firstChecklistCol]) !== 'choice') continue;
                 const colLetter = String.fromCharCode(64 + col);
                 const range = `${colLetter}2:${colLetter}1000`;
-
-                // Y = Green
-                worksheet.addConditionalFormatting({
-                  ref: range,
-                  rules: [
-                    {
-                      type: 'cellIs',
-                      operator: 'equal',
-                      formulae: ['"Y"'],
-                      style: {
-                        fill: {
-                          type: 'pattern',
-                          pattern: 'solid',
-                          bgColor: { argb: 'FFCEEED0' }
-                        }
-                      },
-                      priority: 1
-                    }
-                  ]
-                });
-
-                // N = Red
-                worksheet.addConditionalFormatting({
-                  ref: range,
-                  rules: [
-                    {
-                      type: 'cellIs',
-                      operator: 'equal',
-                      formulae: ['"N"'],
-                      style: {
-                        fill: {
-                          type: 'pattern',
-                          pattern: 'solid',
-                          bgColor: { argb: 'FFF6C9CE' }
-                        }
-                      },
-                      priority: 2
-                    }
-                  ]
-                });
-
-                // N/A = Grey
-                worksheet.addConditionalFormatting({
-                  ref: range,
-                  rules: [
-                    {
-                      type: 'cellIs',
-                      operator: 'equal',
-                      formulae: ['"N/A"'],
-                      style: {
-                        fill: {
-                          type: 'pattern',
-                          pattern: 'solid',
-                          bgColor: { argb: 'FFA6A6A6' }
-                        }
-                      },
-                      priority: 3
-                    }
-                  ]
+                excelAnswerFills(answerSetFor(selectedTemplate)).forEach(({ value, argb }, i) => {
+                  worksheet.addConditionalFormatting({
+                    ref: range,
+                    rules: [
+                      {
+                        type: 'cellIs',
+                        operator: 'equal',
+                        formulae: [`"${value}"`],
+                        style: {
+                          fill: {
+                            type: 'pattern',
+                            pattern: 'solid',
+                            bgColor: { argb }
+                          }
+                        },
+                        priority: i + 1
+                      }
+                    ]
+                  });
                 });
               }
             }
@@ -19448,7 +19503,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           worksheet.eachRow((row, rowNumber) => {
             const rowData = [];
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-              rowData[colNumber - 1] = cell.value;
+              // Number cells (a Number line's answer) come back as text, like the app saves them.
+              rowData[colNumber - 1] = typeof cell.value === 'number' ? String(cell.value) : cell.value;
             });
             // TRUE 1-based sheet row (eachRow skips empty rows, so the jsonData index
             // is "nth non-empty row", NOT the sheet row). Non-index expando on the row
@@ -19681,7 +19737,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           worksheet.eachRow((row, rowNumber) => {
             const rowData = [];
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-              rowData[colNumber - 1] = cell.value;
+              // Number cells (a Number line's answer) come back as text, like the app saves them.
+              rowData[colNumber - 1] = typeof cell.value === 'number' ? String(cell.value) : cell.value;
             });
             // TRUE 1-based sheet row (eachRow skips empty rows, so the jsonData index
             // is "nth non-empty row", NOT the sheet row). Non-index expando on the row
@@ -26531,6 +26588,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       lastShapeTool,
       lastReviewTool,
       showSurveyPanel,
+      surveyMarkerPicked,
       surveyToolbar: selectedTemplate ? {
         modules: mobileSurveyModules,
         categories: mobileSurveyCategories,
@@ -26667,6 +26725,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       openMeasureScaleDialog: setMeasureScaleDialog,
       // The tool's style only (desktop Shape row's setter): never restyles a selection.
       setToolLineBorderStyle: setLineBorderStyle,
+      // Pinned tools dock: a tool's remembered settings, read and written.
+      readToolStyle,
+      writeToolStyle,
       setActiveCategoryDropdown,
       setTooltip,
       setShowAnnotationColorPicker,
@@ -26725,6 +26786,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     lastShapeTool,
     lastReviewTool,
     showSurveyPanel,
+    surveyMarkerPicked,
     selectedTemplate,
     mobileSurveyModules,
     mobileSurveyCategories,
@@ -31172,6 +31234,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           bounds: carryMarkerShape({
             ...normalizedBounds,
             angle: nextAngle,
+            // A restyled freehand marker (survey bar Width) brings its own.
+            ...(bounds.shape ? { shape: bounds.shape } : {}),
           }, existing?.bounds),
         },
       };
@@ -31844,6 +31908,31 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [documentLocked, yjsDocRole, user?.id, documentOwnerId, appTemplates, onTemplatesChange, updateSupabaseTemplateRow, sanitizeTemplateConfig, storeSurveyTemplateBinding, readSurveyTemplateBinding]);
   applySurveyCategoryTransferRef.current = applySurveyCategoryTransfer;
 
+  // Owner 2026-10-22: Smart fill tag shapes the user teaches are saved in the
+  // survey template (template.smartFillShapes) so they travel with it. They
+  // are not part of the template's versioned definition: read and written on
+  // the latest row, whatever snapshot this document is using.
+  const saveSmartFillShapeToTemplate = useCallback(async (shape) => {
+    const latest = appTemplates.find((template) => template.id === selectedTemplate?.id) || selectedTemplate;
+    if (!latest) throw new Error('No survey template is open.');
+    const next = { ...latest, smartFillShapes: withTemplateShape(latest.smartFillShapes, shape), updatedAt: new Date().toISOString() };
+    if (next.supabaseId) await updateSupabaseTemplateRow(next.supabaseId, { config: sanitizeTemplateConfig(next), updated_at: next.updatedAt });
+    setSelectedTemplate((current) => (current?.id === next.id ? { ...current, smartFillShapes: next.smartFillShapes } : current));
+    onTemplatesChange?.(appTemplates.map((template) => template.id === next.id ? next : template));
+  }, [appTemplates, selectedTemplate, onTemplatesChange, updateSupabaseTemplateRow]);
+  const smartFillTemplateShapes = appTemplates.find((template) => template.id === selectedTemplate?.id)?.smartFillShapes
+    || selectedTemplate?.smartFillShapes;
+  useEffect(() => {
+    if (isActive === false) return undefined;
+    setActiveSmartFillTemplate({
+      templateId: selectedTemplate?.id ?? null,
+      templateName: selectedTemplate?.name || '',
+      shapes: smartFillTemplateShapes || [],
+      save: selectedTemplate ? saveSmartFillShapeToTemplate : null,
+    });
+    return () => setActiveSmartFillTemplate({});
+  }, [isActive, selectedTemplate?.id, selectedTemplate?.name, smartFillTemplateShapes, saveSmartFillShapeToTemplate]);
+
   // Takes one category id or a list. The rail deletes every ticked category in
   // ONE call: separate calls each started from the same old template, so the
   // last one won and the earlier categories came back.
@@ -31970,11 +32059,33 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSurveyMarkerNameInput(nextPendingUi.surveyMarkerNameInput);
   }, [undoSurveyMarkerPlacement]);
 
+  // Owner 2026-10-22: a disc picked in the new-marker card recolours the
+  // marker on the page at once, before a category places it.
+  const recolorPendingSurveyMarker = useCallback((annotationId, entity) => {
+    if (!annotationId || !entity) return;
+    const color = normalizeSurveyMarkerColor(entity.color) || entity.color || null;
+    if (!color) return;
+    setNewSurveyMarkersByPage((prev) => {
+      let changed = false;
+      const next = {};
+      for (const [page, markers] of Object.entries(prev || {})) {
+        next[page] = (markers || []).map((preview) => {
+          if ((preview?.annotationId ?? preview?.id) !== annotationId) return preview;
+          changed = true;
+          return { ...preview, color, needsEntity: false };
+        });
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
   const categorizeDialogMarkerId = mobileMode ? null : (pendingSurveyMarker?.id || null);
   useEffect(() => {
     if (!categorizeDialogMarkerId || typeof window === 'undefined') return undefined;
     const onKeyDown = (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
+      // The card's module list is open: its own Escape closes only the list.
+      if (event.target?.closest?.('[data-survey-place-choosing="true"]')) return;
       event.preventDefault();
       event.stopPropagation();
       cancelSurveyMarkerPlacement(categorizeDialogMarkerId);
@@ -32382,8 +32493,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   copyFamilySelectionRef.current = copyFamilySelection;
 
   // Duplicate (Cmd+D, right-click Duplicate): a copy of the selection 16
-  // page units down-right of it; the clipboard is left alone.
-  const duplicateFamilySelection = useCallback((pageNumber, selection) => {
+  // page units down-right of it; the clipboard is left alone. Copy-drag
+  // (Ctrl / Cmd + drag, Visio) passes `offset` = how far it was dragged, and
+  // `offset.toPage` when it was let go over another page.
+  const duplicateFamilySelection = useCallback((pageNumber, selection, offset = null) => {
     const collected = collectFamilySelection(pageNumber, selection);
     const { width, height } = pageSizeFor(pageNumber);
     const clipboard = buildFamilyClipboard({
@@ -32397,7 +32510,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageHeight: height,
     });
     if (!clipboard) return false;
-    return commitFamilyPaste(pageNumber, clipboard, DUPLICATE_OFFSET_PAGE_UNITS, DUPLICATE_OFFSET_PAGE_UNITS);
+    const dx = Number.isFinite(offset?.dx) ? offset.dx : DUPLICATE_OFFSET_PAGE_UNITS;
+    const dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
+    return commitFamilyPaste(offset?.toPage ?? pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
 
   // w53: a saved marker is a family member; one still being placed is not.
@@ -33719,17 +33834,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (['running', 'complete', 'cancelled', 'error'].includes(ocrStateByPage[pageNum]?.status)) return;
     recognizeTextOnPage(pageNum);
   }, [activeTool, ocrStateByPage, pageNum, recognizeTextOnPage, textAvailabilityByPage]);
-
-  // KAL-402 Schematic Mode: the badge's quick tools. Cloud is the Rectangle
-  // with the Cloud line style, as the Style picker sets it.
-  const handleSchematicPickTool = useCallback((tool) => {
-    if (tool === 'cloud') {
-      setLineBorderStyle('cloud');
-      setActiveToolLogged('rect', { source: 'schematic-badge' });
-      return;
-    }
-    setActiveToolLogged(tool, { source: 'schematic-badge' });
-  }, [setActiveToolLogged]);
 
   const cancelTextRecognition = useCallback((pageNumber) => {
     ocrAbortByPageRef.current.get(pageNumber)?.abort?.();
@@ -37559,16 +37663,6 @@ ${pageBlocks}
                               {nativePdfAnnotationLayerHideCss}
                             </style>
                           )}
-                          {pdfDoc && !pageTinyOnScreen && (
-                            <SchematicModeBadge
-                              pdfDoc={pdfDoc}
-                              pageNumber={pageNumber}
-                              fingerprint={pdfDoc?.fingerprints?.[0] || pdfFile?.id || pdfFile?.name}
-                              activeTool={activeTool}
-                              lineBorderStyle={lineBorderStyle}
-                              onPickTool={handleSchematicPickTool}
-                            />
-                          )}
                           {activeTool === 'text-select' && ocrStateByPage[pageNumber]?.status === 'complete' && (
                             <OcrTextLayer
                               words={ocrStateByPage[pageNumber].result?.words || []}
@@ -40119,14 +40213,58 @@ ${pageBlocks}
                   {inMore || look.reuse === 'compact' ? null : <span>Reuse</span>}
                 </button>
               );
+              const markerWidthValue = pickedMarkerWidth != null ? Math.round(pickedMarkerWidth) : markerStrokeWidth;
+              const applyMarkerWidth = (value) => {
+                const width = Number(value);
+                if (!Number.isFinite(width) || width <= 0) return;
+                setMarkerStrokeWidth(width);
+                if (pickedMarkerBounds && pickedSurveyMarker) {
+                  const next = restyleStrokeMarkerBounds(pickedMarkerBounds, width);
+                  if (next) {
+                    handleSurveyMarkerBoundsChange(pickedSurveyMarker.pageNumber, pickedSurveyMarker.annotationId, next, { action: 'stroke-width' });
+                  }
+                }
+              };
+              // The same size card as every other Width in the chrome.
+              const markerWidthMenu = surveyBarShowsMarkerWidth ? (
+                <span data-survey-marker-width-menu="true" style={{ display: 'contents' }}>
+                  <AnnotationSizeControl
+                    open={surveyMarkerWidthMenuOpen}
+                    onOpenChange={setSurveyMarkerWidthMenuOpen}
+                    label="Freehand marker width"
+                    value={markerWidthValue}
+                    min={1}
+                    max={64}
+                    presets={MARKER_STROKE_WIDTHS}
+                    onValueCommit={applyMarkerWidth}
+                    variant="pill"
+                    unit="pt"
+                    width="var(--chrome-field-w)"
+                    preview={(
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          display: 'block',
+                          width: '12px',
+                          height: 0,
+                          borderTop: `${Math.max(1, Math.min(6, Math.round(markerWidthValue / 4)))}px solid currentColor`,
+                          borderRadius: '1px',
+                        }}
+                      />
+                    )}
+                  />
+                </span>
+              ) : null;
               const moreItems = look.more ? [
                 { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
                 { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
+                ...(markerWidthMenu ? [{ id: 'survey-marker-width', label: 'Width', node: markerWidthMenu }] : []),
               ] : [];
 
               return (
                 <div
-                  ref={surveyBarFit.ref}
+                  ref={surveyBarRef}
+                  data-viewer-top-push="true"
                   className="survey-subrow"
                   data-survey-bar-step={look.step}
                   data-survey-template={surveyBarFit.plan.template}
@@ -40190,6 +40328,12 @@ ${pageBlocks}
                         {reuseSwitch(false)}
                       </div>
                     )}
+                    {markerWidthMenu && !look.more && (
+                      <div className="survey-subrow__reuse" data-survey-marker-width="true">
+                        <div className="chrome-divider" aria-hidden="true" />
+                        {markerWidthMenu}
+                      </div>
+                    )}
                   </div>
 
                   <div className="survey-subrow__side survey-subrow__side--end">
@@ -40248,7 +40392,7 @@ ${pageBlocks}
           // Desktop: Survey placement and annotation formatting share the
           // subtoolbar. The Survey button restores placement without changing
           // the template, module, category, entity, or Reuse choice.
-          const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection })))
+          const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection, surveyMarkerPicked })))
             ? 'survey'
             : (activeCategoryDropdown && activeCategoryDropdown !== 'survey' && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
           if (subRowGroup && subRowHost) {
@@ -40256,7 +40400,9 @@ ${pageBlocks}
           }
           // Owner 2026-10-13: the template's entities as swatches in a third
           // bar under the survey bar (desktop; none when it has no entities).
-          if (subRowGroup === 'survey' && subRowHost && !mobileMode && (selectedTemplate?.entities || []).length > 0) {
+          // A picked marker shows its own entity on its floating bar; this bar
+          // picks the NEXT marker's, so it shows only with the tool armed.
+          if (subRowGroup === 'survey' && subRowHost && !mobileMode && activeTool === 'survey-marker' && (selectedTemplate?.entities || []).length > 0) {
             rows.push(createPortal(
               <SurveyEntityBar
                 templateId={selectedTemplate.id}
@@ -40888,6 +41034,7 @@ ${pageBlocks}
             categoryId={selectedCategoryId}
             mobile={mobileMode}
             onCancel={() => cancelSurveyMarkerPlacement(pendingSurveyMarker.id)}
+            onEntityChange={(entity) => recolorPendingSurveyMarker(pendingSurveyMarker.id, entity)}
             onConfirm={(marker, categoryId) => {
               commitMobileSurveyMarker(marker, categoryId);
               rememberSurveyEntity(marker.entityId);

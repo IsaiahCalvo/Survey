@@ -8,7 +8,8 @@ import test from 'node:test';
 const rail = readFileSync(new URL('../src/SurveySpacesRail.jsx', import.meta.url), 'utf8');
 
 test('count colour follows the Complete rule, not "all answered"', () => {
-  assert.match(rail, /const no = active\.filter\(\(item\) => responses\[item\.id\]\?\.selection === 'N'\)\.length;/);
+  // Only pick-one lines count: a text line answered "N" is not a No.
+  assert.match(rail, /const no = active\.filter\(\(item\) => itemKind\(item\) === 'choice' && responses\[item\.id\]\?\.selection === 'N'\)\.length;/);
   assert.match(rail, /const done = total > 0 && answered === total && no === 0;/);
   assert.match(rail, /const state = no > 0 \? ' is-no' : done \? ' is-done' : '';/);
   assert.doesNotMatch(rail, /answered === total \? ' is-done'/);

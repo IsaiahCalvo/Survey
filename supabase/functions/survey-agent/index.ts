@@ -170,6 +170,7 @@ Deno.serve(async (req) => {
     messages: s.array(s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }), { max: SURVEY_AGENT_LIMITS.maxMessages * 2, optional: true }),
     answer_values: s.any({ maxBytes: SURVEY_AGENT_LIMITS.maxRequestBytes }),
     annotations: s.boolean({ optional: true }),
+    typed_lines: s.boolean({ optional: true }),
     lang: s.enum([...SURVEY_AGENT_LANGUAGES], { optional: true }),
   }, parsedJson);
   if (!parsed.ok) return json(400, { error: 'bad_request', detail: parsed.error });
@@ -351,7 +352,7 @@ Deno.serve(async (req) => {
     }
     const request = {
       messages: [...surveyAgentSystemMessages(body.lang), ...(clean.messages || [])],
-      tools: buildSurveyAgentTools(body.answer_values, { annotations, markupOpen: markupOpenInTurn(clean.messages) }),
+      tools: buildSurveyAgentTools(body.answer_values, { annotations, markupOpen: markupOpenInTurn(clean.messages), typedLines: body.typed_lines === true }),
       tool_choice: 'auto',
       temperature: 0.2,
       max_tokens: SURVEY_AGENT_LIMITS.maxOutputTokens,

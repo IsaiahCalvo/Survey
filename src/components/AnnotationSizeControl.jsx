@@ -5,6 +5,9 @@ import {
   getAnnotationSizePreviewThickness,
   normalizeAnnotationSize,
   sanitizeAnnotationSizeDraft,
+  SIZE_SLIDER_STEPS,
+  sizeToSliderPosition,
+  sliderPositionToSize,
 } from '../utils/annotationSize';
 import Icon from '../Icons';
 import { useTooltip } from './Tooltip';
@@ -59,6 +62,12 @@ export default function AnnotationSizeControl({
   // hugs it. The stroke drawn beside it and the accessible name ("Width: 2 pt")
   // still say what the number is; the menu's rows keep the unit.
   compact = false,
+  // 2026-10-22 (owner: "the stroke width selector ... looks like shit"): the
+  // pill's menu is a card now (see SizeCard). `color` paints its preview in
+  // the colour the tool will draw; `previewShape` is 'stroke' for a line
+  // width, 'dot' for a round size (eraser rubber, counter pin).
+  color,
+  previewShape = 'stroke',
 }) {
   const tip = useTooltip();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
@@ -147,7 +156,6 @@ export default function AnnotationSizeControl({
     'data-draft-yields-keys': 'true',
     inputMode: allowsDecimals ? 'decimal' : 'numeric',
     pattern: allowsDecimals ? '[0-9.]*' : '[0-9]*',
-    title: label,
     disabled,
     value: customValue,
     onChange: (event) => updateDraft(event.target.value),
@@ -229,10 +237,31 @@ export default function AnnotationSizeControl({
           sideOffset={6}
           collisionPadding={8}
           style={isPill && width ? { '--chrome-menu-field-w': width } : undefined}
+          data-size-card={isPill ? 'true' : undefined}
         >
-          {/* PASS 7 (board 15): rows only — the pill above already names the
-              control, so a title row inside the menu was a second thing to read
-              in a 36px chrome. */}
+          {isPill ? (
+            <SizeCard
+              label={label}
+              unit={unit}
+              min={min}
+              max={max}
+              decimals={decimals}
+              presets={availablePresets}
+              valueText={valueText}
+              draft={customValue}
+              mixed={mixed}
+              color={color}
+              previewShape={previewShape}
+              inputProps={inputProps}
+              allowsDecimals={allowsDecimals}
+              onDraft={updateDraft}
+              onCommit={commit}
+              onFocusChange={onFocusChange}
+            />
+          ) : (
+          // PASS 7 (board 15): rows only — the pill above already names the
+          // control, so a title row inside the menu was a second thing to read
+          // in a 36px chrome.
           <div className="annotation-size-control__presets" role="listbox" aria-label={`${label} presets`}>
             {availablePresets.map((preset, index) => {
               const active = !mixed && Number(valueText) === preset;
@@ -268,8 +297,171 @@ export default function AnnotationSizeControl({
               );
             })}
           </div>
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+/**
+ * The pill's menu (owner 2026-10-22: the old 12-row list "looks like shit";
+ * keep the dropdown and the typed number). Built after Drawboard PDF's pen
+ * card - a sample of the stroke in the colour it will draw, a thickness
+ * slider, quick picks - plus the typed field the owner asked to keep.
+ *
+ * The slider and the field only DRAFT while they move (the tool draws at the
+ * draft at once); letting go of the slider, a key press on it, or leaving the
+ * field COMMITS, so a drag over picked marks is one change, not fifty.
+ */
+function SizeCard({
+  label,
+  unit,
+  min,
+  max,
+  decimals,
+  presets,
+  valueText,
+  draft,
+  mixed,
+  color,
+  previewShape,
+  inputProps,
+  allowsDecimals,
+  onDraft,
+  onCommit,
+  onFocusChange,
+}) {
+  const shown = draft !== '' && Number.isFinite(Number(draft)) ? Number(draft) : Number(valueText);
+  const hasValue = !mixed || draft !== '';
+  const position = hasValue ? sizeToSliderPosition(shown, min, max) : 0;
+  const latestRef = useRef(shown);
+  latestRef.current = shown;
+  const slidingRef = useRef(false);
+  const [focusedChip, setFocusedChip] = useState(() => Math.max(0, presets.findIndex((p) => p === Number(valueText))));
+  const chipRefs = useRef([]);
+  const paint = color || 'currentColor';
+
+  const endSlide = () => {
+    if (!slidingRef.current) return;
+    slidingRef.current = false;
+    onCommit(String(latestRef.current));
+  };
+
+  const moveChipFocus = (event, index) => {
+    const last = presets.length - 1;
+    const perRow = 6;
+    let next = index;
+    if (event.key === 'ArrowRight') next = index === last ? 0 : index + 1;
+    else if (event.key === 'ArrowLeft') next = index === 0 ? last : index - 1;
+    else if (event.key === 'ArrowDown') next = Math.min(last, index + perRow);
+    else if (event.key === 'ArrowUp') next = Math.max(0, index - perRow);
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = last;
+    else return;
+    event.preventDefault();
+    setFocusedChip(next);
+    chipRefs.current[next]?.focus();
+  };
+
+  // The sample is drawn at the size it will paint at 100% zoom (1 pt = 4/3
+  // px), up to what the box can hold.
+  const samplePx = Math.min(36, Math.max(1, shown * (4 / 3)));
+  const amp = Math.max(0, 14 - samplePx / 3);
+  const wave = `M 22 ${32 + amp} C 58 ${32 - 2 * amp}, 84 ${32 - 2 * amp}, 100 32 S 142 ${32 + 2 * amp}, 178 ${32 - amp}`;
+  const dotPx = Math.min(52, Math.max(3, shown * (previewShape === 'dot' ? 0.75 : 4 / 3)));
+
+  return (
+    <div className="annotation-size-card">
+      <div className="annotation-size-card__sample" aria-hidden="true" data-size-card-sample="true">
+        {!hasValue ? (
+          <span className="annotation-size-card__mixed">Mixed</span>
+        ) : previewShape === 'dot' ? (
+          <span className="annotation-size-card__dot" style={{ width: dotPx, height: dotPx, background: paint }} />
+        ) : (
+          <svg viewBox="0 0 200 64" preserveAspectRatio="xMidYMid meet">
+            <path d={wave} fill="none" stroke={paint} strokeWidth={samplePx} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+
+      <div className="annotation-size-card__row">
+        <input
+          type="range"
+          className="annotation-size-card__slider"
+          aria-label={`${label} slider`}
+          aria-valuetext={hasValue ? `${shown}${unit ? ` ${unit}` : ''}` : 'Mixed'}
+          min={0}
+          max={SIZE_SLIDER_STEPS}
+          step={1}
+          value={position}
+          style={{ '--size-card-fill': `${(position / SIZE_SLIDER_STEPS) * 100}%` }}
+          // Only a real value change (onChange) marks the slider dirty, so a
+          // Tab or click that moves nothing never commits over a mixed width.
+          onPointerDown={() => onFocusChange?.(true)}
+          onPointerUp={endSlide}
+          onPointerCancel={endSlide}
+          onKeyDown={() => onFocusChange?.(true)}
+          onKeyUp={endSlide}
+          onBlur={endSlide}
+          onChange={(event) => {
+            slidingRef.current = true;
+            const next = sliderPositionToSize(event.target.value, min, max, decimals);
+            latestRef.current = next;
+            onDraft(String(next));
+          }}
+        />
+        <label className="annotation-size-card__field">
+          <input
+            {...inputProps}
+            maxLength={allowsDecimals ? 4 + decimals : 3}
+            aria-label={label}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                event.preventDefault();
+                const base = Number.isFinite(Number(event.currentTarget.value)) && event.currentTarget.value !== ''
+                  ? Number(event.currentTarget.value)
+                  : shown;
+                const step = allowsDecimals && base < 10 ? 0.5 : 1;
+                const next = normalizeAnnotationSize(base + (event.key === 'ArrowUp' ? step : -step), min, max, decimals);
+                onCommit(String(next));
+                return;
+              }
+              inputProps.onKeyDown(event);
+            }}
+          />
+          {unit ? <span className="annotation-size-card__unit" aria-hidden="true">{unit}</span> : null}
+        </label>
+      </div>
+
+      <div className="annotation-size-card__chips" role="listbox" aria-label={`${label} presets`}>
+        {presets.map((preset, index) => {
+          const active = !mixed && Number(valueText) === preset;
+          // Dots grow by rank, not by value: a 10 and a 12 pt dot drawn to
+          // scale look the same at this size, and the number says the rest.
+          const size = Math.round(2 + (presets.length > 1 ? index / (presets.length - 1) : 0) * 18);
+          return (
+            <button
+              key={preset}
+              ref={(element) => { chipRefs.current[index] = element; }}
+              type="button"
+              role="option"
+              aria-selected={active}
+              aria-label={`${preset}${unit ? ` ${unit}` : ''}`}
+              tabIndex={focusedChip === index ? 0 : -1}
+              className={`annotation-size-card__chip${active ? ' is-active' : ''}`}
+              onFocus={() => setFocusedChip(index)}
+              onKeyDown={(event) => moveChipFocus(event, index)}
+              onClick={() => onCommit(preset, { close: true })}
+            >
+              <span className="annotation-size-card__chip-dot" aria-hidden="true">
+                <span style={{ width: `${size}px`, height: `${size}px` }} />
+              </span>
+              <span className="annotation-size-card__chip-value" aria-hidden="true">{preset}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

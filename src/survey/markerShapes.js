@@ -50,6 +50,15 @@ export const MARKER_DRAW_MODES = Object.freeze(['rectangle', 'freehand', 'smartF
  */
 export const MARKER_STROKE_DEFAULT_WIDTH = 12;
 
+/** The widths the survey bar offers for a freehand marker (page units). */
+export const MARKER_STROKE_WIDTHS = Object.freeze([4, 8, 12, 16, 24, 32]);
+
+/** A stored / picked width made safe: a positive number, else the default. */
+export function normalizeMarkerStrokeWidth(value) {
+  const width = Number(value);
+  return Number.isFinite(width) && width > 0 && width <= 200 ? width : MARKER_STROKE_DEFAULT_WIDTH;
+}
+
 /** Points kept per freehand stroke / smart-fill outline (storage guard). */
 export const MAX_STROKE_POINTS = 600;
 export const MAX_POLYGON_POINTS = 6000;
@@ -166,6 +175,35 @@ export function buildStrokeMarkerBounds(rawPoints, { width = MARKER_STROKE_DEFAU
       frame: { ...box },
       width: round2(strokeWidth),
       points: rounded,
+    },
+  };
+}
+
+/**
+ * A freehand marker from a single press (owner 2026-10-22: "I should be able
+ * to just click down and that should be considered one"): a round dot of the
+ * stroke width centred on the press. Stored as a stroke whose two points sit
+ * a hair apart, so every renderer (SVG, canvas, PDF export), the hit test and
+ * resize treat it like any other freehand marker; the round caps draw the dot.
+ */
+export const MARKER_DOT_SPAN = 0.5;
+
+export function buildDotMarkerBounds(rawPoint, { width = MARKER_STROKE_DEFAULT_WIDTH } = {}) {
+  const p = toXY(rawPoint);
+  if (!p) return null;
+  const strokeWidth = normalizeMarkerStrokeWidth(width);
+  const half = MARKER_DOT_SPAN / 2;
+  const points = [[round2(p[0] - half), round2(p[1])], [round2(p[0] + half), round2(p[1])]];
+  const box = boxOfPoints([points], strokeWidth / 2);
+  if (!box) return null;
+  return {
+    ...box,
+    shape: {
+      type: 'stroke',
+      v: MARKER_SHAPE_VERSION,
+      frame: { ...box },
+      width: round2(strokeWidth),
+      points,
     },
   };
 }
@@ -405,6 +443,38 @@ export function markerShapeHitTest(projected, point, tolerance = 0) {
  * Keep the outline when code that only knows the box rebuilds `bounds`
  * (the move / resize / rotate handler builds a fresh { x, y, width, height }).
  */
+/**
+ * A freehand marker's bounds redrawn at a new stroke width (page units), the
+ * stroke kept where it is on the page: the box grows or shrinks by the width
+ * change around the same centre, so a rotated marker stays put. Null for a
+ * marker with no stroke.
+ */
+export function restyleStrokeMarkerBounds(bounds, width) {
+  const projected = projectMarkerShape(getMarkerShape(bounds), bounds);
+  if (!projected || projected.type !== 'stroke') return null;
+  const strokeWidth = normalizeMarkerStrokeWidth(width);
+  const points = projected.points.map(([x, y]) => [round2(x), round2(y)]);
+  const box = boxOfPoints([points], strokeWidth / 2);
+  if (!box) return null;
+  return {
+    ...box,
+    ...(bounds.angle !== undefined ? { angle: bounds.angle } : {}),
+    shape: {
+      type: 'stroke',
+      v: MARKER_SHAPE_VERSION,
+      frame: { ...box },
+      width: round2(strokeWidth),
+      points,
+    },
+  };
+}
+
+/** A freehand marker's stroke width as drawn now (page units), or null. */
+export function strokeMarkerWidth(bounds) {
+  const projected = projectMarkerShape(getMarkerShape(bounds), bounds);
+  return projected?.type === 'stroke' ? round2(projected.width) : null;
+}
+
 export function carryMarkerShape(nextBounds, previousBounds) {
   if (!nextBounds || typeof nextBounds !== 'object') return nextBounds;
   if (nextBounds.shape !== undefined) return nextBounds;

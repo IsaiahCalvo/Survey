@@ -80,6 +80,51 @@ export function leftPanelWidth(viewportWidth, room = null) {
   return Math.max(LEFT_PANEL_MIN_WIDTH, Math.min(LEFT_PANEL_WIDTH, limit));
 }
 
+/**
+ * Whether an open left panel, even at LEFT_PANEL_MIN_WIDTH, still leaves
+ * MIN_VIEWER_VISIBLE px of document beside what covers the right side.
+ * Desktop/tablet pass 2026-10-21 (item 1): at 820px a 200px Search panel next
+ * to the 320px Survey panel left a 204px slot for the page. When this is
+ * false the two panels cannot share the window: the one opened last stays
+ * and the other closes (resolveNarrowPanelYield).
+ */
+export function leftPanelFitsBeside(viewportWidth, room = null) {
+  const vw = Number(viewportWidth);
+  if (!Number.isFinite(vw) || vw <= 0) return true;
+  const rightCover = Math.max(0, Number(room?.rightCover) || 0);
+  return vw - LEFT_RAIL_WIDTH - rightCover - LEFT_PANEL_MIN_WIDTH >= MIN_VIEWER_VISIBLE;
+}
+
+/**
+ * Which panel gives way when the left panel and the right cover (the Survey
+ * panel) no longer fit together: 'left' closes the left panel (the Survey
+ * panel opened, or the window narrowed), 'right' closes the Survey panel (the
+ * left panel was just opened beside it), null when they fit or the left panel
+ * is closed. Only a right cover wider than the bare rail can give way.
+ */
+export function resolveNarrowPanelYield({ viewportWidth, room = null, leftOpen = false, leftJustOpened = false } = {}) {
+  if (!leftOpen || leftPanelFitsBeside(viewportWidth, room)) return null;
+  const rightCover = Math.max(0, Number(room?.rightCover) || 0);
+  if (leftJustOpened && rightCover > LEFT_RAIL_WIDTH) return 'right';
+  return 'left';
+}
+
+/*
+ * A request for the Survey panel to close because the left panel was just
+ * opened beside it on a window too narrow for both (PDFSidebar sends it,
+ * SurveySpacesRail listens).
+ */
+const rightPanelYieldListeners = new Set();
+
+export function subscribeRightPanelYield(listener) {
+  rightPanelYieldListeners.add(listener);
+  return () => rightPanelYieldListeners.delete(listener);
+}
+
+export function requestRightPanelYield() {
+  rightPanelYieldListeners.forEach((listener) => { try { listener(); } catch { /* never breaks the others */ } });
+}
+
 export function storageKeyForUser(userId, documentId = null) {
   const id = typeof userId === 'string' && userId.trim() ? userId.trim() : 'local';
   return `${STORAGE_PREFIX}:${id}${documentId ? `:document:${encodeURIComponent(String(documentId))}` : ''}`;

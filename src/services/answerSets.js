@@ -8,9 +8,10 @@
  * An export kit may carry a set too (`kit.answerSet`); the template's own wins.
  */
 import { getExportKit } from './exportFormats/registry.js';
-import { validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
+import { ANSWER_MEANS_MAX, checklistItemKind, typedAnswerFor, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
+import { categoriesOf, checklistOf, modulesOf } from './templateConfigShape.js';
 
-export { ANSWER_TONES, MIN_ANSWERS, MAX_ANSWERS, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
+export { ANSWER_MEANS_MAX, ANSWER_TONES, MIN_ANSWERS, MAX_ANSWERS, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
 
 export const DEFAULT_ANSWER_SET = Object.freeze([
   Object.freeze({ value: 'Y', tone: 'good' }),
@@ -83,7 +84,7 @@ export function answerSetPresets({ extras = false } = {}) {
   return extras ? [...ANSWER_SET_PRESETS, ...EXTRA_ANSWER_SET_PRESETS] : ANSWER_SET_PRESETS;
 }
 
-const setKey = (set) => JSON.stringify(set.map((a) => [a.value, a.tone]));
+const setKey = (set) => JSON.stringify(set.map((a) => (a.means ? [a.value, a.tone, a.means] : [a.value, a.tone])));
 
 /** The preset id a set matches; '' when it is the template's own list. */
 export function answerPresetIdOf(set, presets = ANSWER_SET_PRESETS) {
@@ -98,7 +99,10 @@ export function answerPresetIdOf(set, presets = ANSWER_SET_PRESETS) {
  */
 export function cleanAnswerSet(draft) {
   if (!Array.isArray(draft)) return null;
-  const set = draft.map((a) => ({ value: String(a?.value ?? '').trim(), tone: a?.tone }));
+  const set = draft.map((a) => {
+    const means = String(a?.means ?? '').trim();
+    return { value: String(a?.value ?? '').trim(), tone: a?.tone, ...(means ? { means } : {}) };
+  });
   return validateAnswerSet(set).length ? null : set;
 }
 
@@ -110,7 +114,14 @@ export function answerSetProblem(draft) {
   if (values.some((v) => /[",]/.test(v))) return 'Answers can\'t have commas or quotes (Excel lists break on them).';
   if (values.some((v) => v.length > 20)) return 'Keep each answer to 20 characters.';
   if (new Set(values).size !== values.length) return 'Two answers have the same name.';
+  if (draft.some((a) => String(a?.means ?? '').trim().length > ANSWER_MEANS_MAX)) return `Keep each meaning to ${ANSWER_MEANS_MAX} characters.`;
   return cleanAnswerSet(draft) ? '' : 'This list can\'t be used.';
+}
+
+/** The "means" line of the picked answer, or ''. */
+export function answerMeans(set, selection) {
+  if (selection == null || selection === '') return '';
+  return (set || []).find((a) => sameAnswer(a.value, selection))?.means || '';
 }
 
 /** True when two sets have the same answers and tones in the same order. */
@@ -130,8 +141,11 @@ export function answerSetFor(template) {
   return usable(kitSet) ? kitSet : DEFAULT_ANSWER_SET;
 }
 
+// Excel import can hand back a number (10) for an answer saved as text ('10').
+export const sameAnswer = (a, b) => a != null && b != null && String(a) === String(b);
+
 export function answerTone(set, value) {
-  return set.find((a) => a.value === value)?.tone || null;
+  return set.find((a) => sameAnswer(a.value, value))?.tone || null;
 }
 
 /** Good and neutral answers count as done (today: Y and N/A). */
@@ -143,4 +157,88 @@ export function isDoneAnswer(set, value) {
 /** The Excel dropdown list for the set, e.g. '"Y,N,N/A"'. */
 export function excelAnswerListFormula(set) {
   return `"${set.map((a) => a.value).join(',')}"`;
+}
+
+/*
+ * Item kinds (nightly 'custom-answers'). A checklist item is pick-one by
+ * default (the template's answer set). `item.kind` 'text' or 'number' makes
+ * it take a typed answer instead, with an optional `item.unit` ("ft", "V").
+ * Answers stay plain strings in `selection`, so sync, import, history and the
+ * row fingerprints need no change.
+ */
+export const ITEM_KINDS = Object.freeze(['choice', 'text', 'number']);
+export const ITEM_UNIT_MAX = 12;
+export { TYPED_ANSWER_MAX } from '../../supabase/functions/_shared/kitShape.js';
+
+export const itemKind = checklistItemKind;
+
+/**
+ * A typed answer as it should be saved: '' for blank, the trimmed text, or a
+ * plain number ("1,200" -> "1200"). null when a number item gets no number.
+ */
+export function typedAnswer(item, raw) {
+  return typedAnswerFor(itemKind(item), raw);
+}
+
+/** Whether an item's answer counts as done (drives the auto Complete entity). */
+export function isItemDone(item, set, value) {
+  const kind = itemKind(item);
+  if (kind === 'choice') return isDoneAnswer(set, value);
+  const typed = typedAnswer(item, value);
+  return typed !== null && typed !== '';
+}
+
+/** Whether an item's answer is an issue: only a pick-one answer marked bad. */
+export function isItemIssue(item, set, value) {
+  return itemKind(item) === 'choice' && answerTone(set, value) === 'bad';
+}
+
+/** The Excel cell rule for an item's column, or null for none (text). */
+export function excelValidationFor(item, set) {
+  const kind = itemKind(item);
+  if (kind === 'text') return null;
+  if (kind === 'number') {
+    return {
+      type: 'decimal',
+      operator: 'between',
+      allowBlank: true,
+      formulae: [-1e15, 1e15],
+      showErrorMessage: true,
+      errorStyle: 'error',
+      errorTitle: 'Invalid number',
+      error: `Please enter a number${item?.unit ? ` (${item.unit})` : ''}`,
+    };
+  }
+  return {
+    type: 'list',
+    allowBlank: true,
+    formulae: [excelAnswerListFormula(set)],
+    showErrorMessage: true,
+    errorStyle: 'error',
+    errorTitle: 'Invalid selection',
+    error: set === DEFAULT_ANSWER_SET
+      ? 'Please select Y, N, or N/A'
+      : `Please select ${set.map((a) => a.value).join(', ')}`,
+    ...excelMeansPrompt(set),
+  };
+}
+
+// Answers with a "means" line show it as the cell's input hint. Excel caps a
+// hint at 255 characters.
+function excelMeansPrompt(set) {
+  const lines = (set || []).filter((a) => a.means).map((a) => `${a.value}: ${a.means}`);
+  if (!lines.length) return {};
+  return { showInputMessage: true, promptTitle: 'Answers', prompt: lines.join('\n').slice(0, 255) };
+}
+
+const TONE_FILL = Object.freeze({ good: 'FFCEEED0', bad: 'FFF6C9CE', neutral: 'FFA6A6A6' });
+
+/** Excel cell fills per answer, by tone (Y green, N red, N/A grey). */
+export function excelAnswerFills(set) {
+  return set.map((a) => ({ value: a.value, argb: TONE_FILL[a.tone] || TONE_FILL.neutral }));
+}
+
+/** True when any checklist item in the template is a text or number item. */
+export function templateHasTypedItems(template) {
+  return modulesOf(template).some((m) => categoriesOf(m).some((c) => checklistOf(c).some((it) => itemKind(it) !== 'choice')));
 }

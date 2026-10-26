@@ -6,6 +6,8 @@
  * handleExportSurveyToExcel in PDFViewer.jsx builds inline today
  * (tests/exportFormatsRegistry.test.mjs pins that).
  */
+import { checklistItemKind } from '../../../supabase/functions/_shared/kitShape.js';
+
 export function buildSheetLayout(kit, checklistItems = []) {
   const headerRow = [];
   const columnMapping = {};
@@ -33,11 +35,19 @@ export function buildSheetLayout(kit, checklistItems = []) {
   return { headerRow, columnMapping, colOf, firstChecklistCol, lastChecklistCol };
 }
 
+// A Number line's answer goes in as a real number, so SUM and friends work.
+const cellAnswer = (item, answer) => {
+  if (answer == null || answer === '') return '';
+  if (checklistItemKind(item) !== 'number') return answer;
+  const n = Number(answer);
+  return Number.isFinite(n) ? n : answer;
+};
+
 /** One data row in the kit's column order. `cells` holds a value per field. */
 export function buildSheetRow(kit, checklistItems, cells, answers = {}) {
   const row = [];
   kit.columns.forEach((col) => {
-    if (col.field === 'checklist') checklistItems.forEach((item) => row.push(answers[item.id] ?? ''));
+    if (col.field === 'checklist') checklistItems.forEach((item) => row.push(cellAnswer(item, answers[item.id])));
     else row.push(cells[col.field]);
   });
   return row;

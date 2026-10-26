@@ -173,6 +173,7 @@ import {
 } from '../utils/resizeMinimum.js';
 import { resolveTextDoubleClick } from '../utils/selectModes.js';
 import { useCrossPageMove } from './useCrossPageMove.js';
+import { isCopyDragEvent, subscribeMoveModifier, getMoveModifierHeld } from '../utils/moveModifier.js';
 import { isTextLikeAnnotation } from '../utils/toolPressRouting.js';
 import { lockTextboxSizeAfterResize } from '../utils/annotationPreferences.js';
 import {
@@ -186,7 +187,11 @@ import {
   resolveGroupResizeScale,
   scaleCalloutForGroup,
   scaleMarkerBoundsForGroup,
+  lineWorldPoints,
+  packLineWorldPoints,
   scaledGroupFontSize,
+  scaledGroupLineWidth,
+  isGroupLineWidthKey,
   scaledTextBoxLength,
   textScalesFontFor,
 } from '../utils/groupResize.js';
@@ -314,6 +319,13 @@ function ensureGroupMoveStart(ds, { objects, callouts, pageWidth, pageHeight, ma
  *   callback (calloutId, patch) => void fired once on pointerup to capture
  *   the undo checkpoint (live paint already updated the store).
  */
+// The copy cursor (arrow with a plus) on the whole page while a drop would
+// copy: the drag's pointer capture sits on whichever element was pressed.
+function showCopyDragCursor(on) {
+  if (typeof document === 'undefined') return;
+  document.body?.classList?.toggle('survey-copy-drag', on === true);
+}
+
 export function useSVGInteraction({
   svgRef,
   annotations,
@@ -391,6 +403,10 @@ export function useSVGInteraction({
   // marks stay clamped to their page (legacy mounts unchanged).
   onMoveMarksToPage = null,
   documentId = null,
+  // Copy-drag (Visio's Ctrl+drag, utils/moveModifier.js isCopyDragEvent): a
+  // move let go with Ctrl / Cmd down copies instead. The viewer pastes the
+  // copies: (selection, dx, dy) => true when copied. Absent -> always a move.
+  onCopyDragDrop = null,
 }) {
   // ---------------------------------------------------------------------------
   // State
@@ -547,6 +563,32 @@ export function useSVGInteraction({
   const crossPageMove = useCrossPageMove({
     svgRef, pageNumber, documentId, onMoveMarksToPage, setVisualTransform, selectedCount: selectedIds?.size ?? 0,
   });
+  const onCopyDragDropRef = useRef(onCopyDragDrop);
+  onCopyDragDropRef.current = onCopyDragDrop;
+  const startFamilyGroupMoveRef = useRef(null);
+  // Copy-drag: is this move drag a copy right now (the key is read from each
+  // pointer event, and from the key itself below)? A counter swung with
+  // Shift first (orbitBase) only moves: its new pose is not saved yet.
+  const resolveCopyDrag = useCallback((ds, e) => {
+    const copy = !ds.orbitBase && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e);
+    if (copy !== Boolean(ds.copyDrag)) {
+      ds.copyDrag = copy;
+      showCopyDragCursor(copy);
+    }
+    return copy;
+  }, []);
+  // Pressing or letting go of Ctrl / Cmd mid-drag flips the drop between copy
+  // and move at once, before the pointer moves again (Visio).
+  useEffect(() => subscribeMoveModifier(() => {
+    const ds = dragStateRef.current;
+    if (!ds?.active || (ds.mode !== 'move' && ds.mode !== 'group-move')) return;
+    if (ds.orbitBase || typeof onCopyDragDropRef.current !== 'function') return;
+    const copy = getMoveModifierHeld();
+    if (copy === Boolean(ds.copyDrag)) return;
+    ds.copyDrag = copy;
+    showCopyDragCursor(copy);
+    setVisualTransform((prev) => (prev ? { ...prev, copy } : prev));
+  }), []);
   // Drawboard rule 7: the last two presses on marks ({ key, wasSelected, at,
   // pointerType }, newest first) and when each picked mark joined the
   // selection (key -> ms) — read by the double-click handler to tell text
@@ -1117,6 +1159,32 @@ export function useSVGInteraction({
   // or a widget that owns arrow keys, the right-click menu is open, a
   // Cmd/Ctrl/Alt chord is held, the document is read-only, or a pointer
   // gesture is in progress.
+  // Drawboard: K held during a group resize also scales line widths. K is
+  // the Polyline tool's key, so while a group resize runs it is taken here
+  // (capture phase) and never switches the tool.
+  const groupResizeLineKeyRef = useRef(false);
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (!isGroupLineWidthKey(e)) return;
+      const ds = dragStateRef.current;
+      if (!ds?.active || ds.mode !== 'group-resize') return;
+      groupResizeLineKeyRef.current = true;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    const onKeyUp = (e) => {
+      if (e.key === 'k' || e.key === 'K') groupResizeLineKeyRef.current = false;
+    };
+    const onBlur = () => { groupResizeLineKeyRef.current = false; };
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
   const nudgeLatestRef = useRef({});
   nudgeLatestRef.current = {
     annotations,
@@ -1643,7 +1711,10 @@ export function useSVGInteraction({
     // resolveToolPress): under Select a press on a mark that was NOT selected
     // picks it, but a drag from there is a box / lasso select — it never moves
     // a mark that was not already selected. Drag the selection to move it.
-    if (!wasAlreadySelected && activeTool === 'select' && svgRef.current) {
+    // Copy-drag is the exception: Ctrl / Cmd + drag on any mark copies it
+    // (Visio), picked or not.
+    if (!wasAlreadySelected && activeTool === 'select' && svgRef.current
+      && !(onCopyDragDrop && isCopyDragEvent(e))) {
       beginAreaSelectFromMark(e);
       return;
     }
@@ -1999,9 +2070,14 @@ export function useSVGInteraction({
         { key: `c:${calloutId}`, wasSelected: _calAlreadyIn, at: Date.now(), pointerType: e.pointerType || 'mouse' },
         pressLogRef.current[0],
       ].filter(Boolean);
+      // Copy-drag (Visio): Ctrl / Cmd + drag on a callout that is not in a
+      // bigger selection drags it as a group move, whose drop can copy it.
+      const _calCopyDrag = !e.shiftKey && partType === 'whole' && !getCalloutGroupId(callout)
+        && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e)
+        && !(_calAlreadyIn && (selectedIds.size + _calCount + selectedMarkerCount) > 1);
       // Drawboard rule 3: the same for a callout that was not selected (a
       // grouped callout still picks its whole group below).
-      if (!e.shiftKey && !_calAlreadyIn && activeTool === 'select' && !getCalloutGroupId(callout) && svgRef.current) {
+      if (!_calCopyDrag && !e.shiftKey && !_calAlreadyIn && activeTool === 'select' && !getCalloutGroupId(callout) && svgRef.current) {
         onSelectedCalloutIdsChange?.(new Set([calloutId]));
         deselectAll();
         clearSelectedMarkers();
@@ -2136,6 +2212,10 @@ export function useSVGInteraction({
       if (isUserLocked(callout)) {
         e.stopPropagation();
         e.preventDefault();
+        return;
+      }
+      if (_calCopyDrag && startFamilyGroupMoveRef.current?.(e, { calloutIds: [calloutId] })) {
+        e.stopPropagation();
         return;
       }
 
@@ -2470,6 +2550,7 @@ export function useSVGInteraction({
       // Canvas audit chunk 2: edges / centres pull to other marks within
       // 6 screen px (Alt = free); the release saves the same snapped delta.
       ensureSingleMoveSnap(ds);
+      const copyDrag = resolveCopyDrag(ds, e);
       // Owner after Test 46: a mark that may change pages follows the pointer
       // off its page (clipped) and jumps to the next page once fully off.
       if (crossPageMove.preview(ds, e, annotations?.objects, ds.orbitBase ? null : (pdx, pdy, away) => {
@@ -2480,7 +2561,7 @@ export function useSVGInteraction({
         const snapped = snapMoveDelta(ds, pdx, pdy, e);
         showMoveGuides(ds, snapped.dx, snapped.dy, e);
         return snapped;
-      })) {
+      }, copyDrag)) {
         setInteractionState('dragging');
         return;
       }
@@ -2504,7 +2585,8 @@ export function useSVGInteraction({
           },
         });
       } else {
-        setVisualTransform({ id: ds.annotationIndex, dx: shown.dx, dy: shown.dy });
+        // copy: the mark is also drawn where it stays (SVGAnnotationLayer).
+        setVisualTransform({ id: ds.annotationIndex, dx: shown.dx, dy: shown.dy, copy: copyDrag });
       }
       setInteractionState('dragging');
     } else if (ds.mode === 'counter-orbit') {
@@ -2577,6 +2659,7 @@ export function useSVGInteraction({
       });
       // Canvas audit chunk 2: the selection snaps as one by its combined frame.
       ensureGroupMoveSnap(ds);
+      const copyDrag = resolveCopyDrag(ds, e);
       if (crossPageMove.preview(ds, e, annotations?.objects, (pdx, pdy, away) => {
         if (away) {
           applySnapGuides(null);
@@ -2585,7 +2668,7 @@ export function useSVGInteraction({
         const snapped = snapMoveDelta(ds, pdx, pdy, e);
         showMoveGuides(ds, snapped.dx, snapped.dy, e);
         return snapped;
-      })) {
+      }, copyDrag)) {
         setInteractionState('dragging');
         return;
       }
@@ -2611,6 +2694,7 @@ export function useSVGInteraction({
       setVisualTransform({
         id: 'group', // special sentinel for group drag
         dx, dy,
+        copy: copyDrag,
         affectedIds: new Set(Object.keys(ds.groupOriginals).map(Number)),
         affectedCalloutIds: affectedCalloutIdsSet,
         // w53: Survey Markers in the selection ride the same translate
@@ -2675,36 +2759,16 @@ export function useSVGInteraction({
         };
 
         if (objType === 'line') {
-          // UX: 2026-04-21 — Line rotation needs WORLD endpoints, not the
-          // raw stored values. The line renderer paints at
-          // (obj.x1 + obj.left, obj.y1 + obj.top), so after a prior group-
-          // move bumps obj.left/top, the raw x1/y1 numbers no longer match
-          // the visible world position. Rotating the raw values around the
-          // group pivot would land the line in a wrong spot (visible bug:
-          // after rotate-then-move, the second rotate flings the line out
-          // of alignment with the rest of the group).
-          // Fix: convert to world before rotating, then bake the rotated
-          // world endpoints back as raw values with obj.left/top reset to
-          // zero. The line's curvature midpoint is already absolute world
-          // coords, so it rotates directly.
-          if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
-            const wx1 = orig.x1 + (orig.left || 0);
-            const wy1 = orig.y1 + (orig.top || 0);
-            const wx2 = orig.x2 + (orig.left || 0);
-            const wy2 = orig.y2 + (orig.top || 0);
-            const p1 = rotPt(wx1, wy1);
-            const p2 = rotPt(wx2, wy2);
-            target.left = 0;
-            target.top = 0;
-            target.x1 = p1.x; target.y1 = p1.y;
-            target.x2 = p2.x; target.y2 = p2.y;
+          // Turn the line's drawn ends and bend (lineWorldPoints), then
+          // write them back in the drawn-line form with no turn of its own.
+          if (orig.linePoints) {
+            const { p1, p2, mid } = orig.linePoints;
+            Object.assign(target, packLineWorldPoints(rotPt(p1.x, p1.y), rotPt(p2.x, p2.y)));
+            if (mid) {
+              const m = rotPt(mid.x, mid.y);
+              target.data = { ...(target.data || {}), midpoint: { x: m.x, y: m.y } };
+            }
           }
-          if (orig.midpoint) {
-            const m = rotPt(orig.midpoint.x, orig.midpoint.y);
-            target.data = { ...(target.data || {}), midpoint: { x: m.x, y: m.y } };
-          }
-          // For arrows + curved lines the rendered tangent reads from the
-          // endpoints, so no separate angle update needed for line/arrow.
         } else if (orig.dataType === 'counter') {
           // Counter pin: bubble center is at (left + radius, top + radius).
           const r = (orig.radius || 14) * Math.abs(orig.scaleX || 1);
@@ -2738,6 +2802,22 @@ export function useSVGInteraction({
         }
       }
 
+      // Survey Markers turn with the group: each box's centre orbits the
+      // pivot and its own angle takes the same turn.
+      const markerPreviews = {};
+      for (const [id, bounds] of Object.entries(ds.groupMarkerResizeOriginals || {})) {
+        const cx = bounds.x + bounds.width / 2 - pivotX;
+        const cy = bounds.y + bounds.height / 2 - pivotY;
+        const turned = ((((bounds.angle || 0) + delta) % 360) + 540) % 360 - 180;
+        markerPreviews[id] = {
+          ...bounds,
+          x: pivotX + cx * cos - cy * sin - bounds.width / 2,
+          y: pivotY + cx * sin + cy * cos - bounds.height / 2,
+          angle: turned === -180 ? 180 : turned,
+        };
+      }
+      ds.currentMarkerBounds = markerPreviews;
+
       ds.currentAnnotations = updatedAnnotations;
       ds.currentAngle = delta;
       // UX: 2026-04-20 v2 — broadcast group-rotate state so the multi-
@@ -2758,6 +2838,7 @@ export function useSVGInteraction({
           snapshotBbox: ds.groupUnionOriginal,
         },
         previewObjects: buildPreviewObjects(updatedAnnotations, ds.groupMemberOriginals),
+        ...(Object.keys(markerPreviews).length > 0 ? { markerPreviews } : {}),
       });
       setInteractionState('rotating');
 
@@ -2936,6 +3017,7 @@ export function useSVGInteraction({
         transformedOrigin.y,
       ];
 
+      const scaleLineWidths = groupResizeLineKeyRef.current;
       const updatedAnnotations = cloneAnnotations(annotations);
       for (const idxStr of Object.keys(ds.groupMemberOriginals)) {
         const idx = Number(idxStr);
@@ -2953,27 +3035,15 @@ export function useSVGInteraction({
             ),
           );
         } else if (objType === 'line') {
-          // UX: 2026-04-21 — Same world-vs-local-endpoint fix as group-
-          // rotate. Lines render at (x1 + left, y1 + top); rescaling the
-          // raw values around the anchor breaks if obj.left/top is non-
-          // zero. Convert to world, scale (in local rotated frame when a
-          // persisted rotation exists), then write back with left/top
-          // reset to zero.
-          if (orig.x1 != null && orig.y1 != null && orig.x2 != null && orig.y2 != null) {
-            const wx1 = orig.x1 + (orig.left || 0);
-            const wy1 = orig.y1 + (orig.top || 0);
-            const wx2 = orig.x2 + (orig.left || 0);
-            const wy2 = orig.y2 + (orig.top || 0);
-            const p1 = scalePoint(wx1, wy1);
-            const p2 = scalePoint(wx2, wy2);
-            target.left = 0;
-            target.top = 0;
-            target.x1 = p1.x; target.y1 = p1.y;
-            target.x2 = p2.x; target.y2 = p2.y;
-          }
-          if (orig.midpoint) {
-            const mp = scalePoint(orig.midpoint.x, orig.midpoint.y);
-            target.data = { ...(target.data || {}), midpoint: { x: mp.x, y: mp.y } };
+          // Scale the line's drawn ends and bend (lineWorldPoints), then
+          // write them back in the drawn-line form with no turn of its own.
+          if (orig.linePoints) {
+            const { p1, p2, mid } = orig.linePoints;
+            Object.assign(target, packLineWorldPoints(scalePoint(p1.x, p1.y), scalePoint(p2.x, p2.y)));
+            if (mid) {
+              const mp = scalePoint(mid.x, mid.y);
+              target.data = { ...(target.data || {}), midpoint: { x: mp.x, y: mp.y } };
+            }
           }
         } else if (orig.dataType === 'counter') {
           // Counter pin: scale center position; scale radius by uniform avg
@@ -3034,6 +3104,11 @@ export function useSVGInteraction({
             target.scaleY = (orig.scaleY || 1) * axis.y;
           }
         }
+        // Drawboard: hold K to scale line widths with the frame too. A pen
+        // stroke's width already scales with its ink transform above.
+        if (scaleLineWidths && objType !== 'path' && orig.strokeWidth > 0) {
+          target.strokeWidth = scaledGroupLineWidth(orig.strokeWidth, sx, sy);
+        }
       }
 
       // Callouts and Survey Markers ride along (groupResize.js); their live
@@ -3044,6 +3119,13 @@ export function useSVGInteraction({
           orig, scalePoint, sx, sy, ds.handleId,
           { width: pageWidth || 1, height: pageHeight || 1 }, TEXT_PADDING,
         );
+        if (scaleLineWidths && orig.style?.lineThickness > 0) {
+          const patch = calloutPreviews[cid];
+          patch.style = {
+            ...(patch.style || orig.style),
+            lineThickness: scaledGroupLineWidth(orig.style.lineThickness, sx, sy),
+          };
+        }
       }
       const markerPreviews = {};
       for (const [id, bounds] of Object.entries(ds.groupMarkerResizeOriginals || {})) {
@@ -4256,7 +4338,7 @@ export function useSVGInteraction({
       }
       setInteractionState('dragging');
     }
-  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta, callouts, getGroupMarkerBoxes, applySnapGuides, collectSnapTargets, snapMoveDelta, showMoveGuides, ensureSingleMoveSnap, ensureGroupMoveSnap]);
+  }, [svgRef, annotations, onSaveAnnotations, pageWidth, pageHeight, onUpdateCalloutLive, applyMarqueeState, applyLassoState, inverseScale, clampMarkerGroupDelta, callouts, getGroupMarkerBoxes, applySnapGuides, collectSnapTargets, snapMoveDelta, showMoveGuides, ensureSingleMoveSnap, resolveCopyDrag, ensureGroupMoveSnap]);
 
   /**
    * Pointer up on root SVG: commit drag changes to annotation data.
@@ -4493,7 +4575,24 @@ export function useSVGInteraction({
 
     // Owner after Test 46: let go over another page -> the marks move there
     // (one save, one undo step — PDFViewer handleMoveMarksToPage).
-    const crossPageDropped = (ds.mode === 'move' || ds.mode === 'group-move') && crossPageMove.drop(ds, e);
+    // Copy-drag: Ctrl / Cmd down at let-go -> the marks stay and a copy lands
+    // where they were dragged to (one paste, one Undo step, the copy picked).
+    const moveDrag = ds.mode === 'move' || ds.mode === 'group-move';
+    const copyDrop = moveDrag && !ds.orbitBase
+      && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e);
+    // A copy let go over another page lands there (the viewer pastes it on
+    // that page; the originals stay).
+    const crossPageCopied = copyDrop && (() => {
+      const landing = crossPageMove.land(ds, e);
+      if (!landing) return false;
+      const indices = landing.indices
+        .map((index, k) => resolveMarkIndex(annotations?.objects, index, landing.ids[k] ?? null))
+        .filter((index) => index >= 0);
+      if (indices.length === 0) return false;
+      onCopyDragDropRef.current({ indices }, landing.dx, landing.dy, landing.toPage);
+      return true;
+    })();
+    const crossPageDropped = crossPageCopied || (!copyDrop && moveDrag && crossPageMove.drop(ds, e));
     if (crossPageDropped) {
       try { e.target?.releasePointerCapture?.(e.pointerId); } catch (_) { /* optional */ }
       justDraggedAtRef.current = Date.now();
@@ -4534,7 +4633,10 @@ export function useSVGInteraction({
             reason: 'held-at-page-edge', mode: 'move', type: obj?.data?.type || obj?.type, id: ds.markId, dx, dy, pageNumber,
           });
         }
-        if (obj && (actualDx !== 0 || actualDy !== 0 || ds.orbitBase)) {
+        if (obj && copyDrop && (actualDx !== 0 || actualDy !== 0)) {
+          onCopyDragDropRef.current({ indices: [moveIndex] }, actualDx, actualDy);
+          justDraggedAtRef.current = Date.now();
+        } else if (obj && (actualDx !== 0 || actualDy !== 0 || ds.orbitBase)) {
           // Deep clone annotations and apply position update
           const updatedAnnotations = deepClone(annotations);
           const targetObj = updatedAnnotations.objects[moveIndex];
@@ -4736,15 +4838,21 @@ export function useSVGInteraction({
         flushSync(() => {
           for (const [cid, patch] of calloutPatchEntries) {
             const current = (callouts || []).find((c) => c && c.id === cid);
+            // Only the style fields the resize changed land on the
+            // callout's style as it is now.
+            const startStyle = ds.groupCalloutResizeOriginals?.[cid]?.style || {};
+            const styleChange = {};
+            for (const key of ['fontSize', 'lineThickness']) {
+              const next = patch.style?.[key];
+              if (next != null && next !== startStyle[key]) styleChange[key] = next;
+            }
             onUpdateCalloutLive(cid, patch.style
-              ? { ...patch, style: { ...(current?.style || {}), fontSize: patch.style.fontSize } }
+              ? { ...patch, style: { ...(current?.style || {}), ...styleChange } }
               : patch);
           }
         });
       }
-      const markerBoundsEntries = ds.mode === 'group-resize'
-        ? Object.entries(ds.currentMarkerBounds || {})
-        : [];
+      const markerBoundsEntries = Object.entries(ds.currentMarkerBounds || {});
       const baseAnnotations = calloutPatchEntries.length > 0
         ? (nudgeLatestRef.current.annotations || annotations)
         : annotations;
@@ -4846,6 +4954,20 @@ export function useSVGInteraction({
       if (groupBeyond && dx === 0 && dy === 0) {
         reportDroppedMove({ reason: 'held-at-page-edge', mode: 'group-move', dx: rawGroupDx, dy: rawGroupDy, pageNumber });
       }
+      // Copy-drag: exactly what the drag carried (locked members stayed put,
+      // so they are not copied either) is pasted by the same delta.
+      const groupCopied = copyDrop && (dx !== 0 || dy !== 0) && (() => {
+        const indices = Object.keys(ds.groupOriginals)
+          .map((idxStr) => resolveMarkIndex(annotations?.objects, Number(idxStr), ds.groupIds?.[idxStr] ?? null))
+          .filter((idx) => idx >= 0);
+        onCopyDragDropRef.current({
+          indices,
+          calloutIds: Object.keys(ds.groupCalloutOriginals || {}),
+          markerIds: Array.isArray(ds.groupMarkerIds) ? ds.groupMarkerIds : [],
+        }, dx, dy);
+        justDraggedAtRef.current = Date.now();
+        return true;
+      })();
 
       // TEST-PLAN item 55 (2026-10-06): the selected callouts are written
       // FIRST and rendered (flushSync), so the page save below is built on a
@@ -4853,7 +4975,7 @@ export function useSVGInteraction({
       // selection — marks, callouts and Survey Markers — as the arrow-key
       // nudge does (commitNudgeBurst). Writing them after the save made a
       // second step: one Undo put the shapes back and left the callouts moved.
-      const groupCalloutEntries = (dx !== 0 || dy !== 0) && ds.groupCalloutOriginals
+      const groupCalloutEntries = !groupCopied && (dx !== 0 || dy !== 0) && ds.groupCalloutOriginals
         ? Object.entries(ds.groupCalloutOriginals)
         : [];
       if (groupCalloutEntries.length > 0 && typeof onUpdateCalloutLive === 'function') {
@@ -4871,7 +4993,7 @@ export function useSVGInteraction({
           }
         });
       }
-      if (dx !== 0 || dy !== 0) {
+      if (!groupCopied && (dx !== 0 || dy !== 0)) {
         const updatedAnnotations = deepClone(groupCalloutEntries.length > 0
           ? (nudgeLatestRef.current.annotations || annotations)
           : annotations);
@@ -5467,6 +5589,7 @@ export function useSVGInteraction({
     }
 
     crossPageMove.end(ds);
+    if (ds.copyDrag) showCopyDragCursor(false);
     // Reset drag state
     dragStateRef.current = {
       active: false, mode: null, handleId: null, startSVGPoint: null,
@@ -5512,7 +5635,8 @@ export function useSVGInteraction({
     const ds = dragStateRef.current;
     if (!ds?.active || (ds.mode !== 'move' && ds.mode !== 'group-move')) return false;
     crossPageMove.end(ds);
-    dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined };
+    if (ds.copyDrag) showCopyDragCursor(false);
+    dragStateRef.current = { ...ds, active: false, mode: null, crossPage: undefined, copyDrag: false };
     justDraggedAtRef.current = Date.now();
     setVisualTransform(null);
     setInteractionState('idle');
@@ -5680,9 +5804,9 @@ export function useSVGInteraction({
     const groupMarkerIdList = getGroupMarkerIds();
     const selSize = (selectedIds?.size || 0) + groupCalloutIdList.length + groupMarkerIdList.length;
     if (selSize > 1 && (handleId === 'mtr' || ['tl','tr','bl','br','mt','mb','ml','mr'].includes(handleId))) {
-      // Group rotate still leaves callouts and Survey Markers out (its
-      // grabber is hidden); a group resize takes them along.
-      if (handleId === 'mtr' && (groupCalloutIdList.length > 0 || groupMarkerIdList.length > 0)) return;
+      // A callout has no turn of its own, so a selection holding one only
+      // resizes (the layer hides its rotate grabber).
+      if (handleId === 'mtr' && groupCalloutIdList.length > 0) return;
 
       const ctm = svgRef.current?.getScreenCTM();
       const ctmInverse = ctm ? ctm.inverse() : null;
@@ -5756,6 +5880,7 @@ export function useSVGInteraction({
           x2: typeof obj.x2 === 'number' ? obj.x2 : null,
           y2: typeof obj.y2 === 'number' ? obj.y2 : null,
           midpoint: obj?.data?.midpoint ? { x: obj.data.midpoint.x, y: obj.data.midpoint.y } : null,
+          linePoints: String(obj.type || '').toLowerCase() === 'line' ? lineWorldPoints(obj) : null,
           pointerAngle: typeof obj?.data?.pointerAngle === 'number' ? obj.data.pointerAngle : null,
           // Member's renderer rotation pivot — used by group-rotate as
           // both the orbit point (orbit it around union center by delta)
@@ -5774,6 +5899,7 @@ export function useSVGInteraction({
           aabbWidth: aabb ? aabb.width : (obj.width || 0),
           aabbHeight: aabb ? aabb.height : (obj.height || 0),
           fontSize: typeof obj.fontSize === 'number' ? obj.fontSize : null,
+          strokeWidth: typeof obj.strokeWidth === 'number' ? obj.strokeWidth : null,
           isText: isTextMark(obj),
           // Group resize: a tilted mark, a photo or (from a corner / top /
           // bottom grabber) text keeps the whole frame's proportions.
@@ -5788,7 +5914,7 @@ export function useSVGInteraction({
       // (SVGAnnotationLayer), so every one here may change.
       const calloutResizeOriginals = {};
       const markerResizeOriginals = {};
-      if (handleId !== 'mtr') {
+      {
         const W = pageWidth || 1;
         const H = pageHeight || 1;
         for (const cid of groupCalloutIdList) {
@@ -5966,6 +6092,7 @@ export function useSVGInteraction({
       // axis-aligned; if the user wants a tilt back, they rotate again.
       if (!isRotate) {
         setPersistedGroupTransform(null);
+        groupResizeLineKeyRef.current = false;
       }
       setInteractionState(isRotate ? 'rotating' : 'resizing');
       return;
@@ -6625,14 +6752,17 @@ export function useSVGInteraction({
   // w53: a drag that starts ON a selected Survey Marker of a family selection
   // moves the whole selection — marks, callouts and markers — exactly like a
   // drag started on a selected mark (same originals, same commit, one step).
-  const startFamilyGroupMove = useCallback((e) => {
+  // `only` ({ calloutIds, markerIds }) drags just those instead: a lone
+  // callout or Survey Marker copy-dragged with Ctrl / Cmd rides this group
+  // move, whose drop can copy (its own drag cannot).
+  const startFamilyGroupMove = useCallback((e, only = null) => {
     const svgEl = svgRef.current;
     if (!svgEl) return false;
     const ctm = svgEl.getScreenCTM?.();
     const ctmInverse = ctm ? ctm.inverse() : null;
     const svgPoint = screenToSVG(svgEl, e.clientX, e.clientY);
     const originals = {};
-    for (const selIdx of selectedIds) {
+    for (const selIdx of (only ? [] : selectedIds)) {
       const selObj = annotations?.objects?.[selIdx];
       if (!canMoveAnnotation(selObj)) continue;
       if (isImportedPath(selObj)) {
@@ -6643,9 +6773,9 @@ export function useSVGInteraction({
       }
     }
     const calloutOriginals = {};
-    const calIds = (selectedCalloutIds instanceof Set)
+    const calIds = only ? (only.calloutIds || []) : ((selectedCalloutIds instanceof Set)
       ? Array.from(selectedCalloutIds)
-      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []);
+      : (Array.isArray(selectedCalloutIds) ? selectedCalloutIds : []));
     for (const cid of calIds) {
       const c = (callouts || []).find((cc) => cc && cc.id === cid);
       if (!c || isUserLocked(c)) continue;
@@ -6669,7 +6799,7 @@ export function useSVGInteraction({
       currentResize: null, currentAngle: undefined,
       groupOriginals: originals,
       groupCalloutOriginals: calloutOriginals,
-      groupMarkerIds: getGroupMarkerIds({ movableOnly: true }),
+      groupMarkerIds: only ? (only.markerIds || []).map(String) : getGroupMarkerIds({ movableOnly: true }),
       // w59: never reuse a previous drag's facts (this start spreads the old state).
       groupIds: null,
       groupBoxes: null,
@@ -6678,6 +6808,8 @@ export function useSVGInteraction({
     setInteractionState('dragging');
     return true;
   }, [annotations, callouts, getGroupMarkerIds, isCalloutSelectable, selectedCalloutIds, selectedIds, svgRef]);
+  // The callout press handler is declared above this one.
+  startFamilyGroupMoveRef.current = startFamilyGroupMove;
 
   // w58 (owner 2026-09-28): Cmd (Mac) / Ctrl (Windows) + press inside the
   // selection box moves the selection, wherever in the box the press lands —
@@ -6702,6 +6834,18 @@ export function useSVGInteraction({
     const total = selectedIds.size + calIds.length + selectedMarkerCount;
     if (total === 0) return false;
     if (total > 1) return startFamilyGroupMove(e);
+    // Copy-drag: a lone callout or Survey Marker rides the group move, whose
+    // drop copies while the key is still down (let go first and it moves).
+    if (selectedIds.size === 0 && typeof onCopyDragDropRef.current === 'function' && isCopyDragEvent(e)) {
+      if (selectedMarkerCount === 1) {
+        const markerIds = getGroupMarkerIds({ movableOnly: true });
+        return markerIds.length === 1 ? startFamilyGroupMove(e, { markerIds }) : false;
+      }
+      const callout = (callouts || []).find((c) => c && c.id === calIds[0]);
+      if (!callout || isUserLocked(callout)) return false;
+      if (typeof isCalloutSelectable === 'function' && !isCalloutSelectable(callout.id)) return false;
+      return startFamilyGroupMove(e, { calloutIds: [callout.id] });
+    }
     if (selectedMarkerCount === 1) return 'survey-marker';
 
     const ctm = svgEl.getScreenCTM?.();
@@ -6781,7 +6925,7 @@ export function useSVGInteraction({
       return true;
     }
     return false;
-  }, [annotations, callouts, isCalloutSelectable, selectedCalloutIds, selectedIds, selectedMarkerCount, startFamilyGroupMove, svgRef]);
+  }, [annotations, callouts, getGroupMarkerIds, isCalloutSelectable, selectedCalloutIds, selectedIds, selectedMarkerCount, startFamilyGroupMove, svgRef]);
 
   // ---------------------------------------------------------------------------
   // Return API
