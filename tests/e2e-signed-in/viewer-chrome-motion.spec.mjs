@@ -114,7 +114,10 @@ test('the Survey bar makes room as it comes down, and a tab switch leaves the do
     console.log('[motion] enter', JSON.stringify({ before, landed, pageStep: steps(frames, 'page') }));
     expect(landed.bar, 'the Survey bar is up').not.toBeNull();
     expect(landed.page, 'the page sits below the Survey bar, not under it').toBeGreaterThanOrEqual(landed.bar);
-    expect(steps(frames, 'page'), 'the page glides down, never steps').toBeLessThan(12);
+    // The glide is time-based, so a stalled main thread right after the bar
+    // lands shows as one bigger frame (CI saw 13.8 px once; locally 5-6 px).
+    // A step is the bar's whole 35 px in one frame, which this still catches.
+    expect(steps(frames, 'page'), 'the page glides down, never steps').toBeLessThan(20);
 
     // Home and back: nothing slides in again and nothing moves.
     const tabs = page.locator('.tab-bar');
