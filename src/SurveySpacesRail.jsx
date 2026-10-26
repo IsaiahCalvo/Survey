@@ -10,6 +10,7 @@
 // Accurate rename candidate: SurveyRail.jsx.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { revealInOwnScroller } from './utils/revealInOwnScroller.js';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from './Icons';
 import ListItemContextMenu from './components/ListItemContextMenu';
@@ -873,9 +874,11 @@ const SurveySpacesRail = ({
         .find((el) => el.getAttribute('data-survey-marker-name-input') === targetId);
       if (input && input.offsetParent !== null) {
         justPlacedSurveyMarkerIdRef.current = targetId;
-        input.focus({ preventScroll: false });
+        // Never scroll the frame around the panel: it may still be sliding
+        // in from off screen (utils/revealInOwnScroller.js).
+        input.focus({ preventScroll: true });
         input.select();
-        input.scrollIntoView?.({ block: 'nearest' });
+        revealInOwnScroller(input);
         return;
       }
       frames += 1;

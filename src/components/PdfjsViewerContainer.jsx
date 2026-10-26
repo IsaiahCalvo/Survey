@@ -4916,6 +4916,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // blow up to full magnification. `rect` is in page units (the annotation
   // layer's viewBox). Goes through applyAnchoredScale, so it signals
   // gesture-start (zoomGeneration) like every other imperative zoom.
+  // Options: `fill` (share of the free view the mark takes), `maxScale` (a
+  // zoom ceiling in place of 4x the page fit: Locate on page zooms to the
+  // marker's extents), and `leftInset` / `rightInset` / `topInset` /
+  // `bottomInset` for covers the viewer does not track itself (the phone's
+  // tool strip and sheets); the side panels and tool strips it does track
+  // always count.
   const focusPageRect = useCallback((pageNumber, rect, options = {}) => {
     const el = scrollerRef.current;
     const dims = dimsPtRef.current;
@@ -4928,8 +4934,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const h = Math.max(8, Number(rect.height) || 0);
     if (![x, y, w, h].every(Number.isFinite)) return false;
     cancelPanInertia(false);
-    const side = sideInsetRef.current;
-    const inset = Math.min(topInsetRef.current, el.clientHeight);
+    const extra = (key) => Math.max(0, Number(options[key]) || 0);
+    const side = {
+      left: Math.max(sideInsetRef.current.left, extra('leftInset')),
+      right: Math.max(sideInsetRef.current.right, extra('rightInset')),
+    };
+    const inset = Math.min(Math.max(topInsetRef.current, extra('topInset')), el.clientHeight);
     const bandW = Math.max(1, el.clientWidth - side.left - side.right);
     // A sheet covering the bottom of the viewer (the phone History sheet)
     // shrinks the part you can see; the mark lands in what is left.
@@ -4950,7 +4960,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
     const fill = Number(options.fill) > 0 ? Number(options.fill) : 0.4;
     const wanted = Math.min((bandW * fill) / w, (bandH * fill) / h);
-    const ceiling = Math.min(isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE, fitScale * 4);
+    const ceiling = Math.min(
+      isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE,
+      Number(options.maxScale) > 0 ? Number(options.maxScale) : fitScale * 4,
+    );
     const target = options.keepZoom
       ? scaleRef.current
       : Math.max(fitScale, Math.min(wanted, ceiling));
