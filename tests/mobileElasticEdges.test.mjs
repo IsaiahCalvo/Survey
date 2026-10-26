@@ -135,21 +135,73 @@ test('desktop: momentum into an edge bounces with its speed, capped at 30% of th
   assert.equal(c.frame(t + 3000).active, false, 'home after the bounce');
 });
 
-test('desktop: a mouse notch is a small bounce that never steps more than 3 px a frame', () => {
+// Owner 2026-10-26 (item 20, "the springback ... still isn't great"): the
+// notch bounce peaked at ~180 ms and lingered ~0.9 s; three quick notches
+// floated ~30 px for a second. Now it is a quick tap: up by ~100 ms, home by
+// ~500 ms, still no frame that jumps.
+test('desktop: a mouse notch is a small, quick bounce that never jumps', () => {
   const c = createWheelOverscroll();
   c.wheel('y', { delta: 100, room: 0, dimension: D, notch: true, now: 0 });
   let prev = 0;
   let peak = 0;
+  let peakAt = 0;
   let maxStep = 0;
+  let homeAt = null;
   for (let t = 0; t < 1200; t += 1000 / 60) {
     const y = c.frame(t).y;
     maxStep = Math.max(maxStep, Math.abs(y - prev));
-    peak = Math.max(peak, y);
+    if (y > peak) { peak = y; peakAt = t; }
+    if (homeAt === null && peak > 0 && y < 0.5 && t > peakAt) homeAt = t;
     prev = y;
   }
   assert.ok(peak > 8 && peak < 20, `peak ${peak}`);
-  assert.ok(maxStep <= 3, `step ${maxStep}`);
-  assert.equal(c.frame(2000).active, false);
+  assert.ok(peakAt >= 80 && peakAt <= 120, `peak at ${peakAt} ms`);
+  assert.ok(homeAt !== null && homeAt <= 450, `home at ${homeAt} ms`);
+  assert.ok(maxStep <= 4, `step ${maxStep}`);
+  assert.equal(c.frame(600).active, false, 'done well under a second');
+});
+
+test('desktop: three quick notches at an edge stay small and settle fast', () => {
+  const c = createWheelOverscroll();
+  const notches = [0, 60, 120];
+  let peak = 0;
+  for (let t = 0; t < 1200; t += 1000 / 60) {
+    while (notches.length && notches[0] <= t) c.wheel('y', { delta: 100, room: 0, dimension: D, notch: true, now: notches.shift() });
+    peak = Math.max(peak, c.frame(t).y);
+  }
+  assert.ok(peak < 28, `peak ${peak}`);
+  assert.ok(c.frame(700).y < 0.5);
+  assert.equal(c.frame(800).active, false);
+});
+
+// Owner 2026-10-26 (item 20): a quick touchpad push that starts at the edge
+// (Windows precision touchpad, ~12 px per event) was taken for momentum: the
+// page was thrown out 15 px in one frame and came back while the fingers were
+// still pushing. A push from the edge stretches under the fingers instead.
+test('desktop: a fast push that starts at the edge stretches, never thrown', () => {
+  const c = createWheelOverscroll();
+  let t = 0;
+  let prev = 0;
+  let maxStep = 0;
+  const shown = [];
+  for (let i = 0; i < 25; i += 1) {
+    c.wheel('y', { delta: 12, room: 0, dimension: D, now: t });
+    const y = c.frame(t).y;
+    maxStep = Math.max(maxStep, Math.abs(y - prev));
+    shown.push(y);
+    prev = y;
+    t += 16;
+  }
+  assert.ok(maxStep < 8, `step ${maxStep}`);
+  for (let i = 1; i < shown.length; i += 1) assert.ok(shown[i] >= shown[i - 1] - 1e-6, 'follows the fingers out, never back while pushing');
+  assert.ok(Math.abs(shown.at(-1) - rubberBand(300, D)) < 1e-6, 'the iOS rubber band of the pushed px');
+  // the same speed arriving from inside the document is momentum: it bounces
+  const m = createWheelOverscroll();
+  let u = push(m, Array(6).fill(12), { room: 10000 });
+  push(m, Array(6).fill(12), { t0: u });
+  let peak = 0;
+  for (let k = 0; k < 60; k += 1) peak = Math.max(peak, m.frame(u + k * 8).y);
+  assert.ok(peak > 2, `momentum still bounces (${peak})`);
 });
 
 // ---- owner 2026-10-04: "it gets stuck sometimes" ---------------------------

@@ -382,9 +382,15 @@ export function createLayoutShiftHold({ omega = ELASTIC_SPRING_OMEGA } = {}) {
 //     decaying deltas are ignored, steady or growing ones are fingers pushing
 //     again and catch the page where it is (never a restart from 0);
 //   - a fast stream (a fling's momentum) running into an edge hands its speed
-//     to the edge spring, capped like the phone flick;
-//   - a mouse notch gives a small smooth bounce (a pulse that starts and ends
-//     at rest, so no frame moves more than ~3 px), never a jump.
+//     to the edge spring, capped like the phone flick. Only a stream that was
+//     still scrolling before it got there counts: one that starts AT the edge
+//     is fingers pushing, however fast, and stretches under them (owner
+//     2026-10-26, item 20: a quick touchpad push at the top used to throw the
+//     page out 15 px in one frame and pull it back while the fingers pushed);
+//   - a mouse notch gives a small, quick bounce (a pulse that starts and ends
+//     at rest, so no frame moves more than ~4 px), never a jump. It peaks at
+//     100 ms and is gone by ~500 ms (owner 2026-10-26, item 20: the old pulse
+//     peaked at ~180 ms and three quick notches floated ~30 px for a second).
 // Every state has a way home even if a timer or event is lost: frame() springs
 // a stretch that has had no input for WHEEL_STRETCH_WATCHDOG_MS, and ends any
 // spring after ELASTIC_SPRING_MAX_MS.
@@ -393,15 +399,17 @@ export const WHEEL_OVERSCROLL_IDLE_MS = 100;
 // it (~10 px per 60 Hz event); slower is a deliberate push.
 export const WHEEL_FLING_SPEED = 600;
 // A notch shows this share of the rubber band of its overflow (100 px -> ~13 px
-// on an 830 px view), as a pulse a·(ωt)²·e^(-ωt) that peaks at t = 2/ω.
+// on an 830 px view), as a pulse a·(ωt)²·e^(-ωt) that peaks at t = 2/ω (100 ms).
 export const WHEEL_NOTCH_SHARE = 0.25;
+export const WHEEL_NOTCH_OMEGA = 20;
+export const WHEEL_NOTCH_MAX_FRACTION = 0.03;
 // Recent deltas under this share of the stream's strongest = the fingers have
 // lifted and this is the momentum tail.
 export const WHEEL_TAIL_DROP = 0.65;
 export const WHEEL_STRETCH_WATCHDOG_MS = 400;
 export const ELASTIC_SPRING_MAX_MS = 1500;
 const NOTCH_PULSE_PEAK = 4 * Math.exp(-2);
-const NOTCH_PULSE_LIFE_S = 0.9;
+const NOTCH_PULSE_LIFE_S = 0.5;
 const STREAM_GAP_MS = 120;
 const RECENT_EVENTS = 3;
 const PROBE_MAX_EVENTS = 6;
@@ -429,7 +437,7 @@ const mean = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.len
 export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
   const makeAxis = () => ({
     mode: 'idle', excess: 0, x0: 0, v0: 0, t0: 0, pulses: [], dim: 1,
-    lastT: -Infinity, vel: 0, notch: false,
+    lastT: -Infinity, vel: 0, notch: false, hadRoom: false,
     recent: [], peakMean: 0, ignore: false, floor: 0, growth: 0, probe: null,
     tailUntil: -Infinity, tailFloor: 0,
   });
@@ -446,7 +454,7 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
     let { x, v } = out;
     for (const p of s.pulses) {
       if (p.t0 === null) continue;
-      const q = notchPulse(p.a, (now - p.t0) / 1000, omega);
+      const q = notchPulse(p.a, (now - p.t0) / 1000, WHEEL_NOTCH_OMEGA);
       x += q.x;
       v += q.v;
     }
@@ -483,6 +491,7 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
       const springing = s.mode === 'spring' && Math.abs(stateAt(s, now).x) > 0.5;
       const tailGoesOn = now < s.tailUntil && !notch;
       s.notch = Boolean(notch);
+      s.hadRoom = false;
       s.vel = d * 60;
       s.recent = []; s.peakMean = 0; s.growth = 0;
       s.ignore = tailGoesOn; s.floor = tailGoesOn ? s.tailFloor : 0;
@@ -495,6 +504,7 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
     const dir = Math.sign(d);
     if (!dir) return NONE;
     const abs = Math.abs(d);
+    if (room > 0.5) s.hadRoom = true;
     s.recent.push(abs);
     if (s.recent.length > RECENT_EVENTS) s.recent.shift();
     const level = mean(s.recent);
@@ -519,7 +529,8 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
     if (!overflow) return NONE;
     if (s.notch) {
       if (s.mode !== 'spring') toSpring(s, now);
-      const headroom = Math.max(0, 1 - Math.abs(cur) / capOf(s));
+      // Quick notches add up, but never past a few percent of the view.
+      const headroom = Math.max(0, 1 - Math.abs(cur) / (s.dim * WHEEL_NOTCH_MAX_FRACTION));
       const peak = WHEEL_NOTCH_SHARE * Math.abs(rubberBand(overflow, s.dim)) * headroom;
       s.pulses = s.pulses.filter((p) => p.t0 === null || (now - p.t0) / 1000 < NOTCH_PULSE_LIFE_S);
       // t0 is set by the first frame that draws it: an event that waited in
@@ -549,7 +560,7 @@ export function createWheelOverscroll({ omega = ELASTIC_SPRING_OMEGA } = {}) {
       // Steady or growing: fingers pushing again. Catch the page where it is.
       s.probe = null;
     }
-    if (s.mode !== 'stretch' && Math.abs(s.vel) > WHEEL_FLING_SPEED && Math.sign(s.vel) === dir) {
+    if (s.mode !== 'stretch' && s.hadRoom && Math.abs(s.vel) > WHEEL_FLING_SPEED && Math.sign(s.vel) === dir) {
       // Momentum hitting the edge: bounce with the stream's speed, capped like
       // the phone flick so the page never travels past 30% of the view.
       toSpring(s, now);
