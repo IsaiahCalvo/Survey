@@ -73,3 +73,10 @@ export function assertNoProdEnv({
     }
   }
 }
+
+// True for a request that failed only because guardContext aborted it. Such
+// failures are the guard working, not an app regression.
+export function isGuardBlockedRequest(request) {
+  const failure = request.failure?.()?.errorText || '';
+  return !isLoopbackUrl(request.url()) && failure.includes('ERR_BLOCKED_BY_CLIENT');
+}

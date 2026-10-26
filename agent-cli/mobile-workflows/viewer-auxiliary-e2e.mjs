@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 import { createTouchDriver } from '../mobile-annotations/touch.mjs';
 import { ensureViteServer } from '../mobile-annotations/vite-server.mjs';
 import { activate } from './project-document-ui.mjs';
-import { guardContext } from '../lib/blockNonLoopback.mjs';
+import { guardContext, isGuardBlockedRequest } from '../lib/blockNonLoopback.mjs';
 
 export const VIEWER_AUXILIARY_VIEWPORTS = Object.freeze({
   mobile: { width: 390, height: 844 },
@@ -130,7 +130,9 @@ async function waitForPageOrdinal(page, device, expected) {
   await page.waitForFunction(({ label, value }) => (
     [...document.querySelectorAll(`button[aria-label="${label}"]`)].some((button) => {
       const rect = button.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0 && button.textContent?.trim().startsWith(String(value));
+      // innerText: the desktop page field carries an aria-hidden width spacer
+      // (FooterSlot) whose digits textContent would prepend.
+      return rect.width > 0 && rect.height > 0 && button.innerText?.trim().startsWith(String(value));
     })
   ), { label: ariaLabel, value: expected }, { timeout: 15_000 });
 }
@@ -177,6 +179,7 @@ async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnos
   page.on('requestfailed', (request) => {
     if (!CRITICAL_RESOURCE_TYPES.has(request.resourceType())) return;
     if (/^https:\/\/claude\.com(?:\/|$)/.test(request.url())) return;
+    if (isGuardBlockedRequest(request)) return;
     deviceDiagnostics.criticalFailedRequests.push({
       error: request.failure()?.errorText || 'unknown',
       method: request.method(),
