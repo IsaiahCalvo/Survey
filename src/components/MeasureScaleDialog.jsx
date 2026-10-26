@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   MEASURE_PRESETS,
@@ -6,77 +6,138 @@ import {
   scaleFromCalibration,
   scaleFromPreset,
 } from '../utils/measure/measureScale.js';
+import { Icon } from '../home/HubShell';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import MotionPresence from './MotionPresence.jsx';
+import { useTooltip } from './Tooltip';
+import { moveGroupFocus } from '../utils/radioGroupKeys.js';
+import './MeasureScaleDialog.css';
 
 // Set page scale (Drawboard "Set page scale" / Calibrate). With a drawn
 // calibration line (lengthPt) the user types its real length; without one
 // they pick a preset or start "Calibrate" to draw a line.
+//
+// Owner 2026-10-26 (issue note #13: "setting the scale of a page looks kind
+// of ugly"): it was a bare form with two native dropdowns. It is the app's
+// dialog card now (the ConfirmModal shell: title, muted line, close x, footer
+// bar with Cancel and the gold primary), the presets are chips grouped as
+// architectural and metric, and the units are chips too. 44px touch targets
+// and 16px fields stay, so iOS Safari does not zoom on focus.
+const IMPERIAL = MEASURE_PRESETS.filter((p) => p.unit === 'ft');
+const OTHER = MEASURE_PRESETS.filter((p) => p.unit !== 'ft');
+
 export default function MeasureScaleDialog({ pageNumber, lengthPt = null, currentScale = null, onApply, onCalibrate, onCancel }) {
+  const tip = useTooltip();
+  const cardRef = useRef(null);
   const [real, setReal] = useState('');
   const [unit, setUnit] = useState(currentScale?.unit || 'ft');
-  const [preset, setPreset] = useState('1/4');
+  const [preset, setPreset] = useState(
+    () => MEASURE_PRESETS.find((p) => p.label === currentScale?.label)?.id || '1/4',
+  );
   const calibrating = Number.isFinite(lengthPt) && lengthPt > 0;
   const scale = calibrating ? scaleFromCalibration(lengthPt, real, unit) : scaleFromPreset(preset);
-  // 44px touch targets; 16px text so iOS Safari does not zoom on focus.
-  const fieldStyle = { minHeight: 44, fontSize: 16, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2, #fff)', color: 'var(--text-1, #111)' };
+  useFocusTrap(cardRef, true, { onEscape: onCancel });
   const submit = (e) => {
     e.preventDefault();
     if (scale) onApply(scale);
   };
-  return createPortal(
-    <div
-      data-measure-scale-dialog="true"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Set page scale"
-      onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1000000, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+  const chip = (id, label, active, onPick, marker) => (
+    <button
+      key={id}
+      type="button"
+      role="radio"
+      aria-checked={active}
+      className={`measure-scale__chip${active ? ' is-active' : ''}`}
+      onClick={onPick}
+      {...marker}
     >
-      <form
-        onSubmit={submit}
-        onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); e.stopPropagation(); }}
-        style={{ background: 'var(--surface-1, #fff)', color: 'var(--text-1, #111)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, width: 'min(340px, 100%)', display: 'flex', flexDirection: 'column', gap: 12, fontFamily: 'system-ui, sans-serif', fontSize: 14 }}
+      {label}
+    </button>
+  );
+  return createPortal(
+    <MotionPresence open>
+      <div
+        className="measure-scale__scrim"
+        data-measure-scale-dialog="true"
+        onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}
       >
-        <strong>Set scale for page {pageNumber}</strong>
-        {currentScale && <span style={{ color: 'var(--text-3)' }}>Now: {currentScale.label}</span>}
-        {calibrating ? (
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            Real length of the line you drew
-            <span style={{ display: 'flex', gap: 8 }}>
-              <input
-                autoFocus
-                data-measure-real-length="true"
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="any"
-                value={real}
-                onChange={(e) => setReal(e.target.value)}
-                style={{ ...fieldStyle, flex: 1, minWidth: 0 }}
-              />
-              <select data-measure-unit="true" value={unit} onChange={(e) => setUnit(e.target.value)} style={fieldStyle}>
-                {Object.keys(MEASURE_UNITS).map((u) => <option key={u} value={u}>{MEASURE_UNITS[u].label}</option>)}
-              </select>
-            </span>
-          </label>
-        ) : (
-          <>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              Preset
-              <select data-measure-preset="true" value={preset} onChange={(e) => setPreset(e.target.value)} style={fieldStyle}>
-                {MEASURE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-              </select>
-            </label>
-            <button type="button" className="btn btn-ghost" data-measure-start-calibrate="true" style={{ minHeight: 44, whiteSpace: 'normal', textAlign: 'center', lineHeight: 1.3 }} onClick={onCalibrate}>
-              Calibrate: draw a line over a known distance
+        <form
+          ref={cardRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Set page scale"
+          className="measure-scale__card"
+          onSubmit={submit}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <div className="measure-scale__head">
+            <div style={{ minWidth: 0 }}>
+              <div className="measure-scale__title">Set page scale</div>
+              <div className="measure-scale__sub">
+                Page {pageNumber}
+                {currentScale ? ` · now ${currentScale.label}` : ' · no scale yet'}
+              </div>
+            </div>
+            <button type="button" onClick={onCancel} aria-label="Close" {...tip('Close')} className="hub-icon-btn dialog-close-touch-pad">
+              <Icon name="close" size={13} />
             </button>
-          </>
-        )}
-        <span style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" className="btn btn-ghost" style={{ minHeight: 44, minWidth: 72 }} onClick={onCancel}>Cancel</button>
-          <button type="submit" className="btn btn-active" data-measure-apply="true" style={{ minHeight: 44, minWidth: 72 }} disabled={!scale}>Apply</button>
-        </span>
-      </form>
-    </div>,
+          </div>
+          <div className="measure-scale__body">
+            {calibrating ? (
+              <>
+                <label className="measure-scale__label" htmlFor="measure-real-length">Real length of the line you drew</label>
+                <input
+                  id="measure-real-length"
+                  autoFocus
+                  data-autofocus
+                  data-measure-real-length="true"
+                  className="measure-scale__field"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="any"
+                  placeholder="0"
+                  value={real}
+                  onChange={(e) => setReal(e.target.value)}
+                  style={{ fontSize: 16 }}
+                />
+                <div className="measure-scale__label">Unit</div>
+                <div className="measure-scale__chips measure-scale__chips--units" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Unit" data-measure-unit="true">
+                  {Object.keys(MEASURE_UNITS).map((u) => chip(u, MEASURE_UNITS[u].label, unit === u, () => setUnit(u), { 'data-measure-unit-option': u }))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="measure-scale__label">Architectural</div>
+                <div className="measure-scale__chips" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Architectural scale" data-measure-preset="true">
+                  {IMPERIAL.map((p) => chip(p.id, p.label, preset === p.id, () => setPreset(p.id), { 'data-measure-preset-option': p.id }))}
+                </div>
+                <div className="measure-scale__label">Ratio</div>
+                <div className="measure-scale__chips" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Ratio scale">
+                  {OTHER.map((p) => chip(p.id, p.label, preset === p.id, () => setPreset(p.id), { 'data-measure-preset-option': p.id }))}
+                </div>
+                <button type="button" className="measure-scale__calibrate" data-measure-start-calibrate="true" onClick={onCalibrate}>
+                  <span className="measure-scale__calibrate-glyph" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 20 20 4" />
+                      <path d="M4 15v5h5M20 9V4h-5" />
+                    </svg>
+                  </span>
+                  <span>
+                    <span className="measure-scale__calibrate-title">Calibrate instead</span>
+                    <span className="measure-scale__calibrate-sub">Draw a line over a known distance</span>
+                  </span>
+                </button>
+              </>
+            )}
+          </div>
+          <div className="measure-scale__foot">
+            <button type="button" className="hub-btn measure-scale__btn" onClick={onCancel}>Cancel</button>
+            <button type="submit" className="hub-btn hub-btn--primary measure-scale__btn" data-measure-apply="true" disabled={!scale}>Apply</button>
+          </div>
+        </form>
+      </div>
+    </MotionPresence>,
     document.body,
   );
 }

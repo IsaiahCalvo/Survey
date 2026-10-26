@@ -1,7 +1,7 @@
 /**
  * LayersPanel - Drawboard-style Layers panel (behind the 'layers' flag).
  *
- * "PDF content" row with an opacity slider, then the markup layers: pick the
+ * "PDF content" row with five opacity steps, then the markup layers: pick the
  * active layer (new marks go there), show / hide, rename (double-click or the
  * pencil), delete (with confirm; its marks fall back to the default layer),
  * and Add layer. All edits go out as one whole next state through
@@ -9,6 +9,7 @@
  */
 import React, { useCallback, useState } from 'react';
 import Icon from '../Icons';
+import './LayersPanel.css';
 import { useConfirmDialog } from '../components/dialogPrompts';
 import {
   DEFAULT_LAYER_ID,
@@ -28,6 +29,8 @@ function EyeIcon({ open }) {
     </svg>
   );
 }
+
+const PDF_OPACITY_STEPS = [[100, '100%'], [75, '75%'], [50, '50%'], [25, '25%'], [0, 'Off']];
 
 const rowStyle = (active) => ({
   display: 'flex',
@@ -98,21 +101,30 @@ export default function LayersPanel({ layerState, activeLayerId, onLayersChange,
 
   return (
     <div data-testid="layers-panel" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowY: 'auto', padding: 8, gap: 8, color: 'var(--text-2)', fontSize: 13 }}>
-      <div style={{ padding: '6px 8px', borderRadius: 6, background: 'var(--surface-2)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+      {/* Owner 2026-10-26 (issue note #18): "I don't like the slider". The
+          PDF's strength is five steps now, one press each, the current one
+          gold like every pick in the chrome; Off leaves only the markups. */}
+      <div style={{ padding: '8px', borderRadius: 6, background: 'var(--surface-2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
           <span style={{ fontWeight: 600 }}>PDF content</span>
-          <span style={{ color: 'var(--text-3)' }}>{opacityPercent}%</span>
+          <span style={{ color: 'var(--text-3)' }}>{opacityPercent === 0 ? 'Hidden' : `${opacityPercent}%`}</span>
         </div>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={5}
-          value={opacityPercent}
-          aria-label="PDF content opacity"
-          onChange={(e) => commit(setPdfOpacity(state, Number(e.target.value) / 100))}
-          style={{ width: '100%' }}
-        />
+        <div className="layers-opacity" role="radiogroup" aria-label="PDF content opacity">
+          {PDF_OPACITY_STEPS.map(([percent, word]) => (
+            <button
+              key={percent}
+              type="button"
+              role="radio"
+              aria-checked={opacityPercent === percent}
+              aria-label={percent === 0 ? 'Hide PDF content' : `PDF content ${percent}%`}
+              data-pdf-opacity={percent}
+              className={`layers-opacity__step${opacityPercent === percent ? ' is-active' : ''}`}
+              onClick={() => commit(setPdfOpacity(state, percent / 100))}
+            >
+              {word}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px' }}>
