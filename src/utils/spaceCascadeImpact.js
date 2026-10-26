@@ -140,8 +140,7 @@ export function buildDeleteSpaceConfirm({ spaceName, pageCount = 0, impact }) {
   };
 }
 
-/** Row meta: "3 pages · 2 areas" (areas only when some are drawn). */
-export function formatSpaceCountLabel(pageCount = 0, areaCount = 0) {
-  const pages = plural(pageCount, 'page');
-  return areaCount > 0 ? `${pages} · ${plural(areaCount, 'area')}` : pages;
+/** The small line under a space's name: "3 regions" (one per page in it). */
+export function formatSpaceCountLabel(regionCount = 0) {
+  return regionCount > 0 ? plural(regionCount, 'region') : 'No regions';
 }
