@@ -78,6 +78,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Counts list: rename, recolour and reorder counts in one place',
     stage: 'beta',
   }),
+  'export-modes': Object.freeze({
+    label: 'Export PDF choices: annotated, flattened or plain, and which pages',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
