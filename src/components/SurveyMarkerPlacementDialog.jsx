@@ -221,7 +221,8 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
           />
         ) : (
           <>
-            <div className="survey-place__hint">Enter places it, or pick a category</div>
+            {/* The phone has no keyboard up: a tap off the sheet places it. */}
+            <div className="survey-place__hint">{mobile ? 'Tap outside to place it, or pick a category' : 'Enter places it, or pick a category'}</div>
             <SurveyPickList
               key={`categories:${currentModule?.id || ''}`}
               sections={sections}
