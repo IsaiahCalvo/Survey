@@ -13,6 +13,7 @@ import {
   runSpaceLifecycle,
   runSurveyMarkerLifecycle,
 } from './survey-region.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 const requested = new Set(process.argv.slice(2).filter((arg) => !arg.startsWith('--')));
 const allowKeyboardDelete = process.argv.includes('--allow-keyboard-delete');
@@ -31,14 +32,14 @@ const artifacts = new ArtifactRecorder('.playwright-mcp/mobile-annotations', {
 let browser;
 try {
   browser = await chromium.launch({ headless: process.env.HEADFUL !== '1' });
-  const context = await browser.newContext({
+  const context = await guardContext(browser.newContext({
     deviceScaleFactor: 3,
     hasTouch: true,
     isMobile: true,
     locale: 'en-US',
     screen: MOBILE_VIEWPORT,
     viewport: MOBILE_VIEWPORT,
-  });
+  }));
   await addExactStorageCleanup(context, storageKeys, artifacts.runId);
   const page = await context.newPage();
   artifacts.captureBrowserProblems(page);

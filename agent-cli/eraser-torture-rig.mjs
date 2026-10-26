@@ -83,6 +83,7 @@ import {
   buildFreehandCommitJSON,
 } from '../src/utils/annotationCreationCommit.js';
 import { buildNewTextCommitJSON } from '../src/utils/textEditCommit.js';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 loadEnv();
 
@@ -1056,7 +1057,7 @@ async function main() {
   const needsSpace = cases.some((c) => c.activateSpace);
 
   const browser = await chromium.launch({ headless: HEADLESS });
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+  const ctx = await guardContext(browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 }));
   await ctx.addInitScript((mode) => {
     try { localStorage.setItem('eraserMode', mode); } catch { /* */ }
     // Pointer-trace recorder: mirrors FabricEraserCanvas.pagePoint exactly

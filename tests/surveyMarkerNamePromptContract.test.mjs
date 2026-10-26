@@ -63,12 +63,22 @@ test('desktop placement opens no Name / Entity pop-up', () => {
   assert.ok(!src.includes('Name highlight'), '"highlight" wording is back');
 });
 
-test('a placed marker commits inline and asks the rail to focus its name', () => {
+test('a drawn marker opens its card, which names it; only Smart fill on the phone and an agent place at once', () => {
+  // Owner 2026-10-26: "Right now, we have text that says 'New Survey Marker'.
+  // Instead of that ... By default, it says, for example, 'Camera 7'".
   const start = src.indexOf('const handleSurveyMarkerCreated = useCallback(');
   const block = src.slice(start, src.indexOf('}, [addHistoryCheckpoint,', start));
-  assert.match(block, /commitMobileSurveyMarker\(\{/);
-  assert.match(block, /setSurveyMarkerNameFocusRequest\(\{ id: annotationId/);
+  assert.match(block, /setPendingSurveyMarker\(placedMarker\)/);
+  assert.match(block, /const placeAtOnce = smartFillOnPhone \|\| createOptions\?\.direct === true;/);
+  assert.match(block, /commitMobileSurveyMarker\(placedMarker, selectedCategoryId/);
   assert.ok(!/setPendingEntitySelection\(\{|setPendingSurveyMarkerName\(\{/.test(block), 'placement must not open the old pop-ups');
+  // The card's name: untouched = the category's default; an emptied field
+  // falls back to it too (a marker always has a name - BL-22).
+  const card = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/components/SurveyMarkerPlacementDialog.jsx'), 'utf8');
+  assert.match(card, /name: \(name \?\? fallback\)\.trim\(\) \|\| fallback/);
+  assert.match(card, /aria-label="Survey Marker name"/);
+  assert.ok(!card.includes('>New Survey Marker<'), 'the title is the name field now');
+  assert.match(src, /defaultNameFor=\{\(categoryId, moduleId\) => generateDefaultSurveyMarkerName\(/);
 });
 
 test('the rail rename commit uses the shared BL-22 resolver', () => {

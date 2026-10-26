@@ -117,10 +117,10 @@ function voiceAnnotationTools() {
 // people with the annotation-agent flag).
 export function buildSurveyAgentTools(answerValues, { annotations = false, markupOpen = true, webmcp = false, typedLines = false } = {}) {
   const answers = cleanAnswerValues(answerValues);
-  // A template with text or number lines (answer_kind in get_survey_context)
-  // cannot hold set_answers values to the answer list.
+  // A template with typed lines (answer_kind in get_survey_context) cannot
+  // hold set_answers values to the answer list.
   const answerValue = typedLines
-    ? { type: 'string', description: `One of ${answers.join(', ')}; for a line whose answer_kind is text, what was said; for number, the number only (no unit).` }
+    ? { type: 'string', description: `One of ${answers.join(', ')}; for a line with an answer_kind: text, what was said; number or count, the number only (no unit); score, a whole number on its scale (1 to scale); date, YYYY-MM-DD; many, any of its options joined with commas.` }
     : { type: 'string', enum: answers };
   const tool = (name, description, properties = {}, required = []) => ({
     type: 'function',
@@ -132,7 +132,7 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
   });
   return [
     tool('get_survey_context',
-      'The open survey: its template categories with checklist items (ids, text, and answer_kind text or number for lines that take what was said), the allowed answers, the entities, how many items each category has, and the item the person has selected, if any.'),
+      'The open survey: its template categories with checklist items (ids, text, and for lines that take what was said an answer_kind of text, number, score, count, date or many with its unit, min, max, scale, issueAt, issueIfPast or options), the allowed answers, the entities, how many items each category has, and the item the person has selected, if any.'),
     tool('find_items',
       'Search the items in this survey by name, forgiving of speech-to-text spelling ("D one seventeen" finds D-117). Returns up to 5 best matches with their category and a score from 0 to 1.',
       {

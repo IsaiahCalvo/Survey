@@ -540,6 +540,54 @@
   opacity: 0.6;
 }
 
+/* Desktop (owner 2026-10-26): the tabs that fit, then a "+N" menu with the
+   rest, instead of a row that scrolls modules out of sight. Nothing scrolls,
+   so the scroll-edge fade is off. */
+.survey-rail .survey-rail__tabs.survey-rail__tabs--fit {
+  position: relative;
+  overflow: hidden;
+  -webkit-mask-image: none;
+  mask-image: none;
+  animation: none;
+}
+
+/* A name wider than the whole rail shrinks with an ellipsis, so the "+N"
+   button always stays in the row (nothing scrolls here to reach it). */
+.survey-rail .survey-rail__tabs.survey-rail__tabs--fit > button {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.survey-rail .survey-rail__tabs.survey-rail__tabs--fit > button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.survey-rail .survey-rail__tabs > button.survey-rail__tabs-more {
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: 2px;
+  padding: 2px 8px 0;
+  font-weight: 500;
+}
+
+/* The hidden copy of the row the tabs are measured from. */
+.survey-rail .survey-rail__tabs.survey-rail__tabs-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.survey-rail .survey-rail__tabs.survey-rail__tabs-measure > button {
+  flex: 0 0 auto;
+}
+
 /* ---------- THE LIST ----------------------------------------------------- */
 
 .survey-rail .survey-rail__list {

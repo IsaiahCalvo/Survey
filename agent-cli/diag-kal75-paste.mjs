@@ -7,12 +7,14 @@ import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 import { createSupabaseMock } from './lib/supabaseMock.mjs';
 import { buildFixtures, buildLockRpcHandlers, DOC_OWNED_NAME } from './lib/kal75Fixtures.mjs';
+import { assertNoProdEnv, guardContext } from './lib/blockNonLoopback.mjs';
 
 const PORT = Number(process.env.PORT || 5176);
 const BASE = `http://localhost:${PORT}/`;
 const log = (...a) => console.log(...a);
 
 async function startVite() {
+  assertNoProdEnv();
   const child = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
     cwd: process.cwd(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -31,7 +33,7 @@ async function main() {
   try {
     const fixtures = buildFixtures();
     const mock = createSupabaseMock({ fixtures, pdfPath: 'debug/fixtures/se011.pdf', log: () => {}, rpcHandlers: buildLockRpcHandlers(fixtures) });
-    const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+    const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
     const page = await ctx.newPage();
     await mock.register(page);
     page.on('dialog', (d) => d.dismiss().catch(() => {}));

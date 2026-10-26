@@ -47,7 +47,7 @@
 }
 .pinned-dock.is-vertical { flex-direction: column; }
 .pinned-dock.is-horizontal { flex-direction: row; }
-.pinned-dock.is-dragging { pointer-events: none; }
+.pinned-dock.is-dragging { pointer-events: none; overflow: hidden; }
 
 .pinned-dock__pins {
   display: flex;
@@ -67,22 +67,15 @@
   flex: none;
   display: flex;
 }
-.pinned-dock__slot.is-dragged {
-  z-index: 1;
-  opacity: 0.7;
+.pinned-dock__slot.is-dragged { z-index: 1; }
+.pinned-dock__slot.is-dragged .pinned-dock__pin {
+  box-shadow: var(--shadow-popover);
+  background: var(--surface-3);
 }
-.pinned-dock__slot.has-drop-line::before,
-.pinned-dock__end-line {
-  content: '';
-  flex: none;
-  background: var(--accent);
-  border-radius: 1px;
+/* The other pins slide aside to open the dragged pin's slot. */
+.pinned-dock.is-reordering .pinned-dock__slot:not(.is-dragged) {
+  transition: transform 180ms cubic-bezier(0.25, 0.55, 0.35, 1);
 }
-.pinned-dock__slot.has-drop-line::before { position: absolute; }
-.pinned-dock.is-vertical .pinned-dock__slot.has-drop-line::before { left: 3px; right: 3px; top: -2px; height: 2px; }
-.pinned-dock.is-horizontal .pinned-dock__slot.has-drop-line::before { top: 3px; bottom: 3px; left: -2px; width: 2px; }
-.pinned-dock.is-vertical .pinned-dock__end-line { width: 22px; height: 2px; }
-.pinned-dock.is-horizontal .pinned-dock__end-line { width: 2px; height: 22px; }
 
 /* A pin is a little larger than a tool-bar button so its width figure has
    its own corner: the glyph sits a touch down-left of centre. */
@@ -163,6 +156,11 @@
   background: var(--overlay-scrim);
   animation: pinned-dock-zones-in 200ms ease-out;
 }
+.pinned-dock-zones.is-leaving {
+  opacity: 0;
+  animation: none;
+  transition: opacity 240ms ease-in-out;
+}
 @keyframes pinned-dock-zones-in { from { opacity: 0; } to { opacity: 1; } }
 .pinned-dock-zone {
   position: absolute;
@@ -179,7 +177,8 @@
 }
 .pinned-dock-zone.is-left,
 .pinned-dock-zone.is-right {
-  top: 50%;
+  /* The middle of the docked column, which keeps clear of the settings row. */
+  top: calc(50% + var(--chrome-bar-h) / 2);
   width: 42px;
   height: min(288px, 60%);
   transform: translateY(-50%);
@@ -275,7 +274,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .pinned-dock-zones { animation: none; }
+  .pinned-dock-zones.is-leaving { transition: none; }
   .pinned-dock-zone { transition: none; }
+  .pinned-dock.is-reordering .pinned-dock__slot:not(.is-dragged) { transition: none; }
 }
 
 /* Phone: one row standing on the phone's bottom bar (the page area runs

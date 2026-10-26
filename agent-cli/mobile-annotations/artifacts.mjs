@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isGuardBlockedConsoleMessage } from '../lib/blockNonLoopback.mjs';
 
 const safeName = (value) => String(value).replace(/[^a-z0-9_-]+/gi, '-').replace(/^-|-$/g, '');
 
@@ -19,7 +20,10 @@ export class ArtifactRecorder {
   captureBrowserProblems(page) {
     page.on('pageerror', (error) => this.browserProblems.push(`pageerror: ${error.message}`));
     page.on('console', (message) => {
-      if (message.type() === 'error') this.browserProblems.push(`console: ${message.text()}`);
+      // A load guardContext aborted is the guard working, not an app error.
+      if (message.type() === 'error' && !isGuardBlockedConsoleMessage(message)) {
+        this.browserProblems.push(`console: ${message.text()}`);
+      }
     });
   }
 

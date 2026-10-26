@@ -25,6 +25,7 @@ import {
   proveProjectCollaborationCleanup,
   runProjectCollaboration,
 } from './full-app-collaboration-e2e.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 async function main() {
   const args = parseDurableArgs(process.argv.slice(2));
@@ -54,14 +55,14 @@ async function main() {
   try {
     for (const surface of args.surfaces) {
       const config = DURABLE_SURFACES[surface];
-      const context = await browser.newContext({
+      const context = await guardContext(browser.newContext({
         viewport: config.viewport,
         screen: config.viewport,
         isMobile: config.isMobile,
         hasTouch: config.hasTouch,
         deviceScaleFactor: config.deviceScaleFactor,
         locale: 'en-US',
-      });
+      }));
 
       // Required ordering: exact lease verification and auth installation run
       // before the first page is created or navigated.

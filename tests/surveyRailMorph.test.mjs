@@ -103,10 +103,11 @@ test('Categories head line: the shared section icons, Select then Add; select mo
   assert.match(on, /<SelectModeButtons[\s\S]*onToggleAll=[\s\S]*onMove=[\s\S]*onCopy=\{\(\) => setShowSpaceSelection\(true\)\}[\s\S]*onDelete=\{deleteSelectedCategories\}[\s\S]*\/>\s*<SectionIconButton action="select" label="Done" active/);
   assert.doesNotMatch(rail, />\s*Move\/Copy\s*</);
   assert.doesNotMatch(desk, /survey-rail__word-btn|survey-rail__cats-icon/);
-  // An open category's item select mode uses the same row (no Move: items have no move flow).
-  const items = rail.slice(rail.indexOf('aria-label="Item selection actions"'), rail.indexOf('onClick={exitItemSelect}'));
-  assert.match(items, /<SelectModeButtons[\s\S]*onCopy=[\s\S]*onDelete=/);
-  assert.doesNotMatch(items, /onMove=/);
+  // An open category's item select mode uses the same row, in the category's
+  // own line (owner 2026-10-26), with Move and Copy to template -> module ->
+  // category.
+  const items = rail.slice(rail.indexOf("'Item selection actions'"), rail.indexOf('onClick={exitItemSelect}'));
+  assert.match(items, /<SelectModeButtons[\s\S]*onMove=[\s\S]*onCopy=[\s\S]*onDelete=/);
   assert.match(rail, /<SectionIconButton\s+action="select"\s+className="survey-marker-category-select"/);
   // Same glyphs as the shared SectionIconButton pair.
   assert.match(read('src/components/SectionIconButton.jsx'), /select: 'listChecks',\s*add: 'plus',/);

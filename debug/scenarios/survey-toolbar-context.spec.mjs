@@ -70,7 +70,8 @@ for (const width of [1400, 900]) {
     const top = page.locator('#chrome-top-host');
     const surveyButton = top.getByRole('button', { name: 'Survey', exact: true });
     const surveyRow = page.locator('.survey-subrow');
-    const entityRow = page.getByRole('toolbar', { name: 'Survey entities', exact: true });
+    // Owner 2026-10-26: the swatches sit in the survey bar itself.
+    const entityRow = page.getByRole('group', { name: 'Survey entities', exact: true });
     const formatting = page.getByRole('toolbar', { name: 'Formatting', exact: true });
     await expect(top.getByRole('button', { name: 'Shapes', exact: true })).toBeVisible();
     await expect(surveyButton).toHaveCount(0);
@@ -85,7 +86,6 @@ for (const width of [1400, 900]) {
     await page.getByRole('option', { name: 'Proposed', exact: true }).click();
     await surveyRow.getByRole('button', { name: 'Doors', exact: true }).click();
     await entityRow.getByRole('button', { name: 'Entity Existing', exact: true }).click();
-    await surveyRow.getByRole('switch', { name: 'Reuse category' }).click();
     await top.getByRole('button', { name: 'Freehand marker', exact: true }).click();
     await page.setViewportSize({ width, height: 900 });
 
@@ -93,14 +93,13 @@ for (const width of [1400, 900]) {
       await expect(surveyButton).toHaveAttribute('aria-pressed', 'true');
       await expect(surveyRow.getByRole('button', { name: /^Survey template: Work Survey/ })).toBeVisible();
       // Wait for the narrow-window plan before deciding whether settings moved.
-      // Otherwise a resize can fold Reuse just after the visibility check.
+      // Otherwise a resize can fold the module menu just after the visibility check.
       if (width === 900) await expect(surveyRow).toHaveAttribute('data-survey-bar-step', /^(fold|tight|fewer)$/);
       const more = surveyRow.getByRole('button', { name: 'More settings', exact: true });
       if (await more.isVisible()) await more.click();
       await expect(page.locator('.survey-subrow__fit > span:not(.is-ghost)')).toHaveText('Proposed');
       await expect(surveyRow.getByRole('button', { name: 'Doors', exact: true })).toHaveAttribute('aria-pressed', 'true');
       await expect(entityRow.getByRole('button', { name: 'Entity Existing', exact: true })).toHaveAttribute('aria-pressed', 'true');
-      await expect(page.getByRole('switch', { name: 'Reuse category' })).toHaveAttribute('aria-checked', 'true');
       if (await more.isVisible()) await more.click();
       await expect(top.getByRole('button', { name: 'Freehand marker', exact: true })).toHaveAttribute('aria-pressed', 'true');
       await expect(formatting).toBeHidden();

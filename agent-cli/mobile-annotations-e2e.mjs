@@ -33,6 +33,7 @@ import {
   waitForMountedAnnotation,
   waitForMountedCallout,
 } from './mobile-annotations/viewer.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 const options = parseCli(process.argv.slice(2));
 
@@ -160,18 +161,14 @@ async function run() {
   const browserType = options.browser === 'webkit' ? webkit : chromium;
 
   browser = await browserType.launch({ headless: !options.headful });
-  const context = await browser.newContext({
+  const context = await guardContext(browser.newContext({
     deviceScaleFactor: 3,
     hasTouch: true,
     isMobile: true,
     locale: 'en-US',
     screen: MOBILE_VIEWPORT,
     viewport: MOBILE_VIEWPORT,
-  });
-  // Hermetic: only loopback is reachable (the signed-out dev route still asks
-  // the configured Supabase for flags/profiles, which 401s).
-  await context.route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname)
-    && url.protocol !== 'data:' && url.protocol !== 'blob:', (route) => route.abort('blockedbyclient'));
+  }));
   await addExactStorageCleanup(context, storageKeys, artifacts.runId);
   page = await context.newPage();
   artifacts.captureBrowserProblems(page);

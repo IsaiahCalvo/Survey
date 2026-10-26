@@ -176,7 +176,8 @@
 /* The button turns, not its glyph: the app-wide press rule scales a lone
    glyph, which would un-turn an open chevron under the pointer. */
 .ed-scope .tpl-cat-chevron { transition: transform 0.15s; }
-.ed-scope .tpl-cat-chevron > svg { width: 16px; height: 16px; }
+/* 18px: CategoryDisclosureGlyph's documented box, same as the phone row. */
+.ed-scope .tpl-cat-chevron > svg { width: 18px; height: 18px; }
 .ed-scope .tpl-cat-row.is-open > .tpl-cat-chevron { transform: rotate(90deg); }
 .ed-scope .tpl-cat-row:hover .tpl-cat-chevron { color: var(--text-1); }
 .ed-scope .tpl-entity-row > button[aria-label="Edit color"] { flex: none; }

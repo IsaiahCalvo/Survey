@@ -1176,6 +1176,13 @@ const DEFAULT_TOOL_PREFERENCES = {
   eraser: { strokeWidth: 10 },
   rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
   ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
+  // Owner 2026-10-26 ("polyline shows colour but not stroke width"): Polygon
+  // and Polyline carry their own line defaults like every other shape. With
+  // none they borrowed whatever the last tool left in the bar (Counter's 14 px
+  // badge radius became a 14 pt line) and a pinned Polyline / Polygon saved
+  // no width at all, so its pin showed a colour and no width.
+  polygon: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
+  polyline: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   // UX 2026-09-09: the Cloud border style carries its OWN line defaults — the
   // approved revision-cloud studio's 2.5-unit crimson line — and remembers the
   // user's later line edits under this key while Cloud is armed, independent
@@ -1192,8 +1199,7 @@ const DEFAULT_TOOL_PREFERENCES = {
   // kept the fill left behind by Rectangle (white, the Shapes group's first
   // tool), so a fresh Shapes > Counter dropped white pins with white numbers -
   // invisible on a white page.
-  // No fillOpacity on purpose: the pin ignores it, and Polygon (no defaults of
-  // its own) inherits it - Rectangle's 0 keeps a Counter -> Polygon switch unfilled.
+  // No fillOpacity on purpose: the pin ignores it.
   counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100, fillColor: '#ef4444' },
   text: { strokeColor: '#000000', strokeOpacity: 100 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },

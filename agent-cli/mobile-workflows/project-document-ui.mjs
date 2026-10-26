@@ -12,7 +12,7 @@ export async function activate(locator, touch, device) {
 export async function openProject(page, touch, device, projectId) {
   const row = page.locator(`[data-project-id="${projectId}"]:visible`).first();
   await activate(row, touch, device);
-  const title = device === 'mobile' ? 'Tap to rename' : 'Click to rename';
+  const title = device === 'mobile' ? 'Tap to rename' : 'Project name';
   await page.getByLabel(title, { exact: true }).waitFor({ state: 'visible', timeout: 10_000 });
 }
 

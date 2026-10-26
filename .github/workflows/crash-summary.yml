@@ -11,7 +11,10 @@ name: Daily crash summary
 # GitHub runs this repo's cron schedules only now and then (one scheduled run
 # of any workflow on 2026-10-21 while ~350 others ran), so every finished
 # "Build and tests" run also starts it. The first such run after 07:00 UTC
-# each day posts; the rest of that day skip (a day-keyed cache entry marks it).
+# each day posts; the rest of that day skip, because the posted comment
+# carries the day (crash-summary-day: YYYYMMDD). Not a cache mark: runs
+# started by workflow_run can get a read-only Actions cache (2026-10-22), so
+# marks did not always save.
 on:
   schedule:
     - cron: '15 7 * * *'
@@ -33,23 +36,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      key: ${{ steps.when.outputs.key }}
-      checked: ${{ steps.mark.outputs.cache-hit }}
+      day: ${{ steps.when.outputs.day }}
+      checked: ${{ steps.mark.outputs.checked }}
       early: ${{ steps.when.outputs.early }}
     steps:
       - name: This day's mark
         id: when
         run: |
-          echo "key=crash-summary-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "day=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
           [ "$(date -u +%H)" -lt 7 ] && echo "early=true" >> "$GITHUB_OUTPUT" || true
-      - name: Already done this day?
+      - name: Already posted this day?
         id: mark
         if: github.event_name != 'workflow_dispatch'
-        uses: actions/cache/restore@v4
-        with:
-          path: .crash-summary-mark
-          key: ${{ steps.when.outputs.key }}
-          lookup-only: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DAY: ${{ steps.when.outputs.day }}
+        run: |
+          issue="$(gh issue list --label crash-report --state open --search 'in:title "Daily crash summary"' --json number --jq '.[0].number // empty')"
+          if [ -n "$issue" ] && gh issue view "$issue" --json body,comments --jq '.body, .comments[].body' | grep -q "crash-summary-day: $DAY"; then
+            echo "Already posted for $DAY."; echo "checked=true" >> "$GITHUB_OUTPUT"
+          fi
 
   summary:
     needs: due
@@ -81,20 +89,15 @@ jobs:
 
       - name: Post the summary
         shell: bash
+        env:
+          DAY: ${{ needs.due.outputs.day }}
         run: |
           [ "$(jq length rows.json)" = 0 ] && { echo "No crashes in the last 24 hours."; exit 0; }
           total="$(cat total.txt)"
           table="$(jq -r '.[] | "| \(.times) | \(.kind) | \(.platform // "") | \(.build // "") | \(.message | gsub("\\|"; "/") | gsub("\n"; " ")) |"' rows.json)"
-          body="$(printf '**%s crashes in the 24 hours to %s**\n\n| Times | Kind | Platform | Build | Message |\n|---|---|---|---|---|\n%s\n\nTop 25 groups. Full records stay in each person'\''s Settings → Crash reports.' "$total" "$(date -u +%FT%TZ)" "$table")"
+          body="$(printf '**%s crashes in the 24 hours to %s**\n\n| Times | Kind | Platform | Build | Message |\n|---|---|---|---|---|\n%s\n\nTop 25 groups. Full records stay in each person'\''s Settings → Crash reports.\n\n<!-- crash-summary-day: %s -->' "$total" "$(date -u +%FT%TZ)" "$table" "$DAY")"
           title="Daily crash summary"
           gh label create crash-report --color D93F0B --description "Daily crash summary" 2>/dev/null || true
           open="$(gh issue list --label crash-report --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')"
           if [ -n "$open" ]; then gh issue comment "$open" --body "$body"
           else gh issue create --title "$title" --label crash-report --body "$body"; fi
-
-      - name: Mark today done
-        run: mkdir -p .crash-summary-mark && date -u +%FT%TZ > .crash-summary-mark/at
-      - uses: actions/cache/save@v4
-        with:
-          path: .crash-summary-mark
-          key: ${{ needs.due.outputs.key }}

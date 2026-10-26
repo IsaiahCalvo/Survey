@@ -32,5 +32,5 @@ test('phone viewer harness opens the zoom menu before Zoom in; hub chevron is 18
 
 test('phone annotation runner is hermetic (loopback only)', () => {
   const runner = read('mobile-annotations-e2e.mjs');
-  assert.match(runner, /route\.abort\('blockedbyclient'\)/);
+  assert.match(runner, /guardContext\(browser\.newContext\(/);
 });
