@@ -763,6 +763,12 @@ async function runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts }) {
       { x: box.x + box.width * (0.55 + attempt * 0.08), y: top + (bottom - top) * 0.48 },
       { steps: 12 },
     );
+    // A new marker now opens a placement card and only commits once the user
+    // taps outside or picks a category; pick the preselected category.
+    const placeCategory = page.locator('.survey-place [role="option"][aria-selected="true"]').first();
+    if (await placeCategory.waitFor({ state: 'visible', timeout: 3_000 }).then(() => true, () => false)) {
+      await tapLocator(touch, placeCategory, 'survey marker placement category');
+    }
     try {
       await page.waitForFunction((prior) => {
         const ids = new Set([...document.querySelectorAll('[data-survey-marker-id]')]
