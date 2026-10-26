@@ -13,6 +13,7 @@ import { createTouchDriver } from '../mobile-annotations/touch.mjs';
 import { ensureViteServer } from '../mobile-annotations/vite-server.mjs';
 import { activate } from './project-document-ui.mjs';
 import { WORKFLOW_STORAGE_KEYS, WORKFLOW_VIEWPORTS } from './project-document-model.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 const CERTIFICATION = 'FAST/mock-local (dev-only; not durable)';
 const EDGE_TABS = ['documents', 'projects', 'templates'];
@@ -914,14 +915,14 @@ async function testHistory(page, baseUrl, device) {
 
 async function runDevice(device, baseUrl) {
   const viewport = WORKFLOW_VIEWPORTS[device];
-  const context = await browser.newContext({
+  const context = await guardContext(browser.newContext({
     deviceScaleFactor: device === 'mobile' ? 3 : 1,
     hasTouch: device === 'mobile',
     isMobile: device === 'mobile',
     locale: 'en-US',
     screen: viewport,
     viewport,
-  });
+  }));
   await context.addInitScript(({ keys, gate }) => {
     try {
       if (sessionStorage.getItem(gate)) return;

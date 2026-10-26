@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 let PNG;
 try { ({ PNG } = await import('pngjs')); } catch { console.error('pngjs missing'); process.exit(2); }
@@ -50,7 +51,7 @@ fs.rmSync(ART_DIR, { recursive: true, force: true });
 fs.mkdirSync(ART_DIR, { recursive: true });
 
 const browser = await chromium.launch({ headless: HEADLESS });
-const ctx = await browser.newContext({ viewport: { width: VIEWPORT_W, height: VIEWPORT_H }, deviceScaleFactor: 2 });
+const ctx = await guardContext(browser.newContext({ viewport: { width: VIEWPORT_W, height: VIEWPORT_H }, deviceScaleFactor: 2 }));
 const page = await ctx.newPage();
 // DIAG=1 — relay the app's own [EraserParityDiag] geometry dumps (fired on
 // every eraser enter/exit) so stale paint generations / tile offsets are

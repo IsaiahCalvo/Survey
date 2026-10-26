@@ -19,6 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 let PNG;
 try { ({ PNG } = await import('pngjs')); } catch { console.error('pngjs missing'); process.exit(2); }
@@ -32,7 +33,7 @@ const DOC_NAME = process.argv[2] || 'clickable-link-test.pdf';
 const ZOOM_CLICKS = Number(process.env.ZOOM_CLICKS || 0);
 
 const browser = await chromium.launch({ headless: true });
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
+const ctx = await guardContext(browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 }));
 const page = await ctx.newPage();
 page.on('console', (m) => {
   const t = m.text();

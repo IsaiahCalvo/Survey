@@ -41,6 +41,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -145,7 +146,7 @@ const WATCH_INIT = () => {
 // the throwaway copy and reads of that same file.
 const PROFILE_ROOT = opt('profile-dir', path.join(os.homedir(), '.cache', 'survey-sync-probe-profiles'));
 const contextOptions = { viewport: { width: 1440, height: 900 }, headless: !flag('headed') };
-const openProfile = (label) => chromium.launchPersistentContext(path.join(PROFILE_ROOT, label), contextOptions);
+const openProfile = (label) => guardContext(chromium.launchPersistentContext(path.join(PROFILE_ROOT, label), contextOptions));
 const ctxA = await openProfile('A');
 const ctxB = MODE === 'same' ? ctxA : await openProfile('B');
 // --concurrent N: N separate profiles (A, B, and N-2 more).

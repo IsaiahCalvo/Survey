@@ -11,6 +11,7 @@ import { addExactStorageCleanup, exactStorageKeys, persistedSnapshot } from './s
 import { createTouchDriver } from './touch.mjs';
 import { ensureViteServer } from './vite-server.mjs';
 import { createAnnotation, openRealMobileViewer } from './viewer.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 const FIXTURE_NAME = 'text-search-glyph-lab.pdf';
 const DEFAULT_ROUTE = `/?testPdf=${FIXTURE_NAME}&mobileNav=tabs&nativeShell=expo`;
@@ -500,7 +501,7 @@ try {
   const server = await ensureViteServer(null);
   managedProcess = server.managedProcess;
   browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
+  const context = await guardContext(browser.newContext({
     acceptDownloads: true,
     deviceScaleFactor: 3,
     hasTouch: true,
@@ -508,7 +509,7 @@ try {
     locale: 'en-US',
     screen: MOBILE_VIEWPORT,
     viewport: MOBILE_VIEWPORT,
-  });
+  }));
   await addExactStorageCleanup(context, storageKeys, artifacts.runId);
   page = await context.newPage();
   artifacts.captureBrowserProblems(page);

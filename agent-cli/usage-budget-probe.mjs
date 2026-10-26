@@ -38,6 +38,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -222,10 +223,10 @@ async function blockOtherStoredFiles(ctx, user) {
 }
 async function newUserContext(user) {
   const ctx = flag('fresh-profiles')
-    ? await browser.newContext({ viewport: { width: 1440, height: 900 } })
-    : await chromium.launchPersistentContext(path.join(PROFILE_ROOT, String.fromCharCode(65 + user)), {
+    ? await guardContext(browser.newContext({ viewport: { width: 1440, height: 900 } }))
+    : await guardContext(chromium.launchPersistentContext(path.join(PROFILE_ROOT, String.fromCharCode(65 + user)), {
       headless: !flag('headed'), viewport: { width: 1440, height: 900 },
-    });
+    }));
   await blockOtherStoredFiles(ctx, user);
   if (LEASED) await installLeasedBrowserAccount(ctx);
   // Probe sessions are not usage: keep them out of the owner's analytics (and

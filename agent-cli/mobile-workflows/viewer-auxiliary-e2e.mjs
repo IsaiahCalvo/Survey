@@ -11,6 +11,7 @@ import { chromium } from 'playwright';
 import { createTouchDriver } from '../mobile-annotations/touch.mjs';
 import { ensureViteServer } from '../mobile-annotations/vite-server.mjs';
 import { activate } from './project-document-ui.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 export const VIEWER_AUXILIARY_VIEWPORTS = Object.freeze({
   mobile: { width: 390, height: 844 },
@@ -136,14 +137,14 @@ async function waitForPageOrdinal(page, device, expected) {
 
 async function runDevice({ artifactsDir, baseUrl, browser, device, rows, diagnostics }) {
   const viewport = VIEWER_AUXILIARY_VIEWPORTS[device];
-  const context = await browser.newContext({
+  const context = await guardContext(browser.newContext({
     deviceScaleFactor: device === 'mobile' ? 3 : 1,
     hasTouch: device === 'mobile',
     isMobile: device === 'mobile',
     locale: 'en-US',
     screen: viewport,
     viewport,
-  });
+  }));
   const openedExternalUrls = [];
   await context.addInitScript(() => {
     window.__viewerAuxOpenedUrls = [];

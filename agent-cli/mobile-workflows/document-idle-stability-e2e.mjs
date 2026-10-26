@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { ensureViteServer } from '../mobile-annotations/vite-server.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 const documentCount = Number(process.env.DOCUMENT_STRESS_COUNT || 60);
 const visibleThumbBudget = Number(process.env.DOCUMENT_THUMB_BUDGET || 16);
@@ -18,13 +19,13 @@ const baseUrl = server.baseUrl;
 let browser;
 try {
 browser = await chromium.launch({ headless: process.env.HEADFUL !== '1' });
-const context = await browser.newContext({
+const context = await guardContext(browser.newContext({
   viewport: { width: 390, height: 844 },
   screen: { width: 390, height: 844 },
   deviceScaleFactor: 3,
   hasTouch: true,
   isMobile: true,
-});
+}));
 
 const failures = [];
 const consoleMessages = [];

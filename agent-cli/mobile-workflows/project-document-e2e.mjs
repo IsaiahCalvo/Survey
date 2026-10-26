@@ -24,6 +24,7 @@ import {
   openDocumentMenu,
   openProject,
 } from './project-document-ui.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 function parseOptions(argv) {
   const options = {
@@ -90,14 +91,14 @@ let managedServer;
 
 async function runDevice(device, baseUrl) {
   const viewport = WORKFLOW_VIEWPORTS[device];
-  const context = await browser.newContext({
+  const context = await guardContext(browser.newContext({
     deviceScaleFactor: device === 'mobile' ? 3 : 1,
     hasTouch: device === 'mobile',
     isMobile: device === 'mobile',
     locale: 'en-US',
     screen: viewport,
     viewport,
-  });
+  }));
   const cleanupGate = `mobile-project-document-clean-${artifacts.runId}-${device}`;
   await context.addInitScript(({ gate, keys }) => {
     try {
