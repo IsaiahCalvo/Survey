@@ -1,6 +1,8 @@
 // The staged shadow doc (accepted state + pending local edits) is built only
-// when something needs it: a document that is only viewed never pays for a
-// third full copy of its marks, and local edits still reach the log.
+// when something reads it: a document that is only viewed never pays for a
+// third full copy of its marks, an ordinary edit only writes it (kept until a
+// build, so the first edit on a big set no longer stalls ~0.7 s at its drop),
+// and local edits still reach the log.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Y from 'yjs';
@@ -22,6 +24,7 @@ function makeSupabase() {
   let subscribeCallback = null;
   const supabase = {
     log,
+    rejectNextInsert: false,
     fireSubscribed() { return subscribeCallback?.('SUBSCRIBED'); },
     from(table) {
       if (table === 'annotation_updates') {
@@ -35,6 +38,10 @@ function makeSupabase() {
           insert: (row) => ({
             select: () => ({
               single: async () => {
+                if (supabase.rejectNextInsert) {
+                  supabase.rejectNextInsert = false;
+                  return { data: null, error: { code: '42501', message: 'permission denied' } };
+                }
                 const committed = { ...row, seq: log.length + 1 };
                 log.push(committed);
                 return { data: { seq: committed.seq }, error: null };
@@ -74,7 +81,24 @@ const until = async (check, ms = 2000) => {
   }
 };
 
-test('viewing a document never builds the staged doc; the first local edit does and is saved', async () => {
+function addMark(handle, id) {
+  const shown = handle.getByPage ? handle.getByPage() : null;
+  const page1 = [...((shown && shown[1]?.objects) || [])];
+  handle.applyByPage({ ...(shown || {}), 1: { objects: [...page1, { type: 'rect', data: { id }, pageNumber: 1 }] } });
+}
+
+async function reopenKeys(supabase, documentId, clientId) {
+  const reopened = new Y.Doc();
+  const again = await openAnnotationDoc({
+    actorUserId: 'test-actor', documentId, supabase, clientId,
+    enableLocal: false, enableRealtime: false, doc: reopened,
+  });
+  const keys = [...reopened.getMap('marks').keys()];
+  await again.destroy();
+  return keys;
+}
+
+test('viewing a document never builds the staged doc; local edits do not either and are saved', async () => {
   const supabase = makeSupabase();
   supabase.log.push({ seq: 1, data: remoteOpHex('from-cloud'), client_id: 'other-device' });
   const doc = new Y.Doc();
@@ -91,13 +115,13 @@ test('viewing a document never builds the staged doc; the first local edit does 
   await until(() => doc.getMap('marks').has('later-cloud'));
   assert.equal(stagedBuildCount(), before, 'open and remote rows do not build the staged doc');
 
-  // A local edit builds it (from the accepted state) and reaches the log.
-  const shown = handle.getByPage ? handle.getByPage() : null;
-  const page1 = [...((shown && shown[1]?.objects) || [])];
-  handle.applyByPage({ ...(shown || {}), 1: { objects: [...page1, { type: 'rect', data: { id: 'mine' }, pageNumber: 1 }] } });
+  // Local edits only write the staged doc: kept, not built, and they reach the log.
+  addMark(handle, 'mine');
   await handle.drain();
-  assert.ok(supabase.log.some((row) => row.client_id !== 'other-device'), 'the edit is appended');
-  assert.equal(stagedBuildCount(), before + 1, 'the first local edit builds the staged doc once');
+  addMark(handle, 'mine-too');
+  await handle.drain();
+  assert.equal(supabase.log.filter((row) => row.client_id !== 'other-device').length, 2, 'both edits are appended');
+  assert.equal(stagedBuildCount(), before, 'ordinary edits do not build the staged doc');
   await handle.destroy();
 
   // A fresh open sees all three marks from the log alone.
@@ -108,6 +132,34 @@ test('viewing a document never builds the staged doc; the first local edit does 
   });
   const keys = [...reopened.getMap('marks').keys()];
   assert.ok(keys.includes('from-cloud') && keys.includes('later-cloud'), 'cloud marks are in the log');
-  assert.ok(keys.some((k) => k.includes('mine')), `the local mark is in the log (${keys})`);
+  assert.ok(keys.some((k) => k.includes('mine')) && keys.some((k) => k.includes('mine-too')), `the local marks are in the log (${keys})`);
   await again.destroy();
+});
+
+test('a rejected edit is dropped with the kept writes; the next edit builds the staged doc without it', async () => {
+  const supabase = makeSupabase();
+  supabase.log.push({ seq: 1, data: remoteOpHex('from-cloud'), client_id: 'other-device' });
+  const doc = new Y.Doc();
+  const before = stagedBuildCount();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'test-actor', documentId: 'doc-lazy-staged-rejected', supabase, clientId: 'me',
+    enableLocal: false, enableRealtime: false, doc,
+  });
+  addMark(handle, 'kept');
+  await handle.drain();
+  supabase.rejectNextInsert = true;
+  addMark(handle, 'denied');
+  await handle.drain();
+  assert.equal(stagedBuildCount(), before, 'nothing has read the staged doc yet');
+  // After a rejection later edits are rebased onto the staged doc, which reads it.
+  addMark(handle, 'after');
+  await handle.drain();
+  assert.equal(stagedBuildCount(), before + 1, 'the rebase builds it once');
+  await handle.destroy();
+
+  const keys = await reopenKeys(supabase, 'doc-lazy-staged-rejected', 'me-2');
+  assert.ok(keys.includes('from-cloud'), `cloud mark kept (${keys})`);
+  assert.ok(keys.some((k) => k.includes('kept')), `the accepted edit is in the log (${keys})`);
+  assert.ok(keys.some((k) => k.includes('after')), `the edit after the rejection is in the log (${keys})`);
+  assert.ok(!keys.some((k) => k.includes('denied')), `the rejected edit never reaches the log (${keys})`);
 });

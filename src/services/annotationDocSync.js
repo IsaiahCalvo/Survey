@@ -498,6 +498,7 @@ export async function openAnnotationDoc({
     checkpointMirror: supabase ? createCheckpointMirror() : null,
     persistedDoc: createDetachedYDoc(`persisted:${documentId}:${activeWriterId}`),
     stagedSeeded: false,   // w29: stagedDoc is seeded from acceptedDoc late in the open
+    unbuiltStagedUpdates: [], // writes kept for an unbuilt stagedDoc (applyToStaged)
     localPersistenceDoc: null,
     // Cold open: the snapshot, then any later updates, waiting to go into
     // localPersistenceDoc once the open is done (deferSnapshotToLocalPersistence).
@@ -3050,6 +3051,7 @@ function mapValueEqual(left, right) {
 function resetStagedToAccepted(state) {
   try { state.stagedDocRaw?.destroy(); } catch { /* */ }
   state.stagedDocRaw = null;
+  state.unbuiltStagedUpdates = [];
   seedStagedFromAccepted(state);
 }
 
@@ -3074,7 +3076,9 @@ function defineLazyStagedDoc(state) {
         if (state.stagedSeeded) {
           // w29: the encoding of acceptedDoc the open just made, when unchanged.
           Y.applyUpdate(doc, takeAcceptedEncoding(state) || encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+          for (const update of state.unbuiltStagedUpdates) Y.applyUpdate(doc, update, HYDRATE_ORIGIN);
         }
+        state.unbuiltStagedUpdates = [];
         state.stagedDocRaw = doc;
       }
       return state.stagedDocRaw;
@@ -3101,9 +3105,23 @@ function seedStagedFromAccepted(state) {
 }
 
 // The staged state for reading: the built doc, or acceptedDoc while it is
-// unbuilt (they are equal then). Never write through this.
+// unbuilt and nothing is pending (they are equal then). Never write through this.
 function stagedView(state) {
-  return state.stagedDocRaw || (state.stagedSeeded ? state.acceptedDoc : state.stagedDoc);
+  if (state.stagedDocRaw) return state.stagedDocRaw;
+  return state.stagedSeeded && state.unbuiltStagedUpdates.length === 0 ? state.acceptedDoc : state.stagedDoc;
+}
+
+// A write to stagedDoc. While it is unbuilt the update is kept and applied when
+// something reads it: the first edit after an open used to build it (one full
+// copy of acceptedDoc, ~0.7 s on a 240-sheet set, all at the edit's drop), and
+// an ordinary edit only writes it. Yjs updates commute, so applying them later,
+// over acceptedDoc as of then, builds the same document.
+function applyToStaged(state, update) {
+  if (!state.stagedDocRaw && state.stagedSeeded) {
+    state.unbuiltStagedUpdates.push(new Uint8Array(update));
+    return;
+  }
+  Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
 }
 
 function setRepairCheckpoint(state, checkpointUpdate, editEpoch) {
@@ -3335,7 +3353,7 @@ function deleteSetCoveredBy(inner, outer) {
 }
 
 function stageExactLocalUpdate(state, update) {
-  Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  applyToStaged(state, update);
   const stagedUpdate = new Uint8Array(update);
   const decoded = Y.decodeUpdate(stagedUpdate);
   if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return null;
@@ -3477,7 +3495,7 @@ async function replayOutbox(state) {
     if (!record.publishAfterAcceptance) {
       Y.applyUpdate(state.doc, record.update, HYDRATE_ORIGIN);
     }
-    Y.applyUpdate(state.stagedDoc, record.update, HYDRATE_ORIGIN);
+    applyToStaged(state, record.update);
     // w30: no whole-staged checkpoint here. stagedDoc already holds every
     // later local edit (live records no longer carry a per-edit checkpoint),
     // and a repair checkpoint must stop at this record: setRecordRepairCheckpoint
@@ -3515,7 +3533,7 @@ async function replayOutbox(state) {
         if (!laterRaw.publishAfterAcceptance) {
           Y.applyUpdate(state.doc, new Uint8Array(laterRaw.update), HYDRATE_ORIGIN);
         }
-        Y.applyUpdate(state.stagedDoc, new Uint8Array(laterRaw.update), HYDRATE_ORIGIN);
+        applyToStaged(state, new Uint8Array(laterRaw.update));
       }
       scheduleGapRepair(state);
       scheduleOutboxReplay(state, { delayed: true });
@@ -3819,7 +3837,7 @@ function runBulkTransaction(state, run) {
 
 function queueBulkUpdate(state, update, { alreadyStaged = false } = {}) {
   // Staged like any local update (stagedDoc = accepted + everything pending).
-  if (!alreadyStaged) Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  if (!alreadyStaged) applyToStaged(state, update);
   const bytes = new Uint8Array(update);
   state.bulk.pending.push(bytes);
   for (const [client, range] of updateClockRanges(bytes)) {
