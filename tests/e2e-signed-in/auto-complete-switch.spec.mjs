@@ -8,8 +8,12 @@ import { adminClient, expect, signIn, test } from './helpers.mjs';
 const COMPLETE = { id: 'e2e-ent-complete', name: 'Complete', color: '#548c71' };
 let original = null;
 
+// Text lines, so the spec can blank its answers again (a pick-one answer
+// cannot be cleared, and the specs after this one need D-1-17 blank).
 async function writeTemplate(patch) {
   const config = { ...structuredClone(original), entities: [COMPLETE], ...patch };
+  const lines = config.modules[0].categories[0].checklist;
+  config.modules[0].categories[0].checklist = lines.map((line) => ({ ...line, kind: 'text' }));
   if (patch.autoComplete === undefined) delete config.autoComplete;
   const { error } = await adminClient().from('templates').update({ config }).eq('id', E2E_SURVEY.templateId);
   if (error) throw error;
@@ -56,14 +60,16 @@ async function openSurveyItem(page, { reopened = false } = {}) {
   await expand.click();
 }
 
-const answer = (page, line, value) => page.getByRole('group', { name: line }).getByRole('button', { name: value, exact: true });
+const box = (page, line) => page.getByRole('textbox', { name: `${line} answer` });
 const entityButton = (page) => page.getByRole('button', { name: /^Entity: .*\. Change entity$/ }).filter({ visible: true }).first();
 
+async function answerLine(page, line, value) {
+  await box(page, line).fill(value);
+  await box(page, line).press('Enter');
+  await expect(box(page, line)).toHaveValue(value);
+}
 async function answerAll(page, value) {
-  for (const { text } of E2E_SURVEY.checklist) {
-    const button = answer(page, text, value);
-    if ((await button.getAttribute('aria-pressed')) !== 'true') await button.click();
-  }
+  for (const { text } of E2E_SURVEY.checklist) await answerLine(page, text, value);
 }
 
 async function clearEntity(page) {
@@ -74,12 +80,13 @@ async function clearEntity(page) {
 
 test('switch off: every line done leaves the entity alone; on: it turns Complete', async ({ page }) => {
   await writeTemplate({ autoComplete: false });
+  await page.addInitScript(() => localStorage.setItem('survey.flag.custom-answers', '1'));
   await signIn(page, E2E_ACCOUNTS.owner);
   await openSurveyItem(page);
-  await answerAll(page, 'N');
+  await answerAll(page, '');
   await clearEntity(page);
 
-  await answerAll(page, 'Y');
+  await answerAll(page, 'ok');
   await expect(page.getByText('3/3', { exact: true })).toBeVisible();
   await page.waitForTimeout(500);
   await expect(entityButton(page)).toHaveAccessibleName('Entity: none. Change entity');
@@ -90,21 +97,19 @@ test('switch off: every line done leaves the entity alone; on: it turns Complete
   await page.reload();
   // The app reopens the drawing it had open.
   await openSurveyItem(page, { reopened: true });
-  await answerAll(page, 'N');
+  await answerAll(page, '');
   await clearEntity(page);
-  await answerAll(page, 'Y');
+  await answerAll(page, 'ok');
   await expect(entityButton(page)).toHaveAccessibleName('Entity: Complete. Change entity', { timeout: 10_000 });
-  // A later bad answer never takes Complete away.
-  await answer(page, E2E_SURVEY.checklist[0].text, 'N').click();
+  // A later blank line never takes Complete away.
+  await answerLine(page, E2E_SURVEY.checklist[0].text, '');
   await page.waitForTimeout(500);
   await expect(entityButton(page)).toHaveAccessibleName('Entity: Complete. Change entity');
   await page.screenshot({ path: 'test-results/auto-complete-on.png' });
 
   // Leave the seeded item blank for the walks that use it.
-  for (const { text } of E2E_SURVEY.checklist) {
-    const button = answer(page, text, 'N');
-    if ((await button.getAttribute('aria-pressed')) === 'true') await button.click();
-  }
+  await answerAll(page, '');
+  await expect(page.getByText('0/3', { exact: true })).toBeVisible();
   await clearEntity(page);
   await page.waitForTimeout(2000);
 });
