@@ -19,6 +19,7 @@
 // useCallback-stable so the external callers that omit the setter from their
 // dependency arrays keep their referential identity.
 
+import { queryFrontTab } from '../utils/tabBehind.js';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -569,7 +570,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     const zOrderFor = (index) => {
       const length = annotationsByPageRef.current?.[ctx.pageNumber]?.objects?.length || 0;
       const svg = typeof document !== 'undefined'
-        ? document.querySelector(`[data-svg-annotation-layer="${ctx.pageNumber}"]`)
+        ? queryFrontTab(`[data-svg-annotation-layer="${ctx.pageNumber}"]`)
         : null;
       const bboxOf = (i) => {
         const g = svg?.querySelector(`[data-annotation-index="${i}"]`)
@@ -1218,8 +1219,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           let pageRect = null;
           if (ctx.pageNumber != null) {
             const pageEl =
-              document.querySelector(`[data-diag-svg-wrapper="${ctx.pageNumber}"]`)
-              || document.querySelector(`[data-pal-root="${ctx.pageNumber}"]`);
+              queryFrontTab(`[data-diag-svg-wrapper="${ctx.pageNumber}"]`)
+              || queryFrontTab(`[data-pal-root="${ctx.pageNumber}"]`);
             if (pageEl) {
               // Walk up to the pdfjs page div so the bounds match
               // what the user visually sees as "the page".

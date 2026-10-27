@@ -16,6 +16,7 @@
 //     next one clears the selection — the app's popover rule), with a click or
 //     tap anywhere else, and after one of its actions runs;
 //   - a menu that was dismissed stays away until the selection changes.
+import { isInTabBehind } from '../utils/tabBehind.js';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -57,10 +58,10 @@ function liveSelectionRect() {
   }
 }
 
-// Every opened document tab keeps its viewer mounted (AppShell hides the
-// others with display: none), so a plain querySelector can return a hidden
-// tab's zero-sized viewer and the menu never showed on later tabs (Codex,
-// #817). Use the viewer that holds the selection, else the one on screen.
+// Every opened document tab keeps its viewer mounted (a tab behind keeps real
+// sizes, utils/tabBehind.js), so a plain querySelector can return a hidden
+// tab's viewer and the menu never showed on later tabs (Codex, #817). Use the
+// viewer that holds the selection, else the one on screen.
 function selectionViewer() {
   try {
     const node = window.getSelection?.()?.anchorNode;
@@ -69,7 +70,7 @@ function selectionViewer() {
     if (owner) return owner;
   } catch { /* fall through */ }
   const all = document.querySelectorAll('[data-testid="pdf-container"]');
-  for (const element of all) if (element.getClientRects().length > 0) return element;
+  for (const element of all) if (!isInTabBehind(element) && element.getClientRects().length > 0) return element;
   return all[0] || null;
 }
 
@@ -172,7 +173,7 @@ export default function TextSelectionQuickMenu({
     if (!key) return undefined;
     const openContextMenu = (event) => {
       const owner = selectionViewer();
-      if (!owner || owner.getClientRects().length === 0) return;
+      if (!owner || isInTabBehind(owner) || owner.getClientRects().length === 0) return;
       event.preventDefault();
       setPressing(false);
       setDismissedKey('');

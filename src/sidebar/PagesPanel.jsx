@@ -6,6 +6,7 @@
  * click-to-navigate, drag reorder (onReorderPages), and a right-click context menu
  * for cut/copy/paste/duplicate/rotate/mirror/reset/delete. Honors pageTransformations.
  */
+import { isInTabBehind } from '../utils/tabBehind.js';
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { createPortal } from 'react-dom';
@@ -626,14 +627,14 @@ const PagesPanel = ({
   // The page the viewer has already drawn is the quickest first image there
   // is: one downscale copy of its finished raster (no pdf.js work, a few ms),
   // the same idea as pdf.js's own viewer thumbnails. Only a visible viewer
-  // canvas of the same shape counts (inactive tabs are display:none). It stays
+  // canvas of the same shape counts (never one in a tab behind). It stays
   // quality 'fast', so the pdf.js crisp pass still replaces it once the list
   // is still (that pass also draws PDF-native annotations, which the viewer
   // raster leaves to the app's own layers).
   const seedThumbnailFromViewer = useCallback(async (pageNumber) => {
     if (!pdfDoc || typeof document === 'undefined') return null;
     const source = [...document.querySelectorAll(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"] > canvas`)]
-      .find((c) => c.width > 0 && c.height > 0 && !(c.width === 300 && c.height === 150) && c.getClientRects().length > 0);
+      .find((c) => c.width > 0 && c.height > 0 && !(c.width === 300 && c.height === 150) && !isInTabBehind(c) && c.getClientRects().length > 0);
     if (!source) return null;
     const page = await pdfDoc.getPage(pageNumber);
     const base = page.getViewport({ scale: 1 });

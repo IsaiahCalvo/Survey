@@ -567,6 +567,12 @@ import {
   resolveLocalOcrProvider,
   saveCachedOcrResult,
 } from './utils/localOcrProvider.js';
+import { isInTabBehind } from './utils/tabBehind.js';
+
+// Every open tab keeps its viewer mounted, and a tab behind keeps real sizes at
+// the same screen spot (utils/tabBehind.js). Look this tab's pages and
+// overlays up under its own root (pdfjsWrapperRef), never document-wide.
+const queryInViewer = (root, selector) => root?.querySelector?.(selector) || null;
 
 // KAL-309: read the workbook registration (workbook_id + sync_token) out of a
 // loaded ExcelJS workbook's hidden _SurveyMetadata sheet (cells B5/B6). Duck-typed
@@ -2040,7 +2046,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!entry?.host?.isConnected) return;
       const pageNumber = Number(pageKey);
       const livePage = Number.isFinite(pageNumber)
-        ? document.querySelector(`[id$="_pageDiv_${pageNumber - 1}"]`)
+        ? queryInViewer(pdfjsWrapperRef.current, `[id$="_pageDiv_${pageNumber - 1}"]`)
         : null;
       const liveRect = livePage?.getBoundingClientRect?.();
       const hasLiveRect = liveRect && liveRect.width > 0 && liveRect.height > 0;
@@ -3276,12 +3282,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const dir = activeTool === 'eraser' ? 'enter-eraser' : 'exit-eraser';
           requestAnimationFrame(() => requestAnimationFrame(() => {
             try {
-              const host = document.querySelector('[data-annotation-real-surface="1"]');
+              const host = (pdfjsWrapperRef.current || document).querySelector('[data-annotation-real-surface="1"]');
               const hostRect = host?.getBoundingClientRect();
-              const canvas = document.querySelector('[data-annotation-presentation-canvas="1"]');
+              const canvas = (pdfjsWrapperRef.current || document).querySelector('[data-annotation-presentation-canvas="1"]');
               const canvasRect = canvas?.getBoundingClientRect();
-              const detail = document.querySelector('[data-annotation-detail-canvas="1"]');
-              const svg = document.querySelector('svg[data-svg-annotation-layer="1"]');
+              const detail = (pdfjsWrapperRef.current || document).querySelector('[data-annotation-detail-canvas="1"]');
+              const svg = (pdfjsWrapperRef.current || document).querySelector('svg[data-svg-annotation-layer="1"]');
               const svgRect = svg?.getBoundingClientRect();
               const rect = (r) => r ? { x: +r.x.toFixed(3), y: +r.y.toFixed(3), w: +r.width.toFixed(3), h: +r.height.toFixed(3) } : null;
               console.log(`[EraserParityDiag] ${dir} pdf=${pdfFile?.name || pdfFile?.file_name || '?'} ` + JSON.stringify({
@@ -4950,8 +4956,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let deltaY = 0.05;
     if (cursorPosition && Number.isFinite(cursorPosition.clientX) && Number.isFinite(cursorPosition.clientY)) {
       try {
-        const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
-        const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
+        const svgWrap = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
+        const palRoot = queryInViewer(pdfjsWrapperRef.current, `[data-pal-root="${pageNumber}"]`);
         const pageDiv = (svgWrap || palRoot)?.closest?.('.survey-pdfjs-page-div') || null;
         const pageRect = pageDiv?.getBoundingClientRect?.() || null;
         if (pageRect && pageRect.width > 0 && pageRect.height > 0) {
@@ -5671,7 +5677,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             let svgDomBounds = null;
             try {
               const nodes = Array.from(
-                document.querySelectorAll(`[data-diag-svg-wrapper] [data-annotation-index="${i}"]`)
+                (pdfjsWrapperRef.current || document).querySelectorAll(`[data-diag-svg-wrapper] [data-annotation-index="${i}"]`)
               );
               if (nodes.length > 0) {
                 const rect = nodes[0].getBoundingClientRect();
@@ -5751,13 +5757,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           domState: (() => {
             try {
               const svgLayerWrappers = Array.from(
-                document.querySelectorAll('[data-diag-svg-wrapper]')
+                (pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-svg-wrapper]')
               );
               const eraserWrappers = Array.from(
-                document.querySelectorAll('[data-diag-eraser-wrapper]')
+                (pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-eraser-wrapper]')
               );
               const allSvgAnnotations = Array.from(
-                document.querySelectorAll('[data-diag-svg-wrapper] svg [data-annotation-index]')
+                (pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-svg-wrapper] svg [data-annotation-index]')
               );
               const visibleSvgAnnotations = allSvgAnnotations.filter((el) => {
                 const wrapper = el.closest('[data-diag-svg-wrapper]');
@@ -5765,7 +5771,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 return getComputedStyle(wrapper).visibility !== 'hidden';
               });
               const eraserCanvases = Array.from(
-                document.querySelectorAll('[data-diag-eraser-wrapper] canvas')
+                (pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-eraser-wrapper] canvas')
               );
               return {
                 svgWrapperCount: svgLayerWrappers.length,
@@ -5825,7 +5831,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             // 1. SVG annotation layer + wrapper for the current page
             try {
-              const svgLayer = document.querySelector(`[data-svg-annotation-layer="${pageNum}"]`);
+              const svgLayer = (pdfjsWrapperRef.current || document).querySelector(`[data-svg-annotation-layer="${pageNum}"]`);
               if (svgLayer) {
                 out[`svg-layer:${pageNum}`] = {
                   kind: 'svg-layer',
@@ -5972,7 +5978,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Works without any new IPC and avoids the capturePage focus/cursor side-effect.
         let svgMarkup = null;
         try {
-          const wrappers = Array.from(document.querySelectorAll('[data-diag-svg-wrapper]'));
+          const wrappers = Array.from((pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-svg-wrapper]'));
           svgMarkup = wrappers.map((w) => {
             const svg = w.querySelector('svg');
             return svg ? svg.outerHTML : '<!-- no svg in wrapper -->';
@@ -6393,8 +6399,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (typeof document === 'undefined' || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
       return null;
     }
+    const viewerRoot = pdfjsWrapperRef.current;
     const direct = document.elementFromPoint?.(clientX, clientY)?.closest?.('.survey-pdfjs-page-div');
-    if (direct) {
+    if (direct && viewerRoot?.contains(direct)) {
       pdfjsLastCursorPageRef.current = direct;
       return direct;
     }
@@ -6417,7 +6424,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // elementFromPoint can return our overlay instead of the PDF page. For
     // cursor-centric zoom we still need the real page under that screen point;
     // otherwise zoom falls back to rough scroll-ratio math and drifts down/right.
-    const pages = Array.from(document.querySelectorAll('.survey-pdfjs-page-div'));
+    const pages = Array.from(viewerRoot?.querySelectorAll('.survey-pdfjs-page-div') || []);
     for (const page of pages) {
       const rect = page.getBoundingClientRect?.();
       if (!rect || rect.width <= 0 || rect.height <= 0) continue;
@@ -7488,7 +7495,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const viewerHost = [
       viewer?.element,
       typeof document !== 'undefined' ? document.getElementById(pdfjsViewerElementId) : null,
-      typeof document !== 'undefined' ? document.querySelector?.('.survey-pdfjs-viewer') : null
+      queryInViewer(pdfjsWrapperRef.current, '.survey-pdfjs-viewer')
     ].find((candidate) => candidate?.isConnected) || null;
     if (!viewerHost) {
       return null;
@@ -8015,7 +8022,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // every mounted page on every render, and the search walked every mark of
     // the pages before it (owner 2026-10-06, smooth zoom).
     const domHost = !directHost?.isConnected && typeof document !== 'undefined'
-      ? document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
+      ? queryInViewer(pdfjsWrapperRef.current, `.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
       : null;
     const host = directHost?.isConnected ? directHost : domHost;
     const hasContainer = !!host?.isConnected;
@@ -11954,7 +11961,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       const overlay = attachOverlayToPageDiv(pageNumber);
-      const wrapper = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+      const wrapper = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
       const isGated = wrapper?.getAttribute?.('data-annotation-hydration-gated') === 'true';
       const wrapperStyle = wrapper ? window.getComputedStyle(wrapper) : null;
       const visibleWrapper = !!wrapper && wrapperStyle?.display !== 'none' && wrapperStyle?.visibility !== 'hidden';
@@ -13649,7 +13656,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const caretAnchor = buildCaretAnchor({
           x: event.clientX,
           y: event.clientY,
-          host: document.querySelector(`[data-diag-svg-wrapper="${candidate.pageNumber}"] ${hostSelector}`),
+          host: queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${candidate.pageNumber}"] ${hostSelector}`),
         });
         opened = candidate.kind === 'callout'
           ? requestAnnotationEditEntryRef.current({
@@ -13770,7 +13777,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       .filter((page) => Number.isFinite(page) && page > 0);
     if (pages.length === 0) return;
     const pageInView = (page) => {
-      const element = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${page}"]`);
+      const element = queryInViewer(pdfjsWrapperRef.current, `.survey-pdfjs-page-div[data-page-number="${page}"]`);
       const rect = element?.getBoundingClientRect?.();
       if (!rect || rect.width <= 0 || rect.height <= 0) return false;
       return rect.bottom > 40 && rect.top < (window.innerHeight - 40)
@@ -26497,7 +26504,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (selectedAnnot?.data?.type !== 'text-markup') return null;
       const bounds = quadBounds(selectedAnnot.data.quads);
       const selectedPageNumber = Number(selectedAnnot.data.pageNumber || selectedToolbarAnnotation?.pageNumber);
-      const pageElement = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${selectedPageNumber}"]`);
+      const pageElement = queryInViewer(pdfjsWrapperRef.current, `.survey-pdfjs-page-div[data-page-number="${selectedPageNumber}"]`);
       const pageRect = pageElement?.getBoundingClientRect?.();
       const pageSize = pageSizesRef.current?.[selectedPageNumber];
       if (!bounds || !pageRect || !pageSize?.width || !pageSize?.height) return null;
@@ -27002,6 +27009,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Every tab listens on the window; only the front one answers (S6). A
+      // tab behind keeps real layout now, so its arrows or paste would act.
+      if (isInTabBehind(pdfjsWrapperRef.current)) return;
       // Rule 12 (utils/selectModes.js): every tool letter below switches
       // through this and says so (a switch other than Select <-> Pan drops
       // the selection, owner 2026-10-04).
@@ -30270,8 +30280,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       let dx = 20 + repeatOffset;
       let dy = 20 + repeatOffset;
       try {
-        const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
-        const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
+        const svgWrap = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
+        const palRoot = queryInViewer(pdfjsWrapperRef.current, `[data-pal-root="${pageNumber}"]`);
         const pageDiv = (svgWrap || palRoot)?.closest?.('.survey-pdfjs-page-div') || null;
         const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
         const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
@@ -30338,8 +30348,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let pastedLeft = originalLeft + 20 + repeatOffset;
     let pastedTop = originalTop + 20 + repeatOffset;
     try {
-      const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
-      const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
+      const svgWrap = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
+      const palRoot = queryInViewer(pdfjsWrapperRef.current, `[data-pal-root="${pageNumber}"]`);
       const pageDiv = (svgWrap || palRoot)?.closest?.('.survey-pdfjs-page-div') || null;
       const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
       const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
@@ -30500,7 +30510,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       .filter((entry) => entry?.annotationId)
       .map((entry) => ({ id: String(entry.annotationId), stack: entry.stack || null }));
     const svg = typeof document !== 'undefined'
-      ? document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`)
+      ? queryInViewer(pdfjsWrapperRef.current, `[data-svg-annotation-layer="${pageNumber}"]`)
       : null;
     const bboxOfEntry = (entry) => {
       if (!svg) return null;
@@ -30566,7 +30576,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (direction === 'back') return 0;
       const stepFallback = direction === 'forward' ? fromIndex + 1 : fromIndex - 1;
       if (direction !== 'forward' && direction !== 'backward') return fromIndex;
-      const svg = document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`);
+      const svg = queryInViewer(pdfjsWrapperRef.current, `[data-svg-annotation-layer="${pageNumber}"]`);
       if (!svg) return stepFallback;
       // w52: callouts render in the same stack but carry data-stack-index
       // (not data-annotation-index, which routes clicks to the shape path).
@@ -32575,7 +32585,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let dx = 20 + repeatOffset;
     let dy = 20 + repeatOffset;
     try {
-      const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+      const svgWrap = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
       const pageDiv = svgWrap?.closest?.('.survey-pdfjs-page-div') || null;
       const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
       const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
@@ -34042,7 +34052,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       sourceMarks.length ? sourceMarks : [annotation],
     );
     const bounds = quadBounds(annotation.data.quads);
-    const pageElement = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+    const pageElement = queryInViewer(pdfjsWrapperRef.current, `.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
     const pageRect = pageElement?.getBoundingClientRect?.();
     const pageSize = pageSizesRef.current?.[pageNumber];
     if (!bounds || !pageRect || !pageSize?.width || !pageSize?.height) return null;
@@ -34574,6 +34584,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSelectPdfjsTextMarkupFromClientPoint = useCallback((event) => {
     if (!['select', 'text-select'].includes(activeTool)) return false;
+    // Every tab listens on the document; a tab behind keeps real page rects
+    // under the pointer, so it must not take the front tab's press.
+    if (isInTabBehind(pdfjsWrapperRef.current)) return false;
     if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return false;
     if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select, a[href], .survey-pdfjs-hyperlink, .survey-pdfjs-pdfviewer-formFields')) return false;
     const isPlainPdfTextTarget = !!event.target?.closest?.('.survey-pdfjs-text-layer, .survey-pdfjs-text');
@@ -37374,6 +37387,7 @@ ${pageBlocks}
                   <PdfjsViewerContainer
                     id={pdfjsViewerElementId}
                     ref={pdfjsViewerRef}
+                    tabActive={isActive !== false}
                     className={`survey-pdfjs-viewer ${activeTool === 'select' ? 'survey-pdfjs-select-mode' : 'survey-pdfjs-standard-mode'}`}
                     documentSource={pdfDoc}
                     visiblePageNumbers={activeSpacePages}

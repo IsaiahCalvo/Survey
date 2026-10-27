@@ -25,6 +25,7 @@
 //     (utils/selectionQuickBar.js planSelectionQuickBar).
 //   - Survey Markers: the template's entity swatches in place of colour.
 //   - The phone has its own selection strip; this bar is desktop layout only.
+import { isInTabBehind } from '../utils/tabBehind.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -87,13 +88,13 @@ function useSelectedItems() {
   return useMemo(() => [...byPage.values()].flat(), [byPage]);
 }
 
-// Every opened document tab keeps its viewer mounted (AppShell hides the
-// others with display: none), so a plain querySelector can land in a hidden
+// Every opened document tab keeps its viewer mounted (a tab behind keeps real
+// sizes, utils/tabBehind.js), so a plain querySelector can land in a hidden
 // tab and the bar never showed on any tab but the first opened (batch-6
 // verify). Prefer the element that is on screen.
 const shownElement = (selector) => {
   const all = document.querySelectorAll(selector);
-  for (const element of all) if (element.getClientRects().length > 0) return element;
+  for (const element of all) if (!isInTabBehind(element) && element.getClientRects().length > 0) return element;
   return all[0] || null;
 };
 

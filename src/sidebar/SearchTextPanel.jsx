@@ -7,6 +7,7 @@
  * onFindTextMatches bounds or metric estimates). Drives navigation via
  * onNavigateToMatch/onNavigateToPage and emits diagnostics through textSearchDiag.
  */
+import { isInTabBehind, queryFrontTab } from '../utils/tabBehind.js';
 import { memo, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { SearchResultsSkeleton } from '../components/Skeleton';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -249,13 +250,14 @@ const getPageImageHost = (pageNumber) => {
   const pageIndex = Number(pageNumber) - 1;
   if (!Number.isFinite(pageIndex) || pageIndex < 0) return null;
 
+  const frontPages = () => Array.from(document.querySelectorAll('.survey-pdfjs-page-div')).filter((node) => !isInTabBehind(node));
   const pageHost =
-    document.querySelector(`.survey-pdfjs-page-div[id$="_pageDiv_${pageIndex}"]`) ||
-    Array.from(document.querySelectorAll('.survey-pdfjs-page-div')).find((node) => {
+    queryFrontTab(`.survey-pdfjs-page-div[id$="_pageDiv_${pageIndex}"]`) ||
+    frontPages().find((node) => {
       const pageAttr = node.getAttribute('data-page-number') || node.getAttribute('aria-label') || '';
       return pageAttr === String(pageNumber);
     }) ||
-    Array.from(document.querySelectorAll('.survey-pdfjs-page-div'))[pageIndex] ||
+    frontPages()[pageIndex] ||
     null;
 
   if (!pageHost) return null;

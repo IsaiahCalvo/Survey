@@ -8,6 +8,7 @@
  * maps client coords to page space using container-measured display scale.
  * Drives the Spaces region-editing flow; commits via `onRegionComplete`.
  */
+import { isInTabBehind } from './utils/tabBehind.js';
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { pagePresentationFrame, clientPointInPageFrame } from './utils/pagePresentation.js';
@@ -567,7 +568,7 @@ const RegionSelectionTool = ({
         ? `[data-region-selection-target="${String(currentPageId)}"]`
         : '[data-region-selection-target]';
       const candidates = Array.from(document.querySelectorAll(selector))
-        .filter((node) => node instanceof HTMLElement && node.isConnected);
+        .filter((node) => node instanceof HTMLElement && node.isConnected && !isInTabBehind(node));
       const nextTarget = candidates.reduce((best, node) => {
         const r = node.getBoundingClientRect();
         const area = r.width * r.height;

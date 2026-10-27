@@ -29,6 +29,8 @@
  * group's mark lying on top of one of its own reaches its own (the same
  * ink-accurate geometry, top-most first). Omitted: every mark counts.
  */
+import { isInTabBehind, queryFrontTab } from './tabBehind.js';
+
 export function resolveAnnotationAt(e, { acceptMark = null } = {}) {
   let pageNumber = null;
   let annotationIndex = null;
@@ -140,7 +142,7 @@ export function resolveAnnotationAt(e, { acceptMark = null } = {}) {
       // the time. matchedPageDiv is guaranteed to be the one under
       // the cursor.
       const pageDiv = matchedPageDiv
-        || document.querySelector(`[id$="_pageDiv_${sfIndex}"]`);
+        || queryFrontTab(`[id$="_pageDiv_${sfIndex}"]`);
       const pageCanvas = pageDiv?.querySelector('canvas.survey-pdfjs-page-canvas')
         || pageDiv?.querySelector('.survey-pdfjs-page-canvas')
         || null;
@@ -186,7 +188,7 @@ export function resolveAnnotationAt(e, { acceptMark = null } = {}) {
   }
 
   const isVisibleElement = (el) => {
-    if (!el || !el.getBoundingClientRect) return false;
+    if (!el || !el.getBoundingClientRect || isInTabBehind(el)) return false;
     const r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return false;
     if (typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return true;
@@ -288,7 +290,7 @@ export function resolveAnnotationAt(e, { acceptMark = null } = {}) {
   // Imported links have no painted SVG path. Their transparent HTML region
   // remains a hit-test target even while native text owns pointer events.
   if (pageNumber != null && annotationIndex == null && !calloutId && !isCounter) {
-    const page = matchedPageDiv || document.querySelector(`[id$="_pageDiv_${pageNumber - 1}"]`);
+    const page = matchedPageDiv || queryFrontTab(`[id$="_pageDiv_${pageNumber - 1}"]`);
     for (const link of page?.querySelectorAll('[data-text-markup-link-index]') || []) {
       if (rectContainsPoint(link)) {
         annotationIndex = Number(link.getAttribute('data-text-markup-link-index'));
@@ -370,6 +372,7 @@ export function resolveAnnotationAt(e, { acceptMark = null } = {}) {
   if (annotationIndex == null && !calloutId && !isCounter) {
     const groupBoxes = document.querySelectorAll('[data-group-selection-bbox="true"]');
     for (const el of groupBoxes) {
+      if (isInTabBehind(el)) continue;
       const hit = el.querySelector('[data-group-selection-hitbox="true"]') || el;
       const r = hit.getBoundingClientRect();
       if (r.width > 0 && r.height > 0

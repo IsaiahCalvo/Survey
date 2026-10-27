@@ -118,6 +118,7 @@ import usePhoneLayout from '../hooks/usePhoneLayout.js';
 import useCoarsePointer from '../hooks/useCoarsePointer.js';
 import { hasTouchInput } from '../utils/layoutMode.js';
 import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
+import { isInTabBehind } from '../utils/tabBehind.js';
 import {
   compensateScrollLeftForColumnWidth,
   resolveCentredPageLeft,
@@ -1429,6 +1430,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   onFormFieldClick,
   // eslint-disable-next-line no-unused-vars
   onFormFieldDoubleClick,
+  // False while this viewer's tab is behind another (utils/tabBehind.js).
+  tabActive = true,
 }, ref) {
   const viewerId = useMemo(() => id || `pdfjsViewer_${(pdfjsContainerSeq += 1)}`, [id]);
   const rotation = 0; // intrinsic /Rotate is baked by pdf.js; app handles rotation by rewriting bytes
@@ -1879,8 +1882,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
         const el = scrollerRef.current;
         const cw = el ? el.clientWidth : 800;
-        const hasViewport = el && cw > 0 && el.clientHeight > 0;
-        // Inactive tabs can finish loading with display:none. Fit once the real
+        const hasViewport = el && !isInTabBehind(el) && cw > 0 && el.clientHeight > 0;
+        // Inactive tabs can finish loading behind. Fit once the real
         // viewport appears, rather than fitting a zero-sized box to the zoom floor.
         if (!hasViewport) pendingViewportFitRef.current = { source: activeSource, target: 'fit' };
         // A fresh open lands on Fit page (PDFViewer asks for it right after
@@ -2123,7 +2126,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- which pages are mounted ---------------------------------------------
   const recomputeWindow = useCallback(() => {
     const el = scrollerRef.current;
-    if (!el || !el.clientWidth || !el.clientHeight || !layout.tops.length) return;
+    if (!el || isInTabBehind(el) || !el.clientWidth || !el.clientHeight || !layout.tops.length) return;
     // layout.tops are raw-content-space; padTop shifts pages down relative to
     // scroll, so the visibility window is expressed in raw space by subtracting it.
     const padTop = layout.padTop;
@@ -2174,6 +2177,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el) return undefined;
     const update = () => {
       // A hidden tab has no viewport; keep its last measured page window.
+      if (isInTabBehind(el)) return;
       if (el.clientWidth > 0) setContainerW(el.clientWidth);
       // containerH drives padTop (vertical centering). Guard against a 0 height
       // during mount/teardown so padTop doesn't transiently center against nothing.
@@ -2219,7 +2223,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const observed = new Set();
     const measure = () => {
       raf = 0;
-      if (!el.clientWidth || !el.clientHeight) return;
+      if (isInTabBehind(el) || !el.clientWidth || !el.clientHeight) return;
       const strips = getViewerTopOverlays().filter((node) => node?.isConnected);
       topReserveRef.current = strips.some((node) => node.getAttribute?.('data-viewer-top-reserve') === 'true');
       const inset = computeTopOverlayInset(
@@ -2358,7 +2362,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const observed = new Set();
     const measure = () => {
       raf = 0;
-      if (!el.clientWidth || !el.clientHeight) return;
+      if (isInTabBehind(el) || !el.clientWidth || !el.clientHeight) return;
       const panels = getViewerSideOccluders()
         .filter((node) => node?.isConnected && node.getAttribute?.('data-viewer-occluder') === 'side');
       const next = computeSideOverlayInsets(
@@ -2382,7 +2386,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const s = scaleRef.current;
       if (Math.abs(s - lastFit.scale) > 1e-3) return; // zoomed since the fit: leave it
       const d = dimsPtRef.current[lastFit.pageIndex];
-      if (!d || !(el.clientWidth > 0)) return;
+      if (!d || isInTabBehind(el) || !(el.clientWidth > 0)) return;
       const insets = sideInsetRef.current;
       if (!shouldRefitForBand({
         pageLeft: getPageLeftAtScaleRef.current(lastFit.pageIndex, s) - el.scrollLeft,
@@ -4908,7 +4912,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el) return;
     let newScale = target;
     const isFit = target === 'fit' || target === 'fitw' || target === 'fith';
-    if (isFit && !(el.clientWidth > 0 && el.clientHeight > 0)) {
+    if (isFit && (isInTabBehind(el) || !(el.clientWidth > 0 && el.clientHeight > 0))) {
       pendingViewportFitRef.current = { source: latestActiveSourceRef.current, target, options };
       return;
     }
@@ -5041,9 +5045,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const pending = pendingViewportFitRef.current;
     const el = scrollerRef.current;
     if (!pending || pending.source !== activeSource || !pageSizes.length
-      || !(el?.clientWidth > 0 && el.clientHeight > 0)) return;
+      || isInTabBehind(el) || !(el?.clientWidth > 0 && el.clientHeight > 0)) return;
     zoomToScale(pending.target, pending.options);
   }, [activeSource, containerW, containerH, pageSizes, viewportFitRevision, zoomToScale]);
+  // Coming to the front: its size did not change (a tab behind keeps its
+  // layout), so no ResizeObserver fires. Resume a fit asked for while behind
+  // in this same frame.
+  useLayoutEffect(() => {
+    if (tabActive && pendingViewportFitRef.current) setViewportFitRevision((revision) => revision + 1);
+  }, [tabActive]);
 
   // RULED 2026-09-28 owner: History option A — clicking a History row takes
   // you to the mark: its page, zoomed so the mark fills about 40% of the part
@@ -5222,7 +5232,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (event.key !== 'PageDown' && event.key !== 'PageUp') return;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
       const el = scrollerRef.current;
-      if (!el || !el.isConnected || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
+      if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target && target !== document.body && target !== document.documentElement && !el.contains(target)) {
         if (isEditableTarget(target)) return;

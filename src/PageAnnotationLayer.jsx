@@ -5918,7 +5918,7 @@ const PageAnnotationLayer = memo(({
 
         // Find container and scroll it
         const canvasElement = canvasRef.current;
-        let containerElement = document.querySelector('[data-testid="pdf-container"]');
+        let containerElement = canvasElement?.closest?.('[data-testid="pdf-container"]') || null;
         if (!containerElement && canvasElement) {
           let parent = canvasElement.parentElement;
           while (parent && parent !== document.body) {

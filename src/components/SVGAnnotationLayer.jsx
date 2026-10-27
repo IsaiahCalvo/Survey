@@ -20,6 +20,7 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
+import { isInTabBehind } from '../utils/tabBehind.js';
 import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
@@ -1670,6 +1671,8 @@ const SVGAnnotationLayerBody = memo(({
       // Touch must stay with the native text layer so long-press selection and
       // the OS copy menu keep working after a mark has been selected.
       if (event.pointerType === 'touch') return;
+      // A layer in a tab behind keeps real rects under the pointer.
+      if (isInTabBehind(svgRef.current)) return;
       // UX: a native text drag keeps ownership until release, even when
       // it passes near the prior selection's handles (Phase 19 preserves them).
       if (event.type === 'pointermove' && event.buttons !== 0
@@ -1779,7 +1782,8 @@ const SVGAnnotationLayerBody = memo(({
     };
     const ctxOf = () => {
       const band = polyEdgeBandElRef.current;
-      return band?.isConnected ? band.__polyEdgeCtx : null;
+      // A tab behind keeps real sizes; its band must not claim the front tab's press.
+      return band?.isConnected && !isInTabBehind(band) ? band.__polyEdgeCtx : null;
     };
     let lastPointerDownAt = NaN;
     const onPointerDown = (e) => {
