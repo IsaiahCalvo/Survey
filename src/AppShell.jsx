@@ -189,7 +189,7 @@ const SurveySpacesRail = memo(SurveySpacesRailChunk.Component);
 const MemoPDFSidebar = memo(PDFSidebar);
 // One tab's Survey rail. The shell's phone requests ("open / close the Survey
 // sheet") are counters; only the front tab's rail hears a bump.
-function RightRailForTab({ api, active, mobileMode, expandRequestKey, collapseRequestKey, onCollapseChange }) {
+function RightRailForTab({ api, active, mobileMode, onUndoLastChange, expandRequestKey, collapseRequestKey, onCollapseChange }) {
   const expandBumps = useActiveOnlyCounter(expandRequestKey, active);
   const collapseBumps = useActiveOnlyCounter(collapseRequestKey, active);
   return (
@@ -197,6 +197,7 @@ function RightRailForTab({ api, active, mobileMode, expandRequestKey, collapseRe
       {...api}
       tabActive={active}
       mobileMode={mobileMode}
+      onUndoLastChange={onUndoLastChange}
       expandRequestKey={(api.expandRequestKey || 0) + expandBumps}
       collapseRequestKey={collapseBumps}
       onCollapseChange={onCollapseChange}
@@ -4782,6 +4783,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     api={api}
                     active={active}
                     mobileMode={isMobileViewer}
+                    onUndoLastChange={active ? (topToolbarApi?.onUndo || null) : null}
                     expandRequestKey={mobileSurveyRequestKey}
                     collapseRequestKey={mobileSurveyCollapseRequestKey}
                     onCollapseChange={railCollapseHandlerFor(tab.id)}

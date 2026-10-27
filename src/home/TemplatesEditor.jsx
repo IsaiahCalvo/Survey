@@ -69,7 +69,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search, EmptyState } from './HubShell';
 import { transferTemplateItems } from './templateItemTransfer';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
-import SwipeToDeleteRow from '../components/SwipeToDeleteRow.jsx';
+import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import {
   resolveTemplatesReload,
   createStableIdMint,
@@ -2003,6 +2003,29 @@ export default function TemplatesEditor({
   };
   const deleteItem = (ci, itemId) => deleteItemInModule(openMod, ci, itemId);
 
+  /* Owner 2026-10-27: slide a row left for its actions - the same handlers
+     as the row's ⋮ menu, in the select-mode order. Share is left off the
+     category and entity rows (it shares the whole template, which the
+     template row already offers). */
+  const templateSwipeActions = (t) => buildSwipeActions({
+    onDuplicate: () => duplicateTemplates(new Set([t.id])),
+    onShare: onShare ? () => onShare(t) : undefined,
+    onDelete: () => deleteTemplates(new Set([t.id])),
+    can: { delete: t.sharedFrom ? 'A template shared with you can only be archived by its owner' : true },
+  });
+  const categorySwipeActions = (cat) => buildSwipeActions({
+    onDuplicate: () => duplicateCategories(new Set([cat.id])),
+    onMove: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'move' }); },
+    onCopy: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'copy' }); },
+    onDelete: () => deleteCategories(new Set([cat.id])),
+  });
+  const entitySwipeActions = (ent) => buildSwipeActions({
+    onDuplicate: () => duplicateEntities(new Set([ent.id])),
+    onMove: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'move' }); },
+    onCopy: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }); },
+    onDelete: () => deleteEntities(new Set([ent.id])),
+  });
+
   /* --- entity-level --- */
   const addEntity = () => {
     if (!tpl) return;
@@ -2494,6 +2517,7 @@ export default function TemplatesEditor({
                     id={t.id}
                   >
                     {({ attributes, listeners, isDragging }) => (
+                    <SwipeActionsRow label={t.name} disabled={tplEdit} actions={templateSwipeActions(t)} className="tpl-swipe-row">
                     <div
                       data-drag-rearrange-row
                       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTplMenu({ id: t.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
@@ -2575,6 +2599,7 @@ export default function TemplatesEditor({
                         ><Icon name="more" size={14} /></button>
                       )}
                     </div>
+                    </SwipeActionsRow>
                     )}
                   </SortableRearrangeRow>
                 );
@@ -2787,6 +2812,7 @@ export default function TemplatesEditor({
                           box is just its text; ⋮ holds Rename / Delete. In
                           Select mode a click anywhere ticks the row.
                           [grip 24][chevron 22][name][...][count][⋮ 28] */}
+                      <SwipeActionsRow label={c.name} disabled={catEdit} actions={categorySwipeActions(c)}>
                       <div
                         data-drag-rearrange-row
                         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setCatMenu({ id: c.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
@@ -2861,6 +2887,7 @@ export default function TemplatesEditor({
                           ><Icon name="more" size={14} /></button>
                         )}
                       </div>
+                      </SwipeActionsRow>
 
                       {/* Expanded body — checklist items */}
                       <div
@@ -2888,6 +2915,7 @@ export default function TemplatesEditor({
                                 id={it.id}
                               >
                                 {({ attributes, listeners, isDragging }) => (
+                              <SwipeActionsRow label={it.text || 'Checklist item'} actions={buildSwipeActions({ onDelete: () => deleteItem(i, it.id) })} style={{ '--swipe-row-bg': 'var(--paper-deep)' }}>
                               <div
                                 data-drag-rearrange-row
                                 style={{
@@ -2918,6 +2946,7 @@ export default function TemplatesEditor({
                                   className="hub-icon-btn is-danger"
                                 ><Icon name="close" size={11} /></button>
                               </div>
+                              </SwipeActionsRow>
                                 )}
                               </SortableRearrangeRow>
                             ))}
@@ -3061,6 +3090,7 @@ export default function TemplatesEditor({
                     >
                       {({ attributes, listeners, isDragging }) => (
                       <>
+                      <SwipeActionsRow label={r.role} disabled={entityEdit || isOpen} actions={entitySwipeActions(r)}>
                       {/* Same row rules as a category (owner 2026-10-01):
                           a click on the row opens / closes its colour panel,
                           the name renames (text-width hit box), the grip
@@ -3143,6 +3173,7 @@ export default function TemplatesEditor({
                           )
                         )}
                       </div>
+                      </SwipeActionsRow>
                       {showPanel && (() => {
                         const tab = colorTab[r.id] || 'presets';
                         const layer = layerTab[r.id] || 'fill';
@@ -3257,6 +3288,7 @@ export default function TemplatesEditor({
                       return (
                         <SortableRearrangeRow key={`mobile-template-${t.id}`} id={t.id}>
                           {({ attributes, listeners, isDragging }) => (
+                            <SwipeActionsRow label={t.name} disabled={tplEdit} actions={templateSwipeActions(t)} className="templates-mobile-swipe-row">
                             <div
                               data-drag-rearrange-row
                               role="button"
@@ -3322,6 +3354,7 @@ export default function TemplatesEditor({
                                 ><Icon name="more" size={14} /></button>
                               )}
                             </div>
+                            </SwipeActionsRow>
                           )}
                         </SortableRearrangeRow>
                       );
@@ -3525,14 +3558,11 @@ export default function TemplatesEditor({
                                   ⋮ holds Rename / Delete; in Select mode a tap
                                   ticks the row.
                                   [grip 32][chevron 26][name][...][count][⋮ 36]
-                                  Owner 2026-10-02: swipe the row left for a
-                                  trash behind it - the ⋮ menu's Delete (off
-                                  in Select mode, where a tap ticks). */}
-                              <SwipeToDeleteRow
-                                label={`Delete ${c.name}`}
-                                disabled={catEdit}
-                                onDelete={() => deleteCategories(new Set([c.id]))}
-                              >
+                                  Owner 2026-10-27: swipe the row left for
+                                  Duplicate / Move / Copy / Delete behind it -
+                                  the ⋮ menu's own actions (off in Select
+                                  mode, where a tap ticks). */}
+                              <SwipeActionsRow label={c.name} disabled={catEdit} actions={categorySwipeActions(c)}>
                               <div
                                 data-drag-rearrange-row
                                 onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setCatMenu({ id: c.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
@@ -3589,7 +3619,7 @@ export default function TemplatesEditor({
                                   </span>
                                 )}
                               </div>
-                              </SwipeToDeleteRow>
+                              </SwipeActionsRow>
                               {open ? (
                                 <div className="templates-mobile-items">
                                   {items.length === 0 ? <div className="templates-mobile-empty">No checklist items yet.</div> : null}
@@ -3597,9 +3627,9 @@ export default function TemplatesEditor({
                                     {items.map((it) => (
                                       <SortableRearrangeRow key={`mobile-item-${it.id}`} id={it.id}>
                                         {({ attributes, listeners, isDragging }) => (
-                                          /* Owner 2026-10-02: swipe left for a trash
+                                          /* Owner 2026-10-02: swipe left for Delete
                                              behind the row - the same delete as its x. */
-                                          <SwipeToDeleteRow label="Delete item" onDelete={() => deleteItem(ci, it.id)}>
+                                          <SwipeActionsRow label={it.text || 'Checklist item'} actions={buildSwipeActions({ onDelete: () => deleteItem(ci, it.id) })}>
                                           <div data-drag-rearrange-row className="templates-mobile-item-row" style={customAnswers ? { gridTemplateColumns: '44px minmax(0, 1fr) auto 44px' } : undefined}>
                                             <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
                                             <input
@@ -3614,7 +3644,7 @@ export default function TemplatesEditor({
                                             {customAnswers && <ItemKindPicker phone item={it} onChange={(fields) => setItemKind(ci, it.id, fields)} />}
                                             <button type="button" aria-label="Delete item" {...tip('Delete item')} onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
-                                          </SwipeToDeleteRow>
+                                          </SwipeActionsRow>
                                         )}
                                       </SortableRearrangeRow>
                                     ))}
@@ -3743,6 +3773,7 @@ export default function TemplatesEditor({
                         <SortableRearrangeRow key={`mobile-entity-${r.id}`} id={r.id}>
                           {({ attributes, listeners, isDragging }) => (
                             <>
+                              <SwipeActionsRow label={r.role} disabled={entityEdit || isOpen} actions={entitySwipeActions(r)}>
                               {/* Same rules as a category row (owner 2026-10-01):
                                   a tap on the row opens / closes its colour
                                   panel; the name renames only while the panel
@@ -3799,6 +3830,7 @@ export default function TemplatesEditor({
                                   ><Icon name="more" size={14} /></button>
                                 )}
                               </div>
+                              </SwipeActionsRow>
                               {showPanel ? (() => {
                                 const layer = layerTab[r.id] || 'fill';
                                 const match = !!matchFill[r.id];
