@@ -49,8 +49,12 @@ const newId = () => (globalThis.crypto?.randomUUID?.()
 const EMPTY_ACCESS = Object.freeze({ canRead: false, canAdd: false, canManage: false, projectName: null });
 
 /** A sentence for a failed save. */
+const PAGE_ROWS = 1000;
+const LIBRARY_MAX_ITEMS = 2000;
+
 export function libraryErrorMessage(error) {
   const text = String(error?.message || error || '');
+  if (/other_project/.test(text)) return 'Open a document in that project to do this.';
   if (/mark_library_full/.test(text)) return 'This library is full (2000 items). Delete some first.';
   if (/row-level security|permission|42501/i.test(text)) return 'You can\'t change this library.';
   if (/too_big|payload|1048576|check constraint/i.test(text)) return 'Those marks are too big to save (the limit is about 1 MB; large images count most).';
@@ -132,6 +136,23 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
     channel = ch.on('postgres_changes', { event: 'DELETE', ...table }, onChange).subscribe();
   }
 
+  // The API hands back at most PAGE_ROWS rows a request (max_rows), and a
+  // library holds up to 2000, so read it a page at a time.
+  async function readAllRows(where) {
+    const data = [];
+    for (let from = 0; from < LIBRARY_MAX_ITEMS; from += PAGE_ROWS) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await where(supabase.from('mark_library_items').select(SELECT_COLUMNS))
+        .order('updated_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(from, Math.min(from + PAGE_ROWS, LIBRARY_MAX_ITEMS) - 1);
+      if (res.error) return { data: null, error: res.error };
+      data.push(...(res.data || []));
+      if ((res.data || []).length < PAGE_ROWS) break;
+    }
+    return { data, error: null };
+  }
+
   async function load() {
     const token = ++loadToken;
     const { userId, projectId } = state;
@@ -149,9 +170,7 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
     });
     try {
       const [personalRes, accessRes] = await Promise.all([
-        supabase.from('mark_library_items').select(SELECT_COLUMNS)
-          .eq('library', 'personal').eq('created_by', userId)
-          .order('updated_at', { ascending: false }).limit(2000),
+        readAllRows((q) => q.eq('library', 'personal').eq('created_by', userId)),
         projectId ? supabase.rpc('mark_library_project_access', { p_project_id: projectId }) : Promise.resolve({ data: null }),
       ]);
       if (token !== loadToken) return;
@@ -166,9 +185,7 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
         : EMPTY_ACCESS;
       let projectItems = [];
       if (projectId && access.canRead) {
-        const res = await supabase.from('mark_library_items').select(SELECT_COLUMNS)
-          .eq('library', 'project').eq('project_id', projectId)
-          .order('updated_at', { ascending: false }).limit(2000);
+        const res = await readAllRows((q) => q.eq('library', 'project').eq('project_id', projectId));
         if (token !== loadToken) return;
         if (res.error) throw res.error;
         projectItems = (res.data || []).map(libraryItemFromRow).filter(Boolean);
@@ -280,9 +297,14 @@ export function createMarkLibraryStore({ supabase = defaultSupabase, available =
 
     /** Save new items: [{ library, name, tags, payload }]. Returns the saved items. */
     async addItems(entries) {
-      const rows = (entries || []).map((entry) => libraryRowFromItem({ ...entry, projectId: state.projectId }));
+      const rows = (entries || []).map((entry) => libraryRowFromItem({ ...entry, projectId: entry.projectId ?? state.projectId }));
       if (rows.some((row) => libraryPayloadBytes(row.payload) > LIBRARY_PAYLOAD_MAX_BYTES)) {
         throw new Error('too_big');
+      }
+      // An entry that names its project (an Undo of a delete) only goes back
+      // to that project, never into whichever one is open now.
+      if (rows.some((row) => row.library === 'project' && row.project_id !== state.projectId)) {
+        throw new Error('other_project');
       }
       if (rows.some((row) => row.library === 'project') && !(state.projectId && state.access.canAdd)) {
         throw new Error('permission');

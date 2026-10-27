@@ -247,7 +247,7 @@ export default function MarkLibraryPanel({ phone = false }) {
       action: {
         label: 'Undo',
         onClick: () => run(() => markLibraryStore.addItems(removed.map((it) => ({
-          library: it.library, name: it.name, tags: it.tags, payload: it.payload,
+          library: it.library, projectId: it.projectId ?? null, name: it.name, tags: it.tags, payload: it.payload,
         })))),
       },
     });

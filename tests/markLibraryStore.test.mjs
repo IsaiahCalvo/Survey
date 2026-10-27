@@ -26,7 +26,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // A tiny stand-in for supabase-js: one table, eq/in filters, insert/update/
 // delete returning rows, an RPC and a realtime channel the test can fire.
-function fakeSupabase({ access = { can_read: true, can_add: true, can_manage: false, project_name: 'Tower B' }, me = 'me' } = {}) {
+function fakeSupabase({ access = { can_read: true, can_add: true, can_manage: false, project_name: 'Tower B' }, me = 'me', maxRows = 1000 } = {}) {
   const rows = [];
   const handlers = [];
   let seq = 0;
@@ -34,7 +34,9 @@ function fakeSupabase({ access = { can_read: true, can_add: true, can_manage: fa
     const filters = [];
     let op = 'select';
     let patch = null;
+    let window = null;
     const api = {
+      range(from, to) { window = [from, to]; return api; },
       select() { return api; },
       eq(col, val) { filters.push((r) => r[col] === val); return api; },
       in(col, vals) { filters.push((r) => vals.includes(r[col])); return api; },
@@ -58,7 +60,9 @@ function fakeSupabase({ access = { can_read: true, can_add: true, can_manage: fa
           hit.forEach((r) => rows.splice(rows.indexOf(r), 1));
           return resolve({ data: hit.map((r) => ({ id: r.id })), error: null });
         }
-        return resolve({ data: hit, error: null });
+        // Like PostgREST: the asked-for range, never more than max_rows.
+        const page = window ? hit.slice(window[0], window[1] + 1) : hit;
+        return resolve({ data: page.slice(0, maxRows), error: null });
       },
     };
     return api;
@@ -170,4 +174,29 @@ test('error sentences', () => {
   assert.match(libraryErrorMessage({ message: 'new row violates row-level security policy' }), /can't change/);
   assert.match(libraryErrorMessage(new Error('too_big')), /too big/);
   assert.match(libraryErrorMessage(new Error('Failed to fetch')), /connection/);
+});
+
+test('a library bigger than one API page loads in full', async () => {
+  const supabase = fakeSupabase({ maxRows: 1000 });
+  for (let i = 0; i < 1500; i += 1) {
+    supabase.rows.push({ id: `r${i}`, library: 'personal', project_id: null, created_by: 'me', name: `Item ${i}`, tags: [], payload: payload(), updated_at: String(i) });
+  }
+  const store = createMarkLibraryStore({ supabase, available: () => true });
+  store.setContext({ userId: 'me', projectId: null });
+  for (let i = 0; i < 6; i += 1) await tick(); // eslint-disable-line no-await-in-loop
+  assert.equal(store.getState().personal.items.length, 1500);
+});
+
+test('undoing a delete puts a project item back in its own project, never the open one', async () => {
+  const supabase = fakeSupabase();
+  const store = createMarkLibraryStore({ supabase, available: () => true });
+  store.setContext({ userId: 'me', projectId: 'p1' });
+  await tick(); await tick();
+  await assert.rejects(
+    store.addItems([{ library: 'project', projectId: 'p2', name: 'From A', payload: payload() }]),
+    /other_project/,
+  );
+  assert.equal(supabase.rows.length, 0);
+  const [back] = await store.addItems([{ library: 'project', projectId: 'p1', name: 'From A', payload: payload() }]);
+  assert.equal(back.projectId, 'p1');
 });
