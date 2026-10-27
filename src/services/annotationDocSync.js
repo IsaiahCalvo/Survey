@@ -503,6 +503,8 @@ export async function openAnnotationDoc({
     // Cold open: the snapshot, then any later updates, waiting to go into
     // localPersistenceDoc once the open is done (deferSnapshotToLocalPersistence).
     deferredPersistence: null,
+    // The open's clean-cache receipt, written once the open is done (writeOpenReceipt).
+    openReceiptPending: false,
     onLocalPersistenceUpdate: null,
     map: getAnnotationsMap(activeDoc),
     lastSeq: 0,            // highest annotation_updates.seq we've applied
@@ -982,6 +984,7 @@ export async function openAnnotationDoc({
     // either sees this opening state or its bumped incarnation rejects open.
     registerActiveState(state);
     state.openComplete = true;
+    if (state.openReceiptPending) writeOpenReceiptWhenIdle(state);
     if (state.deferredPersistence) flushDeferredPersistenceWhenIdle(state);
   } catch (err) {
     abortBackendPrefetch(state);
@@ -2022,6 +2025,7 @@ async function settleAcceptedRecord(
     state.acceptedEditEpoch,
     Number(record.editEpoch) || 0,
   );
+  await writeOpenReceipt(state);
   try {
     const token = newCleanCheckpointToken();
     const outcome = {};
@@ -2664,17 +2668,40 @@ async function loadFromBackend(state) {
     if (!state.lastSnapshotBytes) state.lastSnapshotBytes = Math.round(state.cleanCheckpointByteLength / 4);
     return;
   }
-  // One acknowledged custom IndexedDB transaction is the clean-cache receipt.
-  // y-indexeddb's update observer is fire-and-forget and cannot authorize
-  // deleting an outbox record or claiming crash durability by call order.
+  // Open speed (2026-10-27): the receipt below encodes every mark and writes
+  // them to IndexedDB (~0.5 s on the big set, cold), and the open waited for
+  // it, though only the NEXT open reads it. It is written once this open is
+  // done (writeOpenReceiptWhenIdle), or at close. Its coverage, identity and
+  // encoding are still taken in one tick, so it claims exactly what it holds.
+  if (!state.lastSnapshotBytes && state.cleanCheckpointByteLength) {
+    state.lastSnapshotBytes = Math.round(state.cleanCheckpointByteLength / 4);
+  }
+  state.openReceiptPending = true;
+}
+
+// One acknowledged custom IndexedDB transaction is the clean-cache receipt.
+// y-indexeddb's update observer is fire-and-forget and cannot authorize
+// deleting an outbox record or claiming crash durability by call order.
+// Written once: when the open is done, at close, or first thing before any
+// other write of this device's saved copy (a settled row's compaction, a
+// written snapshot), so the saved copy changes in the same order as before.
+// Never rejects.
+function writeOpenReceipt(state) {
+  if (state.openReceiptPending) {
+    state.openReceiptPending = false;
+    state.openReceiptWrite = writeOpenReceiptNow(state).catch((error) => {
+      // Best effort, as any later compaction: the next open reads the cloud.
+      console.warn('[annotationDocSync] saving the opened copy locally failed', error?.message);
+    });
+  }
+  return state.openReceiptWrite || Promise.resolve();
+}
+
+async function writeOpenReceiptNow(state) {
   const acceptedUpdate = encodeSnapshot(state.acceptedDoc);
   // The checkpoint body was not downloaded (already held locally): estimate
   // its gzipped size for the checkpoint debounce (w30; ~4:1 on real marks).
   if (!state.lastSnapshotBytes) state.lastSnapshotBytes = Math.round(acceptedUpdate.length / 4);
-  state.acceptedEncoding = {
-    update: acceptedUpdate,
-    snapshot: Y.snapshot(state.acceptedDoc),
-  };
   const token = newCleanCheckpointToken();
   const outcome = {};
   const compacted = await state.outbox?.compactAccepted?.(
@@ -2695,6 +2722,13 @@ async function loadFromBackend(state) {
     },
   );
   noteCleanCompaction(state, compacted, token, outcome);
+}
+
+async function writeOpenReceiptWhenIdle(state) {
+  await waitForIdle(3000);
+  // A closing handle writes it itself, before its outbox closes.
+  if (state.destroyed || state.closePromise) return;
+  await writeOpenReceipt(state);
 }
 
 // ---- clean checkpoint bookkeeping (w29) ----------------------------------
@@ -2743,6 +2777,7 @@ function newCleanCheckpointToken() {
 // save here.
 async function recordWrittenSnapshotInCleanState(state, update, covered, identity, { transferUpdate = false } = {}) {
   if (!covered || !update || typeof state.outbox?.compactAccepted !== 'function') return;
+  await writeOpenReceipt(state);
   const token = newCleanCheckpointToken();
   const outcome = {};
   try {
@@ -7536,7 +7571,9 @@ function buildHandle(state) {
           );
         } catch { /* */ }
       }
-      // A close soon after a cold open: fill the offline copy first.
+      // A close soon after an open: write its receipt and fill the offline
+      // copy first.
+      await writeOpenReceipt(state);
       flushDeferredPersistence(state);
       destroyLocalPersistence(state);
       try { await state.outbox?.close?.(); } catch { /* */ }

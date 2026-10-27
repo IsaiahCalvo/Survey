@@ -1213,6 +1213,8 @@ test('authoritative WAL identity settles only the exact actor outbox receipt', a
 
   assert.equal(getMetaValue(doc, 'accepted'), 'cloud-receipt');
   assert.equal((await outbox.list(documentId, actorUserId)).length, 0);
+  // The open's clean-cache receipt is written once the open is done (idle).
+  await new Promise((resolve) => setTimeout(resolve, 20));
   const cleanState = await outbox.loadCleanState(documentId, actorUserId);
   assert.ok(cleanState.checkpointUpdate, 'exact receipt is durably compacted into clean state');
   const cleanDoc = new Y.Doc();

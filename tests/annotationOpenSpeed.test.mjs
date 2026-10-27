@@ -550,7 +550,9 @@ test('a reopen with nothing new since the saved copy writes no receipt; a new cl
   const third = await open(alice, { documentId, outboxStore: outbox, clientId: 'a3' });
   try {
     assert.deepEqual(ids(third.getByPage()), ['r1', 'r2', 'r3']);
-    assert.ok(compactions.includes(true), 'a forced receipt is written when the cloud has something new');
+    assert.ok(!compactions.includes(true), 'the open itself does not wait for the receipt');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(compactions.includes(true), 'a forced receipt is written once the open is done, when the cloud has something new');
   } finally {
     await third.destroy();
   }
@@ -564,4 +566,32 @@ test('a reopen with nothing new since the saved copy writes no receipt; a new cl
   } finally {
     await fourth.destroy();
   }
+});
+
+test('a close right after the open still writes its receipt, holding what the open read', async () => {
+  const documentId = 'open-speed-receipt-at-close';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const outbox = createMemoryAnnotationOutbox();
+  const first = await open(alice, { documentId, outboxStore: outbox, clientId: 'a1' });
+  first.applyByPage({ 1: { objects: [rect('r1')] } });
+  await first.drain();
+  assert.equal(await first.flushSnapshot(), true);
+  await first.destroy();
+
+  // Someone else adds r2 after that snapshot row.
+  const bob = cloud.makeClient('user-b');
+  const other = await open(bob, { documentId, outboxStore: createMemoryAnnotationOutbox(), clientId: 'b1' });
+  other.applyByPage({ 1: { objects: [...other.getByPage()[1].objects, rect('r2')] } });
+  await other.drain();
+  await other.destroy();
+
+  // Alice opens (reads r2 from the cloud) and closes at once.
+  const second = await open(alice, { documentId, outboxStore: outbox, clientId: 'a2' });
+  assert.deepEqual(ids(second.getByPage()), ['r1', 'r2']);
+  await second.destroy();
+  const clean = await outbox.loadCleanState(documentId, 'user-a');
+  const saved = new Y.Doc();
+  Y.applyUpdate(saved, new Uint8Array(clean.checkpointUpdate));
+  assert.deepEqual([...saved.getMap('marks').keys()].sort(), ['r1', 'r2'], 'the close wrote the receipt');
 });
