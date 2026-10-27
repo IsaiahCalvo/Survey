@@ -9,9 +9,10 @@
  * layers carrying the template. With no template open (or none that can be
  * saved), shapes are kept in this browser instead.
  *
- * The Smart fill shapes menu (SmartFillShapesMenu.jsx) lists, renames and
- * removes them; `save` takes an updater (list -> list) so all three go
- * through the one template write.
+ * Teaching new shapes is on hold (owner 2026-10-27): the viewer no longer
+ * offers Teach a tag shape, the shapes menu or Find more. Shapes already
+ * saved still help a tap, and the template editor still lists and removes
+ * them. `save` takes an updater (list -> list), one template write.
  */
 import { useSyncExternalStore } from 'react';
 import { isTemplateShape, MAX_TEMPLATE_SHAPES } from './smartFillTemplates.js';

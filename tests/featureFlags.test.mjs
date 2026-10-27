@@ -26,14 +26,33 @@ test('flags: off by default, unknown flags always off', () => {
   assert.equal(isFeatureOn('no-such-flag', { storage, env: { VITE_RELEASE_CHANNEL: 'nightly' } }), false);
 });
 
-test('flags: nightly turns every flag on, but a browser override still wins', () => {
+test('flags: nightly turns every beta flag on, but a browser override still wins', () => {
   const env = { VITE_RELEASE_CHANNEL: 'nightly' };
   assert.equal(releaseChannel(env), 'nightly');
   assert.equal(releaseChannel({}), 'stable');
-  for (const key of Object.keys(FEATURE_FLAGS)) {
+  for (const key of Object.keys(FEATURE_FLAGS).filter(isBetaFlag)) {
     assert.equal(isFeatureOn(key, { storage: memoryStorage(), env }), true, key);
   }
   assert.equal(isFeatureOn('smart-fill', { storage: memoryStorage({ 'survey.flag.smart-fill': '0' }), env }), false);
+});
+
+test('flags: nightly matches stable on rollout flags (owner 2026-10-27: nightly = live + beta)', () => {
+  const rollout = Object.keys(FEATURE_FLAGS).filter((key) => !isBetaFlag(key));
+  assert.ok(rollout.includes('pro-lock'));
+  const nightly = { VITE_RELEASE_CHANNEL: 'nightly', MODE: 'production' };
+  const stable = { MODE: 'production' };
+  for (const key of rollout) {
+    for (const storage of [
+      memoryStorage(),
+      memoryStorage({ [FLAG_CACHE_KEY]: JSON.stringify({ [key]: true }) }),
+      memoryStorage({ [FLAG_CACHE_KEY]: JSON.stringify({ [key]: false }) }),
+      memoryStorage({ [`survey.flag.${key}`]: '1' }),
+    ]) {
+      assert.equal(isFeatureOn(key, { storage, env: nightly }), isFeatureOn(key, { storage, env: stable }), key);
+    }
+  }
+  // pro-lock off at /flags stays off on nightly, so nothing is locked there.
+  assert.equal(isFeatureOn('pro-lock', { storage: memoryStorage(), env: nightly }), false);
 });
 
 test('flags: older smart fill key and build env var still work on a dev server', () => {
