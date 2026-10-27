@@ -1356,6 +1356,7 @@ export default function TemplatesEditor({
       const request = takeTemplateEditorRequest();
       if (!request?.templateId) return;
       setSearch('');
+      setTemplateContentSearch('');
       setSelected(request.templateId);
       setOpenMod(0);
       setOpenCat(-1);
