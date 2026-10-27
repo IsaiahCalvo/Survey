@@ -13,6 +13,6 @@ test('phone rail survey discs carry an invisible tap pad over their slot', () =>
   assert.match(CSS, /\.mobile-pdf-tools__survey-entities button \{\s*position: relative;/);
 });
 
-test('toast action (Smart fill Apply) keeps its 44px phone tap pad', () => {
+test('toast action (Undo and the like) keeps its 44px phone tap pad', () => {
   assert.match(TOAST, /\.app-toast__action::after \{[^}]*width: max\(100%, 44px\);[^}]*height: max\(100%, 44px\);/);
 });

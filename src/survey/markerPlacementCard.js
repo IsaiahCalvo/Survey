@@ -4,8 +4,8 @@
  * to its right, else its left, else below it - kept inside the window, so
  * the card never covers the marker it asks about. With no marker on screen
  * it is centred. It also stays out of the bottom band where the toasts sit
- * (ToastHost.css): Smart fill's "Survey Marker added… Find more" toast opens
- * with the card and used to lie over its lowest rows.
+ * (ToastHost.css): a toast that opens with the card (Smart fill's old "Find
+ * more" one did) used to lie over its lowest rows.
  *
  * @param {{left, top, right, bottom}|null} rect  the marker's screen box
  * @param {{width?: number, height?: number}} card the card's measured size

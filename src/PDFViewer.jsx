@@ -555,7 +555,6 @@ import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/re
 import { buildSheetLayout, buildSheetRow, excelCellAnswer, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
 import { APP_ONLY_KINDS, answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
-import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
 import { setActiveSmartFillTemplate } from './survey/smartFillTemplateShapes.js';
 import {
   buildOcrCacheKey,
@@ -32003,9 +32002,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const templateId = selectedTemplate.supabaseId || selectedTemplate.id;
     setSelectedTemplate(updatedTemplate);
     setSelectedCategoryId((current) => categoryIds.includes(current) ? null : current);
-    notifySmartFillCategoriesDeleted(categoryIds, Object.entries(surveyMarkersRef.current || {})
-      .filter(([, marker]) => marker?.moduleId === moduleId && categoryIds.includes(marker?.categoryId))
-      .map(([annotationId]) => annotationId));
 
     if (handleTemplatesChange && appTemplates) {
       handleTemplatesChange(appTemplates.map((template) => (
@@ -33158,14 +33154,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         entityColor: chosenEntityColor,
       } : {})
     };
-    // Phone: a Smart fill marker places at once and keeps the tool armed and
-    // the sheet shut, so its "Find more" toast survives and the found
-    // outlines stay tappable. An agent's marker places at once too.
-    const smartFillOnPhone = mobileMode && createOptions?.smartFill === true;
-    const placeAtOnce = smartFillOnPhone || createOptions?.direct === true;
-    if (placeAtOnce && selectedCategoryId && (chosenEntity || !(selectedTemplate.entities || []).length)) {
-      commitMobileSurveyMarker(placedMarker, selectedCategoryId, { openPanel: !smartFillOnPhone });
-      if (!smartFillOnPhone) setShowSurveyPanel(true);
+    // An agent's marker places at once. A Smart fill marker goes through the
+    // same card as a drawn box (owner 2026-10-27: "work the same as the
+    // others").
+    if (createOptions?.direct === true && selectedCategoryId && (chosenEntity || !(selectedTemplate.entities || []).length)) {
+      commitMobileSurveyMarker(placedMarker, selectedCategoryId, { openPanel: true });
+      setShowSurveyPanel(true);
     } else if (showSurveyPanel) {
       // Owner 2026-10-26: every drawn marker opens its card beside it - the
       // category (the armed one, the first by default), module and entity are

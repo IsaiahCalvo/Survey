@@ -9,7 +9,11 @@
 // A flag is on for this browser when the first of these that answers says so:
 //   0. a beta flag in a stable production build: always off
 //   1. localStorage 'survey.flag.<key>' = '1' / '0' (or the flag's older key)
-//   2. the nightly build (VITE_RELEASE_CHANNEL=nightly) turns every flag on
+//   2. the nightly build (VITE_RELEASE_CHANNEL=nightly) turns every BETA flag
+//      on. Rollout flags go on to steps 3-5 there as on stable, so Survey
+//      Nightly is the live app plus the beta features and nothing else
+//      (owner 2026-10-27: nightly turned 'pro-lock' on, so Survey tools
+//      were locked there and not on surveytool.app)
 //   3. a build-wide env var, where the flag has one
 //   4. the server's answer for this person, saved from the last load
 //      (feature_flags table: off, testers only, or on for everyone)
@@ -150,7 +154,7 @@ export function isFeatureOn(key, { storage = safeStorage(), env = readEnv() } = 
   if (own !== '1' && own !== '0' && def.legacyKey) own = read(storage, def.legacyKey);
   if (own === '1') return true;
   if (own === '0') return false;
-  if (releaseChannel(env) === 'nightly') return true;
+  if (def.stage === 'beta' && releaseChannel(env) === 'nightly') return true;
   if (def.env && env?.[def.env] === '1') return true;
   const cached = readCache(storage);
   return cached?.[key] === true;

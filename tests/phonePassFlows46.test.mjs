@@ -11,8 +11,9 @@ import test from 'node:test';
  *    column's "more below" fade is a mask-image, which clips every descendant
  *    (position: fixed ones too). On a short phone the rail overflows, the mask
  *    goes on, and the menu was masked out: invisible and untappable.
- * 2. Tapping the Smart fill preview toast away (the only Cancel the phone
- *    toast offers) left the blue preview outline on the page.
+ * 2. Tapping the Smart fill preview toast away left the blue preview outline
+ *    on the page. (Since 2026-10-27 a Smart fill tap places the marker at
+ *    once, so there is no preview left to dismiss.)
  * 3. In the viewer the sticky toast covered the Survey strip's Done and the
  *    rail's first chip (Pan).
  */
@@ -39,12 +40,10 @@ test('tapping a toast away tells listeners which toast the user dismissed', () =
   assert.match(host, /store\.dismiss\(t\.id\);\s*window\.dispatchEvent\(new CustomEvent\(TOAST_USER_DISMISS_EVENT, \{ detail: \{ id: t\.key \} \}\)\);/);
 });
 
-test('dismissing the Smart fill preview toast takes the preview outline down', () => {
+test('a Smart fill tap places its marker at once: no preview to Apply or dismiss (owner 2026-10-27)', () => {
   const layer = read('src/components/SVGAnnotationLayer.jsx');
-  assert.match(layer, /window\.addEventListener\(TOAST_USER_DISMISS_EVENT, onUserDismiss\)/);
-  assert.match(layer, /event\?\.detail\?\.id === 'smart-fill-preview'\) setSmartFillPreview\(null\)/);
-  // The preview toast still uses that id.
-  assert.match(layer, /id: 'smart-fill-preview',/);
+  assert.doesNotMatch(layer, /smart-fill-preview|setSmartFillPreview/);
+  assert.match(layer, /onSurveyMarkerCreated\(markerBounds, \{ smartFill: true \}\);/);
 });
 
 test('phone toasts land under the tool-settings / Survey strip and right of the rail', () => {
