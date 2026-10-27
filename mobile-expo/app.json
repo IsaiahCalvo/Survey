@@ -23,7 +23,7 @@
         "NSMicrophoneUsageDescription": "Survey uses the microphone to record audio notes and the sound of videos for your Survey Markers.",
         "NSPhotoLibraryUsageDescription": "Survey opens your photo library so you can add photos and videos to your Survey Markers."
       },
-      "runtimeVersion": "exposdk:57.0.0"
+      "runtimeVersion": "exposdk:58.0.0"
     },
     "android": {
       "package": "com.kalvoe.survey.expo",
