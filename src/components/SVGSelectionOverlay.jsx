@@ -13,7 +13,8 @@
  * Phase 9 Plan 01: Selection overlay foundation.
  */
 import { memo } from 'react';
-import { getCursorForHandle, clampInverseScale } from '../utils/svgTransformMath';
+import { clampInverseScale } from '../utils/svgTransformMath';
+import { resizeHandleCursor, ROTATE_HANDLE_CURSOR } from '../utils/handleCursors.js';
 import { getHandlePositions } from '../utils/svgBoundingBox';
 import {
   getAdaptiveSelectionHandleSpec,
@@ -86,6 +87,10 @@ const SVGSelectionOverlay = memo(({
   // let the press bubble to that handler instead of calling onHandleDrag.
   handlePartAttributes = null, // (handleId) => object | null
   delegateHandlePress = false,
+  // Extra turn (degrees) applied by a parent <g> around this overlay - the
+  // group frame turns that way while bbox.angle stays 0 - so each resize
+  // grabber's cursor arrow still points the way that grabber pulls on screen.
+  cursorRotationOffset = 0,
 }) => {
   // UX 2026-09-16: hit pads grow on a finger (44 pt) and stay tight on a mouse
   // (the grabber + 4 px, min 20 px - w63); a pen gets 32 (touch audit
@@ -102,6 +107,9 @@ const SVGSelectionOverlay = memo(({
   });
 
   const { left, top, width, height, angle } = bbox;
+  // Drawboard: a resize grabber's cursor is a double arrow turned to the exact
+  // direction it pulls on screen (utils/handleCursors.js).
+  const cursorAngle = (angle || 0) + (Number(cursorRotationOffset) || 0);
   // Zoom-out balloon fix: clamp the inverseScale used for VISUAL SIZING so
   // halos/handles/shadows stop growing once zoomed out past the cap. At rest
   // (inverseScale ≈ 1) and on zoom-in (< 1) the clamp is a no-op, so the
@@ -342,13 +350,13 @@ const SVGSelectionOverlay = memo(({
               top of its own pad and still wins a direct hit. */}
           {!horizontalResizeOnly && !hideResizeHandles && cornerHandles
             .filter((id) => visibleResizeHandles.has(id))
-            .map((id) => renderHitPad(id, handles[id], resizeHitPad, getCursorForHandle(id, angle || 0)))}
+            .map((id) => renderHitPad(id, handles[id], resizeHitPad, resizeHandleCursor(id, cursorAngle)))}
           {!horizontalResizeOnly && !hideResizeHandles && ['mt', 'mb']
             .filter((id) => visibleResizeHandles.has(id))
-            .map((id) => renderHitPad(id, edgeHandlePos(id), resizeHitPad, getCursorForHandle(id, angle || 0)))}
+            .map((id) => renderHitPad(id, edgeHandlePos(id), resizeHitPad, resizeHandleCursor(id, cursorAngle)))}
           {!horizontalResizeOnly && !hideResizeHandles && ['ml', 'mr']
             .filter((id) => visibleResizeHandles.has(id))
-            .map((id) => renderHitPad(id, edgeHandlePos(id), resizeHitPad, getCursorForHandle(id, angle || 0)))}
+            .map((id) => renderHitPad(id, edgeHandlePos(id), resizeHitPad, resizeHandleCursor(id, cursorAngle)))}
 
           {/* Corner handles (tl, tr, bl, br) - circles */}
           {!horizontalResizeOnly && !hideResizeHandles && cornerHandles.filter((id) => visibleResizeHandles.has(id)).map((id) => {
@@ -366,7 +374,7 @@ const SVGSelectionOverlay = memo(({
                 strokeWidth={handleMetrics.cornerStrokeWidth}
                 style={{
                   filter: cornerShadow,
-                  cursor: getCursorForHandle(id, angle || 0),
+                  cursor: resizeHandleCursor(id, cursorAngle),
                   pointerEvents: 'auto',
                 }}
                 onPointerDown={pressHandler(id)}
@@ -394,7 +402,7 @@ const SVGSelectionOverlay = memo(({
                 strokeWidth={geom.strokeWidth}
                 style={{
                   filter: geom.shadow,
-                  cursor: getCursorForHandle(id, angle || 0),
+                  cursor: resizeHandleCursor(id, cursorAngle),
                   pointerEvents: 'auto',
                 }}
                 onPointerDown={pressHandler(id)}
@@ -422,7 +430,7 @@ const SVGSelectionOverlay = memo(({
                     rx={textRangeHitSize / 2}
                     fill="transparent"
                     style={{
-                      cursor: getCursorForHandle(id, angle || 0),
+                      cursor: resizeHandleCursor(id, cursorAngle),
                       pointerEvents: 'auto',
                       touchAction: 'none',
                     }}
@@ -448,7 +456,7 @@ const SVGSelectionOverlay = memo(({
                   strokeWidth={geom.strokeWidth}
                   style={{
                     filter: geom.shadow,
-                    cursor: getCursorForHandle(id, angle || 0),
+                    cursor: resizeHandleCursor(id, cursorAngle),
                     pointerEvents: horizontalResizeOnly ? 'none' : 'auto',
                   }}
                   onPointerDown={horizontalResizeOnly ? undefined : pressHandler(id)}
@@ -469,7 +477,7 @@ const SVGSelectionOverlay = memo(({
           >
             {/* Invisible hit pad — same grab area rule as the resize
                 grabbers, drawn under the visible circle. */}
-            {renderHitPad('mtr', handles.mtr, rotationHitPad, 'crosshair')}
+            {renderHitPad('mtr', handles.mtr, rotationHitPad, ROTATE_HANDLE_CURSOR)}
             {/* UX 2026-10-02 (owner): no connector line to the box — the
                 grabber floats on its own; position and hit pad unchanged. */}
             {/* Rotation circle */}
@@ -482,7 +490,7 @@ const SVGSelectionOverlay = memo(({
               strokeWidth={1 * is}
               style={{
                 filter: rotationShadow,
-                cursor: 'crosshair',
+                cursor: ROTATE_HANDLE_CURSOR,
                 pointerEvents: 'auto',
               }}
               onPointerDown={(e) => {

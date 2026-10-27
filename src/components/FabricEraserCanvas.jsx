@@ -265,6 +265,7 @@ const getCalloutHitIds = ({
       knee,
       arrowTip,
       0,
+      callout.textBoxAnchor || null,
     );
     // Owner ruling 2026-09-02 ("must touch the ink"): the callout box counts
     // only on its frame (or fill) or its text — a stroke running beside the

@@ -68,6 +68,7 @@ import {
 } from './pdfStampProxy.js';
 import { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 import { maxOf, minOf } from './arrayExtrema.js';
+import { normalizeCalloutBoxAnchor } from './calloutGeometry.js';
 export { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 
 const pdfImportDebug = (...args) => {
@@ -5792,6 +5793,9 @@ function normalizeImportedAppCallout(metadata) {
     textBoxHeight,
     text: metadata.text || '',
     style: metadata.style && typeof metadata.style === 'object' ? metadata.style : {},
+    ...(normalizeCalloutBoxAnchor(metadata.textBoxAnchor)
+      ? { textBoxAnchor: normalizeCalloutBoxAnchor(metadata.textBoxAnchor) }
+      : {}),
     ...(metadata.moduleId ? { moduleId: metadata.moduleId } : {}),
     ...(metadata.regionId ? { regionId: metadata.regionId } : {}),
     ...(metadata.spaceId ? { spaceId: metadata.spaceId } : {}),

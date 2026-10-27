@@ -6813,6 +6813,7 @@ const calloutFlattenParts = (calloutObj, fonts = null) => {
   // rescue — not a fixed left-middle anchor, which flattened the knee away.
   const connection = calculateCalloutConnection(
     textBox.left, textBox.top, textBox.width, textBox.height, knee, arrowTip, strokeWidth,
+    calloutObj.originalCallout?.textBoxAnchor || null,
   );
   const line1Start = connection.line1Start;
   const effectiveKnee = connection.effectiveKnee || knee;

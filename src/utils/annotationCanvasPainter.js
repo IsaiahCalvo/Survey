@@ -1573,6 +1573,7 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
     knee,
     arrowTip,
     0,
+    callout.textBoxAnchor || null,
   );
 
   const arrowheadStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;

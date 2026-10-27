@@ -119,7 +119,11 @@ import { canModify, canSelect, isUserLocked } from '../lib/collab/permissionScop
 // Values match combined-tools FabricPDFCanvas collision logic (reference at
 // ~/Desktop/combined-tools/src/lib/calloutGeometry.ts). See isCalloutDragSafe
 // helper below for rule set + rationale.
-import { calculateCalloutConnection } from '../utils/calloutGeometry.js';
+import {
+  calculateCalloutConnection,
+  calloutDrawnBoxHeight,
+  projectPointToCalloutBoxAnchor,
+} from '../utils/calloutGeometry.js';
 import { HANDLE_RADIUS } from '../utils/handleStyle.js';
 import {
   beginAnnotationGesture,
@@ -492,7 +496,7 @@ export function useSVGInteraction({
     // mode === 'callout-part'. See 14-CONTEXT.md Area 3 (Phase 14 drag MVP).
     // Four-place invariant: these fields are initialized here, SET at
     // pointerdown, READ at pointermove, and RESET at pointerup.
-    partType: null,                 // 'arrowTip' | 'knee' | 'textBox' | 'whole'
+    partType: null,                 // 'arrowTip' | 'knee' | 'textBox' | 'whole' | 'attach' | 'segTip' | 'segBox'
     calloutId: null,
     originalCalloutPositions: null, // snapshot of arrowTip/knee/textBoxPosition at drag-start
     // UX: Phase 15 UAT-3 Issue 3 — tracks the most recent callout state that
@@ -550,6 +554,20 @@ export function useSVGInteraction({
       && current.pointerType === 'pen'
       && pointerType === 'touch';
   }, []);
+
+  // A box select belongs to the pointer that began it. A finger's tap that
+  // picked a mark (rule 3) arms one, and when the pick re-renders the page
+  // the tap's release can land outside this layer and never end it; the next
+  // finger then had its drag swallowed by that stale box (phone callout move,
+  // 2026-10-26). A press from another pointer drops it, as the lasso hands
+  // off above; a resting palm never drops a pen's box.
+  const dropForeignMarquee = useCallback((e) => {
+    const current = marqueeStateRef.current;
+    if (!current || current.pointerId == null || current.pointerId === e.pointerId) return;
+    if (current.pointerType === 'pen' && e.pointerType === 'touch') return;
+    try { svgRef.current?.releasePointerCapture?.(current.pointerId); } catch (_) { /* optional */ }
+    applyMarqueeState(null);
+  }, [applyMarqueeState, svgRef]);
 
   // UX: when a drag commits (move or group-move with > 2px delta), stamp
   // this ref with `Date.now()`. The browser's native `dblclick` event fires
@@ -1499,6 +1517,7 @@ export function useSVGInteraction({
         altHeld: false,
         active: false,
         pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
         keepOnClick: true,
       });
     }
@@ -1508,6 +1527,7 @@ export function useSVGInteraction({
 
   const handleAnnotationPointerDown = useCallback((e, index) => {
     e.stopPropagation();
+    dropForeignMarquee(e);
     if (dragStateRef.current?.active && dragStateRef.current.annotationIndex === index) {
       return;
     }
@@ -1857,7 +1877,7 @@ export function useSVGInteraction({
         ensureMoveStart(dragStateRef.current, annotations?.objects);
       }
     }
-  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount, activeTool, beginAreaSelectFromMark]);
+  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount, activeTool, beginAreaSelectFromMark, dropForeignMarquee]);
 
   /**
    * Hover enter: show blue outline preview.
@@ -1983,6 +2003,7 @@ export function useSVGInteraction({
    * and the SVG root catches clicks anywhere inside them.
    */
   const handleSvgPointerDown = useCallback((e) => {
+    dropForeignMarquee(e);
     const activeTextRangeDrag = dragStateRef.current;
     if (
       activeTextRangeDrag?.mode === 'text-markup-horizontal'
@@ -2401,6 +2422,7 @@ export function useSVGInteraction({
         altHeld: !!e.altKey,
         active: false,
         pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
       });
       try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
       // Intentionally no deselectAll() here. If the user releases under
@@ -2413,7 +2435,7 @@ export function useSVGInteraction({
       deselectAll();
       clearSelectedMarkers();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark, dropForeignMarquee]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -2448,7 +2470,7 @@ export function useSVGInteraction({
     // can't escape the page), and flip `active` once we cross the 5 px
     // min-drag threshold. Short-circuits before annotation drag math.
     const mq = marqueeStateRef.current;
-    if (mq) {
+    if (mq && (mq.pointerId == null || mq.pointerId === e.pointerId)) {
       const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
       const clampedX = Math.max(0, Math.min(pageWidth, pt.x));
       const clampedY = Math.max(0, Math.min(pageHeight, pt.y));
@@ -4114,6 +4136,53 @@ export function useSVGInteraction({
             y: original.textBoxPosition.y + dyNorm,
           };
           break;
+        // Owner 2026-10-26: the grabber halfway along a leader segment moves
+        // that segment as one piece. Arrow-to-knee carries the tip and the
+        // knee (the box stays); knee-to-box carries the knee and the box (the
+        // tip stays on what it points at). The other segment stretches.
+        case 'segTip':
+          proposed.arrowTip = {
+            x: original.arrowTip.x + dxNorm,
+            y: original.arrowTip.y + dyNorm,
+          };
+          proposed.knee = {
+            x: original.knee.x + dxNorm,
+            y: original.knee.y + dyNorm,
+          };
+          break;
+        case 'segBox':
+          proposed.knee = {
+            x: original.knee.x + dxNorm,
+            y: original.knee.y + dyNorm,
+          };
+          proposed.textBoxPosition = {
+            x: original.textBoxPosition.x + dxNorm,
+            y: original.textBoxPosition.y + dyNorm,
+          };
+          break;
+        case 'attach': {
+          // The leader's attach grabber slides along the box border, on the
+          // sides the knee lies outside of (calloutGeometry textBoxAnchor).
+          // Nothing else moves, so there is no rule to break.
+          const boxLeft = original.textBoxPosition.x * W;
+          const boxTop = original.textBoxPosition.y * H;
+          const boxW = Math.max(18, (original.textBoxWidth || 0) * W);
+          const boxH = calloutDrawnBoxHeight((original.textBoxHeight || 0) * H, original.fontSize);
+          const anchor = projectPointToCalloutBoxAnchor(
+            svgPoint,
+            { x: original.knee.x * W, y: original.knee.y * H },
+            boxLeft, boxTop, boxLeft + boxW, boxTop + boxH,
+          );
+          if (!anchor) return;
+          const anchorPatch = { textBoxAnchor: anchor };
+          ds.currentCalloutPatch = anchorPatch;
+          setVisualTransform({
+            id: 'callout',
+            calloutPreviews: { [ds.calloutId]: anchorPatch },
+          });
+          setInteractionState('dragging');
+          return;
+        }
         case 'whole': {
           // w59: a whole-callout move keeps the callout on the page with the
           // same rigid rule as marks, the arrow-key nudge and group moves
@@ -4265,6 +4334,7 @@ export function useSVGInteraction({
         ds.partType === 'knee'
         || ds.partType === 'textBox'
         || ds.partType === 'textBoxResize'
+        || ds.partType === 'segBox'
       ) {
         // UX: 2026-05-18 — knee / textbox / resize drags count as "safe" only
         // when nothing overlaps: knee and arrow stay outside the box, each
@@ -4312,6 +4382,12 @@ export function useSVGInteraction({
           break;
         case 'textBox':
           patch = { textBoxPosition: proposed.textBoxPosition };
+          break;
+        case 'segTip':
+          patch = { arrowTip: proposed.arrowTip, knee: proposed.knee };
+          break;
+        case 'segBox':
+          patch = { knee: proposed.knee, textBoxPosition: proposed.textBoxPosition };
           break;
         case 'whole':
           patch = {
@@ -4436,7 +4512,7 @@ export function useSVGInteraction({
     //   - Above-threshold release: resolve hits, apply selection per
     //     modifier rules, clear marquee state.
     const mq = marqueeStateRef.current;
-    if (mq) {
+    if (mq && (mq.pointerId == null || mq.pointerId === e.pointerId)) {
       const wasActive = mq.active;
       applyMarqueeState(null);
       try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
@@ -5417,7 +5493,8 @@ export function useSVGInteraction({
         return base && commitCalloutPatch ? { ...base, ...commitCalloutPatch } : base;
       })();
 
-      if (ds.lastSafeCalloutPositions && ds.partType !== 'whole') {
+      // An attach drag only slides the leader's end along the box: nothing to check.
+      if (ds.lastSafeCalloutPositions && ds.partType !== 'whole' && ds.partType !== 'attach') {
         const W = pageWidth || 1;
         const H = pageHeight || 1;
         const last = ds.lastSafeCalloutPositions;
@@ -5483,7 +5560,10 @@ export function useSVGInteraction({
           const dropClearsCorners = (p) =>
             dropBoxCorners.every((c) => Math.hypot(p.x - c.x, p.y - c.y) >= minHandleToHandle);
           let dropSafe = true;
-          if (ds.partType === 'knee' || ds.partType === 'textBox' || ds.partType === 'textBoxResize') {
+          if (
+            ds.partType === 'knee' || ds.partType === 'textBox' || ds.partType === 'textBoxResize'
+            || ds.partType === 'segBox'
+          ) {
             // UX: free drag during mouse-down, release checks the final spot.
             // Invalid if the knee or arrow lands inside the textbox, OR the
             // knee→arrow line cuts through the textbox, OR any handle touches
@@ -5555,6 +5635,8 @@ export function useSVGInteraction({
               ds.partType === 'arrowTip'
               || ds.partType === 'textBox'
               || ds.partType === 'textBoxResize'
+              || ds.partType === 'segTip'
+              || ds.partType === 'segBox'
             ) {
               // UX: Phase 15 UAT-3 (2026-04-18) — when the final state is
               // valid but required auto-routing (stored knee sits inside
@@ -5763,6 +5845,7 @@ export function useSVGInteraction({
    */
   const handleHandlePointerDown = useCallback((e, handleId) => {
     e.stopPropagation();
+    dropForeignMarquee(e);
     const activeTextRangeDrag = dragStateRef.current;
     if (
       activeTextRangeDrag?.mode === 'text-markup-horizontal'
@@ -6557,7 +6640,7 @@ export function useSVGInteraction({
       };
       diagLog('[BboxScaleDiag] start ' + JSON.stringify(startPayload));
     } catch (err) { console.warn('[BboxScaleDiag] start log failed', err); }
-  }, [selectedIds, annotations, svgRef, selectedCalloutIds, callouts, getGroupMarkerIds, getSurveyMarkerMembers, pageWidth, pageHeight, pageNumber]);
+  }, [selectedIds, annotations, svgRef, selectedCalloutIds, callouts, getGroupMarkerIds, getSurveyMarkerMembers, pageWidth, pageHeight, pageNumber, dropForeignMarquee]);
 
   // ---------------------------------------------------------------------------
   // Group delete (Plan 03): remove all selected annotations
