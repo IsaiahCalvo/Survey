@@ -44,9 +44,13 @@ the live app driven headless with mouse, touchpad (wheel) and drag input.
 4. **Up and down always has the spring**, even for a document that fits on
    screen, so you can feel the end of the document. Sideways only has it when
    there is something to scroll to (rule 1).
-5. **Zoom limits** stay as they are: desktop 4000%, phone 800%; the smallest
-   zoom shows the whole document. A trackpad or finger pinch past a limit
-   overshoots with resistance and eases back; mouse-wheel notches stop hard.
+5. **Zoom limits.** Zooming in stops at 4000% on desktop and 800% on the
+   phone. Zooming out stops at a quarter of fit width (Drawboard's limit,
+   owner's pick 2026-10-27): the widest sheet is then a quarter of the band
+   between the panels, whatever the page count. A trackpad or finger pinch
+   past a limit overshoots with resistance and eases back; mouse-wheel
+   notches stop hard. Code: `getWidthFitMinimumScale` in
+   `src/utils/pdfZoomMath.js`.
 
 ## Where Survey differs from Drawboard, and why
 
@@ -56,21 +60,12 @@ the live app driven headless with mouse, touchpad (wheel) and drag input.
 | At fit width the page still slides 100 px each way | Locked as soon as the page fits | A page that fits has nothing to show sideways; 100 px of play is Drawboard's padding leaking through. |
 | A document shorter than the view is locked up and down | Still springs up and down | The spring is how you feel the end of the document (same as iOS). |
 | Side panels never change the bounds | A page under a panel can slide out of it | Survey panels float over the page and opening one never moves it, so the page must be reachable. |
-| Smallest zoom is a quarter of fit width | Whole document fits | Owner's choice (commit c1495961). See proposal below. |
-
-## Proposal, not built: smallest zoom
-
-On a long set the "whole document fits" floor is tiny (a 36-sheet set at
-1300x830 px bottoms out near 3%, where every sheet is a sliver you cannot read
-or pick). Drawboard stops at a quarter of fit width. A middle road: keep "whole
-document fits" for short sets, and for long sets stop at a quarter of fit
-width, leaving the Pages panel as the way to see the whole set. Needs the
-owner's call because it changes his earlier choice.
+| Smallest zoom is a quarter of fit width | Same | Owner's pick 2026-10-27. It replaced "the whole document fits" (commit c1495961), which shrank a 36-sheet set to about 3%, a strip of slivers. |
 
 ## Tests
 
 - Unit: `tests/panAxisRules.test.mjs` (rails, hysteresis, lock, slide out from
-  under a panel).
+  under a panel), `tests/pdfZoomMath.test.mjs` (zoom-out floor).
 - Real app, headless Chromium, 2026-10-27: mouse drag, touchpad wheel, Shift +
   wheel, pen drag, one-finger touch and two-finger pinch on desktop and phone
   sizes, with and without the Pages panel open.

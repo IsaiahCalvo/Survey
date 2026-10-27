@@ -74,7 +74,7 @@ import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import PdfjsTextLayer from './PdfjsTextLayer';
 import { getPageViewBase, getPageViewSizes, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
 import {
-  getDocumentMinimumScale,
+  getWidthFitMinimumScale,
   getWheelZoomScale,
   normalizeWheelDelta,
 } from '../utils/pdfZoomMath';
@@ -253,15 +253,12 @@ function getFitWidthForContainer(containerWidth, metrics) {
   const available = Math.max(1, Number(containerWidth) - metrics.padX * 2);
   return metrics.maxPageWidth ? Math.min(available, metrics.maxPageWidth) : available;
 }
+// Zoom-out floor: a quarter of fit width, Drawboard's (pdfZoomMath.js). The
+// height is no longer part of it; the argument stays for the callers.
 function getMinimumScaleForLayout(dims, containerHeight, metrics, containerWidth) {
-  return getDocumentMinimumScale({
-    viewportHeight: containerHeight,
-    pageHeights: dims.map((dim) => dim.h),
+  return getWidthFitMinimumScale({
     viewportWidth: getFitWidthForContainer(containerWidth, metrics),
-    pageWidths: dims.map((dim) => dim.w),
-    pageGap: metrics.gap,
-    fixedTopInset: metrics.padTop,
-    fixedBottomInset: metrics.padBottom,
+    pageWidths: dims.filter((dim) => !dim.hidden).map((dim) => dim.w),
     absoluteMinimumScale: MIN_SCALE,
     maximumScale: MAX_SCALE,
   });
@@ -1569,7 +1566,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const appliedSideRoomRef = useRef(NO_SIDE_INSETS);
   const sideScrollSnapshotRef = useRef(null);
   const sideInsetRef = useRef(NO_SIDE_INSETS);
-  // The zoom-out floor (the whole document fits) is measured against the band
+  // The zoom-out floor (a quarter of fit width) is measured against the band
   // between open side panels, not the full viewer: otherwise a fit to that
   // band (refitForBand) was clamped back to the full-width fit and a one-page
   // document stayed under the panels (desktop pass 2026-10-21, item 1).

@@ -98,6 +98,29 @@ export function getDocumentMinimumScale({
   return Math.max(absoluteMinimumScale, Math.min(maximumScale, scale));
 }
 
+// Drawboard PDF's zoom-out floor (owner 2026-10-27: "switch to Drawboard's
+// limit"): a quarter of the zoom that fits the widest page across the view,
+// read from its bundle (single-column minScale 1/4). It replaced "the whole
+// document fits", which left a long drawing set as a strip of slivers (~3% for
+// 36 sheets). docs/VIEWER-PAN-ZOOM-RULES.md.
+export const WIDTH_FIT_MINIMUM_FRACTION = 0.25;
+
+export function getWidthFitMinimumScale({
+  viewportWidth,
+  pageWidths,
+  fraction = WIDTH_FIT_MINIMUM_FRACTION,
+  absoluteMinimumScale = ABSOLUTE_MIN_SCALE,
+  maximumScale = ABSOLUTE_MAX_SCALE,
+} = {}) {
+  const widths = Array.isArray(pageWidths)
+    ? pageWidths.map(Number).filter((width) => Number.isFinite(width) && width > 0)
+    : [];
+  const available = Number(viewportWidth);
+  if (widths.length === 0 || !Number.isFinite(available) || available <= 0) return absoluteMinimumScale;
+  const scale = (available / Math.max(...widths)) * fraction;
+  return Math.max(absoluteMinimumScale, Math.min(maximumScale, scale));
+}
+
 export function normalizeWheelDelta(deltaY, deltaMode = 0, viewportHeight = 800) {
   const rawDelta = Number(deltaY) || 0;
   if (deltaMode === 1) return rawDelta * WHEEL_LINE_HEIGHT_PX;
