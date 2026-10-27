@@ -138,12 +138,16 @@ function readSelection(items) {
   const rects = [];
   const handles = [];
   let gesture = false;
+  let gestureLayer = null;
   let inert = false;
   let locked = false;
   for (const page of pages) {
     const svg = pageLayer(page);
     if (!svg) continue;
-    if (svg.getAttribute('data-selection-gesture') === 'true') gesture = true;
+    if (svg.getAttribute('data-selection-gesture') === 'true') {
+      gesture = true;
+      gestureLayer = gestureLayer || svg;
+    }
     if (svg.getAttribute('data-selection-chrome-inert') === 'true') inert = true;
     if (svg.querySelector('[data-selection-lock-badge]')) locked = true;
     svg.querySelectorAll('.svg-selection-overlay').forEach((overlay) => {
@@ -179,8 +183,20 @@ function readSelection(items) {
     const rect = visibleRect(field);
     if (rect) open.push(rect);
   });
-  return { frame: selectionFrameRect(rects), gesture, inert, locked, ...selectionKeepOut({ handles, extra: open }) };
+  return { frame: selectionFrameRect(rects), gesture, gestureLayer, inert, locked, ...selectionKeepOut({ handles, extra: open }) };
 }
+
+// A move, resize or rotate hides the bar for its whole length, yet every frame
+// of it rewrites the page and wakes the placement pass. While the same pick's
+// page layer is still mid-gesture, nothing a full read finds can show the bar,
+// and that read scans the whole viewer (a document-wide query per page, three
+// more over every mark of the layer): about 2 ms a frame on a dense sheet.
+// So the pass only checks that one flag until the gesture ends.
+const gestureStillHeld = (held, items) => Boolean(held
+  && held.items === items
+  && held.layer.isConnected
+  && held.layer.getAttribute('data-selection-gesture') === 'true'
+  && held.layer.getClientRects().length > 0);
 
 const sameLook = (a, b) => a.visible === b.visible && a.side === b.side && a.locked === b.locked && a.readOnly === b.readOnly;
 
@@ -213,14 +229,27 @@ export default function SelectionQuickBar({
   // One placement pass: read the selection, place the bar, show or hide it.
   const frameRef = useRef(0);
   const turningRef = useRef(false);
+  const heldGestureRef = useRef(null);
   const place = useCallback(() => {
     frameRef.current = 0;
     const bar = barRef.current;
     if (!bar) return;
     const readOnly = document.body?.getAttribute('data-readonly') === 'true';
     let next = { visible: false, side: 'above', locked: false, readOnly };
+    if (activeRef.current && !readOnly && gestureStillHeld(heldGestureRef.current, itemsRef.current)) {
+      // Hidden, as the full read would leave it; the pick (so its lock) is
+      // the one that read saw when the gesture started.
+      bar.setAttribute('data-visible', 'false');
+      setLook((current) => {
+        const held = { ...current, visible: false, side: 'above', readOnly };
+        return sameLook(current, held) ? current : held;
+      });
+      return;
+    }
+    heldGestureRef.current = null;
     if (activeRef.current && !readOnly) {
       const selection = readSelection(itemsRef.current);
+      if (selection.gestureLayer) heldGestureRef.current = { layer: selection.gestureLayer, items: itemsRef.current };
       next.locked = selection.locked;
       if (selection.frame && !selection.gesture && !turningRef.current && !selection.inert) {
         const placed = computeSelectionQuickBarPosition({
