@@ -607,6 +607,8 @@ const SurveySpacesRail = ({
   const proLocked = useProLock();
   // Nightly 'survey-report': a report beside Export data (PowerPoint, PDF, Excel or CSV).
   const [surveyReportOn] = useState(() => isFeatureOn('survey-report'));
+  // Nightly: the template menu links to the Templates editor (answers, lines).
+  const [customAnswersOn] = useState(() => isFeatureOn('custom-answers'));
   const [isReporting, setIsReporting] = useState(false);
   // The report layout comes from the live template: it is an output choice,
   // not part of the template version a document keeps.
@@ -1228,7 +1230,7 @@ const SurveySpacesRail = ({
 
   // Desktop menu keys: up / down / Home / End move between templates.
   const handleTemplateMenuKeyDown = (event) => {
-    const items = [...(templateSwitchListRef.current?.querySelectorAll('[role="menuitemradio"]') || [])];
+    const items = [...(templateSwitchListRef.current?.querySelectorAll('[role="menuitemradio"], [role="menuitem"]') || [])];
     if (!items.length) return;
     const index = items.indexOf(document.activeElement);
     let next = null;
@@ -2559,6 +2561,24 @@ const SurveySpacesRail = ({
                               </button>
                             );
                           })}
+                          {customAnswersOn && onRequestCreateTemplate && (
+                            <>
+                              <div className="survey-rail__menu-separator" role="separator" />
+                              <button
+                                type="button"
+                                role="menuitem"
+                                tabIndex={-1}
+                                className="survey-rail__menu-item survey-rail__template-edit"
+                                onClick={() => {
+                                  closeTemplateSwitcher({ focusTitle: false });
+                                  onRequestCreateTemplate({ mode: 'open-editor', templateId: selectedTemplate.id });
+                                }}
+                              >
+                                <Icon name="edit" size={13} color="currentColor" />
+                                <span className="survey-rail__template-option-name">Edit template…</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                       {mobileMode && !categorySelectModeActive && selectedTemplate.linkedExcelPath && lastSyncMessage && (() => {

@@ -27,6 +27,7 @@ import { HubChromeContext, HubShell } from './HubShell';
 import HubLoading from './HubLoading';
 import useAutoRetryLoad from './useAutoRetryLoad';
 import { installOverlayScrollbars } from '../utils/overlayScrollbars';
+import { TEMPLATE_EDITOR_REQUEST_EVENT, hasTemplateEditorRequest } from './templateEditorRequest';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
 
@@ -83,6 +84,7 @@ export default function SurveyHub({
   const tip = useTooltip();
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
+    if (hasTemplateEditorRequest()) return 'templates';
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
   });
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
@@ -98,6 +100,14 @@ export default function SurveyHub({
      document-level listener covers the lists, the sheets and the portalled
      menus, so no list has to wire itself up. */
   useEffect(() => installOverlayScrollbars(), []);
+
+  // "Edit template" from Survey mode lands on the Templates tab; the editor
+  // there opens the asked-for template (templateEditorRequest.js).
+  useEffect(() => {
+    const onRequest = () => startTransition(() => setTab('templates'));
+    window.addEventListener(TEMPLATE_EDITOR_REQUEST_EVENT, onRequest);
+    return () => window.removeEventListener(TEMPLATE_EDITOR_REQUEST_EVENT, onRequest);
+  }, []);
 
   // A list that could not load tries again by itself (connection back, app back
   // in front, widening timer) instead of waiting on its Try again button.

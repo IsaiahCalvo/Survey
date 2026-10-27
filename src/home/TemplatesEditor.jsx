@@ -105,6 +105,8 @@ import useTabOverflow from '../reorder/useTabOverflow.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { countLabel } from './countLabel.js';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
+import AnswerSetPicker, { AnswerChips } from './AnswerSetPicker.jsx';
+import { TEMPLATE_EDITOR_REQUEST_EVENT, takeTemplateEditorRequest } from './templateEditorRequest';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
 import { checkboxProps } from '../utils/keyActivate';
@@ -1144,6 +1146,42 @@ export default function TemplatesEditor({
       ],
     };
   };
+  // Nightly: the list in use as chips on a labeled button; it opens the
+  // picker of ready-made lists, which hands over to the editor below.
+  const [answerPickerFor, setAnswerPickerFor] = useState(null);
+  const pickAnswerPreset = (t, preset) => mutateTpl(t.id, (cur) => {
+    const { answerSet: _a, ...rest } = cur;
+    return preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
+  });
+  const answersButton = (t, phone = false) => {
+    const set = ownAnswerSetOf(t) || DEFAULT_ANSWER_SET;
+    return (
+      <>
+        <button
+          type="button"
+          className="template-answers-button"
+          aria-haspopup="dialog"
+          aria-label={`Checklist answers: ${set.map((a) => a.value).join(', ')}. Change`}
+          {...hoverOnly(tip('How people answer this template\'s checklist lines'))}
+          onClick={() => setAnswerPickerFor({ id: t.id, phone })}
+        >
+          <span className="template-answers-button__label">Answers</span>
+          <AnswerChips set={set} />
+          <Icon name="chevronDown" size={11} />
+        </button>
+        {answerPickerFor?.id === t.id && answerPickerFor.phone === phone && (
+          <AnswerSetPicker
+            templateName={t.name}
+            set={set}
+            presets={answerPresets}
+            onPick={(preset) => { pickAnswerPreset(t, preset); setAnswerPickerFor(null); }}
+            onMakeOwn={() => { setAnswerPickerFor(null); setAnswerEditorFor({ id: t.id, phone }); }}
+            onClose={() => setAnswerPickerFor(null)}
+          />
+        )}
+      </>
+    );
+  };
   // The answer list opens as a dialog over the editor, seeded with the list
   // in use (a preset too, so a preset can be changed after picking it).
   const answerListEditor = (t, phone) => (customAnswers && answerEditorFor?.id === t.id && answerEditorFor.phone === phone ? (
@@ -1310,6 +1348,24 @@ export default function TemplatesEditor({
       setMobileEntitiesOpen(false);
     }
   }, [visibleTemplates, selectedId]);
+
+  // "Edit template" from Survey mode: open that template (on the phone, its
+  // detail page), now if the editor is up, else as soon as it mounts.
+  useEffect(() => {
+    const openRequested = () => {
+      const request = takeTemplateEditorRequest();
+      if (!request?.templateId) return;
+      setSearch('');
+      setSelected(request.templateId);
+      setOpenMod(0);
+      setOpenCat(-1);
+      setMobileEntitiesOpen(false);
+      setMobileTemplateOpen(true);
+    };
+    openRequested();
+    window.addEventListener(TEMPLATE_EDITOR_REQUEST_EVENT, openRequested);
+    return () => window.removeEventListener(TEMPLATE_EDITOR_REQUEST_EVENT, openRequested);
+  }, []);
 
   const tpl = rich.find((t) => t.id === selectedId) || visibleTemplates[0] || rich[0] || null;
   const orderedMods = tpl ? tpl.modules : [];
@@ -2647,6 +2703,7 @@ export default function TemplatesEditor({
                     onDoubleClick={(e) => e.currentTarget.select()}
                   />
                 </span>
+                {customAnswers && <div style={{ marginTop: 6 }}>{answersButton(tpl)}</div>}
               </div>
               {/* minWidth/maxWidth: the two layout pickers must shrink with a
                   narrow middle column (portrait tablet) instead of overflowing it. */}
@@ -2681,14 +2738,17 @@ export default function TemplatesEditor({
                     style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
                   />
                 )}
-                {/* Checklist answers for this template (default Y / N / N/A). */}
-                <select
-                  className="hub-answer-set"
-                  aria-label="Checklist answers"
-                  {...answerPickerProps(tpl)}
-                  {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
-                  style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
-                />
+                {/* Checklist answers for this template (default Y / N / N/A).
+                    Nightly shows them as the Answers button under the name. */}
+                {!customAnswers && (
+                  <select
+                    className="hub-answer-set"
+                    aria-label="Checklist answers"
+                    {...answerPickerProps(tpl)}
+                    {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
+                    style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
+                  />
+                )}
                 {/* Smart fill (beta): tag shapes taught on drawings. */}
                 {smartFillBeta && (
                   <SmartFillShapeChips
@@ -3427,10 +3487,14 @@ export default function TemplatesEditor({
                     <select aria-label="Report layout" {...reportKitPickerProps(tpl)} />
                   </label>
                 )}
-                <label className="templates-mobile-option">
-                  <span>Answers</span>
-                  <select aria-label="Checklist answers" {...answerPickerProps(tpl, true)} />
-                </label>
+                {customAnswers ? (
+                  <div className="templates-mobile-option">{answersButton(tpl, true)}</div>
+                ) : (
+                  <label className="templates-mobile-option">
+                    <span>Answers</span>
+                    <select aria-label="Checklist answers" {...answerPickerProps(tpl, true)} />
+                  </label>
+                )}
                 {answerListEditor(tpl, true)}
                 {smartFillBeta && (
                   <SmartFillShapeChips

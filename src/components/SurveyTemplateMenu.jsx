@@ -12,7 +12,9 @@ import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from '../utils/survey
  * "Find a template" field and the 3 most recently used templates at the top
  * (SurveyPickList, the same list the bar's "All" menus use). `compact` is the
  * narrow look: the glyph and chevron only (the name stays in the tooltip and
- * the accessible name).
+ * the accessible name). `onEditTemplate` (nightly 'custom-answers') adds
+ * "Edit template…" under the list: the home Templates editor, where a
+ * template's answers and lines are set.
  */
 export default function SurveyTemplateMenu({
   open,
@@ -22,6 +24,7 @@ export default function SurveyTemplateMenu({
   onSelect,
   compact = false,
   className,
+  onEditTemplate = null,
 }) {
   const recents = useSurveyRecents('template', 'all', selectedTemplate?.id ?? null);
   const long = (templates || []).length >= SURVEY_LIST_SEARCH_FROM;
@@ -43,6 +46,22 @@ export default function SurveyTemplateMenu({
       width="auto"
       compact={compact}
       dataMarker="data-survey-template-menu"
+      footer={onEditTemplate ? (
+        <>
+          <div className="annotation-dropdown__separator" role="separator" />
+          <button
+            type="button"
+            className="annotation-dropdown__option"
+            onClick={() => {
+              onOpenChange?.(false);
+              onEditTemplate();
+            }}
+          >
+            <Icon name="edit" size={13} color="currentColor" />
+            Edit template…
+          </button>
+        </>
+      ) : null}
     >
       {long ? (
         <SurveyPickList

@@ -77,9 +77,64 @@ export const EXTRA_ANSWER_SET_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'score-1-5',
-    label: 'Score 1 to 5',
+    label: 'Rating 1 to 5',
     answers: freezeSet([['1', 'bad'], ['2', 'bad'], ['3', 'neutral'], ['4', 'good'], ['5', 'good']]),
   }),
+  Object.freeze({ id: 'yes-no-words', label: 'Yes / No', answers: freezeSet([['Yes', 'good'], ['No', 'bad']]) }),
+  Object.freeze({ id: 'ok-not-ok-na', label: 'OK / Not OK / N/A', answers: freezeSet([['OK', 'good'], ['Not OK', 'bad'], ['N/A', 'neutral']]) }),
+  Object.freeze({ id: 'pass-fail', label: 'Pass / Fail', answers: freezeSet([['Pass', 'good'], ['Fail', 'bad']]) }),
+  // Not tested is a problem: the device still needs a visit.
+  Object.freeze({
+    id: 'pass-fail-not-tested-na',
+    label: 'Pass / Fail / Not tested / N/A',
+    answers: freezeSet([['Pass', 'good'], ['Fail', 'bad'], ['Not tested', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({
+    id: 'compliant-na',
+    label: 'Compliant / Not compliant / N/A',
+    answers: freezeSet([['Compliant', 'good'], ['Not compliant', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({ id: 'safe-unsafe-na', label: 'Safe / Unsafe / N/A', answers: freezeSet([['Safe', 'good'], ['Unsafe', 'bad'], ['N/A', 'neutral']]) }),
+  Object.freeze({
+    id: 'excellent-good-fair-poor-na',
+    label: 'Excellent / Good / Fair / Poor / N/A',
+    answers: freezeSet([['Excellent', 'good'], ['Good', 'good'], ['Fair', 'neutral'], ['Poor', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({
+    id: 'present-missing-na',
+    label: 'Present / Missing / N/A',
+    answers: freezeSet([['Present', 'good'], ['Missing', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({
+    id: 'complete-incomplete-na',
+    label: 'Complete / Incomplete / N/A',
+    answers: freezeSet([['Complete', 'good'], ['Incomplete', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({ id: 'open-closed', label: 'Open / Closed', answers: freezeSet([['Open', 'neutral'], ['Closed', 'neutral']]) }),
+  Object.freeze({
+    id: 'score-1-5-na',
+    label: 'Rating 1 to 5 / N/A',
+    answers: freezeSet([['1', 'bad'], ['2', 'bad'], ['3', 'neutral'], ['4', 'good'], ['5', 'good'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({
+    id: 'score-1-10',
+    label: 'Rating 1 to 10',
+    answers: freezeSet(Array.from({ length: 10 }, (_, i) => [String(i + 1), i < 3 ? 'bad' : i < 6 ? 'neutral' : 'good'])),
+  }),
+  Object.freeze({ id: 'low-medium-high', label: 'Low / Medium / High', answers: freezeSet([['Low', 'neutral'], ['Medium', 'neutral'], ['High', 'neutral']]) }),
+]);
+
+// How the answer picker groups the ready-made sets (nightly). Every preset
+// is in exactly one group.
+export const ANSWER_SET_GROUPS = Object.freeze([
+  Object.freeze({ label: 'Yes or no', ids: Object.freeze(['yes-no-na', 'yes-no-na-words', 'yes-no', 'yes-no-words', 'ok-not-ok-na', 'done']) }),
+  Object.freeze({ label: 'Pass or fail', ids: Object.freeze(['pass-fail-na', 'pass-fail', 'pass-fail-not-tested-na', 'compliant-na', 'safe-unsafe-na']) }),
+  Object.freeze({ label: 'Condition', ids: Object.freeze(['good-fair-poor-na', 'excellent-good-fair-poor-na']) }),
+  Object.freeze({
+    label: 'Status',
+    ids: Object.freeze(['installed-missing-damaged-na', 'works-not-working-na', 'present-missing-na', 'complete-incomplete-na', 'open-closed']),
+  }),
+  Object.freeze({ label: 'Ratings and sizes', ids: Object.freeze(['score-1-5', 'score-1-5-na', 'score-1-10', 'low-medium-high', 'small-medium-large']) }),
 ]);
 
 /** The presets the template editor offers. */
