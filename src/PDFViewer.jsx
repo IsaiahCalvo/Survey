@@ -8609,9 +8609,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // under the Cloud key while a cloud line is chosen (paintPreferenceKey).
   // Read through a ref so the published functions never go stale.
   const toolStyleIoRef = useRef(null);
-  toolStyleIoRef.current = { getToolPreference, updateToolPreference, lineBorderStyle };
+  toolStyleIoRef.current = { getToolPreference, updateToolPreference, lineBorderStyle, eraserSize };
   const readToolStyle = useCallback((tool, lineStyle) => {
     const io = toolStyleIoRef.current;
+    // The eraser's only setting is its size (the bar's Size box), kept as the
+    // pin's width like every other tool's.
+    if (tool === 'eraser') return { strokeWidth: io.eraserSize };
     const line = lineStyle || io.lineBorderStyle;
     const strokeKey = line === 'cloud' && toolSupportsCloudBorderStyle(tool) ? 'cloud' : tool;
     const own = io.getToolPreference(tool);
@@ -8627,8 +8630,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
   const writeToolStyle = useCallback((tool, style = {}) => {
     const io = toolStyleIoRef.current;
+    if (tool === 'eraser') {
+      const size = Math.round(Number(style.strokeWidth));
+      if (Number.isFinite(size)) {
+        const clamped = Math.min(Math.max(size, 1), 100);
+        io.eraserSize = clamped;
+        setEraserSize(clamped);
+        if (!isEraserSizeFocusedRef.current) {
+          eraserSizeInputValueRef.current = String(clamped);
+          setEraserSizeInputValue(String(clamped));
+        }
+      }
+      return;
+    }
     const lineStyle = style.lineStyle || io.lineBorderStyle;
-    if (style.lineStyle && style.lineStyle !== io.lineBorderStyle) setLineBorderStyle(style.lineStyle);
+    // Always set it: the ref holds the last render's style, and a pin left a
+    // moment ago may have just put another one back (Cloud after a cloud pin).
+    if (style.lineStyle) {
+      io.lineBorderStyle = style.lineStyle;
+      setLineBorderStyle(style.lineStyle);
+    }
     const strokeKey = lineStyle === 'cloud' && toolSupportsCloudBorderStyle(tool) ? 'cloud' : tool;
     const pick = (fields) => Object.fromEntries(fields.filter((f) => style[f] !== undefined).map((f) => [f, style[f]]));
     const stroke = pick(['strokeColor', 'strokeOpacity', 'strokeWidth']);

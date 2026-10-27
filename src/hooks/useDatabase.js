@@ -1224,7 +1224,10 @@ const DEFAULT_TOOL_PREFERENCES = {
   // invisible on a white page.
   // No fillOpacity on purpose: the pin ignores it.
   counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100, fillColor: '#ef4444' },
-  text: { strokeColor: '#000000', strokeOpacity: 100 },
+  // Owner 2026-10-27 (pinned tools "all follow the same rules"): the Text
+  // box's Width box showed the last tool's width (Counter's 14) and a pinned
+  // Text box kept none. 1 is the border a new text box is drawn with.
+  text: { strokeColor: '#000000', strokeWidth: 1, strokeOpacity: 100 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
   strikeout: { strokeColor: '#ff0000', strokeOpacity: 100 },
@@ -1363,8 +1366,14 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
   }, [documentId, supabaseDocId, user]);
 
   // Get preferences for a specific tool (with defaults)
+  // A tool saved before one of its defaults existed (Polyline's width, Text
+  // box's width) still gets that default, rather than whatever the last tool
+  // left in the settings row.
   const getToolPreference = useCallback((toolId) => {
-    return toolPreferences[toolId] || DEFAULT_TOOL_PREFERENCES[toolId] || {};
+    const saved = toolPreferences[toolId];
+    const defaults = DEFAULT_TOOL_PREFERENCES[toolId];
+    if (!saved) return defaults || {};
+    return defaults ? { ...defaults, ...saved } : saved;
   }, [toolPreferences]);
 
   return {
