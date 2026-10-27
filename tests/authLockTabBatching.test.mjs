@@ -119,7 +119,7 @@ test('a lock that is never granted rejects every call in the turn with its error
   assert.deepEqual(results.map((r) => r.reason?.message), ['denied', 'denied']);
 });
 
-test('a turn whose lock is taken away mid-run: the rest ask again and still run', async () => {
+test('a turn whose lock is taken away mid-run: the running call gets the steal error, the rest ask again and run', async () => {
   let attempt = 0;
   const lock = (name, timeout, fn) => {
     attempt += 1;
@@ -131,13 +131,28 @@ test('a turn whose lock is taken away mid-run: the rest ask again and still run'
   };
   const batched = createTabBatchedLock(lock);
   const ran = [];
-  const results = await Promise.all([1, 2, 3].map((i) => batched('auth', -1, async () => {
+  const results = await Promise.allSettled([1, 2, 3].map((i) => batched('auth', -1, async () => {
     ran.push(i);
     await new Promise((r) => setTimeout(r, 2));
     return i;
   })));
-  assert.deepEqual(results, [1, 2, 3]);
+  assert.equal(results[0].status, 'rejected');
+  assert.equal(results[0].reason.message, 'stolen');
+  assert.deepEqual(results.slice(1).map((r) => r.value), [2, 3]);
   assert.deepEqual(ran.sort(), [1, 2, 3]);
+});
+
+test('a running call that never finishes still rejects at once when its lock is stolen', async () => {
+  let steal;
+  const lock = (name, timeout, fn) => new Promise((resolve, reject) => {
+    steal = () => { const e = new Error('Lock broken by another request with the \'steal\' option.'); e.name = 'AbortError'; reject(e); };
+    fn().then(resolve, reject);
+  });
+  const batched = createTabBatchedLock(lock);
+  const stuck = batched('auth', -1, () => new Promise(() => {})); // a refresh that hangs
+  await new Promise((r) => setTimeout(r, 5));
+  steal();
+  await assert.rejects(stuck, { name: 'AbortError' });
 });
 
 test('without navigator.locks the calls just run (unchanged fallback)', async () => {

@@ -57,7 +57,9 @@ export const createTabBatchedLock = (lockImpl) => {
           while (turn.queue.length) {
             const item = turn.queue.shift();
             clearTimeout(item.timer);
+            turn.running = item;
             try { item.resolve(await item.callback()); } catch (error) { item.reject(error); }
+            turn.running = null;
           }
           // Closed in the same tick the queue empties: a later call starts a
           // new turn (its own grant) instead of joining a released lock.
@@ -68,7 +70,11 @@ export const createTabBatchedLock = (lockImpl) => {
           const waiting = turn.queue.splice(0);
           // Never granted: every call in the turn gets the error it would
           // have got on its own. Granted, then lost (stolen while held): the
-          // call that was running settles on its own; the rest ask again.
+          // call that was running gets the steal error at once, as it would
+          // on its own (readStartupSession reads it as "offline"); the rest
+          // ask again.
+          turn.running?.reject(error);
+          turn.running = null;
           for (const item of waiting) {
             clearTimeout(item.timer);
             if (turn.granted) batchedLock(name, acquireTimeout, item.callback).then(item.resolve, item.reject);
