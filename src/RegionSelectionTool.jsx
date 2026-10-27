@@ -887,8 +887,10 @@ const RegionSelectionTool = ({
       const b = getRegionBounds(region);
       if (b && x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY) return region;
     }
+    // A smoothed Lasso area answers inside its drawn curve, not the straight
+    // lines between its control points.
     for (let i = list.length - 1; i >= 0; i -= 1) {
-      if (isPointInFlatPolygon(x, y, list[i].coordinates)) return list[i];
+      if (isPointInFlatPolygon(x, y, withRegionOutlineCoordinates(list[i]).coordinates)) return list[i];
     }
     return null;
   }, [getRegionBounds]);
@@ -901,13 +903,21 @@ const RegionSelectionTool = ({
     const from = gesture.last || { x, y };
     gesture.last = { x, y };
     const steps = Math.max(1, Math.ceil(Math.hypot(x - from.x, y - from.y) / 4));
+    // Test each area's drawn outline (smoothed Lasso curves flattened), worked
+    // out once per area for the whole stroke.
+    const outlines = gesture.outlines || (gesture.outlines = new Map());
     const hits = [];
     for (let step = 1; step <= steps; step += 1) {
       const px = from.x + ((x - from.x) * step) / steps;
       const py = from.y + ((y - from.y) * step) / steps;
       for (const region of regionsRef.current) {
         if (gesture.erased.has(region.regionId)) continue;
-        if (!isPointInFlatPolygon(px, py, region.coordinates)) continue;
+        let outline = outlines.get(region);
+        if (!outline) {
+          outline = withRegionOutlineCoordinates(region).coordinates;
+          outlines.set(region, outline);
+        }
+        if (!isPointInFlatPolygon(px, py, outline)) continue;
         gesture.erased.add(region.regionId);
         hits.push(region.regionId);
       }
