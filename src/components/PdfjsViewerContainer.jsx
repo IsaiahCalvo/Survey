@@ -3887,6 +3887,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let spaceForControl = false;
     const activateSpacePan = (event) => {
       if (!isSpaceKey(event)) return;
+      // Every open tab keeps its viewer; only the front one answers keys
+      // (docs/TAB-SWITCHING.md S6). A tab behind used to arm its own pan and,
+      // on a quick tap, flip its tool to Pan.
+      if (isInTabBehind(scrollerRef.current)) return;
       if (isEditableTarget(event.target) || isEditableTarget(document.activeElement)) return;
       if (!spacePanRef.current && spaceBelongsToFocusedControl(document.activeElement, { tabbedTo: focusModality.tabbedTo() })) {
         spaceForControl = true;
@@ -3908,6 +3912,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     const releaseSpacePan = (event) => {
       if (event?.type === 'keyup' && !isSpaceKey(event)) return;
+      // A tab behind holds no pan of its own, and must not cancel the key-up
+      // that presses a focused button in the front tab.
+      if (event?.type === 'keyup' && !spacePanRef.current && isInTabBehind(scrollerRef.current)) return;
       const passedToControl = spaceForControl;
       spaceForControl = false;
       if (event?.type === 'keyup' && !passedToControl) {
