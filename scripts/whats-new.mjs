@@ -5,6 +5,10 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-27', items: [
+    'Big drawing sets open and become editable sooner, and documents open quicker on slower computers.',
+    'Moving marks on a big document is smoother: no stall on the first edit, and page previews wait while you drag.',
+    'With several documents open, switching tools and zooming are lighter.',
+    'Spaces: the Select tool draws a drag box to pick areas, Move or copy opens as a small card by its button, and a new space opens ready for its name.',
     'Switching to a tab with a big drawing set is about three times faster.',
     'Keys act only in the tab you are looking at, never in the tabs behind it.',
     'Slide any list row to the left to show its actions: Duplicate, Move, Copy, Share and Delete. Works in every list, and a two-finger swipe does it on a trackpad.',
