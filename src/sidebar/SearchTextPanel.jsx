@@ -1719,6 +1719,9 @@ const SearchTextPanel = ({
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!searchInputRef.current) return;
+      // Every open tab keeps its own rail (TabChromeSlot): a tab that is not
+      // in front leaves F3 / Ctrl+G to the front tab's search.
+      if (searchInputRef.current.closest('[data-chrome-tab-slot][data-active="false"]')) return;
 
       // Only handle shortcuts when search input is focused or has results
       const isInputFocused = document.activeElement === searchInputRef.current;

@@ -200,7 +200,7 @@ test('row 2 coming and going in Select mode moves neither the Survey row nor the
   assert.match(pdfViewer, /const subRowHost = document\.getElementById\('chrome-survey-row-slot'\)\s*\|\| document\.getElementById\('chrome-sub-toolbar-host'\);/);
   // ...and the banner anchors as if row 2 were up the whole time Select is armed.
   assert.match(appShell, /const reserveFormatRowForBanner = selectArmed && !isMobileViewer;/);
-  assert.match(appShell, /setProperty\('--app-banner-top'/);
+  assert.match(appShell, /publishChromeInset\('bannerTop', `\$\{Math\.round\(bannerTop\)\}px`\)/);
   const banner = readFileSync(new URL('../src/components/collab/StorageFailureBanner.css', import.meta.url), 'utf8');
   assert.match(banner, /top: var\(--app-banner-top, var\(--app-chrome-top, 96px\)\);/);
 });

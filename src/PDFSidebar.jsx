@@ -6,7 +6,7 @@
  * Default-export forwardRef component that hosts the Pages / Search Text /
  * Bookmarks / Spaces tab panels plus a Version History panel, and anchors the
  * collaboration footer (SyncStatusChip + PresenceAvatars) at the bottom.
- * Publishes its width as the `--app-sidebar-width` CSS var; exposes an
+ * Publishes its width for the storage notice (utils/chromeInsets.js); exposes an
  * `openSearchPanel` imperative handle. Rendered by App into the chrome host.
  */
 import React, { useState, useCallback, useImperativeHandle, useSyncExternalStore, lazy, Suspense } from 'react';
@@ -27,6 +27,7 @@ import { useSheetFocus } from './mobile/useSheetFocus';
 import { useTooltip } from './components/Tooltip';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
+import { publishChromeInset } from './utils/chromeInsets.js';
 import SectionIconButton from './components/SectionIconButton.jsx';
 import { openKeyboardShortcuts } from './utils/keyboardShortcuts.js';
 import {
@@ -242,6 +243,10 @@ const PDFSidebar = React.forwardRef(({
   locateHistoryMark = null,
   focusHistoryMark = null,
   mobileMode = false,
+  // False while another tab is in front (AppShell keeps every open tab's rail
+  // mounted, TabChromeSlot): a hidden rail leaves the shared page settings and
+  // the panel-room rules to the front tab's rail.
+  tabActive = true,
   onPanelStateChange = null,
   // Layers panel ('layers' flag). layersEnabled false = no tab, no panel.
   layersEnabled = false,
@@ -286,7 +291,7 @@ const PDFSidebar = React.forwardRef(({
   React.useEffect(() => {
     const leftJustOpened = wasCollapsedRef.current && !isCollapsed;
     wasCollapsedRef.current = isCollapsed;
-    if (mobileMode) return;
+    if (mobileMode || !tabActive) return;
     const yieldSide = resolveNarrowPanelYield({
       viewportWidth,
       room: sideRoom,
@@ -295,7 +300,7 @@ const PDFSidebar = React.forwardRef(({
     });
     if (yieldSide === 'left') setIsCollapsed(true);
     else if (yieldSide === 'right') requestRightPanelYield();
-  }, [isCollapsed, mobileMode, sideRoom, viewportWidth]);
+  }, [isCollapsed, mobileMode, sideRoom, viewportWidth, tabActive]);
   // Desktop (owner 2026-10-07, Drawboard rail): a closed panel stays drawn for
   // the slide that carries it back under the rail, instead of vanishing in
   // one frame. A timer, not animationend, ends it, so reduced motion (no
@@ -323,14 +328,16 @@ const PDFSidebar = React.forwardRef(({
   // its closing slide ends - the one width change at each end of the motion.
   const layoutOpen = !mobileMode && (!isCollapsed || panelLeaving);
   const layoutCollapsed = mobileMode ? isCollapsed : !layoutOpen;
-  // 2026-04-29: publish the live sidebar width as a CSS variable so the
+  // 2026-04-29: publish the live sidebar width so the
   // StorageFailureBanner overlay can anchor inside the PDF area without
   // running over the sidebar's vertical tool rail (Pages / Search /
   // Bookmarks / Spaces).
+  // (Published for the notice only, chromeInsets.js: a custom property on :root
+  // restyled the whole document on every change.)
   React.useEffect(() => {
-    if (typeof document === 'undefined' || !document.documentElement) return;
-    document.documentElement.style.setProperty('--app-sidebar-width', mobileMode ? '44px' : `${layoutOpen ? LEFT_RAIL_W + panelWidth : LEFT_RAIL_W}px`);
-  }, [layoutOpen, panelWidth, mobileMode]);
+    if (!tabActive) return;
+    publishChromeInset('left', mobileMode ? '44px' : `${layoutOpen ? LEFT_RAIL_W + panelWidth : LEFT_RAIL_W}px`);
+  }, [layoutOpen, panelWidth, mobileMode, tabActive]);
   // Remember the layout (desktop). A user arriving after the first render
   // (sign-in resolves late) gets their own saved layout - the rail's open
   // state too, unless it has been used in the meantime.
