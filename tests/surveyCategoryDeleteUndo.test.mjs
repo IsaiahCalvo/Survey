@@ -64,3 +64,15 @@ test('every rail category delete (swipe, right-click, select mode) acts at once'
   assert.match(RAIL, /onClick: \(\) => deleteCategory\(selectedModuleId, listContextMenu\.id\) \},/);
   assert.match(RAIL, /onClick: \(\) => deleteSurveyMarkerNow\(listContextMenu\.id, listContextMenu\.name\) \},/);
 });
+
+test('several Survey Markers at once (select mode, copy mode) go in one Undo step, no question', () => {
+  assert.doesNotMatch(RAIL, /Are you sure you want to delete/);
+  const helper = RAIL.slice(RAIL.indexOf('const deleteSurveyMarkersNow = (ids) => {'), RAIL.indexOf('const surveyMarkerSwipeActions'));
+  assert.match(helper, /deleteSurveyMarkers\(list\);/);
+  assert.match(helper, /action: \{ label: 'Undo', onClick: \(\) => onUndoLastChange\(\) \}/);
+  assert.equal((RAIL.match(/deleteSurveyMarkersNow\((selectedIds|selectedItemIds)\);/g) || []).length, 2);
+  // The viewer's family delete is one step for markers on any page.
+  assert.match(VIEWER, /deleteSurveyMarkers: handleDeleteSurveyMarkers,\n/);
+  const family = VIEWER.slice(VIEWER.indexOf('const handleDeleteSurveyMarkers = useCallback('));
+  assert.match(family.slice(0, 900), /surveyMarkerFamily: \{ deletes: ids \}/);
+});

@@ -30,7 +30,6 @@ import reviewWarningIcon from './assets/review-warning.svg';
 import { SYNC_TONE_COLORS, liveSyncGateStatus, liveSyncVerifyStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
-import { reportAnnotationDeleteOutcome } from './services/annotationDeleteOutcome.js';
 import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import SurveyMarkerNotes from './components/SurveyMarkerNotes';
@@ -457,14 +456,13 @@ const SurveySpacesRail = ({
   activeSpaceId,
   addCategoryAsNewTemplate,
   addCategoryToCurrentTemplate,
-  annotationsByPage,
   applyLayoutDrivenZoom,
   categorySelectModeActive,
   copiedItemSelection,
   copyModeActive,
   DEFAULT_SURVEY_MARKER_OPACITY,
-  deleteAnnotations,
   deleteCategory = () => {},
+  deleteSurveyMarkers = null,
   handleMoveSurveyCategories,
   transferSurveyMarkers,
   surveyTemplateVersionForDocument,
@@ -474,7 +472,6 @@ const SurveySpacesRail = ({
   canModifySurveyMarkerItem,
   // The viewer's Undo (AppShell's top bar), for the swipe-delete Undo toast.
   onUndoLastChange = null,
-  documentSyncEnabled,
   expandedCategories,
   expandedSurveyMarkers,
   exportMenuRef,
@@ -531,7 +528,6 @@ const SurveySpacesRail = ({
   onRequestCreateTemplate,
   onSelectSurveyTemplate,
   pdfFile,
-  scale,
   selectedCategories,
   selectedCategoryId,
   // Survey calm gold (2026-10-01): true while the Survey Marker tool is armed,
@@ -554,7 +550,6 @@ const SurveySpacesRail = ({
   setActiveCategoryDropdown,
   setActiveTool,
   setAnnotations,
-  setAnnotationsByPage,
   setCategorySelectModeActive,
   setCategorySelectModeForCategory,
   setCopiedItemSelection,
@@ -2215,6 +2210,21 @@ const SurveySpacesRail = ({
     handleDeleteSurveyMarkerItem(id);
     showToast(`Deleted ${label}`, 'info', { action: { label: 'Undo', onClick: () => onUndoLastChange() }, duration: 5000 });
   };
+  // Several at once (select mode, copy mode): one Undo step for all of them
+  // (the viewer's family delete), so the toast's Undo brings them all back.
+  const deleteSurveyMarkersNow = (ids) => {
+    const list = (ids || []).filter((id) => surveyMarkers?.[id]);
+    if (list.length === 0) return;
+    if (typeof deleteSurveyMarkers !== 'function') {
+      list.forEach((id) => handleDeleteSurveyMarkerItem(id));
+      return;
+    }
+    deleteSurveyMarkers(list);
+    const label = list.length === 1 ? (surveyMarkers[list[0]]?.name || 'Survey Marker') : `${list.length} Survey Markers`;
+    showToast(`Deleted ${label}`, 'info', typeof onUndoLastChange === 'function'
+      ? { action: { label: 'Undo', onClick: () => onUndoLastChange() }, duration: 5000 }
+      : undefined);
+  };
   const surveyMarkerSwipeActions = (row, name) => {
     const marker = { ...row, ...(surveyMarkers?.[row.id] || {}), id: row.id };
     const canModify = canModifySurveyMarkerItem?.(marker.id) !== false;
@@ -3037,195 +3047,20 @@ const SurveySpacesRail = ({
 
                               {/* Delete button */}
                               <button
-                                onClick={async () => {
+                                onClick={() => {
                                   const selectedIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
                                   if (selectedIds.length === 0) return;
 
-                                  // Confirm deletion
-                                  const confirmed = await askConfirm({
-                                    title: `Delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`,
-                                    message: `Are you sure you want to delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`,
-                                    confirmLabel: `Delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}`,
-                                    danger: true,
-                                  });
-                                  if (!confirmed) {
-                                    return;
+                                  // Act first (owner rule): one Undo step, Undo on the toast.
+                                  deleteSurveyMarkersNow(selectedIds);
+
+                                  // Leave copy mode once nothing is left in this space.
+                                  if (selectedSpaceId) {
+                                    const selectedSet = new Set(selectedIds);
+                                    const left = Object.entries(surveyMarkers || {})
+                                      .some(([id, h]) => h.spaceId === selectedSpaceId && !selectedSet.has(id));
+                                    if (!left) setCopyModeActive(false);
                                   }
-
-                                  // Capture surveyMarkers before deletion (state is async)
-                                  const surveyMarkersToDelete = selectedIds.map(id => surveyMarkers[id]).filter(Boolean);
-
-                                  // Delete surveyMarkers from surveyMarkers
-                                  setSurveyMarkers(prev => {
-                                    const updated = { ...prev };
-                                    selectedIds.forEach(id => {
-                                      delete updated[id];
-                                    });
-
-                                    // Check if all items in the current space have been deleted
-                                    // If so, exit copy mode automatically
-                                    if (selectedSpaceId) {
-                                      const remainingSurveyMarkers = Object.entries(updated)
-                                        .filter(([_, h]) => h.spaceId === selectedSpaceId);
-                                      if (remainingSurveyMarkers.length === 0) {
-                                        // Use setTimeout to ensure state updates are processed
-                                        setTimeout(() => {
-                                          setCopyModeActive(false);
-                                          setCopiedItemSelection({});
-                                        }, 0);
-                                      }
-                                    }
-
-                                    return updated;
-                                  });
-
-                                  // Trigger removal from canvas via surveyMarkersToRemoveByPage (same as working ✕ button)
-                                  surveyMarkersToDelete.forEach(surveyMarker => {
-                                    const pageNum = surveyMarker.pageNumber;
-                                    const bounds = surveyMarker.bounds;
-
-                                    if (pageNum && bounds) {
-                                      setSurveyMarkersToRemoveByPage(prev => ({
-                                        ...prev,
-                                        [pageNum]: [...(prev[pageNum] || []), bounds]
-                                      }));
-                                    }
-                                  });
-
-                                  // Clear the removal queue after a short delay to allow processing
-                                  setTimeout(() => {
-                                    surveyMarkersToDelete.forEach(surveyMarker => {
-                                      const pageNum = surveyMarker.pageNumber;
-                                      if (pageNum) {
-                                        setSurveyMarkersToRemoveByPage(prev => {
-                                          const updated = { ...prev };
-                                          delete updated[pageNum];
-                                          return updated;
-                                        });
-                                      }
-                                    });
-                                  }, 100);
-
-                                  // Delete surveyMarker rectangles from PDF canvas (annotationsByPage) - keep for backward compatibility
-                                  surveyMarkersToDelete.forEach(surveyMarker => {
-                                    const pageNum = surveyMarker.pageNumber;
-                                    if (pageNum && annotationsByPage[pageNum]) {
-                                      setAnnotationsByPage(prev => {
-                                        const pageAnnotations = prev[pageNum];
-                                        if (!pageAnnotations || !pageAnnotations.objects) return prev;
-
-                                        // Get the current scale for coordinate conversion
-                                        const currentScale = scale;
-
-                                        // Filter out surveyMarker rectangles that match this surveyMarker's bounds
-                                        const filteredObjects = pageAnnotations.objects.filter(obj => {
-                                          // Check if this is a surveyMarker rectangle (with any opacity)
-                                          if (obj.type !== 'rect') return true;
-                                          if (!obj.fill || typeof obj.fill !== 'string') return true;
-                                          if (!obj.fill.includes('rgba')) return true;
-
-                                          // Canvas coordinates are at canvas scale, need to normalize for comparison
-                                          const objX = (obj.left || 0) / currentScale;
-                                          const objY = (obj.top || 0) / currentScale;
-                                          const objWidth = (obj.width || 0) / currentScale;
-                                          const objHeight = (obj.height || 0) / currentScale;
-
-                                          const bounds = surveyMarker.bounds || {};
-                                          const surveyMarkerX = bounds.x || bounds.left || 0;
-                                          const surveyMarkerY = bounds.y || bounds.top || 0;
-                                          const surveyMarkerWidth = bounds.width || (bounds.right ? bounds.right - bounds.left : 0) || 0;
-                                          const surveyMarkerHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0) || 0;
-
-                                          // Check if bounds match (with tolerance in normalized coordinates)
-                                          const tolerance = 5 / currentScale; // Convert tolerance to normalized coordinates
-                                          if (Math.abs(objX - surveyMarkerX) < tolerance &&
-                                            Math.abs(objY - surveyMarkerY) < tolerance &&
-                                            Math.abs(objWidth - surveyMarkerWidth) < tolerance &&
-                                            Math.abs(objHeight - surveyMarkerHeight) < tolerance) {
-                                            return false; // Remove this object
-                                          }
-                                          return true; // Keep this object
-                                        });
-
-                                        return {
-                                          ...prev,
-                                          [pageNum]: {
-                                            ...pageAnnotations,
-                                            objects: filteredObjects
-                                          }
-                                        };
-                                      });
-                                    }
-                                  });
-
-                                  // Delete associated items and annotations
-                                  surveyMarkersToDelete.forEach(surveyMarker => {
-
-                                    // Find associated item by matching name and category
-                                    const categoryName = getCategoryName(selectedTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
-                                    const matchingItem = itemsByNameType.get(`${surveyMarker.name}\0${categoryName}`);
-
-                                    if (matchingItem) {
-                                      // Find and delete annotations for this item in this space
-                                      setAnnotations(prev => {
-                                        const updated = { ...prev };
-                                        Object.values(updated).forEach(ann => {
-                                          if (ann.itemId === matchingItem.itemId && ann.spaceId === surveyMarker.moduleId) {
-                                            delete updated[ann.annotationId];
-                                          }
-                                        });
-                                        return updated;
-                                      });
-
-                                      // Check if item has data in other modules - if not, delete the item
-                                      const surveyMarkerModuleId = surveyMarker.moduleId;
-                                      const moduleName = getModuleName(selectedTemplate, surveyMarkerModuleId);
-                                      const dataKey = getModuleDataKey(moduleName);
-                                      const item = items[matchingItem.itemId];
-
-                                      if (item) {
-                                        // Remove the module-specific data
-                                        const updatedItem = { ...item };
-                                        delete updatedItem[dataKey];
-
-                                        // Check if item has any module data left
-                                        const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
-                                        const hasOtherModuleData = allModules.some(module => {
-                                          const moduleId = module.id;
-                                          if (moduleId === surveyMarkerModuleId) return false;
-                                          const otherModuleName = getModuleName(selectedTemplate, moduleId);
-                                          const otherDataKey = getModuleDataKey(otherModuleName);
-                                          return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
-                                        });
-
-                                        if (hasOtherModuleData) {
-                                          // Item exists in other modules, just remove this module's data
-                                          setItems(prev => ({
-                                            ...prev,
-                                            [matchingItem.itemId]: updatedItem
-                                          }));
-                                        } else {
-                                          // Item doesn't exist in other spaces, delete it entirely
-                                          setItems(prev => {
-                                            const updated = { ...prev };
-                                            delete updated[matchingItem.itemId];
-                                            return updated;
-                                          });
-                                        }
-                                      }
-                                    }
-                                  });
-
-                                  // Delete from Supabase document_annotations table
-                                  const documentId = pdfFile?.id;
-                                  if (documentId && user?.id && documentSyncEnabled) {
-                                    deleteAnnotations(documentId, selectedIds)
-                                      .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'rail-selected-delete', onceKey: documentId }))
-                                      .catch(err => {
-                                        console.error('[App] Error deleting annotations from Supabase:', err);
-                                      });
-                                  }
-
                                   // Clear selection (copy mode will be automatically exited if all items in space are deleted)
                                   setCopiedItemSelection({});
                                 }}
@@ -3558,26 +3393,14 @@ const SurveySpacesRail = ({
                                                         // module in it, then a category in that module.
                                                         onMove={() => setMarkerTransfer({ mode: 'move', ids: Object.keys(selectedItemsForCategory).filter((id) => selectedItemsForCategory[id]), categoryId: category.id })}
                                                         onCopy={() => setMarkerTransfer({ mode: 'copy', ids: Object.keys(selectedItemsForCategory).filter((id) => selectedItemsForCategory[id]), categoryId: category.id })}
-                                                        onDelete={async () => {
+                                                        onDelete={() => {
                                                           const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
                                                           if (selectedItemIds.length === 0) {
                                                             showToast('Please select at least one item to delete.', 'warn');
                                                             return;
                                                           }
-                                                          const confirmed = await askConfirm({
-                                                            title: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
-                                                            message: `Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
-                                                            confirmLabel: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}`,
-                                                            danger: true,
-                                                          });
-                                                          if (!confirmed) {
-                                                            return;
-                                                          }
-
-                                                          // Delete selected items
-                                                          selectedItemIds.forEach(annotationId => {
-                                                            handleDeleteSurveyMarkerItem(annotationId);
-                                                          });
+                                                          // Act first (owner rule): one Undo step, Undo on the toast.
+                                                          deleteSurveyMarkersNow(selectedItemIds);
 
                                                           // Clear selection and exit item select mode if no items left
                                                           const selectedSet = new Set(selectedItemIds);

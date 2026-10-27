@@ -171,13 +171,11 @@ test('every delete helper and caller reports refusals instead of success', () =>
   assert.match(viewer, /source: 'space-cascade'/);
   assert.match(viewer, /source: 'survey-marker-delete'/);
   assert.match(viewer, /source: 'erase-legacy-marker'/);
-  // The Survey rail deletes the selected copied items straight from the
-  // table too; a refusal there must surface. A category's markers go through
-  // the viewer's marker delete ('survey-marker-delete' above), which reports.
+  // The Survey rail no longer deletes rows itself: every rail delete (one
+  // marker, several, a whole category) goes through the viewer's marker
+  // delete ('survey-marker-delete' above), which reports a refusal.
   const rail = read('SurveySpacesRail.jsx');
-  assert.doesNotMatch(rail, /source: 'rail-category-delete'/);
-  assert.match(rail, /source: 'rail-selected-delete'/);
+  assert.doesNotMatch(rail, /source: 'rail-category-delete'|source: 'rail-selected-delete'/);
   const railDeletes = rail.match(/deleteAnnotations\([^)]*\)\s*\.?[a-z]+/g) || [];
-  assert.ok(railDeletes.length >= 1);
-  for (const call of railDeletes) assert.match(call, /\.then$/, `${call} must report the outcome`);
+  assert.equal(railDeletes.length, 0);
 });
