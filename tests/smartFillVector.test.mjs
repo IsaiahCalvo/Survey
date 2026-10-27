@@ -199,3 +199,11 @@ test('cloud marks on the page (imported or drawn in Survey) are cloud shapes', a
   assert.ok(pointInRing(220, 120, shapes[0].ring));
   assert.ok(pointInRing(350, 320, shapes[1].ring));
 });
+
+test('Smart fill only gets the cloud marks the page draws, never ones on a hidden layer or scope', () => {
+  const src = readFileSync('src/components/SVGAnnotationLayer.jsx', 'utf8');
+  const call = src.slice(src.indexOf("runMarkerShapeProvider('smartFill'"), src.indexOf("runMarkerShapeProvider('smartFill'") + 600);
+  assert.match(call, /marks: visibleAnnotationObjectsRef\.current/);
+  assert.doesNotMatch(call, /marks: annotationsRef/);
+  assert.match(src, /visibleAnnotationObjectsRef\.current = Array\.isArray\(filteredAnnotations\)/);
+});

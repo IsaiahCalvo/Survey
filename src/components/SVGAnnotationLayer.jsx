@@ -853,6 +853,9 @@ const SVGAnnotationLayerBody = memo(({
     return labels;
   }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
   const renderedAnnotationEntriesRef = useRef([]);
+  // Every mark this page draws (hidden layers and scopes left out), for Smart
+  // fill's cloud marks: a tap must never fill a cloud the user can't see.
+  const visibleAnnotationObjectsRef = useRef([]);
   // w52: ids of the callouts this page shows AND lets the user pick (visible
   // in context + interactive for the active space). Null until the first
   // callout pass lands, which reads as "all pass" (boot parity).
@@ -2806,8 +2809,8 @@ const SVGAnnotationLayerBody = memo(({
       point,
       pageSize: { width, height },
       pageCanvas,
-      // Cloud marks on this page fill like clouds in the drawing.
-      marks: annotationsRef.current?.objects || null,
+      // Cloud marks this page draws fill like clouds in the drawing.
+      marks: visibleAnnotationObjectsRef.current,
       signal: controller?.signal || null,
     }).then((result) => {
       if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
@@ -4464,6 +4467,9 @@ const SVGAnnotationLayerBody = memo(({
   useLayoutEffect(() => {
     renderedAnnotationEntriesRef.current = Array.isArray(filteredAnnotations)
       ? filteredAnnotations.filter((entry) => entry?.isObjectInteractive)
+      : [];
+    visibleAnnotationObjectsRef.current = Array.isArray(filteredAnnotations)
+      ? filteredAnnotations.map((entry) => entry.obj)
       : [];
     if (typeof window !== 'undefined') {
       if (!window.__renderedAnnotationRegistry) window.__renderedAnnotationRegistry = {};

@@ -118,23 +118,24 @@ export function useSmartFillShapes() {
   return useSyncExternalStore(subscribeShapes, listSnapshot, () => EMPTY);
 }
 
+/** Change the list a shape is kept in. Resolves to 'template' | 'browser', or null. */
 async function changeShapes(id, update) {
   if (active.save && active.shapes.some((s) => s.id === id)) {
     try {
       await active.save((list) => update(Array.isArray(list) ? list.filter(isTemplateShape) : []));
-      return true;
+      return 'template';
     } catch {
-      return false;
+      return null;
     }
   }
   try {
     const local = loadLocal();
-    if (!local.some((s) => s.id === id)) return false;
+    if (!local.some((s) => s.id === id)) return null;
     window.localStorage.setItem(LOCAL_KEY, JSON.stringify(update(local)));
     emit();
-    return true;
+    return 'browser';
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -142,31 +143,35 @@ async function changeShapes(id, update) {
 export function renameSmartFillShape(id, name) {
   const clean = String(name || '').trim().slice(0, 60);
   if (!clean) return Promise.resolve(false);
-  return changeShapes(id, (list) => list.map((s) => (s.id === id ? { ...s, name: clean } : s)));
+  return changeShapes(id, (list) => list.map((s) => (s.id === id ? { ...s, name: clean } : s))).then(Boolean);
 }
 
 /**
  * Remove a taught shape. Resolves to { ok, undo } where undo() puts it back
- * where it was.
+ * where it was kept: this browser, or the same template. If that template is
+ * no longer the open one (or can't be saved), undo() resolves false rather
+ * than hand the shape to a different template's users.
  */
 export async function removeSmartFillShape(id) {
   let removed = null;
   let at = -1;
-  const ok = await changeShapes(id, (list) => {
+  const templateId = active.templateId;
+  const where = await changeShapes(id, (list) => {
     at = list.findIndex((s) => s.id === id);
     removed = at >= 0 ? list[at] : null;
     return list.filter((s) => s.id !== id);
   });
-  if (!ok || !removed) return { ok: false, undo: null };
+  if (!where || !removed) return { ok: false, undo: null };
   const shape = removed;
   const index = at;
   const undo = async () => {
     const putBack = (list) => {
-      const rest = list.filter((s) => s.id !== shape.id);
+      const rest = (Array.isArray(list) ? list.filter(isTemplateShape) : []).filter((s) => s.id !== shape.id);
       return [...rest.slice(0, index), shape, ...rest.slice(index)].slice(0, MAX_TEMPLATE_SHAPES);
     };
-    if (active.save) {
-      try { await active.save(putBack); return true; } catch { /* keep it in this browser */ }
+    if (where === 'template') {
+      if (!active.save || active.templateId !== templateId) return false;
+      try { await active.save(putBack); return true; } catch { return false; }
     }
     try {
       window.localStorage.setItem(LOCAL_KEY, JSON.stringify(putBack(loadLocal())));

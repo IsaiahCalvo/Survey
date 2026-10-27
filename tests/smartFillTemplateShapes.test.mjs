@@ -100,6 +100,28 @@ test('removing a shape can be undone, back in its place', async () => {
   assert.deepEqual(await shapes.removeSmartFillShape('nope'), { ok: false, undo: null });
 });
 
+test('undo puts a browser shape back in this browser, even with a template open', async () => {
+  const local = makeTemplateShape(ring, { id: 'loc' });
+  await shapes.saveSmartFillTemplateShape(local);
+  const { ok, undo } = await shapes.removeSmartFillShape('loc');
+  assert.equal(ok, true);
+  const tpl = fakeTemplate([makeTemplateShape(ring, { id: 'a' })]);
+  assert.equal(await undo(), true);
+  assert.deepEqual(tpl.list.map((s) => s.id), ['a']);
+  assert.deepEqual(shapes.listSmartFillShapes().map(({ shape, where }) => `${where}:${shape.id}`), ['template:a', 'browser:loc']);
+});
+
+test('undo never moves a template shape into a different template', async () => {
+  const first = fakeTemplate(['a', 'b'].map((id) => makeTemplateShape(ring, { id })));
+  const { undo } = await shapes.removeSmartFillShape('b');
+  let other = [];
+  shapes.setActiveSmartFillTemplate({ templateId: 't2', templateName: 'Other', shapes: other, save: async (update) => { other = update(other); } });
+  assert.equal(await undo(), false);
+  assert.deepEqual(other, []);
+  assert.deepEqual(first.list.map((s) => s.id), ['a']);
+  assert.equal(shapes.listSmartFillShapes().length, 0);
+});
+
 test('a picked outline arms the box tool with it, and disarming clears it', () => {
   shapes.setSmartFillTeachArmed(true, { preset: 'hexagon' });
   assert.equal(shapes.getSmartFillTeachPreset(), 'hexagon');

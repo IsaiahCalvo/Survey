@@ -62,7 +62,13 @@ function ShapeRow({ shape, where }) {
     showToast(`Removed ${shape.name || 'the shape'}. Smart fill stops looking for it.`, 'info', {
       id: 'smart-fill-shapes',
       duration: 8000,
-      action: { label: 'Undo', onClick: () => { void undo(); } },
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          if (await undo()) return;
+          showToast(`${shape.name || 'The shape'} could not be put back.`, 'error', { id: 'smart-fill-shapes' });
+        },
+      },
     });
   };
   const w = Math.round(shape.width * 10) / 10;
