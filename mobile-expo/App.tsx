@@ -105,7 +105,7 @@ function isExternalNavigationUrl(url: string) {
 }
 
 function SurveyApp() {
-  const webViewRef = useRef<WebView>(null);
+  const webViewRef = useRef<WebView<object>>(null);
   const processRecoveryRef = useRef<number[]>([]);
   const pdfDiagnosticRef = useRef<Array<Record<string, unknown>>>([]);
   const pendingNativeAnalyticsRef = useRef<Array<Record<string, unknown>>>([]);
@@ -606,7 +606,8 @@ function SurveyApp() {
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
-      <WebView
+      {/* react-native-webview 14.0.1 types default P to undefined, so plain <WebView> props become never. */}
+      <WebView<object>
         key={webViewKey}
         ref={webViewRef}
         source={{ uri: surveyLaunchUrlRef.current }}
