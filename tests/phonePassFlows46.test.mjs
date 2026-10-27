@@ -44,6 +44,10 @@ test('a Smart fill tap places its marker at once: no preview to Apply or dismiss
   const layer = read('src/components/SVGAnnotationLayer.jsx');
   assert.doesNotMatch(layer, /smart-fill-preview|setSmartFillPreview/);
   assert.match(layer, /onSurveyMarkerCreated\(markerBounds, \{ smartFill: true \}\);/);
+  // A second finger turns the tap into a pinch: the pending read is dropped,
+  // so no marker lands mid-zoom.
+  const pinch = layer.slice(layer.indexOf('const cancelPinchGesture = () => {'));
+  assert.match(pinch.slice(0, 300), /smartFillAbortRef\.current\?\.abort\?\.\(\);\s*(\/\/[^\n]*\n\s*)?if \(!shapeCreationRef\.current\) return;/);
 });
 
 test('phone toasts land under the tool-settings / Survey strip and right of the rail', () => {

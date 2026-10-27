@@ -3200,6 +3200,8 @@ const SVGAnnotationLayerBody = memo(({
   // fabric canvas pinch handler.
   useEffect(() => {
     const cancelPinchGesture = () => {
+      // A Smart fill tap still being read places nothing once it is a pinch.
+      smartFillAbortRef.current?.abort?.();
       if (!shapeCreationRef.current) return;
       // Sync ref clear: the window pointerup listener is still attached until
       // the passive effect detaches it — without this a finger-lift racing
