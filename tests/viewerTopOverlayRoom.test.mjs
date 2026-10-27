@@ -214,7 +214,7 @@ test('the viewer, the desktop host and the phone strips are wired to the room', 
   );
   // Every root strip's opening tag (attribute order free) carries the ref.
   const roots = body.match(/<div\s[^>]*?className="mobile-pdf-properties[ "][^>]*>/g) || [];
-  assert.ok(roots.length >= 7, `expected every phone strip root, found ${roots.length}`);
+  assert.ok(roots.length >= 6, `expected every phone strip root, found ${roots.length}`);
   roots.forEach((root) => assert.match(root, /ref=\{topOverlayRef\}/, `phone strip must register: ${root.slice(0, 90)}`));
   const groups = body.match(/<div\s[^>]*?className="mobile-pdf-properties__[^>]*>/g) || [];
   groups.forEach((group) => assert.doesNotMatch(group, /topOverlayRef/, 'only the strip root registers, never a group inside it'));

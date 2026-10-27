@@ -44,7 +44,7 @@ test('phone Region layer lets two fingers reach the PDF viewer and has finger-si
   assert.match(REGION_SOURCE, /const TOUCH_HANDLE_HIT_PX = 44;/);
   assert.match(REGION_SOURCE, /data-handle-hit-pad="true"/);
   // Tap on an area with a draw tool armed selects it.
-  assert.match(REGION_SOURCE, /gesture\.travelled <= TOUCH_TAP_SLOP_PX/);
+  assert.match(REGION_SOURCE, /gesture\.travelled <= \(mobileMode \? TOUCH_TAP_SLOP_PX : MOUSE_CLICK_SLOP_PX\)/);
 });
 
 test('phone hit-test helper finds the area under a finger', () => {

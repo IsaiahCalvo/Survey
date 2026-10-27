@@ -42,6 +42,7 @@ import { formatPageTotal } from '../utils/pageTotalLabel.js';
 import { MOBILE_MEASURE_ITEMS, applyMobileMeasurePick, applyMobileShapePick, isMobileShapeToolActive } from './mobileShapeRail.js';
 import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
+import { SECTION_DONE_ICON } from '../components/SectionIconButton.jsx';
 import { OPEN_EXPORT_PDF_EVENT } from '../utils/exportPdfModes.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
@@ -1375,27 +1376,24 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
 
   if (api.regionEditing && api.regionToolbarApi) {
     const region = api.regionToolbarApi;
-    // UX (demo parity): tapping "Full Page" swaps this strip into an inline
-    // "Make region full page?" Confirm/Cancel step instead of a browser
-    // dialog — matches demo App.tsx:1644-1658 / AnnotationFormattingBar.tsx:195-207.
-    if (region.fullPageConfirmPending) {
-      return (
-        <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Confirm full page region" ref={topOverlayRef}>
-          <span className="mobile-pdf-properties__confirm-label">Make region full page?</span>
-          <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirmFullPage}>Confirm</button>
-          <button type="button" onClick={region.cancelFullPage}>Cancel</button>
-        </div>
-      );
-    }
     return (
-      // Owner 2026-10-01 (Spaces toolbar): the same actions, in the same order,
-      // as the desktop tool bar's Areas row - what you can do to the areas,
-      // then Cancel, then Done (the one gold button) on the trailing edge.
+      // Owner 2026-10-26: no Cancel, no Full page. Delete takes the picked
+      // area away (the rail's Erase takes any area away by touch; deleting
+      // every area gives the whole page back), and Done - the house check,
+      // as in every Select / Edit mode - leaves keeping the areas, as does
+      // picking any drawing group in the rail. Undo takes either back.
       <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Area editing" ref={topOverlayRef}>
         <button type="button" disabled={!region.canDelete} onClick={region.deleteSelected}>Delete</button>
-        <button type="button" disabled={!region.canSetFullPage} onClick={region.setFullPage}>Full page</button>
-        <button type="button" onClick={region.cancel}>Cancel</button>
-        <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Done</button>
+        <button
+          type="button"
+          className="mobile-pdf-properties__done"
+          data-glyph-only=""
+          aria-label="Done"
+          {...tip('Done', 'below')}
+          onClick={region.leave}
+        >
+          <Icon name={SECTION_DONE_ICON} size={20} color="currentColor" />
+        </button>
       </div>
     );
   }
@@ -2753,8 +2751,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const activeGroup = TOOL_TO_GROUP[activeTool] || null;
   // Owner 2026-10-01 (Spaces toolbar): while a Space's areas are edited the
   // rail's own Select picks areas (no second Select), the area tools are the
-  // open group's tools (so they morph in like a group switch), and the drawing
-  // groups wait, dimmed, until Done or Cancel. Pan stays Pan.
+  // open group's tools (so they morph in like a group switch), and a drawing
+  // group leaves area editing, keeping the areas. Pan stays Pan.
   // Until the tool publishes its state (a render after the mode starts) the
   // rail draws its opening state, so the area tools morph in as one change.
   const regionApi = isAreaEditing(bottomToolbarApi) ? (bottomToolbarApi.regionToolbarApi || REGION_TOOLBAR_OPENING_STATE) : null;
@@ -2946,13 +2944,17 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
             <RailButton
               key={groupId}
               active={!regionApi && (activeGroup === groupId || openCategory === groupId)}
-              disabled={Boolean(regionApi)}
               icon={group.icon}
               label={group.label}
               data-tool-switch="true"
               // View-only: Draw / Shapes / Text dim and go inert (ReadOnlyGate.css).
               data-readonly-disabled="true"
-              onClick={() => { if (!regionApi) toggleCategory(groupId); }}
+              // Area editing: a drawing group leaves it, keeping the areas,
+              // and opens that group (owner 2026-10-26).
+              onClick={() => {
+                if (regionApi) regionApi.leave?.();
+                toggleCategory(groupId);
+              }}
             />
           ))}
           {/* Owner 2026-10-01: the desktop group-switch morph on the phone
@@ -2991,6 +2993,14 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       label="Lasso area"
                       data-morph-icon="areaFreehand"
                       onClick={() => regionApi.setToolType?.('freehand')}
+                    />
+                    <RailButton
+                      active={regionDrawing && regionApi.toolType === 'erase'}
+                      icon="eraser"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Erase area"
+                      data-morph-icon="eraser"
+                      onClick={() => regionApi.setToolType?.('erase')}
                     />
                     <div className="mobile-pdf-tools__divider is-short" />
                     <RailButton

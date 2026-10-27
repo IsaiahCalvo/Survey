@@ -15798,65 +15798,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }));
   }, [requireSpaceManagement]);
 
-  const handleSpaceClearRegions = useCallback((spaceId, pageId) => {
-    if (!requireSpaceManagement()) return;
-    cascadeDeleteScopedAppState({
-      spaceId,
-      pageIds: [pageId],
-      reason: 'space-page-regions-clear',
-    });
-    // No undo step records this cascade: it must not be claimed by a later one.
-    pendingSpaceCascadeRef.current = null;
-
-    setSpaces(prev => {
-      const beforeSpace = prev.find(s => s.id === spaceId);
-      const beforePage = beforeSpace?.assignedPages?.find(p => p.pageId === pageId);
-
-      const updated = prev.map(space => {
-        if (space.id !== spaceId) {
-          return space;
-        }
-
-        const assignedPages = space.assignedPages || [];
-        const pageIndex = assignedPages.findIndex(page => page.pageId === pageId);
-
-        let updatedPages;
-        if (pageIndex >= 0) {
-          // Page exists, update it
-          updatedPages = assignedPages.map((page, index) => {
-            if (index === pageIndex) {
-              return {
-                ...page,
-                wholePageIncluded: true,
-                regions: []
-              };
-            }
-            return page;
-          });
-        } else {
-          // Page doesn't exist, create it
-          updatedPages = [
-            ...assignedPages,
-            {
-              pageId: pageId,
-              wholePageIncluded: true,
-              regions: []
-            }
-          ];
-        }
-
-        const afterPage = updatedPages.find(p => p.pageId === pageId);
-
-        return {
-          ...space,
-          assignedPages: updatedPages
-        };
-      });
-
-      return updated;
-    });
-  }, [cascadeDeleteScopedAppState, requireSpaceManagement]);
-
   const handleReorderSpaces = useCallback((fromIndex, toIndex) => {
     if (!requireSpaceManagement()) return;
     setSpaces(prev => {
@@ -23037,46 +22978,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     finishRegionEditSession();
   }, [finishRegionEditSession]);
 
-  const handleRegionSetFullPage = useCallback(() => {
+  // `target` saves for a given space and page instead of the open session:
+  // the Undo on the "Area changes dropped" toast, after Esc ended it.
+  const handleRegionComplete = useCallback((regions, target = null) => {
     if (!requireSpaceManagement()) return;
-    if (!activeSpaceId || !regionSelectionPage) {
-      console.warn('[App] ERROR: Missing activeSpaceId or regionSelectionPage', { activeSpaceId, regionSelectionPage });
-      return;
-    }
-
-    handleSpaceClearRegions(activeSpaceId, regionSelectionPage);
-
-    // Close the region selection tool after setting full page
-    finishRegionEditSession();
-  }, [activeSpaceId, regionSelectionPage, handleSpaceClearRegions, finishRegionEditSession, requireSpaceManagement]);
-
-  const canSetRegionToFullPage = useMemo(() => {
-    if (!activeSpaceId || !regionSelectionPage) return false;
-    const space = spaces.find(s => s.id === activeSpaceId);
-    if (!space) return false;
-    const pageEntry = space.assignedPages?.find(p => p.pageId === regionSelectionPage);
-    if (!pageEntry) return false;
-    return pageEntry.wholePageIncluded === false;
-  }, [spaces, activeSpaceId, regionSelectionPage]);
-
-  const handleRegionComplete = useCallback((regions) => {
-    if (!requireSpaceManagement()) return;
-    if (!activeSpaceId || !regionSelectionPage) {
-      console.warn('[App-RegionEdit] handleRegionComplete ignored — missing activeSpaceId or regionSelectionPage', {
-        activeSpaceId,
-        regionSelectionPage,
+    const targetSpaceId = target ? target.spaceId : activeSpaceId;
+    const targetPageId = target ? target.pageId : regionSelectionPage;
+    if (!targetSpaceId || !targetPageId) {
+      console.warn('[App-RegionEdit] handleRegionComplete ignored — missing targetSpaceId or targetPageId', {
+        targetSpaceId,
+        targetPageId,
         incomingCount: Array.isArray(regions) ? regions.length : 0
       });
       return;
     }
 
-    const space = spaces.find(s => s.id === activeSpaceId);
+    const space = spaces.find(s => s.id === targetSpaceId);
     if (!space) {
       return;
     }
 
     const updatedPages = [...(space.assignedPages || [])];
-    const pageIndex = updatedPages.findIndex(p => p.pageId === regionSelectionPage);
+    const pageIndex = updatedPages.findIndex(p => p.pageId === targetPageId);
 
     // Requirement: "A region can contain multiple areas (polygons) within it"
     // Combine all additive regions (non-touching areas) into a single region object
@@ -23113,8 +23036,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
 
     appDebug('[App-RegionEdit] handleRegionComplete — saving regions', {
-      activeSpaceId,
-      regionSelectionPage,
+      targetSpaceId,
+      targetPageId,
       incomingCount: Array.isArray(regions) ? regions.length : 0,
       additiveCount: additiveRegions.length,
       migratedCount: migratedRegions.length,
@@ -23129,8 +23052,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       .filter((regionId) => regionId && !nextRegionIds.has(regionId));
     if (removedRegionIds.length > 0) {
       cascadeDeleteScopedAppState({
-        spaceId: activeSpaceId,
-        pageIds: [regionSelectionPage],
+        spaceId: targetSpaceId,
+        pageIds: [targetPageId],
         regionIds: removedRegionIds,
         reason: 'region-delete-or-replace',
       });
@@ -23140,7 +23063,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // produces no journal rows — only a confirmed Confirm reaches this path.
       const documentId = pdfFile?.id || null;
       if (documentId) {
-        const activeSpace = (spacesRef.current || []).find((s) => s.id === activeSpaceId);
+        const activeSpace = (spacesRef.current || []).find((s) => s.id === targetSpaceId);
         const spaceName = activeSpace?.name || null;
         const actorName =
           user?.user_metadata?.full_name
@@ -23155,7 +23078,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         for (const region of removedRegions) {
           const trashRow = buildRegionDeleteHistoryRow({
             region,
-            spaceId: activeSpaceId,
+            spaceId: targetSpaceId,
             spaceName,
             documentId,
             userId: user?.id || null,
@@ -23167,22 +23090,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    // Owner 2026-10-26 (the Full page button is gone): deleting every area
+    // gives the whole page back, never a page with nothing in it.
+    const wholePageIncluded = validMigratedRegions.length === 0;
     if (pageIndex >= 0) {
       updatedPages[pageIndex] = {
         ...updatedPages[pageIndex],
-        wholePageIncluded: false,
+        wholePageIncluded,
         regions: validMigratedRegions
       };
     } else {
       updatedPages.push({
-        pageId: regionSelectionPage,
-        wholePageIncluded: false,
+        pageId: targetPageId,
+        wholePageIncluded,
         regions: validMigratedRegions
       });
     }
 
     setRegionOverlayDisabled(prev => {
-      const key = `${activeSpaceId}-${regionSelectionPage}`;
+      const key = `${targetSpaceId}-${targetPageId}`;
       if (prev.get(key) !== true) {
         return prev;
       }
@@ -23190,12 +23116,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       next.delete(key);
       return next;
     });
-    handleSpaceUpdate(activeSpaceId, { assignedPages: updatedPages });
-    setActiveSpaceId(activeSpaceId);
-    setSelectedSpaceId(activeSpaceId);
+    handleSpaceUpdate(targetSpaceId, { assignedPages: updatedPages });
+    if (target) return;
+    setActiveSpaceId(targetSpaceId);
+    setSelectedSpaceId(targetSpaceId);
     finishRegionEditSession();
     // Keep selectedSpaceId set - don't clear it when region selection completes
   }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+
+  // Read at click time: the toast can outlive several renders.
+  const handleRegionCompleteRef = useRef(handleRegionComplete);
+  handleRegionCompleteRef.current = handleRegionComplete;
+  const handleRestoreDroppedRegions = useCallback((spaceId, pageId, regions) => {
+    handleRegionCompleteRef.current(regions, { spaceId, pageId });
+  }, []);
+
+  // The Spaces panel's edit button, pressed again, leaves the way the tool
+  // does: keeping the areas (there is no Cancel any more).
+  const regionToolbarApiRef = useRef(null);
+  regionToolbarApiRef.current = mobileRegionToolbarApi;
+  const handleLeaveRegionEdit = useCallback(() => {
+    if (regionToolbarApiRef.current?.leave) regionToolbarApiRef.current.leave();
+    else finishRegionEditSession();
+  }, [finishRegionEditSession]);
 
   // KAL-313 (2026-06-11): region trash journaling moved INTO handleRegionComplete
   // above — commit time, gated on the removedRegionIds diff. The old
@@ -36261,7 +36204,7 @@ ${pageBlocks}
       onSetActiveSpace: handleSetActiveSpace,
       onExitSpaceMode: handleExitSpaceMode,
       onRequestRegionEdit: handleRequestRegionEdit,
-      onCancelRegionEdit: handleCancelRegionEdit,
+      onCancelRegionEdit: handleLeaveRegionEdit,
       onSpaceAssignPages: handleSpaceAssignPages,
       onSpaceRenamePage: handleSpaceRenamePage,
       onSpaceRemovePage: handleSpaceRemovePage,
@@ -36380,7 +36323,7 @@ ${pageBlocks}
     handleSetActiveSpace,
     handleExitSpaceMode,
     handleRequestRegionEdit,
-    handleCancelRegionEdit,
+    handleLeaveRegionEdit,
     handleSpaceAssignPages,
     handleSpaceRenamePage,
     handleSpaceRemovePage,
@@ -37112,8 +37055,7 @@ ${pageBlocks}
             pageWidth={regionSelectionPage ? (pageSizes[regionSelectionPage]?.width || 0) : 0}
             pageHeight={regionSelectionPage ? (pageSizes[regionSelectionPage]?.height || 0) : 0}
             initialRegions={initialRegionsForSelection}
-            onSetFullPage={handleRegionSetFullPage}
-            canSetFullPage={canSetRegionToFullPage}
+            onRestoreRegions={handleRestoreDroppedRegions}
             onHistoryStateChange={handleRegionHistoryStateChange}
             userId={user?.id ?? null}
           />

@@ -33,8 +33,6 @@ export const REGION_TOOLBAR_OPENING_STATE = Object.freeze({
   toolType: 'rectangular',
   selectionMode: 'add',
   canDelete: false,
-  canSetFullPage: false,
-  fullPageConfirmPending: false,
 });
 
 /**
@@ -116,9 +114,10 @@ export const FORMAT_ROW_TOOLS = Object.freeze([
  */
 export function showsFormatRow(api) {
   if (!api) return false;
-  // Owner 2026-10-01 (Spaces toolbar): while a Space's areas are being edited
-  // row 2 holds the Areas actions (Delete area, Full page, Cancel, Done).
-  if (isAreaEditing(api)) return true;
+  // Owner 2026-10-26: area editing has no row 2. Its old actions went to the
+  // keys (Enter keeps, Esc drops, Delete removes) and the Erase tool; Full
+  // page went too (deleting every area gives the whole page back).
+  if (isAreaEditing(api)) return false;
   if (showsSurveyRow(api)) return false;
   if (api.activeTool === 'eraser' || api.richTextEditor) return true;
   return FORMAT_ROW_TOOLS.includes(api.contextTool) || FORMAT_ROW_TOOLS.includes(api.activeTool);
