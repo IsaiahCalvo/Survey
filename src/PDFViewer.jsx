@@ -23592,6 +23592,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const savedAnnotationsByPageRef = useRef({});
   // A compare waiting for idle (below); quitting runs it first.
   const pendingUnsavedCheckRef = useRef(null);
+  // The marks the last check saw, and the marks whose compare still waits.
+  const checkedByPageRef = useRef(null);
+  const waitingByPageRef = useRef(null);
 
   // Mark annotations as dirty when they change
   const cloudSyncKeyRef = useRef(null);
@@ -23631,6 +23634,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // (w29: ~70 ms per change on a 3,000-mark document).
     const reportUnsaved = (matchesSaved) => {
       pendingUnsavedCheckRef.current = null;
+      if (waitingByPageRef.current === annotationsByPage) waitingByPageRef.current = null;
       const unsaved = !matchesSaved && Object.keys(annotationsByPage).length > 0;
       if (unsaved) setHasUnsavedAnnotations(true);
       if (onUnsavedAnnotationsChange) onUnsavedAnnotationsChange(unsaved);
@@ -23638,14 +23642,22 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     const checkNow = () => reportUnsaved(jsonEqual(annotationsByPage, savedAnnotationsByPageRef.current));
     // A whole-document rebuild (the open, a cloud apply) shares no page with
-    // the saved copy, so an equal compare walks every mark: ~60 ms each, five
-    // times while a 3,000-mark document opens. Such a compare runs a page at a
-    // time in idle slices, and a newer change drops it. An edit keeps its
-    // untouched pages, so it answers at once.
+    // the marks before it, and an equal compare against the saved copy walks
+    // every mark: ~60 ms each, five times while a 3,000-mark document opens.
+    // Such a compare runs a page at a time in idle slices; a newer rebuild
+    // drops it, and a re-run for the same marks (a sync status change) keeps
+    // waiting. Marks it finds equal become the saved copy, so later edits
+    // compare only their own pages. An edit keeps its untouched pages, so it
+    // is checked at once, as before.
     const saved = savedAnnotationsByPageRef.current;
+    const previous = checkedByPageRef.current;
+    checkedByPageRef.current = annotationsByPage;
     const pages = Object.keys(annotationsByPage);
-    const rebuilt = pages.length > 1 && saved !== annotationsByPage
-      && !pages.some((page) => saved?.[page] === annotationsByPage[page]);
+    const rebuilt = pages.length > 1 && (
+      waitingByPageRef.current === annotationsByPage
+      || (previous !== null && previous !== annotationsByPage
+        && !pages.some((page) => previous[page] === annotationsByPage[page]))
+    );
     const idle = typeof requestIdleCallback === 'function';
     let sliceId = null;
     if (rebuilt) {
@@ -23660,12 +23672,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const until = performance.now() + 8;
         for (;;) {
           const step = steps.next();
-          if (step.done) { reportUnsaved(step.value); return; }
+          if (step.done) {
+            if (step.value && savedAnnotationsByPageRef.current === against) {
+              savedAnnotationsByPageRef.current = annotationsByPage;
+            }
+            reportUnsaved(step.value);
+            return;
+          }
           if (performance.now() > until) break;
         }
         sliceId = idle ? requestIdleCallback(slice, { timeout: 500 }) : setTimeout(slice, 0);
       };
       pendingUnsavedCheckRef.current = checkNow;
+      waitingByPageRef.current = annotationsByPage;
       sliceId = idle ? requestIdleCallback(slice, { timeout: 500 }) : setTimeout(slice, 0);
     } else {
       checkNow();
