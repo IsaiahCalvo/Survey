@@ -5,6 +5,10 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-27', items: [
+    'Swipe rows are simpler: slide left to delete (a long slide deletes at once) or right for one everyday action such as Share, Duplicate or Move. A mouse drag works on a computer.',
+    'A new text box takes the bar\'s width, border, fill and dashed or dotted style, and dashed and dotted borders now show and print.',
+    'Drop-downs in dialogs such as Share, invite, move and print use the app\'s own look.',
+    'Document access and Manage team open at full size, with no jump while people load.',
     'Reopening a big drawing set is quicker, and the first page shows sooner.',
     'One look across the app: every action menu shares the same rows, with an icon on each and Delete last, and dialogs and messages match.',
     'Done in select mode tucks the select buttons away cleanly, and dialogs fade out as they close.',
@@ -16,7 +20,6 @@ export const WHATS_NEW = [
     'Spaces: the Select tool draws a drag box to pick areas, Move or copy opens as a small card by its button, and a new space opens ready for its name.',
     'Switching to a tab with a big drawing set is about three times faster.',
     'Keys act only in the tab you are looking at, never in the tabs behind it.',
-    'Slide any list row to the left to show its actions: Duplicate, Move, Copy, Share and Delete. Works in every list, and a two-finger swipe does it on a trackpad.',
     'Deleting a space, a region, a category or several Survey Markers happens at once, with an Undo button instead of a question.',
     'Spaces: clicking or erasing a smoothed Lasso area follows the curve you see.',
     'Closed documents give back their memory, so the app stays lighter as you work.',
