@@ -4303,6 +4303,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // dismiss rules in utils/selectModes.js (Escape: every tool; backdrop
   // press: Select family, and a click under the Shapes / Text tools).
   useEffect(() => {
+    // Every open tab keeps its viewer; only the front one answers keys and
+    // presses on the window (docs/TAB-SWITCHING.md S6). Escape in the front
+    // tab used to put a tab behind down to Pan.
+    if (isActive === false) return undefined;
     const escapeDeselects = shouldEscapeDeselect(activeTool);
     const backdropDeselects = shouldBackdropPressDeselect(activeTool);
     if (!escapeDeselects && !backdropDeselects) return undefined;
@@ -4385,7 +4389,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (escapeDeselects) window.removeEventListener('keydown', clear, true);
       if (backdropDeselects) window.removeEventListener('pointerdown', clear, true);
     };
-  }, [activeTool, clearAnnotationSelectionForContextChange, editingAnnotation, setActiveToolLogged]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, editingAnnotation, isActive, setActiveToolLogged]);
 
   const textSelectGestureActiveRef = useRef(false);
 
@@ -32199,7 +32203,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const categorizeDialogMarkerId = mobileMode ? null : (pendingSurveyMarker?.id || null);
   useEffect(() => {
-    if (!categorizeDialogMarkerId || typeof window === 'undefined') return undefined;
+    // Only the front tab answers keys (S6).
+    if (!categorizeDialogMarkerId || isActive === false || typeof window === 'undefined') return undefined;
     const onKeyDown = (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       // The card's module list is open: its own Escape closes only the list.
@@ -32210,7 +32215,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [categorizeDialogMarkerId, cancelSurveyMarkerPlacement]);
+  }, [categorizeDialogMarkerId, cancelSurveyMarkerPlacement, isActive]);
 
   // UX: w53 — Delete with several Survey Markers selected (a family
   // selection of markers only) deletes them as ONE undo step. Each marker
@@ -33959,6 +33964,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [showAnnotationColorPicker, textLinkEditorOpen]);
 
   useEffect(() => {
+    // Only the front tab listens on the document (S6); a tab behind keeps
+    // its text selection state as it was left.
+    if (isActive === false) return undefined;
     // Pan selects text too once a mouse / pen rests on it (owner 2026-10-14).
     if (!isTextSelectionCaptureTool(activeTool)) {
       // Owner 2026-10-02: a just-drawn callout opens its text editor and the
@@ -34007,7 +34015,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       document.removeEventListener('touchend', captureSoon, true);
       document.removeEventListener('keydown', onKeyDown, true);
     };
-  }, [activeTool, capturePdfjsTextSelection, clearLiveTextSelection, showAnnotationColorPicker, textLinkEditorOpen]);
+  }, [activeTool, capturePdfjsTextSelection, clearLiveTextSelection, isActive, showAnnotationColorPicker, textLinkEditorOpen]);
 
   useEffect(() => {
     try { localStorage.setItem('survey:text-markup-overlap-mode', textMarkupOverlapMode); } catch { /* noop */ }
@@ -34741,6 +34749,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, handleSelectPdfjsTextMarkupFromClientPoint]);
 
   useEffect(() => {
+    // Only the front tab answers keys (S6): Delete in the front tab used to
+    // delete a highlight left selected in a tab behind.
+    if (isActive === false) return undefined;
     const handleNativeTextMarkupDelete = (event) => {
       if (activeTool !== 'select' && !NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) return;
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
@@ -34762,7 +34773,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => {
       document.removeEventListener('keydown', handleNativeTextMarkupDelete, { capture: true });
     };
-  }, [activeTool, onUnsavedAnnotationsChange, tabId]);
+  }, [activeTool, isActive, onUnsavedAnnotationsChange, tabId]);
 
   // Filter annotations by active module for rendering on PDF
   const filteredAnnotationsForPages = useMemo(() => {
@@ -35587,6 +35598,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // can be traced in a Save Log dump. We log every panel event we can see.
   useEffect(() => {
     // 2026-04-29: silenced — repeated on every component mount (every render path with React StrictMode). Re-enable via window.__DIAG_PRINT_PANEL_MOUNT = true.
+    // Only the front tab prints (S6): Ctrl+P and the Electron Print menu used
+    // to start a print in every open tab.
+    if (isActive === false || typeof window === 'undefined') return undefined;
     if (typeof window !== 'undefined' && window.__DIAG_PRINT_PANEL_MOUNT) console.log('[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available:', !!window.electronAPI, 'onPrintPdf available:', !!window.electronAPI?.onPrintPdf);
 
     // Native/system printing is the default. Product status and prototype
@@ -35798,7 +35812,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // capture froze numPages at 0 from the very first render, which
     // made Cmd/Ctrl+P log "no pages to print" forever after).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [numPages, pageSizes, pdfFile, pageTransformations]);
+  }, [numPages, pageSizes, pdfFile, pageTransformations, isActive]);
 
   // Pages data fed to the PrintPanel — derived from the Pdfjs-reported
   // pageSizes map. Falls back to Letter portrait if sizes aren't populated yet
@@ -37163,6 +37177,7 @@ ${pageBlocks}
         {showRegionSelection && (
           <RegionSelectionTool
             active={showRegionSelection}
+            tabActive={isActive !== false}
             mobileMode={mobileMode}
             onMobileToolbarApiChange={setMobileRegionToolbarApi}
             onRequestRegionTool={() => setActiveTool(REGION_EDIT_TOOL)}

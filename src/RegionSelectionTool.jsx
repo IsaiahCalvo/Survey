@@ -170,6 +170,9 @@ const isEditableKeyboardTarget = () => {
 
 const RegionSelectionTool = ({
   active,
+  // False while this tab is behind the front one: its keys are the front
+  // tab's (docs/TAB-SWITCHING.md S6).
+  tabActive = true,
   mobileMode = false,
   onMobileToolbarApiChange = null,
   // Owner 2026-10-01 (Spaces toolbar): the app's Pan tool stays usable while
@@ -2900,7 +2903,9 @@ const RegionSelectionTool = ({
 
   // Track keyboard modifiers (Shift, Option/Alt, Space) for mode override
   useEffect(() => {
-    if (!active) return;
+    // Only the front tab answers keys (docs/TAB-SWITCHING.md S6): Ctrl+Z or
+    // Escape in the front tab used to act on a region tool left open behind.
+    if (!active || !tabActive) return;
 
     const handleKeyDown = (event) => {
       const key = event.key?.toLowerCase?.();
@@ -3069,7 +3074,7 @@ const RegionSelectionTool = ({
       isSpacePressedRef.current = false;
       setIsSpacePressed(false);
     };
-  }, [active, undoLastRegionEdit, redoLastRegionEdit]);
+  }, [active, tabActive, undoLastRegionEdit, redoLastRegionEdit]);
 
   useEffect(() => {
     if (!active || !targetElement) return;

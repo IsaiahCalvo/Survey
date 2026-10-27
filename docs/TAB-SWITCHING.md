@@ -82,9 +82,14 @@ reading one forces a layout of that tab. So:
   tab's panels (`PdfjsViewerContainer`'s `tabActive` and its
   `isInTabBehind` guards); a fit asked for behind runs when it comes back;
 - document-wide key and pointer handlers of a tab return early when it is
-  behind.
+  behind: gate the effect on `isActive` (PDFViewer) or `tabActive`, or
+  check `isInTabBehind(<own element>)` in the handler. This holds even with
+  the `display: none` fallback: keys always reach `window` and `document`,
+  so a tab behind would delete its selected highlight, flip its tool to Pan
+  on Escape or a Space tap, undo its region edits or print on Ctrl+P.
 
-`tests/tabBehindHiding.test.mjs` guards this.
+`tests/tabBehindHiding.test.mjs` and `tests/tabBehindKeys.test.mjs` guard
+this.
 
 ## How this differs from Drawboard, and why
 
