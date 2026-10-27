@@ -121,11 +121,18 @@ test('a lock that is never granted rejects every call in the turn with its error
 
 test('a turn whose lock is taken away mid-run: the running call gets the steal error, the rest ask again and run', async () => {
   let attempt = 0;
+  // The calls finish only after the steal: a timer race between the two made
+  // this flaky on slow CI machines.
+  let stolen;
+  const afterSteal = new Promise((resolve) => { stolen = resolve; });
   const lock = (name, timeout, fn) => {
     attempt += 1;
     if (attempt === 1) {
       // Granted, then stolen while the first call runs.
-      return new Promise((resolve, reject) => { fn(); setTimeout(() => reject(new Error('stolen')), 0); });
+      return new Promise((resolve, reject) => {
+        fn();
+        setTimeout(() => { reject(new Error('stolen')); stolen(); }, 0);
+      });
     }
     return fn();
   };
@@ -133,7 +140,7 @@ test('a turn whose lock is taken away mid-run: the running call gets the steal e
   const ran = [];
   const results = await Promise.allSettled([1, 2, 3].map((i) => batched('auth', -1, async () => {
     ran.push(i);
-    await new Promise((r) => setTimeout(r, 2));
+    await afterSteal;
     return i;
   })));
   assert.equal(results[0].status, 'rejected');
