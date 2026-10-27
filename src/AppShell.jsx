@@ -17,6 +17,7 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import ExportPdfDialog from './components/ExportPdfDialog';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
+import { PageGridMenu } from './components/PageGridSettings';
 import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
@@ -2030,6 +2031,9 @@ export default function App({ devPreviewReturnTab = null }) {
     window.addEventListener(OPEN_EXPORT_PDF_EVENT, open);
     return () => window.removeEventListener(OPEN_EXPORT_PDF_EVENT, open);
   }, [exportModesEnabled]);
+
+  // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
+  const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
   const pinnedTools = usePinnedTools();
   // PDFs dragged in from the computer onto an open document (owner request
   // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
@@ -5105,7 +5109,25 @@ export default function App({ devPreviewReturnTab = null }) {
                       {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
                     </div>
                     {/* Drawboard gap #10: View > page grid overlay. */}
-                    <PageGridToggle render={({ on, toggle }) => (
+                    <PageGridToggle render={({ on, toggle }) => (gridSettingsEnabled ? (
+                      // Nightly (flag 'grid-settings'): the button opens the
+                      // grid card - show or hide, and the spacing.
+                      <PageGridMenu on={on} toggle={toggle} renderButton={({ open, ref, onClick }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Page grid"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-page-grid-toggle="true"
+                          {...chromeTip(open ? undefined : 'Page grid', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
+                        </button>
+                      )} />
+                    ) : (
                       <button
                         type="button"
                         onClick={toggle}
@@ -5117,7 +5139,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       >
                         <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
                       </button>
-                    )} />
+                    ))} />
                     {/* Owner 2026-10-22: snapping's switch, beside the grid
                         (Bluebeam keeps SNAP and GRID side by side too). */}
                     <SnappingToggle render={({ on, toggle }) => (
