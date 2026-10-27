@@ -45,6 +45,7 @@ import {
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
+import { insertSplineCorner, keepPivot, moveSplineCorner, polySplineStep, splineSpanMidpoint } from '../utils/polySpline.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
 // UX 2026-09-09: a cloud polygon/polyline vertex drag replays the approved
 // studio's moveVertex(): only the dragged vertex's corner is re-fitted and the
@@ -3313,7 +3314,8 @@ export function useSVGInteraction({
         };
         const pts = ds.originalPoints;
         const vi = ds.vertexIndex;
-        const neighbour = vi > 0 ? pts[vi - 1] : (ds.isPolygon ? pts[pts.length - 1] : pts[1]);
+        const gap = ds.splineStep || 1;
+        const neighbour = vi > 0 ? pts[vi - gap] : (ds.isPolygon ? pts[pts.length - 1] : pts[gap]);
         const snapped = snapDraggedPoint(ds, neighbour ? toWorld(neighbour) : null, toWorld({ x: localX, y: localY }), e);
         const back = toLocal(snapped);
         localX = back.x;
@@ -3323,7 +3325,10 @@ export function useSVGInteraction({
       // One definition of "move a single vertex", shared with the polygon /
       // polyline draft module: the dragged point is replaced, every other
       // point is copied through byte-for-byte so no neighbour drifts.
-      const newPoints = movePolyVertexPoints(ds.originalPoints, ds.vertexIndex, { x: localX, y: localY });
+      // A curved polyline moves the clicked corner and draws its curve again.
+      const newPoints = ds.splineStep
+        ? moveSplineCorner(ds.originalPoints, ds.splineStep, ds.vertexIndex, { x: localX, y: localY })
+        : movePolyVertexPoints(ds.originalPoints, ds.vertexIndex, { x: localX, y: localY });
 
       // UX 2026-04-20: keep the world rotation pivot anchored when a vertex
       // moves on a ROTATED polygon. The renderer re-derives rotCenter from
@@ -6193,13 +6198,24 @@ export function useSVGInteraction({
       const segmentIndex = Number(handleId.slice('insert-vertex-'.length));
       const count = obj.points?.length || 0;
       const closed = String(obj.type).toLowerCase() === 'polygon';
-      if (!Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= count - (closed ? 0 : 1)) return;
+      // On a curved polyline the "+" names the span between two clicked
+      // corners; the new corner lands on the curve halfway along it.
+      const splineStep = polySplineStep(obj);
+      const sides = splineStep ? (count - 1) / splineStep : count - (closed ? 0 : 1);
+      if (!Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= sides) return;
       obj = deepClone(obj);
-      const from = obj.points[segmentIndex];
-      const to = obj.points[(segmentIndex + 1) % count];
-      obj.points.splice(segmentIndex + 1, 0, { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
+      if (splineStep) {
+        // The new curve's box can differ from the old one; keepPivot holds a
+        // turned line's corners where they were (Codex review on #1214).
+        obj = keepPivot(obj, obj.points, insertSplineCorner(obj.points, splineStep, segmentIndex, splineSpanMidpoint(obj.points, splineStep, segmentIndex)));
+        handleId = `vertex-${(segmentIndex + 1) * splineStep}`;
+      } else {
+        const from = obj.points[segmentIndex];
+        const to = obj.points[(segmentIndex + 1) % count];
+        obj.points.splice(segmentIndex + 1, 0, { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
+        handleId = `vertex-${segmentIndex + 1}`;
+      }
       if (obj.data?.pdfCloudVertexState) delete obj.data.pdfCloudVertexState;
-      handleId = `vertex-${segmentIndex + 1}`;
       try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch { /* optional */ }
     }
 
@@ -6298,7 +6314,8 @@ export function useSVGInteraction({
         // Cloud parity: snapshot the studio shape at drag start (its stored
         // per-vertex memory when it has one, else a fresh makeShape fit) in the
         // engine frame, so every move can replay moveVertex() from it.
-        const cloudSpec = resolveAnnotationCloudSpec(obj);
+        const splineStep = polySplineStep(obj);
+        const cloudSpec = splineStep ? null : resolveAnnotationCloudSpec(obj);
         const cloudVertexEdit = cloudSpec && (cloudSpec.kind === 'polygon' || cloudSpec.kind === 'polyline')
           ? (() => {
               const enginePoints = cloudPolyEnginePoints(obj);
@@ -6320,6 +6337,7 @@ export function useSVGInteraction({
           annotationIndex: selectedIndex,
           ctmInverse,
           vertexIndex,
+          splineStep,
           cloudVertexEdit,
           // Per-field sync (2026-09-24): the release writes only this mark's
           // own change (drag start → last frame) onto the page as it is then.

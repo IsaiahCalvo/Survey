@@ -81,12 +81,34 @@ export function writeTextboxAutoFit(value) {
   return on;
 }
 
+// Polyline "Curve" (Nightly, flag 'spline-polyline'): new polylines bend
+// smoothly through their corners. Off unless the user turns it on.
+export const POLYLINE_CURVE_KEY = 'survey:polyline-curve';
+let curveMemo = null;
+
+export function readPolylineCurve() {
+  try {
+    const raw = storage()?.getItem(POLYLINE_CURVE_KEY);
+    if (raw === 'on') return true;
+    if (raw === 'off') return false;
+  } catch { /* blocked storage */ }
+  return curveMemo ?? false;
+}
+
+export function writePolylineCurve(value) {
+  const on = !!value;
+  curveMemo = on;
+  try { storage()?.setItem(POLYLINE_CURVE_KEY, on ? 'on' : 'off'); } catch { /* blocked storage */ }
+  try { window.dispatchEvent(new CustomEvent(ANNOTATION_PREFERENCES_EVENT, { detail: { key: POLYLINE_CURVE_KEY, value: on } })); } catch { /* no window */ }
+  return on;
+}
+
 /** Subscribe to changes from this page (Settings) and other windows. */
 export function subscribeAnnotationPreferences(listener) {
   if (typeof window === 'undefined' || typeof listener !== 'function') return () => {};
   const onLocal = () => listener();
   const onStorage = (event) => {
-    if (!event || event.key == null || event.key === TEXTBOX_AUTO_FIT_KEY || event.key === ANNOTATION_SNAPPING_KEY) listener();
+    if (!event || event.key == null || event.key === TEXTBOX_AUTO_FIT_KEY || event.key === ANNOTATION_SNAPPING_KEY || event.key === POLYLINE_CURVE_KEY) listener();
   };
   window.addEventListener(ANNOTATION_PREFERENCES_EVENT, onLocal);
   window.addEventListener('storage', onStorage);

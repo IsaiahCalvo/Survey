@@ -99,6 +99,8 @@ import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
 import PinnedToolsDock, { PinIcon, getPinnedToolsStore, usePinnedTools } from './components/PinnedToolsDock.jsx';
 import { isFeatureOn } from './featureFlags.js';
+import { usePolylineCurve } from './hooks/usePolylineCurve.js';
+import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
@@ -2034,6 +2036,8 @@ export default function App({ devPreviewReturnTab = null }) {
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
+
+  const polylineCurve = usePolylineCurve();
   const pinnedTools = usePinnedTools();
   // PDFs dragged in from the computer onto an open document (owner request
   // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
@@ -4198,6 +4202,33 @@ export default function App({ devPreviewReturnTab = null }) {
                   ), { canCompact: !styleMixed });
                   })()
                 )}
+                {/* Curve (Nightly, flag 'spline-polyline'): the polyline bends
+                    smoothly through its corners. Sets the tool's next lines
+                    and, with a polyline picked, turns that one too. */}
+                {polylineCurve.available && (bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.selectedPolyline) && toolbarSlot('curve', (compact) => {
+                  const picked = bottomToolbarApi.selectedPolyline;
+                  const curveOn = picked ? picked.curved : polylineCurve.on;
+                  return (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={curveOn}
+                      aria-label="Curve"
+                      data-polyline-curve="true"
+                      className="chrome-text-toggle"
+                      // A setting, like B / I / U: pressed is a --surface-3 plate.
+                      style={{ ...textToggleStyle(curveOn), width: 'auto', minWidth: 'var(--chrome-text-toggle-w)', gap: '4px', padding: compact ? '0 2px' : '0 6px 0 4px', font: '600 11px/1 var(--font-ui)' }}
+                      onClick={() => {
+                        polylineCurve.set(!curveOn);
+                        if (picked) window.dispatchEvent(new CustomEvent(POLYLINE_CURVE_SET_EVENT, { detail: { curved: !curveOn } }));
+                      }}
+                      {...chromeTip(curveOn ? 'Curve on: bends through each corner' : 'Curve off: straight sides', 'below')}
+                    >
+                      <Icon name="polylineCurve" size={16} color="currentColor" />
+                      {!compact && <span>Curve</span>}
+                    </button>
+                  );
+                })}
                 {/* 2026-05-25: Bump number input — shows only when the border
                     style is Cloud, on the same shapes that offer Cloud at all
                     (see supportsCloudStyle above). Drives how big the cloud's

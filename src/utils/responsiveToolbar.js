@@ -130,6 +130,7 @@ export const TOOLBAR_SLOTS = [
   { id: 'start', label: 'Start', keep: 20, compactable: false, fullWidth: 72, selfLabelled: true },
   { id: 'style', label: 'Style', keep: 50, compactable: true, fullWidth: 92, compactWidth: 48 },
   { id: 'bump', label: 'Bump', keep: 10, compactable: false, fullWidth: 66, selfLabelled: true },
+  { id: 'curve', label: 'Curve', keep: 30, compactable: true, fullWidth: 78, compactWidth: 32 },
   { id: 'arrowhead', label: 'Arrowhead', keep: 60, compactable: true, fullWidth: 90, compactWidth: 44 },
   { id: 'ends', label: 'Ends', keep: 40, compactable: true, fullWidth: 96, compactWidth: 44 },
   { id: 'aa', label: 'Text', keep: 55, compactable: false, fullWidth: 29 },

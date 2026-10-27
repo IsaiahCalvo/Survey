@@ -18,6 +18,7 @@ import { createProductionPaperInk } from './productionPaperInk.js';
 import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { normalizePolyPointsToLocal } from './polyDraft.js';
 import { round2 } from './annotationCommitRounding.js';
+import { SPLINE_STEP, sampleSpline } from './polySpline.js';
 
 // fabric 7 base-object serialization envelope (Object.mjs toObject defaults,
 // NUM_FRACTION_DIGITS rounding upstream of these constants). Deliberately
@@ -255,12 +256,15 @@ export function buildPolyShapeCommitJSON({
   selectedModuleId,
   stampRegionId,
   activeRegionId,
+  curve = false, // polyline only: bend smoothly through the clicked corners
 }) {
   if (tool !== 'polygon' && tool !== 'polyline') return null;
   const minimum = tool === 'polygon' ? 3 : 2;
   if (!Array.isArray(points) || points.length < minimum) return null;
 
-  const { left, top, points: localPoints } = normalizePolyPointsToLocal(points);
+  // A cloud's scallops follow corners, so a cloud polyline stays straight.
+  const curved = curve && tool === 'polyline' && !(lineBorderStyle === 'cloud' && toolSupportsCloudBorderStyle(tool));
+  const { left, top, points: localPoints } = normalizePolyPointsToLocal(curved ? sampleSpline(points, SPLINE_STEP) : points);
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -295,6 +299,7 @@ export function buildPolyShapeCommitJSON({
     id,
     data: { id },
   };
+  if (curved) json.data.spline = { step: SPLINE_STEP };
   applyScope(json, { selectedModuleId, stampRegionId, activeRegionId });
   applyBorderStyle(json, { tool, lineBorderStyle, cloudIntensity });
   return json;

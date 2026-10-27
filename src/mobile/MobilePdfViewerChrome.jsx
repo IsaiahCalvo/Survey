@@ -43,6 +43,8 @@ import { MOBILE_MEASURE_ITEMS, applyMobileMeasurePick, applyMobileShapePick, isM
 import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
 import { OPEN_EXPORT_PDF_EVENT } from '../utils/exportPdfModes.js';
+import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
+import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
 // ONE glyph:control ratio for every phone tier, and it is Drawboard's: its
@@ -1314,6 +1316,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
 
 export function MobileToolProperties({ api, onOpenSurveyList }) {
   const tip = useTooltip();
+  const polylineCurve = usePolylineCurve();
   // 2026-07-12 (Phase E, demo parity): which colour control has the shared
   // CompactColorPicker takeover open. null | 'textColor' | 'fill' | 'stroke'
   // | 'fontColorLive'. Replaces the old OS <input type=color> swatches so
@@ -2531,6 +2534,25 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                             preview: lineStyleSample(option.value, 26),
                           }))}
                           onChange={(value) => api.setLineBorderStyle?.(value)}
+                        />
+                      </SheetRow>
+                    )}
+                    {/* Curve (Nightly, flag 'spline-polyline'): the next
+                        polylines, and a picked one, bend through their corners. */}
+                    {polylineCurve.available && (tool === 'polyline' || api.selectedPolyline) && (
+                      <SheetRow label="Curve">
+                        <SheetSegmented
+                          ariaLabel="Polyline curve"
+                          value={(api.selectedPolyline ? api.selectedPolyline.curved : polylineCurve.on) ? 'curved' : 'straight'}
+                          options={[
+                            { value: 'straight', label: 'Straight', ariaLabel: 'Straight sides' },
+                            { value: 'curved', label: 'Curved', ariaLabel: 'Curved through corners' },
+                          ]}
+                          onChange={(value) => {
+                            const curved = value === 'curved';
+                            polylineCurve.set(curved);
+                            if (api.selectedPolyline) window.dispatchEvent(new CustomEvent(POLYLINE_CURVE_SET_EVENT, { detail: { curved } }));
+                          }}
                         />
                       </SheetRow>
                     )}
