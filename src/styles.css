@@ -1620,8 +1620,8 @@ input[type="text"].space-card__name:focus-visible {
 }
 
 /* ---- switches: the column is the hit area, the track is drawn inside ----
-   ON is the app's calm neutral "on" (a --text-2
-   track), never gold (owner 2026-10-02). */
+   ON is gold, like every lit toggle in Spaces (design review 2026-10-27; it
+   was --success green, which tokens.css keeps for status dots only). */
 .spaces-switch {
   position: relative;
   flex: 0 0 var(--sp-switch-w);
@@ -1648,7 +1648,7 @@ input[type="text"].space-card__name:focus-visible {
 }
 
 .spaces-switch[aria-checked='true']::before {
-  background: var(--success);
+  background: var(--accent);
   box-shadow: none;
 }
 
