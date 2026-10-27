@@ -117,3 +117,33 @@ test('the viewer holds soft pages while moving and every draw during a pinch', (
   // and pumps the line once the page is still ('prefetch' = held while anything moves)
   assert.match(CONTAINER, /if \(gestureHoldsRasterRef\.current\('prefetch'\)\) \{ scheduleRasterQuietPump\(\); return; \}/);
 });
+
+// Speed (2026-10-27): at 4x CPU slowdown a mark drag ran at ~14 frames a
+// second while page thumbnails were still being drawn ahead of need; each
+// pdf.js slice of those draws took a frame from the drag. A prefetch now
+// waits while a pointer is pressed in the viewer, pauses mid-draw at its next
+// slice, and resumes when the pointer is released.
+test('a page drawn ahead of need waits while a pointer is pressed in the viewer', async () => {
+  let pressed = false;
+  const frames = manualFrames();
+  const queue = createPageRasterQueue({ isHeld: (kind) => kind === 'prefetch' && pressed, schedule: frames.schedule });
+  const ahead = queue.request(7, { kind: 'prefetch' });
+  await ahead.ready;
+  assert.equal(ahead.claim(), true);
+  let slices = 0;
+  pressed = true;
+  ahead.continue(() => { slices += 1; });
+  assert.equal(frames.flush(), 0, 'pressed: the next slice waits');
+  pressed = false;
+  queue.pump();
+  assert.equal(frames.flush(), 1, 'released: it resumes where it paused');
+  assert.equal(slices, 1);
+  ahead.release();
+
+  assert.match(CONTAINER, /if \(kind === 'prefetch' && pressHeldRef\.current\) return true;/);
+  assert.match(CONTAINER, /const onDown = \(\) => \{ pressHeldRef\.current = true; \};/);
+  assert.match(CONTAINER, /el\.addEventListener\('pointerdown', onDown, \{ capture: true, passive: true \}\);/);
+  assert.match(CONTAINER, /pressHeldRef\.current = false;\n\s*scheduleRasterQuietPump\(\);/);
+  assert.match(CONTAINER, /window\.addEventListener\('pointerup', onUp, true\);/);
+  assert.match(CONTAINER, /window\.addEventListener\('pointercancel', onUp, true\);/);
+});

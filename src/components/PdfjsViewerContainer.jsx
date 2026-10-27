@@ -1586,6 +1586,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const lastScrollAtRef = useRef(-Infinity);
   const rasterQuietTimerRef = useRef(0);
   const gestureHoldsRasterRef = useRef(() => false);
+  const pressHeldRef = useRef(false); // a pointer is down in the viewer
   if (!rasterQueueRef.current) {
     rasterQueueRef.current = createPageRasterQueue({
       isVisible: (index) => {
@@ -1671,6 +1672,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // glide, a bounce or a scroll moves the page only pages showing nothing do.
   gestureHoldsRasterRef.current = (kind = 'sharpen') => {
     if (zoomInteractionRef.current || mobileTouchRef.current?.mode === 'pinch') return true;
+    if (kind === 'prefetch' && pressHeldRef.current) return true;
     const moving = panInteractionRef.current
       || Boolean(elasticRef.current?.anim)
       || performance.now() - lastScrollAtRef.current < RASTER_SCROLL_QUIET_MS;
@@ -1701,6 +1703,30 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     scheduleRasterQuietPump();
   }, [scheduleRasterQuietPump]);
   useEffect(() => () => { if (rasterQuietTimerRef.current) clearTimeout(rasterQuietTimerRef.current); }, []);
+  // Drawing a page ahead of need (its far-zoom thumbnail) waits while a
+  // pointer is pressed in the viewer: dragging, resizing or drawing a mark
+  // keeps the page still, yet each pdf.js slice of that draw is a frame's
+  // worth of main thread taken from the gesture.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return undefined;
+    const onDown = () => { pressHeldRef.current = true; };
+    const onUp = () => {
+      if (!pressHeldRef.current) return;
+      pressHeldRef.current = false;
+      scheduleRasterQuietPump();
+    };
+    el.addEventListener('pointerdown', onDown, { capture: true, passive: true });
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+    window.addEventListener('blur', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+      window.removeEventListener('blur', onUp);
+    };
+  }, [scheduleRasterQuietPump]);
   const layoutMetrics = useMemo(() => resolveLayoutMetrics(phoneLayout), [phoneLayout]);
   const layoutMetricsRef = useRef(layoutMetrics);
   layoutMetricsRef.current = layoutMetrics;

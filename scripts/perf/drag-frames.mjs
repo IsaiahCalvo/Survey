@@ -18,6 +18,9 @@
 // took to be acknowledged. Every gesture is undone (Ctrl+Z) afterwards. Also
 // the JS heap after a forced GC once the doc is open and after the switch.
 // PROFILE=<file> records a CPU profile of each gesture of the first run.
+// CPU=<n> slows the page n times once it is open (a slower laptop or tablet).
+// PAINT=1 lists, per gesture, 2D canvas draw calls and canvas context, size
+// and export calls (with the calling code) per canvas.
 // RENDERS=1 counts React commits during the moves and, per component, how many
 // times it rendered (a stub DevTools hook; name the components with an
 // unminified build: `vite build --mode e2e --minify false`), plus how many DOM
@@ -178,6 +181,7 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
   const trace = profile && process.env.TRACE ? profile.replace(/\.cpuprofile$/, '.trace.json') : null;
   if (trace) await page.context().browser().startTracing(page, { path: trace, categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'blink', 'cc', 'gpu', 'viz'] });
   else if (profile) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 200 }); await cdp.send('Profiler.start'); }
+  if (process.env.PAINT) await page.evaluate(() => { window.__paint?.clear(); window.__paintOn = true; });
   await send('mousePressed', from.x, from.y, 1);
   await startSampling(page);
   // MUTATIONS=1: count what the DOM changes during the moves (which nodes a frame repaints).
@@ -229,6 +233,9 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
     stats.mutations = await page.evaluate(() => { window.__mo.disconnect(); return [...window.__mutations].sort((x, y) => y[1] - x[1]).slice(0, 15).map(([k, v]) => `${v} ${k}`); });
   }
   stats.watchedMovedPx = (await leftOf()) - before;
+  if (process.env.PAINT) {
+    stats.paint = await page.evaluate(() => { window.__paintOn = false; return [...window.__paint].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([k, v]) => `${v} ${k}`); });
+  }
   if (trace) await page.context().browser().stopTracing();
   else if (profile) { const { profile: cpu } = await cdp.send('Profiler.stop'); fs.writeFileSync(profile, JSON.stringify(cpu)); }
   await send('mouseReleased', from.x + dx, from.y + dy, 0);
@@ -251,9 +258,40 @@ async function oneRun(browser, { profile = null } = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
   if (process.env.RENDERS) await context.addInitScript(installRenderCounter);
+  // PAINT=1 counts 2D canvas draw calls per canvas during each gesture.
+  if (process.env.PAINT) {
+    await context.addInitScript(() => {
+      const counts = new Map(); window.__paint = counts; window.__paintOn = false;
+      const desc = (c) => {
+        const el = c.canvas;
+        if (!(el instanceof HTMLCanvasElement)) return `offscreen ${el.width}x${el.height}`;
+        const host = el.closest('[data-page-number],[data-overlay-page],[data-page]');
+        const pg = host?.getAttribute('data-page-number') || host?.getAttribute('data-overlay-page') || host?.getAttribute('data-page') || '?';
+        return `${String(el.className || '(no class)').slice(0, 40)} p${pg} ${el.width}x${el.height}${el.isConnected ? '' : ' detached'}`;
+      };
+      const note = (k) => { if (window.__paintOn) { const st = (new Error().stack || '').split('\n').slice(2, 5).map((l) => l.trim().replace(/https?:\/\/[^/]+\//, '')).join(' < '); const key = `${k} @ ${st}`; counts.set(key, (counts.get(key) || 0) + 1); } };
+      for (const fn of ['getContext', 'toDataURL', 'toBlob', 'transferToImageBitmap']) {
+        const orig = HTMLCanvasElement.prototype[fn];
+        if (orig) HTMLCanvasElement.prototype[fn] = function (...a) { note(`${fn} ${desc({ canvas: this })}`); return orig.apply(this, a); };
+      }
+      for (const prop of ['width', 'height']) {
+        const d = Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, prop);
+        Object.defineProperty(HTMLCanvasElement.prototype, prop, { ...d, set(v) { note(`set ${prop} ${desc({ canvas: this })}`); d.set.call(this, v); } });
+      }
+      for (const fn of ['fill', 'stroke', 'fillText', 'drawImage', 'fillRect', 'clearRect', 'putImageData']) {
+        const orig = CanvasRenderingContext2D.prototype[fn];
+        CanvasRenderingContext2D.prototype[fn] = function (...a) {
+          if (window.__paintOn) { const k = `${fn} ${desc(this)}`; counts.set(k, (counts.get(k) || 0) + 1); }
+          return orig.apply(this, a);
+        };
+      }
+    });
+  }
   const page = await context.newPage();
   await signInAndOpen(page);
   const cdp = await context.newCDPSession(page);
+  // CPU=<n> slows the page n times after it is open (a slower laptop or tablet).
+  if (process.env.CPU) await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU) });
   if (process.env.LOAF_DETAIL) await page.evaluate(() => { window.__loafDetail = true; });
   const heapOpenMB = await heapMB(cdp);
   const marks = await page.locator('[data-overlay-page="1"] [data-annotation-index]').count();
