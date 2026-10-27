@@ -65,6 +65,7 @@ import { removeSurveyMarkersFromPages } from './utils/surveyMarkerPageRemoval.js
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
 import { publishSideRoom, subscribeRightPanelYield } from './sidebar/panelLayoutStore.js';
+import { publishChromeInset } from './utils/chromeInsets.js';
 import { useProLock } from './hooks/useProLock.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
 
@@ -590,6 +591,10 @@ const SurveySpacesRail = ({
   expandRequestKey = 0,
   collapseRequestKey = 0,
   onCollapseChange = null,
+  // False while another tab is in front (AppShell keeps every open tab's rail
+  // mounted, TabChromeSlot): a hidden rail leaves the shared page settings,
+  // Escape and the panel-room rules to the front tab's rail.
+  tabActive = true,
   mobileMode = false,
   // Owner or editor of the document (PDFViewer's canRestoreFromHistory): may
   // add and remove Survey media and move legacy inline media to storage.
@@ -659,31 +664,36 @@ const SurveySpacesRail = ({
   }, [isSurveyPanelCollapsed, mobileMode]);
   const desktopSurveyPanelShown = !isSurveyPanelCollapsed || railPanelLeaving;
   // KAL-420 follow-up (2026-10-13): publish what this rail covers on the
-  // right, as PDFSidebar publishes --app-sidebar-width on the left, so the
+  // right, as PDFSidebar publishes the left rail's width, so the
   // storage / clean-up notice (StorageFailureBanner.css) ends at the rail
   // instead of running under it with its × out of reach. Desktop: the 48px
   // rail, plus the 320px panel while it is drawn. Phone: nothing (the
   // Survey sheet comes up from the bottom).
   useEffect(() => {
-    if (typeof document === 'undefined' || !document.documentElement) return;
-    document.documentElement.style.setProperty(
-      '--app-right-rail-width',
-      mobileMode ? '0px' : `${desktopSurveyPanelShown ? 48 + 320 : 48}px`,
-    );
+    if (!tabActive) return;
+    // For the notice only (chromeInsets.js): a custom property on :root
+    // restyled the whole document on every change.
+    publishChromeInset('right', mobileMode ? '0px' : `${desktopSurveyPanelShown ? 48 + 320 : 48}px`);
     // The left panel's width limit reads the same cover (panelLayoutStore.js).
     publishSideRoom({ rightCover: mobileMode ? 0 : (desktopSurveyPanelShown ? 48 + 320 : 48) });
-  }, [mobileMode, desktopSurveyPanelShown]);
+  }, [mobileMode, desktopSurveyPanelShown, tabActive]);
   // Desktop/tablet pass 2026-10-21 (item 1): the left panel was just opened
   // beside this panel on a window too narrow for both - this one gives way
   // (PDFSidebar, resolveNarrowPanelYield). Survey itself stays on.
   useEffect(() => {
-    if (mobileMode) return undefined;
+    if (mobileMode || !tabActive) return undefined;
     return subscribeRightPanelYield(() => setIsSurveyPanelCollapsed(true));
-  }, [mobileMode]);
+  }, [mobileMode, tabActive]);
+  // Every open tab keeps its own rail (docs/TAB-SWITCHING.md): only the
+  // front tab's rail owns these shared values, so closing a tab behind it
+  // leaves them alone.
+  const tabActiveRef = useRef(tabActive);
+  tabActiveRef.current = tabActive;
   useEffect(() => () => {
+    if (!tabActiveRef.current) return;
     publishSideRoom({ rightCover: 48 });
-    // Gone: later UI reading the token falls back to its own default.
-    if (typeof document !== 'undefined') document.documentElement?.style.removeProperty('--app-right-rail-width');
+    // Gone: later UI reading the width falls back to its own default.
+    publishChromeInset('right', null);
   }, []);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   // The template switcher (owner 2026-10-01, "hybrid" design): the template
@@ -1042,7 +1052,7 @@ const SurveySpacesRail = ({
       tooltip="Close"
       onClick={(event) => {
         const fromKeyboard = event.detail === 0;
-        const railHost = event.currentTarget.closest('#chrome-right-host') || document;
+        const railHost = event.currentTarget.closest('[data-chrome-tab-slot], #chrome-right-host') || document;
         toggleDesktopSurveyPanel();
         if (fromKeyboard) {
           requestAnimationFrame(() => {
@@ -1150,7 +1160,7 @@ const SurveySpacesRail = ({
   // first - a text field, a dialog, a menu, an open popover (which consumes
   // it, src/components/dismissRules.js R5) - keeps it.
   useEffect(() => {
-    if (!armedCategoryId || typeof window === 'undefined') return undefined;
+    if (!armedCategoryId || !tabActive || typeof window === 'undefined') return undefined;
     const onKeyDown = (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -1159,7 +1169,7 @@ const SurveySpacesRail = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [armedCategoryId, setActiveTool]);
+  }, [armedCategoryId, setActiveTool, tabActive]);
 
   // Switch to another template. The current one only closes the switcher.
   const switchSurveyTemplate = (template) => {
@@ -1585,6 +1595,15 @@ const SurveySpacesRail = ({
     const t = setTimeout(() => setSurveyAgentStarting(false), 5000);
     return () => clearTimeout(t);
   }, [surveyAgentStarting]);
+  // Another tab came to the front: the agent is put away and stops listening,
+  // as it did when a tab switch rebuilt this rail.
+  useEffect(() => {
+    if (tabActive) return;
+    setSurveyAgentMounted(false);
+    setSurveyAgentView('hidden');
+    setSurveyAgentActivity({ handsFree: false, phase: 'idle' });
+    setSurveyAgentStarting(false);
+  }, [tabActive]);
   const [surveyRailEl, setSurveyRailEl] = useState(null);
   const showSurveyAgentChat = useCallback(() => { setSurveyAgentMounted(true); setSurveyAgentView('chat'); setSurveyAgentStarting(false); }, []);
   const hideSurveyAgentChat = useCallback(() => setSurveyAgentView('hidden'), []);
@@ -4948,7 +4967,9 @@ const SurveySpacesRail = ({
             {mobileMode && typeof document !== 'undefined'
               ? createPortal(<div style={{ position: 'relative', zIndex: 10003 }}>{confirmDialogElement}</div>, document.body)
               : confirmDialogElement}
-            {surveyAgentMounted && surveyAgentEnabled && showSurveyPanel && selectedTemplate && (
+            {/* A hidden tab's agent is put away (it stops listening), as it was
+                when switching tabs rebuilt this rail. */}
+            {surveyAgentMounted && tabActive && surveyAgentEnabled && showSurveyPanel && selectedTemplate && (
               <SurveyAgentPanel
                 mobileMode={mobileMode}
                 host={surveyRailEl}

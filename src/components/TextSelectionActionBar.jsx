@@ -1,5 +1,7 @@
+import { useSyncExternalStore } from 'react';
 import Icon from '../Icons';
 import { useTooltip } from './Tooltip';
+import { chromeInsetVars, getChromeInsets, subscribeChromeInsets } from '../utils/chromeInsets.js';
 import './TextSelectionActionBar.css';
 
 const GOLD = 'var(--accent)';
@@ -67,6 +69,9 @@ export default function TextSelectionActionBar({
 }) {
   // UX: use the same below-row hints as the other chrome, including colour swatches.
   const chromeTip = useTooltip();
+  // The top bar's bottom caps the link form's height (the CSS reads
+  // --app-chrome-top), set here rather than on :root (utils/chromeInsets.js).
+  const chromeInsets = useSyncExternalStore(subscribeChromeInsets, getChromeInsets, getChromeInsets);
   const hasSelection = Boolean(selection?.pages?.length);
   if (!hasSelection) return null;
   const linkActive = activeMarkupTypes.includes('link');
@@ -86,7 +91,7 @@ export default function TextSelectionActionBar({
     buttons[nextIndex]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   };
   return (
-    <div className="text-selection-action-bar" data-text-selection-action-bar="true">
+    <div className="text-selection-action-bar" data-text-selection-action-bar="true" style={chromeInsetVars(chromeInsets, ['top'])}>
       <div
         className="text-selection-action-bar__toolbar"
         role="toolbar"

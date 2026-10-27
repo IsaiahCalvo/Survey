@@ -21775,12 +21775,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   activeLayerIdRef.current = effectiveActiveLayerId;
   const hiddenLayerIds = useMemo(() => (layersEnabled ? hiddenLayerIdSet(layerState) : null), [layersEnabled, layerState]);
   hiddenLayerIdsRef.current = hiddenLayerIds;
+  // Any write to the root's style restyles the whole page (~0.1 s on a big
+  // drawing set), so a tab switch leaves the value for the tab coming to the
+  // front to overwrite, and only a changed value is written
+  // (docs/TAB-SWITCHING.md). The front tab clears it when it closes.
+  const pdfOpacityFrontRef = useRef(false);
+  pdfOpacityFrontRef.current = layersEnabled && isActive !== false;
   useEffect(() => {
-    if (!layersEnabled || isActive === false || typeof document === 'undefined') return undefined;
+    if (!layersEnabled || isActive === false || typeof document === 'undefined') return;
     const root = document.documentElement;
-    root.style.setProperty('--survey-pdf-content-opacity', String(layerState.pdfOpacity));
-    return () => root.style.removeProperty('--survey-pdf-content-opacity');
+    const value = String(layerState.pdfOpacity);
+    if (root.style.getPropertyValue('--survey-pdf-content-opacity') !== value) {
+      root.style.setProperty('--survey-pdf-content-opacity', value);
+    }
   }, [layersEnabled, isActive, layerState.pdfOpacity]);
+  useEffect(() => () => {
+    if (pdfOpacityFrontRef.current) document.documentElement.style.removeProperty('--survey-pdf-content-opacity');
+  }, []);
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
       [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]
@@ -33699,17 +33710,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const updateDimensions = () => {
       // UX 2026-05-14: chrome-bottom-host was deleted when all tools moved
       // up to the top bar. The effect now reads only chrome-top-host and
-      // treats bottom chrome height as 0. The Save Log banner anchors via
-      // --app-chrome-top which still tracks the top bar's bottom edge
-      // dynamically (even when the top bar wraps onto a second row).
+      // treats bottom chrome height as 0. The top bar's bottom edge is
+      // published by AppShell (utils/chromeInsets.js), not here.
       const topEl = typeof document !== 'undefined' ? document.getElementById('chrome-top-host') : null;
       if (topEl) {
-        const topRect = topEl.getBoundingClientRect();
-        const topHeight = topRect.height;
-        setToolbarHeights({ top: topHeight, bottom: 0 });
-        if (typeof document !== 'undefined' && document.documentElement) {
-          document.documentElement.style.setProperty('--app-chrome-top', `${Math.round(topRect.bottom)}px`);
-        }
+        setToolbarHeights({ top: topEl.getBoundingClientRect().height, bottom: 0 });
       }
 
       if (middleAreaRef.current) {

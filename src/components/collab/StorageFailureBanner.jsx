@@ -37,7 +37,8 @@ import Icon from '../../Icons';
 // secondary metadata. Phase 27's HEADING / SECONDARY constants are folded into
 // HEADING_BY_CODE / SECONDARY_BY_CODE to avoid two parallel sources of truth.
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { getChromeInsets, chromeInsetVars, subscribeChromeInsets } from '../../utils/chromeInsets.js';
 import './StorageFailureBanner.css';
 
 // Locked copy per 27-UI-SPEC.md Surface 2 + 28-UI-SPEC.md Component Inventory
@@ -296,6 +297,7 @@ export function StorageFailureBanner({
   // safely inspect before deleting.
   onReview,
 }) {
+  const chromeInsets = useSyncExternalStore(subscribeChromeInsets, getChromeInsets, getChromeInsets);
   const copy = COPY[code];
   // Defensive: render nothing on unrecognized codes rather than show empty chrome.
   // UX: this branch should never trigger in practice — storageFailureDetector +
@@ -358,6 +360,10 @@ export function StorageFailureBanner({
   return (
     <div
       className="storage-banner"
+      // The side rails' widths (left / right edge) and the top bar's bottom
+      // (top), StorageFailureBanner.css, set here rather than on :root
+      // (utils/chromeInsets.js).
+      style={chromeInsetVars(chromeInsets)}
       // role="alert" + aria-live="polite" per 27-UI-SPEC.md accessibility.
       // 'polite' (not 'assertive') because failure is non-blocking; user is mid-task.
       role="alert"

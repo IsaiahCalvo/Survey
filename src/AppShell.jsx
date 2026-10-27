@@ -84,6 +84,9 @@ import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo,
 import useStableHandler from './hooks/useStableHandler.js';
 import useFileDropZone from './hooks/useFileDropZone.js';
 import useViewerReturnQuiet from './hooks/useViewerReturnQuiet.js';
+import useActiveOnlyCounter from './hooks/useActiveOnlyCounter.js';
+import TabChromeSlot from './components/TabChromeSlot.jsx';
+import { publishChromeInset } from './utils/chromeInsets.js';
 import FileDropOverlay from './components/FileDropOverlay.jsx';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { startsInSignUp, useOptionalAuth } from './components/OptionalAuthPrompt';
@@ -127,20 +130,23 @@ const RAIL_PAGE_DOT_STYLE = Object.freeze({
 });
 
 function RailLiveZoomText({ fallback, viewerId }) {
-  const [livePercentage, setLivePercentage] = useState(null);
+  // The live value belongs to the viewer that sent it. After a tab switch the
+  // previous tab's value is never drawn, not even for the one frame before an
+  // effect could clear it (it used to show the old tab's zoom for a frame).
+  const [live, setLive] = useState(null);
 
   useEffect(() => {
-    setLivePercentage(null);
+    setLive(null);
     const onLiveZoom = (event) => {
       if (!isLiveZoomEventForViewer(event?.detail, viewerId)) return;
       const percentage = Number(event?.detail?.percentage);
-      if (Number.isFinite(percentage)) setLivePercentage(percentage);
+      if (Number.isFinite(percentage)) setLive({ viewerId, percentage });
     };
     window.addEventListener(LIVE_ZOOM_EVENT, onLiveZoom);
     return () => window.removeEventListener(LIVE_ZOOM_EVENT, onLiveZoom);
   }, [viewerId]);
 
-  return <>{livePercentage ?? fallback}%</>;
+  return <>{live?.viewerId === viewerId ? live.percentage : fallback}%</>;
 }
 
 // Owner 2026-10-02 (footer lock: "these numbers need to be able to add digits
@@ -178,6 +184,25 @@ const SurveySpacesRailChunk = preloadedComponent(() => import('./SurveySpacesRai
 // Memoised: its props come from the published rightRailApi plus a few stable
 // values, so a page change while scrolling no longer re-renders the Survey rail.
 const SurveySpacesRail = memo(SurveySpacesRailChunk.Component);
+// Memoised for the same reason: every open tab keeps its own left rail, and a
+// hidden tab's rail holds still while the shell re-renders for the front tab.
+const MemoPDFSidebar = memo(PDFSidebar);
+// One tab's Survey rail. The shell's phone requests ("open / close the Survey
+// sheet") are counters; only the front tab's rail hears a bump.
+function RightRailForTab({ api, active, mobileMode, expandRequestKey, collapseRequestKey, onCollapseChange }) {
+  const expandBumps = useActiveOnlyCounter(expandRequestKey, active);
+  const collapseBumps = useActiveOnlyCounter(collapseRequestKey, active);
+  return (
+    <SurveySpacesRail
+      {...api}
+      tabActive={active}
+      mobileMode={mobileMode}
+      expandRequestKey={(api.expandRequestKey || 0) + expandBumps}
+      collapseRequestKey={collapseBumps}
+      onCollapseChange={onCollapseChange}
+    />
+  );
+}
 // The hidden home screen and the desktop tab strip skip re-rendering when App
 // re-renders for viewer reasons (page number, zoom, tool state): their props
 // are kept stable below with useStableHandler. Before this, every page change
@@ -1971,10 +1996,34 @@ export default function App({ devPreviewReturnTab = null }) {
   const stableAnnotationsExistChange = useStableHandler(handleAnnotationsExistChange);
   const stableViewStateChange = useStableHandler(handleViewStateChange);
   const stableTemplatesChange = useStableHandler(handleTemplatesChange);
-  const handleRightRailCollapseChange = useStableHandler((collapsed) => {
-    setMobileSurveyPanelOpen(!collapsed);
-    rightRailApi?.onCollapseChange?.(collapsed);
-  });
+  // Each open tab keeps its own rails (TabChromeSlot). On the phone only the
+  // front tab's rails exist: its sheets start closed for every document.
+  const railTabs = useMemo(() => tabs.filter((tab) => !tab.isHome && (!isNarrowShell || tab.id === activeTabId)), [tabs, isNarrowShell, activeTabId]);
+  // Whether each tab's Survey panel is shut, as its own rail last said, so the
+  // shell's copy follows the front tab without the rail being built again.
+  const railCollapsedByTabRef = useRef({});
+  const railCollapseHandlersRef = useRef({});
+  const railCollapseHandlerFor = (tabId) => {
+    if (!railCollapseHandlersRef.current[tabId]) {
+      railCollapseHandlersRef.current[tabId] = (collapsed) => {
+        railCollapsedByTabRef.current[tabId] = collapsed;
+        if (activeTabIdRef.current !== tabId) return;
+        setMobileSurveyPanelOpen(!collapsed);
+        chromeCache.peek(tabId, 'right')?.onCollapseChange?.(collapsed);
+      };
+    }
+    return railCollapseHandlersRef.current[tabId];
+  };
+  useLayoutEffect(() => {
+    const open = new Set(tabs.map((tab) => tab.id));
+    for (const ref of [railCollapsedByTabRef, railCollapseHandlersRef]) {
+      for (const id of Object.keys(ref.current)) if (!open.has(id)) delete ref.current[id];
+    }
+  }, [tabs]);
+  useLayoutEffect(() => {
+    if (activeTabId === HOME_TAB_ID) return;
+    setMobileSurveyPanelOpen(railCollapsedByTabRef.current[activeTabId] === false);
+  }, [activeTabId]);
 
   // Determine what to render based on active tab. Keep this before any
   // conditional return because hooks below depend on it.
@@ -2022,7 +2071,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   // Shift+S flips snapping (the rail's magnet button says the same).
   useSnappingShortcut(Boolean(isViewerVisible));
-  useViewerReturnQuiet(Boolean(isViewerVisible));
+  useViewerReturnQuiet(Boolean(isViewerVisible), activeTabId);
   // Pinned tools dock (Survey Nightly only, beta flag 'pinned-tools'):
   // components/PinnedToolsDock.jsx. Read once at load, like every flag.
   const [pinnedToolsEnabled] = useState(() => isFeatureOn('pinned-tools'));
@@ -2407,7 +2456,16 @@ export default function App({ devPreviewReturnTab = null }) {
         }
       }
 
-      document.documentElement.style.setProperty('--app-chrome-top', `${Math.round(chromeBottom)}px`);
+      // Published for the few things hung from the top bar (chromeInsets.js),
+      // not on :root: a custom property there restyles the whole document, and
+      // tabs with and without the Survey row would pay it on every switch.
+      // Phone-only CSS still reads it from :root; there only the front tab's
+      // chrome exists.
+      const chromeTopPx = `${Math.round(chromeBottom)}px`;
+      publishChromeInset('top', chromeTopPx);
+      if (isMobileViewer && document.documentElement.style.getPropertyValue('--app-chrome-top') !== chromeTopPx) {
+        document.documentElement.style.setProperty('--app-chrome-top', chromeTopPx);
+      }
 
       // RULED 2026-09-26 owner: select modes in top bar (w46). In Select mode
       // row 2 now comes and goes as a mark is picked and dropped (it has
@@ -2420,7 +2478,7 @@ export default function App({ devPreviewReturnTab = null }) {
         const barH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-bar-h')) || 36;
         bannerTop = chromeBottom + barH;
       }
-      document.documentElement.style.setProperty('--app-banner-top', `${Math.round(bannerTop)}px`);
+      publishChromeInset('bannerTop', `${Math.round(bannerTop)}px`);
     };
 
     const scheduleUpdate = () => {
@@ -4506,14 +4564,21 @@ export default function App({ devPreviewReturnTab = null }) {
                 auxCloseRequestKey={mobileAuxCloseRequestKey}
               />
             )}
-            {leftRailApi && (
-              <PDFSidebar
-                key={leftRailApi.documentId || activeTabId}
-                {...leftRailApi}
-                mobileMode={isMobileViewer}
-                onPanelStateChange={setMobileDocumentPanelState}
-              />
-            )}
+            {railTabs.map((tab) => {
+              const api = chromeCache.peek(tab.id, 'left');
+              if (!api) return null;
+              const active = tab.id === activeTabId;
+              return (
+                <TabChromeSlot key={tab.id} tabId={tab.id} active={active}>
+                  <MemoPDFSidebar
+                    {...api}
+                    tabActive={active}
+                    mobileMode={isMobileViewer}
+                    onPanelStateChange={setMobileDocumentPanelState}
+                  />
+                </TabChromeSlot>
+              );
+            })}
           </div>
           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
             {/* UX 2026-05-14: chrome-sub-toolbar-host — App-level mount point
@@ -4770,16 +4835,23 @@ export default function App({ devPreviewReturnTab = null }) {
               zIndex: 5600
             }}
           >
-            {rightRailApi && (
-              <SurveySpacesRail
-                key={rightRailApi.pdfFile?.id || activeTabId}
-                {...rightRailApi}
-                mobileMode={isMobileViewer}
-                expandRequestKey={(rightRailApi.expandRequestKey || 0) + mobileSurveyRequestKey}
-                collapseRequestKey={mobileSurveyCollapseRequestKey}
-                onCollapseChange={handleRightRailCollapseChange}
-              />
-            )}
+            {railTabs.map((tab) => {
+              const api = chromeCache.peek(tab.id, 'right');
+              if (!api) return null;
+              const active = tab.id === activeTabId;
+              return (
+                <TabChromeSlot key={tab.id} tabId={tab.id} active={active}>
+                  <RightRailForTab
+                    api={api}
+                    active={active}
+                    mobileMode={isMobileViewer}
+                    expandRequestKey={mobileSurveyRequestKey}
+                    collapseRequestKey={mobileSurveyCollapseRequestKey}
+                    onCollapseChange={railCollapseHandlerFor(tab.id)}
+                  />
+                </TabChromeSlot>
+              );
+            })}
             {/* Spacer pushes the bottom slot to the bottom of the rail. */}
             <div style={{ flex: 1 }} />
 

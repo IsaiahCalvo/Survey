@@ -25,5 +25,5 @@ test('the mark is set on a return and cleared once the animations would have end
   assert.ok(VIEWER_RETURN_QUIET_MS > 200 && VIEWER_RETURN_QUIET_MS <= 600);
   assert.match(hook, /dataset\.viewerReturning = 'true'/);
   assert.match(hook, /delete root\.dataset\.viewerReturning/);
-  assert.match(shell, /useViewerReturnQuiet\(Boolean\(isViewerVisible\)\)/);
+  assert.match(shell, /useViewerReturnQuiet\(Boolean\(isViewerVisible\), activeTabId\)/);
 });

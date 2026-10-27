@@ -18,7 +18,8 @@ import { fileURLToPath } from 'node:url';
  *   - the panel is portalled to <body> at 9000: over every rail, bar, dock and
  *     sheet, under tooltips and toasts;
  *   - the notice's right edge stops at the right rail (--app-right-rail-width,
- *     published by SurveySpacesRail like --app-sidebar-width on the left).
+ *     from the width SurveySpacesRail publishes, utils/chromeInsets.js, like the
+ *     left rail's on the left; the notice sets both on itself).
  * The real flow is checked in
  * debug/scenarios/test-plan/residue-cleanup-owner-only.spec.mjs (boxes and
  * elementFromPoint on desktop and phone).
@@ -86,9 +87,16 @@ test('the notice keeps its z-index and stops at the right rail', () => {
   assert.match(banner, /right:\s*var\(--app-right-rail-width, 48px\);/);
   assert.match(banner, /left:\s*var\(--app-sidebar-width, 48px\);/);
   const rail = read('src/SurveySpacesRail.jsx');
-  assert.match(rail, /'--app-right-rail-width',\s*\n\s*mobileMode \? '0px' : `\$\{desktopSurveyPanelShown \? 48 \+ 320 : 48\}px`/);
-  // Unmount clears the token so later UI falls back to its default (Bugbot #831).
-  assert.match(rail, /publishSideRoom\(\{ rightCover: 48 \}\);[\s\S]{0,160}removeProperty\('--app-right-rail-width'\)/);
+  assert.match(rail, /publishChromeInset\('right', mobileMode \? '0px' : `\$\{desktopSurveyPanelShown \? 48 \+ 320 : 48\}px`\)/);
+  // Unmount clears the width so later UI falls back to its default (Bugbot #831).
+  assert.match(rail, /publishSideRoom\(\{ rightCover: 48 \}\);[\s\S]{0,160}publishChromeInset\('right', null\)/);
+  // Closing a tab behind the front one leaves the front rail's values alone.
+  assert.match(rail, /if \(!tabActiveRef\.current\) return;\s*publishSideRoom\(\{ rightCover: 48 \}\);/);
+  // The notice puts both widths on itself, never on :root (a :root custom
+  // property restyles the whole document on every change).
+  const notice = read('src/components/collab/StorageFailureBanner.jsx');
+  assert.match(notice, /style=\{chromeInsetVars\(chromeInsets\)\}/);
+  assert.doesNotMatch(rail + read('src/PDFSidebar.jsx'), /setProperty\('--app-(sidebar|right-rail)-width'/);
 });
 
 test('on a phone the notice links drop under the text', () => {
