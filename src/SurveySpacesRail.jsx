@@ -62,7 +62,6 @@ import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
 import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
-import { removeSurveyMarkersFromPages } from './utils/surveyMarkerPageRemoval.js';
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
 import { publishSideRoom, subscribeRightPanelYield } from './sidebar/panelLayoutStore.js';
@@ -2187,14 +2186,9 @@ const SurveySpacesRail = ({
 
   /* Owner 2026-10-27: slide a category or Survey Marker row left for its
      actions - the same ones, rules and delete paths as its right-click menu.
-     A Survey Marker delete is one Undo step, so the swipe deletes at once and
-     offers Undo on a toast; a category delete (template structure, not on
-     the Undo timeline) keeps the menu's question. */
-  const deleteCategoryFromSwipe = async (category) => {
-    if (!await askConfirm({ title: `Delete ${category.name || 'category'}?`, message: 'This deletes the category and its Survey Markers.', confirmLabel: 'Delete', danger: true })) return;
-    Object.entries(surveyMarkers || {}).filter(([, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === category.id).forEach(([id]) => handleDeleteSurveyMarkerItem(id));
-    deleteCategory(selectedModuleId, category.id);
-  };
+     Both act at once with Undo on a toast: a Survey Marker delete is one
+     Undo step; a category delete (with its markers) is undone by its toast
+     (PDFViewer handleDeleteSurveyCategoriesWithUndo). */
   const categorySwipeActions = (category) => {
     const moduleCount = (selectedTemplate?.modules || selectedTemplate?.spaces || []).length;
     const markerIds = Object.entries(surveyMarkers || {})
@@ -2203,7 +2197,7 @@ const SurveySpacesRail = ({
     return buildSwipeActions({
       onMove: () => setMovingCategoryIds([category.id]),
       onCopy: () => { setSelectedCategories({ [category.id]: true }); setShowSpaceSelection(true); },
-      onDelete: () => deleteCategoryFromSwipe(category),
+      onDelete: () => deleteCategory(selectedModuleId, category.id),
       can: {
         move: (canEditSurveyCategories && moduleCount > 1) || 'Choose an editable document with another module',
         copy: markerIds.length > 0 || 'This category has no items to copy',
@@ -2212,7 +2206,7 @@ const SurveySpacesRail = ({
       },
     });
   };
-  const deleteSurveyMarkerFromSwipe = async (id, name) => {
+  const deleteSurveyMarkerNow = async (id, name) => {
     const label = name || 'Survey Marker';
     if (typeof onUndoLastChange !== 'function') {
       if (await askConfirm({ title: `Delete ${label}?`, message: 'Delete this Survey Marker?', confirmLabel: 'Delete', danger: true })) handleDeleteSurveyMarkerItem(id);
@@ -2228,7 +2222,7 @@ const SurveySpacesRail = ({
       onDuplicate: duplicateSurveyMarker ? () => duplicateSurveyMarker(marker.id) : undefined,
       onMove: () => setMarkerTransfer({ mode: 'move', ids: [marker.id], categoryId: marker.categoryId ?? null }),
       onCopy: () => setMarkerTransfer({ mode: 'copy', ids: [marker.id], categoryId: marker.categoryId ?? null }),
-      onDelete: () => deleteSurveyMarkerFromSwipe(marker.id, name),
+      onDelete: () => deleteSurveyMarkerNow(marker.id, name),
       can: {
         duplicate: Boolean(marker.pageNumber) || 'Place it on a page first',
         move: canModify || 'This one is locked or not yours to move',
@@ -2845,7 +2839,7 @@ const SurveySpacesRail = ({
                             const selectedCategoryCount = Object.keys(selectedCategories).filter(id => selectedCategories[id]).length;
                             const hasSelectedCategories = selectedCategoryCount > 0;
 
-                            const deleteSelectedCategories = async () => {
+                            const deleteSelectedCategories = () => {
                               const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
                               if (selectedCatIds.length === 0) {
                                 showToast('Please select at least one category to delete.', 'warn');
@@ -2862,67 +2856,11 @@ const SurveySpacesRail = ({
                                 showToast('Some items in these categories are locked — unlock them first.', 'info');
                                 return;
                               }
-                              const confirmed = await askConfirm({
-                                title: `Delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'}?`,
-                                message: `Are you sure you want to delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'} and all items within?`,
-                                confirmLabel: `Delete categor${selectedCatIds.length !== 1 ? 'ies' : 'y'}`,
-                                danger: true,
-                              });
-                              if (!confirmed) {
-                                return;
-                              }
-
-                              selectedCatIds.forEach(catId => {
-                                const surveyMarkersInCategory = Object.entries(surveyMarkers).filter(([_, h]) => {
-                                  const hModuleId = h.moduleId;
-                                  return hModuleId === selectedModuleId && h.categoryId === catId;
-                                });
-
-                                surveyMarkersInCategory.forEach(([annotationId, surveyMarker]) => {
-                                  if (surveyMarker.pageNumber && surveyMarker.bounds) {
-                                    setSurveyMarkersToRemoveByPage(prev => ({
-                                      ...prev,
-                                      [surveyMarker.pageNumber]: [...(prev[surveyMarker.pageNumber] || []), surveyMarker.bounds]
-                                    }));
-                                  }
-                                });
-
-                                setSurveyMarkers(prev => {
-                                  const updated = { ...prev };
-                                  surveyMarkersInCategory.forEach(([annotationId]) => {
-                                    delete updated[annotationId];
-                                  });
-                                  return updated;
-                                });
-                                // KAL-502: the page draws markers from newSurveyMarkersByPage,
-                                // so take them off there too (as the ✕ delete does), or
-                                // their boxes stay drawn until a reload. Then empty the
-                                // removal queue, as the other delete paths do.
-                                const deletedForPage = surveyMarkersInCategory.map(([id, marker]) => ({
-                                  id, pageNumber: marker?.pageNumber, bounds: marker?.bounds,
-                                }));
-                                setNewSurveyMarkersByPage(prev => removeSurveyMarkersFromPages(prev, deletedForPage));
-                                setTimeout(() => {
-                                  setSurveyMarkersToRemoveByPage(prev => {
-                                    const updated = { ...prev };
-                                    deletedForPage.forEach(({ pageNumber }) => { if (pageNumber) delete updated[pageNumber]; });
-                                    return updated;
-                                  });
-                                }, 100);
-
-                                const documentId = pdfFile?.id;
-                                const surveyMarkerIdsToDelete = surveyMarkersInCategory.map(([id]) => id);
-                                if (documentId && user?.id && documentSyncEnabled && surveyMarkerIdsToDelete.length > 0) {
-                                  deleteAnnotations(documentId, surveyMarkerIdsToDelete)
-                                    .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'rail-category-delete', onceKey: documentId }))
-                                    .catch(err => {
-                                      console.error('[App] Error deleting annotations from Supabase:', err);
-                                    });
-                                }
-                              });
                               // All ticked categories in ONE call. One call per category
                               // let the last call win (each started from the same old
-                              // template), so only the last category went away.
+                              // template), so only the last category went away. It
+                              // acts at once and takes their Survey Markers too; the
+                              // toast's Undo brings both back (PDFViewer).
                               deleteCategory(selectedModuleId, selectedCatIds);
 
                               setCategorySelectModeActive(false);
@@ -4972,18 +4910,12 @@ const SurveySpacesRail = ({
               items={listContextMenu.type === 'category' ? [
                 { label: 'Move', disabled: !canEditSurveyCategories || (selectedTemplate?.modules || selectedTemplate?.spaces || []).length < 2, onClick: () => setMovingCategoryIds([listContextMenu.id]) },
                 { label: 'Copy Survey Markers', disabled: !Object.values(surveyMarkers || {}).some((marker) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id), onClick: () => { setSelectedCategories({ [listContextMenu.id]: true }); setShowSpaceSelection(true); } },
-                { label: 'Delete', danger: true, disabled: !canEditSurveyCategories || Object.entries(surveyMarkers || {}).some(([id, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id && !canModifySurveyMarkerItem?.(id)), onClick: async () => {
-                  if (!await askConfirm({ title: `Delete ${listContextMenu.name || 'category'}?`, message: 'This deletes the category and its Survey Markers.', confirmLabel: 'Delete', danger: true })) return;
-                  Object.entries(surveyMarkers || {}).filter(([, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id).forEach(([id]) => handleDeleteSurveyMarkerItem(id));
-                  deleteCategory(selectedModuleId, listContextMenu.id);
-                } },
+                { label: 'Delete', danger: true, disabled: !canEditSurveyCategories || Object.entries(surveyMarkers || {}).some(([id, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id && !canModifySurveyMarkerItem?.(id)), onClick: () => deleteCategory(selectedModuleId, listContextMenu.id) },
               ] : [
                 { label: 'Duplicate', disabled: !surveyMarkers[listContextMenu.id]?.pageNumber, onClick: () => duplicateSurveyMarker?.(listContextMenu.id) },
                 { label: 'Move to…', disabled: !canModifySurveyMarkerItem?.(listContextMenu.id), onClick: () => setMarkerTransfer({ mode: 'move', ids: [listContextMenu.id], categoryId: surveyMarkers[listContextMenu.id]?.categoryId ?? null }) },
                 { label: 'Copy to…', onClick: () => setMarkerTransfer({ mode: 'copy', ids: [listContextMenu.id], categoryId: surveyMarkers[listContextMenu.id]?.categoryId ?? null }) },
-                { label: 'Delete', danger: true, disabled: !canModifySurveyMarkerItem?.(listContextMenu.id), onClick: async () => {
-                  if (await askConfirm({ title: `Delete ${listContextMenu.name || 'Survey Marker'}?`, message: 'Delete this Survey Marker?', confirmLabel: 'Delete', danger: true })) handleDeleteSurveyMarkerItem(listContextMenu.id);
-                } },
+                { label: 'Delete', danger: true, disabled: !canModifySurveyMarkerItem?.(listContextMenu.id), onClick: () => deleteSurveyMarkerNow(listContextMenu.id, listContextMenu.name) },
               ]}
             />}
             {markerTransfer && <SurveyMarkerTransferDialog
