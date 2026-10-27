@@ -2850,23 +2850,27 @@ export default function App({ devPreviewReturnTab = null }) {
                 items={[
                   exportModesEnabled && typeof bottomToolbarApi.exportPdfWithOptions === 'function'
                     ? {
-                      label: 'PDF…',
+                      label: 'Export PDF…',
+                      icon: 'download',
                       title: 'Annotated, flattened or plain, and which pages.',
                       onSelect: () => setExportPdfDialogOpen(true),
                     }
-                    : { label: 'Annotated PDF', onSelect: bottomToolbarApi.exportAnnotatedPdf },
+                    : { label: 'Export annotated PDF', icon: 'download', onSelect: bottomToolbarApi.exportAnnotatedPdf },
                   {
-                    label: 'Markup only (XFDF)',
+                    label: 'Export markup (XFDF)',
+                    icon: 'download',
                     title: 'Your marks in a separate file for Acrobat or Bluebeam. Your PDF stays the same.',
                     onSelect: bottomToolbarApi.exportXfdf,
                   },
                   {
-                    label: 'Review package (ZIP)',
+                    label: 'Export review package (ZIP)',
+                    icon: 'download',
                     title: 'Your marks, a log of changes and page pictures in one ZIP file. Your PDF stays the same.',
                     onSelect: bottomToolbarApi.exportReviewBundle,
                   },
                   {
                     label: 'PDF tools…',
+                    icon: 'document',
                     title: 'Merge, split, compress, make searchable and more. The result is saved as a new document.',
                     onSelect: openPdfToolsForActiveTab,
                   },

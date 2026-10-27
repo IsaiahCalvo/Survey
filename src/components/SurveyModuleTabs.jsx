@@ -123,7 +123,7 @@ export default function SurveyModuleTabs({ modules, activeId, onSelect, onReorde
         <ListItemContextMenu
           point={menu}
           onClose={() => setMenu(null)}
-          items={hidden.map((id) => ({ label: nameOf(byId.get(id)), onClick: () => onSelect(id) }))}
+          items={hidden.map((id) => ({ label: nameOf(byId.get(id)), icon: false, onClick: () => onSelect(id) }))}
         />
       )}
     </div>

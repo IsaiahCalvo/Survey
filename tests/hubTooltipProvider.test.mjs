@@ -33,7 +33,8 @@ async function loadTooltipModule() {
     // viewerShared pulls in the whole viewer; the chip only needs the font name.
     .replace("import { FONT_FAMILY } from '../viewerShared.js';", "const FONT_FAMILY = 'Helvetica';")
     .replace("from '../utils/floatingUiGeometry.js';", `from ${url(src('src/utils/floatingUiGeometry.js'))};`)
-    .replace("from '../utils/toolShortcuts.js';", `from ${url(src('src/utils/toolShortcuts.js'))};`);
+    .replace("from '../utils/toolShortcuts.js';", `from ${url(src('src/utils/toolShortcuts.js'))};`)
+    .replace("from '../utils/quietFocus.js';", `from ${url(src('src/utils/quietFocus.js'))};`);
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   const executable = transformed.code.replaceAll(
     '"react/jsx-runtime"',

@@ -97,6 +97,7 @@ import { createPrintPageError, waitForPrintImages } from './utils/printImageRead
 import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
+import { useConfirmDialog } from './components/dialogPrompts.jsx';
 import Spinner from './components/Spinner';
 import QuietLoading, { openingLabel } from './components/QuietLoading';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
@@ -5402,6 +5403,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Excel sync modals and state
   const [showExcelLockedModal, setShowExcelLockedModal] = useState(false);
   const [showExcelSyncConfirmModal, setShowExcelSyncConfirmModal] = useState(false);
+  // Themed confirm for the Excel import's stale-file and bulk-delete checks
+  // (design review 2026-10-27: they were the browser's own confirm box).
+  const [askConfirm, confirmDialog] = useConfirmDialog();
   const [applyRedactionsModalOpen, setApplyRedactionsModalOpen] = useState(false);
   const [pendingRedactionRequest, setPendingRedactionRequest] = useState(null);
   const [applyRedactionsBusy, setApplyRedactionsBusy] = useState(false);
@@ -17781,7 +17785,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     let staleImportAccepted = false;
     if (recency.verdict === RECENCY.STALE_WORKBOOK) {
-      if (!window.confirm(staleManualConfirmText())) {
+      if (!(await askConfirm({
+        title: 'Import an older Excel file?',
+        message: <span style={{ whiteSpace: 'pre-line' }}>{staleManualConfirmText()}</span>,
+        confirmLabel: 'Import anyway',
+        zIndex: 10000,
+      }))) {
         setLastSyncMessage('Sync cancelled. No changes were made.');
         setTimeout(() => setLastSyncMessage(''), 5000);
         return;
@@ -18214,9 +18223,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return `${categoryName} - ${moduleName} (${counts.total} items)`;
       }).join('\n');
 
-      const confirmed = window.confirm(
-        `This will delete ALL items from the following categories:\n\n${scopeNames}\n\nAre you sure you want to proceed?`
-      );
+      const confirmed = await askConfirm({
+        title: 'Delete every item in these categories?',
+        message: <span style={{ whiteSpace: 'pre-line' }}>{`This sync deletes ALL items from:\n\n${scopeNames}`}</span>,
+        confirmLabel: 'Delete and sync',
+        danger: true,
+        zIndex: 10000,
+      });
 
       if (!confirmed) {
         showToast('Sync cancelled. No changes were made.', 'info');
@@ -18419,7 +18432,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : 'Sync complete! No changes found.';
       showToast(reviewNote, 'info');
     }
-  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync, askConfirm]);
 
   // Helper: Execute auto-sync import with canvas color tracking
   const executeAutoExcelImport = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
@@ -18868,9 +18881,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return `${categoryName} - ${moduleName} (${counts.total} items)`;
       }).join('\n');
 
-      const confirmed = window.confirm(
-        `This will delete ALL items from the following categories:\n\n${scopeNames}\n\nAre you sure you want to proceed?`
-      );
+      const confirmed = await askConfirm({
+        title: 'Delete every item in these categories?',
+        message: <span style={{ whiteSpace: 'pre-line' }}>{`This sync deletes ALL items from:\n\n${scopeNames}`}</span>,
+        confirmLabel: 'Delete and sync',
+        danger: true,
+        zIndex: 10000,
+      });
 
       if (!confirmed) {
         setLastSyncMessage('Sync cancelled. No changes were made.');
@@ -19107,7 +19124,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setLastSyncMessage((importReviewItems.length > 0 ? `${importReviewItems.length} need your choice` : 'No changes found'));
       setTimeout(() => setLastSyncMessage(''), 5000);
     }
-  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync, askConfirm]);
 
   // Helper: Create new template with added checklist items from new columns
   const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory, templateName) => {
@@ -42387,6 +42404,7 @@ ${pageBlocks}
         }}
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
       />
+      {confirmDialog}
       {browserPrintDocument}
       {typeof document !== 'undefined' && createPortal(
         <ApplyRedactionsModal

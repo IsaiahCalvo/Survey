@@ -16,11 +16,16 @@ test('production create-project action renders an accessible dialog with optiona
   assert.match(dashboard, /onConfirm=\{handleConfirmCreateProject\}/);
   assert.doesNotMatch(dashboard, /if \(projectFiles\.length === 0\)[\s\S]{0,160}Add at least one PDF/);
   assert.match(dashboard, /if \(files\.length > 0 && successCount === 0\)/);
-  assert.match(modal, /role="dialog"/);
-  assert.match(modal, /aria-label="Create project"/);
+  // On the one dialog shell since 2026-10-27 (DialogCard draws role="dialog").
+  assert.match(modal, /<DialogCard/);
+  assert.match(modal, /ariaLabel="Create project"/);
   assert.match(modal, /aria-label="Project name"/);
   assert.match(modal, /PDF files \(optional\)/);
-  assert.ok((modal.match(/minHeight: 44/g) || []).length >= 4, 'mobile dialog controls need 44px targets');
+  // Touch screens get 44px targets from hub.css: the field (dialog-prompt-input),
+  // the footer buttons (dialog-touch-pad), Remove (dialog-close-touch-pad).
+  assert.match(modal, /className="dialog-prompt-input"/);
+  assert.equal((modal.match(/className="hub-btn[^"]*dialog-touch-pad"/g) || []).length, 2, 'Cancel and Create project');
+  assert.match(modal, /dialog-close-touch-pad" aria-label=\{`Remove /);
 });
 
 test('project and document renames are wired from hub UI to durable host handlers', () => {

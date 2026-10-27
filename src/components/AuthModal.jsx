@@ -204,7 +204,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
         onClick={(e) => e.stopPropagation()}
       >
         <button className="auth-modal-close" onClick={handleClose} aria-label="Close">
-          <Icon name="close" size={18} />
+          <Icon name="close" size={13} />
         </button>
 
         <div className="auth-modal-header">

@@ -12,9 +12,11 @@ const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
 test('shared prompt and confirm dialog buttons get 44px touch pads', () => {
   const prompt = read('src/components/dialogPrompts.jsx');
-  assert.match(prompt, /className="dialog-touch-pad" style=\{cancelButtonStyle\}>Cancel/);
-  assert.match(prompt, /className="dialog-touch-pad"\s+onClick=\{submit\}/);
-  assert.match(prompt, /aria-label="Close" className="dialog-close-touch-pad"/);
+  // The prompt sits on DialogCard (design review 2026-10-27): its x is the
+  // shell's hub-icon-btn "Close", which hub.css pads to 44px on touch.
+  assert.match(prompt, /className="hub-btn dialog-touch-pad" onClick=\{onCancel\}>Cancel/);
+  assert.match(prompt, /className="hub-btn hub-btn--primary dialog-touch-pad" onClick=\{submit\}/);
+  assert.match(read('src/components/DialogCard.jsx'), /aria-label="Close" \{\.\.\.tip\('Close'\)\} className="hub-icon-btn"/);
 
   const bulk = read('src/home/BulkModals.jsx');
   const confirm = bulk.slice(bulk.indexOf('export function ConfirmModal'), bulk.indexOf('export function RenameModal'));

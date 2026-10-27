@@ -167,7 +167,7 @@ test('a failed History read is never shown as "no changes"', async () => {
 test('the review package is reachable from the desktop export list, the phone More menu and the File menu', async () => {
   const { readFileSync } = await import('node:fs');
   const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-  assert.match(read('src/AppShell.jsx'), /label: 'Review package \(ZIP\)'[\s\S]{0,250}onSelect: bottomToolbarApi\.exportReviewBundle/);
+  assert.match(read('src/AppShell.jsx'), /label: 'Export review package \(ZIP\)'[\s\S]{0,250}onSelect: bottomToolbarApi\.exportReviewBundle/);
   assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /bottomToolbarApi\?\.exportReviewBundle\?\.\(\);[\s\S]{0,250}Export review package/);
   assert.match(read('src/electron-main.js'), /label: 'Export review package \(ZIP\)…'[\s\S]{0,250}menu:export-review-bundle/);
   assert.match(read('src/preload.js'), /onExportReviewBundleMenu[\s\S]{0,150}menu:export-review-bundle/);
