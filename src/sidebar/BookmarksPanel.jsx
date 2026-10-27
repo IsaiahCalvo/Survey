@@ -36,6 +36,7 @@ import {
 } from './bookmarkReorderUtils.js';
 import { CALM_LIST_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { useTooltip } from '../components/Tooltip';
+import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import SectionIconButton, { SectionIconActions } from '../components/SectionIconButton.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
@@ -291,6 +292,13 @@ const BookmarkTreeRow = ({
             : undefined,
       }}
     >
+      {/* Owner 2026-10-27: slide a row left for Delete (undoable, like the
+          Edit-mode trash), no Edit mode needed. */}
+      <SwipeActionsRow
+        label={item.name}
+        disabled={isClone || isEditMode || isDraggingAny || isActiveRow}
+        actions={isClone ? null : buildSwipeActions({ onDelete: onDelete ? () => onDelete(item.id) : undefined })}
+      >
       <div
         ref={isClone ? undefined : setDraggableNodeRef}
         // The app's one picked-up look (states.css [data-drag-lifted], owner
@@ -569,6 +577,7 @@ const BookmarkTreeRow = ({
           </span>
         )}
       </div>
+      </SwipeActionsRow>
       {isActiveRow && landingSlot ? (
         // Where the drop will land: the app's one drag slot (a quiet dashed
         // outline, --drag-slot-*) in the gap the rows opened, stepped in to
@@ -680,6 +689,11 @@ const MobileBookmarkRow = ({
       data-bookmark-row-id={item.id}
       className={`mobile-bookmark-slot${isDragging ? ' is-dragging' : ''}`}
     >
+      <SwipeActionsRow
+        label={item.name}
+        disabled={isEditMode || isDragging}
+        actions={buildSwipeActions({ onDelete: onDelete ? () => onDelete(item.id) : undefined })}
+      >
       <div
         ref={setDraggableNodeRef}
         className={`mobile-bookmark-row${isDragging ? ' is-dragging' : ''}`}
@@ -763,6 +777,7 @@ const MobileBookmarkRow = ({
         </div>
         )}
       </div>
+      </SwipeActionsRow>
       {isDragging && landingSlot ? (
         // The desktop's landing slot (see BookmarkTreeRow), phone indent;
         // its `top` comes from the live layout, as on desktop.
