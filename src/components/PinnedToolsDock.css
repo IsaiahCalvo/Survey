@@ -308,7 +308,7 @@
 
 /* The "+N" slot (more pins than fit) and its grid of the rest. */
 .pinned-dock__count {
-  font: 600 11px/1 var(--font-ui);
+  font: 600 var(--font-size-sm)/1 var(--font-ui);
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
