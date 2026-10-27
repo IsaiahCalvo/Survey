@@ -52,6 +52,8 @@ const DRAW_TOOL_TYPES = new Set(['rectangular', 'polygon', 'freehand']);
 const ERASE_TOOL_TYPE = 'erase';
 // A mouse press that lifts within this many screen px is a click, not a drag.
 const MOUSE_CLICK_SLOP_PX = 4;
+// A pasted or duplicated area lands this many page units down-right.
+const AREA_PASTE_STEP = 12;
 const REGION_HANDLE_BLUE = HANDLE_RING;
 // Unified white-fill / blue-ring handle look (shared with every other handle).
 const REGION_HANDLE_STROKE = HANDLE_RING;
@@ -1504,22 +1506,21 @@ const RegionSelectionTool = ({
         }
       }
 
-      // Check if click is inside any selected region's bounds
-      let clickedInsideBoundary = false;
-      for (const regionId of selectedRegionIds) {
-        const region = regions.find(r => r.regionId === regionId);
-        if (region) {
-          const bounds = getRegionBounds(region);
-          if (bounds && 
-              x >= bounds.minX && x <= bounds.maxX &&
-              y >= bounds.minY && y <= bounds.maxY) {
-            clickedInsideBoundary = true;
-            break;
-          }
-        }
+      // A press inside a picked area's box moves every picked area (the box
+      // is what the user sees as "the selection"), as with marks.
+      let pickedHit = selectedRegionIds.size > 0 ? findRegionAtPagePoint(x, y, selectedRegionIds) : null;
+      if (!pickedHit && selectedRegionIds.size > 1) {
+        const picked = regions.filter((r) => selectedRegionIds.has(r.regionId));
+        const boxes = picked.map(getRegionBounds).filter(Boolean);
+        const inGroupBox = boxes.length > 0 &&
+          x >= Math.min(...boxes.map((b) => b.minX)) && x <= Math.max(...boxes.map((b) => b.maxX)) &&
+          y >= Math.min(...boxes.map((b) => b.minY)) && y <= Math.max(...boxes.map((b) => b.maxY));
+        if (inGroupBox) pickedHit = picked[0];
       }
-      
-      if (clickedInsideBoundary) return;
+      if (pickedHit && selectedRegionIds.has(pickedHit.regionId) && !event.shiftKey) {
+        regionPointerDownRef.current?.(pickedHit, event);
+        return;
+      }
       // Owner 2026-10-27: a press on empty page starts a drag box, like the
       // box over marks. Shift keeps what is picked and adds to it; without
       // Shift the press lets go of the picked areas at once. (Phone: one
@@ -2684,13 +2685,17 @@ const RegionSelectionTool = ({
     });
   }, [regions, selectedRegionIds, clientPointToPage, getRegionBounds, getTargetRect, canMergeRegions, getConnectedMergeCandidates]);
 
+  // The last copied areas, kept here too: the system clipboard can refuse a
+  // read (no permission), and Ctrl+V must still paste.
+  const areaClipboardRef = useRef(null);
   const handleCopy = useCallback(async () => {
     if (selectedRegionIds.size === 0) return;
     const regionsToCopy = regions.filter(r => selectedRegionIds.has(r.regionId));
+    areaClipboardRef.current = { regions: buildRegionPayload(regionsToCopy), pastes: 0 };
+    setContextMenu(null);
 
     try {
       await navigator.clipboard.writeText(JSON.stringify(regionsToCopy));
-      setContextMenu(null);
     } catch (err) {
       console.error('Failed to copy regions:', err);
     }
@@ -2702,12 +2707,50 @@ const RegionSelectionTool = ({
     setContextMenu(null);
   }, [handleCopy, handleDeleteSelected]);
 
+  // Owner 2026-10-27: areas answer the keys marks do - Ctrl+A / C / X / V /
+  // D and the arrows. With no point to paste at, a paste or duplicate lands a
+  // step down-right of the original, one more step each time.
+  const placeAreas = useCallback((sourceRegions, offset) => {
+    if (!Array.isArray(sourceRegions) || sourceRegions.length === 0) return;
+    const newRegions = sourceRegions.map((r) => ({
+      ...r,
+      regionId: crypto.randomUUID(),
+      coordinates: r.coordinates.map((val) => val + offset),
+      pageId: currentPageId,
+      sourceRegions: undefined,
+    }));
+    pushUndoSnapshot();
+    setRegions((prev) => [...prev, ...newRegions]);
+    setSelectedRegionIds(new Set(newRegions.map((r) => r.regionId)));
+  }, [currentPageId, pushUndoSnapshot]);
+  const pasteAreasFromKeys = useCallback(() => {
+    const clip = areaClipboardRef.current;
+    if (!clip?.regions?.length) return;
+    clip.pastes += 1;
+    placeAreas(clip.regions, AREA_PASTE_STEP * clip.pastes);
+  }, [placeAreas]);
+  const duplicatePickedAreas = useCallback(() => {
+    if (selectedRegionIds.size === 0) return;
+    placeAreas(regions.filter((r) => selectedRegionIds.has(r.regionId)), AREA_PASTE_STEP);
+  }, [placeAreas, regions, selectedRegionIds]);
+  const nudgePickedAreas = useCallback((dx, dy) => {
+    if (selectedRegionIds.size === 0) return;
+    pushUndoSnapshot();
+    setRegions((prev) => prev.map((r) => (selectedRegionIds.has(r.regionId)
+      ? { ...r, coordinates: r.coordinates.map((val, idx) => val + (idx % 2 === 0 ? dx : dy)) }
+      : r)));
+  }, [selectedRegionIds, pushUndoSnapshot]);
+
   const handlePaste = useCallback(async () => {
     if (!contextMenu) return;
 
     try {
-      const text = await navigator.clipboard.readText();
-      const pastedRegions = JSON.parse(text);
+      let pastedRegions = null;
+      try {
+        pastedRegions = JSON.parse(await navigator.clipboard.readText());
+      } catch {
+        pastedRegions = areaClipboardRef.current?.regions || null;
+      }
 
       if (!Array.isArray(pastedRegions) || pastedRegions.length === 0) return;
 
@@ -2952,6 +2995,12 @@ const RegionSelectionTool = ({
     contextMenuOpen: contextMenu !== null,
     closeContextMenu: () => setContextMenu(null),
     clearSelection: () => setSelectedRegionIds(new Set()),
+    selectAll: () => setSelectedRegionIds(new Set(regionsRef.current.map((r) => r.regionId))),
+    copy: handleCopy,
+    cut: handleCut,
+    paste: pasteAreasFromKeys,
+    duplicate: duplicatePickedAreas,
+    nudge: nudgePickedAreas,
     deleteSelected: handleDeleteSelected,
     polygonCorners: polyCorners.length,
     finishPolygon: () => commitPolygonRef.current?.(polyCornersRef.current),
@@ -2989,6 +3038,38 @@ const RegionSelectionTool = ({
         stopRegionKeyboardShortcut(event);
         undoLastRegionEdit();
         return;
+      }
+      if (
+        (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey &&
+        !inEditableTarget &&
+        ['a', 'c', 'x', 'v', 'd'].includes(key) &&
+        !document.activeElement?.closest?.('[role="dialog"], [role="menu"], [role="alertdialog"]')
+      ) {
+        const actions = keyboardActionsRef.current;
+        if (actions.busy) return;
+        stopRegionKeyboardShortcut(event);
+        if (key === 'a') actions.selectAll();
+        else if (key === 'c') actions.copy();
+        else if (key === 'x') actions.cut();
+        else if (key === 'v') actions.paste();
+        else actions.duplicate();
+        return;
+      }
+      if (
+        event.key?.startsWith?.('Arrow') &&
+        !event.metaKey && !event.ctrlKey && !event.altKey &&
+        !inEditableTarget &&
+        !document.activeElement?.closest?.('[role="dialog"], [role="menu"], [role="alertdialog"], [role="radiogroup"], [role="slider"]')
+      ) {
+        const actions = keyboardActionsRef.current;
+        if (actions.hasSelection && !actions.busy && !actions.contextMenuOpen && actions.polygonCorners === 0) {
+          stopRegionKeyboardShortcut(event);
+          const step = event.shiftKey ? 10 : 1;
+          const dx = event.key === 'ArrowLeft' ? -step : (event.key === 'ArrowRight' ? step : 0);
+          const dy = event.key === 'ArrowUp' ? -step : (event.key === 'ArrowDown' ? step : 0);
+          actions.nudge(dx, dy);
+          return;
+        }
       }
       if (
         key === 'v' &&
@@ -3621,6 +3702,34 @@ const RegionSelectionTool = ({
                 );
               }
             })}
+
+            {/* Several areas picked: one dashed box round them all, like a
+                pick of several marks. A press inside it moves them all. */}
+            {editsPicked && selectedRegionIds.size > 1 && (() => {
+              let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+              for (const region of regions) {
+                if (!selectedRegionIds.has(region.regionId)) continue;
+                const b = getRegionBounds(region);
+                if (!b) continue;
+                minX = Math.min(minX, b.minX); minY = Math.min(minY, b.minY);
+                maxX = Math.max(maxX, b.maxX); maxY = Math.max(maxY, b.maxY);
+              }
+              if (!Number.isFinite(minX)) return null;
+              return (
+                <rect
+                  data-region-group-box="true"
+                  x={pageToScreenX(minX)}
+                  y={pageToScreenY(minY)}
+                  width={(maxX - minX) * displayScaleX}
+                  height={(maxY - minY) * displayScaleY}
+                  fill="none"
+                  stroke={REGION_HANDLE_BLUE}
+                  strokeWidth={1}
+                  strokeDasharray="4 3"
+                  pointerEvents="none"
+                />
+              );
+            })()}
 
             {/* KAL-301 REDO: rotation handle (mtr) — a faithful copy of the
                 day-one chrome in SVGSelectionOverlay.jsx (no connector line

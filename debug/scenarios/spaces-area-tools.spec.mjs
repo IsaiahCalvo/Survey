@@ -178,6 +178,33 @@ test('desktop: Select drag box picks areas, window and crossing', async ({ page,
   await expect(areas(page)).toHaveCount(before - 2);
 });
 
+// Owner 2026-10-27: areas answer the keys marks do.
+test('desktop: Ctrl+A, Ctrl+C / V, Ctrl+D and arrows work on areas', async ({ page, context }) => {
+  test.skip(test.info().project.use?.isMobile, 'desktop pass');
+  await setup(page, context);
+  await openAreas(page);
+  const centre = await drawRect(page, 330, 430);
+  const start = await areas(page).count();
+  await page.keyboard.press('v');
+  await page.mouse.click(centre.x, centre.y);
+  await expect.poll(() => pickedCount(page)).toBe(1);
+  const before = await areas(page).last().boundingBox();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect.poll(async () => (await areas(page).last().boundingBox()).y - before.y).toBeGreaterThan(8);
+  const moved = await areas(page).last().boundingBox();
+  expect(moved.x - before.x).toBeGreaterThan(0.5);
+  await page.keyboard.press('Control+d');
+  await expect(areas(page)).toHaveCount(start + 1);
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Control+v');
+  await expect(areas(page)).toHaveCount(start + 2);
+  await page.keyboard.press('Control+a');
+  await expect.poll(() => pickedCount(page)).toBe(start + 2);
+  await page.keyboard.press('Control+z');
+  await expect(areas(page)).toHaveCount(start + 1);
+});
+
 // Owner 2026-10-27: Move or copy is a small card beside its button, its tail
 // pointing at the button.
 test('desktop: Move or copy opens beside its button with a tail', async ({ page, context }) => {
