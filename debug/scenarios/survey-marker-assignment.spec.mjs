@@ -188,7 +188,9 @@ test.describe('phone Survey assignment', () => {
     await page.getByRole('button', { name: /Work Survey/ }).filter({ visible: true }).first().tap();
     await page.getByRole('button', { name: 'Open survey', exact: true }).tap();
     await expect.poll(() => page.locator('.mobile-survey-sheet').filter({ visible: true }).count()).toBe(0);
-    await page.getByRole('button', { name: 'Survey category Walls', exact: true }).tap();
+    // Owner 2026-10-26: the first category is armed when Survey opens; a
+    // second tap on the armed disc would hand the tool back to Pan.
+    await expect(page.getByRole('button', { name: 'Survey category Walls', exact: true })).toHaveAttribute('aria-pressed', 'true');
     const bounds = await page.locator('[data-svg-annotation-layer]').first().boundingBox();
     const x = Math.max(60, bounds.x + 50), y = Math.max(100, bounds.y + 100);
     await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 100, y + 70, { steps: 8 }); await page.mouse.up();
