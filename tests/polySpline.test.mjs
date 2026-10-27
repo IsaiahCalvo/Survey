@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  SPLINE_STEP, insertSplineCorner, moveSplineCorner, polySplineStep, removeSplineCorner,
+  SPLINE_STEP, insertSplineCorner, keepPivot, moveSplineCorner, polySplineStep, removeSplineCorner,
   sampleSpline, setPolylineCurve, splineCorners, splineSpanMidpoint,
 } from '../src/utils/polySpline.js';
 import { canRemovePolyVertex, insertPolyVertex, removePolyVertex } from '../src/utils/polyVertices.js';
 import { buildPolyShapeCommitJSON } from '../src/utils/annotationCreationCommit.js';
-import { collectEndpointCandidates } from '../src/utils/drawSnap.js';
+import { collectEndpointCandidates, polyWorldPoints } from '../src/utils/drawSnap.js';
 
 const corners = [{ x: 0, y: 0 }, { x: 50, y: 40 }, { x: 100, y: 0 }, { x: 150, y: 40 }];
 const curved = (extra = {}) => ({
@@ -125,4 +125,18 @@ test('turning a polyline curved and back keeps its corners', () => {
 test('snapping offers a curve\'s corners, not its samples', () => {
   const out = collectEndpointCandidates([curved()]);
   assert.equal(out.length, corners.length);
+});
+
+// Codex review on #1214: "+" on a turned curve must not move its corners.
+test('adding a corner to a turned curve keeps the other corners in place', async () => {
+  const obj = curved({ angle: 90, left: 40, top: 20, points: sampleSpline([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], SPLINE_STEP) });
+  const before = splineCorners(polyWorldPoints(obj), SPLINE_STEP);
+  const added = insertSplineCorner(obj.points, SPLINE_STEP, 0, splineSpanMidpoint(obj.points, SPLINE_STEP, 0));
+  const after = splineCorners(polyWorldPoints(keepPivot(obj, obj.points, added)), SPLINE_STEP);
+  [[0, 0], [1, 2], [2, 3]].forEach(([was, now]) => {
+    assert.ok(Math.hypot(after[now].x - before[was].x, after[now].y - before[was].y) < 1e-6, `corner ${was}`);
+  });
+  const { readFileSync } = await import('node:fs');
+  const hook = readFileSync(new URL('../src/hooks/useSVGInteraction.js', import.meta.url), 'utf8');
+  assert.match(hook, /obj = keepPivot\(obj, obj\.points, insertSplineCorner\(/);
 });

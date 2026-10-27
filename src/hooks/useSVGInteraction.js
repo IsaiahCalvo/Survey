@@ -45,7 +45,7 @@ import {
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
-import { insertSplineCorner, moveSplineCorner, polySplineStep, splineSpanMidpoint } from '../utils/polySpline.js';
+import { insertSplineCorner, keepPivot, moveSplineCorner, polySplineStep, splineSpanMidpoint } from '../utils/polySpline.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
 // UX 2026-09-09: a cloud polygon/polyline vertex drag replays the approved
 // studio's moveVertex(): only the dragged vertex's corner is re-fitted and the
@@ -6205,7 +6205,9 @@ export function useSVGInteraction({
       if (!Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= sides) return;
       obj = deepClone(obj);
       if (splineStep) {
-        obj.points = insertSplineCorner(obj.points, splineStep, segmentIndex, splineSpanMidpoint(obj.points, splineStep, segmentIndex));
+        // The new curve's box can differ from the old one; keepPivot holds a
+        // turned line's corners where they were (Codex review on #1214).
+        obj = keepPivot(obj, obj.points, insertSplineCorner(obj.points, splineStep, segmentIndex, splineSpanMidpoint(obj.points, splineStep, segmentIndex)));
         handleId = `vertex-${(segmentIndex + 1) * splineStep}`;
       } else {
         const from = obj.points[segmentIndex];
