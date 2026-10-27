@@ -27,7 +27,9 @@
  * with no host at all (a unit test) falls back to the native title.
  */
 import { useContext, useState, useRef, useLayoutEffect } from 'react';
-import { attachLoadoutTransition } from '../utils/loadoutTransition';
+import {
+  LOADOUT_MOTION, ROW_MOTION, attachLoadoutTransition, measureRevealRow, playRevealRowLeave, prefersReducedMotion,
+} from '../utils/loadoutTransition';
 import useLoadoutTransition from '../hooks/useLoadoutTransition';
 import Icon from '../Icons.jsx';
 import { TooltipContext } from './Tooltip.jsx';
@@ -76,8 +78,13 @@ export default function SectionIconButton({
   const buttonRef = useRef(null);
   useLayoutEffect(() => {
     if (action !== 'select' && action !== 'edit') return undefined;
-    const parent = buttonRef.current?.parentElement;
-    if (!parent || parent.classList.contains('section-icon-actions__loadout')) return undefined;
+    const own = buttonRef.current?.parentElement;
+    if (!own || own.classList.contains('section-icon-actions__loadout')) return undefined;
+    // A hub panel header ("+ New project ... [Select]"): the whole line is the
+    // loadout, so the gold button leaving for the select row (and coming back
+    // on Done) animates with it instead of popping (owner 2026-10-27).
+    const head = own.parentElement;
+    const parent = head?.classList.contains('hub-section-head') ? head : own;
     const layer = document.createElement('span');
     layer.className = 'section-icon-actions__ghosts';
     layer.setAttribute('data-loadout-ignore', '');
@@ -88,6 +95,51 @@ export default function SectionIconButton({
     const detach = attachLoadoutTransition(parent, layer);
     return () => { detach?.(); layer.remove(); parent.style.position = oldPosition; };
   }, [action]);
+  // The phone header gives its search row to the select actions (hub.css,
+  // SELECT MODE). The row now leaves and comes back the way the tool bar's
+  // row 2 does - it sinks and fades as the actions grow in, and comes back
+  // down into place on Done as they shrink out - instead of vanishing and
+  // popping back (owner 2026-10-27). Rows marked data-select-reveal in the
+  // data-select-reveal-host around this toggle; only the ones select mode
+  // hides.
+  const revealRef = useRef({ shown: [], hidden: [] });
+  useLayoutEffect(() => {
+    if (action !== 'select' && action !== 'edit') return undefined;
+    const button = buttonRef.current;
+    const host = button?.closest('[data-select-reveal-host]');
+    if (!host) return undefined;
+    const rows = () => [...host.querySelectorAll('[data-select-reveal]')];
+    const state = revealRef.current;
+    if (active) {
+      const hidden = rows().filter((row) => !row.getClientRects().length);
+      state.hidden = hidden;
+      const seen = state.shown.filter((entry) => hidden.includes(entry.row));
+      state.shown = [];
+      if (!prefersReducedMotion()) seen.forEach((entry) => playRevealRowLeave(entry, host));
+      return undefined;
+    }
+    const back = state.hidden.filter((row) => row.isConnected && row.getClientRects().length);
+    state.hidden = [];
+    if (!prefersReducedMotion()) {
+      for (const row of back) {
+        row.animate?.([{ opacity: 0, translate: `0px ${-ROW_MOTION.inTravelPx}px` }, { opacity: 1, translate: '0px 0px' }], {
+          // A beat after the actions start shrinking, so the two rows hardly
+          // overlap.
+          duration: ROW_MOTION.inMs, delay: LOADOUT_MOTION.durationMs / 2, easing: ROW_MOTION.inEasing, fill: 'backwards',
+        });
+      }
+    }
+    // Where each row is drawn, for the copy that leaves when Select is
+    // pressed (measured again as the press starts, in case it moved).
+    const measure = () => { state.shown = rows().map(measureRevealRow).filter(Boolean); };
+    measure();
+    button.addEventListener('pointerdown', measure, true);
+    button.addEventListener('keydown', measure, true);
+    return () => {
+      button.removeEventListener('pointerdown', measure, true);
+      button.removeEventListener('keydown', measure, true);
+    };
+  }, [action, active]);
   const empty = Boolean(nothingToSelect) && !active;
   const tip = empty
     ? (typeof nothingToSelect === 'string' ? nothingToSelect : 'Nothing to select')

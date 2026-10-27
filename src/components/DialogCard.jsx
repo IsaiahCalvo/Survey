@@ -21,11 +21,12 @@
 // `hub-btn hub-btn--primary` (add `is-danger` for a destructive one), both
 // `dialog-touch-pad`. tests/dialogConsistency.test.mjs keeps dialogs on it.
 
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { Icon } from '../home/HubShell';
 import { C } from '../uiPalette';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import MotionPresence from './MotionPresence.jsx';
+import { exitMs } from '../utils/motion.js';
 import { useTooltip } from './Tooltip';
 
 export const DIALOG_OVERLAY_STYLE = Object.freeze({
@@ -45,6 +46,29 @@ export const DIALOG_FOOTER_STYLE = Object.freeze({
   padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep,
   display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', flex: 'none',
 });
+
+/**
+ * Most callers drop an open dialog from the page outright ({open && <Dialog>})
+ * instead of passing open={false}, so MotionPresence never sees it close and
+ * it vanished in one frame while it had faded in (frame captures, 2026-10-27).
+ * Unmounted while open, a lifeless copy of the scrim and card is left where it
+ * was, marked closing so motion.css plays the same exit, then removed.
+ */
+function playUnmountExit(overlay, parent) {
+  const ms = exitMs('dialog');
+  if (!overlay || !parent?.isConnected || ms <= 0) return;
+  const copy = overlay.cloneNode(true);
+  // Typed text lives in the property, not the attribute a copy carries.
+  const from = [...overlay.querySelectorAll('input, textarea')];
+  [...copy.querySelectorAll('input, textarea')].forEach((field, k) => { field.value = from[k]?.value ?? ''; });
+  for (const node of [copy, ...copy.querySelectorAll('[id]')]) node.removeAttribute('id');
+  copy.setAttribute('data-motion-state', 'closing');
+  copy.setAttribute('data-motion-kind', 'dialog');
+  copy.setAttribute('aria-hidden', 'true');
+  copy.setAttribute('inert', '');
+  parent.appendChild(copy);
+  setTimeout(() => copy.remove(), ms);
+}
 
 /**
  * @param {object} props
@@ -79,13 +103,23 @@ export default function DialogCard({
   const tip = useTooltip();
   const cardRef = useRef(null);
   useFocusTrap(cardRef, open, { onEscape: busy ? undefined : onClose });
+  const overlayRef = useRef(null);
+  const shownRef = useRef(null); // { overlay, parent } while open
+  useLayoutEffect(() => {
+    const overlay = overlayRef.current;
+    shownRef.current = open && overlay ? { overlay, parent: overlay.parentNode } : null;
+  });
+  useLayoutEffect(() => () => {
+    const shown = shownRef.current;
+    if (shown) playUnmountExit(shown.overlay, shown.parent);
+  }, []);
 
   // Closed: MotionPresence plays the exit of the last open card (motion.css).
   if (!open) return <MotionPresence open={false} />;
 
   return (
     <MotionPresence open>
-      <div onClick={busy ? undefined : onClose} style={zIndex ? { ...DIALOG_OVERLAY_STYLE, zIndex } : DIALOG_OVERLAY_STYLE}>
+      <div ref={overlayRef} onClick={busy ? undefined : onClose} style={zIndex ? { ...DIALOG_OVERLAY_STYLE, zIndex } : DIALOG_OVERLAY_STYLE}>
         <Card
           ref={cardRef}
           role={role}

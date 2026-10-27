@@ -628,7 +628,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
           <ProfileMenu userName={userName} userMeta={userMeta} showShortcuts />
         </aside>
         <main ref={mobileSwipeSurfaceRef} className="main paper">
-          <div className="header">
+          <div className="header" data-select-reveal-host="">
             <div className="header-title-block">
               <MobileRailNav mode={mobileNavMode} title={title} tab={tab} navItems={navItems} onNav={onNav} />
               <h1 className="title">{title}</h1>
@@ -637,7 +637,7 @@ export const HubShell = ({ tab, onNav, title, subtitle, actions, children, userN
             <div className="mobile-profile">
               <ProfileMenu userName={userName} userMeta={userMeta} showArchive tab={tab} onNav={onNav} />
             </div>
-            <div className="actions">{actions}</div>
+            <div className="actions" data-select-reveal="">{actions}</div>
           </div>
           {children}
         </main>
