@@ -180,7 +180,7 @@ import {
   refitTextboxToText,
   resolveTextStyleWrite,
 } from './utils/selectedTextFormatting.js';
-import { buildNewTextCommitJSON, newTextBoxPaint, TEXT_PADDING } from './utils/textEditCommit.js';
+import { buildNewTextCommitJSON, NEW_TEXT_BOX_FONT_COLOR, newTextBoxPaint, TEXT_PADDING } from './utils/textEditCommit.js';
 import {
   applyRestyleChange,
   applyRestyleChangeToPage,
@@ -3444,7 +3444,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       textAlign: 'left',
       verticalAlign: 'top',
     };
-    return { text: { ...base, fontColor: '#000000', bold: false }, callout: base };
+    return { text: { ...base, fontColor: NEW_TEXT_BOX_FONT_COLOR, bold: false }, callout: base };
   });
   const textStyleTool = activeTool === 'callout' ? 'callout' : 'text';
   const textStyleDefaults = textStyleDefaultsByTool[textStyleTool];

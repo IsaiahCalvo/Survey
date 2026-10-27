@@ -32,7 +32,7 @@ test('phone and desktop share one single-name default font (Helvetica)', () => {
 
 test('a new text box starts plain black and a new callout starts bold, each keeping its own Aa row', () => {
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
-  assert.match(viewer, /return \{ text: \{ \.\.\.base, fontColor: '#000000', bold: false \}, callout: base \};/);
+  assert.match(viewer, /return \{ text: \{ \.\.\.base, fontColor: NEW_TEXT_BOX_FONT_COLOR, bold: false \}, callout: base \};/);
   assert.match(viewer, /newTextStyle=\{textStyleDefaultsByTool\.text\}/);
   assert.match(viewer, /bold: textStyleDefaultsByTool\.callout\.bold,/);
   assert.match(viewer, /setTextStyleDefaultsByTool\(\(prev\) => \(\{ \.\.\.prev, \[textStyleTool\]: write\.defaults \}\)\)/);

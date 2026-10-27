@@ -132,6 +132,10 @@ const applyTextStyle = (json, style = {}) => {
  * maps the same fields (PDFViewer selectedPreviewColors / patchSelectedFill).
  * Cloud is drawn from cloudIntensity, so it carries no dashes here.
  */
+// A new text box's glyph colour until the Aa row changes it (plain black,
+// as new text boxes have always started).
+export const NEW_TEXT_BOX_FONT_COLOR = '#000000';
+
 export function newTextBoxPaint({
   strokeColor = '#000000',
   strokeOpacity = 100,
