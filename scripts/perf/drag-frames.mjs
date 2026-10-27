@@ -21,6 +21,9 @@
 // CPU=<n> slows the page n times once it is open (a slower laptop or tablet).
 // PAINT=1 lists, per gesture, 2D canvas draw calls and canvas context, size
 // and export calls (with the calling code) per canvas.
+// DROP=1 also reports the long frames in the 1.5 s after the mouse is released
+// (dropLoafMs / dropScriptMs / dropOver33) and all main-thread task time then
+// (dropTaskMs): the cost of saving the edit.
 // RENDERS=1 counts React commits during the moves and, per component, how many
 // times it rendered (a stub DevTools hook; name the components with an
 // unminified build: `vite build --mode e2e --minify false`), plus how many DOM
@@ -238,7 +241,23 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
   }
   if (trace) await page.context().browser().stopTracing();
   else if (profile) { const { profile: cpu } = await cdp.send('Profiler.stop'); fs.writeFileSync(profile, JSON.stringify(cpu)); }
+  const dropProfile = profile && !trace && process.env.DROP ? profile.replace(/\.cpuprofile$/, '-drop.cpuprofile') : null;
+  if (dropProfile) await cdp.send('Profiler.start');
+  const m2 = process.env.DROP ? await metrics() : null;
+  // DROP=1: what the drop itself costs (the edit is saved into the marks).
+  // Sampling starts before the release so the release's own frame is counted.
+  if (process.env.DROP) await startSampling(page);
   await send('mouseReleased', from.x + dx, from.y + dy, 0);
+  if (process.env.DROP) {
+    await sleep(1500);
+    const after = await stopSampling(page);
+    const m3 = await metrics();
+    stats.dropTaskMs = (m3.TaskDuration - m2.TaskDuration) * 1000;
+    if (dropProfile) { const { profile: cpu } = await cdp.send('Profiler.stop'); fs.writeFileSync(dropProfile, JSON.stringify(cpu)); }
+    stats.dropLoafMs = after.loafMs;
+    stats.dropScriptMs = after.loafScriptMs;
+    stats.dropOver33 = after.over33;
+  }
   return { ...stats, wall };
 }
 
@@ -359,7 +378,7 @@ if (PROFILE) {
   }
   const summary = { marks: runs[0].marks, heapOpenMB: Math.round(median(runs.map((r) => r.heapOpenMB)) * 10) / 10, heapAfterSwitchMB: Math.round(median(runs.map((r) => r.heapAfterSwitchMB)) * 10) / 10 };
   for (const g of ['toolSwitch', ...GESTURES]) {
-    summary[g] = Object.fromEntries(['frames', 'meanFrame', 'p95Frame', 'overVsync', 'over33', 'loafCount', 'loafMs', 'loafScriptMs', 'taskMs', 'scriptMs', 'styleMs', 'layoutMs', 'commits', 'renders', 'hostElements', 'wall']
+    summary[g] = Object.fromEntries(['frames', 'meanFrame', 'p95Frame', 'overVsync', 'over33', 'loafCount', 'loafMs', 'loafScriptMs', 'taskMs', 'scriptMs', 'styleMs', 'layoutMs', 'commits', 'renders', 'hostElements', 'wall', 'dropLoafMs', 'dropScriptMs', 'dropOver33', 'dropTaskMs']
       .map((k) => [k, Math.round(median(runs.map((r) => r[g]?.[k] ?? 0)) * 10) / 10]));
   }
   console.log('MEDIANS', JSON.stringify(summary));
