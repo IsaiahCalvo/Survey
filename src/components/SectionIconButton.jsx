@@ -16,7 +16,8 @@
  * The word lives in the accessible name and the tooltip ("Select",
  * "Add category", ...). A mode toggle (Select / Edit) passes `active` while
  * its mode is on: its name becomes "Done" (the caller passes that label) and
- * the glyph swaps to a check in the same calm ink - no gold (owner).
+ * the glyph swaps to a double check (Lucide check-check) in the same calm ink
+ * - no gold, no disc around it (owner 2026-10-26).
  *
  * `word` swaps the glyph for a short word on the same box, ink and states
  * ("All" / "None" in a select-mode row, 13px/500).
@@ -48,7 +49,7 @@ export const SECTION_ACTION_ICONS = Object.freeze({
 });
 
 /** A mode toggle that is on shows this "Done" glyph, in the same ink. */
-export const SECTION_DONE_ICON = 'check';
+export const SECTION_DONE_ICON = 'checkCheck';
 
 export const SECTION_ICON_SIZES = Object.freeze({
   desktop: { hit: 28, glyph: 16 },

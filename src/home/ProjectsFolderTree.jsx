@@ -983,6 +983,14 @@ export default function ProjectsFolderTree({
               </button>
             ) : null}
             <div className="hub-select-actions hub-section-actions">
+              <SectionIconButton
+                data-testid="project-select-toggle"
+                action="select"
+                label={jobsEdit ? 'Done' : 'Select'}
+                nothingToSelect={filtered.length === 0}
+                active={jobsEdit}
+                onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
+              />
               {/* Duplicate clones each selected project into the local list;
                   Share opens the share flow for the first selected project;
                   Delete removes each selected project and lets the host
@@ -1000,14 +1008,6 @@ export default function ProjectsFolderTree({
                   deleteProps={{ 'data-testid': 'delete-selected-projects' }}
                 />
               )}
-              <SectionIconButton
-                data-testid="project-select-toggle"
-                action="select"
-                label={jobsEdit ? 'Done' : 'Select'}
-                nothingToSelect={filtered.length === 0}
-                active={jobsEdit}
-                onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
-              />
             </div>
           </div>
           <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
@@ -1159,6 +1159,13 @@ export default function ProjectsFolderTree({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, marginBottom: 4, overflow: 'hidden', flexWrap: 'nowrap', justifyContent: 'space-between' }}>
                     <span className="hub-section-label" style={{ fontSize: 11, letterSpacing: 0, color: 'var(--ink-200)', fontWeight: 600 }}>Files<span className="hub-section-count">{openFiles.length}</span></span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+                      <SectionIconButton
+                        action="select"
+                        label={fileSelect ? 'Done' : 'Select'}
+                        nothingToSelect={openFiles.length === 0}
+                        active={fileSelect}
+                        onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
+                      />
                       {fileSelect && (() => {
                         // Effective selection is DERIVED from the current rows
                         // — never the raw id set, which may hold stale ids of
@@ -1186,13 +1193,6 @@ export default function ProjectsFolderTree({
                           />
                         );
                       })()}
-                      <SectionIconButton
-                        action="select"
-                        label={fileSelect ? 'Done' : 'Select'}
-                        nothingToSelect={openFiles.length === 0}
-                        active={fileSelect}
-                        onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
-                      />
                     </div>
                   </div>
                   <div className="projects-file-grid" style={{ display: 'grid', gap: 12, padding: '0 10px 6px', fontSize: 11, color: 'var(--ink-200)', letterSpacing: 0 }}>

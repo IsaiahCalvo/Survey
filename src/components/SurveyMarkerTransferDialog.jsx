@@ -1,11 +1,12 @@
 // Move or Copy Survey Markers to another category: pick the template, then a
 // module in it, then a category in that module (owner 2026-10-26). The shell
-// is the survey's one picker window (SpaceSelectionDialog: portal, scrim,
-// focus trap, Escape closes).
+// is the app's one dialog look (DialogCard), portalled to document.body: the
+// rail sits under the viewer's own stacking context, which would paint the
+// left rail and toolbars over it.
 import { useMemo, useState } from 'react';
-import SpaceSelectionDialog from './SpaceSelectionDialog';
-import { COLORS } from '../theme';
-import { C } from '../uiPalette';
+import BodyPortal from './BodyPortal';
+import DialogCard from './DialogCard.jsx';
+import { COLORS, Z_INDEX } from '../theme';
 import {
   defaultSurveyMarkerTransferTarget,
   pickInTemplate,
@@ -21,16 +22,6 @@ const selectStyle = {
   fontFamily: 'inherit',
   fontSize: 13,
 };
-
-const cancelStyle = {
-  background: 'transparent', border: 0, color: C.muted, padding: '6px 10px',
-  fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6,
-};
-const primaryStyle = (disabled) => ({
-  background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6,
-  padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, fontFamily: 'inherit',
-  cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
-});
 
 function Field({ label, value, options, onChange, disabled = false, empty }) {
   return (
@@ -72,45 +63,54 @@ export default function SurveyMarkerTransferDialog({
     else setError(result?.reason || `Could not ${verb.toLowerCase()} them.`);
   };
 
+  const blocked = !pick.categoryId || unchanged;
+
   return (
-    <SpaceSelectionDialog open title={`${verb} ${count} ${noun}`} onClose={onClose}>
-      <form onSubmit={submit} style={{ display: 'grid', gap: 14 }} data-testid="survey-marker-transfer">
-        <p style={{ margin: 0, fontSize: 13, color: COLORS.modal.textMuted }}>
-          {mode === 'copy'
-            ? 'Each copy keeps its name and place on the page, with no answers yet.'
-            : 'They keep their answers, notes and place on the page.'}
-        </p>
-        <Field
-          label="Template"
-          value={pick.templateId}
-          options={targets}
-          empty="No templates"
-          onChange={(id) => update(pickInTemplate(targets.find((entry) => entry.id === id), { moduleId: pick.moduleId }))}
-        />
-        <Field
-          label="Module"
-          value={pick.moduleId}
-          options={modules}
-          empty="No modules"
-          disabled={modules.length === 0}
-          onChange={(id) => update(pickInTemplate(template, { moduleId: id, avoidCategoryId: from?.moduleId === id ? from?.categoryId : null }))}
-        />
-        <Field
-          label="Category"
-          value={pick.categoryId}
-          options={categories}
-          empty="No categories"
-          disabled={categories.length === 0}
-          onChange={(id) => update({ ...pick, categoryId: id })}
-        />
-        {error ? <p role="alert" style={{ margin: 0, color: 'var(--danger)', fontSize: 13 }}>{error}</p> : null}
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-          {/* The footer buttons of the app's confirm and prompt dialogs
-              (dialogPrompts.jsx): a quiet Cancel, then the gold action. */}
-          <button type="button" className="dialog-touch-pad" onClick={onClose} style={cancelStyle}>Cancel</button>
-          <button type="submit" className="dialog-touch-pad" disabled={!pick.categoryId || unchanged} style={primaryStyle(!pick.categoryId || unchanged)}>{verb}</button>
+    <BodyPortal>
+      <DialogCard
+        as="form"
+        title={`${verb} ${count} ${noun}`}
+        message={mode === 'copy'
+          ? 'Each copy keeps its name and place on the page, with no answers yet.'
+          : 'They keep their answers, notes and place on the page.'}
+        onClose={onClose}
+        width={420}
+        zIndex={Z_INDEX.modalOverlay}
+        cardProps={{ onSubmit: submit, 'data-testid': 'survey-marker-transfer' }}
+        footer={(
+          <>
+            <button type="button" className="hub-btn dialog-touch-pad" onClick={onClose}>Cancel</button>
+            <button type="submit" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={blocked}>{verb}</button>
+          </>
+        )}
+      >
+        <div style={{ display: 'grid', gap: 14 }}>
+          <Field
+            label="Template"
+            value={pick.templateId}
+            options={targets}
+            empty="No templates"
+            onChange={(id) => update(pickInTemplate(targets.find((entry) => entry.id === id), { moduleId: pick.moduleId }))}
+          />
+          <Field
+            label="Module"
+            value={pick.moduleId}
+            options={modules}
+            empty="No modules"
+            disabled={modules.length === 0}
+            onChange={(id) => update(pickInTemplate(template, { moduleId: id, avoidCategoryId: from?.moduleId === id ? from?.categoryId : null }))}
+          />
+          <Field
+            label="Category"
+            value={pick.categoryId}
+            options={categories}
+            empty="No categories"
+            disabled={categories.length === 0}
+            onChange={(id) => update({ ...pick, categoryId: id })}
+          />
+          {error ? <p role="alert" style={{ margin: 0, color: 'var(--danger)', fontSize: 13 }}>{error}</p> : null}
         </div>
-      </form>
-    </SpaceSelectionDialog>
+      </DialogCard>
+    </BodyPortal>
   );
 }

@@ -1,17 +1,25 @@
-import { useRef } from 'react';
-import { useFocusTrap } from '../hooks/useFocusTrap';
-import { COLORS } from '../theme';
+import DialogCard from './DialogCard.jsx';
+
+/**
+ * "This template changed since this document used it": keep the version the
+ * document was surveyed with, or move to the latest. The app's one dialog
+ * shell (owner 2026-10-26: this one "looked like shit" next to the rest).
+ */
 export default function SurveyTemplateVersionDialog({ latest, onChoose, onCancel }) {
-  const ref = useRef(null); useFocusTrap(ref, true, { onEscape: onCancel });
-  return <div style={{ position: 'fixed', inset: 0, zIndex: 10003, background: COLORS.modal.overlay, backdropFilter: 'blur(8px)', display: 'grid', placeItems: 'center' }} onClick={onCancel}>
-    <div ref={ref} role="dialog" aria-modal="true" aria-label="Survey template updated" style={{ boxSizing: 'border-box', maxHeight: 'calc(100dvh - 40px)', overflowY: 'auto', width: 440, maxWidth: '90vw', padding: 24, border: `1px solid ${COLORS.modal.border}`, background: COLORS.modal.surface, color: COLORS.modal.textPrimary, borderRadius: 8 }} onClick={(event) => event.stopPropagation()}>
-      <h3 style={{ marginTop: 0 }}>Survey template updated</h3>
-      <p style={{ fontSize: 14, lineHeight: 1.5 }}>{latest.name} has changed since you used it in this document. Keep the version used here, or use the latest template. Your Survey Markers and answers stay saved.</p>
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-        <button type="button" className="btn btn-default" onClick={onCancel}>Cancel</button>
-        <button type="button" className="btn btn-default" onClick={() => onChoose(false)}>Keep previous version</button>
-        <button type="button" className="btn btn-primary" onClick={() => onChoose(true)}>Use latest version</button>
-      </div>
-    </div>
-  </div>;
+  return (
+    <DialogCard
+      title="Survey template updated"
+      message={`${latest.name} has changed since you used it in this document. Keep the version used here, or use the latest template. Your Survey Markers and answers stay saved.`}
+      onClose={onCancel}
+      width={420}
+      zIndex={10003}
+      footer={(
+        <>
+          <button type="button" className="hub-btn dialog-touch-pad" onClick={onCancel}>Cancel</button>
+          <button type="button" className="hub-btn dialog-touch-pad" onClick={() => onChoose(false)}>Keep previous version</button>
+          <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={() => onChoose(true)}>Use latest version</button>
+        </>
+      )}
+    />
+  );
 }

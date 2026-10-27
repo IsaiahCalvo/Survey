@@ -35,7 +35,6 @@ test('the dialog corner token exists and the dialog cards use it', () => {
   assert.match(tokens, /--radius-dialog:\s*10px;/);
   const users = [
     'components/AccountSettings.css',
-    'components/ApplyRedactionsModal.css',
     'components/AuthModal.css',
     'components/PrintPanel.css',
     'components/collab/CleanupResidueReviewPanel.css',
@@ -61,10 +60,11 @@ test('the dialog corner token exists and the dialog cards use it', () => {
     assert.ok(file, rel);
     assert.match(file.text, /var\(--radius-dialog\)/, rel);
   }
-  for (const rel of ['NewColumnsModal', 'ExcelLockedModal', 'DuplicateUploadModal', 'CreateCategoryModal',
-    'TemplateOverwriteWarningModal', 'ExcelSyncConfirmModal', 'OneDriveFileSaveModal', 'KeyboardShortcutsOverlay']) {
+  // The Excel, OneDrive, category, overwrite and duplicate dialogs moved onto
+  // DialogCard (2026-10-26), which carries the token itself.
+  for (const rel of ['KeyboardShortcutsOverlay', 'DialogCard']) {
     const file = files.find(({ path }) => path.endsWith(`${rel}.jsx`));
-    assert.match(file.text, /borderRadius: BORDERS\.radius\.dialog/, rel);
+    assert.match(file.text, /borderRadius: (BORDERS\.radius\.dialog|'var\(--radius-dialog\)')/, rel);
   }
 });
 

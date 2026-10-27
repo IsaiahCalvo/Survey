@@ -571,7 +571,7 @@ export default function DocumentsLedger({
             return (
               <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
                 <SelectModeButtons
-                  phone
+                  phone={isPhoneLayout()}
                   count={docSelCount}
                   allSelected={allSel}
                   total={docs.length}

@@ -1,5 +1,11 @@
-import './ApplyRedactionsModal.css';
+import DialogCard from './DialogCard.jsx';
+import { C } from '../uiPalette';
 
+/**
+ * The last stop before a permanent redaction is written: it names how many
+ * redactions will burn in and that the open PDF stays as it is. The app's one
+ * dialog shell (DialogCard); while it works nothing closes it.
+ */
 export default function ApplyRedactionsModal({
   open,
   redactionCount = 0,
@@ -12,25 +18,26 @@ export default function ApplyRedactionsModal({
   if (!open) return null;
   const countLabel = `${redactionCount} redaction${redactionCount === 1 ? '' : 's'}`;
   return (
-    <div className="apply-redactions-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !busy) onCancel?.();
-    }}>
-      <section className="apply-redactions-modal" role="alertdialog" aria-modal="true" aria-labelledby="apply-redactions-title" aria-describedby="apply-redactions-copy">
-        <h2 id="apply-redactions-title">Permanently redact selected content?</h2>
-        <p id="apply-redactions-copy">
-          This will permanently remove the selected content and save a new PDF with {countLabel}.
-          Content under the redaction cannot be recovered. Everything else in the PDF will be kept.
-        </p>
-        <p className="apply-redactions-original-note">Your open PDF and its editable marks will stay unchanged.</p>
-        {progress && <p className="apply-redactions-progress" role="status">Applying redactions {progress.pageNumber} of {progress.pageCount}…</p>}
-        {error && <p className="apply-redactions-error" role="alert">{error}</p>}
-        <div className="apply-redactions-actions">
-          <button type="button" className="apply-redactions-cancel" onClick={onCancel} disabled={busy}>Cancel</button>
-          <button type="button" className="apply-redactions-confirm" onClick={onConfirm} disabled={busy}>
+    <DialogCard
+      role="alertdialog"
+      title="Permanently redact selected content?"
+      message={`This will permanently remove the selected content and save a new PDF with ${countLabel}. Content under the redaction cannot be recovered. Everything else in the PDF will be kept.`}
+      onClose={onCancel}
+      busy={busy}
+      width={440}
+      zIndex={12000}
+      footer={(
+        <>
+          <button type="button" className="hub-btn dialog-touch-pad" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button type="button" className="hub-btn hub-btn--primary is-danger dialog-touch-pad" onClick={onConfirm} disabled={busy}>
             {busy ? 'Redacting…' : 'Redact & download'}
           </button>
-        </div>
-      </section>
-    </div>
+        </>
+      )}
+    >
+      <p style={{ margin: 0, color: C.ink }}>Your open PDF and its editable marks will stay unchanged.</p>
+      {progress && <p role="status" style={{ margin: '10px 0 0' }}>Applying redactions {progress.pageNumber} of {progress.pageCount}…</p>}
+      {error && <p role="alert" style={{ margin: '10px 0 0', color: C.dangerText }}>{error}</p>}
+    </DialogCard>
   );
 }

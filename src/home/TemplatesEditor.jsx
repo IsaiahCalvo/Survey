@@ -2436,6 +2436,13 @@ export default function TemplatesEditor({
                 </button>
               ) : null}
               <div className="hub-select-actions hub-section-actions">
+                <SectionIconButton
+                  action="select"
+                  label={tplEdit ? 'Done' : 'Select'}
+                  nothingToSelect={visibleTemplates.length === 0}
+                  active={tplEdit}
+                  onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
+                />
                 {tplEdit && (
                   <>
                     {(() => {
@@ -2465,13 +2472,6 @@ export default function TemplatesEditor({
                     })()}
                   </>
                 )}
-                <SectionIconButton
-                  action="select"
-                  label={tplEdit ? 'Done' : 'Select'}
-                  nothingToSelect={visibleTemplates.length === 0}
-                  active={tplEdit}
-                  onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
-                />
               </div>
             </div>
             <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
@@ -2715,6 +2715,13 @@ export default function TemplatesEditor({
               <div className="hub-section-head" style={{ marginTop: 12, marginBottom: 8 }}>
                 <p className="micro hub-section-label" style={{ margin: 0 }}>Categories<span className="hub-section-count">{visibleCats.length}</span></p>
                 <div className="hub-section-actions">
+                  <SectionIconButton
+                    action="select"
+                    label={catEdit ? 'Done' : 'Select'}
+                    nothingToSelect={visibleCats.length === 0}
+                    active={catEdit}
+                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
+                  />
                     {catEdit && (() => {
                       const c = selCats.size;
                       const allSel = c === visibleCats.length && visibleCats.length > 0;
@@ -2731,13 +2738,6 @@ export default function TemplatesEditor({
                         />
                       );
                     })()}
-                  <SectionIconButton
-                    action="select"
-                    label={catEdit ? 'Done' : 'Select'}
-                    nothingToSelect={visibleCats.length === 0}
-                    active={catEdit}
-                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
-                  />
                   {!catEdit ? (
                     <SectionIconButton action="add" label="Add category" onClick={addCategory} />
                   ) : null}
@@ -3003,6 +3003,13 @@ export default function TemplatesEditor({
                   <p className="micro hub-section-label" style={{ margin: 0 }}>Entities<span className="hub-section-count">{tpl ? tpl.roster.length : 0}</span></p>
                 ) : null}
                 <div className="hub-section-actions">
+                <SectionIconButton
+                  action="select"
+                  label={entityEdit ? 'Done' : 'Select'}
+                  nothingToSelect={!tpl || (tpl.roster || []).length === 0}
+                  active={entityEdit}
+                  onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                />
                 {entityEdit && tpl && (() => {
                   const c = selEntities.size;
                   const allSel = c === tpl.roster.length && tpl.roster.length > 0;
@@ -3019,13 +3026,6 @@ export default function TemplatesEditor({
                     />
                   );
                 })()}
-                <SectionIconButton
-                  action="select"
-                  label={entityEdit ? 'Done' : 'Select'}
-                  nothingToSelect={!tpl || (tpl.roster || []).length === 0}
-                  active={entityEdit}
-                  onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                />
                 {!entityEdit ? (
                   <SectionIconButton action="add" label="Add entity" onClick={addEntity} disabled={!tpl} />
                 ) : null}
@@ -3459,6 +3459,14 @@ export default function TemplatesEditor({
                       const allSel = c === mobileVisibleCats.length && mobileVisibleCats.length > 0;
                       return (
                         <>
+                          <SectionIconButton
+                            phone
+                            action="select"
+                            label="Done"
+                            active
+                            className="templates-mobile-section-select"
+                            onClick={() => { setCatEdit(false); setSelCats(new Set()); }}
+                          />
                           <SelectModeButtons
                             phone
                             count={c}
@@ -3476,14 +3484,6 @@ export default function TemplatesEditor({
                             onCopy={() => setMoveModal({ count: c, kind: 'category', mode: 'copy' })}
                             onShare={() => { if (tpl) onShare && onShare(tpl); }}
                             onDelete={() => deleteCategories(visibleSelectedIds)}
-                          />
-                          <SectionIconButton
-                            phone
-                            action="select"
-                            label="Done"
-                            active
-                            className="templates-mobile-section-select"
-                            onClick={() => { setCatEdit(false); setSelCats(new Set()); }}
                           />
                         </>
                       );
@@ -3687,6 +3687,19 @@ export default function TemplatesEditor({
                     sheet's own title already says Entities, so the label goes;
                     Select sits left and New entity right on one row. */}
                 <div className="templates-mobile-select-inline templates-mobile-entity-toolbar">
+                  <SectionIconActions phone>
+                    <SectionIconButton
+                      phone
+                      action="select"
+                      label={entityEdit ? 'Done' : 'Select'}
+                      nothingToSelect={mobileVisibleEntities.length === 0}
+                      active={entityEdit}
+                      onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                    />
+                    {!entityEdit && (
+                      <SectionIconButton phone action="add" label="Add entity" className="templates-mobile-new-entity" onClick={addEntity} />
+                    )}
+                  </SectionIconActions>
                   {entityEdit && (() => {
                     const visibleSelectedIds = new Set(mobileVisibleEntities.filter((entity) => selEntities.has(entity.id)).map((entity) => entity.id));
                     const c = visibleSelectedIds.size;
@@ -3714,19 +3727,6 @@ export default function TemplatesEditor({
                       </span>
                     );
                   })()}
-                  <SectionIconActions phone>
-                    <SectionIconButton
-                      phone
-                      action="select"
-                      label={entityEdit ? 'Done' : 'Select'}
-                      nothingToSelect={mobileVisibleEntities.length === 0}
-                      active={entityEdit}
-                      onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                    />
-                    {!entityEdit && (
-                      <SectionIconButton phone action="add" label="Add entity" className="templates-mobile-new-entity" onClick={addEntity} />
-                    )}
-                  </SectionIconActions>
                 </div>
                 {mobileVisibleEntities.length === 0 ? (
                   <div className="templates-mobile-empty">No entities match this view.</div>

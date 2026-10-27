@@ -2859,9 +2859,10 @@ const SurveySpacesRail = ({
                             /* The ONE "Categories" head line (owner 2026-10-02: works like
                                the Templates editor). Label left; on the right the shared
                                section icons (src/components/SectionIconButton.jsx):
-                               [Select] [Add category]. Select turns the right side into the
-                               shared select-mode row - All, Move, Copy, Delete - and Add
-                               turns into the Done check in the same spot. Same 28px hit /
+                               [Select] [Add category]. Select turns the right side into
+                               Done (check-check) then the shared select-mode row - All,
+                               Move, Copy, Delete: the one order every select mode uses
+                               (owner 2026-10-26). Same 28px hit /
                                16px glyph, hover and press as the Templates editor; no gold.
                                Move and Copy are two actions (owner: never one "Move/Copy"). */
                             const allCategoriesSelected = categoriesForModule.length > 0
@@ -2877,6 +2878,7 @@ const SurveySpacesRail = ({
                                 <SectionIconActions className="survey-rail__cats-actions">
                                   {categorySelectModeActive ? (
                                     <>
+                                      <SectionIconButton action="select" label="Done" active onClick={exitCategorySelect} />
                                       <SelectModeButtons
                                         count={selectedCategoryCount}
                                         allSelected={allCategoriesSelected}
@@ -2911,7 +2913,6 @@ const SurveySpacesRail = ({
                                         onCopy={() => setShowSpaceSelection(true)}
                                         onDelete={deleteSelectedCategories}
                                       />
-                                      <SectionIconButton action="select" label="Done" active onClick={exitCategorySelect} />
                                     </>
                                   ) : (
                                     <>
@@ -3513,6 +3514,7 @@ const SurveySpacesRail = ({
                                                 >
                                                   {isItemSelectModeActiveForCategory ? (
                                                     <>
+                                                      <SectionIconButton action="select" label="Done" active onClick={exitItemSelect} />
                                                       <SelectModeButtons
                                                         count={itemSelectedCount}
                                                         total={categorySurveyMarkers.length}
@@ -3583,7 +3585,6 @@ const SurveySpacesRail = ({
                                                           }
                                                         }}
                                                       />
-                                                      <SectionIconButton action="select" label="Done" active onClick={exitItemSelect} />
                                                     </>
                                                   ) : (
                                                     <SectionIconButton

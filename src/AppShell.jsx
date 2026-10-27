@@ -3719,8 +3719,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         onClick={() => bottomToolbarApi.setEraserMode(mode)}
                         {...chromeTip(full, 'below')}
                         aria-label={full}
+                        data-press-label=""
                       >
-                        {short}
+                        <span>{short}</span>
                       </button>
                     ))}
                   </div>
@@ -4405,8 +4406,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     {...chromeTip(showTextFormatting ? 'Hide text formatting' : 'Text formatting', 'below')}
                     aria-label="Edit text"
                     aria-pressed={showTextFormatting}
+                    data-press-label=""
                   >
-                    Aa
+                    <span>Aa</span>
                   </button>
                 ), { canCompact: false })}
                 {/* w42 (2026-09-26): the More (⋯) button — only there while a
