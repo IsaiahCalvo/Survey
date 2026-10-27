@@ -20,7 +20,7 @@ const FONT_SCALE = new Set([10, 11, 12, 13, 14, 16, 18, 20, 22, 24, 28, 30, 32, 
 const RADIUS_SCALE = new Set([0, 2, 4, 6, 8, 10, 12, 16, 999]);
 
 // Today's counts (2026-10-27). Lower them as you clean up; never raise them.
-const MAX = { offScaleFont: 90, offScaleRadius: 91, hexInJsx: 406 };
+const MAX = { offScaleFont: 88, offScaleRadius: 91, hexInJsx: 406 };
 
 function files(dir, out = []) {
   for (const name of readdirSync(dir)) {

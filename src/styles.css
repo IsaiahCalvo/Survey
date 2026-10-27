@@ -2297,7 +2297,7 @@ input[type="text"].spaces-transfer__input {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 14px;
 }
 
@@ -2471,12 +2471,12 @@ input[type="text"].spaces-transfer__input {
   height: 44px;
   padding: 0 14px 0 12px;
   border-radius: 10px;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .spaces-transfer-space-menu--phone .annotation-dropdown__options > button {
   min-height: 44px;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .spaces-export-sheet .spaces-transfer__page {
@@ -2518,7 +2518,7 @@ input[type="text"].spaces-transfer__input {
 .spaces-export-sheet .spaces-transfer__act {
   width: auto;
   height: 44px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
 }
 
