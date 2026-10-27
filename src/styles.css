@@ -1620,8 +1620,8 @@ input[type="text"].space-card__name:focus-visible {
 }
 
 /* ---- switches: the column is the hit area, the track is drawn inside ----
-   ON is the app's calm neutral "on" (a --text-2
-   track), never gold (owner 2026-10-02). */
+   ON is gold, like every lit toggle in Spaces (design review 2026-10-27; it
+   was --success green, which tokens.css keeps for status dots only). */
 .spaces-switch {
   position: relative;
   flex: 0 0 var(--sp-switch-w);
@@ -1648,7 +1648,7 @@ input[type="text"].space-card__name:focus-visible {
 }
 
 .spaces-switch[aria-checked='true']::before {
-  background: var(--success);
+  background: var(--accent);
   box-shadow: none;
 }
 
@@ -2165,17 +2165,18 @@ input[type="text"].spaces-region__name-input:focus-visible {
 }
 
 .spaces-transfer-callout {
-  width: 200px;
+  width: 212px;
   padding: 6px;
   display: grid;
+  gap: 6px;
 }
 
 .spaces-transfer__head {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  min-height: 22px;
-  padding: 0 4px;
+  min-height: 18px;
+  padding: 0 2px;
 }
 
 .spaces-transfer__head > strong {
@@ -2199,31 +2200,55 @@ input[type="text"].spaces-region__name-input:focus-visible {
   margin-left: auto;
 }
 
-.spaces-transfer__label {
-  padding: 4px 4px 2px;
+/* The space drop-down: the browser's own list (keyboard, type-to-find and the
+   phone's wheel for free), in the stepper's box. */
+.spaces-transfer__select {
+  position: relative;
+  display: grid;
+  align-items: center;
+}
+
+.spaces-transfer__select > select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  padding: 0 24px 0 8px;
+  box-sizing: border-box;
+  background: var(--panel-well);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-1);
+  color-scheme: dark;
+  font-family: inherit;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  outline: none;
+}
+
+.spaces-transfer__select > select:focus-visible {
+  border-color: var(--border-strong);
+}
+
+.spaces-transfer__select > svg {
+  position: absolute;
+  right: 8px;
   color: var(--text-3);
-  font-size: 10.5px;
-  font-weight: 600;
+  pointer-events: none;
 }
 
-.spaces-transfer__spaces .spaces-export__space {
-  grid-template-columns: minmax(0, 1fr) 16px;
-}
-
-.spaces-transfer-callout .spaces-export__space {
-  min-height: 26px;
-  padding: 0 4px;
+.spaces-transfer__label {
+  padding: 0 2px;
+  color: var(--text-3);
+  font-size: 11px;
 }
 
 .spaces-transfer__page {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
-}
-
-.spaces-transfer__page > .spaces-transfer__label {
-  padding: 0 4px;
 }
 
 .spaces-transfer__stepper {
@@ -2245,7 +2270,7 @@ input[type="text"].spaces-region__name-input:focus-visible {
   appearance: none;
   display: inline-grid;
   place-items: center;
-  width: 22px;
+  width: 20px;
   padding: 0;
   margin: 0;
   background: transparent;
@@ -2265,7 +2290,7 @@ input[type="text"].spaces-region__name-input:focus-visible {
 }
 
 input[type="text"].spaces-transfer__input {
-  width: 32px;
+  width: 28px;
   height: 100%;
   margin: 0;
   padding: 0;
@@ -2285,23 +2310,37 @@ input[type="text"].spaces-transfer__input {
 .spaces-transfer__of {
   color: var(--text-3);
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .spaces-transfer__hint {
-  padding: 4px 4px 0;
+  padding: 0 2px;
   color: var(--text-3);
   font-size: 10.5px;
 }
 
+/* Copy and Move: two small icon buttons at the end of the page line. */
 .spaces-transfer__actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-top: 8px;
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.hub-btn.spaces-transfer__act {
+  height: 24px;
+}
+
+.hub-btn.hub-btn--icon.spaces-transfer__act {
+  width: 26px;
+}
+
+.hub-btn.spaces-transfer__act > svg {
+  width: 14px;
+  height: 14px;
 }
 
 .spaces-transfer__note {
-  padding: 8px 4px 0;
+  padding: 0 2px;
   color: var(--text-3);
   font-size: 12px;
 }
@@ -2421,7 +2460,22 @@ input[type="text"].spaces-transfer__input {
 }
 
 .spaces-export-sheet .spaces-transfer__label {
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.spaces-export-sheet .spaces-transfer__select {
+  margin-top: 4px;
+}
+
+.spaces-export-sheet .spaces-transfer__select > select {
+  height: 44px;
+  padding: 0 36px 0 12px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.spaces-export-sheet .spaces-transfer__select > svg {
+  right: 14px;
 }
 
 .spaces-export-sheet .spaces-transfer__page {
@@ -2448,14 +2502,27 @@ input[type="text"].spaces-transfer__input {
 }
 
 .spaces-export-sheet .spaces-transfer__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: 12px;
+  margin: 12px 0 0;
 }
 
 .spaces-export-sheet .spaces-transfer__actions > .hub-btn {
   height: 44px;
+  gap: 8px;
+  justify-content: center;
   border-radius: 10px;
   font-size: 14px;
+}
+
+.spaces-export-sheet .spaces-transfer__actions > .hub-btn > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.spaces-export-sheet .spaces-transfer__note {
+  padding-top: 8px;
 }
 
 /* ---- the active space outside the panel (Spaces chunk B) ---------------
