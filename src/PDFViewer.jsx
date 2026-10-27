@@ -15374,14 +15374,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // KAL-461: a delete (a folder takes everything in it) happens at once and
   // the Undo toast puts the rows back where they were. The toast hook is
-  // declared further down, hence the ref (space delete and page removal use
+  // declared further down, hence the ref (space delete, page removal and category delete use
   // it too).
-  const undoToastRef = useRef(null);
+  const bookmarkUndoToastRef = useRef(null);
   const handleBookmarkDelete = useCallback((id) => {
     const { removed } = removeBookmarkWithDescendants(bookmarks, id);
     setBookmarks(prev => removeBookmarkWithDescendants(prev, id).next);
     if (removed.length) {
-      undoToastRef.current?.({
+      bookmarkUndoToastRef.current?.({
         kind: 'single',
         message: bookmarkDeleteMessage(removed),
         onUndo: () => setBookmarks(prev => restoreRemovedBookmarks(prev, removed)),
@@ -15759,7 +15759,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return nextSpaces;
     });
-    undoToastRef.current?.({
+    bookmarkUndoToastRef.current?.({
       kind: 'single',
       message: removeToastMessage,
       onUndo: () => { handleUndoRef.current?.(); },
@@ -21074,7 +21074,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     enqueue: enqueueUndoToast,
     dismiss: dismissUndoToast,
   } = useUndoToast();
-  undoToastRef.current = enqueueUndoToast;
+  bookmarkUndoToastRef.current = enqueueUndoToast;
   // Page delete runs at once (no confirm); the toast's Undo is the timeline Undo.
   const deletePageWithUndo = useCallback(async (page) => {
     const ok = await handleDeletePage(page);
@@ -22252,7 +22252,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (selectedSpaceId === id) {
       setSelectedSpaceId(null);
     }
-    undoToastRef.current?.({
+    bookmarkUndoToastRef.current?.({
       kind: 'single',
       message: deleteToastMessage,
       onUndo: () => { handleUndoRef.current?.(); },
@@ -32074,7 +32074,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const markerNote = markers.length > 0
       ? `, with ${markers.length} Survey Marker${markers.length === 1 ? '' : 's'}`
       : '';
-    undoToastRef.current?.({
+    bookmarkUndoToastRef.current?.({
       kind: names.length > 1 ? 'bulk' : 'single',
       message: `Deleted ${what}${markerNote}`,
       count: names.length,
