@@ -1,5 +1,5 @@
 /**
- * Measure tools (Length / Area) + per-page scale.
+ * Measure tools (Length / Area / Perimeter) + page scale.
  *
  * A scale is { ptPerUnit, unit, label }: how many PDF points one real unit
  * spans on the sheet. The math (real length -> points-per-unit, unit table)
@@ -10,7 +10,10 @@
  * Storage: annotations sync per object, so a page has no field of its own.
  * Every measurement carries the page scale in data.measure.scale; calibrating
  * re-stamps every measurement on the page in one save (one undo step), and
- * the page scale is read back from them after a reload.
+ * the page scale is read back from them after a reload. A scale set on a page
+ * with no measurements yet, or on all pages at once (Drawboard Projects'
+ * "apply to all pages", 2026-10-27), is kept in the document's synced meta
+ * under MEASURE_SCALES_META_KEY: { all: scale | null, pages: { [n]: scale } }.
  */
 
 import { computeLineBboxCenter } from '../svgBoundingBox.js';
@@ -41,7 +44,16 @@ export const MEASURE_PRESETS = Object.freeze([
   { id: '1:100', label: '1:100', paperIn: (1 / 25.4) / 100 * 1000, unit: 'm' },
 ]);
 
-export const MEASURE_KINDS = Object.freeze(['length', 'area']);
+export const MEASURE_KINDS = Object.freeze(['length', 'area', 'perimeter']);
+
+// Measure kinds drawn with the Polygon tool; the rest ride the Line tool.
+export const POLYGON_MEASURE_KINDS = Object.freeze(['area', 'perimeter']);
+
+export function measureBaseTool(kind) {
+  return POLYGON_MEASURE_KINDS.includes(kind) ? 'polygon' : 'line';
+}
+
+export const MEASURE_SCALES_META_KEY = 'measureScales';
 
 export function isValidMeasureScale(scale) {
   return !!scale
@@ -86,6 +98,18 @@ export function formatMeasureArea(areaPt2, scale) {
   if (!isValidMeasureScale(scale)) return `${formatNumber(areaPt2 / (PT_PER_INCH * PT_PER_INCH))} sq in (no scale)`;
   const real = areaPt2 / (scale.ptPerUnit * scale.ptPerUnit);
   return `${real.toFixed(2)} ${MEASURE_UNITS[scale.unit].area}`;
+}
+
+/** Length of a closed polygon's outline, closing edge included. */
+export function polygonPerimeterPt(points) {
+  if (!Array.isArray(points) || points.length < 2) return 0;
+  let sum = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  return sum;
 }
 
 export function polygonAreaPt(points) {
@@ -221,9 +245,91 @@ export function buildMeasureLabel(obj, scale) {
   }
   const world = measurePolygonWorldPoints(obj);
   if (world.length < 3) return null;
-  const areaPt2 = polygonAreaPt(world);
   const c = polygonCentroid(world);
+  if (kind === 'perimeter') {
+    const perimeterPt = polygonPerimeterPt(world);
+    return { kind, text: formatMeasureLength(perimeterPt, scale), x: c.x, y: c.y, angle: 0, value: perimeterPt };
+  }
+  const areaPt2 = polygonAreaPt(world);
   return { kind, text: formatMeasureArea(areaPt2, scale), x: c.x, y: c.y, angle: 0, value: areaPt2 };
+}
+
+/** The document's saved scales, cleaned: { all, pages }. */
+export function normalizeMeasureScaleMeta(value) {
+  const all = isValidMeasureScale(value?.all) ? { ...value.all } : null;
+  const pages = {};
+  if (value?.pages && typeof value.pages === 'object') {
+    for (const [page, scale] of Object.entries(value.pages)) {
+      if (Number(page) > 0 && isValidMeasureScale(scale)) pages[String(Number(page))] = { ...scale };
+    }
+  }
+  return { all, pages };
+}
+
+/** The saved scale a page reads when its measurements carry none. */
+export function metaScaleForPage(meta, pageNumber) {
+  return meta?.pages?.[String(pageNumber)] || meta?.all || null;
+}
+
+/** The meta after a scale is set on one page, or on every page. */
+export function nextMeasureScaleMeta(meta, pageNumber, scale, { allPages = false } = {}) {
+  const current = normalizeMeasureScaleMeta(meta);
+  if (!isValidMeasureScale(scale)) return current;
+  if (allPages) return { all: { ...scale }, pages: {} };
+  return { all: current.all, pages: { ...current.pages, [String(pageNumber)]: { ...scale } } };
+}
+
+// Recent scales: this screen's last few picks, newest first (Drawboard keeps
+// five). A per-viewer convenience, so browser storage, and every read and
+// write survives storage being blocked.
+const RECENT_SCALES_KEY = 'survey:measure-recent-scales';
+export const RECENT_SCALES_MAX = 5;
+
+function sameScale(a, b) {
+  return a.unit === b.unit && Math.abs(Number(a.ptPerUnit) - Number(b.ptPerUnit)) < 1e-9;
+}
+
+export function addRecentMeasureScale(list, scale) {
+  if (!isValidMeasureScale(scale)) return Array.isArray(list) ? list : [];
+  const rest = (Array.isArray(list) ? list : []).filter((s) => isValidMeasureScale(s) && !sameScale(s, scale));
+  return [{ ptPerUnit: Number(scale.ptPerUnit), unit: scale.unit, label: scale.label }, ...rest].slice(0, RECENT_SCALES_MAX);
+}
+
+export function loadRecentMeasureScales(storage = globalThis.localStorage) {
+  try {
+    const list = JSON.parse(storage?.getItem(RECENT_SCALES_KEY) || '[]');
+    return Array.isArray(list) ? list.filter(isValidMeasureScale).slice(0, RECENT_SCALES_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function rememberRecentMeasureScale(scale, storage = globalThis.localStorage) {
+  const next = addRecentMeasureScale(loadRecentMeasureScales(storage), scale);
+  try { storage?.setItem(RECENT_SCALES_KEY, JSON.stringify(next)); } catch { /* storage blocked */ }
+  return next;
+}
+
+/**
+ * A scale bar for the page: a round real length (1, 2 or 5 times a power of
+ * ten, in the scale's unit) whose drawn length lands near `targetPx` screen
+ * pixels at the current zoom. `unitsPerPx` is page points per screen pixel.
+ */
+export function measureScaleBar(scale, unitsPerPx = 1, targetPx = 120) {
+  if (!isValidMeasureScale(scale)) return null;
+  const u = Number.isFinite(unitsPerPx) && unitsPerPx > 0 ? unitsPerPx : 1;
+  const targetReal = (targetPx * u) / scale.ptPerUnit;
+  const power = 10 ** Math.floor(Math.log10(targetReal));
+  let step = power;
+  for (const m of [1, 2, 5, 10]) {
+    if (m * power <= targetReal) step = m * power;
+  }
+  const real = Number(step.toPrecision(6));
+  const lengthPt = real * scale.ptPerUnit;
+  const text = scale.unit === 'ft' && real >= 1
+    ? `${real}'`
+    : `${real} ${MEASURE_UNITS[scale.unit].label}`;
+  return { real, lengthPt, text };
 }
 
 /** The page's scale as saved on its measurements (last one wins). */

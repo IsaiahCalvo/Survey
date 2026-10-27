@@ -12,7 +12,7 @@ const api = () => {
 };
 
 test('phone Shapes strip offers Cloud and Measure', () => {
-  assert.deepEqual(MOBILE_MEASURE_ITEMS.map((m) => m.key), ['length', 'area', 'scale']);
+  assert.deepEqual(MOBILE_MEASURE_ITEMS.map((m) => m.key), ['length', 'area', 'perimeter', 'scale']);
   const chrome = readFileSync(new URL('../src/mobile/MobilePdfViewerChrome.jsx', import.meta.url), 'utf8');
   assert.match(chrome, /\{ id: 'cloud', label: 'Cloud', icon: 'shapeCloud' \}/);
   assert.match(chrome, /\{ id: 'measure', label: 'Measure', icon: 'measureScale', measure: true \}/);
@@ -30,6 +30,9 @@ test('Measure picks arm line/polygon or open the scale dialog for the current pa
   const a = api();
   assert.equal(applyMobileMeasurePick('length', a), 'line');
   assert.deepEqual(a.calls, [['tool', 'line'], ['mode', 'length']]);
+  const p = api();
+  assert.equal(applyMobileMeasurePick('perimeter', p), 'polygon');
+  assert.deepEqual(p.calls, [['tool', 'polygon'], ['mode', 'perimeter']]);
   // Never restyle the selected annotation (it un-clouded a just-drawn cloud).
   const c = api(); c.lineBorderStyle = 'cloud';
   applyMobileMeasurePick('area', c); applyMobileShapePick('rect', c);

@@ -83,7 +83,17 @@ import SurveyEntityBar from './components/SurveyEntityBar';
 import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
 import MeasureScaleDialog from './components/MeasureScaleDialog';
-import { applyPageScale, pageScaleFromObjects } from './utils/measure/measureScale.js';
+import {
+  MEASURE_SCALES_META_KEY,
+  POLYGON_MEASURE_KINDS,
+  applyPageScale,
+  measureBaseTool,
+  metaScaleForPage,
+  nextMeasureScaleMeta,
+  normalizeMeasureScaleMeta,
+  pageScaleFromObjects,
+  rememberRecentMeasureScale,
+} from './utils/measure/measureScale.js';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
 import NewColumnsModal from './components/NewColumnsModal';
@@ -3115,16 +3125,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
   // Measure tools ride on the Line / Polygon tools: measureMode only says the
-  // commit is a measurement ('length' | 'area') or a calibration line.
-  // measureScales holds scales set this session per page (also saved on the
-  // page's measurements); measureScaleDialog is { pageNumber, lengthPt?, line? }.
+  // commit is a measurement ('length' | 'area' | 'perimeter') or a calibration
+  // line. measureScaleMeta is the document's saved scales, one page or all
+  // pages (synced doc meta; a page's measurements also carry its scale);
+  // measureScaleDialog is { pageNumber, lengthPt?, line? }.
   const [measureMode, setMeasureMode] = useState(null);
-  const [measureScales, setMeasureScales] = useState({});
+  const [measureScaleMeta, setMeasureScaleMeta] = useState(() => normalizeMeasureScaleMeta(null));
+  const measureScaleMetaRef = useRef(measureScaleMeta);
+  measureScaleMetaRef.current = measureScaleMeta;
   const [measureScaleDialog, setMeasureScaleDialog] = useState(null);
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
   useEffect(() => {
-    const base = measureMode === 'area' ? 'polygon' : 'line';
-    if (measureMode && activeTool !== base) setMeasureMode(null);
+    if (measureMode && activeTool !== measureBaseTool(measureMode)) setMeasureMode(null);
   }, [activeTool, measureMode]);
   // Select-family mode for annotation gestures. PDF text keeps its existing
   // activeTool='text-select' path, so this state can grow without changing it.
@@ -21765,9 +21777,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const container = pdfjsWrapperRef.current;
     if (!gridSettingsEnabled || !container) return;
     applyPageGridPageSteps(gridSettings, (pageNumber) => (
-      pageScaleFromObjects(annotationsByPage?.[pageNumber]?.objects) || measureScales[pageNumber] || null
+      pageScaleFromObjects(annotationsByPage?.[pageNumber]?.objects) || metaScaleForPage(measureScaleMeta, pageNumber)
     ), container);
-  }, [gridSettingsEnabled, gridSettings, annotationsByPage, measureScales, numPages]);
+  }, [gridSettingsEnabled, gridSettings, annotationsByPage, measureScaleMeta, numPages]);
+  useEffect(() => {
+    if (!normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
+    const apply = (value) => setMeasureScaleMeta(normalizeMeasureScaleMeta(value));
+    apply(excelSyncMetaGet(MEASURE_SCALES_META_KEY));
+    return subscribeDocumentMeta(MEASURE_SCALES_META_KEY, apply);
+  }, [normalAnnotationHydration, pdfFile?.id, excelSyncMetaGet, subscribeDocumentMeta]);
   // Layers panel ('layers' flag): the layer list rides the synced doc meta;
   // the active layer is this screen's own choice.
   const [layersEnabled] = useState(() => isFeatureOn('layers'));
@@ -36916,24 +36934,34 @@ ${pageBlocks}
   const handleMeasureCalibrateLine = useCallback((pageNumber, lengthPt, line) => {
     setMeasureScaleDialog({ pageNumber, lengthPt, line });
   }, []);
-  // Apply a page scale: re-stamp every measurement on the page (labels follow,
-  // one undo step) and keep a calibration line as a Length measurement so the
-  // scale is saved with the document even before anything else is measured.
-  const applyMeasureScale = useCallback((scale) => {
+  // Apply a scale to one page or all pages: save it in the document meta (so
+  // a page with no measurements keeps it), re-stamp every measurement on the
+  // pages it covers (labels follow, one undo step per page) and keep a
+  // calibration line as a Length measurement.
+  const applyMeasureScale = useCallback((scale, { allPages = false } = {}) => {
     const dialog = measureScaleDialog;
     setMeasureScaleDialog(null);
     if (!dialog || !scale) return;
     const { pageNumber, line } = dialog;
-    setMeasureScales((prev) => ({ ...prev, [pageNumber]: scale }));
-    const pageJson = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
-    const extra = line ? [line] : [];
-    const hasMeasures = (pageJson.objects || []).some((o) => o?.data?.measure);
-    if (!hasMeasures && !extra.length) return;
-    handleSaveAnnotationsWithTextMarkupAtomicity(
-      pageNumber,
-      applyPageScale(pageJson, scale, extra),
-      { source: 'measure:set-scale', tool: 'line' },
-    );
+    rememberRecentMeasureScale(scale);
+    const nextMeta = nextMeasureScaleMeta(measureScaleMetaRef.current, pageNumber, scale, { allPages });
+    setMeasureScaleMeta(nextMeta);
+    pagePresentationMetaSetRef.current?.(MEASURE_SCALES_META_KEY, nextMeta, 'local');
+    const byPage = annotationsByPageRef.current || {};
+    const pages = allPages
+      ? [...new Set([pageNumber, ...Object.keys(byPage).map(Number)])]
+      : [pageNumber];
+    for (const page of pages) {
+      const pageJson = byPage[page] || { objects: [] };
+      const extra = line && page === pageNumber ? [line] : [];
+      const hasMeasures = (pageJson.objects || []).some((o) => o?.data?.measure);
+      if (!hasMeasures && !extra.length) continue;
+      handleSaveAnnotationsWithTextMarkupAtomicity(
+        page,
+        applyPageScale(pageJson, scale, extra),
+        { source: 'measure:set-scale', tool: 'line' },
+      );
+    }
     if (measureMode === 'calibrate') setMeasureMode('length');
   }, [handleSaveAnnotationsWithTextMarkupAtomicity, measureMode, measureScaleDialog]);
 
@@ -37078,8 +37106,9 @@ ${pageBlocks}
         <MeasureScaleDialog
           pageNumber={measureScaleDialog.pageNumber}
           lengthPt={measureScaleDialog.lengthPt ?? null}
+          pageCount={numPages}
           currentScale={pageScaleFromObjects(annotationsByPageRef.current?.[measureScaleDialog.pageNumber]?.objects)
-            || measureScales[measureScaleDialog.pageNumber]}
+            || metaScaleForPage(measureScaleMeta, measureScaleDialog.pageNumber)}
           onApply={applyMeasureScale}
           onCalibrate={() => {
             setMeasureScaleDialog(null);
@@ -38436,7 +38465,7 @@ ${pageBlocks}
                                   onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
                                   activeTool={activeTool}
                                   measureMode={measureMode}
-                                  measureScale={measureScales[pageNumber] || null}
+                                  measureScale={metaScaleForPage(measureScaleMeta, pageNumber)}
                                   onMeasureCalibrate={handleMeasureCalibrateLine}
                                   // UX 2026-09-15 (Drawboard parity — Pan is a selection
                                   // mode): mount the edit-entry HIT LAYER under Pan.
@@ -39579,6 +39608,7 @@ ${pageBlocks}
                     const measureItems = [
                       { key: 'length', label: 'Length', iconName: 'measureLength' },
                       { key: 'area', label: 'Area', iconName: 'measureArea' },
+                      { key: 'perimeter', label: 'Perimeter', iconName: 'measurePerimeter' },
                       { key: 'scale', label: 'Page scale…', iconName: 'measureScale' },
                     ];
                     const pressed = !!measureMode || !!measureScaleDialog;
@@ -39589,7 +39619,7 @@ ${pageBlocks}
                         setMeasureScaleDialog({ pageNumber: pageNum });
                         return;
                       }
-                      setActiveTool(item === 'area' ? 'polygon' : 'line');
+                      setActiveTool(measureBaseTool(item));
                       setMeasureMode(item);
                     };
                     return (
@@ -39642,7 +39672,7 @@ ${pageBlocks}
                                   style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 40, justifyContent: 'flex-start', padding: '0 10px' }}
                                   onClick={(e) => {
                                     pick(m.key);
-                                    if (m.key === 'area') releaseFocusForDraftTool(e.currentTarget);
+                                    if (POLYGON_MEASURE_KINDS.includes(m.key)) releaseFocusForDraftTool(e.currentTarget);
                                   }}
                                 >
                                   <Icon name={m.iconName} size={CHROME_GLYPH} />

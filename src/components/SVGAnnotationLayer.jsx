@@ -483,9 +483,11 @@ const hoverGlowStrokeInset = (obj) => {
 const EMPTY_SURVEY_MARKER_IDS = new Set();
 
 import {
+  POLYGON_MEASURE_KINDS,
   buildMeasureLabel,
   layoutMeasureLabel,
   measureLineEndpoints,
+  measureScaleBar,
   pageScaleFromObjects,
   stampMeasure,
 } from '../utils/measure/measureScale.js';
@@ -528,6 +530,41 @@ function renderMeasureLabel(label, key, unitsPerPx) {
       >
         {label.text}
       </text>
+    </g>
+  );
+}
+
+// Live scale bar (Drawboard Projects): while a measure tool is armed on a page
+// with a scale, a round real length drawn at the page's bottom-left corner at
+// a fixed screen size, so the user can see the scale is right at a glance.
+function renderMeasureScaleBar(scale, pageHeight, unitsPerPx) {
+  const bar = measureScaleBar(scale, unitsPerPx);
+  if (!bar) return null;
+  const u = unitsPerPx;
+  const x0 = 16 * u;
+  const y = pageHeight - 16 * u;
+  const x1 = x0 + bar.lengthPt;
+  const tick = 5 * u;
+  const pill = layoutMeasureLabel({ kind: 'area', text: bar.text, x: (x0 + x1) / 2, y: y - 16 * u, angle: 0 }, u);
+  return (
+    <g className="measure-scale-bar" data-measure-scale-bar={bar.text} style={{ pointerEvents: 'none', userSelect: 'none' }}>
+      <path
+        d={`M${x0} ${y - tick}V${y}H${x1}V${y - tick}`}
+        fill="none"
+        stroke="rgb(255, 255, 255)"
+        strokeWidth={4 * u}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d={`M${x0} ${y - tick}V${y}H${x1}V${y - tick}`}
+        fill="none"
+        stroke="rgb(31, 41, 55)"
+        strokeWidth={1.5 * u}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {renderMeasureLabel({ kind: 'area', text: bar.text, x: pill.cx, y: pill.cy, angle: 0 }, 'scale-bar-text', u)}
     </g>
   );
 }
@@ -2830,8 +2867,8 @@ const SVGAnnotationLayerBody = memo(({
       curve: polylineCurve,
     });
     if (!builtJson) return false;
-    const rawJson = (tool === 'polygon' && measureMode === 'area')
-      ? stampMeasure(builtJson, 'area', effectiveMeasureScale)
+    const rawJson = (tool === 'polygon' && POLYGON_MEASURE_KINDS.includes(measureMode))
+      ? stampMeasure(builtJson, measureMode, effectiveMeasureScale)
       : builtJson;
 
     const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
@@ -8074,11 +8111,13 @@ const SVGAnnotationLayerBody = memo(({
           x2: shapeCreation.current.x - (shapeCreation.start.x + shapeCreation.current.x) / 2,
           y2: shapeCreation.current.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
         }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length', clampInverseScale(inverseScale))}
-      {measureMode === 'area' && polyDraft && polyDraft.tool === 'polygon' && polyDraft.points.length >= 2
+      {POLYGON_MEASURE_KINDS.includes(measureMode) && polyDraft && polyDraft.tool === 'polygon' && polyDraft.points.length >= 2
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
           type: 'polygon',
           points: polyDraft.preview ? [...polyDraft.points, polyDraft.preview] : polyDraft.points,
-        }, 'area', null), effectiveMeasureScale), 'measure-draft-area', clampInverseScale(inverseScale))}
+        }, measureMode, null), effectiveMeasureScale), `measure-draft-${measureMode}`, clampInverseScale(inverseScale))}
+      {measureMode && measureMode !== 'calibrate' && effectiveMeasureScale
+        && renderMeasureScaleBar(effectiveMeasureScale, height, clampInverseScale(inverseScale))}
       {polyDraft && polyDraft.points.length > 0 && (() => {
         const runPoints = polyDraft.preview
           ? [...polyDraft.points, polyDraft.preview]
