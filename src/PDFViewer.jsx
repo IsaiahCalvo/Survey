@@ -180,7 +180,7 @@ import {
   refitTextboxToText,
   resolveTextStyleWrite,
 } from './utils/selectedTextFormatting.js';
-import { buildNewTextCommitJSON, newTextBoxPaint, TEXT_PADDING } from './utils/textEditCommit.js';
+import { buildNewTextCommitJSON, NEW_TEXT_BOX_FONT_COLOR, newTextBoxPaint, TEXT_PADDING } from './utils/textEditCommit.js';
 import {
   applyRestyleChange,
   applyRestyleChangeToPage,
@@ -3429,17 +3429,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [cloudIntensity, setCloudIntensity] = useState(2);
-  const [textStyleDefaults, setTextStyleDefaults] = useState({
-    fontColor: '#1e293b',
-    fontFamily: 'Helvetica',
-    fontSize: 16,
-    bold: true,
-    italic: false,
-    underline: false,
-    strike: false,
-    textAlign: 'left',
-    verticalAlign: 'top',
+  // The Aa row's style for the next new mark, kept per tool: a new text box
+  // starts plain and a new callout starts bold, as each did before the text
+  // tool honoured the Aa row; a change on one tool's row stays with that tool.
+  const [textStyleDefaultsByTool, setTextStyleDefaultsByTool] = useState(() => {
+    const base = {
+      fontColor: '#1e293b',
+      fontFamily: 'Helvetica',
+      fontSize: 16,
+      bold: true,
+      italic: false,
+      underline: false,
+      strike: false,
+      textAlign: 'left',
+      verticalAlign: 'top',
+    };
+    return { text: { ...base, fontColor: NEW_TEXT_BOX_FONT_COLOR, bold: false }, callout: base };
   });
+  const textStyleTool = activeTool === 'callout' ? 'callout' : 'text';
+  const textStyleDefaults = textStyleDefaultsByTool[textStyleTool];
   const [selectedToolbarAnnotation, setSelectedToolbarAnnotation] = useState(null);
   const [liveTextSelection, setLiveTextSelection] = useState(null);
   const liveTextSelectionRef = useRef(null);
@@ -9326,7 +9334,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
       textStyleDragTargetKeyRef.current = write.dragRecord;
       if (write.action === 'defaults') {
-        setTextStyleDefaults(write.defaults);
+        setTextStyleDefaultsByTool((prev) => ({ ...prev, [textStyleTool]: write.defaults }));
         return;
       }
       if (write.action !== 'patch') return;
@@ -9345,7 +9353,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           : null);
       }
     });
-  }, [pickBarTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [pickBarTool, textStyleTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
@@ -13233,14 +13241,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           ? { cloudIntensity: Math.max(1, Number(newMarkStyle.cloudIntensity) || 2) }
           : {}),
         ...(mobileMode ? {
-          fontColor: textStyleDefaults.fontColor,
-          fontFamily: textStyleDefaults.fontFamily,
-          fontSize: textStyleDefaults.fontSize,
-          bold: textStyleDefaults.bold,
-          italic: textStyleDefaults.italic,
-          underline: textStyleDefaults.underline,
-          strikethrough: textStyleDefaults.strike,
-          textAlign: textStyleDefaults.textAlign,
+          fontColor: textStyleDefaultsByTool.callout.fontColor,
+          fontFamily: textStyleDefaultsByTool.callout.fontFamily,
+          fontSize: textStyleDefaultsByTool.callout.fontSize,
+          bold: textStyleDefaultsByTool.callout.bold,
+          italic: textStyleDefaultsByTool.callout.italic,
+          underline: textStyleDefaultsByTool.callout.underline,
+          strikethrough: textStyleDefaultsByTool.callout.strike,
+          textAlign: textStyleDefaultsByTool.callout.textAlign,
         } : {}),
       },
     };
@@ -13265,7 +13273,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:create',
       action: 'callout-create',
     });
-  }, [commitCalloutMutation, newMarkStyle.strokeColor, newMarkStyle.strokeOpacity, newMarkStyle.fillColor, newMarkStyle.fillOpacity, mobileMode, newMarkStyle.strokeWidth, newMarkStyle.lineBorderStyle, newMarkStyle.cloudIntensity, textStyleDefaults, user?.id]);
+  }, [commitCalloutMutation, newMarkStyle.strokeColor, newMarkStyle.strokeOpacity, newMarkStyle.fillColor, newMarkStyle.fillOpacity, mobileMode, newMarkStyle.strokeWidth, newMarkStyle.lineBorderStyle, newMarkStyle.cloudIntensity, textStyleDefaultsByTool.callout, user?.id]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — pointerup commit for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -39033,7 +39041,7 @@ ${pageBlocks}
                                   // A new text box takes what the bar shows: the Aa row's text
                                   // style (desktop used to drop it, like callouts never did) and
                                   // the paint row's border colour, width, fill and line style.
-                                  newTextStyle={textStyleDefaults}
+                                  newTextStyle={textStyleDefaultsByTool.text}
                                   newTextPaint={newTextBoxPaint(newMarkStyle)}
                                   newTextCloudIntensity={lineBorderStyle === 'cloud' ? Math.max(1, Number(cloudIntensity) || 2) : null}
                                   authorId={user?.id ?? null}
