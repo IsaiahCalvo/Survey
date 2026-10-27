@@ -503,6 +503,9 @@ export default function DocumentsLedger({
   const stickyCell = (selected) => ({
     position: 'sticky', left: 0, zIndex: 2,
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
+    // Fades with its row (hub.css, 150ms): changed at once it showed as a
+    // dark box over the name while the rest of the row faded (2026-10-27).
+    transition: 'background-color 150ms var(--ease-standard)',
     padding: '12px 14px',
     display: 'flex', alignItems: 'center', gap: 10,
     minWidth: 0,
