@@ -81,7 +81,7 @@ const FAQ = [
   ['How do count markers work?', 'Pick a category, tap each item on the plan, and Survey numbers the markers and keeps a running total for every category. Export the totals as a spreadsheet when you are done.'],
   ['Is Survey free?', 'Yes. The Free plan gives you 1 project, 5 documents and 100MB of storage with no card needed. Pro is $9.99 a month or $99 a year for unlimited projects and documents, 10GB of storage and every survey tool.'],
   ['Can I cancel Pro any time?', 'Yes. Cancel from your account settings and keep Pro until the end of the period you paid for.'],
-  ['Can my team work on the same drawings?', 'Yes. Invite people as viewers or editors. Enterprise adds live editing together, admin tools and single sign-on for $20 per user a month, with a minimum of 3 users.'],
+  ['Can my team work on the same drawings?', 'Yes. On Pro, invite people as viewers or editors and edit together live. Enterprise is $20 per user a month, with a minimum of 3 users, for 1TB of storage and priority support. A company admin console and single sign-on are coming soon.'],
   ['Where are my files kept?', 'Your markups save to the cloud so they sync to every device you sign in on. Read the <a href="/privacy.html">privacy policy</a> for the details.'],
   ['Can Survey be set up for my company?', 'Yes. We build custom data exports, company markup templates and team roles. <a href="' + MAIL + '">Email us</a> with how your team works.'],
 ];
@@ -152,7 +152,7 @@ const VS = [
   ['Site surveys with data export', 'Pro', 'Not listed'],
   ['Spaces and regions', 'Pro', 'Not listed'],
   ['Survey templates', 'Pro', 'Not listed'],
-  ['Live editing together', 'Enterprise', 'PRO'],
+  ['Live editing together', 'Pro', 'PRO'],
 ];
 
 const MORE = [
@@ -176,8 +176,8 @@ const FREE_TOOL_PICKS = [
 
 const PLANS = [
   { name: 'Free', price: '$0', per: '/month', note: 'For trying Survey on one project', cta: 'Start free', items: ['1 project', '5 documents', '100MB storage', 'Every markup tool, including callouts, measuring and OCR', 'Count markers with totals', 'Works on every device'] },
-  { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', cta: 'Start free, upgrade in the app', best: true, items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Site surveys with data export', 'Spaces and regions', 'Templates', 'Share with viewers and editors', 'OneDrive'] },
-  { name: 'Enterprise', price: '$20', per: '/user/month', note: 'Minimum 3 users', cta: 'Email us', href: MAIL, items: ['Everything in Pro', 'Live editing together', '1TB storage', 'Admin tools and single sign-on', 'Custom builds for your company'] },
+  { name: 'Pro', price: '$9.99', per: '/month', note: 'or $99 a year, which saves $20', cta: 'Start free, upgrade in the app', best: true, items: ['Unlimited projects', 'Unlimited documents', '10GB storage', 'Site surveys with data export', 'Spaces and regions', 'Templates', 'Share with viewers and editors', 'Live editing together', 'OneDrive'] },
+  { name: 'Enterprise', price: '$20', per: '/user/month', note: 'Minimum 3 users', cta: 'Email us', href: MAIL, items: ['Everything in Pro for every user', '1TB storage', 'Priority support', 'Company admin console and single sign-on: coming soon', 'Custom builds for your company'] },
 ];
 
 // One glyph that morphs: the sun's core grows while a masked "bite" slides in to
@@ -351,8 +351,8 @@ ${ONLY.map(only).join('\n')}
 <section class="sec"><div class="wrap"><div class="panel cool split-grid">
   <div>
     <h2>Work on the same drawings as a team</h2>
-    <p>Invite people as viewers or editors. Everyone sees the same markups and the same survey answers, on whatever device they have. Enterprise teams edit together live.</p>
-    <ul class="ticks"><li>Viewers read, editors mark up</li><li>Survey answers from every walk land in one spreadsheet</li><li>Live editing together on Enterprise</li></ul>
+    <p>Invite people as viewers or editors. Everyone sees the same markups and the same survey answers, on whatever device they have, and Pro teams edit together live.</p>
+    <ul class="ticks"><li>Viewers read, editors mark up</li><li>Survey answers from every walk land in one spreadsheet</li><li>Live editing together on Pro</li></ul>
     <a class="btn ghost" href="/pricing">See the plans</a>
   </div>
   <figure class="shot"><img src="/welcome/access.webp" srcset="/welcome/access-600.webp 600w, /welcome/access.webp 1200w" sizes="(max-width: 980px) 92vw, 560px" width="1200" height="836" loading="lazy" decoding="async" alt="The Document Access dialog: an owner, two editors and a viewer on A-201 Level 2 Floor Plan.pdf, with an Invite button" /></figure>
@@ -455,8 +455,9 @@ const ROWS = [
   ['Survey templates', '', 'Yes', 'Yes'],
   ['Share with viewers and editors', '', 'Yes', 'Yes'],
   ['OneDrive', '', 'Yes', 'Yes'],
-  ['Live editing together', '', '', 'Yes'],
-  ['Admin tools and single sign-on', '', '', 'Yes'],
+  ['Live editing together', '', 'Yes', 'Yes'],
+  ['Priority support', '', '', 'Yes'],
+  ['Company admin console and single sign-on', '', '', 'Coming soon'],
 ];
 const PRICE_FAQ = [FAQ[4], FAQ[5], FAQ[6]];
 const pricing = page({
@@ -698,7 +699,7 @@ ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></u
 
 > Survey is a PDF markup app for construction and engineering drawings. It runs in the browser on computers, tablets and phones at ${ORIGIN}.
 
-Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export as a spreadsheet (.xlsx, one sheet per category plus a summary, opens in Excel, Google Sheets, Numbers or LibreOffice) and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys with data export, spaces and regions, templates, sharing with viewers and editors, OneDrive. Enterprise: $20 per user a month, minimum 3 users, live editing together, 1TB, admin tools and single sign-on.
+Every markup tool is free: pen with pressure, highlighter, partial eraser, rectangle, ellipse, polygon, cloud, polyline, line, arrow, count markers with running totals, measuring, text, callouts, text markup, OCR and page tools (Drawboard PDF charges for callouts, measuring, OCR, merge and split). Three things no other PDF app does: site surveys on the plan (checklist templates, markers with Y/N/N/A answers, notes, photos and voice notes) that export as a spreadsheet (.xlsx, one sheet per category plus a summary, opens in Excel, Google Sheets, Numbers or LibreOffice) and sync back from a linked Microsoft 365 workbook; spaces and regions (a named set of pages with a region on each, everything outside dims, markups inside belong to the space); and survey templates reused across projects. Free plan: 1 project, 5 documents, 100MB. Pro: $9.99 a month or $99 a year, unlimited projects and documents, 10GB, site surveys with data export, spaces and regions, templates, sharing with viewers and editors, live editing together, OneDrive. Enterprise: $20 per user a month, minimum 3 users, everything in Pro for every user, 1TB, priority support; a company admin console and single sign-on are coming soon.
 
 ## Pages
 

@@ -1052,6 +1052,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             <li>Survey tools</li>
                             <li>Templates & regions</li>
                             <li>Export data</li>
+                            <li>Share and edit together live</li>
                             <li>OneDrive integration</li>
                           </ul>
                         </div>
@@ -1097,12 +1098,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                         <div className="account-subscription-features">
                           <ul>
-                            <li>Everything in Pro</li>
-                            <li>Team collaboration</li>
-                            <li>Real-time editing</li>
-                            <li>1 TB team storage</li>
-                            <li>SSO & admin tools</li>
+                            <li>Everything in Pro for every user</li>
+                            <li>1 TB storage</li>
                             <li>Priority support</li>
+                            <li>Admin console and SSO: coming soon</li>
                             <li>Custom integrations</li>
                           </ul>
                         </div>

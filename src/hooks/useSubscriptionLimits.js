@@ -42,7 +42,8 @@ export const TIER_LIMITS = {
       'basic_annotations', 'pdf_viewer', 'layers',
       'survey_tools', 'templates', 'regions', 'excel_export',
       'onedrive', 'advanced_tools', 'page_operations',
-      'unlimited_projects', 'unlimited_documents'
+      'unlimited_projects', 'unlimited_documents',
+      'sharing', 'live_editing'
     ],
   },
   enterprise: {
@@ -54,7 +55,12 @@ export const TIER_LIMITS = {
       'survey_tools', 'templates', 'regions', 'excel_export',
       'onedrive', 'advanced_tools', 'page_operations',
       'unlimited_projects', 'unlimited_documents',
-      'sso', 'priority_support', 'custom_branding'
+      'sharing', 'live_editing',
+      // Pro is for a person, Enterprise for a company: the company console
+      // (people, seats, shared storage pool, activity log) and company sign-on.
+      // /mnt/project-files/security/pro-vs-enterprise.md has the full split.
+      'company_workspace', 'seats', 'shared_storage', 'activity_log',
+      'sso', 'priority_support'
     ],
   },
   developer: {
