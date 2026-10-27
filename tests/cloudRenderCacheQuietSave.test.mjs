@@ -201,6 +201,25 @@ test('at idle the copy is written a slice at a time, without one long task', () 
   }
 });
 
+test('a copy another tab wrote meanwhile is not trusted: the next save rewrites what it skipped', () => {
+  forget('pdf-k');
+  const mine = pages(3, 2, 'mine');
+  saveCloudRenderAnnotationsByPage('pdf-k', meta, mine);
+  mock.timers.tick(1600);
+  // Another tab with the same document saves page 1 under its own generation.
+  const theirs = JSON.parse(store.get(index('pdf-k')));
+  store.set(page('pdf-k', '1'), `other-gen x\n${JSON.stringify({ objects: [{ id: 'theirs' }] })}`);
+  store.set(index('pdf-k'), JSON.stringify({ ...theirs, pages: { ...theirs.pages, 1: 'other-gen' } }));
+  const event = new Event('storage');
+  event.key = page('pdf-k', '1');
+  win.dispatchEvent(event);
+  // This tab then edits page 2 only.
+  const edited = { ...mine, 2: { objects: [...mine[2].objects, { id: 'new' }] } };
+  saveCloudRenderAnnotationsByPage('pdf-k', meta, edited);
+  mock.timers.tick(1600);
+  assert.deepEqual(saved('pdf-k'), JSON.parse(JSON.stringify(edited)), 'the copy loads, holding this tab\'s marks');
+});
+
 test('wiring: the viewer still saves on marks changes and loads on open', () => {
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewer, /saveCloudRenderAnnotationsByPage\(\s*pdfId,/);

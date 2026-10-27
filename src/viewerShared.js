@@ -2277,6 +2277,18 @@ const listenForCloudRenderFlush = () => {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushCloudRenderAnnotationsSaves();
   });
+  // Another tab with the same document wrote its copy: what this tab knows of
+  // the stored pages is stale, and skipping a page on it would leave a page
+  // the index does not match (the next open would paint nothing).
+  window.addEventListener('storage', (event) => {
+    for (const pdfId of new Set([...cloudRenderStored.keys(), ...cloudRenderJobs.keys()])) {
+      const key = cloudRenderCacheKey(pdfId);
+      if (event.key != null && event.key !== key && !event.key.startsWith(`${key}#`)) continue;
+      cloudRenderStored.delete(pdfId);
+      const job = cloudRenderJobs.get(pdfId);
+      if (job) { job.next = 0; job.index = {}; }
+    }
+  });
 };
 
 export const saveCloudRenderAnnotationsByPage = (pdfId, metadata, annotationsByPage) => {
@@ -2313,6 +2325,7 @@ export const loadCloudRenderAnnotationsByPage = (pdfId, metadata) => {
     }
     // The next save writes only the pages that differ from these.
     cloudRenderStored.set(pdfId, read);
+    listenForCloudRenderFlush();
     return annotationsByPage;
   } catch (e) {
     console.warn('[Cloud render cache] load failed:', e);
