@@ -73,6 +73,7 @@ import {
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import PdfjsTextLayer from './PdfjsTextLayer';
 import { getPageViewBase, getPageViewSizes, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
+import { destroyPdfDocument } from '../utils/destroyPdfDocument.js';
 import {
   getWidthFitMinimumScale,
   getWheelZoomScale,
@@ -1843,7 +1844,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       thumbCacheRef.current.clear();
       if (prev) {
         pageRasterCacheClearDocument(rasterDocKey(prev));
-        if (getPageViewBase(prev) !== getPageViewBase(externalPdf)) { try { prev.destroy(); } catch { /* noop */ } }
+        if (getPageViewBase(prev) !== getPageViewBase(externalPdf)) void destroyPdfDocument(prev);
       }
       cb.current.onPageContainersChange?.({}, { reason: 'document_unload', count: 0 });
       cb.current.onDocumentUnload?.();
@@ -1859,7 +1860,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       try {
         const pdf = externalPdf || await task.promise;
         if (cancelled) {
-          if (!externalPdf) { try { pdf.destroy(); } catch { /* noop */ } }
+          if (!externalPdf) void destroyPdfDocument(pdf);
           return;
         }
         pdfRef.current = pdf;

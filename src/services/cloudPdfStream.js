@@ -312,7 +312,12 @@ export async function tryOpenCloudPdfStream({
       // once it is all here, hand the bytes on (device cache, mirror check).
       pdf.getData().then((bytes) => {
         try { opened.onBytes?.(bytes); } finally { onAllBytes(bytes); }
-      }).catch((error) => onBytesFailed(error));
+      }).catch((error) => {
+        // Closing the document (or opening another) destroys its loading
+        // task; that is not a broken stream, so no fallback download.
+        if (loadingTask?.destroyed) return;
+        onBytesFailed(error);
+      });
     }
     return { pdf };
   } catch (error) {

@@ -379,6 +379,7 @@ import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/u
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
+import { destroyPdfDocument } from './utils/destroyPdfDocument.js';
 import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
 import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.js';
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
@@ -24562,7 +24563,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               if (!isCancelled && latestPdfFileRef.current === pdfFile) setLoadRetryToken((t) => t + 1);
             },
           }) : null;
-          if (isCancelled) { try { await streamed?.pdf?.destroy(); } catch { /* noop */ } return; }
+          if (isCancelled) { await destroyPdfDocument(streamed?.pdf); return; }
           if (streamed?.pdf) {
             streamedPdf = streamed.pdf;
             openedByStream = true;
@@ -24699,7 +24700,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
         }
         if (isCancelled) {
-          try { await pdf.destroy(); } catch { /* noop */ }
+          await destroyPdfDocument(pdf);
           return;
         }
         setPdfDoc(pdf);
@@ -25164,7 +25165,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { if (isActive) setMarkerShapePdfDocument(pdfDoc); }, [isActive, pdfDoc]);
   useEffect(() => () => {
     if (!pdfBaseDoc) return;
-    try { pdfBaseDoc.destroy(); } catch { /* noop */ }
+    void destroyPdfDocument(pdfBaseDoc);
   }, [pdfBaseDoc]);
 
   // KAL-46 / sleep-wake recovery watchdog.
