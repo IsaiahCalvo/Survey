@@ -734,7 +734,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
           </div>
 
           {/* Member rows */}
-          <div className="slim-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", padding: "6px 8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
+          <div className="slim-scroll access-list" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "6px 8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
             {loading && sm.length === 0 && (
               <div style={{ padding: "18px 10px", color: INK_200, fontSize: 12 }}>Loading team…</div>
             )}

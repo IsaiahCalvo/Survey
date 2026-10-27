@@ -110,6 +110,8 @@ function AccessRow({ rowProps, pending = false, avatar, primary, secondary, role
   );
 }
 
+const NO_LIST = { documentId: null, members: [], invites: [], ownerProfile: null };
+
 export default function AccessManagementModal({ open, onClose, kind = 'document', item = null, user = null }) {
   const tip = useTooltip();
   const auth = useContext(AuthContext) || {};
@@ -121,9 +123,14 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   }, [item]);
 
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [members, setMembers] = useState([]);   // real collaborator rows
-  const [invites, setInvites] = useState([]);   // real invite rows
-  const [ownerProfile, setOwnerProfile] = useState(null);
+  // The real collaborator and invite rows, and whose they are. The dialog
+  // stays mounted between opens, so a list loaded for another document is
+  // never shown: this one shows "Loading" until its own rows come in.
+  const [list, setList] = useState(NO_LIST);
+  const fresh = list.documentId != null && list.documentId === documentId;
+  const members = fresh ? list.members : NO_LIST.members;
+  const invites = fresh ? list.invites : NO_LIST.invites;
+  const ownerProfile = fresh ? list.ownerProfile : null;
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -142,7 +149,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   useFocusTrap(cardRef, Boolean(open), { onEscape: () => (openMenu ? setOpenMenu(null) : onClose?.()) });
 
   const refresh = useCallback(async () => {
-    if (!documentId) { setMembers([]); setInvites([]); return; }
+    if (!documentId) { setList(NO_LIST); return; }
     setLoading(true);
     setError('');
     try {
@@ -151,9 +158,12 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
         listDocumentInvites(documentId),
         getDocumentOwnerProfile(documentId).catch(() => null),
       ]);
-      setMembers(Array.isArray(colRes?.data) ? colRes.data : []);
-      setInvites(Array.isArray(invRes?.data) ? invRes.data : []);
-      setOwnerProfile(owner || null);
+      setList({
+        documentId,
+        members: Array.isArray(colRes?.data) ? colRes.data : [],
+        invites: Array.isArray(invRes?.data) ? invRes.data : [],
+        ownerProfile: owner || null,
+      });
     } catch (err) {
       console.error('[KAL-31] AccessManagementModal load failed:', err);
       setError(err?.message || 'Could not load access list.');
@@ -291,10 +301,12 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
           </div>
 
           <DismissBarrier active={openMenu != null} insideSelector="[data-access-menu-surface='true']" onDismiss={() => setOpenMenu(null)} />
-          <div className="slim-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '6px 8px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {loading && <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>Loading collaborators…</div>}
+          <div className="slim-scroll access-list" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '6px 8px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Only before this document's rows first arrive: a refresh (on
+                reopen, or after a change) keeps the rows where they are. */}
+            {loading && !fresh && <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>Loading collaborators…</div>}
 
-            {!loading && members.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
+            {fresh && members.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
               <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>No collaborators yet. Use Invite to add one.</div>
             )}
 
