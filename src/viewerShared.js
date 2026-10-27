@@ -2103,39 +2103,217 @@ export const markEditedImportedPdfAnnotationsOnPage = (incomingPage, previousPag
 // that many marks (this session).
 const cloudRenderCacheTooLarge = new Map(); // pdfId -> object count that did not fit
 
-export const saveCloudRenderAnnotationsByPage = (pdfId, metadata, annotationsByPage) => {
-  if (!pdfId) return;
-  const objectCount = countAnnotationPageObjects(annotationsByPage);
-  const tooLargeAt = cloudRenderCacheTooLarge.get(pdfId);
-  if (tooLargeAt != null && objectCount >= tooLargeAt) return;
+// Open speed and edit smoothness: the viewer asks for this save on EVERY marks
+// change. The copy only paints the next open early, so it is written once the
+// marks have been quiet for a moment, at idle. A load of the same document,
+// leaving the page or hiding it writes it at once.
+//
+// Each page is its own key (`<key>#<page>`), and the main key is a small index
+// of page generations, written last. One whole-document JSON (3.7 MB on a
+// 240-sheet set) cost 90-300 ms of JSON.stringify plus setItem in one task
+// after every edit and every open; now only changed pages are written, and the
+// work is split across idle slices. A page whose generation does not match the
+// index (a write cut short) makes the load return nothing rather than mixed
+// pages.
+const CLOUD_RENDER_SAVE_QUIET_MS = 1500;
+const CLOUD_RENDER_SLICE_MS = 6;
+const CLOUD_RENDER_SLICE_MAX_MS = 10;
+const pendingCloudRenderSaves = new Map(); // pdfId -> [metadata, annotationsByPage]
+const cloudRenderJobs = new Map(); // pdfId -> a save being written, page by page
+// pdfId -> Map(pageKey -> { hash, gen }): what each page key holds, as this tab
+// last wrote or read it (hash null: not known, written again). A hash, not the
+// JSON, so a big set does not keep a second multi-MB copy of its marks.
+const cloudRenderStored = new Map();
+let cloudRenderSaveTimer = null;
+let cloudRenderIdleQueued = false;
+let cloudRenderFlushListening = false;
+
+const cloudRenderPageKey = (pdfId, pageKey) => `${cloudRenderCacheKey(pdfId)}#${pageKey}`;
+const isQuotaError = (e) => e?.name === 'QuotaExceededError' || e?.code === 22;
+
+// Length plus two 32-bit string hashes (FNV-1a and djb2).
+const cloudRenderPageHash = (json) => {
+  let fnv = 0x811c9dc5;
+  let djb = 5381;
+  for (let i = 0; i < json.length; i += 1) {
+    const code = json.charCodeAt(i);
+    fnv = Math.imul(fnv ^ code, 0x01000193);
+    djb = (Math.imul(djb, 33) + code) | 0;
+  }
+  return `${json.length}.${(fnv >>> 0).toString(36)}.${(djb >>> 0).toString(36)}`;
+};
+
+const storedCloudRenderPages = (pdfId) => {
+  let stored = cloudRenderStored.get(pdfId);
+  if (stored) return stored;
+  stored = new Map();
+  // First write this session: learn the page keys an earlier copy left, so the
+  // ones no longer used are removed. Their content is unknown, so all pages
+  // are written again.
   try {
+    const parsed = JSON.parse(localStorage.getItem(cloudRenderCacheKey(pdfId)) || 'null');
+    for (const key of Object.keys(parsed?.version === 2 ? parsed.pages || {} : {})) {
+      stored.set(key, { hash: null, gen: null });
+    }
+  } catch { /* unreadable index: nothing to clean */ }
+  cloudRenderStored.set(pdfId, stored);
+  return stored;
+};
+
+const removeCloudRenderCopy = (pdfId, pageKeys) => {
+  try {
+    localStorage.removeItem(cloudRenderCacheKey(pdfId));
+    for (const key of pageKeys) localStorage.removeItem(cloudRenderPageKey(pdfId, key));
+  } catch { /* storage unavailable */ }
+  cloudRenderStored.delete(pdfId);
+};
+
+const startCloudRenderJob = (pdfId, metadata, annotationsByPage) => ({
+  metadata,
+  objectCount: countAnnotationPageObjects(annotationsByPage),
+  pages: Object.entries(annotationsByPage || {}),
+  next: 0,
+  gen: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+  index: {},
+});
+
+// Writes pages of the job until `until` (ms, performance.now) passes; null
+// writes it all. Returns true once the job is finished (or given up).
+const stepCloudRenderJob = (pdfId, job, until) => {
+  const tooLargeAt = cloudRenderCacheTooLarge.get(pdfId);
+  if (tooLargeAt != null && job.objectCount >= tooLargeAt) return true;
+  const stored = storedCloudRenderPages(pdfId);
+  try {
+    while (job.next < job.pages.length) {
+      if (until != null && performance.now() >= until) return false;
+      const [pageKey, page] = job.pages[job.next];
+      job.next += 1;
+      const json = JSON.stringify(page ?? null);
+      const hash = cloudRenderPageHash(json);
+      const known = stored.get(pageKey);
+      if (known?.hash === hash && known.gen) {
+        job.index[pageKey] = known.gen;
+        continue;
+      }
+      // `<gen> <hash>` on the first line, then the page JSON.
+      localStorage.setItem(cloudRenderPageKey(pdfId, pageKey), `${job.gen} ${hash}\n${json}`);
+      stored.set(pageKey, { hash, gen: job.gen });
+      job.index[pageKey] = job.gen;
+    }
     localStorage.setItem(cloudRenderCacheKey(pdfId), JSON.stringify({
-      version: 1,
+      version: 2,
       savedAt: new Date().toISOString(),
-      documentId: metadata?.documentId || null,
-      cutoverTs: metadata?.cutoverTs || null,
-      annotationsByPage: annotationsByPage || {}
+      documentId: job.metadata?.documentId || null,
+      cutoverTs: job.metadata?.cutoverTs || null,
+      pages: job.index,
     }));
+    for (const pageKey of [...stored.keys()]) {
+      if (pageKey in job.index) continue;
+      localStorage.removeItem(cloudRenderPageKey(pdfId, pageKey));
+      stored.delete(pageKey);
+    }
     cloudRenderCacheTooLarge.delete(pdfId);
   } catch (e) {
-    if (e?.name !== 'QuotaExceededError' && e?.code !== 22) {
+    if (!isQuotaError(e)) {
       console.warn('[Cloud render cache] save failed:', e);
-      return;
+      return true;
     }
-    cloudRenderCacheTooLarge.set(pdfId, objectCount);
-    try { localStorage.removeItem(cloudRenderCacheKey(pdfId)); } catch { /* storage unavailable */ }
+    cloudRenderCacheTooLarge.set(pdfId, job.objectCount);
+    removeCloudRenderCopy(pdfId, new Set([...stored.keys(), ...job.pages.map(([key]) => key)]));
   }
+  return true;
+};
+
+const takeCloudRenderJob = (pdfId) => {
+  const pending = pendingCloudRenderSaves.get(pdfId);
+  if (pending) {
+    // A newer state replaces a save still being written.
+    pendingCloudRenderSaves.delete(pdfId);
+    cloudRenderJobs.set(pdfId, startCloudRenderJob(pdfId, ...pending));
+  }
+  return cloudRenderJobs.get(pdfId);
+};
+
+export const flushCloudRenderAnnotationsSaves = (onlyPdfId = null) => {
+  const pdfIds = new Set([...pendingCloudRenderSaves.keys(), ...cloudRenderJobs.keys()]);
+  for (const pdfId of pdfIds) {
+    if (onlyPdfId != null && pdfId !== onlyPdfId) continue;
+    const job = takeCloudRenderJob(pdfId);
+    cloudRenderJobs.delete(pdfId);
+    if (job) stepCloudRenderJob(pdfId, job, null);
+  }
+};
+
+const runCloudRenderSavesWhenIdle = () => {
+  if (cloudRenderIdleQueued) return;
+  if (typeof requestIdleCallback !== 'function') {
+    flushCloudRenderAnnotationsSaves();
+    return;
+  }
+  cloudRenderIdleQueued = true;
+  requestIdleCallback((deadline) => {
+    cloudRenderIdleQueued = false;
+    // A timed-out callback has no idle time left; still make some progress.
+    // Capped so a key press or pen-down never waits long behind a slice.
+    const slice = Math.min(CLOUD_RENDER_SLICE_MAX_MS, Math.max(CLOUD_RENDER_SLICE_MS, deadline.timeRemaining() - 1));
+    const until = performance.now() + slice;
+    // While the marks are still changing (the quiet timer is running), newer
+    // states wait for it; the save already being written goes on.
+    const quiet = !cloudRenderSaveTimer;
+    const pdfIds = quiet ? [...pendingCloudRenderSaves.keys(), ...cloudRenderJobs.keys()] : [...cloudRenderJobs.keys()];
+    for (const pdfId of new Set(pdfIds)) {
+      const job = quiet ? takeCloudRenderJob(pdfId) : cloudRenderJobs.get(pdfId);
+      if (job && !stepCloudRenderJob(pdfId, job, until)) break;
+      cloudRenderJobs.delete(pdfId);
+    }
+    if (cloudRenderJobs.size || (quiet && pendingCloudRenderSaves.size)) runCloudRenderSavesWhenIdle();
+  }, { timeout: 2000 });
+};
+
+const listenForCloudRenderFlush = () => {
+  if (cloudRenderFlushListening || typeof window === 'undefined' || typeof document === 'undefined') return;
+  cloudRenderFlushListening = true;
+  window.addEventListener('pagehide', () => flushCloudRenderAnnotationsSaves());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushCloudRenderAnnotationsSaves();
+  });
+};
+
+export const saveCloudRenderAnnotationsByPage = (pdfId, metadata, annotationsByPage) => {
+  if (!pdfId) return;
+  pendingCloudRenderSaves.set(pdfId, [metadata, annotationsByPage]);
+  listenForCloudRenderFlush();
+  if (cloudRenderSaveTimer) clearTimeout(cloudRenderSaveTimer);
+  cloudRenderSaveTimer = setTimeout(() => {
+    cloudRenderSaveTimer = null;
+    runCloudRenderSavesWhenIdle();
+  }, CLOUD_RENDER_SAVE_QUIET_MS);
 };
 
 export const loadCloudRenderAnnotationsByPage = (pdfId, metadata) => {
   if (!pdfId) return null;
+  flushCloudRenderAnnotationsSaves(pdfId);
   try {
     const raw = localStorage.getItem(cloudRenderCacheKey(pdfId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed?.documentId !== (metadata?.documentId || null)) return null;
     if ((parsed?.cutoverTs || null) !== (metadata?.cutoverTs || null)) return null;
-    return parsed?.annotationsByPage || {};
+    // Version 1: the whole document in this one key.
+    if (parsed?.version !== 2) return parsed?.annotationsByPage || {};
+    const annotationsByPage = {};
+    const read = new Map();
+    for (const [pageKey, gen] of Object.entries(parsed.pages || {})) {
+      const value = localStorage.getItem(cloudRenderPageKey(pdfId, pageKey));
+      const split = value == null ? -1 : value.indexOf('\n');
+      const [storedGen, hash] = split < 0 ? [] : value.slice(0, split).split(' ');
+      if (storedGen !== gen || !hash) return null;
+      annotationsByPage[pageKey] = JSON.parse(value.slice(split + 1));
+      read.set(pageKey, { hash, gen });
+    }
+    // The next save writes only the pages that differ from these.
+    cloudRenderStored.set(pdfId, read);
+    return annotationsByPage;
   } catch (e) {
     console.warn('[Cloud render cache] load failed:', e);
     return null;

@@ -23,7 +23,7 @@
 // and export calls (with the calling code) per canvas.
 // DROP=1 also reports the long frames in the 1.5 s after the mouse is released
 // (dropLoafMs / dropScriptMs / dropOver33) and all main-thread task time then
-// (dropTaskMs): the cost of saving the edit.
+// (dropTaskMs): the cost of saving the edit. DROP_MS=<ms> sets that window.
 // RENDERS=1 counts React commits during the moves and, per component, how many
 // times it rendered (a stub DevTools hook; name the components with an
 // unminified build: `vite build --mode e2e --minify false`), plus how many DOM
@@ -169,6 +169,7 @@ async function stopSampling(page) {
       over33: f.filter((x) => x > 33.4).length,
       loafCount: s.loaf.length,
       loafMs: sum(s.loaf.map((l) => l.dur)),
+      loafLongest: Math.max(0, ...s.loaf.map((l) => l.dur)),
       loafScriptMs: sum(s.loaf.map((l) => l.script)),
       ...(window.__loafDetail ? { loaf: s.loaf.map((l) => `${Math.round(l.at)}+${Math.round(l.dur)} script=${Math.round(l.script)} render=${Math.round(l.render)} ${l.top.join(' ')}`) } : {}),
     };
@@ -249,7 +250,7 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
   if (process.env.DROP) await startSampling(page);
   await send('mouseReleased', from.x + dx, from.y + dy, 0);
   if (process.env.DROP) {
-    await sleep(1500);
+    await sleep(Number(process.env.DROP_MS) || 1500);
     const after = await stopSampling(page);
     const m3 = await metrics();
     stats.dropTaskMs = (m3.TaskDuration - m2.TaskDuration) * 1000;
@@ -257,6 +258,7 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
     stats.dropLoafMs = after.loafMs;
     stats.dropScriptMs = after.loafScriptMs;
     stats.dropOver33 = after.over33;
+    stats.dropLoafLongest = after.loafLongest;
   }
   return { ...stats, wall };
 }
