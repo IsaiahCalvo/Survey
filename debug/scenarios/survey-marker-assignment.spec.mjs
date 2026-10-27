@@ -57,7 +57,8 @@ test('Survey placement chooses module, category and entity and the category stay
   await rail.locator('.survey-marker-category-row').filter({ hasText: 'Doors' }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Move', exact: true }).click();
   const move = page.getByRole('dialog', { name: 'Move categories', exact: true });
-  await move.getByRole('combobox', { name: 'Destination module' }).selectOption('module');
+  await move.getByRole('button', { name: 'Destination module', exact: true }).click();
+  await page.getByRole('listbox', { name: 'Destination module' }).getByRole('option', { name: 'Existing', exact: true }).click();
   await move.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(move).toBeHidden();
   await expect(row.getByRole('button', { name: 'Doors', exact: true })).toBeVisible();
@@ -158,8 +159,10 @@ test('template list right-click opens the existing item actions without Select m
   await expect(page.getByRole('menuitem', { name: 'Share', exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: 'Move', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Move items', exact: true });
-  await dialog.getByRole('button', { name: /Installation Phase/ }).click();
-  await page.getByRole('option', { name: 'Commissioning Phase', exact: true }).click();
+  const destination = dialog.getByRole('button', { name: 'Destination module', exact: true });
+  await expect(destination).toContainText('Installation Phase');
+  await destination.click();
+  await page.getByRole('listbox', { name: 'Destination module' }).getByRole('option', { name: 'Commissioning Phase', exact: true }).click();
   await dialog.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator('.tpl-cat-row').filter({ has: page.getByRole('textbox', { name: 'Category name, Doors', exact: true }) })).toHaveCount(0);

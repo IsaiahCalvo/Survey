@@ -5635,15 +5635,30 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   }
 }
 
-/* Touch tablets: the Templates page's Excel layout and Checklist answers
-   pickers are 20px / 11px for a mouse; 36px and readable to a finger. The
-   !important beats their inline mouse sizing. */
+/* The Templates page's per-template pickers (Excel layout, Report layout,
+   Checklist answers): the app's setting pill (ValueSelect look="pill"), right
+   under the module count. */
+.hub-template-picker {
+  display: flex;
+  justify-content: flex-end;
+  max-width: 100%;
+  margin-top: 4px;
+}
+.hub-template-picker .annotation-dropdown {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.hub-template-picker .chrome-pill {
+  max-width: 100%;
+}
+
+/* Touch tablets: 20px / 11px is for a mouse; 36px and readable to a finger. */
 @media (pointer: coarse) {
-  select.hub-export-kit,
-  select.hub-answer-set {
-    min-height: 36px !important;
-    font-size: 13px !important;
-    padding: 4px 8px !important;
+  .hub-template-picker .chrome-pill {
+    height: 36px;
+    padding: 0 10px;
+    font-size: 13px;
   }
 }
 

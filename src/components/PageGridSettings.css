@@ -42,7 +42,9 @@
   background: var(--surface-1); color: var(--text-1); font: inherit;
 }
 .page-grid-settings__custom input { width: 64px; }
-.page-grid-settings__custom select { flex: 1; }
+.page-grid-settings__custom select,
+.page-grid-settings__custom .value-select { flex: 1; }
+.page-grid-settings__custom .value-select .chrome-pill { height: 28px; }
 .page-grid-settings__hint { margin: 0; color: var(--text-3); font-size: 11px; line-height: 1.4; }
 .page-grid-settings.is-phone { font-size: 13px; padding: 2px 6px 8px; }
 /* The phone menu is narrow: two by two. */

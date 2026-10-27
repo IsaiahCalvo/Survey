@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from './HubShell';
 import BodyPortal from '../components/BodyPortal';
 import DialogCard from '../components/DialogCard.jsx';
+import ValueSelect from '../components/ValueSelect.jsx';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import {
   ANSWER_MEANS_MAX, ITEM_UNIT_MAX, MAX_ANSWERS, SCORE_SCALES, itemAnswerFields, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
@@ -105,14 +106,25 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
               fontSize: phone ? 14 : 12, height: phone ? 36 : undefined, color: 'var(--text-2, var(--ink))',
             }}
           />
-          <select
-            aria-label={`Answer ${i + 1} counts as`}
-            value={a.tone}
-            onChange={(e) => update(draft.map((d, j) => (j === i ? { ...d, tone: e.target.value } : d)))}
-            style={{ ...fieldStyle, fontSize: phone ? 14 : 12, height: phone ? 36 : undefined }}
-          >
-            {TONE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
+          {phone ? (
+            <select
+              aria-label={`Answer ${i + 1} counts as`}
+              value={a.tone}
+              onChange={(e) => update(draft.map((d, j) => (j === i ? { ...d, tone: e.target.value } : d)))}
+              style={{ ...fieldStyle, fontSize: 14, height: 36 }}
+            >
+              {TONE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          ) : (
+            <ValueSelect
+              size="sm"
+              width="96px"
+              label={`Answer ${i + 1} counts as`}
+              value={a.tone}
+              options={TONE_OPTIONS}
+              onChange={(tone) => update(draft.map((d, j) => (j === i ? { ...d, tone } : d)))}
+            />
+          )}
           <button
             type="button"
             aria-label={`Remove answer ${i + 1}`}
@@ -229,7 +241,6 @@ function SettingBox({ label, value, onCommit, width, size, placeholder, text = f
  * ({ kind, ...settings }, {} for pick-one), cleaned by itemAnswerFields.
  */
 export function ItemKindPicker({ item, onChange, phone = false }) {
-  const tip = useTooltip();
   const [optionsOpen, setOptionsOpen] = useState(false);
   const fields = itemAnswerFields(item);
   const kind = fields.kind || 'choice';
@@ -270,19 +281,45 @@ export function ItemKindPicker({ item, onChange, phone = false }) {
       {range}
       {kind === 'score' && (
         <>
-          <select aria-label={`Score scale for "${name}"`} value={fields.scale} onChange={(e) => set({ scale: Number(e.target.value) })} style={selectStyle}>
-            {SCORE_SCALES.map((n) => <option key={n} value={n}>1-{n}</option>)}
-          </select>
-          <select
-            aria-label={`Issue at or below, for "${name}"`}
-            {...hoverOnly(tip('A score at or below this is an issue'))}
-            value={fields.issueAt ?? ''}
-            onChange={(e) => set({ issueAt: e.target.value ? Number(e.target.value) : undefined })}
-            style={selectStyle}
-          >
-            <option value="">No issue line</option>
-            {Array.from({ length: fields.scale - 1 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>Issue at {n} or lower</option>)}
-          </select>
+          {phone ? (
+            <>
+              <select aria-label={`Score scale for "${name}"`} value={fields.scale} onChange={(e) => set({ scale: Number(e.target.value) })} style={selectStyle}>
+                {SCORE_SCALES.map((n) => <option key={n} value={n}>1-{n}</option>)}
+              </select>
+              <select
+                aria-label={`Issue at or below, for "${name}"`}
+                value={fields.issueAt ?? ''}
+                onChange={(e) => set({ issueAt: e.target.value ? Number(e.target.value) : undefined })}
+                style={selectStyle}
+              >
+                <option value="">No issue line</option>
+                {Array.from({ length: fields.scale - 1 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>Issue at {n} or lower</option>)}
+              </select>
+            </>
+          ) : (
+            <>
+              <ValueSelect
+                look="pill"
+                width="auto"
+                label={`Score scale for "${name}"`}
+                value={String(fields.scale)}
+                options={SCORE_SCALES.map((n) => ({ value: String(n), label: `1-${n}` }))}
+                onChange={(v) => set({ scale: Number(v) })}
+              />
+              <ValueSelect
+                look="pill"
+                width="auto"
+                label={`Issue at or below, for "${name}"`}
+                hint="A score at or below this is an issue"
+                value={fields.issueAt == null ? '' : String(fields.issueAt)}
+                options={[
+                  { value: '', label: 'No issue line' },
+                  ...Array.from({ length: fields.scale - 1 }, (_, i) => i + 1).map((n) => ({ value: String(n), label: `Issue at ${n} or lower` })),
+                ]}
+                onChange={(v) => set({ issueAt: v ? Number(v) : undefined })}
+              />
+            </>
+          )}
         </>
       )}
       {kind === 'many' && (

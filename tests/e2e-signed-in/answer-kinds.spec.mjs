@@ -128,8 +128,8 @@ test('the template editor shows each kind with its settings', async ({ page }) =
   await expect(expand.or(collapse).first()).toBeVisible({ timeout: 30_000 });
   if (await expand.isVisible()) await expand.click();
   await expect(kindOf(cable)).toHaveValue('score', { timeout: 30_000 });
-  await expect(visible(page.getByRole('combobox', { name: `Score scale for "${cable}"` }))).toHaveValue('5');
-  await expect(visible(page.getByRole('combobox', { name: `Issue at or below, for "${cable}"` }))).toHaveValue('2');
+  await expect(visible(page.getByRole('button', { name: `Score scale for "${cable}"`, exact: true }))).toHaveAttribute('data-value', '5');
+  await expect(visible(page.getByRole('button', { name: `Issue at or below, for "${cable}"`, exact: true }))).toHaveAttribute('data-value', '2');
   await expect(kindOf(frame)).toHaveValue('count');
   await expect(visible(page.getByRole('textbox', { name: `Lowest fine value for "${frame}"` }))).toHaveValue('1');
   await expect(kindOf(door)).toHaveValue('date');

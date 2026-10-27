@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnchoredPopover from './AnchoredPopover';
+import ValueSelect from './ValueSelect.jsx';
 import {
     PAGE_GRID_DENSITIES,
     PAGE_GRID_SETTINGS_EVENT,
@@ -88,9 +89,20 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
                         onBlur={commitDraft}
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitDraft(); } }}
                     />
-                    <select aria-label="Grid unit" value={settings.customUnit} onChange={(e) => update({ customUnit: e.target.value, density: 'custom' })}>
-                        {PAGE_GRID_UNITS.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
-                    </select>
+                    {phone ? (
+                        <select aria-label="Grid unit" value={settings.customUnit} onChange={(e) => update({ customUnit: e.target.value, density: 'custom' })}>
+                            {PAGE_GRID_UNITS.map((u) => <option key={u.id} value={u.id}>{u.label}</option>)}
+                        </select>
+                    ) : (
+                        <ValueSelect
+                            label="Grid unit"
+                            size="sm"
+                            className="page-grid-settings__unit"
+                            value={settings.customUnit}
+                            options={PAGE_GRID_UNITS.map((u) => ({ value: u.id, label: u.label }))}
+                            onChange={(customUnit) => update({ customUnit, density: 'custom' })}
+                        />
+                    )}
                 </div>
             )}
             {pageGridUsesDrawingScale(settings) && (
@@ -110,6 +122,8 @@ export function PageGridMenu({ on, toggle, renderButton }) {
         if (!open) return undefined;
         const onPointerDown = (event) => {
             if (buttonRef.current?.contains(event.target) || cardRef.current?.contains(event.target)) return;
+            // The unit list is portalled to <body>; a press in it is the card's.
+            if (event.target?.closest?.('.value-select__menu')) return;
             setOpen(false);
         };
         const onKeyDown = (event) => {

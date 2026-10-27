@@ -104,7 +104,7 @@ test('the template\'s report layout picks the blocks: Issues list is a cover and
     // The template editor shows the layout.
     await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
     await page.getByText(E2E_SURVEY.templateName, { exact: true }).filter({ visible: true }).first().click();
-    await expect(page.getByRole('combobox', { name: 'Report layout' }).filter({ visible: true }).first()).toHaveValue('issues-report', { timeout: 30_000 });
+    await expect(page.getByRole('button', { name: 'Report layout', exact: true }).filter({ visible: true }).first()).toHaveAttribute('data-value', 'issues-report', { timeout: 30_000 });
     await page.getByText('Documents', { exact: true }).filter({ visible: true }).first().click();
     await openSurvey(page);
     const download = page.waitForEvent('download', { timeout: 60_000 });

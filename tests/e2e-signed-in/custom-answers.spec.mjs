@@ -12,7 +12,7 @@ async function openTemplatesTab(page) {
 // Flag off: the old drop-down.
 async function openTemplateEditor(page) {
   await openTemplatesTab(page);
-  const answers = page.getByRole('combobox', { name: 'Checklist answers' }).filter({ visible: true }).first();
+  const answers = page.getByRole('button', { name: 'Checklist answers', exact: true }).filter({ visible: true }).first();
   await expect(answers).toBeVisible({ timeout: 30_000 });
   return answers;
 }
@@ -59,8 +59,13 @@ test('flag off: only the usual presets, no make-your-own', async ({ page }) => {
   await flag(false)(page);
   await signIn(page, E2E_ACCOUNTS.owner);
   const answers = await openTemplateEditor(page);
-  await expect(answers.locator('option', { hasText: 'Edit answers' })).toHaveCount(0);
-  await expect(answers.locator('option', { hasText: 'Small / Medium / Large' })).toHaveCount(0);
+  await answers.click();
+  const list = page.getByRole('listbox', { name: 'Checklist answers' });
+  await expect(list.getByRole('option').first()).toBeVisible();
+  await expect(list.getByRole('option', { name: /Edit answers/ })).toHaveCount(0);
+  await expect(list.getByRole('option', { name: /Small \/ Medium \/ Large/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(list).toHaveCount(0);
 });
 
 test('flag on: type 5 / 10 / 20, save, and it is still there after a reload', async ({ page }) => {
@@ -77,7 +82,9 @@ test('flag on: type 5 / 10 / 20, save, and it is still there after a reload', as
   // Start from Y / N / N/A: rename to 5 / 10 / 20, all Neutral.
   for (const [i, v] of ['5', '10', '20'].entries()) {
     await editor.getByRole('textbox', { name: `Answer ${i + 1}`, exact: true }).fill(v);
-    await editor.getByRole('combobox', { name: `Answer ${i + 1} counts as` }).selectOption('neutral');
+    await editor.getByRole('button', { name: `Answer ${i + 1} counts as`, exact: true }).click();
+    await page.getByRole('listbox', { name: `Answer ${i + 1} counts as` }).getByRole('option', { name: 'Neutral', exact: true }).click();
+    await expect(editor.getByRole('button', { name: `Answer ${i + 1} counts as`, exact: true })).toHaveAttribute('data-value', 'neutral');
   }
   await editor.getByRole('textbox', { name: 'What answer 1 means' }).fill('a single door');
   // A comma is refused with a plain reason and is never saved.

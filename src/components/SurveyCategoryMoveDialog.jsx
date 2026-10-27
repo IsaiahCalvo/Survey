@@ -7,17 +7,8 @@
 import { useState } from 'react';
 import BodyPortal from './BodyPortal';
 import DialogCard from './DialogCard.jsx';
+import ValueSelect from './ValueSelect.jsx';
 import { COLORS, Z_INDEX } from '../theme';
-
-const selectStyle = {
-  background: COLORS.modal.panel,
-  color: COLORS.modal.textPrimary,
-  padding: '8px 10px',
-  border: `1px solid ${COLORS.modal.borderStrong}`,
-  borderRadius: 6,
-  fontFamily: 'inherit',
-  fontSize: 13,
-};
 
 export default function SurveyCategoryMoveDialog({ modules, sourceId, count, onMove, onClose }) {
   const [destination, setDestination] = useState('');
@@ -47,18 +38,16 @@ export default function SurveyCategoryMoveDialog({ modules, sourceId, count, onM
         )}
       >
         <div style={{ display: 'grid', gap: 14 }}>
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: COLORS.modal.textMuted }}>
-            Destination module
-            <select
-              aria-label="Destination module"
+          <div style={{ display: 'grid', gap: 6, fontSize: 12, color: COLORS.modal.textMuted }}>
+            <span aria-hidden="true">Destination module</span>
+            <ValueSelect
+              label="Destination module"
               value={destination}
-              onChange={(event) => { setDestination(event.target.value); setError(''); }}
-              style={selectStyle}
-            >
-              <option value="">Choose a module</option>
-              {modules.filter((entry) => entry.id !== sourceId).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-            </select>
-          </label>
+              placeholder="Choose a module"
+              options={modules.filter((entry) => entry.id !== sourceId).map((entry) => ({ value: entry.id, label: entry.name }))}
+              onChange={(next) => { setDestination(next); setError(''); }}
+            />
+          </div>
           {error ? <p role="alert" style={{ margin: 0, color: 'var(--danger)', fontSize: 13 }}>{error}</p> : null}
         </div>
       </DialogCard>

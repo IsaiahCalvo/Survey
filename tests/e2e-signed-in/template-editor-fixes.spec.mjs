@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { E2E_ACCOUNTS, E2E_DOCUMENT, E2E_PROJECT } from './accounts.mjs';
-import { adminClient, expect, signIn, test } from './helpers.mjs';
+import { adminClient, expect, pickValue, signIn, test } from './helpers.mjs';
 
 const MODULE_NAMES = ['Installation', 'Rough-in', 'Trim out', 'Punch list', 'Closeout', 'Testing', 'Commissioning', 'Warranty', 'Extra long module name here that runs well past the width of the Survey panel on any screen'];
 
@@ -158,9 +158,9 @@ test('Select sits in the category row; Move picks template, module, category; Un
 
   const dialog = page.getByRole('dialog', { name: 'Move 3 Survey Markers' });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole('combobox', { name: 'Template' })).toHaveValue(seeded.templateId);
-  await expect(dialog.getByRole('combobox', { name: 'Module' })).toHaveValue('mod-0');
-  await expect(dialog.getByRole('combobox', { name: 'Category' })).toHaveValue('cat-0-cam');
+  await expect(dialog.getByRole('button', { name: 'Template', exact: true })).toHaveAttribute('data-value', seeded.templateId);
+  await expect(dialog.getByRole('button', { name: 'Module', exact: true })).toHaveAttribute('data-value', 'mod-0');
+  await expect(dialog.getByRole('button', { name: 'Category', exact: true })).toHaveAttribute('data-value', 'cat-0-cam');
   await dialog.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 
@@ -183,8 +183,8 @@ test('Copy to… puts a copy in another module and category, with the same name'
   await page.locator('#highlight-item-surveyMarker-fix-0').click({ button: 'right', position: { x: 12, y: 10 } });
   await page.getByRole('menuitem', { name: 'Copy to…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Copy 1 Survey Marker' });
-  await dialog.getByRole('combobox', { name: 'Module' }).selectOption({ label: 'Trim out' });
-  await dialog.getByRole('combobox', { name: 'Category' }).selectOption({ label: 'Door' });
+  await pickValue(page, dialog, 'Module', 'Trim out');
+  await pickValue(page, dialog, 'Category', 'Door');
   await dialog.getByRole('button', { name: 'Copy', exact: true }).click();
   // The panel shows where the copy went.
   await expect(moduleTabs(page).getByRole('tab', { name: 'Trim out' })).toHaveAttribute('aria-selected', 'true');
@@ -273,9 +273,13 @@ test('Move to another template lists the version this document kept, and opens i
   await page.locator('#highlight-item-surveyMarker-fix-0').click({ button: 'right', position: { x: 12, y: 10 } });
   await page.getByRole('menuitem', { name: 'Move to…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Move 1 Survey Marker' });
-  await dialog.getByRole('combobox', { name: 'Template' }).selectOption({ label: seeded.otherTemplateName });
-  const categories = await dialog.getByRole('combobox', { name: 'Category' }).locator('option').allInnerTexts();
+  await pickValue(page, dialog, 'Template', seeded.otherTemplateName);
+  await dialog.getByRole('button', { name: 'Category', exact: true }).click();
+  const categories = await page.getByRole('listbox', { name: 'Category' }).getByRole('option').allInnerTexts();
   expect(categories).toEqual(['Kept category']);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('listbox', { name: 'Category' })).toHaveCount(0);
+  await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   // The kept version opens straight away (no "keep or use latest" question),

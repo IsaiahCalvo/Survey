@@ -34,6 +34,7 @@ import { mergeRetryResult, summarizeInviteSend } from './inviteSendSummary';
 import InviteSendNotice from './InviteSendNotice';
 import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
+import ValueSelect from '../components/ValueSelect.jsx';
 import { menuAtButton, menuIconFor, menuRowHeight } from '../utils/menuItems.js';
 import {
   createProjectInvite,
@@ -72,6 +73,7 @@ const GOLD = C.gold;
 const DANGER = C.danger;
 
 const ROLES = ["Owner", "Editor", "Viewer"];
+const ROLE_CHOICES = ROLES.slice().reverse().map((r) => ({ value: r, label: r }));
 const ROLE_ORDER = { Owner: 0, Editor: 1, Viewer: 2 };
 const PAID_TIERS = new Set(['pro', 'enterprise', 'developer']);
 
@@ -316,9 +318,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600, marginBottom: 8 }}>Share link</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px 82px", gap: 6 }}>
               <div className="mono" style={{ fontFamily: MONO_FONT, flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
-              <select value={linkRole} onChange={(e) => setLinkRole(e.target.value)} style={{ height: 30, background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 12, fontFamily: "inherit" }}>
-                {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
-              </select>
+              <ValueSelect label="Link permission" value={linkRole} onChange={setLinkRole} options={ROLE_CHOICES} size="sm" />
               <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn">{copied ? "Copied" : "Copy link"}</button>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Anyone with this invite link can join as {linkRole}. Free users enter as Viewer until upgrade.</div>
@@ -327,9 +327,9 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
             <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600, marginBottom: 8 }}>Invite by email</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px", gap: 6 }}>
               <textarea value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="name@example.com, name@example.com" rows={3} style={{ width: "100%", background: INK_800, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "9px 11px", fontSize: 13, fontFamily: "inherit", color: BONE_100, resize: "vertical", outline: "none", minHeight: 72, lineHeight: 1.45, boxSizing: "border-box" }}/>
-              <select value={emailRole} onChange={(e) => setEmailRole(e.target.value)} style={{ height: 30, alignSelf: "start", background: INK_700, color: BONE_100, border: `1px solid ${INK_500_FIELD}`, borderRadius: 6, padding: "0 8px", fontSize: 12, fontFamily: "inherit" }}>
-                {ROLES.slice().reverse().map((r) => <option key={r}>{r}</option>)}
-              </select>
+              <div style={{ alignSelf: "start", minWidth: 0 }}>
+                <ValueSelect label="Email invite permission" value={emailRole} onChange={setEmailRole} options={ROLE_CHOICES} size="sm" />
+              </div>
             </div>
             <div style={{ fontSize: 11, color: INK_200, marginTop: 8, lineHeight: 1.4 }}>Separate addresses with commas. Each invitee gets an email with a link to join as {emailRole}.</div>
           </div>

@@ -34,7 +34,8 @@ test('Page grid card: show, density presets and a custom spacing', async ({ page
   expect(px / scale).toBeCloseTo(18, 0);
 
   await card.getByRole('radio', { name: /^Custom/ }).click();
-  await card.getByRole('combobox', { name: 'Grid unit' }).selectOption('in');
+  await card.getByRole('button', { name: 'Grid unit', exact: true }).click();
+  await page.getByRole('listbox', { name: 'Grid unit' }).getByRole('option', { name: 'in', exact: true }).click();
   await card.getByRole('spinbutton', { name: 'Grid spacing' }).fill('2');
   await card.getByRole('spinbutton', { name: 'Grid spacing' }).press('Enter');
   ({ px, scale } = await cellPx(page));
@@ -42,7 +43,9 @@ test('Page grid card: show, density presets and a custom spacing', async ({ page
   await card.screenshot({ path: 'test-results/page-grid-card.png' });
 
   // Drawing units with no scale on the page keep the half inch, and say so.
-  await card.getByRole('combobox', { name: 'Grid unit' }).selectOption('ft');
+  await card.getByRole('button', { name: 'Grid unit', exact: true }).click();
+  await page.getByRole('listbox', { name: 'Grid unit' }).getByRole('option', { name: 'ft (drawing)', exact: true }).click();
+  await expect(card).toBeVisible();
   await expect(card.getByText(/Follows each page's scale/)).toBeVisible();
   ({ px, scale } = await cellPx(page));
   expect(px / scale).toBeCloseTo(36, 0);

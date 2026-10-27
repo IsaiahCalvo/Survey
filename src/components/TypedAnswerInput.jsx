@@ -21,6 +21,7 @@
 import { useState } from 'react';
 import { useTooltip } from './Tooltip';
 import LineMediaAnswer from './LineMediaAnswer.jsx';
+import ValueSelect from './ValueSelect.jsx';
 import {
   itemKind, manyOptionsOf, manyPicked, sameAnswer, scoreScaleOf, typedAnswer, typedAnswerIsIssue, TYPED_ANSWER_MAX,
 } from '../services/answerSets.js';
@@ -72,6 +73,20 @@ function ScoreAnswer({ item, saved, onCommit, phone }) {
   const top = scoreScaleOf(item);
   const label = item?.text || 'Checklist';
   if (top > 5) {
+    if (!phone) {
+      return (
+        <span className="typed-answer-select" onClick={stop}>
+          <ValueSelect
+            look="pill"
+            width="56px"
+            label={`${label} score`}
+            value={saved}
+            options={[{ value: '', label: '–' }, ...Array.from({ length: top }, (_, i) => String(i + 1)).map((v) => ({ value: v, label: v }))]}
+            onChange={onCommit}
+          />
+        </span>
+      );
+    }
     return (
       <select
         aria-label={`${label} score`}
@@ -116,6 +131,20 @@ export const CHOICE_BUTTONS_MAX = 6;
 export function ChoiceSelect({ item, set, value, onCommit, phone = false }) {
   const saved = value == null ? '' : String(value);
   const picked = set.find((a) => sameAnswer(a.value, saved));
+  if (!phone) {
+    return (
+      <span className={`typed-answer-select${picked?.tone === 'bad' ? ' is-bad' : ''}`} onClick={stop}>
+        <ValueSelect
+          look="pill"
+          width="120px"
+          label={`${item?.text || 'Checklist'} answer`}
+          value={picked ? picked.value : ''}
+          options={[{ value: '', label: '–' }, ...set.map((a) => ({ value: a.value, label: a.value }))]}
+          onChange={(next) => { if (next !== saved) onCommit(next); }}
+        />
+      </span>
+    );
+  }
   return (
     <select
       aria-label={`${item?.text || 'Checklist'} answer`}
