@@ -109,6 +109,11 @@ test('the tool bar plan keeps the wider loadout clear of Export', () => {
   const hook = read('src/hooks/useResponsiveToolbar.js');
   assert.match(hook, /getPropertyValue\('--chrome-tool-gap'\)/);
   assert.match(hook, /loadoutReserve: widestSubtoolsWidth\(toolGap\) \+ surveyRoom/);
+  // Design review 2026-10-27 (820px tablet): Export keeps at least the tool
+  // gutter from the last tool, never the 8px floor against a 12px gutter.
+  assert.match(hook, /edgeClearance: Math\.max\(EDGE_CLEARANCE, toolGap\)/);
+  const wide = planTopBar({ barWidth: 820, startRight: 78, leftBlockWidth: 85, exportLeft: 754, clusterWidth: 108, loadoutReserve: reserve, edgeClearance: 12 });
+  assert.ok(wide.clusterLeft + 108 + reserve + 12 <= 754 + 0.5, `12px before Export (${wide.clusterLeft})`);
 });
 
 test('the fit menu is a menu (so its rows take the 44px touch rows)', () => {

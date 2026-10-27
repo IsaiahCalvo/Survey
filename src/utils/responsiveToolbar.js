@@ -272,6 +272,11 @@ export function fitSettingsRow(row, available) {
  * @param {number} [input.spanRight]
  * @param {number} [input.clusterNaturalLeft] where the icons sit with no
  *   shift (the bar centres them); defaults to the bar's centre
+ * @param {number} [input.edgeClearance] space kept between the widest
+ *   loadout and Export; the caller passes the tool gutter when it is wider,
+ *   so Export never sits closer to the last tool than the tools sit to each
+ *   other (design review 2026-10-27, tablet portrait: 8px against a 12px
+ *   touch gutter read as no gap at all)
  * @returns {{ anchor: 'center'|'start', shift: number, clusterLeft: number }}
  *   `clusterLeft` is where the icons' left edge lands (bar coordinates);
  *   `shift` is how far that is LEFT of their natural spot (negative =
@@ -288,9 +293,10 @@ export function planTopBar({
   spanLeft = 0,
   spanRight = barWidth,
   clusterNaturalLeft = (barWidth - clusterWidth) / 2,
+  edgeClearance = EDGE_CLEARANCE,
 }) {
   const minLeft = startRight + START_GAP + leftBlockWidth;
-  const maxLeft = exportLeft - EDGE_CLEARANCE - loadoutReserve - clusterWidth;
+  const maxLeft = exportLeft - edgeClearance - loadoutReserve - clusterWidth;
   let clusterLeft = (spanLeft + spanRight) / 2 - clusterWidth / 2;
   let anchor = 'center';
   if (clusterLeft > maxLeft) { clusterLeft = maxLeft; anchor = 'start'; }

@@ -187,7 +187,8 @@ function ensureHistoryPanelStyle() {
     .dh-peek > span { padding: 0 6px 0 4px; color: var(--text-3); font-size: 11px; }
     .dh-peek button { border: 0; background: none; color: var(--text-3); font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 5px; cursor: pointer; }
     .dh-peek button.on { background: var(--surface-3); color: var(--text-1); }
-    .dh-empty { padding: 24px var(--dh-edge); color: var(--text-3); font-size: 13px; line-height: 1.5; }
+    /* One empty line for every side panel (design review 2026-10-27): centred, 32px down, as Search and Bookmarks. */
+    .dh-empty { padding: 32px var(--dh-edge); text-align: center; color: var(--text-3); font-size: 13px; line-height: 1.4; }
     .dh-more { display: block; margin: 6px auto 10px; padding: 6px 10px; border: 0; background: none; color: var(--text-3);
       font: inherit; font-size: 12px; cursor: pointer; }
     .dh-more:hover { color: var(--text-1); }
