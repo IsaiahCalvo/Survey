@@ -20,6 +20,8 @@ import {
 import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
 import { pdfByteCache } from '../services/pdfByteCache.js';
 import { loadAccountExportKits } from '../services/exportFormats/accountKits.js';
+import { ownKitStore } from '../services/exportFormats/ownKitStore.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 export const AuthContext = createContext({});
 
@@ -560,7 +562,10 @@ export const AuthProvider = ({ children }) => {
     let off = null;
     let cancelled = false;
     loadAccountExportKits(supabase).then((fn) => { if (cancelled) fn(); else off = fn; }).catch(() => {});
-    return () => { cancelled = true; off?.(); };
+    // Nightly: layouts this person made from their own sheet.
+    const own = isFeatureOn('own-excel-layouts');
+    if (own) ownKitStore.load().then(() => { if (cancelled) ownKitStore.unload(); }).catch(() => {});
+    return () => { cancelled = true; off?.(); if (own) ownKitStore.unload(); };
   }, [user?.id]);
 
   // Refetch subscription tier when window regains focus (user returns from Stripe)

@@ -11,6 +11,7 @@ import { answerSetMeaning, moduleKind, moduleMeaning } from '../../supabase/func
 import { boundsCover, findDescribedOnPages, markerBoxAroundTag, tagShape } from './planText.js';
 import { kindOf, parseDescribedTarget, scoreDescribedTag } from './spokenTag.js';
 import { summarizeSurvey, summaryText } from '../services/surveySummary.js';
+import { learnedForModel, learnedNameFor, memoryKey, rewordText } from './agentMemory.js';
 
 export { normalizeItemName, scoreItemName };
 
@@ -18,6 +19,8 @@ export { normalizeItemName, scoreItemName };
 const MAX_BULK_ITEMS = 60;
 // survey_status names at most this many items per group; the counts are whole.
 const STATUS_LIST_MAX = 20;
+// One tidy_notes call rewrites at most this many items' notes.
+const MAX_TIDY_ITEMS = 300;
 
 // The panel fills this while Survey mode is open (SurveySpacesRail).
 export const surveyAgentBridge = { current: null };
@@ -134,6 +137,9 @@ export function createSurveyAgentToolbox({
   requestPhoto = null,
   // Ids of the items worked on in this chat, for the end-of-walk summary.
   walkItems = null,
+  // What the agent learned in the project (agentMemory.js store), or null
+  // where there is none (WebMCP, tests): remember / forget then refuse.
+  memory = null,
 } = {}) {
   const bridge = () => {
     const b = getBridge();
@@ -150,8 +156,11 @@ export function createSurveyAgentToolbox({
   };
   // set_answers by name, so "D-117 lock yes" is one model step: only a
   // single clear match is used; anything else sends the model back to ask.
+  // A name the project taught ("D101" is D-1-01) stands for that item's name.
+  const memoryRows = (b) => (memory && b?.projectId ? memory.cached(b.projectId) : []);
+  const learnedName = (b, heard) => learnedNameFor(memoryRows(b), heard) || heard;
   const markerIdByName = (b, name) => {
-    const heard = String(name || '').trim();
+    const heard = learnedName(b, String(name || '').trim());
     if (!heard) throw new ToolError('Give item_id or item_name.');
     const { find } = categoryIndex(b.template);
     const scored = Object.entries(b.markers || {})
@@ -231,7 +240,7 @@ export function createSurveyAgentToolbox({
   // set_answers' item_name: the item by name, or else by description
   // ("camera twelve fourth floor" is C-4-12), when one clearly fits best.
   const itemIdFor = async (b, name) => {
-    const heard = String(name || '').trim();
+    const heard = learnedName(b, String(name || '').trim());
     const byName = markerIdByName(b, heard);
     if (byName) return byName;
     const target = parseDescribedTarget(heard);
@@ -388,6 +397,85 @@ export function createSurveyAgentToolbox({
   };
 
   const tools = {
+    // "Whenever I say D101 I mean D-1-01" (a name) or "always write not
+    // installed, not missing" (wording): saved for everyone on the project.
+    async remember({ kind, heard, means } = {}) {
+      const b = bridge();
+      writable(b);
+      if (!memory || !b.projectId) throw new ToolError('This drawing is not in a project, so nothing can be learned here.');
+      const said = String(heard || '').trim();
+      if (!said || !String(means || '').trim()) throw new ToolError('Give what they say (heard) and what it means.');
+      let target = String(means).trim();
+      if (kind === 'name') {
+        // It must be a real item; the saved name is that item's own name.
+        const itemId = await itemIdFor(b, target);
+        target = nameOf(markerOf(b, itemId));
+        if (said.toLowerCase() === target.toLowerCase()) throw new ToolError(`${said} is already that item's own name; nothing saved.`);
+      } else if (kind !== 'wording') {
+        throw new ToolError('kind is name or wording.');
+      }
+      let saved;
+      try {
+        saved = await memory.save(b.projectId, { kind, heard: said, means: target });
+      } catch (err) {
+        throw new ToolError(`Could not save it: ${err.message}`);
+      }
+      const line = kind === 'name' ? `"${saved.row.heard}" means ${saved.row.means}` : `write "${saved.row.means}" for "${saved.row.heard}"`;
+      if (saved.same) return { content: `Already saved: ${line}.` };
+      return {
+        content: `Saved for this project: ${line}.${saved.before ? ` (Replaced "${saved.before.means}".)` : ''}`,
+        change: { memory: { projectId: b.projectId, row: saved.row, before: saved.before }, label: `Learned: ${line}` },
+      };
+    },
+
+    async forget({ heard } = {}) {
+      const b = bridge();
+      writable(b);
+      if (!memory || !b.projectId) throw new ToolError('This drawing is not in a project, so nothing was learned here.');
+      const key = memoryKey(heard);
+      const rows = (await memory.list(b.projectId)).filter((r) => memoryKey(r.heard) === key);
+      if (!key || !rows.length) throw new ToolError(`Nothing saved for "${String(heard || '').trim()}"; nothing changed.`);
+      try {
+        for (const row of rows) await memory.remove(b.projectId, row.id);
+      } catch (err) {
+        throw new ToolError(`Could not remove it: ${err.message}`);
+      }
+      return {
+        content: `Forgot ${rows.map((r) => (r.kind === 'name' ? `"${r.heard}" = ${r.means}` : `"${r.heard}" -> "${r.means}"`)).join(' and ')}.`,
+        change: { memory: { projectId: b.projectId, removed: rows }, label: `Forgot "${rows[0].heard}"` },
+      };
+    },
+
+    // Old notes in the person's preferred words: every whole "from" in this
+    // document's item notes becomes "to". Undo puts each note back.
+    tidy_notes({ from, to } = {}) {
+      const b = bridge();
+      writable(b);
+      const f = String(from || '').trim();
+      const t = String(to || '').trim();
+      if (!f || !t) throw new ToolError('Give the words to replace (from) and the words to write (to).');
+      const changes = [];
+      for (const [itemId, marker] of Object.entries(b.markers || {})) {
+        if (!marker) continue;
+        const text = noteTextOf(marker.note);
+        const next = rewordText(text, f, t);
+        if (next === text) continue;
+        if (changes.length >= MAX_TIDY_ITEMS) break;
+        b.updateNote(itemId, (prev) => ({ ...prev, text: rewordText(String(prev?.text || ''), f, t) }));
+        changes.push({
+          itemId,
+          documentId: b.documentId || null,
+          label: `${nameOf(marker)}: note reworded`,
+          fields: [{ type: 'note', before: clone(marker.note), afterText: next, afterMedia: null }],
+        });
+      }
+      if (!changes.length) return { content: `No notes here say "${f}"; nothing changed.` };
+      return {
+        content: `Changed "${f}" to "${t}" in ${changes.length} note${changes.length === 1 ? '' : 's'}.`,
+        changes,
+      };
+    },
+
     get_survey_context() {
       const b = bridge();
       const { list } = categoryIndex(b.template);
@@ -423,6 +511,8 @@ export function createSurveyAgentToolbox({
           selected_item: selected ? { id: b.selectedMarkerId, name: nameOf(selected) } : null,
           page_on_screen: b.getCurrentPage?.() || null,
           can_edit: b.canEdit !== false,
+          // Names and note wording this project taught the agent.
+          ...(memory && b.projectId ? { learned: learnedForModel(memoryRows(b)) } : {}),
         }),
       };
     },
@@ -430,6 +520,7 @@ export function createSurveyAgentToolbox({
     find_items({ query, category_id: categoryId } = {}) {
       const b = bridge();
       if (!String(query || '').trim()) throw new ToolError('Say which item to look for.');
+      query = learnedName(b, String(query).trim());
       const { find } = categoryIndex(b.template);
       const matches = [];
       for (const [id, marker] of Object.entries(b.markers || {})) {
@@ -981,6 +1072,9 @@ export function createSurveyAgentToolbox({
       }
       const fn = tools[name];
       if (!fn) return { content: `Unknown tool ${name}.`, isError: true };
+      // Learned names are read by the item lookups: load them once first.
+      const projectId = getBridge()?.projectId;
+      if (memory && projectId) await memory.list(projectId).catch((err) => console.warn('[survey-agent] memory not loaded', err));
       try {
         return { isError: false, ...(await fn(input || {})) };
       } catch (err) {
@@ -1020,6 +1114,16 @@ export function createSurveyAgentToolbox({
       const work = new Map();
       const removed = new Set();
       for (const change of [...list].reverse()) {
+        if (change.memory) {
+          // Learned names and wording: put back what was there before.
+          const { projectId, row, before, removed: forgotten } = change.memory;
+          const job = forgotten
+            ? Promise.all(forgotten.map((r) => memory?.restore(projectId, r)))
+            : before ? memory?.restore(projectId, before) : memory?.removeSaved(projectId, row);
+          Promise.resolve(job).catch((err) => console.warn('[survey-agent] memory undo failed', err));
+          result.reverted += 1;
+          continue;
+        }
         if (change.annotationId) {
           const doc = typeof getDocument === 'function' ? getDocument() : null;
           const sameDoc = (b?.documentId || null) === (change.documentId || null);
