@@ -46,6 +46,7 @@ async function loadPromptModal() {
     ["import { useFocusTrap } from '../hooks/useFocusTrap';", `import { useFocusTrap } from ${JSON.stringify(url('src/hooks/useFocusTrap.js'))};`],
     ["import MotionPresence from './MotionPresence.jsx';", 'const MotionPresence = ({ open, children }) => (open ? children : null);'],
     ["import { useTooltip } from './Tooltip';", 'const useTooltip = () => () => ({});'],
+    ["import { exitMs } from '../utils/motion.js';", `import { exitMs } from ${JSON.stringify(url('src/utils/motion.js'))};`],
   ]);
   const promptUrl = await compile('src/components/dialogPrompts.jsx', dir, [
     ["import { ConfirmModal } from '../home/BulkModals';", 'const ConfirmModal = () => null;'],
