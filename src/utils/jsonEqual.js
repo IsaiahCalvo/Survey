@@ -69,3 +69,25 @@ function equal(a, b) {
 export function jsonEqual(a, b) {
   return equal(resolve(a, ''), resolve(b, ''));
 }
+
+// The same answer as jsonEqual, one top-level member per step, so a caller can
+// spread the compare of a big map over idle time: call next() until done, and
+// the final value is the answer.
+export function* jsonEqualSteps(a, b) {
+  const left = resolve(a, '');
+  const right = resolve(b, '');
+  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object'
+    || Array.isArray(left) || Array.isArray(right)) {
+    return equal(left, right);
+  }
+  if (left === right) return true;
+  const aMembers = members(left);
+  const bMembers = members(right);
+  if (aMembers.length !== bMembers.length) return false;
+  for (let index = 0; index < aMembers.length; index += 1) {
+    if (aMembers[index][0] !== bMembers[index][0]) return false;
+    if (!equal(aMembers[index][1], bMembers[index][1])) return false;
+    yield;
+  }
+  return true;
+}
