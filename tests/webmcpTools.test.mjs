@@ -101,11 +101,11 @@ test('signed-out agent cannot list anything', async () => {
   assert.equal(sb.calls.length, 0);
 });
 
-test('list_documents uses the user session and hides archived items', async () => {
+test('list_documents uses the user session and hides archived and older-version items', async () => {
   const sb = fakeSupabase({ rows: [{ id: 'd1', name: 'A.pdf' }] });
   const tools = buildAgentTools({ supabase: sb, readAccess: makeAccessReader(sb, TIERS) });
   assert.deepEqual(JSON.parse(await tool(tools, 'survey_list_documents').execute({})), [{ id: 'd1', name: 'A.pdf' }]);
-  assert.deepEqual(sb.calls.at(-1).filters, [['eq', 'archived', false], ['is', 'user_archived_at', null]]);
+  assert.deepEqual(sb.calls.at(-1).filters, [['eq', 'archived', false], ['is', 'user_archived_at', null], ['is', 'superseded_by', null]]);
   await assert.rejects(tool(tools, 'survey_list_documents').execute({ project_id: 'bad' }), /project id/);
 });
 

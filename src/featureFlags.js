@@ -94,6 +94,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Curved polyline: bend smoothly through the clicked corners',
     stage: 'beta',
   }),
+  'document-versions': Object.freeze({
+    label: 'Version history: a new version keeps the old ones, with old-over-new compare',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

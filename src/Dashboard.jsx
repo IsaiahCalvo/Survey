@@ -22,6 +22,8 @@ import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
 import { carryMarksToNewVersion } from './services/documentVersionMarks.js';
+import { supersedeDocument } from './services/documentVersionService.js';
+import { isFeatureOn } from './featureFlags.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
@@ -369,6 +371,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         .eq('user_id', user.id)
         .eq('name', fileName)
         .eq('archived', false)
+        .is('superseded_by', null)
         .limit(50);
       query = projectId ? query.eq('project_id', projectId) : query.is('project_id', null);
       const { data: candidates, error } = await query;
@@ -418,8 +421,20 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
 
   // After the new row exists: archive the old same-name copy the user chose to
   // replace. Non-fatal on failure (both copies stay visible — recoverable).
-  const archiveReplacedDocument = async (archiveDocId) => {
+  // Version history (Nightly): the old copy is kept as an older version of the
+  // new one instead, which also takes it out of the lists.
+  const archiveReplacedDocument = async (archiveDocId, replacementId = null) => {
     if (!archiveDocId) return;
+    if (replacementId && replacementId !== archiveDocId && isFeatureOn('document-versions')) {
+      try {
+        if (await supersedeDocument(supabase, archiveDocId, replacementId) === 'superseded') {
+          setDocuments((current) => current.filter((d) => d.id !== archiveDocId));
+          return;
+        }
+      } catch (err) {
+        console.error('Could not keep the previous version; archiving it instead:', err);
+      }
+    }
     try {
       await deleteSupabaseDocument(archiveDocId);
     } catch (err) {
@@ -704,7 +719,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
             perfUpload.end(file.name);
             return; // nothing archived, nothing opened — safe retry
           }
-          await archiveReplacedDocument(duplicateGate.archiveDocId);
+          await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
           await maybeOfferAlias(resolvedDoc, file.name, contentSha);
           if (openAfterUpload) await handleDocumentClick(resolvedDoc);
           refetchAllDocuments();
@@ -763,7 +778,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
             // "Upload as new version": archive the replaced copy only now that
             // the new bytes are DURABLE in storage — a failed upload must never
             // leave the old document hidden and the new row pointing at nothing.
-            await archiveReplacedDocument(duplicateGate.archiveDocId);
+            await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
 
             if (pageCount && pageCount !== resolvedDoc.page_count) {
               try { await updateSupabaseDocument(resolvedDoc.id, { page_count: pageCount }); } catch { /* non-fatal */ }
@@ -878,7 +893,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         setDashboardError('Couldn’t save the document to the cloud: ' + (upErr.message || 'Unknown error'));
         return 'failed'; // nothing archived, nothing opened — safe retry
       }
-      await archiveReplacedDocument(duplicateGate.archiveDocId);
+      await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
       if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
       if (openAfterUpload) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
@@ -931,7 +946,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // "Upload as new version": archive the replaced copy only now that
         // the new bytes are DURABLE in storage — a failed upload must never
         // leave the old document hidden and the new row pointing at nothing.
-        await archiveReplacedDocument(duplicateGate.archiveDocId);
+        await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
 
         pageCountPromise.then(async (pageCount) => {
           if (pageCount !== null && pageCount !== resolvedDoc.page_count) {
