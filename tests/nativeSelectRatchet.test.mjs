@@ -28,8 +28,6 @@ const ALLOWED = {
   'src/components/PageGridSettings.jsx': 1,
   // Admin-only page.
   'src/home/KitsAdminPage.jsx': 1,
-  // Owned by the Spaces work (its card already moves to the app drop-down).
-  'src/sidebar/SpacesPanel.jsx': 1,
 };
 
 // A JSX <select> element at the start of a line (comments that mention
