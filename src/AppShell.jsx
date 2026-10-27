@@ -75,6 +75,7 @@ import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
 import { preloadedComponent, retryingLazy } from './utils/preloadedComponent.js';
+import { behindTabPropsEqual } from './utils/behindTabProps.js';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
@@ -264,8 +265,9 @@ function ViewerLoadFailed() {
     </button>
   );
 }
+// A tab behind skips the renders its parent does for the front tab.
 const PDFViewer = retryingLazy(
-  () => loadPDFViewerModule().then((m) => ({ default: m.PDFViewer })),
+  () => loadPDFViewerModule().then((m) => ({ default: memo(m.PDFViewer, behindTabPropsEqual) })),
   ViewerLoadFailed,
 );
 // Lazy boundary: the compact color picker only renders deep inside the bottom
@@ -1998,6 +2000,9 @@ export default function App({ devPreviewReturnTab = null }) {
   const stableAnnotationsExistChange = useStableHandler(handleAnnotationsExistChange);
   const stableViewStateChange = useStableHandler(handleViewStateChange);
   const stableTemplatesChange = useStableHandler(handleTemplatesChange);
+  // useTemplates hands back a new refetch every render; a tab behind compares
+  // its props to skip renders, so it gets one that keeps its identity.
+  const stableRefetchTemplates = useStableHandler(refetchTemplates);
   // Each open tab keeps its own rails (TabChromeSlot). On the phone only the
   // front tab's rails exist: its sheets start closed for every document.
   const railTabs = useMemo(() => tabs.filter((tab) => !tab.isHome && (!isNarrowShell || tab.id === activeTabId)), [tabs, isNarrowShell, activeTabId]);
@@ -4721,7 +4726,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       onViewStateChange={stableViewStateChange}
                       templates={appTemplates}
                       onTemplatesChange={stableTemplatesChange}
-                      onRefetchTemplates={refetchTemplates}
+                      onRefetchTemplates={stableRefetchTemplates}
                       user={user}
                       isMSAuthenticated={isMSAuthenticated}
                       msLogin={msLogin}
