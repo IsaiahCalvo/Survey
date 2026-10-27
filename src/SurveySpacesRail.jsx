@@ -14,6 +14,7 @@ import { revealInOwnScroller } from './utils/revealInOwnScroller.js';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from './Icons';
 import ListItemContextMenu from './components/ListItemContextMenu';
+import SwipeActionsRow, { buildSwipeActions } from './components/SwipeActionsRow.jsx';
 import SurveyCategoryMoveDialog from './components/SurveyCategoryMoveDialog';
 import SurveyMarkerTransferDialog from './components/SurveyMarkerTransferDialog';
 import SurveyModuleTabs from './components/SurveyModuleTabs';
@@ -472,6 +473,8 @@ const SurveySpacesRail = ({
   duplicateSurveyMarker,
   canEditSurveyCategories = false,
   canModifySurveyMarkerItem,
+  // The viewer's Undo (AppShell's top bar), for the swipe-delete Undo toast.
+  onUndoLastChange = null,
   documentSyncEnabled,
   expandedCategories,
   expandedSurveyMarkers,
@@ -2182,6 +2185,58 @@ const SurveySpacesRail = ({
     });
   }, [setSurveyMarkers]);
 
+  /* Owner 2026-10-27: slide a category or Survey Marker row left for its
+     actions - the same ones, rules and delete paths as its right-click menu.
+     A Survey Marker delete is one Undo step, so the swipe deletes at once and
+     offers Undo on a toast; a category delete (template structure, not on
+     the Undo timeline) keeps the menu's question. */
+  const deleteCategoryFromSwipe = async (category) => {
+    if (!await askConfirm({ title: `Delete ${category.name || 'category'}?`, message: 'This deletes the category and its Survey Markers.', confirmLabel: 'Delete', danger: true })) return;
+    Object.entries(surveyMarkers || {}).filter(([, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === category.id).forEach(([id]) => handleDeleteSurveyMarkerItem(id));
+    deleteCategory(selectedModuleId, category.id);
+  };
+  const categorySwipeActions = (category) => {
+    const moduleCount = (selectedTemplate?.modules || selectedTemplate?.spaces || []).length;
+    const markerIds = Object.entries(surveyMarkers || {})
+      .filter(([, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === category.id)
+      .map(([id]) => id);
+    return buildSwipeActions({
+      onMove: () => setMovingCategoryIds([category.id]),
+      onCopy: () => { setSelectedCategories({ [category.id]: true }); setShowSpaceSelection(true); },
+      onDelete: () => deleteCategoryFromSwipe(category),
+      can: {
+        move: (canEditSurveyCategories && moduleCount > 1) || 'Choose an editable document with another module',
+        copy: markerIds.length > 0 || 'This category has no items to copy',
+        delete: (canEditSurveyCategories && markerIds.every((id) => canModifySurveyMarkerItem?.(id) !== false))
+          || 'Use the latest template in an editable document to delete categories',
+      },
+    });
+  };
+  const deleteSurveyMarkerFromSwipe = async (id, name) => {
+    const label = name || 'Survey Marker';
+    if (typeof onUndoLastChange !== 'function') {
+      if (await askConfirm({ title: `Delete ${label}?`, message: 'Delete this Survey Marker?', confirmLabel: 'Delete', danger: true })) handleDeleteSurveyMarkerItem(id);
+      return;
+    }
+    handleDeleteSurveyMarkerItem(id);
+    showToast(`Deleted ${label}`, 'info', { action: { label: 'Undo', onClick: () => onUndoLastChange() }, duration: 5000 });
+  };
+  const surveyMarkerSwipeActions = (row, name) => {
+    const marker = { ...row, ...(surveyMarkers?.[row.id] || {}), id: row.id };
+    const canModify = canModifySurveyMarkerItem?.(marker.id) !== false;
+    return buildSwipeActions({
+      onDuplicate: duplicateSurveyMarker ? () => duplicateSurveyMarker(marker.id) : undefined,
+      onMove: () => setMarkerTransfer({ mode: 'move', ids: [marker.id], categoryId: marker.categoryId ?? null }),
+      onCopy: () => setMarkerTransfer({ mode: 'copy', ids: [marker.id], categoryId: marker.categoryId ?? null }),
+      onDelete: () => deleteSurveyMarkerFromSwipe(marker.id, name),
+      can: {
+        duplicate: Boolean(marker.pageNumber) || 'Place it on a page first',
+        move: canModify || 'This one is locked or not yours to move',
+        delete: canModify || 'This one is locked or not yours to delete',
+      },
+    });
+  };
+
   return (
           <>
             {mobileMode && !isSurveyPanelCollapsed && (
@@ -3409,6 +3464,11 @@ const SurveySpacesRail = ({
                                         transition: isDragging ? 'none' : undefined
                                       }}
                                     >
+                                      <SwipeActionsRow
+                                        label={category.name || 'Untitled category'}
+                                        disabled={isCategorySelectable || isItemSelectModeActiveForCategory || isDragging}
+                                        actions={categorySwipeActions(category)}
+                                      >
                                       <div
                                         data-drag-rearrange-row
                                         className="survey-marker-category-row"
@@ -3665,6 +3725,7 @@ const SurveySpacesRail = ({
                                             )}
                                           </div>
                                       </div>
+                                      </SwipeActionsRow>
 
                                       {/* Expanded surveyMarkers list */}
                                       {mobileMode && isExpanded && surveyMarkerCount === 0 && (
@@ -3759,6 +3820,11 @@ const SurveySpacesRail = ({
                                                     });
                                                   };
                                                   return (
+                                              <SwipeActionsRow
+                                                label={surveyMarkerName || fallbackName || 'Survey Marker'}
+                                                disabled={isMarkerSelectable || isSurveyMarkerExpanded || isEntityDropdownOpenForMarker || isDragging || (mobileMode && annotationId === mobileDetailMarkerId)}
+                                                actions={surveyMarkerSwipeActions({ ...surveyMarker, id: annotationId }, surveyMarkerName || fallbackName)}
+                                              >
                                               <div
                                                 id={`highlight-item-${surveyMarker.id}`}
                                                 onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setListContextMenu({ type: 'marker', id: surveyMarker.id, name: surveyMarker.name, x: event.clientX, y: event.clientY }); }}
@@ -4242,6 +4308,7 @@ const SurveySpacesRail = ({
                                                     block the phone's open Survey Marker shows. */}
                                                 {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerNotes(annotationId, 'desktop')}
                                               </div>
+                                              </SwipeActionsRow>
                                                   );
                                                 }}
                                               </SortableRearrangeRow>

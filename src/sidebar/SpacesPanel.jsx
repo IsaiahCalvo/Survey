@@ -28,6 +28,7 @@ import {
 import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
 import SectionIconButton from '../components/SectionIconButton.jsx';
+import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import { watchLightPopover } from '../components/dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import AnchoredPopover from '../components/AnchoredPopover';
@@ -227,6 +228,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
       className={`space-card${isExpanded ? ' is-expanded' : ''}${isDragging ? ' is-dragging' : ''}${isActive ? ' is-active' : ''}`}
     >
       <div data-drag-rearrange-row className="space-card__block">
+        {/* Owner 2026-10-27: slide the space left for Delete, no Edit mode
+            needed - the same delete (and cascade question) as the trash. */}
+        <SwipeActionsRow
+          label={spaceName}
+          disabled={editMode || isDragging || isRearranging}
+          actions={buildSwipeActions({ onDelete: canManageSpaces ? () => onDelete(space.id) : undefined })}
+        >
         <div
           className="space-card__head"
           aria-expanded={isExpanded}
@@ -332,6 +340,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             <Icon name="trash" size={14} color="currentColor" />
           </button> : (canManageSpaces && <span className="space-card__icon space-card__spare" aria-hidden="true" />)}
         </div>
+        </SwipeActionsRow>
 
         {isExpanded && (
           <div className="space-card__body">
@@ -427,7 +436,20 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                         : (visibilityState ? 'Hide marks' : 'Show marks');
 
                     return (
-                      <li key={page.pageId} className={`space-region-card${isActiveRegionEdit ? ' is-editing' : ''}`}>
+                      /* Owner 2026-10-27: slide a region left for Move (the
+                         move-or-copy menu) and Remove, no Edit mode needed. */
+                      <SwipeActionsRow
+                        as="li"
+                        key={page.pageId}
+                        label={`Page ${page.pageId}`}
+                        disabled={editMode || isEditingRegion || isActiveRegionEdit}
+                        actions={canManageSpaces ? buildSwipeActions({
+                          onMove: onTransferRegion ? (anchor) => onTransferRegion(space.id, page.pageId, regionLabel, anchor) : undefined,
+                          onDelete: () => onRemovePage(space.id, page.pageId),
+                          labels: { delete: 'Remove' },
+                        }) : null}
+                      >
+                      <div className={`space-region-card${isActiveRegionEdit ? ' is-editing' : ''}`}>
                         <button
                           type="button"
                           className="spaces-region__page"
@@ -590,7 +612,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                         >
                           <Icon name="trash" size={14} color="currentColor" />
                         </button> : (canManageSpaces && <span className="space-card__icon space-card__spare" aria-hidden="true" />)}
-                      </li>
+                      </div>
+                      </SwipeActionsRow>
                     );
                   })}
               </ul>
@@ -1189,7 +1212,7 @@ const SpacesPanel = ({
     if (!requireSpaceManagement()) return;
     const space = (spaces || []).find((entry) => entry?.id === spaceId);
     const impact = getSpaceRemovalImpact?.(spaceId, null) || null;
-    askConfirm(buildDeleteSpaceConfirm({
+    return askConfirm(buildDeleteSpaceConfirm({
       spaceName: space?.name,
       pageCount: space?.assignedPages?.length || 0,
       impact,
@@ -1355,7 +1378,7 @@ const SpacesPanel = ({
       onSpaceRemovePage(spaceId, pageId);
       return;
     }
-    askConfirm(prompt).then((confirmed) => {
+    return askConfirm(prompt).then((confirmed) => {
       if (confirmed) onSpaceRemovePage(spaceId, pageId);
     });
   }, [askConfirm, getSpaceRemovalImpact, onSpaceRemovePage, requireSpaceManagement, spaces]);

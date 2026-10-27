@@ -15,6 +15,7 @@ import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell
 import { countLabel } from './countLabel.js';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
+import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
@@ -729,11 +730,28 @@ export default function DocumentsLedger({
       />
     </div>
   );
+  /* Owner 2026-10-27: slide a document left for Duplicate, Move, Copy, Share
+     and Delete - the select-mode actions for just this one, with the same
+     owner rules as its menu. Delete moves it to Archive with an Undo. */
+  const documentSwipeActions = (d) => {
+    const pickOnly = () => setSelDocs(new Set([d.id]));
+    return buildSwipeActions({
+      onDuplicate: onDuplicate ? () => onDuplicate([d.raw]) : undefined,
+      onMove: onMoveCopy ? () => { pickOnly(); setMoveMode('move'); setMoveOpen(true); } : undefined,
+      onCopy: onMoveCopy ? () => { pickOnly(); setMoveMode('copy'); setMoveOpen(true); } : undefined,
+      onShare: onShare ? () => onShare([d.raw]) : undefined,
+      onDelete: onDelete ? () => onDelete([d.raw]) : undefined,
+      can: {
+        share: manageSelectionBlock([d.raw], user?.id, 'share') || true,
+        delete: manageSelectionBlock([d.raw], user?.id, 'delete') || true,
+      },
+    });
+  };
   const renderMobileCard = (d) => {
     const isChecked = selDocs.has(d.id);
     return (
+      <SwipeActionsRow key={`mobile-${d.id}`} label={d.name} disabled={docSelectMode} actions={documentSwipeActions(d)} className="mobile-doc-swipe">
       <div
-        key={`mobile-${d.id}`}
         data-document-id={d.id}
         className={`mobile-doc-card${docSelectMode && isChecked ? ' is-selected' : ''}`}
         onPointerDown={preloadPdfViewerNow}
@@ -757,6 +775,7 @@ export default function DocumentsLedger({
           {renderMobileThumb(d)}
         </div>
       </div>
+      </SwipeActionsRow>
     );
   };
 
@@ -833,8 +852,8 @@ export default function DocumentsLedger({
                 const isFilled = docSelectMode ? isChecked : (isChecked || (selDocs.size === 0 && isPreviewed));
                 const isDragging = Boolean(docDrag && docDrag.ids.includes(d.id));
                 return (
+                  <SwipeActionsRow key={d.id} label={d.name} disabled={docSelectMode} actions={documentSwipeActions(d)}>
                   <div
-                    key={d.id}
                     data-document-id={d.id}
                     className={`documents-ledger-row ${gridClass}${isFilled ? ' is-selected' : ''}${isDragging ? ' is-dragging' : ''}`}
                     // KAL-66: data-, not aria-selected - a plain div may not
@@ -929,6 +948,7 @@ export default function DocumentsLedger({
                       ><Icon name="more" size={14} /></button>
                     </div>
                   </div>
+                  </SwipeActionsRow>
                 );
               })}
             </div>

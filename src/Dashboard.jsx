@@ -1832,14 +1832,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const ids = selection.filter((entry) => !sharedIds.has(entry.id)).map((entry) => entry.id);
     if (ids.length === 0) return false;
     if (!user) { showToast('Please sign in to archive templates', 'warn'); return false; }
-    const confirmed = await askConfirm({
-      title: ids.length === 1 ? 'Move this template to Archive?' : `Move these ${ids.length} templates to Archive?`,
-      message: ids.length === 1
-        ? 'You can restore it from Archive for the next 30 days.'
-        : 'You can restore them from Archive for the next 30 days.',
-      confirmLabel: ids.length === 1 ? 'Move to Archive' : `Move ${ids.length} to Archive`,
-    });
-    if (!confirmed) return false;
+    // Owner 2026-10-27 (act first, then Undo): Archive keeps a template for 30
+    // days, so this no longer asks first - the rows go and the Undo toast
+    // brings them back, the same as documents and projects.
     // The RPC takes the templates ROW id; the editor works in config ids. The
     // display name comes from the same lookup so Archive names the template
     // instead of showing a generic label.
@@ -1886,6 +1881,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       );
       await refetchTemplates();
       notifyLibraryChanged();
+      if (succeeded.length) {
+        enqueueArchiveUndo({
+          kind: succeeded.length > 1 ? 'bulk' : 'single',
+          message: succeeded.length === 1 ? 'Template moved to Archive' : `Moved ${succeeded.length} templates to Archive`,
+          count: succeeded.length,
+          onUndo: () => { void undoArchivedTemplates(succeeded); },
+        });
+      }
     } catch (err) {
       console.error('[TemplateArchive] survey-hub:error', serializeError(err));
       showToast('Failed to archive templates: ' + (err.message || 'Unknown error'), 'error');
@@ -1893,6 +1896,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       return false;
     }
     return succeededIds;
+  };
+
+  // Undo for the template toast above: restores them from Archive and reloads
+  // the list, which hands the editor its templates back.
+  const undoArchivedTemplates = async (succeeded) => {
+    try {
+      const { failed } = await restoreArchiveItems(succeeded);
+      if (failed.length) {
+        console.error('[TemplateArchive] survey-hub:undo-partial', JSON.stringify(failed.map(f => f.error)));
+        showToast(failed[0].error, 'error');
+      }
+    } catch (err) {
+      console.error('[TemplateArchive] survey-hub:undo-error', serializeError(err));
+      showToast('Couldn’t restore from Archive: ' + (err.message || 'Unknown error'), 'error');
+    }
+    try { await hubReloadTemplates(); } catch (err) {
+      console.error('[TemplateArchive] survey-hub:undo-reload', serializeError(err));
+    }
+    notifyLibraryChanged();
   };
 
   const hubSaveTemplates = async (nextTemplates) => {

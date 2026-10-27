@@ -32,6 +32,7 @@ import { presenceInitials } from '../components/presenceIdentity.js';
 import { userColorFill } from '../utils/userColors.js';
 import { countLabel } from './countLabel.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
+import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import ManageTeamModal from './ManageTeamModal';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
 import { MoveCopyModal } from './BulkModals';
@@ -906,6 +907,31 @@ export default function ProjectsFolderTree({
       </span>
     </>
   );
+  /* Owner 2026-10-27: slide a project or file row left for the same actions
+     as its ⋮ menu, in the select-mode order, with the same owner rules. A
+     file outside the open project (Recent) only offers Share and Delete. */
+  const projectSwipeActions = (p) => {
+    const ownerOnly = canManageProject(p, user?.id) || 'Only the project owner can do this';
+    return buildSwipeActions({
+      onDuplicate: () => duplicateProjects([p.id]),
+      onShare: onShare ? () => onShare(p) : undefined,
+      onDelete: () => deleteProjects([p.id]),
+      can: { share: ownerOnly, delete: ownerOnly },
+    });
+  };
+  const fileSwipeActions = (f) => {
+    const project = projectById.get(f.project_id) || null;
+    const manage = canManageProjectFile(f, project, user?.id) || 'Only the uploader or project owner can do this';
+    const inOpen = Boolean(open && f.project_id === open.id);
+    return buildSwipeActions({
+      onDuplicate: inOpen ? () => duplicateFiles([f.id]) : undefined,
+      onMove: inOpen ? () => openMoveCopy([f], 'move') : undefined,
+      onCopy: inOpen ? () => openMoveCopy([f], 'copy') : undefined,
+      onShare: onShareDocument ? () => onShareDocument([f]) : (onShare ? () => onShare(project || open) : undefined),
+      onDelete: inOpen ? () => deleteFiles([f.id]) : (onDeleteDocuments ? () => onDeleteDocuments([f]) : undefined),
+      can: { share: manage, delete: manage },
+    });
+  };
   const renderMobileFileRow = (f, keyPrefix = 'mobile-file', dragHandle = null) => {
     const isChecked = selFiles.has(f.id);
     const ownerId = f.user_id ?? f.owner ?? projectTeam(projectById.get(f.project_id))[0] ?? null;
@@ -914,8 +940,8 @@ export default function ProjectsFolderTree({
        cue the desktop file ledger uses. The check box on its own was the only
        mark a picked row carried. */
     return (
+      <SwipeActionsRow key={`${keyPrefix}-${f.id}`} label={f.name} disabled={fileSelect} actions={fileSwipeActions(f)}>
       <div
-        key={`${keyPrefix}-${f.id}`}
         data-document-id={f.id}
         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setFileMenu({ id: f.id, rect: { left: event.clientX, right: event.clientX + 168, top: event.clientY, bottom: event.clientY } }); setTeamMenu(null); }}
         className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}${fileSelect && isChecked ? ' is-selected' : ''}`}
@@ -950,6 +976,7 @@ export default function ProjectsFolderTree({
           ><Icon name="more" size={14} /></button>
         )}
       </div>
+      </SwipeActionsRow>
     );
   };
 
@@ -1032,6 +1059,7 @@ export default function ProjectsFolderTree({
                   id={p.id}
                 >
                   {({ attributes, listeners, isDragging }) => (
+                  <SwipeActionsRow label={p.name} disabled={jobsEdit} actions={projectSwipeActions(p)}>
                   <div
                     data-drag-rearrange-row
                     data-project-id={p.id}
@@ -1106,6 +1134,7 @@ export default function ProjectsFolderTree({
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
+                  </SwipeActionsRow>
                   )}
                 </SortableRearrangeRow>
               );
@@ -1218,6 +1247,7 @@ export default function ProjectsFolderTree({
                             id={f.id}
                           >
                             {({ attributes, listeners, isDragging }) => (
+                          <SwipeActionsRow label={f.name} disabled={fileSelect} actions={fileSwipeActions(f)} style={{ borderRadius: 6 }}>
                           <div
                             data-drag-rearrange-row
                             data-document-id={f.id}
@@ -1284,6 +1314,7 @@ export default function ProjectsFolderTree({
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
+                          </SwipeActionsRow>
                             )}
                           </SortableRearrangeRow>
                         );
@@ -1434,6 +1465,7 @@ export default function ProjectsFolderTree({
                     return (
                       <SortableRearrangeRow key={`drill-folder-${p.id}`} id={p.id}>
                         {({ attributes, listeners, isDragging }) => (
+                          <SwipeActionsRow label={p.name} disabled={jobsEdit} actions={projectSwipeActions(p)}>
                           <div
                             data-drag-rearrange-row
                             data-project-id={p.id}
@@ -1495,6 +1527,7 @@ export default function ProjectsFolderTree({
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
+                          </SwipeActionsRow>
                         )}
                       </SortableRearrangeRow>
                     );
