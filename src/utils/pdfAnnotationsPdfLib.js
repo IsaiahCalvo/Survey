@@ -5704,6 +5704,10 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
       borderColor: borderWidth > 0 ? border?.color : undefined,
       borderWidth,
       borderOpacity: borderWidth > 0 ? (border?.opacity ?? 1) * objectOpacity : undefined,
+      // Dashed / dotted line style, as the screen draws it (renderText).
+      borderDashArray: borderWidth > 0 && Array.isArray(obj?.strokeDashArray) && obj.strokeDashArray.length
+        ? obj.strokeDashArray.map((value) => Math.max(0, Number(value) || 0))
+        : undefined,
     };
     const drawBox = (box, paint) => {
       if (angle) {
@@ -5738,6 +5742,7 @@ const drawFlattenedText = (page, obj, pageHeight, fonts) => {
         borderColor: common.borderColor,
         borderWidth,
         borderOpacity: common.borderOpacity,
+        borderDashArray: common.borderDashArray,
       });
     } else {
       drawBox(outer, common);

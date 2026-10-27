@@ -9,6 +9,7 @@ import {
   TEXT_PADDING,
   FABRIC_TEXTBOX_ENVELOPE,
   buildNewTextCommitJSON,
+  newTextBoxPaint,
   buildExistingTextCommitJSON,
   ensureTextAnnotationId,
 } from '../src/utils/textEditCommit.js';
@@ -133,4 +134,36 @@ test('ensureTextAnnotationId: reuses any existing id, never overwrites', () => {
   const c = {};
   ensureTextAnnotationId(c, 'Textbox');
   assert.ok(c.data.id.length > 0);
+});
+
+test('newTextBoxPaint: a new box takes the bar\'s border colour, width, fill and line style', () => {
+  const paint = newTextBoxPaint({ strokeColor: '#ff0000', strokeOpacity: 50, strokeWidth: 6, fillColor: '#00ff00', fillOpacity: 40, lineBorderStyle: 'dashed' });
+  assert.equal(paint.stroke, 'rgba(255, 0, 0, 0.5)');
+  assert.equal(paint.strokeWidth, 6);
+  assert.equal(paint.backgroundColor, 'rgba(0, 255, 0, 0.4)');
+  assert.deepEqual(paint.strokeDashArray, [6, 4]);
+  assert.deepEqual(newTextBoxPaint({ lineBorderStyle: 'dotted' }).strokeDashArray, [2, 4]);
+});
+
+test('newTextBoxPaint: no fill means no background, and bad widths fall back to 1', () => {
+  const paint = newTextBoxPaint({ strokeColor: '#000000', strokeWidth: 'x', fillColor: '#ffffff', fillOpacity: 0 });
+  assert.equal(paint.backgroundColor, null);
+  assert.equal(paint.strokeWidth, 1);
+  assert.equal(paint.strokeDashArray, null);
+  assert.equal(newTextBoxPaint({ strokeWidth: 0 }).strokeWidth, 0);
+  assert.equal(newTextBoxPaint().strokeWidth, 1);
+});
+
+test('new text: commit carries the box background and dashes', () => {
+  const json = buildNewTextCommitJSON({
+    text: 'hi', left: 0, top: 0, innerWrapWidth: 148, maxLineWidth: 30, lineCount: 1, naturalInnerHeight: 21,
+    stroke: '#ff0000', strokeWidth: 6, backgroundColor: 'rgba(0, 255, 0, 0.4)', strokeDashArray: [6, 4],
+  });
+  assert.equal(json.stroke, '#ff0000');
+  assert.equal(json.strokeWidth, 6);
+  assert.equal(json.backgroundColor, 'rgba(0, 255, 0, 0.4)');
+  assert.deepEqual(json.strokeDashArray, [6, 4]);
+  const plain = buildNewTextCommitJSON({ text: 'hi', left: 0, top: 0, innerWrapWidth: 148, naturalInnerHeight: 21 });
+  assert.ok(!plain.backgroundColor);
+  assert.equal(plain.strokeDashArray ?? null, null);
 });

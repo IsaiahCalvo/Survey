@@ -180,7 +180,7 @@ import {
   refitTextboxToText,
   resolveTextStyleWrite,
 } from './utils/selectedTextFormatting.js';
-import { buildNewTextCommitJSON, TEXT_PADDING } from './utils/textEditCommit.js';
+import { buildNewTextCommitJSON, newTextBoxPaint, TEXT_PADDING } from './utils/textEditCommit.js';
 import {
   applyRestyleChange,
   applyRestyleChangeToPage,
@@ -38978,7 +38978,11 @@ ${pageBlocks}
                                   caretAnchor={editingAnnotation.caretAnchor || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
                                   textBoxHeight={editingAnnotation.textBoxHeight}
-                                  newTextStyle={mobileMode ? textStyleDefaults : null}
+                                  // A new text box takes what the bar shows: the Aa row's text
+                                  // style (desktop used to drop it, like callouts never did) and
+                                  // the paint row's border colour, width, fill and line style.
+                                  newTextStyle={textStyleDefaults}
+                                  newTextPaint={newTextBoxPaint(newMarkStyle)}
                                   newTextCloudIntensity={lineBorderStyle === 'cloud' ? Math.max(1, Number(cloudIntensity) || 2) : null}
                                   authorId={user?.id ?? null}
                                   // KAL-88 — survey/region scope inputs for NEW text commits;

@@ -7865,6 +7865,8 @@ const SVGAnnotationLayerBody = memo(({
             fill: liveTextEditBounds.fill || '#007AFF',
             stroke: liveTextEditBounds.stroke || '#000000',
             strokeWidth: liveTextEditBounds.strokeWidth ?? 1,
+            ...(liveTextEditBounds.backgroundColor ? { backgroundColor: liveTextEditBounds.backgroundColor } : {}),
+            ...(liveTextEditBounds.strokeDashArray ? { strokeDashArray: liveTextEditBounds.strokeDashArray } : {}),
             text: liveTextEditBounds.text || '',
             opacity: 1,
             // w43: a box drawn with the Style picker on Cloud previews its
