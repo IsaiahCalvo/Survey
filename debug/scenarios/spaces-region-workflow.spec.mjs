@@ -20,6 +20,9 @@ test('Spaces edit mode, visibility animation, copy, move and scoped Undo', async
   await page.getByRole('switch', { name: 'Turn on space', exact: true }).first().click();
   await expect(button(page, 'Exit Fix19 Space A')).toHaveCount(0);
   await expect(page.locator('.spaces-region__marks').first()).toHaveCSS('color', 'rgb(216, 168, 78)');
+  // A switch that is on is gold like every lit toggle, never --success green.
+  await expect.poll(() => page.getByRole('switch', { name: /^Turn off space/ }).first()
+    .evaluate((element) => getComputedStyle(element, '::before').backgroundColor)).toBe('rgb(216, 168, 78)');
   const toggle = page.locator('.space-region-card .spaces-switch').first();
   await page.waitForTimeout(250);
   const frames = await toggle.evaluate(async (element) => {
@@ -45,16 +48,16 @@ test('Spaces edit mode, visibility animation, copy, move and scoped Undo', async
   await button(page, 'Move or copy region on page 1').click();
   await page.getByRole('textbox', { name: 'Destination page' }).fill('2');
   await button(page, 'Copy region').click();
-  await expect(page.getByRole('menu', { name: 'Move or copy Region 1' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Move or copy Region 1' })).toHaveCount(0);
   await expect(button(page, 'Go to page 2')).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__fix20CollabHarness.getState().annotations.filter((mark) => mark.id === 'spaces-owned').length)).toBe(1);
   await button(page, 'Undo').click();
   await expect(button(page, 'Go to page 2')).toHaveCount(0);
   await button(page, 'Move or copy region on page 1').click();
-  await page.getByLabel('Destination space').selectOption({ label: 'Fix19 Space B' });
+  await page.getByRole('combobox', { name: 'Destination space' }).selectOption({ label: 'Fix19 Space B' });
   await page.getByRole('textbox', { name: 'Destination page' }).fill('3');
   await button(page, 'Move region').click();
-  await expect(page.getByRole('menu', { name: 'Move or copy Region 1' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Move or copy Region 1' })).toHaveCount(0);
   await button(page, 'Open Fix19 Space B').click();
   await button(page, 'Go to page 3').click();
   const markPage = () => page.locator('[data-annotation-id="spaces-owned"]').evaluateAll((elements) => elements.map((element) => element.closest('[data-page-number]')?.dataset.pageNumber));

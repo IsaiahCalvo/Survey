@@ -578,7 +578,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                             type="button"
                             className={`space-card__icon${isTransferOpenFor?.(space.id, page.pageId) ? ' is-on' : ''}`}
                             data-glyph-only=""
-                            aria-haspopup={mobileMode ? 'dialog' : 'menu'}
+                            aria-haspopup="dialog"
                             aria-expanded={Boolean(isTransferOpenFor?.(space.id, page.pageId))}
                             aria-label={`Move or copy region on page ${page.pageId}`}
                             {...tip('Move or copy to another page or space', 'below')}
@@ -702,14 +702,17 @@ function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExpo
 /*
  * Owner 2026-10-27 ("that modal is way too big ... it should come off as a
  * window with a tooltip type of thing, with a leader or tail that points to
- * that button"): a small card beside the row's button with a tail pointing at
- * it (CalloutPopover; phone: its own small sheet). A space dropdown, then
- * the page stepper with small Copy and Move icon buttons beside it. Move takes the region and its
- * marks; Copy takes the outline only (Bluebeam's Spaces copy the boundary,
- * markups stay where they are).
+ * that button"; later the same day: "the space that we select should come
+ * from a dropdown, and the copy and move buttons should be smaller. Maybe
+ * just icons"): a small card beside the row's button with a tail pointing at
+ * it (CalloutPopover; phone: its own small sheet). A space drop-down, then
+ * the page stepper with Copy and Move as two icon buttons on the same line.
+ * Move takes the region and its marks; Copy takes the outline only
+ * (Bluebeam's Spaces copy the boundary, markups stay where they are).
  */
 function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onCopy, onClose }) {
   const tip = useTooltip();
+  const phone = Boolean(onClose);
   const pageNumber = Number(transfer.targetPageId);
   const maxPage = typeof numPages === 'number' && numPages > 0 ? numPages : Infinity;
   const pageValid = Number.isInteger(pageNumber) && pageNumber >= 1 && pageNumber <= maxPage;
@@ -723,6 +726,33 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
   const hint = !pageValid
     ? (Number.isFinite(maxPage) ? `Pick a page from 1 to ${maxPage}` : 'Pick a page')
     : (samePlace ? 'Pick another page or space' : null);
+  // Touch shows no tooltips, so the phone's buttons carry their word too.
+  const actions = (
+    <div className="spaces-transfer__actions">
+      <button
+        type="button"
+        className={`hub-btn${phone ? '' : ' hub-btn--icon'} spaces-transfer__act`}
+        aria-label="Copy region"
+        disabled={!canGo}
+        {...(phone ? {} : tip('Copy here (outline only, marks stay)', 'below'))}
+        onClick={onCopy}
+      >
+        <Icon name="copy" size={phone ? 16 : 14} color="currentColor" />
+        {phone ? <span>Copy</span> : null}
+      </button>
+      <button
+        type="button"
+        className={`hub-btn${phone ? '' : ' hub-btn--icon'} hub-btn--primary spaces-transfer__act`}
+        aria-label="Move region"
+        disabled={!canGo}
+        {...(phone ? {} : tip('Move here (with its marks)', 'below'))}
+        onClick={onMove}
+      >
+        <Icon name="moveTo" size={phone ? 16 : 14} color="currentColor" />
+        {phone ? <span>Move</span> : null}
+      </button>
+    </div>
+  );
   return (
     <>
       <div className="spaces-transfer__head">
@@ -732,20 +762,18 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
           <button type="button" className="spaces-export__close tertiary" onClick={onClose}>Cancel</button>
         ) : null}
       </div>
-      {/* Owner 2026-10-27: the space comes from a dropdown. */}
-      <label className="spaces-transfer__field">
-        <span className="spaces-transfer__label">Space</span>
+      <div className="spaces-transfer__select">
         <select
-          className="spaces-transfer__select"
           aria-label="Destination space"
-          value={transfer.targetSpaceId || ''}
+          value={transfer.targetSpaceId}
           onChange={(e) => onChange({ targetSpaceId: e.target.value })}
         >
           {spaces.map((space) => (
             <option key={space.id} value={space.id}>{space.name || 'Space'}</option>
           ))}
         </select>
-      </label>
+        <Icon name="chevronDown" size={12} color="currentColor" />
+      </div>
       <div className="spaces-transfer__page">
         <span className="spaces-transfer__label">Page</span>
         <div className="spaces-transfer__stepper">
@@ -786,37 +814,14 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
           </button>
         </div>
         {Number.isFinite(maxPage) && <small className="spaces-transfer__of">of {maxPage}</small>}
-        {/* Owner 2026-10-27: Copy and Move are small icon buttons. */}
-        <span className="spaces-transfer__actions">
-          <button
-            type="button"
-            className="spaces-transfer__go"
-            aria-label="Copy region"
-            disabled={!canGo}
-            {...tip('Copy: the outline only; marks stay here', 'below')}
-            onClick={onCopy}
-          >
-            <Icon name="copy" size={14} color="currentColor" />
-          </button>
-          <button
-            type="button"
-            className="spaces-transfer__go is-primary"
-            aria-label="Move region"
-            disabled={!canGo}
-            {...tip('Move: the region and its marks go there', 'below')}
-            onClick={onMove}
-          >
-            <Icon name="moveTo" size={14} color="currentColor" />
-          </button>
-        </span>
+        {phone ? null : actions}
       </div>
       {hint && <div className="spaces-transfer__hint" role="status">{hint}</div>}
-      {/* Touch shows no tooltips, so the phone says what each one takes. */}
-      {onClose ? (
-        <div className="spaces-transfer__note">
-          <span><Icon name="copy" size={13} color="currentColor" /> Copy takes the outline only.</span>
-          <span><Icon name="moveTo" size={13} color="currentColor" /> Move takes its marks along.</span>
-        </div>
+      {phone ? (
+        <>
+          {actions}
+          <div className="spaces-transfer__note">Move takes its marks along. Copy takes the outline only.</div>
+        </>
       ) : null}
     </>
   );
@@ -1746,7 +1751,7 @@ const SpacesPanel = ({
           ref={transferMenuRef}
           getAnchor={() => transferAnchorRef.current}
           className="spaces-transfer-callout"
-          role="menu"
+          role="dialog"
           aria-label={`Move or copy ${transfer.label}`}
         >
           {transferPanel}

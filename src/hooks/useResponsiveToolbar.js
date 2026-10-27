@@ -9,6 +9,7 @@ import {
   textRowWidth,
   slotDefinition,
   widestSubtoolsWidth,
+  EDGE_CLEARANCE,
 } from '../utils/responsiveToolbar.js';
 import { getViewerSideOccluders, subscribeViewerSideOccluders } from '../utils/viewerSideOverlay.js';
 
@@ -255,6 +256,7 @@ export default function useResponsiveToolbar({ hostRef, formatRowRef, enabled, o
       spanLeft: canvasLeft,
       spanRight: canvasRight,
       clusterNaturalLeft: clusterRect.left - hostRect.left + drawnShift,
+      edgeClearance: Math.max(EDGE_CLEARANCE, toolGap),
     });
 
     // The formatting row: planned only while it is on screen. A hidden row

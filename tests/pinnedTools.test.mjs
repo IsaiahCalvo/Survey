@@ -7,7 +7,7 @@ import test from 'node:test';
 import {
   PINNABLE_TOOLS, chooseDockPlacement, createPinnedToolsStore, dropDurationMs, magnetPull, makePin, movePin,
   pinBadge, pinDescription, pinFaceColor, pinKindForTool, pinStyleFor, reorderIndexAt, reorderShift,
-  sanitizePinnedToolsState,
+  sanitizePinnedToolsState, slotsThatFit, visiblePinCount, COMPACT_DOCK_SLOTS, CARRIED_DOCK_SLOTS,
 } from '../src/pinnedTools/pinnedTools.js';
 import { armPin, endPinSession, pinEditFromViewer, sessionStatus, startingStyleFor } from '../src/pinnedTools/pinSession.js';
 import { FEATURE_FLAGS, isFeatureOn } from '../src/featureFlags.js';
@@ -73,8 +73,10 @@ test('pinned tools: a pin keeps only the settings its tool uses', () => {
   assert.equal(pinStyleFor('cloud', { lineStyle: 'solid' }).lineStyle, 'cloud');
   assert.equal(pinStyleFor('ellipse', { lineStyle: 'cloud' }).lineStyle, 'cloud');
   assert.equal(pinStyleFor('arrow', { lineStyle: 'cloud' }).lineStyle, 'solid');
-  assert.deepEqual(pinStyleFor('eraser', { strokeWidth: 9 }), {});
-  assert.equal(pinStyleFor('text', { strokeWidth: 9, strokeColor: '#000000' }).strokeWidth, undefined);
+  // The eraser keeps its size only; a text box keeps its border width and style.
+  assert.deepEqual(pinStyleFor('eraser', { strokeWidth: 9, strokeColor: '#ff0000' }), { strokeWidth: 9 });
+  assert.deepEqual(pinStyleFor('text', { strokeWidth: 9, strokeColor: '#000000', lineStyle: 'cloud' }),
+    { strokeColor: '#000000', strokeWidth: 9, lineStyle: 'cloud' });
   assert.equal(pinKindForTool('rect', 'cloud').id, 'cloud');
   assert.equal(pinKindForTool('rect', 'dashed').id, 'rect');
   assert.equal(pinKindForTool('pan', 'solid'), null);
@@ -85,11 +87,40 @@ test('pinned tools: the face shows colour and width like Drawboard', () => {
   const pen = makePin('pen', { strokeColor: '#0000ff', strokeWidth: 0.5 }, 'a');
   assert.equal(pinFaceColor(pen), '#0000ff');
   assert.equal(pinBadge(pen), '.5');
-  assert.equal(pinDescription(pen), 'Pen, blue, .5 wide');
+  assert.equal(pinDescription(pen), 'Pen, blue, .5 pt');
   const counter = makePin('counter', { strokeColor: '#000000', fillColor: '#ef4444', strokeWidth: 14 }, 'b');
   assert.equal(pinFaceColor(counter), '#ef4444');
   assert.equal(pinBadge(makePin('eraser', {}, 'c')), '');
-  assert.equal(pinDescription(makePin('line', { strokeColor: '#ff0000', strokeWidth: 2, lineStyle: 'dashed' }, 'd')), 'Line, red, 2 wide, dashed');
+  assert.equal(pinBadge(makePin('eraser', { strokeWidth: 20 }, 'c')), '20');
+  assert.equal(pinDescription(makePin('line', { strokeColor: '#ff0000', strokeWidth: 2, lineStyle: 'dashed' }, 'd')), 'Line, red, 2 pt, dashed');
+});
+
+test('pinned tools: every pin follows one rule - the settings row\'s colour and size', () => {
+  // What the settings row holds for a tool armed with its defaults (useDatabase
+  // DEFAULT_TOOL_PREFERENCES; the eraser's Size box starts at 20).
+  const row = {
+    pen: { strokeColor: '#ff0000', strokeWidth: 3 },
+    highlighter: { strokeColor: '#ffff00', strokeWidth: 20, strokeOpacity: 50 },
+    eraser: { strokeWidth: 20 },
+    rect: { strokeColor: '#ff0000', strokeWidth: 2 },
+    ellipse: { strokeColor: '#ff0000', strokeWidth: 2 },
+    polygon: { strokeColor: '#ff0000', strokeWidth: 2 },
+    cloud: { strokeColor: '#c42747', strokeWidth: 2.5 },
+    polyline: { strokeColor: '#ff0000', strokeWidth: 2 },
+    line: { strokeColor: '#ff0000', strokeWidth: 2 },
+    arrow: { strokeColor: '#ff0000', strokeWidth: 2 },
+    counter: { strokeColor: '#ef4444', fillColor: '#ef4444', strokeWidth: 14 },
+    text: { strokeColor: '#000000', strokeWidth: 1 },
+    callout: { strokeColor: '#ff0000', strokeWidth: 2 },
+  };
+  assert.deepEqual(Object.keys(row).sort(), PINNABLE_TOOLS.map((kind) => kind.id).sort(), 'every pinnable tool is covered');
+  for (const [kind, style] of Object.entries(row)) {
+    const pin = makePin(kind, style, kind);
+    assert.ok(pinBadge(pin), `${kind} shows its size`);
+    assert.equal(pinBadge(pin), String(style.strokeWidth).replace(/^0(?=\.)/, ''));
+    if (kind === 'eraser') assert.equal(pinFaceColor(pin), null, 'the eraser has no colour');
+    else assert.equal(pinFaceColor(pin), kind === 'counter' ? style.fillColor : style.strokeColor, `${kind} shows its colour`);
+  }
 });
 
 test('pinned tools: no limit on pins, saved per browser, bad saves are cleaned', () => {
@@ -239,4 +270,30 @@ test('pinned tools: the dock toggle draws Lucide\'s pin', () => {
   const source = readFileSync(new URL('../src/components/PinnedToolsDock.jsx', import.meta.url), 'utf8');
   assert.match(source, /M9 10\.76a2 2 0 0 1-1\.11 1\.79l-1\.78\.9A2 2 0 0 0 5 15\.24V16/);
   assert.doesNotMatch(source, /M9 4h6l-1 6 3 3H7l3-3-1-6Z/);
+});
+
+test('pinned tools: a big dock never scrolls pins out of sight - the rest wait behind "+N"', () => {
+  // 32px pins, 2px apart: 484px of room holds 14 slots.
+  assert.equal(slotsThatFit(484, 34, 2), 14);
+  assert.equal(slotsThatFit(Infinity, 34, 2), Infinity);
+  assert.equal(slotsThatFit(10, 34, 2), 1);
+  // All fit: all shown. Too many: one fewer than the slots, "+N" takes the last.
+  assert.equal(visiblePinCount(17, 17), 17);
+  assert.equal(visiblePinCount(17, 14), 13);
+  assert.equal(visiblePinCount(0, 14), 0);
+  assert.equal(visiblePinCount(17, 1), 1);
+  // The compact dock is 7 slots long and a carried dock 6, as Isaiah asked
+  // for ("shows 5 different icons or 7").
+  assert.equal(visiblePinCount(17, COMPACT_DOCK_SLOTS), 6);
+  assert.equal(visiblePinCount(17, CARRIED_DOCK_SLOTS), 5);
+  assert.equal(visiblePinCount(6, COMPACT_DOCK_SLOTS), 6);
+});
+
+test('pinned tools: the compact choice is saved with the dock', () => {
+  const storage = memoryStorage();
+  const store = createPinnedToolsStore({ storage });
+  assert.equal(store.getState().compact, false);
+  store.setCompact(true);
+  assert.equal(createPinnedToolsStore({ storage }).getState().compact, true);
+  assert.equal(sanitizePinnedToolsState({ compact: 'yes' }).compact, false);
 });
