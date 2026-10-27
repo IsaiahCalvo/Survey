@@ -154,7 +154,9 @@ test('the phone rail opens on your own initials, not a placeholder', () => {
 });
 
 test('the Expo shell: dark splash, no spinner, patient timeout, retries by itself', () => {
-  assert.equal(EXPO_CONFIG.expo.splash.backgroundColor, '#0d0f14');
+  // SDK 58: the splash lives in the expo-splash-screen plugin config.
+  const splash = EXPO_CONFIG.expo.plugins.find((p) => Array.isArray(p) && p[0] === 'expo-splash-screen')?.[1];
+  assert.equal(splash?.backgroundColor, '#0d0f14');
   assert.doesNotMatch(EXPO_APP, /ActivityIndicator/);
   assert.doesNotMatch(EXPO_APP, /startInLoadingState/);
   assert.match(EXPO_APP, /onLoadProgress=\{\(\) => \{ lastLoadProgressAtRef\.current = Date\.now\(\); \}\}/);
@@ -165,7 +167,7 @@ test('the Expo shell: dark splash, no spinner, patient timeout, retries by itsel
 
 
 test('the Expo loading screen has a distinct sibling key from the WebView', () => {
-  const webViewKey = /<WebView\s+key=\{([^}]+)\}/.exec(EXPO_APP)?.[1];
+  const webViewKey = /<WebView(?:<object>)?\s+key=\{([^}]+)\}/.exec(EXPO_APP)?.[1];
   const loadingKey = /<QuietShellLoading\s+key=\{((?:`[^`]+`)|[^}]+)\}/.exec(EXPO_APP)?.[1];
   assert.ok(webViewKey, 'WebView keeps its generation key for recovery');
   assert.ok(loadingKey, 'the loading screen resets for the same generation');
