@@ -2130,28 +2130,172 @@ input[type="text"].spaces-region__name-input:focus-visible {
   background: var(--pressed);
 }
 
-/* ---- Move or copy a region (owner 2026-10-22): the Export menu's card,
-   hung under the row's button and kept inside the window by AnchoredPopover.
-   The page is the add-pages well; Up/Down step it. ------------------------ */
-.spaces-transfer--menu {
-  right: auto;
-  left: 50%;
-  transform: translate(-50%, 0);
+/* ---- Move or copy a region (owner 2026-10-27): a small card beside the
+   row's button, its tail pointing at it (src/components/CalloutPopover.jsx
+   places it and sets data-callout-side / --callout-tail). ----------------- */
+.callout-popover {
+  position: fixed;
+  box-sizing: border-box;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-popover);
+  font-family: var(--font-ui);
+}
+
+/* The tail: a turned square in the card's own fill and edge, half hidden
+   under the card so only its point shows. */
+.callout-popover::before {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  pointer-events: none;
+}
+
+.callout-popover[data-callout-side='right']::before {
+  left: -6px;
+  top: calc(var(--callout-tail) - 5px);
+  transform: rotate(-45deg);
+}
+
+.callout-popover[data-callout-side='left']::before {
+  right: -6px;
+  top: calc(var(--callout-tail) - 5px);
+  transform: rotate(135deg);
+}
+
+.callout-popover[data-callout-side='bottom']::before {
+  top: -6px;
+  left: calc(var(--callout-tail) - 5px);
+  transform: rotate(45deg);
+}
+
+.callout-popover[data-callout-side='top']::before {
+  bottom: -6px;
+  left: calc(var(--callout-tail) - 5px);
+  transform: rotate(225deg);
+}
+
+.spaces-transfer-callout {
+  width: 200px;
+  padding: 6px;
+  display: grid;
+}
+
+.spaces-transfer__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 4px;
+}
+
+.spaces-transfer__head > strong {
+  flex: none;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.spaces-transfer__what {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.spaces-transfer__head > .spaces-export__close {
+  margin-left: auto;
+}
+
+.spaces-transfer__label {
+  padding: 4px 4px 2px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.spaces-transfer__spaces .spaces-export__space {
+  grid-template-columns: minmax(0, 1fr) 16px;
+}
+
+.spaces-transfer-callout .spaces-export__space {
+  min-height: 26px;
+  padding: 0 4px;
 }
 
 .spaces-transfer__page {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px 4px;
+  gap: 6px;
+  margin-top: 4px;
 }
 
-.spaces-transfer__field {
-  flex: 0 0 auto;
-  width: 56px;
+.spaces-transfer__page > .spaces-transfer__label {
+  padding: 0 4px;
+}
+
+.spaces-transfer__stepper {
+  display: inline-flex;
+  align-items: stretch;
+  height: 24px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-well);
+  overflow: hidden;
+}
+
+.spaces-transfer__stepper:focus-within {
+  border-color: var(--border-strong);
+}
+
+.spaces-transfer__step {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-transfer__step:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.spaces-transfer__step:not(:disabled):active {
+  background: var(--pressed);
 }
 
 input[type="text"].spaces-transfer__input {
+  width: 32px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: 12px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -2162,9 +2306,22 @@ input[type="text"].spaces-transfer__input {
 }
 
 .spaces-transfer__hint {
-  padding: 0 8px 2px;
+  padding: 4px 4px 0;
   color: var(--text-3);
   font-size: 10.5px;
+}
+
+.spaces-transfer__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.spaces-transfer__note {
+  padding: 8px 4px 0;
+  color: var(--text-3);
+  font-size: 12px;
 }
 
 .spaces-export__action:disabled {
@@ -2264,6 +2421,59 @@ input[type="text"].spaces-transfer__input {
 
 .spaces-export-sheet .spaces-export__action > small {
   font-size: 12px;
+}
+
+/* Phone: the same card's parts at finger size. */
+.spaces-export-sheet .spaces-transfer__head {
+  min-height: 44px;
+  align-items: center;
+}
+
+.spaces-export-sheet .spaces-transfer__head > strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.spaces-export-sheet .spaces-transfer__what {
+  font-size: 13px;
+}
+
+.spaces-export-sheet .spaces-transfer__label {
+  font-size: 12px;
+}
+
+.spaces-export-sheet .spaces-transfer__page {
+  margin-top: 12px;
+}
+
+.spaces-export-sheet .spaces-transfer__stepper {
+  height: 44px;
+  border-radius: 10px;
+}
+
+.spaces-export-sheet .spaces-transfer__step {
+  width: 44px;
+}
+
+.spaces-export-sheet input[type="text"].spaces-transfer__input {
+  width: 48px;
+  font-size: 16px;
+}
+
+.spaces-export-sheet .spaces-transfer__of,
+.spaces-export-sheet .spaces-transfer__hint {
+  font-size: 12px;
+}
+
+.spaces-export-sheet .spaces-transfer__actions {
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.spaces-export-sheet .spaces-transfer__actions > .hub-btn {
+  height: 44px;
+  border-radius: 10px;
+  font-size: 14px;
 }
 
 /* ---- the active space outside the panel (Spaces chunk B) ---------------
@@ -2395,7 +2605,8 @@ input[type="text"].spaces-transfer__input {
     border-bottom-color: var(--border-strong);
   }
   .spaces-export__space:hover,
-  .spaces-export__action:not(:disabled):hover {
+  .spaces-export__action:not(:disabled):hover,
+  .spaces-transfer__step:not(:disabled):hover {
     background: var(--hover);
   }
   .spaces-panel__exit-chip:hover > svg {

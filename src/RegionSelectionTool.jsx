@@ -33,6 +33,10 @@ import rotateIconSvg from './assets/rotate-icon.svg';
 import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR, resizeHandleCursor } from './utils/handleCursors.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
 import { showToast } from './utils/toast.js';
+import Icon from './Icons';
+import { useTooltip } from './components/Tooltip';
+import './styles/annotationContextMenu.css';
+import { REGION_MARQUEE_MIN_DRAG_PX, regionMarqueeDirection, regionMarqueeRect, resolveRegionMarqueeHits } from './utils/regionMarquee.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
@@ -203,6 +207,7 @@ const RegionSelectionTool = ({
   // journaling now happens at commit time in PDFViewer.handleRegionComplete
   // (removedRegionIds diff), so Cancel can never produce phantom journal rows.
 }) => {
+  const tip = useTooltip();
   const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'polygon' | 'freehand' (Lasso) | 'erase' | 'move'
   const [selectionMode, setSelectionMode] = useState(REGION_OPERATIONS.ADD); // 'add' | 'subtract'
   const [isDrawing, setIsDrawing] = useState(false);
@@ -265,6 +270,10 @@ const RegionSelectionTool = ({
   // Phone: where the current draw gesture started (client px) and how far the
   // finger has travelled, so a tap on an area can select it instead of drawing.
   const drawGestureRef = useRef(null);
+  // Select tool: the drag box over empty page (page units + where it began
+  // on screen, which sets window vs crossing).
+  const [marquee, setMarquee] = useState(null);
+  const marqueeRef = useRef(null);
   // Erase: the regions before the press (one undo step per stroke) and the
   // areas taken away so far.
   const eraseGestureRef = useRef(null);
@@ -1510,10 +1519,21 @@ const RegionSelectionTool = ({
         }
       }
       
-      // If clicked outside all boundary boxes, deselect
-      if (!clickedInsideBoundary && selectedRegionIds.size > 0) {
+      if (clickedInsideBoundary) return;
+      // Owner 2026-10-27: a press on empty page starts a drag box, like the
+      // box over marks. Shift keeps what is picked and adds to it; without
+      // Shift the press lets go of the picked areas at once. (Phone: one
+      // finger on empty page pans, so no box there.)
+      if (!event.shiftKey && selectedRegionIds.size > 0) {
         setSelectedRegionIds(new Set());
         setInteractionState(null);
+      }
+      if (!mobileMode) {
+        const next = { startClientX: event.clientX, startClientY: event.clientY, start: { x, y }, end: { x, y }, additive: event.shiftKey, shown: false };
+        marqueeRef.current = next;
+        setMarquee(next);
+      } else {
+        releaseInteractionPointer(event);
       }
       return;
     }
@@ -1593,6 +1613,25 @@ const RegionSelectionTool = ({
     }
 
     const rect = pagePresentationFrame(targetElement);
+
+    const box = marqueeRef.current;
+    if (box) {
+      const pointer = clientPointToPage(event.clientX, event.clientY, rect);
+      if (!pointer) return;
+      const shown = box.shown || Math.hypot(event.clientX - box.startClientX, event.clientY - box.startClientY) >= REGION_MARQUEE_MIN_DRAG_PX;
+      const next = {
+        ...box,
+        shown,
+        direction: regionMarqueeDirection(box.startClientX, event.clientX),
+        end: {
+          x: Math.max(0, Math.min(resolvedPageWidth || pointer.x, pointer.x)),
+          y: Math.max(0, Math.min(resolvedPageHeight || pointer.y, pointer.y)),
+        },
+      };
+      marqueeRef.current = next;
+      setMarquee(next);
+      return;
+    }
     const isWithinCanvas =
       event.clientX >= rect.left &&
       event.clientX <= rect.right &&
@@ -1955,11 +1994,30 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode, eraseAreaAt]);
+  }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode, eraseAreaAt, resolvedPageWidth, resolvedPageHeight]);
 
   const handleMouseUp = useCallback((event) => {
     if (!active) return;
     if (!releaseInteractionPointer(event)) return;
+
+    const box = marqueeRef.current;
+    if (box) {
+      marqueeRef.current = null;
+      setMarquee(null);
+      if (!box.shown) return;
+      const rect = regionMarqueeRect(box.start, box.end);
+      const outlines = regionsRef.current.map((region) => ({
+        id: region.regionId,
+        coordinates: withRegionOutlineCoordinates(region).coordinates,
+      }));
+      const hits = resolveRegionMarqueeHits(outlines, rect, box.direction);
+      setSelectedRegionIds((prev) => {
+        const next = new Set(box.additive ? prev : []);
+        hits.forEach((id) => next.add(id));
+        return next;
+      });
+      return;
+    }
 
     const eraseGesture = eraseGestureRef.current;
     if (eraseGesture) {
@@ -2179,6 +2237,8 @@ const RegionSelectionTool = ({
 
   const handlePointerCancel = useCallback((event) => {
     if (!releaseInteractionPointer(event)) return;
+    marqueeRef.current = null;
+    setMarquee(null);
     dropEraseGesture();
     dragHasMovedRef.current = false;
     setIsCursorOverCanvas(false);
@@ -2202,6 +2262,8 @@ const RegionSelectionTool = ({
     }
     documentDragFallbackRef.current = false;
     drawGestureRef.current = null;
+    marqueeRef.current = null;
+    setMarquee(null);
     dropEraseGesture();
     releaseInteractionPointer();
     dragHasMovedRef.current = false;
@@ -2885,7 +2947,7 @@ const RegionSelectionTool = ({
     leave: handleLeave,
     discard: handleDiscard,
     abandon: abandonTouchInteraction,
-    busy: isDrawing || interactionState !== null,
+    busy: isDrawing || interactionState !== null || marquee !== null,
     hasSelection: selectedRegionIds.size > 0,
     contextMenuOpen: contextMenu !== null,
     closeContextMenu: () => setContextMenu(null),
@@ -3375,6 +3437,24 @@ const RegionSelectionTool = ({
               />
             )}
 
+            {marquee?.shown && (() => {
+              const box = regionMarqueeRect(marquee.start, marquee.end);
+              const crossing = marquee.direction === 'crossing';
+              return (
+                <rect
+                  data-region-marquee={crossing ? 'crossing' : 'window'}
+                  x={pageToScreenX(box.left)}
+                  y={pageToScreenY(box.top)}
+                  width={(box.right - box.left) * displayScaleX}
+                  height={(box.bottom - box.top) * displayScaleY}
+                  fill={crossing ? 'rgba(0, 200, 100, 0.15)' : 'rgba(0, 100, 255, 0.15)'}
+                  stroke={crossing ? 'rgba(0, 200, 100, 0.8)' : 'rgba(0, 100, 255, 0.8)'}
+                  strokeWidth={1}
+                  strokeDasharray={crossing ? '5,5' : undefined}
+                />
+              );
+            })()}
+
             {polygonPreviewPath && (
               <path
                 d={polygonPreviewPath}
@@ -3849,113 +3929,79 @@ const RegionSelectionTool = ({
           </div>
       ), targetElement)}
 
-      {/* Context Menu (outside the page: it is placed in screen px) */}
-      {contextMenu && (
-        <div
-          data-region-selection-ui="true"
-          style={{
-            position: 'fixed',
-            top: contextMenu.y,
-            left: contextMenu.x,
-            background: 'var(--surface-2)',
-            border: '1px solid var(--border)',
-            borderRadius: '4px',
-            boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-            zIndex: 100004,
-            padding: '4px 0',
-            minWidth: '120px',
-            pointerEvents: 'auto' // Ensure context menu is always interactive
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
+      {/* Context menu (outside the page: it is placed in screen px). Owner
+          2026-10-27: the mark menu's look (src/styles/annotationContextMenu.css)
+          - an icon row for Cut, Copy, Paste and Delete, then Merge and
+          Unmerge - not a hand-made list whose greyed items looked live. */}
+      {contextMenu && (() => {
+        const picked = selectedRegionIds.size > 0;
+        const quick = [
+          { key: 'cut', label: 'Cut', icon: 'scissors', disabled: !picked, onClick: handleCut },
+          { key: 'copy', label: 'Copy', icon: 'copy', disabled: !picked, onClick: handleCopy },
+          { key: 'paste', label: 'Paste', icon: 'paste', disabled: false, onClick: handlePaste },
+          { key: 'delete', label: 'Delete', icon: 'trash', disabled: !picked, onClick: () => { handleDeleteSelected(); setContextMenu(null); } },
+        ];
+        const rows = [
+          { key: 'merge', label: 'Merge', disabled: !contextMenu.canMerge, onClick: handleMergeSelected },
+          { key: 'unmerge', label: 'Unmerge', disabled: !contextMenu.canUnmerge, onClick: handleSeparateRegion },
+        ];
+        return (
           <div
-            role="menuitem"
-            aria-disabled={selectedRegionIds.size > 0 ? undefined : 'true'}
+            data-region-selection-ui="true"
+            role="menu"
+            aria-label="Area actions"
+            className="annotation-context-menu"
             style={{
-              padding: '8px 12px',
-              cursor: 'pointer',
-              fontSize: '13px',
+              position: 'fixed',
+              top: contextMenu.y,
+              left: contextMenu.x,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: 'var(--shadow-popover)',
+              zIndex: 100004,
+              minWidth: 160,
+              padding: 4,
+              fontSize: 12.5,
               color: 'var(--text-2)',
-              fontFamily: FONT_FAMILY
+              fontFamily: 'var(--font-ui)',
+              pointerEvents: 'auto'
             }}
-            onClick={selectedRegionIds.size > 0 ? handleCopy : undefined}
-            {...keyboardControlProps(null, { role: 'menuitem', disabled: !(selectedRegionIds.size > 0) })}
-            onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
           >
-            Copy
+            <div role="group" aria-label="Edit" className="annotation-menu-quick">
+              {quick.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="menuitem"
+                  aria-label={item.label}
+                  aria-disabled={item.disabled ? 'true' : undefined}
+                  className={`annotation-menu-icon${item.key === 'delete' ? ' annotation-menu-icon--danger' : ''}`}
+                  onClick={item.disabled ? undefined : item.onClick}
+                  {...tip(item.label, 'above')}
+                >
+                  <Icon name={item.icon} size={16} color="currentColor" />
+                </button>
+              ))}
+            </div>
+            <div role="separator" className="annotation-menu-separator" />
+            {rows.map((item) => (
+              <div
+                key={item.key}
+                role="menuitem"
+                aria-disabled={item.disabled ? 'true' : undefined}
+                className="annotation-menu-row"
+                onClick={item.disabled ? undefined : item.onClick}
+                {...keyboardControlProps(item.disabled ? null : item.onClick, { role: 'menuitem', disabled: item.disabled })}
+              >
+                {item.label}
+              </div>
+            ))}
           </div>
-          <div
-            role="menuitem"
-            aria-disabled={selectedRegionIds.size > 0 ? undefined : 'true'}
-            style={{
-              padding: '8px 12px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              color: 'var(--text-2)',
-              fontFamily: FONT_FAMILY
-            }}
-            onClick={selectedRegionIds.size > 0 ? handleCut : undefined}
-            {...keyboardControlProps(null, { role: 'menuitem', disabled: !(selectedRegionIds.size > 0) })}
-            onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            Cut
-          </div>
-          <div
-            role="menuitem"
-            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-2)', fontFamily: FONT_FAMILY }}
-            onClick={handlePaste}
-            {...keyboardControlProps(null, { role: 'menuitem' })}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            Paste
-          </div>
-          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
-          <div
-            role="menuitem"
-            aria-disabled={contextMenu.canMerge ? undefined : 'true'}
-            style={{
-              padding: '8px 12px',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              fontSize: '13px',
-              fontFamily: FONT_FAMILY,
-              background: 'transparent'
-            }}
-            onClick={contextMenu.canMerge ? handleMergeSelected : undefined}
-            {...keyboardControlProps(null, { role: 'menuitem', disabled: !contextMenu.canMerge })}
-            onMouseEnter={(e) => {
-              if (contextMenu.canMerge) e.currentTarget.style.background = 'var(--hover)';
-            }}
-            onMouseLeave={(e) => {
-              if (contextMenu.canMerge) e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            Merge
-          </div>
-          <div
-            role="menuitem"
-            aria-disabled={contextMenu.canUnmerge ? undefined : 'true'}
-            style={{
-              padding: '8px 12px',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              fontSize: '13px',
-              fontFamily: FONT_FAMILY
-            }}
-            onClick={contextMenu.canUnmerge ? handleSeparateRegion : undefined}
-            {...keyboardControlProps(null, { role: 'menuitem', disabled: !contextMenu.canUnmerge })}
-            onMouseEnter={(e) => {
-              if (contextMenu.canUnmerge) e.currentTarget.style.background = 'var(--hover)';
-            }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-          >
-            Unmerge
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
 
       {/* KAL-301 REDO: the app's STANDARD rotation pill (RotationInputField,
