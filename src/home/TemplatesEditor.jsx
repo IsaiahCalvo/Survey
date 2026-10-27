@@ -992,42 +992,56 @@ export default function TemplatesEditor({
   const [customAnswers] = useState(() => isFeatureOn('custom-answers'));
   // Report layout per template (nightly 'survey-report').
   const [surveyReport] = useState(() => isFeatureOn('survey-report'));
-  const reportKitPickerProps = (tpl) => ({
+  // The per-template pickers: { value, options, onPick }. Desktop shows them
+  // as the app's drop-down (ValueSelect); the phone layout keeps the
+  // browser's wheel (pickerSelectProps).
+  const exportKitPicker = (tpl) => ({
+    value: tpl.exportKitId || DEFAULT_EXPORT_KIT_ID,
+    options: exportKitOptions.map((k) => ({ value: k.id, label: k.label || k.id })),
+    onPick: (v) => mutateTpl(tpl.id, (t) => {
+      const { exportKitId: _k, ...rest } = t;
+      return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
+    }),
+  });
+  const reportKitPicker = (tpl) => ({
     value: tpl.reportKitId || DEFAULT_REPORT_KIT_ID,
-    onChange: (e) => {
-      const v = e.target.value;
-      mutateTpl(tpl.id, (t) => {
-        const { reportKitId: _r, ...rest } = t;
-        return v === DEFAULT_REPORT_KIT_ID ? rest : { ...rest, reportKitId: v };
-      });
-    },
-    children: listReportKits().map((k) => <option key={k.id} value={k.id}>{k.label}</option>),
+    options: listReportKits().map((k) => ({ value: k.id, label: k.label })),
+    onPick: (v) => mutateTpl(tpl.id, (t) => {
+      const { reportKitId: _r, ...rest } = t;
+      return v === DEFAULT_REPORT_KIT_ID ? rest : { ...rest, reportKitId: v };
+    }),
   });
   const answerPresets = answerSetPresets({ extras: customAnswers });
   const [answerEditorFor, setAnswerEditorFor] = useState(null);
   const ownAnswerSetOf = (t) => t.answerSet || getExportKit(t.exportKitId)?.answerSet;
   // `answerEditorFor` is { id, phone }: the desktop and phone layouts are both
   // mounted, and only the one that opened the dialog may show it.
-  const answerPickerProps = (t, phone = false) => {
+  const answerPicker = (t, phone = false) => {
     const presetId = answerPresetIdOf(ownAnswerSetOf(t), answerPresets);
     return {
       value: presetId,
-      onChange: (e) => {
-        if (e.target.value === OWN_ANSWERS) { setAnswerEditorFor({ id: t.id, phone }); return; }
-        if (!e.target.value) return; // "Custom" is the list already in use
-        const preset = answerPresets.find((p) => p.id === e.target.value);
+      options: [
+        ...(presetId ? [] : [{ value: '', label: 'Custom' }]),
+        ...answerPresets.map((p) => ({ value: p.id, label: p.label })),
+        ...(customAnswers ? [{ value: OWN_ANSWERS, label: 'Edit answers…' }] : []),
+      ],
+      onPick: (v) => {
+        if (v === OWN_ANSWERS) { setAnswerEditorFor({ id: t.id, phone }); return; }
+        if (!v) return; // "Custom" is the list already in use
+        const preset = answerPresets.find((p) => p.id === v);
         mutateTpl(t.id, (cur) => {
           const { answerSet: _a, ...rest } = cur;
           return !preset || preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
         });
       },
-      children: [
-        !presetId && <option key="custom" value="">Custom</option>,
-        ...answerPresets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>),
-        customAnswers && <option key={OWN_ANSWERS} value={OWN_ANSWERS}>Edit answers…</option>,
-      ],
     };
   };
+  const pickerSelectProps = ({ value, options, onPick }) => ({
+    value,
+    onChange: (e) => onPick(e.target.value),
+    children: options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>),
+  });
+  const pickerValueProps = ({ value, options, onPick }) => ({ value, options, onChange: onPick });
   // Nightly: the list in use as chips on a labeled button; it opens the
   // picker of ready-made lists, which hands over to the editor below.
   const [answerPickerFor, setAnswerPickerFor] = useState(null);
@@ -2594,43 +2608,43 @@ export default function TemplatesEditor({
                 <div>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'}</div>
                 {/* Excel layout (export kit). Only shown once there is a choice. */}
                 {exportKitOptions.length > 1 && (
-                  <select
-                    className="hub-export-kit"
-                    aria-label="Excel layout"
-                    value={tpl.exportKitId || DEFAULT_EXPORT_KIT_ID}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      mutateTpl(tpl.id, (t) => {
-                        const { exportKitId: _k, ...rest } = t;
-                        return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
-                      });
-                    }}
-                    {...hoverOnly(tip('Excel layout for this template. A linked workbook picks it up on its next full export.'))}
-                    style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
-                  >
-                    {exportKitOptions.map((k) => <option key={k.id} value={k.id}>{k.label || k.id}</option>)}
-                  </select>
+                  <div className="hub-template-picker">
+                    <ValueSelect
+                      look="pill"
+                      width="auto"
+                      className="hub-export-kit"
+                      label="Excel layout"
+                      hint="Excel layout for this template. A linked workbook picks it up on its next full export."
+                      {...pickerValueProps(exportKitPicker(tpl))}
+                    />
+                  </div>
                 )}
                 {/* Report layout (report kit) for the Report button. */}
                 {surveyReport && (
-                  <select
-                    className="hub-report-kit"
-                    aria-label="Report layout"
-                    {...reportKitPickerProps(tpl)}
-                    {...hoverOnly(tip('What the PowerPoint report for this template shows.'))}
-                    style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
-                  />
+                  <div className="hub-template-picker">
+                    <ValueSelect
+                      look="pill"
+                      width="auto"
+                      className="hub-report-kit"
+                      label="Report layout"
+                      hint="What the PowerPoint report for this template shows."
+                      {...pickerValueProps(reportKitPicker(tpl))}
+                    />
+                  </div>
                 )}
                 {/* Checklist answers for this template (default Y / N / N/A).
                     Nightly shows them as the Answers button under the name. */}
                 {!customAnswers && (
-                  <select
-                    className="hub-answer-set"
-                    aria-label="Checklist answers"
-                    {...answerPickerProps(tpl)}
-                    {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
-                    style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
-                  />
+                  <div className="hub-template-picker">
+                    <ValueSelect
+                      look="pill"
+                      width="auto"
+                      className="hub-answer-set"
+                      label="Checklist answers"
+                      hint="Answers for this template's checklist items. Answers already given keep their text."
+                      {...pickerValueProps(answerPicker(tpl))}
+                    />
+                  </div>
                 )}
                 {/* Smart fill (beta): tag shapes taught on drawings. */}
                 {smartFillBeta && (
@@ -3349,25 +3363,13 @@ export default function TemplatesEditor({
                 {exportKitOptions.length > 1 && (
                   <label className="templates-mobile-option">
                     <span>Excel layout</span>
-                    <select
-                      aria-label="Excel layout"
-                      value={tpl.exportKitId || DEFAULT_EXPORT_KIT_ID}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        mutateTpl(tpl.id, (t) => {
-                          const { exportKitId: _k, ...rest } = t;
-                          return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
-                        });
-                      }}
-                    >
-                      {exportKitOptions.map((k) => <option key={k.id} value={k.id}>{k.label || k.id}</option>)}
-                    </select>
+                    <select aria-label="Excel layout" {...pickerSelectProps(exportKitPicker(tpl))} />
                   </label>
                 )}
                 {surveyReport && (
                   <label className="templates-mobile-option">
                     <span>Report layout</span>
-                    <select aria-label="Report layout" {...reportKitPickerProps(tpl)} />
+                    <select aria-label="Report layout" {...pickerSelectProps(reportKitPicker(tpl))} />
                   </label>
                 )}
                 {customAnswers ? (
@@ -3375,7 +3377,7 @@ export default function TemplatesEditor({
                 ) : (
                   <label className="templates-mobile-option">
                     <span>Answers</span>
-                    <select aria-label="Checklist answers" {...answerPickerProps(tpl, true)} />
+                    <select aria-label="Checklist answers" {...pickerSelectProps(answerPicker(tpl, true))} />
                   </label>
                 )}
                 {answerListEditor(tpl, true)}

@@ -42,6 +42,9 @@ const ALLOWED = {
   'src/components/SurveyMediaCapture.jsx': 1,
   'src/components/SurveyMediaStrip.jsx': 1,
   'src/components/ToastHost.jsx': 1,
+  // Click-through wrappers that keep an answer drop-down's presses off the
+  // rail row under it; the drop-down's own <button> owns the keyboard.
+  'src/components/TypedAnswerInput.jsx': 2,
   'src/components/collab/ConfirmDeleteModal.jsx': 1,
   'src/components/revisions/RevisionsPanel.jsx': 3,
   'src/home/AccessManagementModal.jsx': 1,

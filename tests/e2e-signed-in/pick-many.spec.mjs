@@ -88,11 +88,15 @@ test('a Pick many line takes any of its options', async ({ page }) => {
   await expect(chip('Label faded')).toHaveAttribute('aria-pressed', 'true');
 
   // Eight answers: a drop-down, not eight buttons.
-  const frameList = page.getByRole('combobox', { name: `${frame} answer` });
-  await expect(frameList.locator('option')).toHaveCount(LONG_LIST.length + 1);
-  await frameList.selectOption('Loose');
+  const frameList = page.getByRole('button', { name: `${frame} answer`, exact: true });
+  const frameOptions = page.getByRole('listbox', { name: `${frame} answer` }).getByRole('option');
+  await frameList.click();
+  await expect(frameOptions).toHaveCount(LONG_LIST.length + 1);
+  await frameOptions.filter({ hasText: /^Loose$/ }).click();
   await expect(page.getByText('2/3', { exact: true })).toBeVisible();
-  await frameList.selectOption('');
+  await expect(frameList).toHaveAttribute('data-value', 'Loose');
+  await frameList.click();
+  await frameOptions.filter({ hasText: /^–$/ }).click();
   await expect(page.getByText('1/3', { exact: true })).toBeVisible();
 
   // Leave the seeded item blank for the walks that use it.

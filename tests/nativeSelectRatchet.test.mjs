@@ -18,11 +18,13 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const ALLOWED = {
   // Old edit modal inside the high-risk per-page layer.
   'src/PageAnnotationLayer.jsx': 2,
-  // Phone layout rows (wheel) plus the desktop header pickers still to move.
-  'src/home/TemplatesEditor.jsx': 6,
-  // Beta answer editors (nightly 'custom-answers'), still to move.
+  // The phone layout's rows (the browser's wheel).
+  'src/home/TemplatesEditor.jsx': 3,
+  // Beta answer editors (nightly 'custom-answers'): phone rows keep the
+  // wheel; the answer-kind list (it has groups) is still to move.
   'src/home/AnswerSetEditor.jsx': 4,
   'src/components/TypedAnswerInput.jsx': 2,
+  // Phone panel (the browser's wheel).
   'src/components/PageGridSettings.jsx': 1,
   // Admin-only page.
   'src/home/KitsAdminPage.jsx': 1,

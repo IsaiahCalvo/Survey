@@ -58,3 +58,11 @@
     font-size: 16px;
   }
 }
+
+/* A Survey answer list (TypedAnswerInput) whose answer counts as an issue. */
+.typed-answer-select {
+  display: inline-flex;
+}
+.typed-answer-select.is-bad .chrome-pill__label {
+  color: var(--danger-text);
+}
