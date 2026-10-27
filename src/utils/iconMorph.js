@@ -79,6 +79,10 @@ export const MORPH_ICONS = Object.freeze({
   check: { source: 'src/Icons.jsx', paths: [
     { d: "M20 6L9 17L4 12" }
   ] },
+  checkCheck: { source: 'src/Icons.jsx', paths: [
+    { d: "M18 6L7 17L2 12" },
+    { d: "M22 10L14.5 17.5L13 16" }
+  ] },
   plus: { source: 'src/Icons.jsx', paths: [
     { d: "M12 5V19" },
     { d: "M5 12H19" }
