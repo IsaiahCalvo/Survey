@@ -210,6 +210,8 @@ export default function SelectionQuickBar({
   entities = null,
   surveyMarkers = null,
   onPickEntity,
+  // Comments on marks (Nightly): start a thread on the one picked mark.
+  onComment = null,
   tip,
 }) {
   const contextTip = useTooltip();
@@ -541,6 +543,7 @@ export default function SelectionQuickBar({
   }
   groups.push(
     <span key="actions" className="selection-quick-bar__group">
+      {onComment && items.length === 1 && button('Comment', 'comment', () => onComment(items[0]), { 'data-selection-quick-comment': 'true' })}
       {plan?.duplicate && button('Duplicate', 'duplicate', () => runKey('duplicate'))}
       {plan?.remove && button('Delete', 'trash', () => runKey('delete'))}
     </span>,
