@@ -28,7 +28,7 @@
  */
 import { useContext, useState, useRef, useLayoutEffect } from 'react';
 import {
-  LOADOUT_MOTION, ROW_MOTION, attachLoadoutTransition, measureRevealRow, playRevealRowLeave, prefersReducedMotion,
+  LOADOUT_MOTION, ROW_MOTION, afterPaint, attachLoadoutTransition, measureRevealRow, playRevealRowLeave, prefersReducedMotion,
 } from '../utils/loadoutTransition';
 import useLoadoutTransition from '../hooks/useLoadoutTransition';
 import Icon from '../Icons.jsx';
@@ -85,15 +85,25 @@ export default function SectionIconButton({
     // on Done) animates with it instead of popping (owner 2026-10-27).
     const head = own.parentElement;
     const parent = head?.classList.contains('hub-section-head') ? head : own;
-    const layer = document.createElement('span');
-    layer.className = 'section-icon-actions__ghosts';
-    layer.setAttribute('data-loadout-ignore', '');
-    layer.setAttribute('aria-hidden', 'true');
-    const oldPosition = parent.style.position;
-    if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
-    parent.appendChild(layer);
-    const detach = attachLoadoutTransition(parent, layer);
-    return () => { detach?.(); layer.remove(); parent.style.position = oldPosition; };
+    // Set up once the panel has painted. Its first snapshot reads styles and
+    // boxes, and inside the commit that opened the panel each read forced a
+    // fresh style and layout pass of the whole new panel (~24 ms of a ~60 ms
+    // frame on a rail panel toggle). After the paint the same reads are free.
+    let undo = null;
+    const attach = () => {
+      if (!parent.isConnected) return;
+      const layer = document.createElement('span');
+      layer.className = 'section-icon-actions__ghosts';
+      layer.setAttribute('data-loadout-ignore', '');
+      layer.setAttribute('aria-hidden', 'true');
+      const oldPosition = parent.style.position;
+      if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
+      parent.appendChild(layer);
+      const detach = attachLoadoutTransition(parent, layer);
+      undo = () => { detach?.(); layer.remove(); parent.style.position = oldPosition; };
+    };
+    const cancel = afterPaint(attach);
+    return () => { cancel(); undo?.(); };
   }, [action]);
   // The phone header gives its search row to the select actions (hub.css,
   // SELECT MODE). The row now leaves and comes back the way the tool bar's
