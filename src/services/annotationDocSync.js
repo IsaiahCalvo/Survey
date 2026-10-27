@@ -2273,6 +2273,8 @@ async function hydrateCleanAcceptedState(state) {
     ? new Uint8Array(clean.checkpointUpdate)
     : null;
   state.cleanSnapshotIdentity = normalizeSnapshotIdentity(clean?.snapshotIdentity);
+  state.cleanCopyRecordCount = clean?.records?.length || 0;
+  state.cleanCheckpointByteLength = clean?.checkpointUpdate?.byteLength || 0;
   startSnapshotPrefetch(state);
   const updates = [
     clean?.checkpointUpdate,
@@ -2628,8 +2630,19 @@ async function loadFromBackend(state) {
   // 2. tail ops after the snapshot, in order (byte-safe pages, w26)
   let cursor = state.lastSeq;
   let error = null;
+  let tailRows = 0;
+  // Whether acceptedDoc is still exactly this device's saved copy (below):
+  // a tokened checkpoint with no records after it, plus a snapshot row it
+  // already holds. A tail row it also already holds changes nothing (Y.snapshot
+  // is a few ms; the full encode it can save is 100+ ms).
+  const cleanBeforeTail = (
+    snapRow?.alreadyHeld
+    && state.cleanCheckpointToken != null
+    && state.cleanCopyRecordCount === 0
+  ) ? Y.snapshot(state.acceptedDoc) : null;
   try {
     cursor = await readWalRowsAfter(state, cursor, 'annotation tail read', async (row) => {
+      tailRows += 1;
       await applyAuthoritativeCloudRow(state, row);
       state.lastSeq = Math.max(state.lastSeq, Number(row.seq));
     });
@@ -2640,6 +2653,17 @@ async function loadFromBackend(state) {
   if (error) throw new Error(`tail read: ${error.message}`);
   state.lastSeq = Math.max(state.lastSeq, cursor);
   state.coveredSeq = cursor;
+  // Nothing new since this device's saved copy: acceptedDoc is exactly the
+  // stored checkpoint, and the receipt below would encode every mark (~210 ms
+  // on a 240-sheet set), read the stored multi-MB copy back and write the
+  // same bytes under a new token (~300 ms of IndexedDB work on the main thread).
+  if (
+    cleanBeforeTail
+    && (tailRows === 0 || Y.equalSnapshots(cleanBeforeTail, Y.snapshot(state.acceptedDoc)))
+  ) {
+    if (!state.lastSnapshotBytes) state.lastSnapshotBytes = Math.round(state.cleanCheckpointByteLength / 4);
+    return;
+  }
   // One acknowledged custom IndexedDB transaction is the clean-cache receipt.
   // y-indexeddb's update observer is fire-and-forget and cannot authorize
   // deleting an outbox record or claiming crash durability by call order.

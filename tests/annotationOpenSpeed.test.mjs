@@ -513,3 +513,55 @@ test('a cold open fills the offline copy after the open; a local edit or a close
     globalThis.indexedDB = previousIndexedDb;
   }
 });
+
+test('a reopen with nothing new since the saved copy writes no receipt; a new cloud row still does', async () => {
+  const documentId = 'open-speed-no-receipt';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const outbox = createMemoryAnnotationOutbox();
+  const compactions = [];
+  const realCompact = outbox.compactAccepted.bind(outbox);
+  outbox.compactAccepted = (...args) => { compactions.push(args[3]); return realCompact(...args); };
+
+  const first = await open(alice, { documentId, outboxStore: outbox, clientId: 'a1' });
+  first.applyByPage({ 1: { objects: [rect('r1'), rect('r2')] } });
+  await first.drain();
+  assert.equal(await first.flushSnapshot(), true);
+  await first.destroy();
+  const savedBefore = await outbox.loadCleanState(documentId, 'user-a');
+
+  // Unchanged: the saved copy is exactly what the cloud holds.
+  compactions.length = 0;
+  const second = await open(alice, { documentId, outboxStore: outbox, clientId: 'a2' });
+  try {
+    assert.deepEqual(ids(second.getByPage()), ['r1', 'r2']);
+    assert.equal(compactions.length, 0, 'the open writes no receipt for an unchanged copy');
+    const savedAfter = await outbox.loadCleanState(documentId, 'user-a');
+    assert.equal(savedAfter.checkpointToken, savedBefore.checkpointToken, 'the saved copy is untouched');
+    // Still a working handle: a new mark is saved, and written down locally once accepted.
+    second.applyByPage({ 1: { objects: [...second.getByPage()[1].objects, rect('r3')] } });
+    await second.drain();
+  } finally {
+    await second.destroy();
+  }
+
+  // A row the saved copy lacks (r3, after the snapshot row): the open writes a receipt.
+  compactions.length = 0;
+  const third = await open(alice, { documentId, outboxStore: outbox, clientId: 'a3' });
+  try {
+    assert.deepEqual(ids(third.getByPage()), ['r1', 'r2', 'r3']);
+    assert.ok(compactions.includes(true), 'a forced receipt is written when the cloud has something new');
+  } finally {
+    await third.destroy();
+  }
+
+  // The same row again (still after the snapshot row), but now in the saved copy: no receipt.
+  compactions.length = 0;
+  const fourth = await open(alice, { documentId, outboxStore: outbox, clientId: 'a4' });
+  try {
+    assert.deepEqual(ids(fourth.getByPage()), ['r1', 'r2', 'r3']);
+    assert.equal(compactions.length, 0, 'a tail row the saved copy already holds needs no receipt');
+  } finally {
+    await fourth.destroy();
+  }
+});
