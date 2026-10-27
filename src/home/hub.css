@@ -367,10 +367,12 @@
     position: absolute;
     inset: -9px 0;
   }
-  /* iOS Safari zooms the page on focus of any field under 16px; the prompt
-     dialog's input paints 12.5px inline, so touch screens get 16px. */
+  /* The dialog field (DialogCard DIALOG_FIELD_STYLE: Rename, the prompt)
+     paints 13px / 32px inline. iOS Safari zooms the page on focus of any
+     field under 16px, and a finger needs 44, so touch screens get both. */
   .dialog-prompt-input {
     font-size: 16px !important;
+    height: 44px !important;
   }
 }
 
@@ -5681,14 +5683,14 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   .survey-hub .documents-ledger-grid.is-preview .documents-col-project { display: none; }
 }
 
-/* Document Access rows (AccessManagementModal). Desktop: one line of five
-   columns. A phone has no room for five: at 320px the Users column shrank to
-   0px and printed names / emails one letter per line over the next rows, and
-   Remove ran off the card. There the person (name + full email, wrapping)
-   takes the first line and role / status / actions the second. Rows sit in
-   a flex column that scrolls, so they must not shrink below their content
-   (they did, and each row slid under the next). */
-.access-grid { grid-template-columns: 30px 1fr 1fr 1fr 90px; flex-shrink: 0; }
+/* The access list rows, shared by Document access (AccessManagementModal)
+   and Manage team (ManageTeamModal) since the design review of 2026-10-27:
+   avatar, person, role, status / added, and the row's More button. A phone
+   has no room for five columns (at 320px the person column shrank to 0px and
+   printed one letter per line), so there the person takes the first line and
+   role / status / More the second. Rows sit in a flex column that scrolls, so
+   they must not shrink below their content. */
+.access-grid { grid-template-columns: 30px 1fr 1fr 1fr 24px; flex-shrink: 0; }
 @media (max-width: 600px) {
   .access-grid { grid-template-columns: 30px minmax(0, 1fr) auto auto; row-gap: 10px !important; }
   .access-grid > :nth-child(2) { grid-column: 2 / -1; }
@@ -5696,10 +5698,6 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   .access-grid > :nth-child(4) { grid-column: 3; grid-row: 2; }
   .access-grid > :nth-child(5) { grid-column: 4; grid-row: 2; }
   .access-grid--head > :nth-child(n+3) { display: none; }
-}
-/* The role picker is a bare 24px word; give it a 44px band to a finger. */
-@media (pointer: coarse) {
-  .access-role-select { height: 44px !important; }
 }
 
 /* Preview pane: double-clicking a row opens the file. Mouse/trackpad only;

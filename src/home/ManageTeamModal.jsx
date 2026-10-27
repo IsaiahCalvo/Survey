@@ -34,6 +34,7 @@ import { mergeRetryResult, summarizeInviteSend } from './inviteSendSummary';
 import InviteSendNotice from './InviteSendNotice';
 import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
+import { menuAtButton, menuIconFor, menuRowHeight } from '../utils/menuItems.js';
 import {
   createProjectInvite,
   listProjectInvites,
@@ -364,6 +365,14 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
 };
 
 /* ============ Manage Team modal ============ */
+// A row's More menu wears the shared action menu (hub.css .hub-menu, the icon
+// from the label, utils/menuItems.js) like Document access and the home menus.
+// Its rows stay plain buttons: the team harness presses them by role=button.
+const TeamMenuIcon = ({ label }) => {
+  const name = menuIconFor(label);
+  return name ? <Icon name={name} size={14} color="currentColor" /> : <span className="hub-menu__icon-gap" aria-hidden="true" />;
+};
+
 export default function ManageTeamModal({ open, onClose, project, members }) {
   const tip = useTooltip();
   // Tolerant of missing provider — direct context read so tests/standalone
@@ -398,6 +407,10 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
   const [editMode, setEditMode] = React.useState(false);
   const [selectedIds, setSelectedIds] = React.useState(() => new Set());
   const [openMenu, setOpenMenu] = React.useState(null);
+  // A row's More menu is fixed to the window at its button (the list scrolls
+  // and used to clip it).
+  const [menuPos, setMenuPos] = React.useState(null);
+  const menuAt = (e, rows) => menuAtButton(e.currentTarget.getBoundingClientRect(), { height: rows * menuRowHeight() + 8, viewport: { width: window.innerWidth, height: window.innerHeight } });
   const [openInviteMenu, setOpenInviteMenu] = React.useState(null);
   const [openRoleSel, setOpenRoleSel] = React.useState(null);
   const [bulkRoleOpen, setBulkRoleOpen] = React.useState(false);
@@ -648,12 +661,12 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
         }}
       />
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--overlay-scrim)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, fontFamily: "var(--font-ui)" }}>
-        <div ref={mainCardRef} role="dialog" aria-modal="true" aria-label="Manage Team" data-kal31-manage-team="true" onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: "var(--radius-dialog)", boxShadow: "var(--shadow-dialog)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
+        <div ref={mainCardRef} role="dialog" aria-modal="true" aria-label="Manage team" data-kal31-manage-team="true" onClick={(e) => e.stopPropagation()} style={{ width: 560, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: "var(--radius-dialog)", boxShadow: "var(--shadow-dialog)", color: BONE_100, overflow: "hidden", display: "flex", flexDirection: "column", maxHeight: "84vh" }}>
           {/* Header */}
           <div style={{ padding: "16px 18px 14px", borderBottom: `1px solid ${INK_500}`, display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ width: 3, height: 30, background: project.color || GOLD, borderRadius: 2, flex: "none", marginRight: 10 }}></span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>Manage Team</div>
+              <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>Manage team</div>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -0.015, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{project.name}</div>
             </div>
             <button onClick={() => setInviteOpen(true)} className="hub-btn hub-btn--primary">
@@ -712,7 +725,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
           </div>
 
           {/* Column headers */}
-          <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>
+          <div className="access-grid access-grid--head" style={{ display: "grid", gap: 14, alignItems: "center", padding: "8px 18px 6px", borderBottom: `1px solid ${INK_500}`, fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600 }}>
             <span></span>
             <span onClick={() => onSort("name")} {...keyboardControlProps()} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "name" ? BONE_100 : "inherit" }}>Users{arrow("name")}</span>
             <span onClick={() => onSort("role")} {...keyboardControlProps()} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "role" ? BONE_100 : "inherit" }}>Role{arrow("role")}</span>
@@ -730,7 +743,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               const lastOwnerLocked = !m.isCreator && String(m.role).toLowerCase() === 'owner' && ownerCount <= 1;
               return (
                 <div key={m.id} data-kal31-project-member={m.userId || m.id} style={{ position: "relative" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box" }}>
+                  <div className="access-grid" style={{ display: "grid", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, minHeight: 50, boxSizing: "border-box" }}>
                     <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: "50%", background: colorFor(m.userId || m.id), color: USER_INITIALS_INK, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600, flex: "none" }}>{m.initials || initialsOf(m.name)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.isCreator ? " · creator" : ""}</div>
@@ -773,13 +786,13 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         </span>
                       )
                     ) : (
-                      <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
+                      <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setMenuPos(menuAt(e, 5)); setOpenInviteMenu(null); setOpenMenu(openMenu === m.id ? null : m.id); }}
                         aria-label="More" {...tip('More')}
                         className="hub-icon-btn"><Icon name="more" size={14} /></button>
                     )}
                   </div>
-                  {!editMode && openMenu === m.id && (
-                    <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
+                  {!editMode && openMenu === m.id && menuPos && (
+                    <div data-manage-team-dismiss-surface="true" className="hub-menu" onClick={(e) => e.stopPropagation()} style={{ left: menuPos.left, top: menuPos.top, zIndex: 1400, width: 180 }}>
                       {[
                         { label: "Invite user", onClick: () => { setOpenMenu(null); setInviteOpen(true); } },
                         ...(m.isCreator ? [] : [{ label: "Change role", onClick: () => { setOpenMenu(null); setEditMode(true); setOpenRoleSel(m.id); } }]),
@@ -792,7 +805,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         } },
                         ...(m.isCreator ? [] : [{ label: "Remove from team", danger: true, onClick: () => { setOpenMenu(null); removeMember(m.id); } }]),
                       ].map(it => (
-                        <button key={it.label} disabled={it.disabled || busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? C.dangerText : (it.disabled ? INK_300 : BONE_100), padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: it.disabled || busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
+                        <button key={it.label} disabled={it.disabled || busy} onClick={it.onClick} className={`hub-menu__item${it.danger ? " is-danger" : ""}`}><TeamMenuIcon label={it.label} />{it.label}</button>
                       ))}
                     </div>
                   )}
@@ -806,7 +819,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
               const label = isLink ? 'Link invite' : inv.target_email;
               return (
                 <div key={inv.id} data-kal31-project-invite={inv.id} style={{ position: "relative" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "30px 1fr 1fr 1fr 24px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 50, boxSizing: "border-box", background: "var(--surface-2)" }}>
+                  <div className="access-grid" style={{ display: "grid", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, minHeight: 50, boxSizing: "border-box", background: "var(--surface-2)" }}>
                     <div style={{ width: 30, height: 30, borderRadius: "50%", background: isLink ? 'var(--surface-3)' : INK_200, color: isLink ? BONE_100 : "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{isLink ? 'L' : initialsOf(inv.target_email)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
@@ -814,12 +827,12 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     </div>
                     <div style={{ fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{roleLabel(inv.intended_role)}</div>
                     <div style={{ fontSize: 12, color: GOLD, fontWeight: 600 }}>Pending</div>
-                    <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
+                    <button aria-haspopup="menu" onClick={(e) => { e.stopPropagation(); setMenuPos(menuAt(e, 3)); setOpenMenu(null); setOpenInviteMenu(openInviteMenu === inv.id ? null : inv.id); }}
                       aria-label="More" {...tip('More')}
                       className="hub-icon-btn"><Icon name="more" size={14} /></button>
                   </div>
-                  {openInviteMenu === inv.id && (
-                    <div data-manage-team-dismiss-surface="true" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", right: 14, top: 38, zIndex: 20, background: INK_700, border: `1px solid ${INK_500}`, borderRadius: 8, padding: 4, minWidth: 150, boxShadow: "0 12px 30px rgba(0,0,0,0.45)" }}>
+                  {openInviteMenu === inv.id && menuPos && (
+                    <div data-manage-team-dismiss-surface="true" className="hub-menu" onClick={(e) => e.stopPropagation()} style={{ left: menuPos.left, top: menuPos.top, zIndex: 1400, width: 180 }}>
                       {[
                         { label: "Copy invite link", onClick: async () => {
                           setOpenInviteMenu(null);
@@ -830,7 +843,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                         ...(isLink ? [] : [{ label: "Resend invite", onClick: () => { setOpenInviteMenu(null); resendInvite(inv); } }]),
                         { label: "Revoke invite", danger: true, onClick: () => { setOpenInviteMenu(null); revokeInvite(inv); } },
                       ].map(it => (
-                        <button key={it.label} disabled={busy} onClick={it.onClick} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: 0, color: it.danger ? C.dangerText : BONE_100, padding: "7px 10px", fontSize: 12, borderRadius: 4, cursor: busy ? "not-allowed" : "pointer", fontFamily: "inherit" }}>{it.label}</button>
+                        <button key={it.label} disabled={busy} onClick={it.onClick} className={`hub-menu__item${it.danger ? " is-danger" : ""}`}><TeamMenuIcon label={it.label} />{it.label}</button>
                       ))}
                     </div>
                   )}

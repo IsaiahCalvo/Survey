@@ -19,31 +19,39 @@ const require = createRequire(import.meta.url);
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const url = (rel) => pathToFileURL(path.join(repoRoot, rel)).href;
 
-async function loadPromptModal() {
-  const file = path.join(repoRoot, 'src/components/dialogPrompts.jsx');
+// Compile one source file for node: swap its imports (each must still be
+// there) and point react at the real package.
+async function compile(rel, dir, swaps) {
+  const file = path.join(repoRoot, rel);
   const reactUrl = pathToFileURL(require.resolve('react')).href;
   const jsxRuntimeUrl = pathToFileURL(require.resolve('react/jsx-runtime')).href;
   let source = await readFile(file, 'utf8');
-  const swap = (from, to) => {
-    assert.ok(source.includes(from), `dialogPrompts.jsx still has: ${from}`);
+  for (const [from, to] of [[/from 'react';/, `from ${JSON.stringify(reactUrl)};`], ...swaps]) {
+    assert.ok(typeof from === 'string' ? source.includes(from) : from.test(source), `${rel} still has: ${from}`);
     source = source.replace(from, to);
-  };
-  swap("import { useCallback, useEffect, useRef, useState } from 'react';",
-    `import { useCallback, useEffect, useRef, useState } from ${JSON.stringify(reactUrl)};`);
-  swap("import { useFocusTrap } from '../hooks/useFocusTrap';",
-    `import { useFocusTrap } from ${JSON.stringify(url('src/hooks/useFocusTrap.js'))};`);
-  swap("import { ConfirmModal } from '../home/BulkModals';", 'const ConfirmModal = () => null;');
-  swap("import { closeButtonStyle } from '../home/hubControls';", 'const closeButtonStyle = () => ({});');
-  swap("import { Icon } from '../home/HubShell';", 'const Icon = () => null;');
-  swap("import { C } from '../uiPalette';", `import { C } from ${JSON.stringify(url('src/uiPalette.js'))};`);
-  swap("import MotionPresence from './MotionPresence.jsx';", 'const MotionPresence = ({ open, children }) => (open ? children : null);');
-  swap("import { useTooltip } from './Tooltip';", 'const useTooltip = () => () => ({});');
+  }
   const out = await transformWithOxc(source, file, { lang: 'jsx' });
-  const code = out.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
+  const target = path.join(dir, path.basename(rel).replace(/\.jsx$/, '.mjs'));
+  await writeFile(target, out.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl)));
+  return pathToFileURL(target).href;
+}
+
+// The prompt sits on DialogCard (2026-10-27), so both are compiled; the trap
+// under test is the real useFocusTrap that DialogCard uses.
+async function loadPromptModal() {
   const dir = await mkdtemp(path.join(tmpdir(), 'kal66-prompt-'));
-  const modulePath = path.join(dir, 'dialogPrompts.mjs');
-  await writeFile(modulePath, code);
-  return { mod: await import(pathToFileURL(modulePath).href), cleanup: () => rm(dir, { recursive: true, force: true }) };
+  const cardUrl = await compile('src/components/DialogCard.jsx', dir, [
+    ["import { Icon } from '../home/HubShell';", 'const Icon = () => null;'],
+    ["import { C } from '../uiPalette';", `import { C } from ${JSON.stringify(url('src/uiPalette.js'))};`],
+    ["import { useFocusTrap } from '../hooks/useFocusTrap';", `import { useFocusTrap } from ${JSON.stringify(url('src/hooks/useFocusTrap.js'))};`],
+    ["import MotionPresence from './MotionPresence.jsx';", 'const MotionPresence = ({ open, children }) => (open ? children : null);'],
+    ["import { useTooltip } from './Tooltip';", 'const useTooltip = () => () => ({});'],
+  ]);
+  const promptUrl = await compile('src/components/dialogPrompts.jsx', dir, [
+    ["import { ConfirmModal } from '../home/BulkModals';", 'const ConfirmModal = () => null;'],
+    [/from '\.\/DialogCard\.jsx';/g, `from ${JSON.stringify(cardUrl)};`],
+  ]);
+  return { mod: await import(promptUrl), cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
 
 function setupDom() {
@@ -130,7 +138,8 @@ test('PromptModal: field takes focus, Tab and Shift+Tab stay inside, Escape canc
 test('AccessManagementModal uses the shared stacking trap its Invite dialog also uses', () => {
   const src = readFileSync(new URL('../src/home/AccessManagementModal.jsx', import.meta.url), 'utf8');
   assert.match(src, /import \{ useFocusTrap \} from '\.\.\/hooks\/useFocusTrap';/);
-  assert.match(src, /useFocusTrap\(cardRef, Boolean\(open\), \{ onEscape: onClose \}\);/);
+  // Escape closes an open row More menu first, then the dialog (2026-10-27).
+  assert.match(src, /useFocusTrap\(cardRef, Boolean\(open\), \{ onEscape: \(\) => \(openMenu \? setOpenMenu\(null\) : onClose\?\.\(\)\) \}\);/);
   assert.match(src, /<div ref=\{cardRef\} role="dialog" aria-modal="true"/);
   assert.doesNotMatch(src, /addEventListener\('keydown'/, 'no hand-rolled Escape listener left');
   const share = readFileSync(new URL('../src/home/ShareModal.jsx', import.meta.url), 'utf8');

@@ -26,6 +26,7 @@ async function loadPanel() {
     .replace("from 'react-dom'", `from ${JSON.stringify(pathToFileURL(require.resolve('react-dom')).href)}`)
     .replace("import { supabase } from '../../supabaseClient';", 'const supabase = null;')
     .replace("import Icon from '../../Icons';", 'const Icon = () => null;')
+    .replace("import { usePromptDialog } from '../dialogPrompts.jsx';", 'const usePromptDialog = () => [async () => null, null];')
     .replace("import { UndoToast } from '../collab/UndoToast.jsx';", 'const UndoToast = () => null;')
     .replace("from '../../hooks/useUndoToast.js'", `from ${JSON.stringify(new URL('../src/hooks/useUndoToast.js', import.meta.url).href)}`)
     .replace(/import \{[^}]+\} from '\.\.\/\.\.\/services\/documentRevisionService';/, 'const { createRevision, listRevisions, getRevision, restoreRevision } = globalThis.__historyPollingService;')

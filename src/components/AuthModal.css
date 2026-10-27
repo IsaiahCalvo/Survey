@@ -62,15 +62,15 @@
   }
 }
 
-/* Top-right bordered square close button (shared modal-close language).
-   It paints no fill, so the box IS the control — the one case tokens.css
-   revision 4 lets a button take the identifying --border-strong. */
+/* Top-right close: the one dialog x (DialogCard's hub-icon-btn: 24px, no
+   box, a 13px glyph in --text-3). Design review 2026-10-27: it was a boxed
+   square, the only boxed x besides Settings. */
 .auth-modal-close {
   position: absolute;
   top: 14px;
   right: 14px;
   background: transparent;
-  border: 1px solid var(--border-strong);
+  border: 0;
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
@@ -311,7 +311,13 @@
   cursor: not-allowed;
 }
 
+/* Centered like the footer's links (design review 2026-10-27: it was the
+   one left-aligned link on the card). */
 .auth-sso-link {
+  display: block;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
   background: none;
   border: none;
   color: var(--link);
@@ -394,7 +400,7 @@
 .auth-modal-close::after {
   content: '';
   position: absolute;
-  inset: -11px; /* from the padding edge inside the 1px border: 11 + 22 + 11 = 44 */
+  inset: -10px; /* 10 + 24 + 10 = 44 */
 }
 
 @media (pointer: coarse) {

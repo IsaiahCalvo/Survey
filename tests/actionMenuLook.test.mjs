@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { arrangeMenuItems, menuIconFor } from '../src/utils/menuItems.js';
+import { arrangeMenuItems, menuAtButton, menuIconFor } from '../src/utils/menuItems.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -63,4 +63,14 @@ test('desktop and phone name the exports the same way', () => {
     assert.ok(phone.includes(label), `phone menu lacks "${label}"`);
   }
   assert.doesNotMatch(phone, /<Icon name="share" size=\{HEADER_GLYPH\}/, 'phone Export should use the download glyph like desktop');
+});
+
+test('a row menu opens under its More button, or above it near the bottom', () => {
+  const viewport = { width: 1000, height: 800 };
+  const rect = { top: 100, bottom: 124, right: 600 };
+  assert.deepEqual(menuAtButton(rect, { width: 180, height: 160, viewport }), { left: 420, top: 128 });
+  const low = { top: 700, bottom: 724, right: 990 };
+  assert.deepEqual(menuAtButton(low, { width: 180, height: 160, viewport }), { left: 810, top: 536 });
+  assert.match(read('src/home/ManageTeamModal.jsx'), /setMenuPos\(menuAt\(e, 5\)\)/);
+  assert.match(read('src/home/AccessManagementModal.jsx'), /setAt\(menuAtButton\(e\.currentTarget\.getBoundingClientRect\(\)/);
 });

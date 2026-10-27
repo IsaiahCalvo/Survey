@@ -41,6 +41,19 @@ export const DIALOG_CARD_STYLE = Object.freeze({
   borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden',
 });
 
+// The one text field inside a dialog (Rename, the themed prompt). 13px and
+// 32px tall on a mouse; on a touch screen hub.css (.dialog-prompt-input) makes
+// it 16px (iOS zooms the page on a smaller field) and 44px tall. Give the
+// input className="dialog-prompt-input".
+export const DIALOG_FIELD_STYLE = Object.freeze({
+  display: 'block', width: '100%', height: 32, boxSizing: 'border-box', padding: '0 10px',
+  background: C.deep, border: `1px solid ${C.ruleStrong}`, borderRadius: 'var(--radius-sm)',
+  color: C.ink, fontSize: 13, fontFamily: 'inherit', outline: 'none',
+});
+
+// A field's name above it: sentence case, never ALL CAPS.
+export const DIALOG_LABEL_STYLE = Object.freeze({ display: 'block', fontSize: 11, color: C.muted, marginBottom: 6 });
+
 export const DIALOG_FOOTER_STYLE = Object.freeze({
   padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep,
   display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', flex: 'none',
@@ -52,6 +65,8 @@ export const DIALOG_FOOTER_STYLE = Object.freeze({
  * @param {import('react').ReactNode} props.title
  * @param {import('react').ReactNode} [props.message] one short paragraph under the title
  * @param {() => void} props.onClose  X, Escape and the scrim
+ * @param {() => void} [props.onScrim] a tap on the scrim, when it must differ
+ *   from onClose (the prompt keeps typed text on a stray tap)
  * @param {boolean} [props.busy] while true nothing closes it
  * @param {number} [props.width=380]
  * @param {number} [props.zIndex] over the viewer's own layers when needed
@@ -67,6 +82,7 @@ export default function DialogCard({
   message,
   ariaLabel,
   onClose,
+  onScrim,
   busy = false,
   width = 380,
   zIndex,
@@ -85,7 +101,7 @@ export default function DialogCard({
 
   return (
     <MotionPresence open>
-      <div onClick={busy ? undefined : onClose} style={zIndex ? { ...DIALOG_OVERLAY_STYLE, zIndex } : DIALOG_OVERLAY_STYLE}>
+      <div onClick={busy ? undefined : (onScrim || onClose)} style={zIndex ? { ...DIALOG_OVERLAY_STYLE, zIndex } : DIALOG_OVERLAY_STYLE}>
         <Card
           ref={cardRef}
           role={role}

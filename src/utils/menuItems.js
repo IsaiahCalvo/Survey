@@ -20,7 +20,11 @@ const ICON_BY_LABEL = [
   [/^upload\b/i, 'upload'],
   [/^download\b|^export\b/i, 'download'],
   [/^restore\b/i, 'undo'],
-  [/^delete\b|^remove\b/i, 'trash'],
+  [/^make (owner|editor|viewer)\b|^change role\b/i, 'userRole'],
+  [/^resend\b/i, 'mail'],
+  [/^invite\b/i, 'users'],
+  [/^view activity\b/i, 'history'],
+  [/^delete\b|^remove\b|^revoke\b/i, 'trash'],
 ];
 
 export function menuIconFor(label) {
@@ -36,4 +40,21 @@ export function arrangeMenuItems(items = []) {
   const danger = list.filter((item) => item.danger);
   if (!danger.length || !safe.length) return list;
   return [...safe, { separator: true, key: 'danger-separator' }, ...danger];
+}
+
+// Where an action menu opened from a row's More button goes: under the button,
+// its right edge on the button's, flipped above when it would run off the
+// bottom. Fixed to the window, so a scrolling list (the access lists) never
+// clips it. `rect` is the button's getBoundingClientRect().
+export function menuAtButton(rect, { width = 180, height = 160, gap = 4, margin = 8, viewport = { width: 1024, height: 768 } } = {}) {
+  const left = Math.max(margin, Math.min(rect.right - width, viewport.width - width - margin));
+  const below = rect.bottom + gap;
+  const top = below + height <= viewport.height - margin ? below : Math.max(margin, rect.top - gap - height);
+  return { left, top };
+}
+
+// A menu row is 28px on a mouse and 44px on a touch screen (hub.css), which
+// menuAtButton needs to know before the menu is drawn.
+export function menuRowHeight() {
+  return typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches ? 44 : 28;
 }
