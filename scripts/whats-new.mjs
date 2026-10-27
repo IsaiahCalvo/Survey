@@ -5,6 +5,14 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-26', items: [
+    'A page that fits the screen no longer slides sideways, and a nearly straight pan on a zoomed page runs straight.',
+    'Switching PDF tabs is smooth: the side bars stay put and each tab keeps its tool and panels.',
+    'Documents open a little faster.',
+    'Moving, resizing or turning marks on a busy sheet is smoother.',
+    'Resize grabbers show a double arrow turned the way they pull, and point grabbers show a pointing hand.',
+    'Callouts have three new grabbers: slide where the line meets the box, or move either half of the line.',
+    'One look everywhere: Done is a double check mark, select bars share one order, dialogs share one card, and the stray white border on clicked buttons is gone.',
+    'Spaces: Enter, Esc and Erase replace the Cancel, Done and Full page buttons, and a click picks the shape under a shape tool.',
     'Reopening a big drawing shows its first page in about 1.8 seconds instead of 4.4.',
     'Dragging marks on a busy sheet redraws only the marks you move, so it stays smooth.',
     'Cut with a left-to-right box takes every pen stroke inside it.',
