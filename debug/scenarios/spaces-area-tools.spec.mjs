@@ -16,12 +16,12 @@ const storedPage = (page) => page.evaluate(() => {
 });
 const areas = (page) => page.locator('[data-region-edit-layer] [data-region-id]');
 
-async function setup(page, context) {
+async function setup(page, context, { phone = false } = {}) {
   await context.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
   await page.goto('/?testPdf=order-pages.pdf');
   await page.waitForFunction(() => window.__fix19SurveyRegionHarness && window.__pdfjsViewerPerf);
   await page.evaluate(() => window.__fix19SurveyRegionHarness.setup());
-  await button(page, 'Spaces').click();
+  await button(page, phone ? 'Open spaces' : 'Spaces').click();
   await button(page, 'Open Fix19 Space A').click();
 }
 
@@ -146,7 +146,7 @@ test('desktop pen: a pen tap picks an area under a shape tool', async ({ page, c
 test('phone: Done check leaves keeping areas; a tap picks without switching tools', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   const page = await context.newPage();
-  await setup(page, context);
+  await setup(page, context, { phone: true });
   await openAreas(page);
   const strip = page.locator('[aria-label="Area editing"]');
   await expect(strip).toBeVisible();

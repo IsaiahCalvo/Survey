@@ -37,8 +37,9 @@ test('Spaces edit mode, visibility animation, copy, move and scoped Undo', async
   await button(page, 'Edit Spaces').click();
   await expect(page.locator('.spaces-panel .space-card__delete')).toHaveCount(3);
   await button(page, 'Edit the regions on page 1').click();
-  await expect(page.locator('[data-area-hint]')).toBeVisible();
-  await button(page, 'Cancel').click();
+  await expect(page.locator('[data-region-edit-layer]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-region-edit-layer]')).toHaveCount(0);
   await page.evaluate(() => window.__fix19SurveyRegionHarness.createAnnotation({ id: 'spaces-owned', scope: 'region' }));
   await expect.poll(() => page.evaluate(() => window.__fix20CollabHarness.getState().annotations.filter((mark) => mark.id === 'spaces-owned').length)).toBe(1);
   await button(page, 'Move or copy region on page 1').click();
