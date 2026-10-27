@@ -1042,10 +1042,10 @@ function attachLocalPersistenceMirror(state) {
       // applyAuthoritativeCloudUpdate, never that derived live update.
       || origin === REMOTE_ORIGIN
     ) return;
-    if (state.deferredPersistence) {
-      state.deferredPersistence.push(update);
-      return;
-    }
+    // A local edit (a bulk import skips the outbox, so this copy is its only
+    // local one until its checkpoint is stored) is written at once: fill the
+    // copy with what waits for it first.
+    if (state.deferredPersistence) flushDeferredPersistence(state);
     // This is one-way only: the provider observes `target`; no listener ever
     // applies target updates back to the live doc, so there is no update loop.
     Y.applyUpdate(target, update, HYDRATE_ORIGIN);
@@ -1154,10 +1154,10 @@ function applySnapshotToLocalPersistence(state, bytes) {
 // ~27 MB on the big drawing set) that the open waited for, though nothing in
 // the open reads that copy: it is empty (nothing saved here yet), so the
 // pre-open local difference is empty either way. It is filled once the open
-// is done. Until then the snapshot and every later update for it wait in
-// order, and are applied in that same order, so the copy ends up the same.
-// A close before then fills it first; a purge or failed open drops it with
-// the copy.
+// is done. Until then the snapshot and later cloud rows for it wait in order,
+// and are applied in that same order, so the copy ends up the same. The first
+// local edit, or a close, fills it first; a purge or failed open drops it
+// with the copy.
 function deferSnapshotToLocalPersistence(state, bytes) {
   const doc = state.localPersistenceDoc;
   if (!doc || !idbStoreListener(state.idbProvider, doc) || !state.idbProvider.db || !docIsEmpty(doc)) {

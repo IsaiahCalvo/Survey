@@ -439,9 +439,9 @@ test('a merged checkpoint is never claimed as covered, and onlyIfCovered never m
 });
 
 // Cold open (2026-10-27): the downloaded snapshot goes into this device's
-// offline copy after the open, not during it; edits made before then still
-// reach the copy, in order, and a close before then fills it first.
-test('a cold open fills the offline copy after the open, and loses nothing made before then', async () => {
+// offline copy after the open, not during it; the first local edit, or a
+// close, fills it first.
+test('a cold open fills the offline copy after the open; a local edit or a close fills it first', async () => {
   const documentId = 'open-speed-deferred-offline-copy';
   const cloud = createCloud(documentId);
   const alice = cloud.makeClient('user-a');
@@ -488,8 +488,10 @@ test('a cold open fills the offline copy after the open, and loses nothing made 
       assert.deepEqual(ids(handle.getByPage()), ['k1', 'k2'], 'the marks show');
       assert.equal(provider.stored.length, 0, 'the open wrote nothing to the copy');
       assert.equal(provider.doc.store.clients.size, 0, 'and did not decode the snapshot into it');
-      // An edit before the copy is filled.
+      // A local edit before the copy is filled fills it at once (a bulk
+      // import has no other local copy until its checkpoint is stored).
       handle.applyByPage({ 1: { objects: [...handle.getByPage()[1].objects, rect('k3')] } });
+      assert.deepEqual(replayed(provider), ['k1', 'k2', 'k3'], 'the edit is in the copy at once, after the snapshot');
       await handle.drain();
       await new Promise((resolve) => setTimeout(resolve, 20));
       const first = new Y.Doc();
