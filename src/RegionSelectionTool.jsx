@@ -129,6 +129,11 @@ const isPointInFlatPolygon = (x, y, coords) => {
   }
   return inside;
 };
+// Copied areas as read back from the clipboard: a list of outlines.
+const isAreaList = (list) => Array.isArray(list) && list.length > 0 && list.every((region) => (
+  region && Array.isArray(region.coordinates) && region.coordinates.length >= 6 &&
+  region.coordinates.length % 2 === 0 && region.coordinates.every(Number.isFinite)
+));
 const regionEditHistoryStore = new Map();
 
 // KAL-301 REDO: standard rotation-pill visibility timings, copied from the
@@ -2691,7 +2696,7 @@ const RegionSelectionTool = ({
   const handleCopy = useCallback(async () => {
     if (selectedRegionIds.size === 0) return;
     const regionsToCopy = regions.filter(r => selectedRegionIds.has(r.regionId));
-    areaClipboardRef.current = { regions: buildRegionPayload(regionsToCopy), pastes: 0 };
+    areaClipboardRef.current = { regions: buildRegionPayload(regionsToCopy) };
     setContextMenu(null);
 
     try {
@@ -2723,12 +2728,30 @@ const RegionSelectionTool = ({
     setRegions((prev) => [...prev, ...newRegions]);
     setSelectedRegionIds(new Set(newRegions.map((r) => r.regionId)));
   }, [currentPageId, pushUndoSnapshot]);
-  const pasteAreasFromKeys = useCallback(() => {
-    const clip = areaClipboardRef.current;
-    if (!clip?.regions?.length) return;
-    clip.pastes += 1;
-    placeAreas(clip.regions, AREA_PASTE_STEP * clip.pastes);
-  }, [placeAreas]);
+  // The system clipboard first (it outlives this editing session, so areas
+  // copied on one page paste on another), the in-memory copy if it cannot be
+  // read. On another page they land where they were; on their own page each
+  // paste steps further down-right.
+  const lastPasteRef = useRef({ key: null, count: 0 });
+  const pasteAreasFromKeys = useCallback(async () => {
+    let list = null;
+    let key = null;
+    try {
+      const text = await navigator.clipboard.readText();
+      const parsed = JSON.parse(text);
+      if (isAreaList(parsed)) { list = parsed; key = text; }
+    } catch { /* no permission or not areas: use the in-memory copy */ }
+    if (!list) {
+      list = areaClipboardRef.current?.regions || null;
+      key = areaClipboardRef.current;
+    }
+    if (!isAreaList(list)) return;
+    const last = lastPasteRef.current;
+    const count = last.key === key ? last.count + 1 : 1;
+    lastPasteRef.current = { key, count };
+    const samePage = list[0]?.pageId === currentPageId;
+    placeAreas(list, samePage ? AREA_PASTE_STEP * count : AREA_PASTE_STEP * (count - 1));
+  }, [placeAreas, currentPageId]);
   const duplicatePickedAreas = useCallback(() => {
     if (selectedRegionIds.size === 0) return;
     placeAreas(regions.filter((r) => selectedRegionIds.has(r.regionId)), AREA_PASTE_STEP);

@@ -205,6 +205,24 @@ test('desktop: Ctrl+A, Ctrl+C / V, Ctrl+D and arrows work on areas', async ({ pa
   await expect(areas(page)).toHaveCount(start + 1);
 });
 
+test('desktop: areas copied before leaving still paste after reopening', async ({ page, context }) => {
+  test.skip(test.info().project.use?.isMobile, 'desktop pass');
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(test.info().project.use.baseURL || 'http://127.0.0.1:5197').origin });
+  await setup(page, context);
+  await openAreas(page);
+  const centre = await drawRect(page, 330, 430);
+  await page.keyboard.press('v');
+  await page.mouse.click(centre.x, centre.y);
+  await expect.poll(() => pickedCount(page)).toBe(1);
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-region-edit-layer]')).toHaveCount(0);
+  await openAreas(page);
+  const count = await areas(page).count();
+  await page.keyboard.press('Control+v');
+  await expect(areas(page)).toHaveCount(count + 1);
+});
+
 // Owner 2026-10-27: Move or copy is a small card beside its button, its tail
 // pointing at the button.
 test('desktop: Move or copy opens beside its button with a tail', async ({ page, context }) => {
