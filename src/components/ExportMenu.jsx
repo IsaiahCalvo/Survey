@@ -68,7 +68,9 @@ export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 })
             // action menu (hub.css .hub-menu / .hub-menu__item, an icon on
             // each row) like the home row menus and the right-click menus.
             className="hub-menu"
-            style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, minWidth: 220 }}
+            // AnchoredPopover clamps a centred card, so the menu stays centred
+            // on its zero-width wrapper.
+            style={{ position: 'absolute', top: '100%', left: '50%', marginTop: 6, minWidth: 220, transform: 'translate(-50%, 0)' }}
           >
             {visibleItems.map((item) => (
               <button
