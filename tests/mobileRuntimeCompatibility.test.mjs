@@ -418,6 +418,8 @@ test('pan axis rules reach every way of moving the page', () => {
   // Wheel / touchpad: rails + lock, applied by the viewer wherever the browser could scroll sideways.
   assert.match(PDFJS_VIEWER_SOURCE, /const rails = createAxisSnap\(WHEEL_AXIS_SNAP\);/);
   assert.match(PDFJS_VIEWER_SOURCE, /ruledX = limitHorizontalDelta\(ruledX, el\.scrollLeft, range\);/);
+  // A live textarea / select (or any inner scroller) keeps its own wheel.
+  assert.match(PDFJS_VIEWER_SOURCE, /&& !hasOwnWheelScroller\(e\.target, el\);/);
   // Pinch: no sideways stretch while the page fits the band.
   assert.match(PDFJS_VIEWER_SOURCE, /const shownLeft = widestPagePtRef\.current \* displayScale <= band \+ 0\.5/);
 });

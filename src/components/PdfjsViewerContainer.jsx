@@ -3365,6 +3365,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el || isMobileSurface) return undefined;
     const overscroll = createWheelOverscroll();
     const rails = createAxisSnap(WHEEL_AXIS_SNAP);
+    const hasOwnWheelScroller = (target, root) => {
+      for (let node = target; node && node !== root && node.nodeType === 1; node = node.parentElement) {
+        if (node.isContentEditable || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT') return true;
+        if (node.scrollHeight > node.clientHeight + 1 || node.scrollWidth > node.clientWidth + 1) {
+          const { overflowX, overflowY } = getComputedStyle(node);
+          if (/auto|scroll/.test(overflowX) || /auto|scroll/.test(overflowY)) return true;
+        }
+      }
+      return false;
+    };
     let raf = 0;
     let idleTimer = 0;
     let restoreLeft = null;
@@ -3414,7 +3424,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       let ruledY = dy;
       if (!notch && maxLeft > 0.5 && !range.fits) ({ dx: ruledX, dy: ruledY } = rails.step(dx, dy, now));
       ruledX = limitHorizontalDelta(ruledX, el.scrollLeft, range);
-      const takeOver = maxLeft > 0.5 && (!notch || ruledX !== dx || ruledY !== dy);
+      // A live form field or list box under the pointer that can scroll on
+      // its own keeps the wheel (PdfjsFormLayer's textarea / select).
+      const takeOver = maxLeft > 0.5 && (!notch || ruledX !== dx || ruledY !== dy)
+        && !hasOwnWheelScroller(e.target, el);
       const manual = takeOver && e.cancelable;
       if (manual) {
         e.preventDefault();
