@@ -395,13 +395,31 @@ test('desktop wheel and trackpad rubber-band at document edges and zoom limits',
   // under it and folded into the next leftover.
   assert.match(PDFJS_VIEWER_SOURCE, /composeElasticTransform\(/);
   assert.match(PDFJS_VIEWER_SOURCE, /elasticRef\.current = composeReleaseLeftover\(\{/);
-  assert.match(PDFJS_VIEWER_SOURCE, /if \(prefersReducedMotion\(\)\) return;/);
+  // Reduced motion: hard edges, but the pan axis rules still apply.
+  assert.match(PDFJS_VIEWER_SOURCE, /if \(prefersReducedMotion\(\)\) \{ if \(manual\) scrollManually\(dx, dy\); return; \}/);
   assert.match(PDFJS_VIEWER_SOURCE, /elasticZoom: regime === 'trackpad' && !isMobileSurface && !prefersReducedMotion\(\),/);
   assert.match(PDFJS_VIEWER_SOURCE, /const previewScale = g\.elasticZoom \? rubberScale\(nextScale, minimumScale, maxScale\) : nextScale;/);
   // Pushing on at a limit commits nothing, so no extra settle phase.
   assert.match(PDFJS_VIEWER_SOURCE, /if \(!overshootOnly\) cb\.current\.onZoomPhase\?\.\('settle'/);
   // The viewer's own bounce replaces Safari's native one on mouse/trackpad.
   assert.match(PDFJS_VIEWER_SOURCE, /overscrollBehavior: finePointer && !isMobileSurface \? 'none' : 'contain'/);
+});
+
+// Owner 2026-10-27 (docs/VIEWER-PAN-ZOOM-RULES.md): a page that fits sideways
+// never moves sideways, and near-straight drags / touchpad scrolls run on rails.
+test('pan axis rules reach every way of moving the page', () => {
+  assert.match(PDFJS_VIEWER_SOURCE, /from '\.\.\/utils\/panAxisRules\.js'/);
+  // Finger / mouse / pen drags: lock in the elastic step and the plain step.
+  assert.match(PDFJS_VIEWER_SOURCE, /const sx = range\.fits\s*\? \{ scroll: el\.scrollLeft \+ limitHorizontalDelta\(-dx, el\.scrollLeft, range\), excess: 0, shown: 0 \}/);
+  assert.equal((PDFJS_VIEWER_SOURCE.match(/el\.scrollLeft \+= limitHorizontalDelta\(-delta\.x, el\.scrollLeft, getHorizontalPanRange\(\)\);/g) || []).length, 2);
+  assert.equal((PDFJS_VIEWER_SOURCE.match(/const delta = railPanDelta\(panDeltaRef\.current\);/g) || []).length, 2);
+  // A glide never moves (or bounces) a locked page sideways.
+  assert.match(PDFJS_VIEWER_SOURCE, /const stepX = limitHorizontalDelta\(dx, beforeLeft, panMomentumHooksRef\.current\.range\?\.\(\)\);/);
+  // Wheel / touchpad: rails + lock, applied by the viewer wherever the browser could scroll sideways.
+  assert.match(PDFJS_VIEWER_SOURCE, /const rails = createAxisSnap\(WHEEL_AXIS_SNAP\);/);
+  assert.match(PDFJS_VIEWER_SOURCE, /ruledX = limitHorizontalDelta\(ruledX, el\.scrollLeft, range\);/);
+  // Pinch: no sideways stretch while the page fits the band.
+  assert.match(PDFJS_VIEWER_SOURCE, /const shownLeft = widestPagePtRef\.current \* displayScale <= band \+ 0\.5/);
 });
 
 test('mobile deep zoom-out rebases before WebKit composites an unsafe downscale', () => {
@@ -438,7 +456,8 @@ test('mobile pan keeps two-axis velocity and coasts after release', () => {
   // 2026-10-07 (flickPan): finger and mouse share ONE glide (iOS 0.998/ms
   // decay, Drawboard-matched release); the finger lift reads its velocity at
   // the touchend's own event time.
-  assert.match(PDFJS_VIEWER_SOURCE, /const release = releaseElasticPan\(velocityX, velocityY\);\s*releaseLayoutShift\(\);\s*startPanInertia\(release\.vx, release\.vy, \{ elastic: release\.elastic, touch: true \}\);/);
+  // 2026-10-27 (pan axis rules): the glide keeps the rail the drag ended on.
+  assert.match(PDFJS_VIEWER_SOURCE, /const railed = panAxisSnapRef\.current\.release\(velocityX, velocityY\);\s*const release = releaseElasticPan\(railed\.vx, railed\.vy\);\s*releaseLayoutShift\(\);\s*startPanInertia\(release\.vx, release\.vy, \{ elastic: release\.elastic, touch: true \}\);/);
   assert.match(PDFJS_VIEWER_SOURCE, /resolveEdgeRelease\(\{/);
   assert.match(PDFJS_VIEWER_SOURCE, /panVelocityRef\.current\.release\(panEventTime\(event\)\)/);
   assert.match(PDFJS_VIEWER_SOURCE, /PDF pan coast distance/);

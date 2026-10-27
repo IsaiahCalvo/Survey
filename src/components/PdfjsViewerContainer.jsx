@@ -63,6 +63,13 @@ import {
   rubberClamp,
   rubberScale,
 } from '../utils/elasticEdges.js';
+import {
+  DRAG_AXIS_SNAP,
+  WHEEL_AXIS_SNAP,
+  createAxisSnap,
+  limitHorizontalDelta,
+  resolveHorizontalPanRange,
+} from '../utils/panAxisRules.js';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import PdfjsTextLayer from './PdfjsTextLayer';
 import { getPageViewBase, getPageViewSizes, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
@@ -1611,6 +1618,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   panTextMarkAtRef.current = panTextMarkAt;
   const panDeltaRef = useRef({ x: 0, y: 0 });
   const panRafRef = useRef(0);
+  // Rails for a drag pan (mouse, pen, finger): utils/panAxisRules.js.
+  const panAxisSnapRef = useRef(null);
+  if (!panAxisSnapRef.current) panAxisSnapRef.current = createAxisSnap(DRAG_AXIS_SNAP);
   // Shared flick physics (src/utils/panMomentum.js) drives BOTH the mobile
   // touch pan and the desktop mouse / space-drag pan, so the two surfaces can
   // never drift into two different feels.
@@ -1734,6 +1744,29 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const nextLeft = Math.min(Math.max(0, el.scrollLeft), maxLeft);
     if (Math.abs(el.scrollLeft - nextLeft) > 0.5) el.scrollLeft = nextLeft;
   }, [getHorizontalScrollMax]);
+
+  // Where a pan may take scrollLeft from here (docs/VIEWER-PAN-ZOOM-RULES.md):
+  // a page that fits the band between the side panels never moves sideways,
+  // except to slide out from under a panel that opened over it.
+  const getHorizontalPanRange = useCallback(() => {
+    const el = scrollerRef.current;
+    const scale = scaleRef.current;
+    const maxLeft = getHorizontalScrollMax(scale);
+    if (!el || zoomInteractionRef.current || mobileTouchRef.current?.mode === 'pinch') {
+      return { lo: 0, hi: maxLeft, fits: false };
+    }
+    const pageWidth = widestPagePtRef.current * scale;
+    return resolveHorizontalPanRange({
+      scrollLeft: el.scrollLeft,
+      maxLeft,
+      pageLeft: sideRoomRef.current.left + (getColumnWidthAtScale(scale) - pageWidth) / 2 - el.scrollLeft,
+      pageWidth,
+      viewportWidth: containerWRef.current,
+      insetLeft: sideInsetRef.current.left,
+      insetRight: sideInsetRef.current.right,
+      margin: layoutMetricsRef.current.padX,
+    });
+  }, [getColumnWidthAtScale, getHorizontalScrollMax]);
 
   // ---- load document --------------------------------------------------------
   // Owner 2026-10-01 (instant page operations): when the new source is a page
@@ -2638,8 +2671,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let shownX = newX - left;
     let shownY = newY - top;
     if (elastic) {
-      const shownLeft = rubberClamp(freeLeftAt(displayScale), 0,
-        getHorizontalScrollMax(displayScale), containerWRef.current);
+      // A page that fits sideways does not stretch sideways under a pinch
+      // either (docs/VIEWER-PAN-ZOOM-RULES.md): it zooms about its centre
+      // line until it is wider than the band between the panels.
+      const band = containerWRef.current - sideInsetRef.current.left - sideInsetRef.current.right;
+      const displayMaxLeft = getHorizontalScrollMax(displayScale);
+      const shownLeft = widestPagePtRef.current * displayScale <= band + 0.5
+        ? Math.min(Math.max(0, freeLeftAt(displayScale)), displayMaxLeft)
+        : rubberClamp(freeLeftAt(displayScale), 0, displayMaxLeft, containerWRef.current);
       const shownTop = rubberClamp(freeTopAt(displayScale), 0,
         predictedMaxTopAt(displayScale), containerHRef.current);
       shownX = pointXAt(displayScale) - shownLeft;
@@ -3325,8 +3364,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     if (!el || isMobileSurface) return undefined;
     const overscroll = createWheelOverscroll();
+    const rails = createAxisSnap(WHEEL_AXIS_SNAP);
     let raf = 0;
     let idleTimer = 0;
+    let restoreLeft = null;
     const show = (x, y) => {
       const prev = wheelShiftRef.current;
       if (prev.x === x && prev.y === y) return false;
@@ -3353,7 +3394,6 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (!(e.ctrlKey || e.metaKey) && zoomGlideRef.current) zoomGlideFinishRef.current?.();
       // Zoom (ctrl/cmd+wheel) owns the gesture: a stretch springs home under it.
       if (e.ctrlKey || e.metaKey || gestureRef.current) { if (overscroll.active()) release(); return; }
-      if (prefersReducedMotion()) return;
       let dx = normalizeWheelDelta(e.deltaX, e.deltaMode, el.clientWidth);
       let dy = normalizeWheelDelta(e.deltaY, e.deltaMode, el.clientHeight);
       if (e.shiftKey && dx === 0) { dx = dy; dy = 0; }
@@ -3361,6 +3401,39 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const notch = e.deltaMode !== 0 || Math.max(Math.abs(dx), Math.abs(dy)) >= 50;
       const maxLeft = getHorizontalScrollMax(scaleRef.current);
       const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      // Axis rules (docs/VIEWER-PAN-ZOOM-RULES.md): a touchpad scroll that
+      // is almost straight runs on a rail, and a page that fits sideways
+      // never scrolls or stretches sideways. Wherever the browser could move
+      // the page sideways (zoomed in, or a side panel's scroll room) the
+      // viewer scrolls every touchpad event itself: Chrome only lets a
+      // stream's later events be cancelled if its first one was, so rails
+      // that skipped "already straight" events would come and go mid-swipe.
+      // With no sideways scroll at all the browser keeps scrolling on its own.
+      const range = getHorizontalPanRange();
+      let ruledX = dx;
+      let ruledY = dy;
+      if (!notch && maxLeft > 0.5 && !range.fits) ({ dx: ruledX, dy: ruledY } = rails.step(dx, dy, now));
+      ruledX = limitHorizontalDelta(ruledX, el.scrollLeft, range);
+      const takeOver = maxLeft > 0.5 && (!notch || ruledX !== dx || ruledY !== dy);
+      const manual = takeOver && e.cancelable;
+      if (manual) {
+        e.preventDefault();
+      } else if (takeOver && range.fits && ruledX !== dx && restoreLeft === null) {
+        // Too late to stop the browser: put a locked page back before the
+        // next paint.
+        restoreLeft = el.scrollLeft + ruledX;
+        requestAnimationFrame(() => {
+          if (restoreLeft !== null) el.scrollLeft = restoreLeft;
+          restoreLeft = null;
+        });
+      }
+      dx = ruledX;
+      dy = ruledY;
+      const scrollManually = (byX, byY) => {
+        if (byX) el.scrollLeft += byX;
+        if (byY) el.scrollTop += byY;
+      };
+      if (prefersReducedMotion()) { if (manual) scrollManually(dx, dy); return; }
       const left = Math.min(Math.max(0, el.scrollLeft), maxLeft);
       const top = Math.min(Math.max(0, el.scrollTop), maxTop);
       // One axis per event (the dominant one), so a vertical swipe's sideways
@@ -3380,10 +3453,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       });
       if (result.prevent) {
         e.preventDefault();
+        // The event pulled a stretch back in: only what is left of it
+        // scrolls on that axis.
+        if (manual) scrollManually(vertical ? dx : 0, vertical ? 0 : dy);
         if (result.scrollBy) {
           if (vertical) el.scrollTop += result.scrollBy;
           else el.scrollLeft += result.scrollBy;
         }
+      } else if (manual) {
+        scrollManually(dx, dy);
       }
       if (overscroll.active()) schedule();
       if (idleTimer) clearTimeout(idleTimer);
@@ -3409,7 +3487,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       overscroll.reset();
       if (show(0, 0)) setLiveGestureFrame((frame) => frame + 1);
     };
-  }, [getHorizontalScrollMax, isMobileSurface, paintLiveFrame]);
+  }, [getHorizontalPanRange, getHorizontalScrollMax, isMobileSurface, paintLiveFrame]);
 
   // ---- pan: Space always overrides the active tool; writes are rAF-batched --
   const setPanInteraction = useCallback((active) => {
@@ -3453,9 +3531,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const excess = panExcessRef.current;
     // Pure step per axis (elasticEdges.js); a page that fits has no scroll
     // range, so all of the finger's travel is excess in the finger's direction.
-    const sx = resolveElasticPanStep({
-      scroll: el.scrollLeft, max: getHorizontalScrollMax(scaleRef.current), excess: excess.x, delta: dx, dimension: containerWRef.current,
-    });
+    // Sideways, a page that fits does not move or stretch at all (only out
+    // from under a panel): docs/VIEWER-PAN-ZOOM-RULES.md.
+    const range = getHorizontalPanRange();
+    const sx = range.fits
+      ? { scroll: el.scrollLeft + limitHorizontalDelta(-dx, el.scrollLeft, range), excess: 0, shown: 0 }
+      : resolveElasticPanStep({
+        scroll: el.scrollLeft, max: range.hi, excess: excess.x, delta: dx, dimension: containerWRef.current,
+      });
     const sy = resolveElasticPanStep({
       scroll: el.scrollTop, max: el.scrollHeight - el.clientHeight, excess: excess.y, delta: dy, dimension: containerHRef.current,
     });
@@ -3483,7 +3566,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     if (!excess.x && !excess.y) elasticRef.current = null;
     paint();
-  }, [getHorizontalScrollMax, paintLiveFrame]);
+  }, [getHorizontalPanRange, paintLiveFrame]);
 
   // The over-the-bounce pan edge offset springs home on its own clock.
   const stepPanEdge = useCallback(() => {
@@ -3504,6 +3587,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // past the edge. Reduced motion keeps the hard edge. (Was inside the phone
   // touch effect; shared so desktop drags spring the same way.)
   const beginElasticPan = useCallback(() => {
+    panAxisSnapRef.current.reset();
     const elastic = !prefersReducedMotion();
     const caught = catchElastic();
     touchPanElasticRef.current = elastic;
@@ -3565,20 +3649,29 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (panEdgeRafRef.current) cancelAnimationFrame(panEdgeRafRef.current);
   }, []);
 
+  // A frame's worth of drag travel, kept on its rail (utils/panAxisRules.js).
+  // A page locked sideways needs no rail: its up/down part moves as it is.
+  const railPanDelta = useCallback((delta) => {
+    if (!delta.x && !delta.y) return delta;
+    if (getHorizontalPanRange().fits) return delta;
+    const railed = panAxisSnapRef.current.step(delta.x, delta.y, performance.now());
+    return { x: railed.dx, y: railed.dy };
+  }, [getHorizontalPanRange]);
+
   const flushPan = useCallback(() => {
     if (panRafRef.current) {
       cancelAnimationFrame(panRafRef.current);
       panRafRef.current = 0;
     }
     const el = scrollerRef.current;
-    const delta = panDeltaRef.current;
+    const delta = railPanDelta(panDeltaRef.current);
     panDeltaRef.current = { x: 0, y: 0 };
     if (!el || (!delta.x && !delta.y)) return;
     if (touchPanElasticRef.current) { applyElasticPan(delta.x, delta.y); return; }
-    el.scrollLeft -= delta.x;
+    el.scrollLeft += limitHorizontalDelta(-delta.x, el.scrollLeft, getHorizontalPanRange());
     el.scrollTop -= delta.y;
     clampHorizontalScroll();
-  }, [applyElasticPan, clampHorizontalScroll]);
+  }, [applyElasticPan, clampHorizontalScroll, getHorizontalPanRange, railPanDelta]);
 
   const schedulePan = useCallback((dx, dy) => {
     panDeltaRef.current.x += dx;
@@ -3587,15 +3680,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     panRafRef.current = requestAnimationFrame(() => {
       panRafRef.current = 0;
       const el = scrollerRef.current;
-      const delta = panDeltaRef.current;
+      const delta = railPanDelta(panDeltaRef.current);
       panDeltaRef.current = { x: 0, y: 0 };
       if (!el) return;
       if (touchPanElasticRef.current) { applyElasticPan(delta.x, delta.y, true); return; }
-      el.scrollLeft -= delta.x;
+      el.scrollLeft += limitHorizontalDelta(-delta.x, el.scrollLeft, getHorizontalPanRange());
       el.scrollTop -= delta.y;
       clampHorizontalScroll();
     });
-  }, [applyElasticPan, clampHorizontalScroll]);
+  }, [applyElasticPan, clampHorizontalScroll, getHorizontalPanRange, railPanDelta]);
 
   const restorePanInteraction = useCallback(() => {
     setPanInteraction(spacePanRef.current || Boolean(panPointerRef.current));
@@ -3614,6 +3707,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Kept fresh during render (same pattern as cb/scaleRef above) so the single
   // long-lived momentum runner never closes over a stale callback identity.
   panMomentumHooksRef.current.clamp = clampHorizontalScroll;
+  panMomentumHooksRef.current.range = getHorizontalPanRange;
   panMomentumHooksRef.current.restore = restorePanInteraction;
   panMomentumHooksRef.current.mark = markPanCoast;
   // Phone only: a flick that runs into an edge hands its speed to the edge
@@ -3680,10 +3774,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         if (!el) return;
         const beforeLeft = el.scrollLeft;
         const beforeTop = el.scrollTop;
-        el.scrollLeft += dx;
+        // A page that fits sideways glides only up and down, and never
+        // bounces off a side it was never allowed to reach.
+        const stepX = limitHorizontalDelta(dx, beforeLeft, panMomentumHooksRef.current.range?.());
+        el.scrollLeft += stepX;
         el.scrollTop += dy;
         panMomentumHooksRef.current.clamp?.();
-        panMomentumHooksRef.current.bounce?.(dx - (el.scrollLeft - beforeLeft), dy - (el.scrollTop - beforeTop));
+        panMomentumHooksRef.current.bounce?.(stepX - (el.scrollLeft - beforeLeft), dy - (el.scrollTop - beforeTop));
       },
       onFrame: ({ left, top, vx, vy }) => {
         panMomentumHooksRef.current.mark?.(left, top);
@@ -3749,7 +3846,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       try { el.releasePointerCapture(pointer.id); } catch { /* already released */ }
     }
     updatePanPresentation();
-    const release = glide && pointer ? panVelocityRef.current.release(options?.at ?? performance.now()) : null;
+    const measured = glide && pointer ? panVelocityRef.current.release(options?.at ?? performance.now()) : null;
+    // The glide runs along the rail the drag ended on.
+    const release = measured ? { ...measured, ...panAxisSnapRef.current.release(measured.vx, measured.vy) } : null;
     panVelocityRef.current.reset();
     // A mouse drag past an edge springs home like a finger (any release; a
     // stop-dead one from rest), and its glide bounces off the far edge.
@@ -4264,8 +4363,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setMobileTouchMode(null);
       flushPan();
       // Let go while pulled past an edge: that axis carries its speed on
-      // (glide back in, or the edge spring) - see releaseElasticPan.
-      const release = releaseElasticPan(velocityX, velocityY);
+      // (glide back in, or the edge spring) - see releaseElasticPan. The
+      // glide runs along the rail the drag ended on.
+      const railed = panAxisSnapRef.current.release(velocityX, velocityY);
+      const release = releaseElasticPan(railed.vx, railed.vy);
       releaseLayoutShift();
       startPanInertia(release.vx, release.vy, { elastic: release.elastic, touch: true });
     };
