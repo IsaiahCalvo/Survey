@@ -14,6 +14,10 @@ export function trackPdfUpload(path, promise) {
   return promise;
 }
 
+export function isPdfUploadPending(path) {
+  return Boolean(path && pending.has(path));
+}
+
 export function waitForPdfUpload(path, { timeoutMs = 60_000 } = {}) {
   const entry = path ? pending.get(path) : null;
   if (!entry) return Promise.resolve();

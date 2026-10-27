@@ -503,7 +503,7 @@ const BLEND_MODE_SAMPLES = Object.freeze({
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
 
-  const { replaceDocument } = useStorage();
+  const { replaceDocument, startOpenSource } = useStorage();
 
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
@@ -1434,6 +1434,9 @@ export default function App({ devPreviewReturnTab = null }) {
 
     // Mark this PDF as being opened
     openingPdfsRef.current.add(pdfKey);
+    // Open speed: ask for the cloud file's access check and signed URL now,
+    // while the viewer chunk loads (services/openSourceHeadStart.js).
+    if (typeof file.arrayBuffer !== 'function' && file.filePath) startOpenSource(file.filePath);
 
     // Create new tab
     const newTab = {

@@ -1,6 +1,14 @@
 const DEFAULT_DELAY_MS = 1200;
 const DEFAULT_IDLE_TIMEOUT_MS = 2500;
 
+// Open speed: the scheduled prefetch waits for the home screen to settle, but
+// a press on a document row says the viewer is about to be needed: fetch it
+// now (preloadPdfViewerNow), so "Open file" does not start from nothing.
+let fetchNow = null;
+export function preloadPdfViewerNow() {
+  fetchNow?.();
+}
+
 export function schedulePdfViewerPrefetch(loadViewer, {
   windowObject = typeof window === 'undefined' ? null : window,
   delayMs = DEFAULT_DELAY_MS,
@@ -9,6 +17,7 @@ export function schedulePdfViewerPrefetch(loadViewer, {
   if (!windowObject || typeof loadViewer !== 'function') return () => {};
 
   let cancelled = false;
+  let started = false;
   let timerId = null;
   let idleId = null;
 
@@ -21,12 +30,15 @@ export function schedulePdfViewerPrefetch(loadViewer, {
   const onOnline = () => run();
   const run = () => {
     if (cancelled) return;
+    if (started) return;
     if (windowObject.navigator?.onLine === false) {
       windowObject.addEventListener?.('online', onOnline, { once: true });
       return;
     }
+    started = true;
     void Promise.resolve(loadViewer()).catch(() => {});
   };
+  fetchNow = run;
 
   const scheduleIdle = () => {
     if (cancelled) return;
@@ -49,6 +61,7 @@ export function schedulePdfViewerPrefetch(loadViewer, {
 
   return () => {
     cancelled = true;
+    if (fetchNow === run) fetchNow = null;
     windowObject.removeEventListener?.('load', scheduleIdle);
     windowObject.removeEventListener?.('online', onOnline);
     if (timerId !== null) windowObject.clearTimeout?.(timerId);
