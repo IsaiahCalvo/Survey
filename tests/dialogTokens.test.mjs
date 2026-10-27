@@ -42,7 +42,6 @@ test('the dialog corner token exists and the dialog cards use it', () => {
     'components/collab/ReSignInModal.css',
     'components/dialogPrompts.jsx',
     'components/SaveLogBanner.jsx',
-    'components/SpaceSelectionDialog.jsx',
     'components/revisions/RevisionsPanel.jsx',
     'home/AccessManagementModal.jsx',
     'home/BulkModals.jsx',
@@ -60,8 +59,8 @@ test('the dialog corner token exists and the dialog cards use it', () => {
     assert.ok(file, rel);
     assert.match(file.text, /var\(--radius-dialog\)/, rel);
   }
-  // The Excel, OneDrive, category, overwrite and duplicate dialogs moved onto
-  // DialogCard (2026-10-26), which carries the token itself.
+  // The Excel, OneDrive, category, overwrite, duplicate and space-picker
+  // dialogs moved onto DialogCard (2026-10-26), which carries the token itself.
   for (const rel of ['KeyboardShortcutsOverlay', 'DialogCard']) {
     const file = files.find(({ path }) => path.endsWith(`${rel}.jsx`));
     assert.match(file.text, /borderRadius: (BORDERS\.radius\.dialog|'var\(--radius-dialog\)')/, rel);

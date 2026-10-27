@@ -43,6 +43,7 @@ const SHELL_WITH_OPTION_ROWS = [
   'src/components/NewColumnsModal.jsx',
   'src/components/OneDriveFileSaveModal.jsx',
   'src/components/SurveyMarkerTransferDialog.jsx',
+  'src/components/SurveyCategoryMoveDialog.jsx',
 ];
 
 test('the option-row dialogs sit on the shell with hub buttons', () => {
@@ -52,4 +53,14 @@ test('the option-row dialogs sit on the shell with hub buttons', () => {
     assert.match(source, /<DialogCard[\s\S]*footer=\{\(\s*<>\s*<button type="button" className="hub-btn dialog-touch-pad"/, file);
     assert.doesNotMatch(source, /background: COLORS\.modal\.overlay|useFocusTrap\(/, file);
   }
+});
+
+// The survey's "Copy to a module" picker: its module rows copy on a click, so
+// it is the shell with a body and no footer (2026-10-26, the last two survey
+// pickers moved over).
+test('the space picker sits on the shell', () => {
+  const source = read('src/components/SpaceSelectionDialog.jsx');
+  assert.match(source, /import DialogCard from '\.\/DialogCard\.jsx';/);
+  assert.match(source, /<BodyPortal>\s*<DialogCard/);
+  assert.doesNotMatch(source, /COLORS\.modal|useFocusTrap\(|className="btn btn-/);
 });

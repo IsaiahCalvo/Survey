@@ -39,8 +39,6 @@ const ALLOWED = {
   'src/components/PdfjsRedactionMarkLayer.jsx': 1,
   'src/components/PrintPanel.jsx': 2,
   'src/components/SaveLogBanner.jsx': 1,
-  'src/components/SpaceSelectionDialog.jsx': 1,
-  'src/components/SurveyCategoryMoveDialog.jsx': 1,
   'src/components/SurveyMediaCapture.jsx': 1,
   'src/components/SurveyMediaStrip.jsx': 1,
   'src/components/ToastHost.jsx': 1,
