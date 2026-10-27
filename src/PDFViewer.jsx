@@ -21745,10 +21745,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => window.removeEventListener(PAGE_GRID_SETTINGS_EVENT, onChange);
   }, [gridSettingsEnabled, gridSettings]);
   useEffect(() => {
-    if (!gridSettingsEnabled) return;
+    // Only this viewer's pages: other tabs stay mounted (hidden) with their
+    // own drawings and scales (Codex review on #1211).
+    const container = pdfjsWrapperRef.current;
+    if (!gridSettingsEnabled || !container) return;
     applyPageGridPageSteps(gridSettings, (pageNumber) => (
       pageScaleFromObjects(annotationsByPage?.[pageNumber]?.objects) || measureScales[pageNumber] || null
-    ));
+    ), container);
   }, [gridSettingsEnabled, gridSettings, annotationsByPage, measureScales, numPages]);
   // Layers panel ('layers' flag): the layer list rides the synced doc meta;
   // the active layer is this screen's own choice.

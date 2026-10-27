@@ -55,3 +55,13 @@ test('page divs get their own step only for drawing sizes', () => {
   applyPageGridPageSteps({ density: 'wide' }, (n) => scales[n] || null, container);
   assert.equal(divs[0].props.has('--page-grid-pt'), false);
 });
+
+// Codex review on #1211: hidden tabs keep their PDFViewer mounted, so each
+// viewer sets drawing-unit steps on its own pages only.
+test('each viewer sets grid steps on its own pages, not every open tab', async () => {
+  const { readFileSync } = await import('node:fs');
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  const call = viewer.slice(viewer.indexOf('applyPageGridPageSteps(gridSettings'));
+  assert.match(call.slice(0, 400), /\), container\);/);
+  assert.match(viewer, /const container = pdfjsWrapperRef\.current;\n\s+if \(!gridSettingsEnabled \|\| !container\) return;/);
+});
