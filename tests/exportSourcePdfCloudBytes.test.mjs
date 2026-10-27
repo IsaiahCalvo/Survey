@@ -16,7 +16,8 @@ test('export, print and redaction writers get a source that can give its bytes',
   assert.match(helper, /new File\(\[bytes\]/);
   const raw = viewer.match(/\(await flushPageOperations\(\)\) \|\| pdfFile/g) || [];
   assert.equal(raw.length, 1, 'only the helper may fall back to the bare pdfFile');
-  assert.equal((viewer.match(/await getExportSourcePdf\(\)/g) || []).length, 5);
+  // The Export PDF dialog's writer (export-modes) goes through the helper too.
+  assert.equal((viewer.match(/await getExportSourcePdf\(\)/g) || []).length, 6);
   assert.match(viewer, /getSourcePdf=\{getExportSourcePdf\}/);
 });
 

@@ -23856,6 +23856,116 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     hiddenLayerIds,
   ]);
 
+  // Export PDF choices (Nightly, flag 'export-modes'): annotated (the same
+  // bytes as Export annotated PDF), flattened (the same bytes Print makes) or
+  // plain (no marks), for every page, this page, pages with marks or a typed
+  // list. Pure helpers live in utils/exportPdfModes.js.
+  const exportPageInfo = useCallback(async () => {
+    const { pagesWithMarks } = await import('./utils/exportPdfModes.js');
+    return {
+      numPages: Number(numPages) || 0,
+      currentPage: pageNum,
+      marked: pagesWithMarks({
+        annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+        surveyMarkers: printableSurveyMarkers,
+      }),
+    };
+  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, printableSurveyMarkers]);
+
+  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '' } = {}) => {
+    if (!pdfFile) {
+      showToast('Open a PDF first.', 'warn');
+      return { ok: false, error: 'Open a PDF first.' };
+    }
+    const modes = await import('./utils/exportPdfModes.js');
+    const bytesKit = await import('./utils/exportPdfBytes.js');
+    const info = await exportPageInfo();
+    const picked = modes.pickExportPages({ choice: pages, custom, ...info });
+    if (picked.error) return { ok: false, error: picked.error };
+    let redactionsSanitized = 0;
+    try {
+      const source = await getExportSourcePdf();
+      let bytes;
+      if (mode === 'plain') {
+        bytes = await bytesKit.stripMarkupAnnotations(source, { pageTransformations });
+      } else if (mode === 'flattened') {
+        const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
+          await import('./utils/pdfAnnotationsPdfLib');
+        const payload = buildPrintableRegularAnnotationPayload({
+          annotationsByPage: withoutHiddenLayers(printableAnnotationsByPageRef.current || {}, hiddenLayerIds),
+          callouts: calloutsWithoutHiddenLayers(callouts || [], hiddenLayerIds).filter((callout) => isAnnotationVisibleInSurveyMode({
+            moduleId: callout?.moduleId ?? null,
+            regionId: callout?.regionId ?? null,
+            showSurveyPanel,
+            selectedModuleId,
+          })),
+          surveyMarkers: printableSurveyMarkers,
+          spaces,
+        });
+        bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(source, payload.annotationsByPage, pageSizes, {
+          returnBytes: true,
+          pageTransformations,
+          actionType: 'pdf-export-flattened',
+          documentId: pdfFile?.id || pdfFile?.name || null,
+          callouts: payload.callouts,
+          surveyMarkers: payload.surveyMarkers,
+          spaces,
+          printableDiagnostics: payload.diagnostics,
+          screenAnnotationsByPage: annotationsByPage,
+          deletedPdfAnnotations,
+        });
+      } else {
+        const { savePDFWithAnnotationsPdfLib } = await import('./utils/pdfAnnotationsPdfLib');
+        bytes = await savePDFWithAnnotationsPdfLib(
+          source,
+          withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+          pageSizes,
+          null,
+          {
+            returnBytes: true,
+            actionType: 'pdf-export',
+            documentId: pdfFile?.id || null,
+            pageTransformations,
+            callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
+            surveyMarkers: printableSurveyMarkers,
+            activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+            spaces,
+            deletedPdfAnnotations,
+            onRedactionsSanitized: (count) => { redactionsSanitized = count; },
+          }
+        );
+      }
+      if (!bytes) return { ok: false, error: 'Nothing to export.' };
+      if (picked.pages) bytes = await bytesKit.keepOnlyPages(bytes, picked.pages);
+      const fileName = modes.exportFileName(pdfFile.name, mode, picked.pages);
+      const outcome = await bytesKit.deliverPdf(bytes, fileName, { title: 'Export PDF' });
+      if (outcome === 'canceled') return { ok: false, canceled: true };
+      if (redactionsSanitized > 0) {
+        showToast(`${redactionsSanitized} redaction marks were exported as outlines without their replacement text`, 'info');
+      } else if (outcome === 'downloaded') {
+        showToast(`Downloaded ${fileName}`, 'success');
+      }
+      return { ok: true, fileName };
+    } catch (err) {
+      console.error('[ExportPdfWithOptions] failed:', err);
+      return { ok: false, error: `Export failed: ${err?.message || err}` };
+    }
+  }, [
+    annotationsByPage,
+    callouts,
+    deletedPdfAnnotations,
+    exportPageInfo,
+    getExportSourcePdf,
+    hiddenLayerIds,
+    pageSizes,
+    pageTransformations,
+    pdfFile,
+    printableSurveyMarkers,
+    selectedModuleId,
+    showSurveyPanel,
+    spaces,
+  ]);
+
   // KAL-393: "Export markup (XFDF)" — a sidecar built from the same
   // inputs and writer as Export annotated PDF. The source PDF is not changed.
   const handleExportXfdf = useCallback(async () => {
@@ -26738,7 +26848,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // KAL-393: XFDF sidecar ("Export markup").
       exportXfdf: handleExportXfdf,
       // KAL-410: review package ZIP.
-      exportReviewBundle: handleExportReviewBundle
+      exportReviewBundle: handleExportReviewBundle,
+      // Export PDF choices (Nightly, flag 'export-modes').
+      exportPdfWithOptions: handleExportPdfWithOptions,
+      exportPageInfo
     });
   }, [
     isActive,
@@ -26853,7 +26966,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handlePageInputBlur,
     handleExportAnnotatedPDF,
     handleExportXfdf,
-    handleExportReviewBundle
+    handleExportReviewBundle,
+    handleExportPdfWithOptions,
+    exportPageInfo
   ]);
 
   // UX 2026-07-12: clear this instance's published bottom-toolbar API on unmount.
