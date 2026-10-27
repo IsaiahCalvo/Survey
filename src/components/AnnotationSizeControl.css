@@ -358,6 +358,11 @@
   font: 500 10.5px/1 var(--font-ui);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
+  transition: transform 90ms ease-out;
+}
+
+.annotation-size-card__chip:active {
+  transform: scale(0.94);
 }
 
 .annotation-size-card__chip-dot {
@@ -370,6 +375,12 @@
   display: block;
   border-radius: 50%;
   background: currentColor;
+}
+
+/* A line width's quick pick: a short line of its weight. */
+.annotation-size-card__chip-dot > span.annotation-size-card__chip-line {
+  width: 22px;
+  border-radius: 999px;
 }
 
 @media (hover: hover) {

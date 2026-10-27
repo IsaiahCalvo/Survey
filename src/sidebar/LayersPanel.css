@@ -1,0 +1,51 @@
+/* The PDF content strength (owner 2026-10-26, #18): five steps in a row, the
+   chrome's segmented look - gold word for the current one, nothing else. */
+.layers-opacity {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-3);
+  border-radius: 7px;
+}
+
+.layers-opacity__step {
+  height: 26px;
+  padding: 0;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font: 600 11px/1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: transform 90ms ease-out;
+}
+
+@media (hover: hover) {
+  .layers-opacity__step:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
+}
+
+.layers-opacity__step:active {
+  transform: scale(0.94);
+}
+
+.layers-opacity__step:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.layers-opacity__step.is-active {
+  color: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .layers-opacity__step { height: 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layers-opacity__step { transition: none; }
+}

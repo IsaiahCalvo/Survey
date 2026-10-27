@@ -32,6 +32,8 @@ const ALLOWED = {
   'src/components/AuthModal.jsx': 1,
   'src/components/DialogCard.jsx': 1,
   'src/components/KeyboardShortcutsOverlay.jsx': 1,
+  // The signature pad's scrim and dialog, and the line controls' click-through wrappers.
+  'src/components/LineMediaAnswer.jsx': 4,
   'src/components/PdfToolsDialog.jsx': 1,
   'src/components/PdfjsRedactionMarkLayer.jsx': 1,
   'src/components/PrintPanel.jsx': 2,

@@ -539,15 +539,17 @@ import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } 
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
 import { shouldCaptureToolSwitchDiag } from './utils/toolSwitchDiag.js';
+import { createPageDrawnSignal } from './utils/pageDrawnSignal.js';
 import { carryMarkerShape, MARKER_STROKE_WIDTHS, restyleStrokeMarkerBounds, strokeMarkerWidth } from './survey/markerShapes.js';
 import { setMarkerStrokeWidth, useMarkerStrokeWidth } from './survey/markerStrokeWidth.js';
 import { useShownMarkerDrawMode } from './survey/markerDrawMode.js';
 import { usePickedSurveyMarker } from './survey/usePickedSurveyMarker.js';
+import { useBriefHold } from './hooks/useBriefHold.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
 import { buildSheetLayout, buildSheetRow, excelCellAnswer, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
-import { answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
+import { APP_ONLY_KINDS, answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
 import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
 import { setActiveSmartFillTemplate, withTemplateShape } from './survey/smartFillTemplateShapes.js';
@@ -590,6 +592,10 @@ function readWorkbookRegistration(workbook) {
 // timer there meant that dismissing an editor and tapping another annotation
 // inside the same 600ms selected nothing. See panQuickClickSuppressedRef.
 const PAN_EDIT_ENTRY_RESTORE_MS = 600;
+// Locate on page (owner note 2026-10-26, item 28): the marker takes about half
+// of the view you can see, never zoomed in past 800%.
+const SURVEY_LOCATE_FILL = 0.5;
+const SURVEY_LOCATE_MAX_SCALE = 8;
 
 // w37: erase Undo/Redo visibility check with the viewer's JSON equality.
 const eraseTransitionChangedScreen = (result, before, meta) => (
@@ -1274,6 +1280,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   });
   // Page 1 of the open document has been drawn (work that can wait starts then).
   const firstPageDrawnRef = useRef({ drawn: false, resolve: null });
+  // Any page of the open document has been drawn (the annotation open waits on it).
+  const [pageDrawnSignal] = useState(createPageDrawnSignal);
   // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
   // auto-retry a hung download (dead socket after display sleep/wake) before it
   // gives up and surfaces the retryable error screen. Reset whenever a fresh
@@ -8289,6 +8297,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [scheduleTextSearchHighlightRefresh]);
 
   const handlePdfjsPageRenderComplete = useCallback((payload) => {
+    pageDrawnSignal.markDrawn();
     reconcilePdfjsScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
     if (payload?.pageNumber === 1 && !firstPageDrawnRef.current.drawn) {
@@ -8307,7 +8316,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(recordPaint);
     else setTimeout(recordPaint, 0);
-  }, [reconcilePdfjsScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
+  }, [pageDrawnSignal, reconcilePdfjsScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
 
   const handlePdfjsWrapperWheel = useCallback((event) => {
     if (!usePdfjsRenderer) return;
@@ -8461,7 +8470,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Owner 2026-10-22: a Survey Marker picked under Select or Pan brings up the
   // survey bar, as a picked counter brings up the counter's bar.
   const pickedSurveyMarker = usePickedSurveyMarker();
-  const surveyMarkerPicked = Boolean(pickedSurveyMarker) && (isSelectFamilyTool(activeTool) || activeTool === 'pan');
+  // Owner note 2026-10-26 (item 38, "everything gets pushed and comes back"):
+  // Locate on page, or a click from one marker to the next, swaps the pick
+  // through a render with nothing picked. The survey bar left for it and came
+  // back, moving the page under it down and up. A pick on its way counts, and
+  // a gap that short is held (useBriefHold).
+  const surveyMarkerPickHeld = useBriefHold(Boolean(pickedSurveyMarker) || Boolean(pendingSurveyMarkerSelection));
+  const surveyMarkerPicked = surveyMarkerPickHeld && (isSelectFamilyTool(activeTool) || activeTool === 'pan');
   const markerStrokeWidth = useMarkerStrokeWidth();
   const shownMarkerDrawMode = useShownMarkerDrawMode();
   // Owner 2026-10-22: the freehand marker's stroke width on the survey bar -
@@ -17867,7 +17882,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         const trimmedText = colText.toString().trim();
         const checklistItem = checklistItems.find(c => c.text === trimmedText);
-        if (checklistItem) {
+        // Photo and signature lines only report what the app holds.
+        if (checklistItem && !APP_ONLY_KINDS.includes(itemKind(checklistItem))) {
           colToChecklistId[index] = checklistItem.id;
         }
       });
@@ -18514,7 +18530,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         const trimmedText = colText.toString().trim();
         const checklistItem = checklistItems.find(c => c.text === trimmedText);
-        if (checklistItem) {
+        // Photo and signature lines only report what the app holds.
+        if (checklistItem && !APP_ONLY_KINDS.includes(itemKind(checklistItem))) {
           colToChecklistId[index] = checklistItem.id;
         }
       });
@@ -21647,6 +21664,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     docRole: yjsDocRole,
     // w33: no one-time store compaction write while the document is locked.
     documentLocked,
+    whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
   templateBindingAccessRef.current = {
     get: excelSyncMetaGet,
@@ -24341,6 +24359,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const docName = pdfFile.name || 'unknown';
       const analyticsLoadStartedAt = performance.now();
       firstPageDrawnRef.current = { drawn: false, resolve: null };
+      pageDrawnSignal.reset();
       firstPagePaintAnalyticsRef.current = {
         startedAt: analyticsLoadStartedAt,
         byteSizeBucket: 'unknown',
@@ -25384,96 +25403,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     return run(0);
   }, [getBoundsCenter, goToPage, pageSizes, resolvePageContentElement, scrollMode, usePdfjsRenderer]);
-
-  const centerSurveyMarkerElementInViewer = useCallback((annotationId, options = {}) => {
-    if (!annotationId) return false;
-    const {
-      behavior = 'auto',
-      retryBehavior = 'auto',
-      maxRetries = usePdfjsRenderer ? 12 : 6,
-      retryDelay = usePdfjsRenderer ? 80 : 40,
-      leftInset = 0,
-      rightInset = 0,
-      skipIfClosePx = 0,
-    } = options;
-
-    const escapeSelectorValue = (value) => (
-      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-        ? CSS.escape(String(value))
-        : String(value).replace(/["\\]/g, '\\$&')
-    );
-    const selector = `[data-survey-marker-id="${escapeSelectorValue(annotationId)}"]`;
-
-    const run = (attempt = 0) => {
-      const container = containerRef.current;
-      const groupElement = typeof document !== 'undefined' ? document.querySelector(selector) : null;
-      const element = groupElement?.querySelector?.(':scope > rect') || groupElement;
-      if (!container || !element) {
-        if (attempt < maxRetries && typeof window !== 'undefined') {
-          window.setTimeout(() => run(attempt + 1), retryDelay);
-        }
-        return false;
-      }
-
-      const containerRect = container.getBoundingClientRect();
-      const elementRect = element.getBoundingClientRect();
-      if (!(elementRect.width > 0) || !(elementRect.height > 0)) {
-        if (attempt < maxRetries && typeof window !== 'undefined') {
-          window.setTimeout(() => run(attempt + 1), retryDelay);
-        }
-        return false;
-      }
-
-      const containerWidth = Number(container.clientWidth) || containerRect.width;
-      const containerHeight = Number(container.clientHeight) || containerRect.height;
-      let effectiveRightInset = Math.max(0, rightInset);
-      if (typeof document !== 'undefined') {
-        const occludingLeft = Array.from(document.querySelectorAll('body *'))
-          .map((node) => node?.getBoundingClientRect?.())
-          .filter((rect) => (
-            rect &&
-            rect.width > 120 &&
-            rect.height >= containerRect.height * 0.75 &&
-            rect.left > containerRect.left + containerRect.width * 0.65 &&
-            rect.left < containerRect.right &&
-            rect.top <= containerRect.top + 4 &&
-            rect.bottom >= containerRect.bottom - 4
-          ))
-          .reduce((minLeft, rect) => Math.min(minLeft, rect.left), Infinity);
-        if (Number.isFinite(occludingLeft)) {
-          effectiveRightInset = Math.max(effectiveRightInset, containerRect.right - occludingLeft);
-        }
-      }
-      const visibleWidth = Math.max(80, containerWidth - Math.max(0, leftInset) - effectiveRightInset);
-      const visibleHeight = Math.max(80, containerHeight);
-      const elementCenterX = elementRect.left + elementRect.width / 2;
-      const elementCenterY = elementRect.top + elementRect.height / 2;
-      const viewportCenterX = containerRect.left + Math.max(0, leftInset) + visibleWidth / 2;
-      const viewportCenterY = containerRect.top + visibleHeight / 2;
-
-      const targetScrollLeft = container.scrollLeft + elementCenterX - viewportCenterX;
-      const targetScrollTop = container.scrollTop + elementCenterY - viewportCenterY;
-      const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      const nextLeft = Math.max(0, Math.min(targetScrollLeft, maxScrollLeft));
-      const nextTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop));
-      const isCloseEnough =
-        skipIfClosePx > 0 &&
-        Math.abs(container.scrollLeft - nextLeft) <= skipIfClosePx &&
-        Math.abs(container.scrollTop - nextTop) <= skipIfClosePx;
-
-      if (isCloseEnough) return true;
-
-      container.scrollTo({
-        left: nextLeft,
-        top: nextTop,
-        behavior: attempt > 0 ? retryBehavior : behavior,
-      });
-      return true;
-    };
-
-    return run(0);
-  }, [usePdfjsRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index, navigationOptions = undefined) => {
@@ -26704,6 +26633,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // The selected text box / callout's own text style while one is
       // selected, else the tool's defaults (see selectedTextTarget above).
       textStyleDefaults: selectedTextTarget ? selectedTextTarget.style : textStyleDefaults,
+      // Which text box / callout that is, so the bar opens on its regular
+      // settings each time a different one is picked (owner 2026-10-26).
+      textFormatTargetKey: selectedTextTarget?.key ?? null,
       onTextStyleDefaultsChange: handleTextStyleSourceChange,
       // Review 2026-09-23: callout text is always vertically centred (the
       // renderer and the editor ignore verticalAlign), so the top / middle /
@@ -30996,274 +30928,67 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
 
+    // Owner note 2026-10-26 (item 28): "it doesn't automatically go to it
+    // every single time and center on it ... It should zoom properly to the
+    // extents of it as well, and it should do that on the first click."
+    // One synchronous move through the viewer's zoom-to-mark (the same one
+    // History rows use): the page, a zoom that makes the marker about half of
+    // the view you can see (never past 800%, never out past fitting the page),
+    // and the marker centred between the panels and tool strips. It is pure
+    // layout maths, so it does not wait for the page to draw and cannot land
+    // short the way the old measure-and-retry centring did.
+    const token = surveyLocateTokenRef.current + 1;
+    surveyLocateTokenRef.current = token;
+    const focus = (insets = {}) => {
+      if (surveyLocateTokenRef.current !== token) return;
+      const focused = focusHistoryMark(pageNumber, bounds, {
+        fill: SURVEY_LOCATE_FILL,
+        maxScale: SURVEY_LOCATE_MAX_SCALE,
+        ...insets,
+      });
+      if (!focused) goToPage(pageNumber, { bypassActiveSpace: true });
+    };
+
     // Survey audit P1-5 (phone): the Survey sheet has just been lowered to
-    // its standard height (SurveySpacesRail). Once it has settled, fit the
+    // its standard height (SurveySpacesRail). Once it has settled, land the
     // marker in the page you can still see - above the sheet, beside the tool
-    // rail - with drawing around it: the box takes at most ~40% of that area's
-    // width and height (it used to fill the width, under a full-screen sheet).
-    // The zoom goes through the normal viewer zoom, so zoomGeneration and the
-    // pdf.js commit run exactly as for the zoom buttons.
+    // rail.
     if (mobileMode && typeof window !== 'undefined' && typeof document !== 'undefined') {
-      const token = surveyLocateTokenRef.current + 1;
-      surveyLocateTokenRef.current = token;
-      const isCurrent = () => surveyLocateTokenRef.current === token;
-      const readInsets = () => {
+      window.setTimeout(() => {
         const container = containerRef.current;
-        if (!container) return { left: 0, right: 0, top: 0, bottom: 0 };
+        if (!container) return;
         const occluders = Array.from(document.querySelectorAll('[data-viewer-occluder], .mobile-pdf-tools, .mobile-pdf-properties'))
           .filter((node) => node.getClientRects().length > 0)
           .map((node) => node.getBoundingClientRect());
-        return resolveViewerOcclusionInsets(container.getBoundingClientRect(), occluders);
-      };
-      const readRenderedScale = () => {
-        const pageContainer =
-          pageContainersRef.current?.[pageNumber] ||
-          pdfjsPageContainersStateRef.current?.[pageNumber] ||
-          pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
-          null;
-        const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
-        const pageRect = pageElement?.getBoundingClientRect?.();
-        const pageSize = pageSizesRef.current?.[pageNumber] || {};
-        if (!pageRect || !(pageRect.width > 0) || !(Number(pageSize.width) > 0)) return null;
-        return pageRect.width / Number(pageSize.width);
-      };
-      const centerInVisibleArea = () => {
-        const insets = readInsets();
-        return centerPageBoundsInViewer(pageNumber, bounds, {
-          behavior: 'auto',
-          retryBehavior: 'auto',
-          maxRetries: 18,
-          retryDelay: 60,
-          navigateFirst: true,
+        const insets = resolveViewerOcclusionInsets(container.getBoundingClientRect(), occluders);
+        debugMark('survey_locate_phone', { pageNumber, annotationId, insets });
+        focus({
           leftInset: insets.left,
           rightInset: insets.right,
           topInset: insets.top,
           bottomInset: insets.bottom,
         });
-      };
-      window.setTimeout(() => {
-        if (!isCurrent()) return;
-        const container = containerRef.current;
-        if (!container) return;
-        const insets = readInsets();
-        const visibleWidth = Math.max(80, container.clientWidth - insets.left - insets.right);
-        const visibleHeight = Math.max(80, container.clientHeight - insets.top - insets.bottom);
-        const boxWidth = Math.max(1, Number(bounds.width) || 1);
-        const boxHeight = Math.max(1, Number(bounds.height) || 1);
-        const fitScale = Math.min((visibleWidth * 0.4) / boxWidth, (visibleHeight * 0.4) / boxHeight);
-        const targetScale = Math.min(3, Math.max(0.35, fitScale));
-        const currentScale = readRenderedScale() || Math.max(0.01, Number(scaleRef.current) || 1);
-        debugMark('survey_locate_phone', { pageNumber, annotationId, insets, visibleWidth, visibleHeight, currentScale, targetScale });
-        if (Math.abs(targetScale - currentScale) / currentScale < 0.04) {
-          centerInVisibleArea();
-          return;
-        }
-        centerPageBoundsInViewer(pageNumber, bounds, { behavior: 'auto', navigateFirst: true, maxRetries: 18, retryDelay: 60 });
-        setScaleWithViewportPreservation(targetScale, { preserveCenter: false, mode: ZOOM_MODES.MANUAL });
-        const startedAt = Date.now();
-        const waitForZoom = () => {
-          if (!isCurrent()) return;
-          const rendered = readRenderedScale();
-          if ((rendered && Math.abs(rendered - targetScale) / targetScale < 0.015) || Date.now() - startedAt > 1500) {
-            centerInVisibleArea();
-            // The viewer re-anchors its scroll a layout pass after the commit.
-            window.setTimeout(() => { if (isCurrent()) centerInVisibleArea(); }, 120);
-            return;
-          }
-          window.setTimeout(waitForZoom, 30);
-        };
-        window.setTimeout(waitForZoom, 30);
       }, 320);
       return;
     }
 
-    const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
-    const targetScale = Math.max(currentScale, 1.5);
-    const shouldZoom = targetScale > currentScale + 0.05;
-
-    debugMark('survey_locate_start', {
-      pageNumber,
-      annotationId,
-      currentScale,
-      targetScale,
-      shouldZoom,
-    });
-
-    const centerRenderedSurveyMarker = ({
-      behavior = 'auto',
-      retryBehavior = 'auto',
-      skipIfClosePx = 8,
-    } = {}) => {
-      if (!annotationId) return false;
-      return centerSurveyMarkerElementInViewer(annotationId, {
-        behavior,
-        retryBehavior,
-        maxRetries: usePdfjsRenderer ? 14 : 8,
-        retryDelay: usePdfjsRenderer ? 80 : 40,
-        rightInset: 0,
-        skipIfClosePx,
-      });
-    };
-
-    const centerSurveyMarker = ({
-      navigateFirst = true,
-      behavior = 'smooth',
-      retryBehavior = 'smooth',
-      skipIfClosePx = 0,
-      exactDelay = usePdfjsRenderer ? 120 : 60,
-      preferRenderedSurveyMarker = true,
-    } = {}) => {
-      const shouldRunExactPass = Number.isFinite(exactDelay) && exactDelay >= 0;
-      if (preferRenderedSurveyMarker && centerRenderedSurveyMarker({
-        behavior,
-        retryBehavior,
-        skipIfClosePx: Math.max(4, skipIfClosePx || 8),
-      })) {
-        if (annotationId && shouldRunExactPass && typeof window !== 'undefined') {
-          window.setTimeout(() => centerRenderedSurveyMarker({
-            behavior: 'auto',
-            retryBehavior: 'auto',
-            skipIfClosePx: 0,
-          }), exactDelay);
-        }
-        return true;
-      }
-
-      const centered = centerPageBoundsInViewer(pageNumber, bounds, {
-        behavior,
-        maxRetries: usePdfjsRenderer ? 18 : 8,
-        retryDelay: usePdfjsRenderer ? 80 : 40,
-        // The PDF area is already narrowed when the Survey panel is open.
-        rightInset: 0,
-        navigateFirst,
-        settlePasses: 0,
-        settleDelay: usePdfjsRenderer ? 140 : 70,
-        retryBehavior,
-        skipIfClosePx
-      });
-      if (annotationId && shouldRunExactPass && typeof window !== 'undefined') {
-        window.setTimeout(() => centerRenderedSurveyMarker({
-          behavior: retryBehavior,
-          retryBehavior,
-          skipIfClosePx: skipIfClosePx || 0,
-        }), exactDelay);
-      }
-      return centered;
-    };
-
-    const getRenderedPageScale = () => {
-      if (typeof document === 'undefined') return null;
-      const pageContainer =
-        pageContainersRef.current?.[pageNumber] ||
-        pdfjsPageContainersStateRef.current?.[pageNumber] ||
-        pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
-        null;
-      const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
-      const pageRect = pageElement?.getBoundingClientRect?.();
-      const pageSize = pageSizesRef.current?.[pageNumber] || {};
-      if (!pageRect || !(pageRect.width > 0) || !(Number(pageSize.width) > 0)) {
-        return null;
-      }
-      return pageRect.width / Number(pageSize.width);
-    };
-
-    const centerAfterZoomSettles = () => {
-      if (typeof window === 'undefined') return;
-      const maxAttempts = usePdfjsRenderer ? 30 : 8;
-      const retryDelay = usePdfjsRenderer ? 40 : 25;
-      const initialScrollWidth = Number(containerRef.current?.scrollWidth) || 0;
-      const initialScrollHeight = Number(containerRef.current?.scrollHeight) || 0;
-      const scaleRatio = currentScale > 0 ? targetScale / currentScale : 1;
-      const expectedZoomText = `${Math.round(targetScale * 100)}%`;
-
-      const readZoomDomState = () => {
-        if (typeof document === 'undefined') {
-          return { renderedScale: null, scrollReady: false, toolbarReady: false };
-        }
-        const container = containerRef.current;
-        const zoomText = Array.from(document.querySelectorAll('button'))
-          .map((button) => (button.innerText || '').trim())
-          .find((text) => /^\d+%$/.test(text)) || '';
-        const scrollReady =
-          !!container &&
-          scaleRatio > 1.05 &&
-          (
-            (initialScrollWidth > 0 && container.scrollWidth >= initialScrollWidth * Math.min(scaleRatio * 0.82, scaleRatio - 0.1)) ||
-            (initialScrollHeight > 0 && container.scrollHeight >= initialScrollHeight * Math.min(scaleRatio * 0.82, scaleRatio - 0.1))
-          );
-
-        return {
-          renderedScale: getRenderedPageScale(),
-          scrollReady,
-          toolbarReady: zoomText === expectedZoomText,
-        };
-      };
-
-      const run = (attempt = 0) => {
-        const { renderedScale, scrollReady, toolbarReady } = readZoomDomState();
-        const scaleReady =
-          !usePdfjsRenderer ||
-          (Number.isFinite(renderedScale) && Math.abs(renderedScale - targetScale) <= 0.08) ||
-          scrollReady ||
-          toolbarReady ||
-          attempt >= maxAttempts;
-
-        if (!scaleReady) {
-          window.setTimeout(() => run(attempt + 1), retryDelay);
-          return;
-        }
-
-        const centered = centerSurveyMarker({
-          navigateFirst: true,
-          behavior: 'auto',
-          retryBehavior: 'auto',
-          skipIfClosePx: 0,
-          exactDelay: null,
-        });
-
-        debugMark('survey_locate_zoom_center', {
-          pageNumber,
-          annotationId,
-          targetScale,
-          renderedScale,
-          scrollReady,
-          toolbarReady,
-          attempt,
-          centered,
-        });
-      };
-
-      window.setTimeout(() => run(0), retryDelay);
-    };
-
-    if (shouldZoom) {
-      setScaleWithViewportPreservation(targetScale, { preserveCenter: false });
-      centerAfterZoomSettles();
-      return;
+    // Three frames on (~50 ms): the switch to Select drops the armed tool's own
+    // row (the entity bar), the viewer's ResizeObserver sees it the frame
+    // after and measures the strips that are left in the frame after that.
+    // Centring then uses the view as it will stay.
+    debugMark('survey_locate', { pageNumber, annotationId });
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      const raf = window.requestAnimationFrame;
+      raf(() => raf(() => raf(() => focus())));
+    } else {
+      focus();
     }
-
-    debugMark('survey_locate_direct_center', {
-      pageNumber,
-      annotationId,
-      targetScale: currentScale,
-    });
-    centerSurveyMarker({
-      navigateFirst: true,
-      behavior: 'smooth',
-      retryBehavior: 'smooth',
-      exactDelay: null,
-    });
   }, [
-    centerSurveyMarkerElementInViewer,
-    centerPageBoundsInViewer,
+    focusHistoryMark,
     goToPage,
     mobileMode,
-    resolvePageContentElement,
-    scale,
     setActiveTool,
-    setScaleWithViewportPreservation,
     setPendingSurveyMarkerSelection,
-    usePdfjsRenderer
   ]);
 
   const handlePendingSurveyMarkerSelectionConsumed = useCallback(() => {
@@ -40386,18 +40111,8 @@ ${pageBlocks}
                     variant="pill"
                     unit="pt"
                     width="var(--chrome-field-w)"
-                    preview={(
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          display: 'block',
-                          width: '12px',
-                          height: 0,
-                          borderTop: `${Math.max(1, Math.min(6, Math.round(markerWidthValue / 4)))}px solid currentColor`,
-                          borderRadius: '1px',
-                        }}
-                      />
-                    )}
+                    // Owner 2026-10-26 (#33): no stroke drawing in the pill;
+                    // it cut the number off. The card draws the stroke.
                   />
                 </span>
               ) : null;

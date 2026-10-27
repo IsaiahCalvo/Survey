@@ -197,3 +197,34 @@ export function computePushStripInset(scrollerRect, stripRects = []) {
   }
   return Math.round(Math.max(0, inset));
 }
+
+/** The y part of a computed `translate` value ("none", "0px -5px", "3px"), in px. */
+export function parseTranslateY(value) {
+  const parts = String(value || '').trim().split(/\s+/);
+  if (parts.length < 2) return 0;
+  const y = Number.parseFloat(parts[1]);
+  return Number.isFinite(y) ? y : 0;
+}
+
+/**
+ * Where a strip sits once its entry slide is over (owner 2026-10-26, item 38:
+ * "top bars need to come down smoothly"). The Survey bar drops 5 px into
+ * place (survey-surface-in, a `translate` animation on its wrapper), and the
+ * size observer measures it in the first frame of that drop: the room above
+ * the page came out 5 px short and the page nudged down a moment after the
+ * bar had landed. The `translate` of the strip and its ancestors is taken
+ * back out, so the page takes its place together with the bar.
+ */
+export function measureStripRect(node, win = typeof window === 'undefined' ? undefined : window) {
+  const rect = node.getBoundingClientRect();
+  if (!win?.getComputedStyle) return rect;
+  let dy = 0;
+  for (let n = node; n && n.nodeType === 1 && n !== n.ownerDocument?.body; n = n.parentElement) {
+    dy += parseTranslateY(win.getComputedStyle(n).translate);
+  }
+  if (!dy) return rect;
+  return {
+    left: rect.left, right: rect.right, width: rect.width, height: rect.height,
+    top: rect.top - dy, bottom: rect.bottom - dy,
+  };
+}

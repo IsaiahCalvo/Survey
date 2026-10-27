@@ -172,6 +172,15 @@ const readMarkers = (page) => page.evaluate(() => {
 });
 const reader = (markers, id) => markers[id]?.checklistResponses?.['cl-reader']?.selection || null;
 
+
+// The fixture's "Redactions are not applied" notice sits over the chat's foot,
+// where the box's buttons are. Dismissing it is a tap outside the chat, so
+// open the chat again.
+async function clearFixtureNotice(page, panel) {
+  await page.getByRole('button', { name: 'Dismiss' }).first().click({ timeout: 5_000 }).catch(() => {});
+  if (!(await panel.isVisible())) await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
+}
+
 test('hands-free: talk, hear the reply, talk again, and a spoken correction moves the answer', async ({ page }) => {
   const log = { clips: [], turns: [], speak: [] };
   const data = await seed();
@@ -309,11 +318,19 @@ test('hands-free: the device hears what it is sure of, only an unsure clip goes 
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
   await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
   const panel = page.getByRole('region', { name: 'Survey agent' });
+  await clearFixtureNotice(page, panel);
   await panel.getByRole('button', { name: 'Hands-free' }).click();
 
   await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
   await expect(panel.getByText(/set card reader to Y on D-118/)).toBeVisible({ timeout: 30_000 });
   await expect.poll(async () => reader(await readMarkers(page), 'surveyMarker-d118')).toBe('Y');
+  // Typed words get a Send beside Stop, without ending hands-free.
+  const box = panel.getByRole('textbox', { name: 'Message the Survey agent' });
+  await box.fill('typed');
+  await expect(panel.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Stop hands-free' })).toBeVisible();
+  await box.fill('');
+  await expect(panel.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await panel.getByRole('button', { name: 'Stop hands-free' }).click();
 
   // One clip went to the server (the unsure one), not two.
@@ -362,6 +379,7 @@ test('hands-free in the phone apps: the phone hears the words, the web mic and t
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
   await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
   const panel = page.getByRole('region', { name: 'Survey agent' });
+  await clearFixtureNotice(page, panel);
   await panel.getByRole('button', { name: 'Hands-free' }).click();
   await expect(panel.getByText('Listening. Just talk.')).toBeVisible();
   expect(await page.evaluate(() => window.__nativeStarts.map((s) => s.opts.lang))).toEqual(['en-US']);
@@ -407,6 +425,7 @@ test('hands-free: talking over a long spoken reply stops it, and what was said i
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
   await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
   const panel = page.getByRole('region', { name: 'Survey agent' });
+  await clearFixtureNotice(page, panel);
   await panel.getByRole('button', { name: 'Hands-free' }).click();
 
   await expect(panel.getByText('D-117: card reader is Y.')).toBeVisible({ timeout: 30_000 });
@@ -447,9 +466,11 @@ test('hands-free with no signal: what is said is saved, said back as saved, and 
   await page.getByRole('button', { name: /Door Agent Template/ }).click();
   await page.getByRole('button', { name: 'Open Survey agent chat' }).click();
   const panel = page.getByRole('region', { name: 'Survey agent' });
+  await clearFixtureNotice(page, panel);
   await expect(panel.getByRole('button', { name: 'Hands-free' })).toBeEnabled();
 
   await context.setOffline(true);
+  await clearFixtureNotice(page, panel);
   await panel.getByRole('button', { name: 'Hands-free' }).click();
   // Both things said wait as voice messages; the first is said back in full.
   await expect(panel.getByText('Voice message')).toHaveCount(2, { timeout: 30_000 });

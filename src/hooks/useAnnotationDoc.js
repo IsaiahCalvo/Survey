@@ -315,8 +315,13 @@ export function useAnnotationDoc({
   // w33: a locked document refuses every write (WAL lock gate); the one-time
   // store compaction below never runs while it is locked.
   documentLocked = false,
+  // Open speed (round 5): () => Promise that settles once the viewer has drawn
+  // a page of this PDF (see whenFirstPageDrawn in annotationDocSync).
+  whenFirstPageDrawn = null,
 }) {
   const handleRef = useRef(null);
+  const whenFirstPageDrawnRef = useRef(whenFirstPageDrawn);
+  whenFirstPageDrawnRef.current = whenFirstPageDrawn;
   const eraseEffectConsumerRef = useRef(eraseEffectConsumer);
   const eraseEffectConsumerProxyRef = useRef(null);
   const onHistoryQuarantineRef = useRef(onHistoryQuarantine);
@@ -437,6 +442,9 @@ export function useAnnotationDoc({
           // hydration stays not-ready, so nothing is written or imported and
           // the first page keeps blocking input (see annotationHydrationGate)
           // until the real hydrate below replaces this with the same marks.
+          whenFirstPageDrawn: () => (
+            cancelled ? null : whenFirstPageDrawnRef.current?.()
+          ),
           onPreview: (previewByPage) => {
             if (cancelled) return;
             if (prePreviewRef.current.byPage === null) {

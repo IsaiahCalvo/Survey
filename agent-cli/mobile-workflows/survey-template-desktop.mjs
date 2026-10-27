@@ -34,7 +34,10 @@ async function waitForReloadedTemplate(page, expected) {
 }
 
 async function save(page) {
+  // Save only shows while there are unsaved edits; some edits save on their
+  // own. Callers assert the persisted model afterwards either way.
   const saveButton = page.locator('button:visible', { hasText: /^Save$/ }).first();
+  if (!await saveButton.waitFor({ state: 'visible', timeout: 2_000 }).then(() => true, () => false)) return;
   await saveButton.click();
   await saveButton.waitFor({ state: 'hidden', timeout: 10_000 });
 }

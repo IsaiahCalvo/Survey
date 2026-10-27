@@ -3,7 +3,7 @@
 // answers it through the Survey panel's own writes (the "bridge" the panel
 // publishes), so sync, Excel rows, auto-entity and role checks behave exactly
 // as if the person had tapped. Every write returns a change with an undo.
-import { answerSetFor, itemAnswerHint, itemAnswerSpec, itemKind, typedAnswer } from '../services/answerSets.js';
+import { APP_ONLY_KINDS, answerSetFor, itemAnswerHint, itemAnswerSpec, itemKind, typedAnswer } from '../services/answerSets.js';
 import { categoriesOf, checklistOf, entitiesOf, itemText, modulesOf } from '../services/templateConfigShape.js';
 import { MARK_COLOR_HEX, normalizeItemName, scoreItemName } from '../../supabase/functions/_shared/surveyAgentSpec.js';
 import { markBox, visiblePageBox } from './planView.js';
@@ -520,6 +520,9 @@ export function createSurveyAgentToolbox({
       const lineById = new Map(categoryIndex(b.template).list.flatMap(({ category }) => activeChecklist(category)).map((l) => [l.id, l]));
       for (const a of named) {
         const line = checklist.get(a?.checklist_item_id) || lineById.get(a?.checklist_item_id);
+        if (line && APP_ONLY_KINDS.includes(itemKind(line))) {
+          throw new ToolError(`"${itemText(line)}" is a ${itemKind(line)} line: it is filled in the app, not by voice.`);
+        }
         if (line && itemKind(line) !== 'choice') {
           const typed = typedAnswer(line, a.value);
           if (typed === null) throw new ToolError(`"${a.value}" does not fit "${itemText(line)}": ${itemAnswerHint(line)}.`);

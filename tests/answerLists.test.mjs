@@ -37,7 +37,7 @@ test('every ready line type is a clean item setting', () => {
   assert.equal(new Set(ITEM_TYPE_LIBRARY.map((t) => t.id)).size, ITEM_TYPE_LIBRARY.length);
   for (const t of ITEM_TYPE_LIBRARY) assert.deepEqual(itemAnswerFields(t.fields), t.fields, t.id);
   const kinds = new Set(ITEM_TYPE_LIBRARY.map((t) => t.fields.kind));
-  for (const k of ['score', 'many', 'count', 'date', 'number', 'text']) assert.ok(kinds.has(k), k);
+  for (const k of ['score', 'many', 'count', 'date', 'number', 'text', 'photo', 'signature']) assert.ok(kinds.has(k), k);
 });
 
 test('the report CSV: one row per item, its status and issues, safe in a spreadsheet', () => {

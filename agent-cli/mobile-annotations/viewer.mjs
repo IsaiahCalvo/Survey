@@ -171,9 +171,23 @@ export async function createAnnotation(page, touch, toolId, beforeIds) {
     await overlay.waitFor({ state: 'visible', timeout: 10_000 });
     const box = await overlay.boundingBox();
     if (!box) throw new Error('Counter overlay has no geometry');
+    // A counter press on an existing Shapes mark selects it (owner rule
+    // 2026-10-02/04), so drop the pin on a spot no earlier mark covers
+    // (and away from the page edge, so the later resize drag has room).
+    const [fx, fy] = await page.evaluate(({ x, y, width, height }) => {
+      const candidates = [[0.7, 0.68], [0.15, 0.45], [0.2, 0.72], [0.85, 0.45], [0.3, 0.8], [0.8, 0.8]];
+      const rects = [...document.querySelectorAll('[data-anno-id], [data-callout-id], .svg-selection-overlay')]
+        .map((node) => node.getBoundingClientRect()).filter((r) => r.width > 0 || r.height > 0);
+      const pad = 16;
+      const free = candidates.find(([cx, cy]) => {
+        const px = x + width * cx; const py = y + height * cy;
+        return !rects.some((r) => px >= r.left - pad && px <= r.right + pad && py >= r.top - pad && py <= r.bottom + pad);
+      });
+      return free || candidates[0];
+    }, box);
     await touch.drag(
-      { x: box.x + box.width * 0.7, y: box.y + box.height * 0.68 },
-      { x: box.x + box.width * 0.74, y: box.y + box.height * 0.72 },
+      { x: box.x + box.width * fx, y: box.y + box.height * fy },
+      { x: box.x + box.width * (fx + 0.04), y: box.y + box.height * (fy + 0.04) },
       { steps: 5 },
     );
   } else if (toolId === 'text') {

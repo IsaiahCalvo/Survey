@@ -501,12 +501,14 @@ test('nothing else in either row moved', () => {
   // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7 — owner-approved board 10):
   // the "both ends" on/off button is now the Arrow ends dropdown (End / Both /
   // None), in the same place in the row.
+  // DELIBERATE ASSERTION CHANGE (2026-10-26, owner issue note #11): the
+  // Arrowhead and Arrow ends pills are ONE pill (its card holds which ends and
+  // the head), in the Arrowhead's place in the row.
   orderOf(desktopRow, [
     'data-annotation-color-trigger',
     '<AnnotationSizeControl',
     'label="Style"',
-    'label="Arrowhead"',
-    'label="Arrow ends"',
+    "label={isArrow ? 'Arrow ends' : 'Arrowhead'}",
     'aria-label="Edit text"',
   ], 'desktop tail');
 

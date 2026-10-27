@@ -12,11 +12,15 @@
  * - many: its options as chips; each press turns one on or off. A lit chip
  *   takes its option's tone (a bad option lights red).
  *
+ * - photo / signature: LineMediaAnswer (needs `media`: the open marker's note
+ *   and its note patch).
+ *
  * ChoiceSelect is the pick-one control for a template list too long for a
  * row of buttons (more than CHOICE_BUTTONS_MAX answers).
  */
 import { useState } from 'react';
 import { useTooltip } from './Tooltip';
+import LineMediaAnswer from './LineMediaAnswer.jsx';
 import {
   itemKind, manyOptionsOf, manyPicked, sameAnswer, scoreScaleOf, typedAnswer, typedAnswerIsIssue, TYPED_ANSWER_MAX,
 } from '../services/answerSets.js';
@@ -190,11 +194,12 @@ function CountAnswer({ item, saved, onCommit, phone }) {
   );
 }
 
-export default function TypedAnswerInput({ item, value, onCommit, className, phone = false }) {
+export default function TypedAnswerInput({ item, value, onCommit, className, phone = false, media = null }) {
   const saved = value == null ? '' : String(value);
   const kind = itemKind(item);
   let control;
-  if (kind === 'score') control = <ScoreAnswer item={item} saved={saved} onCommit={onCommit} phone={phone} />;
+  if (kind === 'photo' || kind === 'signature') control = <LineMediaAnswer item={item} value={saved} onCommit={onCommit} phone={phone} media={media} />;
+  else if (kind === 'score') control = <ScoreAnswer item={item} saved={saved} onCommit={onCommit} phone={phone} />;
   else if (kind === 'count') control = <CountAnswer item={item} saved={saved} onCommit={onCommit} phone={phone} />;
   else if (kind === 'many') control = <ManyAnswer item={item} saved={saved} onCommit={onCommit} phone={phone} />;
   else if (kind === 'date') {

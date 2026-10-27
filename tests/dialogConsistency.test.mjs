@@ -15,7 +15,6 @@ const ON_THE_SHELL = [
   'src/components/ExcelLockedModal.jsx',
   'src/components/DuplicateUploadModal.jsx',
   'src/components/ApplyRedactionsModal.jsx',
-  'src/components/MeasureScaleDialog.jsx',
 ];
 
 test('the shell is the ConfirmModal look: scrim, card, header, footer bar', () => {

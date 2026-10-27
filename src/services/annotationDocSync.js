@@ -458,6 +458,12 @@ export async function openAnnotationDoc({
   // caller must not treat it as hydrated: no writes, no imports. The handle
   // (resolved later) is the authoritative read.
   onPreview = null,
+  // Open speed (round 5): optional; returns a promise that settles once the
+  // viewer has drawn a page of the PDF. After this device's saved copy is
+  // previewed, the rest of the open waits for it (FIRST_PAGE_WAIT_MS at most).
+  whenFirstPageDrawn = null,
+  // Only a saved copy at least this big waits (tests lower it).
+  firstPageWaitMinBytes = FIRST_PAGE_WAIT_MIN_BYTES,
   // w33: routine checkpoint thresholds (see CHECKPOINT_EVERY_ROWS); tests
   // shrink them: { everyRows, ownBytes, minTailRows, idleMs, dueQuietMs }.
   checkpointPolicy = null,
@@ -649,6 +655,10 @@ export async function openAnnotationDoc({
     legacyPersistenceFactory,
     localSyncTimeoutMs,
     onPreview: typeof onPreview === 'function' ? onPreview : null,
+    whenFirstPageDrawn: typeof whenFirstPageDrawn === 'function' ? whenFirstPageDrawn : null,
+    firstPageWaitMinBytes: Number.isFinite(firstPageWaitMinBytes)
+      ? firstPageWaitMinBytes
+      : FIRST_PAGE_WAIT_MIN_BYTES,
     eraseEffectConsumer: typeof eraseEffectConsumer === 'function'
       ? eraseEffectConsumer
       : null,
@@ -734,6 +744,7 @@ export async function openAnnotationDoc({
             persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration),
             persistenceDoc,
           );
+          skipStoreEncodeWhileLoading(state.idbProvider, persistenceDoc);
         }
         const localReady = await whenSynced(state.idbProvider, localSyncTimeoutMs);
         if (!localReady) {
@@ -1068,6 +1079,61 @@ function applyToLocalPersistence(state, update) {
   if (!state.localPersistenceDoc) return;
   if (localPersistenceNearTrim(state)) freezePersistedCandidate(state);
   Y.applyUpdate(state.localPersistenceDoc, update, HYDRATE_ORIGIN);
+}
+
+// Yjs encodes a transaction's update only for a doc with 'update' listeners,
+// and y-indexeddb's store (_storeUpdate) is the only one on the local
+// persistence doc. Round 5 (open speed): two of its encodes at open are waste.
+//  - Loading: the provider applies its stored updates under its own origin,
+//    which its store ignores, yet Yjs still re-encodes all of them (~20 MB
+//    on a dense reopen) just to hand the store bytes it drops.
+//  - Cold open: the snapshot goes into an empty doc, so the update Yjs would
+//    encode is the snapshot again (~0.5 s for 20 MB). Storing the snapshot's
+//    own bytes is the same write (one stored update; a later load applies it
+//    to the same state).
+// Both skip only the encode: every doc gets the same applyUpdate calls in
+// the same order, and the store runs at the same point.
+function idbStoreListener(provider, doc) {
+  return provider?.doc === doc && typeof provider._storeUpdate === 'function'
+    ? provider._storeUpdate
+    : null;
+}
+
+function skipStoreEncodeWhileLoading(provider, doc) {
+  const store = idbStoreListener(provider, doc);
+  if (!store || provider.synced) return;
+  doc.off('update', store);
+  provider.once('synced', () => {
+    if (!provider._destroyed) doc.on('update', store);
+  });
+}
+
+function docIsEmpty(doc) {
+  return doc.store.clients.size === 0
+    && !doc.store.pendingStructs
+    && !doc.store.pendingDs;
+}
+
+function applySnapshotToLocalPersistence(state, bytes) {
+  const doc = state.localPersistenceDoc;
+  const store = idbStoreListener(state.idbProvider, doc);
+  if (!doc || !store || !state.idbProvider.db || !docIsEmpty(doc)) {
+    applyToLocalPersistence(state, bytes);
+    return;
+  }
+  if (localPersistenceNearTrim(state)) freezePersistedCandidate(state);
+  doc.off('update', store);
+  try {
+    Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
+  } finally {
+    doc.on('update', store);
+  }
+  if (docIsEmpty(doc)) return; // nothing applied: Yjs would emit nothing
+  // IndexedDB clones the whole buffer behind a view: store exact bytes.
+  const own = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+    ? bytes
+    : bytes.slice();
+  store(own, HYDRATE_ORIGIN);
 }
 
 async function rotateCleanPersistence(state) {
@@ -2174,7 +2240,10 @@ async function hydrateCleanAcceptedState(state) {
   // ~20 MB apply less): the open seeds it from the complete acceptedDoc,
   // which contains these updates, before anything reads it.
   for (const update of updates) Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
-  if (updates.length) await emitOpenPreview(state, 'local-copy');
+  if (updates.length && await emitOpenPreview(state, 'local-copy')) {
+    const savedBytes = updates.reduce((sum, update) => sum + update.byteLength, 0);
+    if (savedBytes >= state.firstPageWaitMinBytes) await waitForFirstPageDrawn(state);
+  }
   for (const update of updates) {
     applyAcceptedUpdate(state, update);
   }
@@ -2182,23 +2251,55 @@ async function hydrateCleanAcceptedState(state) {
 
 // w29 preview: hand the caller what the live doc holds right now, then give
 // the browser a frame to paint it before the open's next heavy step.
+// Resolves true once a preview was handed over.
 async function emitOpenPreview(state, stage) {
   const onPreview = state.onPreview;
-  if (!onPreview || state.destroyed) return;
+  if (!onPreview || state.destroyed) return false;
   let byPage;
   try {
-    if (getAnnotationsMap(state.doc).size === 0) return;
+    if (getAnnotationsMap(state.doc).size === 0) return false;
     byPage = docToByPage(state.doc);
   } catch (error) {
     console.warn('[annotationDocSync] open preview read failed', error?.message);
-    return;
+    return false;
   }
   try {
     onPreview(byPage, { stage });
   } catch (error) {
     console.warn('[annotationDocSync] open preview failed', error?.message);
-    return;
+    return false;
   }
+  await waitForPaint();
+  return true;
+}
+
+// Open speed (round 5): on a reopen the saved copy is previewed about 1 s in,
+// but the steps after it (the accepted shadow, then loading the IndexedDB
+// copy: ~2 s of main thread on a dense document) ran before the PDF's own
+// steps got a turn, so the page stayed blank until ~4 s. They now wait until
+// the viewer has drawn a page, or FIRST_PAGE_WAIT_MS. Only when they run
+// changes: the same updates go to the same docs in the same order, and the
+// handle (hydration, writes) still resolves only after all of them.
+const FIRST_PAGE_WAIT_MS = 2500;
+// A small saved copy's shadow work is a few ms: waiting for the page there
+// only delays when the page takes input (clicks land on the preview blocker).
+// ~1 MB of saved copy is ~0.1 s of shadow work on a dense document.
+const FIRST_PAGE_WAIT_MIN_BYTES = 1024 * 1024;
+
+async function waitForFirstPageDrawn(state) {
+  const wait = state.whenFirstPageDrawn;
+  state.whenFirstPageDrawn = null;
+  if (!wait || state.destroyed) return;
+  let timer = null;
+  try {
+    await Promise.race([
+      Promise.resolve().then(wait).catch(() => {}),
+      new Promise((resolve) => { timer = setTimeout(resolve, FIRST_PAGE_WAIT_MS); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  // The page is drawn into its canvas; let that frame reach the screen.
   await waitForPaint();
 }
 
@@ -2443,7 +2544,7 @@ async function loadFromBackend(state) {
         await waitForIdle();
         applyAcceptedUpdate(state, bytes);
         await waitForIdle();
-        applyToLocalPersistence(state, bytes);
+        applySnapshotToLocalPersistence(state, bytes);
       } catch (err) {
         throw new Error(`snapshot decode failed: ${err?.message || 'invalid Yjs update'}`, { cause: err });
       }
