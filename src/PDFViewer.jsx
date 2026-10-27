@@ -21726,6 +21726,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Layers panel ('layers' flag): the layer list rides the synced doc meta;
   // the active layer is this screen's own choice.
   const [layersEnabled] = useState(() => isFeatureOn('layers'));
+  // Nightly: the survey bar's template menu links to the Templates editor.
+  const [customAnswersEnabled] = useState(() => isFeatureOn('custom-answers'));
   const [layerState, setLayerState] = useState(DEFAULT_LAYER_STATE);
   const [activeLayerId, setActiveLayerId] = useState(DEFAULT_LAYER_ID);
   useEffect(() => {
@@ -40330,6 +40332,9 @@ ${pageBlocks}
                       onSelect={handleSwitchSurveyTemplateById}
                       compact={surveyBarFit.plan.template === 'glyph'}
                       className="survey-subrow__template"
+                      onEditTemplate={customAnswersEnabled && selectedTemplate?.id && onRequestCreateTemplate
+                        ? () => onRequestCreateTemplate({ mode: 'open-editor', templateId: selectedTemplate.id })
+                        : null}
                     />
                     {/* Narrow: the module menu (and Width) wait in More, beside
                         the template menu, so the centre is the swatches and

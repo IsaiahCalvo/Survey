@@ -115,6 +115,7 @@ import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
 import { formatPageTotal } from './utils/pageTotalLabel.js';
+import { requestTemplateEditor } from './home/templateEditorRequest';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -1962,7 +1963,12 @@ export default function App({ devPreviewReturnTab = null }) {
   };
 
   const handleCreateTemplateRequest = (options) => {
-    if (options?.mode === 'edit' && options.templateId) {
+    if (options?.mode === 'open-editor' && options.templateId) {
+      // Survey bar "Edit template": the home Templates editor, that template open.
+      requestTemplateEditor(options.templateId);
+      setActiveTabId(HOME_TAB_ID);
+      setCurrentView('dashboard');
+    } else if (options?.mode === 'edit' && options.templateId) {
       dashboardRef.current?.openEditTemplateModal?.(options.templateId, {
         moduleId: options.moduleId,
         startAddingCategory: options.startAddingCategory

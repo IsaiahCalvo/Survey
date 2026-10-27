@@ -11,14 +11,15 @@
  * dialog and is written once, on Save; Cancel keeps the old list.
  */
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Icon } from './HubShell';
-import useModalFocusTrap from './useModalFocusTrap';
+import BodyPortal from '../components/BodyPortal';
+import DialogCard from '../components/DialogCard.jsx';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import {
   ANSWER_MEANS_MAX, ITEM_UNIT_MAX, MAX_ANSWERS, SCORE_SCALES, itemAnswerFields, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
 } from '../services/answerSets.js';
 import { ITEM_TYPE_LIBRARY, itemTypeById } from '../services/itemTypeLibrary.js';
+import './AnswerSetPicker.css';
 
 const TONE_OPTIONS = [
   { value: 'good', label: 'Good' },
@@ -39,7 +40,6 @@ const toDraft = (a) => ({ value: a.value, tone: a.tone, means: a.means || '' });
  * modal: { kicker, title } opens the editor as a dialog with Cancel / Save.
  */
 export default function AnswerSetEditor({ set, onCommit, onClose, phone = false, intro = null, modal = null }) {
-  const tip = useTooltip();
   const [draft, setDraft] = useState(() => set.map(toDraft));
   // The set this editor last wrote. Any other change from outside (Cancel,
   // a reload, picking a preset) replaces the draft.
@@ -49,9 +49,6 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
     lastWritten.current = set;
     setDraft(set.map(toDraft));
   }, [set]);
-  const dialogRef = useRef(null);
-  const closeRef = useRef(null);
-  useModalFocusTrap({ active: Boolean(modal), containerRef: dialogRef, initialFocusRef: closeRef, onClose });
 
   const update = (next) => {
     setDraft(next);
@@ -69,7 +66,7 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
     onClose();
   };
   const problem = answerSetProblem(draft);
-  const pad = modal ? '14px 16px' : phone ? '8px 16px 12px' : '8px 18px 10px';
+  const pad = modal ? 0 : phone ? '8px 16px 12px' : '8px 18px 10px';
 
   const body = (
     <div
@@ -77,7 +74,6 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
       data-testid="answer-set-editor"
       style={{
         padding: pad, borderBottom: modal ? 0 : '1px solid var(--rule)', display: 'flex', flexDirection: 'column', gap: 6,
-        ...(modal ? { maxHeight: 'min(60vh, 520px)', overflowY: 'auto' } : {}),
       }}
     >
       <p className="micro" style={{ margin: 0 }}>
@@ -158,41 +154,29 @@ export default function AnswerSetEditor({ set, onCommit, onClose, phone = false,
     </div>
   );
   if (!modal) return body;
-  return createPortal(
-    // A portal still bubbles React events to the row that opened it (drag,
-    // select), so they stop here.
-    <div
-      onClick={(e) => { e.stopPropagation(); onClose(); }}
-      onPointerDown={stopEvent}
-      onMouseDown={stopEvent}
-      onKeyDown={stopEvent}
-      style={{ position: 'fixed', inset: 0, background: 'var(--overlay-scrim)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5600 }}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={modal.title}
-        data-modal-focus-layer="true"
-        tabIndex={-1}
-        onClick={(e) => e.stopPropagation()}
-        style={{ width: phone ? 'calc(100vw - 32px)' : 560, maxWidth: 'calc(100vw - 32px)', overflow: 'hidden', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-dialog)' }}
-      >
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <p style={{ margin: 0, fontSize: 11, letterSpacing: 0, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'var(--font-ui)' }}>{modal.kicker}</p>
-            <h3 style={{ fontSize: 14, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-1)', letterSpacing: '-0.025em', fontFamily: 'var(--font-ui)' }}>{modal.title}</h3>
-          </div>
-          <button type="button" ref={closeRef} onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={13} /></button>
-        </div>
-        {body}
-        <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface-1)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onClose} className="hub-btn">Cancel</button>
-          <button type="button" onClick={save} disabled={Boolean(problem)} className="hub-btn hub-btn--primary">Save</button>
-        </div>
+  return (
+    <BodyPortal>
+      {/* A portal still bubbles React events to the row that opened it (drag,
+          select), so they stop here. */}
+      <div onPointerDown={stopEvent} onMouseDown={stopEvent} onKeyDown={stopEvent} onClick={stopEvent}>
+        <DialogCard
+          title={modal.kicker}
+          ariaLabel={modal.title}
+          message={modal.title}
+          onClose={onClose}
+          width={phone ? 560 : 600}
+          zIndex={5600}
+          footer={(
+            <>
+              <button type="button" className="hub-btn dialog-touch-pad" onClick={onClose}>Cancel</button>
+              <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={save} disabled={Boolean(problem)}>Save</button>
+            </>
+          )}
+        >
+          {body}
+        </DialogCard>
       </div>
-    </div>,
-    document.body,
+    </BodyPortal>
   );
 }
 

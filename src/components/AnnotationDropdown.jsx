@@ -35,6 +35,7 @@ export default function AnnotationDropdown({
   onSelect,
   renderOption,
   children,
+  footer = null,
   align = 'start',
   contentWidth,
   className = '',
@@ -241,6 +242,7 @@ export default function AnnotationDropdown({
               })}
             </div>
           )}
+          {footer}
         </Popover.Content>
       )}
     </Popover.Root>
