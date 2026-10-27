@@ -936,11 +936,18 @@ export const useStorage = () => {
     const key = pdfCacheKey(actorId, filePath);
     // The same two requests, already asked when the tab opened (startOpenSource).
     const early = openSourceHeadStarts().take(key, openSourceCacheStamp(cache, filePath));
+    // Open speed: read this device's copy while the access check is out, not
+    // after it. Its bytes are served only if the check names their version.
+    const copy = early?.cached ?? ((key && cache && !cache.isDisabled) ? cache.peek(key) : null);
     const source = await resolveOpenDocumentSource({
       fetchInfo: () => early?.info ?? fetchStoredPdfInfo(filePath),
       readCached: async (data) => {
         const stamp = pdfCacheStamp(data);
-        return (stamp && key && cache && !cache.isDisabled) ? cache.get(key, stamp) : null;
+        if (!stamp || !key || !cache || cache.isDisabled) return null;
+        const held = await copy;
+        if (held?.stamp !== stamp) return null;
+        cache.use(key);
+        return held.bytes;
       },
       sign: () => early?.signing ?? signOpenSource(filePath),
     });
@@ -972,10 +979,12 @@ export const useStorage = () => {
     if (!filePath || !isSupabaseAvailable() || isPdfUploadPending(filePath)) return false;
     if (chooseCloudPdfOpenPath({ pdfFile: { filePath } }).path !== 'stream') return false;
     const cache = pdfByteCache();
-    return openSourceHeadStarts().start(pdfCacheKey(user?.id ?? null, filePath), {
+    const key = pdfCacheKey(user?.id ?? null, filePath);
+    return openSourceHeadStarts().start(key, {
       stamp: openSourceCacheStamp(cache, filePath),
       fetchInfo: () => fetchStoredPdfInfo(filePath),
       sign: () => signOpenSource(filePath),
+      readCached: (key && cache && !cache.isDisabled) ? () => cache.peek(key) : null,
     });
   }, [user?.id]);
 

@@ -156,5 +156,6 @@ test('Templates: leaving with unsaved edits saves them; a typed prompt survives 
   assert.match(editor, /document\.visibilityState === 'hidden'\) saveOnLeaveRef\.current\?\.\(\)/);
   const prompts = read('src/components/dialogPrompts.jsx');
   assert.match(prompts, /const onScrim = \(\) => \{ if \(value === defaultValue\) onCancel\?\.\(\); \};/);
-  assert.match(prompts, /<div onClick=\{onScrim\} style=\{overlay\}>/);
+  assert.match(prompts, /onScrim=\{onScrim\}/);
+  assert.match(read('src/components/DialogCard.jsx'), /onClick=\{busy \? undefined : \(onScrim \|\| onClose\)\}/);
 });

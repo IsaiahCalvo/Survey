@@ -28,6 +28,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { openModalStack } from './modalStack.js';
+import { focusQuietly } from '../utils/quietFocus.js';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -101,7 +102,8 @@ export const useFocusTrap = (containerRef, isOpen, { onEscape, autoFocus = true,
       const index = openTraps.indexOf(token);
       if (index !== -1) openTraps.splice(index, 1);
       if (retryTimer) clearTimeout(retryTimer);
-      openerRef.current?.focus?.();
+      // Back to the opener without popping its tooltip chip (quietFocus.js).
+      focusQuietly(openerRef.current);
       openerRef.current = null;
     };
   }, [containerRef, isOpen, autoFocus, avoidTextFields]);

@@ -16,6 +16,7 @@ import { useTooltip } from '../components/Tooltip';
 import { renameSelectionRange } from './documentSelection.js';
 import MotionPresence from '../components/MotionPresence.jsx';
 import DialogCard from '../components/DialogCard.jsx';
+import { DIALOG_FIELD_STYLE, DIALOG_LABEL_STYLE } from '../components/DialogCard.jsx';
 
 
 const overlay = {
@@ -145,7 +146,7 @@ export function MoveCopyModal({ open, onClose, projects = [], count = 0, onConfi
   );
 }
 
-export function ConfirmModal({ open, onClose, title = 'Are you sure?', message = '', confirmLabel = 'Confirm', busyLabel = null, danger = false, onConfirm }) {
+export function ConfirmModal({ open, onClose, title = 'Are you sure?', message = '', confirmLabel = 'Confirm', busyLabel = null, danger = false, onConfirm, zIndex }) {
   // KAL-73: when onConfirm returns a promise (bulk delete etc.), the modal
   // stays up with a ring + participle label until it settles. Synchronous
   // confirms keep the old close-immediately behavior — no one-frame spinner.
@@ -176,6 +177,7 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
       message={message}
       onClose={onClose}
       busy={submitting}
+      zIndex={zIndex}
       footer={(
         <>
           <button disabled={submitting} onClick={onClose} className="hub-btn dialog-touch-pad">Cancel</button>
@@ -197,10 +199,8 @@ export function ConfirmModal({ open, onClose, title = 'Are you sure?', message =
 }
 
 export function RenameModal({ open, onClose, title = 'Rename', initialName = '', onConfirm }) {
-  const tip = useTooltip();
   const [name, setName] = useState(initialName);
   const inputRef = useRef(null);
-  const cardRef = useRef(null);
 
   // The field gets the name in the SAME render that opens the dialog. It
   // used to be set from the effect below, one render late: the preselection
@@ -213,12 +213,6 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
   } else if (!open && openedWith !== null) {
     setOpenedWith(null);
   }
-
-  // KAL-66: the shared modal primitive, like ConfirmModal and MoveCopyModal
-  // above. Before, Rename only handled Escape, so Tab walked out of the
-  // dialog onto the page behind it. The hook also returns focus to the
-  // opener on close and answers Escape only when this is the top dialog.
-  useFocusTrap(cardRef, open, { onEscape: onClose });
 
   useEffect(() => {
     if (!open) return undefined;
@@ -234,8 +228,6 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
     return () => cancelAnimationFrame(frame);
   }, [initialName, open]);
 
-  // Closed: MotionPresence plays the exit of the last open card (motion.css).
-  if (!open) return <MotionPresence open={false} />;
   const trimmed = name.trim();
   // Owner 2026-10-02: only a real change is saved. The same name just closes.
   const unchanged = trimmed === (initialName || '').trim();
@@ -245,52 +237,39 @@ export function RenameModal({ open, onClose, title = 'Rename', initialName = '',
     onClose?.();
   };
 
+  // Design review 2026-10-27: Rename was its own card with a 44px field and
+  // 44px buttons on a mouse too. It now sits on the one dialog shell
+  // (DialogCard: KAL-66 focus trap, Escape closes, focus goes back to the
+  // opener) with the shared field, which grows to 44px on a touch screen.
   return (
-    <MotionPresence open>
-    <div onClick={onClose} style={overlay}>
-      <div
-        ref={cardRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(event) => event.stopPropagation()}
-        style={{ width: 380, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}
-      >
-        <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
-            <label style={{ display: 'block', marginTop: 12 }}>
-              <span style={{ display: 'block', fontSize: 11, color: C.muted, marginBottom: 6 }}>Name</span>
-              <input
-                ref={inputRef}
-                aria-label="Name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    submit();
-                  }
-                }}
-                style={{ width: '100%', height: 44, boxSizing: 'border-box', borderRadius: 7, border: `1px solid ${C.ruleStrong}`, background: C.deep, color: C.ink, padding: '0 11px', fontSize: 16, fontFamily: 'inherit', outline: 'none' }}
-              />
-            </label>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close" {...tip('Close')} className="hub-icon-btn"><Icon name="close" size={16} /></button>
-        </div>
-        <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} className="hub-btn" style={{ minHeight: 44 }}>Cancel</button>
-          <button
-            disabled={!trimmed || unchanged}
-            onClick={submit}
-            className="hub-btn hub-btn--primary"
-            style={{ minHeight: 44 }}
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
-    </MotionPresence>
+    <DialogCard
+      open={open}
+      title={title}
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" onClick={onClose} className="hub-btn dialog-touch-pad">Cancel</button>
+          <button type="button" disabled={!trimmed || unchanged} onClick={submit} className="hub-btn hub-btn--primary dialog-touch-pad">Save</button>
+        </>
+      )}
+    >
+      <label style={{ display: 'block' }}>
+        <span style={DIALOG_LABEL_STYLE}>Name</span>
+        <input
+          ref={inputRef}
+          className="dialog-prompt-input"
+          aria-label="Name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          style={DIALOG_FIELD_STYLE}
+        />
+      </label>
+    </DialogCard>
   );
 }
