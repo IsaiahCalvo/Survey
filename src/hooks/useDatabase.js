@@ -20,7 +20,7 @@ import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
 import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize } from '../services/pdfByteCache.js';
-import { STREAM_SIGNED_URL_SECONDS } from '../services/cloudPdfStream.js';
+import { STREAM_SIGNED_URL_SECONDS, chooseCloudPdfOpenPath } from '../services/cloudPdfStream.js';
 import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.js';
 import { isPdfUploadPending, trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
 import { openSourceHeadStarts, openSourceCacheStamp } from '../services/openSourceHeadStart.js';
@@ -966,9 +966,11 @@ export const useStorage = () => {
   // Open speed: called when a cloud document's tab is created, so the access
   // check and signed URL openDocumentStream needs are asked for while the
   // viewer chunk loads (services/openSourceHeadStart.js). A path this device
-  // is still uploading is left to openDocumentStream, which waits for it.
+  // is still uploading is left to openDocumentStream, which waits for it, and
+  // an open that will not stream (desktop file:// build, offline) asks nothing.
   const startOpenSource = useCallback((filePath) => {
     if (!filePath || !isSupabaseAvailable() || isPdfUploadPending(filePath)) return false;
+    if (chooseCloudPdfOpenPath({ pdfFile: { filePath } }).path !== 'stream') return false;
     const cache = pdfByteCache();
     return openSourceHeadStarts().start(pdfCacheKey(user?.id ?? null, filePath), {
       stamp: openSourceCacheStamp(cache, filePath),

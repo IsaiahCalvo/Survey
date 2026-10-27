@@ -95,6 +95,8 @@ test('wiring: the tab asks, openDocumentStream takes, an upload in flight is lef
   assert.match(stream, /sign: \(\) => early\?\.signing \?\? signOpenSource\(filePath\)/);
   const start = db.slice(db.indexOf('const startOpenSource = useCallback'), db.indexOf('const deleteDocumentFile = useCallback'));
   assert.match(start, /isPdfUploadPending\(filePath\)\) return false/);
+  // An open that will download (file:// desktop build, offline) asks nothing early.
+  assert.match(start, /chooseCloudPdfOpenPath\(\{ pdfFile: \{ filePath \} \}\)\.path !== 'stream'\) return false/);
   assert.match(start, /pdfCacheKey\(user\?\.id \?\? null, filePath\)/);
 
   const shell = read('../src/AppShell.jsx');
