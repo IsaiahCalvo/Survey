@@ -27,6 +27,7 @@
 // PROFILE=<file.cpuprofile> records a CPU profile of the first run instead
 // (of its reopen with REOPEN=1).
 // NET=<latency ms>/<down Mbps> throttles the page's network (e.g. 150/9).
+// CPU=<rate> slows the page's CPU that many times (4 is about a mid phone).
 // NO_WARMUP=1 skips the untimed warm-up run (interleaved A/B loops).
 // TIMERS=<ms> logs every long animation frame over <ms> (default 80) with its
 // script entry points; a timer / idle / rAF entry also gets the stack that
@@ -270,6 +271,10 @@ async function oneRun(browser, size, { profile = null } = {}) {
   // FLAGS=a,b turns those feature flags on for the run (src/featureFlags.js).
   if (process.env.FLAGS) await context.addInitScript((keys) => { for (const k of keys) localStorage.setItem(`survey.flag.${k}`, '1'); }, process.env.FLAGS.split(','));
   const page = await context.newPage();
+  if (process.env.CPU) {
+    const cpu = await context.newCDPSession(page);
+    await cpu.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU) });
+  }
   if (NET) {
     // NET=<latency ms>/<down Mbps>, e.g. 150/9 for a phone on 4G.
     const [latency, mbps] = NET.split('/').map(Number);
