@@ -8,6 +8,7 @@
 // The scratch copy is thrown away; nothing here touches any saved file.
 
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber } from 'pdf-lib';
+import { pdfOrDestroy } from '../destroyPdfDocument.js';
 
 export const THUMBNAIL_WIDTH = 320;
 export const MAX_THUMBNAIL_PAGES = 60;
@@ -76,7 +77,7 @@ export async function renderBundleThumbnails({
   const render = renderPage || (await import('../spacePdfPageRender.js')).renderPdfPageForExport;
   const printable = await withPrintableAnnotations(annotatedBytes);
   const task = lib.getDocument({ data: printable, isEvalSupported: false });
-  const doc = await task.promise;
+  const doc = await pdfOrDestroy(task);
   const files = [];
   const drawn = [];
   try {

@@ -379,7 +379,7 @@ import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/u
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
-import { destroyPdfDocument } from './utils/destroyPdfDocument.js';
+import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
 import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
 import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.js';
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
@@ -24644,7 +24644,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             data: primaryPdfData,
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
-          pdf = await loadingTask.promise;
+          pdf = await pdfOrDestroy(loadingTask);
           perfLoad.mark(docName, 'PDF.js document parsed');
           trackSurveyAnalyticsEvent('survey_pdf_parse_completed', {
             byteSizeBucket,
@@ -24668,7 +24668,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               disableAutoFetch: true,
               disableStream: true
             });
-            pdf = await recoveryTask.promise;
+            pdf = await pdfOrDestroy(recoveryTask);
             perfLoad.mark(docName, 'PDF.js document parsed (recovery mode)');
           } catch (recoveryError) {
             // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed
@@ -24694,7 +24694,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                 stopAtErrors: false,
               });
-              pdf = await rewriteTask.promise;
+              pdf = await pdfOrDestroy(rewriteTask);
               // Update the buffer downstream consumers see so the annotation
               // importer also reads the rewritten bytes.
               arrayBuffer = rewritten.buffer;

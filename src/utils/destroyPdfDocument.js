@@ -21,3 +21,13 @@ export function destroyPdfDocument(doc) {
     return Promise.resolve();
   }
 }
+
+// A failed open keeps its worker too: a rejected loadingTask.promise does not
+// end the task, and the worker (with the bytes it was sent) lives until
+// destroy(). Await the document through this so a failure gives it back.
+export function pdfOrDestroy(loadingTask) {
+  return loadingTask.promise.catch((error) => {
+    void Promise.resolve().then(() => loadingTask.destroy()).catch(() => {});
+    throw error;
+  });
+}
