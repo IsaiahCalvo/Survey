@@ -797,7 +797,7 @@ test('Space PDF menu label states it exports base PDF pages, not annotated PDF o
   assert.match(SPACES_PANEL_SOURCE, />\s*PDF Pages\s*</);
   assert.match(
     SPACES_PANEL_SOURCE,
-    /Exports base PDF pages only; app annotations are not embedded\./,
+    /The space's pages, without marks/,
   );
 });
 

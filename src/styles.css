@@ -1985,32 +1985,8 @@ input[type="text"].spaces-region__name-input:focus-visible {
   color: var(--text-3);
 }
 
-/* ---- the Export menu (portalled; AnchoredPopover hangs it under Export) -- */
-.spaces-export--menu {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translate(-50%, 0);
-  margin-top: 2px;
-  min-width: 168px;
-  padding: 4px;
-  box-sizing: border-box;
-  display: grid;
-  background: var(--surface-3);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: var(--shadow-popover);
-  font-family: var(--font-ui);
-}
-
-/* ---- "Export <space>": desktop menu under Export, phone sheet ----------- */
-.spaces-export--menu {
-  left: auto;
-  right: -40px;
-  transform: none;
-  width: 236px;
-}
-
+/* ---- "Export <space>": desktop card beside Export (CalloutPopover), phone
+   sheet ------------------------------------------------------------------- */
 .spaces-export__head {
   display: flex;
   align-items: center;
@@ -2180,6 +2156,12 @@ input[type="text"].spaces-region__name-input:focus-visible {
   bottom: -6px;
   left: calc(var(--callout-tail) - 5px);
   transform: rotate(225deg);
+}
+
+.spaces-export-callout {
+  width: 236px;
+  padding: 4px;
+  display: grid;
 }
 
 .spaces-transfer-callout {

@@ -31,7 +31,6 @@ import SectionIconButton from '../components/SectionIconButton.jsx';
 import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import { watchLightPopover } from '../components/dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
-import AnchoredPopover from '../components/AnchoredPopover';
 import CalloutPopover from '../components/CalloutPopover.jsx';
 import { useProLock } from '../hooks/useProLock.js';
 import {
@@ -693,7 +692,7 @@ function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExpo
           onClick={() => onExportPDF(target.id)}
         >
           <span>PDF Pages</span>
-          <small>Exports base PDF pages only; app annotations are not embedded.</small>
+          <small>The space's pages, without marks</small>
         </button>
       </div>
     </>
@@ -1564,12 +1563,18 @@ const SpacesPanel = ({
           openSpacesExport(spacesExportTarget.id);
         }}
       />
+      {/* Owner 2026-10-27: the Spaces cards open beside their button with a
+          tail, like Move or copy - not as drop-downs. */}
       {!mobileMode && exportPanel && (
-        <AnchoredPopover getAnchor={() => spacesExportAnchorRef.current} gap={2} zIndex={7000}>
-          <div ref={spacesExportMenuRef} className="spaces-export spaces-export--menu" role="menu" aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}>
-            {exportPanel}
-          </div>
-        </AnchoredPopover>
+        <CalloutPopover
+          ref={spacesExportMenuRef}
+          getAnchor={() => spacesExportAnchorRef.current}
+          className="spaces-export spaces-export-callout"
+          role="menu"
+          aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}
+        >
+          {exportPanel}
+        </CalloutPopover>
       )}
     </div>
   );

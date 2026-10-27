@@ -104,7 +104,8 @@ test('sort headers, rows, select boxes, option cards and menu items are keyboard
   assert.equal(count(read('src/home/ProjectsFolderTree.jsx'), box), 5);
   assert.equal(count(read('src/home/TemplatesEditor.jsx'), ready), 5);
   assert.equal(count(read('src/home/TemplatesEditor.jsx'), box), 4);
-  assert.equal(count(read('src/RegionSelectionTool.jsx'), /role: 'menuitem'/g), 5);
+  // The area menu's icon row is real buttons; its two rows carry the props.
+  assert.equal(count(read('src/RegionSelectionTool.jsx'), /role: 'menuitem'/g), 1);
   assert.equal(count(read('src/SurveySpacesRail.jsx'), /role: 'menuitem'/g), 5);
   assert.equal(count(read('src/hooks/useAnnotationContextMenu.jsx'), /role: 'menuitem', disabled: it\.disabled/g), 1);
   for (const file of ['src/components/CreateCategoryModal.jsx', 'src/components/NewColumnsModal.jsx', 'src/components/ExcelSyncConfirmModal.jsx']) {
