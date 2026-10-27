@@ -90,6 +90,8 @@ test('the notice keeps its z-index and stops at the right rail', () => {
   assert.match(rail, /publishChromeInset\('right', mobileMode \? '0px' : `\$\{desktopSurveyPanelShown \? 48 \+ 320 : 48\}px`\)/);
   // Unmount clears the width so later UI falls back to its default (Bugbot #831).
   assert.match(rail, /publishSideRoom\(\{ rightCover: 48 \}\);[\s\S]{0,160}publishChromeInset\('right', null\)/);
+  // Closing a tab behind the front one leaves the front rail's values alone.
+  assert.match(rail, /if \(!tabActiveRef\.current\) return;\s*publishSideRoom\(\{ rightCover: 48 \}\);/);
   // The notice puts both widths on itself, never on :root (a :root custom
   // property restyles the whole document on every change).
   const notice = read('src/components/collab/StorageFailureBanner.jsx');

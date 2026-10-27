@@ -684,7 +684,13 @@ const SurveySpacesRail = ({
     if (mobileMode || !tabActive) return undefined;
     return subscribeRightPanelYield(() => setIsSurveyPanelCollapsed(true));
   }, [mobileMode, tabActive]);
+  // Every open tab keeps its own rail (docs/TAB-SWITCHING.md): only the
+  // front tab's rail owns these shared values, so closing a tab behind it
+  // leaves them alone.
+  const tabActiveRef = useRef(tabActive);
+  tabActiveRef.current = tabActive;
   useEffect(() => () => {
+    if (!tabActiveRef.current) return;
     publishSideRoom({ rightCover: 48 });
     // Gone: later UI reading the width falls back to its own default.
     publishChromeInset('right', null);
