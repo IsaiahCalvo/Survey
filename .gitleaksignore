@@ -209,6 +209,7 @@
 6a421b7f35579e17c4b44b2c6c6a83f8f4e61829:tests/consoleLogFilter.test.mjs:stripe-access-token:16
 72607a141ad81b1bf05945806d80fb0955127523:dist/assets/index-lMmS4kIN.js:jwt:939
 790be3f01e54f9cf538c8aafcac6d3c98c5a1ce9:tests/workbookRegistration.test.mjs:generic-api-key:39
+7e626dc134f5f68560c86abd790174a7026305cc:dist/assets/index-BMtk-9jN.js:jwt:877
 991b1e2e3ca7edc7c3ca8c2a9498cd3c5fee9a36:src/main.jsx:generic-api-key:22
 995e07b97dc7f6b7fb7d683702a70c83221e8f86:tests/sharingInvitesLogicAudit.test.mjs:generic-api-key:195
 995e07b97dc7f6b7fb7d683702a70c83221e8f86:tests/sharingInvitesLogicAudit.test.mjs:generic-api-key:29
