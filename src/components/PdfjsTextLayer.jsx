@@ -124,6 +124,14 @@ export function ensureTextLayerStyles() {
 function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = false, panHover = false, onTextAvailability }) {
   const ref = useRef(null);
   const wasInteractiveRef = useRef(interactive);
+  // Under Pan alone the layer only serves the hover (utils/panTextSelect.js),
+  // so it is built when the browser is idle: building it measures every glyph
+  // run (~130 ms of measureText on the 240-sheet set), which ran inside the
+  // open and every zoom. Text Select still builds at once.
+  const idleOnlyRef = useRef(false);
+  idleOnlyRef.current = panHover && !interactive;
+  const buildNowRef = useRef(null);
+  useEffect(() => { if (interactive) buildNowRef.current?.(); }, [interactive]);
 
   useEffect(() => { ensureTextLayerStyles(); }, []);
 
@@ -226,7 +234,9 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
   useEffect(() => {
     let cancelled = false;
     let task = null;
-    (async () => {
+    let idleId = null;
+    const build = async () => {
+      buildNowRef.current = null;
       const el = ref.current;
       if (!el || !pdf) return;
       try {
@@ -247,8 +257,24 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
         task = new pdfjsLib.TextLayer({ textContentSource: textContent, container: el, viewport });
         await task.render();
       } catch { /* cancelled or unsupported render — ignore */ }
-    })();
-    return () => { cancelled = true; try { task?.cancel?.(); } catch { /* noop */ } };
+    };
+    if (idleOnlyRef.current && typeof requestIdleCallback === 'function') {
+      idleId = requestIdleCallback(() => { idleId = null; void build(); }, { timeout: 2000 });
+      buildNowRef.current = () => {
+        if (idleId == null) return;
+        cancelIdleCallback(idleId);
+        idleId = null;
+        void build();
+      };
+    } else {
+      void build();
+    }
+    return () => {
+      cancelled = true;
+      buildNowRef.current = null;
+      if (idleId != null) cancelIdleCallback(idleId);
+      try { task?.cancel?.(); } catch { /* noop */ }
+    };
   }, [pdf, pageNumber, scale, rotation, onTextAvailability]);
 
   return <div ref={ref} className={`pdfjsTextLayer${interactive ? ' is-interactive' : ''}${panHover ? ' is-pan-text' : ''}`} />;
