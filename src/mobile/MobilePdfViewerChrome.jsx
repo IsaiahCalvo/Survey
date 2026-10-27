@@ -40,6 +40,8 @@ import { formatPageTotal } from '../utils/pageTotalLabel.js';
 import { MOBILE_MEASURE_ITEMS, applyMobileMeasurePick, applyMobileShapePick, isMobileShapeToolActive } from './mobileShapeRail.js';
 import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
+import { isFeatureOn } from '../featureFlags.js';
+import { OPEN_EXPORT_PDF_EVENT } from '../utils/exportPdfModes.js';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
 // ONE glyph:control ratio for every phone tier, and it is Drawboard's: its
@@ -1074,6 +1076,11 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={!bottomToolbarApi?.exportAnnotatedPdf}
           onClick={() => {
             commitPanelTyping();
+            // Nightly (flag 'export-modes'): the choices dialog AppShell owns.
+            if (isFeatureOn('export-modes') && bottomToolbarApi?.exportPdfWithOptions) {
+              window.dispatchEvent(new CustomEvent(OPEN_EXPORT_PDF_EVENT));
+              return;
+            }
             bottomToolbarApi?.exportAnnotatedPdf?.();
           }}
         >

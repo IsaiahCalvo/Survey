@@ -15,6 +15,8 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
+import ExportPdfDialog from './components/ExportPdfDialog';
+import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
@@ -2018,6 +2020,16 @@ export default function App({ devPreviewReturnTab = null }) {
   // Pinned tools dock (Survey Nightly only, beta flag 'pinned-tools'):
   // components/PinnedToolsDock.jsx. Read once at load, like every flag.
   const [pinnedToolsEnabled] = useState(() => isFeatureOn('pinned-tools'));
+  // Export PDF choices (Survey Nightly only, beta flag 'export-modes'):
+  // components/ExportPdfDialog.jsx. The phone header asks with an event.
+  const [exportModesEnabled] = useState(() => isFeatureOn('export-modes'));
+  const [exportPdfDialogOpen, setExportPdfDialogOpen] = useState(false);
+  useEffect(() => {
+    if (!exportModesEnabled) return undefined;
+    const open = () => setExportPdfDialogOpen(true);
+    window.addEventListener(OPEN_EXPORT_PDF_EVENT, open);
+    return () => window.removeEventListener(OPEN_EXPORT_PDF_EVENT, open);
+  }, [exportModesEnabled]);
   const pinnedTools = usePinnedTools();
   // PDFs dragged in from the computer onto an open document (owner request
   // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
@@ -2816,7 +2828,13 @@ export default function App({ devPreviewReturnTab = null }) {
               <ExportMenu
                 tooltip={chromeTip('More export options', 'below')}
                 items={[
-                  { label: 'Annotated PDF', onSelect: bottomToolbarApi.exportAnnotatedPdf },
+                  exportModesEnabled && typeof bottomToolbarApi.exportPdfWithOptions === 'function'
+                    ? {
+                      label: 'PDF…',
+                      title: 'Annotated, flattened or plain, and which pages.',
+                      onSelect: () => setExportPdfDialogOpen(true),
+                    }
+                    : { label: 'Annotated PDF', onSelect: bottomToolbarApi.exportAnnotatedPdf },
                   {
                     label: 'Markup only (XFDF)',
                     title: 'Your marks in a separate file for Acrobat or Bluebeam. Your PDF stays the same.',
@@ -5209,6 +5227,14 @@ export default function App({ devPreviewReturnTab = null }) {
           covered the zoom controls; that pill is gone, and the sheet itself
           renders nothing until it is opened.) */}
       <KeyboardShortcutsOverlay />
+      {exportModesEnabled && (
+        <ExportPdfDialog
+          open={exportPdfDialogOpen && Boolean(bottomToolbarApi?.exportPdfWithOptions)}
+          api={bottomToolbarApi}
+          fileName={activeTab?.file?.name || ''}
+          onClose={() => setExportPdfDialogOpen(false)}
+        />
+      )}
       <TooltipChipHost setterRef={shellTooltipSetterRef} />
     </TooltipContext.Provider>
   );
