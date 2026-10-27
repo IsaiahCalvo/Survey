@@ -33,6 +33,10 @@ import rotateIconSvg from './assets/rotate-icon.svg';
 import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR, resizeHandleCursor } from './utils/handleCursors.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
 import { showToast } from './utils/toast.js';
+import Icon from './Icons';
+import { useTooltip } from './components/Tooltip';
+import './styles/annotationContextMenu.css';
+import { REGION_MARQUEE_MIN_DRAG_PX, regionMarqueeDirection, regionMarqueeRect, resolveRegionMarqueeHits } from './utils/regionMarquee.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
@@ -48,6 +52,8 @@ const DRAW_TOOL_TYPES = new Set(['rectangular', 'polygon', 'freehand']);
 const ERASE_TOOL_TYPE = 'erase';
 // A mouse press that lifts within this many screen px is a click, not a drag.
 const MOUSE_CLICK_SLOP_PX = 4;
+// A pasted or duplicated area lands this many page units down-right.
+const AREA_PASTE_STEP = 12;
 const REGION_HANDLE_BLUE = HANDLE_RING;
 // Unified white-fill / blue-ring handle look (shared with every other handle).
 const REGION_HANDLE_STROKE = HANDLE_RING;
@@ -123,6 +129,11 @@ const isPointInFlatPolygon = (x, y, coords) => {
   }
   return inside;
 };
+// Copied areas as read back from the clipboard: a list of outlines.
+const isAreaList = (list) => Array.isArray(list) && list.length > 0 && list.every((region) => (
+  region && Array.isArray(region.coordinates) && region.coordinates.length >= 6 &&
+  region.coordinates.length % 2 === 0 && region.coordinates.every(Number.isFinite)
+));
 const regionEditHistoryStore = new Map();
 
 // KAL-301 REDO: standard rotation-pill visibility timings, copied from the
@@ -203,6 +214,7 @@ const RegionSelectionTool = ({
   // journaling now happens at commit time in PDFViewer.handleRegionComplete
   // (removedRegionIds diff), so Cancel can never produce phantom journal rows.
 }) => {
+  const tip = useTooltip();
   const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'polygon' | 'freehand' (Lasso) | 'erase' | 'move'
   const [selectionMode, setSelectionMode] = useState(REGION_OPERATIONS.ADD); // 'add' | 'subtract'
   const [isDrawing, setIsDrawing] = useState(false);
@@ -265,6 +277,10 @@ const RegionSelectionTool = ({
   // Phone: where the current draw gesture started (client px) and how far the
   // finger has travelled, so a tap on an area can select it instead of drawing.
   const drawGestureRef = useRef(null);
+  // Select tool: the drag box over empty page (page units + where it began
+  // on screen, which sets window vs crossing).
+  const [marquee, setMarquee] = useState(null);
+  const marqueeRef = useRef(null);
   // Erase: the regions before the press (one undo step per stroke) and the
   // areas taken away so far.
   const eraseGestureRef = useRef(null);
@@ -1495,25 +1511,35 @@ const RegionSelectionTool = ({
         }
       }
 
-      // Check if click is inside any selected region's bounds
-      let clickedInsideBoundary = false;
-      for (const regionId of selectedRegionIds) {
-        const region = regions.find(r => r.regionId === regionId);
-        if (region) {
-          const bounds = getRegionBounds(region);
-          if (bounds && 
-              x >= bounds.minX && x <= bounds.maxX &&
-              y >= bounds.minY && y <= bounds.maxY) {
-            clickedInsideBoundary = true;
-            break;
-          }
-        }
+      // A press inside a picked area's box moves every picked area (the box
+      // is what the user sees as "the selection"), as with marks.
+      let pickedHit = selectedRegionIds.size > 0 ? findRegionAtPagePoint(x, y, selectedRegionIds) : null;
+      if (!pickedHit && selectedRegionIds.size > 1) {
+        const picked = regions.filter((r) => selectedRegionIds.has(r.regionId));
+        const boxes = picked.map(getRegionBounds).filter(Boolean);
+        const inGroupBox = boxes.length > 0 &&
+          x >= Math.min(...boxes.map((b) => b.minX)) && x <= Math.max(...boxes.map((b) => b.maxX)) &&
+          y >= Math.min(...boxes.map((b) => b.minY)) && y <= Math.max(...boxes.map((b) => b.maxY));
+        if (inGroupBox) pickedHit = picked[0];
       }
-      
-      // If clicked outside all boundary boxes, deselect
-      if (!clickedInsideBoundary && selectedRegionIds.size > 0) {
+      if (pickedHit && selectedRegionIds.has(pickedHit.regionId) && !event.shiftKey) {
+        regionPointerDownRef.current?.(pickedHit, event);
+        return;
+      }
+      // Owner 2026-10-27: a press on empty page starts a drag box, like the
+      // box over marks. Shift keeps what is picked and adds to it; without
+      // Shift the press lets go of the picked areas at once. (Phone: one
+      // finger on empty page pans, so no box there.)
+      if (!event.shiftKey && selectedRegionIds.size > 0) {
         setSelectedRegionIds(new Set());
         setInteractionState(null);
+      }
+      if (!mobileMode) {
+        const next = { startClientX: event.clientX, startClientY: event.clientY, start: { x, y }, end: { x, y }, additive: event.shiftKey, shown: false };
+        marqueeRef.current = next;
+        setMarquee(next);
+      } else {
+        releaseInteractionPointer(event);
       }
       return;
     }
@@ -1593,6 +1619,25 @@ const RegionSelectionTool = ({
     }
 
     const rect = pagePresentationFrame(targetElement);
+
+    const box = marqueeRef.current;
+    if (box) {
+      const pointer = clientPointToPage(event.clientX, event.clientY, rect);
+      if (!pointer) return;
+      const shown = box.shown || Math.hypot(event.clientX - box.startClientX, event.clientY - box.startClientY) >= REGION_MARQUEE_MIN_DRAG_PX;
+      const next = {
+        ...box,
+        shown,
+        direction: regionMarqueeDirection(box.startClientX, event.clientX),
+        end: {
+          x: Math.max(0, Math.min(resolvedPageWidth || pointer.x, pointer.x)),
+          y: Math.max(0, Math.min(resolvedPageHeight || pointer.y, pointer.y)),
+        },
+      };
+      marqueeRef.current = next;
+      setMarquee(next);
+      return;
+    }
     const isWithinCanvas =
       event.clientX >= rect.left &&
       event.clientX <= rect.right &&
@@ -1955,11 +2000,30 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode, eraseAreaAt]);
+  }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode, eraseAreaAt, resolvedPageWidth, resolvedPageHeight]);
 
   const handleMouseUp = useCallback((event) => {
     if (!active) return;
     if (!releaseInteractionPointer(event)) return;
+
+    const box = marqueeRef.current;
+    if (box) {
+      marqueeRef.current = null;
+      setMarquee(null);
+      if (!box.shown) return;
+      const rect = regionMarqueeRect(box.start, box.end);
+      const outlines = regionsRef.current.map((region) => ({
+        id: region.regionId,
+        coordinates: withRegionOutlineCoordinates(region).coordinates,
+      }));
+      const hits = resolveRegionMarqueeHits(outlines, rect, box.direction);
+      setSelectedRegionIds((prev) => {
+        const next = new Set(box.additive ? prev : []);
+        hits.forEach((id) => next.add(id));
+        return next;
+      });
+      return;
+    }
 
     const eraseGesture = eraseGestureRef.current;
     if (eraseGesture) {
@@ -2179,6 +2243,8 @@ const RegionSelectionTool = ({
 
   const handlePointerCancel = useCallback((event) => {
     if (!releaseInteractionPointer(event)) return;
+    marqueeRef.current = null;
+    setMarquee(null);
     dropEraseGesture();
     dragHasMovedRef.current = false;
     setIsCursorOverCanvas(false);
@@ -2202,6 +2268,8 @@ const RegionSelectionTool = ({
     }
     documentDragFallbackRef.current = false;
     drawGestureRef.current = null;
+    marqueeRef.current = null;
+    setMarquee(null);
     dropEraseGesture();
     releaseInteractionPointer();
     dragHasMovedRef.current = false;
@@ -2622,13 +2690,17 @@ const RegionSelectionTool = ({
     });
   }, [regions, selectedRegionIds, clientPointToPage, getRegionBounds, getTargetRect, canMergeRegions, getConnectedMergeCandidates]);
 
+  // The last copied areas, kept here too: the system clipboard can refuse a
+  // read (no permission), and Ctrl+V must still paste.
+  const areaClipboardRef = useRef(null);
   const handleCopy = useCallback(async () => {
     if (selectedRegionIds.size === 0) return;
     const regionsToCopy = regions.filter(r => selectedRegionIds.has(r.regionId));
+    areaClipboardRef.current = { regions: buildRegionPayload(regionsToCopy) };
+    setContextMenu(null);
 
     try {
       await navigator.clipboard.writeText(JSON.stringify(regionsToCopy));
-      setContextMenu(null);
     } catch (err) {
       console.error('Failed to copy regions:', err);
     }
@@ -2640,12 +2712,68 @@ const RegionSelectionTool = ({
     setContextMenu(null);
   }, [handleCopy, handleDeleteSelected]);
 
+  // Owner 2026-10-27: areas answer the keys marks do - Ctrl+A / C / X / V /
+  // D and the arrows. With no point to paste at, a paste or duplicate lands a
+  // step down-right of the original, one more step each time.
+  const placeAreas = useCallback((sourceRegions, offset) => {
+    if (!Array.isArray(sourceRegions) || sourceRegions.length === 0) return;
+    const newRegions = sourceRegions.map((r) => ({
+      ...r,
+      regionId: crypto.randomUUID(),
+      coordinates: r.coordinates.map((val) => val + offset),
+      pageId: currentPageId,
+      sourceRegions: undefined,
+    }));
+    pushUndoSnapshot();
+    setRegions((prev) => [...prev, ...newRegions]);
+    setSelectedRegionIds(new Set(newRegions.map((r) => r.regionId)));
+  }, [currentPageId, pushUndoSnapshot]);
+  // The system clipboard first (it outlives this editing session, so areas
+  // copied on one page paste on another), the in-memory copy if it cannot be
+  // read. On another page they land where they were; on their own page each
+  // paste steps further down-right.
+  const lastPasteRef = useRef({ key: null, count: 0 });
+  const pasteAreasFromKeys = useCallback(async () => {
+    let list = null;
+    let key = null;
+    try {
+      const text = await navigator.clipboard.readText();
+      const parsed = JSON.parse(text);
+      if (isAreaList(parsed)) { list = parsed; key = text; }
+    } catch { /* no permission or not areas: use the in-memory copy */ }
+    if (!list) {
+      list = areaClipboardRef.current?.regions || null;
+      key = areaClipboardRef.current;
+    }
+    if (!isAreaList(list)) return;
+    const last = lastPasteRef.current;
+    const count = last.key === key ? last.count + 1 : 1;
+    lastPasteRef.current = { key, count };
+    const samePage = list[0]?.pageId === currentPageId;
+    placeAreas(list, samePage ? AREA_PASTE_STEP * count : AREA_PASTE_STEP * (count - 1));
+  }, [placeAreas, currentPageId]);
+  const duplicatePickedAreas = useCallback(() => {
+    if (selectedRegionIds.size === 0) return;
+    placeAreas(regions.filter((r) => selectedRegionIds.has(r.regionId)), AREA_PASTE_STEP);
+  }, [placeAreas, regions, selectedRegionIds]);
+  const nudgePickedAreas = useCallback((dx, dy) => {
+    if (selectedRegionIds.size === 0) return;
+    pushUndoSnapshot();
+    setRegions((prev) => prev.map((r) => (selectedRegionIds.has(r.regionId)
+      ? { ...r, coordinates: r.coordinates.map((val, idx) => val + (idx % 2 === 0 ? dx : dy)) }
+      : r)));
+  }, [selectedRegionIds, pushUndoSnapshot]);
+
   const handlePaste = useCallback(async () => {
     if (!contextMenu) return;
 
     try {
-      const text = await navigator.clipboard.readText();
-      const pastedRegions = JSON.parse(text);
+      let pastedRegions = null;
+      try {
+        pastedRegions = JSON.parse(await navigator.clipboard.readText());
+      } catch {
+        pastedRegions = areaClipboardRef.current?.regions || null;
+      }
 
       if (!Array.isArray(pastedRegions) || pastedRegions.length === 0) return;
 
@@ -2885,11 +3013,17 @@ const RegionSelectionTool = ({
     leave: handleLeave,
     discard: handleDiscard,
     abandon: abandonTouchInteraction,
-    busy: isDrawing || interactionState !== null,
+    busy: isDrawing || interactionState !== null || marquee !== null,
     hasSelection: selectedRegionIds.size > 0,
     contextMenuOpen: contextMenu !== null,
     closeContextMenu: () => setContextMenu(null),
     clearSelection: () => setSelectedRegionIds(new Set()),
+    selectAll: () => setSelectedRegionIds(new Set(regionsRef.current.map((r) => r.regionId))),
+    copy: handleCopy,
+    cut: handleCut,
+    paste: pasteAreasFromKeys,
+    duplicate: duplicatePickedAreas,
+    nudge: nudgePickedAreas,
     deleteSelected: handleDeleteSelected,
     polygonCorners: polyCorners.length,
     finishPolygon: () => commitPolygonRef.current?.(polyCornersRef.current),
@@ -2927,6 +3061,38 @@ const RegionSelectionTool = ({
         stopRegionKeyboardShortcut(event);
         undoLastRegionEdit();
         return;
+      }
+      if (
+        (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey &&
+        !inEditableTarget &&
+        ['a', 'c', 'x', 'v', 'd'].includes(key) &&
+        !document.activeElement?.closest?.('[role="dialog"], [role="menu"], [role="alertdialog"]')
+      ) {
+        const actions = keyboardActionsRef.current;
+        if (actions.busy) return;
+        stopRegionKeyboardShortcut(event);
+        if (key === 'a') actions.selectAll();
+        else if (key === 'c') actions.copy();
+        else if (key === 'x') actions.cut();
+        else if (key === 'v') actions.paste();
+        else actions.duplicate();
+        return;
+      }
+      if (
+        event.key?.startsWith?.('Arrow') &&
+        !event.metaKey && !event.ctrlKey && !event.altKey &&
+        !inEditableTarget &&
+        !document.activeElement?.closest?.('[role="dialog"], [role="menu"], [role="alertdialog"], [role="radiogroup"], [role="slider"]')
+      ) {
+        const actions = keyboardActionsRef.current;
+        if (actions.hasSelection && !actions.busy && !actions.contextMenuOpen && actions.polygonCorners === 0) {
+          stopRegionKeyboardShortcut(event);
+          const step = event.shiftKey ? 10 : 1;
+          const dx = event.key === 'ArrowLeft' ? -step : (event.key === 'ArrowRight' ? step : 0);
+          const dy = event.key === 'ArrowUp' ? -step : (event.key === 'ArrowDown' ? step : 0);
+          actions.nudge(dx, dy);
+          return;
+        }
       }
       if (
         key === 'v' &&
@@ -3375,6 +3541,24 @@ const RegionSelectionTool = ({
               />
             )}
 
+            {marquee?.shown && (() => {
+              const box = regionMarqueeRect(marquee.start, marquee.end);
+              const crossing = marquee.direction === 'crossing';
+              return (
+                <rect
+                  data-region-marquee={crossing ? 'crossing' : 'window'}
+                  x={pageToScreenX(box.left)}
+                  y={pageToScreenY(box.top)}
+                  width={(box.right - box.left) * displayScaleX}
+                  height={(box.bottom - box.top) * displayScaleY}
+                  fill={crossing ? 'rgba(0, 200, 100, 0.15)' : 'rgba(0, 100, 255, 0.15)'}
+                  stroke={crossing ? 'rgba(0, 200, 100, 0.8)' : 'rgba(0, 100, 255, 0.8)'}
+                  strokeWidth={1}
+                  strokeDasharray={crossing ? '5,5' : undefined}
+                />
+              );
+            })()}
+
             {polygonPreviewPath && (
               <path
                 d={polygonPreviewPath}
@@ -3541,6 +3725,34 @@ const RegionSelectionTool = ({
                 );
               }
             })}
+
+            {/* Several areas picked: one dashed box round them all, like a
+                pick of several marks. A press inside it moves them all. */}
+            {editsPicked && selectedRegionIds.size > 1 && (() => {
+              let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+              for (const region of regions) {
+                if (!selectedRegionIds.has(region.regionId)) continue;
+                const b = getRegionBounds(region);
+                if (!b) continue;
+                minX = Math.min(minX, b.minX); minY = Math.min(minY, b.minY);
+                maxX = Math.max(maxX, b.maxX); maxY = Math.max(maxY, b.maxY);
+              }
+              if (!Number.isFinite(minX)) return null;
+              return (
+                <rect
+                  data-region-group-box="true"
+                  x={pageToScreenX(minX)}
+                  y={pageToScreenY(minY)}
+                  width={(maxX - minX) * displayScaleX}
+                  height={(maxY - minY) * displayScaleY}
+                  fill="none"
+                  stroke={REGION_HANDLE_BLUE}
+                  strokeWidth={1}
+                  strokeDasharray="4 3"
+                  pointerEvents="none"
+                />
+              );
+            })()}
 
             {/* KAL-301 REDO: rotation handle (mtr) — a faithful copy of the
                 day-one chrome in SVGSelectionOverlay.jsx (no connector line
@@ -3849,113 +4061,79 @@ const RegionSelectionTool = ({
           </div>
       ), targetElement)}
 
-      {/* Context Menu (outside the page: it is placed in screen px) */}
-      {contextMenu && (
-        <div
-          data-region-selection-ui="true"
-          style={{
-            position: 'fixed',
-            top: contextMenu.y,
-            left: contextMenu.x,
-            background: 'var(--surface-2)',
-            border: '1px solid var(--border)',
-            borderRadius: '4px',
-            boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-            zIndex: 100004,
-            padding: '4px 0',
-            minWidth: '120px',
-            pointerEvents: 'auto' // Ensure context menu is always interactive
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
+      {/* Context menu (outside the page: it is placed in screen px). Owner
+          2026-10-27: the mark menu's look (src/styles/annotationContextMenu.css)
+          - an icon row for Cut, Copy, Paste and Delete, then Merge and
+          Unmerge - not a hand-made list whose greyed items looked live. */}
+      {contextMenu && (() => {
+        const picked = selectedRegionIds.size > 0;
+        const quick = [
+          { key: 'cut', label: 'Cut', icon: 'scissors', disabled: !picked, onClick: handleCut },
+          { key: 'copy', label: 'Copy', icon: 'copy', disabled: !picked, onClick: handleCopy },
+          { key: 'paste', label: 'Paste', icon: 'paste', disabled: false, onClick: handlePaste },
+          { key: 'delete', label: 'Delete', icon: 'trash', disabled: !picked, onClick: () => { handleDeleteSelected(); setContextMenu(null); } },
+        ];
+        const rows = [
+          { key: 'merge', label: 'Merge', disabled: !contextMenu.canMerge, onClick: handleMergeSelected },
+          { key: 'unmerge', label: 'Unmerge', disabled: !contextMenu.canUnmerge, onClick: handleSeparateRegion },
+        ];
+        return (
           <div
-            role="menuitem"
-            aria-disabled={selectedRegionIds.size > 0 ? undefined : 'true'}
+            data-region-selection-ui="true"
+            role="menu"
+            aria-label="Area actions"
+            className="annotation-context-menu"
             style={{
-              padding: '8px 12px',
-              cursor: 'pointer',
-              fontSize: '13px',
+              position: 'fixed',
+              top: contextMenu.y,
+              left: contextMenu.x,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: 'var(--shadow-popover)',
+              zIndex: 100004,
+              minWidth: 160,
+              padding: 4,
+              fontSize: 12.5,
               color: 'var(--text-2)',
-              fontFamily: FONT_FAMILY
+              fontFamily: 'var(--font-ui)',
+              pointerEvents: 'auto'
             }}
-            onClick={selectedRegionIds.size > 0 ? handleCopy : undefined}
-            {...keyboardControlProps(null, { role: 'menuitem', disabled: !(selectedRegionIds.size > 0) })}
-            onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
           >
-            Copy
+            <div role="group" aria-label="Edit" className="annotation-menu-quick">
+              {quick.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  role="menuitem"
+                  aria-label={item.label}
+                  aria-disabled={item.disabled ? 'true' : undefined}
+                  className={`annotation-menu-icon${item.key === 'delete' ? ' annotation-menu-icon--danger' : ''}`}
+                  onClick={item.disabled ? undefined : item.onClick}
+                  {...tip(item.label, 'above')}
+                >
+                  <Icon name={item.icon} size={16} color="currentColor" />
+                </button>
+              ))}
+            </div>
+            <div role="separator" className="annotation-menu-separator" />
+            {rows.map((item) => (
+              <div
+                key={item.key}
+                role="menuitem"
+                aria-disabled={item.disabled ? 'true' : undefined}
+                className="annotation-menu-row"
+                onClick={item.disabled ? undefined : item.onClick}
+                {...keyboardControlProps(item.disabled ? null : item.onClick, { role: 'menuitem', disabled: item.disabled })}
+              >
+                {item.label}
+              </div>
+            ))}
           </div>
-          <div
-            role="menuitem"
-            aria-disabled={selectedRegionIds.size > 0 ? undefined : 'true'}
-            style={{
-              padding: '8px 12px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              color: 'var(--text-2)',
-              fontFamily: FONT_FAMILY
-            }}
-            onClick={selectedRegionIds.size > 0 ? handleCut : undefined}
-            {...keyboardControlProps(null, { role: 'menuitem', disabled: !(selectedRegionIds.size > 0) })}
-            onMouseEnter={(e) => { if (selectedRegionIds.size > 0) e.currentTarget.style.background = 'var(--hover)'; }}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            Cut
-          </div>
-          <div
-            role="menuitem"
-            style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', color: 'var(--text-2)', fontFamily: FONT_FAMILY }}
-            onClick={handlePaste}
-            {...keyboardControlProps(null, { role: 'menuitem' })}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--hover)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            Paste
-          </div>
-          <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
-          <div
-            role="menuitem"
-            aria-disabled={contextMenu.canMerge ? undefined : 'true'}
-            style={{
-              padding: '8px 12px',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              fontSize: '13px',
-              fontFamily: FONT_FAMILY,
-              background: 'transparent'
-            }}
-            onClick={contextMenu.canMerge ? handleMergeSelected : undefined}
-            {...keyboardControlProps(null, { role: 'menuitem', disabled: !contextMenu.canMerge })}
-            onMouseEnter={(e) => {
-              if (contextMenu.canMerge) e.currentTarget.style.background = 'var(--hover)';
-            }}
-            onMouseLeave={(e) => {
-              if (contextMenu.canMerge) e.currentTarget.style.background = 'transparent';
-            }}
-          >
-            Merge
-          </div>
-          <div
-            role="menuitem"
-            aria-disabled={contextMenu.canUnmerge ? undefined : 'true'}
-            style={{
-              padding: '8px 12px',
-              cursor: 'pointer',
-              color: 'var(--text-2)',
-              fontSize: '13px',
-              fontFamily: FONT_FAMILY
-            }}
-            onClick={contextMenu.canUnmerge ? handleSeparateRegion : undefined}
-            {...keyboardControlProps(null, { role: 'menuitem', disabled: !contextMenu.canUnmerge })}
-            onMouseEnter={(e) => {
-              if (contextMenu.canUnmerge) e.currentTarget.style.background = 'var(--hover)';
-            }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-          >
-            Unmerge
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
 
       {/* KAL-301 REDO: the app's STANDARD rotation pill (RotationInputField,

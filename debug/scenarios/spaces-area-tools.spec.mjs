@@ -143,6 +143,111 @@ test('desktop pen: a pen tap picks an area under a shape tool', async ({ page, c
   await expect(page.locator('[data-area-tool="rectangle"]')).toHaveAttribute('aria-pressed', 'true');
 });
 
+// Owner 2026-10-27: Select's drag box picks areas, the same rule as the box
+// over marks (left-to-right: wholly inside; right-to-left: touched).
+test('desktop: Select drag box picks areas, window and crossing', async ({ page, context }) => {
+  test.skip(test.info().project.use?.isMobile, 'desktop pass');
+  await setup(page, context);
+  await openAreas(page);
+  await drawRect(page, 330, 430);
+  await drawRect(page, 450, 430);
+  await page.keyboard.press('v');
+  const pg = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+  const drag = async (from, to) => {
+    await page.mouse.move(pg.x + from[0], pg.y + from[1]);
+    await page.mouse.down();
+    await page.mouse.move(pg.x + to[0], pg.y + to[1], { steps: 10 });
+    await page.mouse.up();
+  };
+  // Window around both new areas.
+  await drag([310, 410], [560, 520]);
+  await expect.poll(() => pickedCount(page)).toBe(2);
+  // Window around only half of the second: just the first.
+  await drag([310, 410], [480, 520]);
+  await expect.poll(() => pickedCount(page)).toBe(1);
+  // Crossing (right-to-left) through both.
+  await drag([540, 500], [380, 470]);
+  await expect.poll(() => pickedCount(page)).toBe(2);
+  // A click on empty page lets go.
+  await page.mouse.click(pg.x + 560, pg.y + 700);
+  await expect.poll(() => pickedCount(page)).toBe(0);
+  // Delete takes both picked areas away.
+  const before = await areas(page).count();
+  await drag([310, 410], [560, 520]);
+  await page.keyboard.press('Delete');
+  await expect(areas(page)).toHaveCount(before - 2);
+});
+
+// Owner 2026-10-27: areas answer the keys marks do.
+test('desktop: Ctrl+A, Ctrl+C / V, Ctrl+D and arrows work on areas', async ({ page, context }) => {
+  test.skip(test.info().project.use?.isMobile, 'desktop pass');
+  await setup(page, context);
+  await openAreas(page);
+  const centre = await drawRect(page, 330, 430);
+  const start = await areas(page).count();
+  await page.keyboard.press('v');
+  await page.mouse.click(centre.x, centre.y);
+  await expect.poll(() => pickedCount(page)).toBe(1);
+  const before = await areas(page).last().boundingBox();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect.poll(async () => (await areas(page).last().boundingBox()).y - before.y).toBeGreaterThan(8);
+  const moved = await areas(page).last().boundingBox();
+  expect(moved.x - before.x).toBeGreaterThan(0.5);
+  await page.keyboard.press('Control+d');
+  await expect(areas(page)).toHaveCount(start + 1);
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Control+v');
+  await expect(areas(page)).toHaveCount(start + 2);
+  await page.keyboard.press('Control+a');
+  await expect.poll(() => pickedCount(page)).toBe(start + 2);
+  await page.keyboard.press('Control+z');
+  await expect(areas(page)).toHaveCount(start + 1);
+});
+
+test('desktop: areas copied before leaving still paste after reopening', async ({ page, context }) => {
+  test.skip(test.info().project.use?.isMobile, 'desktop pass');
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(test.info().project.use.baseURL || 'http://127.0.0.1:5197').origin });
+  await setup(page, context);
+  await openAreas(page);
+  const centre = await drawRect(page, 330, 430);
+  await page.keyboard.press('v');
+  await page.mouse.click(centre.x, centre.y);
+  await expect.poll(() => pickedCount(page)).toBe(1);
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-region-edit-layer]')).toHaveCount(0);
+  await openAreas(page);
+  const count = await areas(page).count();
+  await page.keyboard.press('Control+v');
+  await expect(areas(page)).toHaveCount(count + 1);
+});
+
+// Owner 2026-10-27: Move or copy is a small card beside its button, its tail
+// pointing at the button.
+test('desktop: Move or copy opens beside its button with a tail', async ({ page, context }) => {
+  test.skip(test.info().project.use?.isMobile, 'desktop pass');
+  await setup(page, context);
+  const opener = button(page, 'Move or copy region on page 1');
+  await opener.click();
+  const card = page.getByRole('menu', { name: 'Move or copy Region 1' });
+  await expect(card).toBeVisible();
+  await expect(card).toHaveAttribute('data-callout-side', 'right');
+  const o = await opener.boundingBox();
+  const c = await card.boundingBox();
+  expect(c.x).toBeGreaterThan(o.x + o.width);
+  expect(c.x - (o.x + o.width)).toBeLessThan(16);
+  expect(c.width).toBeLessThanOrEqual(210);
+  expect(c.y).toBeLessThan(o.y + o.height / 2);
+  expect(c.y + c.height).toBeGreaterThan(o.y + o.height / 2);
+  await expect(button(page, 'Move region')).toBeDisabled();
+  await button(page, 'Page after').click();
+  await expect(page.getByRole('textbox', { name: 'Destination page' })).toHaveValue('2');
+  await expect(button(page, 'Move region')).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await expect(card).toHaveCount(0);
+});
+
 test('phone: Done check leaves keeping areas; a tap picks without switching tools', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   const page = await context.newPage();
