@@ -52,7 +52,7 @@ import './mobile/mobileSurveyPanel.css';
 import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
-import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
+import { autoCompleteOn, resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { reportKitFor } from './services/reportKits/index.js';
 import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput, { CHOICE_BUTTONS_MAX, ChoiceSelect } from './components/TypedAnswerInput.jsx';
@@ -1492,6 +1492,11 @@ const SurveySpacesRail = ({
       }
     }));
 
+    // The template's "Auto-mark as Complete" switch is off: leave the entity
+    // alone. The switch is a setting, not part of the template version a
+    // document keeps, so it is read from the live template.
+    const liveTemplate = surveyTemplates.find((t) => String(t?.id) === String(selectedTemplate?.id)) || selectedTemplate;
+    if (!autoCompleteOn(liveTemplate)) return;
     const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
     const completeEntity = resolveAutoCompleteEntity({
       answerSet: answerSetFor(selectedTemplate),

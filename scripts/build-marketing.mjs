@@ -112,9 +112,10 @@ const ONLY = [
     lead: 'Work on one part of a sheet at a time.',
     body: 'Name a space, pick its pages and draw a region on each one, as a rectangle or freehand. Turn the space on and everything outside the region dims. Markups made inside a space belong to it, so one sheet can carry the fit-out, the demolition and the services as separate work. Export a space on its own. We have not found this in any other PDF app.',
     img: 'spaces.webp', w: 1600, h: 1000, alt: 'A floor plan with a space turned on: the open office stays clear while the rest of the sheet is dimmed with a grey hatch', srcset: '/welcome/spaces-800.webp 800w, /welcome/spaces.webp 1600w' },
-  { id: 'templates', kicker: 'Only in Survey', name: 'Templates and projects',
+  // Not "projects": Drawboard Projects has projects too (checked 2026-10-27).
+  { id: 'templates', kicker: 'Only in Survey', name: 'Survey templates',
     lead: 'Set up a survey once. Use it on every project.',
-    body: 'A template holds the modules, the categories under each one, the checklist for each category and the tags you give each item, like Installed, Snag or Missing. Make one per kind of survey: electrical, fire, fit-out. Projects keep the drawings, the templates and the people together.',
+    body: 'A template holds the modules, the categories under each one, the checklist for each category and the tags you give each item, like Installed, Snag or Missing. Make one per kind of survey: electrical, fire, fit-out.',
     img: 'template.webp', w: 1600, h: 625, alt: 'The template editor: Electrical site survey with Power, Lighting and Fire modules, an Outlet checklist of Faceplate fitted, Tested and Labelled, and the tags Installed, Snag and Missing', srcset: '/welcome/template-800.webp 800w, /welcome/template.webp 1600w' },
 ];
 

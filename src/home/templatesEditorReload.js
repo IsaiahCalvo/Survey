@@ -163,6 +163,8 @@ export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) =
   // Report layout (report kit); left out when unset (the full report).
   ...(template?.reportKitId ? [['report', template.reportKitId]] : []),
   // Checklist answer set; left out when unset (Y / N / N/A).
+  // Auto-mark as Complete; left out when on (the default).
+  ...(template?.autoComplete === false ? [['autoComplete', false]] : []),
   ...(template?.answerSet ? [['answers', template.answerSet.map((a) => (a.means ? [a.value, a.tone, a.means] : [a.value, a.tone]))]] : []),
 ]);
 
