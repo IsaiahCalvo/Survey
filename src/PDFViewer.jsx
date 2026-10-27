@@ -37654,47 +37654,12 @@ ${pageBlocks}
                       const shouldHideNativePdfAnnotationLayer = Boolean(
                         nativePdfAnnotationPolicy?.hideNativeLayer
                       );
-                      const nativePdfAnnotationCanvasId = `${pdfjsViewerElementId}_annotationCanvas_${pageNumber - 1}`;
-                      const nativePdfPageDivId = `${pdfjsViewerElementId}_pageDiv_${pageNumber - 1}`;
-                      const nativePdfAnnotationLayerHideCss = `
-                        [id="${nativePdfAnnotationCanvasId}"],
-                        [id="${nativePdfAnnotationCanvasId}"] *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-canvas,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-canvas *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-layer,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-layer *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-selection,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-selection *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-container,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-container *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-div,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-div *,
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdornerLayer"],
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdornerLayer"] *,
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdorner_svg"],
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdorner_svg"] *,
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdorner"],
-                        [id="${nativePdfPageDivId}"] [id$="_SelectorElement"],
-                        [id="${nativePdfPageDivId}"] [id*="SelectorElement"],
-                        [id="${nativePdfPageDivId}"] .e-adorner-layer0,
-                        [id="${nativePdfPageDivId}"] .e-adorner-layer1,
-                        [id="${nativePdfPageDivId}"] .e-adorner-layer2 {
-                          visibility: hidden !important;
-                          pointer-events: none !important;
-                        }
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-pdfviewer-formFields,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-pdfviewer-formFields *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-container,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-container *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-div,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-div *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-hyperlink {
-                          visibility: visible !important;
-                          pointer-events: auto !important;
-                        }
-                      `;
+                      // No per-page <style> hides the native annotation layer any
+                      // more: pdf.js draws pages with AnnotationMode.DISABLE, so no
+                      // native annotation DOM exists, and its old Syncfusion-era
+                      // "[id=page] .x *" rules matched nothing yet were tried on
+                      // every element of every restyle (a stylesheet per drawn
+                      // page, per tab). tests/pageStyleSelectors.test.mjs.
 
                       return createPortal(
                         <div
@@ -37732,11 +37697,6 @@ ${pageBlocks}
                           data-page-annotation-object-count={pageAnnotationObjects.length}
                           data-page-callout-count={pageCalloutCount}
                         >
-                          {shouldHideNativePdfAnnotationLayer && (
-                            <style>
-                              {nativePdfAnnotationLayerHideCss}
-                            </style>
-                          )}
                           {activeTool === 'text-select' && ocrStateByPage[pageNumber]?.status === 'complete' && (
                             <OcrTextLayer
                               words={ocrStateByPage[pageNumber].result?.words || []}
