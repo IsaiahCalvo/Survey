@@ -21,24 +21,54 @@ export function toCategoryIdList(categoryIdOrIds) {
  * @param {Array} modules  template.modules (or template.spaces)
  * @param {string} moduleId
  * @param {string|string[]} categoryIdOrIds
- * @returns {{ modules: Array, changed: boolean, removedIds: string[] }}
+ * @returns {{ modules: Array, changed: boolean, removedIds: string[],
+ *   removed: Array<{ category: object, index: number }> }} `removed` is what
+ *   restoreCategoriesToModules needs to put them back where they were.
  */
 export function removeCategoriesFromModules(modules, moduleId, categoryIdOrIds) {
   const source = Array.isArray(modules) ? modules : [];
   const ids = new Set(toCategoryIdList(categoryIdOrIds));
   const removedIds = [];
-  if (!moduleId || ids.size === 0) return { modules: source, changed: false, removedIds };
+  const removed = [];
+  if (!moduleId || ids.size === 0) return { modules: source, changed: false, removedIds, removed };
   const nextModules = source.map((module) => {
     if (module?.id !== moduleId) return module;
     const categories = module.categories || [];
-    const nextCategories = categories.filter((category) => {
+    const nextCategories = categories.filter((category, index) => {
       if (!ids.has(category?.id)) return true;
       removedIds.push(category.id);
+      removed.push({ category, index });
       return false;
     });
     if (nextCategories.length === categories.length) return module;
     return { ...module, categories: nextCategories };
   });
   const changed = removedIds.length > 0;
-  return { modules: changed ? nextModules : source, changed, removedIds };
+  return { modules: changed ? nextModules : source, changed, removedIds, removed };
+}
+
+/**
+ * Undo of a category delete: put the `removed` categories back into module
+ * `moduleId` at the places they had (or the end, if the list is shorter now).
+ * A category that is already there again is left alone.
+ * @returns {{ modules: Array, changed: boolean }}
+ */
+export function restoreCategoriesToModules(modules, moduleId, removed) {
+  const source = Array.isArray(modules) ? modules : [];
+  const entries = (Array.isArray(removed) ? removed : [])
+    .filter((entry) => entry?.category?.id != null)
+    .sort((a, b) => a.index - b.index);
+  if (!moduleId || entries.length === 0) return { modules: source, changed: false };
+  let changed = false;
+  const nextModules = source.map((module) => {
+    if (module?.id !== moduleId) return module;
+    const categories = [...(module.categories || [])];
+    entries.forEach(({ category, index }) => {
+      if (categories.some((existing) => existing?.id === category.id)) return;
+      categories.splice(Math.min(Math.max(0, index), categories.length), 0, category);
+      changed = true;
+    });
+    return changed ? { ...module, categories } : module;
+  });
+  return { modules: changed ? nextModules : source, changed };
 }

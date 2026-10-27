@@ -38,15 +38,17 @@ test('one id still works, and ids that match nothing change nothing', () => {
   assert.deepEqual(toCategoryIdList('a'), ['a']);
 });
 
-test('the rail deletes all ticked categories with ONE deleteCategory call, after the loop', () => {
-  const start = RAIL.indexOf('const deleteSelectedCategories = async');
+test('the rail deletes all ticked categories with ONE deleteCategory call, at once', () => {
+  const start = RAIL.indexOf('const deleteSelectedCategories = () => {');
   assert.ok(start > 0, 'category delete handler found');
   const body = RAIL.slice(start, RAIL.indexOf('setSelectedCategories({});', start));
   const calls = body.match(/deleteCategory\(/g) || [];
   assert.equal(calls.length, 1, 'exactly one deleteCategory call');
   assert.match(body, /deleteCategory\(selectedModuleId, selectedCatIds\)/);
-  const loopEnd = body.lastIndexOf('});', body.indexOf('deleteCategory('));
-  assert.ok(body.indexOf('selectedCatIds.forEach') < loopEnd, 'the call comes after the per-category loop');
+  // Act first (owner rule): no question; the viewer's toast Undo brings the
+  // categories and their markers back.
+  assert.doesNotMatch(body, /askConfirm\(/);
+  assert.doesNotMatch(body, /selectedCatIds\.forEach/, 'the markers go with the viewer delete, not a rail loop');
 });
 
 test('the viewer handler removes every given category from one template', () => {

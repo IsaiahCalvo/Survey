@@ -20,7 +20,7 @@ import { deepClone } from './utils/deepClone.js';
 import { jsonEqual } from './utils/jsonEqual.js';
 import { isCloudSaveConfirmed } from './utils/cloudSaveBaseline.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
-import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
+import { buildRemovePageToast, buildSpaceDeleteToast, countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { resolveSpaceTap } from './utils/spaceTapToggle.js';
@@ -28,7 +28,7 @@ import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
-import { removeCategoriesFromModules, toCategoryIdList } from './utils/surveyCategoryDelete.js';
+import { removeCategoriesFromModules, restoreCategoriesToModules, toCategoryIdList } from './utils/surveyCategoryDelete.js';
 import {
   capturePendingSurveyMarkerUi,
   deletePendingSurveyMarkerUi,
@@ -231,6 +231,7 @@ import {
   isSurveyMarkerPlaced,
   placeSurveyMarkerRecord,
   unplaceSurveyMarkerRecord,
+  SURVEY_MARKER_HISTORY_TYPE,
 } from './utils/surveyMarkerFamily.js';
 import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
 import {
@@ -15373,7 +15374,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // KAL-461: a delete (a folder takes everything in it) happens at once and
   // the Undo toast puts the rows back where they were. The toast hook is
-  // declared further down, hence the ref.
+  // declared further down, hence the ref (space delete, page removal and category delete use
+  // it too).
   const bookmarkUndoToastRef = useRef(null);
   const handleBookmarkDelete = useCallback((id) => {
     const { removed } = removeBookmarkWithDescendants(bookmarks, id);
@@ -15664,8 +15666,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return ids;
   }, [pdfFile?.id, setCalloutsIfPersistedChanged]);
 
+  // Spaces chunk A: what removing these pages (null = the whole space) would
+  // delete, for the Undo toast's words. Reads the live refs the cascade reads,
+  // so the number shown is the number deleted.
+  const getSpaceRemovalImpact = useCallback((spaceId, pageIds = null) => countSpaceCascadeImpact({
+    spaceId,
+    space: (spacesRef.current || []).find((space) => space?.id === spaceId) || null,
+    pageIds,
+    annotationsByPage: annotationsByPageRef.current || {},
+    callouts: calloutsRef.current || [],
+    surveyMarkers: surveyMarkersRef.current || {},
+    getMarkId: getHistoryAnnotationId,
+  }), []);
+
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
+    // Act first (owner rule): no question; the toast's Undo is the timeline
+    // Undo, which puts back the page and everything the cascade took.
+    const removedFrom = (spacesRef.current || []).find((s) => s.id === spaceId);
+    const removeToastMessage = buildRemovePageToast({
+      spaceName: removedFrom?.name,
+      pageId,
+      impact: getSpaceRemovalImpact(spaceId, [pageId]),
+    });
     // Spaces chunk A: one Undo step — the space's page list plus exactly the
     // marks the cascade removed (same shape as space:delete; see
     // historyStacks.scopeLegacyRestoreToOwnSlices).
@@ -15736,20 +15759,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return nextSpaces;
     });
-  }, [activeSpaceId, addHistoryCheckpoint, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
-
-  // Spaces chunk A: what removing these pages (null = the whole space) would
-  // delete, for the confirm in SpacesPanel. Reads the live refs the cascade
-  // reads, so the number shown is the number deleted.
-  const getSpaceRemovalImpact = useCallback((spaceId, pageIds = null) => countSpaceCascadeImpact({
-    spaceId,
-    space: (spacesRef.current || []).find((space) => space?.id === spaceId) || null,
-    pageIds,
-    annotationsByPage: annotationsByPageRef.current || {},
-    callouts: calloutsRef.current || [],
-    surveyMarkers: surveyMarkersRef.current || {},
-    getMarkId: getHistoryAnnotationId,
-  }), []);
+    bookmarkUndoToastRef.current?.({
+      kind: 'single',
+      message: removeToastMessage,
+      onUndo: () => { handleUndoRef.current?.(); },
+    });
+  }, [activeSpaceId, addHistoryCheckpoint, cascadeDeleteScopedAppState, getSpaceRemovalImpact, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     if (!requireSpaceManagement()) return;
@@ -22190,6 +22205,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSpaceDelete = useCallback((id) => {
     if (!requireSpaceManagement()) return;
+    // Act first (owner rule): no question; the toast's Undo is the timeline
+    // Undo, which brings back the space and everything the cascade took.
+    const deleteToastMessage = buildSpaceDeleteToast({
+      spaceName: (spacesRef.current || []).find((s) => s.id === id)?.name,
+      impact: getSpaceRemovalImpact(id, null),
+    });
     // Checkpoint history before deleting space
     // w37: the checkpoint keeps this very context object; the cascade below
     // adds what it removed to it (cascadeIds).
@@ -22231,7 +22252,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (selectedSpaceId === id) {
       setSelectedSpaceId(null);
     }
-  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+    bookmarkUndoToastRef.current?.({
+      kind: 'single',
+      message: deleteToastMessage,
+      onUndo: () => { handleUndoRef.current?.(); },
+    });
+  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, getSpaceRemovalImpact, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
     // Spaces chunk A: a space with no pages filters out every page and blanked
@@ -31945,12 +31971,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // ONE call: separate calls each started from the same old template, so the
   // last one won and the earlier categories came back.
   const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryIdOrIds) => {
-    if (!requireCurrentSurveyTemplate()) return;
+    if (!requireCurrentSurveyTemplate()) return false;
     const categoryIds = toCategoryIdList(categoryIdOrIds);
-    if (!selectedTemplate || !moduleId || categoryIds.length === 0) return;
+    if (!selectedTemplate || !moduleId || categoryIds.length === 0) return false;
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
     const { modules: updatedModules, changed } = removeCategoriesFromModules(sourceModules, moduleId, categoryIds);
-    if (!changed) return;
+    if (!changed) return false;
 
     const updatedAt = new Date().toISOString();
     const updatedTemplate = {
@@ -31981,7 +32007,80 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         showToast('Category deleted locally but could not be saved to the cloud.', 'error');
       });
     }
+    return true;
   }, [requireCurrentSurveyTemplate, selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
+
+  // Act first (owner rule): deleting a category takes its Survey Markers with
+  // it at once, and the toast's Undo puts the categories back where they were
+  // and brings their markers back. The template is not on the Undo timeline,
+  // so this is a toast Undo, not a timeline step; the markers go through the
+  // established marker delete (trash, History row, Excel row) and come back
+  // the way an Undo of a family delete brings them back.
+  const restoreSurveyCategoriesRef = useRef(null);
+  const handleRestoreSurveyCategories = useCallback((moduleId, removed, markers) => {
+    const template = selectedTemplateRef.current;
+    if (template && moduleId) {
+      const sourceModules = template.modules || template.spaces || [];
+      const { modules: updatedModules, changed } = restoreCategoriesToModules(sourceModules, moduleId, removed);
+      if (changed) {
+        const updatedAt = new Date().toISOString();
+        const updatedTemplate = { ...template, modules: updatedModules, spaces: updatedModules, updatedAt };
+        const templateId = template.supabaseId || template.id;
+        setSelectedTemplate(updatedTemplate);
+        if (handleTemplatesChange && appTemplates) {
+          handleTemplatesChange(appTemplates.map((entry) => (
+            entry.id === updatedTemplate.id || entry.supabaseId === templateId ? updatedTemplate : entry
+          )));
+        }
+        if (updateSupabaseTemplate && templateId) {
+          updateSupabaseTemplate(templateId, { config: sanitizeTemplateConfig(updatedTemplate), updated_at: updatedAt }).catch((error) => {
+            console.warn('Failed to persist survey category restore:', error);
+            showToast('Category restored locally but could not be saved to the cloud.', 'error');
+          });
+        }
+      }
+    }
+    const missing = (markers || []).filter(({ id }) => !surveyMarkersRef.current?.[id]);
+    if (missing.length > 0) {
+      applySurveyMarkerFamilyActionRef.current?.({
+        type: SURVEY_MARKER_HISTORY_TYPE,
+        changes: missing.map(({ id, record }) => ({ id, before: null, after: record })),
+      });
+    }
+  }, [handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
+  restoreSurveyCategoriesRef.current = handleRestoreSurveyCategories;
+
+  const handleDeleteSurveyCategoriesWithUndo = useCallback((moduleId, categoryIdOrIds) => {
+    const categoryIds = toCategoryIdList(categoryIdOrIds);
+    const sourceModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+    const { removed } = removeCategoriesFromModules(sourceModules, moduleId, categoryIds);
+    const markers = Object.entries(surveyMarkersRef.current || {})
+      .filter(([, marker]) => marker?.moduleId === moduleId && categoryIds.includes(marker?.categoryId))
+      .map(([id, record]) => ({ id, record }));
+    // A locked marker is never deleted, not by a category delete either.
+    if (markers.some(({ record }) => isUserLocked(record))) {
+      showToast('Some items in these categories are locked — unlock them first.', 'info');
+      return;
+    }
+    if (!handleDeleteSurveyCategoryDefinition(moduleId, categoryIds)) return;
+    if (markers.length > 0) {
+      applySurveyMarkerFamilyActionRef.current?.({
+        type: SURVEY_MARKER_HISTORY_TYPE,
+        changes: markers.map(({ id, record }) => ({ id, before: record, after: null })),
+      });
+    }
+    const names = removed.map(({ category }) => category?.name || 'category');
+    const what = names.length === 1 ? names[0] : `${names.length} categories`;
+    const markerNote = markers.length > 0
+      ? `, with ${markers.length} Survey Marker${markers.length === 1 ? '' : 's'}`
+      : '';
+    bookmarkUndoToastRef.current?.({
+      kind: names.length > 1 ? 'bulk' : 'single',
+      message: `Deleted ${what}${markerNote}`,
+      count: names.length,
+      onUndo: () => restoreSurveyCategoriesRef.current?.(moduleId, removed, markers),
+    });
+  }, [selectedTemplate, handleDeleteSurveyCategoryDefinition, showToast]);
 
   // The eraser previews only markers this viewer can actually delete. Saved
   // markers use the canonical source-owned permission adapter; a marker absent
@@ -36216,7 +36315,6 @@ ${pageBlocks}
       onSpaceRenamePage: handleSpaceRenamePage,
       onSpaceRemovePage: handleSpaceRemovePage,
       onSpaceTransferRegion: handleSpaceTransferRegion,
-      getSpaceRemovalImpact,
       onNavigateToSpacePage: handleNavigateToSpacePage,
       onReorderSpaces: handleReorderSpaces,
       onExportSpaceCSV: handleExportSpaceToCSV,
@@ -36335,7 +36433,6 @@ ${pageBlocks}
     handleSpaceRenamePage,
     handleSpaceRemovePage,
     handleSpaceTransferRegion,
-    getSpaceRemovalImpact,
     handleNavigateToSpacePage,
     handleReorderSpaces,
     handleExportSpaceToCSV,
@@ -36392,7 +36489,8 @@ ${pageBlocks}
       copyModeActive,
       DEFAULT_SURVEY_MARKER_OPACITY,
       deleteAnnotations,
-      deleteCategory: handleDeleteSurveyCategoryDefinition,
+      deleteCategory: handleDeleteSurveyCategoriesWithUndo,
+      deleteSurveyMarkers: handleDeleteSurveyMarkers,
       handleMoveSurveyCategories,
       transferSurveyMarkers: handleTransferSurveyMarkers,
       surveyTemplateVersionForDocument,
@@ -36552,7 +36650,8 @@ ${pageBlocks}
     copyModeActive,
     DEFAULT_SURVEY_MARKER_OPACITY,
     deleteAnnotations,
-    handleDeleteSurveyCategoryDefinition,
+    handleDeleteSurveyCategoriesWithUndo,
+    handleDeleteSurveyMarkers,
     handleMoveSurveyCategories,
     handleTransferSurveyMarkers,
     surveyTemplateVersionForDocument,
