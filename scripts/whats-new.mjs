@@ -4,6 +4,19 @@
 // Work still behind a feature flag stays off this list until it is on for all,
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
+  { date: '2026-10-26', items: [
+    'Reopening a big drawing shows its first page in about 1.8 seconds instead of 4.4.',
+    'Dragging marks on a busy sheet redraws only the marks you move, so it stays smooth.',
+    'Cut with a left-to-right box takes every pen stroke inside it.',
+    'Polyline and Polygon start at 2 pt.',
+    'Counters resize from their corner grabbers again, and a double-clicked counter pin turns with its handle.',
+    'Locate on page lands on the marker on the first click.',
+    'The Survey bar fits in one row, and new markers get a name you can change, such as "Camera 1".',
+    'Survey panel: Select swaps in place, markers move or copy to any category, and module tabs fit with a +N menu and drag to reorder.',
+    'Spaces panel: the grip always shows, edit and move are always there, and the region count sits under the name.',
+    'Text settings: Aa swaps them into the second row, and the width pill shows just the number.',
+    'Style and Arrow ends open card pickers, and Set page scale opens as a small dialog.',
+  ] },
   { date: '2026-10-23', items: [
     'Ctrl + drag copies a single callout or Survey Marker too, and can drop the copy on another page.',
     'Hold K while you resize a group to scale its line widths along with it.',
