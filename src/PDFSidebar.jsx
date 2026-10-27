@@ -192,7 +192,6 @@ const PDFSidebar = React.forwardRef(({
   onSpaceRenamePage,
   onSpaceRemovePage,
   onSpaceTransferRegion,
-  getSpaceRemovalImpact = null,
   onNavigateToSpacePage = null,
   onReorderSpaces,
   onExportSpaceCSV,
@@ -1121,7 +1120,6 @@ const PDFSidebar = React.forwardRef(({
                 onSpaceRenamePage={onSpaceRenamePage}
                 onSpaceRemovePage={onSpaceRemovePage}
                 onSpaceTransferRegion={onSpaceTransferRegion}
-                getSpaceRemovalImpact={getSpaceRemovalImpact}
                 initiallyExpandedSpaceId={mobileMode ? regionEditReturnSpaceId : null}
                 expandedSpacesStoreRef={spacesExpandedStoreRef}
                 onNavigateToPage={onNavigateToSpacePage}

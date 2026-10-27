@@ -28,14 +28,12 @@ import {
 import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
 import SectionIconButton from '../components/SectionIconButton.jsx';
+import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import { watchLightPopover } from '../components/dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import AnchoredPopover from '../components/AnchoredPopover';
-import { useConfirmDialog } from '../components/dialogPrompts';
 import { useProLock } from '../hooks/useProLock.js';
 import {
-  buildDeleteSpaceConfirm,
-  buildRemovePageConfirm,
   formatSpaceCountLabel,
 } from '../utils/spaceCascadeImpact.js';
 
@@ -227,6 +225,13 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
       className={`space-card${isExpanded ? ' is-expanded' : ''}${isDragging ? ' is-dragging' : ''}${isActive ? ' is-active' : ''}`}
     >
       <div data-drag-rearrange-row className="space-card__block">
+        {/* Owner 2026-10-27: slide the space left for Delete, no Edit mode
+            needed - the same delete (and cascade question) as the trash. */}
+        <SwipeActionsRow
+          label={spaceName}
+          disabled={editMode || isDragging || isRearranging}
+          actions={buildSwipeActions({ onDelete: canManageSpaces ? () => onDelete(space.id) : undefined })}
+        >
         <div
           className="space-card__head"
           aria-expanded={isExpanded}
@@ -332,6 +337,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
             <Icon name="trash" size={14} color="currentColor" />
           </button> : (canManageSpaces && <span className="space-card__icon space-card__spare" aria-hidden="true" />)}
         </div>
+        </SwipeActionsRow>
 
         {isExpanded && (
           <div className="space-card__body">
@@ -427,7 +433,20 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                         : (visibilityState ? 'Hide marks' : 'Show marks');
 
                     return (
-                      <li key={page.pageId} className={`space-region-card${isActiveRegionEdit ? ' is-editing' : ''}`}>
+                      /* Owner 2026-10-27: slide a region left for Move (the
+                         move-or-copy menu) and Remove, no Edit mode needed. */
+                      <SwipeActionsRow
+                        as="li"
+                        key={page.pageId}
+                        label={`Page ${page.pageId}`}
+                        disabled={editMode || isEditingRegion || isActiveRegionEdit}
+                        actions={canManageSpaces ? buildSwipeActions({
+                          onMove: onTransferRegion ? (anchor) => onTransferRegion(space.id, page.pageId, regionLabel, anchor) : undefined,
+                          onDelete: () => onRemovePage(space.id, page.pageId),
+                          labels: { delete: 'Remove' },
+                        }) : null}
+                      >
+                      <div className={`space-region-card${isActiveRegionEdit ? ' is-editing' : ''}`}>
                         <button
                           type="button"
                           className="spaces-region__page"
@@ -590,7 +609,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                         >
                           <Icon name="trash" size={14} color="currentColor" />
                         </button> : (canManageSpaces && <span className="space-card__icon space-card__spare" aria-hidden="true" />)}
-                      </li>
+                      </div>
+                      </SwipeActionsRow>
                     );
                   })}
               </ul>
@@ -790,9 +810,6 @@ const SpacesPanel = ({
   // Desktop (owner 2026-10-07, rail headers round): the rail's title row slot
   // the header actions are drawn into, in line with the "Spaces" title.
   headActionsHost = null,
-  // Spaces chunk A: counts what a page removal / space delete would delete
-  // (PDFViewer.getSpaceRemovalImpact), for the confirm.
-  getSpaceRemovalImpact = null,
   // Phone: the space whose areas were just edited opens again with the sheet.
   initiallyExpandedSpaceId = null,
   // Spaces chunk B: a ref owned by PDFSidebar (which outlives this panel) that
@@ -801,7 +818,6 @@ const SpacesPanel = ({
   expandedSpacesStoreRef = null,
 }) => {
   const tip = useTooltip();
-  const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const proLocked = useProLock();
   const [expandedSpaces, setExpandedSpaces] = useState(() => new Set([
     ...(expandedSpacesStoreRef?.current || []),
@@ -1183,20 +1199,12 @@ const SpacesPanel = ({
     return true;
   }, [onSpaceUpdate, requireSpaceManagement, spaces]);
 
-  // Spaces chunk A: deleting a space also deletes what was placed in it (the
-  // cascade), so the confirm says so, with counts. Undo restores it all.
+  // Act first (owner rule): a space delete takes what was placed in it too,
+  // and PDFViewer's Undo toast brings it all back. No question.
   const handleDelete = useCallback((spaceId) => {
     if (!requireSpaceManagement()) return;
-    const space = (spaces || []).find((entry) => entry?.id === spaceId);
-    const impact = getSpaceRemovalImpact?.(spaceId, null) || null;
-    askConfirm(buildDeleteSpaceConfirm({
-      spaceName: space?.name,
-      pageCount: space?.assignedPages?.length || 0,
-      impact,
-    })).then((confirmed) => {
-      if (confirmed && onSpaceDelete) onSpaceDelete(spaceId);
-    });
-  }, [askConfirm, getSpaceRemovalImpact, onSpaceDelete, requireSpaceManagement, spaces]);
+    onSpaceDelete?.(spaceId);
+  }, [onSpaceDelete, requireSpaceManagement]);
 
   const handleToggleExpand = useCallback((spaceId) => {
     setExpandedSpaces(prev => {
@@ -1339,26 +1347,13 @@ const SpacesPanel = ({
     return ordered;
   }, [optimisticSpaceIds, spaces]);
 
-  // Spaces chunk A: removing a page also deletes the marks placed in this
-  // space on it and its drawn areas - ask first when there is any, with the
-  // counts. A bare page assignment goes without a question (one Undo step).
+  // Act first (owner rule): removing a page also takes the marks placed in
+  // this space on it and its drawn areas; PDFViewer's Undo toast brings them
+  // back. No question.
   const handleRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
-    if (!onSpaceRemovePage) return;
-    const space = (spaces || []).find((entry) => entry?.id === spaceId);
-    const prompt = buildRemovePageConfirm({
-      spaceName: space?.name,
-      pageId,
-      impact: getSpaceRemovalImpact?.(spaceId, [pageId]) || null,
-    });
-    if (!prompt) {
-      onSpaceRemovePage(spaceId, pageId);
-      return;
-    }
-    askConfirm(prompt).then((confirmed) => {
-      if (confirmed) onSpaceRemovePage(spaceId, pageId);
-    });
-  }, [askConfirm, getSpaceRemovalImpact, onSpaceRemovePage, requireSpaceManagement, spaces]);
+    onSpaceRemovePage?.(spaceId, pageId);
+  }, [onSpaceRemovePage, requireSpaceManagement]);
 
   const handleRenameRegion = useCallback((spaceId, pageId, label) => {
     if (!requireSpaceManagement()) return;
@@ -1692,7 +1687,6 @@ const SpacesPanel = ({
           fixed overlay is caught by the sheet's transform. */}
       {typeof document !== 'undefined' && createPortal(
         <div style={{ position: 'relative', zIndex: 7000 }}>
-          {confirmDialogElement}
           {/* Chunk B (phone): Export is its own small sheet over the Spaces
               sheet, standing on the dock like every phone sheet. */}
           {mobileMode && transfer && (
