@@ -22,10 +22,18 @@ test('unknown page size leaves position alone', () => {
 
 test('phone and desktop share one single-name default font (Helvetica)', () => {
   const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
-  const m = viewer.match(/useState\(\{\s*fontColor: '#1e293b',\s*fontFamily: '([^']+)'/);
+  const m = viewer.match(/const base = \{\s*fontColor: '#1e293b',\s*fontFamily: '([^']+)'/);
   assert.ok(m, 'textStyleDefaults initializer not found');
   assert.equal(m[1], 'Helvetica');
   const overlay = readFileSync(new URL('../src/components/TextEditOverlay.jsx', import.meta.url), 'utf8');
   assert.match(overlay, /const DEFAULT_FONT_FAMILY = 'Helvetica';/);
   assert.match(overlay, /clampNewTextBoxToPage\(/);
+});
+
+test('a new text box starts plain black and a new callout starts bold, each keeping its own Aa row', () => {
+  const viewer = readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewer, /return \{ text: \{ \.\.\.base, fontColor: '#000000', bold: false \}, callout: base \};/);
+  assert.match(viewer, /newTextStyle=\{textStyleDefaultsByTool\.text\}/);
+  assert.match(viewer, /bold: textStyleDefaultsByTool\.callout\.bold,/);
+  assert.match(viewer, /setTextStyleDefaultsByTool\(\(prev\) => \(\{ \.\.\.prev, \[textStyleTool\]: write\.defaults \}\)\)/);
 });
