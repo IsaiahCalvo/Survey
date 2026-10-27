@@ -65,6 +65,27 @@ attribute on `:root`, as S5 does, is cheap: ~1 ms.)
 a time and has the least memory). The top bar's bottom edge is still written
 to `:root` there, for the phone CSS that reads it.
 
+**S9 A viewer behind keeps its styles.** Each tab's viewer sits in a wrapper
+marked `data-viewer-tab`. Behind, it gets `data-tab-behind` and
+`content-visibility: hidden` with `clip-path` and a far-off `transform`
+(`utils/tabBehind.js`), not `display: none`, so coming back restyles a few
+hundred elements instead of the whole tab. Never `inert` or `visibility` on
+it: both are inherited and toggling either restyles every element again.
+Browsers without `content-visibility` (iOS before 18) fall back to
+`display: none`. The catch: elements behind still report real sizes, and
+reading one forces a layout of that tab. So:
+
+- look for a page, overlay or viewer under the tab's own root
+  (`pdfjsWrapperRef.current`, `queryInViewer`), never `document`-wide; shared
+  code that cannot reach the root uses `queryFrontTab` / `isInTabBehind`;
+- a viewer behind does not refit, re-window its pages or measure the front
+  tab's panels (`PdfjsViewerContainer`'s `tabActive` and its
+  `isInTabBehind` guards); a fit asked for behind runs when it comes back;
+- document-wide key and pointer handlers of a tab return early when it is
+  behind.
+
+`tests/tabBehindHiding.test.mjs` guards this.
+
 ## How this differs from Drawboard, and why
 
 Measured in Drawboard PDF (web), 2026-10-27:
@@ -81,10 +102,11 @@ Measured in Drawboard PDF (web), 2026-10-27:
 
 ## Speed
 
-A switch to a big drawing set (36 sheets) shows its first frame about 0.2 s
-after the click in a production build (a one-page document: under 0.1 s).
-Almost all of that is the one restyle of the tab coming out of
-`display: none`, which S7 keeps to one. Making that restyle cheaper means
-fewer elements per page or cheaper CSS selectors; see the per-page
-native-annotation hide rules in `PDFViewer.jsx` (`[id=…] *`), left over from
-the Syncfusion viewer.
+A switch to a big drawing set (36 sheets) shows its first frame about
+0.12 s after the click in a production build, about the same as a one-page
+document (`scripts/perf/tab-switch-style.mjs`, local, headless). Before S9
+it was about 0.34 s (0.45 s zoomed out): the tab coming out of
+`display: none` restyled every element (~12k-16k, ~180-240 ms of style).
+Now the switch restyles ~450 elements (~16 ms). One case still pays the
+full restyle, as before: after the accessibility tree was read (a screen
+reader on), the next switch back restyled the whole tab in testing.

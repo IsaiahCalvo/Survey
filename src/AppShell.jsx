@@ -87,6 +87,7 @@ import useViewerReturnQuiet from './hooks/useViewerReturnQuiet.js';
 import useActiveOnlyCounter from './hooks/useActiveOnlyCounter.js';
 import TabChromeSlot from './components/TabChromeSlot.jsx';
 import { publishChromeInset } from './utils/chromeInsets.js';
+import { tabWrapperHiding } from './utils/tabBehind.js';
 import FileDropOverlay from './components/FileDropOverlay.jsx';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { startsInSignUp, useOptionalAuth } from './components/OptionalAuthPrompt';
@@ -4664,15 +4665,21 @@ export default function App({ devPreviewReturnTab = null }) {
               const tabViewState = tab.viewState;
               const chrome = chromeCache.callbacks(tab.id, chromeSetters);
 
+              // A tab behind keeps its styles and layout (utils/tabBehind.js):
+              // no paint, no clicks, no focus, and coming back is one cheap frame.
+              // No `inert` here: it is inherited, so toggling it restyles the
+              // whole tab, which is the cost this avoids.
               return (
                 <div
                   key={tab.id}
+                  data-viewer-tab={tab.id}
+                  data-tab-behind={isVisible ? undefined : 'true'}
                   style={{
                     position: 'absolute',
                     inset: 0,
                     background: 'var(--surface-1)',
                     zIndex: isVisible ? 5000 : 4000, // Keep lower z-index when hidden
-                    display: isVisible ? 'block' : 'none'
+                    ...tabWrapperHiding(isVisible)
                   }}
                 >
                   <YDocProvider docId={tab.file?.id} isActive={isVisible}>

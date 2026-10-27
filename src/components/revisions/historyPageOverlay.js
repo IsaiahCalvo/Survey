@@ -36,6 +36,7 @@
  * stays on the mark at any zoom. Nothing here changes a mark: looking is free,
  * only Restore changes the document.
  */
+import { queryFrontTab } from '../../utils/tabBehind.js';
 import { buildHistoryShapeNode } from '../../utils/historyGeometry.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -83,7 +84,7 @@ const RESTORE_GLYPH = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor
 function pageHost(doc, pageNumber) {
   const page = Number(pageNumber);
   if (!Number.isFinite(page) || page < 1) return null;
-  const svg = doc.querySelector(`svg[data-svg-annotation-layer="${page}"]`);
+  const svg = queryFrontTab(`svg[data-svg-annotation-layer="${page}"]`, doc);
   const vb = svg?.viewBox?.baseVal;
   if (!svg || !vb || !(vb.width > 0) || !(vb.height > 0)) return null;
   const rect = svg.getBoundingClientRect();

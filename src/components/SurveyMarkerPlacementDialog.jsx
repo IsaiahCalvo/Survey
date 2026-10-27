@@ -1,3 +1,4 @@
+import { queryFrontTab } from '../utils/tabBehind.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -86,7 +87,7 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
   useLayoutEffect(() => {
     if (mobile || typeof document === 'undefined') return;
     const card = ref.current?.getBoundingClientRect();
-    const node = document.querySelector(`[data-survey-marker-id="${CSS.escape(String(marker.id))}"]`);
+    const node = queryFrontTab(`[data-survey-marker-id="${CSS.escape(String(marker.id))}"]`);
     const rect = node?.getBoundingClientRect() || null;
     setPosition(placeSurveyMarkerCard(rect && rect.width > 0 ? rect : null, { width: card?.width, height: card?.height }, {
       width: window.innerWidth,

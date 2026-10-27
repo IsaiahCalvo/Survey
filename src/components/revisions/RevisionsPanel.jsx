@@ -36,6 +36,7 @@
 // while the tab is hidden), and every read is dropped if you switched
 // documents meanwhile. Named versions stay hidden until rebuilt (w55 defect 3).
 
+import { queryFrontTab } from '../../utils/tabBehind.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { UndoToast } from '../collab/UndoToast.jsx';
@@ -846,7 +847,7 @@ export default function RevisionsPanel({
       if (clickSeq !== activityClickSeqRef.current) return; // a newer selection owns the page marks
       const measured = live && markId ? measureMarkBox(document, markId, pageNumber) : null;
       const pageReady = typeof document !== 'undefined'
-        && document.querySelector(`svg[data-svg-annotation-layer="${pageNumber}"]`);
+        && queryFrontTab(`svg[data-svg-annotation-layer="${pageNumber}"]`);
       if (!pageReady || (live && !measured && attempt < 4)) {
         if (attempt < 8) {
           window.setTimeout(() => draw(attempt + 1), 120);

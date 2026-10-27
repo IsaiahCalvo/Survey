@@ -52,13 +52,14 @@ async function cleanup(admin, seeded) {
 }
 
 // Every frame for `ms`: the first page's top, the Survey bar's bottom and the
-// Survey panel's left edge (null while not drawn).
+// Survey panel's left edge (null while not drawn, or in a tab behind, which
+// keeps its layout: docs/TAB-SWITCHING.md S9).
 function startRecording(page, ms) {
   return page.evaluate((duration) => new Promise((resolve) => {
     const out = [];
     const t0 = performance.now();
     const rectOf = (sel) => {
-      const n = document.querySelector(sel);
+      const n = [...document.querySelectorAll(sel)].find((el) => !el.closest('[data-tab-behind]'));
       const r = n?.getBoundingClientRect();
       return r && r.width > 0 && r.height > 0 ? r : null;
     };

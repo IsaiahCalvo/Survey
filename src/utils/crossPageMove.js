@@ -29,6 +29,7 @@
  *
  * Pure JS (no DOM) except readPageLayers — the Node test runner imports it.
  */
+import { isInTabBehind } from './tabBehind.js';
 import { commitInkObjectMove, isAbsoluteInkGeometry } from './inkGeometryTransform.js';
 import { markIdOf } from './moveCommit.js';
 import { canMoveAnnotation } from './annotationFamilyRules.js';
@@ -227,9 +228,10 @@ export function readPageLayers(root = typeof document !== 'undefined' ? document
   if (!root) return [];
   const out = [];
   for (const svg of root.querySelectorAll('svg[data-svg-annotation-layer]')) {
-    // Another open tab keeps its page layers in the DOM under display:none.
+    // Another open tab keeps its page layers in the DOM (utils/tabBehind.js).
     // Its page 1 must never stand in for this tab's page 1 (a wrong matrix
     // reads the mark as carried off its page, which hides it mid-drag).
+    if (isInTabBehind(svg)) continue;
     if (typeof svg.getClientRects === 'function' && svg.getClientRects().length === 0) continue;
     const pageNumber = Number(svg.getAttribute('data-svg-annotation-layer'));
     const viewBox = svg.viewBox?.baseVal;

@@ -17,7 +17,8 @@
 //   style   - Recalculate Style (UpdateLayoutTree) ms on the main thread from
 //             the click to that frame, and the most elements one restyled
 //   layout  - Layout ms over the same window
-// plus the document's element count. The open of A is traced too (style /
+// plus the document's element count and the JS heap with both tabs open
+// (heapMB, after a forced GC at the end). The open of A is traced too (style /
 // layout ms from "Open file" to a settled page 1).
 // STATS=1 also records Chrome's CSS selector stats (the DevTools "Enable CSS
 // selector stats" setting) and prints the selectors that cost most.
@@ -243,6 +244,8 @@ async function oneRun(browser, base, docs, stats) {
     result[`to${label}`].push({ ms: out.ms, ...s });
     await waitQuiet(page, 1200);
   }
+  await cdp.send('HeapProfiler.collectGarbage');
+  result.heapMB = (await cdp.send('Runtime.getHeapUsage')).usedSize / 1048576;
   await context.close();
   return result;
 }
@@ -263,7 +266,7 @@ try {
       const r = await oneRun(browser, base, docs, stats?.[base]);
       all[base].push(r);
       const fmt = (xs) => xs.map((x) => `${r0(x.ms)}ms/style ${r0(x.style)}/${x.maxEls}els/layout ${r0(x.layout)}`).join(' ');
-      console.log(base, `run ${i + 1}`, `elements=${r.elements}`, `open style=${r0(r.open.style)} layout=${r0(r.open.layout)} recalcs=${r.open.recalcs}`, '\n  toA', fmt(r.toA), '\n  toB', fmt(r.toB));
+      console.log(base, `run ${i + 1}`, `elements=${r.elements}`, `heapMB=${r0(r.heapMB)}`, `open style=${r0(r.open.style)} layout=${r0(r.open.layout)} recalcs=${r.open.recalcs}`, '\n  toA', fmt(r.toA), '\n  toB', fmt(r.toB));
     }
   }
 } finally {
@@ -275,7 +278,7 @@ for (const base of BASES) {
   const flat = (k) => runs.flatMap((r) => r[k]);
   const m = (xs, f) => r0(median(xs.map(f)));
   console.log('MEDIANS', base, JSON.stringify({
-    elements: m(runs, (r) => r.elements),
+    elements: m(runs, (r) => r.elements), heapMB: m(runs, (r) => r.heapMB),
     openStyle: m(runs, (r) => r.open.style), openLayout: m(runs, (r) => r.open.layout),
     toA_ms: m(flat('toA'), (x) => x.ms), toA_style: m(flat('toA'), (x) => x.style), toA_els: m(flat('toA'), (x) => x.maxEls), toA_layout: m(flat('toA'), (x) => x.layout),
     toB_ms: m(flat('toB'), (x) => x.ms), toB_style: m(flat('toB'), (x) => x.style), toB_els: m(flat('toB'), (x) => x.maxEls), toB_layout: m(flat('toB'), (x) => x.layout),
