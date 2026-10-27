@@ -32,11 +32,8 @@ import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRo
 import { watchLightPopover } from '../components/dismissRules.js';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import AnchoredPopover from '../components/AnchoredPopover';
-import { useConfirmDialog } from '../components/dialogPrompts';
 import { useProLock } from '../hooks/useProLock.js';
 import {
-  buildDeleteSpaceConfirm,
-  buildRemovePageConfirm,
   formatSpaceCountLabel,
 } from '../utils/spaceCascadeImpact.js';
 
@@ -813,9 +810,6 @@ const SpacesPanel = ({
   // Desktop (owner 2026-10-07, rail headers round): the rail's title row slot
   // the header actions are drawn into, in line with the "Spaces" title.
   headActionsHost = null,
-  // Spaces chunk A: counts what a page removal / space delete would delete
-  // (PDFViewer.getSpaceRemovalImpact), for the confirm.
-  getSpaceRemovalImpact = null,
   // Phone: the space whose areas were just edited opens again with the sheet.
   initiallyExpandedSpaceId = null,
   // Spaces chunk B: a ref owned by PDFSidebar (which outlives this panel) that
@@ -824,7 +818,6 @@ const SpacesPanel = ({
   expandedSpacesStoreRef = null,
 }) => {
   const tip = useTooltip();
-  const [askConfirm, confirmDialogElement] = useConfirmDialog();
   const proLocked = useProLock();
   const [expandedSpaces, setExpandedSpaces] = useState(() => new Set([
     ...(expandedSpacesStoreRef?.current || []),
@@ -1206,20 +1199,12 @@ const SpacesPanel = ({
     return true;
   }, [onSpaceUpdate, requireSpaceManagement, spaces]);
 
-  // Spaces chunk A: deleting a space also deletes what was placed in it (the
-  // cascade), so the confirm says so, with counts. Undo restores it all.
+  // Act first (owner rule): a space delete takes what was placed in it too,
+  // and PDFViewer's Undo toast brings it all back. No question.
   const handleDelete = useCallback((spaceId) => {
     if (!requireSpaceManagement()) return;
-    const space = (spaces || []).find((entry) => entry?.id === spaceId);
-    const impact = getSpaceRemovalImpact?.(spaceId, null) || null;
-    return askConfirm(buildDeleteSpaceConfirm({
-      spaceName: space?.name,
-      pageCount: space?.assignedPages?.length || 0,
-      impact,
-    })).then((confirmed) => {
-      if (confirmed && onSpaceDelete) onSpaceDelete(spaceId);
-    });
-  }, [askConfirm, getSpaceRemovalImpact, onSpaceDelete, requireSpaceManagement, spaces]);
+    onSpaceDelete?.(spaceId);
+  }, [onSpaceDelete, requireSpaceManagement]);
 
   const handleToggleExpand = useCallback((spaceId) => {
     setExpandedSpaces(prev => {
@@ -1362,26 +1347,13 @@ const SpacesPanel = ({
     return ordered;
   }, [optimisticSpaceIds, spaces]);
 
-  // Spaces chunk A: removing a page also deletes the marks placed in this
-  // space on it and its drawn areas - ask first when there is any, with the
-  // counts. A bare page assignment goes without a question (one Undo step).
+  // Act first (owner rule): removing a page also takes the marks placed in
+  // this space on it and its drawn areas; PDFViewer's Undo toast brings them
+  // back. No question.
   const handleRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
-    if (!onSpaceRemovePage) return;
-    const space = (spaces || []).find((entry) => entry?.id === spaceId);
-    const prompt = buildRemovePageConfirm({
-      spaceName: space?.name,
-      pageId,
-      impact: getSpaceRemovalImpact?.(spaceId, [pageId]) || null,
-    });
-    if (!prompt) {
-      onSpaceRemovePage(spaceId, pageId);
-      return;
-    }
-    return askConfirm(prompt).then((confirmed) => {
-      if (confirmed) onSpaceRemovePage(spaceId, pageId);
-    });
-  }, [askConfirm, getSpaceRemovalImpact, onSpaceRemovePage, requireSpaceManagement, spaces]);
+    onSpaceRemovePage?.(spaceId, pageId);
+  }, [onSpaceRemovePage, requireSpaceManagement]);
 
   const handleRenameRegion = useCallback((spaceId, pageId, label) => {
     if (!requireSpaceManagement()) return;
@@ -1715,7 +1687,6 @@ const SpacesPanel = ({
           fixed overlay is caught by the sheet's transform. */}
       {typeof document !== 'undefined' && createPortal(
         <div style={{ position: 'relative', zIndex: 7000 }}>
-          {confirmDialogElement}
           {/* Chunk B (phone): Export is its own small sheet over the Spaces
               sheet, standing on the dock like every phone sheet. */}
           {mobileMode && transfer && (

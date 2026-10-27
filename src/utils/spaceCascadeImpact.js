@@ -101,43 +101,19 @@ function describeLoss(impact) {
 }
 
 /**
- * The confirm for removing one page from a space. Returns null when nothing
- * but the page assignment goes (no marks, markers or drawn areas): that
- * removal is one Undo step and needs no question.
+ * The Undo toast after removing one page from a space. Removal happens at
+ * once (owner rule: act first, Undo, never a confirm); Undo brings back the
+ * page, its drawn areas and every mark the cascade took.
  */
-export function buildRemovePageConfirm({ spaceName, pageId, impact }) {
-  const name = spaceName || 'this space';
+export function buildRemovePageToast({ spaceName, pageId, impact }) {
   const loss = describeLoss(impact);
-  const areas = impact?.areas || 0;
-  if (!loss && areas === 0) return null;
-  const sentences = [];
-  if (loss) sentences.push(`This also deletes ${loss} placed in ${name} on p.${pageId}.`);
-  if (areas > 0) sentences.push(`Its ${plural(areas, 'drawn area')} ${areas === 1 ? 'goes' : 'go'} too.`);
-  sentences.push('The page itself stays in the document.');
-  return {
-    title: `Remove p.${pageId} from ${name}?`,
-    message: sentences.join(' '),
-    confirmLabel: 'Remove',
-    danger: true,
-  };
+  return `Removed p.${pageId} from ${spaceName || 'the space'}${loss ? `, with ${loss}` : ''}`;
 }
 
-/** The confirm for deleting a whole space (always asked). */
-export function buildDeleteSpaceConfirm({ spaceName, pageCount = 0, impact }) {
-  const name = spaceName || 'this space';
+/** The Undo toast after deleting a whole space (its pages stay). */
+export function buildSpaceDeleteToast({ spaceName, impact }) {
   const loss = describeLoss(impact);
-  const sentences = [];
-  if (loss) sentences.push(`This also deletes ${loss} placed in ${name}.`);
-  else sentences.push('No marks are deleted.');
-  if (pageCount > 0) {
-    sentences.push(`Its ${plural(pageCount, 'page')} ${pageCount === 1 ? 'stays' : 'stay'} in the document.`);
-  }
-  return {
-    title: `Delete ${name}?`,
-    message: sentences.join(' '),
-    confirmLabel: 'Delete',
-    danger: true,
-  };
+  return `Deleted ${spaceName || 'space'}${loss ? `, with ${loss}` : ''}`;
 }
 
 /** The small line under a space's name: "3 regions" (one per page in it). */
