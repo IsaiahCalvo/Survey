@@ -329,7 +329,15 @@ export default function ArchiveScreen({
     || namedSortFor(sortKey, sortDir)?.label
     || 'Sort';
 
-  const filterMenu = (
+  /* Design review 2026-10-27: on desktop the menu was a second sort control
+     beside the column headers ("Most recently archived" over an "Archived"
+     header). Desktop now shows only the type filter here and sorts by header,
+     as Documents does; the phone list has no headers, so it keeps both. */
+  const activeFilterLabel = filter === 'all'
+    ? 'All types'
+    : (ARCHIVE_FILTERS.find(({ key }) => key === filter)?.label || 'All types');
+
+  const filterMenu = (withSort) => (
     <div className="archive-sort-menu" role="menu">
       {/* Type — Archive's own axis. Kept inside the one menu rather than a
           separate chip row so the actions slot holds what the other screens
@@ -348,8 +356,8 @@ export default function ArchiveScreen({
           <span>{filter === key ? <AppIcon name="check" size={12} /> : null}</span>
         </button>
       ))}
-      <div className="archive-sort-menu-label" role="presentation">Sort by</div>
-      {ARCHIVE_SORT_OPTIONS.map(({ key, label }) => (
+      {withSort && <div className="archive-sort-menu-label" role="presentation">Sort by</div>}
+      {withSort && ARCHIVE_SORT_OPTIONS.map(({ key, label }) => (
         <button
           key={key}
           type="button"
@@ -365,7 +373,7 @@ export default function ArchiveScreen({
     </div>
   );
 
-  const filterButton = (
+  const filterButton = (label) => (
     <button
       className="btn archive-filter-button"
       type="button"
@@ -374,7 +382,7 @@ export default function ArchiveScreen({
       onClick={() => setMenuOpen((open) => !open)}
     >
       <Icon name="filter" size={12} />
-      <span>{activeSortLabel}</span>
+      <span>{label}</span>
     </button>
   );
 
@@ -387,15 +395,15 @@ export default function ArchiveScreen({
       {/* Mobile: filter menu + full-width search, exactly the
           .documents-mobile-search-row arrangement. */}
       <div className="archive-mobile-search-row" ref={menuRef}>
-        {filterButton}
-        {menuOpen && filterMenu}
+        {filterButton(activeSortLabel)}
+        {menuOpen && filterMenu(true)}
         {searchField('100%')}
       </div>
       {/* Desktop: the same two controls, at their natural widths. */}
       <div className="archive-desktop-search" ref={desktopMenuRef}>
         <span style={{ position: 'relative', display: 'inline-flex' }}>
-          {filterButton}
-          {menuOpen && filterMenu}
+          {filterButton(activeFilterLabel)}
+          {menuOpen && filterMenu(false)}
         </span>
         {searchField(240)}
       </div>

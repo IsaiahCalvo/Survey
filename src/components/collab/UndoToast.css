@@ -37,18 +37,17 @@
   display: inline-flex;
   align-items: center;
   gap: 16px;
-  /* sm/md spacing (8/16) — vertical breathing room enough that the message
-     and Undo button never feel cramped. */
-  padding: 12px 16px;
+  /* Design review 2026-10-27 (two toast looks): the Undo toast now wears the
+     app toast's own card (ToastHost.css .app-toast): the same surface, edge,
+     corner, padding, shadow and type, so "Deleted · Undo" and "Saved" read as
+     one system. It keeps its own clock and its own place. */
+  padding: 9px 14px;
+  background: var(--surface-2);
+  border: var(--alert-neutral-border);
+  border-radius: var(--alert-radius);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
 
-  /* Same surface palette as the storage-failure banner so the toast reads
-     as part of the same status family. */
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.4));
-
-  font-family: var(--font-primary, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif);
+  font-family: var(--font-ui);
 
   /* UX: the shared toast entrance (motion.css sv-toast-in-up moves the
      `translate` property, so this box keeps its translateX(-50%) centring). */
@@ -69,10 +68,10 @@
 }
 
 .undo-toast__message {
-  /* UX: 13px / weight 400 — same body-copy size as StorageFailureBanner. */
+  /* The app toast's words: 13px / 500 / 1.45 (ToastHost.css). */
   font-size: 13px;
-  font-weight: 400;
-  line-height: 1.4;
+  font-weight: 500;
+  line-height: 1.45;
   color: var(--text-1);
 }
 
@@ -100,7 +99,7 @@
   color: var(--link-hover);
 }
 
-.undo-toast__action:focus {
+.undo-toast__action:focus-visible {
   /* UX: keyboard focus ring matching the existing input focus pattern
      (src/styles.css). 2px halo at 0.4 opacity reads clearly without
      overpowering surrounding chrome. */
