@@ -13,7 +13,12 @@
 //   marks       - page 1's markups are on screen (SVG shapes in its overlay)
 //   interactive - marks are up AND the main thread is free: the end of the last
 //                 long task (>50 ms) before a QUIET_MS window with none
+//   editable    - marks are up and page 1 takes input: the open has finished
+//                 (no preview input blocker, no hydration gate)
 // and also reports the long-task total (blocking time) up to interactive.
+// loafBlocking / loafLongest: the same from long animation frames (their
+// blockingDuration), which also catch slow promise callbacks the long-task
+// entries miss (a 0.65 s tail-read frame on a dense reopen, round 6).
 // heapMB is the JS heap after the open settles and a forced GC.
 // THUMB=1 also waits for the viewer's page-1 thumbnail (markup) to be written
 // and reports when it landed (thumbAt, ms after the click) and its size.
@@ -50,7 +55,7 @@ const DEVICES = {
 // Injected before any app code: long-task log + a rAF probe for the milestones.
 const PROBE = () => {
   const w = window;
-  w.__bigOpen = { ev: [], t0: null, firstPage: null, marks: null, longTasks: [] };
+  w.__bigOpen = { ev: [], t0: null, firstPage: null, marks: null, editable: null, longTasks: [], frames: [] };
   // A share-link open (?docId=) is timed from navigation start.
   if (new URLSearchParams(location.search).has('docId')) w.__bigOpen.t0 = 0;
   const origLog = console.log;
@@ -64,6 +69,11 @@ const PROBE = () => {
       for (const e of list.getEntries()) w.__bigOpen.longTasks.push([e.startTime, e.duration]);
     }).observe({ type: 'longtask', buffered: true });
   } catch { /* no longtask support */ }
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) w.__bigOpen.frames.push([e.startTime, e.duration, e.blockingDuration || 0]);
+    }).observe({ type: 'long-animation-frame', buffered: true });
+  } catch { /* no LoAF support */ }
   document.addEventListener('click', (event) => {
     const button = event.target?.closest?.('button');
     if (button && /Open file/.test(button.getAttribute('aria-label') || button.textContent || '') && w.__bigOpen.t0 == null) {
@@ -93,8 +103,12 @@ const PROBE = () => {
         if (key !== s.lastKey) { s.lastKey = key; s.ev.push(`${Math.round(performance.now() - s.t0)} ${key}`); }
       }
       if (s.marks == null && host && host.querySelector('svg path, svg rect, svg ellipse, svg text, svg foreignObject')) s.marks = performance.now();
+      // While the saved copy is only previewed, a blocker covers the page.
+      if (s.marks != null && s.editable == null && overlay
+        && overlay.getAttribute('data-annotation-hydration-gated') !== 'true'
+        && !document.querySelector('[data-annotation-preview-input-blocker]')) s.editable = performance.now();
     }
-    if (s.marks == null || s.firstPage == null) requestAnimationFrame(tick);
+    if (s.marks == null || s.firstPage == null || s.editable == null) requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
   w.__bigOpenRestart = () => requestAnimationFrame(tick);
@@ -216,7 +230,7 @@ async function openAndSettle(page, context, size, { profile = null } = {}) {
     await openBtn.tap();
   } else { await page.evaluate(() => { window.__bigOpen.t0 = performance.now(); }); await row.tap(); }
   }
-  await page.waitForFunction(() => window.__bigOpen?.marks != null && window.__bigOpen?.firstPage != null, null, { timeout: 120_000, polling: 100 });
+  await page.waitForFunction(() => window.__bigOpen?.marks != null && window.__bigOpen?.firstPage != null && window.__bigOpen?.editable != null, null, { timeout: 120_000, polling: 100 });
   // Wait until QUIET_MS passes with no long task after the marks are up.
   const result = await page.waitForFunction((quiet) => {
     const s = window.__bigOpen;
@@ -227,7 +241,10 @@ async function openAndSettle(page, context, size, { profile = null } = {}) {
     const interactive = ready;
     const blocking = s.longTasks.filter(([st]) => st >= s.t0 && st < interactive).reduce((sum, [, d]) => sum + Math.max(0, d - 50), 0);
     const longest = s.longTasks.filter(([st]) => st >= s.t0).reduce((m, [, d]) => Math.max(m, d), 0);
-    return { ev: s.ev.join(' | '), tasks: s.longTasks.filter(([st]) => st >= s.t0).map(([st, d]) => `${Math.round(st - s.t0)}+${Math.round(d)}`).join(' '), firstPage: s.firstPage - s.t0, marks: s.marks - s.t0, interactive: interactive - s.t0, blocking, longest };
+    const frames = s.frames.filter(([st]) => st >= s.t0 && st < interactive);
+    const loafBlocking = frames.reduce((sum, [, , b]) => sum + b, 0);
+    const loafLongest = frames.reduce((m, [, d]) => Math.max(m, d), 0);
+    return { ev: s.ev.join(' | '), loafBlocking, loafLongest, tasks: s.longTasks.filter(([st]) => st >= s.t0).map(([st, d]) => `${Math.round(st - s.t0)}+${Math.round(d)}`).join(' '), firstPage: s.firstPage - s.t0, marks: s.marks - s.t0, editable: s.editable - s.t0, interactive: interactive - s.t0, blocking, longest };
   }, QUIET_MS, { timeout: 180_000, polling: 250 }).then((h) => h.jsonValue());
   if (process.env.TIMERS) {
     const frames = await page.evaluate(() => window.__slowFrames || []);
@@ -271,7 +288,7 @@ async function oneRun(browser, size, { profile = null } = {}) {
       ? page.getByRole('button', { name: 'Back to documents' })
       : page.getByRole('button', { name: `Close ${DOC_NAME}` });
     await close.first().click();
-    await page.evaluate(() => { const s = window.__bigOpen; Object.assign(s, { t0: null, firstPage: null, marks: null, ev: [], lastKey: null }); });
+    await page.evaluate(() => { const s = window.__bigOpen; Object.assign(s, { t0: null, firstPage: null, marks: null, editable: null, ev: [], lastKey: null }); });
     await page.getByText(DOC_NAME, { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 60_000 });
     await page.waitForTimeout(1500);
     // The probe's rAF loop stopped once the first open was timed.
@@ -302,7 +319,7 @@ for (const size of SIZES) {
     delete r.tasks;
     console.log(size, `run ${i + 1}`, Object.entries(r).map(([k, v]) => `${k}=${typeof v === 'number' ? Math.round(v) : v}`).join(' '));
   }
-  summary[size] = Object.fromEntries(['firstPage', 'marks', 'interactive', 'blocking', 'longest', 'heapMB', 'thumbAt']
+  summary[size] = Object.fromEntries(['firstPage', 'marks', 'editable', 'interactive', 'blocking', 'longest', 'loafBlocking', 'loafLongest', 'heapMB', 'thumbAt']
     .filter((k) => runs.every((r) => typeof r[k] === 'number'))
     .map((k) => [k, Math.round(median(runs.map((r) => r[k])))]));
 }
