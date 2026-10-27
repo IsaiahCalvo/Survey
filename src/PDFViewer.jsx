@@ -42369,8 +42369,8 @@ ${pageBlocks}
               <div>
                 <button
                   onClick={async () => {
-                    if (!features?.sso) {
-                      showToast(withUpgradeHint('OneDrive integration is part of the Enterprise plan.', 'Please upgrade.'), 'warn');
+                    if (!features?.oneDrive) {
+                      showToast(withUpgradeHint('OneDrive is part of the Pro plan.', 'Please upgrade.'), 'warn');
                       return;
                     }
                     try {
