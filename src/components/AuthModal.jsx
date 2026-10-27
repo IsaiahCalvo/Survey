@@ -18,6 +18,7 @@ import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
 import './AuthModal.css';
 import { isGoogleSignInHidden } from '../utils/accountPlatform';
+import { companyDomainFrom, companySignInErrorMessage } from '../utils/companySignIn.js';
 
 export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' }) => {
   const [mode, setMode] = useState(initialMode); // 'login', 'signup', 'confirm', 'sso', 'reset'
@@ -64,7 +65,9 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
   useFocusTrap(modalRef, isOpen, { onEscape: handleClose });
 
   // Modes that hit a captcha-protected endpoint (signin / signup / recover).
-  const captchaMode = mode === 'login' || mode === 'signup' || mode === 'reset';
+  // Supabase checks the captcha on its SSO endpoint too, so company sign-in
+  // needs a token just like password sign-in.
+  const captchaMode = mode === 'login' || mode === 'signup' || mode === 'reset' || mode === 'sso';
   const resetCaptcha = () => {
     setCaptchaToken('');
     setCaptchaNonce((n) => n + 1);
@@ -132,7 +135,13 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
           setResendLastSentAt(Date.now());
         }
       } else if (mode === 'sso') {
-        await signInWithSSO(ssoDomain);
+        const domain = companyDomainFrom(ssoDomain);
+        if (!domain) throw new Error('Enter your work email or company domain, like acme.com.');
+        try {
+          await signInWithSSO(domain, captchaToken);
+        } catch (ssoError) {
+          throw new Error(companySignInErrorMessage(ssoError, domain));
+        }
         // SSO will redirect, so no need to close modal
       } else if (mode === 'reset') {
         await resetPassword(email, captchaToken);
@@ -356,13 +365,17 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
 
           {mode === 'sso' && (
             <div className="auth-form-group">
-              <label htmlFor="ssoDomain">Company domain</label>
+              <label htmlFor="ssoDomain">Work email or company domain</label>
               <input
                 id="ssoDomain"
                 type="text"
+                inputMode="email"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={ssoDomain}
                 onChange={(e) => setSsoDomain(e.target.value)}
-                placeholder="company.com"
+                placeholder="you@company.com"
                 required
                 disabled={loading}
               />
