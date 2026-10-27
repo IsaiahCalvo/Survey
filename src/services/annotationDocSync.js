@@ -499,6 +499,9 @@ export async function openAnnotationDoc({
     persistedDoc: createDetachedYDoc(`persisted:${documentId}:${activeWriterId}`),
     stagedSeeded: false,   // w29: stagedDoc is seeded from acceptedDoc late in the open
     localPersistenceDoc: null,
+    // Cold open: the snapshot, then any later updates, waiting to go into
+    // localPersistenceDoc once the open is done (deferSnapshotToLocalPersistence).
+    deferredPersistence: null,
     onLocalPersistenceUpdate: null,
     map: getAnnotationsMap(activeDoc),
     lastSeq: 0,            // highest annotation_updates.seq we've applied
@@ -978,6 +981,7 @@ export async function openAnnotationDoc({
     // either sees this opening state or its bumped incarnation rejects open.
     registerActiveState(state);
     state.openComplete = true;
+    if (state.deferredPersistence) flushDeferredPersistenceWhenIdle(state);
   } catch (err) {
     abortBackendPrefetch(state);
     clearEraseOutboxRetry(state);
@@ -1004,6 +1008,7 @@ export async function openAnnotationDoc({
 }
 
 function destroyLocalPersistence(state) {
+  state.deferredPersistence = null;
   if (state.onLocalPersistenceUpdate) {
     try { state.doc.off('update', state.onLocalPersistenceUpdate); } catch { /* */ }
     state.onLocalPersistenceUpdate = null;
@@ -1037,6 +1042,10 @@ function attachLocalPersistenceMirror(state) {
       // applyAuthoritativeCloudUpdate, never that derived live update.
       || origin === REMOTE_ORIGIN
     ) return;
+    if (state.deferredPersistence) {
+      state.deferredPersistence.push(update);
+      return;
+    }
     // This is one-way only: the provider observes `target`; no listener ever
     // applies target updates back to the live doc, so there is no update loop.
     Y.applyUpdate(target, update, HYDRATE_ORIGIN);
@@ -1077,6 +1086,10 @@ function localPersistenceNearTrim(state) {
 
 function applyToLocalPersistence(state, update) {
   if (!state.localPersistenceDoc) return;
+  if (state.deferredPersistence) {
+    state.deferredPersistence.push(update);
+    return;
+  }
   if (localPersistenceNearTrim(state)) freezePersistedCandidate(state);
   Y.applyUpdate(state.localPersistenceDoc, update, HYDRATE_ORIGIN);
 }
@@ -1134,6 +1147,38 @@ function applySnapshotToLocalPersistence(state, bytes) {
     ? bytes
     : bytes.slice();
   store(own, HYDRATE_ORIGIN);
+}
+
+// Open speed (cold open, 2026-10-27): filling this device's offline copy with
+// the downloaded snapshot is one more full decode of every mark (~0.36 s and
+// ~27 MB on the big drawing set) that the open waited for, though nothing in
+// the open reads that copy: it is empty (nothing saved here yet), so the
+// pre-open local difference is empty either way. It is filled once the open
+// is done. Until then the snapshot and every later update for it wait in
+// order, and are applied in that same order, so the copy ends up the same.
+// A close before then fills it first; a purge or failed open drops it with
+// the copy.
+function deferSnapshotToLocalPersistence(state, bytes) {
+  const doc = state.localPersistenceDoc;
+  if (!doc || !idbStoreListener(state.idbProvider, doc) || !state.idbProvider.db || !docIsEmpty(doc)) {
+    applySnapshotToLocalPersistence(state, bytes);
+    return;
+  }
+  state.deferredPersistence = [bytes];
+}
+
+function flushDeferredPersistence(state) {
+  const queued = state.deferredPersistence;
+  if (!queued) return;
+  state.deferredPersistence = null;
+  if (!state.localPersistenceDoc) return;
+  applySnapshotToLocalPersistence(state, queued[0]);
+  for (let i = 1; i < queued.length; i += 1) applyToLocalPersistence(state, queued[i]);
+}
+
+async function flushDeferredPersistenceWhenIdle(state) {
+  await waitForIdle(3000);
+  if (!state.destroyed) flushDeferredPersistence(state);
 }
 
 async function rotateCleanPersistence(state) {
@@ -2543,8 +2588,7 @@ async function loadFromBackend(state) {
         // to these docs in between changes no result.
         await waitForIdle();
         applyAcceptedUpdate(state, bytes);
-        await waitForIdle();
-        applySnapshotToLocalPersistence(state, bytes);
+        deferSnapshotToLocalPersistence(state, bytes);
       } catch (err) {
         throw new Error(`snapshot decode failed: ${err?.message || 'invalid Yjs update'}`, { cause: err });
       }
@@ -7427,6 +7471,8 @@ function makeHandle(state) {
           );
         } catch { /* */ }
       }
+      // A close soon after a cold open: fill the offline copy first.
+      flushDeferredPersistence(state);
       destroyLocalPersistence(state);
       try { await state.outbox?.close?.(); } catch { /* */ }
       try { state.acceptedDoc.destroy(); } catch { /* */ }
