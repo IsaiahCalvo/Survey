@@ -15,6 +15,8 @@ const ON_THE_SHELL = [
   'src/components/ExcelLockedModal.jsx',
   'src/components/DuplicateUploadModal.jsx',
   'src/components/ApplyRedactionsModal.jsx',
+  'src/components/dialogPrompts.jsx',
+  'src/home/CreateProjectModal.jsx',
 ];
 
 test('the shell is the ConfirmModal look: scrim, card, header, footer bar', () => {
@@ -63,4 +65,21 @@ test('the space picker sits on the shell', () => {
   assert.match(source, /import DialogCard from '\.\/DialogCard\.jsx';/);
   assert.match(source, /<BodyPortal>\s*<DialogCard/);
   assert.doesNotMatch(source, /COLORS\.modal|useFocusTrap\(|className="btn btn-/);
+});
+
+// Design review 2026-10-27: Rename and the themed prompt had their own cards
+// (a 44px field and buttons on a mouse, a boxed x, an ALL CAPS label, a small
+// gold button). Both sit on the shell with the one dialog field now.
+test('Rename and the prompt use the shell and the one dialog field', () => {
+  const bulk = read('src/home/BulkModals.jsx');
+  const rename = bulk.slice(bulk.indexOf('export function RenameModal'));
+  const prompt = read('src/components/dialogPrompts.jsx');
+  for (const [name, source] of [['Rename', rename], ['prompt', prompt]]) {
+    assert.match(source, /<DialogCard\s+open=\{open\}/, name);
+    assert.match(source, /className="dialog-prompt-input"[\s\S]*?style=\{DIALOG_FIELD_STYLE\}/, name);
+    assert.doesNotMatch(source, /textTransform: 'uppercase'|minHeight: 44|height: 44|closeButtonStyle|useFocusTrap\(/, name);
+  }
+  const card = read('src/components/DialogCard.jsx');
+  assert.match(card, /export const DIALOG_FIELD_STYLE = Object\.freeze\(\{[\s\S]*?height: 32,[\s\S]*?fontSize: 13,/);
+  assert.match(read('src/home/hub.css'), /\.dialog-prompt-input \{\s*font-size: 16px !important;\s*height: 44px !important;/);
 });

@@ -79,6 +79,7 @@ import {
 import { historyAnnotationBox, historyAnnotationInkBox, historyBulkGhosts, historyRowGhostAnnotation, historyUnionBox } from '../../utils/historyGeometry.js';
 import { createHistoryPageOverlay, findMarkElements, measureMarkBox, measureMarksBox } from './historyPageOverlay.js';
 import { attachTooltip, useTooltip } from '../Tooltip';
+import { usePromptDialog } from '../dialogPrompts.jsx';
 
 const DRAWER_WIDTH = 360;
 const HISTORY_PANEL_STYLE_ID = 'document-history-panel-style';
@@ -296,6 +297,9 @@ export default function RevisionsPanel({
   const [err, setErr] = useState(null);
   const [viewingRevision, setViewingRevision] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Themed prompt for the revision label (design review 2026-10-27: it was
+  // the browser's own prompt box).
+  const [askPrompt, promptDialog] = usePromptDialog();
   const [statusMsg, setStatusMsg] = useState(null);
   // "Restored vN · Undo": Undo restores the auto revision saved just before.
   const { toast: restoreUndoToast, enqueue: enqueueRestoreUndo, dismiss: dismissRestoreUndo } = useUndoToast();
@@ -582,7 +586,13 @@ export default function RevisionsPanel({
 
   const handleSave = useCallback(async () => {
     if (!documentId || busy) return;
-    const label = window.prompt('Label for this revision (optional):', '');
+    const label = await askPrompt({
+      title: 'Save a version',
+      label: 'Label (optional)',
+      placeholder: 'e.g. Sent to client',
+      confirmLabel: 'Save version',
+      zIndex: 10000,
+    });
     if (label === null) return; // user cancelled
     setBusy(true);
     setStatusMsg(null);
@@ -595,7 +605,7 @@ export default function RevisionsPanel({
     } finally {
       setBusy(false);
     }
-  }, [documentId, refresh, busy]);
+  }, [documentId, refresh, busy, askPrompt]);
 
   const handleOpenReadOnly = useCallback(async (rev) => {
     if (busy) return;
@@ -1855,6 +1865,7 @@ export default function RevisionsPanel({
 
   return (
     <>
+      {promptDialog}
       {/* Launcher */}
       <button
         type="button"

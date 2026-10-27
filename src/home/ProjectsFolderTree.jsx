@@ -23,6 +23,7 @@
 */
 import { canManageProject, canManageProjectFile, projectSelectionCan } from './projectFilePermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
+import MenuRows from '../components/MenuRows.jsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
@@ -164,23 +165,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
         className="hub-menu"
         style={{ top, left, minWidth: menuWidth }}
       >
-        {items.map((it) => (
-          <button
-            key={it.label}
-            type="button"
-            role="menuitem"
-            className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
-            disabled={it.reason ? undefined : it.disabled}
-            aria-disabled={it.reason ? true : undefined}
-            {...(it.reason ? tip(it.reason) : {})}
-            onClick={() => { if (it.disabled && !it.reason) return; onClose(); activateOrExplain(it.reason, it.onClick); }}
-          >
-            {it.iconNode
-              ? it.iconNode
-              : (it.icon && <Icon name={it.icon} size={12} color={it.danger ? HEX.danger : HEX.muted} />)}
-            {it.label}
-          </button>
-        ))}
+        <MenuRows items={items} tip={tip} onClose={onClose} />
       </div>
     </>,
     document.body,
@@ -2065,16 +2050,16 @@ export default function ProjectsFolderTree({
               { label: 'Share', reason: ownerOnly, onClick: () => onShare?.(proj) },
               { label: 'Delete', danger: true, reason: ownerOnly, onClick: () => { void deleteProjects([proj.id]); } },
               { icon: 'users', label: 'Add member', reason: ownerOnly, onClick: () => onShare && onShare(proj) },
-              { icon: 'arrow-r', label: 'Get link to project', onClick: () => onShare && onShare(proj) },
+              { label: 'Get link to project', onClick: () => onShare && onShare(proj) },
               { icon: 'upload', label: 'Upload files', onClick: () => { setOpenId(proj.id); addFiles(proj); } },
               {
                 // Pin / unpin — toggles local pinned state; the row floats to
                 // the top of the list and shows a pin icon when pinned.
-                iconNode: <PinIcon size={12} color={projPinned ? HEX.gold : HEX.muted} />,
+                iconNode: <PinIcon size={14} color={projPinned ? HEX.gold : 'currentColor'} />,
                 label: projPinned ? 'Unpin project' : 'Pin project',
                 onClick: () => togglePin(proj.id),
               },
-              { icon: 'more', label: 'Manage project', onClick: () => setTeamModalProject(proj) },
+              { label: 'Manage project', onClick: () => setTeamModalProject(proj) },
             ]}
           />
         );

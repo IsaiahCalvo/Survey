@@ -11,7 +11,8 @@ import Icon from '../Icons';
      - off is --text-disabled, never an opacity (tokens.css);
      - the phone row is the phone menu row every other phone menu uses
        (--sheet-menu-item-h, 15px/400, --text-1, 16px glyph: the More menu);
-     - the desktop row is unchanged (13px, 8px 12px, --text-2, 14px glyph).
+     - the desktop row is the action menu row (tokens.css --menu-*, design
+       review 2026-10-27: the same row as the home menus), --text-1, 14px glyph.
    The hover fill is passed through unchanged (menu shades: owner decision
    pending). */
 export const PageMenuItem = ({ mobile = false, icon, label, disabled = false, danger = false, hoverBg = 'var(--hover)', onClick, itemKey, trailingIcon = null, ariaHasPopup }) => (
@@ -31,11 +32,11 @@ export const PageMenuItem = ({ mobile = false, icon, label, disabled = false, da
       border: 'none',
       ...(mobile
         ? { minHeight: 'var(--sheet-menu-item-h)', padding: '0 12px', gap: '12px', borderRadius: 'var(--radius-xs)', font: '400 15px/20px var(--font-ui)' }
-        : { padding: '8px 12px', gap: '8px', borderRadius: '4px', fontSize: '13px' }),
+        : { minHeight: 'var(--menu-item-h)', padding: '0 var(--menu-item-pad-x)', gap: 'var(--menu-item-gap)', borderRadius: 'var(--radius-xs)', font: 'var(--menu-font)' }),
       // Off is the shared look (states.css section 6: --disabled-ink, not-allowed).
       cursor: 'pointer',
       whiteSpace: 'nowrap',
-      color: danger ? 'var(--danger-text)' : (mobile ? 'var(--text-1)' : 'var(--text-2)'),
+      color: danger ? 'var(--danger-text)' : 'var(--text-1)',
     }}
     onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = hoverBg; }}
     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
@@ -68,7 +69,7 @@ export const PageMenuHeader = ({ mobile = false, label }) => (
   <div
     style={mobile
       ? { color: 'var(--text-3)', font: 'var(--sheet-section)', padding: '4px 6px' }
-      : { color: 'var(--text-3)', fontSize: '11px', fontWeight: 600, padding: '4px 12px 2px' }}
+      : { color: 'var(--text-3)', fontSize: '11px', fontWeight: 600, padding: '4px var(--menu-item-pad-x) 2px' }}
   >
     {label}
   </div>

@@ -29,6 +29,7 @@ import useModalFocusTrap from './useModalFocusTrap';
 import { isPhoneLayout } from '../utils/layoutMode.js';
 import { canManageDocument, manageSelectionBlock } from './documentPermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
+import MenuRows from '../components/MenuRows.jsx';
 import sampleFloorPlanUrl from '../assets/sample-floor-plan.pdf?url';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
@@ -137,20 +138,7 @@ function DocumentActionMenu({ anchorRect, point = null, items, onClose, returnFo
         onKeyDown={onKeyDown}
         onContextMenu={(event) => event.preventDefault()}
       >
-        {items.map((it) => (
-          <button
-            key={it.label}
-            type="button"
-            role="menuitem"
-            className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
-            disabled={it.reason ? undefined : it.disabled}
-            aria-disabled={it.reason ? true : undefined}
-            {...(it.reason ? tip(it.reason, 'right') : {})}
-            onClick={() => { if (it.disabled && !it.reason) return; onClose(); activateOrExplain(it.reason, it.onClick); }}
-          >
-            {it.label}
-          </button>
-        ))}
+        <MenuRows items={items} tip={tip} tipSide="right" onClose={onClose} />
       </div>
     </>,
     document.body,

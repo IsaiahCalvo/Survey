@@ -19,6 +19,7 @@
 // useCallback-stable so the external callers that omit the setter from their
 // dependency arrays keep their referential identity.
 
+import { menuIconFor } from '../utils/menuItems.js';
 import { queryFrontTab } from '../utils/tabBehind.js';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -184,6 +185,10 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // Enter on Arrange opens it, Left closes it, Enter runs the focused item,
 // Escape closes the menu (dismissRules). A menu opened by touch keeps 44 px
 // targets (touchTargets.css + annotationContextMenu.css).
+// Design review 2026-10-27: the rows under the icon row carry an icon too,
+// like every other action menu (components/MenuRows.jsx picks by label).
+const MARK_ROW_ICONS = { arrange: 'layers', lock: 'lock', unlock: 'lock' };
+const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
 function MarkMenuBody({ layout, touchRows }) {
@@ -348,6 +353,7 @@ function MarkMenuBody({ layout, touchRows }) {
             onPointerEnter={it.disabled ? undefined : onMouseHover(true)}
             onClick={it.disabled ? undefined : () => setArrangeOpen((open) => (touchRows ? !open : true))}
           >
+            {markRowIcon(it) && <Icon name={markRowIcon(it)} size={14} color="currentColor" />}
             <span>{it.label}</span>
             <span className="annotation-menu-chevron" aria-hidden="true">
               <Icon name="chevronRight" size={14} color="currentColor" />
@@ -382,6 +388,7 @@ function MarkMenuBody({ layout, touchRows }) {
           onPointerEnter={onMouseHover(false)}
           onClick={it.disabled ? undefined : it.onClick}
         >
+          {markRowIcon(it) && <Icon name={markRowIcon(it)} size={14} color="currentColor" />}
           {it.label}
         </div>
       )))}
@@ -1309,10 +1316,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           zIndex: 10000,
           minWidth: 160,
           padding: 4,
-          fontSize: 12.5,
+          // Design review 2026-10-27: the action menu row (tokens.css --menu-*).
+          font: 'var(--menu-font)',
           color: 'var(--text-2)',
           letterSpacing: 0,
-          fontFamily: 'var(--font-ui)',
         }}
       >
         {/* UX: mobile menus lead with a muted title row + divider, matching the
@@ -1371,8 +1378,11 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                   font: '400 15px/20px var(--font-ui)',
                   color: it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)', // off: states.css section 6
                 } : {
-                  padding: '7px 12px',
-                  borderRadius: 5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  minHeight: 'var(--menu-item-h)',
+                  padding: '0 var(--menu-item-pad-x)',
+                  borderRadius: 'var(--radius-xs)',
                   cursor: 'pointer',
                   userSelect: 'none',
                   color: it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)', // off: states.css section 6

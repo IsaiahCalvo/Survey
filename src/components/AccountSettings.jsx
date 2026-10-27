@@ -492,8 +492,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="account-settings-header">
           <h2>Settings</h2>
-          <button className="account-settings-close" onClick={onClose} aria-label="Close">
-            <Icon name="close" size={14} />
+          <button className="account-settings-close" onClick={onClose} aria-label="Close" {...tip('Close', 'below')}>
+            <Icon name="close" size={13} />
           </button>
         </div>
 
@@ -1048,10 +1048,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           <ul>
                             <li>Unlimited projects</li>
                             <li>Unlimited documents</li>
-                            <li>10GB Storage</li>
+                            <li>10 GB storage</li>
                             <li>Survey tools</li>
-                            <li>Templates & Regions</li>
-                            <li>Excel export</li>
+                            <li>Templates & regions</li>
+                            <li>Export data</li>
                             <li>OneDrive integration</li>
                           </ul>
                         </div>
@@ -1099,9 +1099,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           <ul>
                             <li>Everything in Pro</li>
                             <li>Team collaboration</li>
-                            <li>Real-time Editing</li>
-                            <li>1TB Team Storage</li>
-                            <li>SSO & Admin Tools</li>
+                            <li>Real-time editing</li>
+                            <li>1 TB team storage</li>
+                            <li>SSO & admin tools</li>
                             <li>Priority support</li>
                             <li>Custom integrations</li>
                           </ul>
