@@ -23,6 +23,10 @@ export const isAnnotationTransformHandleLocked = (annotation, handleId) => {
   if (['ml', 'mr'].includes(handleId)) return Boolean(annotation.lockScalingX);
   if (['mt', 'mb'].includes(handleId)) return Boolean(annotation.lockScalingY);
   if (['tl', 'tr', 'bl', 'br'].includes(handleId)) {
+    // Same for size: every counter is drawn with lockScalingX/Y (its body
+    // must stay round), but "Resize and rotate" shows corner grabbers that
+    // resize it uniformly (radius). Those must not be locked by that default.
+    if (annotation?.data?.type === 'counter') return false;
     return Boolean(annotation.lockScalingX && annotation.lockScalingY);
   }
   return false;

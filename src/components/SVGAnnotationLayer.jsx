@@ -85,6 +85,7 @@ import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
 import { canToolGrabSelection, isSelectFamilyTool, isSelectionGestureActive } from '../utils/selectModes.js';
 import { liftedMoveIndices as liftedMoveIndicesFor, liftTranslate } from '../utils/dragLift.js';
+import { createMarkWrapperCache, mapMarkWrappers, markWrapperIsLive } from '../utils/markWrapperCache.js';
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
 import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
@@ -928,6 +929,12 @@ const SVGAnnotationLayerBody = memo(({
   // ---------------------------------------------------------------------------
   // Interaction hook (Phase 9)
   // ---------------------------------------------------------------------------
+  // Stable (reads a ref): a new function each render gave the hook's
+  // handlePointerUp a new identity on every drag frame, which made every
+  // mark's wrapper rebuild (utils/markWrapperCache.js keys on it).
+  const getSelectableAnnotationIndices = useCallback(() => renderedAnnotationEntriesRef.current
+    .filter((entry) => !isBlockedFromAreaSelection(entry.obj))
+    .map((entry) => entry.index), []);
   const {
     selectedIds, hoveredId, inverseScale, interactionState, activeCalloutDrag, visualTransform,
     dragState,
@@ -1001,9 +1008,7 @@ const SVGAnnotationLayerBody = memo(({
     // hook's marquee post-filter + click hit-test gate.
     viewerId,
     documentOwnerId,
-    getSelectableAnnotationIndices: () => renderedAnnotationEntriesRef.current
-      .filter((entry) => !isBlockedFromAreaSelection(entry.obj))
-      .map((entry) => entry.index),
+    getSelectableAnnotationIndices,
     // Phase 35 Plan 04 — page number + bulk-delete interceptor for
     // deleteSelected snapshot capture and App.jsx modal routing.
     pageNumber,
@@ -6209,6 +6214,7 @@ const SVGAnnotationLayerBody = memo(({
   // Cached only for the committed objects this layer was handed (immutable
   // state); live previews build new objects and are always computed fresh.
   const markGeometryCacheRef = useRef(null);
+  const markWrapperCacheRef = useRef(null);
   if (!markGeometryCacheRef.current) {
     markGeometryCacheRef.current = { bbox: new WeakMap(), pathTransform: new WeakMap(), bakedPath: new WeakMap() };
   }
@@ -6228,8 +6234,7 @@ const SVGAnnotationLayerBody = memo(({
   // the mark itself paints (filled in by the loop below), so the value and the
   // pill follow every handle, bend and move frame by frame.
   const liveMeasureLabels = new Map();
-  const wrappedAnnotations = stagedAnnotations
-    .map(({ obj, index: i, element, isObjectInteractive }) => {
+  const renderMarkWrapper = ({ obj, index: i, element, isObjectInteractive }) => {
     // During resize, create a temporary modified copy for rendering
     // (Imported paths use SVG transform instead — handled in computedTransform below)
     let renderObj = obj;
@@ -7402,7 +7407,29 @@ const SVGAnnotationLayerBody = memo(({
         })()}
       </g>
     );
-  });
+  };
+  // Perf (dense-sheet drags): a mark whose inputs did not change keeps its
+  // wrapper element, so a drag frame rebuilds and reconciles only the marks
+  // it moves (utils/markWrapperCache.js). Every value renderMarkWrapper reads
+  // from this component is listed here or in the per-mark key
+  // (tests/markWrapperCache.test.mjs checks the list against the body).
+  if (!markWrapperCacheRef.current) markWrapperCacheRef.current = createMarkWrapperCache();
+  const markWrapperLiveState = { visualTransform, counterHandlePreview, editingAnnotationIndex };
+  const markWrapperMultiSelection = ((selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0)) > 1;
+  const wrappedAnnotations = mapMarkWrappers(
+    markWrapperCacheRef.current,
+    [
+      markWrapperMultiSelection, annotationHitTargetsInteractive, editEntryTargetsMounted,
+      effectiveMeasureScale, inverseScale, inputKind, pageNumber, applyLineEditPreview,
+      handleAnnotationPointerDown, handleAnnotationPointerEnter, handleAnnotationPointerLeave,
+      handleAnnotationDoubleClick, handlePointerMove, handlePointerUp,
+    ],
+    stagedAnnotations,
+    (entry) => (markWrapperIsLive(entry.index, markWrapperLiveState)
+      ? null
+      : [entry.obj, entry.element, entry.isObjectInteractive, selectedIds.has(entry.index), hoveredId === entry.index]),
+    renderMarkWrapper,
+  );
 
   // w52 (2026-09-28): ONE stack per page. Callouts are drawn in their slot
   // among every other mark (filteredCallouts carries each slot as

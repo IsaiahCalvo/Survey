@@ -59,10 +59,10 @@ test('annotation context changes dismiss the color panel and formatting peers', 
   assert.match(contract, /setShowCounterSeriesMenu\(false\)/);
   assert.match(contract, /setShowStyleMenu\(false\)/);
   assert.match(contract, /setShowArrowheadMenu\(false\)/);
-  // DELIBERATE ASSERTION CHANGE (2026-09-21, pass 7): the eraser-type MENU is
-  // gone (board 13 makes it a segmented toggle); Arrow ends is the menu that
-  // joined the exclusive layer, so it takes the place in this list.
-  assert.match(contract, /setShowArrowEndsMenu\(false\)/);
+  // DELIBERATE ASSERTION CHANGE (2026-10-26, owner issue note #11): Arrow ends
+  // is no longer a menu of its own - it lives in the Arrowhead pill's card,
+  // which setShowArrowheadMenu(false) above already closes.
+  assert.doesNotMatch(appShell, /setShowArrowEndsMenu/);
   assert.match(
     contract,
     /\}, \[bottomToolbarApi\?\.contextTool\]\);/,

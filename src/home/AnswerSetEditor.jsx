@@ -207,6 +207,8 @@ const KIND_OPTIONS = [
   { value: 'count', label: 'Count' },
   { value: 'date', label: 'Date' },
   { value: 'many', label: 'Pick many' },
+  { value: 'photo', label: 'Photo' },
+  { value: 'signature', label: 'Signature' },
 ];
 
 // A small box that commits on blur / Enter: a number (blank = not set) or text.

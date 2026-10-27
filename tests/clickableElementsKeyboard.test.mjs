@@ -35,6 +35,8 @@ const ALLOWED = {
   'src/components/ExcelLockedModal.jsx': 1,
   'src/components/ExcelSyncConfirmModal.jsx': 1,
   'src/components/KeyboardShortcutsOverlay.jsx': 1,
+  // The signature pad's scrim and dialog, and the line controls' click-through wrappers.
+  'src/components/LineMediaAnswer.jsx': 4,
   'src/components/NewColumnsModal.jsx': 1,
   'src/components/OneDriveFileSaveModal.jsx': 1,
   'src/components/PdfToolsDialog.jsx': 1,

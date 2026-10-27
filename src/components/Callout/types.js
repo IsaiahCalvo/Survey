@@ -53,7 +53,9 @@ export const ARROWHEAD_STYLE_LABELS = {
  */
 export const ARROWHEAD_SHORT_LABELS = {
   [ARROWHEAD_STYLES.NONE]: 'None',
-  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'Solid',
+  // Owner 2026-10-26: "Filled", not "Solid" - the line style beside it
+  // already says Solid, and the two read as one setting.
+  [ARROWHEAD_STYLES.SOLID_TRIANGLE]: 'Filled',
   [ARROWHEAD_STYLES.V_SHAPE]: 'Open',
   [ARROWHEAD_STYLES.OPEN_CIRCLE]: 'Circle',
   [ARROWHEAD_STYLES.SQUARE]: 'Square',

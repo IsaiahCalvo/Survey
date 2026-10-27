@@ -10,6 +10,7 @@
 // Accurate rename candidate: SurveyRail.jsx.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { revealInOwnScroller } from './utils/revealInOwnScroller.js';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from './Icons';
 import ListItemContextMenu from './components/ListItemContextMenu';
@@ -55,6 +56,7 @@ import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
 import { reportKitFor } from './services/reportKits/index.js';
 import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput, { CHOICE_BUTTONS_MAX, ChoiceSelect } from './components/TypedAnswerInput.jsx';
+import SurveyReportMenu from './components/SurveyReportMenu.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
@@ -601,31 +603,25 @@ const SurveySpacesRail = ({
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
   const proLocked = useProLock();
-  // Nightly 'survey-report': a PowerPoint report beside Export data.
+  // Nightly 'survey-report': a report beside Export data (PowerPoint, PDF, Excel or CSV).
   const [surveyReportOn] = useState(() => isFeatureOn('survey-report'));
   const [isReporting, setIsReporting] = useState(false);
   // The report layout comes from the live template: it is an output choice,
   // not part of the template version a document keeps.
   const reportKitOf = () => reportKitFor(availableSurveyTemplates.find((t) => t.id === selectedTemplate?.id) || selectedTemplate);
-  const handleSurveyReport = async () => {
+  const handleSurveyReport = async (format = 'pptx') => {
     if (proLocked('excel') || isReporting) return;
     setIsReporting(true);
     try {
-      const { downloadSurveyReport } = await import('./services/surveyReportPptx.js');
-      await downloadSurveyReport({ template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf() });
+      const input = { template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf() };
+      if (format === 'pdf') await (await import('./services/surveyReportPdf.js')).downloadSurveyReportPdf(input);
+      else if (format === 'xlsx') await (await import('./services/surveyReportXlsx.js')).downloadSurveyReportXlsx(input);
+      else if (format === 'csv') (await import('./services/surveyReportCsv.js')).downloadSurveyReportCsv(input);
+      else await (await import('./services/surveyReportPptx.js')).downloadSurveyReport(input);
     } catch (error) {
       console.error('Failed to create the survey report', error);
     } finally {
       setIsReporting(false);
-    }
-  };
-  const handleSurveyReportCsv = async () => {
-    if (proLocked('excel')) return;
-    try {
-      const { downloadSurveyReportCsv } = await import('./services/surveyReportCsv.js');
-      downloadSurveyReportCsv({ template: selectedTemplate, markers: surveyMarkers });
-    } catch (error) {
-      console.error('Failed to create the survey report CSV', error);
     }
   };
   // RULED 2026-09-23 (coordinator: auto refits keep the view; fits use the
@@ -893,9 +889,11 @@ const SurveySpacesRail = ({
         .find((el) => el.getAttribute('data-survey-marker-name-input') === targetId);
       if (input && input.offsetParent !== null) {
         justPlacedSurveyMarkerIdRef.current = targetId;
-        input.focus({ preventScroll: false });
+        // Never scroll the frame around the panel: it may still be sliding
+        // in from off screen (utils/revealInOwnScroller.js).
+        input.focus({ preventScroll: true });
         input.select();
-        input.scrollIntoView?.({ block: 'nearest' });
+        revealInOwnScroller(input);
         return;
       }
       frames += 1;
@@ -1524,7 +1522,10 @@ const SurveySpacesRail = ({
   // patch is functional, so a text save and an upload finishing at the same
   // moment both land. `requireExisting`: an upload that finishes after its
   // Survey Marker was deleted must not bring a stub of it back.
-  const updateSurveyMarkerNote = useCallback((annotationId, updater, { requireExisting = false } = {}) => {
+  // `lineAnswer`: a Photo or Signature line's { lineId, answerOf(nextNote) },
+  // written in the same update so the answer lands even if the line's
+  // control is gone by the time an upload finishes.
+  const updateSurveyMarkerNote = useCallback((annotationId, updater, { requireExisting = false, lineAnswer = null } = {}) => {
     if (!annotationId) return;
     setSurveyMarkers(prev => {
       const existing = prev?.[annotationId];
@@ -1545,11 +1546,18 @@ const SurveySpacesRail = ({
       }
       const nextNote = updater(prevNote);
       if (!nextNote || nextNote === prevNote) return prev;
+      const answered = lineAnswer ? {
+        checklistResponses: {
+          ...existing?.checklistResponses,
+          [lineAnswer.lineId]: { ...existing?.checklistResponses?.[lineAnswer.lineId], selection: lineAnswer.answerOf(nextNote) },
+        },
+      } : {};
       return {
         ...prev,
         [annotationId]: {
           ...(existing || {}),
-          note: nextNote
+          note: nextNote,
+          ...answered,
         }
       };
     });
@@ -1695,6 +1703,14 @@ const SurveySpacesRail = ({
     </>
   ) : null;
 
+  // Photo and Signature lines keep their image on the marker's note media.
+  const lineMediaProps = (annotationId) => ({
+    note: surveyMarkers?.[annotationId]?.note,
+    documentId: pdfFile?.id || null,
+    markerId: annotationId,
+    canEdit: canEditSurveyMarkers !== false,
+    onUpdateNote: (updater, options) => updateSurveyMarkerNote(annotationId, updater, options),
+  });
   const renderSurveyMarkerNotes = (annotationId, variant) => (
     <SurveyMarkerNotes
       key={annotationId}
@@ -1856,6 +1872,7 @@ const SurveySpacesRail = ({
                       phone
                       item={item}
                       value={response}
+                      media={lineMediaProps(annotationId)}
                       onCommit={(v) => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, v)}
                     />
                   ) : answerSetFor(selectedTemplate).length > CHOICE_BUTTONS_MAX ? (
@@ -4057,6 +4074,7 @@ const SurveySpacesRail = ({
                                                           <TypedAnswerInput
                                                             item={item}
                                                             value={isSelected}
+                                                            media={lineMediaProps(annotationId)}
                                                             onCommit={(v) => applyChecklistResponseSelection(annotationId, selectedModuleId, category, surveyMarker.name || '', item.id, v)}
                                                           />
                                                         ) : answerSetFor(selectedTemplate).length > CHOICE_BUTTONS_MAX ? (
@@ -4314,31 +4332,14 @@ const SurveySpacesRail = ({
                         <span>{isExporting ? 'Exporting\u2026' : 'Export data'}</span>
                       </button>
                       {surveyReportOn && (
-                        <button
-                          type="button"
+                        <SurveyReportMenu
                           className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
-                          onClick={() => { if (surveyHasItems) handleSurveyReport(); }}
-                          disabled={isReporting || !surveyHasItems}
-                          {...(mobileMode ? {} : tip(surveyHasItems ? `Download a PowerPoint report (${reportKitOf().label}). Pick the layout in the template.` : 'Add a survey item to make a report', 'above'))}
-                        >
-                          {isReporting
-                            ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
-                            : <Icon name="document" size={mobileMode ? 16 : 14} color="currentColor" />}
-                          <span>{isReporting ? 'Making report\u2026' : 'Report'}</span>
-                        </button>
-                      )}
-                      {surveyReportOn && (
-                        <button
-                          type="button"
-                          className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
-                          onClick={() => { if (surveyHasItems) handleSurveyReportCsv(); }}
+                          phone={mobileMode}
                           disabled={!surveyHasItems}
-                          aria-label="Report as CSV"
-                          {...(mobileMode ? {} : tip(surveyHasItems ? 'Download the report as a CSV table: one row per item with its status and issues' : 'Add a survey item to make a report', 'above'))}
-                        >
-                          <Icon name="listChecks" size={mobileMode ? 16 : 14} color="currentColor" />
-                          <span>CSV</span>
-                        </button>
+                          busy={isReporting}
+                          hint={surveyHasItems ? `Download a report (${reportKitOf().label}) as PowerPoint, PDF, Excel or CSV. Pick the layout in the template.` : 'Add a survey item to make a report'}
+                          onPick={handleSurveyReport}
+                        />
                       )}
                       {mobileMode ? (
                         (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (

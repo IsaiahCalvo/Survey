@@ -91,6 +91,7 @@ import {
   computeTopOverlayInset,
   computePushStripInset,
   getViewerTopOverlays,
+  measureStripRect,
   resolvePageLandingScrollTop,
   resolvePushStripScroll,
   resolveRoomCompensationBase,
@@ -2192,7 +2193,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       topReserveRef.current = strips.some((node) => node.getAttribute?.('data-viewer-top-reserve') === 'true');
       const inset = computeTopOverlayInset(
         el.getBoundingClientRect(),
-        strips.map((node) => node.getBoundingClientRect()),
+        strips.map((node) => measureStripRect(node)),
       );
       if (inset !== topInsetRef.current) {
         topInsetRef.current = inset;
@@ -2200,9 +2201,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }
       // A push strip (the Survey bar) moves what was under it down instead of
       // covering it (desktop/tablet pass 2026-10-21, item 4).
+      // The bar is also a strip, so it grows the room above the page, and the
+      // room's own layout effect then scrolls down to hold the page still.
+      // Pushing before that has landed found no scroll to take back at the top
+      // of the document, and the bar kept covering the page's top (owner
+      // 2026-10-26, item 38): wait for the room, then push.
+      if (appliedTopRoomRef.current !== topRoomRef.current) { schedule(); return; }
       const pushRects = [];
       strips.forEach((node) => {
-        if (node.getAttribute?.('data-viewer-top-push') === 'true') pushRects.push(node.getBoundingClientRect());
+        if (node.getAttribute?.('data-viewer-top-push') === 'true') pushRects.push(measureStripRect(node));
       });
       const pushInset = computePushStripInset(el.getBoundingClientRect(), pushRects);
       const push = pushStripRef.current;
@@ -2214,7 +2221,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           applied: push.applied,
         });
         pushStripRef.current = { inset: pushInset, applied: next.applied };
-        if (Math.abs(next.scrollTop - el.scrollTop) > 0.5) el.scrollTop = next.scrollTop;
+        if (Math.abs(next.scrollTop - el.scrollTop) > 0.5) {
+          const before = el.scrollTop;
+          el.scrollTop = next.scrollTop;
+          // The page glides into its new place instead of stepping a bar's
+          // height in one frame (owner 2026-10-26, item 38: "top bars need to
+          // come down smoothly"): held where it was, then eased home on the
+          // edge spring, drawn in this same frame as the scroll change.
+          const shift = before - el.scrollTop;
+          if (Math.abs(shift) > 0.5 && !prefersReducedMotion()) {
+            const hold = layoutShiftRef.current;
+            hold.absorb(shift, performance.now());
+            layoutShiftYRef.current = hold.frame(performance.now()).y;
+            paintLiveFrame();
+            if (!layoutShiftRafRef.current) layoutShiftRafRef.current = requestAnimationFrame(stepLayoutShift);
+          }
+        }
       }
     };
     const schedule = () => {
@@ -2246,7 +2268,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // attached (found live 2026-09-23: the strips' room stayed 0). The COUNT,
     // not the pageSizes array, which is a new array on many renders and would
     // tear the observer down before its first measurement ran.
-  }, [syncTopRoom, pageSizes?.length || 0]);
+  }, [paintLiveFrame, stepLayoutShift, syncTopRoom, pageSizes?.length || 0]);
 
   // Hold the page still when the room changes: move the scroll offset by the
   // same amount, in the same frame the content's top margin changes.
@@ -4919,6 +4941,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // blow up to full magnification. `rect` is in page units (the annotation
   // layer's viewBox). Goes through applyAnchoredScale, so it signals
   // gesture-start (zoomGeneration) like every other imperative zoom.
+  // Options: `fill` (share of the free view the mark takes), `maxScale` (a
+  // zoom ceiling in place of 4x the page fit: Locate on page zooms to the
+  // marker's extents), and `leftInset` / `rightInset` / `topInset` /
+  // `bottomInset` for covers the viewer does not track itself (the phone's
+  // tool strip and sheets); the side panels and tool strips it does track
+  // always count.
   const focusPageRect = useCallback((pageNumber, rect, options = {}) => {
     const el = scrollerRef.current;
     const dims = dimsPtRef.current;
@@ -4931,8 +4959,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const h = Math.max(8, Number(rect.height) || 0);
     if (![x, y, w, h].every(Number.isFinite)) return false;
     cancelPanInertia(false);
-    const side = sideInsetRef.current;
-    const inset = Math.min(topInsetRef.current, el.clientHeight);
+    const extra = (key) => Math.max(0, Number(options[key]) || 0);
+    const side = {
+      left: Math.max(sideInsetRef.current.left, extra('leftInset')),
+      right: Math.max(sideInsetRef.current.right, extra('rightInset')),
+    };
+    const inset = Math.min(Math.max(topInsetRef.current, extra('topInset')), el.clientHeight);
     const bandW = Math.max(1, el.clientWidth - side.left - side.right);
     // A sheet covering the bottom of the viewer (the phone History sheet)
     // shrinks the part you can see; the mark lands in what is left.
@@ -4953,7 +4985,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
     const fill = Number(options.fill) > 0 ? Number(options.fill) : 0.4;
     const wanted = Math.min((bandW * fill) / w, (bandH * fill) / h);
-    const ceiling = Math.min(isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE, fitScale * 4);
+    const ceiling = Math.min(
+      isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE,
+      Number(options.maxScale) > 0 ? Number(options.maxScale) : fitScale * 4,
+    );
     const target = options.keepZoom
       ? scaleRef.current
       : Math.max(fitScale, Math.min(wanted, ceiling));
