@@ -5,6 +5,11 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-27', items: [
+    'Reopening a big drawing set is quicker, and the first page shows sooner.',
+    'One look across the app: every action menu shares the same rows, with an icon on each and Delete last, and dialogs and messages match.',
+    'Done in select mode tucks the select buttons away cleanly, and dialogs fade out as they close.',
+    'Spaces: Move or copy is a smaller card with a space drop-down and icon buttons, and switches that are on show gold.',
+    'Archive on a computer sorts by its column headers, like Documents.',
     'Big drawing sets open and become editable sooner, and documents open quicker on slower computers.',
     'Moving marks on a big document is smoother: no stall on the first edit, and page previews wait while you drag.',
     'With several documents open, switching tools and zooming are lighter.',
