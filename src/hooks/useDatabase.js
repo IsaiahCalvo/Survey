@@ -1236,7 +1236,7 @@ const DEFAULT_TOOL_PREFERENCES = {
   // Owner 2026-10-27 (pinned tools "all follow the same rules"): the Text
   // box's Width box showed the last tool's width (Counter's 14) and a pinned
   // Text box kept none. 1 is the border a new text box is drawn with.
-  text: { strokeColor: '#000000', strokeWidth: 1, strokeOpacity: 100 },
+  text: { strokeColor: '#000000', strokeWidth: 1, strokeOpacity: 100, fillColor: '#ffffff', fillOpacity: 0 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
   strikeout: { strokeColor: '#ff0000', strokeOpacity: 100 },

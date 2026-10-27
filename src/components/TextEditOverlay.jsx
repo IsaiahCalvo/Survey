@@ -276,6 +276,9 @@ export default function TextEditOverlay({
   // Annotations -> "Fit text boxes to their text" is off.
   textBoxHeight,
   newTextStyle = null,
+  // A new text box's border, width, background and dashes from the settings
+  // row (textEditCommit newTextBoxPaint). Null keeps a black 1 pt border.
+  newTextPaint = null,
   strokeColor,
   authorId = null,
   // KAL-88 — Decision 11 companion: survey/region scope inputs for NEW text.
@@ -339,8 +342,10 @@ export default function TextEditOverlay({
         // Plan 15-04 parity: new text's intended look — the SVG preview and
         // the committed annotation both use these.
         fill: newTextStyle?.fontColor || strokeColor || '#007AFF',
-        stroke: '#000000',
-        strokeWidth: 1,
+        stroke: newTextPaint?.stroke || '#000000',
+        strokeWidth: newTextPaint?.strokeWidth ?? 1,
+        backgroundColor: newTextPaint?.backgroundColor || null,
+        strokeDashArray: newTextPaint?.strokeDashArray || null,
       }
       : {
         fontSize: Number(src.fontSize) || 16,
@@ -523,7 +528,9 @@ export default function TextEditOverlay({
       fill: s.fill,
       ...(isNewText ? {
         stroke: s.stroke,
-        strokeWidth: s.strokeWidth || 1,
+        strokeWidth: s.strokeWidth ?? 1,
+        backgroundColor: s.backgroundColor,
+        strokeDashArray: s.strokeDashArray,
         isCreating: true,
         cloudIntensity: newTextCloudIntensityRef.current,
       } : {}),
@@ -641,6 +648,8 @@ export default function TextEditOverlay({
         fill: s.fill,
         stroke: s.stroke || '#000000',
         strokeWidth: s.strokeWidth ?? 1,
+        backgroundColor: s.backgroundColor,
+        strokeDashArray: s.strokeDashArray,
         cloudIntensity: newTextCloudIntensityRef.current,
         autoFit: autoFitRef.current,
         minOuterHeight: g.outerH,

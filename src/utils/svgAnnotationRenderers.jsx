@@ -1709,6 +1709,7 @@ export const renderText = (obj, index, liveBounds = null, hideText = false) => {
           fill="none"
           stroke={obj.stroke}
           strokeWidth={obj.strokeWidth}
+          strokeDasharray={Array.isArray(obj.strokeDashArray) && obj.strokeDashArray.length ? obj.strokeDashArray.join(' ') : undefined}
           data-stroke-uniform={obj.strokeUniform ? 'true' : undefined}
         />
       ) : null}
