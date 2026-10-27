@@ -5,8 +5,8 @@
 // three cold runs (fresh browser cache each time), checked against
 // tests/e2e-speed/budget.mjs.
 import fs from 'node:fs';
-import { E2E_ACCOUNTS } from '../e2e-signed-in/accounts.mjs';
-import { expect, openSampleDocument, profileChip, signIn, test } from '../e2e-signed-in/helpers.mjs';
+import { E2E_ACCOUNTS, E2E_DOCUMENT } from '../e2e-signed-in/accounts.mjs';
+import { expect, profileChip, signIn, test } from '../e2e-signed-in/helpers.mjs';
 import { SPEED_BUDGET_MS } from './budget.mjs';
 
 const RUNS = 3;
@@ -65,11 +65,20 @@ test('Home, a small document and a big drawing set open within the speed budget'
     await cold.goto('/', { waitUntil: 'commit' });
     await expect(profileChip(cold, account)).toBeVisible({ timeout: 60_000 });
     times.home.push(Date.now() - start);
+    // Timed like the big drawing below: from the "Open file" click to ink on
+    // page 1, checked every 50 ms. (Until 2026-10-27 this also counted the row
+    // click and waited for the text layer through expect's back-off retries
+    // (100, 250, 500, 1000 ms), which added up to a second of polling slack:
+    // the 1-page sample read slower than the 240-page set.)
+    await cold.getByText(E2E_DOCUMENT.name, { exact: true }).first().click();
     start = Date.now();
-    await openSampleDocument(cold);
+    await cold.getByRole('button', { name: 'Open file' }).click();
     // The canvas mounts blank before pdf.js draws into it, so wait for ink.
     await expect.poll(() => cold.evaluate(pageOneHasInk), { timeout: 60_000, intervals: [50] }).toBe(true);
     times.firstPage.push(Date.now() - start);
+    // The right document opened and its text layer is up.
+    await expect(cold.getByRole('button', { name: `Close ${E2E_DOCUMENT.name}` })).toBeVisible();
+    await expect(cold.getByText('Type your name in the box:')).toBeVisible({ timeout: 60_000 });
 
     await context.close();
 
