@@ -22,7 +22,8 @@ import { replaceDocumentFile } from '../services/documentFileReplace.js';
 import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize } from '../services/pdfByteCache.js';
 import { STREAM_SIGNED_URL_SECONDS } from '../services/cloudPdfStream.js';
 import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.js';
-import { trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
+import { isPdfUploadPending, trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
+import { openSourceHeadStarts, openSourceCacheStamp } from '../services/openSourceHeadStart.js';
 import { bindLibraryListCacheToAuth } from './libraryListCache.js';
 import { useLibraryListCache } from './useLibraryListCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
@@ -57,6 +58,11 @@ async function fetchStoredPdfInfo(filePath) {
     return { data: null, error };
   }
 }
+// The short-lived signed URL a cloud PDF is streamed from (cloudPdfStream.js).
+const signOpenSource = (filePath) => supabase.storage
+  .from('documents')
+  .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS);
+
 const withTimeout = (promise, ms) => Promise.race([
   promise,
   new Promise((resolve) => setTimeout(resolve, ms)),
@@ -928,15 +934,15 @@ export const useStorage = () => {
     const since = cache?.generation;
     const epoch = cache?.pathEpoch?.(filePath);
     const key = pdfCacheKey(actorId, filePath);
+    // The same two requests, already asked when the tab opened (startOpenSource).
+    const early = openSourceHeadStarts().take(key, openSourceCacheStamp(cache, filePath));
     const source = await resolveOpenDocumentSource({
-      fetchInfo: () => fetchStoredPdfInfo(filePath),
+      fetchInfo: () => early?.info ?? fetchStoredPdfInfo(filePath),
       readCached: async (data) => {
         const stamp = pdfCacheStamp(data);
         return (stamp && key && cache && !cache.isDisabled) ? cache.get(key, stamp) : null;
       },
-      sign: () => supabase.storage
-        .from('documents')
-        .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS),
+      sign: () => early?.signing ?? signOpenSource(filePath),
     });
     if (!source) return null;
     const info = { data: source.info };
@@ -955,6 +961,20 @@ export const useStorage = () => {
         void cache.put({ actorId, path: filePath, stamp, bytes: buffer, since, epoch }).catch(() => {});
       },
     };
+  }, [user?.id]);
+
+  // Open speed: called when a cloud document's tab is created, so the access
+  // check and signed URL openDocumentStream needs are asked for while the
+  // viewer chunk loads (services/openSourceHeadStart.js). A path this device
+  // is still uploading is left to openDocumentStream, which waits for it.
+  const startOpenSource = useCallback((filePath) => {
+    if (!filePath || !isSupabaseAvailable() || isPdfUploadPending(filePath)) return false;
+    const cache = pdfByteCache();
+    return openSourceHeadStarts().start(pdfCacheKey(user?.id ?? null, filePath), {
+      stamp: openSourceCacheStamp(cache, filePath),
+      fetchInfo: () => fetchStoredPdfInfo(filePath),
+      sign: () => signOpenSource(filePath),
+    });
   }, [user?.id]);
 
   const deleteDocumentFile = useCallback(async (filePath) => {
@@ -976,6 +996,7 @@ export const useStorage = () => {
     replaceDocument,
     downloadDocument,
     openDocumentStream,
+    startOpenSource,
     deleteDocumentFile,
   };
 };

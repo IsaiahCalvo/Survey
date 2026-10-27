@@ -41,6 +41,7 @@ import {
   selectionModeFromEvent,
 } from './documentSelection.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { preloadPdfViewerNow } from '../utils/pdfViewerPrefetch.js';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -735,6 +736,7 @@ export default function DocumentsLedger({
         key={`mobile-${d.id}`}
         data-document-id={d.id}
         className={`mobile-doc-card${docSelectMode && isChecked ? ' is-selected' : ''}`}
+        onPointerDown={preloadPdfViewerNow}
         onClick={() => openMobileDoc(d)}
         role="button"
         tabIndex={0}
@@ -844,6 +846,7 @@ export default function DocumentsLedger({
                     onDragEnd={onRowDragEnd}
                     // Shift/Ctrl-click must not paint a text selection across rows.
                     onMouseDown={(event) => { if (event.shiftKey || event.metaKey || event.ctrlKey) event.preventDefault(); }}
+                    onPointerDown={preloadPdfViewerNow}
                     onClick={(event) => onDesktopRowClick(event, d)}
                     {...keyboardControlProps()}
                     onContextMenu={(event) => onDesktopRowContextMenu(event, d)}
