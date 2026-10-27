@@ -29,7 +29,8 @@ import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
 import SectionIconButton from '../components/SectionIconButton.jsx';
 import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
-import { watchLightPopover } from '../components/dismissRules.js';
+import { registerLightPopover, watchLightPopover } from '../components/dismissRules.js';
+import AnnotationDropdown from '../components/AnnotationDropdown.jsx';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import CalloutPopover from '../components/CalloutPopover.jsx';
 import { useProLock } from '../hooks/useProLock.js';
@@ -456,8 +457,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                         key={page.pageId}
                         label={`Page ${page.pageId}`}
                         disabled={editMode || isEditingRegion || isActiveRegionEdit}
+                        /* Owner 2026-10-27: no Move in the swipe - the line's
+                           own Move or copy button is always right there. */
                         actions={canManageSpaces ? buildSwipeActions({
-                          onMove: onTransferRegion ? (anchor) => onTransferRegion(space.id, page.pageId, regionLabel, anchor) : undefined,
                           onDelete: () => onRemovePage(space.id, page.pageId),
                           labels: { delete: 'Remove' },
                         }) : null}
@@ -702,17 +704,33 @@ function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExpo
 /*
  * Owner 2026-10-27 ("that modal is way too big ... it should come off as a
  * window with a tooltip type of thing, with a leader or tail that points to
- * that button"; later the same day: "the space that we select should come
- * from a dropdown, and the copy and move buttons should be smaller. Maybe
- * just icons"): a small card beside the row's button with a tail pointing at
- * it (CalloutPopover; phone: its own small sheet). A space drop-down, then
- * the page stepper with Copy and Move as two icon buttons on the same line.
- * Move takes the region and its marks; Copy takes the outline only
+ * that button"; then: "the space that we select should come from a dropdown,
+ * and the copy and move buttons should be smaller. Maybe just icons"; then:
+ * the drop-down must look like our other drop-downs, never a white border;
+ * "we always color the icon, we never color the box around the icon"; the
+ * card must not jump or shrink when a space is picked): a small card beside
+ * the row's button with a tail pointing at it (CalloutPopover; phone: its own
+ * small sheet). The space is the app's own setting-pill drop-down
+ * (AnnotationDropdown); Copy and Move are bare glyphs whose ink lights when
+ * they can act. The status line is always there, so the card never changes
+ * size. Move takes the region and its marks; Copy takes the outline only
  * (Bluebeam's Spaces copy the boundary, markups stay where they are).
  */
+const TRANSFER_SPACE_MENU_CLASS = 'spaces-transfer-space-menu';
+
 function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onCopy, onClose }) {
   const tip = useTooltip();
   const phone = Boolean(onClose);
+  const [spaceMenuOpen, setSpaceMenuOpen] = useState(false);
+  // The open space list is the topmost light popover: Escape closes only the
+  // list, not the card under it.
+  React.useEffect(() => {
+    if (!spaceMenuOpen) return undefined;
+    return registerLightPopover({
+      close: () => setSpaceMenuOpen(false),
+      contains: (target) => Boolean(target?.closest?.(`.${TRANSFER_SPACE_MENU_CLASS}`)),
+    });
+  }, [spaceMenuOpen]);
   const pageNumber = Number(transfer.targetPageId);
   const maxPage = typeof numPages === 'number' && numPages > 0 ? numPages : Infinity;
   const pageValid = Number.isInteger(pageNumber) && pageNumber >= 1 && pageNumber <= maxPage;
@@ -723,32 +741,35 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
     const next = Math.min(maxPage, Math.max(1, base + delta));
     onChange({ targetPageId: String(next) });
   };
-  const hint = !pageValid
+  const targetName = spaces.find((space) => space.id === transfer.targetSpaceId)?.name || 'Space';
+  const status = !pageValid
     ? (Number.isFinite(maxPage) ? `Pick a page from 1 to ${maxPage}` : 'Pick a page')
-    : (samePlace ? 'Pick another page or space' : null);
-  // Touch shows no tooltips, so the phone's buttons carry their word too.
+    : (samePlace ? 'Pick another page or space' : `To ${targetName}, page ${pageNumber}`);
+  // Touch shows no tooltips, so the phone's glyphs carry their word too.
   const actions = (
     <div className="spaces-transfer__actions">
       <button
         type="button"
-        className={`hub-btn${phone ? '' : ' hub-btn--icon'} spaces-transfer__act`}
+        className="spaces-transfer__act"
+        data-glyph-only=""
         aria-label="Copy region"
         disabled={!canGo}
         {...(phone ? {} : tip('Copy here (outline only, marks stay)', 'below'))}
         onClick={onCopy}
       >
-        <Icon name="copy" size={phone ? 16 : 14} color="currentColor" />
+        <Icon name="copy" size={phone ? 18 : 16} color="currentColor" />
         {phone ? <span>Copy</span> : null}
       </button>
       <button
         type="button"
-        className={`hub-btn${phone ? '' : ' hub-btn--icon'} hub-btn--primary spaces-transfer__act`}
+        className="spaces-transfer__act"
+        data-glyph-only=""
         aria-label="Move region"
         disabled={!canGo}
         {...(phone ? {} : tip('Move here (with its marks)', 'below'))}
         onClick={onMove}
       >
-        <Icon name="moveTo" size={phone ? 16 : 14} color="currentColor" />
+        <Icon name="moveTo" size={phone ? 18 : 16} color="currentColor" />
         {phone ? <span>Move</span> : null}
       </button>
     </div>
@@ -762,18 +783,18 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
           <button type="button" className="spaces-export__close tertiary" onClick={onClose}>Cancel</button>
         ) : null}
       </div>
-      <div className="spaces-transfer__select">
-        <select
-          aria-label="Destination space"
-          value={transfer.targetSpaceId}
-          onChange={(e) => onChange({ targetSpaceId: e.target.value })}
-        >
-          {spaces.map((space) => (
-            <option key={space.id} value={space.id}>{space.name || 'Space'}</option>
-          ))}
-        </select>
-        <Icon name="chevronDown" size={12} color="currentColor" />
-      </div>
+      <AnnotationDropdown
+        className="spaces-transfer__space"
+        contentClassName={`${TRANSFER_SPACE_MENU_CLASS}${phone ? ` ${TRANSFER_SPACE_MENU_CLASS}--phone` : ''}`}
+        open={spaceMenuOpen}
+        onOpenChange={setSpaceMenuOpen}
+        label="Destination space"
+        value={transfer.targetSpaceId}
+        options={spaces.map((space) => ({ value: space.id, label: space.name || 'Space' }))}
+        onSelect={(targetSpaceId) => onChange({ targetSpaceId })}
+        width="100%"
+        contentWidth="var(--radix-popover-trigger-width)"
+      />
       <div className="spaces-transfer__page">
         <span className="spaces-transfer__label">Page</span>
         <div className="spaces-transfer__stepper">
@@ -816,7 +837,7 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
         {Number.isFinite(maxPage) && <small className="spaces-transfer__of">of {maxPage}</small>}
         {phone ? null : actions}
       </div>
-      {hint && <div className="spaces-transfer__hint" role="status">{hint}</div>}
+      <div className="spaces-transfer__status" role="status" data-ready={canGo ? '' : undefined}>{status}</div>
       {phone ? (
         <>
           {actions}
@@ -1013,6 +1034,8 @@ const SpacesPanel = ({
         !transferAnchorRef.current
         || transferAnchorRef.current.contains(target)
         || transferMenuRef.current?.contains(target)
+        // The space list is portalled to <body>; a press in it is the card's.
+        || target.closest?.(`.${TRANSFER_SPACE_MENU_CLASS}`)
       ),
       close: () => setTransfer(null),
     });

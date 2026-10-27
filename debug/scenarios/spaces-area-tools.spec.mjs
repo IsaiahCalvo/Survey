@@ -224,8 +224,13 @@ test('desktop: areas copied before leaving still paste after reopening', async (
 });
 
 // Owner 2026-10-27: Move or copy is a small card beside its button, its tail
-// pointing at the button; the space is a drop-down and Copy / Move are two
-// small icon buttons on the page line.
+// pointing at the button; the space is the app's own drop-down pill (no
+// border), Copy / Move are bare glyphs (no box, ever), and picking a space
+// neither moves nor resizes the card.
+const pickSpace = async (page, name) => {
+  await page.getByRole('button', { name: 'Destination space', exact: true }).filter({ visible: true }).first().click();
+  await page.getByRole('listbox', { name: 'Destination space' }).getByRole('option', { name, exact: true }).click();
+};
 test('desktop: Move or copy opens beside its button with a tail', async ({ page, context }) => {
   test.skip(test.info().project.use?.isMobile, 'desktop pass');
   await setup(page, context);
@@ -240,12 +245,16 @@ test('desktop: Move or copy opens beside its button with a tail', async ({ page,
   expect(c.x - (o.x + o.width)).toBeLessThan(16);
   expect(c.width).toBeLessThanOrEqual(214);
   expect(c.height).toBeLessThanOrEqual(120);
-  const space = card.getByRole('combobox', { name: 'Destination space' });
-  await expect(space).toBeVisible();
+  const space = card.getByRole('button', { name: 'Destination space', exact: true });
+  await expect(space).toHaveClass(/chrome-pill/);
+  await expect(space).toHaveCSS('border-top-width', '0px');
   for (const name of ['Copy region', 'Move region']) {
-    const box = await card.getByRole('button', { name, exact: true }).boundingBox();
+    const control = card.getByRole('button', { name, exact: true });
+    const box = await control.boundingBox();
     expect(box.width).toBeLessThanOrEqual(28);
     expect(box.height).toBeLessThanOrEqual(26);
+    await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(control).toHaveCSS('border-top-width', '0px');
   }
   expect(c.y).toBeLessThan(o.y + o.height / 2);
   expect(c.y + c.height).toBeGreaterThan(o.y + o.height / 2);
@@ -255,9 +264,22 @@ test('desktop: Move or copy opens beside its button with a tail', async ({ page,
   await expect(button(page, 'Move region')).toBeEnabled();
   await button(page, 'Page before').click();
   await expect(button(page, 'Move region')).toBeDisabled();
-  await space.selectOption({ label: 'Fix19 Space B' });
+  const before = await card.boundingBox();
+  await pickSpace(page, 'Fix19 Space B');
   await expect(card).toBeVisible();
+  await expect(space).toContainText('Fix19 Space B');
   await expect(button(page, 'Move region')).toBeEnabled();
+  await expect(button(page, 'Move region')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const after = await card.boundingBox();
+  expect(Math.abs(after.x - before.x)).toBeLessThan(1);
+  expect(Math.abs(after.y - before.y)).toBeLessThan(1);
+  expect(Math.abs(after.height - before.height)).toBeLessThan(1);
+  // Escape with the list open closes only the list; again closes the card.
+  await space.click();
+  await expect(page.getByRole('listbox', { name: 'Destination space' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('listbox', { name: 'Destination space' })).toHaveCount(0);
+  await expect(card).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(card).toHaveCount(0);
 });
@@ -291,7 +313,7 @@ test('phone: Move or copy sheet has a space drop-down and finger-size Copy / Mov
   const page = await context.newPage();
   await setup(page, context, { phone: true });
   await button(page, 'Move or copy region on page 1').click();
-  const space = page.getByRole('combobox', { name: 'Destination space' });
+  const space = button(page, 'Destination space');
   await expect(space).toBeVisible();
   expect((await space.boundingBox()).height).toBeGreaterThanOrEqual(44);
   for (const name of ['Copy region', 'Move region']) {
@@ -300,8 +322,9 @@ test('phone: Move or copy sheet has a space drop-down and finger-size Copy / Mov
     expect((await control.boundingBox()).height).toBeGreaterThanOrEqual(44);
   }
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/transfer-phone.png` });
-  await space.selectOption({ label: 'Fix19 Space B' });
+  await pickSpace(page, 'Fix19 Space B');
   await expect(button(page, 'Move region')).toBeEnabled();
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/transfer-phone-picked.png` });
   await button(page, 'Copy region').click();
   await expect(space).toHaveCount(0);
   await context.close();
