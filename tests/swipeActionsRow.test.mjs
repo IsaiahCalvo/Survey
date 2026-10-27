@@ -126,6 +126,8 @@ test('finger, pen and mouse drag it (as in the HTML); it never fights scrolling,
   assert.match(row, /e\.pointerType === 'mouse' && e\.button !== 0/);
   assert.match(row, /root\.addEventListener\('dragstart', onDragStart, true\)/);
   assert.match(row, /if \(dx >= 2 && dx > dy \* 2\) e\.preventDefault\(\);\s*else g = null;/);
+  // A mouse gesture already claimed as a swipe keeps the native drag off too.
+  assert.match(row, /if \(g\.mode === 'swipe'\) \{ e\.preventDefault\(\); return; \}/);
   assert.match(row, /Math\.abs\(dy\) >= Math\.abs\(dx\)\)\s*\{\s*g\.mode = 'scroll';/);
   assert.match(row, /closest\?\.\('\[data-drag-rearrange-handle\], \[data-drag-handle\]'\)/);
   assert.match(row, /isEditable\(active\) && \(active === t \|\| active\.contains\(t\)\)/);
@@ -136,6 +138,9 @@ test('finger, pen and mouse drag it (as in the HTML); it never fights scrolling,
   // At rest the row clips nothing (sticky cells, drag lift, sort shifts).
   assert.match(css, /\.swipe-row \{[^}]*overflow: visible;/);
   assert.match(css, /\.swipe-row\[data-swipe-revealed\],\s*\.swipe-row\[data-removing\] \{[^}]*overflow: clip;/);
+  // Parked blocks take no room at rest, so a scrolling list never widens.
+  assert.match(css, /\.swipe-row__layer \{[^}]*display: none;/);
+  assert.match(css, /\.swipe-row\[data-swipe-revealed\] > \.swipe-row__layer \{\s*display: block;/);
 });
 
 test('one row open; elsewhere, scroll, Escape or another swipe shuts it; a tap on it only shuts it', () => {

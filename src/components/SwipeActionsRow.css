@@ -42,11 +42,13 @@
   color: var(--surface-1);
   font: inherit;
   cursor: pointer;
-  visibility: hidden;
+  /* Out of the layout at rest: a parked block past the row's edge would
+     otherwise widen a scrolling list (the desktop documents ledger). */
+  display: none;
   -webkit-tap-highlight-color: transparent;
 }
 .swipe-row[data-swipe-revealed] > .swipe-row__layer {
-  visibility: visible;
+  display: block;
 }
 .swipe-row__layer[data-side='trailing'] {
   left: 100%;

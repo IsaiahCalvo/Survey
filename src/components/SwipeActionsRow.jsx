@@ -363,7 +363,9 @@ export default function SwipeActionsRow({
     /* A row the browser drags itself (drag a document onto a project): a
        mouse drag that starts out sideways is a swipe, any other a drag. */
     const onDragStart = (e) => {
-      if (!g || g.type !== 'mouse' || g.mode !== 'pending') return;
+      if (!g || g.type !== 'mouse') return;
+      if (g.mode === 'swipe') { e.preventDefault(); return; }
+      if (g.mode !== 'pending') return;
       // dragstart reports where the press began; the last move says where
       // the mouse is heading.
       const dx = Math.abs((g.mx ?? g.x0) - g.x0);
