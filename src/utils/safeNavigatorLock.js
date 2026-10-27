@@ -28,24 +28,30 @@ export const createSafeNavigatorLock = (
 // free right now" (auth-js's refresh tick), so it never joins or leads a turn.
 export const createTabBatchedLock = (lockImpl) => {
   const turns = new Map();
+  // A call stuck in a turn behind one that never finishes would never reach
+  // auth-js's steal-on-timeout recovery. Once the call running ahead of it has
+  // run for the waiting call's timeout, it leaves the turn and asks the lock
+  // itself, as it did before. The clock restarts each time a call finishes:
+  // a long queue that keeps moving is not stuck, and leaving it would make
+  // this tab steal the lock from itself (the running call then fails).
+  const armEscape = (name, turn, item) => {
+    clearTimeout(item.timer);
+    if (!(item.acquireTimeout > 0)) return;
+    item.timer = setTimeout(() => {
+      const at = turn.queue.indexOf(item);
+      if (at < 0) return;
+      turn.queue.splice(at, 1);
+      lockImpl(name, item.acquireTimeout, item.callback).then(item.resolve, item.reject);
+    }, item.acquireTimeout);
+  };
   const batchedLock = (name, acquireTimeout, callback) => {
     if (acquireTimeout === 0) return lockImpl(name, acquireTimeout, callback);
     return new Promise((resolve, reject) => {
       const open = turns.get(name);
       if (open) {
-        const item = { callback, resolve, reject };
+        const item = { callback, resolve, reject, acquireTimeout };
         open.queue.push(item);
-        // A call stuck in a turn behind one that never finishes would never
-        // reach auth-js's steal-on-timeout recovery. After its own timeout it
-        // leaves the turn and asks the lock itself, as it did before.
-        if (acquireTimeout > 0) {
-          item.timer = setTimeout(() => {
-            const at = open.queue.indexOf(item);
-            if (at < 0) return;
-            open.queue.splice(at, 1);
-            lockImpl(name, acquireTimeout, callback).then(resolve, reject);
-          }, acquireTimeout);
-        }
+        armEscape(name, open, item);
         return;
       }
       const turn = { queue: [{ callback, resolve, reject }] };
@@ -57,6 +63,7 @@ export const createTabBatchedLock = (lockImpl) => {
           while (turn.queue.length) {
             const item = turn.queue.shift();
             clearTimeout(item.timer);
+            for (const waiting of turn.queue) armEscape(name, turn, waiting);
             turn.running = item;
             try { item.resolve(await item.callback()); } catch (error) { item.reject(error); }
             turn.running = null;

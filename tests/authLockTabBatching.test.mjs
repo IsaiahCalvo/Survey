@@ -181,6 +181,27 @@ test('a call stuck behind one that never finishes leaves the turn after its time
   assert.deepEqual(direct, [50], 'it went to the lock directly, where auth-js can steal on timeout');
 });
 
+test('a queue that keeps moving never leaves the turn, even when the whole queue takes longer than one timeout', async () => {
+  const direct = [];
+  let first = true;
+  const lock = (name, timeout, fn) => {
+    if (first) { first = false; return fn(); }
+    direct.push(timeout);
+    return fn();
+  };
+  const batched = createTabBatchedLock(lock);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  // Five calls of 25 ms each behind one another: the last waits ~100 ms in
+  // all, twice its 50 ms timeout, yet every call ahead of it finished in time.
+  const order = [];
+  await Promise.all(Array.from({ length: 5 }, (_, i) => batched('auth', 50, async () => {
+    await wait(25);
+    order.push(i);
+  })));
+  assert.deepEqual(order, [0, 1, 2, 3, 4], 'all ran in the turn, in order');
+  assert.deepEqual(direct, [], 'none asked the lock itself (that would steal it from this tab)');
+});
+
 test('a call with no timeout (-1) waits in the turn, as it would wait for the lock', async () => {
   const lock = (name, timeout, fn) => fn();
   const batched = createTabBatchedLock(lock);
