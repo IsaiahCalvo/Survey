@@ -89,16 +89,19 @@
   font-family: var(--font-ui);
 }
 
+/* Design review 2026-10-27: the one dialog x (DialogCard's hub-icon-btn: 24px,
+   no fill or box, a 13px glyph in --text-3). It was a filled, boxed 32px
+   square, unlike every other dialog's. */
 .account-settings-close {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 0;
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
   color: var(--text-3);
   padding: 0;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -107,14 +110,9 @@
   font-family: inherit;
 }
 
-/* UX 2026-09-22 (revision 4): the hover fill, the brighter glyph and the scale
-   already answer the pointer. The edge used to jump to the identifying
-   --border-strong as well, which tokens.css reserves for a control whose edge
-   is its only definition — a filled close button is not one. */
+/* Hover like the hub icon buttons: the glyph brightens, nothing else moves. */
 .account-settings-close:hover {
-  background: var(--hover);
   color: var(--text-1);
-  transform: scale(1.05);
 }
 
 .account-settings-body {
@@ -216,6 +214,12 @@
   font-weight: 700;
   color: var(--text-1);
   letter-spacing: -0.02em;
+}
+
+.account-pref-row + h3 {
+  /* A second heading in one section (Annotations: Snapping, then Text boxes)
+     needs room above it; it sat right under the row before. */
+  margin-top: 28px;
 }
 
 .account-section-description {
@@ -443,7 +447,9 @@
 }
 
 .account-switch[aria-checked='true'] .account-switch-track {
-  background: var(--text-2);
+  /* On is gold, like the page grid switches (design review 2026-10-27: a
+     grey "on" read as off). */
+  background: var(--accent);
   box-shadow: none;
 }
 
@@ -889,7 +895,7 @@
     padding-bottom: calc(18px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   }
 
-  /* The 32px close keeps its look; a transparent pad makes it 44px to a finger. */
+  /* The 24px close keeps its look; a transparent pad makes it 44px to a finger. */
   .account-settings-close {
     position: relative;
   }
@@ -897,7 +903,7 @@
   .account-settings-close::after {
     content: '';
     position: absolute;
-    inset: -7px;
+    inset: -10px;
   }
 
   .account-settings-body {

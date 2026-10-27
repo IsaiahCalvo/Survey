@@ -22,7 +22,9 @@ test('file menu wires Delete and Share to the check', () => {
   assert.match(src, /canManageProjectFile\(f, open, user\?\.id\)/);
   assert.match(src, /label: 'Delete', danger: true, reason: canManage \? null : noManageTitle/);
   assert.match(src, /label: 'Share', reason: canManage \? null : noManageTitle/);
-  assert.match(src, /tip\(it\.reason\)/);
+  // The rows (and the reason tip on a greyed-out row) come from MenuRows.
+  assert.match(src, /<MenuRows items=\{items\} tip=\{tip\}/);
+  assert.match(readFileSync(new URL('../src/components/MenuRows.jsx', import.meta.url), 'utf8'), /tip\(it\.reason, tipSide\)/);
   // Select bar uses the same rule.
   assert.match(src, /can=\{manageCan\(selectedFiles, open, user\?\.id\)\}/);
 });

@@ -230,6 +230,31 @@ export function createPdfByteCache({
     }
   };
 
+  /**
+   * What is cached for `key`, read before the access check answers:
+   * `{ stamp, bytes }` or null. Unverified: the caller serves the bytes only
+   * once the check names exactly `stamp` (then `use(key)` marks them used),
+   * as get() does. Open speed: the device read overlaps the check.
+   */
+  const peek = async (key) => {
+    if (!key) return null;
+    try {
+      const database = await db();
+      if (!database) return null;
+      const tx = database.transaction([META_STORE, FILE_STORE], 'readonly');
+      const [info, file] = await Promise.all([
+        requestResult(tx.objectStore(META_STORE).get(key), tx, timeoutMs),
+        requestResult(tx.objectStore(FILE_STORE).get(key), tx, timeoutMs),
+      ]);
+      const bytes = file?.bytes;
+      if (!info?.stamp || !(bytes instanceof ArrayBuffer) || bytes.byteLength !== info.size) return null;
+      return { stamp: info.stamp, bytes };
+    } catch (error) {
+      console.warn('[pdfByteCache] read failed:', error?.message || error);
+      return null;
+    }
+  };
+
   /** Keep `bytes` (an ArrayBuffer) as version `stamp` of `path` for `actorId`. */
   const put = async ({ actorId, path, stamp, bytes, since = generation, epoch = pathEpoch(path) }) => {
     // `since`: the generation the caller's READ started in (w36 review A: a
@@ -389,6 +414,8 @@ export function createPdfByteCache({
     get generation() { return generation; },
     pathEpoch,
     get,
+    peek,
+    use: (key) => touch(key).catch(() => {}),
     put,
     remove,
     removePath,

@@ -92,7 +92,7 @@ async function loadActionBar() {
   // Tooltip.jsx makes has to be rewritten to an absolute URL, because the
   // transpiled copy is written to a temp directory where '../utils/…' means
   // nothing. Add new Tooltip.jsx dependencies here.
-  for (const specifier of ['../viewerShared.js', '../utils/floatingUiGeometry.js', '../utils/toolShortcuts.js']) tooltipSource = tooltipSource.replace(`from '${specifier}'`, `from '${pathToFileURL(path.resolve(path.dirname(tooltipPath), specifier)).href}'`);
+  for (const specifier of ['../viewerShared.js', '../utils/floatingUiGeometry.js', '../utils/toolShortcuts.js', '../utils/quietFocus.js']) tooltipSource = tooltipSource.replace(`from '${specifier}'`, `from '${pathToFileURL(path.resolve(path.dirname(tooltipPath), specifier)).href}'`);
   const tooltipCode = (await transformWithOxc(tooltipSource, tooltipPath, { lang: 'jsx' })).code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   await writeFile(path.join(tempDir, 'Tooltip.mjs'), tooltipCode);
   executable = executable.replace('"./Tooltip"', '"./Tooltip.mjs"');

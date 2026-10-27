@@ -25,11 +25,21 @@ export function createOpenSourceHeadStarts({ now = () => Date.now(), maxAgeMs = 
     for (const [key, entry] of entries) if (t - entry.at > maxAgeMs) entries.delete(key);
   };
   return {
-    /** Ask now. `stamp` names the byte cache state the answers belong to. */
-    start(key, { fetchInfo, sign, stamp }) {
+    /**
+     * Ask now. `stamp` names the byte cache state the answers belong to.
+     * `readCached` (optional) reads this device's copy alongside: unverified
+     * until the access check names its version (the viewer checks).
+     */
+    start(key, { fetchInfo, sign, stamp, readCached }) {
       if (!key || typeof fetchInfo !== 'function' || typeof sign !== 'function') return false;
       prune();
-      entries.set(key, { at: now(), stamp, info: settle(fetchInfo), signing: settle(sign) });
+      const entry = { at: now(), stamp, info: settle(fetchInfo), signing: settle(sign), cached: null };
+      if (typeof readCached === 'function') {
+        entry.cached = Promise.resolve().then(readCached).catch(() => null);
+        // An open that never comes does not keep the file's bytes in memory.
+        entry.expire = setTimeout(() => { if (entries.get(key) === entry) entries.delete(key); }, maxAgeMs);
+      }
+      entries.set(key, entry);
       return true;
     },
     /** The answers for this open, or null to ask again. Each start is taken once. */
@@ -37,8 +47,9 @@ export function createOpenSourceHeadStarts({ now = () => Date.now(), maxAgeMs = 
       const entry = key ? entries.get(key) : null;
       if (!entry) return null;
       entries.delete(key);
+      clearTimeout(entry.expire);
       if (now() - entry.at > maxAgeMs || entry.stamp !== stamp) return null;
-      return { info: entry.info, signing: entry.signing };
+      return { info: entry.info, signing: entry.signing, cached: entry.cached };
     },
     get size() { prune(); return entries.size; },
   };
