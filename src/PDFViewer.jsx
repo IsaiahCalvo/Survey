@@ -17,7 +17,7 @@ import { readOriginalPdfBytes } from './services/embeddedImportBytes.js';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
-import { jsonEqual } from './utils/jsonEqual.js';
+import { jsonEqual, jsonEqualSteps } from './utils/jsonEqual.js';
 import { isCloudSaveConfirmed } from './utils/cloudSaveBaseline.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
 import { buildRemovePageToast, buildSpaceDeleteToast, countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
@@ -23611,6 +23611,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Track unsaved annotation changes
   const [hasUnsavedAnnotations, setHasUnsavedAnnotations] = useState(false);
   const savedAnnotationsByPageRef = useRef({});
+  // A compare waiting for idle (below); quitting runs it first.
+  const pendingUnsavedCheckRef = useRef(null);
+  // The marks the last check saw, and the marks whose compare still waits.
+  const checkedByPageRef = useRef(null);
+  const waitingByPageRef = useRef(null);
 
   // Mark annotations as dirty when they change
   const cloudSyncKeyRef = useRef(null);
@@ -23648,21 +23653,68 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Compare current with saved to detect changes. jsonEqual answers exactly
     // like comparing the two JSON.stringify strings, without building them
     // (w29: ~70 ms per change on a 3,000-mark document).
-    const matchesSaved = jsonEqual(annotationsByPage, savedAnnotationsByPageRef.current);
-
-    if (!matchesSaved && Object.keys(annotationsByPage).length > 0) {
-      setHasUnsavedAnnotations(true);
-      // Notify parent component
-      if (onUnsavedAnnotationsChange) {
-        onUnsavedAnnotationsChange(true);
-      }
+    const reportUnsaved = (matchesSaved) => {
+      pendingUnsavedCheckRef.current = null;
+      if (waitingByPageRef.current === annotationsByPage) waitingByPageRef.current = null;
+      const unsaved = !matchesSaved && Object.keys(annotationsByPage).length > 0;
+      if (unsaved) setHasUnsavedAnnotations(true);
+      if (onUnsavedAnnotationsChange) onUnsavedAnnotationsChange(unsaved);
+      return unsaved;
+    };
+    const checkNow = () => reportUnsaved(jsonEqual(annotationsByPage, savedAnnotationsByPageRef.current));
+    // A whole-document rebuild (the open, a cloud apply) shares no page with
+    // the marks before it, and an equal compare against the saved copy walks
+    // every mark: ~60 ms each, five times while a 3,000-mark document opens.
+    // Such a compare runs a page at a time in idle slices; a newer rebuild
+    // drops it, and a re-run for the same marks (a sync status change) keeps
+    // waiting. Marks it finds equal become the saved copy, so later edits
+    // compare only their own pages. An edit keeps its untouched pages, so it
+    // is checked at once, as before.
+    const saved = savedAnnotationsByPageRef.current;
+    const previous = checkedByPageRef.current;
+    checkedByPageRef.current = annotationsByPage;
+    const pages = Object.keys(annotationsByPage);
+    const rebuilt = pages.length > 1 && (
+      waitingByPageRef.current === annotationsByPage
+      || (previous !== null && previous !== annotationsByPage
+        && !pages.some((page) => previous[page] === annotationsByPage[page]))
+    );
+    const idle = typeof requestIdleCallback === 'function';
+    let sliceId = null;
+    if (rebuilt) {
+      let against = saved;
+      let steps = jsonEqualSteps(annotationsByPage, against);
+      const slice = () => {
+        sliceId = null;
+        if (savedAnnotationsByPageRef.current !== against) {
+          against = savedAnnotationsByPageRef.current;
+          steps = jsonEqualSteps(annotationsByPage, against);
+        }
+        const until = performance.now() + 8;
+        for (;;) {
+          const step = steps.next();
+          if (step.done) {
+            if (step.value && savedAnnotationsByPageRef.current === against) {
+              savedAnnotationsByPageRef.current = annotationsByPage;
+            }
+            reportUnsaved(step.value);
+            return;
+          }
+          if (performance.now() > until) break;
+        }
+        sliceId = idle ? requestIdleCallback(slice, { timeout: 500 }) : setTimeout(slice, 0);
+      };
+      pendingUnsavedCheckRef.current = checkNow;
+      waitingByPageRef.current = annotationsByPage;
+      sliceId = idle ? requestIdleCallback(slice, { timeout: 500 }) : setTimeout(slice, 0);
     } else {
-      // Notify parent component when there are no unsaved changes
-      if (onUnsavedAnnotationsChange) {
-        onUnsavedAnnotationsChange(false);
-      }
+      checkNow();
     }
-    return () => { if (confirmTimer) clearTimeout(confirmTimer); };
+    return () => {
+      if (confirmTimer) clearTimeout(confirmTimer);
+      if (sliceId != null) (idle ? cancelIdleCallback : clearTimeout)(sliceId);
+      if (pendingUnsavedCheckRef.current === checkNow) pendingUnsavedCheckRef.current = null;
+    };
   }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange, pdfFile?.id, cloudSyncEnabled, cloudSyncStatus, cloudSyncQueueSize]);
 
   // Hardening (audit 2026-04-30 #3): notify the App-level beforeunload guard
@@ -24385,7 +24437,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const handleBeforeQuit = async ({ quitAttemptId } = {}) => {
       let saved = true;
-      if (hasUnsavedAnnotations) {
+      if (hasUnsavedAnnotations || pendingUnsavedCheckRef.current?.()) {
         try {
           saved = await handleSaveDocument(true, (localBackupSaved) => {
             if (!localBackupSaved) {
