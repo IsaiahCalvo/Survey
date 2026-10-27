@@ -2,7 +2,7 @@
 // just drawn, never on top of it, and the marker always has an entity.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { placeSurveyMarkerCard } from '../src/survey/markerPlacementCard.js';
+import { placeSurveyMarkerCard, TOAST_BAND } from '../src/survey/markerPlacementCard.js';
 import { resolveNextSurveyEntity } from '../src/survey/nextSurveyEntity.js';
 
 const viewport = { width: 1400, height: 900 };
@@ -29,10 +29,16 @@ test('a marker as wide as the window gets the card below it', () => {
   assert.equal(overlaps(pos, rect), false);
 });
 
-test('the card stays inside the window near the bottom edge', () => {
+test('the card stays inside the window, above the toast band, near the bottom edge', () => {
   const rect = { left: 300, top: 820, right: 400, bottom: 880 };
   const pos = placeSurveyMarkerCard(rect, card, viewport);
-  assert.equal(pos.top, 900 - 240 - 8);
+  assert.equal(pos.top, 900 - 240 - 8 - TOAST_BAND);
+});
+
+test('a window too short for the toast band still keeps the card inside it', () => {
+  const rect = { left: 300, top: 200, right: 400, bottom: 260 };
+  const pos = placeSurveyMarkerCard(rect, card, { width: 1400, height: 300 });
+  assert.equal(pos.top, 300 - 240 - 8);
 });
 
 test('no marker on screen: the card is centred', () => {

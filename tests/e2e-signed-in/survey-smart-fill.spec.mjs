@@ -1,25 +1,30 @@
-// Smart fill (beta) on the real Schneider drawing set, Package 2 - Rev 4
-// (owner report 2026-10-22: "it's not filling Schneider tags consistently").
-// Tags that touch a wall, a leader line or the next tag used to leak or say
-// "too big"; Smart fill now reads the drawing's own tag outlines. And when a
-// tag is missed, "Teach a tag shape" boxes it, saves the shape in the survey
-// template, and Find more finds every tag like it.
+// Smart fill (beta) on Schneider-style tags (owner report 2026-10-22: "it's
+// not filling Schneider tags consistently"). Tags that touch a wall, a leader
+// line or the next tag used to leak or say "too big"; Smart fill now reads the
+// drawing's own tag outlines. And when a tag is missed, "Teach a tag shape"
+// boxes it, saves the shape in the survey template, and Find more finds every
+// tag like it. The sheet is a small made-up one (debug/smart-fill/make-tag-
+// sheet.mjs) that copies what makes Schneider tags hard, so the test stays fast.
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { E2E_ACCOUNTS, E2E_PROJECT } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
 
-const FIXTURE = 'debug/fixtures/package2-rev4.pdf';
-// Sheet SEC-B01E-P2 (page 7), page units. Each touches a wall or another tag.
-const PAGE = 7;
+// Tag boxes in page units, from the script that draws the sheet.
+const FIXTURE = 'debug/fixtures/tag-sheet.pdf';
+const PAGE = 1;
 const PAGE_WIDTH = 1224;
 const TAGS = {
-  'C95 (touches a wall)': [263.9, 513.2, 284.2, 533.4],
-  'C27 (overlaps C26)': [82, 549.7, 102.2, 569.9],
-  'C93 (touches C94)': [83.5, 496.4, 103.7, 516.7],
+  'touches a wall': [289.9, 509.9, 310.1, 530.1],
+  'overlaps the next tag': [89.9, 549.9, 110.1, 570.1],
+  'touches the next tag': [89.9, 496.4, 110.1, 516.6],
 };
-const R1224 = [294.7, 553.1, 314.9, 573.3];
+const TEACH = [609.9, 159.9, 630.1, 180.1];
+// A revision cloud drawn as separate arcs (its scallops reach 4 past the box
+// it is drawn round), with a tag inside it.
+const CLOUD = [636, 636, 1004, 744];
+const CLOUD_TAG = [689.9, 679.9, 710.1, 700.1];
 
 async function seed(admin) {
   const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
@@ -27,7 +32,7 @@ async function seed(admin) {
   const docId = randomUUID();
   const templateId = randomUUID();
   const templateName = `E2E Smart fill ${Date.now()}`;
-  const docName = `E2E Package 2 SF ${Date.now()}.pdf`;
+  const docName = `E2E Tag sheet SF ${Date.now()}.pdf`;
   const bytes = fs.readFileSync(path.resolve(FIXTURE));
   const filePath = `${ownerId}/${docId}.pdf`;
   const up = await admin.storage.from('documents').upload(filePath, new Blob([bytes], { type: 'application/pdf' }), {
@@ -44,7 +49,7 @@ async function seed(admin) {
   if (template.error) throw template.error;
   const doc = await admin.from('documents').insert({
     id: docId, user_id: ownerId, project_id: E2E_PROJECT.id, name: docName,
-    file_path: filePath, file_size: bytes.length, page_count: 36,
+    file_path: filePath, file_size: bytes.length, page_count: 1,
   });
   if (doc.error) throw doc.error;
   return { docId, docName, filePath, templateId, templateName };
@@ -80,6 +85,21 @@ async function outlineBox(locator) {
   });
 }
 
+// Scroll the viewer until a page-unit box is on screen, then map it.
+async function onScreen(page, sheet, area) {
+  const view = page.viewportSize();
+  for (let i = 0; i < 6; i += 1) {
+    const s = await toScreen(sheet, area);
+    const below = s.y1 - (view.height - 60);
+    const above = 60 - s.y0;
+    if (below <= 0 && above <= 0) return s;
+    await page.mouse.move(view.width / 2, view.height / 2);
+    await page.mouse.wheel(0, below > 0 ? below : -above);
+    await page.waitForTimeout(300);
+  }
+  return toScreen(sheet, area);
+}
+
 async function toScreen(sheet, [x0, y0, x1, y1]) {
   const box = await sheet.boundingBox();
   const k = box.width / PAGE_WIDTH;
@@ -105,6 +125,18 @@ test('a tap fills each touching Schneider tag exactly, then Apply makes it a Sur
       expect(Math.abs(b.x1 - tag[2]), `${name} right`).toBeLessThan(1);
       expect(Math.abs(b.y1 - tag[3]), `${name} bottom`).toBeLessThan(1);
     }
+    // Inside a revision cloud: a tap off the tag fills the cloud, a tap on
+    // the tag still fills just the tag.
+    for (const [name, want, at] of [['cloud', CLOUD, [0.75, 0.6]], ['tag in the cloud', CLOUD_TAG, [0.35, 0.7]]]) {
+      const s = await onScreen(page, sheet, want);
+      await page.mouse.click(s.x0 + (s.x1 - s.x0) * at[0], s.y0 + (s.y1 - s.y0) * at[1]);
+      const preview = page.locator('[data-smart-fill-preview="true"]');
+      await expect(preview, name).toBeVisible({ timeout: 10_000 });
+      const b = await outlineBox(preview);
+      for (const [i, side] of [[0, 'x0'], [1, 'y0'], [2, 'x1'], [3, 'y1']]) {
+        expect(Math.abs(b[side] - want[i]), `${name} ${side}`).toBeLessThan(1);
+      }
+    }
     // The last one becomes a marker.
     await page.getByRole('button', { name: 'Apply' }).click();
     const card = page.getByRole('dialog', { name: 'New Survey Marker' });
@@ -125,8 +157,8 @@ test('Teach a tag shape saves it in the template, and Find more finds every tag 
     const sheet = await openSmartFill(page, seeded);
     await page.getByRole('button', { name: 'Teach a tag shape' }).click();
     await expect(page.getByRole('button', { name: 'Teach a tag shape' })).toHaveAttribute('aria-pressed', 'true');
-    // Box the door tag with a little room around it.
-    const s = await toScreen(sheet, [R1224[0] - 3, R1224[1] - 3, R1224[2] + 3, R1224[3] + 3]);
+    // Box a tag with a little room around it.
+    const s = await toScreen(sheet, [TEACH[0] - 3, TEACH[1] - 3, TEACH[2] + 3, TEACH[3] + 3]);
     await page.mouse.move(s.x0, s.y0);
     await page.mouse.down();
     await page.mouse.move((s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, { steps: 4 });
@@ -135,8 +167,8 @@ test('Teach a tag shape saves it in the template, and Find more finds every tag 
     const preview = page.locator('[data-smart-fill-preview="true"]');
     await expect(preview).toBeVisible({ timeout: 10_000 });
     const b = await outlineBox(preview);
-    expect(Math.abs(b.x0 - R1224[0])).toBeLessThan(1);
-    expect(Math.abs(b.x1 - b.x0 - (R1224[2] - R1224[0]))).toBeLessThan(1);
+    expect(Math.abs(b.x0 - TEACH[0])).toBeLessThan(1);
+    expect(Math.abs(b.x1 - b.x0 - (TEACH[2] - TEACH[0]))).toBeLessThan(1);
 
     await page.getByRole('button', { name: 'Save shape' }).click();
     const card = page.getByRole('dialog', { name: 'New Survey Marker' });
@@ -160,6 +192,64 @@ test('Teach a tag shape saves it in the template, and Find more finds every tag 
     await page.getByRole('button', { name: 'Find more' }).click();
     await expect.poll(() => page.locator(`[data-overlay-page="${PAGE}"] [data-smart-fill-match="true"]`).count(), { timeout: 30_000 })
       .toBeGreaterThan(40);
+  } finally {
+    await cleanup(admin, seeded);
+  }
+});
+
+test('Smart fill shapes: a picked outline sized over one tag is saved, renamed, removed and put back', async ({ page }) => {
+  test.setTimeout(240_000);
+  const admin = adminClient();
+  const seeded = await seed(admin);
+  const templateShapes = async () => {
+    const { data } = await admin.from('templates').select('config').eq('id', seeded.templateId).single();
+    return data?.config?.smartFillShapes || [];
+  };
+  try {
+    const sheet = await openSmartFill(page, seeded);
+    await page.getByRole('button', { name: 'Smart fill shapes', exact: true }).click();
+    const menu = page.getByRole('dialog', { name: 'Smart fill shapes' });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByText(`Saved in ${seeded.templateName}`)).toBeVisible();
+    await expect(menu.getByText(/No shapes yet/)).toBeVisible();
+    await page.screenshot({ path: 'test-results/smart-fill-shapes-empty.png' });
+
+    // Pick the circle; the next box dragged over one tag sizes it.
+    await menu.getByRole('button', { name: /^Circle/ }).click();
+    await expect(menu).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Teach a tag shape' })).toHaveAttribute('aria-pressed', 'true');
+    const s = await toScreen(sheet, TEACH);
+    await page.mouse.move(s.x0, s.y0);
+    await page.mouse.down();
+    await page.mouse.move((s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, { steps: 4 });
+    await expect(page.locator('[data-smart-fill-teach-preset="true"]')).toBeVisible();
+    await page.mouse.move(s.x1, s.y1, { steps: 4 });
+    await page.mouse.up();
+    const preview = page.locator('[data-smart-fill-preview="true"]');
+    await expect(preview).toBeVisible({ timeout: 10_000 });
+    const b = await outlineBox(preview);
+    expect(Math.abs(b.x0 - TEACH[0])).toBeLessThan(1.5);
+    expect(Math.abs(b.x1 - TEACH[2])).toBeLessThan(1.5);
+    await page.getByRole('button', { name: 'Save shape' }).click();
+    const card = page.getByRole('dialog', { name: 'New Survey Marker' });
+    await card.getByRole('option', { name: /Camera/ }).click();
+    await expect(card).toBeHidden();
+    await expect.poll(async () => (await templateShapes()).map((x) => x.name), { timeout: 20_000 }).toEqual(['Circle 1']);
+
+    // Listed in the menu; renamed in place.
+    await page.getByRole('button', { name: 'Smart fill shapes', exact: true }).click();
+    await expect(menu.locator('[data-smart-fill-shape]')).toHaveCount(1);
+    const name = menu.getByRole('textbox', { name: 'Name of Circle 1' });
+    await name.fill('Device tag');
+    await name.press('Enter');
+    await expect.poll(async () => (await templateShapes()).map((x) => x.name), { timeout: 20_000 }).toEqual(['Device tag']);
+    await page.screenshot({ path: 'test-results/smart-fill-shapes-list.png' });
+
+    // Removed at once; Undo puts it back.
+    await menu.getByRole('button', { name: 'Remove Device tag' }).click();
+    await expect.poll(async () => (await templateShapes()).length, { timeout: 20_000 }).toBe(0);
+    await page.locator('.app-toast__action', { hasText: 'Undo' }).click();
+    await expect.poll(async () => (await templateShapes()).map((x) => x.name), { timeout: 20_000 }).toEqual(['Device tag']);
   } finally {
     await cleanup(admin, seeded);
   }

@@ -25,6 +25,7 @@ import {
   useSmartFillTeachArmed,
 } from './smartFillTemplateShapes.js';
 import { showToast, dismissToast } from '../utils/toast';
+import SmartFillShapesMenu from './SmartFillShapesMenu.jsx';
 
 // Test-only fake Smart fill (dev server + ?fakeSmartFill=1). Never in a
 // production build: Vite folds import.meta.env.DEV to false and drops this.
@@ -125,6 +126,7 @@ export default function SurveyMarkerModeTools({ chromeTip, glyphSize }) {
           <Icon name="template" size={glyphSize} />
         </button>
       )}
+      {showTeach && <SmartFillShapesMenu chromeTip={chromeTip} glyphSize={glyphSize} />}
       {showFindSimilar && (
         <button
           type="button"

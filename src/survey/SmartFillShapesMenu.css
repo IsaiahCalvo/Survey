@@ -1,0 +1,151 @@
+/* src/survey/SmartFillShapesMenu.css — the Smart fill shapes card
+ * (SmartFillShapesMenu.jsx). The shell is the shared popover
+ * (.annotation-dropdown__popover); this lays out its list and outlines. */
+
+.annotation-dropdown__popover.sf-shapes {
+  width: 260px;
+  gap: 6px;
+}
+
+.sf-shapes__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 6px 0;
+}
+
+.sf-shapes__title {
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sf-shapes__where,
+.sf-shapes__size,
+.sf-shapes__label,
+.sf-shapes__empty {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.sf-shapes__empty {
+  margin: 0;
+  padding: 2px 6px;
+  line-height: 1.4;
+}
+
+.sf-shapes__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sf-shapes__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 2px 4px 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.sf-shapes__outline {
+  flex: 0 0 auto;
+  color: var(--text-2);
+}
+
+.sf-shapes__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sf-shapes__name {
+  min-width: 0;
+  width: 100%;
+  padding: 1px 4px;
+  margin-left: -4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+}
+
+.sf-shapes__name:hover {
+  border-color: var(--border);
+}
+
+.sf-shapes__name:focus-visible {
+  outline: 0;
+  border-color: var(--border-strong);
+  background: var(--surface-1, transparent);
+}
+
+.sf-shapes__remove,
+.sf-shapes__preset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sf-shapes__remove {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+}
+
+.sf-shapes__add {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.sf-shapes__teach {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sf-shapes__label {
+  padding: 2px 6px 0;
+}
+
+.sf-shapes__presets {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 0 2px 2px;
+}
+
+.sf-shapes__preset {
+  height: 30px;
+}
+
+.sf-shapes__remove:focus-visible,
+.sf-shapes__preset:focus-visible {
+  outline: 0;
+  color: var(--text-1);
+  background: var(--hover);
+}
+
+@media (hover: hover) {
+  .sf-shapes__remove:hover,
+  .sf-shapes__preset:hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
+}
