@@ -437,3 +437,79 @@ test('a merged checkpoint is never claimed as covered, and onlyIfCovered never m
   assert.equal(after.checkpointToken, before.checkpointToken);
   assert.deepEqual(after.snapshotIdentity, before.snapshotIdentity);
 });
+
+// Cold open (2026-10-27): the downloaded snapshot goes into this device's
+// offline copy after the open, not during it; the first local edit, or a
+// close, fills it first.
+test('a cold open fills the offline copy after the open; a local edit or a close fills it first', async () => {
+  const documentId = 'open-speed-deferred-offline-copy';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const seed = await open(alice, { documentId, outboxStore: createMemoryAnnotationOutbox(), clientId: 's1' });
+  seed.applyByPage({ 1: { objects: [rect('k1'), rect('k2')] } });
+  await seed.drain();
+  assert.equal(await seed.flushSnapshot(), true, 'the checkpoint is written');
+  await seed.destroy();
+
+  // A stand-in for y-indexeddb: it stores every update its doc emits.
+  const providers = [];
+  const localPersistenceFactory = async (_name, target) => {
+    const provider = { doc: target, db: {}, synced: true, stored: [] };
+    provider._storeUpdate = (update, origin) => { if (origin !== provider) provider.stored.push(update); };
+    provider.destroy = () => target.off('update', provider._storeUpdate);
+    target.on('update', provider._storeUpdate);
+    providers.push(provider);
+    return provider;
+  };
+  const replayed = (provider) => {
+    const doc = new Y.Doc();
+    for (const update of provider.stored) Y.applyUpdate(doc, update);
+    return [...doc.getMap('marks').keys()].sort();
+  };
+  const coldOpen = (clientId) => openAnnotationDoc({
+    documentId,
+    supabase: cloud.makeClient('user-b').supabase,
+    clientId,
+    actorUserId: 'user-b',
+    enableLocal: true,
+    enableRealtime: false,
+    doc: new Y.Doc(),
+    outboxStore: createMemoryAnnotationOutbox(),
+    localPersistenceFactory,
+    legacyPersistenceFactory: async () => ({ synced: true, destroy() {}, async clearDocument() {} }),
+  });
+
+  const previousIndexedDb = globalThis.indexedDB;
+  globalThis.indexedDB = {};
+  try {
+    const handle = await coldOpen('b1');
+    const provider = providers.at(-1);
+    try {
+      assert.deepEqual(ids(handle.getByPage()), ['k1', 'k2'], 'the marks show');
+      assert.equal(provider.stored.length, 0, 'the open wrote nothing to the copy');
+      assert.equal(provider.doc.store.clients.size, 0, 'and did not decode the snapshot into it');
+      // A local edit before the copy is filled fills it at once (a bulk
+      // import has no other local copy until its checkpoint is stored).
+      handle.applyByPage({ 1: { objects: [...handle.getByPage()[1].objects, rect('k3')] } });
+      assert.deepEqual(replayed(provider), ['k1', 'k2', 'k3'], 'the edit is in the copy at once, after the snapshot');
+      await handle.drain();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const first = new Y.Doc();
+      Y.applyUpdate(first, provider.stored[0]);
+      assert.deepEqual([...first.getMap('marks').keys()].sort(), ['k1', 'k2'], 'the snapshot is stored first, as one update');
+      assert.deepEqual(replayed(provider), ['k1', 'k2', 'k3'], 'the copy holds the snapshot and the later edit');
+      assert.deepEqual([...provider.doc.getMap('marks').keys()].sort(), ['k1', 'k2', 'k3']);
+    } finally {
+      await handle.destroy();
+    }
+
+    // Closed before the copy is filled: the close fills it.
+    const quick = await coldOpen('b2');
+    const quickProvider = providers.at(-1);
+    assert.equal(quickProvider.stored.length, 0);
+    await quick.destroy();
+    assert.deepEqual(replayed(quickProvider), ['k1', 'k2', 'k3'], 'the close filled the copy');
+  } finally {
+    globalThis.indexedDB = previousIndexedDb;
+  }
+});
