@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import {
+  autoCompleteOn,
   findCompleteEntity,
   isChecklistAllYesOrNA,
   resolveAutoCompleteEntity,
@@ -91,4 +92,34 @@ test('every preset answer set: good and neutral answers count toward Complete, b
   }
   assert.ok(ANSWER_SET_PRESETS.some((p) => p.id === 'installed-missing-damaged-na'));
   assert.ok(ANSWER_SET_PRESETS.some((p) => p.id === 'works-not-working-na'));
+});
+
+// Owner 2026-10-27: "auto-mark as complete is a toggle". A template stores
+// `autoComplete: false` to turn it off; unset means on. Off only stops the
+// automatic pick; nothing ever takes Complete away.
+test('the template switch: unset or true is on, false is off', () => {
+  assert.equal(autoCompleteOn({}), true);
+  assert.equal(autoCompleteOn(null), true);
+  assert.equal(autoCompleteOn({ autoComplete: true }), true);
+  assert.equal(autoCompleteOn({ autoComplete: false }), false);
+});
+
+test('the shared checklist handler skips the rule when the switch is off', () => {
+  const guard = handler.indexOf('if (!autoCompleteOn(liveTemplate)) return;');
+  assert.match(handler, /const liveTemplate = surveyTemplates\.find\(/, 'the switch comes from the live template, not the version the document kept');
+  assert.ok(guard > 0, 'the handler must check the template switch');
+  assert.ok(guard < handler.indexOf('resolveAutoCompleteEntity('), 'the switch is checked before the rule picks Complete');
+  assert.ok(guard > handler.indexOf('setSurveyMarkers('), 'the answer itself is still saved when the switch is off');
+});
+
+test('the template editor saves the switch and counts it as a change', async () => {
+  const { fingerprintTemplates } = await import('../src/home/templatesEditorReload.js');
+  const base = { id: 't1', name: 'T', modules: [], roster: [] };
+  const on = fingerprintTemplates([base]).t1;
+  const off = fingerprintTemplates([{ ...base, autoComplete: false }]).t1;
+  assert.notEqual(on, off, 'turning it off is an unsaved change');
+  assert.equal(fingerprintTemplates([{ ...base, autoComplete: true }]).t1, on, 'on is the same as unset, so older templates print the same');
+  const editorSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'home', 'TemplatesEditor.jsx'), 'utf8');
+  assert.match(editorSrc, /\.\.\.\(r\.autoComplete === false \? \{ autoComplete: false \} : \{\}\)/, 'the save keeps autoComplete: false');
+  assert.match(editorSrc, /autoComplete: _oldAuto/, 'turning it back on drops the stored false');
 });

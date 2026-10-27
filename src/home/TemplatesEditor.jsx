@@ -114,6 +114,7 @@ import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
 import { templateCategoryEmptyText } from './templateEmptyText.js';
+import { autoCompleteOn, findCompleteEntity } from '../utils/surveyAutoEntity.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
 // The "make your own" choice in the checklist-answers picker.
@@ -306,10 +307,45 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     ...(t?.exportKitId ? { exportKitId: t.exportKitId } : {}),
     ...(t?.reportKitId ? { reportKitId: t.reportKitId } : {}),
     ...(t?.answerSet ? { answerSet: t.answerSet } : {}),
+    // "Auto-mark as Complete" switch; unset means on.
+    ...(t?.autoComplete === false ? { autoComplete: false } : {}),
     // Smart fill tag shapes taught on drawings (beta); the editor only removes them.
     ...(Array.isArray(t?.smartFillShapes) && t.smartFillShapes.length ? { smartFillShapes: t.smartFillShapes } : {}),
   };
 });
+
+/* Owner 2026-10-27: "auto-mark as complete is a toggle". On (the default),
+   a marker turns Complete by itself once every checklist line is done; off,
+   Complete is only set by hand. Neither way takes Complete away. */
+function AutoCompleteSwitch({ template, onToggle, phone = false }) {
+  const on = autoCompleteOn(template);
+  const complete = findCompleteEntity(template.roster);
+  const id = `template-auto-complete-${phone ? 'phone' : 'desk'}-${template.id}`;
+  return (
+    <div className={`template-auto-complete${phone ? ' template-auto-complete--phone' : ''}`} data-auto-complete={on ? 'on' : 'off'}>
+      <div className="template-auto-complete__copy">
+        <div className="template-auto-complete__title" id={id}>Auto-mark as Complete</div>
+        <p className="template-auto-complete__hint">
+          {!complete
+            ? 'Add an entity named Complete to use this.'
+            : on
+              ? `Items turn ${complete.role || 'Complete'} once every line is done.`
+              : `Set ${complete.role || 'Complete'} by hand.`}
+        </p>
+      </div>
+      <button
+        type="button"
+        className="template-auto-complete__switch"
+        role="switch"
+        aria-checked={on}
+        aria-labelledby={id}
+        onClick={onToggle}
+      >
+        <span className="template-auto-complete__track" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
 
 /* Smart fill (beta, owner 2026-10-22): the tag shapes this template has
    learned. Each is taught on a drawing ("Teach a tag shape"); here they can
@@ -2089,7 +2125,7 @@ export default function TemplatesEditor({
         }),
       })),
     }));
-    const { exportKitId: _oldKit, reportKitId: _oldReport, answerSet: _oldAnswers, smartFillShapes: _oldShapes, ...originalRest } = original;
+    const { exportKitId: _oldKit, reportKitId: _oldReport, answerSet: _oldAnswers, autoComplete: _oldAuto, smartFillShapes: _oldShapes, ...originalRest } = original;
     // Smart fill shapes: the live list (a drawing may have added one since this
     // editor opened) minus the ones removed here. A template not saved yet (a
     // duplicate) has no live row, so it keeps the shapes it was made with.
@@ -2105,6 +2141,8 @@ export default function TemplatesEditor({
       ...(r.reportKitId ? { reportKitId: r.reportKitId } : {}),
       // Checklist answers; unset means Y / N / N/A.
       ...(r.answerSet ? { answerSet: r.answerSet.map((a) => ({ value: a.value, tone: a.tone, ...(a.means ? { means: a.means } : {}) })) } : {}),
+      // Auto-mark as Complete; unset means on.
+      ...(r.autoComplete === false ? { autoComplete: false } : {}),
       id: r.id,
       name: r.name,
       modules: mods,
@@ -3218,6 +3256,7 @@ export default function TemplatesEditor({
                 </SortableRearrangeList>
                 )}
               </div>
+              {tpl && <AutoCompleteSwitch template={tpl} onToggle={() => mutateTpl(tpl.id, (t) => { const { autoComplete: _a, ...rest } = t; return autoCompleteOn(t) ? { ...rest, autoComplete: false } : rest; })} />}
             </div>
           </aside>
 
@@ -3843,6 +3882,7 @@ export default function TemplatesEditor({
                     })}
                   </SortableRearrangeList>
                 )}
+                <AutoCompleteSwitch phone template={tpl} onToggle={() => mutateTpl(tpl.id, (t) => { const { autoComplete: _a, ...rest } = t; return autoCompleteOn(t) ? { ...rest, autoComplete: false } : rest; })} />
                     </section>
                   </div>
                 </div>

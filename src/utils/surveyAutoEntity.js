@@ -11,6 +11,13 @@ import { DEFAULT_ANSWER_SET, isItemDone } from '../services/answerSets.js';
 //     one was, so on most surveys it silently never fired).
 // One shared rule for the desktop rail and the phone sheet
 // (SurveySpacesRail.applyChecklistResponseSelection).
+//
+// Owner 2026-10-27: a template can turn the rule off ("Auto-mark as Complete"
+// switch in the template's Entities). Off means Complete is only ever set by
+// hand; the switch never makes Survey take Complete away. Stored as
+// `autoComplete: false` on the template; unset means on.
+
+export const autoCompleteOn = (template) => template?.autoComplete !== false;
 
 const COMPLETE_FLAG_KEYS = ['isComplete', 'complete'];
 
