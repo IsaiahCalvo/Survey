@@ -105,7 +105,9 @@ async function readMarkers(page) {
 
 async function openTemplates(page) {
   await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
-  await page.getByText(seeded.templateName, { exact: true }).first().click();
+  // The hidden phone survey rail also names the template and can render
+  // before the Templates list: wait for a visible match, not the first one.
+  await page.getByText(seeded.templateName, { exact: true }).filter({ visible: true }).first().click();
 }
 
 async function openSurvey(page) {
