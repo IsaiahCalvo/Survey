@@ -276,6 +276,12 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     closeMenu();
   };
 
+  // A pin behind "+N" cannot be dragged into view: its menu moves it first.
+  const moveToStart = (pin) => {
+    closeMenu();
+    flipPins(() => store.movePin(pin.id, 0));
+  };
+
   // --- dock drag (grip) -----------------------------------------------------
   // walkthu's favourite-tools dock, move for move:
   // - Pressed and moved 6px, the dock lifts (1.1x; 0.95x from the bottom) and
@@ -852,6 +858,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           onAdd={(kindId) => addPin(kindId, startingStyleFor(apiRef.current, sessionRef.current, kindId))}
           onUnpin={unpin}
           onDuplicate={duplicate}
+          onMoveToStart={moveToStart}
           onPlacement={(next) => {
             closeMenu();
             const dock = dockRef.current;
@@ -893,7 +900,7 @@ function menuPosition(rect, placement, width = 240) {
 
 function PinnedToolsMenu({
   menuRef, menu, placement, phone, pins, hiddenPins, renderPin, compact, editing, currentKind, onPinCurrent, onAdd,
-  onUnpin, onDuplicate, onPlacement, onToggleCompact, onToggleEditing, onHide, api,
+  onUnpin, onDuplicate, onMoveToStart, onPlacement, onToggleCompact, onToggleEditing, onHide, api,
 }) {
   // The "+N" grid: five pins a row, each the dock's own pin button.
   const moreColumns = Math.min(5, Math.max(1, hiddenPins.length));
@@ -923,6 +930,11 @@ function PinnedToolsMenu({
         <button type="button" role="menuitem" onClick={() => onDuplicate(pin)}>
           <Icon name="duplicate" size={14} color="currentColor" /><span>Duplicate</span>
         </button>
+        {pins[0]?.id === pin.id ? null : (
+          <button type="button" role="menuitem" data-pin-move-first="true" onClick={() => onMoveToStart(pin)}>
+            <Icon name="chevronUp" size={14} color="currentColor" /><span>Move to start</span>
+          </button>
+        )}
         <button type="button" role="menuitem" className="is-danger" onClick={() => onUnpin(pin.id)}>
           <Icon name="close" size={14} color="currentColor" /><span>Unpin</span>
         </button>
