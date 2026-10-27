@@ -1,17 +1,17 @@
 /*
- * SwipeActionsRow.css — slide a list row to uncover its actions (owner
+ * SwipeActionsRow.css — the EDC tracker's swipe row, copied (owner
  * 2026-10-27). See SwipeActionsRow.jsx for the gesture.
  *
- *   [ row content ........................ ]
- *   [ row content ........ ][ Share ][Delete]   72px each (52px, icon only,
- *                                                on rows under 44px tall)
+ *   [ row content ................ ][  Delete  ]   one solid block per side,
+ *   [  Share  ][ row content ................ ]   76px when it sits open
  *
- * The actions sit BEHIND the row and are only painted while it is moved, so
- * a resting row shows nothing new, and the row's own background is only made
+ * Each action is a full-width block parked just off the row's edge; the
+ * script slides it in with the row, so it always fills exactly the strip the
+ * row uncovers. Its glyph sits in the middle of that strip. Blocks are only
+ * painted while the row is moved, and the row's own background is only made
  * opaque then too (at rest the row keeps its transparent look, which the
  * drag-lift and select fills rely on). Delete is the app's danger fill
- * (--danger-fill with --on-danger, the pair made for a white glyph on red);
- * the others are quiet greys. Never gold.
+ * (--danger-fill with --on-danger); the other is a solid ink block. Never gold.
  */
 .swipe-row {
   position: relative;
@@ -21,126 +21,124 @@
   /* The page keeps up/down scrolling; the sideways move is ours. */
   touch-action: pan-y;
   overscroll-behavior-x: contain;
-  --swipe-ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --swipe-neutral: color-mix(in srgb, var(--text-1) 20%, var(--surface-2));
-  --swipe-neutral-2: color-mix(in srgb, var(--text-1) 30%, var(--surface-2));
 }
 .swipe-row[data-swipe-revealed],
-.swipe-row.is-collapsing {
+.swipe-row[data-removing] {
   overflow: hidden;
   /* clip, not hidden, where it exists: it makes no scroll box, so a sticky
      cell inside keeps sticking to the page's own scroller. */
   overflow: clip;
 }
-.swipe-row.is-off {
-  touch-action: auto;
-}
-.swipe-row__tray {
+.swipe-row__layer {
   position: absolute;
   top: 0;
-  right: 0;
   bottom: 0;
-  z-index: 0;
-  /* Set from the gesture: exactly the strip the row uncovers. */
-  width: 0;
-  display: flex;
-  overflow: hidden;
-  visibility: hidden;
-  transition: width 260ms var(--swipe-ease);
-}
-.swipe-row[data-swipe-revealed] > .swipe-row__tray {
-  visibility: visible;
-}
-.swipe-row__action {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
+  width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
   border-radius: 0;
-  background: var(--swipe-neutral);
-  color: var(--text-1);
+  background: color-mix(in srgb, var(--text-1) 78%, var(--surface-2));
+  color: var(--surface-1);
   font: inherit;
   cursor: pointer;
+  visibility: hidden;
   -webkit-tap-highlight-color: transparent;
-  transition: flex-grow 200ms var(--swipe-ease), background-color 120ms ease;
 }
-.swipe-row__action:nth-child(even) {
-  background: var(--swipe-neutral-2);
+.swipe-row[data-swipe-revealed] > .swipe-row__layer {
+  visibility: visible;
 }
-.swipe-row__action[data-tone='danger'] {
+.swipe-row__layer[data-side='trailing'] {
+  left: 100%;
+}
+.swipe-row__layer[data-side='leading'] {
+  right: 100%;
+}
+.swipe-row__layer[data-tone='danger'] {
   background: var(--danger-fill);
   color: var(--on-danger);
 }
-.swipe-row__action:active {
-  background: color-mix(in srgb, var(--text-1) 38%, var(--surface-2));
+.swipe-row__layer:focus {
+  outline: none;
 }
-.swipe-row__action[data-tone='danger']:active {
-  background: var(--danger-press);
+.swipe-row__layer:focus-visible {
+  outline: 2px solid var(--focus-ring, currentColor);
+  outline-offset: -4px;
+}
+/* A zero-width point on the block's inner edge; the script moves it to the
+   middle of the uncovered strip and the glyph centres on it. */
+.swipe-row__anchor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  transform: translate3d(var(--swipe-anchor-x, 0px), 0, 0);
+}
+.swipe-row__layer[data-side='trailing'] .swipe-row__anchor {
+  left: 0;
+}
+.swipe-row__layer[data-side='leading'] .swipe-row__anchor {
+  right: 0;
 }
 .swipe-row__glyph {
-  flex: none;
-  width: var(--swipe-action-w, 72px);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--swipe-action-w, 76px) / -2);
+  width: var(--swipe-action-w, 76px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  opacity: var(--swipe-reveal, 0);
-  transform: scale(calc(0.6 + 0.4 * var(--swipe-reveal, 0)));
   pointer-events: none;
+}
+.swipe-row__icon {
+  display: grid;
+  place-items: center;
+  opacity: var(--swipe-icon, 0);
+  transform: scale(var(--swipe-icon-scale, 0.6));
 }
 .swipe-row__label {
   font-size: 11px;
   font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
+  opacity: var(--swipe-label, 0);
 }
 .swipe-row[data-swipe-compact] .swipe-row__label {
   display: none;
 }
-.swipe-row[data-swipe-compact] .swipe-row__glyph svg {
-  width: 16px;
-  height: 16px;
-}
-/* Full swipe armed: Delete takes the whole strip, its glyph rides the row. */
-.swipe-row__tray[data-full] > .swipe-row__action:not(:last-child) {
-  flex-grow: 0;
-}
-.swipe-row__tray[data-full] > .swipe-row__action:last-child {
-  justify-content: flex-start;
-}
 .swipe-row__content {
   position: relative;
-  transition: transform 260ms var(--swipe-ease);
 }
+/* Above the blocks only while moved: at rest a row makes no stacking
+   context, so a menu inside it can still overlap the rows below. */
 .swipe-row[data-swipe-revealed] > .swipe-row__content {
-  z-index: 1;
+  z-index: 10;
   background: var(--swipe-row-bg, var(--surface-2));
+}
+.swipe-row[data-swipe-dragging] > .swipe-row__content {
+  user-select: none;
+  -webkit-user-select: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .swipe-row[data-swipe-dragging] > .swipe-row__content {
+    cursor: grabbing;
+  }
 }
 /* A lifted (dragged) row drops its own edge for the lift's hairline
    (states.css [data-drag-lifted] > *); the swipe wrapper sits in between. */
 [data-drag-lifted] > .swipe-row > .swipe-row__content > :not([data-drag-keep-fill]) {
   border-color: transparent !important;
 }
-.swipe-row.is-dragging > .swipe-row__content,
-.swipe-row.is-dragging > .swipe-row__tray {
-  transition: none;
-}
 /* Delete: the row slides out, then folds shut, then the delete runs. */
-.swipe-row.is-collapsing {
-  transition: height 220ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease-out;
+.swipe-row.is-folding {
+  transition: height 400ms cubic-bezier(0.16, 1, 0.3, 1), opacity 120ms linear 220ms;
   opacity: 0;
 }
 @media (prefers-reduced-motion: reduce) {
-  .swipe-row__content,
-  .swipe-row__tray,
-  .swipe-row__action,
-  .swipe-row.is-collapsing {
+  .swipe-row.is-folding {
     transition: none !important;
   }
 }

@@ -736,6 +736,7 @@ export default function DocumentsLedger({
   const documentSwipeActions = (d) => {
     const pickOnly = () => setSelDocs(new Set([d.id]));
     return buildSwipeActions({
+      lead: 'share',
       onDuplicate: onDuplicate ? () => onDuplicate([d.raw]) : undefined,
       onMove: onMoveCopy ? () => { pickOnly(); setMoveMode('move'); setMoveOpen(true); } : undefined,
       onCopy: onMoveCopy ? () => { pickOnly(); setMoveMode('copy'); setMoveOpen(true); } : undefined,

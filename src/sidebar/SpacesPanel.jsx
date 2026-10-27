@@ -703,8 +703,8 @@ function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExpo
  * Owner 2026-10-27 ("that modal is way too big ... it should come off as a
  * window with a tooltip type of thing, with a leader or tail that points to
  * that button"): a small card beside the row's button with a tail pointing at
- * it (CalloutPopover; phone: its own small sheet). The space list, a page
- * stepper, then Copy and Move side by side. Move takes the region and its
+ * it (CalloutPopover; phone: its own small sheet). A space dropdown, then
+ * the page stepper with small Copy and Move icon buttons beside it. Move takes the region and its
  * marks; Copy takes the outline only (Bluebeam's Spaces copy the boundary,
  * markups stay where they are).
  */
@@ -732,25 +732,20 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
           <button type="button" className="spaces-export__close tertiary" onClick={onClose}>Cancel</button>
         ) : null}
       </div>
-      <div className="spaces-transfer__label">Space</div>
-      <div className="spaces-export__spaces spaces-transfer__spaces" role="radiogroup" aria-label="Destination space">
-        {spaces.map((space) => {
-          const chosen = space.id === transfer.targetSpaceId;
-          return (
-            <button
-              key={space.id}
-              type="button"
-              role="radio"
-              aria-checked={chosen}
-              className={`spaces-export__space${chosen ? ' is-chosen' : ''}`}
-              onClick={() => onChange({ targetSpaceId: space.id })}
-            >
-              <span>{space.name || 'Space'}</span>
-              {chosen ? <Icon name="check" size={14} color="currentColor" /> : <i aria-hidden="true" />}
-            </button>
-          );
-        })}
-      </div>
+      {/* Owner 2026-10-27: the space comes from a dropdown. */}
+      <label className="spaces-transfer__field">
+        <span className="spaces-transfer__label">Space</span>
+        <select
+          className="spaces-transfer__select"
+          aria-label="Destination space"
+          value={transfer.targetSpaceId || ''}
+          onChange={(e) => onChange({ targetSpaceId: e.target.value })}
+        >
+          {spaces.map((space) => (
+            <option key={space.id} value={space.id}>{space.name || 'Space'}</option>
+          ))}
+        </select>
+      </label>
       <div className="spaces-transfer__page">
         <span className="spaces-transfer__label">Page</span>
         <div className="spaces-transfer__stepper">
@@ -791,32 +786,38 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
           </button>
         </div>
         {Number.isFinite(maxPage) && <small className="spaces-transfer__of">of {maxPage}</small>}
+        {/* Owner 2026-10-27: Copy and Move are small icon buttons. */}
+        <span className="spaces-transfer__actions">
+          <button
+            type="button"
+            className="spaces-transfer__go"
+            aria-label="Copy region"
+            disabled={!canGo}
+            {...tip('Copy: the outline only; marks stay here', 'below')}
+            onClick={onCopy}
+          >
+            <Icon name="copy" size={14} color="currentColor" />
+          </button>
+          <button
+            type="button"
+            className="spaces-transfer__go is-primary"
+            aria-label="Move region"
+            disabled={!canGo}
+            {...tip('Move: the region and its marks go there', 'below')}
+            onClick={onMove}
+          >
+            <Icon name="moveTo" size={14} color="currentColor" />
+          </button>
+        </span>
       </div>
       {hint && <div className="spaces-transfer__hint" role="status">{hint}</div>}
-      <div className="spaces-transfer__actions">
-        <button
-          type="button"
-          className="hub-btn"
-          aria-label="Copy region"
-          disabled={!canGo}
-          {...tip('The outline only; marks stay here', 'below')}
-          onClick={onCopy}
-        >
-          Copy
-        </button>
-        <button
-          type="button"
-          className="hub-btn hub-btn--primary"
-          aria-label="Move region"
-          disabled={!canGo}
-          {...tip('The region and its marks go there', 'below')}
-          onClick={onMove}
-        >
-          Move
-        </button>
-      </div>
       {/* Touch shows no tooltips, so the phone says what each one takes. */}
-      {onClose ? <div className="spaces-transfer__note">Move takes its marks along. Copy takes the outline only.</div> : null}
+      {onClose ? (
+        <div className="spaces-transfer__note">
+          <span><Icon name="copy" size={13} color="currentColor" /> Copy takes the outline only.</span>
+          <span><Icon name="moveTo" size={13} color="currentColor" /> Move takes its marks along.</span>
+        </div>
+      ) : null}
     </>
   );
 }

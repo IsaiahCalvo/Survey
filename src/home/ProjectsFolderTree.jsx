@@ -913,6 +913,7 @@ export default function ProjectsFolderTree({
   const projectSwipeActions = (p) => {
     const ownerOnly = canManageProject(p, user?.id) || 'Only the project owner can do this';
     return buildSwipeActions({
+      lead: 'share',
       onDuplicate: () => duplicateProjects([p.id]),
       onShare: onShare ? () => onShare(p) : undefined,
       onDelete: () => deleteProjects([p.id]),
@@ -924,6 +925,7 @@ export default function ProjectsFolderTree({
     const manage = canManageProjectFile(f, project, user?.id) || 'Only the uploader or project owner can do this';
     const inOpen = Boolean(open && f.project_id === open.id);
     return buildSwipeActions({
+      lead: 'share',
       onDuplicate: inOpen ? () => duplicateFiles([f.id]) : undefined,
       onMove: inOpen ? () => openMoveCopy([f], 'move') : undefined,
       onCopy: inOpen ? () => openMoveCopy([f], 'copy') : undefined,

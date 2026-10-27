@@ -2165,7 +2165,7 @@ input[type="text"].spaces-region__name-input:focus-visible {
 }
 
 .spaces-transfer-callout {
-  width: 200px;
+  width: 224px;
   padding: 6px;
   display: grid;
 }
@@ -2293,17 +2293,87 @@ input[type="text"].spaces-transfer__input {
   font-size: 10.5px;
 }
 
-.spaces-transfer__actions {
+/* Owner 2026-10-27: the space is a dropdown; Copy and Move are small icon
+   buttons at the end of the page row. */
+.spaces-transfer__field {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 2px;
+}
+
+.spaces-transfer__select {
+  height: 26px;
+  margin: 0 4px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-well);
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.spaces-transfer__select:focus-visible {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.spaces-transfer__actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.spaces-transfer__go {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-1);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.spaces-transfer__go.is-primary {
+  border-color: transparent;
+  background: var(--text-1);
+  color: var(--surface-1);
+}
+
+.spaces-transfer__go:disabled {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+.spaces-transfer__go:not(:disabled):active {
+  background: var(--pressed);
+}
+
+.spaces-transfer__go.is-primary:not(:disabled):active {
+  background: var(--text-2);
 }
 
 .spaces-transfer__note {
+  display: grid;
+  gap: 4px;
   padding: 8px 4px 0;
   color: var(--text-3);
   font-size: 12px;
+}
+
+.spaces-transfer__note > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .spaces-export__action:disabled {
@@ -2447,15 +2517,23 @@ input[type="text"].spaces-transfer__input {
   font-size: 12px;
 }
 
-.spaces-export-sheet .spaces-transfer__actions {
-  gap: 8px;
-  margin-top: 12px;
+.spaces-export-sheet .spaces-transfer__select {
+  height: 44px;
+  margin: 0;
+  padding: 0 10px;
+  border-radius: 10px;
+  /* 16px: iOS zooms the page into a smaller field. */
+  font-size: 16px;
 }
 
-.spaces-export-sheet .spaces-transfer__actions > .hub-btn {
+.spaces-export-sheet .spaces-transfer__actions {
+  gap: 8px;
+}
+
+.spaces-export-sheet .spaces-transfer__go {
+  width: 44px;
   height: 44px;
   border-radius: 10px;
-  font-size: 14px;
 }
 
 /* ---- the active space outside the panel (Spaces chunk B) ---------------
@@ -2588,7 +2666,8 @@ input[type="text"].spaces-transfer__input {
   }
   .spaces-export__space:hover,
   .spaces-export__action:not(:disabled):hover,
-  .spaces-transfer__step:not(:disabled):hover {
+  .spaces-transfer__step:not(:disabled):hover,
+  .spaces-transfer__go:not(.is-primary):not(:disabled):hover {
     background: var(--hover);
   }
   .spaces-panel__exit-chip:hover > svg {

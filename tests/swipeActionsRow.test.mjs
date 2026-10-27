@@ -1,13 +1,12 @@
 /*
- * swipeActionsRow.test.mjs — owner 2026-10-27: slide any list row left for
- * its actions (Duplicate, Move, Copy, Share, Delete) without Select / Edit
- * mode, modelled on the EDC tracker's account list. Grew out of the
- * 2026-10-02 phone swipe-to-delete on Templates.
+ * swipeActionsRow.test.mjs — owner 2026-10-27: slide any list row for its
+ * actions without Select / Edit mode, a copy of the EDC tracker's account
+ * list (redone the same day: "your animation is way too much ... copy
+ * whatever that HTML was doing for desktop, then make it mobile-friendly").
  *
  * Pins the pure rules (src/utils/swipeActions.js), the gesture rules that keep
  * the row out of the way (src/components/SwipeActionsRow.jsx) and the wiring
- * in every list. The motion itself is checked in a browser
- * (debug/scenarios/swipe-actions-row.spec.mjs).
+ * in every list.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,15 +15,16 @@ import {
   SWIPE_ACTION_ORDER,
   SWIPE_ACTION_WIDTH,
   SWIPE_FLING_VELOCITY,
+  SWIPE_SPRING,
   buildSwipeActions,
   canFullSwipe,
   fullSwipeThreshold,
-  layoutSwipeSlots,
+  layerFrame,
   releaseVelocity,
-  revealAmount,
   settleSwipe,
+  splitSwipeSides,
+  springAt,
   swipeOffset,
-  swipeSlotBudget,
 } from '../src/utils/swipeActions.js';
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -51,83 +51,114 @@ test('a missing handler or can:false leaves an action out; a reason string keeps
   assert.deepEqual(buildSwipeActions({}), []);
 });
 
-test('only what fits shows; the rest folds into More at the front, order kept', () => {
+test('like the HTML: one action per side - Delete on the right, one everyday action on the left', () => {
   const five = buildSwipeActions({ onDelete: noop, onShare: noop, onCopy: noop, onMove: noop, onDuplicate: noop });
-  assert.equal(swipeSlotBudget(0), 3);
-  assert.equal(swipeSlotBudget(360), 3);
-  assert.equal(swipeSlotBudget(260), 3, 'a 260px desktop rail still shows three');
-  assert.equal(swipeSlotBudget(900), 5);
-  const phone = layoutSwipeSlots(five, 3);
-  assert.deepEqual(phone.map((s) => s.key), ['more', 'share', 'delete']);
-  assert.deepEqual(phone[0].overflow.map((a) => a.key), ['duplicate', 'move', 'copy']);
-  assert.deepEqual(layoutSwipeSlots(five, 5).map((s) => s.key), ['duplicate', 'move', 'copy', 'share', 'delete']);
-  assert.equal(canFullSwipe(phone), true);
-  assert.equal(canFullSwipe(buildSwipeActions({ onMove: noop })), false);
-  assert.equal(canFullSwipe(buildSwipeActions({ onDelete: noop, can: { delete: 'Only the owner can delete' } })), false, 'a blocked Delete is never full-swiped');
+  const sides = splitSwipeSides(five);
+  assert.deepEqual(sides.trailing.map((a) => a.key), ['delete']);
+  assert.deepEqual(sides.leading.map((a) => a.key), ['duplicate'], 'Duplicate first when the list does not say');
+  const shared = splitSwipeSides(buildSwipeActions({ lead: 'share', onDelete: noop, onShare: noop, onDuplicate: noop }));
+  assert.deepEqual(shared.leading.map((a) => a.key), ['share']);
+  assert.deepEqual(splitSwipeSides(buildSwipeActions({ onMove: noop, onDelete: noop })).leading.map((a) => a.key), ['move']);
+  assert.deepEqual(splitSwipeSides(buildSwipeActions({ onMove: noop, onCopy: noop, onDelete: noop, can: { move: 'Needs another module' } })).leading.map((a) => a.key), ['copy'], 'a blocked action is skipped on the left');
+  const onlyDelete = splitSwipeSides(buildSwipeActions({ onDelete: noop }));
+  assert.deepEqual(onlyDelete.leading, []);
+  assert.equal(canFullSwipe(onlyDelete.trailing), true);
+  assert.equal(canFullSwipe(splitSwipeSides(buildSwipeActions({ onDelete: noop, can: { delete: 'Only the owner can delete' } })).trailing), false, 'a blocked Delete is never full-swiped');
+  assert.equal(SWIPE_ACTION_WIDTH, 76, "the HTML's action width");
 });
 
-test('the row follows the finger, rubber-bands past the tray, barely moves right', () => {
-  const reveal = 2 * SWIPE_ACTION_WIDTH;
-  assert.equal(swipeOffset(0, -100, { reveal, rowWidth: 360 }), -100);
-  const past = swipeOffset(0, -300, { reveal, rowWidth: 360 });
-  assert.ok(past < -reveal && past > -300, 'gives less past the tray');
-  assert.equal(swipeOffset(0, -300, { reveal, rowWidth: 360, full: true }), -300, '1:1 when it can be full-swiped');
-  assert.ok(swipeOffset(0, 80, { reveal, rowWidth: 360 }) < 24);
+test('the row follows the finger to the whole row, rubber-bands past it, and never opens an empty side', () => {
+  const sides = splitSwipeSides(buildSwipeActions({ onDelete: noop }));
+  assert.equal(swipeOffset(-100, { ...sides, rowWidth: 360 }), -100);
+  assert.equal(swipeOffset(-300, { ...sides, rowWidth: 360 }), -300, '1:1 when it can be full-swiped');
+  const past = swipeOffset(-500, { ...sides, rowWidth: 360 });
+  assert.ok(past < -360 && past > -500, 'gives less past the row');
+  assert.equal(swipeOffset(80, { ...sides, rowWidth: 360 }), 0, 'nothing on the left: it does not move');
+  const blocked = splitSwipeSides(buildSwipeActions({ onDelete: noop, can: { delete: 'No' } }));
+  assert.ok(Math.abs(swipeOffset(-200, { ...blocked, rowWidth: 360 })) < 200, 'a blocked side stops at its block');
 });
 
-test('let go: half the tray opens, a flick decides, a full swipe deletes', () => {
-  const reveal = 144;
+test('let go: half the block opens, a flick decides, a full swipe runs it', () => {
   const rowWidth = 360;
-  assert.equal(fullSwipeThreshold(reveal, rowWidth), Math.max(reveal + 48, rowWidth * 0.56));
-  assert.equal(settleSwipe({ offset: -80, velocity: 0, reveal, rowWidth, full: true, armed: false }), 'open');
-  assert.equal(settleSwipe({ offset: -60, velocity: 0, reveal, rowWidth, full: true, armed: false }), 'close');
-  assert.equal(settleSwipe({ offset: -40, velocity: -1200, reveal, rowWidth, full: true, armed: false }), 'open', 'a flick left opens');
-  assert.equal(settleSwipe({ offset: -100, velocity: 1200, reveal, rowWidth, full: true, armed: false }), 'close', 'a flick right shuts');
-  assert.equal(settleSwipe({ offset: -250, velocity: 0, reveal, rowWidth, full: true, armed: true }), 'full');
-  assert.equal(settleSwipe({ offset: -250, velocity: SWIPE_FLING_VELOCITY + 100, reveal, rowWidth, full: true, armed: true }), 'open', 'flicked back');
-  assert.equal(settleSwipe({ offset: -170, velocity: -2500, reveal, rowWidth, full: true, armed: false }), 'full', 'a hard flick past the tray');
-  assert.equal(settleSwipe({ offset: -250, velocity: 0, reveal, rowWidth, full: false, armed: true }), 'open', 'no Delete, no full swipe');
+  const base = { count: 1, rowWidth, full: true, armed: false };
+  assert.equal(fullSwipeThreshold(1, rowWidth), Math.max(76 + 48, rowWidth * 0.56));
+  assert.equal(settleSwipe({ ...base, offset: -40, velocity: 0 }), 'open');
+  assert.equal(settleSwipe({ ...base, offset: -30, velocity: 0 }), 'close');
+  assert.equal(settleSwipe({ ...base, offset: 30, velocity: 0 }), 'close', 'the left side works the same way');
+  assert.equal(settleSwipe({ ...base, offset: 40, velocity: 0 }), 'open');
+  assert.equal(settleSwipe({ ...base, offset: -20, velocity: -1200 }), 'open', 'a flick left opens');
+  assert.equal(settleSwipe({ ...base, offset: -60, velocity: 1200 }), 'close', 'a flick right shuts');
+  assert.equal(settleSwipe({ ...base, offset: -250, velocity: 0, armed: true }), 'full');
+  assert.equal(settleSwipe({ ...base, offset: -250, velocity: SWIPE_FLING_VELOCITY + 100, armed: true }), 'open', 'flicked back');
+  assert.equal(settleSwipe({ ...base, offset: -120, velocity: -2500 }), 'full', 'a hard flick past the block');
+  assert.equal(settleSwipe({ ...base, offset: -250, velocity: 0, full: false, armed: true }), 'open', 'blocked: no full swipe');
   assert.equal(releaseVelocity([[0, 100], [50, 50], [100, 0]]), -1000);
-  assert.equal(revealAmount(0, 2), 0);
-  assert.equal(revealAmount(2 * SWIPE_ACTION_WIDTH, 2), 1);
 });
 
-test('it never fights scrolling, a reorder grip, a focused field or the edge-swipe back', () => {
+test("the block rides the row's edge, its glyph centred in the strip, icon then label", () => {
+  const shut = layerFrame({ x: 0, side: 'trailing' });
+  assert.equal(shut.layerX, -0);
+  assert.equal(shut.iconOpacity, 0);
+  const open = layerFrame({ x: -76, side: 'trailing' });
+  assert.equal(open.layerX, -76, 'fills exactly the strip it uncovers');
+  assert.equal(open.anchorX, 38, 'glyph in the middle of it');
+  assert.equal(open.iconOpacity, 1);
+  assert.equal(open.labelOpacity, 1);
+  const peek = layerFrame({ x: -30, side: 'trailing' });
+  assert.ok(peek.iconOpacity > 0 && peek.iconOpacity < 1 && peek.labelOpacity === 0, 'the icon comes first');
+  const covered = layerFrame({ x: -250, side: 'trailing', coverRank: 0, cover: 1 });
+  assert.equal(covered.anchorX, 38, 'armed: the glyph stays by the row edge');
+  const lead = layerFrame({ x: 76, side: 'leading' });
+  assert.equal(lead.layerX, 76);
+  assert.equal(lead.anchorX, -38);
+});
+
+test("no-bounce springs: the HTML's 0.26s / 0.4s, eased, never past the target", () => {
+  assert.deepEqual(SWIPE_SPRING, { snappy: 0.26, smooth: 0.4, morph: 0.42 });
+  let max = -Infinity;
+  for (let t = 0; t <= 1; t += 0.01) max = Math.max(max, springAt({ from: 0, to: -76, duration: SWIPE_SPRING.snappy, t }).value);
+  assert.ok(max <= 0, 'no overshoot');
+  assert.ok(Math.abs(springAt({ from: 0, to: -76, duration: SWIPE_SPRING.snappy, t: 0.3 }).value + 76) < 2, 'settled by ~0.3s');
+});
+
+test('finger, pen and mouse drag it (as in the HTML); it never fights scrolling, a grip, a field or a native drag', () => {
+  assert.doesNotMatch(row, /e\.pointerType === 'mouse' \|\| !e\.isPrimary/, 'a mouse drags it too');
+  assert.match(row, /e\.pointerType === 'mouse' && e\.button !== 0/);
+  assert.match(row, /root\.addEventListener\('dragstart', onDragStart, true\)/);
+  assert.match(row, /if \(dx >= 2 && dx > dy \* 2\) e\.preventDefault\(\);\s*else g = null;/);
   assert.match(row, /Math\.abs\(dy\) >= Math\.abs\(dx\)\)\s*\{\s*g\.mode = 'scroll';/);
   assert.match(row, /closest\?\.\('\[data-drag-rearrange-handle\], \[data-drag-handle\]'\)/);
   assert.match(row, /isEditable\(active\) && \(active === t \|\| active\.contains\(t\)\)/);
-  assert.match(row, /if \(dx > 0 && g\.base === 0\) \{ g\.mode = 'scroll'; return; \}/);
+  assert.match(row, /dx > 0 && g\.type !== 'mouse' && g\.x0 < EDGE_BACK_PX/);
   assert.match(css, /\.swipe-row \{[^}]*touch-action: pan-y;/);
-  // A mouse never drags it (rows keep drag-to-reorder); a trackpad swipe does.
-  assert.match(row, /e\.pointerType === 'mouse'/);
-  assert.match(row, /addEventListener\('wheel', onWheel, \{ passive: false \}\)/);
-  assert.match(row, /scrollsSideways\(e\.target, root\.parentElement\)/);
+  // No trackpad wheel swipe: the HTML has none.
+  assert.doesNotMatch(row, /'wheel'/);
   // At rest the row clips nothing (sticky cells, drag lift, sort shifts).
   assert.match(css, /\.swipe-row \{[^}]*overflow: visible;/);
-  assert.match(css, /\.swipe-row\[data-swipe-revealed\],\s*\.swipe-row\.is-collapsing \{[^}]*overflow: clip;/);
+  assert.match(css, /\.swipe-row\[data-swipe-revealed\],\s*\.swipe-row\[data-removing\] \{[^}]*overflow: clip;/);
 });
 
 test('one row open; elsewhere, scroll, Escape or another swipe shuts it; a tap on it only shuts it', () => {
   assert.match(row, /let closeOpenRow = null;/);
   // An open row is a light popover (dismissRules.js): an outside press shuts
   // it and keeps going, and Escape shuts only the row - never the phone
-  // survey sheet it sits in (that sheet closed with it before).
+  // survey sheet it sits in.
   assert.match(row, /import \{ watchLightPopover \} from '\.\/dismissRules\.js';/);
   assert.match(row, /watchLightPopover\(\{\s*contains: \(el\) => root\.contains\(el\)/);
   assert.match(row, /document\.addEventListener\('scroll', onScroll/);
   assert.doesNotMatch(row, /addEventListener\('keydown'|'keydown', onKey/);
-  assert.match(row, /mode === 'pending' && wasOpen[\s\S]{0,160}close\(\);/);
+  assert.match(row, /mode === 'pending' && wasOpen[\s\S]{0,160}settle\(0\);/);
 });
 
-test('Delete on the danger fill (never gold), folds the row, honours reduced motion, unfolds if kept', () => {
+test('Delete on the danger fill (never gold), slides away and folds, honours reduced motion, comes back if kept', () => {
   assert.match(css, /\[data-tone='danger'\] \{\s*background: var\(--danger-fill\);\s*color: var\(--on-danger\);/);
   assert.doesNotMatch(css, /--accent|--gold/);
-  assert.match(css, /\.swipe-row\.is-collapsing \{[^}]*transition: height 220ms/);
+  assert.match(css, /\.swipe-row\.is-folding \{[^}]*transition: height 400ms/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*transition: none !important;/);
   assert.match(row, /if \(reducedMotion\(\)\) \{ finish\(\); return; \}/);
   assert.match(row, /setTimeout\(restore, 60\)/);
-  // Every action button is a real, labelled button with the shared tooltip.
-  assert.match(row, /aria-label=\{slot\.overflow \? 'More actions' : slot\.label\}/);
+  // Every block is a real, labelled button with the shared tooltip.
+  assert.match(row, /aria-label=\{label \? `\$\{action\.label\} \$\{label\}` : action\.label\}/);
   assert.match(row, /\{\.\.\.tip\(/);
   assert.doesNotMatch(row, /\btitle=/);
 });

@@ -51,7 +51,7 @@ test('Spaces edit mode, visibility animation, copy, move and scoped Undo', async
   await button(page, 'Undo').click();
   await expect(button(page, 'Go to page 2')).toHaveCount(0);
   await button(page, 'Move or copy region on page 1').click();
-  await page.getByRole('radio', { name: /Fix19 Space B/ }).click();
+  await page.getByLabel('Destination space').selectOption({ label: 'Fix19 Space B' });
   await page.getByRole('textbox', { name: 'Destination page' }).fill('3');
   await button(page, 'Move region').click();
   await expect(page.getByRole('menu', { name: 'Move or copy Region 1' })).toHaveCount(0);
