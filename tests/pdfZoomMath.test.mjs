@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   getClampedZoomTranslation,
   getDocumentMinimumScale,
+  getWidthFitMinimumScale,
   getWheelZoomScale,
   WHEEL_NOTCH_STEP_FACTOR,
 } from '../src/utils/pdfZoomMath.js';
@@ -149,6 +150,18 @@ test('document minimum never drops below the absolute safety floor', () => {
   });
 
   assert.equal(minimumScale, 0.01);
+});
+
+test('zoom-out floor is a quarter of fit width (Drawboard), whatever the page count', () => {
+  // 1264 px of fit width, widest sheet 1224 pt: fit width 103%, floor 25.8%.
+  const floor = getWidthFitMinimumScale({ viewportWidth: 1264, pageWidths: [792, 1224, 1224] });
+  assert.ok(Math.abs(floor - (1264 / 1224) / 4) < 1e-12);
+  // A 36-sheet set no longer shrinks to slivers: the floor ignores page count.
+  assert.equal(getWidthFitMinimumScale({ viewportWidth: 1264, pageWidths: Array(36).fill(1224) }), floor);
+  // Never under the absolute safety floor, never over the maximum.
+  assert.equal(getWidthFitMinimumScale({ viewportWidth: 10, pageWidths: [100000] }), 0.01);
+  assert.equal(getWidthFitMinimumScale({ viewportWidth: 1000, pageWidths: [1] }), 40);
+  assert.equal(getWidthFitMinimumScale({ viewportWidth: 1000, pageWidths: [] }), 0.01);
 });
 
 test('zoom preview centers an axis as soon as its projected content fits', () => {
