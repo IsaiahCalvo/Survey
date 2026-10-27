@@ -9,7 +9,7 @@ import * as Y from 'yjs';
 
 import { openAnnotationDoc, __test } from '../src/services/annotationDocSync.js';
 
-const { bytesToPgHex, stagedBuildCount } = __test;
+const { bytesToPgHex, stagedBuildCount, keptStagedUpdateCount } = __test;
 
 function remoteOpHex(annotationId) {
   const remote = new Y.Doc();
@@ -162,4 +162,34 @@ test('a rejected edit is dropped with the kept writes; the next edit builds the 
   assert.ok(keys.some((k) => k.includes('kept')), `the accepted edit is in the log (${keys})`);
   assert.ok(keys.some((k) => k.includes('after')), `the edit after the rejection is in the log (${keys})`);
   assert.ok(!keys.some((k) => k.includes('denied')), `the rejected edit never reaches the log (${keys})`);
+});
+
+test('a long editing session does not keep a copy of every accepted edit', async () => {
+  const supabase = makeSupabase();
+  const doc = new Y.Doc();
+  const before = stagedBuildCount();
+  const handle = await openAnnotationDoc({
+    actorUserId: 'test-actor', documentId: 'doc-lazy-staged-prune', supabase, clientId: 'me',
+    enableLocal: false, enableRealtime: false, doc,
+  });
+  let most = 0;
+  for (let i = 0; i < 100; i += 1) {
+    addMark(handle, `mark-${i}`);
+    await handle.drain();
+    most = Math.max(most, keptStagedUpdateCount(handle));
+  }
+  assert.equal(supabase.log.length, 100, 'every edit is appended');
+  assert.ok(most <= 32, `kept writes stay bounded (at most ${most})`);
+  assert.equal(stagedBuildCount(), before, 'pruning does not build the staged doc');
+
+  // A rejected edit still builds the staged doc from the accepted state.
+  supabase.rejectNextInsert = true;
+  addMark(handle, 'rejected');
+  await handle.drain().catch(() => {});
+  addMark(handle, 'after');
+  await handle.drain();
+  await handle.destroy();
+  const keys = await reopenKeys(supabase, 'doc-lazy-staged-prune', 'me-2');
+  assert.ok(keys.some((k) => k.includes('mark-99')) && keys.some((k) => k.includes('after')), 'accepted edits survive');
+  assert.ok(!keys.some((k) => k.includes('rejected')), 'the rejected edit is not saved');
 });

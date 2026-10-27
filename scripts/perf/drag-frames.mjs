@@ -244,10 +244,11 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
   const dropProfile = profile && !trace && process.env.DROP ? profile.replace(/\.cpuprofile$/, '-drop.cpuprofile') : null;
   if (dropProfile) await cdp.send('Profiler.start');
   const m2 = process.env.DROP ? await metrics() : null;
+  // DROP=1: what the drop itself costs (the edit is saved into the marks).
+  // Sampling starts before the release so the release's own frame is counted.
+  if (process.env.DROP) await startSampling(page);
   await send('mouseReleased', from.x + dx, from.y + dy, 0);
   if (process.env.DROP) {
-    // DROP=1: what the drop itself costs (the edit is saved into the marks).
-    await startSampling(page);
     await sleep(1500);
     const after = await stopSampling(page);
     const m3 = await metrics();

@@ -2017,6 +2017,7 @@ async function settleAcceptedRecord(
   record.status = 'accepted';
   state.acceptedReceiptKeys.add(record.key);
   state.appendRecords.delete(record.key);
+  pruneKeptStagedUpdates(state);
   state.acceptedEditEpoch = Math.max(
     state.acceptedEditEpoch,
     Number(record.editEpoch) || 0,
@@ -3122,6 +3123,19 @@ function applyToStaged(state, update) {
     return;
   }
   Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+}
+
+// Kept writes already in acceptedDoc (their rows were accepted) are dropped
+// once in a while, so a long session that never builds the staged doc does not
+// hold a copy of every edit it made. Y.snapshot walks the whole doc, so it runs
+// only when the kept list has doubled since the last pass.
+const KEPT_STAGED_PRUNE_MIN = 32;
+function pruneKeptStagedUpdates(state) {
+  const kept = state.unbuiltStagedUpdates;
+  if (state.stagedDocRaw || kept.length < (state.keptStagedPruneAt || KEPT_STAGED_PRUNE_MIN)) return;
+  const accepted = Y.snapshot(state.acceptedDoc);
+  state.unbuiltStagedUpdates = kept.filter((update) => !Y.snapshotContainsUpdate(accepted, update));
+  state.keptStagedPruneAt = Math.max(KEPT_STAGED_PRUNE_MIN, state.unbuiltStagedUpdates.length * 2);
 }
 
 function setRepairCheckpoint(state, checkpointUpdate, editEpoch) {
@@ -6868,7 +6882,16 @@ async function drainStateQueues(state) {
   }
 }
 
+// Handle -> state, for __test only.
+const testStates = new WeakMap();
+
 function makeHandle(state) {
+  const handle = buildHandle(state);
+  testStates.set(handle, state);
+  return handle;
+}
+
+function buildHandle(state) {
   return {
     documentId: state.documentId,
     clientId: state.clientId,
@@ -7655,6 +7678,7 @@ export const __test = {
   causalDependenciesForUpdate,
   clockRangeDecodeCount: () => clockRangeDecodes,
   stagedBuildCount: () => stagedBuilds,
+  keptStagedUpdateCount: (handle) => testStates.get(handle)?.unbuiltStagedUpdates.length ?? null,
   bytesToPgHex,
   pgHexToBytes,
   emitHistoryQuarantine,
