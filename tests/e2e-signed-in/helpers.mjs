@@ -96,3 +96,14 @@ export function functionUrl(name) {
   const base = process.env.E2E_FUNCTIONS_URL || `${process.env.E2E_SUPABASE_URL}/functions/v1`;
   return `${base.replace(/\/+$/, '')}/${name}`;
 }
+
+/**
+ * Pick an option in the app's drop-down (ValueSelect): press the pill named
+ * `name` inside `scope`, then the option `optionLabel` in its list. The list
+ * is portalled to <body>, so it is found on the page.
+ */
+export async function pickValue(page, scope, name, optionLabel) {
+  await scope.getByRole('button', { name, exact: true }).filter({ visible: true }).first().click();
+  await page.getByRole('listbox', { name }).getByRole('option', { name: optionLabel, exact: true }).click();
+  await expect(page.getByRole('listbox', { name })).toHaveCount(0);
+}

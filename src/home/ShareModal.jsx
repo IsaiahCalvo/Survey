@@ -35,6 +35,7 @@ import useModalFocusTrap from './useModalFocusTrap';
 import useVisibleViewportBox from './useVisibleViewportBox';
 import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
+import ValueSelect from '../components/ValueSelect.jsx';
 
 
 const KIND_LABEL = { document: 'document', project: 'project', template: 'template' };
@@ -274,13 +275,16 @@ export default function ShareModal({
         {/* Single role selector — applies to both link and email per locked spec. */}
         <div style={{ padding: '14px 18px 0', display: 'flex', alignItems: 'center', gap: 12, flex: 'none' }}>
           <div style={fieldLabel}>Permission</div>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            style={{ height: 30, background: C.card, color: C.ink, border: `1px solid ${C.ruleStrong}`, borderRadius: 6, padding: '0 10px', fontSize: 12, fontFamily: 'inherit', marginBottom: 8 }}
-          >
-            {ROLE_OPTIONS.map((r) => <option key={r}>{r}</option>)}
-          </select>
+          <div style={{ marginBottom: 8 }}>
+            <ValueSelect
+              label="Permission"
+              value={role}
+              onChange={setRole}
+              options={ROLE_OPTIONS.map((r) => ({ value: r, label: r }))}
+              size="sm"
+              width="104px"
+            />
+          </div>
         </div>
 
         {/* Body */}

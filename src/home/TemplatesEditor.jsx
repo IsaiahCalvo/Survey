@@ -109,6 +109,7 @@ import AnswerSetPicker, { AnswerChips } from './AnswerSetPicker.jsx';
 import { TEMPLATE_EDITOR_REQUEST_EVENT, takeTemplateEditorRequest } from './templateEditorRequest';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
+import ValueSelect from '../components/ValueSelect.jsx';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
@@ -753,125 +754,6 @@ function MoreMenu({ anchorRect, items, onClose }) {
       </div>
     </>,
     document.body,
-  );
-}
-
-/* ============================================================
-   CustomSelect — a styled dropdown that replaces native <select>.
-   Native selects render an OS-themed popup that clashes with the
-   editor's warm-dark "paper-and-ink" palette. This is a styled
-   trigger button that opens a dark popup list. The popup is
-   portalled to document.body and fixed-positioned (measured from
-   the trigger) so the modal's overflow can never clip it.
-
-   Palette / font are hard hex/literal because the popup renders
-   outside the .ed-scope CSS-variable root:
-     card #181c24 · deep #12151c · rule #2a3140 · ink #f4f1ea
-     muted var(--text-3) · gold var(--accent) · font var(--font-ui)
-   ============================================================ */
-function CustomSelect({ value, options, onChange, placeholder = 'Select…', disabled = false }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const triggerRef = useRef(null);
-  const popRef = useRef(null);
-  const selected = options.find((o) => o.value === value) || null;
-
-  /* Scrolling invalidates the measured popup position. */
-  useEffect(() => {
-    if (!open) return undefined;
-    const onScroll = () => setOpen(false);
-    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
-    return () => {
-      window.removeEventListener('scroll', onScroll, { capture: true });
-    };
-  }, [open]);
-
-  /* Place the popup directly under the trigger, flipping up if it
-     would overflow the viewport. */
-  useEffect(() => {
-    if (!open || !triggerRef.current) { setPos(null); return; }
-    const r = triggerRef.current.getBoundingClientRect();
-    const ph = Math.min(240, Math.max(40, options.length * 30 + 8));
-    let top = r.bottom + 4;
-    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 4);
-    setPos({ left: r.left, top, width: r.width });
-  }, [open, options.length]);
-
-  return (
-    <>
-      <DismissBarrier
-        active={open}
-        insideRefs={[triggerRef, popRef]}
-        onDismiss={() => setOpen(false)}
-      />
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => { if (!disabled) setOpen((v) => !v); }}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-          width: '100%', background: 'var(--surface-1)', border: '1px solid var(--border-strong)',
-          borderRadius: 6, padding: '6px 10px', height: 32, boxSizing: 'border-box',
-          color: disabled ? 'var(--text-disabled)' : (selected ? 'var(--text-1)' : 'var(--text-3)'),
-          font: 'inherit', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
-          background: disabled ? 'var(--disabled-fill)' : 'var(--surface-1)',
-          fontFamily: 'var(--font-ui)', textAlign: 'left',
-          outline: 'none',
-        }}
-      >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {selected ? selected.label : placeholder}
-        </span>
-        <span style={{ color: 'var(--text-3)', fontSize: 10, lineHeight: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .12s', flex: 'none' }}>▾</span>
-      </button>
-      {open && pos && createPortal(
-        <div
-          ref={popRef}
-          role="listbox"
-          data-modal-focus-layer="true"
-          style={{
-            position: 'fixed', zIndex: 5501,
-            left: pos.left, top: pos.top, width: pos.width,
-            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8,
-            padding: 4, boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
-            maxHeight: 240, overflowY: 'auto',
-            fontFamily: 'var(--font-ui)',
-          }}
-        >
-          {options.length === 0 && (
-            <div style={{ padding: '7px 10px', fontSize: 12, color: 'var(--text-3)' }}>No options</div>
-          )}
-          {options.map((o) => {
-            const isSel = o.value === value;
-            return (
-              <button
-                key={o.value}
-                type="button"
-                role="option"
-                aria-selected={isSel}
-                onClick={() => { onChange(o.value); setOpen(false); }}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                  width: '100%', textAlign: 'left', background: isSel ? 'var(--surface-2)' : 'transparent',
-                  border: 0, color: isSel ? 'var(--accent)' : 'var(--text-1)',
-                  padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--hover)'; }}
-                onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
-                {isSel && <Icon name="check" size={11} color="var(--accent)" />}
-              </button>
-            );
-          })}
-        </div>,
-        document.body,
-      )}
-    </>
   );
 }
 
@@ -4276,7 +4158,8 @@ export default function TemplatesEditor({
               inside a checklist category. */}
           <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12, color: 'var(--text-3)' }}>Destination template</label>
-            <CustomSelect
+            <ValueSelect
+              label="Destination template"
               value={moveDestTpl}
               onChange={setMoveDestTpl}
               placeholder="Choose a template…"
@@ -4288,7 +4171,8 @@ export default function TemplatesEditor({
               return (
                 <>
                   <label style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>Destination module</label>
-                  <CustomSelect
+                  <ValueSelect
+                    label="Destination module"
                     value={moveDestMod}
                     onChange={setMoveDestMod}
                     placeholder={mods.length ? 'Choose a module…' : 'This template has no modules'}

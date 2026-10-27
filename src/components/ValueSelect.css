@@ -1,0 +1,60 @@
+/* ValueSelect: the app's one drop-down (AnnotationDropdown, .chrome-pill)
+   outside the toolbars, in place of the browser's <select>. The trigger stays
+   a setting pill (surface step, no border, chevron) and the list is the
+   shared menu card. Only its size changes with where it sits. */
+.annotation-dropdown.value-select--block {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+
+/* In a form (a dialog, the print panel): the dialog field's height and type
+   (DialogCard DIALOG_FIELD_STYLE: 32px, 13px) so it lines up with the text
+   fields beside it. size="sm" matches the 30px rows of the invite dialogs. */
+.value-select--field .chrome-pill {
+  height: 32px;
+  padding: 0 10px;
+  gap: 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.value-select--field.value-select--sm .chrome-pill {
+  height: 30px;
+  font-size: 12px;
+}
+
+.value-select--field .chrome-pill__chevron {
+  margin-left: auto;
+}
+
+/* No pick yet: the hint reads quieter than a value. */
+.value-select.is-empty .chrome-pill__label {
+  color: var(--text-3);
+}
+
+/* The list opens over the window it belongs to. Dialogs sit as high as
+   z 10000 (theme Z_INDEX.modalOverlay); the menu is portalled to <body>
+   after them, so the same layer puts it on top. */
+.annotation-dropdown__popover.value-select__menu {
+  z-index: 10000;
+}
+
+.value-select__menu--field .annotation-dropdown__options > button {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* A finger needs 44px, and iOS zooms the page on any field under 16px. */
+@media (pointer: coarse) {
+  .value-select--field .chrome-pill,
+  .value-select--field.value-select--sm .chrome-pill {
+    height: 44px;
+    font-size: 16px;
+  }
+  .value-select__menu--field .annotation-dropdown__options > button {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}

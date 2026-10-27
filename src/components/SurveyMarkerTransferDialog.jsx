@@ -6,6 +6,7 @@
 import { useMemo, useState } from 'react';
 import BodyPortal from './BodyPortal';
 import DialogCard from './DialogCard.jsx';
+import ValueSelect from './ValueSelect.jsx';
 import { COLORS, Z_INDEX } from '../theme';
 import {
   defaultSurveyMarkerTransferTarget,
@@ -13,25 +14,21 @@ import {
   surveyMarkerTransferTargets,
 } from '../utils/surveyMarkerTransfer.js';
 
-const selectStyle = {
-  background: COLORS.modal.panel,
-  color: COLORS.modal.textPrimary,
-  padding: '8px 10px',
-  border: `1px solid ${COLORS.modal.borderStrong}`,
-  borderRadius: 6,
-  fontFamily: 'inherit',
-  fontSize: 13,
-};
+const fieldLabelStyle = { display: 'grid', gap: 6, fontSize: 12, color: COLORS.modal.textMuted };
 
 function Field({ label, value, options, onChange, disabled = false, empty }) {
   return (
-    <label style={{ display: 'grid', gap: 6, fontSize: 12, color: COLORS.modal.textMuted }}>
-      {label}
-      <select aria-label={label} value={value || ''} disabled={disabled} onChange={(event) => onChange(event.target.value)} style={selectStyle}>
-        {options.length === 0 ? <option value="">{empty}</option> : null}
-        {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
-      </select>
-    </label>
+    <div style={fieldLabelStyle}>
+      <span aria-hidden="true">{label}</span>
+      <ValueSelect
+        label={label}
+        value={value || ''}
+        placeholder={options.length === 0 ? empty : undefined}
+        disabled={disabled}
+        options={options.map((option) => ({ value: option.id, label: option.name }))}
+        onChange={onChange}
+      />
+    </div>
   );
 }
 
