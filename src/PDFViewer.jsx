@@ -23874,7 +23874,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const source = await getExportSourcePdf();
       let bytes;
       if (mode === 'plain') {
-        bytes = await bytesKit.stripMarkupAnnotations(source);
+        bytes = await bytesKit.stripMarkupAnnotations(source, { pageTransformations });
       } else if (mode === 'flattened') {
         const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
           await import('./utils/pdfAnnotationsPdfLib');

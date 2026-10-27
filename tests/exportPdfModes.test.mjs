@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PDFDocument, PDFName } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFString } from 'pdf-lib';
 import { exportFileName, pagesWithMarks, parsePageList, pickExportPages } from '../src/utils/exportPdfModes.js';
-import { keepOnlyPages, stripMarkupAnnotations } from '../src/utils/exportPdfBytes.js';
+import { keepOnlyPages, remapLayerStateToPages, stripMarkupAnnotations } from '../src/utils/exportPdfBytes.js';
 
 test('page lists: ranges, single pages, reversed ranges, duplicates', () => {
   assert.deepEqual(parsePageList('1-3, 6, 9-7, 2', 10).pages, [1, 2, 3, 6, 7, 8, 9]);
@@ -57,4 +57,55 @@ test('keepOnlyPages keeps the chosen pages in order', async () => {
   [100, 200, 300].forEach((w) => src.addPage([w, 100]));
   const out = await PDFDocument.load(await keepOnlyPages(await src.save(), [1, 3]));
   assert.deepEqual(out.getPages().map((p) => p.getWidth()), [100, 300]);
+});
+
+// Codex review on #1206: Survey keeps a hidden copy of its marks in the
+// catalog (SurveyAppLayerState); Plain must drop it and a page pick must
+// renumber it, or reopening the file in Survey shows the wrong marks.
+const layerState = () => ({
+  app: 'SurveyApp', kind: 'SurveyAppLayerState', version: 1,
+  layers: {
+    scopedAnnotationsByPage: { 1: { objects: [{ id: 'a' }] }, 3: { objects: [{ id: 'c' }] } },
+    callouts: [{ id: 'k1', pageNumber: 3 }, { id: 'k2', pageNumber: 2 }],
+    surveyMarkers: { m1: { pageNumber: 3 }, m2: { pageNumber: 1 } },
+    spaces: [{ id: 's', assignedPages: [{ pageId: 1 }, { pageId: 3, regions: [] }] }],
+  },
+});
+const withCatalog = async (entries) => {
+  const doc = await PDFDocument.load(await pdfWithAnnots());
+  for (const [key, value] of Object.entries(entries)) doc.catalog.set(PDFName.of(key), PDFString.of(JSON.stringify(value)));
+  return doc.save();
+};
+const catalogJson = (doc, key) => {
+  const raw = doc.catalog.lookup(PDFName.of(key));
+  return raw ? JSON.parse(raw.decodeText()) : null;
+};
+
+test('plain drops Survey\'s hidden copy of its marks', async () => {
+  const out = await PDFDocument.load(await stripMarkupAnnotations(await withCatalog({ SurveyAppLayerState: layerState() })));
+  assert.equal(catalogJson(out, 'SurveyAppLayerState'), null);
+});
+
+test('plain keeps a mirrored page mirrored', async () => {
+  const out = await PDFDocument.load(await stripMarkupAnnotations(await pdfWithAnnots(), { pageTransformations: { 2: { mirrorH: true } } }));
+  assert.deepEqual(catalogJson(out, 'SurveyPagePresentation'), { 2: { rotation: 0, mirrorH: true, mirrorV: false } });
+  const plain = await PDFDocument.load(await stripMarkupAnnotations(await pdfWithAnnots()));
+  assert.equal(catalogJson(plain, 'SurveyPagePresentation'), null);
+});
+
+test('a page pick renumbers Survey\'s hidden marks and drops the rest', () => {
+  const { layers } = remapLayerStateToPages(layerState(), [3]);
+  assert.deepEqual(layers.scopedAnnotationsByPage, { 1: { objects: [{ id: 'c' }] } });
+  assert.deepEqual(layers.callouts, [{ id: 'k1', pageNumber: 1 }]);
+  assert.deepEqual(layers.surveyMarkers, { m1: { pageNumber: 1 } });
+  assert.deepEqual(layers.spaces[0].assignedPages, [{ pageId: 1, regions: [] }]);
+});
+
+test('keepOnlyPages carries the hidden marks and page mirrors to the new page numbers', async () => {
+  const src = await withCatalog({ SurveyAppLayerState: layerState(), SurveyPagePresentation: { 3: { mirrorV: true } } });
+  const out = await PDFDocument.load(await keepOnlyPages(src, [1, 3]));
+  const state = catalogJson(out, 'SurveyAppLayerState');
+  assert.deepEqual(Object.keys(state.layers.scopedAnnotationsByPage), ['1', '2']);
+  assert.deepEqual(state.layers.surveyMarkers, { m1: { pageNumber: 2 }, m2: { pageNumber: 1 } });
+  assert.deepEqual(catalogJson(out, 'SurveyPagePresentation'), { 2: { mirrorV: true } });
 });
