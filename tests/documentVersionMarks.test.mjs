@@ -151,3 +151,56 @@ test('the WAL tail is read in pages past 1000 rows', async () => {
   assert.equal(doc.getMap('meta').get('k1203'), 1203);
   assert.equal(doc.getMap('meta').size, 1203);
 });
+
+test('marks only in the old builds\' map are carried, not left behind (review P1)', async () => {
+  const source = new Y.Doc();
+  // An older build kept each mark as one plain { p, o } in `annotations`.
+  source.getMap('annotations').set('old-ink', { p: 2, o: rect('old-ink', 33, 44) });
+  const updates = [{ document_id: OLD, seq: 1, data: bytesToPgHex(Y.encodeStateAsUpdate(source)) }];
+  const client = fakeClient({ updates });
+  const counts = await carryMarksToNewVersion({ client, fromDocumentId: OLD, toDocumentId: NEW });
+  assert.equal(counts.marks, 1);
+  assert.equal(client.appended.length, 1);
+  const copy = new Y.Doc();
+  Y.applyUpdate(copy, pgHexToBytes(client.appended[0].args.p_data));
+  assert.equal(docToByPage(copy)[2].objects[0].left, 33);
+
+  // Still the same bytes on a retry (fixed writer id and clock).
+  const again = fakeClient({ updates });
+  await carryMarksToNewVersion({ client: again, fromDocumentId: OLD, toDocumentId: NEW });
+  assert.equal(again.appended[0].args.p_data, client.appended[0].args.p_data);
+});
+
+test('the new file imports its own markup: old untouched imports and the import note stay behind (review P2)', async () => {
+  const source = new Y.Doc();
+  syncByPageToDoc(source, {
+    1: {
+      objects: [
+        rect('mine', 10, 10),
+        { ...rect('pdf-untouched', 50, 50), isPdfImported: true, pdfAnnotationId: '12R' },
+        { ...rect('pdf-edited', 90, 90), isPdfImported: true, pdfAnnotationId: '13R', pdfImportedEditState: 'edited' },
+      ],
+    },
+  });
+  source.getMap('annoMeta').set('embeddedImportedIntoMarks', { at: '2026-10-01T00:00:00Z' });
+  source.getMap('annoMeta').set('embeddedImportIncomplete', { attempts: 1, pages: [3] });
+  const client = fakeClient({ updates: [{ document_id: OLD, seq: 1, data: bytesToPgHex(Y.encodeStateAsUpdate(source)) }] });
+  const counts = await carryMarksToNewVersion({ client, fromDocumentId: OLD, toDocumentId: NEW });
+  assert.equal(counts.marks, 2);
+
+  const copy = new Y.Doc();
+  Y.applyUpdate(copy, pgHexToBytes(client.appended[0].args.p_data));
+  const ids = docToByPage(copy)[1].objects.map((o) => o.id).sort();
+  assert.deepEqual(ids, ['mine', 'pdf-edited']);
+  assert.equal(copy.getMap('annoMeta').has('embeddedImportedIntoMarks'), false);
+  assert.equal(copy.getMap('annoMeta').has('embeddedImportIncomplete'), false);
+});
+
+test('deleted PDF markup travels even with no marks, so it stays deleted', async () => {
+  const source = new Y.Doc();
+  source.getMap('deletedPdfAnnotations').set('1\u000012R', { pageNumber: 1, pdfAnnotationId: '12R' });
+  const client = fakeClient({ updates: [{ document_id: OLD, seq: 1, data: bytesToPgHex(Y.encodeStateAsUpdate(source)) }] });
+  const counts = await carryMarksToNewVersion({ client, fromDocumentId: OLD, toDocumentId: NEW });
+  assert.equal(counts.total, 0);
+  assert.equal(client.appended.length, 1);
+});
