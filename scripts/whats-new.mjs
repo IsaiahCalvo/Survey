@@ -5,6 +5,8 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-27', items: [
+    'Switching to a tab with a big drawing set is about three times faster.',
+    'Keys act only in the tab you are looking at, never in the tabs behind it.',
     'Slide any list row to the left to show its actions: Duplicate, Move, Copy, Share and Delete. Works in every list, and a two-finger swipe does it on a trackpad.',
     'Deleting a space, a region, a category or several Survey Markers happens at once, with an Undo button instead of a question.',
     'Spaces: clicking or erasing a smoothed Lasso area follows the curve you see.',
