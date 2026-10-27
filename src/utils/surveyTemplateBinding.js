@@ -1,13 +1,22 @@
 const PREFIX = 'survey:templateBinding:';
 const stable = (value) => Array.isArray(value) ? value.map(stable) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().filter((key) => value[key] !== undefined && typeof value[key] !== 'function').map((key) => [key, stable(value[key])])) : value;
-// The template's own answer list counts as part of its version. It joins the
-// fingerprint only when set, so a template without one keeps the fingerprint
-// older bindings stored.
+// The template's own answer list, its Excel layout and its Auto-mark as
+// Complete switch count as part of its version: a drawing keeps the template
+// as it was, so a change reaches it through the "use latest version" choice,
+// and a drawing on the older version cannot write the template back over the
+// change. Each joins the fingerprint only when set (the switch only when
+// off), so a template without them keeps the fingerprint older bindings stored.
 const legacyFingerprint = (template) => JSON.stringify(stable({ name: template?.name, modules: template?.modules || template?.spaces || [], entities: template?.entities || [] }));
+const versionedSettings = (template) => ({
+  answerSet: template?.answerSet || undefined,
+  exportKitId: template?.exportKitId || undefined,
+  autoComplete: template?.autoComplete === false ? false : undefined,
+});
 export function templateFingerprint(template) {
-  if (!template?.answerSet) return legacyFingerprint(template);
-  return JSON.stringify(stable({ name: template?.name, modules: template?.modules || template?.spaces || [], entities: template?.entities || [], answerSet: template.answerSet }));
+  const settings = versionedSettings(template);
+  if (Object.values(settings).every((v) => v === undefined)) return legacyFingerprint(template);
+  return JSON.stringify(stable({ name: template?.name, modules: template?.modules || template?.spaces || [], entities: template?.entities || [], ...settings }));
 }
 export function templateBindingKey(documentKey, userId, templateId) { return `${PREFIX}${userId || 'local'}:${documentKey}:${templateId}`; }
 export function readTemplateBinding(key, storage) { try { return JSON.parse(storage?.getItem(key) || 'null'); } catch { return null; } }
@@ -27,8 +36,8 @@ export function needsTemplateVersionChoice(binding, latest) {
   // same version. Changed answers ask once; the choice then stores a full
   // fingerprint.
   const legacy = legacyFingerprint(latest);
-  const sameAnswers = JSON.stringify(stable(binding.snapshot.answerSet ?? null)) === JSON.stringify(stable(latest.answerSet ?? null));
-  return !((legacy === binding.fingerprint || legacy === binding.reviewedFingerprint) && sameAnswers);
+  const sameSettings = JSON.stringify(stable(versionedSettings(binding.snapshot))) === JSON.stringify(stable(versionedSettings(latest)));
+  return !((legacy === binding.fingerprint || legacy === binding.reviewedFingerprint) && sameSettings);
 }
 export function acceptTemplateVersion(binding, latest, useLatest) {
   return useLatest
