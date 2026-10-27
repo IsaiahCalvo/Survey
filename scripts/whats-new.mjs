@@ -4,6 +4,12 @@
 // Work still behind a feature flag stays off this list until it is on for all,
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
+  { date: '2026-10-27', items: [
+    'Slide any list row to the left to show its actions: Duplicate, Move, Copy, Share and Delete. Works in every list, and a two-finger swipe does it on a trackpad.',
+    'Deleting a space, a region, a category or several Survey Markers happens at once, with an Undo button instead of a question.',
+    'Spaces: clicking or erasing a smoothed Lasso area follows the curve you see.',
+    'Closed documents give back their memory, so the app stays lighter as you work.',
+  ] },
   { date: '2026-10-26', items: [
     'A page that fits the screen no longer slides sideways, and a nearly straight pan on a zoomed page runs straight.',
     'Switching PDF tabs is smooth: the side bars stay put and each tab keeps its tool and panels.',
