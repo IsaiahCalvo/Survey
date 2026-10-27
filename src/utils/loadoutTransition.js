@@ -461,6 +461,26 @@ function growState(kind, animation, motion) {
 }
 
 /**
+ * Run `fn` once the frame being built has painted (the next frame's rAF, then
+ * a task). Setup that reads styles and boxes is free there; inside the commit
+ * that built the DOM each read forces a style and layout pass. Returns a
+ * cancel. Without requestAnimationFrame it runs on a timer.
+ */
+export function afterPaint(fn, win = typeof window === 'undefined' ? undefined : window) {
+  if (!win) return () => {};
+  let timer = null;
+  let frame = null;
+  const run = () => { timer = win.setTimeout(() => { timer = null; fn(); }, 0); };
+  if (typeof win.requestAnimationFrame === 'function') frame = win.requestAnimationFrame(() => { frame = null; run(); });
+  else run();
+  return () => {
+    if (frame != null) win.cancelAnimationFrame?.(frame);
+    if (timer != null) win.clearTimeout(timer);
+    frame = null; timer = null;
+  };
+}
+
+/**
  * Watch `slot` and animate each change of loadout (see the top of this file).
  * `layer` is an empty box laid exactly where the slot's own positioning
  * context is (the ghost copy keeps the slot's inline position, so it lands on
