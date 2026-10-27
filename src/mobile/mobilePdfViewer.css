@@ -1899,27 +1899,19 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   cursor: not-allowed;
 }
 
-/* UX 2026-07-12 (Phase C, demo parity): inline "Make region full page?"
-   question shown when Full Page flips the region strip into its confirm step
-   (demo styles.ts regionConfirmText — 12/900, max-width 146). */
-.mobile-pdf-properties__confirm-label {
-  max-width: 146px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-1);
-  font-size: 12px;
-  font-weight: 900;
+/* Done on the Areas strip (owner 2026-10-26: no Cancel, no Full page): the
+   house check, bare - no plate, no border - like Done in every Select / Edit
+   mode. The pad pair is the borderless one. */
+.mobile-pdf-properties--actions > .mobile-pdf-properties__done {
+  width: var(--mobile-strip-control-h);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: transparent;
 }
-
-/* Done / Confirm on the Areas strip: a quiet neutral plate, bright ink - not
-   gold (owner: no gold outside a dialog's primary button; this was the one
-   gold button on any phone tool strip). Same plate as the strip's pills. */
-.mobile-pdf-properties--actions > .mobile-pdf-properties__primary {
-  color: var(--text-1);
-  background: var(--surface-3);
-  border-color: var(--border-strong);
+.mobile-pdf-properties--actions > .mobile-pdf-properties__done::after {
+  inset-block: -5px -19px;
 }
 
 /* SURVEY STRIP (owner 2026-09-30: "Keep Active looks bad - a box around a

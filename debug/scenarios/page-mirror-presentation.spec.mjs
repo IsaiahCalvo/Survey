@@ -112,7 +112,7 @@ for (const direction of ['horizontal','vertical','both']) test(`mirrored regions
   const after=await vertex.boundingBox();
   expect(Math.abs(after.x-before.x-15)).toBeLessThan(3);
   expect(Math.abs(after.y-before.y-10)).toBeLessThan(3);
-  await page.getByRole('button',{name:'Done',exact:true}).click();
+  await page.keyboard.press('Enter');
   const stored=await page.evaluate(()=>{const key=Object.keys(localStorage).find(value=>value.startsWith('pdfSidebar_order-pages.pdf'));return JSON.parse(localStorage.getItem(key));});
   const entry=stored.spaces.find(space=>space.id==='fix19-space-a').assignedPages[0];
   expect(entry.regions.length).toBeGreaterThan(0);
@@ -122,8 +122,12 @@ for (const direction of ['horizontal','vertical','both']) test(`mirrored regions
   const hasEditedPoint=entry.regions.some(region=>(region.coordinates||[]).some((coordinate,index,coords)=>index%2===0 && Math.abs(coordinate-originalPoint.x)<3 && Math.abs(coords[index+1]-originalPoint.y)<3));
   expect(hasEditedPoint).toBe(true);
   await page.getByRole('button',{name:/^Edit the (areas|regions) on page 1$/}).click();
-  await page.getByRole('button',{name:'Full page',exact:true}).click();
-  await page.getByRole('button',{name:'Use full page',exact:true}).click();
+  // No Full page button (owner 2026-10-26): erase every area, then Enter.
+  await page.keyboard.press('e');
+  const editAreas=page.locator('[data-region-edit-layer] [data-region-id]');
+  for(let guard=0;guard<12&&await editAreas.count();guard+=1){const b=await editAreas.first().boundingBox();await page.mouse.click(b.x+b.width/2,b.y+b.height/2);}
+  await expect(editAreas).toHaveCount(0);
+  await page.keyboard.press('Enter');
   await expect(page.locator('[data-region-edit-layer]')).toHaveCount(0);
   await expect.poll(()=>page.evaluate(()=>{const key=Object.keys(localStorage).find(value=>value.startsWith('pdfSidebar_order-pages.pdf'));return JSON.parse(localStorage.getItem(key)).spaces.find(space=>space.id==='fix19-space-a').assignedPages[0].wholePageIncluded;})).toBe(true);
 });

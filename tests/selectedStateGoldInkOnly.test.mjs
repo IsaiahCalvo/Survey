@@ -207,3 +207,165 @@ test('no JSX inline style paints a gold fill for an on/selected/pressed state', 
 
   assert.deepEqual(offenders, [], `an on/selected state must be gold INK, not a gold wash:\n  ${offenders.join('\n  ')}`);
 });
+
+/* ---------- 3. a chosen state stays gold under the pointer --------------- */
+/*
+ * OWNER 2026-10-26: "When I hover over selected toggles like the light bulb,
+ * they turn from gold to white. This is wrong, and we need to make sure this
+ * issue doesn't happen anywhere else in the app."
+ *
+ * The bulb was gold from `.spaces-region__marks.is-on` and white from the
+ * family's hover, `.space-card__icon:hover`, which came later in the file at
+ * the same specificity. Neither rule is wrong alone; the pair is. So this
+ * looks for every such pair: a rule that inks a chosen state gold, and a
+ * hover rule that sets another colour on an element the JSX can give BOTH
+ * selectors' classes to (a className that carries them together), where the
+ * hover wins the cascade (!important, then specificity, then file order; two
+ * files are counted as a loss, since their order is the import order). A
+ * hover that steps aside for chosen states (`:not(.is-on)` and the like) is
+ * fine. The chrome-wide hover in src/styles/states.css already does.
+ */
+const CHOSEN = /(\.is-active|\.is-current\b|\.is-selected|\.is-on\b|\.is-open|[.-]active\b|\[aria-(pressed|checked|selected)\s*=\s*['"]?true['"]?\]|\[data-active\s*=\s*['"]?true['"]?\])/;
+const GOLD_INK = /var\(--accent(-light|-press)?\)|var\(--gold\b[^)]*\)|var\(--pp-accent\)|rgba?\(\s*216\s*,\s*168\s*,\s*78/;
+const STEPS_ASIDE = /:not\([^)]*(is-active|is-current|is-selected|is-on|btn-active|active|aria-pressed|aria-checked|aria-selected|data-active)/;
+
+const splitTop = (text) => {
+  const out = []; let depth = 0; let cur = '';
+  for (const ch of text) {
+    if (ch === '(' || ch === '[') depth += 1;
+    if (ch === ')' || ch === ']') depth -= 1;
+    if (ch === ',' && depth === 0) { out.push(cur); cur = ''; } else cur += ch;
+  }
+  out.push(cur);
+  return out.map((s) => s.trim()).filter(Boolean);
+};
+const lastCompound = (sel) => {
+  let depth = 0; let cut = 0;
+  for (let i = 0; i < sel.length; i += 1) {
+    const ch = sel[i];
+    if (ch === '(' || ch === '[') depth += 1;
+    else if (ch === ')' || ch === ']') depth -= 1;
+    else if (depth === 0 && /[\s>+~]/.test(ch)) cut = i + 1;
+  }
+  return sel.slice(cut).trim();
+};
+const PSEUDO_ARGS = /:(not|is|where|has)\((?:[^()]|\([^()]*\))*\)/g;
+const classesOf = (compound) => new Set([...compound.replace(PSEUDO_ARGS, '').matchAll(/\.([\w-]+)/g)].map((m) => m[1]));
+const specificity = (sel) => {
+  let a = 0; let b = 0; let c = 0;
+  let s = sel.replace(/:where\((?:[^()]|\([^()]*\))*\)/g, '');
+  s = s.replace(/:(not|is|has)\(((?:[^()]|\([^()]*\))*)\)/g, (_m, _k, inner) => {
+    const best = splitTop(inner).map(specificity)
+      .sort((x, y) => (y[0] - x[0]) || (y[1] - x[1]) || (y[2] - x[2]))[0] || [0, 0, 0];
+    a += best[0]; b += best[1]; c += best[2];
+    return '';
+  });
+  s = s.replace(/\[[^\]]*\]/g, () => { b += 1; return ''; });
+  s = s.replace(/#[\w-]+/g, () => { a += 1; return ''; });
+  s = s.replace(/\.[\w-]+/g, () => { b += 1; return ''; });
+  s = s.replace(/::[\w-]+/g, () => { c += 1; return ''; });
+  s = s.replace(/:[\w-]+/g, () => { b += 1; return ''; });
+  s.replace(/(^|[\s>+~])([a-zA-Z][\w-]*)/g, () => { c += 1; return ''; });
+  return [a, b, c];
+};
+const compareSpecificity = (x, y) => (x[0] - y[0]) || (x[1] - y[1]) || (x[2] - y[2]);
+
+const colourRules = () => {
+  const rules = [];
+  walkCss(path.join(repoRoot, 'src')).forEach((file, fileIndex) => {
+    const clean = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+    for (const m of clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const head = m[1].trim();
+      if (head.startsWith('@')) continue;
+      const decl = m[2].split(';').map((d) => d.split(':')).find(([p]) => p && p.trim().toLowerCase() === 'color');
+      if (!decl) continue;
+      const value = decl.slice(1).join(':').trim();
+      const line = clean.slice(0, m.index).split('\n').length;
+      for (const sel of splitTop(head)) {
+        rules.push({ where: `${path.relative(repoRoot, file)}:${line}`, fileIndex, offset: m.index, sel, value, important: /!important/.test(value) });
+      }
+    }
+  });
+  return rules;
+};
+
+/* Every className the JSX writes: the tokens it always has, and per ${...} the
+   alternatives it switches between (one alternative of each at a time). */
+const jsxClassNames = () => {
+  const out = [];
+  const literals = (text) => [...text.matchAll(/'([^']*)'|"([^"]*)"/g)].map((x) => (x[1] ?? x[2]).split(/\s+/).filter(Boolean));
+  for (const file of walkJs(path.join(repoRoot, 'src'))) {
+    const source = readFileSync(file, 'utf8');
+    for (const m of source.matchAll(/className=(?:"([^"]*)"|'([^']*)'|\{`((?:[^`\\]|\\.)*)`\}|\{([^}\n]*)\})/g)) {
+      const always = new Set();
+      const groups = [];
+      if (m[3] !== undefined) {
+        const statics = m[3].replace(/\$\{(?:[^{}]|\{[^{}]*\})*\}/g, (expr) => {
+          const alts = literals(expr);
+          if (alts.length) groups.push(alts);
+          return ' ';
+        });
+        statics.split(/\s+/).filter(Boolean).forEach((t) => always.add(t));
+      } else if (m[4] !== undefined) {
+        const alts = literals(m[4]);
+        if (alts.length) groups.push(alts);
+      } else {
+        (m[1] ?? m[2]).split(/\s+/).filter(Boolean).forEach((t) => always.add(t));
+      }
+      out.push({ file: path.relative(repoRoot, file), always, groups });
+    }
+  }
+  return out;
+};
+const canCarry = (className, needed) => {
+  const picked = new Map();
+  for (const token of needed) {
+    if (className.always.has(token)) continue;
+    let found = false;
+    for (let g = 0; g < className.groups.length && !found; g += 1) {
+      for (let alt = 0; alt < className.groups[g].length; alt += 1) {
+        if (!className.groups[g][alt].includes(token)) continue;
+        if (picked.has(g) && picked.get(g) !== alt) continue;
+        picked.set(g, alt);
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  return true;
+};
+
+test('a chosen state that is gold stays gold under the pointer', () => {
+  const rules = colourRules();
+  const classNames = jsxClassNames();
+  const chosen = rules.filter((r) => CHOSEN.test(r.sel) && !INTERACTION.test(r.sel) && GOLD_INK.test(r.value));
+  const hovers = rules.filter((r) => /:hover\b/.test(lastCompound(r.sel)) && !GOLD_INK.test(r.value) && !STEPS_ASIDE.test(lastCompound(r.sel)));
+  // Tripwire: the scan must still see the rule that started this.
+  assert.ok(chosen.some((r) => r.sel.includes('.spaces-region__marks.is-on')), 'the Spaces bulb rule is no longer found - update this test');
+
+  const offenders = [];
+  for (const c of chosen) {
+    const need = classesOf(lastCompound(c.sel));
+    if (need.size === 0) continue;
+    const carriers = classNames.filter((cn) => canCarry(cn, need));
+    if (!carriers.length) continue;
+    for (const h of hovers) {
+      const hoverNeed = classesOf(lastCompound(h.sel));
+      if (hoverNeed.size === 0) continue;
+      const carrier = carriers.find((cn) => canCarry(cn, new Set([...need, ...hoverNeed])));
+      if (!carrier) continue;
+      let hoverWins;
+      if (h.important !== c.important) hoverWins = h.important;
+      else {
+        const order = compareSpecificity(specificity(h.sel), specificity(c.sel));
+        if (order !== 0) hoverWins = order > 0;
+        else hoverWins = h.fileIndex === c.fileIndex ? h.offset > c.offset : true;
+      }
+      if (hoverWins) {
+        offenders.push(`${c.where}  ${c.sel}  { color: ${c.value} }\n      turns ${h.value} under ${h.where}  ${h.sel}  (both on a className in ${carrier.file})`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], `a gold chosen state must stay gold on hover:\n  ${offenders.join('\n  ')}`);
+});

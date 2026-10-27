@@ -31,6 +31,7 @@ import { createStableActions } from './utils/stableActionProxy.js';
 import rotateIconSvg from './assets/rotate-icon.svg';
 import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR, resizeHandleCursor } from './utils/handleCursors.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
+import { showToast } from './utils/toast.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
@@ -41,6 +42,11 @@ const MIN_REGION_SIZE = 5;
 const POLYGON_CLOSE_PX = 8;
 const POLYGON_SAME_POINT_PX = 3;
 const DRAW_TOOL_TYPES = new Set(['rectangular', 'polygon', 'freehand']);
+// Owner 2026-10-26: Erase takes a whole area away where it is pressed or
+// dragged over (the phone's Delete key; Subtract cuts part of an area).
+const ERASE_TOOL_TYPE = 'erase';
+// A mouse press that lifts within this many screen px is a click, not a drag.
+const MOUSE_CLICK_SLOP_PX = 4;
 const REGION_HANDLE_BLUE = HANDLE_RING;
 // Unified white-fill / blue-ring handle look (shared with every other handle).
 const REGION_HANDLE_STROKE = HANDLE_RING;
@@ -74,6 +80,31 @@ const REGION_EDIT_PASS_THROUGH_CHROME = [
   'button[aria-label="Previous page"]',
   'button[aria-label="Next page"]',
 ].join(', ');
+
+// What is saved: exactly what the user made. Touching areas do not merge
+// unless the user picks Merge from the area menu.
+const buildRegionPayload = (list) => (Array.isArray(list) ? list : []).map((region) => ({
+  ...region,
+  coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
+  // Deep copy sourceRegions (unmerge needs them).
+  sourceRegions: Array.isArray(region.sourceRegions)
+    ? region.sourceRegions.map((sourceRegion) => ({
+        ...sourceRegion,
+        coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : []
+      }))
+    : undefined,
+  originCenter: region.originCenter ? { ...region.originCenter } : undefined
+}));
+
+// The parts of the areas that leaving the tool would save.
+const regionsSignature = (list) => JSON.stringify((Array.isArray(list) ? list : []).map((region) => [
+  region.regionId,
+  region.operation || null,
+  region.shapeType || null,
+  region.rotation || 0,
+  region.coordinates,
+  region.smoothVertices || null,
+]));
 
 // Even-odd point-in-polygon on a flat [x0, y0, x1, y1, ...] list (page units).
 const isPointInFlatPolygon = (x, y, coords) => {
@@ -151,8 +182,9 @@ const RegionSelectionTool = ({
   scale = 1,
   pageWidth = 0,
   pageHeight = 0,
-  onSetFullPage,
-  canSetFullPage = false,
+  // Owner 2026-10-26: Esc drops the edits; the toast's Undo saves them for
+  // this space and page after all (the session has ended by then).
+  onRestoreRegions = null,
   initialRegions = [],
   activeTool = null, // Active tool from parent (e.g., 'pan' when space is held)
   // KAL-301 follow-up: bridge the region-edit history into the app's top
@@ -167,7 +199,7 @@ const RegionSelectionTool = ({
   // journaling now happens at commit time in PDFViewer.handleRegionComplete
   // (removedRegionIds diff), so Cancel can never produce phantom journal rows.
 }) => {
-  const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'polygon' | 'freehand' (Lasso) | 'move'
+  const [toolType, setToolType] = useState('rectangular'); // 'rectangular' | 'polygon' | 'freehand' (Lasso) | 'erase' | 'move'
   const [selectionMode, setSelectionMode] = useState(REGION_OPERATIONS.ADD); // 'add' | 'subtract'
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState(null);
@@ -229,6 +261,11 @@ const RegionSelectionTool = ({
   // Phone: where the current draw gesture started (client px) and how far the
   // finger has travelled, so a tap on an area can select it instead of drawing.
   const drawGestureRef = useRef(null);
+  // Erase: the regions before the press (one undo step per stroke) and the
+  // areas taken away so far.
+  const eraseGestureRef = useRef(null);
+  // What the session opened with, to tell whether leaving changes anything.
+  const sessionStartSignatureRef = useRef('');
   // handleRegionPointerDown is declared below handleMouseDown; the phone
   // hit-test in handleMouseDown reaches it through this ref.
   const regionPointerDownRef = useRef(null);
@@ -375,6 +412,12 @@ const RegionSelectionTool = ({
     }
     return toolType;
   }, [toolType, isCmdCtrlPressed, isDrawing, polyCorners.length]);
+
+  // Owner 2026-10-26: with a shape tool armed a click still picks an area,
+  // and the picked area keeps its grabbers (and moves when dragged), so it
+  // can be changed without switching to Select first.
+  const editsPicked = effectiveToolType === 'move' ||
+    (DRAW_TOOL_TYPES.has(effectiveToolType) && !isDrawing && polyCorners.length === 0);
 
   // Calculate effective selection mode (override with modifier keys)
   const effectiveSelectionMode = useMemo(() => {
@@ -700,6 +743,7 @@ const RegionSelectionTool = ({
           originCenter: region.originCenter ? { ...region.originCenter } : undefined
         }));
         setRegions(clonedRegions);
+        sessionStartSignatureRef.current = regionsSignature(clonedRegions);
         const storedHistory = regionEditHistoryStore.get(historyKey);
         undoStackRef.current = Array.isArray(storedHistory?.undo)
           ? storedHistory.undo.map(cloneHistorySnapshot)
@@ -848,6 +892,34 @@ const RegionSelectionTool = ({
     }
     return null;
   }, [getRegionBounds]);
+
+  // Erase: take away every area the stroke passes over, from the last point
+  // to this one in small steps so a quick sweep cannot jump a thin area.
+  const eraseAreaAt = useCallback((x, y) => {
+    const gesture = eraseGestureRef.current;
+    if (!gesture) return;
+    const from = gesture.last || { x, y };
+    gesture.last = { x, y };
+    const steps = Math.max(1, Math.ceil(Math.hypot(x - from.x, y - from.y) / 4));
+    const hits = [];
+    for (let step = 1; step <= steps; step += 1) {
+      const px = from.x + ((x - from.x) * step) / steps;
+      const py = from.y + ((y - from.y) * step) / steps;
+      for (const region of regionsRef.current) {
+        if (gesture.erased.has(region.regionId)) continue;
+        if (!isPointInFlatPolygon(px, py, region.coordinates)) continue;
+        gesture.erased.add(region.regionId);
+        hits.push(region.regionId);
+      }
+    }
+    if (!hits.length) return;
+    setRegions((prev) => prev.filter((region) => !gesture.erased.has(region.regionId)));
+    setSelectedRegionIds((prev) => (hits.some((id) => prev.has(id))
+      ? new Set([...prev].filter((id) => !gesture.erased.has(id)))
+      : prev));
+  }, []);
+  const eraseAreaAtRef = useRef(null);
+  eraseAreaAtRef.current = eraseAreaAt;
 
   const ensureBoundsMinSize = useCallback((bounds) => {
     if (!bounds) return null;
@@ -1435,8 +1507,40 @@ const RegionSelectionTool = ({
     const pointer = clientPointToPage(event.clientX, event.clientY, rect);
     if (!pointer) return;
     const { x, y } = pointer;
+
+    if (effectiveToolType === ERASE_TOOL_TYPE) {
+      eraseGestureRef.current = { preSnapshot: createHistorySnapshot(), erased: new Set() };
+      eraseAreaAtRef.current?.(x, y);
+      return;
+    }
+
+    // Owner 2026-10-26: a shape tool still picks areas. In Add mode (Shift
+    // not held) a press on the picked area moves it, and a polygon's first
+    // click on an area picks it rather than dropping a corner there. A drag
+    // anywhere else draws; a click that never travels picks what is under it
+    // (handled on release). Subtract keeps every press for drawing, since a
+    // cut starts on top of an area.
+    const picksAreas = effectiveSelectionMode === REGION_OPERATIONS.ADD && !event.shiftKey;
+    if (picksAreas && (effectiveToolType !== 'polygon' || polyCornersRef.current.length === 0)) {
+      const picked = selectedRegionIds.size > 0 ? findRegionAtPagePoint(x, y, selectedRegionIds) : null;
+      if (picked && selectedRegionIds.has(picked.regionId)) {
+        regionPointerDownRef.current?.(picked, event);
+        return;
+      }
+      if (effectiveToolType === 'polygon') {
+        const hit = findRegionAtPagePoint(x, y);
+        if (hit) {
+          setSelectedRegionIds(new Set([hit.regionId]));
+          registerRegionTap(hit.regionId, event.clientX, event.clientY);
+          releaseInteractionPointer(event);
+          return;
+        }
+      }
+    }
+
     if (effectiveToolType === 'polygon') {
       // A corner per click; the press is not a drag, so nothing waits for up.
+      if (polyCornersRef.current.length === 0 && selectedRegionIds.size > 0) setSelectedRegionIds(new Set());
       const corners = polyCornersRef.current;
       const screenGap = (p) => Math.hypot(pageToScreenX(p.x) - pageToScreenX(x), pageToScreenY(p.y) - pageToScreenY(y));
       if (corners.length >= 3 && screenGap(corners[0]) <= POLYGON_CLOSE_PX) {
@@ -1459,7 +1563,7 @@ const RegionSelectionTool = ({
       setIsDrawing(true);
       setPolygonPoints([{ x, y }]);
     }
-  }, [active, targetElement, effectiveToolType, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect, captureInteractionPointer, mobileMode, findRegionAtPagePoint, pageToScreenX, pageToScreenY]);
+  }, [active, targetElement, effectiveToolType, effectiveSelectionMode, clientPointToPage, selectedRegionIds, regions, getRegionBounds, activeTool, isPointWithinTargetRect, captureInteractionPointer, releaseInteractionPointer, mobileMode, findRegionAtPagePoint, pageToScreenX, pageToScreenY, createHistorySnapshot, registerRegionTap]);
 
   const handleMouseMove = useCallback((event) => {
     if (!active || !targetElement) return;
@@ -1494,6 +1598,11 @@ const RegionSelectionTool = ({
     const pointer = clientPointToPage(event.clientX, event.clientY, rect);
     if (!pointer) return;
     const { x, y } = pointer;
+
+    if (eraseGestureRef.current) {
+      eraseAreaAt(x, y);
+      return;
+    }
 
     if (effectiveToolType === 'polygon' && polyCornersRef.current.length > 0) {
       setPolyHover({ x, y });
@@ -1832,11 +1941,23 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode]);
+  }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode, eraseAreaAt]);
 
   const handleMouseUp = useCallback((event) => {
     if (!active) return;
     if (!releaseInteractionPointer(event)) return;
+
+    const eraseGesture = eraseGestureRef.current;
+    if (eraseGesture) {
+      eraseGestureRef.current = null;
+      if (eraseGesture.erased.size > 0) {
+        undoStackRef.current.push(eraseGesture.preSnapshot);
+        redoStackRef.current = [];
+        if (undoStackRef.current.length > REGION_HISTORY_LIMIT) undoStackRef.current.shift();
+        persistHistoryStacks();
+      }
+      return;
+    }
 
     if (effectiveToolType === 'polygon' && !interactionState) return;
 
@@ -1905,24 +2026,29 @@ const RegionSelectionTool = ({
 
     if (!isDrawing) return;
 
-    // Phone: a tap (no drag) on an existing area while a draw tool is armed
-    // selects that area and switches to Select, so it can be moved or resized
-    // straight away. Before, the tap drew nothing and selected nothing.
+    // A click or tap (no drag) while a shape tool is armed picks the area
+    // under it, or lets go of the picked one on empty page. The shape tool
+    // stays armed (owner 2026-10-26: "I shouldn't have to switch to the
+    // selection tool"); the picked area shows its grabbers and Delete takes
+    // it away.
     const gesture = drawGestureRef.current;
     drawGestureRef.current = null;
-    if (mobileMode && gesture && gesture.travelled <= TOUCH_TAP_SLOP_PX) {
+    if (gesture && gesture.travelled <= (mobileMode ? TOUCH_TAP_SLOP_PX : MOUSE_CLICK_SLOP_PX)) {
       const tapped = findRegionAtPagePoint(gesture.page.x, gesture.page.y);
       setIsDrawing(false);
       setStartPoint(null);
       setCurrentRect(null);
       setPolygonPoints([]);
       if (tapped) {
-        setToolType('move');
         setSelectedRegionIds(new Set([tapped.regionId]));
         registerRegionTap(tapped.regionId, event.clientX, event.clientY);
+      } else {
+        setSelectedRegionIds((prev) => (prev.size ? new Set() : prev));
       }
       return;
     }
+    // A new shape lets go of the picked area.
+    setSelectedRegionIds((prev) => (prev.size ? new Set() : prev));
 
     const thinTolerance = getThinTolerance();
     if (effectiveToolType === 'rectangular' && currentRect && currentRect.width > MIN_REGION_SIZE && currentRect.height > MIN_REGION_SIZE) {
@@ -2030,8 +2156,16 @@ const RegionSelectionTool = ({
     setIsCursorOverCanvas(false);
   }, []);
 
+  // A stroke the browser or a second finger takes away puts back what it erased.
+  const dropEraseGesture = useCallback(() => {
+    const gesture = eraseGestureRef.current;
+    eraseGestureRef.current = null;
+    if (gesture?.erased.size) setRegions(cloneRegionsForUndo(gesture.preSnapshot.regions));
+  }, [cloneRegionsForUndo]);
+
   const handlePointerCancel = useCallback((event) => {
     if (!releaseInteractionPointer(event)) return;
+    dropEraseGesture();
     dragHasMovedRef.current = false;
     setIsCursorOverCanvas(false);
     setIsDrawing(false);
@@ -2040,7 +2174,7 @@ const RegionSelectionTool = ({
     setPolygonPoints([]);
     setInteractionState(null);
     setLiveRotationAngle(null);
-  }, [releaseInteractionPointer]);
+  }, [releaseInteractionPointer, dropEraseGesture]);
 
   // Phone: a second finger means "zoom / pan the page", never "keep drawing".
   // Drop the half-drawn shape, put a half-dragged area back where it was, and
@@ -2054,6 +2188,7 @@ const RegionSelectionTool = ({
     }
     documentDragFallbackRef.current = false;
     drawGestureRef.current = null;
+    dropEraseGesture();
     releaseInteractionPointer();
     dragHasMovedRef.current = false;
     setIsCursorOverCanvas(false);
@@ -2063,7 +2198,7 @@ const RegionSelectionTool = ({
     setPolygonPoints([]);
     setInteractionState(null);
     setLiveRotationAngle(null);
-  }, [cloneRegionsForUndo, releaseInteractionPointer]);
+  }, [cloneRegionsForUndo, releaseInteractionPointer, dropEraseGesture]);
 
   useEffect(() => {
     if (!active || !mobileMode) return undefined;
@@ -2077,22 +2212,7 @@ const RegionSelectionTool = ({
     }
 
     const currentRegions = Array.isArray(regionsRef.current) ? regionsRef.current : [];
-
-    // Preserve exactly what the user created. Touching regions should not merge
-    // unless the user explicitly chooses Merge from the Region Editor menu.
-    const payload = currentRegions.map(region => ({
-      ...region,
-      coordinates: Array.isArray(region.coordinates) ? [...region.coordinates] : [],
-      // Deep copy sourceRegions array to ensure it's preserved
-      sourceRegions: Array.isArray(region.sourceRegions) 
-        ? region.sourceRegions.map(sourceRegion => ({
-            ...sourceRegion,
-            coordinates: Array.isArray(sourceRegion.coordinates) ? [...sourceRegion.coordinates] : []
-          }))
-        : undefined,
-      // Preserve originCenter if it exists
-      originCenter: region.originCenter ? { ...region.originCenter } : undefined
-    }));
+    const payload = buildRegionPayload(currentRegions);
     regionDebug(
       `[RegionSelectionTool p${currentPageId ?? 'unknown'}] confirm — ` +
       `input=${currentRegions.length}, payload=${payload.length}, ` +
@@ -2123,51 +2243,37 @@ const RegionSelectionTool = ({
     }
   }, [onCancel, releaseInteractionPointer]);
 
-  // UX (mobile demo parity): on mobile, "Full Page" never raises a browser
-  // window.confirm() dialog. Instead it flips the mobile region strip into an
-  // inline "Make region full page?" Confirm/Cancel step, matching the demo's
-  // in-toolbar confirm flow (mobile-expo-go App.tsx:652-677 + 1644-1658,
-  // AnnotationFormattingBar.tsx:195-207). Desktop keeps window.confirm.
-  const [isFullPageConfirmPending, setIsFullPageConfirmPending] = useState(false);
+  // Owner 2026-10-26: no Cancel or Done. Leaving the tool (Enter, a click
+  // off the page, another tool, the phone's Done) keeps what was drawn, like
+  // every other tool; Undo takes it back. With nothing changed nothing is
+  // saved, so the page is not rewritten and no undo step is made.
+  const handleLeave = useCallback(() => {
+    if (regionsSignature(regionsRef.current) === sessionStartSignatureRef.current) handleCancel();
+    else handleConfirm();
+  }, [handleCancel, handleConfirm]);
 
-  const applyFullPage = useCallback(() => {
-    if (!onSetFullPage) return;
-    setIsFullPageConfirmPending(false);
-    onSetFullPage();
+  // Esc with nothing in hand leaves without saving. When that throws edits
+  // away, the toast's Undo saves them after all (act first, offer Undo).
+  const handleDiscard = useCallback(() => {
+    const changed = regionsSignature(regionsRef.current) !== sessionStartSignatureRef.current;
+    const dropped = changed ? buildRegionPayload(regionsRef.current) : null;
+    const spaceId = currentSpaceId;
+    const pageId = currentPageId;
     handleCancel();
-  }, [onSetFullPage, handleCancel]);
-
-  const cancelFullPageConfirm = useCallback(() => {
-    setIsFullPageConfirmPending(false);
-  }, []);
-
-  useEffect(() => {
-    if (!active) setIsFullPageConfirmPending(false);
-  }, [active]);
-
-  const handleSetFullPage = useCallback(() => {
-    if (!onSetFullPage) return;
-
-    // Demo parity: every phone Full Page press routes through the inline
-    // confirm step in the strip (the demo always confirms, not only when areas
-    // exist). Owner 2026-10-01 (Spaces toolbar): desktop asks the same way in
-    // the tool bar's Areas row instead of a browser dialog, and only when there
-    // are areas that Full page would replace.
-    if (mobileMode || regions.length > 0) {
-      setIsFullPageConfirmPending(true);
-      return;
+    if (dropped && typeof onRestoreRegions === 'function') {
+      showToast('Area changes dropped', 'info', {
+        duration: 6000,
+        action: { label: 'Undo', onClick: () => onRestoreRegions(spaceId, pageId, dropped) },
+      });
     }
-
-    onSetFullPage();
-    handleCancel();
-  }, [onSetFullPage, handleCancel, regions.length, mobileMode]);
+  }, [currentSpaceId, currentPageId, handleCancel, onRestoreRegions]);
 
   useEffect(() => () => {
     if (typeof onMobileToolbarApiChange === 'function') onMobileToolbarApiChange(null);
   }, [onMobileToolbarApiChange]);
 
   const handleRegionPointerDown = useCallback((region, event) => {
-    if (!active || effectiveToolType !== 'move' || !targetElement) {
+    if (!active || !editsPicked || !targetElement) {
       return;
     }
     if (event.button === 2) {
@@ -2178,9 +2284,6 @@ const RegionSelectionTool = ({
     }
     if (event.isPrimary === false || !captureInteractionPointer(event)) return;
     event.stopPropagation();
-
-    // If not in move mode, ignore
-    if (effectiveToolType !== 'move') return;
 
     // Shift always toggles.
     // Cmd/Ctrl only toggles if we are in the persistent Move tool.
@@ -2244,11 +2347,11 @@ const RegionSelectionTool = ({
         });
       }
     }
-  }, [active, effectiveToolType, targetElement, regions, selectedRegionIds, toolType, createHistorySnapshot, captureInteractionPointer]);
+  }, [active, editsPicked, targetElement, regions, selectedRegionIds, toolType, createHistorySnapshot, captureInteractionPointer]);
   regionPointerDownRef.current = handleRegionPointerDown;
 
   const handleVertexPointerDown = useCallback((region, vertexIndex, event) => {
-    if (!active || effectiveToolType !== 'move' || !targetElement) return;
+    if (!active || !editsPicked || !targetElement) return;
     if (event.button === 2) {
       if (!selectedRegionIds.has(region.regionId)) {
         setSelectedRegionIds(new Set([region.regionId]));
@@ -2274,10 +2377,10 @@ const RegionSelectionTool = ({
       initialCoords: [...region.coordinates],
       preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, selectedRegionIds, createHistorySnapshot, getRegionBounds, captureInteractionPointer]);
+  }, [active, editsPicked, targetElement, selectedRegionIds, createHistorySnapshot, getRegionBounds, captureInteractionPointer]);
 
   const handleResizePointerDown = useCallback((region, handle, event) => {
-    if (!active || effectiveToolType !== 'move' || !targetElement) return;
+    if (!active || !editsPicked || !targetElement) return;
     if (event.button === 2) {
       if (!selectedRegionIds.has(region.regionId)) {
         setSelectedRegionIds(new Set([region.regionId]));
@@ -2304,7 +2407,7 @@ const RegionSelectionTool = ({
       initialCoords: [...region.coordinates],
       preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, getRegionBounds, selectedRegionIds, createHistorySnapshot, captureInteractionPointer]);
+  }, [active, editsPicked, targetElement, getRegionBounds, selectedRegionIds, createHistorySnapshot, captureInteractionPointer]);
 
   // KAL-301 REDO: rotation handle pointer-down, matching the standard mtr
   // pointer-down in useSVGInteraction.js: the rotation pivot is the bbox
@@ -2313,7 +2416,7 @@ const RegionSelectionTool = ({
   // geometry is captured once, and the live angle starts at 0 so there is no
   // jump on the first pointermove.
   const handleRotatePointerDown = useCallback((region, event) => {
-    if (!active || effectiveToolType !== 'move' || !targetElement) return;
+    if (!active || !editsPicked || !targetElement) return;
     if (event.button === 2) return;
     if (event.isPrimary === false || !captureInteractionPointer(event)) return;
     event.stopPropagation();
@@ -2342,7 +2445,7 @@ const RegionSelectionTool = ({
       baseRotation,
       preSnapshot
     });
-  }, [active, effectiveToolType, targetElement, getRegionBounds, createHistorySnapshot, captureInteractionPointer]);
+  }, [active, editsPicked, targetElement, getRegionBounds, createHistorySnapshot, captureInteractionPointer]);
 
   // Desktop: double-click an area = select it and toggle the bounding box
   // (phone does the same with a double-tap, see registerRegionTap).
@@ -2385,16 +2488,16 @@ const RegionSelectionTool = ({
   const activeToolRef = useRef(activeTool);
   activeToolRef.current = activeTool;
   const chooseToolType = useCallback((nextToolType) => {
-    if (nextToolType !== 'move' && !DRAW_TOOL_TYPES.has(nextToolType)) return;
+    if (nextToolType !== 'move' && nextToolType !== ERASE_TOOL_TYPE && !DRAW_TOOL_TYPES.has(nextToolType)) return;
     dropPolygon();
     setToolType(nextToolType);
-    if (nextToolType !== 'move') setLastDrawingTool(nextToolType);
+    if (DRAW_TOOL_TYPES.has(nextToolType)) setLastDrawingTool(nextToolType);
     if (activeToolRef.current === 'pan' && typeof onRequestRegionTool === 'function') onRequestRegionTool();
   }, [onRequestRegionTool, dropPolygon]);
   const chooseSelectionMode = useCallback((nextMode) => {
     if (nextMode !== REGION_OPERATIONS.ADD && nextMode !== REGION_OPERATIONS.SUBTRACT) return;
     setSelectionMode(nextMode);
-    if (toolType === 'move') chooseToolType(lastDrawingTool);
+    if (!DRAW_TOOL_TYPES.has(toolType)) chooseToolType(lastDrawingTool);
     else if (activeToolRef.current === 'pan' && typeof onRequestRegionTool === 'function') onRequestRegionTool();
   }, [toolType, lastDrawingTool, chooseToolType, onRequestRegionTool]);
 
@@ -2410,16 +2513,11 @@ const RegionSelectionTool = ({
   regionToolbarActionsRef.current = {
     setToolType: chooseToolType,
     setSelectionMode: chooseSelectionMode,
-    confirm: handleConfirm,
-    cancel: handleCancel,
+    leave: handleLeave,
     deleteSelected: handleDeleteSelected,
-    setFullPage: handleSetFullPage,
-    confirmFullPage: applyFullPage,
-    cancelFullPage: cancelFullPageConfirm,
   };
   const regionToolbarActions = useMemo(() => createStableActions(regionToolbarActionsRef, [
-    'setToolType', 'setSelectionMode', 'confirm', 'cancel', 'deleteSelected',
-    'setFullPage', 'confirmFullPage', 'cancelFullPage',
+    'setToolType', 'setSelectionMode', 'leave', 'deleteSelected',
   ]), []);
   const canDeleteRegion = selectedRegionIds.size > 0;
   useEffect(() => {
@@ -2431,11 +2529,8 @@ const RegionSelectionTool = ({
     onMobileToolbarApiChange({
       toolType,
       selectionMode,
-      canSetFullPage,
       canDelete: canDeleteRegion,
       polygonCorners: polyCorners.length,
-      // Inline full-page confirm step (see handleSetFullPage).
-      fullPageConfirmPending: isFullPageConfirmPending,
       ...regionToolbarActions,
     });
   }, [
@@ -2443,10 +2538,8 @@ const RegionSelectionTool = ({
     onMobileToolbarApiChange,
     toolType,
     selectionMode,
-    canSetFullPage,
     canDeleteRegion,
     polyCorners.length,
-    isFullPageConfirmPending,
     regionToolbarActions,
   ]);
 
@@ -2767,14 +2860,16 @@ const RegionSelectionTool = ({
   }, []);
 
   // Owner 2026-10-01 (Spaces toolbar): the app's keys while editing areas —
-  // V = Select (as everywhere), Esc = drop the shape being drawn (or put a
-  // half-dragged area back), else let go of the picked areas, and Enter =
-  // Done. Read through a ref so the listener below never re-subscribes (its
+  // V = Select and E = Erase (as everywhere), Esc = drop the shape being
+  // drawn (or put a half-dragged area back), else let go of the picked areas,
+  // else leave without saving (with Undo on a toast), and Enter = leave,
+  // keeping the areas (owner 2026-10-26: no Cancel or Done buttons). Read through a ref so the listener below never re-subscribes (its
   // cleanup clears the held Shift / Alt / Space state).
   const keyboardActionsRef = useRef({});
   keyboardActionsRef.current = {
     chooseToolType,
-    confirm: handleConfirm,
+    leave: handleLeave,
+    discard: handleDiscard,
     abandon: abandonTouchInteraction,
     busy: isDrawing || interactionState !== null,
     hasSelection: selectedRegionIds.size > 0,
@@ -2829,6 +2924,18 @@ const RegionSelectionTool = ({
         keyboardActionsRef.current.chooseToolType?.('move');
         return;
       }
+      if (
+        key === 'e' &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        !isEditableKeyboardTarget()
+      ) {
+        stopRegionKeyboardShortcut(event);
+        keyboardActionsRef.current.chooseToolType?.(ERASE_TOOL_TYPE);
+        return;
+      }
       // Owner 2026-10-22: a polygon being drawn answers Enter (close it),
       // Escape (drop it) and Backspace / Delete (take back the last corner),
       // as Bluebeam's polygon and Photoshop's Polygonal Lasso do. With no
@@ -2841,8 +2948,8 @@ const RegionSelectionTool = ({
         ['Enter', 'Escape', 'Backspace', 'Delete'].includes(event.key)
       ) {
         const actions = keyboardActionsRef.current;
-        // A focused Areas button, dialog or menu keeps its own Enter, so
-        // Cancel stays Cancel while a polygon is going.
+        // A focused dialog or menu keeps its own Enter while a polygon is
+        // going.
         const focusOwnsEnter = event.key === 'Enter' &&
           !!document.activeElement?.closest?.('[data-area-actions], [data-mobile-tool-properties], [role="dialog"], [role="menu"], [role="alertdialog"]');
         if (actions.polygonCorners > 0 && !focusOwnsEnter) {
@@ -2877,6 +2984,9 @@ const RegionSelectionTool = ({
         } else if (actions.hasSelection) {
           stopRegionKeyboardShortcut(event);
           actions.clearSelection();
+        } else if (!document.activeElement?.closest?.('[role="dialog"], [role="menu"], [role="alertdialog"]')) {
+          stopRegionKeyboardShortcut(event);
+          actions.discard();
         }
         return;
       }
@@ -2885,16 +2995,16 @@ const RegionSelectionTool = ({
         !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey &&
         !event.isComposing &&
         !isEditableKeyboardTarget() &&
-        // The Areas action buttons, a dialog or a menu answer Enter
-        // themselves (Cancel must stay Cancel). Any other button merely kept
-        // focus after a click (a tool, or the Spaces panel's "Draw area",
-        // which would otherwise toggle the session off), so Enter is Done.
+        // The phone's area strip, a dialog or a menu answer Enter
+        // themselves. Any other button merely kept focus after a click (a
+        // tool, or the Spaces panel's edit button, which would otherwise
+        // toggle the session off), so Enter leaves, keeping the areas.
         !document.activeElement?.closest?.('[data-area-actions], [data-mobile-tool-properties], [role="dialog"], [role="menu"], [role="alertdialog"]')
       ) {
         const actions = keyboardActionsRef.current;
         if (actions.contextMenuOpen || actions.busy) return;
         stopRegionKeyboardShortcut(event);
-        actions.confirm();
+        actions.leave();
         return;
       }
       // Shift forces additive mode
@@ -2954,10 +3064,12 @@ const RegionSelectionTool = ({
     if (!active || !targetElement) return;
 
     const handleDocumentPointerDown = (event) => {
-      // Preserve the desktop click-outside-to-cancel contract. Touch users
-      // must be able to operate mobile chrome/backdrops without ending the
-      // region session before the tapped control receives its click.
-      if (event.pointerType && event.pointerType !== 'mouse') return;
+      // Desktop: a click (mouse or pen) outside the page and the area chrome
+      // leaves the tool, keeping the areas (owner 2026-10-26; it used to throw
+      // them away). Touch users must be able to operate mobile chrome and
+      // backdrops without ending the session before the tapped control
+      // receives its click.
+      if (mobileMode || event.pointerType === 'touch') return;
       if (targetElement.contains(event.target)) {
         return;
       }
@@ -2989,14 +3101,19 @@ const RegionSelectionTool = ({
       if (event.target.closest('.survey-pdfjs-viewer')) {
         return;
       }
-      handleCancel();
+      // The Spaces panel's edit button leaves (or switches page) on its own
+      // click.
+      if (event.target.closest('.spaces-region__edit')) {
+        return;
+      }
+      handleLeave();
     };
 
     document.addEventListener('pointerdown', handleDocumentPointerDown);
     return () => {
       document.removeEventListener('pointerdown', handleDocumentPointerDown);
     };
-  }, [active, targetElement, handleCancel]);
+  }, [active, targetElement, handleLeave, mobileMode]);
 
   // Latest handlers for the document capture listeners below. The listeners
   // are bound once per session: re-binding them on every render (the handlers
@@ -3194,7 +3311,7 @@ const RegionSelectionTool = ({
                 ? 'default'
                 : ((!mobileMode && DRAW_TOOL_TYPES.has(effectiveToolType))
                   ? areaDrawCursor(effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT ? 'subtract' : 'add')
-                  : 'crosshair'),
+                  : (effectiveToolType === ERASE_TOOL_TYPE && !mobileMode ? areaDrawCursor('erase') : 'crosshair')),
               // Phone: the layer is see-through to touches. A finger on the page
               // lands in the PDF viewer, so two fingers pinch and pan it as
               // everywhere else in the app, and this tool picks the one-finger
@@ -3417,7 +3534,7 @@ const RegionSelectionTool = ({
                 ="mtr" is what RotationInputField anchors to. The whole group
                 rotates with the shape during a rotate drag, exactly like the
                 standard overlay's rotated <g>. */}
-            {effectiveToolType === 'move' && selectedRegionIds.size === 1 && (() => {
+            {editsPicked && selectedRegionIds.size === 1 && (() => {
               const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
               if (!selectedRegion) return null;
               // KAL-301 follow-up: tilted-chrome geometry — un-rotated box
@@ -3497,7 +3614,7 @@ const RegionSelectionTool = ({
           </svg>
 
           {/* Resize handles for the selected region (ONLY if single selection) */}
-          {effectiveToolType === 'move' && selectedRegionIds.size === 1 && (() => {
+          {editsPicked && selectedRegionIds.size === 1 && (() => {
             const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
             if (!selectedRegion) return null;
 
@@ -3832,7 +3949,7 @@ const RegionSelectionTool = ({
           and supports typed-angle commits (Enter/blur), arrow-key nudges and
           Escape-cancel. Visibility follows the standard machine: 150ms hover
           intent on the handle, 500ms grace, forced visible while rotating. */}
-      {canvasRect && containerRef.current && effectiveToolType === 'move' && selectedRegionIds.size === 1 && (() => {
+      {canvasRect && containerRef.current && editsPicked && selectedRegionIds.size === 1 && (() => {
         const selectedRegion = regions.find(r => r.regionId === Array.from(selectedRegionIds)[0]);
         if (!selectedRegion) return null;
         const bounds = getRegionBounds(selectedRegion);

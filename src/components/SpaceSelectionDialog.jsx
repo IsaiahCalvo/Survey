@@ -1,109 +1,38 @@
 // src/components/SpaceSelectionDialog.jsx
 //
-// The shell of the survey's "Select space" picker (Survey panel → Select →
+// The shell of the survey's "Copy to a module" picker (Survey panel → Select →
 // Copy). PDFViewer still owns the list and the copy logic; this file only
 // owns the window around it.
 //
 // WHY A PORTAL: the picker used to render inside the viewer's own subtree,
-// under an ancestor with its own stacking context (z-index 5000). Its
-// zIndex 10000 only counted inside that box, so the left rail, the right
-// Survey rail and the toolbars painted over it and its top was hidden.
-// Portalling to document.body puts it on the app's top layer, like
-// ApplyRedactionsModal and the hub dialogs.
+// under an ancestor with its own stacking context (z-index 5000), so the
+// rails and toolbars painted over it. Portalled to document.body it sits on
+// the app's top layer.
 //
-// Same family as the other dialogs: the one modal scrim (--overlay-scrim +
-// 8px blur), a --surface-2 card, the dialog z-index token, and the shared
-// keyboard primitive (useFocusTrap: Escape closes, Tab stays inside, focus
-// returns to the Copy button). Clicking the scrim closes it, as before.
+// The window is DialogCard, the app's one dialog look (owner 2026-10-26: every
+// dialog follows the same design): scrim, card, title, close X, focus trap
+// (Escape closes, Tab stays inside, focus returns to the Copy button). The
+// module list is the body; picking a module copies, so there is no footer.
 
-import { useRef } from 'react';
 import BodyPortal from './BodyPortal';
-import Icon from '../Icons';
-import { useFocusTrap } from '../hooks/useFocusTrap';
-import { COLORS, SHADOWS, Z_INDEX } from '../theme';
-import { useTooltip } from './Tooltip';
+import DialogCard from './DialogCard.jsx';
+import { Z_INDEX } from '../theme';
 
 export default function SpaceSelectionDialog({ open, onClose, title = 'Select space', children }) {
-  const tip = useTooltip();
-  const cardRef = useRef(null);
-  useFocusTrap(cardRef, open, { onEscape: onClose });
-
   if (!open || typeof document === 'undefined') return null;
 
   return (
     <BodyPortal>
-      <div
-        onClick={onClose}
-        data-testid="space-selection-scrim"
-        style={{
-          position: 'fixed',
-          inset: 0,
-          background: COLORS.modal.overlay,
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          zIndex: Z_INDEX.modalOverlay,
-          // Scrim and card fade in on the shared dialog motion (motion.css).
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontFamily: 'var(--font-ui)',
-        }}
+      <DialogCard
+        title={title}
+        message="Pick the module to copy them into."
+        onClose={onClose}
+        width={500}
+        zIndex={Z_INDEX.modalOverlay}
+        cardProps={{ 'data-testid': 'space-selection-dialog' }}
       >
-        <div
-          ref={cardRef}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="space-selection-title"
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            background: COLORS.modal.surface,
-            border: `1px solid ${COLORS.modal.border}`,
-            borderRadius: 'var(--radius-dialog)',
-            padding: '24px',
-            width: '500px',
-            maxWidth: '90vw',
-            maxHeight: '80vh',
-            overflow: 'auto',
-            boxSizing: 'border-box',
-            boxShadow: SHADOWS.xl,
-          }}
-        >
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '20px',
-          }}>
-            <h2
-              id="space-selection-title"
-              style={{
-                margin: 0,
-                fontSize: '18px',
-                fontWeight: '600',
-                color: COLORS.modal.textPrimary,
-                fontFamily: 'var(--font-ui)',
-              }}
-            >
-              {title}
-            </h2>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              {...tip('Close', 'below')}
-              className="btn btn-icon btn-icon-sm"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-3)',
-              }}
-            >
-              <Icon name="close" size={18} />
-            </button>
-          </div>
-          {children}
-        </div>
-      </div>
+        {children}
+      </DialogCard>
     </BodyPortal>
   );
 }

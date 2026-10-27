@@ -1718,7 +1718,7 @@ input[type="text"].space-card__name:focus-visible {
   cursor: not-allowed;
 }
 
-/* A lit state (marks shown, areas being edited) is bright ink, not gold. */
+/* An open menu (Move or copy) is bright ink: it is not a picked tool. */
 .space-card__icon.is-on:not([aria-disabled='true']) {
   color: var(--text-1);
 }
@@ -1732,7 +1732,11 @@ input[type="text"].space-card__name:focus-visible {
   pointer-events: none;
 }
 
-.spaces-region__marks.is-on:not([aria-disabled='true']) {
+/* A toggle that is on (marks shown, areas being edited) is gold ink, like a
+   picked tool, and stays gold under the pointer (owner 2026-10-26: the bulb
+   turned white on hover). The hover below steps aside for .is-on. */
+.spaces-region__marks.is-on:not([aria-disabled='true']),
+.spaces-region__edit.is-on:not([aria-disabled='true']) {
   color: var(--accent);
 }
 
@@ -2378,7 +2382,7 @@ input[type="text"].spaces-transfer__input {
     background: var(--hover);
   }
   .space-card__chevron:hover,
-  .space-card__icon:not([aria-disabled='true']):hover,
+  .space-card__icon:not([aria-disabled='true']):not(.is-on):hover,
   .spaces-region__page:hover,
   .space-card__add-go:hover {
     color: var(--text-1);

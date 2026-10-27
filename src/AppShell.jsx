@@ -2240,9 +2240,10 @@ export default function App({ devPreviewReturnTab = null }) {
   // edited the tool bar is in AREAS mode: the area shapes and the Add /
   // Subtract mode stand where a group's tools go (the loadout, so they morph
   // in like any group switch), the app's own Select picks areas (one Select,
-  // V as always), Pan and zoom stay, and row 2 holds the actions (Delete area,
-  // Full page, Cancel, Done). The drawing groups wait, dimmed, until Done or
-  // Cancel. RegionSelectionTool publishes the state; PDFViewer forwards it.
+  // V as always), Pan and zoom stay. A drawing group (Draw, Shapes, Text,
+  // Survey) leaves area editing, keeping the areas, and arms that group, as
+  // picking another tool does everywhere (owner 2026-10-26, no Done button).
+  // RegionSelectionTool publishes the state; PDFViewer forwards it.
   // The tool publishes its state a render after the viewer enters the mode;
   // until then the bar draws the tool's opening state (Rectangle, Add), so
   // the Areas tools take over in the same frame as the mode and morph in as
@@ -2256,6 +2257,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const surveyMarkerModesInToolBar = !areasMode && !isMobileViewer
     && bottomToolbarApi?.activeTool === 'survey-marker' && Boolean(rightRailApi?.showSurveyPanel);
   const areasPanArmed = areasMode && bottomToolbarApi?.activeTool === 'pan';
+  const leaveAreasMode = () => { if (areasMode) regionApi.leave?.(); };
   // A group left open from before (Draw's row) must not draw its tools beside
   // the Areas tools.
   useEffect(() => {
@@ -2576,10 +2578,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   </div>
   );
 
-  // Areas mode (owner 2026-10-01, see regionApi above). The shapes and the
-  // mode toggle are the loadout's 28px .chrome-subcontrol buttons with the
+  // Areas mode (owner 2026-10-01, see regionApi above). The shapes, Erase and
+  // the mode toggle are the loadout's 28px .chrome-subcontrol buttons with the
   // gold-glyph armed state, like pen / highlighter / eraser; a rule between
-  // the two pairs. While Pan or Select is armed no shape is lit, but Add /
+  // the two sets. There is no row 2 (owner 2026-10-26): Enter leaves keeping
+  // the areas, Esc leaves dropping them (Undo on a toast), Delete or Erase
+  // removes an area, and any other tool leaves keeping them. While Pan or Select is armed no shape is lit, but Add /
   // Subtract still say which way the next shape will go.
   const renderAreaTools = () => {
     const drawing = regionApi.toolType !== 'move' && !areasPanArmed;
@@ -2609,81 +2613,15 @@ export default function App({ devPreviewReturnTab = null }) {
         {tool('rectangle', 'Rectangle area', 'areaRect', drawing && regionApi.toolType === 'rectangular', () => regionApi.setToolType?.('rectangular'))}
         {tool('polygon', 'Polygon area', 'areaPolygon', drawing && regionApi.toolType === 'polygon', () => regionApi.setToolType?.('polygon'))}
         {tool('freehand', 'Lasso area', 'areaFreehand', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
+        {/* Owner 2026-10-26: Erase (E) takes whole areas away; Delete does
+            the same to the picked one. */}
+        {tool('erase', 'Erase area', 'eraser', drawing && regionApi.toolType === 'erase', () => regionApi.setToolType?.('erase'))}
         <div className="chrome-divider" />
         {tool('add', 'Add to area', 'plus', regionApi.selectionMode === 'add', () => regionApi.setSelectionMode?.('add'))}
         {tool('subtract', 'Subtract from area', 'minus', regionApi.selectionMode === 'subtract', () => regionApi.setSelectionMode?.('subtract'))}
       </div>
     );
   };
-  // Row 2 in Areas mode: what can be done to the areas, then how to leave -
-  // Cancel a ghost, Done a quiet neutral plate (owner: no gold outside a
-  // dialog's primary button - this was the one gold button on any tool row).
-  // Full page asks first (inline, in this row) when it would replace areas
-  // already drawn.
-  const AREA_CONFIRM_STYLE = { color: 'var(--text-1)', fontWeight: 600 };
-  const renderAreaActions = () => {
-    if (regionApi.fullPageConfirmPending) {
-      return (
-        <div data-area-actions="confirm-full-page" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these regions with the full page?</span>
-          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep regions</button>
-          <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirmFullPage}>Use full page</button>
-        </div>
-      );
-    }
-    // Owner 2026-10-22: the bold "Regions" word read as a button and did
-    // nothing. In its place a quiet line says how the armed tool works
-    // (Bluebeam / Photoshop polygon rules: click each corner, close on the
-    // first corner, Enter or a double-click). It keeps one width, so the
-    // buttons beside it never shift as the words change. Then what can be
-    // done to the areas, then how to leave.
-    const corners = regionApi.polygonCorners || 0;
-    const hint = areasPanArmed
-      ? 'Drag to move around the page'
-      : regionApi.toolType === 'move'
-        ? (regionApi.canDelete ? 'Drag to move · Delete removes it' : 'Click an area to pick it')
-        : regionApi.toolType === 'polygon'
-          ? (corners === 0
-            ? 'Click each corner'
-            : (corners < 3 ? 'Click the next corner · Backspace takes one back' : 'Click the first corner or press Enter to close'))
-          : regionApi.toolType === 'freehand'
-            ? 'Drag around the area'
-            : 'Drag to draw an area';
-    return (
-      <div data-area-actions="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-        <span data-area-hint="true" aria-live="polite" style={{ color: 'var(--text-3)', fontSize: '12px', fontWeight: 400, marginRight: '8px', whiteSpace: 'nowrap', width: '288px', flex: '0 1 auto', minWidth: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hint}</span>
-        <button
-          type="button"
-          className="btn btn-sm btn-default"
-          disabled={!regionApi.canDelete}
-          onClick={regionApi.deleteSelected}
-          aria-label="Delete area"
-          {...chromeTip(regionApi.canDelete ? 'Delete the picked area (Delete)' : 'Pick an area to delete it', 'below')}
-        >
-          Delete
-        </button>
-        {/* Always drawn (greyed when the area already is the page), so the
-            row never shifts. */}
-        <button
-          type="button"
-          className="btn btn-sm btn-default"
-          disabled={!regionApi.canSetFullPage}
-          onClick={regionApi.setFullPage}
-          {...chromeTip(regionApi.canSetFullPage ? 'Use the whole page as the area' : 'The area already is the whole page', 'below')}
-        >
-          Full page
-        </button>
-        <div className="chrome-divider" />
-        <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
-          Cancel
-        </button>
-        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
-          Done
-        </button>
-      </div>
-    );
-  };
-
   const toolbarOverflowItems = [];
   toolbarOverflowSlotsRef.current = [];
   // Owner 2026-10-26: with the text settings swapped in, row 2 holds them and
@@ -3146,6 +3084,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      whose tool group keeps its sub-row for as long as one of
                      that group's tools is the armed tool. Shapes and Text below
                      carry the same guard, so all three behave alike. */
+                  leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'draw') return;
                   bottomToolbarApi.setActiveCategoryDropdown('draw');
                   if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) {
@@ -3158,7 +3097,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Draw"
-                disabled={areasMode}
               >
                 <Icon name="drawGroup" size={CHROME_GLYPH} />
               </button>
@@ -3169,6 +3107,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   /* UX 2026-09-22: see Draw above — a second click on the lit
                      Shapes button keeps the shape row, because closing it used
                      to leave a shape tool armed and unseeable. */
+                  leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'shape') return;
                   bottomToolbarApi.setActiveCategoryDropdown('shape');
                   if (!['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
@@ -3181,7 +3120,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Shapes"
-                disabled={areasMode}
               >
                 <Icon name="shapes" size={CHROME_GLYPH} />
               </button>
@@ -3191,6 +3129,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 onClick={() => {
                   /* UX 2026-09-22: see Draw above — a second click on the lit
                      Text button keeps its row, for the same reason. */
+                  leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'review') return;
                   bottomToolbarApi.setActiveCategoryDropdown('review');
                   if (!REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) {
@@ -3203,7 +3142,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Text"
-                disabled={areasMode}
               >
                 <Icon name="textGroup" size={CHROME_GLYPH} />
               </button>
@@ -3227,7 +3165,7 @@ export default function App({ devPreviewReturnTab = null }) {
               >
                 <button
                   type="button"
-                  onClick={() => bottomToolbarApi.surveyToolbar?.onArmMarker()}
+                  onClick={() => { leaveAreasMode(); bottomToolbarApi.surveyToolbar?.onArmMarker(); }}
                   {...chromeTip('Survey', 'below')}
                   className={`btn chrome-control ${surveyRowShown ? 'btn-active' : 'btn-default'}`}
                   data-tool-group="true"
@@ -3235,7 +3173,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   data-survey-tool="true"
                   aria-label="Survey"
                   aria-pressed={surveyRowShown}
-                  disabled={!surveyToolAvailable || areasMode}
+                  disabled={!surveyToolAvailable}
                 >
                   <Icon name="survey" size={CHROME_GLYPH} />
                 </button>
@@ -3437,7 +3375,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   prototype-context-toolbar.html. Other tools keep the
                   rectangle swatch until they migrate. */}
               <div data-toolbar-settings-row="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-settings-gap, var(--chrome-gap))', position: 'relative' }}>
-                {areasMode && renderAreaActions()}
                 {/* First run walk 2026-10-21 (#10): the text formatting
                     controls now sit IN row 2, after the Aa button, instead of
                     in a third bar under it - two stacked bars covered a row of
