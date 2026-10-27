@@ -105,7 +105,9 @@ async function readMarkers(page) {
 
 async function openTemplates(page) {
   await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
-  await page.getByText(seeded.templateName, { exact: true }).first().click();
+  // An open document keeps its Survey rail mounted but hidden (#1215), and it
+  // names the template too: pick the visible one.
+  await page.getByText(seeded.templateName, { exact: true }).filter({ visible: true }).first().click();
 }
 
 async function openSurvey(page) {
