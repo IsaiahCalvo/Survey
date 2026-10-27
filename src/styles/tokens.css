@@ -359,6 +359,12 @@
   --row-icon: 14px;
   --row-text-x: 40px;     /* where the text starts on a row with a grip and an icon */
   --menu-item-h: 28px;    /* one item in a popup menu */
+  /* One row of an ACTION menu (design review 2026-10-27): the home row menus,
+     right-click on a mark or a page, Export. They were 11, 12 and 13px with
+     6, 9, 10 and 12px insets; now they all read these. */
+  --menu-font: 400 13px/16px var(--font-ui);
+  --menu-item-pad-x: 10px;
+  --menu-item-gap: 10px;
 
   /* --- CORNERS (owner 2026-10-02) --------------------------------------- */
   /* Five radii. A control's corner is 6; a small chip or a menu item 4; a

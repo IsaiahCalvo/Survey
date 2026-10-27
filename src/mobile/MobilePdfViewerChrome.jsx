@@ -1088,7 +1088,9 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
             bottomToolbarApi?.exportAnnotatedPdf?.();
           }}
         >
-          <Icon name="share" size={HEADER_GLYPH} color="currentColor" />
+          {/* Design review 2026-10-27: the download glyph, as on the
+              desktop top bar's Export (it was the share glyph here). */}
+          <Icon name="download" size={HEADER_GLYPH} color="currentColor" />
         </button>
       </div>
 
@@ -3248,7 +3250,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 }}
               >
                 <Icon name="download" size={16} color="currentColor" />
-                Export review package
+                Export review package (ZIP)
               </button>
               {/* Merge, split, compress, OCR... on this document; AppShell
                   listens and opens the Documents dialog (PdfToolsDialog). */}

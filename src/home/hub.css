@@ -593,17 +593,17 @@
 .hub-menu__item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--menu-item-gap);
   width: 100%;
   min-height: var(--menu-item-h);
   box-sizing: border-box;
   margin: 0;
-  padding: 0 10px;
+  padding: 0 var(--menu-item-pad-x);
   color: var(--text-1);
   background: transparent;
   border: 0;
   border-radius: var(--radius-xs);
-  font: 400 12px/16px var(--font-ui);
+  font: var(--menu-font);
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
@@ -617,6 +617,22 @@
 
 .hub-menu__item.is-danger {
   color: var(--danger-text);
+}
+
+/* MenuRows (components/MenuRows.jsx): the icon is quieter than the word, the
+   empty slot of a row with no icon keeps the words in line, and one line
+   sets Delete apart at the bottom. */
+.hub-menu__item:not(.is-danger):not(:disabled):not([aria-disabled='true']) > svg {
+  color: var(--text-3);
+}
+.hub-menu__icon-gap {
+  flex: none;
+  width: var(--row-icon);
+}
+.hub-menu__separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
 }
 
 .hub-menu__item:disabled,
@@ -663,7 +679,8 @@
     font-size: 15px;
     line-height: 20px;
   }
-  .hub-menu__item > svg {
+  .hub-menu__item > svg,
+  .hub-menu__icon-gap {
     width: var(--sheet-icon);
     height: var(--sheet-icon);
   }

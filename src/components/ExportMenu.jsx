@@ -7,7 +7,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AnchoredPopover from './AnchoredPopover';
 import Icon from '../Icons';
 import { useTooltip } from './Tooltip';
-import './AnnotationDropdown.css';
 
 export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 }) {
   const tip = useTooltip();
@@ -65,21 +64,25 @@ export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 })
             role="menu"
             aria-label="Export"
             data-export-menu="true"
-            className="annotation-dropdown__popover"
-            style={{ position: 'absolute', top: '100%', left: '50%', marginTop: 6, transform: 'translate(-50%, 0)' }}
+            // Design review 2026-10-27: an action menu, so it wears the shared
+            // action menu (hub.css .hub-menu / .hub-menu__item, an icon on
+            // each row) like the home row menus and the right-click menus.
+            className="hub-menu"
+            style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, minWidth: 220 }}
           >
             {visibleItems.map((item) => (
               <button
                 key={item.label}
                 type="button"
                 role="menuitem"
-                className="annotation-dropdown__option"
-                {...tip(item.title, 'below')}
+                className="hub-menu__item"
+                {...tip(item.title, 'left')}
                 onClick={() => {
                   setOpen(false);
                   item.onSelect();
                 }}
               >
+                {item.icon ? <Icon name={item.icon} size={14} color="currentColor" /> : null}
                 {item.label}
               </button>
             ))}
