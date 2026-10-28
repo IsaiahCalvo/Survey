@@ -8,7 +8,7 @@ import {
   handlePdfFileUrl, mirrorPdf, validPdfPath, normalizeEtag, PDF_LINK_SECONDS, linkReadOps, copyWriteOps,
 } from '../supabase/functions/_shared/pdfFileUrl.js';
 import { r2ConfigFromEnv, presignGet, putObjectStream, PART_SIZE } from '../supabase/functions/_shared/r2.js';
-import { sweepR2Copies } from '../supabase/functions/archive-purge-sweep/r2CopySweep.js';
+import { ensureR2Cors, sweepR2Copies } from '../supabase/functions/archive-purge-sweep/r2CopySweep.js';
 import { requestR2PdfLink, downloadPdfFromR2 } from '../src/services/pdfR2Source.js';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
 
@@ -282,6 +282,23 @@ test('delete sweep: off without R2; deletes each copy, then its queue row', asyn
   const d = await sweepR2Copies(dry, config, { dryRun: true, remove: noR2 });
   assert.equal(d.found, 1);
   assert.deepEqual(dry.cleared, []);
+});
+
+test('delete sweep also keeps the bucket CORS rule set, under the cap', async () => {
+  const rpcCalls = [];
+  const db = (answer) => ({ rpc: async (name, args) => { rpcCalls.push([name, args]); return answer; } });
+  const puts = [];
+  const put = async (c) => { puts.push(c.bucket); };
+  assert.equal(await ensureR2Cors(db({ data: true }), null, { put }), 'off');
+  assert.equal(await ensureR2Cors(db({ data: true }), config, { dryRun: true, put }), 'dry_run');
+  assert.deepEqual(puts, []);
+  assert.equal(await ensureR2Cors(db({ data: true }), config, { put }), 'set');
+  assert.deepEqual(rpcCalls.at(-1), ['r2_reserve', { p_class_a: 1, p_class_b: 0 }]);
+  assert.deepEqual(puts, ['survey-pdfs']);
+  assert.equal(await ensureR2Cors(db({ data: false }), config, { put }), 'over_budget');
+  assert.match(await ensureR2Cors(db({ error: { message: 'down' } }), config, { put }), /^failed: down/);
+  assert.match(await ensureR2Cors(db({ data: true }), config, { put: async () => { throw new Error('R2 PUT cors 403'); } }), /403/);
+  assert.equal(puts.length, 1);
 });
 
 const client = (answer) => {

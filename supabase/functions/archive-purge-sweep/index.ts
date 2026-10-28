@@ -34,7 +34,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { sweepOrphanedSurveyMedia, MEDIA_SWEEP_LIMIT } from './surveyMediaSweep.js';
 import { sweepOrphanedDocumentFiles, DOCUMENT_FILE_SWEEP_LIMIT } from './documentFileSweep.js';
-import { sweepR2Copies, R2_COPY_SWEEP_LIMIT } from './r2CopySweep.js';
+import { ensureR2Cors, sweepR2Copies, R2_COPY_SWEEP_LIMIT } from './r2CopySweep.js';
 import { r2ConfigFromEnv } from '../_shared/r2.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
 
@@ -288,17 +288,20 @@ Deno.serve(async (req) => {
 
   // ── Remove R2 copies of deleted PDFs ───────────────────────────────────
   // Same best-effort rule; nothing happens when R2 is not configured.
-  const r2 = await sweepR2Copies(supabase, r2ConfigFromEnv((name: string) => Deno.env.get(name)), {
+  const r2Config = r2ConfigFromEnv((name: string) => Deno.env.get(name));
+  const r2 = await sweepR2Copies(supabase, r2Config, {
     dryRun,
     limit: R2_COPY_SWEEP_LIMIT,
     log,
   });
+  const r2Cors = await ensureR2Cors(supabase, r2Config, { dryRun, log });
   log('r2_sweep_done', {
     run_id: result.run_id,
     enabled: r2.enabled,
     found: r2.found,
     removed: r2.removed,
     failed: r2.failed,
+    cors: r2Cors.startsWith('failed') ? 'failed' : r2Cors,
   });
 
   log('sweep_done', {
@@ -342,6 +345,7 @@ Deno.serve(async (req) => {
     r2_copies_removed: r2.removed,
     r2_copies_failed: r2.failed,
     r2_errors: r2.errors,
+    r2_cors: r2Cors,
     dry_run: dryRun,
     duration_ms: Date.now() - startedAt,
   });

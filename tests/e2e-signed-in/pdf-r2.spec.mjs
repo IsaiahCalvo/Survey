@@ -95,6 +95,10 @@ test('R2 links: only for people Storage lets in, only for the current version, r
   const swept = await sweep.json();
   expect(sweep.status, JSON.stringify(swept)).toBe(200);
   expect(swept.r2_copies_removed).toBeGreaterThanOrEqual(1);
+  // The sweep sets the bucket CORS rule each run. MinIO has no bucket CORS
+  // (501 NotImplemented; it allows any origin), so here the signed request
+  // reaching it is the check; R2 answers 200.
+  expect(swept.r2_cors, 'the sweep tried to set the bucket CORS rule').toMatch(/^(set|failed: R2 PUT cors 501)/);
   expect(await headObject(minio(), r2KeyForDocument(doc.filePath))).toEqual({ exists: false });
   const left = await must('queue after', admin.from('pdf_r2_deletes').select('path').eq('path', doc.filePath));
   expect(left).toHaveLength(0);

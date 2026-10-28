@@ -10,7 +10,7 @@
 // a new copy the next time it is opened. Off (nothing read) when R2 is not
 // configured. Plain JS with the client and R2 calls injected for node tests
 // (tests/pdfR2.test.mjs). Best-effort: failures are counted, never thrown.
-import { deleteObject, r2KeyForDocument } from '../_shared/r2.js';
+import { deleteObject, putBucketCors, r2KeyForDocument } from '../_shared/r2.js';
 
 export const R2_COPY_SWEEP_LIMIT = 500;
 
@@ -69,4 +69,35 @@ export async function sweepR2Copies(supabase, config, { dryRun = false, limit = 
   }
   if (summary.failed) log('r2_sweep_failures', { failed: summary.failed });
   return summary;
+}
+
+/**
+ * Sets the R2 bucket's CORS rule the app's cross-origin range reads need.
+ * Every run re-applies it, so a bucket made or changed by hand heals by the
+ * next day, and the answer shows the R2 secrets work. One Class A operation,
+ * reserved under the free-tier cap like every other R2 call.
+ * @param {any} supabase - a service-role supabase-js client.
+ * @param {any} config - r2ConfigFromEnv(...) or null.
+ * @param {object} [options]
+ * @param {boolean} [options.dryRun]
+ * @param {(event: string, fields?: Record<string, unknown>) => void} [options.log]
+ * @param {(config: any) => Promise<void>} [options.put]
+ * @returns {Promise<string>} 'off' | 'dry_run' | 'set' | 'over_budget' | 'failed: …'
+ */
+export async function ensureR2Cors(supabase, config, { dryRun = false, log = () => {}, put = putBucketCors } = {}) {
+  if (!config) return 'off';
+  if (dryRun) return 'dry_run';
+  const { data, error } = await supabase.rpc('r2_reserve', { p_class_a: 1, p_class_b: 0 });
+  if (error) {
+    log('r2_cors_reserve_failed', { message: messageOf(error) });
+    return `failed: ${messageOf(error)}`;
+  }
+  if (data !== true) return 'over_budget';
+  try {
+    await put(config);
+    return 'set';
+  } catch (err) {
+    log('r2_cors_failed', { message: messageOf(err) });
+    return `failed: ${messageOf(err)}`;
+  }
 }

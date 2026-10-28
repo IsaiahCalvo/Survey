@@ -50,9 +50,11 @@ Then (Claude can do these):
 
 4. Set the Supabase edge function secrets:
    `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
-5. Set the bucket's CORS rule so browsers can stream the links:
-   `node scripts/r2-copy-pdfs.mjs --cors` with the four `R2_` variables set, or
-   paste this in the bucket's CORS settings:
+5. Set the bucket's CORS rule so browsers can stream the links. Each
+   `archive-purge-sweep` run sets it (answer field `r2_cors: "set"`, which
+   also proves the four secrets work), so redeploying that function and
+   running it once is enough. Or `node scripts/r2-copy-pdfs.mjs --cors` with
+   the four `R2_` variables set, or paste this in the bucket's CORS settings:
    ```json
    [{ "AllowedOrigins": ["*"], "AllowedMethods": ["GET", "HEAD"], "AllowedHeaders": ["range"],
       "ExposeHeaders": ["Content-Length", "Content-Range", "Accept-Ranges", "ETag"], "MaxAgeSeconds": 3600 }]
