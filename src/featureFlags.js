@@ -10,8 +10,9 @@
 //   0. a beta flag in a stable production build: always off
 //   1. localStorage 'survey.flag.<key>' = '1' / '0' (or the flag's older key)
 //   2. the nightly build (VITE_RELEASE_CHANNEL=nightly) turns every BETA flag
-//      on. Rollout flags go on to steps 3-5 there as on stable, so Survey
-//      Nightly is the live app plus the beta features and nothing else
+//      on, except one marked nightlyOn: false (kept hidden). Rollout flags
+//      go on to steps 3-5 there as on stable, so Survey Nightly is the live
+//      app plus the beta features and nothing else
 //      (owner 2026-10-27: nightly turned 'pro-lock' on, so Survey tools
 //      were locked there and not on surveytool.app)
 //   3. a build-wide env var, where the flag has one
@@ -94,6 +95,17 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Curved polyline: bend smoothly through the clicked corners',
     stage: 'beta',
   }),
+  'own-excel-layouts': Object.freeze({
+    label: 'Your own Excel layout: upload your sheet and match its columns',
+    stage: 'beta',
+  }),
+  // Owner 2026-10-27: wire it in but keep it hidden, so Nightly does not turn
+  // it on by itself; /flags or 'survey.flag.conditional-lines' = '1' does.
+  'conditional-lines': Object.freeze({
+    label: 'Conditional checklist lines: show a line only after a certain answer',
+    stage: 'beta',
+    nightlyOn: false,
+  }),
   'document-versions': Object.freeze({
     label: 'Version history: a new version keeps the old ones, with old-over-new compare',
     stage: 'beta',
@@ -166,7 +178,7 @@ export function isFeatureOn(key, { storage = safeStorage(), env = readEnv() } = 
   if (own !== '1' && own !== '0' && def.legacyKey) own = read(storage, def.legacyKey);
   if (own === '1') return true;
   if (own === '0') return false;
-  if (def.stage === 'beta' && releaseChannel(env) === 'nightly') return true;
+  if (def.stage === 'beta' && def.nightlyOn !== false && releaseChannel(env) === 'nightly') return true;
   if (def.env && env?.[def.env] === '1') return true;
   const cached = readCache(storage);
   return cached?.[key] === true;

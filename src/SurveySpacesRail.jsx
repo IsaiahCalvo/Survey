@@ -53,6 +53,7 @@ import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
 import { autoCompleteOn, resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
+import { shownChecklist } from './services/conditionalLines.js';
 import { reportKitFor } from './services/reportKits/index.js';
 import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput, { CHOICE_BUTTONS_MAX, ChoiceSelect } from './components/TypedAnswerInput.jsx';
@@ -609,6 +610,9 @@ const SurveySpacesRail = ({
   const [surveyReportOn] = useState(() => isFeatureOn('survey-report'));
   // Nightly: the template menu links to the Templates editor (answers, lines).
   const [customAnswersOn] = useState(() => isFeatureOn('custom-answers'));
+  // Nightly, hidden: a line can show only after a certain answer.
+  const [conditionalLinesOn] = useState(() => isFeatureOn('conditional-lines'));
+  const shownLines = (category, responses) => shownChecklist(category?.checklist, responses, { on: conditionalLinesOn });
   const [isReporting, setIsReporting] = useState(false);
   // The report layout comes from the live template: it is an output choice,
   // not part of the template version a document keeps.
@@ -1500,7 +1504,7 @@ const SurveySpacesRail = ({
     const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
     const completeEntity = resolveAutoCompleteEntity({
       answerSet: answerSetFor(selectedTemplate),
-      checklist: category?.checklist,
+      checklist: shownLines(category, nextResponses),
       responses: nextResponses,
       entities: selectedTemplate?.entities,
       currentEntityId: moduleData?.entityId || currentMarker.entityId || null,
@@ -1630,6 +1634,8 @@ const SurveySpacesRail = ({
       template: showSurveyPanel ? selectedTemplate || null : null,
       markers: surveyMarkers || {},
       documentId: pdfFile?.id || null,
+      // The project the drawing is in: what the agent learns is kept per project.
+      projectId: pdfFile?.projectId || null,
       // Which document a message waiting for signal belongs to: the cloud
       // id, or name and size for a local file (as its markers are kept).
       waitKey: pdfFile ? (pdfFile.id || getPDFId(pdfFile)) : null,
@@ -1752,8 +1758,8 @@ const SurveySpacesRail = ({
   // progress ("2/3" answered of the category's active items) and whether the
   // Survey Marker has a note and how many photos / videos it carries.
   const getSurveyMarkerProgress = (annotationId, category) => {
-    const active = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const responses = surveyMarkers?.[annotationId]?.checklistResponses || {};
+    const active = shownLines(category, responses);
     const answered = active.filter((item) => Boolean(responses[item.id]?.selection)).length;
     // A typed text line answered "N" (a direction, say) is not a No.
     const no = active.filter((item) => itemKind(item) === 'choice' && responses[item.id]?.selection === 'N').length;
@@ -1874,7 +1880,7 @@ const SurveySpacesRail = ({
           </div>
         );
       }
-      const checklist = (category?.checklist || []).filter((item) => item && item.archived !== true);
+      const checklist = shownLines(category, surveyMarkers[annotationId]?.checklistResponses);
       body = (
         <>
           {/* The whole checklist, every row - no 4-row window scrolling inside
@@ -3930,7 +3936,7 @@ const SurveySpacesRail = ({
                                                     below so new markers don't see them as active
                                                     prompts, but old responses still surface. */}
                                                 {
-                                                  !mobileMode && isSurveyMarkerExpanded && category.checklist && category.checklist.filter(item => item && item.archived !== true).map(item => {
+                                                  !mobileMode && isSurveyMarkerExpanded && category.checklist && shownLines(category, surveyMarkers[annotationId]?.checklistResponses).map(item => {
                                                     const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id] || {};
                                                     const isSelected = response.selection;
                                                     // Y / N / N/A: one grey well, the answers are words and

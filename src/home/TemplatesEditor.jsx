@@ -43,8 +43,10 @@ import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_I
 import { DEFAULT_REPORT_KIT_ID, listReportKits } from '../services/reportKits/index.js';
 import { DEFAULT_ANSWER_SET, ITEM_ANSWER_KEYS, answerPresetIdOf, answerSetPresets, itemAnswerFields } from '../services/answerSets.js';
 import { isFeatureOn } from '../featureFlags.js';
-import AnswerSetEditor, { ItemKindPicker } from './AnswerSetEditor.jsx';
-import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import AnswerSetEditor, { ItemKindPicker, ShowIfPicker } from './AnswerSetEditor.jsx';
+import { copyLines, showIfOf } from '../services/conditionalLines.js';
+import { checklistItemKind, manyOptionsOf } from '../../supabase/functions/_shared/kitShape.js';
+import { lazy, Suspense, useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
 import { reloadTemplatesAfterPendingSave } from './templatePersistence.js';
@@ -110,6 +112,7 @@ import { TEMPLATE_EDITOR_REQUEST_EVENT, takeTemplateEditorRequest } from './temp
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
 import ValueSelect from '../components/ValueSelect.jsx';
+import { ownKitCopyFor, templateOwnKitOf } from '../services/exportFormats/ownKitCopy.js';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
@@ -117,8 +120,17 @@ import { templateCategoryEmptyText } from './templateEmptyText.js';
 import { autoCompleteOn, findCompleteEntity } from '../utils/surveyAutoEntity.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
 
+// Nightly 'own-excel-layouts': the dialog and its store load when first opened.
+const OwnExcelLayoutDialog = lazy(() => Promise.all([
+  import('./OwnExcelLayoutDialog.jsx'),
+  import('../services/exportFormats/ownKitStore.js'),
+]).then(([dialog, { ownKitStore }]) => ({
+  default: function OwnLayoutDialogWithStore(props) { return <dialog.default store={ownKitStore} {...props} />; },
+})));
+
 // The "make your own" choice in the checklist-answers picker.
 const OWN_ANSWERS = '__own__';
+const OWN_LAYOUT = '__own_layout__';
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
    one shared glyph so mobile cannot drift to a different arrow treatment.
@@ -271,6 +283,7 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
         if (it && typeof it === 'object') {
           // Typed answer kinds (nightly 'custom-answers'); pick-one stays bare.
           Object.assign(base, itemAnswerFields(it));
+          if (showIfOf(it)) base.showIf = showIfOf(it);
           if (it.archived === true) base.archived = true;
           if (typeof it.archivedAt === 'string') base.archivedAt = it.archivedAt;
           if (typeof it.lastKnownLabel === 'string') {
@@ -305,6 +318,7 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     // A template someone shared with me: its owner's face shows on the row.
     ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
     ...(t?.exportKitId ? { exportKitId: t.exportKitId } : {}),
+    ...(templateOwnKitOf(t) ? { ownExportKit: t.ownExportKit } : {}),
     ...(t?.reportKitId ? { reportKitId: t.reportKitId } : {}),
     ...(t?.answerSet ? { answerSet: t.answerSet } : {}),
     // "Auto-mark as Complete" switch; unset means on.
@@ -1026,19 +1040,40 @@ export default function TemplatesEditor({
   /* Checklist answers: a preset, or (nightly 'custom-answers') the
      template's own typed list. */
   const [customAnswers] = useState(() => isFeatureOn('custom-answers'));
+  const [conditionalLines] = useState(() => isFeatureOn('conditional-lines'));
   // Report layout per template (nightly 'survey-report').
   const [surveyReport] = useState(() => isFeatureOn('survey-report'));
   // The per-template pickers: { value, options, onPick }. Desktop shows them
   // as the app's drop-down (ValueSelect); the phone layout keeps the
   // browser's wheel (pickerSelectProps).
-  const exportKitPicker = (tpl) => ({
-    value: tpl.exportKitId || DEFAULT_EXPORT_KIT_ID,
-    options: exportKitOptions.map((k) => ({ value: k.id, label: k.label || k.id })),
-    onPick: (v) => mutateTpl(tpl.id, (t) => {
-      const { exportKitId: _k, ...rest } = t;
-      return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
-    }),
+  // Nightly 'own-excel-layouts': the last choice makes a layout from their own sheet.
+  const [ownLayouts] = useState(() => isFeatureOn('own-excel-layouts'));
+  const [ownLayoutFor, setOwnLayoutFor] = useState(null);
+  const pickExportKit = (tplId, v) => mutateTpl(tplId, (t) => {
+    const { exportKitId: _k, ownExportKit: _own, ...rest } = t;
+    if (v === DEFAULT_EXPORT_KIT_ID) return rest;
+    const own = ownKitCopyFor(getExportKit(v));
+    return { ...rest, exportKitId: v, ...(own ? { ownExportKit: own } : {}) };
   });
+  const exportKitPicker = (tpl, phone = false) => ({
+    value: tpl.exportKitId || DEFAULT_EXPORT_KIT_ID,
+    options: [
+      ...exportKitOptions.map((k) => ({ value: k.id, label: k.label || k.id })),
+      ...(ownLayouts ? [{ value: OWN_LAYOUT, label: 'Your own sheet…' }] : []),
+    ],
+    onPick: (v) => {
+      if (v === OWN_LAYOUT) { setOwnLayoutFor({ id: tpl.id, phone }); return; }
+      pickExportKit(tpl.id, v);
+    },
+  });
+  const ownLayoutDialog = (t, phone) => (ownLayouts && ownLayoutFor?.id === t.id && ownLayoutFor.phone === phone ? (
+    <Suspense fallback={null}>
+      <OwnExcelLayoutDialog
+        onSaved={(kitId) => { pickExportKit(t.id, kitId); setOwnLayoutFor(null); }}
+        onClose={() => setOwnLayoutFor(null)}
+      />
+    </Suspense>
+  ) : null);
   const reportKitPicker = (tpl) => ({
     value: tpl.reportKitId || DEFAULT_REPORT_KIT_ID,
     options: listReportKits().map((k) => ({ value: k.id, label: k.label })),
@@ -1455,7 +1490,7 @@ export default function TemplatesEditor({
             ...m, id: newId('m'),
             categories: m.categories.map((c) => ({
               ...c, id: newId('c'),
-              items: c.items.map((it) => ({ ...it, id: newId('i') })),
+              items: copyLines(c.items, () => newId('i')),
             })),
           })),
           roster: t.roster.map((r) => {
@@ -1672,7 +1707,7 @@ export default function TemplatesEditor({
         ...m, id: newId('m'), name: `${m.name} copy`,
         categories: m.categories.map((c) => ({
           ...c, id: newId('c'),
-          items: c.items.map((it) => ({ ...it, id: newId('i') })),
+          items: copyLines(c.items, () => newId('i')),
         })),
       })),
     }));
@@ -1758,7 +1793,7 @@ export default function TemplatesEditor({
         if (ids.has(c.id)) {
           out.push({
             ...c, id: newId('c'), name: `${c.name} copy`,
-            items: c.items.map((it) => ({ ...it, id: newId('i') })),
+            items: copyLines(c.items, () => newId('i')),
           });
         }
       });
@@ -1848,6 +1883,16 @@ export default function TemplatesEditor({
   /* Typed answer kinds (nightly 'custom-answers'). Answers already given
      keep their text; only how the card asks for the next one changes.
      `fields` is the item's whole answer settings ({} for pick-one). */
+  // Nightly, hidden 'conditional-lines': `showIf` is { itemId, value } or null.
+  const setItemShowIf = (ci, itemId, showIf) => mutateCategoryInModule(openMod, ci, (c) => ({
+    ...c,
+    items: c.items.map((it) => {
+      if (it.id !== itemId) return it;
+      const { showIf: _old, ...rest } = it;
+      return showIf ? { ...rest, showIf } : rest;
+    }),
+  }));
+  const lineAnswersOf = (t) => (line) => (checklistItemKind(line) === 'many' ? manyOptionsOf(line) : (ownAnswerSetOf(t) || DEFAULT_ANSWER_SET));
   const setItemKind = (ci, itemId, fields) => mutateCategoryInModule(openMod, ci, (c) => ({
     ...c,
     items: c.items.map((it) => {
@@ -2112,6 +2157,7 @@ export default function TemplatesEditor({
              Active items round-trip the simple shape unchanged. */
           const out = { id: it.id, text: it.text };
           Object.assign(out, itemAnswerFields(it));
+          if (showIfOf(it)) out.showIf = showIfOf(it);
           if (it.archived === true) {
             out.archived = true;
             if (typeof it.archivedAt === 'string') out.archivedAt = it.archivedAt;
@@ -2125,7 +2171,7 @@ export default function TemplatesEditor({
         }),
       })),
     }));
-    const { exportKitId: _oldKit, reportKitId: _oldReport, answerSet: _oldAnswers, autoComplete: _oldAuto, smartFillShapes: _oldShapes, ...originalRest } = original;
+    const { exportKitId: _oldKit, ownExportKit: _oldOwnKit, reportKitId: _oldReport, answerSet: _oldAnswers, autoComplete: _oldAuto, smartFillShapes: _oldShapes, ...originalRest } = original;
     // Smart fill shapes: the live list (a drawing may have added one since this
     // editor opened) minus the ones removed here. A template not saved yet (a
     // duplicate) has no live row, so it keeps the shapes it was made with.
@@ -2137,6 +2183,8 @@ export default function TemplatesEditor({
       ...(shapes.length ? { smartFillShapes: shapes } : {}),
       // Excel layout; unset means the standard export.
       ...(r.exportKitId ? { exportKitId: r.exportKitId } : {}),
+      // Your own Excel layout's copy, so teammates export in it too.
+      ...(r.exportKitId && r.ownExportKit ? { ownExportKit: r.ownExportKit } : {}),
       // Report layout (nightly 'survey-report'); unset means the full report.
       ...(r.reportKitId ? { reportKitId: r.reportKitId } : {}),
       // Checklist answers; unset means Y / N / N/A.
@@ -2696,6 +2744,7 @@ export default function TemplatesEditor({
               </div>
             </div>
             {answerListEditor(tpl, false)}
+            {ownLayoutDialog(tpl, false)}
 
             <div style={{ padding: '6px 18px 14px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
 
@@ -2934,7 +2983,11 @@ export default function TemplatesEditor({
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => discardFreshItem(i, it.id))}
                                   onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
-                                {customAnswers && <ItemKindPicker item={it} onChange={(fields) => setItemKind(i, it.id, fields)} />}
+                                {customAnswers && (
+                                  <ItemKindPicker item={it} onChange={(fields) => setItemKind(i, it.id, fields)}>
+                                    {conditionalLines && <ShowIfPicker item={it} lines={items} answersOf={lineAnswersOf(tpl)} onChange={(c) => setItemShowIf(i, it.id, c)} />}
+                                  </ItemKindPicker>
+                                )}
                                 <button
                                   aria-label="Delete item" {...tip('Delete item')}
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
@@ -3402,7 +3455,7 @@ export default function TemplatesEditor({
                 {exportKitOptions.length > 1 && (
                   <label className="templates-mobile-option">
                     <span>Excel layout</span>
-                    <select aria-label="Excel layout" {...pickerSelectProps(exportKitPicker(tpl))} />
+                    <select aria-label="Excel layout" {...pickerSelectProps(exportKitPicker(tpl, true))} />
                   </label>
                 )}
                 {surveyReport && (
@@ -3420,6 +3473,7 @@ export default function TemplatesEditor({
                   </label>
                 )}
                 {answerListEditor(tpl, true)}
+                {ownLayoutDialog(tpl, true)}
                 {smartFillBeta && (
                   <SmartFillShapeChips
                     phone
@@ -3629,7 +3683,11 @@ export default function TemplatesEditor({
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => discardFreshItem(ci, it.id))}
                                               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
-                                            {customAnswers && <ItemKindPicker phone item={it} onChange={(fields) => setItemKind(ci, it.id, fields)} />}
+                                            {customAnswers && (
+                                              <ItemKindPicker phone item={it} onChange={(fields) => setItemKind(ci, it.id, fields)}>
+                                                {conditionalLines && <ShowIfPicker item={it} lines={items} answersOf={lineAnswersOf(tpl)} onChange={(c) => setItemShowIf(ci, it.id, c)} />}
+                                              </ItemKindPicker>
+                                            )}
                                             <button type="button" aria-label="Delete item" {...tip('Delete item')} onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
                                           </SwipeActionsRow>

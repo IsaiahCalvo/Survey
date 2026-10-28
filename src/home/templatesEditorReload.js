@@ -5,6 +5,7 @@
    suite exercises the REAL code (tests/templatesEditorReloadGuard.test.mjs) —
    component files resolve only under vite (BL-22 round-3 lesson). */
 import { itemAnswerFields } from '../../supabase/functions/_shared/kitShape.js';
+import { showIfOf } from '../services/conditionalLines.js';
 
 /* Decide what to do with a freshly-built working copy when the host republishes
    the `templates` prop.
@@ -147,10 +148,13 @@ export const templateFingerprint = (template, maps = {}, ignoreItemIds = null) =
           // Answer kind and its settings; left out for pick-one items so older
           // prints are unchanged, and text / number keep their earlier shape.
           const f = itemAnswerFields(it);
-          if (!f.kind) return row;
+          // A line's condition (Nightly 'conditional-lines'); left out when unset.
+          const cond = showIfOf(it);
+          const withCond = (r) => (cond ? [...r, ['showIf', cond.itemId, cond.value]] : r);
+          if (!f.kind) return withCond(row);
           const { kind, unit, ...more } = f;
           const tail = ['kind', kind, unit || ''];
-          return [...row, Object.keys(more).length ? [...tail, Object.entries(more).sort()] : tail];
+          return withCond([...row, Object.keys(more).length ? [...tail, Object.entries(more).sort()] : tail]);
         }),
     ]),
   ]),

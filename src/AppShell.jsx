@@ -1349,6 +1349,19 @@ export default function App({ devPreviewReturnTab = null }) {
       : []
   ));
 
+  // A shared template's own Excel layout (Nightly 'own-excel-layouts') rides
+  // in the template, so everyone who opens it exports in that layout.
+  // Loaded only when a template carries one, to keep it off the first load.
+  useEffect(() => {
+    if (!appTemplates.some((t) => t?.ownExportKit)) return undefined;
+    let off = null;
+    let gone = false;
+    import('./services/exportFormats/ownKits.js')
+      .then(({ registerTemplateKits }) => { if (!gone) off = registerTemplateKits(appTemplates); })
+      .catch(() => {});
+    return () => { gone = true; off?.(); };
+  }, [appTemplates]);
+
   const handleTemplatesChange = useCallback((nextTemplates) => {
     const normalized = Array.isArray(nextTemplates) ? nextTemplates : [];
     setAppTemplates(normalized);
