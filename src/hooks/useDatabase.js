@@ -16,6 +16,7 @@ import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange, subscribeTemplatesChange } from './libraryChangeBus.js';
+import { documentNameSequence, renameRows, subscribeDocumentNames, withRenamesSince } from './documentNameBus.js';
 import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
@@ -315,6 +316,15 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
     });
   }, [user, projectId, enabled]);
 
+  // A rename made anywhere (another list, a tab menu, another screen) shows
+  // in this list at once (documentNameBus.js).
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return subscribeDocumentNames((rename) => {
+      setDocuments((current) => renameRows(current, rename));
+    });
+  }, [enabled]);
+
   // Pure query worker: runs the owned + collaborator-probe + conditional id=in
   // sequence as ONE unit and RETURNS the merged array (no setState here), so it
   // can be shared verbatim across instances by the coalescer.
@@ -341,14 +351,26 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
     // run them concurrently instead of as a 2-step waterfall. Supabase resolves
     // (never rejects) with {data,error}, so the throw-on-owned-error semantics
     // below are preserved (the dependent missingIds query stays sequential).
-    const [ownedRes, collaboratorRows] = await Promise.all([
+    const [ownedRes, memberRows, guestRows] = await Promise.all([
       readLibraryRows(ownedQuery),
       readLibraryRows(() => supabase
         .from('document_collaborators')
         .select('document_id, role')
         .eq('user_id', user.id)
         .eq('status', 'active'), { cursorColumn: 'document_id' }),
+      // A guest (guest links, Nightly) reaches documents through the links it
+      // redeemed; the documents read below drops any whose link has ended.
+      user.is_anonymous
+        ? readLibraryRows(() => supabase
+          .from('document_guests')
+          .select('id, document_id')
+          .eq('user_id', user.id))
+        : Promise.resolve({ data: [], error: null }),
     ]);
+    const collaboratorRows = memberRows.error ? memberRows : {
+      data: [...(memberRows.data || []), ...(guestRows.data || []).map((row) => ({ document_id: row.document_id, role: 'guest' }))],
+      error: null,
+    };
     const { data, error } = ownedRes;
     if (error) throw error;
 
@@ -414,15 +436,19 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
       requestScopeKey,
       currentScopeKey: documentScopeKeyRef.current,
     });
+    // A rename shown while this read is in flight must survive it: the read
+    // may have left the database before the rename was saved.
+    const renameSeqAtStart = documentNameSequence();
     try {
       setLoading(true);
       // The last error stays until a read succeeds (2026-10-07): a retry that
       // cleared it up front flashed the empty list between two error screens.
       const key = `documents:${user.id}:${projectId ?? 'null'}`;
-      const merged = coalesce
+      const read = coalesce
         ? await coalesceRead(key, runDocumentsQuery)
         : await runDocumentsQuery();
       if (!isCurrentRequest()) return [];
+      const merged = withRenamesSince(read, renameSeqAtStart);
       setDocuments(merged);
       setError(null);
       return merged;

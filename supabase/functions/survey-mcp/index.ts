@@ -28,6 +28,7 @@ import { applyUndoDescriptor, noteObjectOf, UNDO_KINDS } from '../_shared/survey
 import { parseBody, s } from '../_shared/inputSchema.js';
 import { APP_ONLY_KINDS, itemAnswerFor, itemAnswerHint, itemAnswerSpec } from '../_shared/kitShape.js';
 import { agentClientId } from '../_shared/agentSession.ts';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const CONNECTOR_WRITES_FLAG = 'survey-connector-writes';
 // When the person has this on, the app stores each marker as one Y.Map entry
@@ -935,7 +936,7 @@ Deno.serve(async (req) => {
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
   const { data: userData, error: userError } = await db.auth.getUser(token);
-  if (userError || !userData?.user) return unauthorized();
+  if (userError || !userData?.user || isGuestUser(userData.user)) return unauthorized();
   const actor: Actor = { userId: userData.user.id, clientId: agentClientId(`Bearer ${token}`) || '' };
 
   let body: unknown;

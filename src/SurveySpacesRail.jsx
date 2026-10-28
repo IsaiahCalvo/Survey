@@ -33,6 +33,9 @@ import { showToast } from './utils/toast';
 import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import SurveyMarkerNotes from './components/SurveyMarkerNotes';
+import SurveyMarkerTracking, { SurveyMarkerTrackingBadge } from './components/SurveyMarkerTracking.jsx';
+import { useDocumentPeople } from './hooks/useDocumentPeople.js';
+import { EMPTY_TRACKING_FILTER, nextTracking, passesTrackingFilter, todayKey } from './utils/markerTracking.js';
 import { buildNoteWithMedia, normalizeNoteMedia, uploadSurveyMedia } from './services/surveyMediaService';
 import SurveyAgentPanel from './components/SurveyAgentPanel.jsx';
 import { isSurveyAgentEnabled } from './agent/surveyAgentFlag.js';
@@ -613,6 +616,11 @@ const SurveySpacesRail = ({
   // Nightly, hidden: a line can show only after a certain answer.
   const [conditionalLinesOn] = useState(() => isFeatureOn('conditional-lines'));
   const shownLines = (category, responses) => shownChecklist(category?.checklist, responses, { on: conditionalLinesOn });
+  // Nightly 'marker-tracking': status, who has it and a due date per item,
+  // with Assigned to me / Late / Hide done chips over the list.
+  const [trackingOn] = useState(() => isFeatureOn('marker-tracking'));
+  const [trackingFilter, setTrackingFilter] = useState(EMPTY_TRACKING_FILTER);
+  const trackingPeople = useDocumentPeople(pdfFile?.id || null, { enabled: trackingOn });
   const [isReporting, setIsReporting] = useState(false);
   // The report layout comes from the live template: it is an output choice,
   // not part of the template version a document keeps.
@@ -622,7 +630,8 @@ const SurveySpacesRail = ({
     setIsReporting(true);
     try {
       const input = { template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf() };
-      if (format === 'pdf') await (await import('./services/surveyReportPdf.js')).downloadSurveyReportPdf(input);
+      // The PDF puts a crop of the plan beside each issue.
+      if (format === 'pdf') await (await import('./services/surveyReportPdf.js')).downloadSurveyReportPdf({ ...input, planFile: pdfFile });
       else if (format === 'xlsx') await (await import('./services/surveyReportXlsx.js')).downloadSurveyReportXlsx(input);
       else if (format === 'csv') (await import('./services/surveyReportCsv.js')).downloadSurveyReportCsv(input);
       else await (await import('./services/surveyReportPptx.js')).downloadSurveyReport(input);
@@ -1740,6 +1749,33 @@ const SurveySpacesRail = ({
     canEdit: canEditSurveyMarkers !== false,
     onUpdateNote: (updater, options) => updateSurveyMarkerNote(annotationId, updater, options),
   });
+  const updateSurveyMarkerTracking = useCallback((annotationId, patch) => {
+    if (!annotationId) return;
+    setSurveyMarkers(prev => {
+      const existing = prev?.[annotationId];
+      if (!existing) return prev;
+      const tracking = nextTracking(existing, patch, { by: user?.id || null });
+      if (tracking === existing.tracking) return prev;
+      const next = { ...existing };
+      if (tracking) next.tracking = tracking;
+      else delete next.tracking;
+      return { ...prev, [annotationId]: next };
+    });
+  }, [setSurveyMarkers, user?.id]);
+  const renderSurveyMarkerTracking = (annotationId, variant) => (trackingOn ? (
+    <SurveyMarkerTracking
+      key={`tracking-${annotationId}`}
+      variant={variant}
+      marker={surveyMarkers?.[annotationId]}
+      people={trackingPeople}
+      userId={user?.id || null}
+      canEdit={canEditSurveyMarkers !== false}
+      onChange={(patch) => updateSurveyMarkerTracking(annotationId, patch)}
+    />
+  ) : null);
+  const renderSurveyMarkerTrackingBadge = (annotationId) => (trackingOn ? (
+    <SurveyMarkerTrackingBadge marker={surveyMarkers?.[annotationId]} people={trackingPeople} userId={user?.id || null} tip={tip} />
+  ) : null);
   const renderSurveyMarkerNotes = (annotationId, variant) => (
     <SurveyMarkerNotes
       key={annotationId}
@@ -1796,6 +1832,7 @@ const SurveySpacesRail = ({
     const { text, mediaCount } = getSurveyMarkerNoteInfo(annotationId);
     return (
       <span className={className}>
+        {renderSurveyMarkerTrackingBadge(annotationId)}
         {text ? (
           <span className="survey-marker-badge" aria-label="Has a note">
             <Icon name="note" size={12} color="currentColor" />
@@ -1939,6 +1976,7 @@ const SurveySpacesRail = ({
           {/* NOTES / MEDIA SLOT: the note edited in place and the media strip
               (audit chunk B, owner 2026-10-01) - the same block the desktop
               row shows. */}
+          {renderSurveyMarkerTracking(annotationId, 'phone')}
           <div className="mobile-survey-open-notes" data-slot="survey-notes-media">
             {renderSurveyMarkerNotes(annotationId, 'phone')}
           </div>
@@ -2841,8 +2879,12 @@ const SurveySpacesRail = ({
 
                       // Get surveyMarkers for this module, grouped by category
                       const surveyMarkersByCategory = {};
+                      const trackingToday = todayKey();
+                      let moduleHasMarkers = false;
                       Object.entries(surveyMarkers).forEach(([annotationId, surveyMarker]) => {
                         const surveyMarkerModuleId = surveyMarker.moduleId;
+                        if (surveyMarkerModuleId === selectedModuleId && surveyMarker.categoryId) moduleHasMarkers = true;
+                        if (trackingOn && !passesTrackingFilter(surveyMarker, trackingFilter, { userId: user?.id || null, today: trackingToday })) return;
                         if (surveyMarkerModuleId === selectedModuleId && surveyMarker.categoryId) {
                           if (!surveyMarkersByCategory[surveyMarker.categoryId]) {
                             surveyMarkersByCategory[surveyMarker.categoryId] = [];
@@ -3153,6 +3195,28 @@ const SurveySpacesRail = ({
                               >
                                 Cancel
                               </button>
+                            </div>
+                          ) : null}
+
+                          {trackingOn && moduleHasMarkers ? (
+                            <div
+                              className={`survey-tracking-filters${mobileMode ? ' survey-tracking-filters--phone' : ''}`}
+                              role="group"
+                              aria-label="Show items"
+                              data-testid="survey-tracking-filters"
+                            >
+                              {[['mine', 'Assigned to me'], ['overdue', 'Late'], ['hideDone', 'Hide done']].map(([key, label]) => (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  className="survey-tracking-chip"
+                                  aria-pressed={trackingFilter[key] === true}
+                                  data-tracking-filter={key}
+                                  onClick={() => setTrackingFilter((f) => ({ ...f, [key]: !f[key] }))}
+                                >
+                                  {label}
+                                </button>
+                              ))}
                             </div>
                           ) : null}
 
@@ -3880,8 +3944,9 @@ const SurveySpacesRail = ({
                                                   {/* A note that exists is a small glyph on the CLOSED
                                                       line (an indicator, not a button); media count and
                                                       checklist progress as on the phone row. */}
-                                                  {(noteTextValue && !isSurveyMarkerExpanded) || mediaCount > 0 || progress.total > 0 ? (
+                                                  {(noteTextValue && !isSurveyMarkerExpanded) || mediaCount > 0 || progress.total > 0 || (trackingOn && surveyMarker.tracking) ? (
                                                     <span className="survey-rail__marker-badges">
+                                                      {renderSurveyMarkerTrackingBadge(annotationId)}
                                                       {noteTextValue && !isSurveyMarkerExpanded ? (
                                                         <span className="survey-marker-badge" aria-label="Has a note" {...tip('Has a note', 'left')}>
                                                           <Icon name="note" size={12} color="currentColor" />
@@ -4098,6 +4163,7 @@ const SurveySpacesRail = ({
                                                 {/* Notes and media, inline (owner 2026-10-01,
                                                     replaces the 600px Note dialog) - the same
                                                     block the phone's open Survey Marker shows. */}
+                                                {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerTracking(annotationId, 'desktop')}
                                                 {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerNotes(annotationId, 'desktop')}
                                               </div>
                                               </SwipeActionsRow>

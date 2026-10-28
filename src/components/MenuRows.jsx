@@ -10,6 +10,7 @@
 // Value pickers (a toolbar pill's list, Fit page / width / height) are a
 // different kind of menu: they show the current choice and stay as they are.
 import Icon from '../Icons';
+import MenuGlide from './MenuGlide.jsx';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
 import { arrangeMenuItems, menuIconFor } from '../utils/menuItems.js';
 
@@ -27,7 +28,8 @@ export default function MenuRows({ items, tip, onClose, tipSide }) {
   // row keeps an empty icon slot either.
   const iconOf = (it) => (it.icon === false ? null : (it.icon || menuIconFor(it.label)));
   const anyIcon = rows.some((it) => !it.separator && (it.iconNode || iconOf(it)));
-  return rows.map((it) => {
+  // The hover strip glides between the rows (MenuGlide), so it comes first.
+  return [<MenuGlide key="menu-glide" />, ...rows.map((it, index) => {
     if (it.separator) return <div key={it.key} role="separator" className="hub-menu__separator" />;
     const icon = iconOf(it);
     return (
@@ -36,6 +38,7 @@ export default function MenuRows({ items, tip, onClose, tipSide }) {
         type="button"
         role="menuitem"
         className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
+        style={{ '--menu-row': index }}
         disabled={it.reason ? undefined : it.disabled}
         aria-disabled={it.reason ? true : undefined}
         {...(it.reason && tip ? tip(it.reason, tipSide) : {})}
@@ -45,5 +48,5 @@ export default function MenuRows({ items, tip, onClose, tipSide }) {
         {it.label}
       </button>
     );
-  });
+  })];
 }

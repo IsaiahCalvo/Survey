@@ -11,6 +11,7 @@ import { parseBody, s } from '../_shared/inputSchema.js';
 import {
   AGENTID_CLIENT_ID, AGENTID_JWKS_URL, AGENTID_REDIRECT_URI, agentIdRecord, verifyAgentIdToken,
 } from '../_shared/agentIdToken.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const corsHeaders = {
   // INTENTIONAL: agents call this from anywhere and auth with their own
@@ -44,6 +45,7 @@ Deno.serve(async (req) => {
     (authHeader || '').replace(/^Bearer\s+/i, ''),
   );
   if (error || !user) return json({ error: 'Unauthorized' }, 401);
+  if (isGuestUser(user)) return json({ error: GUEST_REFUSED_MESSAGE }, 403);
 
   if (req.method === 'GET') {
     return json({ agentid_client_id: AGENTID_CLIENT_ID, redirect_uri: AGENTID_REDIRECT_URI, scope: 'openid email profile' });

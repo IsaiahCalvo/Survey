@@ -63,6 +63,11 @@
 }
 
 /* ---- rows ---------------------------------------------------------------- */
+/* Positioned so the hover strip (MenuGlide) measures its rows against it. */
+.annotation-menu-body {
+  position: relative;
+}
+
 .annotation-menu-separator {
   height: 1px;
   background: var(--border);

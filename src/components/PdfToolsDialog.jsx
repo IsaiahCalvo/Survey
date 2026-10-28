@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../home/HubShell';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import Spinner from './Spinner';
+import ButtonGroup from './ButtonGroup.jsx';
 import MotionPresence from './MotionPresence.jsx';
 import { C } from '../uiPalette';
 import { IN_APP_TOOLS, runInAppTool } from '../tools/inApp.js';
@@ -24,11 +25,12 @@ function Seg({ label, value, choices, onChange }) {
   return (
     <div className="pdft-field">
       <span className="pdft-label">{label}</span>
-      <div className="pdft-seg" role="radiogroup" aria-label={label}>
-        {choices.map(([v, l]) => (
-          <button key={v} type="button" role="radio" aria-checked={value === v} className={value === v ? 'is-on' : ''} onClick={() => onChange(v)}>{l}</button>
-        ))}
-      </div>
+      <ButtonGroup
+        label={label}
+        value={value}
+        options={choices.map(([v, l]) => ({ value: v, label: l }))}
+        onChange={onChange}
+      />
     </div>
   );
 }

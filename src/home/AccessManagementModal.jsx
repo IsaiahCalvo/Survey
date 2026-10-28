@@ -13,7 +13,7 @@
  *   - Active share links are listed grouped (link-only invites with no
  *     target_email).
  */
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import ShareModal from './ShareModal';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -45,6 +45,10 @@ import { useTooltip } from '../components/Tooltip';
 import DismissBarrier from '../components/DismissBarrier';
 import MenuRows from '../components/MenuRows.jsx';
 import { menuAtButton, menuRowHeight } from '../utils/menuItems.js';
+import { isFeatureOn } from '../featureFlags.js';
+
+// Guest links (Nightly) load only when an owner opens this with the flag on.
+const GuestLinksSection = lazy(() => import('../guest/GuestLinksSection.jsx'));
 
 
 const ROLES = ['Owner', 'Editor', 'Viewer'];
@@ -139,6 +143,7 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   // The row whose More menu is open ('m:<id>', 'i:<id>' or 'l:<id>').
   const [openMenu, setOpenMenu] = useState(null);
   const cardRef = useRef(null);
+  const [guestLinksOn] = useState(() => isFeatureOn('guest-links'));
 
   // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
   // dialog, Escape closes it, focus moves in on open and returns to the opener
@@ -179,6 +184,8 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   }, [open, refresh]);
 
   const ownerCount = members.filter((m) => String(m.role).toLowerCase() === 'owner').length;
+  const isOwner = Boolean(currentUser?.id) && (item?.user_id === currentUser.id
+    || members.some((m) => m.user_id === currentUser.id && String(m.role).toLowerCase() === 'owner'));
   const documentName = item?.name || item?.title || 'Untitled';
   const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || 'An owner';
 
@@ -406,6 +413,13 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   />
                 ))}
               </div>
+            )}
+
+            {/* Guest links (Nightly): owners only; the server checks too. */}
+            {guestLinksOn && kind === 'document' && documentId && isOwner && (
+              <Suspense fallback={null}>
+                <GuestLinksSection client={supabase} documentId={documentId} />
+              </Suspense>
             )}
           </div>
 

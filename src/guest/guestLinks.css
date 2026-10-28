@@ -1,0 +1,198 @@
+/* Guest links (Nightly): the owner's section in Document access and the
+   guest's join card. */
+
+.guest-links {
+  margin: 8px 6px 4px;
+  padding: 12px;
+  border-top: 1px dashed var(--border);
+  display: grid;
+  gap: 10px;
+}
+
+.guest-links__head {
+  display: grid;
+  gap: 2px;
+}
+
+.guest-links__title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.guest-links__hint,
+.guest-links__ends,
+.guest-links__who {
+  font-size: var(--font-size-md);
+  color: var(--text-3);
+}
+
+.guest-links__make {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.guest-links__made {
+  display: grid;
+  gap: 4px;
+  font-size: var(--font-size-md);
+  color: var(--text-2);
+}
+
+.guest-links__url {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: var(--font-size-md);
+  color: var(--text-1);
+  background: var(--panel-well);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.guest-links__error {
+  font-size: var(--font-size-md);
+  color: var(--danger-text);
+}
+
+.guest-links__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.guest-links__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 34px;
+  font-size: var(--font-size-md);
+}
+
+.guest-links__role {
+  color: var(--text-1);
+  font-weight: 500;
+}
+
+.guest-links__who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .guest-links__make,
+  .guest-links__row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The guest's join card. */
+.guest-join {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--overlay-scrim);
+}
+
+.guest-join__card {
+  width: 400px;
+  max-width: 100%;
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-dialog);
+}
+
+.guest-join__title {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+}
+
+.guest-join__text {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: var(--text-2);
+}
+
+.guest-join__field {
+  display: grid;
+  gap: 4px;
+  font-size: var(--font-size-md);
+  color: var(--text-2);
+}
+
+.guest-join__field input[type="text"] {
+  height: 36px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: var(--font-size-lg);
+  color: var(--text-1);
+  background: var(--panel-well);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.guest-join__terms {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: var(--font-size-md);
+  color: var(--text-2);
+}
+
+.guest-join__terms a {
+  color: var(--accent-text);
+}
+
+.guest-join__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.guest-join__error {
+  font-size: var(--font-size-md);
+  color: var(--danger-text);
+}
+
+@media (pointer: coarse) {
+  .guest-join__field input[type="text"] {
+    height: 44px;
+    font-size: 16px;
+  }
+}
+
+/* A guest's reminder of what they are, with a way out. */
+.guest-badge {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 9000;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 6px 6px 12px;
+  font-size: var(--font-size-md);
+  color: var(--text-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-dialog);
+}

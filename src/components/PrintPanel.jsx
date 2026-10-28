@@ -4,6 +4,7 @@ import DismissBarrier from './DismissBarrier';
 import Icon from '../Icons';
 import { useTooltip, withOwnHandlers } from './Tooltip';
 import ValueSelect from './ValueSelect.jsx';
+import ButtonGroup from './ButtonGroup.jsx';
 import './PrintPanel.css';
 
 const printPanelDebug = (...args) => {
@@ -1140,10 +1141,13 @@ export default function PrintPanel({
         )}
         <div className="pp-fit-row">
           <span className="pp-hint" style={{ margin: 0 }}>Fit</span>
-          <div className="pp-seg">
-            <button className={fitMode === 'proportional' ? 'is-active' : ''} onClick={() => setFitMode('proportional')}>Proportional</button>
-            <button className={fitMode === 'stretch' ? 'is-active' : ''} onClick={() => setFitMode('stretch')}>Stretch</button>
-          </div>
+          <ButtonGroup
+            label="Fit"
+            size="sm"
+            value={fitMode}
+            options={[{ value: 'proportional', label: 'Proportional' }, { value: 'stretch', label: 'Stretch' }]}
+            onChange={setFitMode}
+          />
         </div>
       </div>
 
