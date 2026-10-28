@@ -63,8 +63,10 @@ name: android-signed-in
     timeout: 30000
 # Phone walk 2026-10-28: the phone's bottom panels open and close, and Survey's
 # "Export data" Excel file reaches the share sheet (the native download shim)
-# like the PDF does. Each panel button toggles its sheet; "Done" (Leave Survey)
-# puts the Survey tool down, so the scripts after this flow find the plain
+# like the PDF does. Each panel button toggles its sheet. Export is off while a
+# survey has no items, so the export runs on the seeded agent drawing (it has
+# E2E Doors items); "Done" (Leave Survey) puts the Survey tool down and the
+# flow reopens the sample drawing, so the scripts after it find the plain
 # viewer with Pan armed.
 - tapOn: "Open spaces"
 - extendedWaitUntil:
@@ -75,6 +77,7 @@ name: android-signed-in
 - extendedWaitUntil:
     notVisible: "Create space"
     timeout: 30000
+- runFlow: android-open-agent-drawing.yaml
 - tapOn: "Open survey"
 - tapOn:
     text: "E2E Doors.*"
@@ -96,6 +99,14 @@ name: android-signed-in
 - extendedWaitUntil:
     notVisible: "Export data"
     timeout: 30000
+- tapOn: "Back to documents"
+- extendedWaitUntil:
+    visible: ".*E2E Sample Drawing.*"
+    timeout: 60000
+- tapOn: ".*E2E Sample Drawing.*"
+- tapOn:
+    text: "Open file"
+    optional: true
 - extendedWaitUntil:
     visible: "More document options"
-    timeout: 30000
+    timeout: 90000
