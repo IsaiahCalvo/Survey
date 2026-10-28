@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import * as PDFLib from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { cropAround, viewportRectToPdfBox, viewportToPdfPoint, viewportTransform } from '../src/services/surveyReportMiniMaps.js';
+import { cropAround, drawMiniMap, viewportRectToPdfBox, viewportToPdfPoint, viewportTransform } from '../src/services/surveyReportMiniMaps.js';
 import { buildSurveyReportPdf } from '../src/services/surveyReportPdf.js';
 import { getReportKit } from '../src/services/reportKits/index.js';
 
@@ -89,4 +89,20 @@ test('the report adds a "Where the issues are" page with a crop per placed issue
   // An unreadable plan leaves the crops out but still makes the report.
   const broken = await buildSurveyReportPdf(PDFLib, { template, markers, kit, sourcePdfBytes: new Uint8Array([1, 2, 3]) });
   assert.equal((await PDFLib.PDFDocument.load(broken)).getPageCount(), without.getPageCount());
+});
+
+test('a blank plan page with no content stream gives "No plan view" and the report still saves', async () => {
+  const { PDFDocument, rgb, degrees } = PDFLib;
+  const plan = await PDFDocument.create();
+  plan.addPage([600, 400]); // pdf-lib leaves a new page with no /Contents
+  const drawn = await plan.addPage([600, 400]);
+  drawn.drawRectangle({ x: 50, y: 50, width: 100, height: 60, color: rgb(0, 0, 1) });
+  const source = await PDFDocument.load(await plan.save());
+  const out = await PDFDocument.create();
+  const page = out.addPage([600, 800]);
+  const card = { page, bounds: { x: 100, y: 100, width: 20, height: 20 }, box: { x: 20, y: 20, width: 180, height: 120 }, rgb, degrees, ink: rgb(0, 0, 0), pin: rgb(1, 0, 0) };
+  assert.equal(await drawMiniMap({ doc: out, sourcePage: source.getPage(0), ...card }), false);
+  assert.equal(await drawMiniMap({ doc: out, sourcePage: source.getPage(1), ...card }), true);
+  const bytes = await out.save();
+  assert.ok(bytes.length > 0);
 });

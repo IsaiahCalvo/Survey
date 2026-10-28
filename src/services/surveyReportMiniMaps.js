@@ -78,12 +78,17 @@ export function cropAround(bounds, pageWidth, pageHeight, aspect, { pad = 2.5, m
  */
 export async function drawMiniMap({ doc, page, sourcePage, bounds, box, rgb, degrees, ink, pin }) {
   if (!sourcePage || !bounds || !(bounds.width >= 0) || !(bounds.height >= 0)) return false;
+  // A blank page with no content stream cannot be embedded, and pdf-lib only
+  // finds out at doc.save(), which would sink the whole report.
+  if (!sourcePage.node?.Contents?.()) return false;
   const crop = sourcePage.getCropBox();
   const rotation = sourcePage.getRotation()?.angle || 0;
   const t = viewportTransform([crop.x, crop.y, crop.x + crop.width, crop.y + crop.height], rotation);
   const view = cropAround(bounds, t.width, t.height, box.width / box.height);
   const clip = viewportRectToPdfBox(t, view);
   const embedded = await doc.embedPage(sourcePage, clip);
+  // Embed now, so any other failure lands in this card's try, not in save().
+  await embedded.embed();
   const s = Math.min(box.width / view.width, box.height / view.height);
   const sw = (clip.right - clip.left) * s;
   const sh = (clip.top - clip.bottom) * s;
