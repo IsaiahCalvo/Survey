@@ -46,7 +46,10 @@ Deno.serve(async (req) => {
   if (!authHeader) return json(401, { error: 'missing_authorization' });
   const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '');
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-  if (!supabaseUrl || !anonKey) return json(503, { error: 'misconfigured' });
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  if (!supabaseUrl || !anonKey || !serviceKey) return json(503, { error: 'misconfigured' });
+  // Only for the free-tier ledger (r2_reserve), never to read a file.
+  const asService = { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'Content-Type': 'application/json' };
 
   // Every Storage call carries the caller's own token, so Storage's access
   // rules decide; this function holds no key that could read past them.
@@ -67,6 +70,19 @@ Deno.serve(async (req) => {
         }
         return { ok: true, status: res.status, data: await res.json() };
       },
+      reserve: async (classA: number, classB: number, path?: string, bytes?: number) => {
+        const res = await fetch(`${supabaseUrl}/rest/v1/rpc/r2_reserve`, {
+          method: 'POST',
+          headers: asService,
+          body: JSON.stringify({ p_class_a: classA, p_class_b: classB, p_path: path ?? null, p_bytes: bytes ?? 0 }),
+        });
+        if (!res.ok) throw new Error(`r2_reserve ${res.status}`);
+        return (await res.json()) === true;
+      },
+      forget: (path: string) => fetch(`${supabaseUrl}/rest/v1/pdf_r2_copies?path=eq.${encodeURIComponent(path)}`, {
+        method: 'DELETE',
+        headers: asService,
+      }).then((res) => res.body?.cancel()),
       download: (path: string) => fetch(`${storage}/object/authenticated/documents/${encodePath(path)}`, {
         headers: asCaller,
       }),

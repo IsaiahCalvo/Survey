@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // scripts/r2-copy-pdfs.mjs — copy stored PDFs into Cloudflare R2 (docs/PDF-R2.md).
 //
+// Every R2 operation is first reserved with public.r2_reserve, the same
+// free-tier guard pdf-file-url uses; past it, nothing more is copied.
+//
 // Optional: pdf-file-url copies each PDF the first time it is opened, so
 // nothing breaks if this never runs. Run it to warm R2 before turning the
 // 'pdf-r2' flag on for everyone, to set the bucket's CORS rule, or to remove
@@ -19,7 +22,7 @@
 import {
   deleteObject, headObject, listObjects, putBucketCors, putObjectStream, r2ConfigFromEnv, r2KeyForDocument,
 } from '../supabase/functions/_shared/r2.js';
-import { normalizeEtag } from '../supabase/functions/_shared/pdfFileUrl.js';
+import { copyWriteOps, normalizeEtag } from '../supabase/functions/_shared/pdfFileUrl.js';
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has('--dry-run');
@@ -71,18 +74,42 @@ async function listStored(prefix = '') {
   }
 }
 
+// The free-tier ledger (migration 20261028090000). false = over the cap.
+async function reserve(classA, classB, path = null, bytes = 0) {
+  if (dryRun && path) return true;
+  const res = await fetch(`${supabaseUrl}/rest/v1/rpc/r2_reserve`, {
+    method: 'POST',
+    headers: { ...asService, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_class_a: classA, p_class_b: classB, p_path: path, p_bytes: bytes }),
+  });
+  if (!res.ok) fail(`r2_reserve ${res.status}: ${await res.text()}`);
+  return (await res.json()) === true;
+}
+
+const forget = (path) => fetch(`${supabaseUrl}/rest/v1/pdf_r2_copies?path=eq.${encodeURIComponent(path)}`, {
+  method: 'DELETE', headers: asService,
+}).then((res) => res.body?.cancel());
+
 async function copyOne(object) {
   const key = r2KeyForDocument(object.path);
+  if (!await reserve(0, 1)) return 'over_budget';
   const copy = await headObject(config, key);
   if (copy.exists && normalizeEtag(copy.meta['src-etag']) === object.etag && copy.size === object.size) return 'current';
   if (dryRun) return 'would_copy';
+  if (!await reserve(copyWriteOps(object.size), 0, object.path, object.size)) return 'over_budget';
   const res = await fetch(`${supabaseUrl}/storage/v1/object/authenticated/${BUCKET}/${encodePath(object.path)}`, { headers: asService });
   if (!res.ok || !res.body) {
     await res.body?.cancel();
+    if (!copy.exists) await forget(object.path);
     return `download_${res.status}`;
   }
   const etag = normalizeEtag(res.headers.get('etag')) ?? object.etag;
-  await putObjectStream(config, key, res.body, { meta: { 'src-etag': etag } });
+  try {
+    await putObjectStream(config, key, res.body, { meta: { 'src-etag': etag } });
+  } catch (error) {
+    if (!copy.exists) await forget(object.path);
+    throw error;
+  }
   return 'copied';
 }
 
@@ -112,12 +139,14 @@ if (prune) {
   let extra = 0;
   let token = null;
   do {
+    if (!await reserve(1, 0)) fail('prune: over the R2 free-tier cap; stopped.');
     const page = await listObjects(config, `${BUCKET}/`, { continuationToken: token });
     for (const key of page.keys) {
       if (live.has(key)) continue;
       extra += 1;
       if (!dryRun) {
         await deleteObject(config, key);
+        await forget(key.slice(BUCKET.length + 1));
         removed += 1;
       }
     }
@@ -126,4 +155,5 @@ if (prune) {
   log(`prune: ${extra} copies with no PDF in Storage, ${removed} deleted.`);
 }
 
+if (counts.over_budget) log('Stopped short: the R2 free-tier cap (80%) was reached; the rest stays on Supabase.');
 if (counts.failed || Object.keys(counts).some((k) => k.startsWith('download_'))) process.exit(1);

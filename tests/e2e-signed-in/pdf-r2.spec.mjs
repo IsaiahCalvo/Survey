@@ -145,3 +145,71 @@ test('with the flag on but R2 down, the app still opens the drawing from Supabas
   await openSampleDocument(page);
   expect(fromR2).toEqual([]);
 });
+
+// Never past Cloudflare's free tier (migration 20261028090000): r2_reserve
+// refuses at 80% of each allowance and the app reads from Supabase instead.
+test('free-tier cap: nobody but the service role reaches the ledger; past the cap R2 is left alone', async ({ page }) => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const owner = await makeUser(admin, 'r2-cap');
+  const ownerToken = await signInToken(owner);
+  const asOwner = { apikey: KEY(), authorization: `Bearer ${ownerToken}`, 'content-type': 'application/json' };
+  const api = process.env.E2E_SUPABASE_URL;
+  const reserveAs = (headers) => fetch(`${api}/rest/v1/rpc/r2_reserve`, {
+    method: 'POST', headers, body: JSON.stringify({ p_class_a: 0, p_class_b: 0 }),
+  });
+  for (const headers of [{ apikey: KEY(), 'content-type': 'application/json' }, asOwner]) {
+    const res = await reserveAs(headers);
+    expect(res.status, await res.text()).not.toBe(200);
+  }
+  const read = await fetch(`${api}/rest/v1/r2_usage_daily?select=*`, { headers: asOwner });
+  expect(read.status === 200 ? await read.json() : [], 'usage is hidden').toEqual([]);
+
+  const current = await addDocument(admin, owner, { name: `R2 cap current ${RUN}` });
+  const fresh = await addDocument(admin, owner, { name: `R2 cap new ${RUN}` });
+  await linkWhenCopied(ownerToken, current.filePath);
+
+  const [{ max_bytes: maxBytes, max_class_b: maxClassB }] = await must('limits', admin.rpc('r2_limits'));
+  // Storage full: an existing copy still gets links, a new one is not made.
+  const filler = `__e2e_filler__/${RUN}.pdf`;
+  await must('fill storage', admin.from('pdf_r2_copies').insert({ path: filler, size: maxBytes }));
+  try {
+    expect((await askLink(ownerToken, current.filePath)).status).toBe(200);
+    const refused = await askLink(ownerToken, fresh.filePath);
+    expect(await refused.json()).toEqual({ error: 'r2_budget' });
+    expect(refused.status).toBe(503);
+    expect(await headObject(minio(), r2KeyForDocument(fresh.filePath)), 'nothing copied past the cap').toEqual({ exists: false });
+  } finally {
+    await admin.from('pdf_r2_copies').delete().eq('path', filler);
+  }
+
+  // Reads used up (a day still inside the rolling 31): no link at all, and
+  // the app opens the drawing from Supabase without touching R2.
+  const day = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const before = await must('usage before', admin.from('r2_usage_daily').select('*').eq('day', day));
+  await must('use up reads', admin.from('r2_usage_daily').upsert({ day, class_a: 0, class_b: maxClassB }));
+  try {
+    const capped = await askLink(ownerToken, current.filePath);
+    expect(await capped.json()).toEqual({ error: 'r2_budget' });
+
+    if (process.env.E2E_FUNCTIONS_URL) {
+      await page.route('**/functions/v1/pdf-file-url', (route) => route.fallback({ url: functionUrl('pdf-file-url') }));
+    }
+    await page.addInitScript(() => window.localStorage.setItem('survey.flag.pdf-r2', '1'));
+    const fromR2 = [];
+    const linkAnswers = [];
+    page.on('request', (request) => { if (new URL(request.url()).origin === R2_ENDPOINT()) fromR2.push(request.url()); });
+    page.on('response', (response) => { if (new URL(response.url()).pathname.endsWith('/pdf-file-url')) linkAnswers.push(response.status()); });
+    await signIn(page, E2E_ACCOUNTS.owner);
+    await openSampleDocument(page);
+    expect(linkAnswers, 'the app asked and was told no').toContain(503);
+    expect(fromR2).toEqual([]);
+  } finally {
+    if (before.length) await admin.from('r2_usage_daily').upsert(before[0]);
+    else await admin.from('r2_usage_daily').delete().eq('day', day);
+  }
+
+  await must('remove', admin.storage.from('documents').remove([current.filePath, fresh.filePath]));
+  await admin.from('documents').delete().in('id', [current.id, fresh.id]);
+  await admin.auth.admin.deleteUser(owner.id);
+});

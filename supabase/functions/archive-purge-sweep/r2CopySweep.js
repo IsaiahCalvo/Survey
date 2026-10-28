@@ -52,6 +52,9 @@ export async function sweepR2Copies(supabase, config, { dryRun = false, limit = 
       if (summary.errors.length < 10) summary.errors.push(messageOf(err));
       continue;
     }
+    // The copy is gone, so its bytes leave the free-tier ledger (r2_reserve).
+    const { error: ledgerError } = await supabase.from('pdf_r2_copies').delete().eq('path', row.path);
+    if (ledgerError) log('r2_sweep_ledger_failed', { message: messageOf(ledgerError) });
     const { error: clearError } = await supabase
       .from('pdf_r2_deletes')
       .delete()

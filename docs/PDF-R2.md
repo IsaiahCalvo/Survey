@@ -75,3 +75,28 @@ R2: $0.015 per GB a month stored, first 10 GB free, no download fees. Each PDF
 is downloaded from Supabase once more to make its copy. See
 `/mnt/project-files/security/supabase-alternatives-and-compliance.md` for the
 sums (about $830 a month down to about $190 at 10,000 users).
+
+## Never past the free tier
+
+R2 bills the card on file on its own once a month passes 10 GB stored, 1
+million Class A operations (writes, lists) or 10 million Class B operations
+(reads), and Cloudflare has no spending cap. So Survey keeps its own:
+
+- Every R2 operation is reserved first with `public.r2_reserve` (migration
+  `20261028090000_pdf_r2_mirror.sql`). It refuses at 80% of each allowance:
+  8 GB stored, 800,000 Class A and 8,000,000 Class B, counted over a rolling
+  31 days so the cap holds whatever day Cloudflare's month starts.
+- `pdf_r2_copies` holds each copy's size (reserved before the copy is made,
+  given back when a first copy fails or the sweep deletes it).
+  `r2_usage_daily` holds the operations per day.
+- A signed link is charged as the most reads it can cause: the file in 256 KB
+  range requests plus a few. HEAD is one read; a copy is one write, or
+  start + 8 MB parts + finish. Deletes are free.
+- Past the cap, or when the ledger cannot be reached, pdf-file-url answers
+  503 `r2_budget` and the app opens from Supabase, the same as any other
+  answer that is not a link. Existing copies keep their links when only
+  storage is full. `scripts/r2-copy-pdfs.mjs` uses the same reservations.
+- `scripts/backend-alerts.mjs` opens an alert issue at 80% of each cap (about
+  64% of the free tier).
+
+To change the caps, change `public.r2_limits()` in a new migration.

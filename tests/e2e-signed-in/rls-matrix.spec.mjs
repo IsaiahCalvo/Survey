@@ -127,7 +127,8 @@ const NOT_SWEPT = {
   email_send_events: 'service only', excel_sync_audit: 'service only', excel_sync_changesets: 'service only',
   excel_sync_head: 'service only', excel_sync_ops: 'service only', excel_sync_state: 'service only',
   integration_test_bytea_roundtrip: 'service only', invite_email_deliveries: 'service only',
-  pdf_r2_deletes: 'service only', rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
+  pdf_r2_copies: 'service only', pdf_r2_deletes: 'service only', r2_usage_daily: 'service only',
+  rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
   // Their write triggers need a signed-in editor, so the service role cannot
   // seed a row. Reads need viewer access to the document.
   annotation_snapshots: 'editor writes only', annotation_updates: 'editor writes only',

@@ -4,7 +4,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { handlePdfFileUrl, mirrorPdf, validPdfPath, normalizeEtag, PDF_LINK_SECONDS } from '../supabase/functions/_shared/pdfFileUrl.js';
+import {
+  handlePdfFileUrl, mirrorPdf, validPdfPath, normalizeEtag, PDF_LINK_SECONDS, linkReadOps, copyWriteOps,
+} from '../supabase/functions/_shared/pdfFileUrl.js';
 import { r2ConfigFromEnv, presignGet, putObjectStream, PART_SIZE } from '../supabase/functions/_shared/r2.js';
 import { sweepR2Copies } from '../supabase/functions/archive-purge-sweep/r2CopySweep.js';
 import { requestR2PdfLink, downloadPdfFromR2 } from '../src/services/pdfR2Source.js';
@@ -110,6 +112,17 @@ test('presigned link: path-style, host-only signature, expiry and encoded key', 
 const okInfo = (etag = '"v1"', size = 10) => async () => ({ ok: true, status: 200, data: { etag, size } });
 const noBackground = () => { throw new Error('no copy expected'); };
 const noR2 = async () => { throw new Error('R2 must not be touched'); };
+// The free-tier ledger (r2_reserve): records every reservation; refuses past `cap` ops.
+const ledger = ({ cap = Infinity, fail = false } = {}) => {
+  const calls = [];
+  const reserve = async (a, b, path, bytes) => {
+    if (fail) throw new Error('rpc 500');
+    if (a + b > cap) return false;
+    calls.push([a, b, path, bytes]);
+    return true;
+  };
+  return { calls, reserve };
+};
 
 test('the access check comes first: refused or missing paths never reach R2', async () => {
   for (const status of [400, 403, 404]) {
@@ -135,18 +148,23 @@ test('a current copy gets a signed link; a missing or old copy is made in the ba
   const s3 = fakeS3();
   const background = [];
   const download = async () => new Response(streamOf(pdfBytes(10)), { headers: { etag: '"v1"', 'content-length': '10' } });
-  const deps = { config, storageInfo: okInfo(), download, background: (p) => background.push(p), fetchImpl: s3.fetchImpl };
+  const { calls, reserve } = ledger();
+  const deps = { config, storageInfo: okInfo(), download, reserve, background: (p) => background.push(p), fetchImpl: s3.fetchImpl };
 
   const first = await handlePdfFileUrl({ path: 'u/d.pdf' }, deps);
   assert.deepEqual(first, { status: 202, body: { copying: true } });
   assert.equal(background.length, 1);
   await background[0];
   assert.deepEqual(s3.objects.get('documents/u/d.pdf').meta, { 'src-etag': 'v1' });
+  // One read (HEAD), then the copy's write and its 10 bytes, reserved before R2 was touched.
+  assert.deepEqual(calls, [[0, 1, undefined, undefined], [1, 0, 'u/d.pdf', 10]]);
 
   const second = await handlePdfFileUrl({ path: 'u/d.pdf' }, deps);
   assert.equal(second.status, 200);
   assert.equal(second.body.expiresIn, PDF_LINK_SECONDS);
   assert.match(second.body.url, /^https:\/\/acct\.r2\.cloudflarestorage\.com\/survey-pdfs\/documents\/u\/d\.pdf\?.*X-Amz-Signature=/);
+  // The link's reads are reserved too (whole file in range chunks, at most).
+  assert.deepEqual(calls.slice(2), [[0, 1, undefined, undefined], [0, linkReadOps(10), undefined, undefined]]);
 
   // A page edit rewrote the PDF in place: new ETag, so no link to the old copy.
   const edited = await handlePdfFileUrl({ path: 'u/d.pdf' }, { ...deps, storageInfo: okInfo('"v2"', 10) });
@@ -158,10 +176,47 @@ test('a current copy gets a signed link; a missing or old copy is made in the ba
 
 test('R2 down: the app is told to use Supabase', async () => {
   const r = await handlePdfFileUrl({ path: 'u/d.pdf' }, {
-    config, storageInfo: okInfo(), download: noR2, background: noBackground,
+    config, storageInfo: okInfo(), download: noR2, background: noBackground, reserve: ledger().reserve,
     fetchImpl: async () => new Response(null, { status: 500 }),
   });
   assert.deepEqual(r, { status: 503, body: { error: 'r2_unavailable' } });
+});
+
+test('free-tier cap: past it (or with the ledger down) R2 is never touched and the app uses Supabase', async () => {
+  const overBudget = { status: 503, body: { error: 'r2_budget' } };
+  const base = { config, storageInfo: okInfo(), download: noR2, background: noBackground, fetchImpl: noR2 };
+  assert.deepEqual(await handlePdfFileUrl({ path: 'u/d.pdf' }, { ...base, reserve: ledger({ cap: 0 }).reserve }), overBudget);
+  assert.deepEqual(await handlePdfFileUrl({ path: 'u/d.pdf' }, { ...base, reserve: ledger({ fail: true }).reserve }), overBudget);
+  assert.deepEqual(await handlePdfFileUrl({ path: 'u/d.pdf' }, base), overBudget);
+
+  // Room for the HEAD but not for the copy: no copy, nothing in the background.
+  const s3 = fakeS3();
+  const big = { ...base, storageInfo: okInfo('"v1"', 100 * 1024 * 1024), fetchImpl: s3.fetchImpl, reserve: ledger({ cap: 3 }).reserve };
+  assert.deepEqual(await handlePdfFileUrl({ path: 'u/d.pdf' }, big), overBudget);
+  assert.equal(copyWriteOps(100 * 1024 * 1024), 15);
+
+  // A current copy but no room for the link's reads: no link.
+  const download = async () => new Response(streamOf(pdfBytes(10)), { headers: { etag: '"v1"' } });
+  const jobs = [];
+  await handlePdfFileUrl({ path: 'u/d.pdf' }, { ...base, fetchImpl: s3.fetchImpl, download, background: (p) => jobs.push(p), reserve: ledger().reserve });
+  await jobs[0];
+  // No content-length on the download (a chunked answer) still copies.
+  assert.equal(s3.objects.get('documents/u/d.pdf').meta['src-etag'], 'v1');
+  assert.deepEqual(await handlePdfFileUrl({ path: 'u/d.pdf' }, { ...base, fetchImpl: s3.fetchImpl, reserve: ledger({ cap: 2 }).reserve }), overBudget);
+});
+
+test('a failed first copy gives its reserved bytes back', async () => {
+  const s3 = fakeS3();
+  const forgotten = [];
+  const jobs = [];
+  const r = await handlePdfFileUrl({ path: 'u/d.pdf' }, {
+    config, storageInfo: okInfo(), reserve: ledger().reserve, forget: async (p) => forgotten.push(p),
+    download: async () => new Response('gone', { status: 404 }), background: (p) => jobs.push(p), fetchImpl: s3.fetchImpl,
+  });
+  assert.equal(r.status, 202);
+  await jobs[0];
+  assert.deepEqual(forgotten, ['u/d.pdf']);
+  assert.equal(s3.objects.has('documents/u/d.pdf'), false);
 });
 
 test('copy: tagged with the ETag Storage sent with the bytes; a failed download copies nothing', async () => {
@@ -190,9 +245,14 @@ test('big files go up in parts and arrive whole', async () => {
 
 function stubQueue(rows, { failClear = false } = {}) {
   const cleared = [];
+  const unledgered = [];
   return {
     cleared,
+    unledgered,
     from(table) {
+      if (table === 'pdf_r2_copies') {
+        return { delete: () => ({ eq: async (_c, path) => { unledgered.push(path); return { error: null }; } }) };
+      }
       assert.equal(table, 'pdf_r2_deletes');
       const q = {
         select: () => q, order: () => q, limit: async () => ({ data: rows, error: null }),
@@ -214,6 +274,7 @@ test('delete sweep: off without R2; deletes each copy, then its queue row', asyn
   });
   assert.deepEqual(removedKeys, ['documents/u/a.pdf']);
   assert.deepEqual(queue.cleared, [['u/a.pdf', 't1']]);
+  assert.deepEqual(queue.unledgered, ['u/a.pdf']);
   assert.equal(r.removed, 1);
   assert.equal(r.failed, 1);
 

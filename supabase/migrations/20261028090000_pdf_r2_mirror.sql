@@ -56,3 +56,101 @@ drop trigger if exists queue_pdf_r2_delete on storage.objects;
 create trigger queue_pdf_r2_delete
   after delete or update of name, bucket_id on storage.objects
   for each row execute function public.queue_pdf_r2_delete();
+
+-- 3. Never past Cloudflare's free tier (owner, 2026-10-28). R2 bills
+-- automatically past 10 GB stored, 1M Class A (writes, lists) and 10M Class B
+-- (reads) operations a month, and has no spending cap of its own. So every R2
+-- operation is reserved here first, and refused at 80% of each allowance; a
+-- refusal makes pdf-file-url answer "use Supabase", which the app already
+-- does on any other answer. Operations count over a rolling 31 days, so the
+-- cap holds whatever day Cloudflare's billing month starts.
+create table if not exists public.pdf_r2_copies (
+  path text primary key,
+  size bigint not null check (size >= 0),
+  copied_at timestamptz not null default now()
+);
+alter table public.pdf_r2_copies enable row level security;
+revoke all on public.pdf_r2_copies from anon, authenticated;
+comment on table public.pdf_r2_copies is
+  'Bytes each Cloudflare R2 copy holds (reserved before the copy is made). Their sum is checked against the free-tier cap by r2_reserve. service_role only.';
+
+create table if not exists public.r2_usage_daily (
+  day date primary key,
+  class_a bigint not null default 0,
+  class_b bigint not null default 0
+);
+alter table public.r2_usage_daily enable row level security;
+revoke all on public.r2_usage_daily from anon, authenticated;
+comment on table public.r2_usage_daily is
+  'Cloudflare R2 operations Survey made (or, for the links it signs, at most caused) each UTC day. Read by r2_reserve and scripts/backend-alerts.mjs. service_role only.';
+
+create or replace function public.r2_limits()
+returns table (max_bytes bigint, max_class_a bigint, max_class_b bigint)
+language sql
+immutable
+set search_path = ''
+as $$
+  -- 80% of the free tier: 10 GB (decimal, the smaller reading), 1M Class A, 10M Class B.
+  select 8000000000::bigint, 800000::bigint, 8000000::bigint;
+$$;
+
+-- Reserves operations (and, with p_path, the bytes of that path's copy,
+-- replacing any earlier size) if everything stays under the caps. Returns
+-- false and records nothing otherwise.
+create or replace function public.r2_reserve(
+  p_class_a bigint,
+  p_class_b bigint,
+  p_path text default null,
+  p_bytes bigint default 0
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_limits record;
+  v_a bigint;
+  v_b bigint;
+  v_bytes bigint;
+  v_old bigint := 0;
+  v_day date := (now() at time zone 'utc')::date;
+begin
+  if coalesce(p_class_a, 0) < 0 or coalesce(p_class_b, 0) < 0 or coalesce(p_bytes, 0) < 0 then
+    raise exception 'r2_reserve: negative amounts';
+  end if;
+  -- One reservation at a time, so two copies cannot both squeeze under a cap.
+  perform pg_advisory_xact_lock(hashtext('public.r2_reserve'));
+  select * into v_limits from public.r2_limits();
+  select coalesce(sum(class_a), 0), coalesce(sum(class_b), 0) into v_a, v_b
+    from public.r2_usage_daily where day > v_day - 31;
+  -- Bytes only matter when a copy is being made (opens just read).
+  if p_path is not null then
+    select coalesce(sum(size), 0) into v_bytes from public.pdf_r2_copies;
+    select coalesce((select size from public.pdf_r2_copies where path = p_path), 0) into v_old;
+  end if;
+  if v_a + coalesce(p_class_a, 0) > v_limits.max_class_a
+     or v_b + coalesce(p_class_b, 0) > v_limits.max_class_b
+     or (p_path is not null and v_bytes - v_old + coalesce(p_bytes, 0) > v_limits.max_bytes) then
+    return false;
+  end if;
+  insert into public.r2_usage_daily (day, class_a, class_b)
+    values (v_day, coalesce(p_class_a, 0), coalesce(p_class_b, 0))
+    on conflict (day) do update set
+      class_a = public.r2_usage_daily.class_a + excluded.class_a,
+      class_b = public.r2_usage_daily.class_b + excluded.class_b;
+  if p_path is not null then
+    insert into public.pdf_r2_copies (path, size) values (p_path, coalesce(p_bytes, 0))
+      on conflict (path) do update set size = excluded.size, copied_at = now();
+  end if;
+  return true;
+end;
+$$;
+
+revoke all on function public.r2_reserve(bigint, bigint, text, bigint) from public, anon, authenticated;
+revoke all on function public.r2_limits() from public, anon, authenticated;
+grant execute on function public.r2_reserve(bigint, bigint, text, bigint) to service_role;
+grant execute on function public.r2_limits() to service_role;
+
+comment on function public.r2_reserve(bigint, bigint, text, bigint) is
+  'Reserves Cloudflare R2 operations (and a copy''s bytes) under 80% of the free tier over a rolling 31 days; false = refused, nothing recorded. service_role only (pdf-file-url, scripts/r2-copy-pdfs.mjs).';
