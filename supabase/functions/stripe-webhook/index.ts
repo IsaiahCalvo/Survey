@@ -1,5 +1,6 @@
 import Stripe from 'npm:stripe@20.4.1';
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
+import { companyBillingStatus, companyIdOf } from '../_shared/companyBilling.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2026-02-25.clover',
@@ -126,6 +127,17 @@ Deno.serve(async (req) => {
                 detectSessionInUrl: false
             }
         });
+
+        // Enterprise seats bought by a company workspace carry org_id instead
+        // of user_id, and only ever change that company's row.
+        const companyId = companyIdOf(event);
+        if (companyId) {
+            await handleCompanyEvent(supabase, companyId, event);
+            return new Response(JSON.stringify({ received: true }), {
+                headers: { 'Content-Type': 'application/json' },
+                status: 200,
+            });
+        }
 
         // Handle different event types
         switch (event.type) {
@@ -647,6 +659,60 @@ async function handlePaymentFailed(supabase: any, invoice: Stripe.Invoice) {
             );
         }
     }
+}
+
+// ---------- Company workspace (Enterprise seats) ----------
+
+async function handleCompanyEvent(supabase: any, orgId: string, event: Stripe.Event) {
+    // The subscription events carry the state; the checkout event only says
+    // a checkout finished, and the subscription.created that follows sets it.
+    if (!event.type.startsWith('customer.subscription.')) {
+        console.log(`Company ${orgId}: ${event.type} (state comes with the subscription events)`);
+        return;
+    }
+    const subscription = event.data.object as Stripe.Subscription;
+    const item = subscription.items?.data?.[0];
+    // Only the Enterprise price buys seats; anything else grants nothing.
+    if (!item || getTierFromPriceId(item.price?.id || '') !== 'enterprise') {
+        console.error(`Company ${orgId}: subscription ${subscription.id} is not on the Enterprise price; ignored`);
+        return;
+    }
+    const deleted = event.type === 'customer.subscription.deleted';
+    const billingStatus = deleted ? 'canceled' : companyBillingStatus(subscription.status);
+    // A late event from an earlier plan must not end the plan bought since.
+    const { data: current, error: readError } = await supabase.from('organizations')
+        .select('stripe_subscription_id').eq('id', orgId).maybeSingle();
+    if (readError) failWrite('reading company billing', readError);
+    if (!current) {
+        console.error(`Company ${orgId} not found for subscription ${subscription.id}`);
+        return;
+    }
+    if (current.stripe_subscription_id && current.stripe_subscription_id !== subscription.id
+        && billingStatus !== 'active' && billingStatus !== 'trialing') {
+        console.log(`Company ${orgId}: ${event.type} for older subscription ${subscription.id}; ignored`);
+        return;
+    }
+    const update: Record<string, unknown> = {
+        billing_status: billingStatus,
+        // Back to the 3-seat starting size once the plan ends.
+        seat_limit: billingStatus === 'canceled' ? 3 : Math.max(0, item.quantity ?? 0),
+        stripe_customer_id: stripeResourceId(subscription.customer),
+        stripe_subscription_id: subscription.id,
+        updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase.from('organizations').update(update).eq('id', orgId).select('id');
+    if (error) failWrite('updating company billing', error);
+    if (!data?.length) {
+        console.error(`Company ${orgId} not found for subscription ${subscription.id}`);
+        return;
+    }
+    const { error: logError } = await supabase.rpc('_org_log', {
+        p_org: orgId, p_actor: subscription.metadata?.payer_id || null, p_action: 'billing.updated',
+        p_target_type: 'billing', p_target_id: subscription.id, p_target_label: 'Company plan',
+        p_project: null, p_document: null,
+        p_details: { status: billingStatus, seats: update.seat_limit },
+    });
+    if (logError) console.error('company billing log failed', logError.message);
 }
 
 // Helper function to determine tier from price ID
