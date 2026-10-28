@@ -39,7 +39,7 @@ test('parsePageRangeInput accepts singles and ranges with clamping', () => {
   const outOfRange = parsePageRangeInput('0,99', { min: 1, max: 10 });
   assert.deepEqual(outOfRange.pages, []);
   assert.equal(outOfRange.errors.length, 1);
-  assert.match(outOfRange.errors[0], /out of the valid range/);
+  assert.match(outOfRange.errors[0], /^Pages go from \d+ to \d+\.$/);
 
   const clamped = parsePageRangeInput('8-20', { min: 1, max: 10 });
   assert.deepEqual(clamped.pages, [8, 9, 10]);
