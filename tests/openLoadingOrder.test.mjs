@@ -160,9 +160,10 @@ test('one opening state: a short wait, a page skeleton and its caption, no spinn
   assert.doesNotMatch(QUIET, /import Spinner|role="progressbar"/);
   assert.match(QUIET, /className="quiet-loading-bar"/);
   assert.doesNotMatch(QUIET, /quiet-loading-page/);
-  assert.match(VIEWER, /<QuietLoading label=\{openingLabel\(pdfFile\?\.name\)\} \/>/);
+  // The name shown is the tab's (a rename shows at once), else the file's.
+  assert.match(VIEWER, /<QuietLoading label=\{openingLabel\(pdfDisplayName\)\} \/>/);
   assert.doesNotMatch(VIEWER, /Loading PDF\.\.\./);
-  assert.match(SHELL, /<Suspense fallback=\{<QuietLoading label=\{openingLabel\(tab\.file\?\.name\)\}/);
+  assert.match(SHELL, /<Suspense fallback=\{<QuietLoading label=\{openingLabel\(tab\.name \|\| tab\.file\?\.name\)\}/);
   assert.doesNotMatch(SHELL, /Loading document\.\.\./);
   assert.match(CONTAINER, /<QuietLoading \/>/);
   assert.doesNotMatch(CONTAINER, /\n\s*Loading…\n/);

@@ -16,6 +16,7 @@ import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange, subscribeTemplatesChange } from './libraryChangeBus.js';
+import { documentNameSequence, renameRows, subscribeDocumentNames, withRenamesSince } from './documentNameBus.js';
 import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
@@ -315,6 +316,15 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
     });
   }, [user, projectId, enabled]);
 
+  // A rename made anywhere (another list, a tab menu, another screen) shows
+  // in this list at once (documentNameBus.js).
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return subscribeDocumentNames((rename) => {
+      setDocuments((current) => renameRows(current, rename));
+    });
+  }, [enabled]);
+
   // Pure query worker: runs the owned + collaborator-probe + conditional id=in
   // sequence as ONE unit and RETURNS the merged array (no setState here), so it
   // can be shared verbatim across instances by the coalescer.
@@ -414,15 +424,19 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
       requestScopeKey,
       currentScopeKey: documentScopeKeyRef.current,
     });
+    // A rename shown while this read is in flight must survive it: the read
+    // may have left the database before the rename was saved.
+    const renameSeqAtStart = documentNameSequence();
     try {
       setLoading(true);
       // The last error stays until a read succeeds (2026-10-07): a retry that
       // cleared it up front flashed the empty list between two error screens.
       const key = `documents:${user.id}:${projectId ?? 'null'}`;
-      const merged = coalesce
+      const read = coalesce
         ? await coalesceRead(key, runDocumentsQuery)
         : await runDocumentsQuery();
       if (!isCurrentRequest()) return [];
+      const merged = withRenamesSince(read, renameSeqAtStart);
       setDocuments(merged);
       setError(null);
       return merged;
