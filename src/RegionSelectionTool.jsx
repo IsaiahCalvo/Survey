@@ -36,16 +36,16 @@ import { showToast } from './utils/toast.js';
 import Icon from './Icons';
 import { useTooltip } from './components/Tooltip';
 import './styles/annotationContextMenu.css';
+import { REGION_POLYGON_MIN_CORNERS, insertRegionSidePoint, isLevelRectangle, isRegionSideStraight, regionPolygonHitRadii, regionPolygonPressAction, resolveRegionPolygonPoint } from './utils/regionPolygonEdit.js';
+import { POLY_FINISH_CONTROL_FILL, POLY_FINISH_CONTROL_SCREEN_RADIUS } from './utils/polyDraft.js';
 import { REGION_MARQUEE_MIN_DRAG_PX, regionMarqueeDirection, regionMarqueeRect, resolveRegionMarqueeHits } from './utils/regionMarquee.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
 const MIN_REGION_SIZE = 5;
 // Owner 2026-10-22: Polygon area, drawn a corner per click like Bluebeam's
-// Add Space and Photoshop's Polygonal Lasso. A click this close (screen px)
-// to the first corner closes it; a click this close to the last corner (the
-// second press of a double-click) adds nothing.
-const POLYGON_CLOSE_PX = 8;
-const POLYGON_SAME_POINT_PX = 3;
+// Add Space and Photoshop's Polygonal Lasso. Since 2026-10-28 it draws like
+// the Polygon markup tool: check marks on the first and latest corner close
+// or finish it, and Shift locks each new side to 15° (regionPolygonEdit.js).
 const DRAW_TOOL_TYPES = new Set(['rectangular', 'polygon', 'freehand']);
 // Owner 2026-10-26: Erase takes a whole area away where it is pressed or
 // dragged over (the phone's Delete key; Subtract cuts part of an area).
@@ -224,8 +224,13 @@ const RegionSelectionTool = ({
   // Polygon tool: the corners placed so far and the pointer (the rubber band).
   const [polyCorners, setPolyCorners] = useState([]);
   const [polyHover, setPolyHover] = useState(null);
+  // The pointer is over a check mark (pointer cursor instead of crosshair).
+  const [polyOnCheck, setPolyOnCheck] = useState(false);
   const polyCornersRef = useRef([]);
   polyCornersRef.current = polyCorners;
+  // Add or Subtract is fixed by the first corner, so Shift (15° lock) or Alt
+  // pressed while drawing does not flip what the closed shape does.
+  const polyModeRef = useRef(null);
   const [regions, setRegions] = useState(() => []);
   const [selectedRegionIds, setSelectedRegionIds] = useState(() => new Set());
   const [interactionState, setInteractionState] = useState(null);
@@ -452,6 +457,10 @@ const RegionSelectionTool = ({
     // Otherwise use dropdown selection
     return selectionMode;
   }, [isShiftPressed, isOptionAltPressed, selectionMode]);
+
+  // What the shape being drawn will do: a polygon keeps the mode its first
+  // corner took.
+  const drawMode = (polyCorners.length > 0 && polyModeRef.current) || effectiveSelectionMode;
 
   useEffect(() => {
     regionsRef.current = Array.isArray(regions) ? regions : [];
@@ -1425,23 +1434,26 @@ const RegionSelectionTool = ({
   // Close the polygon into an area: Add or Subtract exactly as a Lasso does.
   const commitPolygonRef = useRef(null);
   const dropPolygon = useCallback(() => {
+    polyModeRef.current = null;
     setPolyCorners([]);
     setPolyHover(null);
+    setPolyOnCheck(false);
   }, []);
   commitPolygonRef.current = (corners) => {
+    const mode = polyModeRef.current || effectiveSelectionMode;
     dropPolygon();
-    if (!Array.isArray(corners) || corners.length < 3) return;
+    if (!Array.isArray(corners) || corners.length < REGION_POLYGON_MIN_CORNERS) return;
     pushUndoSnapshot();
     const thinTolerance = getThinTolerance();
     const newRegion = {
       regionId: crypto.randomUUID(),
       pageId: currentPageId,
       shapeType: 'polygon',
-      operation: effectiveSelectionMode,
+      operation: mode,
       coordinates: corners.flatMap((point) => [point.x, point.y]),
       ...(userId ? { createdBy: userId } : {}),
     };
-    if (effectiveSelectionMode === REGION_OPERATIONS.ADD) {
+    if (mode === REGION_OPERATIONS.ADD) {
       setRegions((prev) => [...prev, newRegion]);
     } else {
       setRegions((prev) => prev.flatMap((existingRegion) => subtractRegionFromRegion(existingRegion, newRegion, { thinTolerance }) || []));
@@ -1582,14 +1594,18 @@ const RegionSelectionTool = ({
       // A corner per click; the press is not a drag, so nothing waits for up.
       if (polyCornersRef.current.length === 0 && selectedRegionIds.size > 0) setSelectedRegionIds(new Set());
       const corners = polyCornersRef.current;
-      const screenGap = (p) => Math.hypot(pageToScreenX(p.x) - pageToScreenX(x), pageToScreenY(p.y) - pageToScreenY(y));
-      if (corners.length >= 3 && screenGap(corners[0]) <= POLYGON_CLOSE_PX) {
+      const toScreen = (p) => ({ x: pageToScreenX(p.x), y: pageToScreenY(p.y) });
+      const radii = regionPolygonHitRadii({ coarse: mobileMode || event.pointerType === 'touch' || event.pointerType === 'pen' });
+      const action = regionPolygonPressAction(corners, { x, y }, { toScreen, checkHitPx: radii.checkHitPx });
+      if (action === 'close' || action === 'finish') {
         commitPolygonRef.current?.(corners);
         return;
       }
-      if (corners.length > 0 && screenGap(corners[corners.length - 1]) <= POLYGON_SAME_POINT_PX) return;
-      setPolyCorners([...corners, { x, y }]);
-      setPolyHover({ x, y });
+      if (action === 'ignore') return;
+      if (corners.length === 0) polyModeRef.current = effectiveSelectionMode;
+      const { point } = resolveRegionPolygonPoint(corners, { x, y }, { shiftKey: event.shiftKey, toScreen });
+      setPolyCorners([...corners, point]);
+      setPolyHover(point);
       return;
     }
 
@@ -1664,7 +1680,18 @@ const RegionSelectionTool = ({
     }
 
     if (effectiveToolType === 'polygon' && polyCornersRef.current.length > 0) {
-      setPolyHover({ x, y });
+      const radii = regionPolygonHitRadii({ coarse: mobileMode || event.pointerType === 'touch' || event.pointerType === 'pen' });
+      const { point } = resolveRegionPolygonPoint(polyCornersRef.current, { x, y }, {
+        shiftKey: event.shiftKey,
+        toScreen: (p) => ({ x: pageToScreenX(p.x), y: pageToScreenY(p.y) }),
+        closePullPx: radii.closePullPx,
+      });
+      setPolyHover(point);
+      const onCheck = regionPolygonPressAction(polyCornersRef.current, { x, y }, {
+        toScreen: (p) => ({ x: pageToScreenX(p.x), y: pageToScreenY(p.y) }),
+        checkHitPx: radii.checkHitPx,
+      });
+      setPolyOnCheck(onCheck === 'close' || onCheck === 'finish');
       return;
     }
 
@@ -2000,7 +2027,7 @@ const RegionSelectionTool = ({
     } else if (effectiveToolType === 'freehand') {
       setPolygonPoints(prev => [...prev, { x, y }]);
     }
-  }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode, eraseAreaAt, resolvedPageWidth, resolvedPageHeight]);
+  }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode, eraseAreaAt, resolvedPageWidth, resolvedPageHeight, pageToScreenX, pageToScreenY]);
 
   const handleMouseUp = useCallback((event) => {
     if (!active) return;
@@ -2461,6 +2488,33 @@ const RegionSelectionTool = ({
     });
   }, [active, editsPicked, targetElement, selectedRegionIds, createHistorySnapshot, getRegionBounds, captureInteractionPointer]);
 
+  // The "+" halfway along a side of a picked free-form area (the Polygon
+  // markup tool's add-point grabber): adds a point there and drags it. One
+  // undo step, taken even when the press lets go without moving.
+  const handleAddPointPointerDown = useCallback((region, sideIndex, event) => {
+    if (!active || !editsPicked || !targetElement) return;
+    if (event.button === 2) return;
+    const inserted = insertRegionSidePoint(region, sideIndex);
+    if (!inserted) return;
+    if (event.isPrimary === false || !captureInteractionPointer(event)) return;
+    event.stopPropagation();
+    event.preventDefault();
+
+    const preSnapshot = createHistorySnapshot();
+    setRegions(prev => prev.map(r => (r.regionId === region.regionId ? inserted.region : r)));
+    setSelectedRegionIds(new Set([region.regionId]));
+    dragHasMovedRef.current = true;
+    setInteractionState({
+      type: 'vertex',
+      regionId: region.regionId,
+      vertexIndex: inserted.vertexIndex,
+      startPoint: { x: event.clientX, y: event.clientY },
+      initialBounds: getRegionBounds(inserted.region),
+      initialCoords: [...inserted.region.coordinates],
+      preSnapshot
+    });
+  }, [active, editsPicked, targetElement, createHistorySnapshot, getRegionBounds, captureInteractionPointer]);
+
   const handleResizePointerDown = useCallback((region, handle, event) => {
     if (!active || !editsPicked || !targetElement) return;
     if (event.button === 2) {
@@ -2538,7 +2592,7 @@ const RegionSelectionTool = ({
       if (polyCornersRef.current.length >= 3) commitPolygonRef.current?.(polyCornersRef.current);
       return;
     }
-    if (event.target?.closest?.('[data-region-vertex-handle], [data-region-resize-handle], [data-rotation-handle]')) return;
+    if (event.target?.closest?.('[data-region-vertex-handle], [data-region-resize-handle], [data-region-add-vertex], [data-rotation-handle]')) return;
     const pointer = clientPointToPage(event.clientX, event.clientY);
     if (!pointer) return;
     const region = findRegionAtPagePoint(pointer.x, pointer.y, selectedRegionIds);
@@ -3491,8 +3545,10 @@ const RegionSelectionTool = ({
               // one cursor image (owner 2026-10-02; utils/areaDrawCursor.js).
               cursor: effectiveToolType === 'move' || !isCursorOverCanvas
                 ? 'default'
+                : (effectiveToolType === 'polygon' && polyCorners.length > 0 && polyOnCheck)
+                  ? 'pointer'
                 : ((!mobileMode && DRAW_TOOL_TYPES.has(effectiveToolType))
-                  ? areaDrawCursor(effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT ? 'subtract' : 'add')
+                  ? areaDrawCursor(drawMode === REGION_OPERATIONS.SUBTRACT ? 'subtract' : 'add')
                   : (effectiveToolType === ERASE_TOOL_TYPE && !mobileMode ? areaDrawCursor('erase') : 'crosshair')),
               // Phone: the layer is see-through to touches. A finger on the page
               // lands in the PDF viewer, so two fingers pinch and pan it as
@@ -3571,13 +3627,31 @@ const RegionSelectionTool = ({
             )}
 
             {toolType === 'polygon' && polyCorners.length > 0 && (() => {
-              const subtract = effectiveSelectionMode === REGION_OPERATIONS.SUBTRACT;
+              const subtract = drawMode === REGION_OPERATIONS.SUBTRACT;
               const ink = subtract ? '#E24A4A' : '#4A90E2';
               const pts = polyCorners.map((point) => ({ x: pageToScreenX(point.x), y: pageToScreenY(point.y) }));
               const hover = polyHover ? { x: pageToScreenX(polyHover.x), y: pageToScreenY(polyHover.y) } : null;
-              const closing = Boolean(hover && pts.length >= 3 && Math.hypot(hover.x - pts[0].x, hover.y - pts[0].y) <= POLYGON_CLOSE_PX);
+              const closing = Boolean(hover && pts.length >= REGION_POLYGON_MIN_CORNERS && hover.x === pts[0].x && hover.y === pts[0].y);
               const ring = [...pts, ...(hover && !closing ? [hover] : [])];
               const d = ring.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ');
+              // The Polygon markup tool's check marks (SVGAnnotationLayer):
+              // first corner closes, latest corner finishes; both from three
+              // corners. Presses on them are read in handleMouseDown.
+              const showChecks = pts.length >= REGION_POLYGON_MIN_CORNERS;
+              const tickR = 4.6;
+              const check = (point, action) => (
+                <g key={action} data-region-polygon-check={action}>
+                  <circle cx={point.x} cy={point.y} r={POLY_FINISH_CONTROL_SCREEN_RADIUS} fill={subtract ? ink : POLY_FINISH_CONTROL_FILL} stroke={HANDLE_FILL} strokeWidth={2} />
+                  <path
+                    d={`M ${point.x - tickR} ${point.y + tickR * 0.05} L ${point.x - tickR * 0.26} ${point.y + tickR * 0.72} L ${point.x + tickR * 1.05} ${point.y - tickR * 0.85}`}
+                    fill="none"
+                    stroke={HANDLE_FILL}
+                    strokeWidth={2.2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              );
               return (
                 <g data-region-polygon-preview="true">
                   {ring.length > 2 && <path d={`${d} Z`} fill={subtract ? 'rgba(226, 74, 74, 0.12)' : 'rgba(74, 144, 226, 0.12)'} stroke="none" />}
@@ -3586,16 +3660,10 @@ const RegionSelectionTool = ({
                     <path d={`M ${ring[ring.length - 1].x} ${ring[ring.length - 1].y} L ${pts[0].x} ${pts[0].y}`} fill="none" stroke={ink} strokeWidth="1.5" strokeDasharray="6 5" opacity="0.7" />
                   )}
                   {pts.map((point, index) => (
-                    <circle
-                      key={index}
-                      cx={point.x}
-                      cy={point.y}
-                      r={index === 0 && closing ? 6 : 3.5}
-                      fill={index === 0 && closing ? ink : '#fff'}
-                      stroke={ink}
-                      strokeWidth="1.5"
-                    />
+                    <circle key={index} cx={point.x} cy={point.y} r={3.5} fill="#fff" stroke={ink} strokeWidth="1.5" />
                   ))}
+                  {showChecks && check(pts[0], 'close')}
+                  {showChecks && check(pts[pts.length - 1], 'finish')}
                 </g>
               );
             })()}
@@ -3964,7 +4032,109 @@ const RegionSelectionTool = ({
                   />
                 ));
               }
-              return wrapChrome(<>{boundaryBox}{handles}</>);
+
+              // Owner 2026-10-28: a plain level rectangle keeps the side
+              // grabbers a rectangle markup has (they move that side); any
+              // other shape gets the Polygon markup tool's "+" halfway along
+              // each side to add a point. Merging a rectangle into another
+              // shape turns its side grabbers into "+" grabbers. Sides too
+              // short to fit one beside the corner dots get none.
+              const plainRect = vertexCount === 4 && !chromeAngle && isLevelRectangle(selectedRegion.coordinates);
+              const sideGrabbers = [];
+              const sideBounds = plainRect ? getRegionBounds(selectedRegion) : null;
+              for (let i = 0; i < vertexCount; i++) {
+                const j = (i + 1) % vertexCount;
+                const ax = pageToScreenX(chromeCoords[i * 2]);
+                const ay = pageToScreenY(chromeCoords[i * 2 + 1]);
+                const bx = pageToScreenX(chromeCoords[j * 2]);
+                const by = pageToScreenY(chromeCoords[j * 2 + 1]);
+                const sideLength = Math.hypot(bx - ax, by - ay);
+                const mx = (ax + bx) / 2;
+                const my = (ay + by) / 2;
+                if (plainRect) {
+                  if (sideLength < 44) continue;
+                  const level = Math.abs(by - ay) < Math.abs(bx - ax);
+                  const sideY = (chromeCoords[i * 2 + 1] + chromeCoords[j * 2 + 1]) / 2;
+                  const sideX = (chromeCoords[i * 2] + chromeCoords[j * 2]) / 2;
+                  const key = level
+                    ? (sideBounds && Math.abs(sideY - sideBounds.minY) < Math.abs(sideY - sideBounds.maxY) ? 'n' : 's')
+                    : (sideBounds && Math.abs(sideX - sideBounds.minX) < Math.abs(sideX - sideBounds.maxX) ? 'w' : 'e');
+                  const pillWidth = level ? '28px' : '8px';
+                  const pillHeight = level ? '8px' : '28px';
+                  sideGrabbers.push(mobileMode ? (
+                    <div
+                      key={`side-${key}`}
+                      data-region-resize-handle={key}
+                      data-region-side-handle={key}
+                      data-handle-hit-pad="true"
+                      onPointerDown={(event) => handleResizePointerDown(selectedRegion, key, event)}
+                      style={touchHandlePadStyle(mx, my)}
+                    >
+                      <div style={touchHandleDotStyle({ width: pillWidth, height: pillHeight, borderRadius: '4px' })} />
+                    </div>
+                  ) : (
+                    <div
+                      key={`side-${key}`}
+                      data-region-resize-handle={key}
+                      data-region-side-handle={key}
+                      onPointerDown={(event) => handleResizePointerDown(selectedRegion, key, event)}
+                      style={{
+                        position: 'absolute',
+                        left: `${mx}px`,
+                        top: `${my}px`,
+                        transform: 'translate(-50%, -50%)',
+                        width: pillWidth,
+                        height: pillHeight,
+                        borderRadius: '4px',
+                        background: REGION_HANDLE_FILL,
+                        border: `1px solid ${REGION_HANDLE_STROKE}`,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                        cursor: resizeHandleCursor(key, 0),
+                        pointerEvents: 'auto',
+                        zIndex: 100003
+                      }}
+                    />
+                  ));
+                  continue;
+                }
+                // Curved sides get none: their chord midpoint is off the outline.
+                if (sideLength < HANDLE_RADIUS * 6 || !isRegionSideStraight(selectedRegion, i)) continue;
+                // A small white dot with a blue "+", like the markup tool's.
+                const plusSize = Math.round(HANDLE_RADIUS * 1.5);
+                const plusBar = Math.max(4, plusSize - 6);
+                const plus = (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      ...touchHandleDotStyle({ width: plusSize, height: plusSize, borderRadius: '50%' }),
+                      boxSizing: 'border-box',
+                      backgroundImage: `linear-gradient(${REGION_HANDLE_STROKE}, ${REGION_HANDLE_STROKE}), linear-gradient(${REGION_HANDLE_STROKE}, ${REGION_HANDLE_STROKE})`,
+                      backgroundSize: `${plusBar}px 1px, 1px ${plusBar}px`,
+                      backgroundPosition: 'center',
+                      backgroundRepeat: 'no-repeat'
+                    }}
+                  />
+                );
+                sideGrabbers.push(
+                  <div
+                    key={`add-${i}`}
+                    role="button"
+                    aria-label="Add point"
+                    data-region-add-vertex={i}
+                    {...(mobileMode ? { 'data-handle-hit-pad': 'true' } : {})}
+                    onPointerDown={(event) => handleAddPointPointerDown(selectedRegion, i, event)}
+                    style={mobileMode ? touchHandlePadStyle(mx, my) : {
+                      ...touchHandlePadStyle(mx, my),
+                      width: `${HANDLE_RADIUS * 3}px`,
+                      height: `${HANDLE_RADIUS * 3}px`,
+                      cursor: 'crosshair'
+                    }}
+                  >
+                    {plus}
+                  </div>
+                );
+              }
+              return wrapChrome(<>{boundaryBox}{sideGrabbers}{handles}</>);
             } else {
               // Render bounding box handles for complex shapes (un-rotated
               // bounds inside the rotated wrapper).
