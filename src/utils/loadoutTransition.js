@@ -733,13 +733,18 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
     // right end of a header is Done at the start of the select row): it does
     // not jump there, nor slide over its neighbours - nothing in a loadout
     // moves sideways (w49). The old one shrinks out where it was and the new
-    // one grows in at its spot, like any other swap.
+    // one grows in at its spot, like any other swap - still morphing from the
+    // old glyph as it grows, so Edit's pen visibly turns into Done's check
+    // (owner 2026-10-27).
     if (keyed) {
       for (const pair of pairs) {
         if (pair.kind !== 'morph' && pair.kind !== 'stay') continue;
         const was = seenAt(pair.b);
         const is = centreOf(afterUnits[pair.a]);
-        if (was && is && Math.hypot(was.x - is.x, was.y - is.y) > 2) pair.kind = 'swap';
+        if (was && is && Math.hypot(was.x - is.x, was.y - is.y) > 2) {
+          pair.morphAsItGrows = pair.kind === 'morph';
+          pair.kind = 'swap';
+        }
       }
     }
 
@@ -792,6 +797,9 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
           return;
         }
         grow(unit);
+        if (pair.morphAsItGrows && startMorph(pair.id, unit, previous[pair.b].icon, colourAt(previous[pair.b].colour, timelineNow()), at)) {
+          morphs.get(pair.id)?.svg.animate?.(loadoutKeyframes('in', { motion }), { duration: motion.durationMs, easing: motion.easing, fill: 'backwards' });
+        }
       }
     });
   };
