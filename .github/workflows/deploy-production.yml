@@ -130,6 +130,7 @@ jobs:
           excel-apply-changeset
           kits-admin
           notify-comment-mentions
+          pdf-file-url
           send-profile-change-notification
           stripe-webhook
           survey-agent

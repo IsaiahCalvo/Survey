@@ -12,6 +12,9 @@
 //   - plan quotas at 80%: database size, stored files, storage egress
 //     (estimated), monthly active users, edge function calls, and Groq's
 //     free daily caps per voice-agent model (QUOTAS below)
+//   - Cloudflare R2 bytes and operations (public.r2_usage_daily /
+//     pdf_r2_copies) at 80% of pdf-file-url's own cap, which is itself 80% of
+//     R2's free tier: a warning well before the app falls back to Supabase
 // Prints counts and function names only, plus crash messages, which the
 // browser already scrubbed (crashReporter.js): CI logs on this repo are public.
 //
@@ -95,10 +98,16 @@ export const QUOTAS = Object.freeze({
   groqTranscribeSeconds: { label: 'Voice agent audio seconds today (whisper-large-v3-turbo)', limit: 28_800, over: 'Groq Developer plan, about $0.04 per audio hour' },
   groqSpeakRequests: { label: 'Voice agent spoken replies today (orpheus)', limit: 100, over: 'Groq Developer plan, about $22 per million characters' },
   groqSpeakTokens: { label: 'Voice agent spoken-reply tokens today (orpheus)', limit: 3_600, over: 'Groq Developer plan, about $22 per million characters' },
+  // Cloudflare R2 (docs/PDF-R2.md). The limits are Survey's own hard stop,
+  // 80% of R2's free tier (public.r2_limits()); past it PDFs open from
+  // Supabase again, so this alert comes at 64% of the free tier.
+  r2StoredBytes: { label: 'Cloudflare R2 PDF copies (Survey stops copying here, 80% of the free 10 GB)', limit: 8e9, bytes: true, decimal: true, over: 'nothing: opens fall back to Supabase; R2 would charge $0.015 per GB a month past 10 GB' },
+  r2ClassAOps: { label: 'Cloudflare R2 writes, last 31 days (Survey stops here, 80% of the free 1M)', limit: 800_000, over: 'nothing: opens fall back to Supabase; R2 would charge $4.50 per million past 1M' },
+  r2ClassBOps: { label: 'Cloudflare R2 reads, last 31 days (Survey stops here, 80% of the free 10M)', limit: 8_000_000, over: 'nothing: opens fall back to Supabase; R2 would charge $0.36 per million past 10M' },
 });
 
 const formatAmount = (value, quota) => (quota.bytes
-  ? `${(value / GB).toFixed(value >= 10 * GB ? 0 : 2)} GB`
+  ? `${(value / (quota.decimal ? 1e9 : GB)).toFixed(value >= 10 * GB ? 0 : 2)} GB`
   : Math.round(value).toLocaleString('en-US'));
 
 /** One line per quota at or past QUOTA_ALERT_AT of its limit. */
@@ -121,6 +130,12 @@ export const QUOTA_SQL = `select pg_database_size(current_database()) as databas
      or exists (select 1 from auth.sessions s where s.user_id = u.id
        and coalesce(s.refreshed_at, s.updated_at, s.created_at) >= date_trunc('month', now()))) as monthly_active_users`;
 
+// R2's free-tier ledger (migration 20261028090000), the window r2_reserve uses.
+export const R2_USAGE_SQL = `select
+  (select coalesce(sum(size), 0) from public.pdf_r2_copies) as stored_bytes,
+  (select coalesce(sum(class_a), 0) from public.r2_usage_daily where day > (now() at time zone 'utc')::date - 31) as class_a,
+  (select coalesce(sum(class_b), 0) from public.r2_usage_daily where day > (now() at time zone 'utc')::date - 31) as class_b`;
+
 export const GROQ_DAILY_SQL = `select kind, requests, tokens, audio_seconds from public.survey_agent_daily_usage
   where day = (now() at time zone 'utc')::date`;
 
@@ -138,7 +153,7 @@ export function objectSizesSql(objects) {
 }
 
 /** Quota usage from the raw query answers; per-day counts become a month. */
-export function quotaUsageFrom({ database, storageReads = [], sizes = [], functionCalls24h = 0, groqDaily = [] }) {
+export function quotaUsageFrom({ database, storageReads = [], sizes = [], functionCalls24h = 0, groqDaily = [], r2 = null }) {
   const sizeOf = new Map(sizes.map((row) => [row.obj, Number(row.size) || 0]));
   const egress24h = storageReads.reduce((sum, row) => sum + Number(row.range_bytes || 0)
     + Number(row.full_reads || 0) * (sizeOf.get(row.obj) || 0), 0);
@@ -156,6 +171,9 @@ export function quotaUsageFrom({ database, storageReads = [], sizes = [], functi
     groqSpeakRequests: Number(groq.speak?.requests || 0),
     // speak records characters; about 4 make a token.
     groqSpeakTokens: Number(groq.speak?.tokens || 0) / 4,
+    r2StoredBytes: Number(r2?.stored_bytes || 0),
+    r2ClassAOps: Number(r2?.class_a || 0),
+    r2ClassBOps: Number(r2?.class_b || 0),
   };
 }
 
@@ -207,19 +225,21 @@ async function queryDatabase(sql) {
 }
 
 async function readQuotaUsage() {
-  const [[database], storageReads, functionCalls, groqDaily] = await Promise.all([
+  const [[database], storageReads, functionCalls, groqDaily, [r2]] = await Promise.all([
     queryDatabase(QUOTA_SQL),
     queryLogs(QUERIES.storageReads, 24),
     queryLogs(QUERIES.functionCalls, 24),
     // The table arrives with migration 20261022070000; until then, no Groq rows.
     queryDatabase(GROQ_DAILY_SQL).catch(() => []),
+    // Until migration 20261028090000 is live, no R2 rows.
+    queryDatabase(R2_USAGE_SQL).catch(() => []),
   ]);
   const wholeReads = storageReads.filter((row) => Number(row.full_reads) > 0).map((row) => String(row.obj));
   const sizes = [];
   for (let i = 0; i < wholeReads.length; i += 200) {
     sizes.push(...await queryDatabase(objectSizesSql(wholeReads.slice(i, i + 200))));
   }
-  return quotaUsageFrom({ database, storageReads, sizes, functionCalls24h: Number(functionCalls[0]?.n || 0), groqDaily });
+  return quotaUsageFrom({ database, storageReads, sizes, functionCalls24h: Number(functionCalls[0]?.n || 0), groqDaily, r2 });
 }
 
 async function main() {

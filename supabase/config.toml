@@ -435,6 +435,11 @@ verify_jwt = false
 [functions.survey-undo]
 verify_jwt = false
 
+# Short-lived Cloudflare R2 links for stored PDFs. Browser-invoked: answers the
+# CORS preflight, then lets Storage check the caller's own token.
+[functions.pdf-file-url]
+verify_jwt = false
+
 # Comment @mention email (Nightly). Browser-invoked: answers the CORS
 # preflight, then does its own auth (auth.getUser on the Bearer JWT) and only
 # emails for the caller's own fresh comment.

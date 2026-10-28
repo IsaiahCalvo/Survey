@@ -37,6 +37,7 @@ import {
   E2E_PROJECT,
   E2E_SURVEY,
 } from '../tests/e2e-signed-in/accounts.mjs';
+import { E2E_R2, E2E_R2_SERVER_ENDPOINT, startE2eMinio, stopE2eMinio } from './e2e-minio.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STACK_DIR = path.resolve(ROOT, process.env.E2E_STACK_DIR || '.e2e/supabase-stack');
@@ -155,6 +156,8 @@ function prepareWorkdir() {
     `GROQ_BASE_URL=${FAKE_GROQ_BASE_URL}`,
     `SURVEY_AGENT_TESTERS=${E2E_ACCOUNTS.owner.email}`,
     'SURVEY_AGENT_TTS=off',
+    // pdf-file-url copies PDFs into the stack's MinIO (scripts/e2e-minio.mjs).
+    ...Object.entries({ ...E2E_R2, R2_SERVER_ENDPOINT: E2E_R2_SERVER_ENDPOINT }).map(([k, v]) => `${k}=${v}`),
     '',
   ].join('\n'));
   log(`workdir ${path.relative(ROOT, STACK_DIR)}: ${repoMigrations.length} migrations`);
@@ -186,6 +189,8 @@ function writeEnvFile(status) {
     `E2E_BASE_URL=${E2E_BASE_URL}`,
     '# Local GoTrue has no CAPTCHA; an empty key turns the Turnstile widget off.',
     'VITE_TURNSTILE_SITE_KEY=',
+    '# The MinIO standing in for Cloudflare R2 (scripts/e2e-minio.mjs).',
+    ...Object.entries(E2E_R2).map(([k, v]) => `E2E_${k}=${v}`),
     '',
   ].join('\n');
   fs.writeFileSync(ENV_FILE, body, { mode: 0o600 });
@@ -457,6 +462,7 @@ async function main() {
     if (!status) fail('stack started but `supabase status` failed');
     if (ignoreHealth) await waitForStorage(status.API_URL);
     await seed(writeEnvFile(status));
+    if (process.env.E2E_R2 !== 'off') await startE2eMinio({ network: `supabase_network_${PROJECT_ID}`, log });
     log(`ready. Run the suite with: npm run test:e2e:signed-in`);
   } else if (command === 'env') {
     const status = readStatus();
@@ -476,6 +482,7 @@ async function main() {
       return;
     }
     runCli(['stop', '--no-backup'], { allowFail: true });
+    stopE2eMinio();
     log('stopped (data volumes removed)');
   } else {
     fail(`unknown command "${command}" (use up | seed | env | status | down)`);
