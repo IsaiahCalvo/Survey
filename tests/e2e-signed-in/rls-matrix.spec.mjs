@@ -16,6 +16,7 @@ const PROJECT = E2E_PROJECT.id;
 const TEMPLATE = 'e2e00000-0000-4000-8000-000000000201';
 const SESSION = 'e2e00000-0000-4000-8000-000000000202';
 const KIT = 'rls-sweep';
+const ORG = 'e2e00000-0000-4000-8000-000000000203';
 
 async function must(label, request) {
   const { error } = await request;
@@ -69,6 +70,15 @@ async function seedOwnerRows(admin, ids) {
   await replace('survey_agent_voice_logs', 'user_id', owner, { user_id: owner, log: { turns: [] } });
   await must('kit', admin.from('kits').upsert({ id: KIT, version: '1.0.0', kind: 'toolKit', definition: {} }, { onConflict: 'id,version', ignoreDuplicates: true }));
   await replace('account_kits', 'user_id', owner, { user_id: owner, kit_id: KIT, kit_version: '1.0.0' });
+  // The owner's company workspace (one company per person, so drop any other).
+  const { data: memberships } = await admin.from('organization_members').select('organization_id').eq('user_id', owner);
+  const orgs = [...new Set([ORG, ...(memberships || []).map((m) => m.organization_id)])];
+  await must('clear companies', admin.from('organizations').delete().in('id', orgs));
+  await must('organizations', admin.from('organizations').insert({ id: ORG, name: 'RLS sweep company', created_by: owner }));
+  await must('organization_members', admin.from('organization_members').insert({ organization_id: ORG, user_id: owner, role: 'owner' }));
+  await must('organization_invites', admin.from('organization_invites').insert({ organization_id: ORG, email: 'rls-sweep@example.com', role: 'member', invited_by: owner }));
+  await must('organization_activity', admin.from('organization_activity').insert({ organization_id: ORG, actor_id: owner, action: 'company.created' }));
+  await must('organization_domains', admin.from('organization_domains').insert({ organization_id: ORG, domain: 'rls-sweep.example', created_by: owner }));
 }
 
 // Each table, and the filter that picks out the owner's rows in it.
@@ -107,6 +117,11 @@ const ownerRows = (ids) => ({
   survey_agent_voice_logs: ['user_id', ids.owner],
   account_kits: ['user_id', ids.owner],
   kits: ['id', KIT],
+  organizations: ['id', ORG],
+  organization_members: ['organization_id', ORG],
+  organization_invites: ['organization_id', ORG],
+  organization_activity: ['organization_id', ORG],
+  organization_domains: ['organization_id', ORG],
 });
 
 // Tables and views the sweep above leaves out, and why. A new table fails the
@@ -145,6 +160,7 @@ test.beforeAll(async () => {
   ids = await accountIds(admin);
   await seedOwnerRows(admin, ids);
 });
+test.afterAll(async () => { await admin.from('organizations').delete().eq('id', ORG); });
 
 async function visibleOwnerRows(client, table, [column, value]) {
   const { data, error } = await client.from(table).select('*').eq(column, value);
