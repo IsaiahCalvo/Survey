@@ -487,3 +487,73 @@
 @media (prefers-reduced-motion: reduce) {
   .survey-agent-dots__dot { animation: none !important; }
 }
+
+/* "What Survey learned" (AgentLearnedDialog, Nightly beta). */
+.agent-learned__section + .agent-learned__section { margin-top: 14px; }
+.agent-learned__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-2);
+}
+.agent-learned__count { font-weight: 400; color: var(--text-3); }
+.agent-learned__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.agent-learned__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border);
+}
+.agent-learned__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.agent-learned__text strong { color: var(--text-1); font-weight: 600; }
+.agent-learned__remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.agent-learned__remove:hover { color: var(--text-1); background: var(--surface-3); }
+.agent-learned__empty { margin: 0; font-size: 13px; color: var(--text-3); }
+.agent-learned__undo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.agent-learned__undo-btn {
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-1);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}

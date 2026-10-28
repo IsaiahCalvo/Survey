@@ -69,6 +69,8 @@ async function seedOwnerRows(admin, ids) {
   await replace('survey_agent_voice_logs', 'user_id', owner, { user_id: owner, log: { turns: [] } });
   await must('kit', admin.from('kits').upsert({ id: KIT, version: '1.0.0', kind: 'toolKit', definition: {} }, { onConflict: 'id,version', ignoreDuplicates: true }));
   await replace('account_kits', 'user_id', owner, { user_id: owner, kit_id: KIT, kit_version: '1.0.0' });
+  await replace('survey_agent_memory', 'project_id', PROJECT, { project_id: PROJECT, kind: 'name', heard: 'rls', means: 'rls sweep', created_by: owner });
+  await replace('own_export_kits', 'user_id', owner, { user_id: owner, id: 'own-rls-sweep', label: 'RLS sweep', definition: {} });
   await replace('mark_library_items', 'created_by', owner, {
     library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
   });
@@ -110,6 +112,8 @@ const ownerRows = (ids) => ({
   survey_agent_voice_logs: ['user_id', ids.owner],
   account_kits: ['user_id', ids.owner],
   kits: ['id', KIT],
+  survey_agent_memory: ['project_id', PROJECT],
+  own_export_kits: ['user_id', ids.owner],
   mark_library_items: ['created_by', ids.owner],
 });
 
@@ -140,6 +144,8 @@ const SHARED_WITH_COLLABORATORS = new Set([
   'projects', 'documents', 'document_collaborators', 'project_collaborators', 'document_annotations',
   'document_history_events', 'document_revisions', 'document_templates', 'doc_yjs_updates', 'doc_yjs_state',
   'document_presence', 'excel_workbook_registrations',
+  // The agent's notes belong to the project, so its members read them.
+  'survey_agent_memory',
 ]);
 
 let admin;
