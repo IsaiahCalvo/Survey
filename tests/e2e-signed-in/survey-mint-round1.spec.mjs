@@ -3,7 +3,8 @@
 //   category each take the caret with their name selected, and Enter on a
 //   checklist line opens the next one;
 // - new markers list in name order (Camera 1, 2, 3), not by their random ids;
-// - picking a marker on the page opens its row in the Survey panel.
+// - picking a marker on the page opens its row in the Survey panel;
+// - Ctrl+Z after an answer takes back the answer, not the marker.
 import { randomUUID } from 'node:crypto';
 import { E2E_ACCOUNTS, E2E_PROJECT } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
@@ -107,6 +108,17 @@ test('new markers list in name order, and picking one on the page opens its row'
     }
     const names = () => page.evaluate(() => Array.from(document.querySelectorAll('input[data-survey-marker-name-input]'), (el) => el.value));
     await expect.poll(names).toEqual(['Camera 1', 'Camera 2', 'Camera 3']);
+
+    // Round 3: an answer is its own Undo step. Ctrl+Z after a wrong answer
+    // took the whole marker away; now it takes back just the answer.
+    const mounted = page.getByRole('group', { name: 'Mounted' }).getByRole('button', { name: 'Y', exact: true });
+    await mounted.click();
+    await expect(mounted).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Control+z');
+    await expect(mounted).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(names).toEqual(['Camera 1', 'Camera 2', 'Camera 3']);
+    await page.keyboard.press('Control+Shift+z');
+    await expect(mounted).toHaveAttribute('aria-pressed', 'true');
 
     // Camera 3 (the newest) is open; picking Camera 1 on the page opens its row.
     await page.keyboard.press('Escape');

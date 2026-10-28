@@ -12960,6 +12960,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
   }, [clearLocalRedoForNewStep, createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, getSurveyMarkerHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
+  // A checklist answer is its own Undo step (Ctrl+Z after a wrong answer took
+  // the whole Survey Marker away). An answer never touches the pages, so it
+  // takes the light Survey Marker checkpoint.
+  const checkpointSurveyAnswer = useCallback((annotationId) => {
+    addHistoryCheckpoint('survey-marker:answer', { annotationId, checkpointMode: 'survey-marker-create' });
+  }, [addHistoryCheckpoint]);
+
   // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
   // the documents-table user_id attached to pdfFile at Dashboard load time
   // (see handleDocumentClick / file.user_id sites). pdfFile is a File-like
@@ -36868,6 +36875,7 @@ ${pageBlocks}
       setShowSurveyPanel,
       setSurveyMarkers,
       setSurveyMarkersToRemoveByPage,
+      checkpointSurveyAnswer,
       showExportMenu,
       showRegionSelection,
       showSurveyPanel,
@@ -37018,6 +37026,7 @@ ${pageBlocks}
     setShowSurveyPanel,
     setSurveyMarkers,
     setSurveyMarkersToRemoveByPage,
+    checkpointSurveyAnswer,
     showExportMenu,
     showRegionSelection,
     showSurveyPanel,
