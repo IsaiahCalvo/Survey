@@ -44,3 +44,25 @@ test('survey marker move checkpoints stay eligible for the legacy undo/redo lane
 test('space checkpoints stay eligible for the legacy undo/redo lane', () => {
   equal(isLegacyAnnotationHistoryMeta({ reason: 'space:delete' }), true);
 });
+
+test('undoing an answer puts back the answers but keeps the Complete it set', async () => {
+  const { scopeLegacyRestoreToOwnSlices } = await import('../src/utils/historyStacks.js');
+  const { deepEqual } = await import('node:assert/strict');
+  const meta = { reason: 'survey-marker:answer', context: { annotationId: 'm1' } };
+  const before = {
+    surveyMarkers: { m1: { name: 'Door 1', entityId: 'open' }, m2: { name: 'Door 2' } },
+    pendingSurveyMarkerUi: { newSurveyMarkersByPage: { 1: [{ annotationId: 'm1', color: 'grey' }] } },
+  };
+  const now = {
+    surveyMarkers: {
+      m1: { name: 'Door 1', entityId: 'done', checklistResponses: { c1: { selection: 'Y' } } },
+      m2: { name: 'Door 2 renamed' },
+    },
+    pendingSurveyMarkerUi: { newSurveyMarkersByPage: { 1: [{ annotationId: 'm1', color: 'green' }] } },
+  };
+  const undone = scopeLegacyRestoreToOwnSlices(meta, now, before, { direction: 'undo' });
+  deepEqual(undone.surveyMarkers, { m1: { name: 'Door 1', entityId: 'done' }, m2: { name: 'Door 2 renamed' } });
+  deepEqual(undone.pendingSurveyMarkerUi, now.pendingSurveyMarkerUi);
+  const redone = scopeLegacyRestoreToOwnSlices(meta, undone, now, { direction: 'redo' });
+  deepEqual(redone.surveyMarkers.m1, now.surveyMarkers.m1);
+});
