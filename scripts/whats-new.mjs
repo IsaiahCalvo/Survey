@@ -5,6 +5,9 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-28', items: [
+    'Big drawings no longer freeze the page while saving in the background or when they first open.',
+    'Spaces: turning a space off is quicker on big drawing sets.',
+    'Phones: tool bars fit small screens, Export data says when the file is saved, a save in progress shows Saving... instead of Offline, and buttons stay clear of the notch when the phone is held sideways.',
     'Survey: Ctrl+Z after an answer takes back just the answer, and keeps the Complete it set.',
     'Survey: markers with no order of their own list by name, and picking a marker on the page opens its row.',
     'Survey: a Number or Count answer outside its limits shows red, and exported sheets fit their text.',
