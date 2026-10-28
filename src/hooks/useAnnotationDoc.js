@@ -861,16 +861,23 @@ export function useAnnotationDoc({
     });
   }
 
+  // An erase, and its undo or redo, reads the store back as the whole screen,
+  // and an erase must find its marks there: store the held marks first.
+  function storeHeldImportMarks() {
+    if (heldImportKeysRef.current.size === 0) return;
+    captureIntoStoreRef.current?.(byPageRef.current, { drain: true });
+  }
+
   function settleImportDrain(ok) {
     const waiters = importDrainWaitersRef.current;
     importDrainWaitersRef.current = [];
     for (const resolve of waiters) resolve(ok);
   }
 
-  captureIntoStoreRef.current = (annotationsByPage, { importTurn = false } = {}) => {
+  captureIntoStoreRef.current = (annotationsByPage, { importTurn = false, drain = false } = {}) => {
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
-    if (capturePauseRef?.current?.until && Date.now() < capturePauseRef.current.until) {
+    if (!drain && capturePauseRef?.current?.until && Date.now() < capturePauseRef.current.until) {
       if (importTurn && heldImportKeysRef.current.size > 0) scheduleImportTurn();
       return;
     }
@@ -888,7 +895,7 @@ export function useAnnotationDoc({
       ? meterBulkImport(
         capturedByPage,
         bulkKeys,
-        hasEraserMutation ? Infinity : bulkImportSliceSize(importMsPerMarkRef.current),
+        hasEraserMutation || drain ? Infinity : bulkImportSliceSize(importMsPerMarkRef.current),
         { isStored: (key) => storedMarks.has(key) },
       )
       : { byPage: capturedByPage, held: null };
@@ -1296,6 +1303,7 @@ export function useAnnotationDoc({
 
     const ownerHandle = cloudHandle;
 
+    storeHeldImportMarks();
     const result = await ownerHandle.commitEraseIntent(intent, options);
     if (handleRef.current !== ownerHandle || !readyRef.current) {
       return {
@@ -1361,6 +1369,7 @@ export function useAnnotationDoc({
     if (!ownerHandle || !readyRef.current) {
       return { status: 'conflict', reason: 'sync-not-ready' };
     }
+    storeHeldImportMarks();
     const result = ownerHandle.applyEraseHistoryTransition(transition, direction);
     if (result.status !== 'applied' && result.status !== 'noop') return result;
     const nextByPage = preserveTransientPagePresentationState(
@@ -1382,6 +1391,7 @@ export function useAnnotationDoc({
     if (!ownerHandle || !readyRef.current) {
       return { status: 'conflict', reason: 'sync-not-ready' };
     }
+    storeHeldImportMarks();
     const result = ownerHandle.restoreEraseDeletion(restoreActions, options);
     if (result.status !== 'applied' && result.status !== 'noop') return result;
     const nextByPage = preserveTransientPagePresentationState(

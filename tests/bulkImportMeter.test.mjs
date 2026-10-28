@@ -88,10 +88,20 @@ test('the next share waits for a task of its own', async () => {
 
 test('the capture hands the store a share and waits for the last one before the import counts as saved', () => {
   const hook = readFileSync(new URL('../src/hooks/useAnnotationDoc.js', import.meta.url), 'utf8');
-  assert.match(hook, /meterBulkImport\(\s*capturedByPage,\s*bulkKeys,\s*hasEraserMutation \? Infinity : bulkImportSliceSize/);
+  assert.match(hook, /meterBulkImport\(\s*capturedByPage,\s*bulkKeys,\s*hasEraserMutation \|\| drain \? Infinity : bulkImportSliceSize/);
   assert.match(hook, /if \(heldImportKeysRef\.current\.size > 0\) scheduleImportTurn\(\);/);
   // whenBulkImportSaved waits for the last share before the handle's checkpoint.
   assert.match(hook, /if \(heldImportKeysRef\.current\.size > 0\) \{\s*const drained = await new Promise/);
   // Both reads of the store keep held marks on screen.
   assert.equal(hook.match(/keepHeldImportMarks\(previousByPage, nextByPage, heldImportKeysRef\.current\)/g)?.length, 2);
+});
+
+test('an erase and its undo or redo store the held marks before they read the store back', () => {
+  const hook = readFileSync(new URL('../src/hooks/useAnnotationDoc.js', import.meta.url), 'utf8');
+  assert.match(hook, /storeHeldImportMarks\(\);\s*const result = await ownerHandle\.commitEraseIntent\(/);
+  assert.match(hook, /storeHeldImportMarks\(\);\s*const result = ownerHandle\.applyEraseHistoryTransition\(/);
+  assert.match(hook, /storeHeldImportMarks\(\);\s*const result = ownerHandle\.restoreEraseDeletion\(/);
+  // A drain stores every held mark, even while a slider drag holds the capture.
+  assert.match(hook, /captureIntoStoreRef\.current\?\.\(byPageRef\.current, \{ drain: true \}\)/);
+  assert.match(hook, /if \(!drain && capturePauseRef\?\.current\?\.until/);
 });
