@@ -20,7 +20,9 @@ import {
   cancelCompanyInvite, createCompany, declineCompanyInvite, deleteCompany, formatBytesShort,
   getMyCompany, inviteToCompany, leaveCompany, listCompanyActivity, listCompanyInvites,
   listCompanyMembers, myCompanyInvites, removeFromCompany, renameCompany, roleLabel, setCompanyRole,
+  companyBillingUrl, companyCheckoutUrl, minSeatsFor, seatsCost,
 } from '../../services/companyService.js';
+import { buildBillingReturnUrl, isPurchaseUiHidden, openDeferredExternalDestination } from '../../utils/accountPlatform';
 import CompanySignOn from './CompanySignOn.jsx';
 import './CompanyPanel.css';
 
@@ -185,7 +187,7 @@ function People({ company, members, invites, isAdmin, isOwner, me, reload, setEr
         </form>
       )}
       {isAdmin && seatsLeft === 0 && (
-        <p className="company-note">All seats are taken. Remove someone, or add seats once company billing opens.</p>
+        <p className="company-note">All seats are taken. Remove someone, or an owner adds seats above.</p>
       )}
 
       <ul className="company-list" aria-label="People in the company">
@@ -353,6 +355,58 @@ function Activity({ company, members, version, setError }) {
 }
 
 /* ---------- The panel ---------- */
+// The owner pays for the whole company on one bill: pick a seat count, go
+// to checkout; once paid, the first seats' people get Enterprise (the
+// payments listener sets billing_status and seat_limit).
+function Billing({ company, paid, isOwner, setError }) {
+  const least = minSeatsFor(company);
+  const [seats, setSeats] = useState(String(Math.max(least, company.seat_limit || 0)));
+  const [opening, setOpening] = useState(false);
+  if (isPurchaseUiHidden()) return null;
+  const count = Math.floor(Number(seats));
+  const valid = Number.isFinite(count) && count >= least && count <= 1000;
+
+  const open = async (getUrl) => {
+    if (opening) return;
+    setOpening(true); setError('');
+    // Claim the tab inside the click; one opened after the await is blocked.
+    const tab = openDeferredExternalDestination();
+    try { await tab.navigate(await getUrl()); } catch (err) { tab.cancel(); setError(err.message); } finally { setOpening(false); }
+  };
+
+  if (paid || company.billing_status === 'past_due') {
+    return isOwner ? (
+      <div className="company-row-actions company-billing">
+        <span className="company-note">Change seats or the card from billing. Only the owner who paid can open it.</span>
+        <button type="button" className="account-btn-secondary" disabled={opening}
+          onClick={() => open(() => companyBillingUrl(buildBillingReturnUrl()))}>Manage billing</button>
+      </div>
+    ) : null;
+  }
+  if (!isOwner) {
+    return <p className="company-note">Until an owner pays for the company plan, everyone keeps the plan on their own account.</p>;
+  }
+  return (
+    <form className="company-inline-form company-billing" onSubmit={(e) => {
+      e.preventDefault();
+      if (valid) open(() => companyCheckoutUrl(company.id, count, buildBillingReturnUrl()));
+    }}>
+      <div className="account-form-group">
+        <label htmlFor="company-seats">Seats</label>
+        <input id="company-seats" type="number" inputMode="numeric" min={least} max={1000} step={1} value={seats}
+          className="company-seats-input" onChange={(e) => setSeats(e.target.value)} disabled={opening} />
+      </div>
+      <button type="submit" className="account-btn-primary" disabled={opening || !valid}>
+        {valid ? `Pay for ${count} seats` : 'Pay for seats'}
+      </button>
+      <span className="company-note company-grow">
+        {valid ? `${seatsCost(count)}, $20 per person. ` : `At least ${least} seats. `}
+        Everyone in a seat gets Enterprise. Until then, people keep their own plan.
+      </span>
+    </form>
+  );
+}
+
 export default function CompanyPanel() {
   const { user } = useAuth();
   const me = user?.id || null;
@@ -445,14 +499,10 @@ export default function CompanyPanel() {
           </div>
           <div className="company-stat">
             <div className="company-stat-label">Company plan</div>
-            <div className="company-stat-value">{paid ? 'Enterprise' : 'Not paid yet'}</div>
+            <div className="company-stat-value">{paid ? 'Enterprise' : company.billing_status === 'past_due' ? 'Payment due' : 'Not paid yet'}</div>
           </div>
         </div>
-        {!paid && (
-          <p className="company-note">
-            Until the company plan is paid, everyone keeps the plan on their own account. Paying for seats on one bill is coming soon.
-          </p>
-        )}
+        <Billing key={`${company.id}:${company.seat_limit}:${company.seats_used}`} company={company} paid={paid} isOwner={isOwner} setError={setError} />
       </section>
 
       <People company={company} members={members} invites={invites} isAdmin={isAdmin} isOwner={isOwner} me={me}

@@ -347,6 +347,15 @@ export const AuthProvider = ({ children }) => {
   // canceled / error; the active tier on active|trialing. Never throws on a
   // Supabase error (logs + returns 'free'); only an unexpected throw rejects.
   const resolveSubscriptionTier = async (userId) => {
+    // my_effective_tier() is the same rule on the server, plus a paid company
+    // seat (Enterprise company workspace) lifting Free or Pro to Enterprise.
+    // A database without it yet (older local stack) falls back to the row.
+    const effective = await supabase.rpc('my_effective_tier');
+    if (!effective.error && typeof effective.data === 'string') return effective.data;
+    if (effective.error && !['PGRST202', '42883'].includes(effective.error.code)) {
+      console.error('Error fetching subscription tier:', effective.error);
+      return 'free';
+    }
     const { data, error } = await supabase
       .from('user_subscriptions')
       .select('tier, status')

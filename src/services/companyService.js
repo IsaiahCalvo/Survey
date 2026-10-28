@@ -42,7 +42,9 @@ const ACTION_WORDS = Object.freeze({
   'sso.connected': 'connected company sign-in',
   'sso.updated': 'updated company sign-in',
   'sso.disconnected': 'disconnected company sign-in',
+  'billing.updated': 'updated the company plan',
 });
+const BILLING_WORDS = Object.freeze({ active: 'paid', trialing: 'on trial', past_due: 'payment due', canceled: 'ended', none: 'not paid' });
 
 // Filter chips in the log. Each matches an action prefix.
 export const ACTIVITY_KINDS = Object.freeze([
@@ -73,6 +75,11 @@ export function describeActivity(row) {
   const selfOnly = action === 'member.joined' || action === 'member.left' || action === 'member.invite_declined'
     || action === 'sso.disconnected';
   if (action.startsWith('sso.') && Array.isArray(d.domains)) extra = `for ${d.domains.join(', ')}`;
+  if (action === 'billing.updated') {
+    const state = BILLING_WORDS[d.status] || '';
+    extra = d.status === 'canceled' ? '(ended)' : `to ${d.seats} seats${state ? ` (${state})` : ''}`;
+    return { verb, target: '', extra };
+  }
   return { verb, target: selfOnly ? '' : target, extra };
 }
 
@@ -255,3 +262,29 @@ export function itSetupText({ companyName, links, domains = [] }) {
     'When it is saved, send back the app\'s metadata URL (or the metadata XML file).',
   ].filter((line, i, all) => line || all[i - 1]).join('\n');
 }
+
+// Seats on one bill. Enterprise is $20 per person a month with 3 at least,
+// and never fewer seats than the people and open invites already holding one
+// (create-checkout-session checks the same).
+export const SEAT_PRICE_USD = 20;
+export const MIN_SEATS = 3;
+export const minSeatsFor = (company) => Math.max(MIN_SEATS, Number(company?.seats_used) || 0);
+export const seatsCost = (seats) => `$${(Math.max(0, Math.floor(Number(seats) || 0)) * SEAT_PRICE_USD).toLocaleString('en-US')} a month`;
+
+async function invokeForUrl(name, body) {
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (error) {
+    let text = '';
+    try { text = (await error.context?.json?.())?.error || ''; } catch { /* not JSON */ }
+    throw new Error(text || 'Could not open billing. Try again.');
+  }
+  if (data?.error) throw new Error(data.error);
+  if (!data?.url) throw new Error('Could not open billing. Try again.');
+  return data.url;
+}
+
+export const companyCheckoutUrl = (orgId, seats, returnUrl) => invokeForUrl('create-checkout-session', {
+  tier: 'enterprise', billingPeriod: 'monthly', orgId, seats, returnUrl,
+});
+// The card and seat count live on the payer's own Stripe customer.
+export const companyBillingUrl = (returnUrl) => invokeForUrl('create-portal-session', { returnUrl });

@@ -339,3 +339,14 @@
   color: var(--text-1);
   resize: vertical;
 }
+
+/* Seats on one bill */
+.company-billing {
+  margin-bottom: 0;
+}
+.company-billing .company-note {
+  margin: 0;
+}
+.company-seats-input {
+  width: 90px;
+}
