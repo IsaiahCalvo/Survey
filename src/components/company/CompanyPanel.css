@@ -16,7 +16,7 @@
   border: none;
   padding: 0;
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--font-size-md);
   cursor: pointer;
 }
 
@@ -51,7 +51,7 @@
   gap: 6px;
 }
 .company-stat-label {
-  font-size: 10.5px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   color: var(--text-3);
   letter-spacing: 0.08em;
@@ -76,7 +76,7 @@
 }
 
 .company-note {
-  font-size: 12.5px;
+  font-size: var(--font-size-md);
   color: var(--text-3);
   margin: 0 0 12px 0;
   line-height: 1.5;
@@ -144,7 +144,7 @@
   overflow-wrap: anywhere;
 }
 .company-row-sub {
-  font-size: 11.5px;
+  font-size: var(--font-size-sm);
   color: var(--text-3);
   margin-top: 2px;
   overflow-wrap: anywhere;
@@ -168,7 +168,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: var(--font-size-md);
   color: var(--text-2);
 }
 .company-remove-box p {
@@ -245,7 +245,7 @@
   align-items: baseline;
   justify-content: space-between;
   padding: 8px 10px;
-  font-size: 12.5px;
+  font-size: var(--font-size-md);
 }
 .company-log-row + .company-log-row {
   border-top: 1px solid var(--border);
@@ -257,7 +257,7 @@
 .company-log-when {
   flex: none;
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--font-size-sm);
   white-space: nowrap;
 }
 .company-more {
@@ -284,7 +284,7 @@
 /* Company sign-in setup */
 .company-step {
   margin: 16px 0 8px;
-  font-size: 12.5px;
+  font-size: var(--font-size-md);
   font-weight: 700;
   color: var(--text-1);
 }
@@ -315,12 +315,12 @@
   width: 100%;
 }
 .company-copy-label {
-  font-size: 11.5px;
+  font-size: var(--font-size-sm);
   color: var(--text-3);
 }
 .company-copy-value {
   font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
-  font-size: 11.5px;
+  font-size: var(--font-size-sm);
   color: var(--text-1);
   background: var(--surface-1);
   border: 1px solid var(--border);
@@ -334,7 +334,7 @@
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
-  font-size: 11.5px;
+  font-size: var(--font-size-sm);
   background: var(--surface-2);
   color: var(--text-1);
   resize: vertical;
