@@ -94,6 +94,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Curved polyline: bend smoothly through the clicked corners',
     stage: 'beta',
   }),
+  'mark-library': Object.freeze({
+    label: 'Mark library: save marks to a personal or project library and drop them on any page',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

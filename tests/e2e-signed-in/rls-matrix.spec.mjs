@@ -69,6 +69,9 @@ async function seedOwnerRows(admin, ids) {
   await replace('survey_agent_voice_logs', 'user_id', owner, { user_id: owner, log: { turns: [] } });
   await must('kit', admin.from('kits').upsert({ id: KIT, version: '1.0.0', kind: 'toolKit', definition: {} }, { onConflict: 'id,version', ignoreDuplicates: true }));
   await replace('account_kits', 'user_id', owner, { user_id: owner, kit_id: KIT, kit_version: '1.0.0' });
+  await replace('mark_library_items', 'created_by', owner, {
+    library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
+  });
 }
 
 // Each table, and the filter that picks out the owner's rows in it.
@@ -107,6 +110,7 @@ const ownerRows = (ids) => ({
   survey_agent_voice_logs: ['user_id', ids.owner],
   account_kits: ['user_id', ids.owner],
   kits: ['id', KIT],
+  mark_library_items: ['created_by', ids.owner],
 });
 
 // Tables and views the sweep above leaves out, and why. A new table fails the

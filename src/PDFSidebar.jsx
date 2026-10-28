@@ -18,6 +18,8 @@ const SearchTextPanel = lazy(() => import('./sidebar/SearchTextPanel'));
 import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
 import LayersPanel from './sidebar/LayersPanel';
+// Beta 'mark-library' (Survey Nightly): loads only when the flag is on.
+const MarkLibraryPanel = lazy(() => import('./markLibrary/MarkLibraryPanel'));
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import { withDevFakePresence } from './components/presenceIdentity.js';
@@ -146,6 +148,7 @@ const PANEL_TITLES = {
   spaces: 'Spaces',
   history: 'History',
   layers: 'Layers',
+  library: 'Library',
 };
 
 const PDFSidebar = React.forwardRef(({
@@ -254,6 +257,8 @@ const PDFSidebar = React.forwardRef(({
   onLayersChange = null,
   onActiveLayerChange = null,
   canEditLayers = true,
+  // Mark library tab ('mark-library' flag, beta). false = no tab, no panel.
+  markLibraryEnabled = false,
 }, ref) => {
   // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
   // which panel and whether it was open - per user
@@ -264,6 +269,7 @@ const PDFSidebar = React.forwardRef(({
   if (initialLayoutRef.current === null) {
     const stored = mobileMode ? DEFAULT_PANEL_LAYOUT : readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
     initialLayoutRef.current = (stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled)
+      || (stored.panel === 'library' && !markLibraryEnabled)
       ? { ...stored, panel: 'pages' }
       : stored;
   }
@@ -349,7 +355,8 @@ const PDFSidebar = React.forwardRef(({
     const stored = readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
     if (!userTouchedLayoutRef.current) {
       setIsCollapsed(!stored.open);
-      setActiveTab((stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled) ? 'pages' : stored.panel);
+      setActiveTab((stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled)
+        || (stored.panel === 'library' && !markLibraryEnabled) ? 'pages' : stored.panel);
     }
     // documentId is read once, as the stored layout lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -406,6 +413,7 @@ const PDFSidebar = React.forwardRef(({
   const openPanel = useCallback((panelId = 'pages', { focus = panelId === 'search', select = true } = {}) => {
     const validPanel = ['pages', 'search', 'bookmarks', 'spaces', 'history'].includes(panelId)
       || (panelId === 'layers' && layersEnabled)
+      || (panelId === 'library' && markLibraryEnabled)
       ? panelId
       : 'pages';
     userTouchedLayoutRef.current = true;
@@ -415,7 +423,7 @@ const PDFSidebar = React.forwardRef(({
       setSearchSelectOnFocus(Boolean(select));
       setSearchFocusRequestToken((prev) => prev + 1);
     }
-  }, [layersEnabled]);
+  }, [layersEnabled, markLibraryEnabled]);
 
   const closePanel = useCallback(() => {
     userTouchedLayoutRef.current = true;
@@ -501,6 +509,7 @@ const PDFSidebar = React.forwardRef(({
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
     { id: 'spaces', label: 'Spaces', icon: 'layers' },
     ...(layersEnabled ? [{ id: 'layers', label: 'Layers', icon: 'shapes' }] : []),
+    ...(markLibraryEnabled ? [{ id: 'library', label: 'Library', icon: 'library' }] : []),
   ];
 
   const toggleHistoryPanel = useCallback(() => {
@@ -1085,6 +1094,14 @@ const PDFSidebar = React.forwardRef(({
                   onActiveLayerChange={onActiveLayerChange}
                   readOnly={!canEditLayers}
                 />
+              </div>
+            )}
+
+            {markLibraryEnabled && activeTab === 'library' && (
+              <div style={{ display: 'flex', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <Suspense fallback={null}>
+                  <MarkLibraryPanel phone={mobileMode} />
+                </Suspense>
               </div>
             )}
 
