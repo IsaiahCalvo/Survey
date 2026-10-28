@@ -429,3 +429,8 @@ verify_jwt = false
 # person's Bearer token itself, like survey-mcp.
 [functions.survey-undo]
 verify_jwt = false
+
+# Short-lived Cloudflare R2 links for stored PDFs. Browser-invoked: answers the
+# CORS preflight, then lets Storage check the caller's own token.
+[functions.pdf-file-url]
+verify_jwt = false

@@ -24,6 +24,7 @@ import { STREAM_SIGNED_URL_SECONDS, chooseCloudPdfOpenPath } from '../services/c
 import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.js';
 import { isPdfUploadPending, trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
 import { openSourceHeadStarts, openSourceCacheStamp } from '../services/openSourceHeadStart.js';
+import { requestR2PdfLink, downloadPdfFromR2 } from '../services/pdfR2Source.js';
 import { bindLibraryListCacheToAuth } from './libraryListCache.js';
 import { useLibraryListCache } from './useLibraryListCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
@@ -58,10 +59,16 @@ async function fetchStoredPdfInfo(filePath) {
     return { data: null, error };
   }
 }
-// The short-lived signed URL a cloud PDF is streamed from (cloudPdfStream.js).
-const signOpenSource = (filePath) => supabase.storage
-  .from('documents')
-  .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS);
+// The short-lived signed URL a cloud PDF is streamed from (cloudPdfStream.js):
+// its Cloudflare R2 copy when the 'pdf-r2' flag is on and the copy is ready
+// (services/pdfR2Source.js), else Supabase Storage.
+const signOpenSource = async (filePath) => {
+  const r2Url = await requestR2PdfLink(supabase, filePath);
+  if (r2Url) return { data: { signedUrl: r2Url }, error: null };
+  return supabase.storage
+    .from('documents')
+    .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS);
+};
 
 const withTimeout = (promise, ms) => Promise.race([
   promise,
@@ -914,6 +921,8 @@ export const useStorage = () => {
       path: filePath,
       fetchInfo: () => fetchStoredPdfInfo(filePath),
       download: async () => {
+        const fromR2 = await downloadPdfFromR2(supabase, filePath);
+        if (fromR2) return fromR2;
         // no-store: never the browser's HTTP copy (it could be an older
         // version than the one the check just named, and it outlives sign-out).
         const { data, error } = await supabase.storage

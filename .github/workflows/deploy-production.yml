@@ -128,6 +128,7 @@ jobs:
           export-account
           excel-apply-changeset
           kits-admin
+          pdf-file-url
           send-profile-change-notification
           stripe-webhook
           survey-agent

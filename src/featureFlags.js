@@ -62,6 +62,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Survey markers merge concurrent field edits',
     stage: 'rollout',
   }),
+  // Infrastructure, not a feature: opens read PDFs from their Cloudflare R2
+  // copy (services/pdfR2Source.js, docs/PDF-R2.md). Needs R2 set up first.
+  'pdf-r2': Object.freeze({
+    label: 'Open PDFs from the Cloudflare R2 copy (saves Supabase download costs)',
+    stage: 'rollout',
+  }),
   'custom-answers': Object.freeze({
     label: 'Make-your-own checklist answers in templates',
     stage: 'beta',

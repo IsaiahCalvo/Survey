@@ -21,8 +21,11 @@
 // row is gone, so collaborators' photos / videos / recordings - and the media
 // of documents this sweep purged - are removed here.
 //
-// Last, stored PDFs older than a day that no document or template row points
+// Then stored PDFs older than a day that no document or template row points
 // at (documentFileSweep.js, listed by `public.list_orphaned_document_files`).
+//
+// Last, the Cloudflare R2 copies of PDFs deleted or moved in Storage
+// (r2CopySweep.js, queued in `public.pdf_r2_deletes`), when R2 is configured.
 //
 // This function is MACHINE-invoked (Supabase Cron / pg_cron). It is not part of
 // any user flow: it authenticates a shared secret, never an end user, and holds
@@ -31,6 +34,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { sweepOrphanedSurveyMedia, MEDIA_SWEEP_LIMIT } from './surveyMediaSweep.js';
 import { sweepOrphanedDocumentFiles, DOCUMENT_FILE_SWEEP_LIMIT } from './documentFileSweep.js';
+import { sweepR2Copies, R2_COPY_SWEEP_LIMIT } from './r2CopySweep.js';
+import { r2ConfigFromEnv } from '../_shared/r2.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
 
 const corsHeaders = {
@@ -281,6 +286,21 @@ Deno.serve(async (req) => {
     errors: files.errors.length,
   });
 
+  // ── Remove R2 copies of deleted PDFs ───────────────────────────────────
+  // Same best-effort rule; nothing happens when R2 is not configured.
+  const r2 = await sweepR2Copies(supabase, r2ConfigFromEnv((name: string) => Deno.env.get(name)), {
+    dryRun,
+    limit: R2_COPY_SWEEP_LIMIT,
+    log,
+  });
+  log('r2_sweep_done', {
+    run_id: result.run_id,
+    enabled: r2.enabled,
+    found: r2.found,
+    removed: r2.removed,
+    failed: r2.failed,
+  });
+
   log('sweep_done', {
     run_id: result.run_id,
     unlinked,
@@ -318,6 +338,10 @@ Deno.serve(async (req) => {
     files_failed: files.failed,
     files_skipped_live: files.skipped_live,
     file_errors: files.errors,
+    r2_copies_found: r2.found,
+    r2_copies_removed: r2.removed,
+    r2_copies_failed: r2.failed,
+    r2_errors: r2.errors,
     dry_run: dryRun,
     duration_ms: Date.now() - startedAt,
   });
