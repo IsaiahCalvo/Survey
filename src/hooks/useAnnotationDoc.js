@@ -26,6 +26,13 @@ import {
 } from '../services/annotationDocStore.js';
 import { applyReconcileSwaps } from '../utils/annotationReconcile.js';
 import {
+  bulkImportSliceSize,
+  heldImportMarksGone,
+  keepHeldImportMarks,
+  meterBulkImport,
+  nextImportTurn,
+} from '../utils/bulkImportMeter.js';
+import {
   ANNOTATION_HYDRATION_PREVIEW_SOURCE,
   ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE,
 } from '../utils/annotationHydrationGate.js';
@@ -353,6 +360,17 @@ export function useAnnotationDoc({
   // saved as one checkpoint, never ahead of (or in the way of) the user's
   // own edits. Each id leaves the set once the store has it.
   const bulkImportKeysRef = useRef(new Set());
+  // 2026-10-28: the capture stores those marks a few dozen at a time
+  // (bulkImportMeter.js): the keys the last capture held back, what storing
+  // one cost, the next share's turn (if one is scheduled), and who waits for
+  // the last share (whenBulkImportSaved).
+  const heldImportKeysRef = useRef(new Set());
+  // The screen the held marks were last seen on.
+  const heldScreenRef = useRef(null);
+  const importMsPerMarkRef = useRef(0);
+  const importTurnRef = useRef(null);
+  const importDrainWaitersRef = useRef([]);
+  const captureIntoStoreRef = useRef(null);
   // w29 preview: what the viewer held before the first early paint for this
   // document (byPage null = no preview shown since the last successful
   // hydrate). Kept across failed-open retries of the same document, so marks
@@ -398,6 +416,10 @@ export function useAnnotationDoc({
     migrationDoneRef.current = null;
     inkRepairDoneRef.current = null;
     bulkImportKeysRef.current = new Set();
+    heldImportKeysRef.current = new Set();
+    heldScreenRef.current = null;
+    importTurnRef.current = null;
+    settleImportDrain(false);
     if (prePreviewRef.current.documentId !== documentId) {
       prePreviewRef.current = { documentId, byPage: null };
     }
@@ -576,6 +598,8 @@ export function useAnnotationDoc({
               { preserveUnmeasured: true },
             );
           }
+          // The store lacks marks the capture still holds: keep them shown.
+          nextByPage = keepHeldImportMarks(previousByPage, nextByPage, heldImportKeysRef.current);
           return preserveTransientPagePresentationState(previousByPage, nextByPage);
         });
         const s = handle.getMeta(SPACES_KEY);
@@ -613,6 +637,8 @@ export function useAnnotationDoc({
               { preserveUnmeasured: true },
             );
           }
+          // The store lacks marks the capture still holds: keep them shown.
+          nextByPage = keepHeldImportMarks(previousByPage, nextByPage, heldImportKeysRef.current);
           return preserveTransientPagePresentationState(previousByPage, nextByPage);
         });
       }) || null;
@@ -751,6 +777,12 @@ export function useAnnotationDoc({
       unsubscribeHistoryQuarantine?.();
       unsubscribeLivePreview?.();
       setLiveMarkerOverlay(EMPTY_LIVE_MARKER_OVERLAY);
+      // Marks of an import still held are not stored: the import's marker is
+      // not written, and the next open imports them again (stable ids).
+      importTurnRef.current = null;
+      heldImportKeysRef.current = new Set();
+      heldScreenRef.current = null;
+      settleImportDrain(false);
       if (h) { h.destroy().catch(() => {}); }
     };
   }, [enabled, documentId, userId, setAnnotationsByPage, setSpaces, setSurveyMarkers, openRetryTick]);
@@ -812,10 +844,48 @@ export function useAnnotationDoc({
     }
   }, [annotationsByPage]);
 
-  useEffect(() => {
+  // A share of a PDF's own markup still to store (bulkImportMeter.js): stored
+  // in a task of its own, from whatever the screen shows by then.
+  function scheduleImportTurn() {
+    if (importTurnRef.current) return;
+    const turn = {};
+    importTurnRef.current = turn;
+    nextImportTurn().then(() => {
+      if (importTurnRef.current !== turn) return; // another document, or none
+      const pausedFor = (capturePauseRef?.current?.until || 0) - Date.now();
+      if (pausedFor > 0) {
+        setTimeout(() => {
+          if (importTurnRef.current !== turn) return;
+          importTurnRef.current = null;
+          if (heldImportKeysRef.current.size > 0) scheduleImportTurn();
+        }, pausedFor + 1);
+        return;
+      }
+      importTurnRef.current = null;
+      captureIntoStoreRef.current?.(byPageRef.current, { importTurn: true });
+    });
+  }
+
+  // An erase, and its undo or redo, reads the store back as the whole screen,
+  // and an erase must find its marks there: store the held marks first.
+  function storeHeldImportMarks() {
+    if (heldImportKeysRef.current.size === 0) return;
+    captureIntoStoreRef.current?.(byPageRef.current, { drain: true });
+  }
+
+  function settleImportDrain(ok) {
+    const waiters = importDrainWaitersRef.current;
+    importDrainWaitersRef.current = [];
+    for (const resolve of waiters) resolve(ok);
+  }
+
+  captureIntoStoreRef.current = (annotationsByPage, { importTurn = false, drain = false } = {}) => {
     const h = handleRef.current;
     if (!h || !readyRef.current) return;
-    if (capturePauseRef?.current?.until && Date.now() < capturePauseRef.current.until) return;
+    if (!drain && capturePauseRef?.current?.until && Date.now() < capturePauseRef.current.until) {
+      if (importTurn && heldImportKeysRef.current.size > 0) scheduleImportTurn();
+      return;
+    }
     const capturedByPage = stripMetaFallbackCallouts(
       annotationsByPage,
       metaFallbackIdsRef.current,
@@ -824,9 +894,40 @@ export function useAnnotationDoc({
       (page) => page?.eraserMutation?.id,
     );
     const bulkKeys = bulkImportKeysRef.current.size > 0 ? bulkImportKeysRef.current : null;
-    const result = h.applyByPage(capturedByPage, bulkKeys ? { bulkKeys } : undefined);
-    if (bulkKeys) for (const key of result?.bulkWritten || []) bulkKeys.delete(key);
-    setDeletedPdfAnnotations(h.getDeletedPdfAnnotations?.() || []);
+    // A held mark left the screen (deleted or cut before its share was
+    // stored): store the import first, so taking it out below leaves the PDF
+    // deletion tombstone a stored mark gets (a reopen must not bring it back).
+    const gone = bulkKeys ? heldImportMarksGone(capturedByPage, heldImportKeysRef.current) : null;
+    if (gone?.size > 0 && heldScreenRef.current) {
+      const drained = h.applyByPage(keepHeldImportMarks(heldScreenRef.current, capturedByPage, gone), { bulkKeys });
+      for (const key of drained?.bulkWritten || []) bulkKeys.delete(key);
+    }
+    // An erase gets every mark it may touch stored first, as before.
+    const storedMarks = bulkKeys ? getAnnotationsMap(h.doc) : null;
+    const metered = bulkKeys
+      ? meterBulkImport(
+        capturedByPage,
+        bulkKeys,
+        hasEraserMutation || drain ? Infinity : bulkImportSliceSize(importMsPerMarkRef.current),
+        { isStored: (key) => storedMarks.has(key) },
+      )
+      : { byPage: capturedByPage, held: null };
+    const startedAt = performance.now();
+    const result = h.applyByPage(metered.byPage, bulkKeys ? { bulkKeys } : undefined);
+    const bulkWritten = result?.bulkWritten || [];
+    if (bulkKeys) for (const key of bulkWritten) bulkKeys.delete(key);
+    if (bulkWritten.length > 0) importMsPerMarkRef.current = (performance.now() - startedAt) / bulkWritten.length;
+    heldImportKeysRef.current = metered.held || new Set();
+    heldScreenRef.current = heldImportKeysRef.current.size > 0 ? capturedByPage : null;
+    if (heldImportKeysRef.current.size > 0) scheduleImportTurn();
+    else if (importDrainWaitersRef.current.length > 0) settleImportDrain(true);
+    // A share of the import changes no tombstones (the import leaves deleted
+    // ones out): no new list, no re-render for it.
+    if (!importTurn || result?.removed > 0) setDeletedPdfAnnotations(h.getDeletedPdfAnnotations?.() || []);
+    // The store saw the screen minus the held marks: its normalized copy is
+    // not the screen (the share that holds none puts identities right).
+    const identityUpdate = Boolean(result?.identityChanged && result.normalizedByPage)
+      && metered.byPage === capturedByPage;
     if (hasEraserMutation) {
       // eraserMutation is a one-render transport envelope, not page content.
       // Replace it immediately with the operation-materialized Y.Doc view so
@@ -835,10 +936,10 @@ export function useAnnotationDoc({
       setAnnotationsByPage((previousByPage) => (
         preserveTransientPagePresentationState(previousByPage, materialized)
       ));
-    } else if ((result?.identityChanged && result.normalizedByPage) || result?.reconcile) {
+    } else if (identityUpdate || result?.reconcile) {
       setAnnotationsByPage((previousByPage) => {
         let nextByPage = previousByPage;
-        if (result.identityChanged && result.normalizedByPage) {
+        if (identityUpdate) {
           nextByPage = preserveTransientPagePresentationState(
             previousByPage,
             withLivePreviews(result.normalizedByPage, h),
@@ -849,6 +950,10 @@ export function useAnnotationDoc({
         return applyReconcileSwaps(nextByPage, result.reconcile);
       });
     }
+  };
+
+  useEffect(() => {
+    captureIntoStoreRef.current(annotationsByPage);
   }, [annotationsByPage]);
 
   // Late role resolution: get_my_document_role is fetched async by YDocProvider
@@ -1174,21 +1279,30 @@ export function useAnnotationDoc({
     const h = handleRef.current;
     if (!h || typeof h.whenBulkSaved !== 'function') return true;
     try {
+      // The capture's last share first (bulkImportMeter.js).
+      if (heldImportKeysRef.current.size > 0) {
+        const drained = await new Promise((resolve) => { importDrainWaitersRef.current.push(resolve); });
+        if (!drained || handleRef.current !== h) return false;
+      }
       return await h.whenBulkSaved();
     } finally {
       if (handleRef.current === h) bulkImportKeysRef.current.clear();
     }
   }, []);
 
-  // True when every key is stored in the durable mark map (the embedded
-  // import writes its once-only marker only after its marks landed).
+  // This device's own store holds every edit (it survives a reload offline).
   const hasLocalStore = useCallback(() => handleRef.current?.hasLocalStore?.() === true, []);
 
+  // True when every key is stored in the durable mark map, or is a mark the
+  // capture holds for a later share (bulkImportMeter.js; whenBulkImportSaved
+  // waits for those). The embedded import writes its once-only marker only
+  // after its marks landed.
   const hasStoredMarks = useCallback((keys) => {
     const h = handleRef.current;
     if (!h || !h.doc) return false;
     const map = getAnnotationsMap(h.doc);
-    return (keys || []).every((key) => map.has(String(key)));
+    const held = heldImportKeysRef.current;
+    return (keys || []).every((key) => map.has(String(key)) || held.has(String(key)));
   }, []);
 
   const commitEraseIntent = useCallback(async (intent, options = {}) => {
@@ -1203,6 +1317,7 @@ export function useAnnotationDoc({
 
     const ownerHandle = cloudHandle;
 
+    storeHeldImportMarks();
     const result = await ownerHandle.commitEraseIntent(intent, options);
     if (handleRef.current !== ownerHandle || !readyRef.current) {
       return {
@@ -1268,6 +1383,7 @@ export function useAnnotationDoc({
     if (!ownerHandle || !readyRef.current) {
       return { status: 'conflict', reason: 'sync-not-ready' };
     }
+    storeHeldImportMarks();
     const result = ownerHandle.applyEraseHistoryTransition(transition, direction);
     if (result.status !== 'applied' && result.status !== 'noop') return result;
     const nextByPage = preserveTransientPagePresentationState(
@@ -1289,6 +1405,7 @@ export function useAnnotationDoc({
     if (!ownerHandle || !readyRef.current) {
       return { status: 'conflict', reason: 'sync-not-ready' };
     }
+    storeHeldImportMarks();
     const result = ownerHandle.restoreEraseDeletion(restoreActions, options);
     if (result.status !== 'applied' && result.status !== 'noop') return result;
     const nextByPage = preserveTransientPagePresentationState(

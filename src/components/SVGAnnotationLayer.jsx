@@ -5151,6 +5151,9 @@ const SVGAnnotationLayerBody = memo(({
     handleSurveyMarkerPointerDown,
     hoveredSurveyMarkerId,
     inverseScale,
+    // markHitBand sizes the hit band by input; without this a pen-drawn
+    // marker kept the mouse band until some other change re-rendered it.
+    inputKind,
     isSelectTool,
     selectedSurveyMarkerId,
     surveyMarkerPreviewBounds,

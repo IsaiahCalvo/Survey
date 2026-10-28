@@ -197,10 +197,14 @@ export function encodeCheckpointFromMirror(mirror, { expectedApplied, expectedVe
  * A checkpoint's bytes plus one more update (2026-10-07, first-open save: the
  * PDF's own markup goes into the checkpoint instead of WAL rows). A byte-level
  * merge: applying the result gives exactly the document applying both gives.
+ * `extraUpdate` may be a list of updates (2026-10-28: an import's parts,
+ * merged here rather than on the page's thread).
  */
 export function mergeCheckpointWithUpdate(checkpointUpdate, extraUpdate) {
-  if (!extraUpdate || extraUpdate.length === 0) return checkpointUpdate;
-  return Y.mergeUpdates([checkpointUpdate, extraUpdate]);
+  const extras = (Array.isArray(extraUpdate) ? extraUpdate : [extraUpdate])
+    .filter((update) => update && update.length > 0);
+  if (extras.length === 0) return checkpointUpdate;
+  return Y.mergeUpdates([checkpointUpdate, ...extras]);
 }
 
 // ---- one request, as the worker receives it --------------------------------
