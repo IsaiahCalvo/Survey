@@ -574,6 +574,7 @@ const SurveySpacesRail = ({
   setShowSurveyPanel,
   setSurveyMarkers,
   setSurveyMarkersToRemoveByPage,
+  checkpointSurveyAnswer,
   showExportMenu,
   showRegionSelection,
   showSurveyPanel,
@@ -1484,6 +1485,7 @@ const SurveySpacesRail = ({
   // the panel re-renders, so it passes the answers it already set.
   const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option, baseResponses = null) => {
     const currentMarker = surveyMarkers[annotationId] || {};
+    if (currentMarker.checklistResponses?.[checklistItemId]?.selection !== option) checkpointSurveyAnswer?.(annotationId);
     const nextResponses = {
       ...(baseResponses || currentMarker.checklistResponses),
       [checklistItemId]: {
