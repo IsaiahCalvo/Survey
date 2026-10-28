@@ -32,7 +32,7 @@ import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRo
 import { registerLightPopover, watchLightPopover } from '../components/dismissRules.js';
 import AnnotationDropdown from '../components/AnnotationDropdown.jsx';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
-import CalloutPopover from '../components/CalloutPopover.jsx';
+import AnchoredPopover from '../components/AnchoredPopover.jsx';
 import { useProLock } from '../hooks/useProLock.js';
 import {
   formatSpaceCountLabel,
@@ -702,18 +702,14 @@ function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExpo
 }
 
 /*
- * Owner 2026-10-27 ("that modal is way too big ... it should come off as a
- * window with a tooltip type of thing, with a leader or tail that points to
- * that button"; then: "the space that we select should come from a dropdown,
- * and the copy and move buttons should be smaller. Maybe just icons"; then:
- * the drop-down must look like our other drop-downs, never a white border;
- * "we always color the icon, we never color the box around the icon"; the
- * card must not jump or shrink when a space is picked): a small card beside
- * the row's button with a tail pointing at it (CalloutPopover; phone: its own
- * small sheet). The space is the app's own setting-pill drop-down
- * (AnnotationDropdown); Copy and Move are bare glyphs whose ink lights when
- * they can act. The status line is always there, so the card never changes
- * size. Move takes the region and its marks; Copy takes the outline only
+ * Move or copy a region. Owner rounds 2026-10-27/28: a small card that drops
+ * down from the row's button, over what is below (AnchoredPopover; phone: its
+ * own small sheet). The space is the app's own setting-pill drop-down
+ * (AnnotationDropdown, never a native select, never a border); the page is
+ * one "3 / 36" field like the rail's page box, laid flat; Copy and Move are
+ * bare glyphs whose ink lights when they can act ("we color the icon, never
+ * the box"). The status line is always there, so the card never changes size
+ * or jumps. Move takes the region and its marks; Copy takes the outline only
  * (Bluebeam's Spaces copy the boundary, markups stay where they are).
  */
 const TRANSFER_SPACE_MENU_CLASS = 'spaces-transfer-space-menu';
@@ -797,24 +793,18 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
       />
       <div className="spaces-transfer__page">
         <span className="spaces-transfer__label">Page</span>
-        <div className="spaces-transfer__stepper">
-          <button
-            type="button"
-            className="spaces-transfer__step"
-            aria-label="Page before"
-            disabled={base <= 1}
-            {...tip('Page before', 'below')}
-            onClick={() => step(-1)}
-          >
-            <Icon name="minus" size={12} color="currentColor" />
-          </button>
+        {/* Owner 2026-10-28: one field like the rail's page box, laid flat:
+            "3 / 36". The number is typed; arrows step it. A press anywhere on
+            the field puts the caret in the number. */}
+        <label className="spaces-transfer__field">
           <input
             type="text"
             className="spaces-transfer__input"
             inputMode="numeric"
             pattern="[0-9]*"
-            aria-label="Destination page"
+            aria-label={Number.isFinite(maxPage) ? `Destination page, of ${maxPage}` : 'Destination page'}
             value={transfer.targetPageId}
+            style={{ width: `${String(Number.isFinite(maxPage) ? maxPage : 999).length + 0.5}ch` }}
             onFocus={(e) => e.target.select()}
             onChange={(e) => onChange({ targetPageId: e.target.value.replace(/[^0-9]/g, '') })}
             onKeyDown={(e) => {
@@ -823,18 +813,8 @@ function SpacesTransferPanel({ spaces, transfer, numPages, onChange, onMove, onC
               else if (e.key === 'Enter' && canGo) { e.preventDefault(); onMove(); }
             }}
           />
-          <button
-            type="button"
-            className="spaces-transfer__step"
-            aria-label="Page after"
-            disabled={base >= maxPage}
-            {...tip('Page after', 'below')}
-            onClick={() => step(1)}
-          >
-            <Icon name="plus" size={12} color="currentColor" />
-          </button>
-        </div>
-        {Number.isFinite(maxPage) && <small className="spaces-transfer__of">of {maxPage}</small>}
+          {Number.isFinite(maxPage) && <span className="spaces-transfer__of" aria-hidden="true">/ {maxPage}</span>}
+        </label>
         {phone ? null : actions}
       </div>
       <div className="spaces-transfer__status" role="status" data-ready={canGo ? '' : undefined}>{status}</div>
@@ -1592,18 +1572,19 @@ const SpacesPanel = ({
           openSpacesExport(spacesExportTarget.id);
         }}
       />
-      {/* Owner 2026-10-27: the Spaces cards open beside their button with a
-          tail, like Move or copy - not as drop-downs. */}
+      {/* Owner 2026-10-28: the Spaces cards DROP DOWN from their button, over
+          what is below (AnchoredPopover, the setting drop-downs' layer). */}
       {!mobileMode && exportPanel && (
-        <CalloutPopover
-          ref={spacesExportMenuRef}
-          getAnchor={() => spacesExportAnchorRef.current}
-          className="spaces-export spaces-export-callout"
-          role="menu"
-          aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}
-        >
-          {exportPanel}
-        </CalloutPopover>
+        <AnchoredPopover getAnchor={() => spacesExportAnchorRef.current} gap={6}>
+          <div
+            ref={spacesExportMenuRef}
+            className="spaces-export spaces-dropdown-card spaces-export-menu"
+            role="menu"
+            aria-label={`Export ${orderedSpaces.find((space) => space.id === exportSpaceId)?.name || 'space'}`}
+          >
+            {exportPanel}
+          </div>
+        </AnchoredPopover>
       )}
     </div>
   );
@@ -1770,15 +1751,16 @@ const SpacesPanel = ({
         )}
       </div>
       {transfer && !mobileMode && (
-        <CalloutPopover
-          ref={transferMenuRef}
-          getAnchor={() => transferAnchorRef.current}
-          className="spaces-transfer-callout"
-          role="dialog"
-          aria-label={`Move or copy ${transfer.label}`}
-        >
-          {transferPanel}
-        </CalloutPopover>
+        <AnchoredPopover getAnchor={() => transferAnchorRef.current} gap={6}>
+          <div
+            ref={transferMenuRef}
+            className="spaces-dropdown-card spaces-transfer-menu"
+            role="dialog"
+            aria-label={`Move or copy ${transfer.label}`}
+          >
+            {transferPanel}
+          </div>
+        </AnchoredPopover>
       )}
       {/* Rendered on <body>, above the phone sheet (z 6500): inside the sheet a
           fixed overlay is caught by the sheet's transform. */}
