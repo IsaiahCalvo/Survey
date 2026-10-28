@@ -4,13 +4,14 @@
 // to the next with its header repeated.
 import { surveyReportPlan } from './surveyReportPptx.js';
 import { reportKitFor } from './reportKits/index.js';
+import { drawMiniMap } from './surveyReportMiniMaps.js';
 
 const PAGE = [792, 612]; // Letter, landscape
 const M = 48; // page margin
 const STATUS_HEX = { Done: '0CA30C', 'Partly done': 'FAB219', 'Not started': 'A6A6A6' };
 
 export async function buildSurveyReportPdf(PDFLib, input) {
-  const { PDFDocument, StandardFonts, rgb } = PDFLib;
+  const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
   const plan = surveyReportPlan(input);
   const kit = input?.kit || reportKitFor(input?.template);
   const doc = await PDFDocument.create();
@@ -22,6 +23,16 @@ export async function buildSurveyReportPdf(PDFLib, input) {
   const INK = hex('1F2329');
   const MUTED = hex('5B6270');
   const RULE = hex('D9DCE1');
+  const PIN = hex('E53935');
+  // The plan itself, for the crops beside each issue (when the caller has it).
+  let planPdf = null;
+  if (input?.sourcePdfBytes) {
+    try {
+      planPdf = await PDFDocument.load(input.sourcePdfBytes, { ignoreEncryption: true, updateMetadata: false });
+    } catch (err) {
+      console.warn('[survey report] plan crops left out: the plan PDF could not be read', err?.message || err);
+    }
+  }
 
   // The standard fonts only draw Latin text; anything else prints as "?".
   const okChar = new Map();
@@ -107,6 +118,53 @@ export async function buildSurveyReportPdf(PDFLib, input) {
     };
     drawRow(head, { header: true });
     rows.forEach((r) => drawRow(r));
+  };
+
+  // "Where the issues are": a card per placed item with an issue, a crop of
+  // the plan around it (surveyReportMiniMaps), three across and two down.
+  const issueMaps = async () => {
+    if (!planPdf) return;
+    const sourcePages = planPdf.getPages();
+    const cards = plan.issueRows
+      .map((r) => ({ ...r, marker: input?.markers?.[r.id] }))
+      .filter((r) => r.marker?.bounds && sourcePages[(r.marker.pageNumber || 0) - 1])
+      .sort((a, b) => (a.marker.pageNumber - b.marker.pageNumber) || String(a.item).localeCompare(String(b.item), undefined, { numeric: true }));
+    if (!cards.length) return;
+    const gap = 16;
+    const cardW = (PAGE[0] - 2 * M - 2 * gap) / 3;
+    const top = PAGE[1] - M - 44;
+    const cardH = (top - M - gap) / 2;
+    const mapH = cardH - 70;
+    let page = null;
+    for (let i = 0; i < cards.length; i += 1) {
+      const slot = i % 6;
+      if (slot === 0) page = newPage(i ? 'Where the issues are (continued)' : 'Where the issues are');
+      const card = cards[i];
+      const x = M + (slot % 3) * (cardW + gap);
+      const yTop = top - Math.floor(slot / 3) * (cardH + gap);
+      const box = { x, y: yTop - mapH, width: cardW, height: mapH };
+      let drawn = false;
+      try {
+        drawn = await drawMiniMap({
+          doc, page, sourcePage: sourcePages[card.marker.pageNumber - 1], bounds: card.marker.bounds, box, rgb, degrees, ink: RULE, pin: PIN,
+        });
+      } catch (err) {
+        console.warn('[survey report] a plan crop could not be drawn', err?.message || err);
+      }
+      if (!drawn) {
+        page.drawRectangle({ x: box.x, y: box.y, width: box.width, height: box.height, borderColor: RULE, borderWidth: 0.75 });
+        text(page, 'No plan view', box.x + 10, box.y + box.height / 2, { size: 10, color: MUTED });
+      }
+      let y = box.y - 14;
+      text(page, wrap(card.item, 11, cardW, bold)[0] || '', x, y, { size: 11, f: bold });
+      y -= 13;
+      text(page, wrap(`${card.category} · Page ${card.marker.pageNumber}`, 9, cardW)[0] || '', x, y, { size: 9, color: MUTED });
+      const lines = wrap(card.lines, 9, cardW);
+      lines.slice(0, 3).forEach((l, j) => {
+        const last = j === 2 && lines.length > 3;
+        text(page, last ? `${l.replace(/.{0,2}$/, '')}...` : l, x, y - 12 - j * 11, { size: 9 });
+      });
+    }
   };
 
   const BLOCKS = {
@@ -204,6 +262,7 @@ export async function buildSurveyReportPdf(PDFLib, input) {
         return;
       }
       table('Issues', ['Category', 'Item', 'Lines with a problem answer'], plan.issueRows.map((r) => [r.category, r.item, r.lines]), [0.22, 0.2, 0.58], 10);
+      return issueMaps();
     },
   };
 
@@ -213,7 +272,7 @@ export async function buildSurveyReportPdf(PDFLib, input) {
     const previous = shared;
     shared = null;
     if (!draw) continue;
-    const page = draw(block, block.type === 'chart' ? previous : null);
+    const page = await draw(block, block.type === 'chart' ? previous : null);
     if (block.type === 'totals') shared = page;
   }
   if (!doc.getPageCount()) newPage(plan.title);
@@ -226,9 +285,26 @@ export function surveyReportPdfFileName(template) {
   return `${base} report.pdf`;
 }
 
+// The plan's own bytes for the crops: the opened file, else the stored copy.
+// A plan we cannot read only leaves the crops out.
+async function planBytesOf(planFile) {
+  try {
+    if (typeof planFile?.arrayBuffer === 'function') return new Uint8Array(await planFile.arrayBuffer());
+    if (planFile?.filePath) {
+      const { supabase } = await import('../supabaseClient');
+      const { data, error } = await supabase.storage.from('documents').download(planFile.filePath);
+      if (!error && data) return new Uint8Array(await data.arrayBuffer());
+    }
+  } catch (err) {
+    console.warn('[survey report] plan crops left out: could not read the plan', err?.message || err);
+  }
+  return null;
+}
+
 export async function downloadSurveyReportPdf(input) {
   const PDFLib = await import('pdf-lib');
-  const bytes = await buildSurveyReportPdf(PDFLib, input);
+  const sourcePdfBytes = input?.sourcePdfBytes || await planBytesOf(input?.planFile);
+  const bytes = await buildSurveyReportPdf(PDFLib, { ...input, sourcePdfBytes });
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
   const link = document.createElement('a');
   link.href = url;

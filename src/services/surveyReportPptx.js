@@ -25,6 +25,7 @@ export function surveyReportPlan({ template, markers, documentName = '', when = 
   const title = `${template?.name || 'Survey'} report`;
   const t = summary.totals;
   const issueRows = summary.categories.flatMap((c) => c.issues.map((issue) => ({
+    id: issue.id,
     category: c.name,
     item: issue.name,
     lines: issue.lines.map((l) => `${l.text}: ${l.answer}`).join('; '),
