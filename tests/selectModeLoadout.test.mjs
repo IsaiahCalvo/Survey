@@ -205,11 +205,16 @@ test('Select: the gold button shrinks out where it was while the select row grow
 
 test('owner 2026-10-27: a toggle whose spot moves still morphs as it grows in - Edit\'s pen turns into Done\'s check', () => {
   const { head, layer, replace } = setup([new Node('div', { class: 'hub-select-actions' }, [icon('edit', 'Edit', 300, 'editList')])]);
-  replace([new Node('div', { class: 'hub-select-actions' }, [icon('edit', 'Done', 180, 'editListDone'), icon('all', 'Select all', 210)])]);
+  const next = icon('edit', 'Done', 180, 'editListDone');
+  // A growing button draws its glyph at the start scale (0.6 of 16px).
+  const glyph = next.children[0];
+  glyph.getBoundingClientRect = () => ({ left: 186, top: 106, width: next.animations.length ? 9.6 : 16, height: 16 });
+  replace([new Node('div', { class: 'hub-select-actions' }, [next, icon('all', 'Select all', 210)])]);
   const done = head.children[0].children[0];
   assert.deepEqual(done.animations[0].keyframes[0], { opacity: 0, scale: '0.6' }, 'Done grows in at its spot');
   const overlay = layer.children.find((c) => c.getAttribute('data-loadout-morph') === 'editListDone');
   assert.ok(overlay, 'and the old glyph morphs into it while it grows');
+  assert.equal(overlay.style.width, '16px', 'measured before the button starts growing, so it is full size');
   assert.deepEqual(overlay.animations[0].keyframes, [{ opacity: 0, scale: '0.6' }, { opacity: 1, scale: '1' }], 'the morph grows with the button');
   assert.deepEqual(ghostUnits(layer).map((g) => centre(g)), [[314, 114]], 'the old Edit shrinks out where it was');
 });

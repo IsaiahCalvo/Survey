@@ -796,10 +796,12 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
           grow(unit, from);
           return;
         }
-        grow(unit);
+        // The morph measures the glyph first: once the button is growing its
+        // box reads at the start scale and the overlay would come out small.
         if (pair.morphAsItGrows && startMorph(pair.id, unit, previous[pair.b].icon, colourAt(previous[pair.b].colour, timelineNow()), at)) {
           morphs.get(pair.id)?.svg.animate?.(loadoutKeyframes('in', { motion }), { duration: motion.durationMs, easing: motion.easing, fill: 'backwards' });
         }
+        grow(unit);
       }
     });
   };
