@@ -79,7 +79,7 @@ test('new markers list in name order, and picking one on the page opens its row'
     id: templateId, user_id: uid, name: templateName,
     config: {
       modules: [{ id: 'm-sec', name: 'Security', categories: [{ id: 'c-cam', name: 'Camera', checklist: [{ id: 'l1', text: 'Mounted' }, { id: 'l2', text: 'Aimed and focused at the door' }] }] }],
-      entities: [{ id: 'e-gc', name: 'GC', color: '#E53935' }],
+      entities: [{ id: 'e-gc', name: 'GC', color: '#E53935' }, { id: 'e-done', name: 'Complete', color: '#548c71' }],
     },
   });
   await admin.from('documents').insert({ id: docId, user_id: uid, project_id: E2E_PROJECT.id, name: docName, file_path: filePath, file_size: bytes.length, page_count: 36 });
@@ -119,6 +119,24 @@ test('new markers list in name order, and picking one on the page opens its row'
     await expect.poll(names).toEqual(['Camera 1', 'Camera 2', 'Camera 3']);
     await page.keyboard.press('Control+Shift+z');
     await expect(mounted).toHaveAttribute('aria-pressed', 'true');
+
+    // The last answer turns the marker Complete by itself. Undo takes back
+    // that answer only: Complete is never undone (owner ruling 2026-10-01),
+    // so the marker, its row and its box all stay Complete.
+    const openRow = page.locator('[id^="highlight-item-"]').filter({ has: page.getByRole('group', { name: 'Mounted' }) });
+    const entity = openRow.getByRole('button', { name: /^Entity: .*\. Change entity$/ });
+    const aimed = page.getByRole('group', { name: 'Aimed and focused at the door' }).getByRole('button', { name: 'Y', exact: true });
+    const markerId = (await openRow.getAttribute('id')).replace(/^highlight-item-/, '');
+    const boxFill = page.locator(`[data-survey-marker-id="${markerId}"] rect`).first();
+    await aimed.click();
+    await expect(entity).toHaveAccessibleName('Entity: Complete. Change entity', { timeout: 10_000 });
+    await expect(boxFill).toHaveAttribute('fill', 'rgba(84, 140, 113, 0.4)');
+    await page.keyboard.press('Control+z');
+    await expect(aimed).toHaveAttribute('aria-pressed', 'false');
+    await expect(mounted).toHaveAttribute('aria-pressed', 'true');
+    await page.waitForTimeout(500);
+    await expect(entity).toHaveAccessibleName('Entity: Complete. Change entity');
+    await expect(boxFill).toHaveAttribute('fill', 'rgba(84, 140, 113, 0.4)');
 
     // Camera 3 (the newest) is open; picking Camera 1 on the page opens its row.
     await page.keyboard.press('Escape');
