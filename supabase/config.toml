@@ -366,6 +366,11 @@ verify_jwt = false
 [functions.export-account]
 verify_jwt = false
 
+# Browser-invoked company sign-in setup (Enterprise company workspace); same
+# preflight reasoning as delete-account. Checks the caller's company role itself.
+[functions.company-sso]
+verify_jwt = false
+
 # Browser-invoked: the gateway JWT check rejects the CORS preflight OPTIONS (no JWT on preflight),
 # breaking invoke() from the app. The function does its OWN auth (auth.getUser on the Bearer JWT +
 # registration token_hash + actor-role) and answers OPTIONS with CORS headers, so the gateway check

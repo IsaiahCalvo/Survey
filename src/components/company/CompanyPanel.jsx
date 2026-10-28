@@ -21,6 +21,7 @@ import {
   getMyCompany, inviteToCompany, leaveCompany, listCompanyActivity, listCompanyInvites,
   listCompanyMembers, myCompanyInvites, removeFromCompany, renameCompany, roleLabel, setCompanyRole,
 } from '../../services/companyService.js';
+import CompanySignOn from './CompanySignOn.jsx';
 import './CompanyPanel.css';
 
 const ROLE_OPTIONS = [
@@ -456,6 +457,8 @@ export default function CompanyPanel() {
 
       <People company={company} members={members} invites={invites} isAdmin={isAdmin} isOwner={isOwner} me={me}
         reload={reload} setError={setError} setMessage={setMessage} />
+
+      {isAdmin && <CompanySignOn company={company} reload={reload} setError={setError} setMessage={setMessage} />}
 
       {isAdmin && <Activity company={company} members={members} version={version} setError={setError} />}
 

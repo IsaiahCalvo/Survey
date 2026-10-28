@@ -280,3 +280,62 @@
     gap: 2px;
   }
 }
+
+/* Company sign-in setup */
+.company-step {
+  margin: 16px 0 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+.company-tag.is-good {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.company-dns {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.company-dns .company-row-sub {
+  margin: 0;
+}
+.company-copy-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.company-copy-row {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+.company-copy-label {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.company-copy-value {
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--text-1);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.company-textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 11.5px;
+  background: var(--surface-2);
+  color: var(--text-1);
+  resize: vertical;
+}

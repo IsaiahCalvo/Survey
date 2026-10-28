@@ -36,6 +36,12 @@ const ACTION_WORDS = Object.freeze({
   'document.shared': 'shared',
   'document.role_changed': 'changed access to',
   'document.unshared': 'removed access to',
+  'domain.added': 'added the domain',
+  'domain.verified': 'proved the domain',
+  'domain.removed': 'removed the domain',
+  'sso.connected': 'connected company sign-in',
+  'sso.updated': 'updated company sign-in',
+  'sso.disconnected': 'disconnected company sign-in',
 });
 
 // Filter chips in the log. Each matches an action prefix.
@@ -64,7 +70,9 @@ export function describeActivity(row) {
     extra = action.endsWith('unshared') ? `for ${d.person}` : `with ${d.person}${d.role ? ` as ${roleLabel(d.role).toLowerCase()}` : ''}`;
   } else if (/\.renamed$/.test(action) && d.from) extra = `from ${d.from}`;
   // Self events name nobody else.
-  const selfOnly = action === 'member.joined' || action === 'member.left' || action === 'member.invite_declined';
+  const selfOnly = action === 'member.joined' || action === 'member.left' || action === 'member.invite_declined'
+    || action === 'sso.disconnected';
+  if (action.startsWith('sso.') && Array.isArray(d.domains)) extra = `for ${d.domains.join(', ')}`;
   return { verb, target: selfOnly ? '' : target, extra };
 }
 
@@ -186,4 +194,64 @@ export async function listCompanyActivity(orgId, { beforeId = null, actorId = nu
   if (def?.prefix) q = q.like('action', `${def.prefix}%`);
   else if (def?.id === 'sharing') q = q.or('action.like.*.shared,action.like.*.unshared,action.like.*_changed,action.like.*.invite_sent').not('action', 'like', 'member.%');
   return unwrap(await q, 'Could not load the activity log.') || [];
+}
+
+/* ---------- Company sign-in setup (domains + SAML) ---------- */
+
+export async function listCompanyDomains(orgId) {
+  return unwrap(await supabase
+    .from('organization_domains')
+    .select('id, domain, verification_token, verified_at, created_at')
+    .eq('organization_id', orgId)
+    .order('created_at'), 'Could not load your domains.') || [];
+}
+
+export async function addCompanyDomain(orgId, domain) {
+  return unwrap(await supabase.rpc('add_organization_domain', { p_org: orgId, p_domain: domain }), 'Could not add the domain.');
+}
+
+export async function removeCompanyDomain(domainId) {
+  return unwrap(await supabase.rpc('remove_organization_domain', { p_domain_id: domainId }), 'Could not remove the domain.');
+}
+
+// The company-sso function answers { error } in words; invoke() hides the
+// body behind error.context.
+async function callCompanySso(body) {
+  const { data, error } = await supabase.functions.invoke('company-sso', { body });
+  if (error) {
+    let text = '';
+    try { text = (await error.context?.json?.())?.error || ''; } catch { /* not JSON */ }
+    throw new Error(text || 'Survey could not reach company sign-in setup. Try again.');
+  }
+  return data;
+}
+
+export const checkCompanyDomain = (orgId, domainId) => callCompanySso({ action: 'check-domain', orgId, domainId });
+export const connectCompanySignIn = (orgId, { metadataUrl = '', metadataXml = '' } = {}) => callCompanySso({
+  action: 'connect', orgId, ...(metadataUrl.trim() ? { metadataUrl } : {}), ...(metadataXml.trim() ? { metadataXml } : {}),
+});
+export const disconnectCompanySignIn = (orgId) => callCompanySso({ action: 'disconnect', orgId });
+
+// The two details a company's IT person types into their login system
+// (Okta, Microsoft Entra, Google Workspace...), from Survey's Supabase URL.
+export function signOnLinks(supabaseUrl) {
+  const base = String(supabaseUrl || '').replace(/\/+$/, '');
+  return {
+    entityId: `${base}/auth/v1/sso/saml/metadata`,
+    acsUrl: `${base}/auth/v1/sso/saml/acs`,
+  };
+}
+
+export function itSetupText({ companyName, links, domains = [] }) {
+  return [
+    `Set up Survey (surveytool.app) as a SAML app for ${companyName || 'our company'}.`,
+    '',
+    `Entity ID / Audience / Identifier: ${links.entityId}`,
+    `ACS URL / Reply URL / Single sign-on URL: ${links.acsUrl}`,
+    `Survey metadata (if your system can read it): ${links.entityId}`,
+    'Name ID: the person\'s email address. Also send the attribute "email".',
+    domains.length ? `People sign in with emails at: ${domains.join(', ')}` : '',
+    '',
+    'When it is saved, send back the app\'s metadata URL (or the metadata XML file).',
+  ].filter((line, i, all) => line || all[i - 1]).join('\n');
 }
