@@ -41,3 +41,17 @@ test('compareSurveyMarkersForOrder ignores non-finite order values', () => {
     { surveyMarkerOrder: 'also-nope', id: 'a' },
   ) > 0);
 });
+
+test('compareSurveyMarkersForOrder sorts unordered markers by name, numbers as numbers', () => {
+  const markers = [
+    { id: 'surveyMarker-f', name: 'Camera 10' },
+    { id: 'surveyMarker-a', name: 'Camera 3' },
+    { id: 'surveyMarker-c', name: 'Camera 1' },
+    { id: 'surveyMarker-b', name: 'camera 2' },
+  ];
+  assert.deepEqual(markers.sort(compareSurveyMarkersForOrder).map((m) => m.name), ['Camera 1', 'camera 2', 'Camera 3', 'Camera 10']);
+  // Same name: the id keeps the order stable.
+  assert.ok(compareSurveyMarkersForOrder({ id: 'b', name: 'X' }, { id: 'a', name: 'X' }) > 0);
+  // A custom order still wins over the name.
+  assert.equal(compareSurveyMarkersForOrder({ name: 'Z', surveyMarkerOrder: 0 }, { name: 'A' }), -1);
+});

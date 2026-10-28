@@ -16271,7 +16271,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               // Style header row
               if (rowIndex === 0) {
                 excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-                  cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                  cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
                   cell.fill = {
                     type: 'pattern',
                     pattern: 'solid',
@@ -16446,14 +16446,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             rowIdColumn.hidden = true;
             rowIdColumn.numFmt = '@'; // text — never coerced to a number/date
 
-            // Changed By, Changed Date, Item (width 15)
+            // Changed By, Changed Date (width 15). Item and the checklist
+            // columns grow to their longest name or header (up to a point;
+            // longer headers wrap), so nothing opens cut off.
+            const fitWidth = (texts) => Math.min(36, Math.max(15, ...texts.map((t) => String(t ?? '').length + 2)));
             worksheet.getColumn(colOf.changed_by).width = 15;
             worksheet.getColumn(colOf.changed_date).width = 15;
-            worksheet.getColumn(itemColIndex).width = 15;
+            worksheet.getColumn(itemColIndex).width = fitWidth(dataRows.map((row) => row[itemColIndex - 1]));
 
-            // Columns 5 to lastChecklistCol: Checklist items (width 15 each)
             for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
-              worksheet.getColumn(col).width = 15;
+              worksheet.getColumn(col).width = fitWidth([dataRows[0]?.[col - 1]]);
             }
 
             // Entity column (width 15)
@@ -16462,6 +16464,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             // Notes column (width 50)
             const notesColIndex = colOf.notes;
             worksheet.getColumn(notesColIndex).width = 50;
+
+            // The header stays in view while scrolling, and the sheet prints
+            // one page wide in landscape with the header on every page.
+            worksheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+            worksheet.pageSetup = {
+              ...worksheet.pageSetup,
+              orientation: 'landscape',
+              fitToPage: true,
+              fitToWidth: 1,
+              fitToHeight: 0,
+              printTitlesRow: '1:1',
+            };
           });
         });
       }
@@ -21660,6 +21674,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     metaSet: excelSyncMetaSet,
     metaSubscribe: subscribeDocumentMeta,
     hasStoredMarks: annotationDocHasStoredMarks,
+    hasLocalStore: annotationDocHasLocalStore,
     beginBulkImport: annotationDocBeginBulkImport,
     whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
@@ -21705,6 +21720,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
+  // Read by Save: whether the shared document already keeps this work safe
+  // (its store on this device, or every change already in the cloud).
+  const annotationDocHoldsWorkRef = useRef(() => false);
+  annotationDocHoldsWorkRef.current = () => Boolean(
+    cloudSyncEnabled && pdfFile?.id && user?.id
+    && cloudSyncStatus?.healthy
+    && (annotationDocHasLocalStore() || cloudSyncQueueSize === 0)
+  );
   templateBindingAccessRef.current = {
     get: excelSyncMetaGet,
     set: (...args) => canRestoreFromHistory && excelSyncMetaSet(...args),
@@ -24384,9 +24407,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       } else {
         // Keep the dirty state and retry path even if a cloud flush can run.
         // Auto-save failures must be visible too: no local backup was written.
+        // A drawing past the browser's ~5 M character limit (Package 2: 11 M)
+        // can never fit this backup; while the shared document holds the work
+        // that is not a loss, and a red toast every 30 s only scares people.
         setHasUnsavedAnnotations(true);
         onUnsavedAnnotationsChange?.(true, tabId);
-        showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
+        if (!annotationDocHoldsWorkRef.current()) {
+          showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
+        }
       }
       // Report a failed local write before any network wait can outlast the
       // desktop quit grace period. Other save callers need no callback.
@@ -31177,6 +31205,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
     }, 300);
   }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
+
+  // A Survey Marker picked on the page opens its row in the open Survey panel
+  // (desktop), as a markup list follows the picked markup. The panel is not
+  // opened for it, and the phone sheet is left alone so it never covers the
+  // page under the finger.
+  const pickedSurveyMarkerId = pickedSurveyMarker?.annotationId || null;
+  useEffect(() => {
+    if (!pickedSurveyMarkerId || mobileMode || !showSurveyPanel || rightRailCollapsed) return undefined;
+    const marker = surveyMarkers[pickedSurveyMarkerId];
+    if (!marker?.categoryId) return undefined;
+    if (marker.moduleId) setSelectedModuleId(marker.moduleId);
+    setExpandedCategories((prev) => (prev[marker.categoryId] && Object.keys(prev).length === 1 ? prev : { [marker.categoryId]: true }));
+    setExpandedSurveyMarkers((prev) => (prev[pickedSurveyMarkerId] && Object.keys(prev).length === 1 ? prev : { [pickedSurveyMarkerId]: true }));
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(`highlight-item-${pickedSurveyMarkerId}`)?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+    // Only a new pick moves the panel; edits to the marker do not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedSurveyMarkerId]);
 
   // Survey audit P1-5 (phone "Locate on page"): newest locate wins.
   const surveyLocateTokenRef = useRef(0);

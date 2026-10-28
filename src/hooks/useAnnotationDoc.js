@@ -1182,6 +1182,8 @@ export function useAnnotationDoc({
 
   // True when every key is stored in the durable mark map (the embedded
   // import writes its once-only marker only after its marks landed).
+  const hasLocalStore = useCallback(() => handleRef.current?.hasLocalStore?.() === true, []);
+
   const hasStoredMarks = useCallback((keys) => {
     const h = handleRef.current;
     if (!h || !h.doc) return false;
@@ -1320,6 +1322,7 @@ export function useAnnotationDoc({
     metaSet,
     metaSubscribe,
     hasStoredMarks,
+    hasLocalStore,
     beginBulkImport,
     whenBulkImportSaved,
     status: syncStatus,

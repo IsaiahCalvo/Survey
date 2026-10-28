@@ -1537,6 +1537,23 @@ export default function TemplatesEditor({
      with "Add entity". */
   const DEFAULT_ROLES = ['GC', 'Subcontractor', 'My Company', '100% Complete', 'Removed'];
 
+  /* A just-added name field takes the caret with its text selected, so typing
+     names the new row at once. The desktop and phone trees are both in the
+     DOM (one hidden by CSS); only the copy on screen is focused. The row may
+     render a frame or two after the edit, so look again for a few frames. */
+  const focusVisibleInput = (selector, { select = true } = {}) => {
+    if (typeof document === 'undefined' || typeof requestAnimationFrame !== 'function') return;
+    let tries = 0;
+    const look = () => {
+      const el = [...document.querySelectorAll(selector)].find((candidate) => candidate.offsetParent !== null);
+      if (!el) { if (tries++ < 10) requestAnimationFrame(look); return; }
+      el.focus({ preventScroll: true });
+      el.scrollIntoView?.({ block: 'nearest' });
+      if (select) el.select?.();
+    };
+    requestAnimationFrame(look);
+  };
+
   /* UX: "New template" adds an empty template and opens it, exactly like Copy
      adds a duplicate — no modal. It is marked dirty so the existing Save bar
      persists it, which is the same path every other edit takes; nothing is
@@ -1562,8 +1579,21 @@ export default function TemplatesEditor({
     }]);
     markEdited();
     /* Open the new template so it reads as "created", matching how a new module
-       opens itself. */
-    setTimeout(() => setSelected(id), 0);
+       opens itself, with its name selected so typing names it at once. */
+    // On the phone the list stays up unless the new template's page opens
+    // (it was added out of sight at the bottom of the list).
+    const phone = mobileLayoutActive();
+    if (phone) captureMobileTemplateList();
+    setTimeout(() => {
+      setSelected(id);
+      if (phone) {
+        setOpenMod(0);
+        setOpenCat(-1);
+        setTemplateContentSearch('');
+        setMobileTemplateOpen(true);
+      }
+    }, 0);
+    focusVisibleInput('input[data-template-title]');
     if (onCreateTemplate) onCreateTemplate();
   };
 
@@ -1752,6 +1782,7 @@ export default function TemplatesEditor({
       }));
       setOpenMod(orderedMods.length);
       setOpenCat(0);
+      if (!mobileTemplateOpen) focusVisibleInput(`input[data-category-name-id="${categoryId}"]`);
       return;
     }
 
@@ -1765,6 +1796,7 @@ export default function TemplatesEditor({
     /* Open the new category so its (empty) checklist is immediately visible. */
     setOpenMod(targetIndex);
     setTimeout(() => setOpenCat((orderedMods[targetIndex].categories || []).length), 0);
+    if (!mobileTemplateOpen) focusVisibleInput(`input[data-category-name-id="${categoryId}"]`);
   };
   const addCategory = () => addCategoryToModule(openMod);
   const renameCategoryInModule = (moduleIndex, ci, name) => {
@@ -1859,16 +1891,30 @@ export default function TemplatesEditor({
   // of empty checklist items." One blank row per category at a time: if the
   // category already holds an empty item, Add does not add another - it puts
   // the cursor in the blank row that is already there.
-  const addItemToModule = (moduleIndex, ci) => {
+  const addItemToModule = (moduleIndex, ci, { after = null } = {}) => {
     const current = tpl?.modules?.[moduleIndex]?.categories?.[ci];
-    const blank = (current?.items || []).find((item) => !String(item?.text || '').trim());
+    // `after` is the line Enter just committed: this render still sees it blank.
+    const blank = (current?.items || []).find((item) => item.id !== after && !String(item?.text || '').trim());
     if (blank) { focusChecklistItem(blank.id); return; }
     const id = newId('i');
     freshBlankItemsRef.current.add(id);
-    mutateCategoryInModule(moduleIndex, ci, (c) => ({ ...c, items: [...c.items, { id, text: '' }] }), { quiet: true });
+    mutateCategoryInModule(moduleIndex, ci, (c) => {
+      const items = c.items.slice();
+      const at = after ? items.findIndex((item) => item.id === after) : -1;
+      items.splice(at >= 0 ? at + 1 : items.length, 0, { id, text: '' });
+      return { ...c, items };
+    }, { quiet: true });
     focusChecklistItem(id);
   };
-  const addItem = (ci) => addItemToModule(openMod, ci);
+  const addItem = (ci, options) => addItemToModule(openMod, ci, options);
+  /* Enter on a line with text saves it and opens a new line under it, so a
+     checklist is typed in one go; Enter on an empty new line ends the list
+     (the blank line goes away on blur). */
+  const checklistEnter = (e, ci, itemId) => {
+    const hasText = !isBlank(e.currentTarget.value);
+    e.currentTarget.blur();
+    if (hasText) addItem(ci, { after: itemId });
+  };
   const renameItemInModule = (moduleIndex, ci, itemId, text) => {
     const current = tpl?.modules?.[moduleIndex]?.categories?.[ci]?.items?.find((it) => it.id === itemId);
     if (current && current.text === text) return;   // unchanged: nothing to save
@@ -2981,7 +3027,7 @@ export default function TemplatesEditor({
                                   placeholder="Add checklist item"
                                   maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => discardFreshItem(i, it.id))}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') checklistEnter(e, i, it.id); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
                                 {customAnswers && (
                                   <ItemKindPicker item={it} onChange={(fields) => setItemKind(i, it.id, fields)}>
@@ -3681,7 +3727,7 @@ export default function TemplatesEditor({
                                               placeholder="Add checklist item"
                                               maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => discardFreshItem(ci, it.id))}
-                                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
+                                              onKeyDown={(e) => { if (e.key === 'Enter') checklistEnter(e, ci, it.id); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
                                             {customAnswers && (
                                               <ItemKindPicker phone item={it} onChange={(fields) => setItemKind(ci, it.id, fields)}>

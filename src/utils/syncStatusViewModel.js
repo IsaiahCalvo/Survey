@@ -99,7 +99,8 @@ export function getCompactSyncStatusMessage(status, queueSize = 0) {
   }
 
   if (pendingCount > 0 || stage === 'queued') {
-    const count = pendingCount > 0 ? `${pendingCount} change${pendingCount === 1 ? '' : 's'}` : 'Changes';
+    if (pendingCount === 1) return '1 change is safe locally and waiting to back up.';
+    const count = pendingCount > 0 ? `${pendingCount} changes` : 'Changes';
     return `${count} are safe locally and waiting to back up.`;
   }
   if (stage === 'pending') return 'Changes are saved locally and backing up now.';
