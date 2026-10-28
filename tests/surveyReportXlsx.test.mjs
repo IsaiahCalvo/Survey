@@ -33,6 +33,8 @@ test('the full report: Summary with a stacked bar chart of the category cells, I
   assert.match(chart, /<c:barChart><c:barDir val="bar"\/><c:grouping val="stacked"\/>/);
   assert.match(chart, /<c:f>'Summary'!\$B\$9:\$B\$11<\/c:f>/);
   assert.match(chart, /<c:f>'Summary'!\$A\$9:\$A\$11<\/c:f>/);
+  // Item counts step in whole numbers (4 items a category here).
+  assert.match(chart, /<c:crossBetween val="between"\/><c:majorUnit val="1"\/><\/c:valAx>/);
   assert.match(await zip.file('xl/worksheets/sheet1.xml').async('string'), /<drawing r:id="rIdSurveyChart"\/>/);
   assert.match(await zip.file('[Content_Types].xml').async('string'), /drawingml\.chart\+xml/);
   const wb = new ExcelJS.Workbook();

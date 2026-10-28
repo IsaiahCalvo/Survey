@@ -7455,6 +7455,8 @@ function buildHandle(state) {
 
     /** Current durable-write state for user-facing status. */
     getSyncStatus() { return currentSyncStatus(state); },
+    // This device's own store holds every edit (it survives a reload offline).
+    hasLocalStore() { return !!state.idbProvider; },
 
     /** Actor-safe status for the shipped actorless IndexedDB recovery store. */
     getLegacyRecoveryStatus() {

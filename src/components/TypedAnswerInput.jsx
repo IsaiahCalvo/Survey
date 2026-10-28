@@ -64,7 +64,12 @@ function TypedBox({ item, saved, onCommit, phone, number, width }) {
         else if (e.key === 'Escape') setDraft(null);
       }}
       onClick={stop}
-      style={boxStyle(phone, width, number ? 'right' : 'left')}
+      // Out of the line's min / max is an issue: red, like a past date or a low score.
+      aria-invalid={draft === null && typedAnswerIsIssue(item, saved) ? true : undefined}
+      style={{
+        ...boxStyle(phone, width, number ? 'right' : 'left'),
+        ...(draft === null && typedAnswerIsIssue(item, saved) ? { color: 'var(--danger-text)' } : {}),
+      }}
     />
   );
 }

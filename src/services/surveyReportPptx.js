@@ -114,6 +114,8 @@ const BLOCKS = {
     // A horizontal bar chart draws its first category at the bottom; reverse
     // so it reads top-down like the table.
     const labels = [...plan.chart.categories].reverse();
+    // Item counts: whole-number steps (a survey of one item read 0, 0.2, 0.4...).
+    const most = Math.max(0, ...plan.chart.categories.map((_, row) => plan.chart.series.reduce((sum, s) => sum + (Number(s.values[row]) || 0), 0)));
     slide.addChart(pptx.ChartType.bar, plan.chart.series.map((s) => ({ name: s.name, labels, values: [...s.values].reverse() })), {
       ...box,
       ...axisFonts,
@@ -124,6 +126,8 @@ const BLOCKS = {
       showLegend: true,
       legendPos: 't',
       valAxisMinVal: 0,
+      valAxisMajorUnit: Math.max(1, Math.ceil(most / 5)),
+      valAxisLabelFormatCode: '0',
       valGridLine: { color: 'EEEEEE', size: 0.5 },
       catGridLine: { style: 'none' },
     });

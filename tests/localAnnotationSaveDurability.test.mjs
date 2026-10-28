@@ -111,6 +111,8 @@ function saveCallbackHarness({ localSaved, cloud = false, flushError = null, ove
     saveSurveyDataToSupabase: async () => { state.cloudWrites += 1; },
     cloudSyncForceFlush: async () => { state.flushes += 1; if (flushError) throw flushError; },
     showToast: (...args) => state.toasts.push(args),
+    // The shared document does not hold the work unless a test says so.
+    annotationDocHoldsWorkRef: { current: () => false },
     console: { log: (line) => state.logs.push(line), warn: () => {}, error: () => {} },
     EXCEL_AUTOMATIC_WRITEBACK_ENABLED: false,
     ...overrides,
@@ -133,6 +135,17 @@ for (const silent of [false, true]) {
     assert.equal(h.complete().localBackupSaved, false);
     assert.equal(h.state.toasts.length, 1, 'auto-save failure must not be silent');
     assert.equal(h.state.toasts[0][1], 'error');
+  });
+}
+
+for (const silent of [false, true]) {
+  test(`a backup too big for the browser stays dirty but shows no error while the shared document holds the work (silent=${silent})`, async () => {
+    const h = saveCallbackHarness({ localSaved: false, cloud: true, overrides: { annotationDocHoldsWorkRef: { current: () => true } } });
+    assert.equal(await h.save(silent), false);
+    assert.equal(h.state.dirty, true);
+    assert.equal(h.complete().localBackupSaved, false);
+    assert.deepEqual(h.state.toasts, [], 'no red toast every 30 s on a big drawing');
+    assert.equal(h.state.flushes, 1, 'the cloud save still runs');
   });
 }
 
