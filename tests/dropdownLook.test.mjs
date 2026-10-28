@@ -82,3 +82,16 @@ test('a space folds open in place (Expander) and its regions rise in', () => {
   assert.match(css, /grid-template-rows var\(--motion-collapse\) var\(--ease-glide\)/);
   assert.match(read('src/components/Expander.jsx'), /inert=\{shown \? undefined : ''\}/);
 });
+
+test('arrow keys in a choice group skip a disabled choice', async () => {
+  const { moveGroupFocus } = await import('../src/utils/radioGroupKeys.js');
+  const make = (disabled = false) => ({ disabled, getAttribute: () => null, focus() { globalThis.document.activeElement = this; } });
+  const [a, b, c] = [make(), make(true), make()];
+  globalThis.document = { activeElement: a };
+  const event = { key: 'ArrowRight', currentTarget: { querySelectorAll: () => [a, b, c] }, preventDefault() {} };
+  moveGroupFocus(event);
+  assert.equal(globalThis.document.activeElement, c);
+  moveGroupFocus({ ...event, key: 'ArrowLeft' });
+  assert.equal(globalThis.document.activeElement, a);
+  delete globalThis.document;
+});
