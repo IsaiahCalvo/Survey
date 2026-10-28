@@ -67,6 +67,9 @@ export function buildSurveyMarkerRow({
       authorId: annotation.userId ?? annotation.annotationData?.userId ?? null,
       lockedBy: typeof annotation.lockedBy === 'string' && annotation.lockedBy ? annotation.lockedBy : null,
       unplaced: !(annotation.pageNumber && annotation.bounds),
+      // Nightly marker tracking: status / assignee / due ride in the row too
+      // (undefined drops a cleared one that annotationData still carries).
+      tracking: annotation.tracking && typeof annotation.tracking === 'object' ? annotation.tracking : undefined,
     },
   };
 }
@@ -97,6 +100,7 @@ export function mapSurveyMarkerRowToLocalAnnotation(row) {
     entityId: row.entity_id,
     entityName: row.entity_name,
     checklistResponses: row.checklist_responses || {},
+    ...(annotationData.tracking && typeof annotationData.tracking === 'object' ? { tracking: annotationData.tracking } : {}),
     changedBy: row.changed_by,
     changedDate: row.changed_date,
     color: row.color,
