@@ -510,6 +510,9 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'not signed in' USING ERRCODE = '42501';
   END IF;
+  IF public.is_agent_session() THEN
+    RAISE EXCEPTION 'agents cannot approve agents' USING ERRCODE = '42501';
+  END IF;
   IF public.is_guest_session() THEN
     RAISE EXCEPTION 'guests cannot link agents' USING ERRCODE = '42501';
   END IF;
