@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../home/HubShell';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import Spinner from './Spinner';
+import ButtonGroup from './ButtonGroup.jsx';
 import MotionPresence from './MotionPresence.jsx';
 import { C } from '../uiPalette';
 import { EXPORT_MARK_MODES, parsePageList } from '../utils/exportPdfModes.js';
@@ -94,21 +95,12 @@ export default function ExportPdfDialog({ open, api, fileName = '', onClose }) {
             </div>
             <div className="pdft-field">
               <span className="pdft-label" id="export-pdf-pages">Pages</span>
-              <div className="pdft-seg" role="radiogroup" aria-labelledby="export-pdf-pages">
-                {pageChoices.map(([v, l]) => (
-                  <button
-                    key={v}
-                    type="button"
-                    role="radio"
-                    aria-checked={pages === v}
-                    className={pages === v ? 'is-on' : ''}
-                    disabled={v === 'marked' && info && !marked.length}
-                    onClick={() => { setPages(v); setError(''); }}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
+              <ButtonGroup
+                labelledBy="export-pdf-pages"
+                value={pages}
+                options={pageChoices.map(([v, l]) => ({ value: v, label: l, disabled: v === 'marked' && info && !marked.length }))}
+                onChange={(v) => { setPages(v); setError(''); }}
+              />
               {pages === 'custom' && (
                 <>
                   <input

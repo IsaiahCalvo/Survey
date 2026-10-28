@@ -19,6 +19,7 @@
 // useCallback-stable so the external callers that omit the setter from their
 // dependency arrays keep their referential identity.
 
+import MenuGlide from '../components/MenuGlide.jsx';
 import { menuIconFor } from '../utils/menuItems.js';
 import { queryFrontTab } from '../utils/tabBehind.js';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
@@ -315,6 +316,7 @@ function MarkMenuBody({ layout, touchRows }) {
   const tipFor = (label) => (touchRows ? {} : tip(label, 'above'));
   return (
     <div ref={rootRef} className="annotation-menu-body">
+      <MenuGlide />
       <div role="group" aria-label="Edit" className="annotation-menu-quick">
         {layout.quick.map((it) => {
           const hint = tipFor(it.label);

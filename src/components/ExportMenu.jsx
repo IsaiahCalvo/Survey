@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnchoredPopover from './AnchoredPopover';
 import Icon from '../Icons';
+import MenuGlide from './MenuGlide.jsx';
 import { useTooltip } from './Tooltip';
 
 export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 }) {
@@ -70,14 +71,16 @@ export default function ExportMenu({ items = [], tooltip = {}, glyphSize = 10 })
             className="hub-menu"
             // AnchoredPopover clamps a centred card, so the menu stays centred
             // on its zero-width wrapper.
-            style={{ position: 'absolute', top: '100%', left: '50%', marginTop: 6, minWidth: 220, transform: 'translate(-50%, 0)' }}
+            style={{ position: 'absolute', top: '100%', left: '50%', marginTop: 6, minWidth: 220, transform: 'translate(-50%, 0)', '--menu-origin': 'top center' }}
           >
-            {visibleItems.map((item) => (
+            <MenuGlide />
+            {visibleItems.map((item, index) => (
               <button
                 key={item.label}
                 type="button"
                 role="menuitem"
                 className="hub-menu__item"
+                style={{ '--menu-row': index }}
                 {...tip(item.title, 'left')}
                 onClick={() => {
                   setOpen(false);
