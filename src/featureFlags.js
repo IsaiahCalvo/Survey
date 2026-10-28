@@ -82,6 +82,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Counts list: rename, recolour and reorder counts in one place',
     stage: 'beta',
   }),
+  'company-admin': Object.freeze({
+    label: 'Company workspace: people, roles, seats, shared storage and activity log (Enterprise)',
+    stage: 'beta',
+  }),
   'export-modes': Object.freeze({
     label: 'Export PDF choices: annotated, flattened or plain, and which pages',
     stage: 'beta',

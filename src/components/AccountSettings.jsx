@@ -28,6 +28,9 @@ import {
   isAccountDeletionConfirmed,
 } from './accountDeletionConfirm';
 import CrashReportsPanel from './CrashReportsPanel';
+import CompanyPanel from './company/CompanyPanel.jsx';
+import { isFeatureOn } from '../featureFlags.js';
+import { COMPANY_FLAG } from '../services/companyService.js';
 import { downloadMyData } from '../services/accountExport';
 import {
   readAnnotationSnapping,
@@ -72,6 +75,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [message, setMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
+  // Read once per open, like every flag: a /flags change shows on reload.
+  const [companyOn] = useState(() => isFeatureOn(COMPANY_FLAG));
   const [subscriptionViewTab, setSubscriptionViewTab] = useState('manage'); // 'manage' or 'usage'
   const dialogRef = useRef(null);
   const [deletionDialogOpen, setDeletionDialogOpen] = useState(false);
@@ -537,6 +542,17 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   its own longer label on the sub-tab inside. */}
               Subscription
             </button>
+            {/* Enterprise company workspace (beta, Nightly only). */}
+            {companyOn && (
+              <button
+                onClick={() => setActiveTab('company')}
+                className={`account-sidebar-btn ${activeTab === 'company' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={activeTab === 'company'}
+              >
+                Company
+              </button>
+            )}
             {/* Crash hunt 2026-10-07: this device's crash notes, to copy to us. */}
             <button
               onClick={() => setActiveTab('crash-reports')}
@@ -1137,6 +1153,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
             )}
 
             {activeTab === 'crash-reports' && <CrashReportsPanel />}
+            {companyOn && activeTab === 'company' && <CompanyPanel />}
 
             {/* KAL-397 — Settings -> Annotations (Acrobat's name for it). */}
             {activeTab === 'annotations' && (
