@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   MEASURE_PRESETS,
   MEASURE_UNITS,
+  loadRecentMeasureScales,
   scaleFromCalibration,
   scaleFromPreset,
 } from '../utils/measure/measureScale.js';
@@ -23,10 +24,13 @@ import './MeasureScaleDialog.css';
 // bar with Cancel and the gold primary), the presets are chips grouped as
 // architectural and metric, and the units are chips too. 44px touch targets
 // and 16px fields stay, so iOS Safari does not zoom on focus.
+//
+// Drawboard Projects parity (2026-10-27): "Apply to" this page or all pages,
+// and the last five scales picked on this screen as one-tap chips.
 const IMPERIAL = MEASURE_PRESETS.filter((p) => p.unit === 'ft');
 const OTHER = MEASURE_PRESETS.filter((p) => p.unit !== 'ft');
 
-export default function MeasureScaleDialog({ pageNumber, lengthPt = null, currentScale = null, onApply, onCalibrate, onCancel }) {
+export default function MeasureScaleDialog({ pageNumber, pageCount = 1, lengthPt = null, currentScale = null, onApply, onCalibrate, onCancel }) {
   const tip = useTooltip();
   const cardRef = useRef(null);
   const [real, setReal] = useState('');
@@ -34,12 +38,17 @@ export default function MeasureScaleDialog({ pageNumber, lengthPt = null, curren
   const [preset, setPreset] = useState(
     () => MEASURE_PRESETS.find((p) => p.label === currentScale?.label)?.id || '1/4',
   );
+  const [recent] = useState(() => loadRecentMeasureScales());
+  const [recentPick, setRecentPick] = useState(null);
+  const [allPages, setAllPages] = useState(false);
   const calibrating = Number.isFinite(lengthPt) && lengthPt > 0;
-  const scale = calibrating ? scaleFromCalibration(lengthPt, real, unit) : scaleFromPreset(preset);
+  const scale = calibrating
+    ? scaleFromCalibration(lengthPt, real, unit)
+    : (recentPick != null ? recent[recentPick] : scaleFromPreset(preset));
   useFocusTrap(cardRef, true, { onEscape: onCancel });
   const submit = (e) => {
     e.preventDefault();
-    if (scale) onApply(scale);
+    if (scale) onApply(scale, { allPages: allPages && pageCount > 1 });
   };
   const chip = (id, label, active, onPick, marker) => (
     <button
@@ -108,13 +117,21 @@ export default function MeasureScaleDialog({ pageNumber, lengthPt = null, curren
               </>
             ) : (
               <>
+                {recent.length > 0 && (
+                  <>
+                    <div className="measure-scale__label">Recent</div>
+                    <div className="measure-scale__chips" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Recent scale" data-measure-recent="true">
+                      {recent.map((r, i) => chip(`recent-${i}`, r.label, recentPick === i, () => setRecentPick(i), { 'data-measure-recent-option': i }))}
+                    </div>
+                  </>
+                )}
                 <div className="measure-scale__label">Architectural</div>
                 <div className="measure-scale__chips" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Architectural scale" data-measure-preset="true">
-                  {IMPERIAL.map((p) => chip(p.id, p.label, preset === p.id, () => setPreset(p.id), { 'data-measure-preset-option': p.id }))}
+                  {IMPERIAL.map((p) => chip(p.id, p.label, recentPick == null && preset === p.id, () => { setPreset(p.id); setRecentPick(null); }, { 'data-measure-preset-option': p.id }))}
                 </div>
                 <div className="measure-scale__label">Ratio</div>
                 <div className="measure-scale__chips" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Ratio scale">
-                  {OTHER.map((p) => chip(p.id, p.label, preset === p.id, () => setPreset(p.id), { 'data-measure-preset-option': p.id }))}
+                  {OTHER.map((p) => chip(p.id, p.label, recentPick == null && preset === p.id, () => { setPreset(p.id); setRecentPick(null); }, { 'data-measure-preset-option': p.id }))}
                 </div>
                 <button type="button" className="measure-scale__calibrate" data-measure-start-calibrate="true" onClick={onCalibrate}>
                   <span className="measure-scale__calibrate-glyph" aria-hidden="true">
@@ -128,6 +145,15 @@ export default function MeasureScaleDialog({ pageNumber, lengthPt = null, curren
                     <span className="measure-scale__calibrate-sub">Draw a line over a known distance</span>
                   </span>
                 </button>
+              </>
+            )}
+            {pageCount > 1 && (
+              <>
+                <div className="measure-scale__label">Apply to</div>
+                <div className="measure-scale__chips measure-scale__chips--units" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Apply to" data-measure-apply-to="true">
+                  {chip('this-page', 'This page', !allPages, () => setAllPages(false), { 'data-measure-apply-to-option': 'page' })}
+                  {chip('all-pages', `All ${pageCount} pages`, allPages, () => setAllPages(true), { 'data-measure-apply-to-option': 'all' })}
+                </div>
               </>
             )}
           </div>

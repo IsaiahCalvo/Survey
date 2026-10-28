@@ -10,7 +10,7 @@ import {
 import { groupEditsByFile } from '../src/services/memberActivity.js';
 import { FEATURE_FLAGS, isFeatureOn } from '../src/featureFlags.js';
 
-const MIGRATION = readFileSync(new URL('../supabase/migrations/20261028020000_company_workspace.sql', import.meta.url), 'utf8');
+const MIGRATION = readFileSync(new URL('../supabase/migrations/20261028025000_company_workspace.sql', import.meta.url), 'utf8');
 
 test('log rows read as plain sentences', () => {
   assert.equal(activitySentence({ actor_email: 'olive@acme.com', action: 'project.renamed', target_label: 'Tower B', details: { from: 'Tower A', to: 'Tower B' } }),

@@ -5,6 +5,12 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-27', items: [
+    'Set page scale can apply one scale to this page or to every page, and the scale stays after a reload.',
+    'Measuring: your last five scales show as quick picks, a scale bar sits on the page while a measure tool is on, and there is a new Perimeter measure.',
+    'Stamps made in other apps that carry no look of their own, such as Acrobat\'s Approved and Draft, now show on the page.',
+    'Upload as new version brings every mark and Survey Marker across to the new version.',
+    'Templates have an Auto-mark as Complete switch: turn it off to mark items Complete only by hand.',
+    'Pro plans include OneDrive export, as the pricing page says.',
     'Swipe rows are simpler: slide left to delete (a long slide deletes at once) or right for one everyday action such as Share, Duplicate or Move. A mouse drag works on a computer.',
     'A new text box takes the bar\'s width, border, fill and dashed or dotted style, and dashed and dotted borders now show and print.',
     'Drop-downs in dialogs such as Share, invite, move and print use the app\'s own look.',

@@ -1,6 +1,6 @@
 // Company workspace (Enterprise, beta flag 'company-admin'): people, roles,
 // seats, the shared storage pool and the activity log. Every write is a
-// database function (supabase/migrations/20261028020000_company_workspace.sql)
+// database function (supabase/migrations/20261028025000_company_workspace.sql)
 // that checks the caller's role itself; this file only calls them and turns
 // rows into words.
 import { supabase } from '../supabaseClient.js';

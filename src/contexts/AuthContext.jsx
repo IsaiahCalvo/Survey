@@ -20,6 +20,7 @@ import {
 import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
 import { pdfByteCache } from '../services/pdfByteCache.js';
 import { loadAccountExportKits } from '../services/exportFormats/accountKits.js';
+import { isFeatureOn } from '../featureFlags.js';
 
 // Where Supabase sends the browser back after a Google or company sign-in.
 // In Electron window.location.origin may be file://, which can't take a
@@ -580,7 +581,16 @@ export const AuthProvider = ({ children }) => {
     let off = null;
     let cancelled = false;
     loadAccountExportKits(supabase).then((fn) => { if (cancelled) fn(); else off = fn; }).catch(() => {});
-    return () => { cancelled = true; off?.(); };
+    // Nightly: layouts this person made from their own sheet.
+    // Loaded on demand to keep it off the first load.
+    let ownStore = null;
+    if (isFeatureOn('own-excel-layouts')) {
+      import('../services/exportFormats/ownKitStore.js')
+        .then(({ ownKitStore }) => { ownStore = ownKitStore; return ownKitStore.load(); })
+        .then(() => { if (cancelled) ownStore?.unload(); })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; off?.(); ownStore?.unload(); };
   }, [user?.id]);
 
   // Refetch subscription tier when window regains focus (user returns from Stripe)
