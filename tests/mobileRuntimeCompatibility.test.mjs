@@ -165,7 +165,8 @@ test('Expo never leaves a failed or stalled WebView as a silent blank screen', (
 test('hosted mobile route is canonical and preserves mobile OAuth return', () => {
   assert.match(INDEX_HTML_SOURCE, /\^\\\/mobile\(\?:\\\/\|\$\)/);
   assert.match(HUB_SHELL_SOURCE, /\^\\\/mobile\(\?:\\\/\|\$\)[\s\S]{0,80}return 'tabs'/);
-  assert.match(AUTH_CONTEXT_SOURCE, /redirectTo = `\$\{window\.location\.origin\}\/mobile`/);
+  assert.match(AUTH_CONTEXT_SOURCE, /return `\$\{window\.location\.origin\}\/mobile`/);
+  assert.match(AUTH_CONTEXT_SOURCE, /const redirectTo = authRedirectTarget\(\);/);
 });
 
 test('build identity avoids a floating overlay and Simulator rejects a stale bundle', () => {

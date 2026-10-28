@@ -4,7 +4,8 @@
  *
  * mode="version": the incoming file shares a name with an existing document but
  * the contents differ. Choices: open the existing document, or upload the new
- * file as a new version (the old copy is archived, its marks kept).
+ * file as a new version (its marks are brought across to the same spots and
+ * the old copy is archived).
  *
  * mode="alias": the incoming bytes matched an existing document stored under a
  * different name. The document is reused either way; the only question is
@@ -70,7 +71,7 @@ const DuplicateUploadModal = ({
         </button>
       ))}
     >
-      {isVersion ? 'Uploading as a new version keeps the old copy and its marks. It just moves out of your active list.' : null}
+      {isVersion ? 'A new version brings your marks across to the same spots. The old copy moves out of your active list.' : null}
     </DialogCard>
   );
 };

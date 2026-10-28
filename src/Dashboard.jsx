@@ -21,6 +21,7 @@ import BodyPortal from './components/BodyPortal';
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
+import { carryMarksToNewVersion } from './services/documentVersionMarks.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
@@ -394,6 +395,27 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
   };
 
+  // "Upload as new version": bring the old copy's marks and survey markers
+  // across to the same page and spot, before the viewer opens the new
+  // document so they are there on first paint. Returns whether the old copy
+  // may be archived: if the copy fails it stays in the list with its marks.
+  const carryMarksToReplacement = async (archiveDocId, newDoc, newDocId) => {
+    if (!archiveDocId || newDoc?.id !== newDocId) return true;
+    try {
+      const { total } = await carryMarksToNewVersion({
+        client: supabase,
+        fromDocumentId: archiveDocId,
+        toDocumentId: newDocId,
+      });
+      if (total > 0) showToast(`Brought ${total} mark${total === 1 ? '' : 's'} across from the old version`, 'success');
+      return true;
+    } catch (err) {
+      console.error('Could not bring the marks across to the new version:', err);
+      showToast('The new version was added, but its marks couldn’t come across, so the old copy stays in your list.');
+      return false;
+    }
+  };
+
   // After the new row exists: archive the old same-name copy the user chose to
   // replace. Non-fatal on failure (both copies stay visible — recoverable).
   const archiveReplacedDocument = async (archiveDocId) => {
@@ -639,10 +661,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         }
 
         let resolvedDoc;
+        const newDocId = crypto.randomUUID();
         try {
           // Own object per row, named by the row id: a page edit on this
           // document must never rewrite another document's bytes.
-          const newDocId = crypto.randomUUID();
           resolvedDoc = await createSupabaseDocument({
             id: newDocId,
             name: file.name,
@@ -688,6 +710,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           refetchAllDocuments();
           perfUpload.end(file.name);
           return;
+        }
+
+        if (!(await carryMarksToReplacement(duplicateGate.archiveDocId, resolvedDoc, newDocId))) {
+          duplicateGate.archiveDocId = null;
         }
 
         // Stamp the resolved identity onto the in-memory File so the viewer opens
@@ -813,9 +839,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (!duplicateGate.proceed) return 'skipped';
 
     let resolvedDoc;
+    const newDocId = crypto.randomUUID();
     try {
       // Own object per row (see the Electron picker upload above).
-      const newDocId = crypto.randomUUID();
       resolvedDoc = await createSupabaseDocument({
         id: newDocId,
         name: file.name,
@@ -857,6 +883,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       if (openAfterUpload) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
       return 'existing';
+    }
+
+    if (!(await carryMarksToReplacement(duplicateGate.archiveDocId, resolvedDoc, newDocId))) {
+      duplicateGate.archiveDocId = null;
     }
 
     file.id = resolvedDoc.id;
