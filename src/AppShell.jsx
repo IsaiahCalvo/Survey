@@ -66,6 +66,8 @@ import { createKeyboardViewportController } from './mobile/keyboardViewport';
 import YDocProvider from './components/collab/YDocProvider.jsx';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
+import { guestTokenFrom } from './services/guestLinkToken.js';
+import { supabase as guestSupabase } from './supabaseClient';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
 import { ZOOM_MODES } from './utils/zoomController';
 import { createPortal } from 'react-dom';
@@ -285,6 +287,10 @@ const PDFViewer = retryingLazy(
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
+// Guest links (Nightly): the join card and badge load only for a guest link
+// or a guest session, never on a normal first load.
+const GuestLinkGate = lazy(() => import('./guest/GuestLinkGate.jsx'));
+const GuestBadge = lazy(() => import('./guest/GuestLinkGate.jsx').then((m) => ({ default: m.GuestBadge })));
 
 /* Dev build stamp (git hash · dev-server start time, injected by vite.config's
    __BUILD_STAMP__ define). It used to render as a fixed chip in the bottom-left
@@ -1390,7 +1396,14 @@ export default function App({ devPreviewReturnTab = null }) {
   })));
 
   // Authentication state
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, signOut: authSignOut } = useAuth();
+  // Guest links (Survey Nightly only, beta flag 'guest-links'): /?guest=<secret>
+  // opens one shared document without an account (guest/GuestLinkGate.jsx).
+  const [guestLinksEnabled] = useState(() => isFeatureOn('guest-links'));
+  const [guestLinkToken] = useState(() => (typeof window === 'undefined' ? null : guestTokenFrom(window.location.href)));
+  // "I have an account" on the guest card hands over to the normal sign-in.
+  const [guestChoseSignIn, setGuestChoseSignIn] = useState(false);
+  const guestJoinPending = Boolean(guestLinksEnabled && guestLinkToken && !user && !guestChoseSignIn);
   const proLocked = useProLock();
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
@@ -5363,8 +5376,20 @@ export default function App({ devPreviewReturnTab = null }) {
       </div>
 
       {/* Authentication Modal */}
+      {guestLinksEnabled && (guestLinkToken || user?.is_anonymous) ? (
+        <Suspense fallback={null}>
+          <GuestLinkGate
+            client={guestSupabase}
+            token={guestLinkToken}
+            user={user}
+            authReady={!authLoading}
+            onSignIn={() => { setGuestChoseSignIn(true); setShowAuthModal(true); }}
+          />
+          <GuestBadge user={user} onLeave={() => { authSignOut?.(); }} />
+        </Suspense>
+      ) : null}
       <AuthModal
-        isOpen={showAuthModal}
+        isOpen={showAuthModal && !guestJoinPending}
         initialMode={startsInSignUp() ? 'signup' : 'login'}
         onClose={() => setShowAuthModal(false)}
         onDismiss={!authPromptDismissed ? handleDismiss : null}

@@ -26,6 +26,7 @@ import { buildScopeImportPlans } from '../_shared/matcher/buildScopeImportPlans.
 import { generateRowIdToken } from '../_shared/matcher/rowIdToken.js';
 import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const corsHeaders = {
   // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -116,6 +117,7 @@ Deno.serve(async (req: Request) => {
     if (error || !data?.user) {
       return json({ error: 'unauthorized' }, 401);
     }
+    if (isGuestUser(data.user)) return json({ error: GUEST_REFUSED_MESSAGE }, 403);
     actorId = data.user.id; // the authenticated user IS p_actor_id (F17).
   } catch {
     return json({ error: 'unauthorized' }, 401);
