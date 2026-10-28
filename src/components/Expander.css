@@ -1,0 +1,42 @@
+/* Expander: a section that folds open in place (owner 2026-10-28, the
+   21st.dev "activity dropdown"). The grid row goes from 0fr to 1fr, so the
+   section grows to exactly its content's height; rows marked
+   data-expander-row rise in one after another. */
+.expander {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--motion-collapse) var(--ease-glide),
+    opacity var(--motion-collapse) var(--ease-glide);
+}
+
+.expander[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.expander__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.expander [data-expander-row] {
+  opacity: 0;
+  translate: 0 6px;
+  transition:
+    opacity var(--motion-collapse) var(--ease-glide),
+    translate var(--motion-collapse) var(--ease-glide);
+}
+
+.expander[data-open] [data-expander-row] {
+  opacity: 1;
+  translate: 0 0;
+  transition-delay: calc(min(var(--expander-row, 0), 8) * 40ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expander[data-open] [data-expander-row] {
+    transition-delay: 0s;
+  }
+}

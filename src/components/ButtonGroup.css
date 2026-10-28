@@ -1,0 +1,116 @@
+/* ButtonGroup: joined choice buttons (owner 2026-10-28, the shadcn button
+   group). One outline round the row, a hairline between buttons, inner
+   corners square. The chosen one is gold ink only. */
+.button-group {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+}
+
+.button-group--fill {
+  display: flex;
+  width: 100%;
+}
+
+.button-group > button {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--motion-state) var(--ease-out),
+    background-color var(--motion-state) var(--ease-out);
+}
+
+.button-group--fill > button {
+  flex: 1 1 0;
+}
+
+.button-group > button > span {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+.button-group > button + button {
+  border-left: 1px solid var(--border);
+}
+
+.button-group > button:first-child {
+  border-top-left-radius: var(--radius-sm);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+.button-group > button:last-child {
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
+}
+
+.button-group > button small {
+  color: var(--text-3);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+@media (hover: hover) {
+  .button-group > button:not(:disabled):hover {
+    color: var(--text-1);
+    background: var(--hover);
+  }
+}
+
+.button-group > button:not(:disabled):active {
+  background: var(--pressed);
+}
+
+.button-group > button[aria-checked='true'] {
+  color: var(--accent);
+}
+
+.button-group > button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.button-group > button:focus-visible {
+  z-index: 1;
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* A dense panel's row (the print panel). */
+.button-group--sm > button {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: var(--font-size-sm);
+}
+
+/* A finger needs 44px. */
+@media (pointer: coarse) {
+  .button-group > button,
+  .button-group--sm > button {
+    min-height: 44px;
+    font-size: var(--font-size-lg);
+  }
+}

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AnchoredPopover from './AnchoredPopover';
 import ValueSelect from './ValueSelect.jsx';
+import ButtonGroup from './ButtonGroup.jsx';
 import {
     PAGE_GRID_DENSITIES,
     PAGE_GRID_SETTINGS_EVENT,
@@ -49,32 +50,17 @@ export function PageGridSettingsPanel({ on, toggle, phone = false, showSwitch = 
                 </button>
             )}
             <div className="page-grid-settings__label" id="page-grid-spacing">Spacing</div>
-            <div className="page-grid-settings__seg" role="radiogroup" aria-labelledby="page-grid-spacing">
-                {PAGE_GRID_DENSITIES.map((d) => (
-                    <button
-                        key={d.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={settings.density === d.id}
-                        aria-label={`${d.label}, ${d.hint}`}
-                        className={settings.density === d.id ? 'is-on' : ''}
-                        onClick={() => update({ density: d.id })}
-                    >
-                        <span>{d.label}</span>
-                        <small>{d.hint}</small>
-                    </button>
-                ))}
-                <button
-                    type="button"
-                    role="radio"
-                    aria-checked={settings.density === 'custom'}
-                    className={settings.density === 'custom' ? 'is-on' : ''}
-                    onClick={() => update({ density: 'custom' })}
-                >
-                    <span>Custom</span>
-                    <small>{settings.customValue} {settings.customUnit}</small>
-                </button>
-            </div>
+            <ButtonGroup
+                labelledBy="page-grid-spacing"
+                fill
+                className="page-grid-settings__seg"
+                value={settings.density}
+                options={[
+                    ...PAGE_GRID_DENSITIES.map((d) => ({ value: d.id, label: d.label, hint: d.hint, ariaLabel: `${d.label}, ${d.hint}` })),
+                    { value: 'custom', label: 'Custom', hint: `${settings.customValue} ${settings.customUnit}` },
+                ]}
+                onChange={(density) => update({ density })}
+            />
             {settings.density === 'custom' && (
                 <div className="page-grid-settings__custom">
                     <span>Every</span>

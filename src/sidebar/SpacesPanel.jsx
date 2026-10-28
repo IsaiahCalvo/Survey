@@ -29,6 +29,7 @@ import { showToast } from '../utils/toast';
 import { useTooltip } from '../components/Tooltip';
 import SectionIconButton from '../components/SectionIconButton.jsx';
 import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
+import Expander from '../components/Expander.jsx';
 import { registerLightPopover, watchLightPopover } from '../components/dismissRules.js';
 import AnnotationDropdown from '../components/AnnotationDropdown.jsx';
 import { useMenuFocus } from '../hooks/useMenuFocus.js';
@@ -353,7 +354,9 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
         </div>
         </SwipeActionsRow>
 
-        {isExpanded && (
+        {/* Owner 2026-10-28: the space folds open in place (Expander, the
+            "activity dropdown" he picked) and its regions rise in one by one. */}
+        <Expander open={isExpanded}>
           <div className="space-card__body">
             {/* A space with no pages shows the field at once (there is
                 nothing else to do with it); with pages it is an edit-mode
@@ -405,7 +408,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                 {space.assignedPages
                   ?.slice()
                   .sort((a, b) => (a.pageId || 0) - (b.pageId || 0))
-                  .map((page) => {
+                  .map((page, rowIndex) => {
                     const regionLabel = typeof page.label === 'string' && page.label.trim().length > 0
                       ? page.label.trim()
                       : `Region ${page.pageId}`;
@@ -455,6 +458,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
                       <SwipeActionsRow
                         as="li"
                         key={page.pageId}
+                        data-expander-row=""
+                        style={{ '--expander-row': rowIndex }}
                         label={`Page ${page.pageId}`}
                         disabled={editMode || isEditingRegion || isActiveRegionEdit}
                         /* Owner 2026-10-27: no Move in the swipe - the line's
@@ -634,7 +639,7 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               </ul>
             )}
           </div>
-        )}
+        </Expander>
       </div>
     </div>
   );

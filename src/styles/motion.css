@@ -33,6 +33,15 @@
 @keyframes sv-menu-in-up {
   from { opacity: 0; translate: 0 var(--motion-menu-shift, 8px); }
 }
+/* Drop-downs (owner 2026-10-28): an action menu grows out of the button it
+   opens from (transform-origin: the corner nearest that button), and each
+   row arrives a moment after the one above it. */
+@keyframes sv-menu-grow {
+  from { opacity: 0; scale: 0.94; }
+}
+@keyframes sv-menu-row-in {
+  from { opacity: 0; translate: 6px 0; }
+}
 @keyframes sv-fade-in {
   from { opacity: 0; }
 }
@@ -84,6 +93,26 @@
     .mobile-styled-select__menu[style*=" bottom:"]
   ) {
     animation-name: sv-menu-in-up;
+  }
+
+  /* ACTION MENUS (the shared .hub-menu card: row More menus, right-click,
+     Export, the access and team row menus) grow out of their button. The
+     card's corner nearest the button is its --menu-origin (default: under a
+     More button at the row's right end). */
+  :where(.hub-menu) {
+    animation: sv-menu-grow var(--motion-menu-open) var(--ease-glide);
+    transform-origin: var(--menu-origin, top right);
+  }
+  :where(.hub-menu.opens-up) {
+    --menu-origin: bottom right;
+  }
+
+  /* DROP-DOWN ROWS arrive one after another (--menu-row is the row's place,
+     set by MenuRows and AnnotationDropdown; capped so a long list is not
+     slow). Filled backwards so a row waiting its turn is not seen first. */
+  :where(.hub-menu, .annotation-dropdown__options) > :where([role="menuitem"], [role="option"]) {
+    animation: sv-menu-row-in var(--motion-menu-row) var(--ease-glide) backwards;
+    animation-delay: calc(min(var(--menu-row, 0), 10) * var(--motion-menu-stagger));
   }
 
   /* DIALOGS: 150 ms, fade in from 0.98 scale. The scrim behind fades in on
