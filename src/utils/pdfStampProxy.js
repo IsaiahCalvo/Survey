@@ -145,3 +145,81 @@ export const pngDataUrlToBytes = (dataUrl) => {
     : Buffer.from(match[1], 'base64').toString('binary');
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 };
+
+// Stamps with no /AP /N (Acrobat's standard stamps saved by apps that leave
+// the look to the reader, or an /AP pdf.js cannot paint) used to be hidden
+// behind the "some annotations aren't displayed" notice. Drawboard Projects
+// shows them, so they are drawn here from the stamp's /Name the way Acrobat
+// draws its standard set: the words in capitals inside a rounded box.
+const STAMP_GREEN = 'rgb(46, 125, 50)';
+const STAMP_RED = 'rgb(198, 40, 40)';
+const STAMP_BLUE = 'rgb(31, 78, 156)';
+const GREEN_WORDS = /^(APPROVED|FINAL|COMPLETED|ACCEPTED|REVIEWED|AS IS|SOLD)$/;
+const RED_WORDS = /^(NOT APPROVED|REJECTED|VOID|EXPIRED|CONFIDENTIAL|TOP SECRET|DRAFT|NOT FOR PUBLIC RELEASE)$/;
+
+/** The words a stamp shows: its /Name split into words, else its text. */
+export function namedStampLabel(name, contents = '') {
+  let token = String(name || '').trim().replace(/^\//, '').replace(/^#/, '');
+  // Acrobat's "Sign here" set is named SBApproved, SBRejected, ...
+  if (/^SB[A-Z]/.test(token)) token = token.slice(2);
+  const words = token
+    .replace(/#([0-9a-f]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (words) return words.toUpperCase();
+  const text = String(contents || '').replace(/\s+/g, ' ').trim();
+  return text ? text.slice(0, 40).toUpperCase() : 'STAMP';
+}
+
+/** Ink for a drawn stamp: the stamp's own colour, else Acrobat's per word. */
+export function namedStampColor(label, colorHex = null) {
+  if (typeof colorHex === 'string' && /^#[0-9a-f]{6}$/i.test(colorHex) && !/^#0{6}$/.test(colorHex)) {
+    return colorHex;
+  }
+  if (GREEN_WORDS.test(label)) return STAMP_GREEN;
+  if (RED_WORDS.test(label)) return STAMP_RED;
+  return STAMP_BLUE;
+}
+
+/** PNG data URL of a drawn stamp, `widthPt` x `heightPt` page points. */
+export function drawNamedStampAppearance({ label, color, widthPt, heightPt }) {
+  if (typeof document === 'undefined') {
+    throw new Error('Stamp drawing needs a browser canvas');
+  }
+  const w = Number(widthPt);
+  const h = Number(heightPt);
+  if (!(w > 0 && h > 0)) return null;
+  const scale = Math.min(DEFAULT_APPEARANCE_SCALE * 2, MAX_APPEARANCE_EDGE / Math.max(w, h));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(w * scale));
+  canvas.height = Math.max(1, Math.round(h * scale));
+  const ctx = canvas.getContext('2d', { alpha: true });
+  if (!ctx) return null;
+  const cw = canvas.width;
+  const ch = canvas.height;
+  const line = Math.max(1.5, Math.min(cw, ch) * 0.06);
+  const inset = line / 2 + 1;
+  const radius = Math.min(cw, ch) * 0.18;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = line;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  ctx.roundRect(inset, inset, cw - inset * 2, ch - inset * 2, radius);
+  ctx.stroke();
+  // Largest bold size that fits the box, one line.
+  const maxH = (ch - line * 4) * 0.72;
+  const maxW = cw - line * 6;
+  let size = Math.max(4, maxH);
+  ctx.font = `bold ${size}px Helvetica`;
+  const measured = ctx.measureText(label).width;
+  if (measured > maxW) size = Math.max(4, size * (maxW / measured));
+  ctx.font = `bold ${size}px Helvetica`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, cw / 2, ch / 2 + size * 0.04);
+  return canvas.toDataURL('image/png');
+}

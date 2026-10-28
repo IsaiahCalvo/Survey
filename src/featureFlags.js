@@ -106,6 +106,10 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
     nightlyOn: false,
   }),
+  'mark-library': Object.freeze({
+    label: 'Mark library: save marks to a personal or project library and drop them on any page',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

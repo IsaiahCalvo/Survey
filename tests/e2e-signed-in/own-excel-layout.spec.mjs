@@ -96,6 +96,8 @@ test('make a layout from your own sheet, pick it, and Export data uses it', asyn
   // does not have it on their account: take it off this one and reload.
   await clearLayouts();
   await page.reload();
+  // Other specs may leave templates behind; pick this one again.
+  await page.getByText(E2E_SURVEY.templateName, { exact: true }).filter({ visible: true }).first().click();
   await expect(layout).toHaveText(/Acme door schedule/, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Documents', exact: true }).or(page.getByRole('tab', { name: 'Documents', exact: true })).filter({ visible: true }).first().click();
   await page.getByText(E2E_SURVEY.documentName, { exact: true }).first().click();

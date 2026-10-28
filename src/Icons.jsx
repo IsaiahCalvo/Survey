@@ -794,6 +794,15 @@ const ICON_RENDERERS = {
         <path d="M8 16L16 8M8 12L12 8M12 16L16 12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
+    // Perimeter: the outline itself, with a dot on each corner it runs through.
+    measurePerimeter: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M12 3.5L20 9V18.5H4V9Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <circle cx="12" cy="3.5" r="1.5" fill={color} />
+        <circle cx="20" cy="18.5" r="1.5" fill={color} />
+        <circle cx="4" cy="18.5" r="1.5" fill={color} />
+      </svg>
+    ),
     measureScale: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M2 9H22V15H2Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />

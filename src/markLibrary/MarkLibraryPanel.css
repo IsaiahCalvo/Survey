@@ -1,0 +1,323 @@
+/* Library tab of the left rail (beta 'mark-library'). Sizes sit on the
+   tokens.css type scale; chosen states are gold ink, never a filled box. */
+.mark-library {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+  padding: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.mark-library__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.mark-library__head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mark-library__title {
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.mark-library__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-3);
+  border-radius: 8px;
+  min-width: 0;
+  flex: 1;
+  max-width: 200px;
+}
+
+.mark-library__tab {
+  height: 24px;
+  padding: 0 8px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font: 600 12px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.mark-library__tab.is-active { color: var(--accent); }
+.mark-library__tab:disabled { color: var(--text-disabled); cursor: not-allowed; }
+
+@media (hover: hover) {
+  .mark-library__tab:not(:disabled):not(.is-active):hover { color: var(--text-1); background: var(--hover); }
+}
+
+.mark-library__select-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.mark-library__count {
+  margin-right: auto;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.mark-library__search {
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-1);
+  font: 13px var(--font-ui);
+  outline: none;
+}
+
+.mark-library__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mark-library-tag-chip {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 12px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.mark-library-tag-chip.is-active { color: var(--accent); }
+
+@media (hover: hover) {
+  .mark-library-tag-chip:not(.is-active):hover { color: var(--text-1); background: var(--hover); }
+}
+
+.mark-library__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+
+.mark-library__group + .mark-library__group { margin-top: 10px; }
+
+.mark-library__group-title {
+  margin: 0 0 6px;
+  font: 600 12px/1.3 var(--font-ui);
+  color: var(--text-3);
+}
+
+.mark-library__grid { display: grid; gap: 6px; }
+.mark-library__grid--large { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); }
+.mark-library__grid--small { grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); }
+.mark-library__grid--list { grid-template-columns: 1fr; gap: 2px; }
+
+.mark-library__tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  cursor: grab;
+  user-select: none;
+  touch-action: pan-y;
+  min-width: 0;
+}
+
+.mark-library__tile--list {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.mark-library__tile.is-armed,
+.mark-library__tile.is-selected { background: var(--pressed); border-color: var(--border-strong); }
+.mark-library__tile.is-armed .mark-library__name { color: var(--accent); }
+
+@media (hover: hover) {
+  .mark-library__tile:not(.is-armed):not(.is-selected):hover { background: var(--hover); }
+}
+
+.mark-library__tile:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.mark-library__thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border-radius: 4px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.mark-library__tile--small .mark-library__thumb { aspect-ratio: 1; }
+.mark-library__tile--list .mark-library__thumb { width: 44px; flex: none; aspect-ratio: 1; }
+
+.mark-library__thumb img {
+  max-width: 88%;
+  max-height: 88%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.mark-library__thumb-wait {
+  width: 40%;
+  height: 40%;
+  border-radius: 4px;
+  background: var(--surface-3);
+}
+
+.mark-library__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.mark-library__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-1);
+  font-size: 12px;
+  padding-right: 18px;
+}
+
+.mark-library__tile--list .mark-library__name { font-size: 13px; }
+
+.mark-library__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.mark-library__badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font: 600 10px/1.2 var(--font-mono, monospace);
+}
+
+.mark-library__tile--list .mark-library__badge { position: static; }
+
+.mark-library__more {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.mark-library__tile--small .mark-library__more { top: 2px; bottom: auto; right: 2px; }
+.mark-library__tile--list .mark-library__more { position: static; }
+
+@media (hover: hover) {
+  .mark-library__more { opacity: 0; }
+  .mark-library__tile:hover .mark-library__more,
+  .mark-library__tile:focus-within .mark-library__more { opacity: 1; }
+  .mark-library__more:hover { color: var(--text-1); background: var(--hover); }
+}
+
+.mark-library__check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  color: var(--accent);
+}
+
+.mark-library__tile--list .mark-library__check { position: static; }
+
+.mark-library__empty {
+  margin: 16px 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.mark-library__footer {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.mark-library__hint {
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.mark-library__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.mark-library__tokens {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mark-library__tokens code {
+  font-family: var(--font-mono, monospace);
+  color: var(--text-2);
+}
+
+@media (pointer: coarse) {
+  .mark-library__tab { height: 36px; }
+  .mark-library__search { height: 40px; font-size: 16px; }
+  .mark-library-tag-chip { height: 32px; padding: 0 12px; }
+  .mark-library__more { width: 36px; height: 36px; }
+}
