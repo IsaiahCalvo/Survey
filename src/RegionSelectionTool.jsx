@@ -32,7 +32,11 @@ import { createStableActions } from './utils/stableActionProxy.js';
 import rotateIconSvg from './assets/rotate-icon.svg';
 import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR, resizeHandleCursor } from './utils/handleCursors.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
-import { showToast } from './utils/toast.js';
+import { showToast, dismissToast } from './utils/toast.js';
+
+// One "Area changes dropped" toast at a time; a new area session takes it
+// down so its Undo can never write old areas over newer ones.
+const AREA_DROPPED_TOAST_ID = 'region-area-changes-dropped';
 import Icon from './Icons';
 import { useTooltip } from './components/Tooltip';
 import './styles/annotationContextMenu.css';
@@ -771,6 +775,7 @@ const RegionSelectionTool = ({
           // Preserve originCenter for unmerge offset calculation
           originCenter: region.originCenter ? { ...region.originCenter } : undefined
         }));
+        dismissToast(AREA_DROPPED_TOAST_ID);
         setRegions(clonedRegions);
         sessionStartSignatureRef.current = regionsSignature(clonedRegions);
         const storedHistory = regionEditHistoryStore.get(historyKey);
@@ -2017,15 +2022,18 @@ const RegionSelectionTool = ({
       );
     }
 
+    // The live shape stops at the page edge, where the saved area is cut.
+    const edgeX = Math.max(0, Math.min(resolvedPageWidth || x, x));
+    const edgeY = Math.max(0, Math.min(resolvedPageHeight || y, y));
     if (effectiveToolType === 'rectangular' && startPoint) {
       setCurrentRect({
-        x: Math.min(startPoint.x, x),
-        y: Math.min(startPoint.y, y),
-        width: Math.abs(x - startPoint.x),
-        height: Math.abs(y - startPoint.y)
+        x: Math.min(startPoint.x, edgeX),
+        y: Math.min(startPoint.y, edgeY),
+        width: Math.abs(edgeX - startPoint.x),
+        height: Math.abs(edgeY - startPoint.y)
       });
     } else if (effectiveToolType === 'freehand') {
-      setPolygonPoints(prev => [...prev, { x, y }]);
+      setPolygonPoints(prev => [...prev, { x: edgeX, y: edgeY }]);
     }
   }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode, eraseAreaAt, resolvedPageWidth, resolvedPageHeight, pageToScreenX, pageToScreenY]);
 
@@ -2371,6 +2379,7 @@ const RegionSelectionTool = ({
     handleCancel();
     if (dropped && typeof onRestoreRegions === 'function') {
       showToast('Area changes dropped', 'info', {
+        id: AREA_DROPPED_TOAST_ID,
         duration: 6000,
         action: { label: 'Undo', onClick: () => onRestoreRegions(spaceId, pageId, dropped) },
       });
@@ -3586,6 +3595,7 @@ const RegionSelectionTool = ({
           >
             {toolType === 'rectangular' && currentRect && (
               <rect
+                data-region-draft=""
                 x={pageToScreenX(currentRect.x)}
                 y={pageToScreenY(currentRect.y)}
                 width={currentRect.width * displayScaleX}

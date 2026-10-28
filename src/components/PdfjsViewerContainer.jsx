@@ -5056,6 +5056,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         else el.scrollTop = Math.max(0, landTop);
       }
       el.scrollLeft = landLeft;
+      // A zoom that has not laid out yet (the first fit, when a panel was
+      // open at load) would land its older anchor over this one on commit and
+      // leave the page under the panel.
+      if (pendingAnchorRef.current) {
+        pendingAnchorRef.current = {
+          ...pendingAnchorRef.current,
+          ...(landTop != null ? { top: landTop } : null),
+          left: landLeft,
+        };
+      }
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax, phoneLayout]);
   zoomToScaleRef.current = zoomToScale;

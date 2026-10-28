@@ -223,6 +223,20 @@
   :is(#chrome-top-host, #chrome-sub-toolbar-host) .quick-style--colours {
     gap: var(--chrome-colour-gap);
   }
+
+  /* Spaces' Move or copy card is a dialog, so the menu rows above miss it:
+     its space pill, page field and Copy / Move glyphs take finger room. */
+  .spaces-transfer-menu {
+    width: 248px;
+  }
+  .spaces-transfer__space .chrome-pill,
+  .spaces-transfer__field {
+    height: 44px;
+  }
+  .spaces-transfer__act {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 /* The tool bar's own gutter (Undo / Redo, Pan / Select, the tool groups and
