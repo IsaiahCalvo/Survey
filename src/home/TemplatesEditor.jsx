@@ -1580,7 +1580,19 @@ export default function TemplatesEditor({
     markEdited();
     /* Open the new template so it reads as "created", matching how a new module
        opens itself, with its name selected so typing names it at once. */
-    setTimeout(() => setSelected(id), 0);
+    // On the phone the list stays up unless the new template's page opens
+    // (it was added out of sight at the bottom of the list).
+    const phone = mobileLayoutActive();
+    if (phone) captureMobileTemplateList();
+    setTimeout(() => {
+      setSelected(id);
+      if (phone) {
+        setOpenMod(0);
+        setOpenCat(-1);
+        setTemplateContentSearch('');
+        setMobileTemplateOpen(true);
+      }
+    }, 0);
     focusVisibleInput('input[data-template-title]');
     if (onCreateTemplate) onCreateTemplate();
   };

@@ -146,3 +146,31 @@ test('new markers list in name order, and picking one on the page opens its row'
     await admin.from('templates').delete().eq('id', templateId);
   }
 });
+
+test.describe('phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+
+  // Round 2: on the phone "New template" added the template out of sight at
+  // the bottom of the list and stayed there; it now opens the new template's
+  // page with its name selected.
+  test('New template opens the new template with its name ready to type', async ({ page }) => {
+    test.setTimeout(120_000);
+    const admin = adminClient();
+    const uid = await ownerId(admin, E2E_ACCOUNTS.pro.email);
+    await admin.from('templates').delete().eq('user_id', uid);
+    try {
+      await signIn(page, E2E_ACCOUNTS.pro);
+      await page.getByRole('button', { name: 'Documents', exact: true }).filter({ visible: true }).first().tap();
+      await page.getByText('Templates', { exact: true }).filter({ visible: true }).first().tap();
+      await page.getByRole('button', { name: /New template/ }).filter({ visible: true }).first().tap();
+      const title = page.locator('input[data-template-title]').filter({ visible: true });
+      await expect(title).toBeFocused();
+      await expect(page.getByRole('button', { name: 'Add module' }).filter({ visible: true })).toBeVisible();
+      await page.keyboard.type('Phone walk');
+      await page.keyboard.press('Enter');
+      await expect(title).toHaveValue('Phone walk');
+    } finally {
+      await admin.from('templates').delete().eq('user_id', uid);
+    }
+  });
+});
