@@ -10,8 +10,7 @@
  * [+], then one nested line per page ("region") with page number, name, edit
  * areas, marks bulb, move or copy, outline switch and remove.
  * SpacesExportPanel is the "Export <space>" menu (desktop) / sheet (phone).
- * Spaces reorder via dnd-kit SortableRearrangeList with optimistic ordering
- * and frame-capture debug hooks.
+ * Spaces reorder via dnd-kit SortableRearrangeList with optimistic ordering.
  */
 import { isPurchaseUiHidden } from '../utils/accountPlatform.js';
 import React, { useState, useCallback, useRef } from 'react';
@@ -303,7 +302,14 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  e.currentTarget.blur();
+                  // A space with no pages goes on to its Add pages field, so
+                  // name, Enter, pages, Enter runs from the keyboard.
+                  const addField = pageCount === 0
+                    ? e.currentTarget.closest('.space-card')?.querySelector('.space-card__add-input')
+                    : null;
+                  addField?.focus();
+                  // Still folding open (inert), it refuses focus: just save.
+                  if (document.activeElement !== addField) e.currentTarget.blur();
                 } else if (e.key === 'Escape') {
                   e.preventDefault();
                   e.stopPropagation();
@@ -652,6 +658,8 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
  */
 function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExportPDF, onClose }) {
   const target = spaces.find((space) => space.id === spaceId) || null;
+  // A space with no pages has nothing to export: say so before the press.
+  const hasPages = (target?.assignedPages?.length || 0) > 0;
   const title = `Export ${target?.name || 'space'}`;
   return (
     <>
@@ -686,20 +694,20 @@ function SpacesExportPanel({ spaces, spaceId, onSpaceChange, onExportCSV, onExpo
         <button
           type="button"
           className="spaces-export__action"
-          disabled={!target}
+          disabled={!hasPages}
           onClick={() => onExportCSV(target.id)}
         >
           <span>CSV</span>
-          <small>One row per mark in this space</small>
+          <small>{hasPages ? 'One row per mark in this space' : 'Add pages first'}</small>
         </button>
         <button
           type="button"
           className="spaces-export__action"
-          disabled={!target}
+          disabled={!hasPages}
           onClick={() => onExportPDF(target.id)}
         >
           <span>PDF Pages</span>
-          <small>The space's pages, without marks</small>
+          <small>{hasPages ? "The space's pages, without marks" : 'Add pages first'}</small>
         </button>
       </div>
     </>
@@ -939,8 +947,6 @@ const SpacesPanel = ({
   const [pageInputs, setPageInputs] = useState({});
   const [pageErrors, setPageErrors] = useState({});
   const previousSpaceIdsRef = useRef(new Set(spaces.map(space => space.id)));
-  const spacesReorderDebugSessionRef = useRef(null);
-  const spacesReorderMoveCountRef = useRef(0);
 
   // 2026-07-12 (demo parity defect #4): report the panel's MEASURED natural
   // height so the mobile spaces sheet hugs its real content, instead of the
@@ -991,7 +997,6 @@ const SpacesPanel = ({
     }
     onMobilePanelMetricsChange({ expandedPageRows, contentHeight });
   }, [expandedSpaces, mobileMode, mobilePanelVisible, onMobilePanelMetricsChange, spaces]);
-  const spacesDropFrameCaptureRef = useRef(null);
   const spacesExportAnchorRef = useRef(null);
 
   // KAL-66: keyboard focus goes into this menu as it opens, Up/Down move,
@@ -1025,202 +1030,6 @@ const SpacesPanel = ({
       close: () => setTransfer(null),
     });
   }, [Boolean(transfer), mobileMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const captureSpacesDropFrame = useCallback((label, details = {}) => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return null;
-
-    const sampleStyle = (node) => {
-      if (!node) return null;
-      const style = window.getComputedStyle(node);
-      const rect = node.getBoundingClientRect();
-      return {
-        x: Number(rect.x.toFixed(1)),
-        y: Number(rect.y.toFixed(1)),
-        width: Number(rect.width.toFixed(1)),
-        height: Number(rect.height.toFixed(1)),
-        opacity: style.opacity,
-        transform: style.transform,
-        transition: style.transition,
-        background: style.backgroundColor,
-        border: style.border,
-        boxShadow: style.boxShadow,
-        overflow: style.overflow,
-        visibility: style.visibility,
-        display: style.display,
-      };
-    };
-
-    const rows = Array.from(document.querySelectorAll('[data-space-sortable-row-id]')).map((node) => {
-      const wrapper = node.closest('[data-sortable-rearrange-item]');
-      const card = node.querySelector('[data-drag-rearrange-row]');
-      const header = card?.firstElementChild || null;
-      // The space row itself carries aria-expanded.
-      const expandButton = node.querySelector('.space-card__head[aria-expanded]');
-
-      return {
-        id: node.getAttribute('data-space-sortable-row-id'),
-        text: (node.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 120),
-        expanded: expandButton?.getAttribute('aria-expanded') === 'true',
-        wrapper: sampleStyle(wrapper),
-        rowRoot: sampleStyle(node),
-        card: sampleStyle(card),
-        header: sampleStyle(header),
-      };
-    });
-
-    const frame = {
-      label,
-      time: Number(performance.now().toFixed(1)),
-      details,
-      rows,
-    };
-
-    const capture = spacesDropFrameCaptureRef.current;
-    if (capture) {
-      capture.frames.push(frame);
-    }
-
-    return frame;
-  }, []);
-
-  const summarizeSpacesDropCapture = useCallback((capture) => {
-    const frames = capture?.frames || [];
-    const firstFrame = frames[0];
-    const lastFrame = frames[frames.length - 1];
-    const beforeRows = new Map((firstFrame?.rows || []).map((row) => [row.id, row]));
-    const changedRows = (lastFrame?.rows || []).map((afterRow) => {
-      const beforeRow = beforeRows.get(afterRow.id);
-      if (!beforeRow) return null;
-      return {
-        id: afterRow.id,
-        text: afterRow.text,
-        expanded: afterRow.expanded,
-        wrapperYDelta: Number(((afterRow.wrapper?.y ?? 0) - (beforeRow.wrapper?.y ?? 0)).toFixed(1)),
-        cardYDelta: Number(((afterRow.card?.y ?? 0) - (beforeRow.card?.y ?? 0)).toFixed(1)),
-        wrapperTransform: {
-          before: beforeRow.wrapper?.transform,
-          after: afterRow.wrapper?.transform,
-        },
-        wrapperTransition: {
-          before: beforeRow.wrapper?.transition,
-          after: afterRow.wrapper?.transition,
-        },
-        cardBackground: {
-          before: beforeRow.card?.background,
-          after: afterRow.card?.background,
-        },
-        headerBackground: {
-          before: beforeRow.header?.background,
-          after: afterRow.header?.background,
-        },
-        boxShadow: {
-          before: beforeRow.card?.boxShadow,
-          after: afterRow.card?.boxShadow,
-        },
-      };
-    }).filter(Boolean).filter((row) => (
-      row.wrapperYDelta !== 0 ||
-      row.cardYDelta !== 0 ||
-      row.wrapperTransform.before !== row.wrapperTransform.after ||
-      row.wrapperTransition.before !== row.wrapperTransition.after ||
-      row.cardBackground.before !== row.cardBackground.after ||
-      row.headerBackground.before !== row.headerBackground.after ||
-      row.boxShadow.before !== row.boxShadow.after
-    ));
-
-    return {
-      startedAt: capture?.startedAt,
-      event: capture?.event,
-      frameCount: frames.length,
-      firstFrame: firstFrame?.label,
-      lastFrame: lastFrame?.label,
-      changedRows,
-    };
-  }, []);
-
-  const startSpacesDropFrameCapture = useCallback((event = {}) => {
-    if (typeof window === 'undefined') return;
-
-    const capture = {
-      startedAt: new Date().toISOString(),
-      event,
-      frames: [],
-    };
-    spacesDropFrameCaptureRef.current = capture;
-    captureSpacesDropFrame('before-drop-commit', event);
-
-    let frameCount = 0;
-    const captureNextFrame = () => {
-      frameCount += 1;
-      captureSpacesDropFrame(`raf-${frameCount}`, event);
-      if (frameCount < 10) {
-        window.requestAnimationFrame(captureNextFrame);
-        return;
-      }
-
-      window.setTimeout(() => {
-        captureSpacesDropFrame('after-120ms', event);
-        window.__spacesDropFrameCaptures = window.__spacesDropFrameCaptures || [];
-        window.__spacesDropFrameCaptures.push(capture);
-        window.__copySpacesDropFrames = () => JSON.stringify({
-          latest: window.__spacesDropFrameCaptures?.[window.__spacesDropFrameCaptures.length - 1] || null,
-          captures: window.__spacesDropFrameCaptures || [],
-        }, null, 2);
-        const summary = summarizeSpacesDropCapture(capture);
-        console.info('[SPACES_DROP_SUMMARY]', JSON.stringify(summary, null, 2));
-        console.info('[SPACES_DROP_FRAMES]', window.__copySpacesDropFrames());
-        spacesDropFrameCaptureRef.current = null;
-      }, 120);
-    };
-
-    window.requestAnimationFrame(captureNextFrame);
-  }, [captureSpacesDropFrame, summarizeSpacesDropCapture]);
-
-  const recordSpacesReorderDebug = useCallback((type, details = {}) => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-
-    const rows = Array.from(document.querySelectorAll('[data-space-sortable-row-id]')).map((node) => {
-      if (!node.closest('[data-sortable-rearrange-list]')) return null;
-      const item = node.querySelector('[data-sortable-rearrange-item]') || node;
-      const rect = item.getBoundingClientRect();
-      const outerRect = node.getBoundingClientRect();
-      // The space row itself carries aria-expanded.
-      const expandButton = node.querySelector('.space-card__head[aria-expanded]');
-      const style = window.getComputedStyle(node);
-
-      return {
-        id: node.getAttribute('data-space-sortable-row-id'),
-        text: (item.innerText || node.innerText || '').replace(/\s+/g, ' ').trim(),
-        expanded: expandButton?.getAttribute('aria-expanded') === 'true',
-        y: Number(rect.y.toFixed(1)),
-        height: Number(rect.height.toFixed(1)),
-        outerY: Number(outerRect.y.toFixed(1)),
-        outerHeight: Number(outerRect.height.toFixed(1)),
-        transform: style.transform,
-        transition: style.transition,
-      };
-    }).filter(Boolean);
-
-    const session = spacesReorderDebugSessionRef.current || {
-      startedAt: new Date().toISOString(),
-      events: [],
-    };
-    session.events.push({
-      type,
-      time: Math.round(performance.now()),
-      details,
-      rows,
-      expandedSpaceIds: Array.from(expandedSpaces),
-    });
-    spacesReorderDebugSessionRef.current = session;
-
-    window.__spacesReorderDebugSessions = window.__spacesReorderDebugSessions || [];
-    window.__spacesReorderDebugSessions[window.__spacesReorderDebugSessions.length - 1] = session;
-    window.__copySpacesReorderDebug = () => JSON.stringify({
-      latest: window.__spacesReorderDebugSessions?.[window.__spacesReorderDebugSessions.length - 1] || null,
-      sessions: window.__spacesReorderDebugSessions || [],
-    }, null, 2);
-  }, [expandedSpaces]);
 
   const requireSpaceManagement = useCallback(() => {
     if (!canManageSpaces) {
@@ -1442,7 +1251,6 @@ const SpacesPanel = ({
     const fromIndex = spaces.findIndex(space => space.id === activeId);
     const toIndex = spaces.findIndex(space => space.id === overId);
     if (fromIndex === -1 || toIndex === -1) return;
-    recordSpacesReorderDebug('reorder', { activeId, overId, fromIndex, toIndex });
     setOptimisticSpaceIds((prevIds) => {
       const currentIds = orderedSpaces.map(space => space.id);
       const ids = prevIds.length === currentIds.length && currentIds.every((id) => prevIds.includes(id))
@@ -1454,48 +1262,25 @@ const SpacesPanel = ({
       return nextIds === ids ? ids : nextIds;
     });
     onReorderSpaces(fromIndex, toIndex);
-  }, [onReorderSpaces, orderedSpaces, recordSpacesReorderDebug, requireSpaceManagement, spaces]);
+  }, [onReorderSpaces, orderedSpaces, requireSpaceManagement, spaces]);
 
-  const handleSpaceDragStart = useCallback(({ activeId }) => {
+  const handleSpaceDragStart = useCallback(() => {
     setIsRearrangingSpaces(true);
-    spacesReorderMoveCountRef.current = 0;
-    spacesReorderDebugSessionRef.current = {
-      startedAt: new Date().toISOString(),
-      events: [],
-    };
-    if (typeof window !== 'undefined') {
-      window.__spacesReorderDebugSessions = window.__spacesReorderDebugSessions || [];
-      window.__spacesReorderDebugSessions.push(spacesReorderDebugSessionRef.current);
-    }
-    recordSpacesReorderDebug('drag-start', { activeId, wasExpanded: expandedSpaces.has(activeId) });
-  }, [expandedSpaces, recordSpacesReorderDebug]);
+  }, []);
 
-  const handleSpaceDragMove = useCallback(({ activeId, overId, delta }) => {
-    spacesReorderMoveCountRef.current += 1;
-    if (spacesReorderMoveCountRef.current > 1 && spacesReorderMoveCountRef.current % 4 !== 0) return;
-    recordSpacesReorderDebug('drag-move', { activeId, overId, delta });
-  }, [recordSpacesReorderDebug]);
-
-  const restoreCollapsedSpaceAfterDrag = useCallback((event = {}) => {
-    recordSpacesReorderDebug('drag-settle', event);
-
-    if (typeof window !== 'undefined') {
-      window.setTimeout(() => {
-        setIsRearrangingSpaces(false);
-      }, 180);
-      try {
-        window.localStorage.setItem('spacesReorderDebugLatest', window.__copySpacesReorderDebug?.() || '');
-        console.info('[SPACES_REORDER_DEBUG]', window.__copySpacesReorderDebug?.());
-      } catch {
-        // Best-effort debugging only.
-      }
-    } else {
+  // The rows keep their drag look for the drop's settle before going quiet.
+  const restoreCollapsedSpaceAfterDrag = useCallback(() => {
+    if (typeof window === 'undefined') {
       setIsRearrangingSpaces(false);
+      return;
     }
-  }, [recordSpacesReorderDebug]);
+    window.setTimeout(() => setIsRearrangingSpaces(false), 180);
+  }, []);
 
   const expandedSpaceId = Array.from(expandedSpaces)[0] || null;
-  const spacesExportTargetId = selectedSpaceId || activeSpaceId || expandedSpaceId || orderedSpaces[0]?.id || null;
+  // With nothing chosen, Export opens on a space that has pages to export.
+  const firstSpaceWithPages = orderedSpaces.find((space) => (space.assignedPages?.length || 0) > 0);
+  const spacesExportTargetId = selectedSpaceId || activeSpaceId || expandedSpaceId || firstSpaceWithPages?.id || orderedSpaces[0]?.id || null;
   const spacesExportTarget = orderedSpaces.find((space) => space.id === spacesExportTargetId) || null;
   const createSpaceLabel = canManageSpaces ? 'Create space' : (isPurchaseUiHidden() ? 'Creating spaces is part of the Pro plan' : 'Upgrade to Pro to create spaces');
   const exportSpaceLabel = spacesExportTarget ? `Export ${spacesExportTarget.name || 'space'}` : 'Create a space to export';
@@ -1683,8 +1468,6 @@ const SpacesPanel = ({
             ids={orderedSpaces.map(space => space.id)}
             onReorder={handleSpaceReorder}
             onDragStart={handleSpaceDragStart}
-            onDragMove={handleSpaceDragMove}
-            onBeforeDragEnd={startSpacesDropFrameCapture}
             onDragEnd={restoreCollapsedSpaceAfterDrag}
             onDragCancel={restoreCollapsedSpaceAfterDrag}
             variableHeight
