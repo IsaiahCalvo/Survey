@@ -341,3 +341,45 @@
     transition: none;
   }
 }
+
+/* Your own Excel layout (Nightly 'own-excel-layouts'): their columns, each
+   with what Survey puts in it. */
+.own-layout__pick {
+  width: 100%;
+}
+.own-layout__table {
+  margin-top: 14px;
+  max-height: min(46vh, 360px);
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+.own-layout__head,
+.own-layout__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  border-bottom: 1px solid var(--border);
+}
+.own-layout__head {
+  min-height: 28px;
+  font-size: var(--font-size-sm);
+  color: var(--text-3);
+}
+.own-layout__header {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+}
+.own-layout__note {
+  margin: 10px 0 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  color: var(--text-3);
+}
+@media (pointer: coarse) {
+  .own-layout__row { min-height: 48px; }
+}

@@ -99,13 +99,13 @@
 }
 
 /*
- * Done (owner 2026-10-26, replacing the 2026-10-06 check on a round disc: "I
- * don't like the icon that we have for Done ... a check mark with a circle in
- * it ... I don't want it to be an X ... check-check. Maybe that works"). A mode
- * toggle that is on shows Lucide check-check, bare like every other header
- * icon - no disc, no plate, no gold - only one step brighter (--text-1) so
- * the way out reads as the live control. Hover / press are the shared glyph
- * scale from states.css section 5.
+ * Done (owner 2026-10-27, replacing 2026-10-26's check-check: "what if we used
+ * the edit button icon ... and morphed the pen into a check mark"). A mode
+ * toggle that is on shows editListDone - the edit-list rows with a check
+ * where the pen was - bare like every other header icon - no disc, no plate,
+ * no gold, never an X - only one step brighter (--text-1) so the way out
+ * reads as the live control. Hover / press are the shared glyph scale from
+ * states.css section 5.
  */
 .section-icon-btn.is-active {
   color: var(--text-1);

@@ -20,6 +20,7 @@ import {
   ANSWER_MEANS_MAX, ITEM_UNIT_MAX, MAX_ANSWERS, SCORE_SCALES, itemAnswerFields, MIN_ANSWERS, answerSetProblem, cleanAnswerSet, sameAnswerSet,
 } from '../services/answerSets.js';
 import { ITEM_TYPE_LIBRARY, itemTypeById } from '../services/itemTypeLibrary.js';
+import { showIfChoices, showIfOf } from '../services/conditionalLines.js';
 import './AnswerSetPicker.css';
 
 const TONE_OPTIONS = [
@@ -240,7 +241,7 @@ function SettingBox({ label, value, onCommit, width, size, placeholder, text = f
  * once past). `onChange` gets the item's whole answer settings
  * ({ kind, ...settings }, {} for pick-one), cleaned by itemAnswerFields.
  */
-export function ItemKindPicker({ item, onChange, phone = false }) {
+export function ItemKindPicker({ item, onChange, phone = false, children = null }) {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const fields = itemAnswerFields(item);
   const kind = fields.kind || 'choice';
@@ -352,6 +353,46 @@ export function ItemKindPicker({ item, onChange, phone = false }) {
           Issue once past
         </label>
       )}
+      {children}
     </span>
+  );
+}
+
+const SHOW_ALWAYS = '';
+const choiceKey = (c) => `${c.itemId}\u0000${c.value}`;
+
+/**
+ * When a line shows (Nightly, hidden flag 'conditional-lines'): always, or
+ * only once a pick-one or Pick many line above it has a certain answer.
+ * `answersOf(line)` gives a line's answers; `onChange` gets
+ * { itemId, value } or null for always.
+ */
+export function ShowIfPicker({ item, lines, answersOf, onChange }) {
+  const name = item.text || 'this item';
+  const current = showIfOf(item);
+  const choices = showIfChoices(lines, item.id, answersOf);
+  const value = current ? choiceKey(current) : SHOW_ALWAYS;
+  // A condition on a line that is gone or changed stays listed until it is replaced.
+  const options = [
+    { value: SHOW_ALWAYS, label: 'Always shown' },
+    ...(current && !choices.some((c) => choiceKey(c) === value) ? [{ value, label: `When an old line is ${current.value}` }] : []),
+    ...choices.map((c) => ({ value: choiceKey(c), label: c.label })),
+  ];
+  const pick = (v) => {
+    const hit = choices.find((c) => choiceKey(c) === v);
+    if (v === SHOW_ALWAYS) onChange(null);
+    else if (hit) onChange({ itemId: hit.itemId, value: hit.value });
+  };
+  const label = `When "${name}" shows`;
+  return (
+    <ValueSelect
+      look="pill"
+      width="auto"
+      label={label}
+      hint="Show this line only once another line has a certain answer"
+      value={value}
+      options={options}
+      onChange={pick}
+    />
   );
 }

@@ -26,13 +26,17 @@ test('flags: off by default, unknown flags always off', () => {
   assert.equal(isFeatureOn('no-such-flag', { storage, env: { VITE_RELEASE_CHANNEL: 'nightly' } }), false);
 });
 
-test('flags: nightly turns every beta flag on, but a browser override still wins', () => {
+test('flags: nightly turns every beta flag on (but a hidden one), and a browser override still wins', () => {
   const env = { VITE_RELEASE_CHANNEL: 'nightly' };
   assert.equal(releaseChannel(env), 'nightly');
   assert.equal(releaseChannel({}), 'stable');
   for (const key of Object.keys(FEATURE_FLAGS).filter(isBetaFlag)) {
-    assert.equal(isFeatureOn(key, { storage: memoryStorage(), env }), true, key);
+    // A beta flag kept hidden (nightlyOn: false) waits for /flags or an override.
+    const hidden = FEATURE_FLAGS[key].nightlyOn === false;
+    assert.equal(isFeatureOn(key, { storage: memoryStorage(), env }), !hidden, key);
+    if (hidden) assert.equal(isFeatureOn(key, { storage: memoryStorage({ [FLAG_CACHE_KEY]: JSON.stringify({ [key]: true }) }), env }), true, key);
   }
+  assert.deepEqual(Object.keys(FEATURE_FLAGS).filter((key) => FEATURE_FLAGS[key].nightlyOn === false), ['conditional-lines']);
   assert.equal(isFeatureOn('smart-fill', { storage: memoryStorage({ 'survey.flag.smart-fill': '0' }), env }), false);
 });
 

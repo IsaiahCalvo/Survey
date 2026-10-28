@@ -2106,65 +2106,37 @@ input[type="text"].spaces-region__name-input:focus-visible {
   background: var(--pressed);
 }
 
-/* ---- Move or copy a region (owner 2026-10-27): a small card beside the
-   row's button, its tail pointing at it (src/components/CalloutPopover.jsx
-   places it and sets data-callout-side / --callout-tail). ----------------- */
-.callout-popover {
-  position: fixed;
+/* ---- The Spaces cards (Move or copy, Export): owner 2026-10-28, they DROP
+   DOWN from their button over what is below, like every drop-down in the
+   app - the menu surface, edge, corner, shadow and 140ms slide of
+   AnnotationDropdown's menu. AnchoredPopover hangs the card under a
+   zero-size point centred on the button. ----------------------------------- */
+.spaces-dropdown-card {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, 0);
+  margin-top: 6px;
   box-sizing: border-box;
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   font-family: var(--font-ui);
+  animation: surveySurfaceIn 140ms cubic-bezier(0.33, 1, 0.68, 1);
 }
 
-/* The tail: a turned square in the card's own fill and edge, half hidden
-   under the card so only its point shows. */
-.callout-popover::before {
-  content: '';
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  box-sizing: border-box;
-  background: var(--surface-3);
-  border: 1px solid var(--border-strong);
-  border-right-color: transparent;
-  border-bottom-color: transparent;
-  pointer-events: none;
+@media (prefers-reduced-motion: reduce) {
+  .spaces-dropdown-card { animation: none; }
 }
 
-.callout-popover[data-callout-side='right']::before {
-  left: -6px;
-  top: calc(var(--callout-tail) - 5px);
-  transform: rotate(-45deg);
-}
-
-.callout-popover[data-callout-side='left']::before {
-  right: -6px;
-  top: calc(var(--callout-tail) - 5px);
-  transform: rotate(135deg);
-}
-
-.callout-popover[data-callout-side='bottom']::before {
-  top: -6px;
-  left: calc(var(--callout-tail) - 5px);
-  transform: rotate(45deg);
-}
-
-.callout-popover[data-callout-side='top']::before {
-  bottom: -6px;
-  left: calc(var(--callout-tail) - 5px);
-  transform: rotate(225deg);
-}
-
-.spaces-export-callout {
+.spaces-export-menu {
   width: 236px;
   padding: 4px;
   display: grid;
 }
 
-.spaces-transfer-callout {
+.spaces-transfer-menu {
   width: 212px;
   padding: 6px;
   display: grid;
@@ -2214,6 +2186,17 @@ input[type="text"].spaces-region__name-input:focus-visible {
   font-weight: 500;
 }
 
+/* A full-width pill reads as a field, so its chevron must be easy to see
+   (owner 2026-10-28: "hard to see that there is a drop down"). */
+.spaces-transfer__space .chrome-pill__chevron {
+  color: var(--text-2);
+}
+
+.spaces-transfer__space .chrome-pill__chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
 .annotation-dropdown__popover.spaces-transfer-space-menu {
   z-index: 7100;
 }
@@ -2230,47 +2213,33 @@ input[type="text"].spaces-region__name-input:focus-visible {
   gap: 6px;
 }
 
-/* The page field is a setting pill too: --surface-3, no border. */
-.spaces-transfer__stepper {
+/* The page field: one setting pill, "3 / 36" (the rail's page box, laid
+   flat). --surface-3, no border; the number is the input, the total is ink. */
+.spaces-transfer__field {
   display: inline-flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 4px;
   height: 24px;
+  padding: 0 10px;
   box-sizing: border-box;
-  border: 0;
   border-radius: var(--chrome-field-radius);
   background: var(--surface-3);
-  overflow: hidden;
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: text;
 }
 
-.spaces-transfer__step {
-  appearance: none;
-  display: inline-grid;
-  place-items: center;
-  width: 20px;
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  border: 0;
+.spaces-transfer__field:focus-within {
   color: var(--text-2);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.spaces-transfer__step:disabled {
-  color: var(--text-disabled);
-  cursor: default;
-}
-
-.spaces-transfer__step:not(:disabled):active {
-  background: var(--pressed);
 }
 
 input[type="text"].spaces-transfer__input {
-  width: 28px;
+  min-width: 1.5ch;
   height: 100%;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
+  box-sizing: content-box;
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -2278,14 +2247,13 @@ input[type="text"].spaces-transfer__input {
   outline: none;
   color: var(--text-1);
   font-family: inherit;
-  font-size: 12px;
-  text-align: center;
+  font-size: inherit;
+  font-weight: 600;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 .spaces-transfer__of {
-  color: var(--text-3);
-  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -2474,6 +2442,11 @@ input[type="text"].spaces-transfer__input {
   font-size: 16px;
 }
 
+.spaces-export-sheet .spaces-transfer__space .chrome-pill__chevron svg {
+  width: 16px;
+  height: 16px;
+}
+
 .spaces-transfer-space-menu--phone .annotation-dropdown__options > button {
   min-height: 44px;
   font-size: 16px;
@@ -2483,21 +2456,13 @@ input[type="text"].spaces-transfer__input {
   margin-top: 12px;
 }
 
-.spaces-export-sheet .spaces-transfer__stepper {
+.spaces-export-sheet .spaces-transfer__field {
   height: 44px;
+  padding: 0 16px;
   border-radius: 10px;
-}
-
-.spaces-export-sheet .spaces-transfer__step {
-  width: 44px;
-}
-
-.spaces-export-sheet input[type="text"].spaces-transfer__input {
-  width: 48px;
   font-size: 16px;
 }
 
-.spaces-export-sheet .spaces-transfer__of,
 .spaces-export-sheet .spaces-transfer__status {
   font-size: 12px;
 }
@@ -2656,7 +2621,7 @@ input[type="text"].spaces-transfer__input {
   }
   .spaces-export__space:hover,
   .spaces-export__action:not(:disabled):hover,
-  .spaces-transfer__step:not(:disabled):hover {
+  .spaces-transfer__field:hover {
     background: var(--hover);
   }
   .spaces-panel__exit-chip:hover > svg {

@@ -38,7 +38,13 @@ import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js'
 import { useAudioRecorder } from './SurveyMediaCapture';
 import SurveyAgentCamera from './SurveyAgentCamera';
 import { useTooltip } from './Tooltip';
+import AgentLearnedDialog from './AgentLearnedDialog.jsx';
+import { createAgentMemoryStore } from '../agent/agentMemory.js';
 import './surveyAgentPanel.css';
+
+// What the agent learned per project (names, note wording), shared by every
+// panel so the item lookups see what a save just added.
+const agentMemory = createAgentMemoryStore(supabase);
 
 const blobToBase64 = (blob) => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -194,7 +200,7 @@ export default function SurveyAgentPanel({
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const undoLastRef = useRef(() => null);
-  const toolbox = useMemo(() => createSurveyAgentToolbox({ attachments: attachmentsRef.current, undoLastTurn: () => undoLastRef.current(), getDocument: activeAgentDocument }), []);
+  const toolbox = useMemo(() => createSurveyAgentToolbox({ attachments: attachmentsRef.current, undoLastTurn: () => undoLastRef.current(), getDocument: activeAgentDocument, memory: agentMemory }), []);
   // Messages said or typed with no signal, sent in order once it is back.
   const queueRef = useRef([]);
   const [queued, setQueued] = useState(0);
@@ -301,6 +307,8 @@ export default function SurveyAgentPanel({
   const push = (entry) => setEntries((list) => [...list, { id: newId('e'), ...entry }]);
   // 'sending' | 'sent' | 'failed' | null, for the Send voice log button.
   const [logState, setLogState] = useState(null);
+  // "What Survey learned" for the drawing's project.
+  const [learnedOpen, setLearnedOpen] = useState(false);
   sendLogRef.current = async (reason = 'manual') => {
     if (reason === 'manual') setLogState('sending');
     const release = typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : null;
@@ -338,6 +346,7 @@ export default function SurveyAgentPanel({
       getDocument: activeAgentDocument,
       requestPhoto,
       walkItems: () => [...walkItemsRef.current],
+      memory: agentMemory,
     });
     try {
       const result = await runSurveyAgentTurn({
@@ -1078,6 +1087,11 @@ export default function SurveyAgentPanel({
             {logState === 'sent' ? 'Voice log sent' : logState === 'failed' ? 'Could not send. Try again' : logState === 'sending' ? 'Sending…' : 'Send voice log'}
           </button>
         ) : null}
+        {surveyAgentBridge.current?.projectId ? (
+          <button type="button" className="survey-agent__log" onClick={() => setLearnedOpen(true)}>
+            Learned
+          </button>
+        ) : null}
         <button type="button" className="survey-agent__icon" aria-label={host ? 'Back to Survey' : 'Close Survey agent'} onClick={onClose}>
           <Icon name="close" size={16} color="currentColor" />
         </button>
@@ -1309,6 +1323,14 @@ export default function SurveyAgentPanel({
           )}
         </div>
       </form>
+      {learnedOpen && surveyAgentBridge.current?.projectId ? (
+        <AgentLearnedDialog
+          store={agentMemory}
+          projectId={surveyAgentBridge.current.projectId}
+          canEdit={surveyAgentBridge.current.canEdit !== false}
+          onClose={() => setLearnedOpen(false)}
+        />
+      ) : null}
     </section>
   );
   return typeof document !== 'undefined' ? createPortal(panel, host || document.body) : panel;
