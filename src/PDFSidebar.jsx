@@ -20,6 +20,8 @@ import SpacesPanel from './sidebar/SpacesPanel';
 import LayersPanel from './sidebar/LayersPanel';
 // Beta 'mark-library' (Survey Nightly): loads only when the flag is on.
 const MarkLibraryPanel = lazy(() => import('./markLibrary/MarkLibraryPanel'));
+import CommentsPanel from './sidebar/CommentsPanel';
+import { OPEN_MARK_COMMENTS_EVENT, takePendingMarkCommentsFocus } from './services/markCommentsFocus.js';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import { withDevFakePresence } from './components/presenceIdentity.js';
@@ -149,6 +151,7 @@ const PANEL_TITLES = {
   history: 'History',
   layers: 'Layers',
   library: 'Library',
+  comments: 'Comments',
 };
 
 const PDFSidebar = React.forwardRef(({
@@ -259,7 +262,10 @@ const PDFSidebar = React.forwardRef(({
   canEditLayers = true,
   // Mark library tab ('mark-library' flag, beta). false = no tab, no panel.
   markLibraryEnabled = false,
+  // Comments panel ('mark-comments' flag, Nightly). Needs a cloud document.
+  commentsEnabled = false,
 }, ref) => {
+  const commentsOn = Boolean(commentsEnabled && documentId);
   // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
   // which panel and whether it was open - per user
   // (sidebar/panelLayoutStore.js). The phone's sheet always starts closed.
@@ -270,6 +276,7 @@ const PDFSidebar = React.forwardRef(({
     const stored = mobileMode ? DEFAULT_PANEL_LAYOUT : readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
     initialLayoutRef.current = (stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled)
       || (stored.panel === 'library' && !markLibraryEnabled)
+      || (stored.panel === 'comments' && !commentsOn)
       ? { ...stored, panel: 'pages' }
       : stored;
   }
@@ -356,7 +363,7 @@ const PDFSidebar = React.forwardRef(({
     if (!userTouchedLayoutRef.current) {
       setIsCollapsed(!stored.open);
       setActiveTab((stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled)
-        || (stored.panel === 'library' && !markLibraryEnabled) ? 'pages' : stored.panel);
+        || (stored.panel === 'library' && !markLibraryEnabled) || (stored.panel === 'comments' && !commentsOn) ? 'pages' : stored.panel);
     }
     // documentId is read once, as the stored layout lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -414,6 +421,7 @@ const PDFSidebar = React.forwardRef(({
     const validPanel = ['pages', 'search', 'bookmarks', 'spaces', 'history'].includes(panelId)
       || (panelId === 'layers' && layersEnabled)
       || (panelId === 'library' && markLibraryEnabled)
+      || (panelId === 'comments' && commentsOn)
       ? panelId
       : 'pages';
     userTouchedLayoutRef.current = true;
@@ -423,7 +431,7 @@ const PDFSidebar = React.forwardRef(({
       setSearchSelectOnFocus(Boolean(select));
       setSearchFocusRequestToken((prev) => prev + 1);
     }
-  }, [layersEnabled, markLibraryEnabled]);
+  }, [layersEnabled, markLibraryEnabled, commentsOn]);
 
   const closePanel = useCallback(() => {
     userTouchedLayoutRef.current = true;
@@ -510,11 +518,30 @@ const PDFSidebar = React.forwardRef(({
     { id: 'spaces', label: 'Spaces', icon: 'layers' },
     ...(layersEnabled ? [{ id: 'layers', label: 'Layers', icon: 'shapes' }] : []),
     ...(markLibraryEnabled ? [{ id: 'library', label: 'Library', icon: 'library' }] : []),
+    ...(commentsOn ? [{ id: 'comments', label: 'Comments', icon: 'comment' }] : []),
   ];
 
   const toggleHistoryPanel = useCallback(() => {
     togglePanel('history');
   }, [togglePanel]);
+
+  // The selection bar's Comment button, or a link to a comment, opens the
+  // Comments panel on the tab in front (OPEN_MARK_COMMENTS_EVENT).
+  const [commentsFocusRequest, setCommentsFocusRequest] = useState(null);
+  React.useEffect(() => {
+    if (!commentsOn || !tabActive || typeof window === 'undefined') return undefined;
+    const onOpen = (event) => {
+      const detail = event?.detail || {};
+      if (detail.documentId && detail.documentId !== documentId) return;
+      takePendingMarkCommentsFocus(documentId);
+      openPanel('comments');
+      setCommentsFocusRequest({ ...detail, at: Date.now() });
+    };
+    const pending = takePendingMarkCommentsFocus(documentId);
+    if (pending) onOpen({ detail: pending });
+    window.addEventListener(OPEN_MARK_COMMENTS_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_MARK_COMMENTS_EVENT, onOpen);
+  }, [commentsOn, tabActive, documentId, openPanel]);
 
   // Phase F (motion & feel): finger-follow drag + velocity dismiss (dy>82 or
   // vy>0.65) + spring-back + slide-down exit, replacing the old flat 48px
@@ -1102,6 +1129,22 @@ const PDFSidebar = React.forwardRef(({
                 <Suspense fallback={null}>
                   <MarkLibraryPanel phone={mobileMode} />
                 </Suspense>
+              </div>
+            )}
+
+            {commentsOn && (
+              <div style={{ display: activeTab === 'comments' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <CommentsPanel
+                  documentId={documentId}
+                  user={user}
+                  isActive={activeTab === 'comments' && !isCollapsed}
+                  pageNum={pageNum}
+                  canWrite={canEditLayers}
+                  locateHistoryMark={locateHistoryMark}
+                  focusHistoryMark={focusHistoryMark}
+                  onNavigateToPage={onNavigateToPage}
+                  focusRequest={commentsFocusRequest}
+                />
               </div>
             )}
 

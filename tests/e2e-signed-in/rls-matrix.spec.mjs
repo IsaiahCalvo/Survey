@@ -152,6 +152,9 @@ const NOT_SWEPT = {
   feature_flags: 'flag admins only', feature_flag_admins: 'flag admins only',
   // security_invoker views over swept tables, checked by user below.
   archived_projects_summary: 'view', daily_usage_summary: 'view', user_quota_status: 'view',
+  // Comments on marks (Nightly): written only through their RPCs; who reads
+  // what is probed in mark-comments.spec.mjs.
+  mark_comments: 'own spec',
 };
 
 // What a collaborator on the shared document may read; the rest stays the owner's.

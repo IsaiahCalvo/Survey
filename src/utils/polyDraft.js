@@ -55,6 +55,9 @@ export const POLY_FINISH_CONTROL_SCREEN_HIT_RADIUS = 20;
 /** UX: drawn radius (SCREEN pixels) of the checkmark ring itself. */
 export const POLY_FINISH_CONTROL_SCREEN_RADIUS = 9.5;
 
+/** Fill of an enabled checkmark ring (the tick and outline are white). */
+export const POLY_FINISH_CONTROL_FILL = '#2f6fed';
+
 /**
  * UX 2026-09-09 (iOS Simulator pass): on a touch screen the finish
  * checkmarks and the first-vertex magnet must be comfortable under a finger.

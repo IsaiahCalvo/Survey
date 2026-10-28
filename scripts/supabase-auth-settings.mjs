@@ -1,6 +1,6 @@
 // Reads, and with --apply sets, the Supabase Auth settings from the backend
 // security pass (/mnt/project-files/security/backend-pass.md), approved by
-// Isaiah 2026-10-21. Prints only the settings below: the auth config also
+// Isaiah 2026-10-21, plus anonymous sign-ins for guest links (2026-10-28). Prints only the settings below: the auth config also
 // holds SMTP and provider secrets, and this repo's Action logs are public.
 import { pathToFileURL } from 'node:url';
 
@@ -12,6 +12,7 @@ export const WATCHED = [
   'db_max_pool_size', 'db_max_pool_size_unit',
   'security_update_password_require_current_password',
   'security_update_password_require_reauthentication',
+  'external_anonymous_users_enabled', 'rate_limit_anonymous_users',
 ];
 
 const LOWER_UPPER_DIGITS = 'abcdefghijklmnopqrstuvwxyz:ABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789';
@@ -36,13 +37,16 @@ export function planAuthPatch(current) {
     mfa_totp_enroll_enabled: true,
     mfa_totp_verify_enabled: true,
     security_update_password_require_current_password: true,
+    // Guest links (Nightly, flag 'guest-links') sign guests in anonymously;
+    // Isaiah approved turning this on 2026-10-28. Turnstile still guards it.
+    external_anonymous_users_enabled: true,
   };
   if (!(Number(current.password_min_length) >= MIN_LENGTH)) want.password_min_length = MIN_LENGTH;
   const rule = current.password_required_characters ?? '';
   if (CHARACTER_RULES.includes(rule) && CHARACTER_RULES.indexOf(rule) < CHARACTER_RULES.indexOf(LOWER_UPPER_DIGITS)) {
     want.password_required_characters = LOWER_UPPER_DIGITS;
   }
-  for (const key of ['rate_limit_otp', 'rate_limit_verify', 'rate_limit_email_sent']) {
+  for (const key of ['rate_limit_otp', 'rate_limit_verify', 'rate_limit_email_sent', 'rate_limit_anonymous_users']) {
     if (!(Number(current[key]) <= RATE_CAP)) want[key] = RATE_CAP;
   }
   if (current.db_max_pool_size_unit !== 'percent') {
