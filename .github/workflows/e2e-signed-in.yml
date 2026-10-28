@@ -205,6 +205,18 @@ jobs:
             test-results/e2e-speed/
           retention-days: 7
 
+      # A test that failed once and passed on retry still leaves its trace in
+      # test-results; keep it so a flaky test can be looked at. Nothing is
+      # uploaded when every test passed first time.
+      - name: Upload traces of flaky tests
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-signed-in-flaky-${{ matrix.shard }}
+          path: test-results/e2e-signed-in/
+          if-no-files-found: ignore
+          retention-days: 7
+
       # No stack teardown: the runner is thrown away with the job, and stopping
       # the containers only added ~20 s to every shard.
 
