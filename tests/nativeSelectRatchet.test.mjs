@@ -26,6 +26,9 @@ const ALLOWED = {
   'src/components/TypedAnswerInput.jsx': 2,
   // Phone panel (the browser's wheel).
   'src/components/PageGridSettings.jsx': 1,
+  // Item status / assignee pickers (nightly 'marker-tracking'): the phone
+  // branch keeps the wheel; desktop uses ValueSelect.
+  'src/components/SurveyMarkerTracking.jsx': 1,
   // Admin-only page.
   'src/home/KitsAdminPage.jsx': 1,
   // Company roles picker (beta 'company-admin'): the coarse-pointer branch
