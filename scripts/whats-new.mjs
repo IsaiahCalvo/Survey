@@ -4,6 +4,15 @@
 // Work still behind a feature flag stays off this list until it is on for all,
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
+  { date: '2026-10-28', items: [
+    'Drop-downs and action menus have a new look: a highlight glides from row to row, and menus grow out of their button.',
+    'Renaming a document shows the new name at once everywhere: open tabs, every list and your other screens.',
+    'Spaces: polygon areas draw and edit like the Polygon tool, with check marks to close or finish, Shift for 15° sides and a + on each side to add a point.',
+    'Spaces: Move or copy drops down from its button, and the page is one "3 / 36" box.',
+    'Done in select mode is now the list icon with its pen turned into a check, and it morphs in and out.',
+    'The app opens faster: about a tenth less to load before the first screen.',
+    'Plans: live editing together is part of Pro.',
+  ] },
   { date: '2026-10-27', items: [
     'Set page scale can apply one scale to this page or to every page, and the scale stays after a reload.',
     'Measuring: your last five scales show as quick picks, a scale bar sits on the page while a measure tool is on, and there is a new Perimeter measure.',
