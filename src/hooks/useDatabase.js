@@ -16,6 +16,7 @@ import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange, subscribeTemplatesChange } from './libraryChangeBus.js';
+import { renameRows, subscribeDocumentNames } from './documentNameBus.js';
 import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
@@ -314,6 +315,15 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
       void loadDocuments({ initialScopeKey: documentScopeKeyRef.current }).catch(() => undefined);
     });
   }, [user, projectId, enabled]);
+
+  // A rename made anywhere (another list, a tab menu, another screen) shows
+  // in this list at once (documentNameBus.js).
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return subscribeDocumentNames((rename) => {
+      setDocuments((current) => renameRows(current, rename));
+    });
+  }, [enabled]);
 
   // Pure query worker: runs the owned + collaborator-probe + conditional id=in
   // sequence as ONE unit and RETURNS the merged array (no setState here), so it

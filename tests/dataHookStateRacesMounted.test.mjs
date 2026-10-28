@@ -82,6 +82,7 @@ async function mount(t, hookName, { deferredReads = false, args = [], tablesForU
     import { useLibraryListCache } from ${JSON.stringify(new URL('../src/hooks/useLibraryListCache.js', import.meta.url).href)};
     import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from ${JSON.stringify(new URL('../src/hooks/libraryPagination.js', import.meta.url).href)};
     import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from ${JSON.stringify(new URL('../src/services/sharedTemplates.js', import.meta.url).href)};
+    import { renameRows, subscribeDocumentNames } from ${JSON.stringify(new URL('../src/hooks/documentNameBus.js', import.meta.url).href)};
     const state = globalThis[${JSON.stringify(key)}];
     const supabase = state.supabase;
     const useAuth = () => ({ user: state.user });
