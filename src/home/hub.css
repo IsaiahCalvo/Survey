@@ -1032,6 +1032,10 @@
     flex-wrap: wrap;
     gap: var(--mobile-header-row-gap) 8px;
     padding: var(--mobile-header-pad-y) var(--mobile-header-pad-x);
+    /* A phone held sideways puts the notch over a screen edge: the scroll
+       root pads for it, but this fixed header spans the screen. */
+    padding-left: max(var(--mobile-header-pad-x), var(--native-safe-area-left, env(safe-area-inset-left, 0px)));
+    padding-right: max(var(--mobile-header-pad-x), var(--native-safe-area-right, env(safe-area-inset-right, 0px)));
     flex: none;
     background: var(--ink-900);
     border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);

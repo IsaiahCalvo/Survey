@@ -153,3 +153,42 @@ test.describe('phone Survey export', () => {
     await expect(page.getByText('Downloaded E2E_Doors_export.xlsx')).toBeVisible();
   });
 });
+
+// A phone held sideways in Safari puts the notch over the left or right edge
+// (the page asks for the whole screen with viewport-fit=cover). The page root
+// pads for it, but the fixed Documents header, the viewer's bottom dock and the
+// bottom sheets span the screen, so Upload, Spaces, Survey and sheet titles
+// sat under the notch.
+test.describe('sideways iPhone notch', () => {
+  test.use({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+
+  test('buttons and sheet text stay clear of the notch', async ({ page }) => {
+    test.setTimeout(120_000);
+    const NOTCH = 47;
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { left: NOTCH, right: NOTCH, top: 0, bottom: 21 } });
+    // Visible controls and text that reach into either notch strip. Full-width
+    // tap-to-close backdrops are left out.
+    const underNotch = () => page.evaluate((notch) => {
+      const out = [];
+      for (const el of document.querySelectorAll('button, a, input, h2, span')) {
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height || r.width >= window.innerWidth - 1 || r.right < 0 || r.left > window.innerWidth) continue;
+        if (getComputedStyle(el).visibility === 'hidden' || el.closest('[aria-hidden="true"]')) continue;
+        if (el.matches('h2, span') && (el.childElementCount || !el.textContent.trim())) continue;
+        if (r.left < notch - 1 || r.right > window.innerWidth - notch + 1) {
+          out.push(`${el.tagName.toLowerCase()} "${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 24)}" ${Math.round(r.left)}..${Math.round(r.right)}`);
+        }
+      }
+      return out;
+    }, NOTCH);
+
+    await signIn(page, E2E_ACCOUNTS.owner);
+    expect(await underNotch(), 'Documents').toEqual([]);
+    await openSampleOnPhone(page);
+    expect(await underNotch(), 'viewer').toEqual([]);
+    await visibleButton(page, 'Open spaces').tap();
+    await expect(page.getByText('Create space').or(page.getByRole('heading', { name: 'Spaces' })).first()).toBeVisible();
+    expect(await underNotch(), 'Spaces sheet').toEqual([]);
+  });
+});
