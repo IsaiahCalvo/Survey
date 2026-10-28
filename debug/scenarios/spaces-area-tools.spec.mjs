@@ -231,6 +231,118 @@ const pickSpace = async (page, name) => {
   await page.getByRole('button', { name: 'Destination space', exact: true }).filter({ visible: true }).first().click();
   await page.getByRole('listbox', { name: 'Destination space' }).getByRole('option', { name, exact: true }).click();
 };
+test('desktop: polygon area draws like the Polygon tool; "+" adds points; rectangles keep side grabbers', async ({ page, context }) => {
+  test.skip(test.info().project.use?.isMobile, 'desktop pass');
+  await setup(page, context);
+  await openAreas(page);
+  const startCount = await areas(page).count();
+  const box = await page.locator('.survey-pdfjs-page-div[data-page-number="1"]').boundingBox();
+  const at = (x, y) => [box.x + x, box.y + y];
+  const checks = page.locator('[data-region-polygon-check]');
+
+  await page.locator('[data-area-tool="polygon"]').click();
+  await page.mouse.click(...at(300, 400));
+  await page.mouse.click(...at(420, 400));
+  await expect(checks).toHaveCount(0);
+  // Shift locks the side to 15° steps: 54.5° off B lands on 60°, not 45°.
+  await page.keyboard.down('Shift');
+  await page.mouse.click(...at(470, 470));
+  await page.keyboard.up('Shift');
+  await expect(checks).toHaveCount(2);
+  await expect(page.locator('[data-region-polygon-check="close"]')).toBeVisible();
+  await expect(page.locator('[data-region-polygon-check="finish"]')).toBeVisible();
+  await page.mouse.click(...at(300, 500));
+  await page.screenshot({ path: test.info().outputPath('polygon-checks.png') });
+  await page.waitForTimeout(600);
+  // The check mark on the latest corner finishes the area.
+  await page.mouse.click(...at(300, 500));
+  await expect(checks).toHaveCount(0);
+  await expect(areas(page)).toHaveCount(startCount + 1);
+  await expect(areas(page).last()).toHaveAttribute('data-region-vertex-count', '4');
+
+  // Pick it: free-form shapes get a "+" on each side and no side grabbers.
+  await page.mouse.click(...at(350, 450));
+  await expect.poll(() => pickedCount(page)).toBe(1);
+  await expect(page.locator('[data-region-side-handle]')).toHaveCount(0);
+  await expect(page.locator('[data-region-add-vertex]')).toHaveCount(4);
+  await page.screenshot({ path: test.info().outputPath('polygon-plus.png') });
+  const plus = await page.locator('[data-region-add-vertex="0"]').boundingBox();
+  await page.mouse.move(plus.x + plus.width / 2, plus.y + plus.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(plus.x + plus.width / 2, plus.y + plus.height / 2 - 40, { steps: 8 });
+  await page.mouse.up();
+  await expect(areas(page).last()).toHaveAttribute('data-region-vertex-count', '5');
+  await expect(page.locator('[data-region-add-vertex]')).toHaveCount(5);
+  // One undo step takes the new point away.
+  await page.keyboard.press('Control+z');
+  await expect(areas(page).last()).toHaveAttribute('data-region-vertex-count', '4');
+
+  // A plain rectangle has side grabbers that move one side.
+  await page.locator('[data-area-tool="rectangle"]').click();
+  await page.mouse.click(...at(40, 40));
+  const rectCentre = await drawRect(page, 120, 620, 120, 70);
+  await page.mouse.click(rectCentre.x, rectCentre.y);
+  await expect.poll(() => pickedCount(page)).toBe(1);
+  await expect(page.locator('[data-region-side-handle]')).toHaveCount(4);
+  await expect(page.locator('[data-region-add-vertex]')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('rect-sides.png') });
+  const rectBefore = await areas(page).last().boundingBox();
+  const east = await page.locator('[data-region-side-handle="e"]').boundingBox();
+  await page.mouse.move(east.x + east.width / 2, east.y + east.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(east.x + east.width / 2 + 40, east.y + east.height / 2 + 15, { steps: 8 });
+  await page.mouse.up();
+  const rectAfter = await areas(page).last().boundingBox();
+  expect(Math.abs(rectAfter.width - rectBefore.width - 40)).toBeLessThan(4);
+  expect(Math.abs(rectAfter.height - rectBefore.height)).toBeLessThan(2);
+  expect(Math.abs(rectAfter.x - rectBefore.x)).toBeLessThan(2);
+  await expect(page.locator('[data-region-side-handle]')).toHaveCount(4);
+
+  // Merged into an L it is no longer a rectangle: "+" instead of side grabbers.
+  await page.mouse.click(...at(40, 40));
+  await drawRect(page, 120, 660, 60, 110);
+  await page.keyboard.press('v');
+  await page.mouse.click(...at(140, 750));
+  await page.keyboard.down('Shift');
+  await page.mouse.click(rectCentre.x + 50, rectCentre.y - 20);
+  await page.keyboard.up('Shift');
+  await expect.poll(() => pickedCount(page)).toBe(2);
+  await page.mouse.click(...at(140, 750), { button: 'right' });
+  await page.getByRole('menuitem', { name: 'Merge', exact: true }).click();
+  await expect(areas(page)).toHaveCount(startCount + 2);
+  await page.mouse.click(...at(140, 750));
+  await expect.poll(() => pickedCount(page)).toBe(1);
+  await expect(page.locator('[data-region-side-handle]')).toHaveCount(0);
+  expect(await page.locator('[data-region-add-vertex]').count()).toBeGreaterThan(4);
+  await page.screenshot({ path: test.info().outputPath('merged-plus.png') });
+
+  // Leave and read the saved shape: one side runs at 60°.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-region-edit-layer]')).toHaveCount(0);
+  const saved = (await storedPage(page)).regions;
+  const angles = saved.flatMap((region) => {
+    const c = region.coordinates;
+    const n = c.length / 2;
+    return Array.from({ length: n }, (_, i) => {
+      const j = (i + 1) % n;
+      return ((Math.atan2(c[j * 2 + 1] - c[i * 2 + 1], c[j * 2] - c[i * 2]) * 180) / Math.PI + 360) % 360;
+    });
+  });
+  expect(angles.some((deg) => Math.abs(deg - 60) < 0.5)).toBe(true);
+
+  // Subtract keeps cutting while Shift (Add on its own) locks the angle.
+  await openAreas(page);
+  await page.locator('[data-area-tool="polygon"]').click();
+  await page.locator('[data-area-tool="subtract"]').click();
+  await page.mouse.click(...at(450, 640));
+  await page.keyboard.down('Shift');
+  await page.mouse.click(...at(510, 670));
+  await expect(page.locator('[data-region-polygon-preview] path[stroke="#E24A4A"]').first()).toBeVisible();
+  await page.keyboard.up('Shift');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-region-polygon-preview]')).toHaveCount(0);
+});
+
 test('desktop: Move or copy drops down from its button', async ({ page, context }) => {
   test.skip(test.info().project.use?.isMobile, 'desktop pass');
   await setup(page, context);
