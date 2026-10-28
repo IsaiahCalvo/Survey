@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
-import { dohAnswerHasToken, readMetadataInput, signOnErrorText, txtRecordName } from '../_shared/companySso.js';
+import { dohAnswerHasToken, METADATA_XML_MAX, readMetadataInput, signOnErrorText, txtRecordName } from '../_shared/companySso.js';
+import { parseBody, s } from '../_shared/inputSchema.js';
 
 // Company sign-in setup for the Enterprise company workspace, done by the
 // company's own owner or admin with no help from us:
@@ -54,10 +55,17 @@ Deno.serve(async (req) => {
     if (!authHeader) return json(401, { error: 'Missing authorization header' });
     if (isAgentSession(authHeader)) return json(403, { error: AGENT_REFUSED_MESSAGE });
 
-    const body = await req.json().catch(() => null);
-    const action = typeof body?.action === 'string' ? body.action : '';
-    const orgId = typeof body?.orgId === 'string' ? body.orgId : '';
-    if (!ACTIONS.has(action) || !/^[0-9a-f-]{36}$/i.test(orgId)) return json(400, { error: 'Bad request' });
+    const UUID = /^[0-9a-f-]{36}$/i;
+    const parsed = parseBody({
+      action: s.enum([...ACTIONS]),
+      orgId: s.string({ max: 36, pattern: UUID }),
+      domainId: s.string({ max: 36, pattern: UUID, optional: true }),
+      metadataUrl: s.string({ max: 2048, optional: true }),
+      metadataXml: s.string({ max: METADATA_XML_MAX * 2, optional: true }), // readMetadataInput words the real limit
+    }, await req.json().catch(() => null));
+    if (!parsed.ok) return json(400, { error: 'Bad request' });
+    const body = parsed.value as { action: string, orgId: string, domainId?: string, metadataUrl?: string, metadataXml?: string };
+    const { action, orgId } = body;
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
@@ -85,7 +93,7 @@ Deno.serve(async (req) => {
     };
 
     if (action === 'check-domain') {
-      const domainId = typeof body?.domainId === 'string' ? body.domainId : '';
+      const domainId = body.domainId || '';
       const { data: row } = await admin.from('organization_domains')
         .select('id, domain, verification_token, verified_at').eq('id', domainId).eq('organization_id', orgId).maybeSingle();
       if (!row) return json(404, { error: 'Domain not found.' });
