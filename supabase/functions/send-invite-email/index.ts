@@ -14,6 +14,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { handleSendInviteEmail, CORS_HEADERS } from './handler.js';
 import { agentOverLimit, AGENT_RATE_LIMITED_MESSAGE } from '../_shared/agentSession.ts';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -58,7 +59,7 @@ Deno.serve(async (req) => {
     getUserFromToken: async (jwt: string) => {
       try {
         const { data, error } = await createClient(SUPABASE_URL, ANON_KEY).auth.getUser(jwt);
-        return error ? null : (data?.user ?? null);
+        return error || isGuestUser(data?.user) ? null : (data?.user ?? null);
       } catch {
         return null;
       }

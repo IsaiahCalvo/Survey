@@ -126,6 +126,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Survey items: status, assigned to and due date, with list filters',
     stage: 'beta',
   }),
+  'guest-links': Object.freeze({
+    label: 'Guest links: open one document without an account, as viewer or editor, until a set time',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

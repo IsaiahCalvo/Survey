@@ -351,14 +351,26 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
     // run them concurrently instead of as a 2-step waterfall. Supabase resolves
     // (never rejects) with {data,error}, so the throw-on-owned-error semantics
     // below are preserved (the dependent missingIds query stays sequential).
-    const [ownedRes, collaboratorRows] = await Promise.all([
+    const [ownedRes, memberRows, guestRows] = await Promise.all([
       readLibraryRows(ownedQuery),
       readLibraryRows(() => supabase
         .from('document_collaborators')
         .select('document_id, role')
         .eq('user_id', user.id)
         .eq('status', 'active'), { cursorColumn: 'document_id' }),
+      // A guest (guest links, Nightly) reaches documents through the links it
+      // redeemed; the documents read below drops any whose link has ended.
+      user.is_anonymous
+        ? readLibraryRows(() => supabase
+          .from('document_guests')
+          .select('id, document_id')
+          .eq('user_id', user.id))
+        : Promise.resolve({ data: [], error: null }),
     ]);
+    const collaboratorRows = memberRows.error ? memberRows : {
+      data: [...(memberRows.data || []), ...(guestRows.data || []).map((row) => ({ document_id: row.document_id, role: 'guest' }))],
+      error: null,
+    };
     const { data, error } = ownedRes;
     if (error) throw error;
 

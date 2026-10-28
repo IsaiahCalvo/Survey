@@ -64,7 +64,7 @@ export async function listCommentPeople(client, documentId) {
   if (!documentId) return [];
   const { data, error } = await client.rpc('mark_comment_people', { p_document_id: documentId });
   if (error) throw new Error(error.message || 'Could not read who is on this document');
-  return (data || []).map((row) => ({ id: row.user_id, name: row.name || null, email: row.email || null }));
+  return (data || []).map((row) => ({ id: row.user_id, name: row.name || null, email: row.email || null, guest: row.guest === true }));
 }
 
 function rpcRow(result, fallback) {
@@ -146,10 +146,11 @@ export function mentionQueryAt(text, caret) {
   return { start: before.length - match[2].length - 1, query: match[2] };
 }
 
+// Guests (guest links) have no email to send a mention to, so they are not offered.
 export function matchPeople(people, query, { exclude = [] } = {}) {
   const q = String(query || '').toLowerCase();
   return (people || [])
-    .filter((p) => !exclude.includes(p.id))
+    .filter((p) => !p.guest && !exclude.includes(p.id))
     .filter((p) => !q || personLabel(p).toLowerCase().includes(q) || String(p.email || '').toLowerCase().includes(q))
     .slice(0, 6);
 }

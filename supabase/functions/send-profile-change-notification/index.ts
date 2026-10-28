@@ -8,6 +8,7 @@ import {
   EMAIL_P_STYLE as P,
   EMAIL_FINE_STYLE as FINE,
 } from '../_shared/emailLayout.ts'
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 // Transactional email via Brevo (consolidated to one email service 2026-07-05).
 const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY')
@@ -61,6 +62,13 @@ Deno.serve(async (req) => {
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (isGuestUser(user)) {
+      return new Response(JSON.stringify({ error: GUEST_REFUSED_MESSAGE }), {
+        status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }

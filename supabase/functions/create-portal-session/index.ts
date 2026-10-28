@@ -3,6 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { resolveBillingReturnUrl } from '../_shared/billingReturn.ts';
 import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') as string, {
     apiVersion: '2026-02-25.clover',
@@ -50,6 +51,12 @@ Deno.serve(async (req) => {
 
         // Get the authenticated user
         const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (!userError && isGuestUser(user)) {
+            return new Response(
+                JSON.stringify({ error: GUEST_REFUSED_MESSAGE }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
         if (userError || !user) {
             return new Response(
                 JSON.stringify({ error: 'Unauthorized' }),
