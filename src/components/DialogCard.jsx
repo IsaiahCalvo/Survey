@@ -22,6 +22,7 @@
 // `dialog-touch-pad`. tests/dialogConsistency.test.mjs keeps dialogs on it.
 
 import { useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../home/HubShell';
 import { C } from '../uiPalette';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -94,6 +95,10 @@ function playUnmountExit(overlay, parent) {
  * @param {boolean} [props.busy] while true nothing closes it
  * @param {number} [props.width=380]
  * @param {number} [props.zIndex] over the viewer's own layers when needed
+ * @param {boolean} [props.atRoot] mount at the screen root: a card the viewer
+ *   opens while a phone sheet is up, which inside the viewer sits in the work
+ *   area's layer, under the sheet and the dock. Opt-in, because a panel that
+ *   closes on a tap outside itself counts a tap in a root-mounted card as one.
  * @param {import('react').ReactNode} [props.children] the body, under the message
  * @param {import('react').ReactNode} [props.footer] the buttons, right-aligned
  * @param {'div'|'form'} [props.as='div'] a form submits on Enter
@@ -110,6 +115,7 @@ export default function DialogCard({
   busy = false,
   width = 380,
   zIndex,
+  atRoot = false,
   children,
   footer,
   as: Card = 'div',
@@ -131,9 +137,11 @@ export default function DialogCard({
   }, []);
 
   // Closed: MotionPresence plays the exit of the last open card (motion.css).
-  if (!open) return <MotionPresence open={false} />;
+  // An atRoot card lives at the screen root, closing too.
+  const mount = (node) => (atRoot && typeof document !== 'undefined' && document.body ? createPortal(node, document.body) : node);
+  if (!open) return mount(<MotionPresence open={false} />);
 
-  return (
+  const card = (
     <MotionPresence open>
       <div ref={overlayRef} onClick={busy ? undefined : (onScrim || onClose)} style={zIndex ? { ...DIALOG_OVERLAY_STYLE, zIndex } : DIALOG_OVERLAY_STYLE}>
         <Card
@@ -160,4 +168,5 @@ export default function DialogCard({
       </div>
     </MotionPresence>
   );
+  return mount(card);
 }

@@ -41,6 +41,7 @@ async function compile(rel, dir, swaps) {
 async function loadPromptModal() {
   const dir = await mkdtemp(path.join(tmpdir(), 'kal66-prompt-'));
   const cardUrl = await compile('src/components/DialogCard.jsx', dir, [
+    ["import { createPortal } from 'react-dom';", `import { createPortal } from ${JSON.stringify(pathToFileURL(require.resolve('react-dom')).href)};`],
     ["import { Icon } from '../home/HubShell';", 'const Icon = () => null;'],
     ["import { C } from '../uiPalette';", `import { C } from ${JSON.stringify(url('src/uiPalette.js'))};`],
     ["import { useFocusTrap } from '../hooks/useFocusTrap';", `import { useFocusTrap } from ${JSON.stringify(url('src/hooks/useFocusTrap.js'))};`],

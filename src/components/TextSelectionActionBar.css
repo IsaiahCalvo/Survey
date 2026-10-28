@@ -167,3 +167,34 @@
     scroll-behavior: auto;
   }
 }
+
+/* Phone viewer: the bar sits on the tool-strip band the rail leaves free
+   (--mobile-strip-band-h, 36px), like every other phone strip. At 48px it hid
+   the top of the Pan chip, and its ten 40px buttons (430px) pushed Redact off
+   every phone screen. The colour dots are narrower than the mark buttons, so
+   the whole row fits a 360px phone; a 320px phone still scrolls the last one. */
+.mobile-pdf-work-area .text-selection-action-bar__toolbar,
+.mobile-pdf-work-area .text-selection-action-bar__tools {
+  height: var(--mobile-strip-band-h, 36px);
+  min-height: var(--mobile-strip-band-h, 36px);
+}
+
+.mobile-pdf-work-area .text-selection-action-bar__tools {
+  margin-inline: auto;
+  padding-inline: 4px;
+}
+
+.mobile-pdf-work-area .text-selection-action-bar__mark {
+  height: 34px;
+}
+
+.mobile-pdf-work-area .text-selection-action-bar__button {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+}
+
+.mobile-pdf-work-area .text-selection-action-bar__mark .text-selection-action-bar__button + .text-selection-action-bar__button {
+  width: 26px;
+  min-width: 26px;
+}
