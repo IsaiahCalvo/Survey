@@ -122,14 +122,12 @@ jobs:
           supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api --jobs 4
           agent-auth
           agent-identity
-          company-sso
           create-checkout-session
           create-portal-session
           delete-account
           export-account
           excel-apply-changeset
           kits-admin
-          notify-comment-mentions
           pdf-file-url
           send-profile-change-notification
           stripe-webhook
