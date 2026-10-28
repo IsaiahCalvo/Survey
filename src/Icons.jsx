@@ -224,6 +224,13 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    comment: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.2 3.4a.5.5 0 0 1-.8-.4V16h0a1 1 0 0 1-1-1V5.5Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M8 8.5h8M8 11.5h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
     retry: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M20 11a8 8 0 1 0-2.34 5.66" stroke={color} strokeWidth="1.5" strokeLinecap="round" />

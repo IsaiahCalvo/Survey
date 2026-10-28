@@ -434,3 +434,9 @@ verify_jwt = false
 # person's Bearer token itself, like survey-mcp.
 [functions.survey-undo]
 verify_jwt = false
+
+# Comment @mention email (Nightly). Browser-invoked: answers the CORS
+# preflight, then does its own auth (auth.getUser on the Bearer JWT) and only
+# emails for the caller's own fresh comment.
+[functions.notify-comment-mentions]
+verify_jwt = false
