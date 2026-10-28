@@ -380,6 +380,12 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+// Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
+import MarkLibraryPlacementLayer from './markLibrary/MarkLibraryPlacementLayer.jsx';
+import MarkLibrarySaveDialog from './markLibrary/MarkLibrarySaveDialog.jsx';
+import { markLibraryStore } from './markLibrary/markLibraryStore.js';
+import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipboard, planLibraryPlacement } from './markLibrary/markLibraryModel.js';
+import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
 import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
 import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
@@ -21789,6 +21795,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Layers panel ('layers' flag): the layer list rides the synced doc meta;
   // the active layer is this screen's own choice.
   const [layersEnabled] = useState(() => isFeatureOn('layers'));
+  // Mark library ('mark-library' beta): the store follows the front tab's
+  // signed-in person and document project; libraryDraft is the marks the
+  // Save to library card is open for.
+  const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
+  const [libraryDraft, setLibraryDraft] = useState(null);
+  useEffect(() => {
+    if (!markLibraryEnabled || isActive === false) return;
+    markLibraryStore.setContext({ userId: user?.id || null, projectId: pdfFile?.projectId || null });
+  }, [markLibraryEnabled, isActive, user?.id, pdfFile?.projectId]);
   // Nightly: the survey bar's template menu links to the Templates editor.
   const [customAnswersEnabled] = useState(() => isFeatureOn('custom-answers'));
   const [layerState, setLayerState] = useState(DEFAULT_LAYER_STATE);
@@ -32752,6 +32767,58 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return commitFamilyPaste(offset?.toPage ?? pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
 
+  // Mark library: the picked marks as a library item (the Save card opens on
+  // them). Same collection as Duplicate, so every family member can go in.
+  const saveFamilyToLibrary = useCallback((pageNumber, selection) => {
+    const collected = collectFamilySelection(pageNumber, selection);
+    const { width, height } = pageSizeFor(pageNumber);
+    const payload = libraryPayloadFromClipboard(buildFamilyClipboard({
+      pageNumber,
+      objects: collected.objects,
+      indices: collected.indices,
+      callouts: collected.callouts,
+      markers: collected.markers,
+      pageMarkers: collected.pageMarkers,
+      pageWidth: width,
+      pageHeight: height,
+    }));
+    if (!payload) { showToast('Text highlights can\'t go in the library.', 'info'); return false; }
+    if (libraryPayloadBytes(payload) > LIBRARY_PAYLOAD_MAX_BYTES) {
+      showToast('Those marks are too big to save (the limit is about 1 MB; large images count most).', 'error');
+      return false;
+    }
+    setLibraryDraft(payload);
+    return true;
+  }, [collectFamilySelection, showToast]);
+
+  // Mark library: drop an item at a screen point ({ clientX, clientY }) or in
+  // the middle of the page in view ({ center: true }). A paste of the item's
+  // marks (one save, one Undo step, they become the selection), with its
+  // {{tokens}} filled in and measurements on the landing page's scale.
+  const placeLibraryItemAt = useCallback((item, where) => {
+    if (familyEditsBlocked()) { showToast('This document can\'t be changed right now.', 'info'); return false; }
+    const drop = resolveLibraryDrop(pdfjsWrapperRef.current, where, pageNumRef.current || pageNum, pageSizeFor);
+    if (!drop) return false;
+    const { width, height } = pageSizeFor(drop.pageNumber);
+    const plan = planLibraryPlacement(item?.payload, {
+      point: drop.point,
+      pageWidth: width,
+      pageHeight: height,
+      pageNumber: drop.pageNumber,
+      landingScale: pageScaleFromObjects(annotationsByPageRef.current?.[drop.pageNumber]?.objects)
+        || measureScales[drop.pageNumber] || null,
+      tokens: {
+        authorName: user?.user_metadata?.full_name || '',
+        authorEmail: user?.email || '',
+        documentName: pdfFile?.name || '',
+        projectName: markLibraryStore.getState().access.projectName || '',
+      },
+    });
+    if (!plan) { showToast('That item can\'t be placed.', 'error'); return false; }
+    fitPlacedTextBoxes(plan.clipboard);
+    return commitFamilyPaste(drop.pageNumber, plan.clipboard, plan.dx, plan.dy);
+  }, [commitFamilyPaste, measureScales, pageNum, pdfFile?.name, showToast, user]);
+
   // w53: a saved marker is a family member; one still being placed is not.
   const isSurveyMarkerFamilyMember = useCallback((annotationId) => (
     Boolean(annotationId && surveyMarkersRef.current?.[annotationId])
@@ -36503,6 +36570,7 @@ ${pageBlocks}
       onLayersChange: handleLayersChange,
       onActiveLayerChange: setActiveLayerId,
       canEditLayers: canRestoreFromHistory,
+      markLibraryEnabled,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -36524,6 +36592,7 @@ ${pageBlocks}
     isActive,
     onLeftRailApiChange,
     layersEnabled,
+    markLibraryEnabled,
     layerState,
     effectiveActiveLayerId,
     handleLayersChange,
@@ -37182,6 +37251,7 @@ ${pageBlocks}
         duplicateFamilySelection,
         familyClipboard,
         pasteFamilyAt,
+        saveFamilyToLibrary: markLibraryEnabled ? saveFamilyToLibrary : null,
         viewerId: user?.id ?? null,
         documentOwnerId,
         selectedCalloutIds,
@@ -37218,6 +37288,13 @@ ${pageBlocks}
           },
         },
       })}
+
+      {markLibraryEnabled && (
+        <MarkLibraryPlacementLayer active={isActive !== false} rootRef={pdfjsWrapperRef} place={placeLibraryItemAt} />
+      )}
+      {markLibraryEnabled && (
+        <MarkLibrarySaveDialog open={Boolean(libraryDraft)} payload={libraryDraft} onClose={() => setLibraryDraft(null)} />
+      )}
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
           for the owner-approved UX (friendly names, once per document open,
