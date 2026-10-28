@@ -53,7 +53,7 @@ export const SURVEY_CENTRE_CLEARANCE = Math.ceil(
   P.inset + P.templateGlyph + P.moreGap + P.more + P.gap
   + surveyRowWidth({ count: 99, item: P.chip, gap: P.chipGapTight, allChip: P.allChip, max: 5 }) / 2,
 );
-export const PANEL_IDS = Object.freeze(['pages', 'search', 'bookmarks', 'spaces', 'history', 'layers', 'library']);
+export const PANEL_IDS = Object.freeze(['pages', 'search', 'bookmarks', 'spaces', 'history', 'layers', 'library', 'comments']);
 
 const STORAGE_PREFIX = 'survey.leftPanelLayout.v1';
 

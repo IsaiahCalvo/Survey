@@ -1,0 +1,223 @@
+/* Comments on marks (Nightly, 'mark-comments'): the left rail's own tokens,
+   like the Layers panel. */
+.comments-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.comments-empty {
+  padding: 12px 8px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.comments-icon:focus-visible,
+.comments-thread__target--link:focus-visible,
+.comments-mentions__item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.comments-new {
+  align-self: flex-start;
+  gap: 4px;
+}
+
+.comments-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  transition: box-shadow 200ms ease-out;
+}
+
+.comments-thread.is-highlighted {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.comments-thread__target {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font: 600 11px/1.4 var(--font-ui);
+}
+
+.comments-thread__target--link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+
+@media (hover: hover) {
+  .comments-thread__target--link:hover {
+    color: var(--text-1);
+    text-decoration-color: currentColor;
+  }
+}
+
+.comments-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.comments-item--deleted {
+  color: var(--text-3);
+  font-style: italic;
+  font-size: 12px;
+}
+
+.comments-item__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.comments-item__author {
+  color: var(--text-1);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comments-item__time {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.comments-item__tools {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.comments-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .comments-icon:hover {
+    background: var(--hover);
+    color: var(--text-1);
+  }
+}
+
+.comments-item__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  color: var(--text-1);
+}
+
+.comments-mention {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.comments-reply {
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+
+.comments-reply-btn {
+  align-self: flex-start;
+}
+
+.comments-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comments-box textarea {
+  width: 100%;
+  min-height: 52px;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font: 13px/1.45 var(--font-ui);
+}
+
+.comments-box textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+
+.comments-box__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.comments-mentions {
+  position: absolute;
+  top: calc(100% - 34px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-dialog);
+}
+
+.comments-mentions__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-1);
+  font: 13px/1.3 var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.comments-mentions__item.is-active {
+  background: var(--hover);
+}
+
+.comments-mentions__email {
+  color: var(--text-3);
+  font-size: 11px;
+}
