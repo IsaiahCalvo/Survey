@@ -223,30 +223,40 @@ test('desktop: areas copied before leaving still paste after reopening', async (
   await expect(areas(page)).toHaveCount(count + 1);
 });
 
-// Owner 2026-10-27: Move or copy is a small card beside its button, its tail
-// pointing at the button; the space is the app's own drop-down pill (no
-// border), Copy / Move are bare glyphs (no box, ever), and picking a space
-// neither moves nor resizes the card.
+// Owner 2026-10-27/28: Move or copy is a small card that drops down from its
+// button; the space is the app's own drop-down pill (no border), the page is
+// one "3 / 36" field, Copy / Move are bare glyphs (no box, ever), and picking
+// a space neither moves nor resizes the card.
 const pickSpace = async (page, name) => {
   await page.getByRole('button', { name: 'Destination space', exact: true }).filter({ visible: true }).first().click();
   await page.getByRole('listbox', { name: 'Destination space' }).getByRole('option', { name, exact: true }).click();
 };
-test('desktop: Move or copy opens beside its button with a tail', async ({ page, context }) => {
+test('desktop: Move or copy drops down from its button', async ({ page, context }) => {
   test.skip(test.info().project.use?.isMobile, 'desktop pass');
   await setup(page, context);
   const opener = button(page, 'Move or copy region on page 1');
   await opener.click();
   const card = page.getByRole('dialog', { name: 'Move or copy Region 1' });
   await expect(card).toBeVisible();
-  await expect(card).toHaveAttribute('data-callout-side', 'right');
+  // Owner 2026-10-28: it drops down from its button, over what is below.
+  await expect(card).toHaveClass(/spaces-dropdown-card/);
   const o = await opener.boundingBox();
+  await page.waitForTimeout(200);
   const c = await card.boundingBox();
-  expect(c.x).toBeGreaterThan(o.x + o.width);
-  expect(c.x - (o.x + o.width)).toBeLessThan(16);
+  expect(c.y).toBeGreaterThanOrEqual(o.y + o.height);
+  expect(c.y - (o.y + o.height)).toBeLessThan(12);
+  expect(c.x).toBeLessThan(o.x + o.width / 2);
+  expect(c.x + c.width).toBeGreaterThan(o.x + o.width / 2);
   expect(c.width).toBeLessThanOrEqual(214);
   expect(c.height).toBeLessThanOrEqual(120);
   const space = card.getByRole('button', { name: 'Destination space', exact: true });
   await expect(space).toHaveClass(/chrome-pill/);
+  // The pill must stand apart from the card (owner 2026-10-28: hard to see).
+  const [pillFill, cardFill] = await Promise.all([
+    space.evaluate((el) => getComputedStyle(el).backgroundColor),
+    card.evaluate((el) => getComputedStyle(el).backgroundColor),
+  ]);
+  expect(pillFill).not.toBe(cardFill);
   await expect(space).toHaveCSS('border-top-width', '0px');
   for (const name of ['Copy region', 'Move region']) {
     const control = card.getByRole('button', { name, exact: true });
@@ -256,13 +266,16 @@ test('desktop: Move or copy opens beside its button with a tail', async ({ page,
     await expect(control).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(control).toHaveCSS('border-top-width', '0px');
   }
-  expect(c.y).toBeLessThan(o.y + o.height / 2);
-  expect(c.y + c.height).toBeGreaterThan(o.y + o.height / 2);
   await expect(button(page, 'Move region')).toBeDisabled();
-  await button(page, 'Page after').click();
-  await expect(page.getByRole('textbox', { name: 'Destination page' })).toHaveValue('2');
+  // One "3 / 36" field (owner 2026-10-28): no stepper buttons; arrows step.
+  const pageField = card.getByRole('textbox', { name: /^Destination page/ });
+  for (const name of ['Page before', 'Page after']) await expect(card.getByRole('button', { name, exact: true })).toHaveCount(0);
+  await expect(card.locator('.spaces-transfer__field')).toContainText('/ 8');
+  await pageField.focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(pageField).toHaveValue('2');
   await expect(button(page, 'Move region')).toBeEnabled();
-  await button(page, 'Page before').click();
+  await page.keyboard.press('ArrowDown');
   await expect(button(page, 'Move region')).toBeDisabled();
   const before = await card.boundingBox();
   await pickSpace(page, 'Fix19 Space B');
