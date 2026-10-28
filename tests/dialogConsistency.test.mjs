@@ -84,15 +84,17 @@ test('Rename and the prompt use the shell and the one dialog field', () => {
   assert.match(read('src/home/hub.css'), /\.dialog-prompt-input \{\s*font-size: 16px !important;\s*height: 44px !important;/);
 });
 
-// Phone walk 2026-10-28: a card given a zIndex is one the viewer opens over
-// its own layers. Mounted inside the viewer it sat in the work area's layer,
-// under the phone's sheets and dock: "Survey template updated" opened behind
-// the Survey sheet, so tapping a changed template looked like it did nothing.
-test('a dialog card with a zIndex mounts at the screen root, open and closing', () => {
+// Phone walk 2026-10-28: "Survey template updated" opened inside the viewer's
+// work-area layer, under the phone's Survey sheet, so tapping a changed
+// template looked like it did nothing. It mounts at the screen root; root
+// mounting stays opt-in, since a panel that closes on an outside tap counts a
+// tap in a root-mounted card as outside (the agent's "What Survey learned").
+test('the template version question mounts at the screen root, open and closing', () => {
   const shell = read('src/components/DialogCard.jsx');
   assert.match(shell, /import \{ createPortal \} from 'react-dom';/);
-  assert.match(shell, /const atRoot = \(node\) => \(zIndex && [^\n]*createPortal\(node, document\.body\)/);
-  assert.match(shell, /if \(!open\) return atRoot\(<MotionPresence open=\{false\} \/>\);/);
-  assert.match(shell, /return atRoot\(card\);/);
-  assert.match(read('src/components/SurveyTemplateVersionDialog.jsx'), /zIndex=\{\d+\}/);
+  assert.match(shell, /atRoot = false,/);
+  assert.match(shell, /const mount = \(node\) => \(atRoot && [^\n]*createPortal\(node, document\.body\)/);
+  assert.match(shell, /if \(!open\) return mount\(<MotionPresence open=\{false\} \/>\);/);
+  assert.match(shell, /return mount\(card\);/);
+  assert.match(read('src/components/SurveyTemplateVersionDialog.jsx'), /\n\s+atRoot\n/);
 });

@@ -94,9 +94,11 @@ function playUnmountExit(overlay, parent) {
  *   from onClose (the prompt keeps typed text on a stray tap)
  * @param {boolean} [props.busy] while true nothing closes it
  * @param {number} [props.width=380]
- * @param {number} [props.zIndex] over the viewer's own layers when needed; a
- *   card given one mounts at the screen root, since inside the viewer it sits
- *   in the work area's layer and a phone's sheets and dock cover it
+ * @param {number} [props.zIndex] over the viewer's own layers when needed
+ * @param {boolean} [props.atRoot] mount at the screen root: a card the viewer
+ *   opens while a phone sheet is up, which inside the viewer sits in the work
+ *   area's layer, under the sheet and the dock. Opt-in, because a panel that
+ *   closes on a tap outside itself counts a tap in a root-mounted card as one.
  * @param {import('react').ReactNode} [props.children] the body, under the message
  * @param {import('react').ReactNode} [props.footer] the buttons, right-aligned
  * @param {'div'|'form'} [props.as='div'] a form submits on Enter
@@ -113,6 +115,7 @@ export default function DialogCard({
   busy = false,
   width = 380,
   zIndex,
+  atRoot = false,
   children,
   footer,
   as: Card = 'div',
@@ -134,9 +137,9 @@ export default function DialogCard({
   }, []);
 
   // Closed: MotionPresence plays the exit of the last open card (motion.css).
-  // A card with a zIndex lives at the screen root (see the end), closing too.
-  const atRoot = (node) => (zIndex && typeof document !== 'undefined' && document.body ? createPortal(node, document.body) : node);
-  if (!open) return atRoot(<MotionPresence open={false} />);
+  // An atRoot card lives at the screen root, closing too.
+  const mount = (node) => (atRoot && typeof document !== 'undefined' && document.body ? createPortal(node, document.body) : node);
+  if (!open) return mount(<MotionPresence open={false} />);
 
   const card = (
     <MotionPresence open>
@@ -165,7 +168,5 @@ export default function DialogCard({
       </div>
     </MotionPresence>
   );
-  // Phone walk 2026-10-28: "Survey template updated" opened under the phone's
-  // Survey sheet, so tapping a changed template looked like it did nothing.
-  return atRoot(card);
+  return mount(card);
 }
