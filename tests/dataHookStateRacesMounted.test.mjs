@@ -205,7 +205,7 @@ for (const [hook, table, memberColumn] of [
     const membershipTable = table === 'documents' ? 'document_collaborators' : 'project_collaborators';
     const h = await mount(t, hook, {
       tablesForUser(userId) {
-        const row = (id, owner = userId) => ({ id, user_id: owner, archived: false, user_archived_at: null,
+        const row = (id, owner = userId) => ({ id, user_id: owner, archived: false, user_archived_at: null, superseded_by: null,
           updated_at: '2026-09-07', created_at: '2026-09-07' });
         const owned = Array.from({ length: 1003 }, (_, i) => row(`o${String(i).padStart(4, '0')}`));
         const shared = Array.from({ length: 1003 }, (_, i) => row(`s${String(i).padStart(4, '0')}`, 'owner'));

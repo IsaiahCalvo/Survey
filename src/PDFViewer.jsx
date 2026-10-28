@@ -32806,7 +32806,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageHeight: height,
       pageNumber: drop.pageNumber,
       landingScale: pageScaleFromObjects(annotationsByPageRef.current?.[drop.pageNumber]?.objects)
-        || metaScaleForPage(measureScaleMetaRef.current, drop.pageNumber),
+        || metaScaleForPage(measureScaleMetaRef.current, drop.pageNumber) || null,
       tokens: {
         authorName: user?.user_metadata?.full_name || '',
         authorEmail: user?.email || '',

@@ -560,7 +560,7 @@ async function callTool(db: SupabaseClient, name: string, args: Record<string, u
   if (name === 'list_documents') {
     const { limit, offset } = pageArgs(args, 100, 200);
     let q = db.from('documents').select('id, name, project_id, page_count, updated_at')
-      .eq('archived', false).is('user_archived_at', null);
+      .eq('archived', false).is('user_archived_at', null).is('superseded_by', null);
     if (args.project_id) {
       if (!UUID.test(String(args.project_id))) throw new ToolError('project_id must be a project id from list_projects.');
       q = q.eq('project_id', String(args.project_id));

@@ -203,7 +203,7 @@ test('the model gets remember, forget and tidy_notes; browser agents do not', ()
 });
 
 test('the table: project roles read and write, outside agents never write, rows capped', () => {
-  const sql = readFileSync(new URL('../supabase/migrations/20261028010000_survey_agent_memory.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261028020000_survey_agent_memory.sql', import.meta.url), 'utf8');
   assert.match(sql, /enable row level security/);
   assert.match(sql, /for select to authenticated\s+using \(public\.user_can_access_project\(project_id, 'viewer'\)\)/);
   for (const op of ['insert', 'update', 'delete']) {

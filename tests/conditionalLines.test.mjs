@@ -66,7 +66,7 @@ test('hidden flag: Survey Nightly does not turn it on by itself', () => {
   assert.equal(isFeatureOn('conditional-lines', { storage: storage('1'), env: nightly }), true);
   assert.equal(isFeatureOn('custom-answers', { storage: storage(null), env: nightly }), true);
   assert.equal(isFeatureOn('conditional-lines', { storage: storage('1'), env: {} }), false, 'never on stable');
-  const sql = readFileSync(new URL('../supabase/migrations/20261028012000_conditional_lines_flag.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261028022000_conditional_lines_flag.sql', import.meta.url), 'utf8');
   assert.match(sql, /'conditional-lines', 'off'/);
 });
 

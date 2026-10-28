@@ -106,6 +106,10 @@ export const FEATURE_FLAGS = Object.freeze({
     stage: 'beta',
     nightlyOn: false,
   }),
+  'document-versions': Object.freeze({
+    label: 'Version history: a new version keeps the old ones, with old-over-new compare',
+    stage: 'beta',
+  }),
   'mark-library': Object.freeze({
     label: 'Mark library: save marks to a personal or project library and drop them on any page',
     stage: 'beta',

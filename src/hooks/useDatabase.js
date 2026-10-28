@@ -328,7 +328,10 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
         // KAL-280 — user-archived documents live in Archive, not the library.
         // This is a SEPARATE column from `archived` above: that one is the
         // Free-tier downgrade flag, this one is the 30-day recoverable Archive.
-        .is('user_archived_at', null);
+        .is('user_archived_at', null)
+        // Version history: an older version of a document is reached from
+        // its newest copy, not listed on its own.
+        .is('superseded_by', null);
 
       if (projectId) query = query.eq('project_id', projectId);
       return query;
@@ -368,7 +371,8 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
             // The database enforces this as well (user_can_access_document
             // resolves only for the permanent owner while archived); filtering
             // here keeps the shared document out of the list in the first place.
-            .is('user_archived_at', null);
+            .is('user_archived_at', null)
+            .is('superseded_by', null);
           if (projectId) collaboratorQuery = collaboratorQuery.eq('project_id', projectId);
           return collaboratorQuery;
         });
