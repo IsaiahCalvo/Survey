@@ -163,7 +163,7 @@ export function buildAgentTools({ getViewer = activeViewer, getDocument = active
       execute: async ({ project_id } = {}) => {
         let q = supabase.from('documents')
           .select('id, name, project_id, page_count, updated_at')
-          .eq('archived', false).is('user_archived_at', null);
+          .eq('archived', false).is('user_archived_at', null).is('superseded_by', null);
         if (project_id) {
           if (!UUID.test(String(project_id))) throw new Error('project_id must be a project id.');
           q = q.eq('project_id', project_id);

@@ -16,6 +16,7 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import ExportPdfDialog from './components/ExportPdfDialog';
+import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
@@ -2099,6 +2100,11 @@ export default function App({ devPreviewReturnTab = null }) {
     return () => window.removeEventListener(OPEN_EXPORT_PDF_EVENT, open);
   }, [exportModesEnabled]);
 
+  // Version history (Survey Nightly only, beta flag 'document-versions'):
+  // components/DocumentVersionsButton.jsx.
+  const [documentVersionsEnabled] = useState(() => isFeatureOn('document-versions'));
+  const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect);
+
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
   const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
 
@@ -2828,6 +2834,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   onTurnOff={turnOffSpaceFromChip}
                 />
               )}
+              <DocumentVersionsButton state={documentVersions} tip={chromeTip} />
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
@@ -5324,6 +5331,7 @@ export default function App({ devPreviewReturnTab = null }) {
           onClose={() => setExportPdfDialogOpen(false)}
         />
       )}
+      <DocumentVersionsDialogs state={documentVersions} />
       <TooltipChipHost setterRef={shellTooltipSetterRef} />
     </TooltipContext.Provider>
   );
