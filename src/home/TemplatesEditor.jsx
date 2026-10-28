@@ -46,7 +46,7 @@ import { isFeatureOn } from '../featureFlags.js';
 import AnswerSetEditor, { ItemKindPicker, ShowIfPicker } from './AnswerSetEditor.jsx';
 import { copyLines, showIfOf } from '../services/conditionalLines.js';
 import { checklistItemKind, manyOptionsOf } from '../../supabase/functions/_shared/kitShape.js';
-import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
 import { reloadTemplatesAfterPendingSave } from './templatePersistence.js';
@@ -112,15 +112,21 @@ import { TEMPLATE_EDITOR_REQUEST_EVENT, takeTemplateEditorRequest } from './temp
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
 import ValueSelect from '../components/ValueSelect.jsx';
-import OwnExcelLayoutDialog from './OwnExcelLayoutDialog.jsx';
-import { ownKitStore } from '../services/exportFormats/ownKitStore.js';
-import { ownKitCopyFor, templateOwnKitOf } from '../services/exportFormats/ownKits.js';
+import { ownKitCopyFor, templateOwnKitOf } from '../services/exportFormats/ownKitCopy.js';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
 import { templateCategoryEmptyText } from './templateEmptyText.js';
 import { autoCompleteOn, findCompleteEntity } from '../utils/surveyAutoEntity.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+
+// Nightly 'own-excel-layouts': the dialog and its store load when first opened.
+const OwnExcelLayoutDialog = lazy(() => Promise.all([
+  import('./OwnExcelLayoutDialog.jsx'),
+  import('../services/exportFormats/ownKitStore.js'),
+]).then(([dialog, { ownKitStore }]) => ({
+  default: function OwnLayoutDialogWithStore(props) { return <dialog.default store={ownKitStore} {...props} />; },
+})));
 
 // The "make your own" choice in the checklist-answers picker.
 const OWN_ANSWERS = '__own__';
@@ -1061,11 +1067,12 @@ export default function TemplatesEditor({
     },
   });
   const ownLayoutDialog = (t, phone) => (ownLayouts && ownLayoutFor?.id === t.id && ownLayoutFor.phone === phone ? (
-    <OwnExcelLayoutDialog
-      store={ownKitStore}
-      onSaved={(kitId) => { pickExportKit(t.id, kitId); setOwnLayoutFor(null); }}
-      onClose={() => setOwnLayoutFor(null)}
-    />
+    <Suspense fallback={null}>
+      <OwnExcelLayoutDialog
+        onSaved={(kitId) => { pickExportKit(t.id, kitId); setOwnLayoutFor(null); }}
+        onClose={() => setOwnLayoutFor(null)}
+      />
+    </Suspense>
   ) : null);
   const reportKitPicker = (tpl) => ({
     value: tpl.reportKitId || DEFAULT_REPORT_KIT_ID,

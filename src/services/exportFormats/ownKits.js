@@ -19,10 +19,9 @@ export const OWN_KIT_CHOICES = Object.freeze([
   Object.freeze({ field: 'changed_by', label: 'Changed by', header: 'Changed By' }),
   Object.freeze({ field: 'changed_date', label: 'Changed date', header: 'Changed Date' }),
 ]);
-export const OWN_KIT_LIMITS = Object.freeze({ label: 60, header: 80, columns: 60, perAccount: 50 });
-export const OWN_KIT_PREFIX = 'own-';
+import { OWN_KIT_LIMITS, OWN_KIT_PREFIX, clean, templateOwnKitOf } from './ownKitCopy.js';
 
-const clean = (value, max) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+export { OWN_KIT_LIMITS, OWN_KIT_PREFIX, ownKitCopyFor, templateOwnKitOf } from './ownKitCopy.js';
 
 /** A cell's text, whatever exceljs hands back (rich text, a formula, a date). */
 function cellText(value) {
@@ -105,24 +104,6 @@ export function ownKitId(label, taken = [], tail = () => Math.random().toString(
     if (!ids.has(id)) return id;
   }
 }
-
-/**
- * The own layout a template carries for everyone who opens it: the account's
- * kits are private, so a template picking one keeps a copy of it
- * ({ label, columns }) beside its exportKitId. Null when it carries none.
- */
-export function templateOwnKitOf(template) {
-  const id = template?.exportKitId;
-  const carried = template?.ownExportKit;
-  if (typeof id !== 'string' || !id.startsWith(OWN_KIT_PREFIX) || !carried || !Array.isArray(carried.columns)) return null;
-  const kit = { id, kind: 'exportKit', version: '1.0.0', minEngine: 1, label: clean(carried.label, OWN_KIT_LIMITS.label) || 'Shared layout', columns: carried.columns };
-  return validateExportKit(kit).length ? null : kit;
-}
-
-/** What a template keeps of an own layout it picks (see templateOwnKitOf). */
-export const ownKitCopyFor = (kit) => (kit && kit.id?.startsWith(OWN_KIT_PREFIX)
-  ? { label: kit.label, columns: kit.columns.map((c) => ({ ...c })) }
-  : null);
 
 /**
  * Registers the own layouts the given templates carry, so a teammate opening
