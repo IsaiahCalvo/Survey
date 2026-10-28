@@ -32806,7 +32806,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       pageHeight: height,
       pageNumber: drop.pageNumber,
       landingScale: pageScaleFromObjects(annotationsByPageRef.current?.[drop.pageNumber]?.objects)
-        || measureScales[drop.pageNumber] || null,
+        || metaScaleForPage(measureScaleMetaRef.current, drop.pageNumber) || null,
       tokens: {
         authorName: user?.user_metadata?.full_name || '',
         authorEmail: user?.email || '',
@@ -32817,7 +32817,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!plan) { showToast('That item can\'t be placed.', 'error'); return false; }
     fitPlacedTextBoxes(plan.clipboard);
     return commitFamilyPaste(drop.pageNumber, plan.clipboard, plan.dx, plan.dy);
-  }, [commitFamilyPaste, measureScales, pageNum, pdfFile?.name, showToast, user]);
+  }, [commitFamilyPaste, pageNum, pdfFile?.name, showToast, user]);
 
   // w53: a saved marker is a family member; one still being placed is not.
   const isSurveyMarkerFamilyMember = useCallback((annotationId) => (
