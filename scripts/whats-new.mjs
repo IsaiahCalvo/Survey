@@ -5,6 +5,8 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-28', items: [
+    'Simpler line menus: Width is a number box with quick picks, Style is a plain list that draws each line, and Arrow ends is one list with a "Both ends" switch.',
+    'Polylines no longer offer the Cloud line type.',
     'Drop-downs and action menus have a new look: a highlight glides from row to row, and menus grow out of their button.',
     'Renaming a document shows the new name at once everywhere: open tabs, every list and your other screens.',
     'Spaces: polygon areas draw and edit like the Polygon tool, with check marks to close or finish, Shift for 15° sides and a + on each side to add a point.',
