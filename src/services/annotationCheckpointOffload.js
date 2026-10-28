@@ -145,9 +145,12 @@ export function breakCheckpointMirror(mirror) {
  */
 export function requestMirrorCheckpoint(mirror, expectedVector, { asJsonBody = false, extraUpdate = null } = {}) {
   if (!mirrorUsable(mirror)) return null;
-  // 2026-10-07: `extraUpdate` (a bulk import) is merged into the bytes there;
-  // the mirror itself is not changed.
-  const extra = extraUpdate ? ownCopy(extraUpdate) : null;
+  // 2026-10-07: `extraUpdate` (a bulk import; 2026-10-28: or its parts, a
+  // list) is merged into the bytes there; the mirror itself is not changed.
+  const extra = Array.isArray(extraUpdate)
+    ? extraUpdate.map(ownCopy)
+    : (extraUpdate ? ownCopy(extraUpdate) : null);
+  const transfer = Array.isArray(extra) ? extra.map((part) => part.buffer) : (extra ? [extra.buffer] : []);
   return request(mirror.worker, {
     op: 'mirror-checkpoint',
     mirrorId: mirror.id,
@@ -155,7 +158,7 @@ export function requestMirrorCheckpoint(mirror, expectedVector, { asJsonBody = f
     expectedVector: expectedVector ? ownCopy(expectedVector) : null,
     asJsonBody,
     extraUpdate: extra,
-  }, extra ? [extra.buffer] : []);
+  }, transfer);
 }
 
 /**
