@@ -437,20 +437,28 @@ async function waitForStorage(apiUrl, timeoutMs = 10 * 60 * 1000) {
   fail('storage did not come up within 10 minutes');
 }
 
-// ghcr.io throttles bursts of image pulls ("toomanyrequests"), and CI starts
-// five e2e shards plus the native walks at once, so one burst failed every
-// shard in its first minute (2026-10-28). A pull failure is fast; a failed
-// start that took longer is a real fault and is not retried.
+// The signed-in CI pins SUPABASE_INTERNAL_IMAGE_REGISTRY=ghcr.io (public.ecr.aws
+// kept refusing), and with a pin the CLI tries no other registry. ghcr.io
+// throttles bursts of pulls ("toomanyrequests"), and CI starts five e2e shards
+// plus the native walks at once: on 2026-10-28 one burst failed every shard in
+// its first minute, for minutes on end. So a start that fails fast is retried
+// without the pin (the CLI then tries public.ecr.aws, then ghcr.io, then Docker
+// Hub). A start that failed slowly is a real fault and is not retried.
 function startStack(args) {
-  const waits = [20_000, 60_000];
+  const retries = [
+    { wait: 15_000 },
+    { wait: 45_000 },
+  ];
   for (let attempt = 0; ; attempt += 1) {
     const started = Date.now();
     const result = runCli(args, { allowFail: true });
     if (result.status === 0) return;
     const quick = Date.now() - started < 3 * 60_000;
-    if (!quick || attempt >= waits.length) fail(`supabase ${args.join(' ')} failed (exit ${result.status})`);
-    log(`supabase start failed quickly (exit ${result.status}), likely an image pull limit; retrying in ${waits[attempt] / 1000}s`);
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waits[attempt]);
+    const retry = retries[attempt];
+    if (!quick || !retry) fail(`supabase ${args.join(' ')} failed (exit ${result.status})`);
+    delete process.env.SUPABASE_INTERNAL_IMAGE_REGISTRY;
+    log(`supabase start failed quickly (exit ${result.status}), likely an image pull limit; retrying in ${retry.wait / 1000}s from any registry`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, retry.wait);
   }
 }
 
