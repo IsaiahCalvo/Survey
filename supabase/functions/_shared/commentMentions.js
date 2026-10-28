@@ -45,7 +45,9 @@ export function commentExcerpt(body, max = MENTION_EXCERPT_CHARS) {
 }
 
 export function mentionLinkOrigin(requested) {
-  return MENTION_LINK_ORIGINS.includes(requested) ? requested : MENTION_LINK_ORIGINS[0];
+  // Comments are Nightly-only for now, so an unknown origin (desktop, the
+  // phone app) gets the Nightly link, not stable where comments are hidden.
+  return MENTION_LINK_ORIGINS.includes(requested) ? requested : MENTION_LINK_ORIGINS[1];
 }
 
 /** The link that opens the document at the comment (AppShell ?docId=&comment=). */

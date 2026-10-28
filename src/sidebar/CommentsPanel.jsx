@@ -20,6 +20,7 @@ import {
   MARK_COMMENT_MAX_CHARS,
   addMarkComment,
   commentPieces,
+  commentShareUrl,
   deleteMarkComment,
   editMarkComment,
   groupThreads,
@@ -298,11 +299,8 @@ export default function CommentsPanel({
     });
   };
   const copyLink = async (comment) => {
-    const url = new URL(window.location.origin + window.location.pathname);
-    url.searchParams.set('docId', documentId);
-    url.searchParams.set('comment', comment.id);
     try {
-      await navigator.clipboard.writeText(url.toString());
+      await navigator.clipboard.writeText(commentShareUrl(window.location, documentId, comment.id));
       showToast('Link copied', 'success');
     } catch {
       showToast('Could not copy the link');

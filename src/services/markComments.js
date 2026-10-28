@@ -6,11 +6,29 @@
 // the add / edit / delete functions. A thread is its first comment plus the
 // replies that point at it; it hangs off one mark (markId) or a page.
 
+import { readLibraryRows } from '../hooks/libraryPagination.js';
+
 export const MARK_COMMENT_MAX_CHARS = 4000;
 export const MARK_COMMENT_MAX_MENTIONS = 20;
 // Fired on window to start a comment on a picked mark (the selection bar's
 // Comment button) or open a comment from a link: { markId?, pageNumber, commentId? }.
 export const OPEN_MARK_COMMENTS_EVENT = 'survey:open-mark-comments';
+// Comments are Nightly-only, so a copied link from a page with no web address
+// of its own (desktop file://, the phone app) opens on Nightly.
+export const COMMENT_LINK_FALLBACK_ORIGIN = 'https://surveytool-nightly.vercel.app';
+
+/** The link a person copies to open the document at this comment. */
+export function commentShareUrl(location, documentId, commentId) {
+  const origin = location?.origin;
+  const web = typeof origin === 'string' && /^https?:\/\/[^/]+$/.test(origin)
+    && (origin.startsWith('https://') || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin));
+  const url = web
+    ? new URL(origin + (location.pathname || '/'))
+    : new URL(COMMENT_LINK_FALLBACK_ORIGIN + '/');
+  url.searchParams.set('docId', documentId);
+  url.searchParams.set('comment', commentId);
+  return url.toString();
+}
 
 // A comment link (?docId=&comment=) is read before the document's rail is
 // on screen: the request waits here until that rail takes it.
@@ -52,14 +70,15 @@ export function mapCommentRow(row) {
 
 export async function listMarkComments(client, documentId) {
   if (!documentId) return [];
-  const { data, error } = await client
+  // Page by id past PostgREST's row cap, then sort oldest first for display.
+  const { data, error } = await readLibraryRows(() => client
     .from('mark_comments')
     .select('id, document_id, thread_id, mark_id, page_number, author_id, body, mentions, created_at, edited_at, deleted_at')
-    .eq('document_id', documentId)
-    .order('created_at', { ascending: true })
-    .limit(2000);
+    .eq('document_id', documentId));
   if (error) throw new Error(error.message || 'Could not read the comments');
-  return (data || []).map(mapCommentRow);
+  return [...data]
+    .sort((a, b) => (Date.parse(a.created_at) || 0) - (Date.parse(b.created_at) || 0) || String(a.id).localeCompare(String(b.id)))
+    .map(mapCommentRow);
 }
 
 export async function listCommentPeople(client, documentId) {

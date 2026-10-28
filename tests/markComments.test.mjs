@@ -5,8 +5,10 @@ import { readFileSync } from 'node:fs';
 import {
   addMarkComment,
   commentPieces,
+  commentShareUrl,
   groupThreads,
   insertMention,
+  listMarkComments,
   mapCommentRow,
   matchPeople,
   mentionQueryAt,
@@ -107,7 +109,10 @@ test('mention email: only the author, once, soon after posting; never the author
   assert.equal(commentExcerpt('a\n\n b', 280), 'a b');
   assert.equal(commentExcerpt('x'.repeat(300), 10), `${'x'.repeat(9)}…`);
   assert.equal(commentLink('https://surveytool-nightly.vercel.app', 'd1', 'c1'), 'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
-  assert.equal(commentLink('https://evil.test', 'd1', 'c1'), 'https://surveytool.app/?docId=d1&comment=c1');
+  assert.equal(commentLink('https://surveytool.app', 'd1', 'c1'), 'https://surveytool.app/?docId=d1&comment=c1');
+  // Comments are Nightly-only: an unknown origin (desktop, phone app) gets Nightly.
+  assert.equal(commentLink('https://evil.test', 'd1', 'c1'), 'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
+  assert.equal(commentLink('capacitor://localhost', 'd1', 'c1'), 'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
 });
 
 test('comments are a beta flag with a server row, a rail panel id, and a mention function', () => {
@@ -119,4 +124,52 @@ test('comments are a beta flag with a server row, a rail panel id, and a mention
   assert.match(sql, /REVOKE ALL ON public\.mark_comments FROM PUBLIC, anon, authenticated;\s*GRANT SELECT ON public\.mark_comments TO authenticated;/);
   const config = readFileSync(new URL('../supabase/config.toml', import.meta.url), 'utf8');
   assert.match(config, /\[functions\.notify-comment-mentions\]\s*verify_jwt = false/);
+});
+
+test('copied comment link: the page address on the web, Nightly from desktop or the phone app', () => {
+  assert.equal(commentShareUrl({ origin: 'https://surveytool-nightly.vercel.app', pathname: '/' }, 'd1', 'c1'),
+    'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
+  assert.equal(commentShareUrl({ origin: 'http://127.0.0.1:5199', pathname: '/' }, 'd1', 'c1'), 'http://127.0.0.1:5199/?docId=d1&comment=c1');
+  for (const origin of ['null', 'file://', 'capacitor://localhost', undefined]) {
+    assert.equal(commentShareUrl({ origin, pathname: '/Users/x/app/index.html' }, 'd1', 'c1'),
+      'https://surveytool-nightly.vercel.app/?docId=d1&comment=c1');
+  }
+});
+
+test('reading comments pages past the server row cap and keeps oldest first', async () => {
+  const rows = Array.from({ length: 1203 }, (_, i) => ({
+    id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    document_id: 'd1', page_number: 1, body: `c${i}`,
+    // ids and times run in opposite orders, so the result must be re-sorted.
+    created_at: new Date(Date.parse('2026-10-28T00:00:00Z') - i * 1000).toISOString(),
+  }));
+  const calls = [];
+  const client = {
+    from() {
+      const q = { gtId: null, size: Infinity };
+      const api = {
+        select: () => api, eq: () => api, order: () => api,
+        limit: (n) => { q.size = n; return api; },
+        gt: (_c, v) => { q.gtId = v; return api; },
+        then: (resolve) => {
+          calls.push(q.gtId);
+          const batch = rows.filter((r) => q.gtId === null || r.id > q.gtId).slice(0, q.size);
+          resolve({ data: batch, error: null });
+        },
+      };
+      return api;
+    },
+  };
+  const list = await listMarkComments(client, 'd1');
+  assert.equal(list.length, 1203);
+  assert.ok(calls.length >= 3);
+  assert.equal(list[0].body, 'c1202');
+  assert.equal(list.at(-1).body, 'c0');
+});
+
+test('a comment whose author account is gone fails closed: only the owner can delete it', () => {
+  const sql = readFileSync(new URL('../supabase/migrations/20261028020000_mark_comments.sql', import.meta.url), 'utf8');
+  const del = sql.slice(sql.indexOf('FUNCTION public.delete_mark_comment'));
+  assert.match(del, /v_row\.author_id IS NOT DISTINCT FROM v_uid/);
+  assert.doesNotMatch(del.slice(0, del.indexOf('END;')), /v_row\.author_id = v_uid/);
 });

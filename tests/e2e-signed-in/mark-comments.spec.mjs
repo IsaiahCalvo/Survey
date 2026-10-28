@@ -69,6 +69,12 @@ test('comments: start on a mark, mention, live reply, link to a comment, edit an
     const people = await must('people', owner.rpc('mark_comment_people', { p_document_id: docId }));
     expect(people.map((p) => p.user_id)).toEqual(expect.arrayContaining([ids.owner, ids.editor]));
     expect(await must('stranger people', stranger.rpc('mark_comment_people', { p_document_id: docId }))).toEqual([]);
+    // A comment whose author account is gone (author_id set to null) fails
+    // closed: an editor cannot delete it, only the owner can.
+    const orphan = await must('orphan comment', editor.rpc('add_mark_comment', { p_document_id: docId, p_page_number: 1, p_body: 'Orphan' }));
+    await must('drop author', admin.from('mark_comments').update({ author_id: null }).eq('id', orphan.id).select('id'));
+    expect((await editor.rpc('delete_mark_comment', { p_comment_id: orphan.id })).error?.message).toContain('Comment not found');
+    expect((await must('owner deletes orphan', owner.rpc('delete_mark_comment', { p_comment_id: orphan.id }))).deleted_at).toBeTruthy();
 
     await page.addInitScript(() => localStorage.setItem('survey.flag.mark-comments', '1'));
     await signIn(page, E2E_ACCOUNTS.owner);

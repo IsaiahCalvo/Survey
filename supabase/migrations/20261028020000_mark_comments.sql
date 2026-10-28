@@ -210,7 +210,7 @@ BEGIN
   SELECT * INTO v_row FROM public.mark_comments WHERE id = p_comment_id FOR UPDATE;
   IF v_uid IS NULL OR v_row.id IS NULL
      OR NOT (
-       (v_row.author_id = v_uid AND COALESCE(public.user_can_access_document(v_row.document_id, 'editor'), false))
+       (v_row.author_id IS NOT DISTINCT FROM v_uid AND COALESCE(public.user_can_access_document(v_row.document_id, 'editor'), false))
        OR COALESCE(public.user_can_access_document(v_row.document_id, 'owner'), false)
      ) THEN
     RAISE EXCEPTION 'Comment not found' USING ERRCODE = '42501';
