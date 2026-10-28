@@ -38,7 +38,9 @@ test('the add and subtract cursors are one image: crosshair + offset badge, cros
 
 test('RegionSelectionTool uses the cursor image and no floating DOM sign', () => {
   const src = readFileSync(new URL('../src/RegionSelectionTool.jsx', import.meta.url), 'utf8');
-  assert.match(src, /areaDrawCursor\(effectiveSelectionMode === REGION_OPERATIONS\.SUBTRACT \? 'subtract' : 'add'\)/);
+  // A polygon being drawn keeps the mode its first corner took (drawMode).
+  assert.match(src, /areaDrawCursor\(drawMode === REGION_OPERATIONS\.SUBTRACT \? 'subtract' : 'add'\)/);
+  assert.match(src, /const drawMode = \(polyCorners\.length > 0 && polyModeRef\.current\) \|\| effectiveSelectionMode;/);
   assert.doesNotMatch(src, /addIndicatorRef|subtractIndicatorRef/);
   assert.doesNotMatch(src, /Floating (Plus|Minus) Sign Indicator/);
 });
