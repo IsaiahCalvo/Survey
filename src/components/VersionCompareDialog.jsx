@@ -64,6 +64,9 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
   const [failed, setFailed] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(null); // null = fit
+  // The scale the page was last drawn at (the fitted one while zoom is null),
+  // so the first zoom step leaves Fit from where the page really is.
+  const drawnZoom = useRef(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [showOld, setShowOld] = useState(true);
   const [showNew, setShowNew] = useState(true);
@@ -110,6 +113,7 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
       if (!canvas) return;
       canvas.width = Math.ceil(widthPt * pixelsPerPoint);
       canvas.height = Math.ceil(heightPt * pixelsPerPoint);
+      drawnZoom.current = effectiveZoom;
       canvas.style.width = `${Math.round(widthPt * effectiveZoom)}px`;
       canvas.style.height = `${Math.round(heightPt * effectiveZoom)}px`;
       composeOverlay(canvas.getContext('2d'), {
@@ -144,9 +148,7 @@ export default function VersionCompareDialog({ older, newer, onClose }) {
   }, [pageCount]);
 
   const zoomBy = (factor) => {
-    const canvas = canvasRef.current;
-    const shown = canvas ? (parseFloat(canvas.style.width) || 0) / Math.max(1, canvas.width / Math.min(3, window.devicePixelRatio || 1)) : 1;
-    setZoom(clampZoom((zoom ?? (shown || 1)) * factor));
+    setZoom(clampZoom((zoom ?? drawnZoom.current) * factor));
   };
   const iconButton = (label, icon, onClick, disabled = false) => (
     <button type="button" className="hub-icon-btn" aria-label={label} {...tip(label)} onClick={onClick} disabled={disabled}>

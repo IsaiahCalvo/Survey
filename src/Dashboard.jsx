@@ -403,6 +403,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
   // document so they are there on first paint. Returns whether the old copy
   // may be archived: if the copy fails it stays in the list with its marks.
   const carryMarksToReplacement = async (archiveDocId, newDoc, newDocId) => {
+    if (archiveDocId && replacesWithOlderVersion(newDoc)) return false;
     if (!archiveDocId || newDoc?.id !== newDocId) return true;
     try {
       const { total } = await carryMarksToNewVersion({
@@ -419,6 +420,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
   };
 
+  // The picked file's bytes matched an older version (version history,
+  // Nightly): it opens as that version and the current copy stays as it is.
+  const replacesWithOlderVersion = (doc) => {
+    if (!doc?.superseded_by) return false;
+    showToast('This file is an older version already kept in version history, so nothing was replaced.');
+    return true;
+  };
+
   // After the new row exists: archive the old same-name copy the user chose to
   // replace. Non-fatal on failure (both copies stay visible — recoverable).
   // Version history (Nightly): the old copy is kept as an older version of the
@@ -432,7 +441,11 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
           return;
         }
       } catch (err) {
-        console.error('Could not keep the previous version; archiving it instead:', err);
+        // Keep the current copy: archiving it here could leave neither copy
+        // in the list.
+        console.error('Could not keep the previous version:', err);
+        showToast('The new version was added, but it couldn’t be linked to the old copy, so both stay in your list.');
+        return;
       }
     }
     try {
@@ -719,7 +732,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
             perfUpload.end(file.name);
             return; // nothing archived, nothing opened — safe retry
           }
-          await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
+          if (!(duplicateGate.archiveDocId && replacesWithOlderVersion(resolvedDoc))) {
+            await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
+          }
           await maybeOfferAlias(resolvedDoc, file.name, contentSha);
           if (openAfterUpload) await handleDocumentClick(resolvedDoc);
           refetchAllDocuments();
@@ -893,7 +908,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         setDashboardError('Couldn’t save the document to the cloud: ' + (upErr.message || 'Unknown error'));
         return 'failed'; // nothing archived, nothing opened — safe retry
       }
-      await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
+      if (!(duplicateGate.archiveDocId && replacesWithOlderVersion(resolvedDoc))) {
+        await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
+      }
       if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
       if (openAfterUpload) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();

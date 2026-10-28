@@ -127,7 +127,8 @@ test('versions: "Upload as new version" keeps the old copy as v1 instead of arch
   const api = await apiClientFor(E2E_ACCOUNTS.owner);
   const { data: { user } } = await api.auth.getUser();
   const name = `Upload versions ${RUN}.pdf`;
-  const v1 = await addVersion(admin, user.id, name, await sheetPdf('Upload A', { oldBox: true }));
+  const v1Bytes = await sheetPdf('Upload A', { oldBox: true });
+  const v1 = await addVersion(admin, user.id, name, v1Bytes);
 
   try {
     await page.addInitScript(() => localStorage.setItem('survey.flag.document-versions', '1'));
@@ -147,6 +148,21 @@ test('versions: "Upload as new version" keeps the old copy as v1 instead of arch
 
     // The viewer picks the change up without a reopen.
     await expect(page.locator('[data-document-versions-button]')).toHaveText('v2', { timeout: 30_000 });
+    const { data: { superseded_by: v2 } } = await admin.from('documents').select('superseded_by').eq('id', v1).single();
+
+    // Uploading v1's bytes again "as a new version" finds the older version:
+    // nothing is replaced and the current copy stays in the list.
+    await page.getByRole('button', { name: `Close ${name}` }).click();
+    const again = page.waitForEvent('filechooser');
+    await page.locator('button.documents-desktop-upload').filter({ visible: true }).first().click();
+    await (await again).setFiles({ name, mimeType: 'application/pdf', buffer: v1Bytes });
+    await ask.getByRole('button', { name: 'Upload as new version' }).click();
+    await expect(page.getByText('older version already kept in version history')).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(3000);
+    const { data: current } = await admin.from('documents').select('superseded_by, archived, user_archived_at').eq('id', v2).single();
+    expect(current).toMatchObject({ superseded_by: null, archived: false, user_archived_at: null });
+    const { data: older } = await admin.from('documents').select('superseded_by').eq('id', v1).single();
+    expect(older.superseded_by).toBe(v2);
   } finally {
     await admin.from('documents').update({ superseded_by: null }).eq('id', v1);
     await admin.from('documents').delete().eq('name', name).eq('user_id', user.id);
