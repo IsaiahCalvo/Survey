@@ -93,7 +93,12 @@ test('cloud callouts hydrate from the annotations map inside byPage, never the c
     ANNOTATION_DOC_HOOK_SOURCE,
     /capturedByPage\s*=\s*stripMetaFallbackCallouts\(\s*annotationsByPage/,
   );
-  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /applyByPage\(capturedByPage[,)]/);
+  // 2026-10-28: a PDF's own markup being imported reaches the store a share
+  // at a time (bulkImportMeter.js): what the store gets is still taken from
+  // that stripped capture.
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /meterBulkImport\(\s*capturedByPage,/);
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /: \{ byPage: capturedByPage, held: null \};/);
+  assert.match(ANNOTATION_DOC_HOOK_SOURCE, /applyByPage\(metered\.byPage[,)]/);
   // PDFViewer's seam no longer feeds the legacy callouts/setCallouts pair (or
   // the retired BLOCKER-2 pageSizesReady signal) into the hook — callouts
   // arrive via annotationsByPage alone.

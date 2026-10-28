@@ -82,3 +82,12 @@ test('the fast Survey Marker checkpoint still writes its History row', async () 
   assert.match(row.summary, /created a survey marker on page 3/);
   assert.equal(row.annotation_id, 'surveyMarker-1');
 });
+
+test('a pen or finger keeps the card further off: they grab a mark from further away', () => {
+  const rect = { left: 300, top: 200, right: 500, bottom: 260 };
+  assert.deepEqual(placeSurveyMarkerCard(rect, card, viewport, { inputKind: 'mouse' }), { left: 512, top: 200 });
+  assert.deepEqual(placeSurveyMarkerCard(rect, card, viewport, { inputKind: 'pen' }), { left: 516, top: 200 });
+  assert.deepEqual(placeSurveyMarkerCard(rect, card, viewport, { inputKind: 'touch' }), { left: 520, top: 200 });
+  const nearRight = { left: 1100, top: 400, right: 1300, bottom: 460 };
+  assert.equal(placeSurveyMarkerCard(nearRight, card, viewport, { inputKind: 'pen' }).left, 1100 - 16 - card.width);
+});
