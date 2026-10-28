@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ExcelJS from 'exceljs';
-import { buildOwnKit, createOwnKitStore, ownKitId, readSheetHeaders } from '../src/services/exportFormats/ownKits.js';
+import { buildOwnKit, createOwnKitStore, ownKitCopyFor, ownKitId, readSheetHeaders, registerTemplateKits, templateOwnKitOf } from '../src/services/exportFormats/ownKits.js';
 import { getExportKit, validateExportKit } from '../src/services/exportFormats/registry.js';
 import { buildSheetLayout } from '../src/services/exportFormats/sheetLayout.js';
 import { FEATURE_FLAGS } from '../src/featureFlags.js';
@@ -49,10 +49,26 @@ test('nothing matched is refused; a field matched twice keeps the first', () => 
   assert.equal(kit.columns.find((c) => c.field === 'notes').header, 'A');
 });
 
-test('ids never clash', () => {
-  assert.equal(ownKitId('Door Schedule (rev 2)'), 'own-door-schedule-rev-2');
-  assert.equal(ownKitId('Doors', ['own-doors', 'own-doors-2']), 'own-doors-3');
-  assert.equal(ownKitId('!!!'), 'own-layout');
+test('ids never clash, and carry a random tail so two people\'s "Doors" differ', () => {
+  const tails = ['ab12', 'ab12', 'cd34'];
+  const next = () => tails.shift();
+  assert.equal(ownKitId('Door Schedule (rev 2)', [], () => 'x1'), 'own-door-schedule-rev-2-x1');
+  assert.equal(ownKitId('Doors', ['own-doors-ab12'], next), 'own-doors-cd34');
+  assert.equal(ownKitId('!!!', [], () => 'z'), 'own-layout-z');
+  assert.match(ownKitId('Doors'), /^own-doors-[a-z0-9]{1,5}$/);
+});
+
+test('a template carries its own layout to teammates, who export in it', () => {
+  const kit = buildOwnKit({ id: 'own-shared-q1', label: 'Shared', headers: ['Door'], matches: ['name'] });
+  const template = { id: 't', exportKitId: kit.id, ownExportKit: ownKitCopyFor(kit) };
+  assert.equal(templateOwnKitOf(template).columns[3].header, 'Door');
+  assert.equal(templateOwnKitOf({ ...template, exportKitId: 'wireless-lock-schedule' }), null, 'only own- ids');
+  assert.equal(templateOwnKitOf({ ...template, ownExportKit: { label: 'Bad', columns: [] } }), null, 'only valid kits');
+  assert.equal(ownKitCopyFor(getExportKit('default-survey')), null);
+  const off = registerTemplateKits([template, { id: 'u' }]);
+  assert.equal(getExportKit(kit.id).label, 'Shared');
+  off();
+  assert.equal(getExportKit(kit.id), null);
 });
 
 test('saving registers the layout so pickers and the export see it', async () => {

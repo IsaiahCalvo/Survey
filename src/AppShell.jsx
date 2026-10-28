@@ -116,6 +116,7 @@ import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
 import { formatPageTotal } from './utils/pageTotalLabel.js';
 import { requestTemplateEditor } from './home/templateEditorRequest';
+import { registerTemplateKits } from './services/exportFormats/ownKits.js';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -1346,6 +1347,10 @@ export default function App({ devPreviewReturnTab = null }) {
       ? window.__surveyTransitionE2ETemplates
       : []
   ));
+
+  // A shared template's own Excel layout (Nightly 'own-excel-layouts') rides
+  // in the template, so everyone who opens it exports in that layout.
+  useEffect(() => registerTemplateKits(appTemplates), [appTemplates]);
 
   const handleTemplatesChange = useCallback((nextTemplates) => {
     const normalized = Array.isArray(nextTemplates) ? nextTemplates : [];

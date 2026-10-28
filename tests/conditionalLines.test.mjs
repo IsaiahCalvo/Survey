@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { answerIs, showIfChoices, showIfOf, shownChecklist } from '../src/services/conditionalLines.js';
+import { answerIs, copyLines, showIfChoices, showIfOf, shownChecklist } from '../src/services/conditionalLines.js';
 import { isChecklistAllYesOrNA } from '../src/utils/surveyAutoEntity.js';
 import { isFeatureOn } from '../src/featureFlags.js';
 import { fingerprintTemplates } from '../src/home/templatesEditorReload.js';
@@ -76,4 +76,15 @@ test('the editor counts a condition as a change, and the save keeps it', () => {
   assert.notEqual(fingerprintTemplates(tpl(null), maps).t, fingerprintTemplates(tpl({ itemId: 'a', value: 'Y' }), maps).t);
   const editor = readFileSync(new URL('../src/home/TemplatesEditor.jsx', import.meta.url), 'utf8');
   assert.equal((editor.match(/if \(showIfOf\(it\)\) (base|out)\.showIf = showIfOf\(it\);/g) || []).length, 2, 'loaded and saved');
+});
+
+test('a copied category keeps its conditions on the copied lines', () => {
+  let n = 0;
+  const copy = copyLines(LINES, () => `new-${(n += 1)}`);
+  assert.deepEqual(copy.map((l) => l.id), ['new-1', 'new-2', 'new-3', 'new-4']);
+  assert.deepEqual(copy[1].showIf, { itemId: 'new-1', value: 'OSDP' });
+  assert.deepEqual(copy[2].showIf, { itemId: 'new-2', value: '1' });
+  assert.deepEqual(ids(shownChecklist(copy, {})), ['new-1', 'new-4']);
+  const editor = readFileSync(new URL('../src/home/TemplatesEditor.jsx', import.meta.url), 'utf8');
+  assert.equal((editor.match(/items: copyLines\(c\.items, \(\) => newId\('i'\)\)/g) || []).length, 3, 'template, module and category copies');
 });

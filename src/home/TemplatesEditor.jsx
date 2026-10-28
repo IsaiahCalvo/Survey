@@ -44,7 +44,7 @@ import { DEFAULT_REPORT_KIT_ID, listReportKits } from '../services/reportKits/in
 import { DEFAULT_ANSWER_SET, ITEM_ANSWER_KEYS, answerPresetIdOf, answerSetPresets, itemAnswerFields } from '../services/answerSets.js';
 import { isFeatureOn } from '../featureFlags.js';
 import AnswerSetEditor, { ItemKindPicker, ShowIfPicker } from './AnswerSetEditor.jsx';
-import { showIfOf } from '../services/conditionalLines.js';
+import { copyLines, showIfOf } from '../services/conditionalLines.js';
 import { checklistItemKind, manyOptionsOf } from '../../supabase/functions/_shared/kitShape.js';
 import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
@@ -114,6 +114,7 @@ import DismissBarrier from '../components/DismissBarrier';
 import ValueSelect from '../components/ValueSelect.jsx';
 import OwnExcelLayoutDialog from './OwnExcelLayoutDialog.jsx';
 import { ownKitStore } from '../services/exportFormats/ownKitStore.js';
+import { ownKitCopyFor, templateOwnKitOf } from '../services/exportFormats/ownKits.js';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
@@ -311,6 +312,7 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     // A template someone shared with me: its owner's face shows on the row.
     ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
     ...(t?.exportKitId ? { exportKitId: t.exportKitId } : {}),
+    ...(templateOwnKitOf(t) ? { ownExportKit: t.ownExportKit } : {}),
     ...(t?.reportKitId ? { reportKitId: t.reportKitId } : {}),
     ...(t?.answerSet ? { answerSet: t.answerSet } : {}),
     // "Auto-mark as Complete" switch; unset means on.
@@ -1042,8 +1044,10 @@ export default function TemplatesEditor({
   const [ownLayouts] = useState(() => isFeatureOn('own-excel-layouts'));
   const [ownLayoutFor, setOwnLayoutFor] = useState(null);
   const pickExportKit = (tplId, v) => mutateTpl(tplId, (t) => {
-    const { exportKitId: _k, ...rest } = t;
-    return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
+    const { exportKitId: _k, ownExportKit: _own, ...rest } = t;
+    if (v === DEFAULT_EXPORT_KIT_ID) return rest;
+    const own = ownKitCopyFor(getExportKit(v));
+    return { ...rest, exportKitId: v, ...(own ? { ownExportKit: own } : {}) };
   });
   const exportKitPicker = (tpl, phone = false) => ({
     value: tpl.exportKitId || DEFAULT_EXPORT_KIT_ID,
@@ -1479,7 +1483,7 @@ export default function TemplatesEditor({
             ...m, id: newId('m'),
             categories: m.categories.map((c) => ({
               ...c, id: newId('c'),
-              items: c.items.map((it) => ({ ...it, id: newId('i') })),
+              items: copyLines(c.items, () => newId('i')),
             })),
           })),
           roster: t.roster.map((r) => {
@@ -1696,7 +1700,7 @@ export default function TemplatesEditor({
         ...m, id: newId('m'), name: `${m.name} copy`,
         categories: m.categories.map((c) => ({
           ...c, id: newId('c'),
-          items: c.items.map((it) => ({ ...it, id: newId('i') })),
+          items: copyLines(c.items, () => newId('i')),
         })),
       })),
     }));
@@ -1782,7 +1786,7 @@ export default function TemplatesEditor({
         if (ids.has(c.id)) {
           out.push({
             ...c, id: newId('c'), name: `${c.name} copy`,
-            items: c.items.map((it) => ({ ...it, id: newId('i') })),
+            items: copyLines(c.items, () => newId('i')),
           });
         }
       });
@@ -2160,7 +2164,7 @@ export default function TemplatesEditor({
         }),
       })),
     }));
-    const { exportKitId: _oldKit, reportKitId: _oldReport, answerSet: _oldAnswers, autoComplete: _oldAuto, smartFillShapes: _oldShapes, ...originalRest } = original;
+    const { exportKitId: _oldKit, ownExportKit: _oldOwnKit, reportKitId: _oldReport, answerSet: _oldAnswers, autoComplete: _oldAuto, smartFillShapes: _oldShapes, ...originalRest } = original;
     // Smart fill shapes: the live list (a drawing may have added one since this
     // editor opened) minus the ones removed here. A template not saved yet (a
     // duplicate) has no live row, so it keeps the shapes it was made with.
@@ -2172,6 +2176,8 @@ export default function TemplatesEditor({
       ...(shapes.length ? { smartFillShapes: shapes } : {}),
       // Excel layout; unset means the standard export.
       ...(r.exportKitId ? { exportKitId: r.exportKitId } : {}),
+      // Your own Excel layout's copy, so teammates export in it too.
+      ...(r.exportKitId && r.ownExportKit ? { ownExportKit: r.ownExportKit } : {}),
       // Report layout (nightly 'survey-report'); unset means the full report.
       ...(r.reportKitId ? { reportKitId: r.reportKitId } : {}),
       // Checklist answers; unset means Y / N / N/A.

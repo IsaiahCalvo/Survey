@@ -72,3 +72,17 @@ export function showIfChoices(checklist, itemId, answersOf) {
     .filter((item) => ['choice', 'many'].includes(checklistItemKind(item)))
     .flatMap((item) => (answersOf(item) || []).map((a) => ({ itemId: item.id, value: a.value, label: `When "${item.text || 'line'}" is ${a.value}` })));
 }
+
+/**
+ * A category's lines copied with new ids (`nextId()` per line); a condition
+ * on a line in the same list follows its copy.
+ */
+export function copyLines(items, nextId) {
+  const ids = new Map((items || []).map((item) => [item.id, nextId()]));
+  return (items || []).map((item) => {
+    const cond = item?.showIf;
+    const copy = { ...item, id: ids.get(item.id) };
+    if (cond && ids.has(cond.itemId)) copy.showIf = { ...cond, itemId: ids.get(cond.itemId) };
+    return copy;
+  });
+}

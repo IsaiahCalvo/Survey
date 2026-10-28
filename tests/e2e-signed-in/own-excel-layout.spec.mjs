@@ -78,20 +78,23 @@ test('make a layout from your own sheet, pick it, and Export data uses it', asyn
   await page.screenshot({ path: 'test-results/own-excel-layout.png' });
   await dialog.getByRole('button', { name: 'Save layout' }).click();
   await expect(dialog).toBeHidden();
-  await expect(layout).toHaveAttribute('data-value', 'own-acme-door-schedule');
+  await expect(layout).toHaveAttribute('data-value', /^own-acme-door-schedule-[a-z0-9]+$/);
+  const kitId = await layout.getAttribute('data-value');
 
   // Saved on the account, read only by its owner.
   const mine = await (await clientFromPageSession(page)).from('own_export_kits').select('id, label');
-  expect(mine.data).toEqual([{ id: 'own-acme-door-schedule', label: 'Acme door schedule' }]);
+  expect(mine.data).toEqual([{ id: kitId, label: 'Acme door schedule' }]);
 
   await page.getByRole('button', { name: 'Save', exact: true }).filter({ visible: true }).first().click();
   await expect.poll(async () => {
     const { data } = await adminClient().from('templates').select('config').eq('id', E2E_SURVEY.templateId).single();
-    return data.config.exportKitId ?? null;
-  }, { timeout: 20_000 }).toBe('own-acme-door-schedule');
+    return [data.config.exportKitId ?? null, data.config.ownExportKit?.columns?.[3]?.header ?? null];
+  }, { timeout: 20_000 }).toEqual([kitId, 'Door No.']);
 
   // Export data on the survey writes their columns, in their order.
-  // After a reload the layout still shows: it loads from the account.
+  // The template carries a copy of the layout, so it works for someone who
+  // does not have it on their account: take it off this one and reload.
+  await clearLayouts();
   await page.reload();
   await expect(layout).toHaveText(/Acme door schedule/, { timeout: 30_000 });
   await page.getByRole('button', { name: 'Documents', exact: true }).or(page.getByRole('tab', { name: 'Documents', exact: true })).filter({ visible: true }).first().click();

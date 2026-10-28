@@ -93,13 +93,49 @@ export function buildOwnKit({ id, label, headers, matches }) {
   return kit;
 }
 
-/** A new kit id from its name, never one already taken. */
-export function ownKitId(label, taken = []) {
+/**
+ * A new kit id from its name, never one already taken. A short random tail
+ * keeps two people's "Doors" apart once a template carries one to the other.
+ */
+export function ownKitId(label, taken = [], tail = () => Math.random().toString(36).slice(2, 7)) {
   const slug = clean(label, OWN_KIT_LIMITS.label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'layout';
-  const base = `${OWN_KIT_PREFIX}${slug}`;
   const ids = new Set(taken);
-  if (!ids.has(base)) return base;
-  for (let n = 2; ; n += 1) if (!ids.has(`${base}-${n}`)) return `${base}-${n}`;
+  for (;;) {
+    const id = `${OWN_KIT_PREFIX}${slug}-${String(tail()).toLowerCase().replace(/[^a-z0-9]/g, '') || '0'}`;
+    if (!ids.has(id)) return id;
+  }
+}
+
+/**
+ * The own layout a template carries for everyone who opens it: the account's
+ * kits are private, so a template picking one keeps a copy of it
+ * ({ label, columns }) beside its exportKitId. Null when it carries none.
+ */
+export function templateOwnKitOf(template) {
+  const id = template?.exportKitId;
+  const carried = template?.ownExportKit;
+  if (typeof id !== 'string' || !id.startsWith(OWN_KIT_PREFIX) || !carried || !Array.isArray(carried.columns)) return null;
+  const kit = { id, kind: 'exportKit', version: '1.0.0', minEngine: 1, label: clean(carried.label, OWN_KIT_LIMITS.label) || 'Shared layout', columns: carried.columns };
+  return validateExportKit(kit).length ? null : kit;
+}
+
+/** What a template keeps of an own layout it picks (see templateOwnKitOf). */
+export const ownKitCopyFor = (kit) => (kit && kit.id?.startsWith(OWN_KIT_PREFIX)
+  ? { label: kit.label, columns: kit.columns.map((c) => ({ ...c })) }
+  : null);
+
+/**
+ * Registers the own layouts the given templates carry, so a teammate opening
+ * a shared template exports in its layout. Returns a function that removes them.
+ */
+export function registerTemplateKits(templates) {
+  const offs = [];
+  for (const template of templates || []) {
+    const kit = templateOwnKitOf(template);
+    if (!kit) continue;
+    try { offs.push(registerExportKit(kit)); } catch { /* checked above */ }
+  }
+  return () => offs.forEach((off) => off());
 }
 
 /**

@@ -466,7 +466,7 @@ export function createSurveyAgentToolbox({
           itemId,
           documentId: b.documentId || null,
           label: `${nameOf(marker)}: note reworded`,
-          fields: [{ type: 'note', before: clone(marker.note), afterText: next, afterMedia: null }],
+          fields: [{ type: 'note', before: clone(marker.note), afterText: next, afterMedia: mediaCountOf(marker.note) }],
         });
       }
       if (!changes.length) return { content: `No notes here say "${f}"; nothing changed.` };

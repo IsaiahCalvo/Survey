@@ -143,6 +143,12 @@ test('wording: remember, tidy older notes whole-word, Undo puts the notes back',
   const result = box.undo(tidy.changes);
   assert.equal(result.reverted, 2);
   assert.equal(markers.m101.note.text, 'Door missing.');
+  // A photo added after the rewording keeps the note as it is now.
+  const again = await box.run('tidy_notes', { from: 'missing', to: 'not installed' });
+  markers.m101 = { ...markers.m101, note: { ...markers.m101.note, media: [{ id: 'photo-1' }] } };
+  box.undo(again.changes);
+  assert.equal(markers.m101.note.text, 'Door not installed.');
+  assert.deepEqual(markers.m101.note.media, [{ id: 'photo-1' }]);
   const none = await box.run('tidy_notes', { from: 'absent', to: 'not installed' });
   assert.match(none.content, /nothing changed/);
 });
