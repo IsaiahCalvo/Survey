@@ -44,7 +44,11 @@ async function openSurveyItem(page, { reopened = false } = {}) {
   const chooser = page.getByText('Choose a survey template', { exact: true });
   if (!(await category.isVisible().catch(() => false))) {
     await page.getByRole('button', { name: 'Survey', exact: true }).click();
-    await expect(chooser.or(category).first()).toBeVisible({ timeout: 30_000 });
+    // Survey reopens the template last used here; when it changed since, the
+    // version question comes up over everything (screen root, 2026-10-28).
+    const latest = page.getByRole('button', { name: 'Use latest version' });
+    await expect(chooser.or(category).or(latest).first()).toBeVisible({ timeout: 30_000 });
+    if (await latest.isVisible()) await latest.click();
     if (await chooser.isVisible()) {
       await page.getByText(E2E_SURVEY.templateName, { exact: true }).last().click();
       await takeLatest(page);
