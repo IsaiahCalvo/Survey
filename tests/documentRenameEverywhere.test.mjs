@@ -197,7 +197,7 @@ test('every holder of a name is wired to the bus', () => {
 });
 
 test('the database broadcasts only name changes, to the people who can open the document', () => {
-  const sql = read('supabase/migrations/20261028051000_document_rename_broadcast.sql');
+  const sql = read('supabase/migrations/20261028061500_document_rename_broadcast.sql');
   assert.match(sql, /AFTER UPDATE OF name ON public\.documents/);
   assert.match(sql, /WHEN \(OLD\.name IS DISTINCT FROM NEW\.name\)/);
   assert.match(sql, /realtime\.send\(payload, 'document_renamed', 'doc-names:' \|\| recipient::text, true\)/);
