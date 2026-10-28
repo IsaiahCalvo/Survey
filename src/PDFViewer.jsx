@@ -628,13 +628,19 @@ const eraseTransitionChangedScreen = (result, before, meta) => (
   eraseTransitionChangedScreenWith(result, before, meta, jsonEqual)
 );
 
-export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
   if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
     window.__currentPdfName = pdfFile?.name || null;
   }
+  // The name people see (tab name, from the name bus: a rename shows at once).
+  // pdfFile.name stays the file's own name and keys storage and effects; it
+  // must not drive anything a person reads. The ref serves callbacks.
+  const pdfDisplayName = documentName || pdfFile?.name || '';
+  const pdfDisplayNameRef = useRef(pdfDisplayName);
+  pdfDisplayNameRef.current = pdfDisplayName;
   const pdfjsViewerElementId = `pdfjs-pdf-viewer-${tabId || 'default'}`;
   const containerRef = useRef();
   const contentRef = useRef();
@@ -23872,7 +23878,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const api = window.electronAPI;
     try {
       let redactionsSanitizedForExport = 0;
-      const defaultName = (pdfFile.name || 'document').replace(/\.pdf$/i, '') + '-annotated.pdf';
+      const defaultName = (pdfDisplayNameRef.current || 'document').replace(/\.pdf$/i, '') + '-annotated.pdf';
       const annotationCounts = summarizeAnnotationCountsForSaveExport(annotationsByPage, callouts, surveyMarkers);
       console.log('[PDFSaveExport] action start ' + JSON.stringify({
         actionType: 'pdf-export',
@@ -24086,7 +24092,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
       if (!bytes) return { ok: false, error: 'Nothing to export.' };
       if (picked.pages) bytes = await bytesKit.keepOnlyPages(bytes, picked.pages);
-      const fileName = modes.exportFileName(pdfFile.name, mode, picked.pages);
+      const fileName = modes.exportFileName(pdfDisplayNameRef.current || pdfFile.name, mode, picked.pages);
       const outcome = await bytesKit.deliverPdf(bytes, fileName, { title: 'Export PDF' });
       if (outcome === 'canceled') return { ok: false, canceled: true };
       if (redactionsSanitized > 0) {
@@ -24126,7 +24132,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const { runXfdfExport, xfdfResultMessage } = await import('./utils/xfdfExport/runXfdfExport.js');
       const result = await runXfdfExport({
         sourcePdf: await getExportSourcePdf(),
-        pdfName: pdfFile.name || 'document.pdf',
+        pdfName: pdfDisplayNameRef.current || 'document.pdf',
         annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
         pageSizes,
         exportOptions: {
@@ -24173,7 +24179,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const { runAnnotationBundleExport, bundleResultMessage } = await import('./utils/annotationBundle/runAnnotationBundleExport.js');
       const result = await runAnnotationBundleExport({
         sourcePdf: await getExportSourcePdf(),
-        pdfName: pdfFile.name || 'document.pdf',
+        pdfName: pdfDisplayNameRef.current || 'document.pdf',
         documentId: pdfFile?.id || null,
         annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
         pageSizes,
@@ -24248,7 +24254,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           deletedPdfAnnotations,
         },
       );
-      const baseName = (pdfFile.name || 'document').replace(/\.pdf$/i, '');
+      const baseName = (pdfDisplayNameRef.current || 'document').replace(/\.pdf$/i, '');
       const outputName = `${baseName}-redacted.pdf`;
       const redactedBytes = await applyPermanentPdfRedactions({
         annotatedPdfBytes: annotatedBytes,
@@ -29863,7 +29869,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       })();
       return {
         documentId: pdfFile?.id || null,
-        documentName: pdfFile?.name || null,
+        documentName: pdfDisplayNameRef.current || null,
         userId: user?.id || null,
         email: user?.email || null,
         documentOwnerId,
@@ -32810,7 +32816,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       tokens: {
         authorName: user?.user_metadata?.full_name || '',
         authorEmail: user?.email || '',
-        documentName: pdfFile?.name || '',
+        documentName: pdfDisplayNameRef.current || '',
         projectName: markLibraryStore.getState().access.projectName || '',
       },
     });
@@ -35917,7 +35923,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             matchPageDims: null,
           });
         }
-        const docName = (pdfFile?.name || 'Document');
+        const docName = (pdfDisplayNameRef.current || 'Document');
         const jobSpec = {
           docName,
           variant: 'J',
@@ -37035,7 +37041,7 @@ ${pageBlocks}
   }, [handleSaveAnnotationsWithTextMarkupAtomicity, measureMode, measureScaleDialog]);
 
   if (pdfLoadError) {
-    const docName = pdfFile?.name || 'this document';
+    const docName = pdfDisplayName || 'this document';
     return (
       <>
       <div style={{
@@ -37156,7 +37162,7 @@ ${pageBlocks}
         background: 'var(--surface-0)',
         fontFamily: FONT_FAMILY
       }}>
-        <QuietLoading label={openingLabel(pdfFile?.name)} />
+        <QuietLoading label={openingLabel(pdfDisplayName)} />
       </div>
       {browserPrintDocument}
       </>
@@ -37192,7 +37198,7 @@ ${pageBlocks}
         open={printPanelOpen}
         onClose={() => setPrintPanelOpen(false)}
         onPrint={handlePrintPanelPrint}
-        docName={pdfFile?.name || 'Untitled.pdf'}
+        docName={pdfDisplayName || 'Untitled.pdf'}
         pages={printPanelPages}
         printers={printPanelPrinters}
         getThumbnail={printPanelGetThumbnail}

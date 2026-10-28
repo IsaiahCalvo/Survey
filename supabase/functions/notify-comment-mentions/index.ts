@@ -19,6 +19,7 @@ import {
   mentionEmailRefusal,
   mentionRecipients,
 } from '../_shared/commentMentions.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY')?.trim() || null;
 const EMAIL_SENDER = { name: 'Survey', email: 'no-reply@surveytool.app' };
@@ -55,6 +56,8 @@ Deno.serve(async (req) => {
   });
   const { data: { user }, error: userError } = await caller.auth.getUser();
   if (userError || !user) return reply({ error: 'Unauthorized' }, 401);
+  // A guest's comment sends no email (guests can mention, the team is not emailed by strangers).
+  if (isGuestUser(user)) return reply({ error: GUEST_REFUSED_MESSAGE }, 403);
 
   const parsed = parseBody({
     commentId: s.string({ max: 64 }),

@@ -492,6 +492,13 @@ button {
   --motion-panel: 200ms;         /* side panels, a second toolbar row */
   --motion-collapse: 300ms;      /* a folding section */
   --motion-state: 150ms;         /* hover / pressed / selected colour changes */
+  /* Drop-downs (owner 2026-10-28, from the 21st.dev menus he picked): a menu
+     grows out of its button or unrolls under its field, its rows arrive one
+     after another, and the hover strip glides from row to row. */
+  --motion-menu-open: 180ms;     /* a drop-down growing / unrolling open */
+  --motion-menu-row: 160ms;      /* one row arriving */
+  --motion-menu-stagger: 14ms;   /* the gap between two rows arriving */
+  --motion-glide: 180ms;         /* the hover strip moving to the next row */
 
   --motion-menu-shift: 8px;      /* how far a menu slides in */
   --motion-toast-shift: 8px;
@@ -504,6 +511,7 @@ button {
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-in: cubic-bezier(0.32, 0, 0.67, 0);
   --ease-emphasized: cubic-bezier(0.87, 0, 0.13, 1);
+  --ease-glide: cubic-bezier(0.23, 1, 0.32, 1);  /* quint out: the drop-downs */
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -517,5 +525,9 @@ button {
     --motion-panel: 0ms;
     --motion-collapse: 0ms;
     --motion-state: 0ms;
+    --motion-menu-open: 0ms;
+    --motion-menu-row: 0ms;
+    --motion-menu-stagger: 0ms;
+    --motion-glide: 0ms;
   }
 }

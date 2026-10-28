@@ -98,7 +98,10 @@ export function buildStackConfig(source) {
     }
     // Every test client signs in from 127.0.0.1, so the per-IP sign-in limit
     // (30 per 5 minutes) would stop scripts/db-load-test.mjs after 30 users.
-    if (section === 'auth.rate_limit' && /^(sign_in_sign_ups|token_refresh)\s*=/.test(line)) {
+    // Guest links (Nightly) sign guests in anonymously. Only the test stack
+    // turns that on; production's own setting is changed by hand, never here.
+    if (section === 'auth' && /^enable_anonymous_sign_ins\s*=/.test(line)) return 'enable_anonymous_sign_ins = true';
+    if (section === 'auth.rate_limit' && /^(sign_in_sign_ups|token_refresh|anonymous_users)\s*=/.test(line)) {
       return line.replace(/=.*/, '= 10000');
     }
     if (section === 'auth' && /^site_url\s*=/.test(line)) return `site_url = "${E2E_BASE_URL}"`;

@@ -8,10 +8,14 @@ name: Signed-in E2E
 # keys off "Build and tests" (ci.yml) by name, and this job must never be made a
 # required check without the owner's say-so.
 #
-# Minutes: the repo is private on the Free plan (see the budget block in
-# ci.yml). One run is roughly 5-7 billed minutes, mostly Supabase image pulls.
-# To keep that bounded it skips Dependabot, skips drafts, runs only when a pull
-# request touches something the suite exercises, and cancels superseded runs.
+# Speed: the specs run one at a time against one database, so a single
+# machine took ~31 minutes. They now run split across the shard machines at
+# once (scripts/e2e-signed-in-shard.mjs balances them by the measured seconds
+# in tests/e2e-signed-in/spec-seconds.json), each with its own throwaway
+# stack, so shards never share data. The repo is public, so these standard
+# runners cost nothing; each run holds one job slot per shard for ~8 minutes.
+# It still skips Dependabot and drafts, runs only when a pull request touches
+# something the suite exercises, and cancels superseded runs.
 
 on:
   workflow_dispatch:
@@ -73,7 +77,7 @@ env:
 
 jobs:
   signed-in-e2e:
-    name: Signed-in E2E (local Supabase)
+    name: Signed-in E2E (local Supabase) ${{ inputs.perf && 'perf' || format('{0}/{1}', matrix.shard, strategy.job-total) }}
     if: >-
       github.event_name == 'workflow_dispatch'
       || (github.event.pull_request.draft == false
@@ -81,7 +85,12 @@ jobs:
     # Playwright 1.59 has no browsers for ubuntu-26.04, which ubuntu-latest
     # became in October 2026.
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.perf && 55 || 35 }}
+    timeout-minutes: ${{ inputs.perf && 55 || 20 }}
+    strategy:
+      # Let every shard finish so one run shows all failures, not just the first.
+      fail-fast: false
+      matrix:
+        shard: ${{ inputs.perf && fromJSON('[1]') || fromJSON('[1, 2, 3, 4, 5]') }}
     steps:
       - uses: actions/checkout@v7
 
@@ -99,22 +108,36 @@ jobs:
         with:
           version: 2.111.0
 
-      - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
+      # Chromium installs while the stack pulls its images, instead of before.
+      - name: Start local Supabase, seed test accounts, install Chromium
+        run: |
+          npx playwright install --with-deps chromium > "$RUNNER_TEMP/chromium-install.log" 2>&1 &
+          chromium=$!
+          npm run e2e:stack:up
+          wait "$chromium" || { cat "$RUNNER_TEMP/chromium-install.log"; exit 1; }
+        env:
+          # Pull the Supabase images straight from GitHub's registry. The CLI
+          # tries public.ecr.aws first, which keeps refusing with "Data limit
+          # exceeded" and costs ~15 s per machine before it falls back.
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io
 
-      - name: Start local Supabase and seed test accounts
-        run: npm run e2e:stack:up
-
-      - name: Run signed-in E2E suite
+      - name: Run signed-in E2E suite (shard ${{ matrix.shard }})
         if: ${{ !inputs.perf }}
-        run: npm run test:e2e:signed-in
+        run: |
+          specs="$(node scripts/e2e-signed-in-shard.mjs "$SHARD" "$SHARDS")"
+          echo "$specs" | tr ' ' '\n'
+          # Word splitting is wanted: one argument per spec path.
+          npm run test:e2e:signed-in -- $specs
         env:
           CI: '1'
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ strategy.job-total }}
 
       # Times Home and the first page on a production build; fails on a big
       # slowdown (budgets in tests/e2e-speed/budget.mjs, times on the summary).
+      # Shard 1 only; the split gives that shard less of the suite to make room.
       - name: Speed budget (production build)
-        if: ${{ !inputs.perf && (success() || failure()) }}
+        if: ${{ !inputs.perf && matrix.shard == 1 && (success() || failure()) }}
         run: npm run test:e2e:speed
         env:
           CI: '1'
@@ -175,13 +198,37 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-signed-in-report
+          name: e2e-signed-in-report-${{ matrix.shard }}
           path: |
             playwright-report-e2e/
             test-results/e2e-signed-in/
             test-results/e2e-speed/
           retention-days: 7
 
-      - name: Stop local Supabase
-        if: always()
-        run: npm run e2e:stack:down
+      # A test that failed once and passed on retry still leaves its trace in
+      # test-results; keep it so a flaky test can be looked at. Nothing is
+      # uploaded when every test passed first time.
+      - name: Upload traces of flaky tests
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-signed-in-flaky-${{ matrix.shard }}
+          path: test-results/e2e-signed-in/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # No stack teardown: the runner is thrown away with the job, and stopping
+      # the containers only added ~20 s to every shard.
+
+  # One check to read for the whole suite: green only when every shard passed.
+  signed-in-e2e-result:
+    name: Signed-in E2E
+    needs: signed-in-e2e
+    if: ${{ always() && needs.signed-in-e2e.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Every shard passed
+        run: |
+          echo "Shards: ${{ needs.signed-in-e2e.result }}"
+          test "${{ needs.signed-in-e2e.result }}" = success

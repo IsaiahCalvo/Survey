@@ -3,7 +3,9 @@
 // focused button.
 const GROUP_KEYS = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
 export function moveGroupFocus(event) {
-  const buttons = [...event.currentTarget.querySelectorAll('[role="radio"]')];
+  // A disabled choice is skipped, or the arrows would stop at it for good.
+  const buttons = [...event.currentTarget.querySelectorAll('[role="radio"]')]
+    .filter((button) => !button.disabled && button.getAttribute('aria-disabled') !== 'true');
   const index = buttons.indexOf(document.activeElement);
   if (index < 0) return;
   let next;

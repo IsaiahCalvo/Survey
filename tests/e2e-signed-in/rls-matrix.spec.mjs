@@ -156,6 +156,10 @@ const NOT_SWEPT = {
   // Comments on marks (Nightly): written only through their RPCs; who reads
   // what is probed in mark-comments.spec.mjs.
   mark_comments: 'own spec',
+  // Guest links (Nightly): the owner reads links and guests, a guest only its
+  // own guest row, and the secret's hash nobody; probed in
+  // guest-links-security.spec.mjs.
+  document_guest_links: 'own spec', document_guests: 'own spec',
 };
 
 // What a collaborator on the shared document may read; the rest stays the owner's.

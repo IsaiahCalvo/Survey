@@ -41,6 +41,9 @@ const ALLOWED = {
   'src/components/SaveLogBanner.jsx': 1,
   'src/components/SurveyMediaCapture.jsx': 1,
   'src/components/SurveyMediaStrip.jsx': 1,
+  // Click-through wrapper that keeps the status / assignee / due pickers'
+  // presses off the rail row under it; each picker owns the keyboard.
+  'src/components/SurveyMarkerTracking.jsx': 1,
   'src/components/ToastHost.jsx': 1,
   // Click-through wrappers that keep an answer drop-down's presses off the
   // rail row under it; the drop-down's own <button> owns the keyboard.

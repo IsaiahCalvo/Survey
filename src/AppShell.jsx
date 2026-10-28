@@ -66,6 +66,8 @@ import { createKeyboardViewportController } from './mobile/keyboardViewport';
 import YDocProvider from './components/collab/YDocProvider.jsx';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
+import { guestTokenFrom } from './services/guestLinkToken.js';
+import { supabase as guestSupabase } from './supabaseClient';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
 import { ZOOM_MODES } from './utils/zoomController';
 import { createPortal } from 'react-dom';
@@ -82,6 +84,8 @@ import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSele
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
+import { supabase, isSupabaseAvailable } from './supabaseClient';
+import { renameRows, subscribeDocumentNames } from './hooks/documentNameBus.js';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
 import useFileDropZone from './hooks/useFileDropZone.js';
@@ -283,6 +287,10 @@ const PDFViewer = retryingLazy(
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
+// Guest links (Nightly): the join card and badge load only for a guest link
+// or a guest session, never on a normal first load.
+const GuestLinkGate = lazy(() => import('./guest/GuestLinkGate.jsx'));
+const GuestBadge = lazy(() => import('./guest/GuestLinkGate.jsx').then((m) => ({ default: m.GuestBadge })));
 
 /* Dev build stamp (git hash · dev-server start time, injected by vite.config's
    __BUILD_STAMP__ define). It used to render as a fixed chip in the bottom-left
@@ -1388,7 +1396,14 @@ export default function App({ devPreviewReturnTab = null }) {
   })));
 
   // Authentication state
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, signOut: authSignOut } = useAuth();
+  // Guest links (Survey Nightly only, beta flag 'guest-links'): /?guest=<secret>
+  // opens one shared document without an account (guest/GuestLinkGate.jsx).
+  const [guestLinksEnabled] = useState(() => isFeatureOn('guest-links'));
+  const [guestLinkToken] = useState(() => (typeof window === 'undefined' ? null : guestTokenFrom(window.location.href)));
+  // "I have an account" on the guest card hands over to the normal sign-in.
+  const [guestChoseSignIn, setGuestChoseSignIn] = useState(false);
+  const guestJoinPending = Boolean(guestLinksEnabled && guestLinkToken && !user && !guestChoseSignIn);
   const proLocked = useProLock();
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
@@ -1409,6 +1424,39 @@ export default function App({ devPreviewReturnTab = null }) {
         if (!cancelled) stop = startSurveyMediaDeleteRetry(signedInUserId);
       })
       .catch(() => { /* retried on a later start */ });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [signedInUserId]);
+
+  // A rename shows everywhere at once (hooks/documentNameBus.js): the open
+  // tabs of that document (tab, tooltip, overflow list, phone header, the
+  // viewer's export and print names) and the shell's library list, whether
+  // the rename came from the Documents tab, a tab menu or another screen.
+  useEffect(() => subscribeDocumentNames((rename) => {
+    setTabs((prev) => {
+      let changed = false;
+      const next = prev.map((tab) => {
+        if (persistableDocumentId(tab) !== rename.id || tab.name === rename.name) return tab;
+        changed = true;
+        return { ...tab, name: rename.name };
+      });
+      return changed ? next : prev;
+    });
+    setDocuments((prev) => renameRows(prev, rename));
+  }), []);
+  // Renames made on another device, window or by the owner of a shared
+  // document arrive over Realtime (services/documentNameRealtime.js).
+  useEffect(() => {
+    if (!signedInUserId || !isSupabaseAvailable()) return undefined;
+    let stop = null;
+    let cancelled = false;
+    import('./services/documentNameRealtime')
+      .then(({ subscribeDocumentRenames }) => {
+        if (!cancelled) stop = subscribeDocumentRenames(supabase, signedInUserId);
+      })
+      .catch(() => { /* local renames still show; others on the next read */ });
     return () => {
       cancelled = true;
       stop?.();
@@ -1873,19 +1921,16 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [bottomToolbarApi, activeTabId, currentView, tabs]);
 
   // Rename from the tab menu = the home's Rename (Dashboard's rename of the
-  // document row). The tab shows the new name at once and goes back if the
-  // rename fails (Dashboard shows the error toast).
+  // document row). That rename announces the new name on the name bus, so
+  // every tab and list shows it at once and goes back if the rename fails
+  // (Dashboard shows the error toast).
   const renameTab = renameTabId ? tabs.find((t) => t.id === renameTabId) || null : null;
   const handleRenameTabConfirm = async (nextName) => {
     const tab = tabsRef.current.find((t) => t.id === renameTabId);
     const documentId = persistableDocumentId(tab);
     if (!tab || !documentId) return;
-    const previousName = tab.name;
-    const sameDocument = (t) => persistableDocumentId(t) === documentId;
-    const row = documents.find((d) => String(d?.id) === String(documentId)) || { id: documentId, name: previousName };
-    setTabs((prev) => prev.map((t) => (sameDocument(t) ? { ...t, name: nextName } : t)));
-    const renamed = await dashboardRef.current?.renameDocument?.(row, nextName);
-    if (!renamed) setTabs((prev) => prev.map((t) => (sameDocument(t) ? { ...t, name: previousName } : t)));
+    const row = documents.find((d) => String(d?.id) === String(documentId)) || { id: documentId, name: tab.name };
+    await dashboardRef.current?.renameDocument?.({ ...row, name: tab.name }, nextName);
   };
 
   const handleTabMenuAction = (action, tabId) => {
@@ -2073,7 +2118,8 @@ export default function App({ devPreviewReturnTab = null }) {
   // on the open document. A file that isn't saved to the account yet has no
   // stored copy for the tools to read, so Dashboard explains that instead.
   const openPdfToolsForActiveTab = async () => {
-    const file = tabs.find((t) => t.id === activeTabId)?.file;
+    const openTab = tabs.find((t) => t.id === activeTabId);
+    const file = openTab?.file;
     // The open tab already holds the PDF, so the tools work offline too. A
     // streamed open (#1097) has no File, only the library row: take the bytes
     // from the viewer's loaded pdf.js document instead of downloading again.
@@ -2098,7 +2144,7 @@ export default function App({ devPreviewReturnTab = null }) {
         }));
       }
     }
-    dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null, blob }]);
+    dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: openTab?.name || file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null, blob }]);
   };
   const openPdfToolsRef = useRef(openPdfToolsForActiveTab);
   openPdfToolsRef.current = openPdfToolsForActiveTab;
@@ -2776,7 +2822,7 @@ export default function App({ devPreviewReturnTab = null }) {
         {isMobileViewer ? (
           <MobilePdfViewerHeader
             id="chrome-top-host"
-            documentName={selectedPDF?.name || activeTab?.name || 'Document'}
+            documentName={activeTab?.name || selectedPDF?.name || 'Document'}
             onBack={handleBack}
             topToolbarApi={topToolbarApi}
             bottomToolbarApi={bottomToolbarApi}
@@ -4762,10 +4808,11 @@ export default function App({ devPreviewReturnTab = null }) {
                         ));
                       }}
                     />
-                    <Suspense fallback={<QuietLoading label={openingLabel(tab.file?.name)} background="var(--surface-0)" />}>
+                    <Suspense fallback={<QuietLoading label={openingLabel(tab.name || tab.file?.name)} background="var(--surface-0)" />}>
                     <PDFViewer
                       pdfFile={tab.file}
                       pdfFilePath={tab.filePath}
+                      documentName={tab.name}
                       onBack={stableBack}
                       tabId={tab.id}
                       isActive={isVisible}
@@ -5329,8 +5376,20 @@ export default function App({ devPreviewReturnTab = null }) {
       </div>
 
       {/* Authentication Modal */}
+      {guestLinksEnabled && (guestLinkToken || user?.is_anonymous) ? (
+        <Suspense fallback={null}>
+          <GuestLinkGate
+            client={guestSupabase}
+            token={guestLinkToken}
+            user={user}
+            authReady={!authLoading}
+            onSignIn={() => { setGuestChoseSignIn(true); setShowAuthModal(true); }}
+          />
+          <GuestBadge user={user} onLeave={() => { authSignOut?.(); }} />
+        </Suspense>
+      ) : null}
       <AuthModal
-        isOpen={showAuthModal}
+        isOpen={showAuthModal && !guestJoinPending}
         initialMode={startsInSignUp() ? 'signup' : 'login'}
         onClose={() => setShowAuthModal(false)}
         onDismiss={!authPromptDismissed ? handleDismiss : null}
@@ -5369,7 +5428,7 @@ export default function App({ devPreviewReturnTab = null }) {
         <ExportPdfDialog
           open={exportPdfDialogOpen && Boolean(bottomToolbarApi?.exportPdfWithOptions)}
           api={bottomToolbarApi}
-          fileName={activeTab?.file?.name || ''}
+          fileName={activeTab?.name || activeTab?.file?.name || ''}
           onClose={() => setExportPdfDialogOpen(false)}
         />
       )}
