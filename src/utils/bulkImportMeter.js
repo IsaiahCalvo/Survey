@@ -99,6 +99,22 @@ export function keepHeldImportMarks(previousByPage, nextByPage, heldKeys) {
 }
 
 /**
+ * The held keys `byPage` no longer shows (the user deleted or cut a mark
+ * whose share was not stored yet), or null when every held mark is there.
+ */
+export function heldImportMarksGone(byPage, heldKeys) {
+  if (!heldKeys || heldKeys.size === 0) return null;
+  const left = new Set(heldKeys);
+  for (const page of Object.values(byPage || {})) {
+    for (const object of Array.isArray(page?.objects) ? page.objects : []) {
+      left.delete(extractAnnotationId(object));
+      if (left.size === 0) return null;
+    }
+  }
+  return left;
+}
+
+/**
  * A turn for the page before the next share: a MessageChannel task, not
  * setTimeout, which browsers throttle (to 1 s and more) in background tabs.
  */

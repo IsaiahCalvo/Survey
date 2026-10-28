@@ -10,6 +10,7 @@ import {
   BULK_IMPORT_MAX_MARKS,
   BULK_IMPORT_MIN_MARKS,
   bulkImportSliceSize,
+  heldImportMarksGone,
   keepHeldImportMarks,
   meterBulkImport,
   nextImportTurn,
@@ -104,4 +105,19 @@ test('an erase and its undo or redo store the held marks before they read the st
   // A drain stores every held mark, even while a slider drag holds the capture.
   assert.match(hook, /captureIntoStoreRef\.current\?\.\(byPageRef\.current, \{ drain: true \}\)/);
   assert.match(hook, /if \(!drain && capturePauseRef\?\.current\?\.until/);
+});
+
+test('a held mark the user deleted is found, so the import is stored before the delete', () => {
+  const held = new Set(['imp-2', 'imp-3']);
+  const screen = { 1: { objects: [mark('mine-1'), mark('imp-2')] }, 2: { objects: [mark('imp-3')] } };
+  assert.equal(heldImportMarksGone(screen, held), null);
+  const afterDelete = { 1: { objects: [mark('mine-1')] }, 2: { objects: [mark('imp-3')] } };
+  assert.deepEqual([...heldImportMarksGone(afterDelete, held)], ['imp-2']);
+  assert.equal(heldImportMarksGone(afterDelete, new Set()), null);
+
+  const hook = readFileSync(new URL('../src/hooks/useAnnotationDoc.js', import.meta.url), 'utf8');
+  // Stored first, on the screen as it is now plus the deleted marks; the
+  // capture's own write then takes them out (and leaves their tombstones).
+  assert.match(hook, /const gone = bulkKeys \? heldImportMarksGone\(capturedByPage, heldImportKeysRef\.current\) : null;\s*if \(gone\?\.size > 0 && heldScreenRef\.current\) \{\s*const drained = h\.applyByPage\(keepHeldImportMarks\(heldScreenRef\.current, capturedByPage, gone\), \{ bulkKeys \}\);/);
+  assert.match(hook, /heldScreenRef\.current = heldImportKeysRef\.current\.size > 0 \? capturedByPage : null;/);
 });

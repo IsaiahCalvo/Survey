@@ -27,6 +27,7 @@ import {
 import { applyReconcileSwaps } from '../utils/annotationReconcile.js';
 import {
   bulkImportSliceSize,
+  heldImportMarksGone,
   keepHeldImportMarks,
   meterBulkImport,
   nextImportTurn,
@@ -364,6 +365,8 @@ export function useAnnotationDoc({
   // one cost, the next share's turn (if one is scheduled), and who waits for
   // the last share (whenBulkImportSaved).
   const heldImportKeysRef = useRef(new Set());
+  // The screen the held marks were last seen on.
+  const heldScreenRef = useRef(null);
   const importMsPerMarkRef = useRef(0);
   const importTurnRef = useRef(null);
   const importDrainWaitersRef = useRef([]);
@@ -414,6 +417,7 @@ export function useAnnotationDoc({
     inkRepairDoneRef.current = null;
     bulkImportKeysRef.current = new Set();
     heldImportKeysRef.current = new Set();
+    heldScreenRef.current = null;
     importTurnRef.current = null;
     settleImportDrain(false);
     if (prePreviewRef.current.documentId !== documentId) {
@@ -777,6 +781,7 @@ export function useAnnotationDoc({
       // not written, and the next open imports them again (stable ids).
       importTurnRef.current = null;
       heldImportKeysRef.current = new Set();
+      heldScreenRef.current = null;
       settleImportDrain(false);
       if (h) { h.destroy().catch(() => {}); }
     };
@@ -889,6 +894,14 @@ export function useAnnotationDoc({
       (page) => page?.eraserMutation?.id,
     );
     const bulkKeys = bulkImportKeysRef.current.size > 0 ? bulkImportKeysRef.current : null;
+    // A held mark left the screen (deleted or cut before its share was
+    // stored): store the import first, so taking it out below leaves the PDF
+    // deletion tombstone a stored mark gets (a reopen must not bring it back).
+    const gone = bulkKeys ? heldImportMarksGone(capturedByPage, heldImportKeysRef.current) : null;
+    if (gone?.size > 0 && heldScreenRef.current) {
+      const drained = h.applyByPage(keepHeldImportMarks(heldScreenRef.current, capturedByPage, gone), { bulkKeys });
+      for (const key of drained?.bulkWritten || []) bulkKeys.delete(key);
+    }
     // An erase gets every mark it may touch stored first, as before.
     const storedMarks = bulkKeys ? getAnnotationsMap(h.doc) : null;
     const metered = bulkKeys
@@ -905,6 +918,7 @@ export function useAnnotationDoc({
     if (bulkKeys) for (const key of bulkWritten) bulkKeys.delete(key);
     if (bulkWritten.length > 0) importMsPerMarkRef.current = (performance.now() - startedAt) / bulkWritten.length;
     heldImportKeysRef.current = metered.held || new Set();
+    heldScreenRef.current = heldImportKeysRef.current.size > 0 ? capturedByPage : null;
     if (heldImportKeysRef.current.size > 0) scheduleImportTurn();
     else if (importDrainWaitersRef.current.length > 0) settleImportDrain(true);
     // A share of the import changes no tombstones (the import leaves deleted

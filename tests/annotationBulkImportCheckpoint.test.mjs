@@ -28,7 +28,7 @@ import {
   runCheckpointRequest,
 } from '../src/services/annotationCheckpointCore.js';
 import { createCloud, openFor, settle, until } from './helpers/liveSyncFakeCloud.mjs';
-import { meterBulkImport, nextImportTurn } from '../src/utils/bulkImportMeter.js';
+import { heldImportMarksGone, keepHeldImportMarks, meterBulkImport, nextImportTurn } from '../src/utils/bulkImportMeter.js';
 
 let docCounter = 0;
 let DOC = '00000000-0000-4000-8000-0000000b01c0';
@@ -399,4 +399,36 @@ test('the checkpoint worker merges an import\'s parts (a list) like the import m
   Y.applyUpdate(merged, mergeCheckpointWithUpdate(Y.encodeStateAsUpdate(accepted), Y.mergeUpdates(parts)));
   assert.deepEqual(out.getMap('marks').toJSON(), merged.getMap('marks').toJSON());
   assert.equal(getAnnotationsMap(out).size, 1 + getAnnotationsMap(imported).size);
+});
+
+test('a held imported mark the user deletes is stored first, so its deletion is kept', { timeout: 30_000 }, async () => {
+  // Codex on #1295: deleting a mark whose share was not stored yet left no
+  // PDF-deletion tombstone (the store never had it), so a reopen imported it
+  // again. The capture now stores the import first (useAnnotationDoc).
+  const cloud = createCloud(nextDoc());
+  const a = await openFor(withSnapshotCas(cloud, cloud.makeClient('user-a')), DOC);
+  const screen = importByPage(1, 40);
+  const bulkKeys = new Set(idsOf(screen));
+  const marks = getAnnotationsMap(a.doc);
+  const share = meterBulkImport(screen, bulkKeys, 25, { isStored: (key) => marks.has(key) });
+  for (const key of a.applyByPage(share.byPage, { bulkKeys }).bulkWritten || []) bulkKeys.delete(key);
+  const target = 'pdf-embedded-1-30';
+  assert.ok(share.held.has(target));
+
+  // The user deletes it before its share was stored.
+  const afterDelete = { 1: { objects: screen[1].objects.filter((o) => o.id !== target) } };
+  const gone = heldImportMarksGone(afterDelete, share.held);
+  assert.deepEqual([...gone], [target]);
+  for (const key of a.applyByPage(keepHeldImportMarks(screen, afterDelete, gone), { bulkKeys }).bulkWritten || []) bulkKeys.delete(key);
+  assert.ok(marks.has(target), 'stored first');
+  a.applyByPage(afterDelete);
+  assert.equal(marks.has(target), false);
+  assert.ok(a.getDeletedPdfAnnotations().some((entry) => JSON.stringify(entry).includes(target)), 'the deletion is kept for the next open');
+  assert.equal(await a.whenBulkSaved(), true);
+  await a.drain();
+  const fresh = await openWriter(cloud, 'user-b');
+  assert.equal(idsOf(fresh.getByPage()).includes(target), false);
+  assert.ok(fresh.getDeletedPdfAnnotations().some((entry) => JSON.stringify(entry).includes(target)));
+  await a.destroy();
+  await fresh.destroy();
 });
