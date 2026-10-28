@@ -38,10 +38,10 @@ export const parsePageRangeInput = (input, options = {}) => {
   const pages = new Set();
   const errors = [];
   let hasOutOfRangeError = false;
-  const validRangeText = Number.isFinite(max) ? `${min}-${max}` : `${min}+`;
+  const rangeHint = Number.isFinite(max) ? `Pages go from ${min} to ${max}.` : `Pages start at ${min}.`;
   const addOutOfRangeError = () => {
     if (hasOutOfRangeError) return;
-    errors.push(`This page range is out of the valid range (${validRangeText}).`);
+    errors.push(rangeHint);
     hasOutOfRangeError = true;
   };
 

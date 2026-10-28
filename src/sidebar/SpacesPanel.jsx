@@ -1461,7 +1461,7 @@ const SpacesPanel = ({
       <div ref={mobileSpacesListRef} className="spaces-list">
         {spaces.length === 0 ? (
           <div className="spaces-list__empty">
-            No spaces yet. Create a space to filter pages by visibility.
+            No spaces yet. A space shows just the pages and areas you pick.
           </div>
         ) : (
           <SortableRearrangeList

@@ -76,7 +76,7 @@ test('Spaces: create, filter, areas, dropped-edit toast, export, reload beside t
     await expect(addPages).toBeFocused();
     await addPages.fill('9');
     await addPages.press('Enter');
-    await expect(page.locator('.space-card__error')).toContainText('1-6');
+    await expect(page.locator('.space-card__error')).toHaveText('Pages go from 1 to 6.');
     await addPages.fill('2-3');
     await addPages.press('Enter');
     await expect(button(page, 'Draw a region on page 2')).toBeVisible();
