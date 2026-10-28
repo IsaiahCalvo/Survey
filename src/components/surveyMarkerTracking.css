@@ -1,0 +1,135 @@
+/* The open survey item's Status / Assigned to / Due line
+   (SurveyMarkerTracking.jsx), indented with its checklist and note. */
+
+.survey-tracking {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 118px;
+  gap: 6px;
+  padding: 6px var(--sv-detail-right, 8px) 2px var(--sv-detail-indent, 64px);
+}
+
+.survey-tracking--phone {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 8px 14px 4px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.survey-tracking__field {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.survey-tracking--phone .survey-tracking__field {
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: center;
+}
+
+.survey-tracking__label {
+  font-size: var(--font-size-sm);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.survey-tracking--phone .survey-tracking__label {
+  font-size: var(--font-size-lg);
+}
+
+.survey-tracking__label.is-late {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+
+.survey-tracking__date,
+.survey-tracking__native {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: var(--font-size-md);
+  color: var(--text-1);
+  background: var(--panel-well);
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.survey-tracking--phone .survey-tracking__date,
+.survey-tracking--phone .survey-tracking__native {
+  height: 44px;
+  /* iOS zooms the page on any field under 16px. */
+  font-size: 16px;
+}
+
+.survey-tracking__date:disabled,
+.survey-tracking__native:disabled {
+  background: transparent;
+}
+
+/* The closed row's sign: initials of who has it, or the state. */
+.survey-tracking-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--panel-well);
+  border-radius: var(--radius-pill);
+}
+
+.survey-tracking-badge.is-active {
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+.survey-tracking-badge.is-done {
+  color: var(--success-text);
+}
+
+.survey-tracking-badge.is-late {
+  color: var(--danger-text);
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/* The list's chips: Assigned to me, Late, Hide done. */
+.survey-tracking-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 8px 8px;
+}
+
+.survey-tracking-filters--phone {
+  padding: 4px 14px 10px;
+}
+
+.survey-tracking-chip {
+  height: 24px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: var(--font-size-md);
+  color: var(--text-2);
+  background: var(--panel-well);
+  border: 0;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+
+.survey-tracking-filters--phone .survey-tracking-chip {
+  height: 36px;
+  font-size: var(--font-size-lg);
+}
+
+/* Selected = gold ink on a neutral raised fill (selected states are gold ink only). */
+.survey-tracking-chip[aria-pressed="true"] {
+  color: var(--accent-text);
+  background: var(--surface-3);
+  font-weight: 600;
+}

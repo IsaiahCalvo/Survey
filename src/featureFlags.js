@@ -122,6 +122,10 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Comments on marks: threads, replies and @mentions with an email link',
     stage: 'beta',
   }),
+  'marker-tracking': Object.freeze({
+    label: 'Survey items: status, assigned to and due date, with list filters',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';
