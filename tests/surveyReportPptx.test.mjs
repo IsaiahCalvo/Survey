@@ -31,7 +31,7 @@ test('the plan holds the totals, a chart row per used category and the issues', 
   assert.deepEqual(plan.tiles.map((t) => t.value), [4, 2, 1, 1, 1]);
   assert.deepEqual(plan.chart.categories, ['Door', 'Camera']);
   assert.deepEqual(plan.chart.series.map((s) => s.values), [[2, 0], [1, 0], [0, 1]]);
-  assert.deepEqual(plan.issueRows, [{ category: 'Door', item: 'D-2', lines: 'Lock works: Fail' }]);
+  assert.deepEqual(plan.issueRows.map(({ id, ...row }) => row), [{ category: 'Door', item: 'D-2', lines: 'Lock works: Fail' }]);
 });
 
 const slideFiles = (zip) => Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f));

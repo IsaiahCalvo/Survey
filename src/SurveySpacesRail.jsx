@@ -630,7 +630,8 @@ const SurveySpacesRail = ({
     setIsReporting(true);
     try {
       const input = { template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf() };
-      if (format === 'pdf') await (await import('./services/surveyReportPdf.js')).downloadSurveyReportPdf(input);
+      // The PDF puts a crop of the plan beside each issue.
+      if (format === 'pdf') await (await import('./services/surveyReportPdf.js')).downloadSurveyReportPdf({ ...input, planFile: pdfFile });
       else if (format === 'xlsx') await (await import('./services/surveyReportXlsx.js')).downloadSurveyReportXlsx(input);
       else if (format === 'csv') (await import('./services/surveyReportCsv.js')).downloadSurveyReportCsv(input);
       else await (await import('./services/surveyReportPptx.js')).downloadSurveyReport(input);
