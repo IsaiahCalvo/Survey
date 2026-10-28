@@ -302,7 +302,14 @@ const SpaceSortableCard = React.memo(function SpaceSortableCard({
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  e.currentTarget.blur();
+                  // A space with no pages goes on to its Add pages field, so
+                  // name, Enter, pages, Enter runs from the keyboard.
+                  const addField = pageCount === 0
+                    ? e.currentTarget.closest('.space-card')?.querySelector('.space-card__add-input')
+                    : null;
+                  addField?.focus();
+                  // Still folding open (inert), it refuses focus: just save.
+                  if (document.activeElement !== addField) e.currentTarget.blur();
                 } else if (e.key === 'Escape') {
                   e.preventDefault();
                   e.stopPropagation();

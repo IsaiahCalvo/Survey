@@ -69,9 +69,11 @@ test('Spaces: create, filter, areas, dropped-edit toast, export, reload beside t
     await button(page, 'Spaces').click();
     await button(page, 'Create space').click();
     await expect(page.locator('.space-card__name:focus')).toHaveCount(1);
-    await page.keyboard.type('North wing');
+    await page.keyboard.type('North wing', { delay: 30 });
     await page.keyboard.press('Enter');
     const addPages = page.getByRole('textbox', { name: 'Add pages (e.g. 3, 6-9, 12)' }).filter({ visible: true }).first();
+    // Enter on a new space's name goes on to its Add pages field.
+    await expect(addPages).toBeFocused();
     await addPages.fill('9');
     await addPages.press('Enter');
     await expect(page.locator('.space-card__error')).toContainText('1-6');
