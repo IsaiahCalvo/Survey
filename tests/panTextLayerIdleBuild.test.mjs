@@ -9,6 +9,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { keepTextLayer, restoreTextLayer, textContentInSlices, textLayerKey } from '../src/utils/pdfjsTextLayerCache.js';
+
 const SOURCE = readFileSync(new URL('../src/components/PdfjsTextLayer.jsx', import.meta.url), 'utf8');
 const START = '  useEffect(() => {\n    let cancelled = false;';
 const END = '\n  }, [pdf, pageNumber, scale, rotation, onTextAvailability]);';
@@ -22,6 +24,7 @@ function buildEffect() {
     'ref', 'pdf', 'pageNumber', 'scale', 'rotation', 'onTextAvailability',
     'readPdfjsTextContent', 'pdfjsLib', 'idleOnlyRef', 'buildNowRef',
     'requestIdleCallback', 'cancelIdleCallback',
+    'keepTextLayer', 'restoreTextLayer', 'textContentInSlices', 'textLayerKey',
     body,
   );
 }
@@ -46,6 +49,7 @@ function harness({ idleOnly, withIdle = true }) {
     { current: el }, pdf, 3, 1, 0, () => log.push('availability'),
     async () => ({ items: [] }), pdfjsLib, { current: idleOnly }, buildNowRef,
     withIdle ? requestIdle : undefined, withIdle ? cancelIdle : undefined,
+    keepTextLayer, restoreTextLayer, textContentInSlices, textLayerKey,
   );
   return { log, runIdle, buildNowRef, cleanup };
 }
@@ -96,4 +100,35 @@ test('without requestIdleCallback (iOS Safari) it builds at once', async () => {
 test('the idle-only flag is Pan without Text Select, and Text Select kicks a waiting build', () => {
   assert.match(SOURCE, /idleOnlyRef\.current = panHover && !interactive;/);
   assert.match(SOURCE, /useEffect\(\(\) => \{ if \(interactive\) buildNowRef\.current\?\.\(\); \}, \[interactive\]\);/);
+});
+
+test('a page that comes back at the same size gets its kept layer at once, even under Pan', async () => {
+  const log = [];
+  const pdf = { getPage: async (n) => { log.push(`getPage:${n}`); throw new Error('not read'); } };
+  const textContent = { items: [{ str: 'kept' }] };
+  const spans = [{ kind: 'span' }];
+  const leaving = {
+    childNodes: spans,
+    ownerDocument: { createDocumentFragment: () => ({ nodes: [], append(...n) { this.nodes.push(...n); } }) },
+    getAttribute: (name) => (name === 'style' ? 'width: 100px;' : null),
+  };
+  keepTextLayer(pdf, textLayerKey(3, 1, 0), leaving, textContent);
+  const el = {
+    attributes: {},
+    setAttribute(name, value) { this.attributes[name] = value; },
+    removeAttribute(name) { delete this.attributes[name]; },
+    replaceChildren(fragment) { this.children = fragment.nodes; },
+    style: { setProperty() {} },
+  };
+  const buildNowRef = { current: null };
+  buildEffect()(
+    { current: el }, pdf, 3, 1, 0, (n, text) => log.push(`availability:${n}:${text.items[0].str}`),
+    async () => { throw new Error('not read'); }, {}, { current: true }, buildNowRef,
+    () => { log.push('idle-requested'); return 1; }, () => {},
+    keepTextLayer, restoreTextLayer, textContentInSlices, textLayerKey,
+  );
+  await flush();
+  assert.deepEqual(log, ['availability:3:kept'], 'no idle wait, no page read, no measuring');
+  assert.deepEqual(el.children, spans);
+  assert.equal(el.attributes.style, 'width: 100px;');
 });
