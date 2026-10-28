@@ -147,6 +147,20 @@ test('yellow and red sync states explain the cause, local backup, and retry beha
   );
 });
 
+// Phone walk 2026-10-28: a healthy save with appends in flight reports
+// 'pending' with a queue size; it read "Offline · N saved locally" for ~2 s.
+test('a healthy save in flight with queued appends reads Saving..., not Offline', () => {
+  assert.equal(getSyncStatusViewModel({ stage: 'pending' }, 2).label, 'Saving...');
+  assert.equal(getSyncStatusViewModel({ stage: 'pending' }, 2).state, 'syncing');
+  assert.equal(
+    getCompactSyncStatusMessage({ stage: 'pending' }, 2),
+    'Changes are saved locally and backing up now.',
+  );
+  // Still offline when the work is only queued, or the append failed.
+  assert.equal(getSyncStatusViewModel({ stage: 'queued' }, 2).state, 'offline');
+  assert.equal(getSyncStatusViewModel({ stage: 'error', error: 'x' }, 2).state, 'offline');
+});
+
 test('desktop and mobile sync indicators keep details compact without moving adjacent tools', () => {
   const desktop = syncChipSource();
   const mobile = mobileChromeSource();

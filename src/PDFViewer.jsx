@@ -16748,6 +16748,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         document.body.removeChild(link);
         setTimeout(() => URL.revokeObjectURL(url), 0);
         setIsExporting(false);
+        // A phone browser saves it without a word, like the PDF export did
+        // before its toast: say where the file went.
+        showToast(`Downloaded ${link.download}`, 'success');
       }
     } catch (error) {
       console.error('Failed to create Excel export', error);

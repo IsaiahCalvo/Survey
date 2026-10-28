@@ -38,6 +38,20 @@ export function getSyncStatusViewModel(status, queueSize = 0, manualSyncing = fa
     };
   }
 
+  // A healthy engine with appends in flight reports 'pending' WITH a queue
+  // size, so this check has to come before the queue one: it used to fall
+  // into "Offline · N saved locally" and flash the red dot on every save
+  // (phone walk 2026-10-28: ~2 s of "Offline" after opening a big drawing
+  // while online). A failed append turns the stage to 'error' instead.
+  if (stage === 'pending' && !browserReportsOffline()) {
+    return {
+      state: 'syncing',
+      label: 'Saving...',
+      detail: 'Your changes are saved on this device and are waiting to be backed up.',
+      retryLabel: 'Backup will retry automatically.',
+    };
+  }
+
   if (pendingCount > 0 || stage === 'queued') {
     return {
       state: 'offline',
@@ -98,6 +112,7 @@ export function getCompactSyncStatusMessage(status, queueSize = 0) {
     return 'Cloud backup failed; changes are safe and retrying.';
   }
 
+  if (stage === 'pending' && !browserReportsOffline()) return 'Changes are saved locally and backing up now.';
   if (pendingCount > 0 || stage === 'queued') {
     if (pendingCount === 1) return '1 change is safe locally and waiting to back up.';
     const count = pendingCount > 0 ? `${pendingCount} changes` : 'Changes';
@@ -110,4 +125,8 @@ export function getCompactSyncStatusMessage(status, queueSize = 0) {
       : 'Loading and backing up this document.';
   }
   return 'Everything is backed up to the cloud.';
+}
+
+function browserReportsOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
 }

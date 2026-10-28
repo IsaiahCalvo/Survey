@@ -3131,7 +3131,12 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 .mobile-pdf-dock {
   height: var(--mobile-viewer-dock-height);
   min-height: var(--mobile-viewer-dock-height);
+  /* Phone walk 2026-10-28: a phone held sideways in Safari puts the notch over
+     a screen edge; the page root pads for it, but this fixed dock spans the
+     screen, so Spaces / Survey sat under the notch. */
   padding: 16px 20px var(--mobile-dock-reserve);
+  padding-left: max(20px, var(--native-safe-area-left, env(safe-area-inset-left, 0px)));
+  padding-right: max(20px, var(--native-safe-area-right, env(safe-area-inset-right, 0px)));
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -3337,6 +3342,9 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
      only its 12px. The users sheet keeps its own equivalent padding override
      below (css order wins). */
   padding-bottom: 12px;
+  /* Sideways phone: keep the sheet's content out from under the notch. */
+  padding-left: var(--native-safe-area-left, env(safe-area-inset-left, 0px));
+  padding-right: var(--native-safe-area-right, env(safe-area-inset-right, 0px));
   z-index: 6500 !important;
   /* UX (owner ruling 2026-09-17): NO keyframe here. The entrance used to be
      `animation: mobilePdfSheetIn 180ms ease-out !important`, a 24px nudge +
@@ -4017,10 +4025,20 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 }
 
 @media (max-width: 340px) {
+  /* 320px phones: the line / arrow strip measured 328px of controls and the
+     live text strip put its alignment button past the right edge. Tighter
+     divider air and a narrower font pill bring both inside the screen. */
+  :root {
+    --mobile-strip-divider-inset: 2px;
+    --mobile-strip-font-w: 82px;
+  }
   .mobile-pdf-header__document { left: 4px; max-width: 156px; gap: 2px; }
   .mobile-pdf-header__history { right: 4px; gap: 2px; }
   .mobile-pdf-header__export { margin-left: 6px; }
-  .mobile-pdf-dock { padding-inline: 14px; }
+  .mobile-pdf-dock {
+    padding-left: max(14px, var(--native-safe-area-left, env(safe-area-inset-left, 0px)));
+    padding-right: max(14px, var(--native-safe-area-right, env(safe-area-inset-right, 0px)));
+  }
 }
 
 /* ============================================================================
