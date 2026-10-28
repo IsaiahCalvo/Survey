@@ -86,7 +86,11 @@ name: android-signed-in
     visible: "Export data"
     timeout: 30000
 - takeScreenshot: 08-survey-sheet
-- tapOn: "Export data"
+# The share sheet opens over the spot where Export sat; a second "no change
+# yet" tap landed on its Bluetooth target.
+- tapOn:
+    text: "Export data"
+    retryTapIfNoChange: false
 - extendedWaitUntil:
     visible: ".*(Share|share|Copy|Nearby|Drive).*"
     timeout: 30000
