@@ -1,0 +1,70 @@
+/* MenuGlide: one hover strip per drop-down that glides from row to row
+   (owner 2026-10-28, the 21st.dev "smooth dropdown"). The strip paints the
+   hover; the rows above it stay clear, so a row never lights on its own while
+   the strip is there. Neutral ink only: the bar is the text colour, never
+   gold (gold is the current choice's ink, nothing else). */
+.menu-glide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 0;
+  height: 0;
+  border-radius: var(--radius-xs, 4px);
+  /* A menu card is --surface-2; --hover is one shade off it and could hardly
+     be seen, so the strip is the raised step (the mark menu's hover too). */
+  background: var(--surface-3);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-state) var(--ease-out),
+    transform var(--motion-glide) var(--ease-glide),
+    width var(--motion-glide) var(--ease-glide),
+    height var(--motion-glide) var(--ease-glide),
+    background-color var(--motion-state) var(--ease-out);
+}
+
+.menu-glide[data-on] {
+  opacity: 1;
+}
+
+/* The first row it lands on: it fades in there, it does not fly in. */
+.menu-glide[data-instant] {
+  transition: opacity var(--motion-state) var(--ease-out);
+}
+
+.menu-glide__bar {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 2px;
+  background: var(--text-1);
+  transition: background-color var(--motion-state) var(--ease-out);
+}
+
+.menu-glide[data-danger] {
+  background: var(--danger-soft);
+}
+
+.menu-glide[data-danger] .menu-glide__bar {
+  background: var(--danger-text);
+}
+
+.menu-glide ~ :is([role='menuitem'], [role='option'], [role='menuitemradio'], [role='menuitemcheckbox']) {
+  position: relative;
+  z-index: 1;
+}
+
+@media (hover: hover) {
+  .menu-glide ~ :is([role='menuitem'], [role='option'], [role='menuitemradio'], [role='menuitemcheckbox']):hover {
+    background: transparent !important;
+  }
+}
+
+.menu-glide ~ :is([role='menuitem'], [role='option'], [role='menuitemradio'], [role='menuitemcheckbox']):focus-visible {
+  background: transparent !important;
+}
+

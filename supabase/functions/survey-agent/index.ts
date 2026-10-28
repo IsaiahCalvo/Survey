@@ -48,6 +48,7 @@ import {
   restAfterRefusal,
   restWhenNearCap,
 } from '../_shared/surveyAgentModels.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const corsHeaders = {
   // INTENTIONAL: web, Electron (file://) and Capacitor all call this with a
@@ -188,6 +189,7 @@ Deno.serve(async (req) => {
   const { data: userData, error: userError } = await admin.auth.getUser(token);
   const user = userData?.user;
   if (userError || !user) return json(401, { error: 'sign_in_required' });
+  if (isGuestUser(user)) return json(403, { error: 'guest_not_allowed', message: GUEST_REFUSED_MESSAGE });
 
   const email = (user.email || '').toLowerCase();
   let allowed = Boolean(email) && testers().has(email);

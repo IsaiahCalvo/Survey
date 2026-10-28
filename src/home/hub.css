@@ -5390,21 +5390,18 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 }
 
 
-/* The row menu (⋮ or right-click) slides 6px in from the side it opens on,
-   100 ms, like Drawboard's Radix menus; a short fade keeps it calm. */
+/* The row menu (⋮ or right-click) grows out of its button like every action
+   menu (motion.css sv-menu-grow, owner 2026-10-28); opening upward it grows
+   from its lower corner. */
 .hub-menu.documents-row-menu {
-  animation: documents-row-menu-in var(--motion-menu) var(--ease-out) both;
+  animation: sv-menu-grow var(--motion-menu-open) var(--ease-glide) both;
+  transform-origin: top right;
 }
 .hub-menu.documents-row-menu.opens-up {
-  animation-name: documents-row-menu-in-up;
+  transform-origin: bottom right;
 }
-@keyframes documents-row-menu-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: none; }
-}
-@keyframes documents-row-menu-in-up {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-menu.documents-row-menu { animation: none; }
 }
 .hub-menu.documents-row-menu:focus {
   outline: none;

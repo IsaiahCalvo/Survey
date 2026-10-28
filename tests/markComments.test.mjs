@@ -62,6 +62,7 @@ test('@mentions: find the word at the caret, offer people, insert and read back'
   assert.equal(mentionQueryAt('mail a@b', 8), null, 'an email address is not a mention');
   assert.deepEqual(matchPeople([ANA, BEN], 'ben').map((p) => p.id), [BEN.id]);
   assert.deepEqual(matchPeople([ANA, BEN], '').length, 2);
+  assert.deepEqual(matchPeople([ANA, { id: 'g', name: 'Gus', email: null, guest: true }], 'gus'), [], 'guests have no email to mention');
   assert.equal(personLabel(BEN), 'ben.k');
   assert.equal(personLabel(null), 'Former member');
 

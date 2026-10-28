@@ -4,6 +4,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import { BODY_SCHEMA, handleKitsAdmin } from '../_shared/kitsAdmin.js';
 import { parseBody, readJsonBody } from '../_shared/inputSchema.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,6 +28,7 @@ Deno.serve(async (req) => {
   });
   const { data: { user }, error } = await userClient.auth.getUser(authHeader.replace(/^Bearer\s+/i, ''));
   if (error || !user) return json({ error: 'Unauthorized' }, 401);
+  if (isGuestUser(user)) return json({ error: GUEST_REFUSED_MESSAGE }, 403);
 
   const parsed = parseBody(BODY_SCHEMA, await readJsonBody(req));
   if (!parsed.ok) return json({ error: parsed.error }, 400);

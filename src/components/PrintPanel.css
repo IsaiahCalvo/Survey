@@ -590,16 +590,6 @@
   display: flex; align-items: center; justify-content: space-between;
   margin-top: 6px;
 }
-.pp-seg {
-  display: inline-flex; background: var(--pp-bg);
-  border: 1px solid var(--pp-border); border-radius: 6px; padding: 2px;
-}
-.pp-seg button {
-  background: transparent; color: var(--pp-muted);
-  border: 0; border-radius: 4px;
-  padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: inherit;
-}
-.pp-seg button.is-active { color: var(--pp-accent); }
 
 /* Orientation row */
 .pp-orient-row { display: flex; gap: 8px; align-items: center; }
@@ -962,14 +952,12 @@
 }
 
 /* Four controls in this panel had no hover and no press at all: the two
-   dropdown shells, a segmented button and the toggle. One hover, one press,
+   dropdown shells and the toggle (the Fit choice is the shared ButtonGroup). One hover, one press,
    both from the shared palette (UX 2026-09-22, revision-3 palette). */
-.pp-seg button:not(.is-active):hover,
 .pp-tog:hover {
   background: var(--pp-hover);
 }
 
-.pp-seg button:not(.is-active):active,
 .pp-tog:active {
   background: var(--pp-pressed);
 }

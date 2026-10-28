@@ -6,6 +6,7 @@ import { deleteStripeCustomer } from '../_shared/accountDeletion.ts';
 import { ensurePersistedStripeCustomer } from '../_shared/stripeCustomerPersistence.ts';
 import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -56,6 +57,13 @@ Deno.serve(async (req) => {
 
         if (userError || !user) {
             throw new Error('Invalid user token');
+        }
+
+        if (isGuestUser(user)) {
+            return new Response(
+                JSON.stringify({ error: GUEST_REFUSED_MESSAGE }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
         }
 
         if (isAgentSession(authHeader)) {
