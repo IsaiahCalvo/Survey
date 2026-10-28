@@ -118,7 +118,7 @@ test('mention email: only the author, once, soon after posting; never the author
 test('comments are a beta flag with a server row, a rail panel id, and a mention function', () => {
   assert.equal(FEATURE_FLAGS['mark-comments']?.stage, 'beta');
   assert.ok(PANEL_IDS.includes('comments'));
-  const sql = readFileSync(new URL('../supabase/migrations/20261028020000_mark_comments.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261028023000_mark_comments.sql', import.meta.url), 'utf8');
   assert.match(sql, /\('mark-comments', 'off'/);
   // Written only through the checked functions.
   assert.match(sql, /REVOKE ALL ON public\.mark_comments FROM PUBLIC, anon, authenticated;\s*GRANT SELECT ON public\.mark_comments TO authenticated;/);
@@ -168,7 +168,7 @@ test('reading comments pages past the server row cap and keeps oldest first', as
 });
 
 test('a comment whose author account is gone fails closed: only the owner can delete it', () => {
-  const sql = readFileSync(new URL('../supabase/migrations/20261028020000_mark_comments.sql', import.meta.url), 'utf8');
+  const sql = readFileSync(new URL('../supabase/migrations/20261028023000_mark_comments.sql', import.meta.url), 'utf8');
   const del = sql.slice(sql.indexOf('FUNCTION public.delete_mark_comment'));
   assert.match(del, /v_row\.author_id IS NOT DISTINCT FROM v_uid/);
   assert.doesNotMatch(del.slice(0, del.indexOf('END;')), /v_row\.author_id = v_uid/);

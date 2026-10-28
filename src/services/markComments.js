@@ -1,7 +1,7 @@
 // src/services/markComments.js
 //
 // Comments on marks (Nightly, flag 'mark-comments'; migration
-// 20261028020000_mark_comments.sql). Rows are read straight from the table
+// 20261028023000_mark_comments.sql). Rows are read straight from the table
 // (its select policy is the document's own access) and written only through
 // the add / edit / delete functions. A thread is its first comment plus the
 // replies that point at it; it hangs off one mark (markId) or a page.
