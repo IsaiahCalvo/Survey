@@ -41,7 +41,7 @@ const KIND_BY_ID = new Map(PINNABLE_TOOLS.map((entry) => [entry.id, entry]));
 // Tools whose line style (solid / dashed / dotted / cloud) is part of the pin.
 const LINE_STYLE_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'callout', 'text']);
 const LINE_STYLES = new Set(['solid', 'dashed', 'dotted', 'cloud']);
-const CLOUD_LINE_TOOLS = new Set(['ellipse', 'polygon', 'polyline', 'callout', 'text']);
+const CLOUD_LINE_TOOLS = new Set(['ellipse', 'polygon', 'callout', 'text']);
 // Tools with a fill as well as a line.
 const FILL_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'callout', 'counter']);
 // Tools with a size and no colour: the eraser.
