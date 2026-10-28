@@ -35,6 +35,7 @@ import InviteSendNotice from './InviteSendNotice';
 import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
 import ValueSelect from '../components/ValueSelect.jsx';
+import { listMemberProjectEdits } from '../services/memberActivity.js';
 import { menuAtButton, menuIconFor, menuRowHeight } from '../utils/menuItems.js';
 import {
   createProjectInvite,
@@ -95,13 +96,8 @@ const roleLabel = (role) => {
 
 const MONO_FONT = '"JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace';
 
-const timeToMinutes = (t) => {
-  const m = /^(\d+):(\d+)\s*(AM|PM)$/i.exec(t || ""); if (!m) return 0;
-  let h = parseInt(m[1]); const min = parseInt(m[2]); const pm = /PM/i.test(m[3]);
-  if (h === 12) h = 0; if (pm) h += 12;
-  return h * 60 + min;
-};
-const editedMs = (ev) => (Date.parse(ev.date) || 0) + timeToMinutes(ev.time) * 60 * 1000;
+const activityTime = (ms) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const activityDate = (ms) => new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 const fmtDate = (iso) => (iso
   ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -116,11 +112,27 @@ function parseEmails(raw) {
 }
 
 /* ============ Activity sub-modal ============ */
-const ActivityModal = ({ member, onClose }) => {
+const ActivityModal = ({ member, projectId, onClose }) => {
   const tip = useTooltip();
   const [sortKey, setSortKey] = React.useState("edited");
   const [sortDir, setSortDir] = React.useState("desc");
+  const [edits, setEdits] = React.useState(null); // null while loading
+  const [loadError, setLoadError] = React.useState("");
   const cardRef = React.useRef(null);
+  const memberUserId = member?.userId || null;
+
+  React.useEffect(() => {
+    if (!memberUserId) return undefined;
+    let live = true;
+    setEdits(null); setLoadError("");
+    listMemberProjectEdits(projectId, memberUserId)
+      .then((rows) => { if (live) setEdits(rows); })
+      .catch((err) => {
+        console.error('[ManageTeam] activity load failed:', err);
+        if (live) { setEdits([]); setLoadError('Survey could not load this activity.'); }
+      });
+    return () => { live = false; };
+  }, [projectId, memberUserId]);
 
   // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
   // dialog, Escape closes it, and focus returns to whatever opened it.
@@ -132,11 +144,10 @@ const ActivityModal = ({ member, onClose }) => {
     if (sortKey === k) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(k); setSortDir(k === "file" ? "asc" : "desc"); }
   };
-  // Per-member activity history is not tracked yet — no invented events.
-  const items = [];
+  const items = (edits || []).map((e) => ({ ...e, time: activityTime(e.at), date: activityDate(e.at) }));
   const sign = sortDir === "asc" ? 1 : -1;
   if (sortKey === "file") items.sort((a, b) => sign * a.file.localeCompare(b.file));
-  else items.sort((a, b) => sign * (editedMs(a) - editedMs(b)));
+  else items.sort((a, b) => sign * (a.at - b.at));
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--overlay-scrim)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, fontFamily: "var(--font-ui)" }}>
@@ -154,10 +165,12 @@ const ActivityModal = ({ member, onClose }) => {
           <span onClick={() => click("edited")} {...keyboardControlProps()} style={{ cursor: "pointer", userSelect: "none", color: sortKey === "edited" ? BONE_100 : "inherit" }}>Edited{arrow("edited")}</span>
         </div>
         <div className="slim-scroll" style={{ maxHeight: 420, overflowY: "auto", padding: "6px 8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
-          {items.length === 0 ? (
-            <div style={{ padding: "24px 10px", textAlign: "center", color: INK_200, fontSize: 12 }}>No recent activity.</div>
-          ) : items.map((ev, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 42, boxSizing: "border-box" }}>
+          {edits === null ? (
+            <div style={{ padding: "24px 10px", display: "flex", justifyContent: "center" }}><Spinner size={16} /></div>
+          ) : items.length === 0 ? (
+            <div style={{ padding: "24px 10px", textAlign: "center", color: INK_200, fontSize: 12 }}>{loadError || "No edits in this project yet."}</div>
+          ) : items.map((ev) => (
+            <div key={ev.documentId} style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 42, boxSizing: "border-box" }}>
               <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.file}</div>
               <div className="mono" style={{ fontFamily: MONO_FONT, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.25 }}>
                 <span style={{ fontSize: 12, color: BONE_200, fontWeight: 600 }}>{ev.time}</span>
@@ -167,7 +180,7 @@ const ActivityModal = ({ member, onClose }) => {
           ))}
         </div>
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${INK_500}`, background: INK_800, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: INK_200, letterSpacing: 0, fontWeight: 600 }}>{items.length} event{items.length === 1 ? "" : "s"}</span>
+          <span style={{ fontSize: 11, color: INK_200, letterSpacing: 0, fontWeight: 600 }}>{items.length} file{items.length === 1 ? "" : "s"}</span>
           <button onClick={onClose} className="hub-btn hub-btn--primary">Done</button>
         </div>
       </div>
@@ -869,7 +882,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
           </div>
         </div>
       </div>
-      {activityFor && <ActivityModal member={activityFor} onClose={() => setActivityFor(null)}/>}
+      {activityFor && <ActivityModal member={activityFor} projectId={projectId} onClose={() => setActivityFor(null)}/>}
       {inviteOpen && (
         <InviteModal
           project={project}

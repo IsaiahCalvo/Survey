@@ -28,6 +28,9 @@ const ALLOWED = {
   'src/components/PageGridSettings.jsx': 1,
   // Admin-only page.
   'src/home/KitsAdminPage.jsx': 1,
+  // Company roles picker (beta 'company-admin'): the coarse-pointer branch
+  // keeps the browser's wheel; desktop uses ValueSelect.
+  'src/components/company/CompanyPanel.jsx': 1,
 };
 
 // A JSX <select> element at the start of a line (comments that mention
