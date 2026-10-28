@@ -129,7 +129,7 @@ const browse = () => [
   new Node('div', { class: 'hub-select-actions' }, [icon('select', 'Select', 300, 'listChecks')]),
 ];
 const selecting = () => [new Node('div', { class: 'hub-select-actions' }, [
-  icon('select', 'Done', 180, 'checkCheck'), icon('all', 'Select all', 210), icon('duplicate', 'Duplicate', 240),
+  icon('select', 'Done', 180, 'editListDone'), icon('all', 'Select all', 210), icon('duplicate', 'Duplicate', 240),
   icon('share', 'Share', 270), icon('delete', 'Delete', 300),
 ])];
 
@@ -203,10 +203,26 @@ test('Select: the gold button shrinks out where it was while the select row grow
   assert.ok(live.every((b) => b.animations[0]?.keyframes[0].scale === '0.6'), 'every select-row control grows in');
 });
 
+test('owner 2026-10-27: a toggle whose spot moves still morphs as it grows in - Edit\'s pen turns into Done\'s check', () => {
+  const { head, layer, replace } = setup([new Node('div', { class: 'hub-select-actions' }, [icon('edit', 'Edit', 300, 'editList')])]);
+  const next = icon('edit', 'Done', 180, 'editListDone');
+  // A growing button draws its glyph at the start scale (0.6 of 16px).
+  const glyph = next.children[0];
+  glyph.getBoundingClientRect = () => ({ left: 186, top: 106, width: next.animations.length ? 9.6 : 16, height: 16 });
+  replace([new Node('div', { class: 'hub-select-actions' }, [next, icon('all', 'Select all', 210)])]);
+  const done = head.children[0].children[0];
+  assert.deepEqual(done.animations[0].keyframes[0], { opacity: 0, scale: '0.6' }, 'Done grows in at its spot');
+  const overlay = layer.children.find((c) => c.getAttribute('data-loadout-morph') === 'editListDone');
+  assert.ok(overlay, 'and the old glyph morphs into it while it grows');
+  assert.equal(overlay.style.width, '16px', 'measured before the button starts growing, so it is full size');
+  assert.deepEqual(overlay.animations[0].keyframes, [{ opacity: 0, scale: '0.6' }, { opacity: 1, scale: '1' }], 'the morph grows with the button');
+  assert.deepEqual(ghostUnits(layer).map((g) => centre(g)), [[314, 114]], 'the old Edit shrinks out where it was');
+});
+
 test('a toggle that keeps its spot (Documents, the phone) morphs in place', () => {
   const { head, layer, replace } = setup([icon('select', 'Select', 300, 'listChecks')]);
-  replace([icon('select', 'Done', 300, 'checkCheck'), icon('all', 'Select all', 330)]);
-  assert.equal(layer.children.filter((c) => c.getAttribute('data-loadout-morph') === 'checkCheck').length, 1);
+  replace([icon('select', 'Done', 300, 'editListDone'), icon('all', 'Select all', 330)]);
+  assert.equal(layer.children.filter((c) => c.getAttribute('data-loadout-morph') === 'editListDone').length, 1);
   assert.equal(ghostUnits(layer).length, 0, 'nothing leaves');
   assert.equal(head.children[0].animations.length, 0, 'Done itself does not grow');
 });
@@ -216,7 +232,7 @@ test('a select row flattened with display: contents (the phone header) is still 
   const { head, layer, replace, win } = setup([icon('select', 'Select', 300, 'listChecks')], styles);
   styles.set(head, 'contents');
   void win;
-  replace([icon('select', 'Done', 300, 'checkCheck'), icon('all', 'Select all', 30)]);
+  replace([icon('select', 'Done', 300, 'editListDone'), icon('all', 'Select all', 30)]);
   assert.equal(layer.children.filter((c) => c.getAttribute('data-loadout-ghost') !== null).length, 0, 'no stray copy of Select');
   assert.equal(layer.children.filter((c) => c.getAttribute('data-loadout-morph') !== null).length, 1, 'Select morphs into Done');
 });

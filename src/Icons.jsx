@@ -253,15 +253,6 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
-    // "Done" for a list's Select / Edit mode (owner 2026-10-26: not a check
-    // in a circle, not an X - Lucide check-check). Lucide's paths, house stroke.
-    checkCheck: (size, color, style, className) => (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
-        <path d="M18 6L7 17L2 12" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M22 10L14.5 17.5L13 16" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-
     // Select mode for a list (owner 2026-10-02: section header actions are
     // icons, the pair is Select = list-checks and Add = plus). Lucide
     // list-checks on the house grid and stroke.
@@ -272,6 +263,16 @@ const ICON_RENDERERS = {
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M3 6h18M3 12h9M3 18h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         <path d="M12 21l.75-3 6.1-6.1a1.6 1.6 0 0 1 2.25 2.25L15 20.25z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    // "Done" for a list's Select / Edit mode (owner 2026-10-27, replacing
+    // 2026-10-26's check-check): the edit-list icon with its pen turned into
+    // a check, like Solar's list-check-minimalistic. The rows are editList's
+    // own, so Edit -> Done morphs only the pen.
+    editListDone: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 6h18M3 12h9M3 18h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M13 17l3 3 5-6" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     // Spaces Areas tools (owner 2026-10-02, provisional): Rectangle area and

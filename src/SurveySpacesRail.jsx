@@ -2913,7 +2913,7 @@ const SurveySpacesRail = ({
                                the Templates editor). Label left; on the right the shared
                                section icons (src/components/SectionIconButton.jsx):
                                [Select] [Add category]. Select turns the right side into
-                               Done (check-check) then the shared select-mode row - All,
+                               Done (list + check) then the shared select-mode row - All,
                                Move, Copy, Delete: the one order every select mode uses
                                (owner 2026-10-26). Same 28px hit /
                                16px glyph, hover and press as the Templates editor; no gold.
