@@ -16,12 +16,15 @@ import DismissBarrier from './components/DismissBarrier';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
 import CreateProjectModal from './home/CreateProjectModal';
-import PdfToolsDialog from './components/PdfToolsDialog';
+import { preloadedComponent } from './utils/preloadedComponent';
 import BodyPortal from './components/BodyPortal';
+
+// Renders closed until someone opens a PDF tool, so it stays off the first
+// load; the chunk is fetched once the dashboard mounts.
+const PdfToolsDialog = preloadedComponent(() => import('./components/PdfToolsDialog')).Component;
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
-import { carryMarksToNewVersion } from './services/documentVersionMarks.js';
 import { supersedeDocument } from './services/documentVersionService.js';
 import { isFeatureOn } from './featureFlags.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
@@ -37,7 +40,7 @@ import { countSurveyMarkersReferencingChecklistItem } from './services/documentA
 import { computeContentSha256 } from './services/contentHash';
 import { ownDocumentObjectPath } from './services/documentFileReplace.js';
 import { cloneDocumentIntoProject, describeReusedCopies, isReusedCopy } from './home/cloneDocument.js';
-import { purgeAnnotationDoc } from './services/annotationDocSync';
+import { purgeAnnotationDoc } from './services/annotationDocPurge.js';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
 import { perfUpload } from './utils/performanceLogger';
@@ -406,6 +409,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (archiveDocId && replacesWithOlderVersion(newDoc)) return false;
     if (!archiveDocId || newDoc?.id !== newDocId) return true;
     try {
+      // Fetched here, not on the first load: it brings the mark store and its
+      // geometry, which Home never needs until a new version is uploaded.
+      const { carryMarksToNewVersion } = await import('./services/documentVersionMarks.js');
       const { total } = await carryMarksToNewVersion({
         client: supabase,
         fromDocumentId: archiveDocId,

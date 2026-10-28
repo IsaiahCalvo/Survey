@@ -42,8 +42,19 @@ export function preloadedComponent(importer, pick = (module) => module.default) 
     useEffect(() => {
       if (Loaded) return undefined;
       let live = true;
-      load().then(() => { if (live) setReady(true); }, () => {});
-      return () => { live = false; };
+      // Never fetch while the device says it is offline: the browser remembers
+      // a failed module download for the life of the page, so the component
+      // could not appear even once the connection came back. Wait for it.
+      const fetchChunk = () => {
+        if (live) load().then(() => { if (live) setReady(true); }, () => {});
+      };
+      const offline = typeof window !== 'undefined' && window.navigator?.onLine === false;
+      if (offline) window.addEventListener('online', fetchChunk, { once: true });
+      else fetchChunk();
+      return () => {
+        live = false;
+        if (offline) window.removeEventListener('online', fetchChunk);
+      };
     }, []);
     return Loaded ? createElement(Loaded, ref ? { ...props, ref } : props) : null;
   });

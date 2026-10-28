@@ -15,7 +15,6 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
-import ExportPdfDialog from './components/ExportPdfDialog';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
@@ -103,7 +102,7 @@ import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } 
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
-import PinnedToolsDock, { PinIcon, getPinnedToolsStore, usePinnedTools } from './components/PinnedToolsDock.jsx';
+import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { isFeatureOn } from './featureFlags.js';
 import { usePolylineCurve } from './hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
@@ -175,6 +174,14 @@ function FooterSlot({ widest, field = null, children = null }) {
   );
 }
 const footerSlotFieldStyle = { position: 'absolute', inset: 0, width: '100%', boxSizing: 'border-box' };
+
+// Two Survey Nightly betas render only with their flag on, so their code stays
+// off the first load: the chunk is fetched when AppShell mounts with the flag
+// on (see the effect beside pinnedToolsEnabled), well before it is needed.
+const PinnedToolsDockChunk = preloadedComponent(() => import('./components/PinnedToolsDock.jsx'));
+const PinnedToolsDock = PinnedToolsDockChunk.Component;
+const ExportPdfDialogChunk = preloadedComponent(() => import('./components/ExportPdfDialog'));
+const ExportPdfDialog = ExportPdfDialogChunk.Component;
 
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
@@ -2093,6 +2100,11 @@ export default function App({ devPreviewReturnTab = null }) {
   // components/ExportPdfDialog.jsx. The phone header asks with an event.
   const [exportModesEnabled] = useState(() => isFeatureOn('export-modes'));
   const [exportPdfDialogOpen, setExportPdfDialogOpen] = useState(false);
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (pinnedToolsEnabled) PinnedToolsDockChunk.load().catch(() => {});
+    if (exportModesEnabled) ExportPdfDialogChunk.load().catch(() => {});
+  }, [pinnedToolsEnabled, exportModesEnabled]);
   useEffect(() => {
     if (!exportModesEnabled) return undefined;
     const open = () => setExportPdfDialogOpen(true);

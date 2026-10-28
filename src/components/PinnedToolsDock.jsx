@@ -21,7 +21,7 @@
  *   docked, the pins that do not fit (or past 7 slots with "Compact dock" on)
  *   wait behind a "+N" button in the last slot.
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons.jsx';
 import { watchLightPopover } from './dismissRules.js';
@@ -33,7 +33,6 @@ import {
   COMPACT_DOCK_SLOTS,
   chooseDockPlacement,
   colorLuminance,
-  createPinnedToolsStore,
   dropDurationMs,
   magnetPull,
   makePin,
@@ -48,17 +47,10 @@ import {
   visiblePinCount,
 } from '../pinnedTools/pinnedTools.js';
 import { armPin, endPinSession, pinEditFromViewer, sessionStatus, startingStyleFor } from '../pinnedTools/pinSession.js';
+import { PinIcon, getPinnedToolsStore, usePinnedTools } from '../pinnedTools/pinnedToolsShared.jsx';
 import './PinnedToolsDock.css';
 
-let sharedStore = null;
-export function getPinnedToolsStore() {
-  sharedStore ??= createPinnedToolsStore();
-  return sharedStore;
-}
-
-export function usePinnedTools(store = getPinnedToolsStore()) {
-  return useSyncExternalStore(store.subscribe, store.getState, store.getState);
-}
+export { PinIcon, getPinnedToolsStore, usePinnedTools };
 
 const DRAG_START_PX = 6;
 const SETTLE_EASING = 'cubic-bezier(0.25, 0.55, 0.35, 1)';
@@ -91,16 +83,6 @@ function PinGlyph({ kindId, color, size = 16 }) {
     <span className="pinned-dock__glyph" style={{ filter: glyphHalo(color) }} aria-hidden="true">
       <Icon name={kind.iconName} size={size} color={color || 'currentColor'} />
     </span>
-  );
-}
-
-// Lucide's `pin` (lucide-static 1.61.0, ISC), drawn at the chrome's 1.5 stroke.
-export function PinIcon({ size = 16 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 17v5" />
-      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
-    </svg>
   );
 }
 

@@ -155,7 +155,13 @@ test('KAL-428/429: a shared stored PDF is never removed while in use', () => {
 });
 
 test('KAL-428: permanent delete also clears the local durable copy', () => {
-  assert.match(DOC_SERVICE, /import \{ purgeAnnotationDoc \} from '\.\/annotationDocSync'/);
+  // Through annotationDocPurge.js, which fetches the sync engine only when a
+  // delete runs, so Home's first load does not carry it (tests/firstLoadStaysLean).
+  assert.match(DOC_SERVICE, /import \{ purgeAnnotationDoc \} from '\.\/annotationDocPurge\.js'/);
+  assert.match(
+    readFileSync(new URL('../src/services/annotationDocPurge.js', import.meta.url), 'utf8'),
+    /await import\('\.\/annotationDocSync\.js'\)[\s\S]*?purgeAnnotationDoc\(documentId\)/,
+  );
   assert.match(DOC_SERVICE, /await purgeAnnotationDoc\(documentId\)/);
   assert.match(PROJECT_SERVICE, /await purgeAnnotationDoc\(childId\)/);
 });
