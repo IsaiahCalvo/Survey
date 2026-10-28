@@ -5018,8 +5018,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const inset = Math.min(topInsetRef.current, el.clientHeight);
     applyAnchoredScale(newScale, side.left + bandW / 2, inset + (el.clientHeight - inset) / 2);
     if (isFit && lastFitRef.current) lastFitRef.current.scale = scaleRef.current;
-    // An automatic re-fit stops here: the visible middle stays put.
-    if (!isFit || (auto && !band) || !dimsPtRef.current.length) return;
+    // An automatic re-fit stops here: the visible middle stays put. The first
+    // fit since the document opened still lands across: a panel open at load
+    // can be measured before it, so no band re-fit follows to move the page
+    // out from under the panel.
+    const firstFit = auto && !band && !lastFit;
+    if (!isFit || (auto && !band && !firstFit) || !dimsPtRef.current.length) return;
     // A fit you pick lands the page. Fit page / Fit height promise the whole
     // page height on screen: its own top gap just below any tool strips, which
     // with the fitted scale leaves the matching gap at the bottom. Anchoring on
@@ -5039,7 +5043,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       insets: side,
       maxScrollLeft: getHorizontalScrollMax(s),
     });
-    const landTop = target !== 'fitw' && !band ? landing.scrollTop : null;
+    const landTop = target !== 'fitw' && !band && !firstFit ? landing.scrollTop : null;
     const landLeft = landing.scrollLeft;
     if (Math.abs(scaleRef.current - before) > 1e-4 && pendingAnchorRef.current) {
       pendingAnchorRef.current = {

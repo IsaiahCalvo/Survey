@@ -1251,7 +1251,9 @@ const RegionSelectionTool = ({
         currentUnion = result;
       }
 
-      return currentUnion.length === 1;
+      // A union that closes round a hole cannot be one area (an area has no
+      // holes), so pieces split round a Subtract hole stay apart.
+      return currentUnion.length === 1 && currentUnion[0].length === 1;
     } catch (error) {
       console.error('Error checking merge capability', error);
       return false;
@@ -3737,6 +3739,7 @@ const RegionSelectionTool = ({
                       data-region-area-outline="true"
                       d={unifiedPath}
                       fill="rgba(74, 144, 226, 0.22)"
+                      fillRule="evenodd"
                       stroke="#4A90E2"
                       strokeWidth="2"
                       style={{ pointerEvents: 'none' }} // Visual only

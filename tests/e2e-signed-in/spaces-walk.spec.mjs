@@ -88,8 +88,24 @@ test('Spaces: create, filter, areas, dropped-edit toast, export, reload beside t
     await button(page, 'Draw a region on page 2').click();
     await expect(page.locator('[data-region-edit-layer]')).toBeVisible();
     await drawArea(page, 2, { x: 120, y: 80 }, { x: 420, y: 260 });
+    // Subtract wholly inside the area leaves a hole (it used to vanish).
+    await button(page, 'Subtract from area').click();
+    await drawArea(page, 2, { x: 220, y: 140 }, { x: 320, y: 200 });
+    const sheet2 = await pageDiv(page, 2).boundingBox();
+    const top2 = Math.max(sheet2.y, 120);
+    const filled = (selector, points) => page.evaluate(({ selector: sel, points: pts }) => {
+      const path = [...document.querySelectorAll(sel)].find((node) => node.ownerSVGElement?.getBoundingClientRect().width > 0);
+      if (!path) return null;
+      // A mask's path is never drawn itself, so it has no screen matrix of its own.
+      const toUser = (path.getScreenCTM() || path.ownerSVGElement.getScreenCTM()).inverse();
+      return pts.map(([x, y]) => path.isPointInFill(new DOMPoint(x, y).matrixTransform(toUser)));
+    }, { selector, points });
+    const holeAndRim = [[sheet2.x + 270, top2 + 170], [sheet2.x + 160, top2 + 170]];
+    await expect.poll(() => filled('[data-region-area-outline]', holeAndRim)).toEqual([false, true]);
+    await button(page, 'Add to area').click();
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-region-edit-layer]')).toHaveCount(0);
+    await expect.poll(() => filled('[data-space-region-overlay-svg="2"] mask path', holeAndRim)).toEqual([false, true]);
     await expect(page.getByRole('switch', { name: 'Hide the outline' }).filter({ visible: true })).toHaveAttribute('aria-checked', 'true');
 
     // Esc drops an edit and offers Undo; starting the next edit takes that

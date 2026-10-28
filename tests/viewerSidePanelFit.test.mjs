@@ -116,7 +116,11 @@ test('wiring: auto re-fits are marked and never land; user fits use the band', (
   assert.match(zoomTo, /const band = auto && options\?\.band === true;/);
   assert.match(zoomTo, /if \(auto && !band && !shouldAutoRefit\(lastFit, fitRecord\)\) return;/);
   assert.match(zoomTo, /viewportW: bandW,/);
-  assert.match(zoomTo, /if \(!isFit \|\| \(auto && !band\) \|\| !dimsPtRef\.current\.length\) return;/, 'an automatic re-fit stops before landing');
+  // 2026-10-28: except the first fit since the document opened (no fit yet
+  // for refitForBand to check), which lands across the band beside a panel
+  // that was open at load.
+  assert.match(zoomTo, /const firstFit = auto && !band && !lastFit;/);
+  assert.match(zoomTo, /if \(!isFit \|\| \(auto && !band && !firstFit\) \|\| !dimsPtRef\.current\.length\) return;/, 'an automatic re-fit stops before landing');
   // 2026-10-04: the fit landing moved into pageNavigationMath.resolveFitPageLanding
   // (shared with the typed page jump), which centres through the same helper.
   assert.match(zoomTo, /resolveFitPageLanding\(\{[\s\S]{0,400}insets: side,/);
