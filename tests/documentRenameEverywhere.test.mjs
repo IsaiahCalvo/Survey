@@ -6,11 +6,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  announceDocumentName,
+  announceRemoteDocumentName,
+  beginLocalRename,
+  confirmLocalRename,
+  documentNameSequence,
+  failLocalRename,
   latestDocumentName,
   renameRows,
   resetDocumentNameBusForTests,
   subscribeDocumentNames,
+  withRenamesSince,
 } from '../src/hooks/documentNameBus.js';
 import {
   DOCUMENT_RENAMED_EVENT,
@@ -20,40 +25,82 @@ import {
 } from '../src/services/documentNameRealtime.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const T = (s) => `2026-10-28T10:00:0${s}.000Z`;
 
-test('every subscriber hears a rename once, with the trimmed name', () => {
+function listen() {
+  const heard = [];
+  subscribeDocumentNames(({ name }) => heard.push(name));
+  return heard;
+}
+
+test('a local rename shows at once to every subscriber, trimmed', () => {
   resetDocumentNameBusForTests();
   const heard = [];
   subscribeDocumentNames((rename) => heard.push(['a', rename]));
   subscribeDocumentNames((rename) => heard.push(['b', rename]));
-  assert.equal(announceDocumentName('doc-1', '  Level 2.pdf ', { at: 1000 }), true);
+  const token = beginLocalRename('doc-1', '  Level 2.pdf ');
+  assert.ok(token);
   assert.deepEqual(heard, [
     ['a', { id: 'doc-1', name: 'Level 2.pdf' }],
     ['b', { id: 'doc-1', name: 'Level 2.pdf' }],
   ]);
-  // The same name again (our own rename echoed back) tells nobody.
-  assert.equal(announceDocumentName('doc-1', 'Level 2.pdf', { at: 2000 }), false);
+  confirmLocalRename('doc-1', token, T(1));
+  // Our own rename echoed back by the database tells nobody.
+  assert.equal(applyDocumentRenameMessage({ id: 'doc-1', name: 'Level 2.pdf', updated_at: T(1) }), false);
   assert.equal(heard.length, 2);
 });
 
-test('an older echo never puts a stale name back (A -> B -> C, B arrives last)', () => {
+test('A -> B -> C typed quickly never flashes back to B when the echoes land late', () => {
   resetDocumentNameBusForTests();
-  const heard = [];
-  subscribeDocumentNames(({ name }) => heard.push(name));
-  announceDocumentName('doc-1', 'B', { at: '2026-10-28T10:00:01.000Z' });
-  announceDocumentName('doc-1', 'C', { at: '2026-10-28T10:00:02.000Z' });
-  assert.equal(announceDocumentName('doc-1', 'B', { at: '2026-10-28T10:00:01.000Z' }), false);
+  const heard = listen();
+  const b = beginLocalRename('doc-1', 'B');
+  const c = beginLocalRename('doc-1', 'C');
+  announceRemoteDocumentName('doc-1', 'B', T(1)); // B's echo, C still saving
+  confirmLocalRename('doc-1', b, T(1));
+  announceRemoteDocumentName('doc-1', 'C', T(2));
+  confirmLocalRename('doc-1', c, T(2));
+  announceRemoteDocumentName('doc-1', 'B', T(1)); // a very late duplicate
   assert.deepEqual(heard, ['B', 'C']);
   assert.equal(latestDocumentName('doc-1'), 'C');
 });
 
-test('a failed rename going back is newer, so it applies', () => {
+test('ordering uses the database clock only: a device clock far ahead cannot block later renames', () => {
   resetDocumentNameBusForTests();
-  const heard = [];
-  subscribeDocumentNames(({ name }) => heard.push(name));
-  announceDocumentName('doc-1', 'New', { at: Date.now() - 50 });
-  announceDocumentName('doc-1', 'Old');
+  const heard = listen();
+  // Whatever this device's clock says, our rename saved at T(1) by the database.
+  const mine = beginLocalRename('doc-1', 'Mine');
+  confirmLocalRename('doc-1', mine, T(1));
+  assert.equal(announceRemoteDocumentName('doc-1', 'Theirs', T(2)), true);
+  assert.deepEqual(heard, ['Mine', 'Theirs']);
+});
+
+test('a remote rename that lands while ours saves applies after, only if the database says newer', () => {
+  resetDocumentNameBusForTests();
+  let heard = listen();
+  let token = beginLocalRename('doc-1', 'Mine');
+  assert.equal(announceRemoteDocumentName('doc-1', 'Theirs', T(3)), false);
+  confirmLocalRename('doc-1', token, T(2));
+  assert.deepEqual(heard, ['Mine', 'Theirs']);
+
+  resetDocumentNameBusForTests();
+  heard = listen();
+  token = beginLocalRename('doc-1', 'Mine');
+  announceRemoteDocumentName('doc-1', 'Theirs', T(1));
+  confirmLocalRename('doc-1', token, T(2));
+  assert.deepEqual(heard, ['Mine']);
+});
+
+test('a failed rename puts the old name back; a later rename of ours keeps its name', () => {
+  resetDocumentNameBusForTests();
+  const heard = listen();
+  const first = beginLocalRename('doc-1', 'New');
+  failLocalRename('doc-1', first, 'Old');
   assert.deepEqual(heard, ['New', 'Old']);
+  const a = beginLocalRename('doc-1', 'A');
+  const b = beginLocalRename('doc-1', 'B');
+  failLocalRename('doc-1', a, 'Old');
+  assert.deepEqual(heard, ['New', 'Old', 'A', 'B']);
+  confirmLocalRename('doc-1', b, T(1));
 });
 
 test('one bad subscriber does not stop the others; empty input is ignored', () => {
@@ -64,13 +111,25 @@ test('one bad subscriber does not stop the others; empty input is ignored', () =
   try {
     subscribeDocumentNames(() => { throw new Error('boom'); });
     subscribeDocumentNames(({ name }) => heard.push(name));
-    announceDocumentName(42, 'Numbered id');
+    beginLocalRename(42, 'Numbered id');
   } finally {
     console.warn = warn;
   }
   assert.deepEqual(heard, ['Numbered id']);
-  assert.equal(announceDocumentName('', 'x'), false);
-  assert.equal(announceDocumentName('doc-2', '   '), false);
+  assert.equal(beginLocalRename('', 'x'), null);
+  assert.equal(beginLocalRename('doc-2', '   '), null);
+  assert.equal(announceRemoteDocumentName('doc-2', 'No time', null), false);
+});
+
+test('a list read in flight keeps the renames shown while it ran', () => {
+  resetDocumentNameBusForTests();
+  beginLocalRename('before', 'Before read');
+  const seq = documentNameSequence();
+  announceRemoteDocumentName('doc-1', 'Renamed mid-read', T(5));
+  const stale = [{ id: 'doc-1', name: 'Old' }, { id: 'before', name: 'Server name' }, { id: 'x', name: 'X' }];
+  const merged = withRenamesSince(stale, seq);
+  assert.deepEqual(merged, [{ id: 'doc-1', name: 'Renamed mid-read' }, { id: 'before', name: 'Server name' }, { id: 'x', name: 'X' }]);
+  assert.equal(withRenamesSince(stale, documentNameSequence()), stale);
 });
 
 test('renameRows patches only the matching row and keeps the array when nothing changed', () => {
@@ -129,8 +188,10 @@ test('every holder of a name is wired to the bus', () => {
   const lists = read('src/hooks/useDatabase.js');
   assert.match(lists, /subscribeDocumentNames\(\(rename\) => \{\s*setDocuments\(\(current\) => renameRows\(current, rename\)\)/);
   const dashboard = read('src/Dashboard.jsx');
-  assert.match(dashboard, /announceDocumentName\(doc\.id, name, \{ at: updatedAt \}\)/);
-  assert.match(dashboard, /updateSupabaseDocument\(doc\.id, \{ name, updated_at: updatedAt \}\)/);
+  assert.match(dashboard, /const renameToken = beginLocalRename\(doc\.id, name\)/);
+  assert.match(dashboard, /confirmLocalRename\(doc\.id, renameToken, saved\?\.updated_at\)/);
+  assert.match(dashboard, /failLocalRename\(doc\.id, renameToken, previousName\)/);
+  assert.match(lists, /withRenamesSince\(read, renameSeqAtStart\)/);
   const viewer = read('src/PDFViewer.jsx');
   assert.match(viewer, /const pdfDisplayName = documentName \|\| pdfFile\?\.name/);
 });
@@ -142,6 +203,8 @@ test('the database broadcasts only name changes, to the people who can open the 
   assert.match(sql, /realtime\.send\(payload, 'document_renamed', 'doc-names:' \|\| recipient::text, true\)/);
   assert.match(sql, /document_collaborators dc[\s\S]*dc\.status = 'active'/);
   assert.match(sql, /project_collaborators pc[\s\S]*pc\.status = 'active'/);
+  // An archived document exists only for its owner (user_can_access_document).
+  assert.equal((sql.match(/NEW\.user_archived_at IS NULL/g) || []).length, 3);
   assert.match(sql, /EXCEPTION WHEN OTHERS THEN/);
   assert.match(sql, /realtime\.topic\(\) = 'doc-names:' \|\| \(SELECT auth\.uid\(\)\)::text/);
   // Receive only: no INSERT policy, so nobody can post fake renames.

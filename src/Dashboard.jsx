@@ -33,7 +33,7 @@ import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, shared
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useDocuments, useProjects, useStorage, useTemplates } from './hooks/useDatabase';
-import { announceDocumentName } from './hooks/documentNameBus.js';
+import { beginLocalRename, confirmLocalRename, failLocalRename } from './hooks/documentNameBus.js';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { getSupabaseSession, supabase } from './supabaseClient';
 import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
@@ -2187,25 +2187,26 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const name = String(nextName || '').trim();
     if (!doc?.id || !name) return false;
     if (!user) { showToast('Please sign in to rename documents', 'warn'); return false; }
-    // One stamp for the bus and the row: the database's broadcast of this
-    // rename carries it back, and the bus drops it as not newer.
     const updatedAt = new Date().toISOString();
     const previousName = doc.name;
+    // Every tab and list showing this document renames now
+    // (hooks/documentNameBus.js), before the database answers.
+    const renameToken = beginLocalRename(doc.id, name);
     try {
-      // Every tab and list showing this document renames now
-      // (hooks/documentNameBus.js), before the database answers.
-      announceDocumentName(doc.id, name, { at: updatedAt });
       setDocuments((prev) => prev.map((item) => (
         item.id === doc.id ? { ...item, updated_at: updatedAt } : item
       )));
-      await updateSupabaseDocument(doc.id, { name, updated_at: updatedAt });
+      const saved = await updateSupabaseDocument(doc.id, { name, updated_at: updatedAt });
+      // The saved row's updated_at is the database's own time; it orders
+      // this rename against ones from other screens.
+      confirmLocalRename(doc.id, renameToken, saved?.updated_at);
       await refetchDocuments();
       await refetchAllDocuments();
       return true;
     } catch (err) {
       console.error('[DocumentRename] survey-hub:error', serializeError(err));
       showToast('Failed to rename document: ' + (err.message || 'Unknown error'), 'error');
-      if (previousName) announceDocumentName(doc.id, previousName);
+      failLocalRename(doc.id, renameToken, previousName);
       await refetchDocuments();
       return false;
     }

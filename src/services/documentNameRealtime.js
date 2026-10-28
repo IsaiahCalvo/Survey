@@ -10,11 +10,11 @@
 // realtime.messages policy lets a person join only their own topic. Nothing on
 // the client sends; the row stays the only truth and this is just the echo.
 //
-// Each message goes through announceDocumentName(), the same bus a local
-// rename uses, so every list and tab on this screen updates at once. Our own
-// renames come back here too; the bus drops them (same name, or older).
+// Each message goes through the same bus a local rename uses, so every list
+// and tab on this screen updates at once. Our own renames come back here too;
+// the bus drops them (not newer, by the database's updated_at).
 
-import { announceDocumentName } from '../hooks/documentNameBus.js';
+import { announceRemoteDocumentName } from '../hooks/documentNameBus.js';
 
 export const DOCUMENT_RENAMED_EVENT = 'document_renamed';
 
@@ -26,7 +26,7 @@ export function documentNamesTopic(userId) {
 export function applyDocumentRenameMessage(payload) {
   const row = payload && typeof payload === 'object' ? payload : null;
   if (!row?.id || typeof row.name !== 'string') return false;
-  return announceDocumentName(row.id, row.name, { at: row.updated_at });
+  return announceRemoteDocumentName(row.id, row.name, row.updated_at);
 }
 
 /**

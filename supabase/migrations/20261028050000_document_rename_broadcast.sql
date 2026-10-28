@@ -4,7 +4,8 @@
 -- on a PRIVATE Realtime Broadcast topic per person, `doc-names:<user uuid>`,
 -- to everyone who can open the document: its owner, its active collaborators,
 -- the active collaborators of its project and the project's owner (the same
--- people user_can_access_document lets in). The app listens on its own topic
+-- people user_can_access_document lets in; an archived document only its
+-- owner, as there). The app listens on its own topic
 -- (src/services/documentNameRealtime.js) and renames every open tab and list.
 --
 -- Only name changes send (WHEN OLD.name IS DISTINCT FROM NEW.name), so the
@@ -30,13 +31,14 @@ BEGIN
     SELECT NEW.user_id
     UNION
     SELECT dc.user_id FROM public.document_collaborators dc
-     WHERE dc.document_id = NEW.id AND dc.status = 'active'
+     WHERE NEW.user_archived_at IS NULL AND dc.document_id = NEW.id AND dc.status = 'active'
     UNION
     SELECT pc.user_id FROM public.project_collaborators pc
-     WHERE NEW.project_id IS NOT NULL AND pc.project_id = NEW.project_id AND pc.status = 'active'
+     WHERE NEW.user_archived_at IS NULL AND NEW.project_id IS NOT NULL
+       AND pc.project_id = NEW.project_id AND pc.status = 'active'
     UNION
     SELECT p.user_id FROM public.projects p
-     WHERE NEW.project_id IS NOT NULL AND p.id = NEW.project_id
+     WHERE NEW.user_archived_at IS NULL AND NEW.project_id IS NOT NULL AND p.id = NEW.project_id
   LOOP
     CONTINUE WHEN recipient IS NULL;
     PERFORM realtime.send(payload, 'document_renamed', 'doc-names:' || recipient::text, true);

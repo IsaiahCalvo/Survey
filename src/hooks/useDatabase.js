@@ -16,7 +16,7 @@ import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange, subscribeTemplatesChange } from './libraryChangeBus.js';
-import { renameRows, subscribeDocumentNames } from './documentNameBus.js';
+import { documentNameSequence, renameRows, subscribeDocumentNames, withRenamesSince } from './documentNameBus.js';
 import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
@@ -424,15 +424,19 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
       requestScopeKey,
       currentScopeKey: documentScopeKeyRef.current,
     });
+    // A rename shown while this read is in flight must survive it: the read
+    // may have left the database before the rename was saved.
+    const renameSeqAtStart = documentNameSequence();
     try {
       setLoading(true);
       // The last error stays until a read succeeds (2026-10-07): a retry that
       // cleared it up front flashed the empty list between two error screens.
       const key = `documents:${user.id}:${projectId ?? 'null'}`;
-      const merged = coalesce
+      const read = coalesce
         ? await coalesceRead(key, runDocumentsQuery)
         : await runDocumentsQuery();
       if (!isCurrentRequest()) return [];
+      const merged = withRenamesSince(read, renameSeqAtStart);
       setDocuments(merged);
       setError(null);
       return merged;
