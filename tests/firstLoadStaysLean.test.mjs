@@ -60,3 +60,14 @@ test('the viewer chrome reads the pinned tools store without the dock', () => {
   const shared = read('../src/pinnedTools/pinnedToolsShared.jsx');
   assert.equal(/PinnedToolsDock/.test(shared.replace(/\/\*[\s\S]*?\*\//g, '')), false, 'the shared module must not import the dock');
 });
+
+test('offline, chunks wait for the connection only where they come over the network', async () => {
+  const { canFetchChunksNow } = await import('../src/utils/preloadedComponent.js');
+  const at = (href, onLine) => ({ navigator: { onLine }, location: new URL(href) });
+  assert.equal(canFetchChunksNow(at('https://surveytool.app/', true)), true);
+  assert.equal(canFetchChunksNow(at('https://surveytool.app/', false)), false, 'web, offline: wait');
+  assert.equal(canFetchChunksNow(at('file:///Applications/Survey.app/dist/index.html', false)), true, 'desktop app reads chunks from disk');
+  assert.equal(canFetchChunksNow(at('capacitor://localhost/', false)), true, 'iPhone app reads chunks from its bundle');
+  assert.equal(canFetchChunksNow(at('https://localhost/', false)), true, 'Android app reads chunks from its bundle');
+  assert.equal(canFetchChunksNow(null), true);
+});

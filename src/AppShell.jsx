@@ -74,7 +74,7 @@ import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
-import { preloadedComponent, retryingLazy } from './utils/preloadedComponent.js';
+import { canFetchChunksNow, preloadedComponent, retryingLazy } from './utils/preloadedComponent.js';
 import { behindTabPropsEqual } from './utils/behindTabProps.js';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
@@ -2101,7 +2101,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const [exportModesEnabled] = useState(() => isFeatureOn('export-modes'));
   const [exportPdfDialogOpen, setExportPdfDialogOpen] = useState(false);
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (!canFetchChunksNow()) return;
     if (pinnedToolsEnabled) PinnedToolsDockChunk.load().catch(() => {});
     if (exportModesEnabled) ExportPdfDialogChunk.load().catch(() => {});
   }, [pinnedToolsEnabled, exportModesEnabled]);

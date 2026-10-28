@@ -1,6 +1,19 @@
 import { createElement, forwardRef, lazy, useEffect, useState } from 'react';
 
 /**
+ * False while the device is offline and code chunks would have to come over
+ * the network. Only the web fetches them that way: the desktop app reads them
+ * from disk (file://) and the phone apps from their bundle
+ * (capacitor://localhost, https://localhost), so offline does not stop those.
+ */
+export function canFetchChunksNow(win = typeof window === 'undefined' ? null : window) {
+  if (!win || win.navigator?.onLine !== false) return true;
+  const { protocol, hostname } = win.location || {};
+  if (protocol !== 'http:' && protocol !== 'https:') return true;
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
+/**
  * A component whose code sits in its own chunk, so the first screen does not
  * have to download it, but which renders straight away once that chunk is in
  * memory. React.lazy always suspends for one render even when the chunk has
@@ -42,13 +55,13 @@ export function preloadedComponent(importer, pick = (module) => module.default) 
     useEffect(() => {
       if (Loaded) return undefined;
       let live = true;
-      // Never fetch while the device says it is offline: the browser remembers
-      // a failed module download for the life of the page, so the component
+      // Never fetch over the network while offline: the browser remembers a
+      // failed module download for the life of the page, so the component
       // could not appear even once the connection came back. Wait for it.
       const fetchChunk = () => {
         if (live) load().then(() => { if (live) setReady(true); }, () => {});
       };
-      const offline = typeof window !== 'undefined' && window.navigator?.onLine === false;
+      const offline = !canFetchChunksNow();
       if (offline) window.addEventListener('online', fetchChunk, { once: true });
       else fetchChunk();
       return () => {
