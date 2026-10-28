@@ -37,7 +37,7 @@ import Icon from './Icons';
 import { useTooltip } from './components/Tooltip';
 import './styles/annotationContextMenu.css';
 import { REGION_POLYGON_MIN_CORNERS, insertRegionSidePoint, isLevelRectangle, isRegionSideStraight, regionPolygonHitRadii, regionPolygonPressAction, resolveRegionPolygonPoint } from './utils/regionPolygonEdit.js';
-import { POLY_FINISH_CONTROL_SCREEN_RADIUS } from './utils/polyDraft.js';
+import { POLY_FINISH_CONTROL_FILL, POLY_FINISH_CONTROL_SCREEN_RADIUS } from './utils/polyDraft.js';
 import { REGION_MARQUEE_MIN_DRAG_PX, regionMarqueeDirection, regionMarqueeRect, resolveRegionMarqueeHits } from './utils/regionMarquee.js';
 
 const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Ubuntu, "Noto Sans", Arial, sans-serif';
@@ -3641,11 +3641,11 @@ const RegionSelectionTool = ({
               const tickR = 4.6;
               const check = (point, action) => (
                 <g key={action} data-region-polygon-check={action}>
-                  <circle cx={point.x} cy={point.y} r={POLY_FINISH_CONTROL_SCREEN_RADIUS} fill={subtract ? ink : '#2f6fed'} stroke="#ffffff" strokeWidth={2} />
+                  <circle cx={point.x} cy={point.y} r={POLY_FINISH_CONTROL_SCREEN_RADIUS} fill={subtract ? ink : POLY_FINISH_CONTROL_FILL} stroke={HANDLE_FILL} strokeWidth={2} />
                   <path
                     d={`M ${point.x - tickR} ${point.y + tickR * 0.05} L ${point.x - tickR * 0.26} ${point.y + tickR * 0.72} L ${point.x + tickR * 1.05} ${point.y - tickR * 0.85}`}
                     fill="none"
-                    stroke="#ffffff"
+                    stroke={HANDLE_FILL}
                     strokeWidth={2.2}
                     strokeLinecap="round"
                     strokeLinejoin="round"
