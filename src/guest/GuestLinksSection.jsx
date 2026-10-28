@@ -2,7 +2,7 @@
 // 'guest-links'): pick viewer or editor and how long, make the link (copied
 // at once; it is shown only this one time), see who came in and turn a link
 // off. Guests need no account; the server rules are in
-// supabase/migrations/20261028052000_guest_links.sql.
+// supabase/migrations/20261028070000_guest_links.sql.
 import { useCallback, useEffect, useState } from 'react';
 import ValueSelect from '../components/ValueSelect.jsx';
 import { copyTextToClipboard } from '../utils/clipboard';

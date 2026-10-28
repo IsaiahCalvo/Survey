@@ -1,7 +1,7 @@
 // src/services/guestLinks.js
 //
 // Guest links (Nightly, flag 'guest-links'; migration
-// 20261028052000_guest_links.sql): a document's owner makes a link that lets
+// 20261028070000_guest_links.sql): a document's owner makes a link that lets
 // someone with no account open that one document, as viewer or editor, until
 // a set time. The link's secret is shown once; the server keeps a hash.
 

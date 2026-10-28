@@ -2,7 +2,7 @@
 // real sessions on the local stack. A guest is an anonymous session that
 // redeemed a link: it reaches that one document as viewer or editor while
 // the link lives, and nothing else. See supabase/migrations/
-// 20261028052000_guest_links.sql and the security review in project files.
+// 20261028070000_guest_links.sql and the security review in project files.
 import crypto from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import * as Y from 'yjs';
