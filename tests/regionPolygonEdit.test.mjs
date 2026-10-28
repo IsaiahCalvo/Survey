@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   REGION_POLYGON_SNAP_DEG,
   insertRegionSidePoint,
+  isRegionSideStraight,
   isLevelRectangle,
   regionPolygonHitRadii,
   regionPolygonPressAction,
@@ -53,15 +54,21 @@ test('level rectangles are told apart from other four-corner shapes', () => {
   assert.equal(isLevelRectangle([0, 10, 10, 0, 20, 10, 10, 20]), false);
 });
 
-test('a point goes halfway along the side and curve flags stay aligned', () => {
-  const region = { regionId: 'a', shapeType: 'rectangular', coordinates: [0, 0, 40, 0, 40, 20, 0, 20], smoothVertices: [0, 1, 0, 1] };
-  const last = insertRegionSidePoint(region, 3);
-  assert.equal(last.vertexIndex, 4);
-  assert.deepEqual(last.region.coordinates, [0, 0, 40, 0, 40, 20, 0, 20, 0, 10]);
-  assert.deepEqual(last.region.smoothVertices, [0, 1, 0, 1, 0]);
-  assert.equal(last.region.shapeType, 'polygon');
-  const first = insertRegionSidePoint(region, 0);
-  assert.deepEqual(first.region.coordinates, [0, 0, 20, 0, 40, 0, 40, 20, 0, 20]);
-  assert.equal(insertRegionSidePoint(region, 4), null);
-  assert.deepEqual(region.coordinates, [0, 0, 40, 0, 40, 20, 0, 20]);
+test('a point goes halfway along a straight side and curve flags stay aligned', () => {
+  const region = { regionId: 'a', shapeType: 'rectangular', coordinates: [0, 0, 40, 0, 40, 20, 0, 20, 0, 10], smoothVertices: [0, 0, 0, 0, 1] };
+  const straight = insertRegionSidePoint(region, 0);
+  assert.equal(straight.vertexIndex, 1);
+  assert.deepEqual(straight.region.coordinates, [0, 0, 20, 0, 40, 0, 40, 20, 0, 20, 0, 10]);
+  assert.deepEqual(straight.region.smoothVertices, [0, 0, 0, 0, 0, 1]);
+  assert.equal(straight.region.shapeType, 'polygon');
+  // Sides touching a curve point draw curved: no point goes there.
+  assert.equal(isRegionSideStraight(region, 3), false);
+  assert.equal(isRegionSideStraight(region, 4), false);
+  assert.equal(insertRegionSidePoint(region, 3), null);
+  assert.equal(insertRegionSidePoint(region, 5), null);
+  assert.deepEqual(region.coordinates, [0, 0, 40, 0, 40, 20, 0, 20, 0, 10]);
+  // No flags (or stale ones): every side is straight.
+  const plain = { coordinates: [0, 0, 40, 0, 40, 20, 0, 20] };
+  assert.equal(isRegionSideStraight(plain, 3), true);
+  assert.deepEqual(insertRegionSidePoint(plain, 3).region.coordinates, [0, 0, 40, 0, 40, 20, 0, 20, 0, 10]);
 });

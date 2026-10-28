@@ -36,7 +36,7 @@ import { showToast } from './utils/toast.js';
 import Icon from './Icons';
 import { useTooltip } from './components/Tooltip';
 import './styles/annotationContextMenu.css';
-import { REGION_POLYGON_MIN_CORNERS, insertRegionSidePoint, isLevelRectangle, regionPolygonHitRadii, regionPolygonPressAction, resolveRegionPolygonPoint } from './utils/regionPolygonEdit.js';
+import { REGION_POLYGON_MIN_CORNERS, insertRegionSidePoint, isLevelRectangle, isRegionSideStraight, regionPolygonHitRadii, regionPolygonPressAction, resolveRegionPolygonPoint } from './utils/regionPolygonEdit.js';
 import { POLY_FINISH_CONTROL_SCREEN_RADIUS } from './utils/polyDraft.js';
 import { REGION_MARQUEE_MIN_DRAG_PX, regionMarqueeDirection, regionMarqueeRect, resolveRegionMarqueeHits } from './utils/regionMarquee.js';
 
@@ -4097,7 +4097,8 @@ const RegionSelectionTool = ({
                   ));
                   continue;
                 }
-                if (sideLength < HANDLE_RADIUS * 6) continue;
+                // Curved sides get none: their chord midpoint is off the outline.
+                if (sideLength < HANDLE_RADIUS * 6 || !isRegionSideStraight(selectedRegion, i)) continue;
                 // A small white dot with a blue "+", like the markup tool's.
                 const plusSize = Math.round(HANDLE_RADIUS * 1.5);
                 const plusBar = Math.max(4, plusSize - 6);

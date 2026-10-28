@@ -86,16 +86,31 @@ export function isLevelRectangle(coords, tolerance = 0.5) {
 }
 
 /**
- * Copy of `region` with a point added halfway along side `sideIndex` (from
- * corner sideIndex to the next). Curve flags, when the area has them, get a
- * straight (0) entry for the new point. Returns { region, vertexIndex } or
- * null.
+ * True when side `sideIndex` draws as a straight line: neither end is a
+ * smooth (curve) point. Flags that do not match the vertex count are stale
+ * and draw straight (regionOutline.getRegionSmoothFlags).
+ */
+export function isRegionSideStraight(region, sideIndex) {
+  const coords = region?.coordinates;
+  const flags = region?.smoothVertices;
+  if (!Array.isArray(coords) || !Array.isArray(flags) || flags.length * 2 !== coords.length) return true;
+  const count = flags.length;
+  return !flags[sideIndex] && !flags[(sideIndex + 1) % count];
+}
+
+/**
+ * Copy of `region` with a point added halfway along straight side
+ * `sideIndex` (from corner sideIndex to the next); the new point is a corner
+ * (flag 0) when the area has curve flags. A curved side gets no point, since
+ * its chord midpoint is off the drawn outline. Returns { region, vertexIndex }
+ * or null.
  */
 export function insertRegionSidePoint(region, sideIndex) {
   const coords = Array.isArray(region?.coordinates) ? region.coordinates : null;
   if (!coords || coords.length < 6) return null;
   const count = coords.length / 2;
   if (!Number.isInteger(sideIndex) || sideIndex < 0 || sideIndex >= count) return null;
+  if (!isRegionSideStraight(region, sideIndex)) return null;
   const next = (sideIndex + 1) % count;
   const mx = (coords[sideIndex * 2] + coords[next * 2]) / 2;
   const my = (coords[sideIndex * 2 + 1] + coords[next * 2 + 1]) / 2;
