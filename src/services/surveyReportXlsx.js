@@ -33,6 +33,9 @@ export function surveyReportChartXml(chart) {
       + `</c:ser><c:firstSliceAng val="0"/></c:pieChart>`;
   } else {
     const { sheet, headerRow, firstRow, lastRow, categories, series } = chart;
+    // Item counts: whole-number steps (a survey of one item read 0, 0.2, 0.4...).
+    const most = Math.max(0, ...categories.map((_, row) => series.reduce((sum, s) => sum + (Number(s.values[row]) || 0), 0)));
+    const step = Math.max(1, Math.ceil(most / 5));
     plot = `<c:barChart><c:barDir val="bar"/><c:grouping val="stacked"/><c:varyColors val="0"/>`
       + series.map((s, i) => `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>`
         + `<c:tx><c:strRef><c:f>${ref(sheet, s.col, headerRow)}</c:f>${strCache([s.name])}</c:strRef></c:tx>`
@@ -47,7 +50,7 @@ export function surveyReportChartXml(chart) {
       + `<c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>`
       + `<c:valAx><c:axId val="5002"/><c:scaling><c:orientation val="minMax"/><c:min val="0"/></c:scaling><c:delete val="0"/><c:axPos val="b"/>`
       + `<c:majorGridlines><c:spPr><a:ln w="6350"><a:solidFill><a:srgbClr val="E6E6E6"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>`
-      + `<c:numFmt formatCode="General" sourceLinked="1"/><c:tickLblPos val="nextTo"/><c:crossAx val="5001"/><c:crosses val="max"/><c:crossBetween val="between"/></c:valAx>`;
+      + `<c:numFmt formatCode="General" sourceLinked="1"/><c:tickLblPos val="nextTo"/><c:crossAx val="5001"/><c:crosses val="max"/><c:crossBetween val="between"/><c:majorUnit val="${step}"/></c:valAx>`;
   }
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
     + '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'

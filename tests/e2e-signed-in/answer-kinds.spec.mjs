@@ -88,6 +88,14 @@ test('score, count and date lines in the Survey rail', async ({ page }) => {
   await expect(countBox).toHaveValue('2');
   await page.getByRole('button', { name: `${frame} one less` }).click();
   await expect(countBox).toHaveValue('1');
+  await expect(countBox).not.toHaveAttribute('aria-invalid', 'true');
+  // Below the line's min of 1 is an issue: shown in red, like a low score.
+  await page.getByRole('button', { name: `${frame} one less` }).click();
+  await expect(countBox).toHaveValue('0');
+  await expect(countBox).toHaveAttribute('aria-invalid', 'true');
+  await page.getByRole('button', { name: `${frame} one more` }).click();
+  await expect(countBox).toHaveValue('1');
+  await expect(countBox).not.toHaveAttribute('aria-invalid', 'true');
   await countBox.fill('-3');
   await countBox.press('Enter');
   await expect(countBox).toHaveValue('1');

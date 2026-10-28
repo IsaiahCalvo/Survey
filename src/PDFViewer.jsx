@@ -21674,6 +21674,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     metaSet: excelSyncMetaSet,
     metaSubscribe: subscribeDocumentMeta,
     hasStoredMarks: annotationDocHasStoredMarks,
+    hasLocalStore: annotationDocHasLocalStore,
     beginBulkImport: annotationDocBeginBulkImport,
     whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
@@ -21719,6 +21720,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
+  // Read by Save: whether the shared document already keeps this work safe
+  // (its store on this device, or every change already in the cloud).
+  const annotationDocHoldsWorkRef = useRef(() => false);
+  annotationDocHoldsWorkRef.current = () => Boolean(
+    cloudSyncEnabled && pdfFile?.id && user?.id
+    && cloudSyncStatus?.healthy
+    && (annotationDocHasLocalStore() || cloudSyncQueueSize === 0)
+  );
   templateBindingAccessRef.current = {
     get: excelSyncMetaGet,
     set: (...args) => canRestoreFromHistory && excelSyncMetaSet(...args),
@@ -24398,9 +24407,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       } else {
         // Keep the dirty state and retry path even if a cloud flush can run.
         // Auto-save failures must be visible too: no local backup was written.
+        // A drawing past the browser's ~5 M character limit (Package 2: 11 M)
+        // can never fit this backup; while the shared document holds the work
+        // that is not a loss, and a red toast every 30 s only scares people.
         setHasUnsavedAnnotations(true);
         onUnsavedAnnotationsChange?.(true, tabId);
-        showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
+        if (!annotationDocHoldsWorkRef.current()) {
+          showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
+        }
       }
       // Report a failed local write before any network wait can outlast the
       // desktop quit grace period. Other save callers need no callback.
