@@ -108,7 +108,8 @@ test('the shared dialogs keep their card for the exit through MotionPresence', (
   // Confirm (and every dialog on the one shell) gets it from DialogCard.
   assert.match(bulk, /export function ConfirmModal[\s\S]*?<DialogCard\s+open=\{open\}/);
   const card = read('src/components/DialogCard.jsx');
-  assert.match(card, /if \(!open\) return <MotionPresence open=\{false\} \/>;/);
+  // A card with a zIndex mounts at the screen root, closing included.
+  assert.match(card, /if \(!open\) return atRoot\(<MotionPresence open=\{false\} \/>\);/);
   assert.match(card, /<MotionPresence open>/);
   // Rename and the prompt get it from DialogCard too (2026-10-27).
   assert.match(bulk, /export function RenameModal[\s\S]*?<DialogCard\s+open=\{open\}/);

@@ -141,12 +141,23 @@ test.describe('phone Survey export', () => {
     await page.getByText('E2E Survey Agent Drawing.pdf', { exact: true }).filter({ visible: true }).first().tap();
     const openFile = page.getByRole('button', { name: 'Open file' });
     if (await openFile.isVisible().catch(() => false)) await openFile.tap();
+    // Its seeded Survey Marker is on the page once the drawing has loaded.
+    await expect(page.locator('[data-overlay-page="1"] [data-annotation-id]').first()).toBeAttached({ timeout: 60_000 });
     await visibleButton(page, 'Open survey').tap();
     // The panel asks for a template the first time; later it reopens on it.
+    // A tap while the sheet is still sliding in can miss, so pick until the
+    // template's panel (and its Export) shows.
     const pick = page.getByRole('button', { name: /^E2E Doors/ }).filter({ visible: true }).first();
     const exportData = visibleButton(page, 'Export data');
-    await expect(pick.or(exportData)).toBeVisible({ timeout: 30_000 });
-    if (await pick.isVisible()) await pick.tap();
+    // A spec earlier in the run may have changed the template since this
+    // drawing used it; then the phone asks which version (that question used
+    // to open under the Survey sheet, so the pick looked dead).
+    const useLatest = page.getByRole('button', { name: 'Use latest version' });
+    await expect(async () => {
+      if (await useLatest.isVisible()) await useLatest.tap({ timeout: 2_000 });
+      else if (await pick.isVisible()) await pick.tap({ timeout: 2_000 });
+      await expect(exportData).toBeEnabled({ timeout: 3_000 });
+    }).toPass({ timeout: 45_000 });
     const download = page.waitForEvent('download');
     await exportData.tap();
     expect((await download).suggestedFilename()).toBe('E2E_Doors_export.xlsx');

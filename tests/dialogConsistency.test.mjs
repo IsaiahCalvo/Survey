@@ -83,3 +83,16 @@ test('Rename and the prompt use the shell and the one dialog field', () => {
   assert.match(card, /export const DIALOG_FIELD_STYLE = Object\.freeze\(\{[\s\S]*?height: 32,[\s\S]*?fontSize: 13,/);
   assert.match(read('src/home/hub.css'), /\.dialog-prompt-input \{\s*font-size: 16px !important;\s*height: 44px !important;/);
 });
+
+// Phone walk 2026-10-28: a card given a zIndex is one the viewer opens over
+// its own layers. Mounted inside the viewer it sat in the work area's layer,
+// under the phone's sheets and dock: "Survey template updated" opened behind
+// the Survey sheet, so tapping a changed template looked like it did nothing.
+test('a dialog card with a zIndex mounts at the screen root, open and closing', () => {
+  const shell = read('src/components/DialogCard.jsx');
+  assert.match(shell, /import \{ createPortal \} from 'react-dom';/);
+  assert.match(shell, /const atRoot = \(node\) => \(zIndex && [^\n]*createPortal\(node, document\.body\)/);
+  assert.match(shell, /if \(!open\) return atRoot\(<MotionPresence open=\{false\} \/>\);/);
+  assert.match(shell, /return atRoot\(card\);/);
+  assert.match(read('src/components/SurveyTemplateVersionDialog.jsx'), /zIndex=\{\d+\}/);
+});
