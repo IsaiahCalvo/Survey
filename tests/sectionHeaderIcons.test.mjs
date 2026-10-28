@@ -37,7 +37,7 @@ test('the pair and its sizes live in one place', () => {
   // that is on; that one swaps to the check "Done" glyph in the same ink.
   assert.match(css, /\.section-icon-btn \{[^}]*background: transparent;[^}]*color: var\(--text-2\);/);
   assert.doesNotMatch(css, /--accent|--gold/);
-  assert.match(component, /export const SECTION_DONE_ICON = 'checkCheck';/);
+  assert.match(component, /export const SECTION_DONE_ICON = 'editListDone';/);
   assert.match(component, /name=\{active \? SECTION_DONE_ICON : /);
 });
 
