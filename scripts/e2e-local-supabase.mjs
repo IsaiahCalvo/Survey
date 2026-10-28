@@ -437,6 +437,23 @@ async function waitForStorage(apiUrl, timeoutMs = 10 * 60 * 1000) {
   fail('storage did not come up within 10 minutes');
 }
 
+// ghcr.io throttles bursts of image pulls ("toomanyrequests"), and CI starts
+// five e2e shards plus the native walks at once, so one burst failed every
+// shard in its first minute (2026-10-28). A pull failure is fast; a failed
+// start that took longer is a real fault and is not retried.
+function startStack(args) {
+  const waits = [20_000, 60_000];
+  for (let attempt = 0; ; attempt += 1) {
+    const started = Date.now();
+    const result = runCli(args, { allowFail: true });
+    if (result.status === 0) return;
+    const quick = Date.now() - started < 3 * 60_000;
+    if (!quick || attempt >= waits.length) fail(`supabase ${args.join(' ')} failed (exit ${result.status})`);
+    log(`supabase start failed quickly (exit ${result.status}), likely an image pull limit; retrying in ${waits[attempt] / 1000}s`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waits[attempt]);
+  }
+}
+
 async function main() {
   const command = process.argv[2] || 'up';
   if (command === 'up') {
@@ -457,7 +474,7 @@ async function main() {
     // migrations outlast the CLI's health wait, and a failed start tears the
     // stack down, so a retry starts over. Skip that wait and poll storage here.
     const ignoreHealth = process.env.E2E_IGNORE_HEALTH === '1';
-    runCli(['start', '-x', EXCLUDED.join(','), ...(ignoreHealth ? ['--ignore-health-check'] : [])]);
+    startStack(['start', '-x', EXCLUDED.join(','), ...(ignoreHealth ? ['--ignore-health-check'] : [])]);
     const status = readStatus();
     if (!status) fail('stack started but `supabase status` failed');
     if (ignoreHealth) await waitForStorage(status.API_URL);
