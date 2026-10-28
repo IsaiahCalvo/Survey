@@ -8,11 +8,12 @@
 
 import { readLibraryRows } from '../hooks/libraryPagination.js';
 
+// The link-focus bits live apart so the app shell can load them without this
+// whole service on first load.
+export { OPEN_MARK_COMMENTS_EVENT, requestMarkCommentsFocus, takePendingMarkCommentsFocus } from './markCommentsFocus.js';
+
 export const MARK_COMMENT_MAX_CHARS = 4000;
 export const MARK_COMMENT_MAX_MENTIONS = 20;
-// Fired on window to start a comment on a picked mark (the selection bar's
-// Comment button) or open a comment from a link: { markId?, pageNumber, commentId? }.
-export const OPEN_MARK_COMMENTS_EVENT = 'survey:open-mark-comments';
 // Comments are Nightly-only, so a copied link from a page with no web address
 // of its own (desktop file://, the phone app) opens on Nightly.
 export const COMMENT_LINK_FALLBACK_ORIGIN = 'https://surveytool-nightly.vercel.app';
@@ -28,28 +29,6 @@ export function commentShareUrl(location, documentId, commentId) {
   url.searchParams.set('docId', documentId);
   url.searchParams.set('comment', commentId);
   return url.toString();
-}
-
-// A comment link (?docId=&comment=) is read before the document's rail is
-// on screen: the request waits here until that rail takes it.
-let pendingFocus = null;
-
-/** Open the Comments panel: now on the rail in front, or when `documentId`'s rail mounts. */
-export function requestMarkCommentsFocus(detail) {
-  pendingFocus = detail?.documentId ? { ...detail } : null;
-  try {
-    window.dispatchEvent(new CustomEvent(OPEN_MARK_COMMENTS_EVENT, { detail }));
-  } catch {
-    // No DOM events here (tests).
-  }
-}
-
-/** The waiting request for this document, taken once. */
-export function takePendingMarkCommentsFocus(documentId) {
-  if (!pendingFocus || !documentId || pendingFocus.documentId !== documentId) return null;
-  const detail = pendingFocus;
-  pendingFocus = null;
-  return detail;
 }
 
 export function mapCommentRow(row) {

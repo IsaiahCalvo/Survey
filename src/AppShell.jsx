@@ -17,7 +17,7 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import ExportPdfDialog from './components/ExportPdfDialog';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
-import { requestMarkCommentsFocus } from './services/markComments.js';
+import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';

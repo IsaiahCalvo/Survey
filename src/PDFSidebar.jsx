@@ -21,7 +21,7 @@ import LayersPanel from './sidebar/LayersPanel';
 // Beta 'mark-library' (Survey Nightly): loads only when the flag is on.
 const MarkLibraryPanel = lazy(() => import('./markLibrary/MarkLibraryPanel'));
 import CommentsPanel from './sidebar/CommentsPanel';
-import { OPEN_MARK_COMMENTS_EVENT, takePendingMarkCommentsFocus } from './services/markComments.js';
+import { OPEN_MARK_COMMENTS_EVENT, takePendingMarkCommentsFocus } from './services/markCommentsFocus.js';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import { withDevFakePresence } from './components/presenceIdentity.js';
