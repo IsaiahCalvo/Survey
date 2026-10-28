@@ -260,6 +260,17 @@ test('app download: R2 bytes when the link works, null (Supabase) when the fetch
   assert.equal(blob.type, 'application/pdf');
   assert.equal(blob.size, 5);
   assert.equal(await downloadPdfFromR2(ok, 'u/d.pdf', { ...on, fetchImpl: async () => new Response('x', { status: 403 }) }), null);
+
+  // A download that stops sending bytes gives up, so the open uses Supabase.
+  const stalled = (url, init) => Promise.resolve(new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array([37, 80]));
+      init.signal.addEventListener('abort', () => controller.error(new Error('aborted')));
+    },
+  })));
+  assert.equal(await downloadPdfFromR2(ok, 'u/d.pdf', { ...on, stallMs: 30, fetchImpl: stalled }), null);
+  const noHeaders = (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted'))));
+  assert.equal(await downloadPdfFromR2(ok, 'u/d.pdf', { ...on, stallMs: 30, fetchImpl: noHeaders }), null);
 });
 
 test('flag, migration, function config and CSP stay in step', () => {

@@ -35,16 +35,46 @@ export async function requestR2PdfLink(client, filePath, {
   }
 }
 
+// A stalled R2 download gives up after this long with no bytes arriving, so the
+// open falls back to Supabase instead of hanging. A slow but moving download of
+// a big drawing set keeps going.
+export const PDF_R2_STALL_MS = 15_000;
+
 // The whole file from R2, or null to read it from Supabase instead.
-export async function downloadPdfFromR2(client, filePath, { fetchImpl = fetch, ...options } = {}) {
+export async function downloadPdfFromR2(client, filePath, { fetchImpl = fetch, stallMs = PDF_R2_STALL_MS, ...options } = {}) {
   const url = await requestR2PdfLink(client, filePath, options);
   if (!url) return null;
+  const controller = new AbortController();
+  let timer;
+  const progress = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), stallMs);
+  };
   try {
+    progress();
     // no-store: never the browser's HTTP copy (same rule as the Storage download).
-    const response = await fetchImpl(url, { cache: 'no-store' });
-    if (!response.ok) return null;
-    return new Blob([await response.arrayBuffer()], { type: 'application/pdf' });
+    const response = await fetchImpl(url, { cache: 'no-store', signal: controller.signal });
+    if (!response.ok) {
+      controller.abort();
+      return null;
+    }
+    const parts = [];
+    if (response.body?.getReader) {
+      const reader = response.body.getReader();
+      for (;;) {
+        progress();
+        const { value, done } = await reader.read();
+        if (done) break;
+        parts.push(value);
+      }
+    } else {
+      parts.push(await response.arrayBuffer());
+    }
+    return new Blob(parts, { type: 'application/pdf' });
   } catch {
+    controller.abort();
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
