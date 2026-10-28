@@ -5030,6 +5030,16 @@ button[aria-label="Edit color"]:active > span,
   min-height: 36px;
   box-sizing: border-box;
 }
+/* Owner 2026-10-28: Select mode no longer hides the gold "New template" /
+   "New project" button. It drops its noun to "+ New" so the select actions
+   (Done, All, Duplicate, Share, Delete) fit beside it in the 260px column. */
+.survey-hub .hub-new-btn {
+  flex: none;
+  white-space: nowrap;
+}
+.survey-hub .hub-new-btn.is-compact .hub-new-btn__noun {
+  display: none;
+}
 
 /* THE SECTION ACTIONS are icons since 2026-10-02 (owner: "The icons looked
    way better"): src/components/SectionIconButton.jsx, sized and styled in

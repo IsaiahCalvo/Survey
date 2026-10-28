@@ -36,7 +36,8 @@ import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../com
 import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import { preloadedComponent } from '../utils/preloadedComponent';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
-import { MoveCopyModal } from './BulkModals';
+import { MoveCopyModal, RenameModal } from './BulkModals';
+import { manageSelectionBlock } from './documentPermissions.js';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import { pickByIds } from './selectionById';
@@ -196,6 +197,7 @@ export default function ProjectsFolderTree({
   projectPreferences = {},
   onProjectPreferencesChange,
   onDeleteDocuments,
+  onRenameDocument,
   onLockDocument,
   onPdfTools,
   onShare,
@@ -251,6 +253,9 @@ export default function ProjectsFolderTree({
   // what to anchor to. `null` when closed.
   const [teamMenu, setTeamMenu] = useState(null); // { id, rect }
   const [fileMenu, setFileMenu] = useState(null); // { id, rect }
+  // Rename from a row menu (owner 2026-10-28: projects and their files can be
+  // renamed like Documents): { kind: 'project' | 'file', id, name } | null.
+  const [renameTarget, setRenameTarget] = useState(null);
 
   // Manage Project modal — controlled entirely by local state. Opened by the
   // header "Manage Team" button and the per-project menu's "Manage project".
@@ -886,7 +891,7 @@ export default function ProjectsFolderTree({
         <span><b>{filtered.length}</b> {filtered.length === 1 ? 'project' : 'projects'}</span>
         {projectSaveRow('hub-desktop-save-row')}
       </span>
-      <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
         <span className="projects-mobile-count">
           <b>{mobileDrillProject ? mobileDrillFiles.length : filtered.length}</b> {mobileDrillProject
             ? (mobileDrillFiles.length === 1 ? 'file' : 'files')
@@ -988,18 +993,18 @@ export default function ProjectsFolderTree({
         {/* LEFT — tree */}
         <div className="card" style={{ padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {/* Owner 2026-10-01: one header line - the page's one gold action
-              on the left, the quiet Select on the right. In select mode the
-              bulk actions take the gold button's place and Done stays where
-              Select was, so the list under it never moves. */}
+              on the left, the quiet Select on the right, and Done stays where
+              Select was, so the list under it never moves. Owner 2026-10-28:
+              the gold button stays in Select mode too; it sheds its noun
+              ("New") so the select actions fit beside it. */}
           <div className="hub-section-head hub-panel-head">
-            {!jobsEdit ? (
-              <button
-                className="btn primary"
-                onClick={handleNewProject}
-              >
-                <Icon name="plus" size={11} />New project
-              </button>
-            ) : null}
+            <button
+              className={`btn primary hub-new-btn${jobsEdit ? ' is-compact' : ''}`}
+              aria-label="New project"
+              onClick={handleNewProject}
+            >
+              <Icon name="plus" size={11} />New<span className="hub-new-btn__noun" aria-hidden="true">&nbsp;project</span>
+            </button>
             <div className="hub-select-actions hub-section-actions">
               <SectionIconButton
                 data-testid="project-select-toggle"
@@ -2050,6 +2055,7 @@ export default function ProjectsFolderTree({
             items={[
               // "Add member" opens the invite/share popup — same flow as
               // "Get link to project". Only "Manage project" opens the modal.
+              { label: 'Rename', onClick: () => setRenameTarget({ kind: 'project', id: proj.id, name: proj.name || '' }) },
               { label: 'Duplicate', onClick: () => duplicateProjects([proj.id]) },
               { label: 'Share', reason: ownerOnly, onClick: () => onShare?.(proj) },
               { label: 'Delete', danger: true, reason: ownerOnly, onClick: () => { void deleteProjects([proj.id]); } },
@@ -2086,6 +2092,7 @@ export default function ProjectsFolderTree({
             onClose={() => setFileMenu(null)}
             minWidth={168}
             items={[
+              ...(onRenameDocument ? [{ label: 'Rename', reason: manageSelectionBlock([f], user?.id, 'rename'), onClick: () => setRenameTarget({ kind: 'file', id: f.id, name: f.name || '' }) }] : []),
               { label: 'Duplicate', onClick: () => duplicateFiles([f.id]) },
               { label: 'Move to project', onClick: () => openMoveCopy([f], 'move') },
               { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
@@ -2128,6 +2135,23 @@ export default function ProjectsFolderTree({
           button, already set to that mode. On confirm it moves or copies the
           chosen files into the destination project, mutating local document
           state. */}
+      <RenameModal
+        open={!!renameTarget}
+        onClose={() => setRenameTarget(null)}
+        title={renameTarget?.kind === 'file' ? 'Rename document' : 'Rename project'}
+        initialName={renameTarget?.name || ''}
+        onConfirm={(name) => {
+          const target = renameTarget;
+          const next = String(name || '').trim();
+          if (!target || !next || next === target.name) return;
+          if (target.kind === 'project') {
+            renameProject(target.id, next);
+            return;
+          }
+          const file = localDocs.find((d) => d.id === target.id);
+          if (file) void onRenameDocument?.(file, next);
+        }}
+      />
       <MoveCopyModal
         open={moveOpen}
         initialMode={moveMode}
