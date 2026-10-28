@@ -64,6 +64,7 @@ class InProcessCheckpointWorker {
     this.mirrors = new Map();
     this.chain = Promise.resolve();
     this.ops = [];
+    this.mergedExtras = 0;
     this.failOps = failOps;
     this.gate = gate;
     this.onmessage = null;
@@ -75,6 +76,7 @@ class InProcessCheckpointWorker {
     // views of them become empty).
     const message = structuredClone(data, { transfer });
     this.ops.push(message.op);
+    if (message.op === 'mirror-checkpoint' && message.extraUpdate) this.mergedExtras += 1;
     this.chain = this.chain.then(async () => {
       await new Promise((resolve) => setImmediate(resolve));
       if (message.op === 'mirror-checkpoint' && this.gate) await this.gate();
@@ -408,6 +410,60 @@ test('edits made while the worker builds a checkpoint go into the next one, noth
   __setCheckpointWorkerFactoryForTests(null);
   const reopened = await open(cloud, documentId, 'b');
   assert.deepEqual(markIds(reopened.getByPage()), expected, 'the reopen shows the stroke drawn mid-checkpoint');
+  await reopened.destroy();
+});
+
+test('a checkpoint whose rows moved on is merged with the accepted state by the worker, not on this thread', async () => {
+  // 2026-10-28: the retry's merge (whole-document encode + apply both into a
+  // scratch doc + encode) froze a big drawing ~1 s on this thread.
+  const workers = [];
+  let gated = true;
+  let gateHit = null;
+  let release = null;
+  const gateReached = new Promise((resolve) => { gateHit = resolve; });
+  __setCheckpointWorkerFactoryForTests(() => {
+    const worker = new InProcessCheckpointWorker({
+      gate: () => {
+        if (!gated) return null;
+        gated = false;
+        gateHit();
+        return new Promise((resolve) => { release = resolve; });
+      },
+    });
+    workers.push(worker);
+    return worker;
+  });
+  const documentId = 'checkpoint-worker-merge-retry';
+  const cloud = createCloud(documentId);
+  const handle = await open(cloud, documentId);
+  await drawSome(handle, 1);
+  const state = activeState(documentId);
+  const flushing = handle.flushSnapshot();
+  await gateReached;
+  const mine = handle.getByPage()?.[1]?.objects || [];
+  const rowsAtRequest = cloud.rows.length;
+  handle.applyByPage({ ...handle.getByPage(), 1: { objects: [...mine, rect('merged-by-worker', 300)] } });
+  await wait(20);
+  assert.ok(cloud.rows.length > rowsAtRequest, 'the new stroke reached the WAL meanwhile');
+  release();
+  assert.equal(await flushing, true, 'stored');
+  assert.equal(workers[0].mergedExtras, 1, 'the worker merged the given bytes with its mirror');
+  assert.equal(state.checkpointMirror.broken, false, 'the mirror stays in use');
+  assert.equal(cloud.snapshot.at_seq, cloud.rows.length, 'at_seq is the WAL head');
+  const stored = await storedUpdate(cloud);
+  const storedDoc = new Y.Doc();
+  Y.applyUpdate(storedDoc, stored);
+  assert.deepEqual(
+    Y.decodeStateVector(Y.encodeStateVector(storedDoc)),
+    Y.decodeStateVector(Y.encodeStateVector(state.acceptedDoc)),
+    'the checkpoint holds the accepted state, the stroke drawn meanwhile included',
+  );
+  const expected = markIds(handle.getByPage());
+  assert.ok(expected.includes('merged-by-worker'));
+  await handle.destroy();
+  __setCheckpointWorkerFactoryForTests(null);
+  const reopened = await open(cloud, documentId, 'b');
+  assert.deepEqual(markIds(reopened.getByPage()), expected);
   await reopened.destroy();
 });
 

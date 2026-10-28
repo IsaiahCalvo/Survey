@@ -7,6 +7,7 @@ import { getCategoryGlyphLabel } from '../viewerShared.js';
 import SurveyPickList from './SurveyPickList';
 import { SurveyEntitySwatch } from './SurveyEntityBar';
 import { placeSurveyMarkerCard } from '../survey/markerPlacementCard.js';
+import { getInputModality } from '../utils/inputModality.js';
 import './SurveyMarkerPlacementDialog.css';
 
 /**
@@ -92,7 +93,7 @@ export default function SurveyMarkerPlacementDialog({ marker, template, category
     setPosition(placeSurveyMarkerCard(rect && rect.width > 0 ? rect : null, { width: card?.width, height: card?.height }, {
       width: window.innerWidth,
       height: window.innerHeight,
-    }));
+    }, { inputKind: getInputModality() }));
   }, [marker.id, mobile]);
 
   // Desktop: the name is ready to type over once the card is in place.
