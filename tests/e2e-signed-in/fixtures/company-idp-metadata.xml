@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A made-up company login for the company sign-in setup spec. Public
+     certificate only (its key was thrown away); it can never sign anything. -->
+<md:EntityDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" entityID="https://login.e2e-company.test/saml">
+  <md:IDPSSODescriptor WantAuthnRequestsSigned="false" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+    <md:KeyDescriptor use="signing">
+      <ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+        <ds:X509Data>
+          <ds:X509Certificate>MIIDHTCCAgWgAwIBAgIUeNIiJyI+Z4YnnCvP4cCWUjj/HIgwDQYJKoZIhvcNAQELBQAwHjEcMBoGA1UEAwwTc3VydmV5LWUyZS1tb2NrLWlkcDAeFw0yNjEwMjgwMDA2NDJaFw0zNjEwMjUwMDA2NDJaMB4xHDAaBgNVBAMME3N1cnZleS1lMmUtbW9jay1pZHAwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCt4dn7lI8+MCnOnLkIQ7yrZ+lMedOA3+BOZcjOz4jvfKisA1xLiGdJ41sxCtqdhChbR3bl3rld3z6FGaAnnto9HafkY80ixCAI7E2gX/Fcr6B0PseHL38dEepy+SmX7rJtNPJIGf9dAs1BSfocJF7No08Eceialdzaap1VCvcTgYYBItv5E51epU/o8aVHm49bCe2xB6uhoMFmZwJ7Y6l8P8wNZuiXBMAZ/qXDSZZdl3Y8EORdBRdgYo9apPtk0/uWqDi5DMbqpUcucsnvTluErTEoj8GOkqjvbAFRJ342I0B0OhvNfsjfGzsqIEBXdXWzH6iX2VOOL8DvitA1xk0PAgMBAAGjUzBRMB0GA1UdDgQWBBRDctBPX2mKVfIsZ7PZsthtRA3+8TAfBgNVHSMEGDAWgBRDctBPX2mKVfIsZ7PZsthtRA3+8TAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQCn6Fl6jQzqnoDLWCwzbyZJJOK3D1z5JN/kBW+5gSFofEj7sAoeB/HIKv2JnzafDdMNAnAWtNzxAWA7hgQR7QuWVJD8R0+yxowL9grhEi+2Ts+WGffvDkiAOLAgJX6xumAJ47w7m1/An4SiW4+kdu6L4hVOGVegpWc+0LkpX0hWyRwwYMDnnxYZGsYAUVCjWYyvQv+KlsQsmt5/Mf9hrZY6AupurPvWNvnc3iS0tVIN1+pdTaKIRjHpZiYVvdK+oLA3Q+5hN1hdjAieiywrcZ2jeon4jMW6aHC9K+CtRNE/IiiLUyj+w/u1yeuomU7jC0OPy5UTl4vTX5i8eiqan6Xy</ds:X509Certificate>
+        </ds:X509Data>
+      </ds:KeyInfo>
+    </md:KeyDescriptor>
+    <md:NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</md:NameIDFormat>
+    <md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://login.e2e-company.test/saml/sso"/>
+  </md:IDPSSODescriptor>
+</md:EntityDescriptor>

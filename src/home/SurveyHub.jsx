@@ -20,9 +20,8 @@ import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
-import ShareModal from './ShareModal';
 import { templateShareTarget } from './templateShareTarget';
-import AccessManagementModal from './AccessManagementModal';
+import { preloadedComponent } from '../utils/preloadedComponent';
 import { HubChromeContext, HubShell } from './HubShell';
 import HubLoading from './HubLoading';
 import useAutoRetryLoad from './useAutoRetryLoad';
@@ -30,6 +29,12 @@ import { installOverlayScrollbars } from '../utils/overlayScrollbars';
 import { TEMPLATE_EDITOR_REQUEST_EVENT, hasTemplateEditorRequest } from './templateEditorRequest';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
+
+// The share dialogs render closed on every Home visit, so they need not be on
+// the first load: their chunk is fetched once the hub mounts, well before
+// anyone can click Share, and they then open with no wait.
+const ShareModal = preloadedComponent(() => import('./ShareModal')).Component;
+const AccessManagementModal = preloadedComponent(() => import('./AccessManagementModal')).Component;
 
 const TAB_KEY = 'survey-hub-tab';
 

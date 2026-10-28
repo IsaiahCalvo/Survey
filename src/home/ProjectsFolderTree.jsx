@@ -34,7 +34,7 @@ import { userColorFill } from '../utils/userColors.js';
 import { countLabel } from './countLabel.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
 import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
-import ManageTeamModal from './ManageTeamModal';
+import { preloadedComponent } from '../utils/preloadedComponent';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
 import { MoveCopyModal } from './BulkModals';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
@@ -48,6 +48,10 @@ import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
 import { resolveProjectDropTarget } from '../utils/fileDrop.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+
+// Renders closed until someone picks Manage team, so it stays off the first
+// load; the chunk is fetched when the projects tree mounts.
+const ManageTeamModal = preloadedComponent(() => import('./ManageTeamModal')).Component;
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
