@@ -61,3 +61,41 @@ name: android-signed-in
 - extendedWaitUntil:
     visible: "More document options"
     timeout: 30000
+# Phone walk 2026-10-28: the phone's bottom panels open and close, and Survey's
+# "Export data" Excel file reaches the share sheet (the native download shim)
+# like the PDF does. Each panel button toggles its sheet; "Done" (Leave Survey)
+# puts the Survey tool down, so the scripts after this flow find the plain
+# viewer with Pan armed.
+- tapOn: "Open spaces"
+- extendedWaitUntil:
+    visible: "Create space"
+    timeout: 30000
+- takeScreenshot: 07-spaces-sheet
+- tapOn: "Open spaces"
+- extendedWaitUntil:
+    notVisible: "Create space"
+    timeout: 30000
+- tapOn: "Open survey"
+- tapOn:
+    text: "E2E Doors.*"
+    optional: true
+- extendedWaitUntil:
+    visible: "Export data"
+    timeout: 30000
+- takeScreenshot: 08-survey-sheet
+- tapOn: "Export data"
+- extendedWaitUntil:
+    visible: ".*(Share|share|Copy|Nearby|Drive).*"
+    timeout: 30000
+- takeScreenshot: 09-survey-export-share-sheet
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "Leave Survey"
+    timeout: 30000
+- tapOn: "Leave Survey"
+- extendedWaitUntil:
+    notVisible: "Export data"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "More document options"
+    timeout: 30000
