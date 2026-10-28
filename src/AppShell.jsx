@@ -16,6 +16,7 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
 import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
+import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
 import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
 import { PageGridMenu } from './components/PageGridSettings';
 import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
@@ -1616,6 +1617,12 @@ export default function App({ devPreviewReturnTab = null }) {
     );
 
     const url = new URL(window.location.href);
+    // A mention email links to one comment (Nightly, 'mark-comments').
+    const commentId = url.searchParams.get('comment');
+    if (commentId && isFeatureOn('mark-comments')) {
+      requestMarkCommentsFocus({ documentId: String(documentToOpen.id), commentId });
+    }
+    url.searchParams.delete('comment');
     url.searchParams.delete('docId');
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   }, [documents]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2161,6 +2168,14 @@ export default function App({ devPreviewReturnTab = null }) {
   // Version history (Survey Nightly only, beta flag 'document-versions'):
   // components/DocumentVersionsButton.jsx.
   const [documentVersionsEnabled] = useState(() => isFeatureOn('document-versions'));
+  // Comments on marks (Survey Nightly only, beta flag 'mark-comments'):
+  // sidebar/CommentsPanel.jsx in the left rail, Comment on the selection bar.
+  const [markCommentsEnabled] = useState(() => isFeatureOn('mark-comments'));
+  const commentOnMark = useCallback((item) => {
+    const documentId = activeTab?.file?.id;
+    if (!documentId || !item?.id) return;
+    requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
+  }, [activeTab?.file?.id]);
   const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect);
 
   // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
@@ -4592,6 +4607,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   <MemoPDFSidebar
                     {...api}
                     tabActive={active}
+                    commentsEnabled={markCommentsEnabled}
                     mobileMode={isMobileViewer}
                     onPanelStateChange={setMobileDocumentPanelState}
                   />
@@ -5369,6 +5385,7 @@ export default function App({ devPreviewReturnTab = null }) {
         onOpenColourPicker={toggleAnnotationColourPicker}
         entities={rightRailApi?.selectedTemplate?.entities || null}
         surveyMarkers={rightRailApi?.surveyMarkers || null}
+        onComment={markCommentsEnabled && activeTab?.file?.id ? commentOnMark : null}
         onPickEntity={(entityId, markerIds) => {
           rightRailApi?.rememberSurveyEntity?.(entityId);
           (markerIds || []).forEach((markerId) => rightRailApi?.surveyEntityApplyRef?.current?.(markerId, entityId));
