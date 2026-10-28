@@ -222,9 +222,12 @@ export function cloudEngineKindForShape(shape) {
  * UX 2026-09-09: the toolbar offers Cloud for exactly these contexts, whether
  * the tool is armed before drawing or such an annotation is selected. Kept
  * next to the geometry map so the menu can never drift from what renders.
+ * Owner 2026-10-28: an open line (polyline) is never clouded - "it just looks
+ * weird". The engine still draws a polyline cloud saved before then.
  */
 export function toolSupportsCloudBorderStyle(tool) {
-  return cloudEngineKindForShape(tool) != null;
+  const kind = cloudEngineKindForShape(tool);
+  return kind != null && kind !== 'polyline';
 }
 
 // One engine pass: the studio shape for these vertices and its rendered runs.

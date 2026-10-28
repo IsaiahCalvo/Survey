@@ -428,11 +428,12 @@ test('render parity: dragging a polyline vertex recomputes the studio outline', 
   }
 });
 
-test('the Cloud style is offered on exactly the four region shapes', { skip }, () => {
-  for (const tool of ['rect', 'rectangle', 'square', 'ellipse', 'circle', 'polygon', 'polyline']) {
+test('the Cloud style is offered on exactly the three closed region shapes', { skip }, () => {
+  for (const tool of ['rect', 'rectangle', 'square', 'ellipse', 'circle', 'polygon']) {
     assert.equal(toolSupportsCloudBorderStyle(tool), true, `${tool} must offer Cloud`);
   }
-  for (const tool of ['arrow', 'line', 'counter', 'triangle', 'text', 'textbox', 'callout', 'path', 'pen', 'highlighter', '', null, undefined]) {
+  // Owner 2026-10-28: an open line is never clouded ("it just looks weird").
+  for (const tool of ['polyline', 'arrow', 'line', 'counter', 'triangle', 'text', 'textbox', 'callout', 'path', 'pen', 'highlighter', '', null, undefined]) {
     assert.equal(toolSupportsCloudBorderStyle(tool), false, `${String(tool)} must NOT offer Cloud`);
   }
   // Same predicate, resolved off a live annotation.

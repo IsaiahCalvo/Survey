@@ -71,29 +71,3 @@ export const getAnnotationSizePreviewThickness = (
 export const canSnapshotToolSettings = (loadedTool, activeTool) => (
   loadedTool != null && loadedTool === activeTool
 );
-
-/**
- * The size card's slider (AnnotationSizeControl) runs on a square-root scale,
- * so the thin end - where most pens live - gets most of the track instead of
- * 1 to 5 pt sharing its first tenth. Positions run 0..1000.
- */
-export const SIZE_SLIDER_STEPS = 1000;
-
-export const sizeToSliderPosition = (value, min = 1, max = 100) => {
-  const lo = Math.sqrt(Math.max(0, Number(min) || 0));
-  const hi = Math.sqrt(Math.max(Number(min) || 0, Number(max) || 0));
-  if (hi <= lo) return 0;
-  const v = Math.min(Number(max), Math.max(Number(min), Number(value)));
-  if (!Number.isFinite(v)) return 0;
-  return Math.round(((Math.sqrt(v) - lo) / (hi - lo)) * SIZE_SLIDER_STEPS);
-};
-
-/** A slider position back to a size: halves below 10 when decimals are kept, whole numbers above. */
-export const sliderPositionToSize = (position, min = 1, max = 100, decimals = 0) => {
-  const lo = Math.sqrt(Math.max(0, Number(min) || 0));
-  const hi = Math.sqrt(Math.max(Number(min) || 0, Number(max) || 0));
-  const t = Math.min(1, Math.max(0, Number(position) / SIZE_SLIDER_STEPS || 0));
-  const raw = (lo + t * (hi - lo)) ** 2;
-  const step = decimals > 0 && raw < 10 ? 0.5 : 1;
-  return normalizeAnnotationSize(Math.round(raw / step) * step, min, max, decimals);
-};

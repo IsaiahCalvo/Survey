@@ -95,3 +95,13 @@ test('arrow keys in a choice group skip a disabled choice', async () => {
   assert.equal(globalThis.document.activeElement, a);
   delete globalThis.document;
 });
+
+test('style menus are plain lists: no paper sample, slider or tile cards (owner 2026-10-28)', () => {
+  const shell = read('src/AppShell.jsx');
+  assert.doesNotMatch(shell, /LineStyleCard|ArrowEndsCard|stroke-card-popover/);
+  assert.match(shell, /data-arrow-both-ends="true"/);
+  const cards = read('src/components/StrokeStyleCards.jsx');
+  assert.doesNotMatch(cards, /export function (LineStyleCard|ArrowEndsCard)/);
+  const size = read('src/components/AnnotationSizeControl.jsx');
+  assert.doesNotMatch(size, /type="range"|data-size-card-sample/);
+});

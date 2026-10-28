@@ -32,7 +32,7 @@ import QuietLoading, { openingLabel } from './components/QuietLoading';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
-import { ArrowEndsCard, LineStyleCard, StrokeSample } from './components/StrokeStyleCards';
+import { StrokeSample } from './components/StrokeStyleCards';
 import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
 import { isPaintSelectionMixed } from './utils/selectionRestyle.js';
 import BodyPortal from './components/BodyPortal.js';
@@ -2732,12 +2732,6 @@ export default function App({ devPreviewReturnTab = null }) {
   // Owner 2026-10-26: with the text settings swapped in, row 2 holds them and
   // the Aa that swaps them back - none of the regular settings.
   const textSettingsSwapped = showTextFormatting && !surveyRowShown;
-  // The Style and Ends cards draw their sample in the colour and width the
-  // tool will draw (owner 2026-10-26, #11), like the Width card.
-  const strokeCardColor = bottomToolbarApi?.selectionMixed?.strokeColor
-    ? undefined
-    : (bottomToolbarApi?.selectedStrokeColor ?? bottomToolbarApi?.strokeColor);
-  const strokeCardWidth = bottomToolbarApi?.strokeWidthInputValue;
   const toolbarSlot = (id, render, { canCompact = true, label } = {}) => {
     if (textSettingsSwapped && id !== 'aa') return null;
     if (toolbarPlan.overflow.includes(id)) {
@@ -4178,13 +4172,8 @@ export default function App({ devPreviewReturnTab = null }) {
                   variant="pill"
                   unit="pt"
                   width="var(--chrome-field-w)"
-                  // The size card paints its sample in the colour the tool
-                  // will draw; the eraser and the counter pin preview a dot.
-                  color={bottomToolbarApi.activeTool === 'eraser'
-                    ? '#9ca3af'
-                    : (bottomToolbarApi.selectionMixed?.strokeColor ? undefined : (bottomToolbarApi.selectedStrokeColor ?? bottomToolbarApi.strokeColor))}
+                  // The eraser and the counter pin pick sizes as dots.
                   previewShape={bottomToolbarApi.activeTool === 'eraser' || bottomToolbarApi.contextTool === 'counter' ? 'dot' : 'stroke'}
-                  dash={bottomToolbarApi.activeTool === 'eraser' ? 'solid' : (bottomToolbarApi.lineBorderStyle || 'solid')}
                 />
                 ), {
                   canCompact: !(bottomToolbarApi.activeTool !== 'eraser' && bottomToolbarApi.selectionMixed?.width),
@@ -4286,27 +4275,21 @@ export default function App({ devPreviewReturnTab = null }) {
                     /* PASS 7 (boards 9-12 + 15): the pill shows the LINE it
                        will draw, then names it. */
                     preview={<Icon name={LINE_STYLE_SAMPLE_ICONS[styleValue] || 'lineSampleSolid'} size={18} color="currentColor" />}
+                    /* Owner 2026-10-28: "a little simpler" - the style menu
+                       is the plain list every other menu is: each row draws
+                       its line, then names it. */
+                    renderOption={(option) => (
+                      <>
+                        <span className="annotation-dropdown__sample" aria-hidden="true">
+                          <StrokeSample width={28} height={14} pad={1} strokePx={1.75} dash={option.value} />
+                        </span>
+                        <span>{option.label}</span>
+                      </>
+                    )}
                     width="var(--chrome-field-w-style)"
                     contentWidth="var(--chrome-field-w-style)"
-                    contentClassName="stroke-card-popover"
-                  >
-                    {/* Owner 2026-10-26 (#11): a card like the Width card -
-                        the line on paper in the tool's colour and width,
-                        then the styles as drawn tiles. */}
-                    <LineStyleCard
-                      value={styleValue}
-                      mixed={styleMixed}
-                      options={styleOptions}
-                      onSelect={(next) => {
-                        bottomToolbarApi.setLineBorderStyle(next);
-                        setShowStyleMenu(false);
-                      }}
-                      color={strokeCardColor}
-                      widthPt={strokeCardWidth}
-                      endHead={bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout' ? (bottomToolbarApi.arrowheadStyle || 'none') : 'none'}
-                      startHead={bottomToolbarApi.contextTool === 'arrow' && bottomToolbarApi.arrowBothEnds ? (bottomToolbarApi.arrowheadStyle || 'none') : 'none'}
-                    />
-                  </AnnotationDropdown>
+                    contentClassName="stroke-list-popover"
+                  />
                   ), { canCompact: !styleMixed });
                   })()
                 )}
@@ -4430,7 +4413,6 @@ export default function App({ devPreviewReturnTab = null }) {
                     value={anyMixed ? '__mixed' : live}
                     triggerContent={pillLabel}
                     options={options}
-                    onSelect={bottomToolbarApi.setArrowheadStyle}
                     dataMarker="data-arrowhead-menu"
                     preview={(
                       <StrokeSample
@@ -4443,27 +4425,47 @@ export default function App({ devPreviewReturnTab = null }) {
                         headScale={0.8}
                       />
                     )}
+                    /* Owner 2026-10-28: "a little simpler" - one plain list
+                       of heads, each row drawing its arrow, and for an arrow a
+                       single Both ends switch under it (a callout has one
+                       end). Picking None takes the heads off both ends. */
+                    onSelect={(next) => {
+                      if (isArrow && next === 'none') setEnds('none');
+                      else bottomToolbarApi.setArrowheadStyle(next);
+                    }}
+                    renderOption={(option) => (
+                      <>
+                        <span className="annotation-dropdown__sample" aria-hidden="true">
+                          <StrokeSample width={28} height={14} pad={1} strokePx={1.5} endHead={option.value} startHead={both && option.value !== 'none' ? option.value : 'none'} headScale={0.85} />
+                        </span>
+                        <span>{option.label}</span>
+                      </>
+                    )}
+                    footer={isArrow ? (
+                      <>
+                        <div className="annotation-dropdown__separator" role="presentation" />
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={!endsMixed && both}
+                          data-arrow-both-ends="true"
+                          className={`annotation-dropdown__option stroke-list__switch${!endsMixed && both ? ' is-active' : ''}`}
+                          onClick={() => setEnds(both ? 'end' : 'both')}
+                        >
+                          <span className="annotation-dropdown__sample" aria-hidden="true">
+                            <StrokeSample width={28} height={14} pad={1} strokePx={1.5} endHead="vShape" startHead="vShape" headScale={0.85} />
+                          </span>
+                          <span>Both ends</span>
+                          {!endsMixed && both ? (
+                            <span className="stroke-list__check" aria-hidden="true"><Icon name="check" size={12} color="currentColor" /></span>
+                          ) : null}
+                        </button>
+                      </>
+                    ) : null}
                     width="var(--chrome-field-w-arrowhead)"
                     contentWidth="var(--chrome-field-w-arrowhead)"
-                    contentClassName="stroke-card-popover"
-                  >
-                    <ArrowEndsCard
-                      head={live}
-                      ends={isArrow ? (both ? 'both' : 'end') : null}
-                      headMixed={headMixed}
-                      endsMixed={endsMixed}
-                      headOptions={options}
-                      onHead={(next) => {
-                        if (isArrow && next === 'none') setEnds('none');
-                        else bottomToolbarApi.setArrowheadStyle(next);
-                        setShowArrowheadMenu(false);
-                      }}
-                      onEnds={setEnds}
-                      color={strokeCardColor}
-                      widthPt={strokeCardWidth}
-                      dash={bottomToolbarApi.lineBorderStyle || 'solid'}
-                    />
-                  </AnnotationDropdown>
+                    contentClassName="stroke-list-popover"
+                  />
                   ), { canCompact: !anyMixed });
                 })()}
                 {/* PASS 7 (2026-09-22 review): the rule that closes the value

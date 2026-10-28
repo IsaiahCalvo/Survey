@@ -26925,7 +26925,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         : selectionMappedTool && pickBarTool === 'select'
         ? (selectedToolbarCallout
           ? true
-          : (selectedAnnot?.data?.type !== 'counter' && toolOffersCloudLineStyle(selectedType)))
+          : (selectedAnnot?.data?.type !== 'counter' && (toolOffersCloudLineStyle(selectedType)
+            // A polyline saved as a cloud before lines lost Cloud (2026-10-28).
+            || (selectedType === 'polyline' && selectedAnnot?.data?.pdfCloudIntensity != null))))
         : toolOffersCloudLineStyle(activeTool),
       cloudIntensity,
       setCloudIntensity: handleCloudIntensityChange,

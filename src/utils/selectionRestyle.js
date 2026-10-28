@@ -25,7 +25,7 @@ import { composeColorForPatch } from './annotationData.js';
 import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry.js';
 import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
-import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
+import { cloudEngineKindForShape, toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
 import { isArrowLineMark, isCounterMark, markToolForAnnotation } from './markToolGroup.js';
 
@@ -168,8 +168,11 @@ export function restyleCapabilities(annotation) {
     };
   }
   if (type === 'polyline') {
+    // An open line is never clouded now (owner 2026-10-28); one saved as a
+    // cloud before then still lists Cloud, so its Style reads true and can be
+    // switched off.
     return {
-      ...none, stroke: true, width: true, lineStyle: true, cloud: toolSupportsCloudBorderStyle(type),
+      ...none, stroke: true, width: true, lineStyle: true, cloud: annotation.data?.pdfCloudIntensity != null,
     };
   }
   if (type === 'line') {
@@ -185,7 +188,7 @@ export function restyleCapabilities(annotation) {
 
 const lineStyleOf = (annotation) => {
   if (annotation?.data?.pdfCloudIntensity != null
-    && (toolSupportsCloudBorderStyle(lower(annotation.type)) || lower(annotation.type) === 'textbox')) {
+    && (cloudEngineKindForShape(lower(annotation.type)) || lower(annotation.type) === 'textbox')) {
     return 'cloud';
   }
   const dash = Array.isArray(annotation?.strokeDashArray) ? annotation.strokeDashArray : null;

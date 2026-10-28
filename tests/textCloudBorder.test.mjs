@@ -90,10 +90,10 @@ const makeCallout = (style = {}) => ({
 });
 
 test('Cloud is offered for the text box and callout tools, and never for a line, arrow or counter', () => {
-  for (const tool of ['text', 'textbox', 'callout', 'rect', 'ellipse', 'polygon', 'polyline']) {
+  for (const tool of ['text', 'textbox', 'callout', 'rect', 'ellipse', 'polygon']) {
     assert.equal(toolOffersCloudLineStyle(tool), true, tool);
   }
-  for (const tool of ['arrow', 'line', 'counter', 'pen', 'highlighter', '', null]) {
+  for (const tool of ['polyline', 'arrow', 'line', 'counter', 'pen', 'highlighter', '', null]) {
     assert.equal(toolOffersCloudLineStyle(tool), false, String(tool));
   }
   // The SHAPE predicate is unchanged: a text box is not a cloud-shaped mark,
