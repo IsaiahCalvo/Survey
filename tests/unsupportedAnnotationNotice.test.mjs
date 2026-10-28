@@ -151,5 +151,7 @@ test('countUnsupportedAnnotations (cloud-doc cheap scan) matches full-import cla
       { id: 'att-1', subtype: 'FileAttachment', rect: [0, 0, 8, 8] }
     ]
   });
-  assert.deepEqual(await countUnsupportedAnnotations(doc), { Stamp: 1, FileAttachment: 1 });
+  // A stamp with no /AP is drawn from its /Name now (Drawboard Projects audit), so only
+  // the attachment is left out.
+  assert.deepEqual(await countUnsupportedAnnotations(doc), { FileAttachment: 1 });
 });

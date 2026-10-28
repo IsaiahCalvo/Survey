@@ -2,10 +2,12 @@
 // the desktop Shape row's Cloud button and Measure menu (PR #1055) on a phone.
 // Pure so tests can drive it.
 import { isShapeToolButtonActive, resolveShapeToolPick } from '../utils/cloudShapeTool.js';
+import { measureBaseTool } from '../utils/measure/measureScale.js';
 
 export const MOBILE_MEASURE_ITEMS = [
   { key: 'length', label: 'Length', icon: 'measureLength' },
   { key: 'area', label: 'Area', icon: 'measureArea' },
+  { key: 'perimeter', label: 'Perimeter', icon: 'measurePerimeter' },
   { key: 'scale', label: 'Page scale…', icon: 'measureScale' },
 ];
 
@@ -31,7 +33,7 @@ export function applyMobileMeasurePick(key, api) {
     api?.openMeasureScaleDialog?.({ pageNumber: api?.pageNum || 1 });
     return null;
   }
-  const tool = key === 'area' ? 'polygon' : 'line';
+  const tool = measureBaseTool(key);
   api?.setActiveTool?.(tool);
   api?.setMeasureMode?.(key);
   return tool;

@@ -63,7 +63,10 @@ import {
   parsePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
 import {
+  drawNamedStampAppearance,
   getPdfStampRotation,
+  namedStampColor,
+  namedStampLabel,
   renderPdfStampAppearances,
 } from './pdfStampProxy.js';
 import { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
@@ -89,10 +92,11 @@ const pdfImportDebug = (...args) => {
  * - Circle (ellipses) → Fabric.js Circle
  * - Line / PolyLine / Polygon → Fabric.js Line/Polyline/Polygon
  * - Text notes / Caret / Underline / StrikeOut / Squiggly
- * - Stamp with /AP /N → locked PNG proxy
+ * - Stamp → locked PNG proxy: its /AP /N painted by pdf.js, else (no /AP, or
+ *   one pdf.js cannot paint) drawn from its /Name like Acrobat's standard set
  *
  * Unsupported types (preserved but not imported):
- * - Stamp without /AP /N, Link, Widget, Popup, FileAttachment, Sound, Movie, etc.
+ * - Widget, Popup, FileAttachment, Sound, Movie, etc.
  */
 
 // Supported annotation subtypes that we can convert to Fabric.js
@@ -2803,8 +2807,8 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
   };
 }
 
-function convertStampToImageProxy(annotation, viewport, scale, appearanceDataUrl) {
-  if (!annotation?.hasAppearance || typeof appearanceDataUrl !== 'string') return null;
+function convertStampToImageProxy(annotation, viewport, scale, appearanceDataUrl, drawnStamp = null) {
+  if (typeof appearanceDataUrl !== 'string') return null;
   const rect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
   if (!rect || rect.width <= 0 || rect.height <= 0) return null;
   const opacity = Number(annotation.CA ?? annotation.opacity ?? 1);
@@ -2838,6 +2842,7 @@ function convertStampToImageProxy(annotation, viewport, scale, appearanceDataUrl
       // pdf.js applies the appearance stream's /Matrix while it paints the
       // PNG, but it does not apply the annotation dictionary's /Rotate.
       pdfStampAppearanceRotationBaked: !hasExplicitRotation,
+      ...(drawnStamp ? { pdfStampDrawnFromName: drawnStamp } : {}),
     },
   };
 }
@@ -5634,6 +5639,7 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
         viewport,
         scale,
         context.stampAppearanceDataUrl,
+        context.stampDrawnFromName || null,
       ));
     default:
       // Unsupported annotation type
@@ -5684,10 +5690,7 @@ export function categorizeAnnotations(annotations) {
     // screen (Acrobat hides it too), and the print copy strips it for screen
     // parity. It is not "unsupported" either, so no notice is raised.
     if (isPdfAnnotationHiddenFromView(annotation)) return;
-    if (
-      SUPPORTED_SUBTYPES.includes(annotation.subtype)
-      && (annotation.subtype !== 'Stamp' || annotation.hasAppearance === true)
-    ) {
+    if (SUPPORTED_SUBTYPES.includes(annotation.subtype)) {
       supported.push(annotation);
     } else if (annotation.subtype && !SILENT_IGNORE_SUBTYPES.includes(annotation.subtype)) {
       // Only report types that are truly unsupported (not common companion annotations)
@@ -5993,6 +5996,30 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           console.warn('Failed to render imported stamp appearances:', error);
         }
       }
+      // A stamp pdf.js could not paint (no /AP, or a failed paint) is drawn
+      // from its /Name instead of being left out.
+      const drawNamedStamp = options.drawNamedStampAppearance || drawNamedStampAppearance;
+      const stampAppearanceFor = (normalized) => {
+        const key = normalized.id || normalized.name;
+        const painted = stampAppearanceDataUrls.get(key);
+        if (normalized.subtype !== 'Stamp' || painted || options.diagnosticsOnly) {
+          return { stampAppearanceDataUrl: painted };
+        }
+        const rect = Array.isArray(normalized.rect) ? normalized.rect : null;
+        if (!rect) return {};
+        const label = namedStampLabel(normalized.name, normalized.contentsObj?.str ?? normalized.contents);
+        try {
+          const dataUrl = drawNamedStamp({
+            label,
+            color: namedStampColor(label, normalized.color ? pdfColorToHex(normalized.color) : null),
+            widthPt: Math.abs(rect[2] - rect[0]),
+            heightPt: Math.abs(rect[3] - rect[1]),
+          });
+          return dataUrl ? { stampAppearanceDataUrl: dataUrl, stampDrawnFromName: label } : {};
+        } catch {
+          return {};
+        }
+      };
 
       for (const annotation of supported) {
         try {
@@ -6065,7 +6092,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
               pageNumber: pageNum,
               textContent,
               linkPageNumber,
-              stampAppearanceDataUrl: stampAppearanceDataUrls.get(annotation.id || annotation.name),
+              ...stampAppearanceFor(normalized),
             },
           );
           const convertedObjects = converted
