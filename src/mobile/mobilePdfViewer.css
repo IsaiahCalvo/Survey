@@ -4017,6 +4017,13 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 }
 
 @media (max-width: 340px) {
+  /* 320px phones: the line / arrow strip measured 328px of controls and the
+     live text strip put its alignment button past the right edge. Tighter
+     divider air and a narrower font pill bring both inside the screen. */
+  :root {
+    --mobile-strip-divider-inset: 2px;
+    --mobile-strip-font-w: 82px;
+  }
   .mobile-pdf-header__document { left: 4px; max-width: 156px; gap: 2px; }
   .mobile-pdf-header__history { right: 4px; gap: 2px; }
   .mobile-pdf-header__export { margin-left: 6px; }
