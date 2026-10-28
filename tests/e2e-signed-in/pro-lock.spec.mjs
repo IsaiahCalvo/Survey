@@ -47,7 +47,9 @@ test('Free plan: Survey shows the Pro prompt; after an upgrade it opens', async 
   // An admin moves the account to Pro; the reload reads the plan again and
   // reopens the document tab.
   await setTier('pro');
-  const planRead = page.waitForResponse((res) => res.url().includes('/rest/v1/user_subscriptions') && res.ok());
+  // The app reads the plan through my_effective_tier (it also counts a paid
+  // company seat); an older database answers from user_subscriptions.
+  const planRead = page.waitForResponse((res) => /\/rest\/v1\/(rpc\/my_effective_tier|user_subscriptions)/.test(res.url()) && res.ok());
   await page.reload({ waitUntil: 'domcontentloaded' });
   await planRead;
   await expect(page.getByText('Type your name in the box:')).toBeVisible({ timeout: 60_000 });
