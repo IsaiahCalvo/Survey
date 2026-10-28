@@ -267,7 +267,10 @@ test('pinned tools: the other pins slide aside to open the dragged pin\'s slot',
 });
 
 test('pinned tools: the dock toggle draws Lucide\'s pin', () => {
-  const source = readFileSync(new URL('../src/components/PinnedToolsDock.jsx', import.meta.url), 'utf8');
+  // The glyph lives beside the store (pinnedToolsShared.jsx) so the viewer
+  // chrome can draw the toggle without loading the dock's chunk.
+  const source = ['../src/components/PinnedToolsDock.jsx', '../src/pinnedTools/pinnedToolsShared.jsx']
+    .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
   assert.match(source, /M9 10\.76a2 2 0 0 1-1\.11 1\.79l-1\.78\.9A2 2 0 0 0 5 15\.24V16/);
   assert.doesNotMatch(source, /M9 4h6l-1 6 3 3H7l3-3-1-6Z/);
 });

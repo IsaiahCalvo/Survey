@@ -18,7 +18,7 @@
 
 import { supabase } from '../supabaseClient';
 import { pdfByteCache } from './pdfByteCache.js';
-import { purgeAnnotationDoc } from './annotationDocSync';
+import { purgeAnnotationDoc } from './annotationDocPurge.js';
 import { normalizeProjectItem } from './archiveContract';
 import { purgeWithSurveyMedia, survivingDocumentsFinder } from './surveyMediaPurge.js';
 
