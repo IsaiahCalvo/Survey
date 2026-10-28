@@ -91,8 +91,11 @@ name: android-signed-in
 - tapOn:
     text: "Export data"
     retryTapIfNoChange: false
+# On the bare emulator only Bluetooth takes an .xlsx file, and Android opens
+# the one app that matches instead of a chooser: that is the file reaching the
+# share path too. A phone with Drive, Gmail or Excel shows the chooser.
 - extendedWaitUntil:
-    visible: ".*(Share|share|Copy|Nearby|Drive).*"
+    visible: ".*(Share|share|Copy|Nearby|Drive|Bluetooth).*"
     timeout: 30000
 - takeScreenshot: 09-survey-export-share-sheet
 - pressKey: Back
