@@ -8,7 +8,7 @@ import { PDFDocument } from 'pdf-lib';
 import * as Y from 'yjs';
 import { bytesToPgHex } from '../../supabase/functions/_shared/pgBytea.js';
 import { E2E_ACCOUNTS, E2E_PROJECT } from './accounts.mjs';
-import { RUN, must } from './accountFixtures.mjs';
+import { RUN, makeUser, must } from './accountFixtures.mjs';
 import { adminClient, apiClientFor, expect, test } from './helpers.mjs';
 
 async function guestClient() {
@@ -44,6 +44,7 @@ test('guest links: one document, its role, only while the link lives, nothing el
     }));
   }
 
+  let visitorId = null;
   try {
     // Only the owner makes links; a team editor, or nonsense, cannot.
     expect((await editor.rpc('create_guest_link', { p_document_id: docId, p_role: 'editor', p_expires_in: '1 day' })).error?.message).toContain('Document not found');
@@ -88,6 +89,9 @@ test('guest links: one document, its role, only while the link lives, nothing el
       expect(row.user_id).toBe(guestId);
     }
     expect((await guest.rpc('check_collaborator_by_email', { email_address: E2E_ACCOUNTS.owner.email })).error).toBeTruthy();
+    // An account holder still only learns about addresses they invited.
+    const [lookup] = await must('lookup', owner.rpc('check_collaborator_by_email', { email_address: E2E_ACCOUNTS.free.email }));
+    expect(lookup.user_id).toBeNull();
 
     // It makes nothing of its own and manages nothing.
     expect((await guest.from('documents').insert({ id: crypto.randomUUID(), user_id: guestId, name: 'x.pdf', file_path: `${guestId}/x.pdf`, file_size: 1 })).error).toBeTruthy();
@@ -114,11 +118,34 @@ test('guest links: one document, its role, only while the link lives, nothing el
     expect((await must('guest rows', viewer.from('document_guests').select('user_id').eq('document_id', docId))).map((r) => r.user_id)).toEqual([(await viewer.auth.getUser()).data.user.id]);
     expect((await must('owner sees guests', owner.from('document_guests').select('display_name').eq('document_id', docId))).map((r) => r.display_name).sort()).toEqual(['Gus Guest', 'Vic']);
 
+    // The document screen gets each guest's own role, never more.
+    expect(await must('guest role', guest.rpc('get_my_document_role', { doc_id: docId }))).toBe('editor');
+    expect(await must('viewer role', viewer.rpc('get_my_document_role', { doc_id: docId }))).toBe('viewer');
+
+    // Someone with an account who opens a guest link gets past the Nightly
+    // gate while the link lives, with the link's role.
+    const visitor = await makeUser(admin, 'guest-visitor');
+    visitorId = visitor.id;
+    const member = await apiClientFor(visitor);
+    expect(await must('member nightly before', member.rpc('can_use_nightly'))).toBe(false);
+    await must('member redeem', member.rpc('redeem_guest_link', { p_token: viewLink.token, p_name: 'Mel' }));
+    expect(await must('member nightly', member.rpc('can_use_nightly'))).toBe(true);
+    expect(await must('member role', member.rpc('get_my_document_role', { doc_id: docId }))).toBe('viewer');
+
+    // An archived document is its owner's alone: guests and the team lose it.
+    await must('archive', admin.from('documents').update({ user_archived_at: new Date().toISOString() }).eq('id', docId));
+    expect((await guest.from('documents').select('id').eq('id', docId)).data).toEqual([]);
+    expect(await must('archived role', guest.rpc('get_my_document_role', { doc_id: docId }))).toBeNull();
+    expect((await guest.rpc('append_annotation_update', { p_document_id: docId, p_client_id: `guest-${RUN}`, p_client_seq: 2, p_data: yUpdate('g-archived') })).error).toBeTruthy();
+    expect((await editor.from('documents').select('id').eq('id', docId)).data).toEqual([]);
+    expect(await must('owner archived role', owner.rpc('get_my_document_role', { doc_id: docId }))).toBe('owner');
+    await must('unarchive', admin.from('documents').update({ user_archived_at: null }).eq('id', docId));
+
     // Turning the link off cuts the guest off at once; so does expiry.
     expect(await must('revoke', owner.rpc('revoke_guest_link', { p_link_id: editLink.id }))).toBe(true);
     expect((await guest.from('documents').select('id').eq('id', docId)).data).toEqual([]);
     expect((await guest.storage.from('documents').download(path)).error).toBeTruthy();
-    expect((await guest.rpc('append_annotation_update', { p_document_id: docId, p_client_id: `guest-${RUN}`, p_client_seq: 2, p_data: yUpdate('g2') })).error).toBeTruthy();
+    expect((await guest.rpc('append_annotation_update', { p_document_id: docId, p_client_id: `guest-${RUN}`, p_client_seq: 3, p_data: yUpdate('g2') })).error).toBeTruthy();
     expect(await must('nightly after', guest.rpc('can_use_nightly'))).toBe(false);
     expect((await guest.rpc('redeem_guest_link', { p_token: editLink.token, p_name: 'Gus again' })).error).toBeTruthy();
     await must('expire', admin.from('document_guest_links').update({ expires_at: new Date(Date.now() - 1000).toISOString() }).eq('id', viewLink.id));
@@ -126,5 +153,6 @@ test('guest links: one document, its role, only while the link lives, nothing el
   } finally {
     await admin.from('documents').delete().in('id', [docId, otherId]);
     await admin.storage.from('documents').remove([path]);
+    if (visitorId) await admin.auth.admin.deleteUser(visitorId);
   }
 });

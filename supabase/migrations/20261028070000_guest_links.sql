@@ -126,20 +126,28 @@ CREATE POLICY document_guests_read ON public.document_guests
 CREATE OR REPLACE FUNCTION public.user_can_access_document(doc_id UUID, required_role TEXT DEFAULT 'viewer')
 RETURNS BOOLEAN
 LANGUAGE plpgsql
-STABLE SECURITY DEFINER
+STABLE
+SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
     doc_owner_id UUID;
     doc_project_id UUID;
+    doc_archived_at TIMESTAMPTZ;
     user_role TEXT;
 BEGIN
-    SELECT user_id, project_id INTO doc_owner_id, doc_project_id
+    SELECT user_id, project_id, user_archived_at
+      INTO doc_owner_id, doc_project_id, doc_archived_at
       FROM public.documents
      WHERE id = doc_id;
 
     IF doc_owner_id IS NULL THEN
         RETURN FALSE;
+    END IF;
+
+    -- KAL-426: an archived document exists only for its permanent owner.
+    IF doc_archived_at IS NOT NULL THEN
+        RETURN doc_owner_id = auth.uid();
     END IF;
 
     IF doc_owner_id = auth.uid() THEN
@@ -148,27 +156,22 @@ BEGIN
 
     SELECT role INTO user_role
       FROM public.document_collaborators
-     WHERE document_id = doc_id
-       AND user_id = auth.uid()
-       AND status = 'active';
+     WHERE document_id = doc_id AND user_id = auth.uid() AND status = 'active';
 
-    -- No direct document role: fall back to project membership.
     IF user_role IS NULL AND doc_project_id IS NOT NULL THEN
         SELECT role INTO user_role
           FROM public.project_collaborators
-         WHERE project_id = doc_project_id
-           AND user_id = auth.uid()
-           AND status = 'active';
+         WHERE project_id = doc_project_id AND user_id = auth.uid() AND status = 'active';
 
         IF user_role IS NULL THEN
-            SELECT CASE WHEN user_id = auth.uid() THEN 'owner' END INTO user_role
+            SELECT 'owner' INTO user_role
               FROM public.projects
-             WHERE id = doc_project_id;
+             WHERE id = doc_project_id AND user_id = auth.uid();
         END IF;
     END IF;
 
     -- Guest links: the best live grant on this document (never 'owner').
-    IF user_role IS NULL AND auth.uid() IS NOT NULL THEN
+    IF user_role IS NULL THEN
         SELECT l.role INTO user_role
           FROM public.document_guests g
           JOIN public.document_guest_links l ON l.id = g.link_id
@@ -185,12 +188,83 @@ BEGIN
         RETURN FALSE;
     END IF;
 
-    CASE required_role
-        WHEN 'viewer' THEN RETURN user_role IN ('viewer', 'editor', 'owner');
-        WHEN 'editor' THEN RETURN user_role IN ('editor', 'owner');
-        WHEN 'owner'  THEN RETURN user_role = 'owner';
-        ELSE RETURN FALSE;
-    END CASE;
+    RETURN CASE required_role
+        WHEN 'viewer' THEN user_role IN ('viewer', 'editor', 'owner')
+        WHEN 'editor' THEN user_role IN ('editor', 'owner')
+        WHEN 'owner'  THEN user_role = 'owner'
+        ELSE FALSE
+    END;
+END;
+$$;
+
+-- The role the document screen shows controls for: a live guest grant
+-- reports 'viewer' or 'editor', same as the access check above.
+CREATE OR REPLACE FUNCTION public.get_my_document_role(doc_id UUID)
+RETURNS TEXT
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    doc_owner_id UUID;
+    doc_project_id UUID;
+    doc_archived_at TIMESTAMPTZ;
+    user_role TEXT;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    SELECT user_id, project_id, user_archived_at
+      INTO doc_owner_id, doc_project_id, doc_archived_at
+      FROM public.documents
+     WHERE id = doc_id;
+
+    IF doc_owner_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    -- KAL-426: while archived only the permanent owner has any role at all.
+    IF doc_archived_at IS NOT NULL THEN
+        RETURN CASE WHEN doc_owner_id = auth.uid() THEN 'owner' ELSE NULL END;
+    END IF;
+
+    IF doc_owner_id = auth.uid() THEN
+        RETURN 'owner';
+    END IF;
+
+    SELECT role INTO user_role
+      FROM public.document_collaborators
+     WHERE document_id = doc_id AND user_id = auth.uid() AND status = 'active';
+
+    IF user_role IS NULL AND doc_project_id IS NOT NULL THEN
+        SELECT role INTO user_role
+          FROM public.project_collaborators
+         WHERE project_id = doc_project_id AND user_id = auth.uid() AND status = 'active';
+
+        IF user_role IS NULL THEN
+            SELECT 'owner' INTO user_role
+              FROM public.projects
+             WHERE id = doc_project_id AND user_id = auth.uid();
+        END IF;
+    END IF;
+
+    -- Guest links: the best live grant on this document (never 'owner').
+    IF user_role IS NULL THEN
+        SELECT l.role INTO user_role
+          FROM public.document_guests g
+          JOIN public.document_guest_links l ON l.id = g.link_id
+         WHERE g.document_id = doc_id
+           AND g.user_id = auth.uid()
+           AND l.document_id = doc_id
+           AND l.revoked_at IS NULL
+           AND l.expires_at > now()
+         ORDER BY (l.role = 'editor') DESC
+         LIMIT 1;
+    END IF;
+
+    RETURN user_role;
 END;
 $$;
 
@@ -502,43 +576,65 @@ END;
 $$;
 
 -- No address-book lookups from a guest session.
-CREATE OR REPLACE FUNCTION public.check_collaborator_by_email(email_address TEXT)
+CREATE OR REPLACE FUNCTION public.check_collaborator_by_email(email_address text)
 RETURNS TABLE (
-    user_id UUID,
-    email TEXT,
-    tier TEXT,
-    can_collaborate BOOLEAN,
-    reason TEXT
+    user_id uuid,
+    email text,
+    tier text,
+    can_collaborate boolean,
+    reason text
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = ''
+SET search_path = public
 AS $$
 DECLARE
-    found_user_id UUID;
+    v_uid uuid := auth.uid();
+    v_email text := lower(btrim(coalesce(email_address, '')));
+    found_user_id uuid;
 BEGIN
     IF public.is_guest_session() THEN
         RAISE EXCEPTION 'Not allowed' USING ERRCODE = '42501';
     END IF;
-    SELECT id INTO found_user_id
-    FROM auth.users
-    WHERE auth.users.email = email_address;
+
+    -- Only for an address the caller has an open invite for, so this cannot
+    -- be used to look up who has an account. Same answer as "no account".
+    IF v_uid IS NULL OR NOT (
+        EXISTS (SELECT 1 FROM public.document_invites i
+                WHERE i.created_by = v_uid AND i.revoked_at IS NULL
+                  AND lower(i.target_email) = v_email)
+        OR EXISTS (SELECT 1 FROM public.project_invites i
+                   WHERE i.created_by = v_uid AND i.revoked_at IS NULL
+                     AND lower(i.target_email) = v_email)
+        OR EXISTS (SELECT 1 FROM public.template_invites i
+                   WHERE i.created_by = v_uid AND i.revoked_at IS NULL
+                     AND lower(i.target_email) = v_email)
+    ) THEN
+        found_user_id := NULL;
+    ELSE
+        SELECT u.id INTO found_user_id
+        FROM auth.users u
+        WHERE lower(u.email) = v_email;
+    END IF;
 
     IF found_user_id IS NULL THEN
         RETURN QUERY
         SELECT
-            NULL::UUID AS user_id,
-            email_address AS email,
-            NULL::TEXT AS tier,
-            FALSE AS can_collaborate,
-            'User not found. They need to create an account first.'::TEXT AS reason;
+            NULL::uuid,
+            email_address,
+            NULL::text,
+            FALSE,
+            'User not found. They need to create an account first.'::text;
         RETURN;
     END IF;
 
     RETURN QUERY
-    SELECT * FROM public.check_user_collaborator_eligibility(found_user_id);
+    SELECT e.user_id, e.email, NULL::text, e.can_collaborate, e.reason
+    FROM public.check_user_collaborator_eligibility(found_user_id) e;
 END;
 $$;
+REVOKE ALL ON FUNCTION public.check_collaborator_by_email(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.check_collaborator_by_email(text) TO authenticated, service_role;
 
 -- The owner's name for the document header; a guest does not get the email.
 CREATE OR REPLACE FUNCTION public.get_document_owner_profile(doc_id UUID)
@@ -608,10 +704,12 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.mark_comment_people(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.mark_comment_people(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_comment_people(uuid) TO authenticated, service_role;
 
--- Survey Nightly lets in a guest whose link is live (every guest link is
--- made on Nightly, by a tester): only their documents are reachable anyway.
+-- Survey Nightly lets in anyone holding a live guest link, signed in or not
+-- (every guest link is made on Nightly, by a tester). A guest session can
+-- reach only its linked documents; an account holder gets Nightly's beta
+-- tools while the link is live.
 CREATE OR REPLACE FUNCTION public.can_use_nightly()
 RETURNS boolean
 LANGUAGE sql
@@ -628,11 +726,11 @@ AS $$
           WHERE COALESCE(lower(auth.jwt() ->> 'email'), '') <> ''
             AND lower(auth.jwt() ->> 'email') = ANY (f.tester_emails)
        )
-       OR (public.is_guest_session() AND EXISTS (
+       OR EXISTS (
          SELECT 1 FROM public.document_guests g
            JOIN public.document_guest_links l ON l.id = g.link_id
           WHERE g.user_id = auth.uid() AND l.revoked_at IS NULL AND l.expires_at > now()
-       ))
+       )
      );
 $$;
 
