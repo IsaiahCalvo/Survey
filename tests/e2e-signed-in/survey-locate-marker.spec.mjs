@@ -132,6 +132,14 @@ test('Locate on page centres and zooms to the marker on the first click, every t
       await row.getByRole('button', { name: 'Locate on page' }).click();
       await page.waitForTimeout(200);
       const landed = await measure(page, marker.id);
+      // Owner 2026-10-28: the grabbers kept the zoom the page had before the
+      // jump for about half a second (91 px at 800 %), then snapped to size.
+      // One screen size from the first frame after the jump.
+      const grabber = await page.evaluate((id) => document
+        .querySelector(`[data-survey-marker-id="${id}"] [data-resize-handle="br"]`)
+        ?.getBoundingClientRect().width ?? null, marker.id);
+      expect(grabber, `${marker.name} grabber one size at once`).not.toBeNull();
+      expect(Math.abs(grabber - 11), `${marker.name} grabber ${grabber}px`).toBeLessThan(1);
       await page.waitForTimeout(700);
       const at = await measure(page, marker.id);
       console.log(`[locate] ${marker.name} p${marker.pageNumber}`, JSON.stringify(at));

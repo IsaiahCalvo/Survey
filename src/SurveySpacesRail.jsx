@@ -64,6 +64,7 @@ import SurveyReportMenu from './components/SurveyReportMenu.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
+import { glideAcrossNextChange } from './utils/loadoutTransition.js';
 import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
@@ -3440,7 +3441,12 @@ const SurveySpacesRail = ({
                                                 loadout - All, Move, Copy, Delete, Done - on the category's own row,
                                                 not on a new line under it. */}
                                             {!mobileMode && isExpanded && surveyMarkerCount > 0 && !copyModeActive && !categorySelectModeActive && (() => {
-                                              const exitItemSelect = () => {
+                                              // The count left of the loadout glides with it (owner 2026-10-28).
+                                              const glideCount = (from) => glideAcrossNextChange(
+                                                from?.closest?.('.survey-marker-category-row')?.querySelector('.survey-marker-category-main-count'),
+                                              );
+                                              const exitItemSelect = (event) => {
+                                                glideCount(event?.currentTarget);
                                                 setItemSelectModeActive(prev => {
                                                   const updated = { ...prev };
                                                   delete updated[category.id];
@@ -3529,6 +3535,7 @@ const SurveySpacesRail = ({
                                                       className="survey-marker-category-select"
                                                       onClick={(e) => {
                                                         e.stopPropagation();
+                                                        glideCount(e.currentTarget);
                                                         setItemSelectModeActive(prev => ({
                                                           ...prev,
                                                           [category.id]: true

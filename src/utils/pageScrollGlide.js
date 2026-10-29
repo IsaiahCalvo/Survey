@@ -23,8 +23,8 @@
  *   position (a scrollbar drag, keyboard arrows). The page simply stays where
  *   the glide had got to.
  * - Reduced motion (the system setting): no glide, it lands at once.
- * - It only ever writes scrollTop. Zoom (and the zoomGeneration signal) is
- *   never touched.
+ * - It only ever writes scrollTop (scrollLeft for the sideways centring glide,
+ *   axis 'left'). Zoom (and the zoomGeneration signal) is never touched.
  */
 
 import { easeOutCubic } from './zoomGlide.js';
@@ -96,8 +96,9 @@ export function stepPageGlide(glide, now) {
  *
  * Options:
  *   el            the scroller
- *   to            target scrollTop
- *   screen        view height (defaults to el.clientHeight)
+ *   to            target scrollTop (scrollLeft with axis 'left')
+ *   screen        view height (defaults to el.clientHeight; width across)
+ *   axis          'top' (default) or 'left': which scroll position it moves
  *   reducedMotion force the instant path (defaults to the system setting)
  *   shouldStop()  checked every frame: true stops the glide (a zoom started)
  *   onEnd(reason) 'done' | 'instant' | 'wheel' | 'pointer' | 'touch' |
@@ -108,6 +109,7 @@ export function startPageGlide({
   el,
   to,
   screen,
+  axis = 'top',
   reducedMotion,
   shouldStop = null,
   onEnd = null,
@@ -117,19 +119,22 @@ export function startPageGlide({
   now = () => performance.now(),
 } = {}) {
   if (!el) return null;
-  const maxTop = Math.max(0, finite(el.scrollHeight) - finite(el.clientHeight));
+  const across = axis === 'left';
+  const pos = across ? 'scrollLeft' : 'scrollTop';
+  const view = across ? el.clientWidth : el.clientHeight;
+  const maxTop = Math.max(0, finite(across ? el.scrollWidth : el.scrollHeight) - finite(view));
   const clampTop = (v) => Math.min(maxTop, Math.max(0, finite(v)));
   const target = clampTop(to);
   const reduce = reducedMotion ?? prefersReducedMotion();
-  const plan = reduce ? null : planPageGlide({ from: el.scrollTop, to: target, screen: screen ?? el.clientHeight });
+  const plan = reduce ? null : planPageGlide({ from: el[pos], to: target, screen: screen ?? view });
   if (!plan) {
-    el.scrollTop = target;
+    el[pos] = target;
     onEnd?.('instant');
     return null;
   }
-  if (plan.jumped) el.scrollTop = clampTop(plan.start);
-  let glide = createPageGlide({ start: el.scrollTop, to: target, now: now(), durationMs });
-  let lastWritten = el.scrollTop;
+  if (plan.jumped) el[pos] = clampTop(plan.start);
+  let glide = createPageGlide({ start: el[pos], to: target, now: now(), durationMs });
+  let lastWritten = el[pos];
   let frame = 0;
   let running = true;
 
@@ -154,11 +159,11 @@ export function startPageGlide({
   const tick = () => {
     frame = 0;
     if (!running) return;
-    if (Math.abs(el.scrollTop - lastWritten) > EXTERNAL_SCROLL_EPSILON_PX) { stop('external'); return; }
+    if (Math.abs(el[pos] - lastWritten) > EXTERNAL_SCROLL_EPSILON_PX) { stop('external'); return; }
     if (shouldStop?.()) { stop('zoom'); return; }
     const { top, done } = stepPageGlide(glide, now());
-    el.scrollTop = top;
-    lastWritten = el.scrollTop;
+    el[pos] = top;
+    lastWritten = el[pos];
     if (done) { stop('done'); return; }
     frame = raf(tick);
   };
@@ -179,11 +184,11 @@ export function startPageGlide({
       if (!running) return false;
       const nextTarget = clampTop(nextTo);
       if (Math.abs(nextTarget - glide.to) < 0.5) return true;
-      const next = planPageGlide({ from: el.scrollTop, to: nextTarget, screen: screen ?? el.clientHeight });
-      if (!next) { el.scrollTop = nextTarget; stop('retarget-instant'); return true; }
-      if (next.jumped) el.scrollTop = clampTop(next.start);
-      lastWritten = el.scrollTop;
-      glide = createPageGlide({ start: el.scrollTop, to: nextTarget, now: now(), durationMs });
+      const next = planPageGlide({ from: el[pos], to: nextTarget, screen: screen ?? view });
+      if (!next) { el[pos] = nextTarget; stop('retarget-instant'); return true; }
+      if (next.jumped) el[pos] = clampTop(next.start);
+      lastWritten = el[pos];
+      glide = createPageGlide({ start: el[pos], to: nextTarget, now: now(), durationMs });
       return true;
     },
   };

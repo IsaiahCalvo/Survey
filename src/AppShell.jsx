@@ -5398,11 +5398,13 @@ export default function App({ devPreviewReturnTab = null }) {
       />
 
       {/* Drawboard canvas audit, chunk 4: the floating quick bar over a
-          selection (desktop layout; the phone has its own selection strip).
-          Its colour controls are the tool bar's own (same paint, same picker),
-          and a Survey Marker's entity changes through the entity bar's write. */}
+          selection. Its colour controls are the tool bar's own (same paint,
+          same picker), and a Survey Marker's entity changes through the
+          entity bar's write. On the phone it holds Duplicate and Delete only;
+          colour and line stay on the phone's own selection strip. */}
       <SelectionQuickBar
-        enabled={Boolean(isViewerVisible && !isMobileViewer && bottomToolbarApi)}
+        enabled={Boolean(isViewerVisible && bottomToolbarApi)}
+        phone={Boolean(isMobileViewer)}
         api={bottomToolbarApi}
         paint={annotationPaint}
         swatch={bottomToolbarApi && showsPaintSwatch(bottomToolbarApi) ? {
