@@ -3,10 +3,15 @@
 // yjs, fetch, env), so node tests drive the whole function against the local
 // database and a fake Google.
 //
+// Two providers: Google Sheets (providers/google.js) and Excel workbooks on a
+// work or school Microsoft 365 (providers/msgraph.js). A survey + template has
+// at most one linked sheet, whichever provider made it.
+//
 // Who may do what:
-//   * connect / disconnect Google: any signed-in person (their own sign-in);
-//   * link a survey to a new Google Sheet: an editor or owner of the document,
-//     signed in to Google, with the beta on (flag 'sheet-team-sync' or a
+//   * connect / disconnect Google or Microsoft: any signed-in person (their own
+//     sign-in);
+//   * link a survey to a new sheet: an editor or owner of the document, signed
+//     in to that provider, with the beta on (flag 'sheet-team-sync' or a
 //     Nightly tester);
 //   * run a round, answer a conflict: any editor or owner of a linked
 //     document. A field tech never needs a Google account: the server reaches
@@ -19,6 +24,10 @@ import { encryptToken, decryptToken } from './tokenCrypto.js';
 import {
   googleEndpoints, googleAuthUrl, googleSheetsProvider, exchangeGoogleCode, refreshGoogleToken, revokeGoogleToken,
 } from './providers/google.js';
+import { createMsGraphProvider } from './providers/msgraph.js';
+import {
+  buildMsgraphAuthorizeUrl, exchangeMsgraphCode, fetchMsgraphAccount, msgraphAuthConfigFromEnv, refreshMsgraphToken,
+} from './msgraphAuth.js';
 import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../surveyMarkerDocSync.js';
 import { bytesToPgHex, pgHexToBytes } from '../pgBytea.js';
 import { parseBody, s } from '../inputSchema.js';
@@ -173,6 +182,7 @@ export async function handleSheetSync(req, deps) {
   const url = new URL(req.url);
   try {
     if (req.method === 'GET' && url.pathname.endsWith('/oauth/callback')) return await oauthCallback(url, deps);
+    if (req.method === 'GET' && url.pathname.endsWith('/oauth/msgraph/callback')) return await msgraphCallback(url, deps);
     if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
     const supabaseUrl = env.SUPABASE_URL;
     const anonKey = env.SUPABASE_ANON_KEY;
@@ -211,15 +221,17 @@ export async function handleSheetSync(req, deps) {
       fetchImpl: deps.fetchImpl || fetch,
       user: who.user,
       body: parsed.value,
-      // Google today; Microsoft 365 workbooks plug in here (providers/msgraph.js).
+      // Which provider a call means. Calls about a linked survey may leave it
+      // out: linkFor finds the survey's one link whatever its provider.
       provider: parsed.value.provider || 'google',
+      providerGiven: Boolean(parsed.value.provider),
       userDb: deps.createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } }),
       service: deps.createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } }),
     };
     switch (parsed.value.action) {
       case 'status': return json(await statusFor(ctx));
-      case 'connect': return json(await connectGoogle(ctx));
-      case 'disconnect': return json(await disconnectGoogle(ctx));
+      case 'connect': return json(ctx.provider === 'msgraph' ? await connectMicrosoft(ctx) : await connectGoogle(ctx));
+      case 'disconnect': return json(ctx.provider === 'msgraph' ? await disconnectMicrosoft(ctx) : await disconnectGoogle(ctx));
       case 'link': return json(await linkSheet(ctx));
       case 'sync': return json(await syncLink(ctx));
       case 'choose': return json(await chooseConflict(ctx));
@@ -247,7 +259,6 @@ const tokenKey = (env) => env.SHEET_SYNC_TOKEN_KEY || env.SUPABASE_SERVICE_ROLE_
 const appOrigins = (env) => (env.SHEET_SYNC_APP_ORIGINS ? env.SHEET_SYNC_APP_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean) : DEFAULT_APP_ORIGINS);
 
 async function connectGoogle(ctx) {
-  if (ctx.provider !== 'google') throw new SyncError('Microsoft 365 live sync is not switched on yet.', 501, 'provider_not_ready');
   const g = googleConfig(ctx.env);
   if (!g.configured) throw new SyncError('Google Sheets is not set up on this server yet.', 503, 'not_configured');
   await requireBeta(ctx);
@@ -312,6 +323,74 @@ async function disconnectGoogle(ctx) {
   return { ok: true };
 }
 
+// ---- Microsoft sign-in ----------------------------------------------------------
+// Confidential client with offline access (msgraphAuth.js); off until the Azure
+// app's secret is set. Microsoft hands back a new refresh token on each refresh,
+// so the stored one is replaced as it rotates.
+
+const msgraphConfig = (env) => {
+  const base = (env.SHEET_SYNC_PUBLIC_URL || `${String(env.SUPABASE_URL || '').replace(/\/$/, '')}/functions/v1/sheet-sync`).replace(/\/$/, '');
+  return msgraphAuthConfigFromEnv((name) => env[name], { redirectUri: `${base}/oauth/msgraph/callback` });
+};
+
+async function connectMicrosoft(ctx) {
+  const ms = msgraphConfig(ctx.env);
+  if (!ms) throw new SyncError('Microsoft 365 is not set up on this server yet.', 503, 'not_configured');
+  await requireBeta(ctx);
+  const origin = appOrigins(ctx.env).includes(ctx.body.appOrigin) ? ctx.body.appOrigin : appOrigins(ctx.env)[0];
+  const state = await signState(ms.clientSecret, { u: ctx.user.id, o: origin, e: Date.now() + STATE_TTL_MS, n: crypto.randomUUID() });
+  return { url: buildMsgraphAuthorizeUrl(ms, state, { loginHint: ctx.user.email }) };
+}
+
+async function msgraphCallback(url, deps) {
+  const { env } = deps;
+  const ms = msgraphConfig(env);
+  const fallback = appOrigins(env)[0];
+  const back = (origin, result) => new Response(null, {
+    status: 302,
+    headers: { Location: `${origin}/google-connected.html?provider=msgraph&result=${encodeURIComponent(result)}`, 'Cache-Control': 'no-store' },
+  });
+  if (!ms) return back(fallback, 'not_configured');
+  const state = await readState(ms.clientSecret, url.searchParams.get('state'));
+  if (!state?.u) return back(fallback, 'expired');
+  const origin = appOrigins(env).includes(state.o) ? state.o : fallback;
+  if (url.searchParams.get('error')) return back(origin, 'cancelled');
+  const code = url.searchParams.get('code');
+  if (!code) return back(origin, 'cancelled');
+  const fetchImpl = deps.fetchImpl || fetch;
+  try {
+    const tokens = await exchangeMsgraphCode(ms, code, { fetch: fetchImpl });
+    if (!tokens.scopes.some((sc) => /files\.readwrite/i.test(sc))) return back(origin, 'no_access');
+    const account = await fetchMsgraphAccount(tokens.accessToken, { fetch: fetchImpl, graphBase: ms.graphBase });
+    const service = deps.createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    const { error } = await service.from('sheet_sync_connections').upsert({
+      user_id: state.u,
+      provider: 'msgraph',
+      account_email: account.email,
+      refresh_token_enc: await encryptToken(tokens.refreshToken, tokenKey(env)),
+      scopes: tokens.scopes.join(' '),
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw new Error('store failed');
+    await service.from('sheet_sync_links').update({ status: 'active', last_error: null })
+      .eq('connection_user_id', state.u).eq('provider', 'msgraph').eq('status', 'broken');
+    return back(origin, 'connected');
+  } catch (err) {
+    log('oauth_failed', { provider: 'msgraph', status: err?.status, code: err?.code });
+    return back(origin, err?.code === 'no_refresh_token' ? 'no_access' : 'failed');
+  }
+}
+
+async function disconnectMicrosoft(ctx) {
+  // Microsoft has no call to revoke one refresh token; deleting ours ends
+  // Survey's access (the person can also remove Survey under My Apps).
+  await ctx.service.from('sheet_sync_connections').delete().eq('user_id', ctx.user.id).eq('provider', 'msgraph');
+  await ctx.service.from('sheet_sync_links')
+    .update({ status: 'broken', last_error: 'The person who linked this workbook disconnected Microsoft.' })
+    .eq('connection_user_id', ctx.user.id).eq('provider', 'msgraph');
+  return { ok: true };
+}
+
 // ---- gates ----------------------------------------------------------------------
 
 async function requireBeta(ctx) {
@@ -320,7 +399,7 @@ async function requireBeta(ctx) {
     ctx.userDb.rpc('can_use_nightly'),
   ]);
   if (flags?.[SHEET_SYNC_FLAG] === true || nightly === true) return;
-  throw new SyncError('Google Sheets live sync is in beta on Survey Nightly.', 403, 'beta');
+  throw new SyncError('Live sheet sync is in beta on Survey Nightly.', 403, 'beta');
 }
 
 async function roleOf(ctx, documentId) {
@@ -345,13 +424,20 @@ async function fieldMapsOn(ctx) {
 
 const LINK_COLUMNS = 'id, document_id, template_id, provider, connection_user_id, file_id, file_url, title, layout, baseline, state, remote_version, app_hash, status, last_round_at, last_error, backoff_until, created_by';
 
-async function linkFor(ctx, documentId, templateId) {
+// The survey's linked sheet. linkSheet keeps it to one per survey + template,
+// so without a named provider the one there is the answer.
+async function linkFor(ctx, documentId, templateId, { anyProvider = !ctx.providerGiven } = {}) {
   if (!templateId) throw new SyncError('Say which survey template.', 400, 'missing_template');
-  const { data, error } = await ctx.service.from('sheet_sync_links').select(LINK_COLUMNS)
-    .eq('document_id', documentId).eq('template_id', templateId).eq('provider', ctx.provider).maybeSingle();
+  let query = ctx.service.from('sheet_sync_links').select(LINK_COLUMNS)
+    .eq('document_id', documentId).eq('template_id', templateId);
+  if (!anyProvider) query = query.eq('provider', ctx.provider);
+  const { data, error } = await query.order('created_at', { ascending: true }).limit(1);
   if (error) throw new SyncError('Could not read the sheet link.', 500, 'link_read');
-  return data;
+  return data?.[0] || null;
 }
+
+const providerName = (provider) => (provider === 'msgraph' ? 'Microsoft 365' : 'Google');
+const sheetName = (provider) => (provider === 'msgraph' ? 'Excel workbook' : 'Google Sheet');
 
 function layoutFrom(body) {
   if (!body.template || !body.kit) return null;
@@ -363,7 +449,7 @@ function layoutFrom(body) {
 }
 
 async function providerFor(ctx, connectionUserId, provider = 'google') {
-  if (provider !== 'google') throw new SyncError('Microsoft 365 live sync is not switched on yet.', 501, 'provider_not_ready');
+  if (provider === 'msgraph') return msgraphProviderFor(ctx, connectionUserId);
   const g = googleConfig(ctx.env);
   if (!g.configured) throw new SyncError('Google Sheets is not set up on this server yet.', 503, 'not_configured');
   const { data: row } = await ctx.service.from('sheet_sync_connections')
@@ -377,6 +463,28 @@ async function providerFor(ctx, connectionUserId, provider = 'google') {
     return access.accessToken;
   };
   return googleSheetsProvider({ endpoints: g.endpoints, getAccessToken, fetchImpl: ctx.fetchImpl });
+}
+
+async function msgraphProviderFor(ctx, connectionUserId) {
+  const ms = msgraphConfig(ctx.env);
+  if (!ms) throw new SyncError('Microsoft 365 is not set up on this server yet.', 503, 'not_configured');
+  const { data: row } = await ctx.service.from('sheet_sync_connections')
+    .select('refresh_token_enc').eq('user_id', connectionUserId).eq('provider', 'msgraph').maybeSingle();
+  if (!row) throw Object.assign(new Error('no connection'), { status: 401 });
+  let refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
+  let access = null;
+  const getAccessToken = async () => {
+    if (access && access.expiresAt > Date.now() + 60_000) return access.accessToken;
+    access = await refreshMsgraphToken(ms, refreshToken, { fetch: ctx.fetchImpl });
+    if (access.refreshToken && access.refreshToken !== refreshToken) {
+      refreshToken = access.refreshToken;
+      await ctx.service.from('sheet_sync_connections')
+        .update({ refresh_token_enc: await encryptToken(refreshToken, tokenKey(ctx.env)), updated_at: new Date().toISOString() })
+        .eq('user_id', connectionUserId).eq('provider', 'msgraph');
+    }
+    return access.accessToken;
+  };
+  return createMsGraphProvider({ getAccessToken, fetch: ctx.fetchImpl, baseUrl: ms.graphBase });
 }
 
 async function signingFor(ctx, documentId) {
@@ -430,8 +538,11 @@ const publicLink = (link, userId) => (link ? {
 
 async function statusFor(ctx, round = null) {
   const g = googleConfig(ctx.env);
-  const { data: conn } = await ctx.service.from('sheet_sync_connections')
-    .select('account_email').eq('user_id', ctx.user.id).eq('provider', ctx.provider).maybeSingle();
+  const { data: conns } = await ctx.service.from('sheet_sync_connections')
+    .select('provider, account_email').eq('user_id', ctx.user.id);
+  const connOf = (provider) => (conns || []).find((c) => c.provider === provider) || null;
+  const conn = connOf('google');
+  const msConn = connOf('msgraph');
   let link = null;
   let role = null;
   if (ctx.body.documentId && ctx.body.templateId) {
@@ -440,7 +551,9 @@ async function statusFor(ctx, round = null) {
   }
   return {
     configured: g.configured,
+    providers: { google: { configured: g.configured }, msgraph: { configured: Boolean(msgraphConfig(ctx.env)) } },
     google: { connected: Boolean(conn), email: conn?.account_email || null },
+    microsoft: { connected: Boolean(msConn), email: msConn?.account_email || null },
     role,
     link: publicLink(link, ctx.user.id),
     ...(round ? { round } : {}),
@@ -449,26 +562,32 @@ async function statusFor(ctx, round = null) {
 
 async function linkSheet(ctx) {
   const { documentId, templateId } = ctx.body;
-  if (ctx.provider !== 'google') throw new SyncError('Microsoft 365 live sync is not switched on yet.', 501, 'provider_not_ready');
   await requireEditor(ctx, documentId);
   await requireBeta(ctx);
   if (!templateId) throw new SyncError('Say which survey template.', 400, 'missing_template');
   const layout = layoutFrom(ctx.body);
   if (!layout?.scopes.length) throw new SyncError('This template has no categories to put in a sheet.', 400, 'empty_layout');
-  const existing = await linkFor(ctx, documentId, templateId);
-  if (existing) throw new SyncError('This survey already has a linked Google Sheet.', 409, 'already_linked');
+  // One sheet per survey + template, so two server writers never race.
+  const existing = await linkFor(ctx, documentId, templateId, { anyProvider: true });
+  if (existing) throw new SyncError(`This survey already has a linked ${sheetName(existing.provider)}.`, 409, 'already_linked');
   let provider;
-  try { provider = await providerFor(ctx, ctx.user.id); } catch (err) {
+  try { provider = await providerFor(ctx, ctx.user.id, ctx.provider); } catch (err) {
     if (err instanceof SyncError) throw err;
-    throw new SyncError('Connect Google first.', 409, 'not_connected');
+    throw new SyncError(`Connect ${providerName(ctx.provider)} first.`, 409, 'not_connected');
   }
   const signing = await signingFor(ctx, documentId);
   const title = ctx.body.title || 'Survey';
-  const made = await provider.createFile({ title, layout });
+  let made;
+  try { made = await provider.createFile({ title, layout }); } catch (err) {
+    if (err?.code === 'personal-onedrive') {
+      throw new SyncError('This Microsoft account has a personal OneDrive. Live sync needs a work or school Microsoft 365 account.', 409, 'personal-onedrive');
+    }
+    throw err;
+  }
   const { data: link, error } = await ctx.service.from('sheet_sync_links').insert({
     document_id: documentId,
     template_id: templateId,
-    provider: 'google',
+    provider: ctx.provider,
     connection_user_id: ctx.user.id,
     file_id: made.fileId,
     file_url: made.url,
@@ -478,7 +597,7 @@ async function linkSheet(ctx) {
     created_by: ctx.user.id,
   }).select(LINK_COLUMNS).single();
   if (error) throw new SyncError('Could not save the sheet link.', 500, 'link_write');
-  log('linked', { provider: 'google', scopes: layout.scopes.length });
+  log('linked', { provider: ctx.provider, scopes: layout.scopes.length });
   const round = await runRoundFor(ctx, link, { provider, signing, force: true });
   return statusFor(ctx, round);
 }
@@ -516,11 +635,13 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
       throw err;
     }
     const status = Number(err?.status) || 500;
-    const message = status === 401 ? 'The Google sign-in used for this sheet stopped working. The person who linked it needs to connect Google again.'
-      : status === 404 ? 'The linked Google Sheet was deleted or is no longer shared with the person who linked it.'
-      : status === 429 ? 'Google asked us to slow down. Syncing again in a minute.'
+    const who = providerName(link.provider);
+    const what = sheetName(link.provider);
+    const message = status === 401 ? `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`
+      : status === 404 ? `The linked ${what} was deleted or is no longer shared with the person who linked it.`
+      : status === 429 ? `${who} asked us to slow down. Syncing again in a minute.`
       : status === 409 && err?.code === 'personal-onedrive' ? 'This workbook is on a personal OneDrive, which cannot sync cell by cell.'
-      : 'Could not reach the Google Sheet. Trying again soon.';
+      : `Could not reach the ${what}. Trying again soon.`;
     const patch = { last_error: message };
     if (status === 401 || status === 404) patch.status = 'broken';
     if (status === 409 && err?.code === 'personal-onedrive') patch.status = 'paused';
@@ -536,7 +657,7 @@ async function syncLink(ctx) {
   const { documentId, templateId } = ctx.body;
   await requireEditor(ctx, documentId);
   const link = await linkFor(ctx, documentId, templateId);
-  if (!link) throw new SyncError('This survey has no linked Google Sheet.', 404, 'not_linked');
+  if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
   const layout = layoutFrom(ctx.body);
   if (layout && stable(layout) !== stable(link.layout)) {
     // The template changed (new category, line or entity): sync by the new layout.
@@ -552,7 +673,7 @@ async function chooseConflict(ctx) {
   await requireEditor(ctx, documentId);
   if (!markerId || !choice) throw new SyncError('Say which row and which side.', 400, 'missing_choice');
   const link = await linkFor(ctx, documentId, templateId);
-  if (!link) throw new SyncError('This survey has no linked Google Sheet.', 404, 'not_linked');
+  if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
   const state = { ...(link.state || {}) };
   const known = choice === 'putBack' ? state.removedInSheet?.[markerId] : state.conflicts?.[markerId];
   if (!known) return statusFor(ctx);

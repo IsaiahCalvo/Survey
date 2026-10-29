@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   MSGRAPH_SCOPES, buildMsgraphAuthorizeUrl, exchangeMsgraphCode, msgraphAuthConfigFromEnv,
-  refreshMsgraphToken, signConnectState, verifyConnectState,
+  refreshMsgraphToken,
 } from '../supabase/functions/_shared/sheetSync/msgraphAuth.js';
 
 const env = (values) => (name) => values[name];
@@ -24,9 +24,12 @@ function tokenEndpoint(reply, status = 200) {
 test('stays off until the secret and a https callback are set', () => {
   assert.equal(msgraphAuthConfigFromEnv(env({})), null);
   assert.equal(msgraphAuthConfigFromEnv(env({ MS_GRAPH_CLIENT_SECRET: 'shh' })), null);
-  assert.equal(msgraphAuthConfigFromEnv(env({ MS_GRAPH_CLIENT_SECRET: 'shh', MS_GRAPH_REDIRECT_URI: 'http://x' })), null);
+  assert.equal(msgraphAuthConfigFromEnv(env({ MS_GRAPH_CLIENT_SECRET: 'shh', MS_GRAPH_REDIRECT_URI: 'ftp://x' })), null);
   assert.equal(CONFIG.clientId, '0da81a9e-2b05-46ee-b826-5efc5114c765');
-  assert.equal(CONFIG.tenant, 'common');
+  assert.equal(CONFIG.tokenUrl, 'https://login.microsoftonline.com/common/oauth2/v2.0/token');
+  assert.equal(CONFIG.graphBase, 'https://graph.microsoft.com/v1.0');
+  // The sheet-sync function passes its own callback when the env names none.
+  assert.equal(msgraphAuthConfigFromEnv(env({ MS_GRAPH_CLIENT_SECRET: 'shh' }), { redirectUri: 'https://x/cb' }).redirectUri, 'https://x/cb');
 });
 
 test('the sign-in link asks to stay signed in, for files only', () => {
@@ -61,18 +64,4 @@ test('an ended sign-in says to reconnect (401) so the runner marks the link', as
   await assert.rejects(refreshMsgraphToken(CONFIG, 'r1', { fetch: ended.fetch }), (e) => e.status === 401 && e.code === 'reconnect');
   const other = tokenEndpoint({ error: 'invalid_client' }, 401);
   await assert.rejects(refreshMsgraphToken(CONFIG, 'r1', { fetch: other.fetch }), (e) => e.code === 'invalid_client');
-});
-
-test('the sign-in state is signed and expires after 10 minutes', async () => {
-  let clock = 5_000;
-  const now = () => clock;
-  const state = await signConnectState({ userId: 'u1', returnTo: '/doc/1' }, 'key', { now });
-  assert.equal((await verifyConnectState(state, 'key', { now })).userId, 'u1');
-  assert.equal(await verifyConnectState(state, 'other-key', { now }), null);
-  const [body, sig] = state.split('.');
-  const forged = btoa(JSON.stringify({ userId: 'u2', exp: clock + 1e6 })).replace(/=+$/, '');
-  assert.equal(await verifyConnectState(`${forged}.${sig}`, 'key', { now }), null);
-  assert.equal(await verifyConnectState(body, 'key', { now }), null);
-  clock += 10 * 60 * 1000 + 1;
-  assert.equal(await verifyConnectState(state, 'key', { now }), null);
 });

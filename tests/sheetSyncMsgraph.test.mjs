@@ -104,6 +104,7 @@ function fakeGraph({ driveType = 'business' } = {}) {
       });
     }
     const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?/.exec(tail);
+    if (method === 'POST' && tail === '/freezePanes/freezeRows') { target.frozen = JSON.parse(init.body).count; return json(200, {}); }
     if (range && method === 'PATCH' && /^[A-Z]+:[A-Z]+$/.test(range[1])) {
       target.hidden = target.hidden || [];
       if (JSON.parse(init.body).columnHidden) target.hidden.push(range[1]);
@@ -157,15 +158,16 @@ test('file ids round-trip, columns letter past Z', () => {
   assert.deepEqual([0, 25, 26, 51, 701, 702].map(columnLetter), ['A', 'Z', 'AA', 'AZ', 'ZZ', 'AAA']);
 });
 
-test('values are written as data, never as formulas', () => {
+test('text stays text: never a formula, number, date or yes/no', () => {
   assert.equal(cellValueForWrite('=SUM(A1)'), "'=SUM(A1)");
-  assert.equal(cellValueForWrite('@me'), "'@me");
-  assert.equal(cellValueForWrite('-see note'), "'-see note");
-  assert.equal(cellValueForWrite('-5'), '-5');
-  assert.equal(cellValueForWrite('+1.5'), '+1.5');
-  assert.equal(cellValueForWrite('Pass'), 'Pass');
+  assert.equal(cellValueForWrite('00123'), "'00123");
+  assert.equal(cellValueForWrite('1/2'), "'1/2");
+  assert.equal(cellValueForWrite('TRUE'), "'TRUE");
+  assert.equal(cellValueForWrite('Pass'), "'Pass");
+  assert.equal(cellValueForWrite(''), '');
   assert.equal(cellValueForWrite(null), '');
   assert.equal(cellValueForWrite(3), 3);
+  assert.equal(cellValueForWrite(false), false);
 });
 
 test('cells side by side on a row go out as one write', () => {
@@ -173,7 +175,7 @@ test('cells side by side on a row go out as one write', () => {
     { row: 2, col: 3, value: 'd' }, { row: 2, col: 1, value: 'b' }, { row: 2, col: 2, value: 'c' },
     { row: 5, col: 1, value: 'x' }, { row: 2, col: 3, value: 'D' },
   ]);
-  assert.deepEqual(runs, [{ row: 2, col: 1, values: ['b', 'c', 'D'] }, { row: 5, col: 1, values: ['x'] }]);
+  assert.deepEqual(runs, [{ row: 2, col: 1, values: ["'b", "'c", "'D"] }, { row: 5, col: 1, values: ["'x"] }]);
 });
 
 test('reads every sheet in order, anchored at A1, with dates as shown text', async () => {
@@ -293,6 +295,7 @@ test('creates a workbook in the Survey folder with one sheet per scope', async (
   assert.deepEqual(file.sheets.map((s) => s.name), ['Fire - L1', 'Fire - L2'], 'starter sheet removed');
   assert.deepEqual(file.sheets[0].cells[0], ['Row ID', 'Item', 'Entity', 'Works?', 'Note']);
   assert.deepEqual(file.sheets[0].hidden, ['A:A'], 'Row ID column hidden');
+  assert.equal(file.sheets[0].frozen, 1, 'header row frozen');
   assert.deepEqual(file.sheets[0].validation, { 'C2:C1000': 'Smoke detector,Pull station', 'D2:D1000': 'Pass,Fail,N/A' });
   assert.deepEqual(file.sheets[1].cells[0], ['Row ID', 'Notes']);
   assert.deepEqual(made.sheetIds, { 'm:cat1': '{Fire - L1-id}', 'm:cat2': '{Fire - L2-id}' });

@@ -42,15 +42,16 @@ export function cellAddress(row, col) {
 }
 
 /**
- * What the engine writes is data, never a formula. Excel reads a leading `=`, `@`
- * or a `+`/`-` that isn't a number as a formula; a leading apostrophe keeps it text
- * (Excel hides the apostrophe, as when typed).
+ * What the engine writes stays what it is. Graph writes values the way typing
+ * does, so Excel would turn "=..." into a formula and "00123", "1/2" or "TRUE"
+ * into a number, date or yes/no. A leading apostrophe keeps any text as text
+ * (Excel hides it, as when typed); numbers and booleans go as they are.
  */
 export function cellValueForWrite(value) {
   if (value === null || value === undefined) return '';
   if (typeof value === 'number' || typeof value === 'boolean') return value;
   const text = String(value);
-  return /^[=@]/.test(text) || /^[+-](?![\d.])/.test(text) ? `'${text}` : text;
+  return text === '' ? '' : `'${text}`;
 }
 
 // A number format that shows a date or time (not General, 0.00, %...). Graph
@@ -229,11 +230,13 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       const choices = dropDownChoices(column, layout);
       if (!choices) continue;
       const letter = columnLetter(index);
+      // A nicety: a workbook without drop-downs still syncs.
       await workbook(fileId, 'PATCH', `${path}/range(address='${letter}2:${letter}${DROP_DOWN_ROWS}')/dataValidation`, {
         body: { rule: { list: { inCellDropDown: true, source: choices } }, errorAlert: { showAlert: false } },
         where: 'dropDown',
-      });
+      }).catch(() => {});
     }
+    await workbook(fileId, 'POST', `${path}/freezePanes/freezeRows`, { body: { count: 1 }, where: 'freezeHeader' }).catch(() => {});
     return added.id;
   }
 

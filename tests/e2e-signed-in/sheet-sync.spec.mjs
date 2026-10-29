@@ -235,7 +235,7 @@ test('the Survey panel makes a live Google Sheet and keeps it in step', async ({
     await expect(button).toBeVisible({ timeout: 60_000 });
     await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected');
     await button.click();
-    const panel = page.getByRole('dialog', { name: 'Google Sheets live sync' });
+    const panel = page.getByRole('dialog', { name: 'Live sheet sync' });
     await expect(panel.getByText(`Signed in as ${E2E_ACCOUNTS.owner.email}`)).toBeVisible();
     await panel.getByRole('button', { name: 'Make a live Google Sheet' }).click();
     await expect(panel.getByRole('link', { name: 'Open sheet' })).toBeVisible({ timeout: 30_000 });

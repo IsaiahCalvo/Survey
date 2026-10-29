@@ -21,22 +21,30 @@ p{margin:0;color:var(--soft)}
   <p id="text">You can close this tab and go back to Survey. Your survey picks it up in a few seconds.</p>
 </main>
 <script>
-// Google's consent page sends people here through the sheet-sync function
-// (supabase/functions/_shared/sheetSync/service.js, oauthCallback).
+// Google's and Microsoft's consent pages send people here through the
+// sheet-sync function (supabase/functions/_shared/sheetSync/service.js,
+// oauthCallback and msgraphCallback).
 (function () {
-  var result = new URLSearchParams(location.search).get('result') || 'connected';
+  var params = new URLSearchParams(location.search);
+  var result = params.get('result') || 'connected';
+  // The same page answers Microsoft's sign-in (?provider=msgraph).
+  var ms = params.get('provider') === 'msgraph';
+  var who = ms ? 'Microsoft' : 'Google';
   var copy = {
-    connected: ['Google is connected', 'You can close this tab and go back to Survey. Your survey picks it up in a few seconds.'],
-    cancelled: ['Google was not connected', 'You stopped before saying yes. Close this tab and try again from Survey.'],
-    no_access: ['Google was not connected', 'Survey needs permission to make and edit its own sheets. Close this tab and try again, and tick the box Google shows.'],
-    expired: ['That link ran out', 'Close this tab and press Connect Google in Survey again.'],
-    not_configured: ['Not set up yet', 'Google Sheets is not set up on this server yet.'],
-    failed: ['Something went wrong', 'Google did not finish connecting. Close this tab and try again.']
+    connected: [who + ' is connected', 'You can close this tab and go back to Survey. Your survey picks it up in a few seconds.'],
+    cancelled: [who + ' was not connected', 'You stopped before saying yes. Close this tab and try again from Survey.'],
+    no_access: [who + ' was not connected', ms
+      ? 'Survey needs permission to edit Excel files and to stay signed in. Close this tab and try again. If your company blocks new apps, ask your IT team to allow Survey.'
+      : 'Survey needs permission to make and edit its own sheets. Close this tab and try again, and tick the box Google shows.'],
+    expired: ['That link ran out', 'Close this tab and press Connect ' + who + ' in Survey again.'],
+    not_configured: ['Not set up yet', (ms ? 'Microsoft 365' : 'Google Sheets') + ' is not set up on this server yet.'],
+    failed: ['Something went wrong', who + ' did not finish connecting. Close this tab and try again.']
   }[result] || ['Something went wrong', 'Close this tab and try again from Survey.'];
+  if (ms) document.title = 'Microsoft 365 | Survey';
   document.getElementById('title').textContent = copy[0];
   document.getElementById('text').textContent = copy[1];
   if (result === 'connected') {
-    try { if (window.opener) window.opener.postMessage({ type: 'survey-google-connected' }, location.origin); } catch (e) { /* the app polls too */ }
+    try { if (window.opener) window.opener.postMessage({ type: ms ? 'survey-microsoft-connected' : 'survey-google-connected' }, location.origin); } catch (e) { /* the app polls too */ }
     setTimeout(function () { try { window.close(); } catch (e) { /* stays open */ } }, 1500);
   }
 })();
