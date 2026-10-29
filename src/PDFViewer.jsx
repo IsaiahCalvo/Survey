@@ -325,6 +325,7 @@ import {
 import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet, bindWorkbookLocation, exportCapabilityTier, workbookLocationFromDriveItem } from './services/workbookRegistration';
 import { EXPORT_REGISTRATION, resolveExportRegistration } from './services/excelExportRegistration';
 import { matchSheetToCategory, readSheetMap, writeSheetMap } from './services/excelSheetMap';
+import { PULL_BEFORE_PUSH, hasRowWaitingOnChoice, pullAllowsPush } from './services/excelPushGate';
 // KAL-309: server-authoritative Excel change-set transport + materialize reducer.
 import {
   submitChangeSet,
@@ -15973,8 +15974,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     };
   }, [getUserInitials]);
 
+  // Set once handleSyncFromExcel exists (below): pulls Excel's latest, then pushes.
+  const requestPushAfterPullRef = useRef(null);
   const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
-    const { silent = false } = options;
+    const { silent = false, afterPull = false } = options;
     if (!features?.excelExport) {
       if (!silent) showToast(withUpgradeHint('Excel export is part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
       return;
@@ -16028,6 +16031,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         setHasPendingExcelSyncChanges(true);
       }
       debugLog('Excel automatic writeback disabled (Stage 0 safety switch) — survey marked not-synced; skipping silent whole-file upload.');
+      return;
+    }
+
+    // A push rebuilds the whole workbook from the app, which overwrote anything typed
+    // in Excel since the last pull (Excel audit W5). Pull that in first; the push runs
+    // once the import has committed, so it is built from the merged markers.
+    // Desktop only: the pull reads the linked file through the desktop app.
+    if (targetPath && !afterPull && window.electronAPI && requestPushAfterPullRef.current) {
+      requestPushAfterPullRef.current({ targetPath, silent });
       return;
     }
 
@@ -17226,12 +17238,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Push survey data to linked Excel with retry logic for locked files
   const pushToExcelWithRetry = useCallback(async (
     isRetry = false,
-    { throwOnFailure = false } = {},
+    { throwOnFailure = false, afterPull = false } = {},
   ) => {
     if (!selectedTemplate?.linkedExcelPath) return;
 
     try {
-      await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
+      await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true, afterPull });
       // Show success message (especially important after retry)
       if (isRetry) {
         showToast('Excel file updated successfully!', 'success');
@@ -17243,7 +17255,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         // Show the locked file modal
         setExcelLockedFilePath(selectedTemplate.linkedExcelPath);
         setExcelLockedIsOneDrive(selectedTemplate.isOneDrive || false);
-        setPendingExcelSyncCallback(() => () => pushToExcelWithRetry(true));
+        setPendingExcelSyncCallback(() => () => pushToExcelWithRetry(true, { afterPull }));
         setShowExcelLockedModal(true);
       } else {
         // For other errors, just log - don't interrupt the save flow
@@ -19638,7 +19650,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const importTrigger = options?.silent === true ? 'auto' : 'manual';
     if (!selectedTemplate?.linkedExcelPath) {
       showToast('No Excel file linked to this survey.', 'error');
-      return;
+      return PULL_BEFORE_PUSH.FAILED;
     }
 
     if (window.electronAPI) {
@@ -19648,7 +19660,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           // Use OneDrive API to download
           if (!graphClient) {
             showToast('Please sign in to Microsoft to sync with OneDrive.', 'warn');
-            return;
+            return PULL_BEFORE_PUSH.FAILED;
           }
 
           // Ensure fresh token before API call
@@ -19656,7 +19668,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             const tokenValid = await ensureFreshToken();
             if (!tokenValid) {
               showToast('Microsoft session expired. Please reconnect your account.', 'warn');
-              return;
+              return PULL_BEFORE_PUSH.FAILED;
             }
           }
 
@@ -19672,7 +19684,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             fileData = await downloadExcelFileByPath(graphClient, apiPath);
           }
         } else {
-          // Use local filesystem
+          // Use local filesystem. A push may recreate a linked file that was moved away.
+          if (options?.beforePush && window.electronAPI.fileExists
+              && !(await window.electronAPI.fileExists(selectedTemplate.linkedExcelPath))) {
+            return PULL_BEFORE_PUSH.MISSING;
+          }
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
         }
         const ExcelJS = (await import('exceljs')).default;
@@ -19807,18 +19823,60 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             importMeta
           });
           setShowNewColumnsModal(true);
-          return; // Pause here, continue after user decision
+          return PULL_BEFORE_PUSH.PAUSED; // Pause here, continue after user decision
         }
 
         // No new columns, proceed with normal import
         await executeExcelImport(worksheetDataList, selectedTemplate, importMeta);
+        return PULL_BEFORE_PUSH.DONE;
 
       } catch (error) {
         console.error('Failed to sync from Excel:', error);
         showToast('Failed to read or parse the linked Excel file.', 'error');
+        return PULL_BEFORE_PUSH.FAILED;
       }
     }
+    return PULL_BEFORE_PUSH.FAILED;
   }, [selectedTemplate, graphClient, ensureFreshToken, executeExcelImport]);
+
+  // Pull before push (Excel audit W5). The pull's marker changes commit first; the
+  // effect then pushes from them, unless a row tied to a marker still waits for a
+  // choice (pushing would overwrite Excel's side of it).
+  const pushAfterPullRef = useRef(null);
+  const pullBeforePushInFlightRef = useRef(false);
+  const [pushAfterPullTick, setPushAfterPullTick] = useState(0);
+  requestPushAfterPullRef.current = async ({ targetPath, silent }) => {
+    if (pullBeforePushInFlightRef.current) return;
+    pullBeforePushInFlightRef.current = true;
+    try {
+      const status = await handleSyncFromExcel({ silent: true, beforePush: true });
+      if (!pullAllowsPush(status)) {
+        if (status === PULL_BEFORE_PUSH.PAUSED) {
+          showToast('Choose what to do with the new Excel columns, then push again.', 'warn');
+        } else if (!silent) {
+          showToast('Couldn\u2019t read Excel\u2019s latest changes, so nothing was pushed. Try again.', 'warn');
+        }
+        return;
+      }
+      pushAfterPullRef.current = { targetPath, silent };
+      setPushAfterPullTick((tick) => tick + 1);
+    } finally {
+      pullBeforePushInFlightRef.current = false;
+    }
+  };
+  useEffect(() => {
+    const pending = pushAfterPullRef.current;
+    if (!pending) return;
+    pushAfterPullRef.current = null;
+    if (hasRowWaitingOnChoice(pendingImportReview, surveyMarkers)) {
+      showToast('Some rows changed in Excel need your choice first (red marks in the Survey panel). Answer them, then push again.', 'warn');
+      return;
+    }
+    if (pending.silent) pushToExcelWithRetry(false, { afterPull: true });
+    else handleExportSurveyToExcel(pending.targetPath, { afterPull: true });
+    // Runs once per pull (the tick); reads the markers and review list that pull committed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushAfterPullTick]);
 
   // Local "Excel is closed" Row ID flush (Amendment 2026-06-08(b) step 3,
   // HANDOFF item 3b — rowIdLocalWriteback.js). Runs ONLY at existing settle
