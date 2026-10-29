@@ -466,6 +466,26 @@ function growState(kind, animation, motion) {
  * that built the DOM each read forces a style and layout pass. Returns a
  * cancel. Without requestAnimationFrame it runs on a timer.
  */
+/**
+ * Owner 2026-10-28: a count that sits just left of a header's loadout (the
+ * Survey panel's category rows) jumped sideways the moment Select mode grew
+ * the loadout or Done shrank it. Call this before the change: in the frame the
+ * change first paints, the element glides from where it was to its new spot
+ * with the loadout's own timing.
+ */
+export function glideAcrossNextChange(element, win = typeof window === 'undefined' ? undefined : window) {
+  if (!element?.getBoundingClientRect || !win?.requestAnimationFrame || prefersReducedMotion(win)) return;
+  const before = element.getBoundingClientRect().left;
+  win.requestAnimationFrame(() => {
+    if (!element.isConnected || typeof element.animate !== 'function') return;
+    const dx = before - element.getBoundingClientRect().left;
+    if (Math.abs(dx) < 0.5) return;
+    element.animate([{ translate: `${dx}px 0px` }, { translate: '0px 0px' }], {
+      duration: LOADOUT_MOTION.durationMs, easing: LOADOUT_MOTION.easing,
+    });
+  });
+}
+
 export function afterPaint(fn, win = typeof window === 'undefined' ? undefined : window) {
   if (!win) return () => {};
   let timer = null;

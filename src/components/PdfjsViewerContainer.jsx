@@ -131,6 +131,7 @@ import {
   compensateScrollLeftForSideRoom,
   computeSideOverlayInsets,
   getViewerSideOccluders,
+  resolveBandCentreScrollLeft,
   resolveSideRoom,
   shouldAutoRefit,
   shouldRefitForBand,
@@ -1570,6 +1571,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const appliedSideRoomRef = useRef(NO_SIDE_INSETS);
   const sideScrollSnapshotRef = useRef(null);
   const sideInsetRef = useRef(NO_SIDE_INSETS);
+  // The sideways glide that centres a fitting page between the panels, and
+  // the side-panel measurer's handles for a tab coming back to the front.
+  const bandCentreGlideRef = useRef(null);
+  const sideMeasureRef = useRef(null);
   // The zoom-out floor (a quarter of fit width) is measured against the band
   // between open side panels, not the full viewer: otherwise a fit to that
   // band (refitForBand) was clamped back to the full-width fit and a one-page
@@ -2385,10 +2390,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
     let raf = 0;
+    let lastWidth = 0;
     const observed = new Set();
     const measure = () => {
       raf = 0;
       if (isInTabBehind(el) || !el.clientWidth || !el.clientHeight) return;
+      const widthChanged = lastWidth > 0 && Math.abs(el.clientWidth - lastWidth) > 0.5;
+      lastWidth = el.clientWidth;
       const panels = getViewerSideOccluders()
         .filter((node) => node?.isConnected && node.getAttribute?.('data-viewer-occluder') === 'side');
       const next = computeSideOverlayInsets(
@@ -2403,8 +2411,79 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // part of a fitted page re-fits it to the band between the panels
         // (and a band-driven re-fit grows back when the panel closes). Next
         // frame, once the side room and its scroll compensation are applied.
-        requestAnimationFrame(() => refitForBand());
+        requestAnimationFrame(() => { refitForBand(); requestCentre(); });
+      } else if (widthChanged) {
+        requestCentre();
       }
+    };
+    // Owner 2026-10-28 ("sometimes it's off-center, sometimes it's not ... it
+    // needs to be more consistent"): a page that fits between the panels sits
+    // centred between them, after a panel opens or closes, after its tab comes
+    // back to the front and after the viewer changes width. This replaces the
+    // 2026-09-23 rule that a panel floats over a page that stays put, which
+    // left the page under an opening panel (260 px off) and kept whatever
+    // offset the tab had when you came back. It glides there like a page move
+    // (250 ms, stops when you scroll, press or touch). A page wider than the
+    // band stays where it is: you are reading part of it.
+    let centreRaf = 0;
+    let centreTries = 0;
+    let quietFrames = 0;
+    const cancelCentreGlide = () => {
+      const glide = bandCentreGlideRef.current;
+      bandCentreGlideRef.current = null;
+      glide?.cancel('cancel');
+    };
+    const bandCentreTarget = () => {
+      const s = scaleRef.current;
+      const i = Math.max(0, (currentPageRef.current || 1) - 1);
+      const d = dimsPtRef.current[i];
+      if (!d || !(s > 0)) return null;
+      const insets = sideInsetRef.current;
+      const pageWidth = d.w * s;
+      if (pageWidth > el.clientWidth - insets.left - insets.right + 0.5) return null;
+      return resolveBandCentreScrollLeft({
+        pageLeft: getPageLeftAtScaleRef.current(i, s),
+        pageWidth,
+        viewportWidth: el.clientWidth,
+        insets,
+        maxScrollLeft: el.scrollWidth - el.clientWidth,
+      });
+    };
+    const centreInBand = () => {
+      centreRaf = 0;
+      if (!el.isConnected || isInTabBehind(el) || !(el.clientWidth > 0)) return;
+      // Wait out the side room commit, a zoom (its anchor or glide) and a
+      // gesture, and then two still frames, so a re-fit lands first.
+      const busy = gestureRef.current || pendingAnchorRef.current || zoomGlideRef.current
+        || appliedSideRoomRef.current !== sideRoomRef.current;
+      quietFrames = busy ? 0 : quietFrames + 1;
+      if (quietFrames < 2) {
+        if (centreTries++ < 60) centreRaf = requestAnimationFrame(centreInBand);
+        return;
+      }
+      const target = bandCentreTarget();
+      if (target == null || Math.abs(target - el.scrollLeft) < 0.5) return;
+      cancelCentreGlide();
+      let glide = null;
+      // The side room is held while it glides (the scroll handler would
+      // otherwise shrink it under the glide) and settled once it ends.
+      glide = startPageGlide({
+        el,
+        to: target,
+        axis: 'left',
+        shouldStop: () => Boolean(gestureRef.current || pendingAnchorRef.current || zoomGlideRef.current),
+        onEnd: () => {
+          if (glide && bandCentreGlideRef.current !== glide) return;
+          bandCentreGlideRef.current = null;
+          syncSideRoom();
+        },
+      });
+      bandCentreGlideRef.current = glide;
+    };
+    const requestCentre = () => {
+      centreTries = 0;
+      quietFrames = 0;
+      if (!centreRaf) centreRaf = requestAnimationFrame(centreInBand);
     };
     const refitForBand = () => {
       const lastFit = lastFitRef.current;
@@ -2458,13 +2537,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     syncObserved();
     const unsubscribe = subscribeViewerSideOccluders(syncObserved);
     window.addEventListener('resize', schedule);
+    sideMeasureRef.current = { schedule, requestCentre };
     return () => {
+      sideMeasureRef.current = null;
       unsubscribe();
       window.removeEventListener('resize', schedule);
       Array.from(observed).forEach(forget);
       mo?.disconnect();
       ro.disconnect();
       if (raf) cancelAnimationFrame(raf);
+      if (centreRaf) cancelAnimationFrame(centreRaf);
+      cancelCentreGlide();
     };
     // pageCount: the scroller only mounts once the document has pages (see the
     // strip measurer above).
@@ -2523,9 +2606,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // Strips closed while you were scrolled up into their room: give the
         // room back as it scrolls off screen.
         if (topRoomRef.current > topInsetRef.current) syncTopRoom();
-        // Same for a side panel closed while its room is on screen.
-        if (sideRoomRef.current.left > sideInsetRef.current.left
-          || sideRoomRef.current.right > sideInsetRef.current.right) syncSideRoom();
+        // Same for a side panel closed while its room is on screen (held while
+        // the centring glide runs; it settles the room when it ends).
+        if (!bandCentreGlideRef.current
+          && (sideRoomRef.current.left > sideInsetRef.current.left
+            || sideRoomRef.current.right > sideInsetRef.current.right)) syncSideRoom();
         recomputeWindow();
       });
     };
@@ -5018,8 +5103,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const inset = Math.min(topInsetRef.current, el.clientHeight);
     applyAnchoredScale(newScale, side.left + bandW / 2, inset + (el.clientHeight - inset) / 2);
     if (isFit && lastFitRef.current) lastFitRef.current.scale = scaleRef.current;
-    // An automatic re-fit stops here: the visible middle stays put.
-    if (!isFit || (auto && !band) || !dimsPtRef.current.length) return;
+    // An automatic re-fit stops here: the visible middle stays put. The first
+    // fit since the document opened still lands across: a panel open at load
+    // can be measured before it, so no band re-fit follows to move the page
+    // out from under the panel.
+    const firstFit = auto && !band && !lastFit;
+    if (!isFit || (auto && !band && !firstFit) || !dimsPtRef.current.length) return;
     // A fit you pick lands the page. Fit page / Fit height promise the whole
     // page height on screen: its own top gap just below any tool strips, which
     // with the fitted scale leaves the matching gap at the bottom. Anchoring on
@@ -5039,7 +5128,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       insets: side,
       maxScrollLeft: getHorizontalScrollMax(s),
     });
-    const landTop = target !== 'fitw' && !band ? landing.scrollTop : null;
+    const landTop = target !== 'fitw' && !band && !firstFit ? landing.scrollTop : null;
     const landLeft = landing.scrollLeft;
     if (Math.abs(scaleRef.current - before) > 1e-4 && pendingAnchorRef.current) {
       pendingAnchorRef.current = {
@@ -5056,6 +5145,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         else el.scrollTop = Math.max(0, landTop);
       }
       el.scrollLeft = landLeft;
+      // A zoom that has not laid out yet (the first fit, when a panel was
+      // open at load) would land its older anchor over this one on commit and
+      // leave the page under the panel.
+      if (pendingAnchorRef.current) {
+        pendingAnchorRef.current = {
+          ...pendingAnchorRef.current,
+          ...(landTop != null ? { top: landTop } : null),
+          left: landLeft,
+        };
+      }
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax, phoneLayout]);
   zoomToScaleRef.current = zoomToScale;
@@ -5086,6 +5185,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // in this same frame.
   useLayoutEffect(() => {
     if (tabActive && pendingViewportFitRef.current) setViewportFitRevision((revision) => revision + 1);
+    // Back at the front: measure the panels again (they may have opened or
+    // closed while it was behind) and centre the page between them.
+    if (tabActive) {
+      sideMeasureRef.current?.schedule();
+      sideMeasureRef.current?.requestCentre();
+    }
   }, [tabActive]);
 
   // RULED 2026-09-28 owner: History option A — clicking a History row takes

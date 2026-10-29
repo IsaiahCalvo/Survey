@@ -102,9 +102,11 @@ test('a new curved polyline stores the curve and its step', () => {
   const straight = buildPolyShapeCommitJSON({ tool: 'polyline', id: 'n2', points: corners, strokeWidth: 2 });
   assert.equal(straight.points.length, 4);
   assert.equal(straight.data.spline, undefined);
-  // A cloud keeps straight sides; a polygon never curves.
-  const cloud = buildPolyShapeCommitJSON({ tool: 'polyline', id: 'n3', points: corners, strokeWidth: 2, curve: true, lineBorderStyle: 'cloud' });
-  assert.equal(cloud.points.length, 4);
+  // Owner 2026-10-28: a polyline is never clouded, so a stale Cloud style
+  // left from a shape tool draws it solid - and curved. A polygon never curves.
+  const staleCloud = buildPolyShapeCommitJSON({ tool: 'polyline', id: 'n3', points: corners, strokeWidth: 2, curve: true, lineBorderStyle: 'cloud' });
+  assert.equal(staleCloud.points.length, (corners.length - 1) * SPLINE_STEP + 1);
+  assert.equal(staleCloud.data.pdfCloudIntensity, undefined);
   const polygon = buildPolyShapeCommitJSON({ tool: 'polygon', id: 'n4', points: corners, strokeWidth: 2, curve: true });
   assert.equal(polygon.points.length, 4);
 });

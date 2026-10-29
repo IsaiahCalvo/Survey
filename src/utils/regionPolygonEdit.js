@@ -1,7 +1,7 @@
 /**
  * Spaces area drawing and point editing, matched to the Polygon markup tool
  * (owner 2026-10-28): check marks on the first and latest corner while a
- * polygon area is drawn, Shift locks each new side to 15° steps, a "+" on
+ * polygon area is drawn, Shift locks each new side to the snap angle, a "+" on
  * each side of a picked free-form area adds a point there, and a plain
  * rectangle keeps side grabbers until it stops being one.
  *
@@ -10,9 +10,10 @@
  */
 import { snapAngle } from './drawSnap.js';
 import { polyDraftHitRadii } from './polyDraft.js';
+import { SNAP_ANGLE_DEFAULT, readSnapAngle } from './annotationPreferences.js';
 
-/** Shift while drawing a polygon area locks the new side to these steps. */
-export const REGION_POLYGON_SNAP_DEG = 15;
+/** Default Shift step for a polygon area's new side; Settings can pick 45° or 90°. */
+export const REGION_POLYGON_SNAP_DEG = SNAP_ANGLE_DEFAULT;
 /** Fewest corners that make an area; the check marks show from here. */
 export const REGION_POLYGON_MIN_CORNERS = 3;
 /** A second press this close (screen px) to the latest corner adds nothing. */
@@ -33,7 +34,8 @@ const gap = (a, b, toScreen) => {
 /**
  * Where the next corner (or the rubber band's end) lands: on the first
  * corner when the pointer is within the pull and the area can close, else
- * locked to 15° from the latest corner with Shift, else where it is.
+ * locked to the snap angle (readSnapAngle) from the latest corner with
+ * Shift, else where it is.
  * Returns { point, closing }.
  */
 export function resolveRegionPolygonPoint(corners, point, { shiftKey = false, toScreen, closePullPx = 0 } = {}) {
@@ -43,7 +45,7 @@ export function resolveRegionPolygonPoint(corners, point, { shiftKey = false, to
     && gap(list[0], point, toScreen) <= closePullPx) {
     return { point: { x: list[0].x, y: list[0].y }, closing: true };
   }
-  if (shiftKey) return { point: snapAngle(list[list.length - 1], point, REGION_POLYGON_SNAP_DEG), closing: false };
+  if (shiftKey) return { point: snapAngle(list[list.length - 1], point, readSnapAngle()), closing: false };
   return { point: { x: point.x, y: point.y }, closing: false };
 }
 

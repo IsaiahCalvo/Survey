@@ -110,6 +110,80 @@ export async function registerWorkbook({
 }
 
 // ---------------------------------------------------------------------------
+// Workbook location (Excel audit W4)
+// ---------------------------------------------------------------------------
+
+/**
+ * The registration tier for a Microsoft Graph drive type. Work/school OneDrive
+ * ('business') and SharePoint/Teams libraries ('documentLibrary') are 'business';
+ * a Microsoft account's OneDrive is 'personal'. Unknown → null.
+ *
+ * @param {string|null|undefined} driveType
+ * @returns {'business'|'personal'|null}
+ */
+export function capabilityTierForDriveType(driveType) {
+  const t = typeof driveType === 'string' ? driveType.trim().toLowerCase() : '';
+  if (t === 'business' || t === 'documentlibrary') return 'business';
+  if (t === 'personal') return 'personal';
+  return null;
+}
+
+/**
+ * Where a Graph driveItem (an upload's response, or GET /items/{id}) lives:
+ * { driveId, itemId, driveType, capabilityTier }, or null without ids.
+ *
+ * @param {object|null} item
+ */
+export function workbookLocationFromDriveItem(item) {
+  const itemId = typeof item?.id === 'string' ? item.id : null;
+  const driveId = typeof item?.parentReference?.driveId === 'string' ? item.parentReference.driveId : null;
+  if (!itemId || !driveId) return null;
+  const driveType = item.parentReference.driveType ?? null;
+  return { driveId, itemId, driveType, capabilityTier: capabilityTierForDriveType(driveType) };
+}
+
+/**
+ * The tier to register a template's workbook with. SharePoint is business; a
+ * OneDrive file takes its tier from the drive type saved at link time, so work
+ * OneDrive counts as business too (it used to always register as personal).
+ *
+ * @param {object|null} template
+ * @returns {'local'|'personal'|'business'}
+ */
+export function exportCapabilityTier(template) {
+  if (template?.isSharePoint) return 'business';
+  if (template?.isOneDrive) return capabilityTierForDriveType(template.graphDriveType) || 'personal';
+  return 'local';
+}
+
+/**
+ * Binds the active registration to the Graph drive/item the workbook was saved
+ * to (kal307_bind_workbook_location). The first OneDrive/SharePoint export
+ * registers before the upload, so it has no location until this runs.
+ *
+ * @param {{ documentId: string, templateId: string, workbookId: string,
+ *   location: { driveId: string, itemId: string, capabilityTier: 'business'|'personal' },
+ *   supabaseClient?: object }} opts
+ * @returns {Promise<{ ok: boolean, error: string|null }>}
+ */
+export async function bindWorkbookLocation({ documentId, templateId, workbookId, location, supabaseClient }) {
+  if (!documentId || !templateId || !workbookId) return { ok: false, error: 'missing ids' };
+  if (!location?.driveId || !location?.itemId || !location?.capabilityTier) return { ok: false, error: 'missing location' };
+  const client = supabaseClient ?? supabase;
+  if (!client) return { ok: false, error: 'Supabase client not available' };
+  const { data, error } = await client.rpc('kal307_bind_workbook_location', {
+    p_document_id:     documentId,
+    p_template_id:     templateId,
+    p_workbook_id:     workbookId,
+    p_graph_drive_id:  location.driveId,
+    p_graph_item_id:   location.itemId,
+    p_capability_tier: location.capabilityTier,
+  });
+  if (error) return { ok: false, error: error.message || 'bind_failed' };
+  return { ok: data === true, error: null };
+}
+
+// ---------------------------------------------------------------------------
 // embedRegistrationIntoMetaSheet
 // ---------------------------------------------------------------------------
 

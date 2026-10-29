@@ -24,6 +24,7 @@ import {
   seedSyncState,
   setRegistrationSigningId,
   materializeAcceptedOps,
+  resolveConflictedMarker,
   readFrontier,
   __test,
 } from '../excelSyncClient.js';
@@ -400,7 +401,7 @@ test('materializeAcceptedOps is idempotent on a re-fetch overlap (already-materi
 // 5–6. conflict-review + frontier halt
 // ===========================================================================
 
-test('materializeAcceptedOps routes a genuine ANSWER-field app-vs-Excel conflict to review and HALTS', async () => {
+test('materializeAcceptedOps routes a genuine ANSWER-field app-vs-Excel conflict to review; only that marker waits', async () => {
   // Live answer c1='APP-EDIT' differs from BOTH the op's baseline ('BASE', a REAL
   // nested-answers fingerprint) AND the incoming Excel value ('EXCEL-EDIT') → genuine
   // both-changed. This is the exact case Codex finding #1 said was being MISSED
@@ -419,7 +420,7 @@ test('materializeAcceptedOps routes a genuine ANSWER-field app-vs-Excel conflict
         fields: { answers: { c1: 'EXCEL-EDIT' } },
         baseFingerprints: base,
       }),
-      // A later op for a DIFFERENT marker — must NOT be applied (frontier halted at 0).
+      // A later op for a DIFFERENT marker still applies (Excel audit W6); the frontier stays at 0.
       opRow({
         opUuid: 'u2', revision: 2, markerId: 'm2',
         changedFieldKeys: ['answer:c2'],
@@ -438,13 +439,18 @@ test('materializeAcceptedOps routes a genuine ANSWER-field app-vs-Excel conflict
   assert.deepEqual(res.conflicts, ['u1']);
   assert.equal(res.halted, true);
   assert.equal(res.frontier, 0);
-  // m1 unchanged (no clobber); m2 unchanged (later op never reached).
+  // m1 unchanged (no clobber); m2 applied and recorded so a re-fetch skips it.
   assert.equal(stores.markers.m1.checklistResponses.c1.selection, 'APP-EDIT');
-  assert.equal(stores.markers.m2.checklistResponses.c2.selection, 'old');
+  assert.equal(stores.markers.m2.checklistResponses.c2.selection, 'new');
+  assert.deepEqual(res.materialized, ['u2']);
   // Durable review set records the conflict, ack fired as client_conflict_review.
   const review = stores.meta['excelSyncReview:tpl-1'];
   assert.equal(review.u1.status, 'client_conflict_review');
-  assert.deepEqual(stores.acks, [{ opUuid: 'u1', status: 'client_conflict_review' }]);
+  assert.equal(review.u2.status, 'materialized');
+  assert.deepEqual(stores.acks, [
+    { opUuid: 'u1', status: 'client_conflict_review' },
+    { opUuid: 'u2', status: 'materialized' },
+  ]);
 });
 
 test('materializeAcceptedOps detects an ENTITY (scalar) app-vs-Excel conflict via fingerprint', async () => {
@@ -938,4 +944,105 @@ test('detectAppVsExcelConflict falls back when fingerprinting throws; structured
   } finally {
     globalThis.structuredClone = savedClone;
   }
+});
+
+// ===========================================================================
+// Excel audit W6: one conflict holds only its own marker; answering it on a cloud doc
+// keeps Excel's other cells and moves the baseline to what Excel holds.
+// ===========================================================================
+
+test('materializeAcceptedOps holds a conflicted marker\'s later ops, then applies them once it is answered', async () => {
+  const stores = makeStores({
+    m1: { id: 'm1', checklistResponses: { c1: { selection: 'APP-EDIT' } } },
+    m2: { id: 'm2', checklistResponses: { c2: { selection: 'old' } } },
+  });
+  const base = await baseFingerprintsFor({ answers: { c1: 'BASE' } });
+  const ops = [
+    opRow({ opUuid: 'u1', revision: 1, markerId: 'm1', changedFieldKeys: ['answer:c1'],
+      fields: { answers: { c1: 'EXCEL-EDIT' } }, baseFingerprints: base }),
+    opRow({ opUuid: 'u2', revision: 2, markerId: 'm2', changedFieldKeys: ['answer:c2'],
+      fields: { answers: { c2: 'new' } } }),
+    // m1 again: must wait behind its open conflict.
+    opRow({ opUuid: 'u3', revision: 3, markerId: 'm1', changedFieldKeys: ['notes'],
+      fields: { notes: 'later note' } }),
+  ];
+  const run = (rows) => materializeAcceptedOps({
+    ops: rows, templateId: 'tpl-1',
+    getMarkers: stores.getMarkers, writeMarker: stores.writeMarker,
+    getMeta: stores.getMeta, setMeta: stores.setMeta, ack: stores.ack,
+  });
+
+  const first = await run(ops);
+  assert.deepEqual(first.conflicts, ['u1']);
+  assert.deepEqual(first.materialized, ['u2']);
+  assert.equal(first.frontier, 0);
+  assert.equal(stores.markers.m1.note, undefined, 'm1\'s later op waits');
+
+  // The user answers u1 (the server marks it resolved; the client drops it from review).
+  const review = { ...stores.meta['excelSyncReview:tpl-1'] };
+  delete review.u1;
+  stores.meta['excelSyncReview:tpl-1'] = review;
+  let writes = 0;
+  const writeMarker = stores.writeMarker;
+  stores.writeMarker = (id, next) => { writes += 1; writeMarker(id, next); };
+  const second = await run([
+    { ...ops[0], op_status: 'resolved' },
+    { ...ops[1], op_status: 'materialized' },
+    ops[2],
+  ]);
+  assert.deepEqual(second.materialized, ['u3']);
+  assert.equal(writes, 1, 'only the waiting op is written; u2 is not applied twice');
+  assert.equal(second.frontier, 3);
+  assert.equal(second.halted, false);
+  assert.equal(stores.markers.m1.note.text, 'later note');
+});
+
+test('resolveConflictedMarker "keep app": keeps the disputed cell, takes Excel\'s other cells, baseline = Excel', async () => {
+  const marker = { id: 'm1', checklistResponses: { c1: { selection: 'APP-EDIT' } }, note: { text: '' } };
+  const base = await baseFingerprintsFor({ answers: { c1: 'BASE' } });
+  const incoming = await computeRowFingerprints({ changedBy: '', changedDate: '', item: '', entity: '', notes: 'excel note', answers: { c1: 'EXCEL-EDIT' } });
+  const op = opRow({
+    opUuid: 'u1', revision: 1, markerId: 'm1', opStatus: 'client_conflict_review',
+    changedFieldKeys: ['answer:c1', 'notes'],
+    fields: { answers: { c1: 'EXCEL-EDIT' }, notes: 'excel note' },
+    baseFingerprints: base,
+    identity: {
+      fieldFingerprints: incoming.fieldFingerprints,
+      identityVectorFingerprint: incoming.identityVectorFingerprint,
+      fullRowFingerprint: incoming.fullRowFingerprint,
+    },
+  });
+  const res = await resolveConflictedMarker({ marker, op, choice: 'app' });
+  assert.deepEqual(res.conflictFieldKeys, ['answer:c1']);
+  assert.deepEqual(res.appliedFieldKeys, ['notes']);
+  assert.equal(res.nextMarker.checklistResponses.c1.selection, 'APP-EDIT');
+  assert.equal(res.nextMarker.note.text, 'excel note');
+  assert.deepEqual(res.nextMarker.excelSync.fieldFingerprints, incoming.fieldFingerprints);
+  assert.deepEqual(res.excelFingerprints, { identityVector: incoming.identityVectorFingerprint, fields: incoming.fieldFingerprints });
+  assert.equal(marker.note.text, '', 'the input marker is not changed');
+  // The marker's baseline is now Excel's row, so the next import sees Excel unchanged
+  // (no op) instead of re-applying Excel's value over the kept one.
+});
+
+test('resolveConflictedMarker "use Excel": takes every cell Excel changed', async () => {
+  const marker = { id: 'm1', checklistResponses: { c1: { selection: 'APP-EDIT' } }, name: 'D-1' };
+  const base = await baseFingerprintsFor({ item: 'D-1', answers: { c1: 'BASE' } });
+  const op = opRow({
+    opUuid: 'u1', revision: 1, markerId: 'm1', opStatus: 'client_conflict_review',
+    changedFieldKeys: ['answer:c1', 'item'],
+    fields: { answers: { c1: 'EXCEL-EDIT' }, item: 'D-2' },
+    baseFingerprints: base,
+  });
+  const res = await resolveConflictedMarker({ marker, op, choice: 'excel' });
+  assert.deepEqual(res.conflictFieldKeys, ['answer:c1']);
+  assert.equal(res.nextMarker.checklistResponses.c1.selection, 'EXCEL-EDIT');
+  assert.equal(res.nextMarker.name, 'D-2');
+  assert.equal(res.excelFingerprints, null, 'no identity on the op → server keeps its stored baseline');
+});
+
+test('resolveConflictedMarker returns null for a create op or a missing marker', async () => {
+  const op = opRow({ opUuid: 'u1', revision: 1, markerId: 'm1', opType: 'create', fields: { item: 'X' } });
+  assert.equal(await resolveConflictedMarker({ marker: { id: 'm1' }, op, choice: 'app' }), null);
+  const apply = opRow({ opUuid: 'u2', revision: 2, markerId: 'm1', changedFieldKeys: ['item'], fields: { item: 'X' } });
+  assert.equal(await resolveConflictedMarker({ marker: null, op: apply, choice: 'app' }), null);
 });

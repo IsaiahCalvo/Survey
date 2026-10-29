@@ -5,6 +5,20 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-28', items: [
+    'A page that fits between the side panels glides to the centre between them.',
+    'Projects: you can rename projects and project files.',
+    'Phones: a long press on a mark shows a small Duplicate and Delete bar.',
+    'Select mode in Documents, Archive, Templates and Projects stays steady: the file count holds and the New button stays put.',
+    'Big drawings no longer freeze the page while saving in the background or when they first open.',
+    'Spaces: turning a space off is quicker on big drawing sets.',
+    'Phones: tool bars fit small screens, Export data says when the file is saved, a save in progress shows Saving... instead of Offline, and buttons stay clear of the notch when the phone is held sideways.',
+    'Survey: Ctrl+Z after an answer takes back just the answer, and keeps the Complete it set.',
+    'Survey: markers with no order of their own list by name, and picking a marker on the page opens its row.',
+    'Survey: a Number or Count answer outside its limits shows red, and exported sheets fit their text.',
+    'Spaces: a Subtract drawn inside an area keeps its hole, and the page sits beside an open panel after a reload.',
+    'Big drawings no longer show a false "Could not save a local copy" message.',
+    'Simpler line menus: Width is a number box with quick picks, Style is a plain list that draws each line, and Arrow ends is one list with a "Both ends" switch.',
+    'Polylines no longer offer the Cloud line type.',
     'Drop-downs and action menus have a new look: a highlight glides from row to row, and menus grow out of their button.',
     'Renaming a document shows the new name at once everywhere: open tabs, every list and your other screens.',
     'Spaces: polygon areas draw and edit like the Polygon tool, with check marks to close or finish, Shift for 15° sides and a + on each side to add a point.',

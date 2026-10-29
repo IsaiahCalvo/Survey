@@ -44,6 +44,7 @@ import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
 import { SECTION_DONE_ICON } from '../components/SectionIconButton.jsx';
 import { OPEN_EXPORT_PDF_EVENT } from '../utils/exportPdfModes.js';
+import { RENAME_OPEN_DOCUMENT_EVENT } from '../tabs/tabStrip.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
 
@@ -3263,6 +3264,22 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               >
                 <Icon name="document" size={16} color="currentColor" />
                 PDF tools…
+              </button>
+              {/* The phone has no tab strip to right-click, so the open
+                  document is renamed from here (owner 2026-10-29: everything
+                  with a name can be renamed). AppShell opens the same dialog
+                  the tab menu does. */}
+              <button
+                type="button"
+                data-mobile-rename-document="true"
+                disabled={!leftRailApi?.documentId}
+                onClick={() => {
+                  setMoreOpen(false);
+                  window.dispatchEvent(new CustomEvent(RENAME_OPEN_DOCUMENT_EVENT));
+                }}
+              >
+                <Icon name="edit" size={16} color="currentColor" />
+                Rename document…
               </button>
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the

@@ -54,6 +54,10 @@ const ledgerHeader = {
   fontSize: 11, letterSpacing: 0,
   color: 'var(--ink-200)', fontWeight: 600,
   padding: '8px 0',
+  /* The rows carry a 2px left edge (gold on the previewed row); the header
+     keeps the same edge so its select-all box and labels sit over the row
+     boxes and cells, not 2px left of them (owner 2026-10-28). */
+  borderLeft: '2px solid transparent',
 };
 
 // Survey calm gold (2026-10-01): no ribbon colour equals the accent gold.
@@ -546,7 +550,10 @@ export default function DocumentsLedger({
       onDismiss={() => setMobileSortOpen(false)}
       menu
     />
-    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+    {/* Centred, not baseline (owner 2026-10-28): Select mode's taller row
+        moved the baseline and pushed "N files" down 3 px. Centred in the
+        header's fixed 22 px band, the count stays put in both modes. */}
+    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
       <span className="documents-file-count"><b>{docs.length}</b> {docs.length === 1 ? 'file' : 'files'}</span>
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row documents-select-toolbar">
         <span className="documents-mobile-select-main">

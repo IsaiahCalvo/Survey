@@ -126,6 +126,34 @@ const PDF_NATIVE_RECT_ROUNDING_FACTOR = 10_000;
 
 let pdfLibPromise = null;
 
+// A big drawing (Package 2: ~3,000 ink marks) reads and converts for seconds
+// in all; the page and input get a turn every ~12 ms of it. A MessageChannel
+// task, not setTimeout: browsers throttle timers in background tabs (see
+// buildRawAnnotationMetadataById), not messages.
+const IMPORT_SLICE_MS = 12;
+const importNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+function yieldToEventLoop() {
+  if (typeof MessageChannel !== 'function') return new Promise((resolve) => setTimeout(resolve, 0));
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
+}
+// Await before each unit of work: yields once the work since the last yield
+// passed IMPORT_SLICE_MS.
+function createImportSlicer() {
+  let sliceStartedAt = importNow();
+  return async () => {
+    if (importNow() - sliceStartedAt < IMPORT_SLICE_MS) return;
+    await yieldToEventLoop();
+    sliceStartedAt = importNow();
+  };
+}
+
 async function loadPdfLibCore() {
   if (!pdfLibPromise) {
     pdfLibPromise = import('pdf-lib');
@@ -2288,14 +2316,17 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
     const directCandidatesByPage = new Map();
     const rawAnnotationsByPage = new Map();
 
-    rawPdfDoc.getPages().forEach((page, pageIndex) => {
+    const yieldIfDue = createImportSlicer();
+    const pages = rawPdfDoc.getPages();
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+      const page = pages[pageIndex];
       const annots = page.node.lookup(PDFName.of('Annots'));
-      if (!annots || typeof annots.asArray !== 'function') return;
+      if (!annots || typeof annots.asArray !== 'function') continue;
       const pageNumber = pageIndex + 1;
       const directCandidates = [];
       const rawAnnotations = [];
 
-      annots.asArray().forEach((annotRef, annotsIndex) => {
+      const readAnnotation = (annotRef, annotsIndex) => {
         const dict = rawPdfDoc.context.lookup(annotRef);
         if (!dict || typeof dict.get !== 'function') return;
 
@@ -2486,10 +2517,15 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         idCandidates.forEach((candidate) => {
           metadataById.set(candidate, metadata);
         });
-      });
+      };
+      const annotRefs = annots.asArray();
+      for (let annotsIndex = 0; annotsIndex < annotRefs.length; annotsIndex += 1) {
+        await yieldIfDue();
+        readAnnotation(annotRefs[annotsIndex], annotsIndex);
+      }
       directCandidatesByPage.set(pageNumber, directCandidates);
       rawAnnotationsByPage.set(pageNumber, rawAnnotations);
-    });
+    }
 
     return { metadataById, directCandidatesByPage, rawAnnotationsByPage };
   } catch (error) {
@@ -5844,6 +5880,8 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   // so a large doc does not spike pdf.js worker memory) instead of paying one
   // serial getPage+getAnnotations round-trip per page, then fold results in page
   // order so the returned maps are identical to the old sequential loop.
+  // One slicer for every page: the pages convert concurrently on this thread.
+  const yieldIfDue = createImportSlicer();
   const processPage = async (pageNum) => {
     const localUnsupported = new Set();
     const localUnsupportedCounts = new Map();
@@ -6022,6 +6060,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
       };
 
       for (const annotation of supported) {
+        await yieldIfDue();
         try {
           const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
           const normalized = applyRawMetadataToAnnotation(annotation, rawMetadata);

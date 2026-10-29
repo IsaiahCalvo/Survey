@@ -178,7 +178,13 @@ test('what each mark type can change', () => {
   assert.equal(caps(rect()), 'stroke,fill,width,lineStyle,cloud');
   assert.equal(caps(ellipse()), 'stroke,fill,width,lineStyle,cloud');
   assert.equal(caps(poly('polygon', 'pg')), 'stroke,fill,width,lineStyle,cloud');
-  assert.equal(caps(poly('polyline', 'pl')), 'stroke,width,lineStyle,cloud');
+  // Owner 2026-10-28: RULED CHANGE - an open line is never clouded ("it just
+  // looks weird"). One saved as a cloud before then still lists Cloud so its
+  // Style can say so and be switched off.
+  assert.equal(caps(poly('polyline', 'pl')), 'stroke,width,lineStyle');
+  const oldCloudLine = poly('polyline', 'pl');
+  oldCloudLine.data = { ...(oldCloudLine.data || {}), pdfCloudIntensity: 2 };
+  assert.equal(caps(oldCloudLine), 'stroke,width,lineStyle,cloud');
   assert.equal(caps(line()), 'stroke,width,lineStyle');
   assert.equal(caps(line('ar', 'arrow')), 'stroke,width,lineStyle,arrowheads');
   // w43 (2026-09-26): RULED CHANGE, not a fix-to-pass. The owner asked for

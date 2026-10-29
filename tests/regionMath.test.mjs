@@ -112,6 +112,29 @@ test('subtractRegionFromRegion cuts overlap and no-ops when disjoint', () => {
   assert.deepEqual(gone, []);
 });
 
+test('subtractRegionFromRegion keeps a hole cut wholly inside an area', () => {
+  const ringArea = (coords) => {
+    let sum = 0;
+    for (let i = 0; i < coords.length; i += 2) {
+      const j = (i + 2) % coords.length;
+      sum += coords[i] * coords[j + 1] - coords[j] * coords[i + 1];
+    }
+    return Math.abs(sum) / 2;
+  };
+  const pieces = subtractRegionFromRegion(
+    rect([100, 60, 600, 60, 600, 400, 100, 400]),
+    rect([250, 150, 400, 150, 400, 300, 250, 300]),
+  );
+  // Hole-free pieces whose areas add up to the outer minus the hole.
+  assert.ok(pieces.length >= 2);
+  const total = pieces.reduce((sum, piece) => sum + ringArea(piece.coordinates), 0);
+  assert.equal(Math.round(total), 500 * 340 - 150 * 150);
+  // The hole's middle is in no piece; the area round it is.
+  assert.ok(!pieces.some(piece => regionContainsPoint(325, 225, piece)));
+  assert.ok(pieces.some(piece => regionContainsPoint(150, 225, piece)));
+  assert.ok(pieces.some(piece => regionContainsPoint(500, 225, piece)));
+});
+
 function normalizeOperationSafe(op) {
   return op === REGION_OPERATIONS.SUBTRACT ? REGION_OPERATIONS.SUBTRACT : REGION_OPERATIONS.ADD;
 }

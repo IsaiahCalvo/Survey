@@ -1430,7 +1430,7 @@ const SVGAnnotationLayerBody = memo(({
   const shapeCreationRef = useRef(null);
   useEffect(() => { shapeCreationRef.current = shapeCreation; }, [shapeCreation]);
   // Line / arrow / polyline / polygon / measure drawing snaps (drawSnap.js):
-  // Shift locks the new segment to 45° steps; the point locks onto another
+  // Shift locks the new segment to the snap angle (15° / 45° / 90°); the point locks onto another
   // line end or corner on this page within 8 screen px (Alt or the snapping
   // preference off disables that pull). `drawSnapEndpoint` is the indicator.
   const [drawSnapEndpoint, setDrawSnapEndpoint] = useState(null);
@@ -5151,6 +5151,9 @@ const SVGAnnotationLayerBody = memo(({
     handleSurveyMarkerPointerDown,
     hoveredSurveyMarkerId,
     inverseScale,
+    // markHitBand sizes the hit band by input; without this a pen-drawn
+    // marker kept the mouse band until some other change re-rendered it.
+    inputKind,
     isSelectTool,
     selectedSurveyMarkerId,
     surveyMarkerPreviewBounds,

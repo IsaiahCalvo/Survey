@@ -284,7 +284,7 @@ import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdentityRecords, applyWritebackVerification } from './services/excelIdentityRecord';
-import { computeRowFingerprints } from './services/rowFingerprint';
+import { diffRowFields } from './services/rowFingerprint';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
@@ -296,7 +296,7 @@ import { buildMarkerRowValues, resolveMarkerModuleData } from './services/marker
 import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
 import { reviewReasonMessage } from './services/excelReviewMessages';
 import { selectUnplacedRows, isWholeChangeSetHeld, unplacedRowKey } from './services/excelUnplacedRows';
-import { applyExcelValuesToMarker } from './services/excelConflictResolve';
+import { applyExcelFieldsToMarker, applyExcelValuesToMarker, excelFieldsForConflictChoice } from './services/excelConflictResolve';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
@@ -322,13 +322,16 @@ import {
   resolveRegionRestoreCascade,
 } from './services/annotationTrashHistory';
 // KAL-307: server-minted workbook registration (one live workbook per survey).
-import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet } from './services/workbookRegistration';
+import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet, bindWorkbookLocation, exportCapabilityTier, workbookLocationFromDriveItem } from './services/workbookRegistration';
+import { EXPORT_REGISTRATION, resolveExportRegistration } from './services/excelExportRegistration';
+import { matchSheetToCategory, readSheetMap, writeSheetMap } from './services/excelSheetMap';
 // KAL-309: server-authoritative Excel change-set transport + materialize reducer.
 import {
   submitChangeSet,
   fetchSince,
   ackMaterialization,
   resolveMaterializationConflict,
+  resolveConflictedMarker,
   materializeAcceptedOps,
   readFrontier,
   seedSyncState,
@@ -12960,6 +12963,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
   }, [clearLocalRedoForNewStep, createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, getSurveyMarkerHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
+  // A checklist answer is its own Undo step (Ctrl+Z after a wrong answer took
+  // the whole Survey Marker away). An answer never touches the pages, so it
+  // takes the light Survey Marker checkpoint.
+  const checkpointSurveyAnswer = useCallback((annotationId) => {
+    addHistoryCheckpoint('survey-marker:answer', { annotationId, checkpointMode: 'survey-marker-create' });
+  }, [addHistoryCheckpoint]);
+
   // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
   // the documents-table user_id attached to pdfFile at Dashboard load time
   // (see handleDocumentClick / file.user_id sites). pdfFile is a File-like
@@ -15971,8 +15981,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
     // If called from event handler, targetPath will be the event object
     if (targetPath && typeof targetPath !== 'string') targetPath = null;
+    // Writing into the linked workbook happens in the desktop app. In a browser or the
+    // phone app this used to fall through to a plain download while saying the shared
+    // workbook was updated.
+    if (targetPath && !window.electronAPI) {
+      if (!silent) showToast('Updating the linked workbook works in the desktop app. Use Export data to download a copy.', 'warn');
+      return;
+    }
     if (!selectedTemplate) {
       if (!silent) showToast('Please select a survey template before exporting.', 'warn');
+      return;
+    }
+    const localWorkbookIsOpen = async (path) => {
+      try {
+        const lockPath = excelLockFilePath(path);
+        if (lockPath && await window.electronAPI.fileExists(lockPath)) return true;
+        // Fallback only blocks when the lock file belongs to THIS exact workbook —
+        // a different open workbook in the same folder must not block this push.
+        const dirEntries = await window.electronAPI.listDir(parentDir(path));
+        return Array.isArray(dirEntries) && dirEntries.some(name => isOwnerFileFor(name, path));
+      } catch {
+        // If we cannot determine open-state, fall through and attempt the write.
+        return false;
+      }
+    };
+    // Check before registering: an owner's push registers a new workbook id, which
+    // retires the one in the file. Stopping after that left the open file unsyncable.
+    if (targetPath && !selectedTemplate.isOneDrive && await localWorkbookIsOpen(targetPath)) {
+      showToast('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.', 'warn');
       return;
     }
     // A customer's Excel layout loads after sign-in. Never write the standard
@@ -16033,27 +16069,79 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // marker identity records exist to seed the server-side Excel baseline. The raw
       // syncToken is NOT retained here (embedded then discarded — security contract).
       let registeredWorkbookId = null;
+      let workbookLocation = null;
       try {
         const supabaseDocId = pdfFile?.id ?? null;
         const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
-        if (supabaseDocId && supabaseTemplateId) {
-          const capabilityTier =
-            selectedTemplate?.isSharePoint ? 'business'
-            : selectedTemplate?.isOneDrive ? 'personal'
-            : 'local';
-          const registration = await registerWorkbook({
+        // A new export does not know where it will be saved: it registers as a local
+        // file and the OneDrive/SharePoint save binds its real location afterwards
+        // (performOneDriveExport). A push to a linked work OneDrive file takes its
+        // drive and tier from the file itself when the template predates storing them.
+        if (targetPath && selectedTemplate?.isOneDrive && !selectedTemplate?.isSharePoint) {
+          const linkedFileId = oneDriveFileId || selectedTemplate.oneDriveFileId || null;
+          if (linkedFileId && selectedTemplate.graphDriveId) {
+            workbookLocation = { driveId: selectedTemplate.graphDriveId, itemId: linkedFileId, driveType: selectedTemplate.graphDriveType ?? null, capabilityTier: exportCapabilityTier(selectedTemplate) };
+          } else if (linkedFileId && graphClient) {
+            try { workbookLocation = workbookLocationFromDriveItem(await getFileById(graphClient, linkedFileId)); } catch { /* register as before */ }
+          }
+        }
+        const capabilityTier = !targetPath ? 'local'
+          : (workbookLocation?.capabilityTier || exportCapabilityTier(selectedTemplate));
+        // A plain download never registers (it would retire the live workbook); a push
+        // the server won't re-register keeps the linked file's own link
+        // (services/excelExportRegistration.js).
+        const registration = await resolveExportRegistration({
+          isDesktop: Boolean(window.electronAPI),
+          isLinkedPush: Boolean(targetPath),
+          canRegister: Boolean(supabaseDocId && supabaseTemplateId),
+          register: () => registerWorkbook({
             documentId:     supabaseDocId,
             templateId:     String(supabaseTemplateId),
-            graphDriveId:   selectedTemplate?.sharePointDriveId ?? null,
-            graphItemId:    selectedTemplate?.oneDriveFileId    ?? null,
+            graphDriveId:   targetPath ? (selectedTemplate?.sharePointDriveId || workbookLocation?.driveId || null) : null,
+            graphItemId:    targetPath ? (selectedTemplate?.oneDriveFileId || workbookLocation?.itemId || null) : null,
             capabilityTier,
-          });
+          }),
+          readLinkedRegistration: async () => {
+            let linkedData;
+            if (selectedTemplate?.isOneDrive) {
+              if (!graphClient) throw new Error('not signed in to Microsoft');
+              const linkedFileId = oneDriveFileId || selectedTemplate.oneDriveFileId;
+              linkedData = linkedFileId
+                ? await downloadExcelFile(graphClient, linkedFileId)
+                : await downloadExcelFileByPath(graphClient, selectedTemplate.oneDriveApiPath || targetPath);
+            } else {
+              linkedData = await window.electronAPI.readFile(targetPath);
+            }
+            const linkedBook = new ExcelJS.Workbook();
+            await linkedBook.xlsx.load(linkedData);
+            return readWorkbookRegistration(linkedBook);
+          },
+        });
+        if (registration.kind === EXPORT_REGISTRATION.BLOCK) {
+          setIsExporting(false);
+          if (!silent) showToast('Couldn\u2019t read the linked workbook, so nothing was pushed. Check your connection and try again.', 'warn');
+          return;
+        }
+        if (registration.kind === EXPORT_REGISTRATION.NEW || registration.kind === EXPORT_REGISTRATION.KEPT) {
           embedRegistrationIntoMetaSheet(metaSheet, registration.workbookId, registration.syncToken);
           registeredWorkbookId = registration.workbookId; // workbookId only (NOT the token)
-          // registration.syncToken is no longer referenced after embedRegistrationIntoMetaSheet returns.
+          // A kept registration from before work OneDrive counted as business: record
+          // where the file lives (the server allows only the owner or its registrant).
+          if (registration.kind === EXPORT_REGISTRATION.KEPT && workbookLocation?.capabilityTier && pdfFile?.id) {
+            const bound = await bindWorkbookLocation({
+              documentId: pdfFile.id,
+              templateId: String(selectedTemplate?.supabaseId || selectedTemplate?.id),
+              workbookId: registration.workbookId,
+              location: workbookLocation,
+              supabaseClient: supabase,
+            });
+            if (!bound.ok) console.warn('Excel: could not record the workbook location:', bound.error);
+          }
+        } else if (registration.error) {
+          // No token in the message.
+          console.warn('KAL-307: workbook registration unavailable — export proceeds without registration:', registration.error?.message ?? registration.error);
         }
-        // If documentId or templateId is absent (offline / local-only), silently skip registration.
-        // The workbook will be detected as 'unregistered-legacy' on import.
+        // registration.syncToken is no longer referenced after this block.
       } catch (regErr) {
         // Registration failure must not block the export.  Log a warning (no token in the message).
         console.warn('KAL-307: workbook registration failed — export proceeds without registration:', regErr?.message ?? regErr);
@@ -16271,7 +16359,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               // Style header row
               if (rowIndex === 0) {
                 excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-                  cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                  cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
                   cell.fill = {
                     type: 'pattern',
                     pattern: 'solid',
@@ -16446,14 +16534,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             rowIdColumn.hidden = true;
             rowIdColumn.numFmt = '@'; // text — never coerced to a number/date
 
-            // Changed By, Changed Date, Item (width 15)
+            // Changed By, Changed Date (width 15). Item and the checklist
+            // columns grow to their longest name or header (up to a point;
+            // longer headers wrap), so nothing opens cut off.
+            const fitWidth = (texts) => Math.min(36, Math.max(15, ...texts.map((t) => String(t ?? '').length + 2)));
             worksheet.getColumn(colOf.changed_by).width = 15;
             worksheet.getColumn(colOf.changed_date).width = 15;
-            worksheet.getColumn(itemColIndex).width = 15;
+            worksheet.getColumn(itemColIndex).width = fitWidth(dataRows.map((row) => row[itemColIndex - 1]));
 
-            // Columns 5 to lastChecklistCol: Checklist items (width 15 each)
             for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
-              worksheet.getColumn(col).width = 15;
+              worksheet.getColumn(col).width = fitWidth([dataRows[0]?.[col - 1]]);
             }
 
             // Entity column (width 15)
@@ -16462,9 +16552,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             // Notes column (width 50)
             const notesColIndex = colOf.notes;
             worksheet.getColumn(notesColIndex).width = 50;
+
+            // The header stays in view while scrolling, and the sheet prints
+            // one page wide in landscape with the header on every page.
+            worksheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+            worksheet.pageSetup = {
+              ...worksheet.pageSetup,
+              orientation: 'landscape',
+              fitToPage: true,
+              fitToWidth: 1,
+              fitToHeight: 0,
+              printTitlesRow: '1:1',
+            };
           });
         });
       }
+
+      // Sheet → (space, category) ids in the hidden metadata sheet, so the import still
+      // finds a sheet after a rename or a " (2)" suffix (services/excelSheetMap.js).
+      writeSheetMap(metaSheet, schemaMappings);
 
       // Durable per-marker identity records (fingerprints of the exact visible row
       // values + this export's id), keyed by marker id. Stamped onto the markers on a
@@ -16483,7 +16589,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // server import has no trusted baseline and routes every row to 'review'. Derives
       // the registration server-side from workbookId (R2#3) — no registration.id/generation.
       // Best-effort + non-blocking: a failure here must never fail the export.
-      try {
+      // A push to a linked workbook seeds only after the file is saved: a kept
+      // registration's baseline must not move ahead of a workbook still holding
+      // the old rows (Excel open, upload failed).
+      const seedServerBaseline = async () => { try {
         const seedDocId = pdfFile?.id ?? null;
         const seedTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
         if (registeredWorkbookId && seedDocId && seedTemplateId) {
@@ -16523,7 +16632,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }
       } catch (seedErr) {
         console.warn('KAL-309 D.6: server baseline seeding failed — export proceeds:', seedErr?.message ?? seedErr);
-      }
+      } };
+      if (!targetPath) await seedServerBaseline();
 
       // NOTE: we deliberately do NOT lock the Row ID column or protect the sheet.
       // Excel sort physically rewrites every column in a row (including a locked one),
@@ -16617,21 +16727,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               // Local file: never overwrite a workbook the user has open in Excel.
               // macOS lets the write succeed, but Excel's autosave then clobbers it —
               // so detect Excel's owner/lock file and ask the user to close Excel first.
-              let excelIsOpen = false;
-              try {
-                const lockPath = excelLockFilePath(targetPath);
-                if (lockPath && await window.electronAPI.fileExists(lockPath)) {
-                  excelIsOpen = true;
-                } else {
-                  // Fallback only blocks when the lock file belongs to THIS exact workbook —
-                  // a different open workbook in the same folder must not block this push.
-                  const dirEntries = await window.electronAPI.listDir(parentDir(targetPath));
-                  if (Array.isArray(dirEntries) && dirEntries.some(name => isOwnerFileFor(name, targetPath))) excelIsOpen = true;
-                }
-              } catch {
-                // If we cannot determine open-state, fall through and attempt the write.
-              }
-              if (excelIsOpen) {
+              if (await localWorkbookIsOpen(targetPath)) {
                 setIsExporting(false);
                 showToast('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.', 'warn');
                 return;
@@ -16643,6 +16739,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             const updatedTemplate = {
               ...selectedTemplate,
               linkedExcelPath: targetPath,
+              ...(workbookLocation ? { graphDriveId: workbookLocation.driveId, graphDriveType: workbookLocation.driveType ?? null } : {}),
               lastSyncTime: new Date().toISOString()
             };
             setSelectedTemplate(updatedTemplate);
@@ -16672,6 +16769,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
             // Mark that linked Excel file exists (ensures dropdown menu shows)
             setLinkedExcelExists(true);
+            await seedServerBaseline();
             markExcelExportSynced(updatedTemplate, identityRecordsByMarkerId);
 
             // Local-file export just rewrote the workbook (with every marker's
@@ -16707,7 +16805,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           setExportPendingData({
             buffer: workbookBuffer,
             fileName: fileName,
-            identityRecords: identityRecordsByMarkerId
+            identityRecords: identityRecordsByMarkerId,
+            workbookId: registeredWorkbookId
           });
           // Keep isExporting true - modal buttons will reset it when export completes
           setShowExportLocationModal(true);
@@ -16727,6 +16826,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         document.body.removeChild(link);
         setTimeout(() => URL.revokeObjectURL(url), 0);
         setIsExporting(false);
+        // A phone browser saves it without a word, like the PDF export did
+        // before its toast: say where the file went.
+        showToast(`Downloaded ${link.download}`, 'success');
       }
     } catch (error) {
       console.error('Failed to create Excel export', error);
@@ -17241,6 +17343,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
 
       const oneDriveFileId = uploadResult?.id;
+      // Tell the server where the workbook now lives (drive, item, work or personal
+      // from Microsoft's drive type). It registered before the save, as a local file,
+      // and a shared survey only syncs a work/school workbook (Excel audit W4).
+      const savedLocation = workbookLocationFromDriveItem(uploadResult);
+      if (savedLocation?.capabilityTier && exportPendingData.workbookId && pdfFile?.id) {
+        const bound = await bindWorkbookLocation({
+          documentId: pdfFile.id,
+          templateId: String(selectedTemplate?.supabaseId || selectedTemplate?.id),
+          workbookId: exportPendingData.workbookId,
+          location: savedLocation,
+          supabaseClient: supabase,
+        });
+        if (!bound.ok) console.warn('Excel: could not record the workbook location:', bound.error);
+      }
 
       // Also save a local copy to the OneDrive sync folder so it's available immediately
       // (only for personal OneDrive, not SharePoint)
@@ -17275,6 +17391,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         isOneDrive: true,
         isSharePoint: selection?.folder?.type === 'sharepoint',
         sharePointDriveId: selection?.folder?.driveId || null,
+        graphDriveId: savedLocation?.driveId || null,
+        graphDriveType: savedLocation?.driveType || null,
         lastSyncTime: new Date().toISOString()
       };
       setSelectedTemplate(updatedTemplate);
@@ -17323,7 +17441,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       setPendingOneDriveExport(false);
       setOneDriveSaveSelection(null);
     }
-  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken, markExcelSyncCheckpoint]);
+  }, [exportPendingData, graphClient, pdfFile, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken, markExcelSyncCheckpoint]);
 
   // Handler for OneDrive save modal - checks for duplicates before saving
   const handleOneDriveSave = useCallback(async (selection) => {
@@ -17481,57 +17599,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!entry) return;
 
     // KAL-309 (R2#4) — a server-synced conflict carries an opUuid (not the local
-    // excelValues/identityRecord). Resolve it server-side, drop it from the durable
-    // review meta, then re-reconcile: 'take-excel' flips the op back to 'accepted' so
-    // the next fetchSince re-materializes it; 'keep-app' just advances the frontier.
+    // excelValues/identityRecord). The client answers it from the op itself
+    // (resolveConflictedMarker): the choice decides only the disputed cells, Excel's
+    // other cells in the row land either way, and the baseline moves to what Excel now
+    // holds on both sides. The server records it as settled ('keep-app' or 'merged'),
+    // so the reducer flows past it. ('take-excel' set the op back to 'accepted', and the
+    // reducer then found the same conflict again: "Use Excel's" never took.)
     if (entry.opUuid) {
       const documentId = pdfFile?.id || null;
       const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
       if (!documentId || !templateId) return;
-      const resolution = choice === 'excel' ? 'take-excel' : 'keep-app';
-      // On 'keep-app' the user keeps the APP's version, so advance the server's stored baseline to the
-      // kept marker's current values — otherwise the server stays on the Excel value the apply committed
-      // and the NEXT edit to this marker false-conflicts. ('take-excel' needs none: the client adopts
-      // the Excel value, which already equals the stored state.)
-      let resolvedFingerprints = null;
-      let keptFp = null;
-      if (resolution === 'keep-app') {
-        try {
-          const kept = surveyMarkers[markerId];
-          const appVals = kept ? buildAppValuesByMarkerId({ [markerId]: kept }, selectedTemplate)[markerId] : null;
-          if (appVals) {
-            keptFp = await computeRowFingerprints(appVals);
-            resolvedFingerprints = { identityVector: keptFp.identityVectorFingerprint, fields: keptFp.fieldFingerprints };
-          }
-        } catch { /* leave null → server keeps the prior baseline (no worse than before the fix) */ }
+      const reviewKey = `excelSyncReview:${templateId}`;
+      const reviewMeta = { ...(excelSyncMetaGetStable(reviewKey) || {}) };
+      const revision = Number(reviewMeta[entry.opUuid]?.revision) || 0;
+      const { ops, error: fetchError } = await fetchSince({
+        supabaseClient: supabase, documentId, templateId, sinceRevision: Math.max(0, revision - 1),
+      });
+      const op = (ops || []).find((o) => (o?.op_uuid ?? o?.opUuid) === entry.opUuid) || null;
+      const marker = surveyMarkers[markerId];
+      const resolved = op && marker ? await resolveConflictedMarker({ marker, op, choice }) : null;
+      if (!resolved) {
+        showToast(`Could not load this change from Excel${fetchError ? `: ${fetchError}` : ''}. Try again.`, 'error');
+        return;
       }
       const { ok, error } = await resolveMaterializationConflict({
-        supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid, resolution, resolvedFingerprints,
+        supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid,
+        resolution: choice === 'excel' ? 'merged' : 'keep-app',
+        resolvedFingerprints: resolved.excelFingerprints,
       });
       if (!ok) { showToast(`Could not resolve conflict${error ? `: ${error}` : ''}.`, 'error'); return; }
-      // Mirror the server's advanced baseline LOCALLY (the missing half of the keep-mine fix): stamp the
-      // kept marker's fingerprints onto its excelSync so the NEXT edit's baseFingerprints — read from
-      // excelSync by the matcher — match the server's newly-advanced baseline. Without this the local
-      // baseline stays stale and the very next edit to this marker false-conflicts.
-      if (resolution === 'keep-app' && keptFp) {
-        setSurveyMarkers((prev) => {
-          const m = prev[markerId];
-          if (!m || !m.excelSync) return prev;
-          return {
-            ...prev,
-            [markerId]: { ...m, excelSync: {
-              ...m.excelSync,
-              fieldFingerprints: keptFp.fieldFingerprints,
-              identityVectorFingerprint: keptFp.identityVectorFingerprint,
-              fullRowFingerprint: keptFp.fullRowFingerprint,
-            } },
-          };
-        });
-      }
+      setSurveyMarkers((prev) => (prev[markerId] ? { ...prev, [markerId]: resolved.nextMarker } : prev));
       // Remove this op from the durable review set so the reducer flows PAST its revision.
-      const reviewMeta = { ...(excelSyncMetaGetStable(`excelSyncReview:${templateId}`) || {}) };
       delete reviewMeta[entry.opUuid];
-      excelSyncMetaSetStable(`excelSyncReview:${templateId}`, reviewMeta);
+      excelSyncMetaSetStable(reviewKey, reviewMeta);
       setPendingImportReview((prev) =>
         (prev || []).filter((e) => !(e && e.opUuid === entry.opUuid))
       );
@@ -17550,8 +17650,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const entities = selectedTemplate?.entities || [];
 
     let nextMarker = { ...marker, excelSync: record };
-    if (choice === 'excel') {
-      // applyExcelValuesToMarker spreads the marker, so the re-stamped excelSync is preserved.
+    // The choice decides only the disputed fields: Excel's other edits still land, and
+    // the app's other edits are never overwritten (excelFieldsForConflictChoice). The
+    // marker still holds the last-sync baseline here, so "what Excel changed" is exact.
+    const baselineFp = marker.excelSync?.fieldFingerprints;
+    const incomingFp = record?.fieldFingerprints;
+    if (baselineFp && incomingFp) {
+      const fields = excelFieldsForConflictChoice({
+        choice,
+        excelChangedFields: diffRowFields(baselineFp, incomingFp),
+        conflictFields: entry.conflictFields || []
+      });
+      nextMarker = applyExcelFieldsToMarker(nextMarker, excelValues, entities, fields);
+    } else if (choice === 'excel') {
+      // No baseline to diff against: whole row, as before. applyExcelValuesToMarker
+      // spreads the marker, so the re-stamped excelSync is preserved.
       nextMarker = applyExcelValuesToMarker(nextMarker, excelValues, entities);
     }
     const updatedMap = { ...surveyMarkers, [markerId]: nextMarker };
@@ -19573,6 +19686,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           workbookExportStamp: readWorkbookExportStamp(workbook), trigger: importTrigger,
           workbookId: importReg.workbookId, syncToken: importReg.syncToken,
         };
+        const importSheetMap = readSheetMap(workbook);
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {}; // { categoryId: { displayName, columns: [{ columnIndex, text }] } }
@@ -19603,30 +19717,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
-          // Iterate all modules and categories in selectedTemplate to find match
-          let matchedCategory = null;
-          let matchedModuleId = null;
-          let matchedModuleName = null;
-
-          const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
-          for (const mod of modules) {
-            if (matchedCategory) break;
-            const categories = mod.categories || [];
-            for (const cat of categories) {
-              const rawName = `${cat.name || 'Category'} - ${mod.name || 'Module'}`.trim() || 'Sheet';
-              const invalidChars = /[\\/?*[\]:]/g;
-              const cleaned = rawName.replace(invalidChars, '').substring(0, 31) || 'Sheet';
-
-              if (cleaned === sheetName) {
-                matchedCategory = cat;
-                matchedModuleId = mod.id;
-                matchedModuleName = mod.name;
-                break;
-              }
-            }
-          }
-
-          if (!matchedCategory) return;
+          // The hidden sheet list first (renamed categories still match), then the name rule.
+          const sheetMatch = matchSheetToCategory({
+            sheetName, modules: selectedTemplate.modules || selectedTemplate.spaces || [], sheetMap: importSheetMap
+          });
+          if (!sheetMatch) return;
+          const { category: matchedCategory, moduleId: matchedModuleId, moduleName: matchedModuleName } = sheetMatch;
 
           // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];
@@ -19808,6 +19904,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           workbookExportStamp: readWorkbookExportStamp(workbook), trigger: 'auto',
           workbookId: importReg.workbookId, syncToken: importReg.syncToken,
         };
+        const importSheetMap = readSheetMap(workbook);
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {};
@@ -19837,29 +19934,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
-          let matchedCategory = null;
-          let matchedModuleId = null;
-          let matchedModuleName = null;
-
-          const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
-          for (const mod of modules) {
-            if (matchedCategory) break;
-            const categories = mod.categories || [];
-            for (const cat of categories) {
-              const rawName = `${cat.name || 'Category'} - ${mod.name || 'Module'}`.trim() || 'Sheet';
-              const invalidChars = /[\\/?*[\]:]/g;
-              const cleaned = rawName.replace(invalidChars, '').substring(0, 31) || 'Sheet';
-
-              if (cleaned === sheetName) {
-                matchedCategory = cat;
-                matchedModuleId = mod.id;
-                matchedModuleName = mod.name;
-                break;
-              }
-            }
-          }
-
-          if (!matchedCategory) return;
+          // The hidden sheet list first (renamed categories still match), then the name rule.
+          const sheetMatch = matchSheetToCategory({
+            sheetName, modules: selectedTemplate.modules || selectedTemplate.spaces || [], sheetMap: importSheetMap
+          });
+          if (!sheetMatch) return;
+          const { category: matchedCategory, moduleId: matchedModuleId, moduleName: matchedModuleName } = sheetMatch;
 
           // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];
@@ -21660,6 +21740,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     metaSet: excelSyncMetaSet,
     metaSubscribe: subscribeDocumentMeta,
     hasStoredMarks: annotationDocHasStoredMarks,
+    hasLocalStore: annotationDocHasLocalStore,
     beginBulkImport: annotationDocBeginBulkImport,
     whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
@@ -21705,6 +21786,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     documentLocked,
     whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
+  // Read by Save: whether the shared document already keeps this work safe
+  // (its store on this device, or every change already in the cloud).
+  const annotationDocHoldsWorkRef = useRef(() => false);
+  annotationDocHoldsWorkRef.current = () => Boolean(
+    cloudSyncEnabled && pdfFile?.id && user?.id
+    && cloudSyncStatus?.healthy
+    && (annotationDocHasLocalStore() || cloudSyncQueueSize === 0)
+  );
   templateBindingAccessRef.current = {
     get: excelSyncMetaGet,
     set: (...args) => canRestoreFromHistory && excelSyncMetaSet(...args),
@@ -24384,9 +24473,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       } else {
         // Keep the dirty state and retry path even if a cloud flush can run.
         // Auto-save failures must be visible too: no local backup was written.
+        // A drawing past the browser's ~5 M character limit (Package 2: 11 M)
+        // can never fit this backup; while the shared document holds the work
+        // that is not a loss, and a red toast every 30 s only scares people.
         setHasUnsavedAnnotations(true);
         onUnsavedAnnotationsChange?.(true, tabId);
-        showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
+        if (!annotationDocHoldsWorkRef.current()) {
+          showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
+        }
       }
       // Report a failed local write before any network wait can outlast the
       // desktop quit grace period. Other save callers need no callback.
@@ -26925,7 +27019,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         : selectionMappedTool && pickBarTool === 'select'
         ? (selectedToolbarCallout
           ? true
-          : (selectedAnnot?.data?.type !== 'counter' && toolOffersCloudLineStyle(selectedType)))
+          : (selectedAnnot?.data?.type !== 'counter' && (toolOffersCloudLineStyle(selectedType)
+            // A polyline saved as a cloud before lines lost Cloud (2026-10-28).
+            || (selectedType === 'polyline' && selectedAnnot?.data?.pdfCloudIntensity != null))))
         : toolOffersCloudLineStyle(activeTool),
       cloudIntensity,
       setCloudIntensity: handleCloudIntensityChange,
@@ -31175,6 +31271,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
     }, 300);
   }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
+
+  // A Survey Marker picked on the page opens its row in the open Survey panel
+  // (desktop), as a markup list follows the picked markup. The panel is not
+  // opened for it, and the phone sheet is left alone so it never covers the
+  // page under the finger.
+  const pickedSurveyMarkerId = pickedSurveyMarker?.annotationId || null;
+  useEffect(() => {
+    if (!pickedSurveyMarkerId || mobileMode || !showSurveyPanel || rightRailCollapsed) return undefined;
+    const marker = surveyMarkers[pickedSurveyMarkerId];
+    if (!marker?.categoryId) return undefined;
+    if (marker.moduleId) setSelectedModuleId(marker.moduleId);
+    setExpandedCategories((prev) => (prev[marker.categoryId] && Object.keys(prev).length === 1 ? prev : { [marker.categoryId]: true }));
+    setExpandedSurveyMarkers((prev) => (prev[pickedSurveyMarkerId] && Object.keys(prev).length === 1 ? prev : { [pickedSurveyMarkerId]: true }));
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(`highlight-item-${pickedSurveyMarkerId}`)?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+    // Only a new pick moves the panel; edits to the marker do not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedSurveyMarkerId]);
 
   // Survey audit P1-5 (phone "Locate on page"): newest locate wins.
   const surveyLocateTokenRef = useRef(0);
@@ -36818,6 +36934,7 @@ ${pageBlocks}
       setShowSurveyPanel,
       setSurveyMarkers,
       setSurveyMarkersToRemoveByPage,
+      checkpointSurveyAnswer,
       showExportMenu,
       showRegionSelection,
       showSurveyPanel,
@@ -36968,6 +37085,7 @@ ${pageBlocks}
     setShowSurveyPanel,
     setSurveyMarkers,
     setSurveyMarkersToRemoveByPage,
+    checkpointSurveyAnswer,
     showExportMenu,
     showRegionSelection,
     showSurveyPanel,

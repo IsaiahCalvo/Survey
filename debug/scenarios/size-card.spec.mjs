@@ -1,7 +1,7 @@
 // Width / Size card (owner 2026-10-22: the old 12-row width list "looks like
-// shit"; keep the dropdown and the typed number). The pill opens a card: a
-// stroke sample in the tool's colour, a slider, the typed number, quick picks.
-// Mouse and pen.
+// shit"; keep the dropdown and the typed number). Owner 2026-10-28 ("a little
+// simpler"): the card is the typed number and the quick picks, no sample or
+// slider. Mouse and pen.
 import { test, expect } from '@playwright/test';
 
 if (process.env.PW_CHROMIUM_PATH) test.use({ launchOptions: { executablePath: process.env.PW_CHROMIUM_PATH } });
@@ -28,7 +28,7 @@ async function slide(page, pointerType, from, to) {
 }
 
 for (const pointerType of ['mouse', 'pen']) {
-  test(`width card: picks, typed number, slider, drawing (${pointerType})`, async ({ page, context }) => {
+  test(`width card: picks, typed number, drawing (${pointerType})`, async ({ page, context }) => {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await context.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, (route) => route.abort());
@@ -43,10 +43,8 @@ for (const pointerType of ['mouse', 'pen']) {
     const pill = page.getByRole('button', { name: /^Width: / });
     const card = page.locator('[data-annotation-size-popover]');
     await pill.click();
-    // The sample is drawn in the pen's colour.
-    const stroke = await page.evaluate(() => document.querySelector('[data-size-card-sample] path')?.getAttribute('stroke'));
-    expect(stroke).toBeTruthy();
-    expect(stroke).not.toBe('currentColor');
+    // No paper sample and no slider - the number and the picks.
+    await expect(card.locator('[data-size-card-sample], input[type="range"]')).toHaveCount(0);
     await card.getByRole('option', { name: '32 pt', exact: true }).click();
     await expect(card).toBeHidden();
     await expect(pill).toHaveAttribute('aria-label', 'Width: 32 pt');
@@ -60,14 +58,10 @@ for (const pointerType of ['mouse', 'pen']) {
     await field.press('ArrowUp');
     await expect(pill).toHaveAttribute('aria-label', 'Width: 7.5 pt');
 
-    // The slider.
-    const slider = card.getByRole('slider');
-    const box = await slider.boundingBox();
-    const y = box.y + box.height / 2;
-    await slide(page, pointerType, { x: box.x + box.width * 0.3, y }, { x: box.x + box.width * 0.6, y });
-    const after = Number((await pill.getAttribute('aria-label')).match(/([\d.]+) pt/)[1]);
-    expect(after).toBeGreaterThan(12);
-    expect(after).toBeLessThan(30);
+    await field.fill('16');
+    await field.press('Enter');
+    await expect(pill).toHaveAttribute('aria-label', 'Width: 16 pt');
+    const after = 16;
     await page.keyboard.press('Escape');
     await expect(card).toBeHidden();
 
@@ -79,10 +73,10 @@ for (const pointerType of ['mouse', 'pen']) {
       return marks.length ? marks[marks.length - 1].querySelector('path').getBBox().height : 0;
     })).toBeGreaterThan(after - 1);
 
-    // The eraser's Size opens the same card, with a round sample.
+    // The eraser's Size opens the same card, its picks drawn as dots.
     await page.getByRole('button', { name: /^Eraser/ }).first().click();
     await page.getByRole('button', { name: /^Size: / }).click();
-    await expect(page.locator('[data-size-card-sample] span').first()).toBeVisible();
+    await expect(page.locator('.annotation-size-card__chip-dot > span:not(.annotation-size-card__chip-line)').first()).toBeVisible();
 
     expect(errors).toEqual([]);
   });

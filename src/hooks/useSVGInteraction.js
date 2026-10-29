@@ -449,7 +449,7 @@ export function useSVGInteraction({
     setSnapGuidesState(value);
   }, []);
   // Endpoint / corner drag snapping (drawSnap.js): Shift locks the segment
-  // from `anchor` to 45° steps; the point locks onto another line end or
+  // from `anchor` to the snap angle (Settings, 15° by default); the point locks onto another line end or
   // corner within 8 screen px unless Alt / the snapping preference is off.
   const snapDraggedPoint = (ds, anchor, point, e) => {
     const r = resolveDrawSnap(anchor, point, {
@@ -805,7 +805,12 @@ export function useSVGInteraction({
   // Grabbers keep one screen size during a pinch or wheel zoom, before the
   // retune above lands (utils/liveHandleZoom.js). Only while something here
   // is selected, so pages with no grabbers do no per-frame work.
-  const showsGrabbers = selectedIds.size > 0 || (selectedCalloutIds?.size ?? selectedCalloutIds?.length ?? 0) > 0;
+  // A picked Survey Marker counts too: Locate on page zooms right after the
+  // pick, and its grabbers were drawn at the old zoom until the retune landed
+  // (91 px at 800 %, then 11 px).
+  const showsGrabbers = selectedIds.size > 0
+    || (selectedCalloutIds?.size ?? selectedCalloutIds?.length ?? 0) > 0
+    || (selectedSurveyMarkerIds instanceof Set && selectedSurveyMarkerIds.size > 0);
   useLayoutEffect(() => {
     const svgEl = svgRef.current;
     if (!svgEl || !pageWidth || !showsGrabbers) return undefined;
@@ -4009,7 +4014,7 @@ export function useSVGInteraction({
       newAngle = ((newAngle % 360) + 360) % 360;
 
       // Canvas audit chunk 3 (Drawboard): whole degrees, pulled to 0 / 90 /
-      // 180 / 270 within 4°; Shift = hard 15° steps (was a soft 45° snap
+      // 180 / 270 within 4°; Shift = hard snap-angle steps (Settings, 15° by default; was a soft 45° snap
       // that only caught within 3°); Alt = free.
       newAngle = snapRotationDegrees(newAngle, { shift: e.shiftKey, free: isSnapFreeModifier(e) });
       newAngle = ((newAngle % 360) + 360) % 360;

@@ -647,6 +647,7 @@ export async function openAnnotationDoc({
       retryTimer: null,
       attempt: 0,
       scheduled: false,
+      lastQueuedAt: 0,
       blocked: 0, // queued edits waiting for this checkpoint (bulkDependencyFor)
     },
     lastLocalEditAt: 0,
@@ -3913,6 +3914,7 @@ function queueBulkUpdate(state, update, { alreadyStaged = false } = {}) {
   if (!alreadyStaged) applyToStaged(state, update);
   const bytes = new Uint8Array(update);
   state.bulk.pending.push(bytes);
+  state.bulk.lastQueuedAt = Date.now();
   for (const [client, range] of updateClockRanges(bytes)) {
     const end = state.bulk.unaccepted.get(client) || 0;
     if (range.end > end) state.bulk.unaccepted.set(client, range.end);
@@ -3989,14 +3991,16 @@ async function runBulkFold(state) {
     return;
   }
   const updates = state.bulk.pending.slice();
-  const bulkUpdate = updates.length === 1 ? updates[0] : Y.mergeUpdates(updates);
+  // The parts as they are: the checkpoint worker merges them into its bytes
+  // (2026-10-28; merging them here took ~0.4 s on Package 2).
+  const bulkUpdate = updates.length === 1 ? updates[0] : updates;
   const folded = new Map();
   for (const update of updates) {
     for (const [client, range] of updateClockRanges(update)) {
       if (range.end > (folded.get(client) || 0)) folded.set(client, range.end);
     }
   }
-  syncTrace('bulk-fold-start', { bytes: bulkUpdate.length, parts: updates.length });
+  syncTrace('bulk-fold-start', { bytes: updates.reduce((sum, update) => sum + update.length, 0), parts: updates.length });
   const result = await writeSnapshot(state, {
     bulkUpdate,
     repairsGap: false,
@@ -4065,14 +4069,18 @@ async function runBulkFold(state) {
 }
 
 // Until this screen has no append of its own on the way (other than edits
-// waiting for this very checkpoint) and no local edit for BULK_QUIET_MS.
+// waiting for this very checkpoint), and no local edit and no import batch
+// for BULK_QUIET_MS.
 // Bounded: a screen that never pauses still gets its turn.
 async function waitForBulkQuiet(state) {
   const until = Date.now() + BULK_QUIET_MAX_WAIT_MS;
   while (!state.destroyed && !state.closePromise && Date.now() < until) {
     const appending = (Number(state.pendingAppends) || 0) - (Number(state.bulk.blocked) || 0) > 0;
     const editedRecently = Date.now() - (Number(state.lastLocalEditAt) || 0) < BULK_QUIET_MS;
-    if (!appending && !editedRecently) break;
+    // 2026-10-28: the import is saved a batch at a time (PDFViewer); fold it
+    // once the batches stop, not the first one alone.
+    const importing = Date.now() - (Number(state.bulk.lastQueuedAt) || 0) < BULK_QUIET_MS;
+    if (!appending && !editedRecently && !importing) break;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   // Rows other screens wrote are read in order first, so at_seq can be the
@@ -4984,6 +4992,7 @@ async function writeSnapshotOnce(state, {
   // 2026-10-07: a bulk import saved by this checkpoint (runBulkFold): the
   // bytes are acceptedDoc plus it, merged where acceptedDoc is encoded (the
   // checkpoint worker); acceptedDoc takes it in once the write is accepted.
+  // An update, or a list of them (its parts).
   bulkUpdate = null,
 } = {}, bodyMarkers = []) {
   const repairsGapAtStart = repairsGap ?? state.durabilityGap;
@@ -5024,8 +5033,24 @@ async function writeSnapshotOnce(state, {
   if (snapshotUpdate && atSeqAtEncode !== atSeq) mergeAcceptedAtStart = true;
   // w33: this capture covers every row this screen wrote so far.
   resetOwnCheckpointCounters(state);
+  // The app's Supabase client can send the worker's JSON bytes as the
+  // p_snapshot text without this thread ever holding the multi-MB string.
+  const asJsonBody = useCheckpointJsonBody(state);
+  // 2026-10-28: the merge with the accepted state is built by the checkpoint
+  // worker from its mirror of acceptedDoc, posted in THIS tick (so exactly
+  // acceptedDoc as it is now). On a big drawing the merge here (encode the
+  // whole document, apply both into a scratch doc, encode again) froze the
+  // page for ~1 s on every conflict retry. No mirror: merged here, as before.
+  let mergedInWorker = null;
   if (mergeAcceptedAtStart && snapshotUpdate) {
-    snapshotUpdate = mergeSnapshotUpdates(encodeSnapshot(state.acceptedDoc), snapshotUpdate);
+    mergedInWorker = requestMirrorCheckpoint(
+      state.checkpointMirror,
+      Y.encodeStateVector(state.acceptedDoc),
+      { asJsonBody, extraUpdate: snapshotUpdate },
+    );
+    if (!mergedInWorker) {
+      snapshotUpdate = mergeSnapshotUpdates(encodeSnapshot(state.acceptedDoc), snapshotUpdate);
+    }
   }
   syncTrace('snapshot-encode-start');
   const epochAtStart = epoch ?? (
@@ -5046,16 +5071,15 @@ async function writeSnapshotOnce(state, {
   // are acceptedDoc exactly as it is now (2026-10-06); later edits go into
   // the next checkpoint. No mirror: encoded here, as before.
   const encodesAccepted = !snapshotUpdate && !repairsGapAtStart;
-  // The app's Supabase client can send the worker's JSON bytes as the
-  // p_snapshot text without this thread ever holding the multi-MB string.
-  const asJsonBody = useCheckpointJsonBody(state);
   const withBulk = encodesAccepted && bulkUpdate ? bulkUpdate : null;
-  const mirrorCheckpoint = encodesAccepted
+  const mirrorCheckpoint = mergedInWorker || (encodesAccepted
     ? requestMirrorCheckpoint(state.checkpointMirror, Y.encodeStateVector(state.acceptedDoc), { asJsonBody, extraUpdate: withBulk })
-    : null;
+    : null);
   let updateAtStart = snapshotUpdate || (
     repairsGapAtStart ? encodeRepairCheckpoint(state) : (mirrorCheckpoint ? null : encodeSnapshot(state.acceptedDoc))
   );
+  // The bytes come from the worker's merge (above).
+  if (mergedInWorker) updateAtStart = null;
   if (withBulk && updateAtStart && !mirrorCheckpoint) {
     updateAtStart = mergeCheckpointWithUpdate(updateAtStart, withBulk);
   }
@@ -5253,7 +5277,9 @@ async function writeSnapshotOnce(state, {
         // Repair or rebased bytes may hold more: applied.
         if (!encodesAccepted && !(fromAccepted && !repairsGapAtStart)) applyAcceptedUpdate(state, updateAtStart);
         // Only the import is new to acceptedDoc (the rest is its own encoding).
-        else if (withBulk) applyAcceptedUpdate(state, withBulk);
+        else if (withBulk) {
+          for (const part of Array.isArray(withBulk) ? withBulk : [withBulk]) applyAcceptedUpdate(state, part);
+        }
         state.acceptedEditEpoch = Math.max(state.acceptedEditEpoch, epochAtStart || 0);
         await settleSnapshotCoveredRecords(state, updateAtStart, epochAtStart, prepared?.stateVector || null);
         await recordWrittenSnapshotInCleanState(state, updateAtStart, coverageAtStart, {
@@ -7455,6 +7481,8 @@ function buildHandle(state) {
 
     /** Current durable-write state for user-facing status. */
     getSyncStatus() { return currentSyncStatus(state); },
+    // This device's own store holds every edit (it survives a reload offline).
+    hasLocalStore() { return !!state.idbProvider; },
 
     /** Actor-safe status for the shipped actorless IndexedDB recovery store. */
     getLegacyRecoveryStatus() {

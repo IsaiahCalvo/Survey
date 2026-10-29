@@ -245,3 +245,13 @@ body:has([data-annotation-context-menu]) .selection-quick-bar {
     animation: none;
   }
 }
+
+/* Phone (owner 2026-10-28): Duplicate and Delete only, at finger size. */
+.selection-quick-bar[data-phone='true'] {
+  height: 44px;
+  padding: 0 3px;
+}
+.selection-quick-bar[data-phone='true'] .selection-quick-bar__button {
+  width: 40px;
+  height: 40px;
+}

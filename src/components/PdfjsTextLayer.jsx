@@ -21,6 +21,7 @@ import {
   repairCollapsedTextDragSelection,
 } from '../utils/nativeTextDragSelection';
 import { readPdfjsTextContent } from '../utils/pdfjsTextContent';
+import { keepTextLayer, restoreTextLayer, textContentInSlices, textLayerKey } from '../utils/pdfjsTextLayerCache';
 
 // Inject the glyph-positioning + selection CSS once for the whole app.
 // Exported for the text-search measurement layer (sidebar/SearchTextPanel.jsx),
@@ -235,9 +236,13 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
     let cancelled = false;
     let task = null;
     let idleId = null;
+    // A built layer is kept when this page leaves and put back when it comes
+    // back at the same size (utils/pdfjsTextLayerCache.js).
+    const el = ref.current;
+    const key = textLayerKey(pageNumber, scale, rotation);
+    let built = null;
     const build = async () => {
       buildNowRef.current = null;
-      const el = ref.current;
       if (!el || !pdf) return;
       try {
         const page = await pdf.getPage(pageNumber);
@@ -254,11 +259,18 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
         el.style.setProperty('--scale-factor', String(scale));
         el.style.width = `${Math.floor(viewport.width)}px`;
         el.style.height = `${Math.floor(viewport.height)}px`;
-        task = new pdfjsLib.TextLayer({ textContentSource: textContent, container: el, viewport });
+        // Fed a slice per task: measuring every glyph run of a page in one
+        // task held the page (~1 s a page on a slow PC).
+        task = new pdfjsLib.TextLayer({ textContentSource: textContentInSlices(textContent), container: el, viewport });
         await task.render();
+        if (!cancelled) built = textContent;
       } catch { /* cancelled or unsupported render — ignore */ }
     };
-    if (idleOnlyRef.current && typeof requestIdleCallback === 'function') {
+    const restored = el ? restoreTextLayer(pdf, key, el) : null;
+    if (restored) {
+      built = restored;
+      onTextAvailability?.(pageNumber, restored);
+    } else if (idleOnlyRef.current && typeof requestIdleCallback === 'function') {
       idleId = requestIdleCallback(() => { idleId = null; void build(); }, { timeout: 2000 });
       buildNowRef.current = () => {
         if (idleId == null) return;
@@ -274,6 +286,7 @@ function PdfjsTextLayer({ pdf, pageNumber, scale, rotation = 0, interactive = fa
       buildNowRef.current = null;
       if (idleId != null) cancelIdleCallback(idleId);
       try { task?.cancel?.(); } catch { /* noop */ }
+      if (built) keepTextLayer(pdf, key, el, built);
     };
   }, [pdf, pageNumber, scale, rotation, onTextAvailability]);
 

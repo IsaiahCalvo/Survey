@@ -13,6 +13,9 @@ export default function SurveyTemplateVersionDialog({ latest, onChoose, onCancel
       onClose={onCancel}
       width={420}
       zIndex={10003}
+      // Phone walk 2026-10-28: inside the viewer it opened under the phone's
+      // Survey sheet, so tapping a changed template looked like it did nothing.
+      atRoot
       footer={(
         <>
           <button type="button" className="hub-btn dialog-touch-pad" onClick={onCancel}>Cancel</button>

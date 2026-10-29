@@ -419,8 +419,19 @@ export default function SwipeActionsRow({
     api.current?.run(side, index);
   }, []);
 
+  // Off (Select mode, no actions) keeps the very same element tree, with the
+  // content box laid out as if it were not there. Returning the children
+  // bare remounted every row the moment Select mode turned the swipe off, so
+  // whatever the row held started over: the category's select-mode loadout
+  // popped in with no motion (owner 2026-10-28).
   if (off) {
-    return <Tag className={className || undefined} {...rest}>{children}</Tag>;
+    return (
+      <Tag ref={rootRef} className={className || undefined} {...rest}>
+        {null}
+        {null}
+        <div ref={contentRef} style={{ display: 'contents' }}>{children}</div>
+      </Tag>
+    );
   }
 
   const layer = (side) => (action, index) => {

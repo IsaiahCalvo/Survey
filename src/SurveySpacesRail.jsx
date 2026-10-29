@@ -64,6 +64,7 @@ import SurveyReportMenu from './components/SurveyReportMenu.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
+import { glideAcrossNextChange } from './utils/loadoutTransition.js';
 import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
@@ -574,6 +575,7 @@ const SurveySpacesRail = ({
   setShowSurveyPanel,
   setSurveyMarkers,
   setSurveyMarkersToRemoveByPage,
+  checkpointSurveyAnswer,
   showExportMenu,
   showRegionSelection,
   showSurveyPanel,
@@ -1484,6 +1486,7 @@ const SurveySpacesRail = ({
   // the panel re-renders, so it passes the answers it already set.
   const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option, baseResponses = null) => {
     const currentMarker = surveyMarkers[annotationId] || {};
+    if (currentMarker.checklistResponses?.[checklistItemId]?.selection !== option) checkpointSurveyAnswer?.(annotationId);
     const nextResponses = {
       ...(baseResponses || currentMarker.checklistResponses),
       [checklistItemId]: {
@@ -3438,7 +3441,12 @@ const SurveySpacesRail = ({
                                                 loadout - All, Move, Copy, Delete, Done - on the category's own row,
                                                 not on a new line under it. */}
                                             {!mobileMode && isExpanded && surveyMarkerCount > 0 && !copyModeActive && !categorySelectModeActive && (() => {
-                                              const exitItemSelect = () => {
+                                              // The count left of the loadout glides with it (owner 2026-10-28).
+                                              const glideCount = (from) => glideAcrossNextChange(
+                                                from?.closest?.('.survey-marker-category-row')?.querySelector('.survey-marker-category-main-count'),
+                                              );
+                                              const exitItemSelect = (event) => {
+                                                glideCount(event?.currentTarget);
                                                 setItemSelectModeActive(prev => {
                                                   const updated = { ...prev };
                                                   delete updated[category.id];
@@ -3527,6 +3535,7 @@ const SurveySpacesRail = ({
                                                       className="survey-marker-category-select"
                                                       onClick={(e) => {
                                                         e.stopPropagation();
+                                                        glideCount(e.currentTarget);
                                                         setItemSelectModeActive(prev => ({
                                                           ...prev,
                                                           [category.id]: true
@@ -4287,7 +4296,8 @@ const SurveySpacesRail = ({
                         />
                       )}
                       {mobileMode ? (
-                        (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (
+                        // Updating the linked workbook needs the desktop app.
+                        (selectedTemplate.linkedExcelPath && linkedExcelExists === true && typeof window !== 'undefined' && window.electronAPI) ? (
                           <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
                             <button
                               type="button"
@@ -4519,6 +4529,9 @@ const SurveySpacesRail = ({
                             <Icon name="document" size={14} color="currentColor" />
                             Open Excel
                           </div>
+                          {/* Push and Pull read and write the linked file, which only the
+                              desktop app can do (Live Sync too: its pull reads the file there). */}
+                          {window.electronAPI && (
                           <div
                             onClick={() => {
                               handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
@@ -4531,10 +4544,11 @@ const SurveySpacesRail = ({
                             <Icon name="upload" size={14} color="currentColor" />
                             Push to Excel
                           </div>
+                          )}
                           {/* "Pull from Excel" reads the last SAVED copy from disk, which on
                               a local file open in Excel is stale and overlaps the automatic
                               import-on-save — so it's only offered for OneDrive workbooks. */}
-                          {selectedTemplate?.isOneDrive && (
+                          {selectedTemplate?.isOneDrive && window.electronAPI && (
                           <div
                             onClick={() => {
                               handleSyncFromExcel();
@@ -4548,7 +4562,7 @@ const SurveySpacesRail = ({
                             Pull from Excel
                           </div>
                           )}
-                          {selectedTemplate?.isOneDrive && (() => {
+                          {selectedTemplate?.isOneDrive && window.electronAPI && (() => {
                             // Amendment (b) capability gate: a refused verdict keeps the
                             // toggle visible but inert-with-reason. Clicking re-checks
                             // (retry); the plain-English reason comes from the shared

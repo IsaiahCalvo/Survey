@@ -20,19 +20,24 @@ import { isUndoKeyEvent, isRedoKeyEvent } from './utils/undoRedoHotkeys';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RADIUS } from './utils/handleStyle';
 // KAL-301 REDO: rotation chrome copies the day-one standard implementation.
-// - normalizeAngle / snapAngleToNearest45: same drag math + soft Shift-snap
+// - normalizeAngle: same drag math; Shift steps by the snap angle
 //   convention as useSVGInteraction.js's rotate branch (Phase 9/EDIT-11).
 // - selectionHandleVisibility metrics: same mtr circle size / icon size /
 //   rotation offset as SVGSelectionOverlay.jsx.
 // - RotationInputField: the app's standard angle pill (EDIT-12), reused as-is.
-import { normalizeAngle, snapAngleToNearest45 } from './utils/svgTransformMath';
+import { normalizeAngle } from './utils/svgTransformMath';
+import { readSnapAngle } from './utils/annotationPreferences.js';
 import { getSelectionHandleVisualMetrics, getAdaptiveSelectionHandleSpec } from './utils/selectionHandleVisibility.js';
 import RotationInputField from './components/RotationInputField';
 import { createStableActions } from './utils/stableActionProxy.js';
 import rotateIconSvg from './assets/rotate-icon.svg';
 import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR, resizeHandleCursor } from './utils/handleCursors.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
-import { showToast } from './utils/toast.js';
+import { showToast, dismissToast } from './utils/toast.js';
+
+// One "Area changes dropped" toast at a time; a new area session takes it
+// down so its Undo can never write old areas over newer ones.
+const AREA_DROPPED_TOAST_ID = 'region-area-changes-dropped';
 import Icon from './Icons';
 import { useTooltip } from './components/Tooltip';
 import './styles/annotationContextMenu.css';
@@ -45,7 +50,7 @@ const MIN_REGION_SIZE = 5;
 // Owner 2026-10-22: Polygon area, drawn a corner per click like Bluebeam's
 // Add Space and Photoshop's Polygonal Lasso. Since 2026-10-28 it draws like
 // the Polygon markup tool: check marks on the first and latest corner close
-// or finish it, and Shift locks each new side to 15° (regionPolygonEdit.js).
+// or finish it, and Shift locks each new side to the snap angle (regionPolygonEdit.js).
 const DRAW_TOOL_TYPES = new Set(['rectangular', 'polygon', 'freehand']);
 // Owner 2026-10-26: Erase takes a whole area away where it is pressed or
 // dragged over (the phone's Delete key; Subtract cuts part of an area).
@@ -228,7 +233,7 @@ const RegionSelectionTool = ({
   const [polyOnCheck, setPolyOnCheck] = useState(false);
   const polyCornersRef = useRef([]);
   polyCornersRef.current = polyCorners;
-  // Add or Subtract is fixed by the first corner, so Shift (15° lock) or Alt
+  // Add or Subtract is fixed by the first corner, so Shift (angle lock) or Alt
   // pressed while drawing does not flip what the closed shape does.
   const polyModeRef = useRef(null);
   const [regions, setRegions] = useState(() => []);
@@ -771,6 +776,7 @@ const RegionSelectionTool = ({
           // Preserve originCenter for unmerge offset calculation
           originCenter: region.originCenter ? { ...region.originCenter } : undefined
         }));
+        dismissToast(AREA_DROPPED_TOAST_ID);
         setRegions(clonedRegions);
         sessionStartSignatureRef.current = regionsSignature(clonedRegions);
         const storedHistory = regionEditHistoryStore.get(historyKey);
@@ -1246,7 +1252,9 @@ const RegionSelectionTool = ({
         currentUnion = result;
       }
 
-      return currentUnion.length === 1;
+      // A union that closes round a hole cannot be one area (an area has no
+      // holes), so pieces split round a Subtract hole stay apart.
+      return currentUnion.length === 1 && currentUnion[0].length === 1;
     } catch (error) {
       console.error('Error checking merge capability', error);
       return false;
@@ -1983,9 +1991,9 @@ const RegionSelectionTool = ({
         // KAL-301 REDO: rotation drag, copied from the standard rotate branch
         // in useSVGInteraction.js. The angle is the ABSOLUTE pointer direction
         // from the shape's bbox center, converted to Fabric-style degrees
-        // (0 = up) via normalizeAngle. There is NO always-on snap — the app's
-        // day-one convention is free rotation with a soft Shift-snap to the
-        // nearest 45° within a 3° threshold (EDIT-11 locked decision).
+        // (0 = up) via normalizeAngle. There is NO always-on snap: rotation is
+        // free, and Shift steps by the Settings snap angle (15° / 45° / 90°),
+        // the same as turning a mark (snapRotationDegrees).
         //
         // Coords are NOT touched here. The selected region and its entire
         // selection chrome (box + grabbers + mtr handle) render with a
@@ -1998,7 +2006,8 @@ const RegionSelectionTool = ({
         const radians = Math.atan2(y - center.cy, x - center.cx);
         let newAngle = normalizeAngle(radians);
         if (event.shiftKey) {
-          newAngle = snapAngleToNearest45(newAngle, 3);
+          const step = readSnapAngle();
+          newAngle = ((Math.round(newAngle / step) * step) % 360 + 360) % 360;
         }
 
         dragHasMovedRef.current = true;
@@ -2017,15 +2026,18 @@ const RegionSelectionTool = ({
       );
     }
 
+    // The live shape stops at the page edge, where the saved area is cut.
+    const edgeX = Math.max(0, Math.min(resolvedPageWidth || x, x));
+    const edgeY = Math.max(0, Math.min(resolvedPageHeight || y, y));
     if (effectiveToolType === 'rectangular' && startPoint) {
       setCurrentRect({
-        x: Math.min(startPoint.x, x),
-        y: Math.min(startPoint.y, y),
-        width: Math.abs(x - startPoint.x),
-        height: Math.abs(y - startPoint.y)
+        x: Math.min(startPoint.x, edgeX),
+        y: Math.min(startPoint.y, edgeY),
+        width: Math.abs(edgeX - startPoint.x),
+        height: Math.abs(edgeY - startPoint.y)
       });
     } else if (effectiveToolType === 'freehand') {
-      setPolygonPoints(prev => [...prev, { x, y }]);
+      setPolygonPoints(prev => [...prev, { x: edgeX, y: edgeY }]);
     }
   }, [active, targetElement, clientPointToPage, getVisualScale, interactionState, ensureBoundsMinSize, isDrawing, effectiveToolType, startPoint, regions, activeTool, mobileMode, eraseAreaAt, resolvedPageWidth, resolvedPageHeight, pageToScreenX, pageToScreenY]);
 
@@ -2371,6 +2383,7 @@ const RegionSelectionTool = ({
     handleCancel();
     if (dropped && typeof onRestoreRegions === 'function') {
       showToast('Area changes dropped', 'info', {
+        id: AREA_DROPPED_TOAST_ID,
         duration: 6000,
         action: { label: 'Undo', onClick: () => onRestoreRegions(spaceId, pageId, dropped) },
       });
@@ -3586,6 +3599,7 @@ const RegionSelectionTool = ({
           >
             {toolType === 'rectangular' && currentRect && (
               <rect
+                data-region-draft=""
                 x={pageToScreenX(currentRect.x)}
                 y={pageToScreenY(currentRect.y)}
                 width={currentRect.width * displayScaleX}
@@ -3727,6 +3741,7 @@ const RegionSelectionTool = ({
                       data-region-area-outline="true"
                       d={unifiedPath}
                       fill="rgba(74, 144, 226, 0.22)"
+                      fillRule="evenodd"
                       stroke="#4A90E2"
                       strokeWidth="2"
                       style={{ pointerEvents: 'none' }} // Visual only

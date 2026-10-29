@@ -1,18 +1,10 @@
-import { moveGroupFocus } from '../utils/radioGroupKeys.js';
 import './StrokeStyleCards.css';
 
 /*
- * Owner 2026-10-26 (issue note #11): the line-style and arrow pickers were
- * plain word lists ("Solid" in one pill, "Solid" again in the arrowhead pill
- * beside it, and "None" in both the arrowhead and the arrow-ends menus). They
- * are cards now, the same kind of card as the Width picker, after Drawboard
- * PDF's pen card: the line it will draw on a strip of paper, in the tool's own
- * colour and width, then the choices drawn as tiles.
- *
- *   Style card  - Solid / Dashed / Dotted (/ Cloud) tiles.
- *   Ends card   - which ends carry a head (End / Both), then the head tiles
- *                 (None, Filled, Open, Circle, Square, Bar). One card for what
- *                 used to be two pills, so "no head" lives in one place.
+ * The line samples the Style and Arrow ends menus draw (the pill's drawing
+ * and each row's). Owner 2026-10-26 (#11) made them cards with a paper strip
+ * and tiles; owner 2026-10-28 ("a little simpler") made them plain lists
+ * again, each row drawing its line, so only the sample is left here.
  */
 
 const DASH = {
@@ -109,120 +101,5 @@ export function StrokeSample({
         <Head type={startHead} x={width - x0} y={y} size={L} color={color} stroke={headStroke} paper={paper} />
       </g>
     </svg>
-  );
-}
-
-const PAPER = '#f7f7f4';
-// The strip shows the line at its 100% zoom size (1 pt = 4/3 px), up to what
-// the strip can hold.
-const paperPx = (widthPt) => Math.min(12, Math.max(1, (Number(widthPt) || 2) * (4 / 3)));
-
-function Paper({ children, mixed }) {
-  return (
-    <div className="stroke-card__paper" data-stroke-card-sample="true">
-      {mixed ? <span className="stroke-card__mixed">Mixed</span> : children}
-    </div>
-  );
-}
-
-function Tile({ active, label, onPick, children, testValue }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      aria-label={label}
-      data-stroke-tile={testValue}
-      className={`stroke-card__tile${active ? ' is-active' : ''}`}
-      onClick={onPick}
-    >
-      <span className="stroke-card__tile-sample" aria-hidden="true">{children}</span>
-      <span className="stroke-card__tile-label" aria-hidden="true">{label}</span>
-    </button>
-  );
-}
-
-/** The Style pill's card. */
-export function LineStyleCard({ label = 'Style', value, mixed, options, onSelect, color, widthPt, endHead = 'none', startHead = 'none' }) {
-  const ink = color || '#1f2937';
-  return (
-    <div className="stroke-card" data-line-style-card="true">
-      <Paper mixed={mixed}>
-        <StrokeSample width={212} height={44} pad={14} strokePx={paperPx(widthPt)} color={ink} paper={PAPER} dash={value} endHead={endHead} startHead={startHead} />
-      </Paper>
-      <div className="stroke-card__tiles" role="radiogroup" onKeyDown={moveGroupFocus} aria-label={label} style={{ '--stroke-card-cols': options.length }}>
-        {options.map((option) => (
-          <Tile key={option.value} active={!mixed && option.value === value} label={option.label} testValue={option.value} onPick={() => onSelect(option.value)}>
-            <StrokeSample width={40} height={16} pad={3} strokePx={2} dash={option.value} />
-          </Tile>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * The arrow's (or callout leader's) Ends card. `ends` is 'end' | 'both', or
- * null when the card has no ends to choose (a callout has one end).
- */
-export function ArrowEndsCard({
-  head,
-  ends,
-  headMixed,
-  endsMixed,
-  headOptions,
-  onHead,
-  onEnds,
-  color,
-  widthPt,
-  dash = 'solid',
-}) {
-  const ink = color || '#1f2937';
-  const showEnds = ends != null;
-  const both = ends === 'both';
-  return (
-    <div className="stroke-card" data-arrow-ends-card="true">
-      <Paper mixed={headMixed || endsMixed}>
-        <StrokeSample
-          width={212}
-          height={44}
-          pad={14}
-          strokePx={paperPx(widthPt)}
-          color={ink}
-          paper={PAPER}
-          dash={dash === 'cloud' ? 'solid' : dash}
-          endHead={head}
-          startHead={both ? head : 'none'}
-        />
-      </Paper>
-      {showEnds && (
-        <div className="stroke-card__ends" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Which ends">
-          {[['end', 'End'], ['both', 'Both ends']].map(([value, word]) => {
-            const active = !endsMixed && head !== 'none' && ends === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                data-arrow-ends-option={value}
-                className={`stroke-card__end${active ? ' is-active' : ''}`}
-                onClick={() => onEnds(value)}
-              >
-                <StrokeSample width={30} height={14} pad={2} strokePx={1.5} endHead="vShape" startHead={value === 'both' ? 'vShape' : 'none'} headScale={0.85} />
-                <span>{word}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-      <div className="stroke-card__tiles" role="radiogroup" onKeyDown={moveGroupFocus} aria-label="Arrowhead" style={{ '--stroke-card-cols': 3 }}>
-        {headOptions.map((option) => (
-          <Tile key={option.value} active={!headMixed && option.value === head} label={option.label} testValue={option.value} onPick={() => onHead(option.value)}>
-            <StrokeSample width={40} height={16} pad={3} strokePx={1.5} endHead={option.value} startHead={both && option.value !== 'none' ? option.value : 'none'} />
-          </Tile>
-        ))}
-      </div>
-    </div>
   );
 }

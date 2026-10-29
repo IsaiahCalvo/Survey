@@ -1,8 +1,9 @@
 // Owner issue note 2026-10-26, batch B (pickers and sub-toolbars):
 //  #4  a picked or armed text box / callout shows its REGULAR settings; "Aa"
 //      swaps the text settings into the same row in their place.
-//  #11 the Style and arrow pickers are cards (line on paper + drawn tiles), and
-//      the Arrowhead and Arrow ends pills are one pill.
+//  #11 the Arrowhead and Arrow ends pills are one pill. (The Style and arrow
+//      pickers were cards; owner 2026-10-28, "a little simpler", made them
+//      plain lists whose rows draw their line.)
 //  #13 Set page scale is the app's dialog card with chips, not native selects.
 //  #18 the Layers panel's PDF strength is five steps, not a slider.
 //  #33 the Width pill carries no stroke drawing (it cut the number off).
@@ -34,14 +35,13 @@ test('#33 no size pill draws a stroke before its number', () => {
   assert.doesNotMatch(marker, /\bpreview=\{/);
 });
 
-test('#11 one arrow pill: ends and heads in one card, "Filled" not a second "Solid"', () => {
+test('#11 one arrow pill: heads in one list with a Both ends switch, "Filled" not a second "Solid"', () => {
   assert.doesNotMatch(appShell, /toolbarSlot\('ends'/);
-  assert.match(appShell, /<ArrowEndsCard/);
-  assert.match(appShell, /<LineStyleCard/);
+  // Owner 2026-10-28 ("a little simpler"): plain lists, not cards.
+  assert.doesNotMatch(appShell, /<ArrowEndsCard|<LineStyleCard/);
+  assert.match(appShell, /data-arrow-both-ends="true"/);
+  assert.match(appShell, /onClick=\{\(\) => setEnds\(both \? 'end' : 'both'\)\}/);
   assert.match(read('../src/components/Callout/types.js'), /\[ARROWHEAD_STYLES\.SOLID_TRIANGLE\]: 'Filled',/);
-  const cards = read('../src/components/StrokeStyleCards.jsx');
-  // None is a head tile; the ends choice is End / Both ends only.
-  assert.match(cards, /\[\['end', 'End'\], \['both', 'Both ends'\]\]/);
   // Line widths' quick picks are lines; round sizes keep their dots.
   assert.match(read('../src/components/AnnotationSizeControl.jsx'), /previewShape === 'dot'\s*\? <span style=\{\{ width: `\$\{size\}px`/);
 });
@@ -59,10 +59,12 @@ test('#18 the Layers panel has no slider', () => {
   assert.match(layers, /const PDF_OPACITY_STEPS = \[\[100, '100%'\], \[75, '75%'\], \[50, '50%'\], \[25, '25%'\], \[0, 'Off'\]\];/);
 });
 
-test('picker cards and the scale dialog move focus with arrow keys', () => {
+test('the scale dialog moves focus with arrow keys', () => {
   const keys = read('../src/utils/radioGroupKeys.js');
   assert.match(keys, /ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1/);
-  for (const file of ['../src/components/StrokeStyleCards.jsx', '../src/components/MeasureScaleDialog.jsx']) {
+  // The Style and Arrow ends lists move with the arrow keys as every
+  // AnnotationDropdown list does (checked live in the e2e spec).
+  for (const file of ['../src/components/MeasureScaleDialog.jsx']) {
     const src = read(file);
     const groups = src.match(/role="radiogroup"[^>]*>/g) || [];
     assert.ok(groups.length > 0, file);
