@@ -205,6 +205,9 @@ export function libraryHasLoaded(documents) {
     .some((row) => row?.id != null && !String(row.id).startsWith('temp-'));
 }
 
+/** The phone viewer's More menu asks AppShell to rename the open document. */
+export const RENAME_OPEN_DOCUMENT_EVENT = 'survey-rename-open-document';
+
 /** A cloud document the signed-in user can rename from its tab. */
 export function canRenameTab(tab, signedIn) {
   return Boolean(signedIn) && persistableDocumentId(tab) !== null;

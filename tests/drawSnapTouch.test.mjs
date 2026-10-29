@@ -30,7 +30,7 @@ test('event options: mouse unchanged, touch and pen get radius + assist', () => 
   assert.equal(isCoarseSnapPointer({ pointerType: 'touch' }), true);
   assert.equal(isCoarseSnapPointer({ pointerType: 'pen' }), true);
   const m = drawSnapEventOptions({ pointerType: 'mouse' }, 0.5);
-  assert.deepEqual(m, { shiftKey: false, tolPage: DRAW_SNAP_SCREEN_PX * 0.5, angleAssistDeg: 0, coarse: false });
+  assert.deepEqual(m, { shiftKey: false, stepDeg: 15, assistStepDeg: 45, tolPage: DRAW_SNAP_SCREEN_PX * 0.5, angleAssistDeg: 0, coarse: false });
   const t = drawSnapEventOptions({ pointerType: 'touch' }, 0.5);
   assert.equal(t.tolPage, DRAW_SNAP_TOUCH_SCREEN_PX * 0.5);
   assert.equal(t.angleAssistDeg, TOUCH_ANGLE_ASSIST_DEG);

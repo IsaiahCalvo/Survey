@@ -26,7 +26,7 @@
  * Pure JS — the Node test runner imports it directly.
  */
 
-import { readAnnotationSnapping } from './annotationPreferences.js';
+import { readAnnotationSnapping, readSnapAngle } from './annotationPreferences.js';
 
 export const SNAP_DISTANCE_PX = 6;
 export const SNAP_GUIDE_OVERHANG_PX = 24;
@@ -36,7 +36,8 @@ export const SNAP_MARK_HALF_PX = 2.83; // Drawboard: Math.SQRT1_2 * 4
 /** Two values this close (page units) count as lined up (Drawboard: 0.01). */
 export const SNAP_ALIGN_EPS = 0.01;
 
-/** Rotation: right-angle magnet (no key) and the hard Shift step. */
+/** Rotation: right-angle magnet (no key) and the default hard Shift step
+ * (Settings can pick 45° or 90°: readSnapAngle). */
 export const ROTATE_MAGNET_DEG = 4;
 export const ROTATE_SHIFT_STEP_DEG = 15;
 
@@ -343,16 +344,17 @@ export function keepsProportions(obj) {
 
 /**
  * Rotation feel (Drawboard, audit numbers): no key = whole degrees with a
- * magnet to 0 / 90 / 180 / 270 within 4°; Shift = hard 15° steps; Alt =
+ * magnet to 0 / 90 / 180 / 270 within 4°; Shift = hard steps of the snap
+ * angle (15° unless Settings picks 45° or 90°); Alt =
  * free. With snapping switched off (`magnet` false, the device preference)
  * there is no right-angle magnet, only whole degrees; Shift still steps.
  * The result is NOT wrapped to [0, 360) — callers keep
  * their own range (a group delta may be negative).
  */
-export function snapRotationDegrees(angle, { shift = false, free = false, magnet = readAnnotationSnapping() } = {}) {
+export function snapRotationDegrees(angle, { shift = false, free = false, magnet = readAnnotationSnapping(), step = readSnapAngle() } = {}) {
   const a = Number(angle);
   if (!Number.isFinite(a) || free) return a;
-  if (shift) return Math.round(a / ROTATE_SHIFT_STEP_DEG) * ROTATE_SHIFT_STEP_DEG;
+  if (shift) return Math.round(a / step) * step;
   const right = Math.round(a / 90) * 90;
   if (magnet && Math.abs(a - right) <= ROTATE_MAGNET_DEG) return right;
   return Math.round(a);
