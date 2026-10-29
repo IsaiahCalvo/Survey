@@ -5,6 +5,9 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-28', items: [
+    'Holding Shift snaps lines to 15° steps. Pick 15°, 45° or 90° under Settings > Annotations > Shift snap angle.',
+    'Phones: rename the open document from the More menu.',
+    'Excel: a downloaded sheet stays linked to the survey, renamed sheets still import, and a clash choice changes only the cells in dispute.',
     'A page that fits between the side panels glides to the centre between them.',
     'Projects: you can rename projects and project files.',
     'Phones: a long press on a mark shows a small Duplicate and Delete bar.',
