@@ -52,6 +52,8 @@ import { useTooltip } from './Tooltip';
 
 const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
 const SUBSCRIPTION_TIMEOUT_MS = 10_000;
+// Bump when the "Helping improve Survey" wording in privacy.html changes.
+const IMPROVE_SURVEY_POLICY_VERSION = '2026-10-20';
 
 export const AccountSettings = ({ isOpen, onClose }) => {
   const tip = useTooltip();
@@ -85,6 +87,20 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   // the next text edit, so a change applies without a reload.
   const [annotationSnapping, setAnnotationSnapping] = useState(() => readAnnotationSnapping());
   const [textboxAutoFit, setTextboxAutoFit] = useState(() => readTextboxAutoFit());
+  const improveSurveyOptIn = user?.user_metadata?.improve_survey_opt_in?.on === true;
+  const handleImproveSurveyToggle = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await updateProfile({
+        improve_survey_opt_in: { on: !improveSurveyOptIn, at: new Date().toISOString(), policy: IMPROVE_SURVEY_POLICY_VERSION },
+      });
+    } catch (err) {
+      setError(err?.message || 'Could not save that setting. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
   useEffect(() => {
     if (!isOpen) return undefined;
     const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); };
@@ -561,6 +577,16 @@ export const AccountSettings = ({ isOpen, onClose }) => {
               aria-selected={activeTab === 'crash-reports'}
             >
               Crash reports
+            </button>
+            {/* Data opt-in 2026-10-20: the one place a user lets us learn from their
+                work. Off unless they turn it on (privacy policy, "Helping improve Survey"). */}
+            <button
+              onClick={() => setActiveTab('privacy')}
+              className={`account-sidebar-btn ${activeTab === 'privacy' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'privacy'}
+            >
+              Privacy
             </button>
           </div>
 
@@ -1154,6 +1180,38 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
             {activeTab === 'crash-reports' && <CrashReportsPanel />}
             {companyOn && activeTab === 'company' && <CompanyPanel />}
+
+            {/* Data opt-in 2026-10-20. Intended UX: OFF by default, nothing of a
+                user's work is used to improve Survey until they turn this on. The
+                choice lives on the account (user_metadata), not the device, so it
+                follows them everywhere and the server can check it before using
+                any data. Stamped with when and which policy version they agreed to. */}
+            {activeTab === 'privacy' && (
+              <section className="account-section" aria-labelledby="account-privacy-heading">
+                <h3 id="account-privacy-heading">Helping improve Survey</h3>
+                <div className="account-pref-row">
+                  <div className="account-pref-copy">
+                    <div className="account-pref-title" id="account-pref-improve-survey">Let Survey learn from my survey work</div>
+                    <p className="account-pref-description">
+                      When on, we may use the shapes you mark and the fixes you make to Smart fill to make tools like Smart fill better. Your documents stay private and are never shared or sold. Off by default; turn it off any time.{' '}
+                      <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="account-switch"
+                    role="switch"
+                    aria-checked={improveSurveyOptIn}
+                    aria-labelledby="account-pref-improve-survey"
+                    data-pref="improve-survey-opt-in"
+                    disabled={loading || !user}
+                    onClick={handleImproveSurveyToggle}
+                  >
+                    <span className="account-switch-track" aria-hidden="true" />
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* KAL-397 — Settings -> Annotations (Acrobat's name for it). */}
             {activeTab === 'annotations' && (
