@@ -157,7 +157,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
   const sheetTitle = documentName ? `${documentName.replace(/\.pdf$/i, '')} survey` : 'Survey';
 
   // One provider's "connect, then make the sheet" block.
-  const startBlock = ({ provider, name, account, intro, makeLabel, makingLabel, where: place }) => (
+  const startBlock = ({ provider, name, account, intro, makeLabel, makingLabel, place }) => (
     !account?.connected ? (
       <>
         <p style={{ margin: '0 0 6px', fontWeight: 600 }}>Live sync with {name}</p>
