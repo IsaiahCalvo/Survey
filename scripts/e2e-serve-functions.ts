@@ -15,6 +15,13 @@ for (const name of names) {
     configurable: true,
     value: (handler: Handler) => { handlers.set(name, handler); },
   });
+  if (name.startsWith('e2e-fake-')) {
+    // A test fake (scripts/e2e-fake-*.mjs), served the way the stack serves it.
+    const fake = await import(new URL(`./${name}.mjs`, import.meta.url).href);
+    const handler = Object.entries(fake).find(([key, value]) => /^fake\w*Handler$/.test(key) && typeof value === 'function');
+    if (handler) handlers.set(name, handler[1] as Handler);
+    continue;
+  }
   await import(new URL(`../supabase/functions/${name}/index.ts`, import.meta.url).href);
 }
 Object.defineProperty(Deno, 'serve', { configurable: true, value: realServe });

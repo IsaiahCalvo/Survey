@@ -136,6 +136,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Guest links: open one document without an account, as viewer or editor, until a set time',
     stage: 'beta',
   }),
+  // The app's Google Sheets (and later Microsoft 365) live sync panel; the
+  // sheet-sync function also lets flag admins and Nightly testers link.
+  'sheet-team-sync': Object.freeze({
+    label: 'Live team sync with Google Sheets: phones, web and desktop write to the sheet',
+    stage: 'beta',
+  }),
 });
 
 export const FLAG_OVERRIDE_PREFIX = 'survey.flag.';

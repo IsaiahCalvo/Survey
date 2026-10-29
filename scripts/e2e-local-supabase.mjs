@@ -109,7 +109,7 @@ export function buildStackConfig(source) {
       return `additional_redirect_urls = ["${E2E_BASE_URL}", "${E2E_BASE_URL.replace('127.0.0.1', 'localhost')}"]`;
     }
     return line;
-  }).join('\n') + FAKE_GROQ_CONFIG;
+  }).join('\n') + FAKE_GROQ_CONFIG + FAKE_GOOGLE_CONFIG;
 }
 
 // The fake Groq (scripts/e2e-fake-groq.mjs) runs as one more edge function in
@@ -119,6 +119,14 @@ export function buildStackConfig(source) {
 const FAKE_GROQ_FUNCTION = 'e2e-fake-groq';
 const FAKE_GROQ_CONFIG = `\n[functions.${FAKE_GROQ_FUNCTION}]\nverify_jwt = false\n`;
 export const FAKE_GROQ_BASE_URL = `http://kong:8000/functions/v1/${FAKE_GROQ_FUNCTION}`;
+
+// The fake Google (scripts/e2e-fake-google.mjs) for the live sheet sync, the
+// same way: sheet-sync reaches it inside the Docker network; the browser
+// reaches its consent page (and sheet-sync's callback) on the stack's port.
+const FAKE_GOOGLE_FUNCTION = 'e2e-fake-google';
+const FAKE_GOOGLE_CONFIG = `\n[functions.${FAKE_GOOGLE_FUNCTION}]\nverify_jwt = false\n`;
+export const FAKE_GOOGLE_BASE_URL = `http://kong:8000/functions/v1/${FAKE_GOOGLE_FUNCTION}`;
+export const E2E_STACK_API_URL = 'http://127.0.0.1:54421';
 
 function prepareWorkdir() {
   const supabaseDir = path.join(STACK_DIR, 'supabase');
@@ -151,11 +159,29 @@ function prepareWorkdir() {
     'Deno.serve(fakeGroqHandler);',
     '',
   ].join('\n'));
+  const googleDir = path.join(functionsDir, FAKE_GOOGLE_FUNCTION);
+  fs.mkdirSync(googleDir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'scripts/e2e-fake-google.mjs'), path.join(googleDir, 'fake.mjs'));
+  fs.writeFileSync(path.join(googleDir, 'index.ts'), [
+    "import { fakeGoogleHandler } from './fake.mjs';",
+    'Deno.serve(fakeGoogleHandler);',
+    '',
+  ].join('\n'));
   fs.writeFileSync(path.join(functionsDir, '.env'), [
     'GROQ_API_KEY=e2e-fake-no-calls',
     `GROQ_BASE_URL=${FAKE_GROQ_BASE_URL}`,
     `SURVEY_AGENT_TESTERS=${E2E_ACCOUNTS.owner.email}`,
     'SURVEY_AGENT_TTS=off',
+    // Live sheet sync talks to the fake Google; nothing reaches Google.
+    'GOOGLE_SHEETS_CLIENT_ID=e2e-fake-client',
+    'GOOGLE_SHEETS_CLIENT_SECRET=e2e-fake-secret',
+    `GOOGLE_OAUTH_AUTH_URL=${E2E_STACK_API_URL}/functions/v1/${FAKE_GOOGLE_FUNCTION}/o/oauth2/v2/auth`,
+    `GOOGLE_OAUTH_TOKEN_URL=${FAKE_GOOGLE_BASE_URL}/token`,
+    `GOOGLE_OAUTH_REVOKE_URL=${FAKE_GOOGLE_BASE_URL}/revoke`,
+    `GOOGLE_SHEETS_API_BASE=${FAKE_GOOGLE_BASE_URL}`,
+    `GOOGLE_DRIVE_API_BASE=${FAKE_GOOGLE_BASE_URL}`,
+    `SHEET_SYNC_PUBLIC_URL=${E2E_STACK_API_URL}/functions/v1/sheet-sync`,
+    `SHEET_SYNC_APP_ORIGINS=${E2E_BASE_URL}`,
     // pdf-file-url copies PDFs into the stack's MinIO (scripts/e2e-minio.mjs).
     ...Object.entries({ ...E2E_R2, R2_SERVER_ENDPOINT: E2E_R2_SERVER_ENDPOINT }).map(([k, v]) => `${k}=${v}`),
     '',

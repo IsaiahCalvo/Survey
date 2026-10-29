@@ -61,6 +61,7 @@ import { reportKitFor } from './services/reportKits/index.js';
 import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
 import TypedAnswerInput, { CHOICE_BUTTONS_MAX, ChoiceSelect } from './components/TypedAnswerInput.jsx';
 import SurveyReportMenu from './components/SurveyReportMenu.jsx';
+import SheetSyncButton from './components/SheetSyncButton.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
@@ -613,6 +614,7 @@ const SurveySpacesRail = ({
   const proLocked = useProLock();
   // Nightly 'survey-report': a report beside Export data (PowerPoint, PDF, Excel or CSV).
   const [surveyReportOn] = useState(() => isFeatureOn('survey-report'));
+  const [sheetSyncOn] = useState(() => isFeatureOn('sheet-team-sync'));
   // Nightly: the template menu links to the Templates editor (answers, lines).
   const [customAnswersOn] = useState(() => isFeatureOn('custom-answers'));
   // Nightly, hidden: a line can show only after a certain answer.
@@ -4293,6 +4295,16 @@ const SurveySpacesRail = ({
                           busy={isReporting}
                           hint={surveyHasItems ? `Download a report (${reportKitOf().label}) as PowerPoint, PDF, Excel or CSV. Pick the layout in the template.` : 'Add a survey item to make a report'}
                           onPick={handleSurveyReport}
+                        />
+                      )}
+                      {sheetSyncOn && pdfFile?.id && (
+                        <SheetSyncButton
+                          className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
+                          phone={mobileMode}
+                          documentId={pdfFile.id}
+                          template={selectedTemplate}
+                          markers={surveyMarkers}
+                          documentName={pdfFile?.name || ''}
                         />
                       )}
                       {mobileMode ? (
