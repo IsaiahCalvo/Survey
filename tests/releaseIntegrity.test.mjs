@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  assertEveryFunctionDeployed,
   assertFunctionsInSync,
   assertMigrationsInSync,
   assertRequiredSecrets,
@@ -87,4 +88,19 @@ test('Node test gate isolates files and bounds hangs', () => {
   assert.match(guard, /WALL_GRACE_MS = 120_000/);
   assert.match(guard, /CPU_BUDGET_MS = 120_000/);
   assert.match(guard, /HARD_CAP_MS = 3_600_000/);
+});
+
+test('deploy list gate catches a function folder missing from the production deploy', () => {
+  const workflow = [
+    '        run: supabase functions deploy --project-ref "$REF" --use-api send-email',
+    '        run: >-',
+    '          supabase functions deploy --project-ref "$REF" --use-api --jobs 4',
+    '          agent-auth',
+    '          stripe-webhook',
+  ].join('\n');
+  assert.doesNotThrow(() => assertEveryFunctionDeployed(workflow, ['agent-auth', 'send-email', 'stripe-webhook']));
+  assert.throws(
+    () => assertEveryFunctionDeployed(workflow, ['agent-auth', 'sheet-sync', 'send']),
+    /missing from deploy-production\.yml: sheet-sync, send/,
+  );
 });
