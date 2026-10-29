@@ -21,6 +21,8 @@
  * runner imports it directly.
  */
 
+import { readSnapAngle } from './annotationPreferences.js';
+
 /** Tool ids that drive a click-to-place draft. */
 export const POLY_DRAFT_TOOLS = Object.freeze(['polygon', 'polyline']);
 
@@ -93,17 +95,17 @@ const asPoint = (point) => ({ x: num(point?.x), y: num(point?.y) });
 export const isPolyDraftTool = (tool) => POLY_DRAFT_TOOLS.includes(tool);
 
 /**
- * Snap `point` so the segment from `anchor` lands on the nearest 45° ray.
- * Mirrors the reference build's Shift behavior for polygon/polyline segments.
+ * Snap `point` so the segment from `anchor` lands on the nearest `stepDeg`
+ * ray (the Settings snap angle: 15° by default, or 45° / 90°).
  */
-export function snapPolySegmentAngle(anchor, point) {
+export function snapPolySegmentAngle(anchor, point, stepDeg = readSnapAngle()) {
   const a = asPoint(anchor);
   const p = asPoint(point);
   const dx = p.x - a.x;
   const dy = p.y - a.y;
   const length = Math.hypot(dx, dy);
   if (length === 0) return { x: a.x, y: a.y };
-  const step = Math.PI / 4;
+  const step = ((Number(stepDeg) > 0 ? Number(stepDeg) : 45) * Math.PI) / 180;
   const angle = Math.round(Math.atan2(dy, dx) / step) * step;
   return { x: a.x + Math.cos(angle) * length, y: a.y + Math.sin(angle) * length };
 }
@@ -122,7 +124,7 @@ export function createPolyDraft(tool, point) {
 
 /**
  * Append a vertex. Returns a NEW draft (never mutates) so React state updates
- * stay referentially honest. Shift snaps the new segment to 45°.
+ * stay referentially honest. Shift snaps the new segment to the snap angle.
  */
 export function addPolyDraftPoint(draft, point, { shiftKey = false } = {}) {
   if (!draft || !isPolyDraftTool(draft.tool)) return draft;

@@ -387,6 +387,14 @@
   gap: 16px;
 }
 
+.account-pref-row + .account-pref-row {
+  margin-top: 18px;
+}
+
+.account-pref-snap-angle {
+  flex-shrink: 0;
+}
+
 .account-pref-copy {
   min-width: 0;
 }
