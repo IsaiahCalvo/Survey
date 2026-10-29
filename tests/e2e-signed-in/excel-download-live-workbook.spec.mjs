@@ -80,4 +80,18 @@ test('an owner\'s browser download keeps the live workbook and carries the sheet
   expect(doorSheet).toBeTruthy();
   expect(doorSheet[1]).toBe(E2E_SURVEY.moduleId);
   expect(visible).toContain(doorSheet[0]);
+
+  // It names the survey it came from, so another survey on the same template
+  // won't pull from it or push over it (audit W9).
+  expect([meta.getCell('A7').value, meta.getCell('B7').value]).toEqual(['survey_id', E2E_SURVEY.documentId]);
+
+  // After the sheet list, the hidden column list ties each checklist header to its
+  // item (audit W8), so an item renamed in the app later still finds its column.
+  const columns = [];
+  for (let r = 10; ['sheet', 'column'].includes(meta.getCell(`A${r}`).value); r += 1) {
+    if (meta.getCell(`A${r}`).value === 'column' && meta.getCell(`B${r}`).value === doorSheet[0]) {
+      columns.push({ id: meta.getCell(`C${r}`).value, text: meta.getCell(`D${r}`).value });
+    }
+  }
+  expect(columns).toEqual(E2E_SURVEY.checklist);
 });
