@@ -91,10 +91,17 @@ test('Documents select mode keeps the file count still and Select All in line wi
     });
     return { countY: count ? count.top : null, boxes };
   });
+  // The list has loaded (its rows and the Select button are drawn), so the
+  // header is in its resting layout before the first reading.
+  await expect(page.getByText(E2E_DOCUMENT.name, { exact: true }).filter({ visible: true }).first()).toBeVisible({ timeout: 30_000 });
+  const select = page.getByRole('button', { name: 'Select', exact: true }).filter({ visible: true }).first();
+  await expect(select).toBeVisible();
+  await page.waitForTimeout(800);
   const before = await probe();
   expect(before.countY).not.toBeNull();
-  await page.getByRole('button', { name: 'Select', exact: true }).filter({ visible: true }).first().click();
-  await page.waitForTimeout(600);
+  await select.click();
+  // Wait out the select bar's motion (and a slow runner).
+  await page.waitForTimeout(1200);
   const after = await probe();
   expect(Math.abs(after.countY - before.countY), 'file count stays put').toBeLessThan(0.5);
   const all = after.boxes.find((b) => /select all/i.test(b.label));
