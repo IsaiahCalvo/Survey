@@ -1,5 +1,6 @@
-// The Survey panel's "Google Sheets" button (beta 'sheet-team-sync'): connect
-// Google, make a live Google Sheet from the survey, and while it is linked,
+// The Survey panel's live sheet button (beta 'sheet-team-sync'): connect
+// Google or a work/school Microsoft 365, make a live Google Sheet or Excel
+// workbook from the survey, and while it is linked,
 // keep both in step. The server runs each round (supabase/functions/sheet-sync);
 // this asks for one every few seconds while the survey is open and shortly
 // after any change, so a field tech's phone writes to the PM's sheet without
@@ -78,9 +79,10 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     try { return await fn(); } finally { setBusy(null); }
   }, []);
 
-  const connect = useCallback(() => run('connect', async () => {
-    const res = await sheetSyncCall('connect', { appOrigin: window.location.origin });
-    if (res?.error || !res?.url) { setError(res?.error || 'Could not start Google sign-in.'); return; }
+  const connect = useCallback((provider = 'google') => run('connect', async () => {
+    const who = provider === 'msgraph' ? 'Microsoft' : 'Google';
+    const res = await sheetSyncCall('connect', { appOrigin: window.location.origin, provider });
+    if (res?.error || !res?.url) { setError(res?.error || `Could not start ${who} sign-in.`); return; }
     window.open(res.url, '_blank', 'noopener');
     // The consent page opens in its own tab (the system browser on phones and
     // desktop); watch for the sign-in to land.
@@ -88,16 +90,16 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     while (Date.now() < until) {
       await new Promise((r) => setTimeout(r, CONNECT_POLL_MS));
       const s = await sheetSyncCall('status', ids);
-      if (s?.google?.connected) { apply(s); return; }
+      if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { apply(s); return; }
     }
-    setError('Google sign-in did not finish. Try again.');
+    setError(`${who} sign-in did not finish. Try again.`);
   }), [apply, ids, run]);
 
-  const link = useCallback((title) => run('link', async () => apply(await sheetSyncCall('link', { ...ids, ...layoutInput, title }))), [apply, ids, layoutInput, run]);
+  const link = useCallback((title, provider = 'google') => run('link', async () => apply(await sheetSyncCall('link', { ...ids, ...layoutInput, title, provider }))), [apply, ids, layoutInput, run]);
   const choose = useCallback((markerId, choice) => run('choose', async () => apply(await sheetSyncCall('choose', { ...ids, markerId, choice }))), [apply, ids, run]);
   const unlink = useCallback(() => run('unlink', async () => apply(await sheetSyncCall('unlink', ids))), [apply, ids, run]);
-  const disconnect = useCallback(() => run('disconnect', async () => {
-    const res = await sheetSyncCall('disconnect');
+  const disconnect = useCallback((provider = 'google') => run('disconnect', async () => {
+    const res = await sheetSyncCall('disconnect', { provider });
     if (res?.error) setError(res.error); else await refresh();
   }), [refresh, run]);
   const syncNow = useCallback(() => run('sync', () => sync({ force: true })), [run, sync]);
@@ -144,24 +146,68 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
 
   if (!documentId || !template) return null;
   const waiting = (link?.conflicts?.length || 0) + (link?.removedInSheet?.length || 0);
-  const label = link ? (live ? 'Live in Sheets' : 'Google Sheets') : 'Google Sheets';
+  const googleOn = Boolean(status?.providers?.google?.configured ?? status?.configured);
+  const microsoftOn = Boolean(status?.providers?.msgraph?.configured);
+  const excelLink = link?.provider === 'msgraph';
+  const where = excelLink ? 'Excel' : 'Google Sheets';
+  const label = link ? (live ? (excelLink ? 'Live in Excel' : 'Live in Sheets') : where)
+    : googleOn && microsoftOn ? 'Live sheet' : microsoftOn ? 'Excel' : 'Google Sheets';
+  const icon = link ? (excelLink ? 'oneDrive' : 'google') : !googleOn && microsoftOn ? 'oneDrive' : googleOn && microsoftOn ? 'listChecks' : 'google';
+  const textButton = { border: 0, background: 'none', padding: 0, color: 'inherit', textDecoration: 'underline', font: 'inherit', cursor: 'pointer' };
+  const sheetTitle = documentName ? `${documentName.replace(/\.pdf$/i, '')} survey` : 'Survey';
+
+  // One provider's "connect, then make the sheet" block.
+  const startBlock = ({ provider, name, account, intro, makeLabel, makingLabel, where: place }) => (
+    !account?.connected ? (
+      <>
+        <p style={{ margin: '0 0 6px', fontWeight: 600 }}>Live sync with {name}</p>
+        <p style={{ margin: '0 0 10px', ...small }}>{intro}</p>
+        <button type="button" style={primary} disabled={Boolean(busy) || !canEdit} onClick={() => sync.connect(provider)}>
+          {busy === 'connect' ? `Waiting for ${provider === 'msgraph' ? 'Microsoft' : 'Google'}…` : `Connect ${provider === 'msgraph' ? 'Microsoft' : 'Google'}`}
+        </button>
+      </>
+    ) : (
+      <>
+        <p style={{ margin: '0 0 6px', fontWeight: 600 }}>Live sync with {name}</p>
+        <p style={{ margin: '0 0 10px', ...small }}>{place(account.email)}</p>
+        <button type="button" style={primary} disabled={Boolean(busy) || !canEdit} onClick={() => sync.link(sheetTitle, provider)}>
+          {busy === 'link' ? makingLabel : makeLabel}
+        </button>
+        <p style={{ margin: '10px 0 0', ...small }}>
+          Signed in as {account.email || name} · <button type="button" onClick={() => sync.disconnect(provider)} disabled={Boolean(busy)} style={textButton}>Disconnect</button>
+        </p>
+      </>
+    )
+  );
+  const googleBlock = () => startBlock({
+    provider: 'google', name: 'Google Sheets', account: status.google,
+    intro: 'Make a Google Sheet from this survey. Your team’s changes here (phone, web or desktop) and edits in the sheet stay in step. Survey can only see sheets it makes.',
+    place: (email) => `A new sheet in ${email || 'your Google Drive'}, one tab per category.`,
+    makeLabel: 'Make a live Google Sheet', makingLabel: 'Making the sheet…',
+  });
+  const microsoftBlock = () => startBlock({
+    provider: 'msgraph', name: 'Excel', account: status.microsoft,
+    intro: 'Make an Excel workbook in your work or school OneDrive. PMs keep it open in Excel while the team works here (phone, web or desktop); both stay in step.',
+    place: (email) => `A new workbook in ${email || 'your'} OneDrive, folder “Survey”, one sheet per category.`,
+    makeLabel: 'Make a live Excel workbook', makingLabel: 'Making the workbook…',
+  });
 
   let body;
-  if (status && !status.configured) {
-    body = <p style={{ margin: 0 }}>Google Sheets is not set up on this server yet.</p>;
+  if (status && !googleOn && !microsoftOn) {
+    body = <p style={{ margin: 0 }}>Live sheet sync is not set up on this server yet.</p>;
   } else if (!status) {
     body = <p style={{ margin: 0, ...small }}>{error || 'Checking…'}</p>;
   } else if (link) {
     body = (
       <>
         <p style={{ margin: '0 0 6px', fontWeight: 600 }}>
-          {link.status === 'active' ? 'Live in Google Sheets' : link.status === 'paused' ? 'Sync paused' : 'Sync stopped'}
+          {link.status === 'active' ? `Live in ${where}` : link.status === 'paused' ? 'Sync paused' : 'Sync stopped'}
         </p>
         <p style={{ margin: '0 0 8px', ...small }}>
           {link.lastError || (link.lastRoundAt ? `Synced ${syncedAgo(link.lastRoundAt)}. Changes here and in the sheet both land; only the same cell changed on both sides waits for you.` : 'Getting ready…')}
         </p>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-          {link.fileUrl && <a href={link.fileUrl} target="_blank" rel="noopener noreferrer" style={{ ...btn, textDecoration: 'none' }}>Open sheet</a>}
+          {link.fileUrl && <a href={link.fileUrl} target="_blank" rel="noopener noreferrer" style={{ ...btn, textDecoration: 'none' }}>{excelLink ? 'Open workbook' : 'Open sheet'}</a>}
           {canEdit && <button type="button" style={btn} disabled={Boolean(busy)} onClick={sync.syncNow}>{busy === 'sync' ? 'Syncing…' : 'Sync now'}</button>}
         </div>
         {link.conflicts.map((c) => (
@@ -193,34 +239,19 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
         {(link.isConnectionOwner || status.role === 'owner') && (
           <button type="button" style={{ ...btn, marginTop: 4 }} disabled={Boolean(busy)} onClick={sync.unlink}>Stop syncing</button>
         )}
-        {link.status === 'broken' && link.isConnectionOwner && !status.google.connected && (
-          <button type="button" style={{ ...primary, marginTop: 4, marginLeft: 6 }} disabled={Boolean(busy)} onClick={sync.connect}>Connect Google again</button>
+        {link.status === 'broken' && link.isConnectionOwner && !(excelLink ? status.microsoft : status.google)?.connected && (
+          <button type="button" style={{ ...primary, marginTop: 4, marginLeft: 6 }} disabled={Boolean(busy)} onClick={() => sync.connect(link.provider)}>
+            {excelLink ? 'Connect Microsoft again' : 'Connect Google again'}
+          </button>
         )}
-      </>
-    );
-  } else if (!status.google.connected) {
-    body = (
-      <>
-        <p style={{ margin: '0 0 6px', fontWeight: 600 }}>Live sync with Google Sheets</p>
-        <p style={{ margin: '0 0 10px', ...small }}>
-          Make a Google Sheet from this survey. Your team’s changes here (phone, web or desktop) and edits in the sheet stay in step. Survey can only see sheets it makes.
-        </p>
-        <button type="button" style={primary} disabled={Boolean(busy) || !canEdit} onClick={sync.connect}>
-          {busy === 'connect' ? 'Waiting for Google…' : 'Connect Google'}
-        </button>
       </>
     );
   } else {
     body = (
       <>
-        <p style={{ margin: '0 0 6px', fontWeight: 600 }}>Live sync with Google Sheets</p>
-        <p style={{ margin: '0 0 10px', ...small }}>A new sheet in {status.google.email || 'your Google Drive'}, one tab per category.</p>
-        <button type="button" style={primary} disabled={Boolean(busy) || !canEdit} onClick={() => sync.link(documentName ? `${documentName.replace(/\.pdf$/i, '')} survey` : 'Survey')}>
-          {busy === 'link' ? 'Making the sheet…' : 'Make a live Google Sheet'}
-        </button>
-        <p style={{ margin: '10px 0 0', ...small }}>
-          Signed in as {status.google.email || 'Google'} · <button type="button" onClick={sync.disconnect} disabled={Boolean(busy)} style={{ border: 0, background: 'none', padding: 0, color: 'inherit', textDecoration: 'underline', font: 'inherit', cursor: 'pointer' }}>Disconnect</button>
-        </p>
+        {googleOn && googleBlock()}
+        {googleOn && microsoftOn && <div style={{ borderTop: '1px solid var(--border)', margin: '12px 0' }} />}
+        {microsoftOn && microsoftBlock()}
       </>
     );
   }
@@ -232,17 +263,17 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
         className={className}
         aria-haspopup="dialog"
         aria-expanded={open}
-        data-sheet-sync-state={link ? link.status : status?.google?.connected ? 'connected' : 'none'}
+        data-sheet-sync-state={link ? link.status : status?.google?.connected || status?.microsoft?.connected ? 'connected' : 'none'}
         onClick={() => setOpen((v) => !v)}
-        {...(phone || open ? {} : tip(link ? 'Live Google Sheet' : 'Sync this survey with a Google Sheet', 'above'))}
+        {...(phone || open ? {} : tip(link ? (excelLink ? 'Live Excel workbook' : 'Live Google Sheet') : 'Sync this survey with a live sheet', 'above'))}
       >
         {busy && busy !== 'sync'
           ? <Spinner size={phone ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
-          : <Icon name="google" size={phone ? 16 : 14} color="currentColor" />}
+          : <Icon name={icon} size={phone ? 16 : 14} color="currentColor" />}
         <span>{label}{waiting ? ` (${waiting})` : ''}</span>
       </button>
       {open && (
-        <div role="dialog" aria-label="Google Sheets live sync" style={panelStyle}>
+        <div role="dialog" aria-label="Live sheet sync" style={panelStyle}>
           {body}
           {error && status && <p role="alert" style={{ margin: '8px 0 0', color: 'var(--danger, #c0392b)', fontSize: 12 }}>{error}</p>}
         </div>

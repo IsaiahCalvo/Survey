@@ -7,26 +7,32 @@
 //
 // Environment:
 //   MS_GRAPH_CLIENT_SECRET   required; a client secret on the Azure app
-//   MS_GRAPH_REDIRECT_URI    required; this server's callback, registered on the app
+//   MS_GRAPH_REDIRECT_URI    this server's callback, registered on the app
+//                            (the sheet-sync function passes its own default)
 //   MS_GRAPH_CLIENT_ID       optional; defaults to Survey's Azure app
 //   MS_GRAPH_TENANT          optional; defaults to 'common'
+//   MS_GRAPH_AUTHORIZE_URL, MS_GRAPH_TOKEN_URL, MS_GRAPH_API_BASE
+//                            optional; only the e2e fake sets them
 
 const LOGIN = 'https://login.microsoftonline.com';
+const GRAPH = 'https://graph.microsoft.com/v1.0';
 const SURVEY_AZURE_APP = '0da81a9e-2b05-46ee-b826-5efc5114c765';
 // Files the person can open (their own and shared work files); no SharePoint site list.
 export const MSGRAPH_SCOPES = Object.freeze(['offline_access', 'User.Read', 'Files.ReadWrite.All']);
-const STATE_TTL_MS = 10 * 60 * 1000;
 
-export function msgraphAuthConfigFromEnv(get) {
+export function msgraphAuthConfigFromEnv(get, { redirectUri: defaultRedirect = '' } = {}) {
   const read = (name) => String(get(name) ?? '').trim();
   const clientSecret = read('MS_GRAPH_CLIENT_SECRET');
-  const redirectUri = read('MS_GRAPH_REDIRECT_URI');
-  if (!clientSecret || !/^https:\/\//.test(redirectUri)) return null;
+  const redirectUri = read('MS_GRAPH_REDIRECT_URI') || defaultRedirect;
+  if (!clientSecret || !/^https?:\/\//.test(redirectUri)) return null;
+  const tenant = encodeURIComponent(read('MS_GRAPH_TENANT') || 'common');
   return {
     clientId: read('MS_GRAPH_CLIENT_ID') || SURVEY_AZURE_APP,
     clientSecret,
     redirectUri,
-    tenant: read('MS_GRAPH_TENANT') || 'common',
+    authorizeUrl: read('MS_GRAPH_AUTHORIZE_URL') || `${LOGIN}/${tenant}/oauth2/v2.0/authorize`,
+    tokenUrl: read('MS_GRAPH_TOKEN_URL') || `${LOGIN}/${tenant}/oauth2/v2.0/token`,
+    graphBase: (read('MS_GRAPH_API_BASE') || GRAPH).replace(/\/$/, ''),
   };
 }
 
@@ -41,11 +47,11 @@ export function buildMsgraphAuthorizeUrl(config, state, { loginHint } = {}) {
     prompt: 'select_account',
   });
   if (loginHint) params.set('login_hint', loginHint);
-  return `${LOGIN}/${encodeURIComponent(config.tenant)}/oauth2/v2.0/authorize?${params}`;
+  return `${config.authorizeUrl}?${params}`;
 }
 
 async function tokenRequest(config, fields, fetchImpl) {
-  const response = await fetchImpl(`${LOGIN}/${encodeURIComponent(config.tenant)}/oauth2/v2.0/token`, {
+  const response = await fetchImpl(config.tokenUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -94,50 +100,11 @@ export async function refreshMsgraphToken(config, refreshToken, { fetch: fetchIm
 }
 
 /** The signed-in Microsoft account, for the "Connected as" line. */
-export async function fetchMsgraphAccount(accessToken, { fetch: fetchImpl = globalThis.fetch } = {}) {
-  const response = await fetchImpl('https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName', {
+export async function fetchMsgraphAccount(accessToken, { fetch: fetchImpl = globalThis.fetch, graphBase = GRAPH } = {}) {
+  const response = await fetchImpl(`${graphBase}/me?$select=id,displayName,mail,userPrincipalName`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) throw Object.assign(new Error('Could not read the Microsoft account.'), { status: response.status });
   const me = await response.json();
   return { id: me.id, name: me.displayName || null, email: me.mail || me.userPrincipalName || null };
-}
-
-// --- The OAuth "state": who started the sign-in, signed so the callback can trust it.
-
-const encoder = new TextEncoder();
-const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const fromB64url = (text) => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
-
-async function hmac(key, data) {
-  const cryptoKey = await crypto.subtle.importKey('raw', encoder.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(data)));
-}
-
-function sameBytes(a, b) {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a[i] ^ b[i];
-  return diff === 0;
-}
-
-/** @param {{ userId: string, returnTo?: string }} payload */
-export async function signConnectState(payload, key, { now = Date.now } = {}) {
-  const nonce = b64url(crypto.getRandomValues(new Uint8Array(12)));
-  const body = b64url(encoder.encode(JSON.stringify({ ...payload, exp: now() + STATE_TTL_MS, nonce })));
-  return `${body}.${b64url(await hmac(key, body))}`;
-}
-
-/** The payload, or null when the state is forged, changed or older than 10 minutes. */
-export async function verifyConnectState(state, key, { now = Date.now } = {}) {
-  const [body, signature] = String(state || '').split('.');
-  if (!body || !signature) return null;
-  try {
-    if (!sameBytes(fromB64url(signature), await hmac(key, body))) return null;
-    const payload = JSON.parse(new TextDecoder().decode(fromB64url(body)));
-    if (!payload?.userId || !(payload.exp > now())) return null;
-    return payload;
-  } catch {
-    return null;
-  }
 }

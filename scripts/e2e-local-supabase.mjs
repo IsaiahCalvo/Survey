@@ -109,7 +109,7 @@ export function buildStackConfig(source) {
       return `additional_redirect_urls = ["${E2E_BASE_URL}", "${E2E_BASE_URL.replace('127.0.0.1', 'localhost')}"]`;
     }
     return line;
-  }).join('\n') + FAKE_GROQ_CONFIG + FAKE_GOOGLE_CONFIG;
+  }).join('\n') + FAKE_GROQ_CONFIG + FAKE_GOOGLE_CONFIG + FAKE_MSGRAPH_CONFIG;
 }
 
 // The fake Groq (scripts/e2e-fake-groq.mjs) runs as one more edge function in
@@ -127,6 +127,10 @@ const FAKE_GOOGLE_FUNCTION = 'e2e-fake-google';
 const FAKE_GOOGLE_CONFIG = `\n[functions.${FAKE_GOOGLE_FUNCTION}]\nverify_jwt = false\n`;
 export const FAKE_GOOGLE_BASE_URL = `http://kong:8000/functions/v1/${FAKE_GOOGLE_FUNCTION}`;
 export const E2E_STACK_API_URL = 'http://127.0.0.1:54421';
+// And the fake Microsoft (scripts/e2e-fake-msgraph.mjs): sign-in + Excel API.
+const FAKE_MSGRAPH_FUNCTION = 'e2e-fake-msgraph';
+const FAKE_MSGRAPH_CONFIG = `\n[functions.${FAKE_MSGRAPH_FUNCTION}]\nverify_jwt = false\n`;
+export const FAKE_MSGRAPH_BASE_URL = `http://kong:8000/functions/v1/${FAKE_MSGRAPH_FUNCTION}`;
 
 function prepareWorkdir() {
   const supabaseDir = path.join(STACK_DIR, 'supabase');
@@ -167,6 +171,14 @@ function prepareWorkdir() {
     'Deno.serve(fakeGoogleHandler);',
     '',
   ].join('\n'));
+  const msgraphDir = path.join(functionsDir, FAKE_MSGRAPH_FUNCTION);
+  fs.mkdirSync(msgraphDir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'scripts/e2e-fake-msgraph.mjs'), path.join(msgraphDir, 'fake.mjs'));
+  fs.writeFileSync(path.join(msgraphDir, 'index.ts'), [
+    "import { fakeMsgraphHandler } from './fake.mjs';",
+    'Deno.serve(fakeMsgraphHandler);',
+    '',
+  ].join('\n'));
   fs.writeFileSync(path.join(functionsDir, '.env'), [
     'GROQ_API_KEY=e2e-fake-no-calls',
     `GROQ_BASE_URL=${FAKE_GROQ_BASE_URL}`,
@@ -180,6 +192,10 @@ function prepareWorkdir() {
     `GOOGLE_OAUTH_REVOKE_URL=${FAKE_GOOGLE_BASE_URL}/revoke`,
     `GOOGLE_SHEETS_API_BASE=${FAKE_GOOGLE_BASE_URL}`,
     `GOOGLE_DRIVE_API_BASE=${FAKE_GOOGLE_BASE_URL}`,
+    'MS_GRAPH_CLIENT_SECRET=e2e-fake-ms-secret',
+    `MS_GRAPH_AUTHORIZE_URL=${E2E_STACK_API_URL}/functions/v1/${FAKE_MSGRAPH_FUNCTION}/oauth2/v2.0/authorize`,
+    `MS_GRAPH_TOKEN_URL=${FAKE_MSGRAPH_BASE_URL}/oauth2/v2.0/token`,
+    `MS_GRAPH_API_BASE=${FAKE_MSGRAPH_BASE_URL}/v1.0`,
     `SHEET_SYNC_PUBLIC_URL=${E2E_STACK_API_URL}/functions/v1/sheet-sync`,
     `SHEET_SYNC_APP_ORIGINS=${E2E_BASE_URL}`,
     // pdf-file-url copies PDFs into the stack's MinIO (scripts/e2e-minio.mjs).
