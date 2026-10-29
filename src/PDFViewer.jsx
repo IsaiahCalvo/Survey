@@ -284,7 +284,7 @@ import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdentityRecords, applyWritebackVerification } from './services/excelIdentityRecord';
-import { computeRowFingerprints } from './services/rowFingerprint';
+import { computeRowFingerprints, diffRowFields } from './services/rowFingerprint';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
@@ -296,7 +296,7 @@ import { buildMarkerRowValues, resolveMarkerModuleData } from './services/marker
 import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
 import { reviewReasonMessage } from './services/excelReviewMessages';
 import { selectUnplacedRows, isWholeChangeSetHeld, unplacedRowKey } from './services/excelUnplacedRows';
-import { applyExcelValuesToMarker } from './services/excelConflictResolve';
+import { applyExcelFieldsToMarker, applyExcelValuesToMarker, excelFieldsForConflictChoice } from './services/excelConflictResolve';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
@@ -323,6 +323,8 @@ import {
 } from './services/annotationTrashHistory';
 // KAL-307: server-minted workbook registration (one live workbook per survey).
 import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet } from './services/workbookRegistration';
+import { EXPORT_REGISTRATION, resolveExportRegistration } from './services/excelExportRegistration';
+import { matchSheetToCategory, readSheetMap, writeSheetMap } from './services/excelSheetMap';
 // KAL-309: server-authoritative Excel change-set transport + materialize reducer.
 import {
   submitChangeSet,
@@ -15978,6 +15980,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     }
     // If called from event handler, targetPath will be the event object
     if (targetPath && typeof targetPath !== 'string') targetPath = null;
+    // Writing into the linked workbook happens in the desktop app. In a browser or the
+    // phone app this used to fall through to a plain download while saying the shared
+    // workbook was updated.
+    if (targetPath && !window.electronAPI) {
+      if (!silent) showToast('Updating the linked workbook works in the desktop app. Use Export data to download a copy.', 'warn');
+      return;
+    }
     if (!selectedTemplate) {
       if (!silent) showToast('Please select a survey template before exporting.', 'warn');
       return;
@@ -16043,24 +16052,53 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       try {
         const supabaseDocId = pdfFile?.id ?? null;
         const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
-        if (supabaseDocId && supabaseTemplateId) {
-          const capabilityTier =
-            selectedTemplate?.isSharePoint ? 'business'
-            : selectedTemplate?.isOneDrive ? 'personal'
-            : 'local';
-          const registration = await registerWorkbook({
+        const capabilityTier =
+          selectedTemplate?.isSharePoint ? 'business'
+          : selectedTemplate?.isOneDrive ? 'personal'
+          : 'local';
+        // A plain download never registers (it would retire the live workbook); a push
+        // the server won't re-register keeps the linked file's own link
+        // (services/excelExportRegistration.js).
+        const registration = await resolveExportRegistration({
+          isDesktop: Boolean(window.electronAPI),
+          isLinkedPush: Boolean(targetPath),
+          canRegister: Boolean(supabaseDocId && supabaseTemplateId),
+          register: () => registerWorkbook({
             documentId:     supabaseDocId,
             templateId:     String(supabaseTemplateId),
             graphDriveId:   selectedTemplate?.sharePointDriveId ?? null,
             graphItemId:    selectedTemplate?.oneDriveFileId    ?? null,
             capabilityTier,
-          });
+          }),
+          readLinkedRegistration: async () => {
+            let linkedData;
+            if (selectedTemplate?.isOneDrive) {
+              if (!graphClient) throw new Error('not signed in to Microsoft');
+              const linkedFileId = oneDriveFileId || selectedTemplate.oneDriveFileId;
+              linkedData = linkedFileId
+                ? await downloadExcelFile(graphClient, linkedFileId)
+                : await downloadExcelFileByPath(graphClient, selectedTemplate.oneDriveApiPath || targetPath);
+            } else {
+              linkedData = await window.electronAPI.readFile(targetPath);
+            }
+            const linkedBook = new ExcelJS.Workbook();
+            await linkedBook.xlsx.load(linkedData);
+            return readWorkbookRegistration(linkedBook);
+          },
+        });
+        if (registration.kind === EXPORT_REGISTRATION.BLOCK) {
+          setIsExporting(false);
+          if (!silent) showToast('Couldn\u2019t read the linked workbook, so nothing was pushed. Check your connection and try again.', 'warn');
+          return;
+        }
+        if (registration.kind === EXPORT_REGISTRATION.NEW || registration.kind === EXPORT_REGISTRATION.KEPT) {
           embedRegistrationIntoMetaSheet(metaSheet, registration.workbookId, registration.syncToken);
           registeredWorkbookId = registration.workbookId; // workbookId only (NOT the token)
-          // registration.syncToken is no longer referenced after embedRegistrationIntoMetaSheet returns.
+        } else if (registration.error) {
+          // No token in the message.
+          console.warn('KAL-307: workbook registration unavailable — export proceeds without registration:', registration.error?.message ?? registration.error);
         }
-        // If documentId or templateId is absent (offline / local-only), silently skip registration.
-        // The workbook will be detected as 'unregistered-legacy' on import.
+        // registration.syncToken is no longer referenced after this block.
       } catch (regErr) {
         // Registration failure must not block the export.  Log a warning (no token in the message).
         console.warn('KAL-307: workbook registration failed — export proceeds without registration:', regErr?.message ?? regErr);
@@ -16486,6 +16524,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           });
         });
       }
+
+      // Sheet → (space, category) ids in the hidden metadata sheet, so the import still
+      // finds a sheet after a rename or a " (2)" suffix (services/excelSheetMap.js).
+      writeSheetMap(metaSheet, schemaMappings);
 
       // Durable per-marker identity records (fingerprints of the exact visible row
       // values + this export's id), keyed by marker id. Stamped onto the markers on a
@@ -17574,8 +17616,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     const entities = selectedTemplate?.entities || [];
 
     let nextMarker = { ...marker, excelSync: record };
-    if (choice === 'excel') {
-      // applyExcelValuesToMarker spreads the marker, so the re-stamped excelSync is preserved.
+    // The choice decides only the disputed fields: Excel's other edits still land, and
+    // the app's other edits are never overwritten (excelFieldsForConflictChoice). The
+    // marker still holds the last-sync baseline here, so "what Excel changed" is exact.
+    const baselineFp = marker.excelSync?.fieldFingerprints;
+    const incomingFp = record?.fieldFingerprints;
+    if (baselineFp && incomingFp) {
+      const fields = excelFieldsForConflictChoice({
+        choice,
+        excelChangedFields: diffRowFields(baselineFp, incomingFp),
+        conflictFields: entry.conflictFields || []
+      });
+      nextMarker = applyExcelFieldsToMarker(nextMarker, excelValues, entities, fields);
+    } else if (choice === 'excel') {
+      // No baseline to diff against: whole row, as before. applyExcelValuesToMarker
+      // spreads the marker, so the re-stamped excelSync is preserved.
       nextMarker = applyExcelValuesToMarker(nextMarker, excelValues, entities);
     }
     const updatedMap = { ...surveyMarkers, [markerId]: nextMarker };
@@ -19597,6 +19652,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           workbookExportStamp: readWorkbookExportStamp(workbook), trigger: importTrigger,
           workbookId: importReg.workbookId, syncToken: importReg.syncToken,
         };
+        const importSheetMap = readSheetMap(workbook);
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {}; // { categoryId: { displayName, columns: [{ columnIndex, text }] } }
@@ -19627,30 +19683,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
-          // Iterate all modules and categories in selectedTemplate to find match
-          let matchedCategory = null;
-          let matchedModuleId = null;
-          let matchedModuleName = null;
-
-          const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
-          for (const mod of modules) {
-            if (matchedCategory) break;
-            const categories = mod.categories || [];
-            for (const cat of categories) {
-              const rawName = `${cat.name || 'Category'} - ${mod.name || 'Module'}`.trim() || 'Sheet';
-              const invalidChars = /[\\/?*[\]:]/g;
-              const cleaned = rawName.replace(invalidChars, '').substring(0, 31) || 'Sheet';
-
-              if (cleaned === sheetName) {
-                matchedCategory = cat;
-                matchedModuleId = mod.id;
-                matchedModuleName = mod.name;
-                break;
-              }
-            }
-          }
-
-          if (!matchedCategory) return;
+          // The hidden sheet list first (renamed categories still match), then the name rule.
+          const sheetMatch = matchSheetToCategory({
+            sheetName, modules: selectedTemplate.modules || selectedTemplate.spaces || [], sheetMap: importSheetMap
+          });
+          if (!sheetMatch) return;
+          const { category: matchedCategory, moduleId: matchedModuleId, moduleName: matchedModuleName } = sheetMatch;
 
           // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];
@@ -19832,6 +19870,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           workbookExportStamp: readWorkbookExportStamp(workbook), trigger: 'auto',
           workbookId: importReg.workbookId, syncToken: importReg.syncToken,
         };
+        const importSheetMap = readSheetMap(workbook);
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {};
@@ -19861,29 +19900,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
-          let matchedCategory = null;
-          let matchedModuleId = null;
-          let matchedModuleName = null;
-
-          const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
-          for (const mod of modules) {
-            if (matchedCategory) break;
-            const categories = mod.categories || [];
-            for (const cat of categories) {
-              const rawName = `${cat.name || 'Category'} - ${mod.name || 'Module'}`.trim() || 'Sheet';
-              const invalidChars = /[\\/?*[\]:]/g;
-              const cleaned = rawName.replace(invalidChars, '').substring(0, 31) || 'Sheet';
-
-              if (cleaned === sheetName) {
-                matchedCategory = cat;
-                matchedModuleId = mod.id;
-                matchedModuleName = mod.name;
-                break;
-              }
-            }
-          }
-
-          if (!matchedCategory) return;
+          // The hidden sheet list first (renamed categories still match), then the name rule.
+          const sheetMatch = matchSheetToCategory({
+            sheetName, modules: selectedTemplate.modules || selectedTemplate.spaces || [], sheetMap: importSheetMap
+          });
+          if (!sheetMatch) return;
+          const { category: matchedCategory, moduleId: matchedModuleId, moduleName: matchedModuleName } = sheetMatch;
 
           // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];

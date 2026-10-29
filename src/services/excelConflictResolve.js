@@ -47,3 +47,60 @@ export const applyExcelValuesToMarker = (marker = {}, values = {}, entities = []
     changedBy: values.changedBy || marker.changedBy
   };
 };
+
+/**
+ * Which Excel fields a conflict choice writes onto the marker. The choice only decides
+ * the DISPUTED fields; everything else follows the normal merge rule (a field only Excel
+ * changed takes Excel's value, a field only the app changed keeps the app's):
+ *   - "use Excel's version" → every field Excel changed since the last sync,
+ *   - "keep my version"     → the fields Excel changed that are NOT in dispute.
+ * Before this, "use Excel's" also wrote Excel's stale copy over app-only edits, and
+ * "keep mine" dropped Excel's undisputed edits for good (the baseline moves past them).
+ *
+ * @param {{choice:'excel'|'app', excelChangedFields:string[], conflictFields?:string[]}} args
+ * @returns {string[]} field keys (rowFingerprint convention: item, entity, notes, changedBy,
+ *   changedDate, answer:<id>)
+ */
+export const excelFieldsForConflictChoice = ({ choice, excelChangedFields = [], conflictFields = [] } = {}) => {
+  const disputed = new Set(conflictFields || []);
+  const fields = (excelChangedFields || []).filter((key) => choice === 'excel' || !disputed.has(key));
+  // A disputed field is by definition one Excel changed; keep it on "use Excel's" even if
+  // the changed list came in short.
+  if (choice === 'excel') for (const key of disputed) if (!fields.includes(key)) fields.push(key);
+  return fields;
+};
+
+/**
+ * Apply only the given Excel fields onto a marker. Same value mapping as
+ * applyExcelValuesToMarker; the Changed Date stays as the marker has it.
+ * @returns {object} a NEW marker (the input marker when no field applies)
+ */
+export const applyExcelFieldsToMarker = (marker = {}, values = {}, entities = [], fieldKeys = []) => {
+  const keys = new Set(fieldKeys || []);
+  if (keys.size === 0) return marker;
+  const next = { ...marker };
+  if (keys.has('item')) next.name = values.item || marker.name;
+  if (keys.has('entity')) {
+    const matchEntity = (entities || []).find((e) => e && e.name === values.entity);
+    next.entityName = values.entity || '';
+    next.entityId = matchEntity ? matchEntity.id : marker.entityId;
+    next.entityColor = matchEntity ? matchEntity.color : marker.entityColor;
+  }
+  if (keys.has('notes')) next.note = { ...(marker.note || {}), text: values.notes || '' };
+  if (keys.has('changedBy')) next.changedBy = values.changedBy || marker.changedBy;
+  const answerIds = [...keys].filter((key) => key.startsWith('answer:')).map((key) => key.slice('answer:'.length));
+  if (answerIds.length > 0) {
+    const checklistResponses = { ...(marker.checklistResponses || {}) };
+    for (const id of answerIds) {
+      // A column missing from the row (removed in Excel) is left alone, as the
+      // whole-row apply does.
+      if (!values.answers || !Object.prototype.hasOwnProperty.call(values.answers, id)) continue;
+      checklistResponses[id] = {
+        ...(checklistResponses[id] || {}),
+        selection: values.answers[id] || ''
+      };
+    }
+    next.checklistResponses = checklistResponses;
+  }
+  return next;
+};

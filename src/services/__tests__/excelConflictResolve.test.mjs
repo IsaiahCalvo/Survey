@@ -80,3 +80,52 @@ test('after "use Excel", the marker rebuilds to the SAME substantive values as E
   const changed = diffRowFields(a, b).filter((f) => f !== 'changedBy' && f !== 'changedDate');
   assert.deepEqual(changed, [], 'item/entity/notes/answers all agree with Excel');
 });
+
+// --- The choice decides only the disputed fields -------------------------------------
+
+import { applyExcelFieldsToMarker, excelFieldsForConflictChoice } from '../excelConflictResolve.js';
+
+test('"use Excel" writes every field Excel changed and leaves app-only edits alone', () => {
+  const fields = excelFieldsForConflictChoice({
+    choice: 'excel', excelChangedFields: ['answer:chk-1', 'notes'], conflictFields: ['answer:chk-1']
+  });
+  assert.deepEqual(fields.sort(), ['answer:chk-1', 'notes']);
+  // The app had renamed the marker (an app-only edit). Excel's row still carries the old
+  // name, but "item" is not an Excel change, so the rename survives.
+  const appMarker = { ...baseMarker, name: 'Door 12A' };
+  const out = applyExcelFieldsToMarker(appMarker, {
+    item: 'Door 12', entity: 'South', notes: 'excel note', changedBy: 'XL', answers: { 'chk-1': 'N', 'chk-2': 'N' }
+  }, entities, fields);
+  assert.equal(out.name, 'Door 12A');
+  assert.equal(out.note.text, 'excel note');
+  assert.equal(out.note.author, 'IC');
+  assert.equal(out.checklistResponses['chk-1'].selection, 'N');
+  assert.equal(out.checklistResponses['chk-1'].by, 'IC');
+  assert.equal(out.changedBy, 'IC'); // changedBy was not an Excel change
+});
+
+test('"keep mine" still takes Excel\'s undisputed edits', () => {
+  const fields = excelFieldsForConflictChoice({
+    choice: 'app', excelChangedFields: ['answer:chk-1', 'notes'], conflictFields: ['answer:chk-1']
+  });
+  assert.deepEqual(fields, ['notes']);
+  const out = applyExcelFieldsToMarker(baseMarker, { notes: 'excel note', answers: { 'chk-1': 'N' } }, entities, fields);
+  assert.equal(out.note.text, 'excel note');
+  assert.equal(out.checklistResponses['chk-1'].selection, 'Y'); // the app's disputed answer stays
+});
+
+test('field apply resolves the entity and never touches the Changed Date', () => {
+  const out = applyExcelFieldsToMarker(baseMarker, { entity: 'North', changedDate: '2030-01-01' }, entities, ['entity', 'changedDate']);
+  assert.equal(out.entityId, 'e-north');
+  assert.equal(out.entityColor, '#ff0000');
+  assert.equal(out.changedDate, baseMarker.changedDate);
+});
+
+test('an answer column missing from the row is left alone', () => {
+  const out = applyExcelFieldsToMarker(baseMarker, { answers: {} }, entities, ['answer:chk-2']);
+  assert.equal(out.checklistResponses['chk-2'].selection, 'N');
+});
+
+test('no fields → the same marker back', () => {
+  assert.equal(applyExcelFieldsToMarker(baseMarker, {}, entities, []), baseMarker);
+});
