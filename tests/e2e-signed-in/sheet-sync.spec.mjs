@@ -163,6 +163,10 @@ test('two-way live sync between a survey and a Google Sheet', async () => {
     // Everyone on the survey sees the link, never the tokens.
     const seen = await must('viewer reads link', (await apiClientFor(E2E_ACCOUNTS.viewer)).from('sheet_sync_links').select('file_url, status').eq('document_id', doc.id));
     expect(seen).toEqual([{ file_url: linked.body.link.fileUrl, status: 'active' }]);
+    const hidden = await (await apiClientFor(E2E_ACCOUNTS.viewer)).from('sheet_sync_links').select('state').eq('document_id', doc.id);
+    expect(hidden.error, 'the sync state is not readable').toBeTruthy();
+    const stranger = await (await apiClientFor(E2E_ACCOUNTS.free)).from('sheet_sync_links').select('file_url').eq('document_id', doc.id);
+    expect(stranger.data ?? []).toEqual([]);
 
     // The PM types in the sheet: a note on D-101 and a new row. An editor with
     // no Google account runs the round (any open device does).
