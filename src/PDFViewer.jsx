@@ -15991,6 +15991,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       if (!silent) showToast('Please select a survey template before exporting.', 'warn');
       return;
     }
+    const localWorkbookIsOpen = async (path) => {
+      try {
+        const lockPath = excelLockFilePath(path);
+        if (lockPath && await window.electronAPI.fileExists(lockPath)) return true;
+        // Fallback only blocks when the lock file belongs to THIS exact workbook —
+        // a different open workbook in the same folder must not block this push.
+        const dirEntries = await window.electronAPI.listDir(parentDir(path));
+        return Array.isArray(dirEntries) && dirEntries.some(name => isOwnerFileFor(name, path));
+      } catch {
+        // If we cannot determine open-state, fall through and attempt the write.
+        return false;
+      }
+    };
+    // Check before registering: an owner's push registers a new workbook id, which
+    // retires the one in the file. Stopping after that left the open file unsyncable.
+    if (targetPath && !selectedTemplate.isOneDrive && await localWorkbookIsOpen(targetPath)) {
+      showToast('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.', 'warn');
+      return;
+    }
     // A customer's Excel layout loads after sign-in. Never write the standard
     // layout over it: wait until it is there (or it was taken off the account).
     if (selectedTemplate.exportKitId && !getExportKit(selectedTemplate.exportKitId)) {
@@ -16546,7 +16565,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // server import has no trusted baseline and routes every row to 'review'. Derives
       // the registration server-side from workbookId (R2#3) — no registration.id/generation.
       // Best-effort + non-blocking: a failure here must never fail the export.
-      try {
+      // A push to a linked workbook seeds only after the file is saved: a kept
+      // registration's baseline must not move ahead of a workbook still holding
+      // the old rows (Excel open, upload failed).
+      const seedServerBaseline = async () => { try {
         const seedDocId = pdfFile?.id ?? null;
         const seedTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
         if (registeredWorkbookId && seedDocId && seedTemplateId) {
@@ -16586,7 +16608,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         }
       } catch (seedErr) {
         console.warn('KAL-309 D.6: server baseline seeding failed — export proceeds:', seedErr?.message ?? seedErr);
-      }
+      } };
+      if (!targetPath) await seedServerBaseline();
 
       // NOTE: we deliberately do NOT lock the Row ID column or protect the sheet.
       // Excel sort physically rewrites every column in a row (including a locked one),
@@ -16680,21 +16703,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               // Local file: never overwrite a workbook the user has open in Excel.
               // macOS lets the write succeed, but Excel's autosave then clobbers it —
               // so detect Excel's owner/lock file and ask the user to close Excel first.
-              let excelIsOpen = false;
-              try {
-                const lockPath = excelLockFilePath(targetPath);
-                if (lockPath && await window.electronAPI.fileExists(lockPath)) {
-                  excelIsOpen = true;
-                } else {
-                  // Fallback only blocks when the lock file belongs to THIS exact workbook —
-                  // a different open workbook in the same folder must not block this push.
-                  const dirEntries = await window.electronAPI.listDir(parentDir(targetPath));
-                  if (Array.isArray(dirEntries) && dirEntries.some(name => isOwnerFileFor(name, targetPath))) excelIsOpen = true;
-                }
-              } catch {
-                // If we cannot determine open-state, fall through and attempt the write.
-              }
-              if (excelIsOpen) {
+              if (await localWorkbookIsOpen(targetPath)) {
                 setIsExporting(false);
                 showToast('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.', 'warn');
                 return;
@@ -16735,6 +16744,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
             // Mark that linked Excel file exists (ensures dropdown menu shows)
             setLinkedExcelExists(true);
+            await seedServerBaseline();
             markExcelExportSynced(updatedTemplate, identityRecordsByMarkerId);
 
             // Local-file export just rewrote the workbook (with every marker's
