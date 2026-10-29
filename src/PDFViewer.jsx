@@ -324,8 +324,9 @@ import {
 // KAL-307: server-minted workbook registration (one live workbook per survey).
 import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet, bindWorkbookLocation, exportCapabilityTier, workbookLocationFromDriveItem } from './services/workbookRegistration';
 import { EXPORT_REGISTRATION, resolveExportRegistration } from './services/excelExportRegistration';
-import { matchSheetToCategory, readSheetMap, writeSheetMap } from './services/excelSheetMap';
-import { PULL_BEFORE_PUSH, hasRowWaitingOnChoice, pullAllowsPush } from './services/excelPushGate';
+import { matchSheetToCategory, readColumnMap, readSheetMap, renameMovedHeaders, writeSheetMap } from './services/excelSheetMap';
+import { belongsToAnotherSurvey, readWorkbookSurvey, writeWorkbookSurvey } from './services/excelWorkbookSurvey';
+import { PULL_BEFORE_PUSH, hasRowWaitingOnChoice, isVersionMismatch, pullAllowsPush, readWorkbookVersion, uploadIfMatch, workbookChangedSincePull } from './services/excelPushGate';
 // KAL-309: server-authoritative Excel change-set transport + materialize reducer.
 import {
   submitChangeSet,
@@ -15976,8 +15977,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
   // Set once handleSyncFromExcel exists (below): pulls Excel's latest, then pushes.
   const requestPushAfterPullRef = useRef(null);
+  // Set below with the latest template and Microsoft client: the linked file's version.
+  const readLinkedWorkbookVersionRef = useRef(async () => null);
   const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
-    const { silent = false, afterPull = false } = options;
+    const { silent = false, afterPull = false, pulledVersion = null, retried = false } = options;
     if (!features?.excelExport) {
       if (!silent) showToast(withUpgradeHint('Excel export is part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
       return;
@@ -16069,6 +16072,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       metaSheet.getCell('B3').value = rowIdExportId;
       metaSheet.getCell('A4').value = 'app_version';
       metaSheet.getCell('B4').value = '1.0';
+      // Which survey this file is for: another survey on the same template won't
+      // pull from it or push over it (services/excelWorkbookSurvey.js).
+      writeWorkbookSurvey(metaSheet, pdfFile?.id);
 
       // KAL-307: server-minted workbook registration.
       // registerWorkbook() calls the kal307_register_workbook RPC (SECURITY DEFINER).
@@ -16293,6 +16299,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               moduleId,
               categoryId: category.id,
               columnMapping,
+              checklistHeaders: checklistItems.map((item) => ({ itemId: item.id, header: item.text || '' })),
               headerRow: 1,
               dataStartRow: 2
             });
@@ -16668,6 +16675,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // Write workbook to buffer
       const workbookBuffer = await workbook.xlsx.writeBuffer();
 
+      // The file changed after the pull read it (saved in Excel mid-push): pull again
+      // once, then give up rather than overwrite it (Excel audit W5).
+      const stopForNewerWorkbook = () => {
+        setIsExporting(false);
+        if (!retried) requestPushAfterPullRef.current?.({ targetPath, silent, retried: true });
+        else if (!silent) showToast('The Excel file changed while pushing, so nothing was overwritten. Push again.', 'warn');
+      };
+      const workbookMovedOn = async () => workbookChangedSincePull(pulledVersion, await readLinkedWorkbookVersionRef.current(targetPath));
+
       if (window.electronAPI) {
         if (targetPath) {
           // Silent save (Sync to Excel) - handled by handleSyncToExcel
@@ -16682,6 +16698,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
 
               // Check if Live Sync is enabled with active session - use cell-level updates
               if (liveSyncEnabled && excelSessionId && oneDriveFileId && liveSyncStatus === 'connected') {
+                if (await workbookMovedOn()) { stopForNewerWorkbook(); return; }
 
                 // Update each worksheet via session API
                 for (const ws of workbook.worksheets) {
@@ -16729,7 +16746,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
                 // the cloud version directly, not the local synced copy
                 if (oneDriveFileId) {
                   // Prefer upload by file ID (more reliable, tracks file across moves/renames)
-                  await uploadFileContentById(graphClient, oneDriveFileId, workbookBuffer);
+                  try {
+                    await uploadFileContentById(graphClient, oneDriveFileId, workbookBuffer, { ifMatch: uploadIfMatch(pulledVersion) });
+                  } catch (uploadErr) {
+                    if (isVersionMismatch(uploadErr)) { stopForNewerWorkbook(); return; }
+                    throw uploadErr;
+                  }
                 } else {
                   // Fall back to upload by path
                   await uploadExcelFile(graphClient, targetPath, workbookBuffer);
@@ -16744,6 +16766,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
                 showToast('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.', 'warn');
                 return;
               }
+              if (await workbookMovedOn()) { stopForNewerWorkbook(); return; }
               // Use local filesystem
               await window.electronAPI.writeFile(targetPath, workbookBuffer);
             }
@@ -17238,12 +17261,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   // Push survey data to linked Excel with retry logic for locked files
   const pushToExcelWithRetry = useCallback(async (
     isRetry = false,
-    { throwOnFailure = false, afterPull = false } = {},
+    { throwOnFailure = false, afterPull = false, pulledVersion = null, retried = false } = {},
   ) => {
     if (!selectedTemplate?.linkedExcelPath) return;
 
     try {
-      await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true, afterPull });
+      await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true, afterPull, pulledVersion, retried });
       // Show success message (especially important after retry)
       if (isRetry) {
         showToast('Excel file updated successfully!', 'success');
@@ -19702,7 +19725,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           workbookExportStamp: readWorkbookExportStamp(workbook), trigger: importTrigger,
           workbookId: importReg.workbookId, syncToken: importReg.syncToken,
         };
+        if (belongsToAnotherSurvey(readWorkbookSurvey(workbook), pdfFile?.id)) {
+          if (!options?.silent) showToast('This Excel file belongs to another survey that uses the same template, so nothing was imported. Export this survey to its own file.', 'warn');
+          return PULL_BEFORE_PUSH.FOREIGN;
+        }
         const importSheetMap = readSheetMap(workbook);
+        const importColumnMap = readColumnMap(workbook);
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {}; // { categoryId: { displayName, columns: [{ columnIndex, text }] } }
@@ -19739,6 +19767,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           });
           if (!sheetMatch) return;
           const { category: matchedCategory, moduleId: matchedModuleId, moduleName: matchedModuleName } = sheetMatch;
+          // A checklist item renamed in the app keeps its column (hidden column list).
+          renameMovedHeaders(headerRow, { sheetName, checklistItems: matchedCategory.checklist || [], columnMap: importColumnMap });
 
           // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];
@@ -19837,7 +19867,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
     }
     return PULL_BEFORE_PUSH.FAILED;
-  }, [selectedTemplate, graphClient, ensureFreshToken, executeExcelImport]);
+  }, [selectedTemplate, graphClient, ensureFreshToken, executeExcelImport, pdfFile?.id]);
+
+  readLinkedWorkbookVersionRef.current = (targetPath) => readWorkbookVersion(selectedTemplate?.isOneDrive
+    ? { oneDriveFileId: oneDriveFileId || selectedTemplate.oneDriveFileId || null, getDriveItem: (id) => getFileETag(graphClient, id) }
+    : { localPath: targetPath, getFileStats: window.electronAPI?.getFileStats });
 
   // Pull before push (Excel audit W5). The pull's marker changes commit first; the
   // effect then pushes from them, unless a row tied to a marker still waits for a
@@ -19845,20 +19879,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
   const pushAfterPullRef = useRef(null);
   const pullBeforePushInFlightRef = useRef(false);
   const [pushAfterPullTick, setPushAfterPullTick] = useState(0);
-  requestPushAfterPullRef.current = async ({ targetPath, silent }) => {
+  requestPushAfterPullRef.current = async ({ targetPath, silent, retried = false }) => {
     if (pullBeforePushInFlightRef.current) return;
     pullBeforePushInFlightRef.current = true;
     try {
+      // Read before the pull, so a save in Excel at any point after it stops the push.
+      const pulledVersion = await readLinkedWorkbookVersionRef.current(targetPath);
       const status = await handleSyncFromExcel({ silent: true, beforePush: true });
       if (!pullAllowsPush(status)) {
         if (status === PULL_BEFORE_PUSH.PAUSED) {
           showToast('Choose what to do with the new Excel columns, then push again.', 'warn');
+        } else if (status === PULL_BEFORE_PUSH.FOREIGN) {
+          showToast('This Excel file belongs to another survey that uses the same template, so nothing was pushed. Export this survey to its own file.', 'warn');
         } else if (!silent) {
           showToast('Couldn\u2019t read Excel\u2019s latest changes, so nothing was pushed. Try again.', 'warn');
         }
         return;
       }
-      pushAfterPullRef.current = { targetPath, silent };
+      pushAfterPullRef.current = { targetPath, silent, pulledVersion, retried };
       setPushAfterPullTick((tick) => tick + 1);
     } finally {
       pullBeforePushInFlightRef.current = false;
@@ -19872,8 +19910,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       showToast('Some rows changed in Excel need your choice first (red marks in the Survey panel). Answer them, then push again.', 'warn');
       return;
     }
-    if (pending.silent) pushToExcelWithRetry(false, { afterPull: true });
-    else handleExportSurveyToExcel(pending.targetPath, { afterPull: true });
+    const after = { afterPull: true, pulledVersion: pending.pulledVersion, retried: pending.retried };
+    if (pending.silent) pushToExcelWithRetry(false, after);
+    else handleExportSurveyToExcel(pending.targetPath, after);
     // Runs once per pull (the tick); reads the markers and review list that pull committed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pushAfterPullTick]);
@@ -19962,7 +20001,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           workbookExportStamp: readWorkbookExportStamp(workbook), trigger: 'auto',
           workbookId: importReg.workbookId, syncToken: importReg.syncToken,
         };
+        if (belongsToAnotherSurvey(readWorkbookSurvey(workbook), pdfFile?.id)) {
+          setLastSyncMessage('This Excel file belongs to another survey');
+          setTimeout(() => setLastSyncMessage(''), 5000);
+          return;
+        }
         const importSheetMap = readSheetMap(workbook);
+        const importColumnMap = readColumnMap(workbook);
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {};
@@ -19998,6 +20043,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           });
           if (!sheetMatch) return;
           const { category: matchedCategory, moduleId: matchedModuleId, moduleName: matchedModuleName } = sheetMatch;
+          // A checklist item renamed in the app keeps its column (hidden column list).
+          renameMovedHeaders(headerRow, { sheetName, checklistItems: matchedCategory.checklist || [], columnMap: importColumnMap });
 
           // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];
@@ -20100,7 +20147,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         setTimeout(() => setLastSyncMessage(''), 5000);
       }
     }
-  }, [addHistoryCheckpoint, selectedTemplate, graphClient, executeAutoExcelImport]);
+  }, [addHistoryCheckpoint, selectedTemplate, graphClient, executeAutoExcelImport, pdfFile?.id]);
 
   // Set up file watcher when Excel file is linked
   useEffect(() => {

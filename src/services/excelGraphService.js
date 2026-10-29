@@ -268,7 +268,7 @@ export async function getDriveType(graphClient, driveId = null) {
  * @param {ArrayBuffer|Uint8Array} fileContent - Excel file content
  * @returns {Promise<Object>} - Upload result with file metadata including new eTag
  */
-export async function uploadFileContentById(graphClient, fileId, fileContent) {
+export async function uploadFileContentById(graphClient, fileId, fileContent, { ifMatch = null } = {}) {
   if (!graphClient) {
     throw new Error('Not authenticated with Microsoft. Please sign in first.');
   }
@@ -299,16 +299,20 @@ export async function uploadFileContentById(graphClient, fileId, fileContent) {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     });
 
-    // Upload file content by ID - this replaces the file content
-    const response = await graphClient
+    // Upload file content by ID - this replaces the file content. With ifMatch,
+    // Microsoft refuses (412) if the file changed since that eTag was read.
+    let request = graphClient
       .api(`/me/drive/items/${fileId}/content`)
-      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-      .put(blob);
+      .header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    if (ifMatch) request = request.header('If-Match', ifMatch);
+    const response = await request.put(blob);
 
     return response;
   } catch (error) {
     console.error('Failed to upload file content by ID:', error);
-    throw new Error(`Failed to upload file content: ${error.message}`);
+    throw Object.assign(new Error(`Failed to upload file content: ${error.message}`), {
+      statusCode: error?.statusCode, code: error?.code,
+    });
   }
 }
 

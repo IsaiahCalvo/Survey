@@ -6,7 +6,9 @@ import {
   SHEET_MAP_START_ROW,
   baseSheetNameFor,
   matchSheetToCategory,
+  readColumnMap,
   readSheetMap,
+  renameMovedHeaders,
   writeSheetMap,
 } from '../excelSheetMap.js';
 
@@ -77,4 +79,35 @@ test('no list, or a list entry for a deleted category, falls back to the name ru
 test('reading never throws on a workbook without the metadata sheet', () => {
   assert.equal(readSheetMap(new ExcelJS.Workbook()).size, 0);
   assert.equal(readSheetMap(null).size, 0);
+});
+
+test('a checklist item renamed in the app keeps its column (W8)', async () => {
+  const back = await roundTrip((book, meta) => writeSheetMap(meta, [
+    { sheetName: 'Doors - Floor 1', moduleId: 'm1', categoryId: 'c1',
+      checklistHeaders: [{ itemId: 'k1', header: 'Locked?' }, { itemId: 'k2', header: 'Hinge OK' }, { itemId: 'k3', header: '' }] },
+    { sheetName: 'Fire Alarm Pull Stations North', moduleId: 'm1', categoryId: 'c2', checklistHeaders: [{ itemId: 'k9', header: 'Tested' }] },
+  ]));
+  // The sheet list still reads the same (older builds stop at the first column row).
+  assert.equal(readSheetMap(back).get('Doors - Floor 1').categoryId, 'c1');
+  assert.equal(readSheetMap(back).size, 2);
+  const columns = readColumnMap(back);
+  assert.deepEqual([...columns.get('Doors - Floor 1')], [['Locked?', 'k1'], ['Hinge OK', 'k2']]);
+
+  // "Locked?" was renamed "Is it locked?" in the app; "Hinge OK" is unchanged.
+  const checklist = [{ id: 'k1', text: 'Is it locked?' }, { id: 'k2', text: 'Hinge OK' }];
+  const header = ['Row ID', 'Changed By', 'Changed Date', 'Item', 'Locked?', 'Hinge OK', 'PM column', 'Entity', 'Notes'];
+  renameMovedHeaders(header, { sheetName: 'Doors - Floor 1', checklistItems: checklist, columnMap: columns });
+  assert.deepEqual(header.slice(4, 7), ['Is it locked?', 'Hinge OK', 'PM column']);
+
+  // A deleted item, an item whose new name already has a column, or no list: untouched.
+  const gone = ['Item', 'Locked?'];
+  renameMovedHeaders(gone, { sheetName: 'Doors - Floor 1', checklistItems: [{ id: 'k2', text: 'Hinge OK' }], columnMap: columns });
+  assert.deepEqual(gone, ['Item', 'Locked?']);
+  const both = ['Item', 'Locked?', 'Is it locked?'];
+  renameMovedHeaders(both, { sheetName: 'Doors - Floor 1', checklistItems: checklist, columnMap: columns });
+  assert.deepEqual(both, ['Item', 'Locked?', 'Is it locked?']);
+  const old = ['Item', 'Locked?'];
+  renameMovedHeaders(old, { sheetName: 'Doors - Floor 1', checklistItems: checklist, columnMap: new Map() });
+  assert.deepEqual(old, ['Item', 'Locked?']);
+  assert.equal(readColumnMap(null).size, 0);
 });
