@@ -122,6 +122,7 @@ jobs:
           supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api --jobs 4
           agent-auth
           agent-identity
+          archive-purge-sweep
           company-sso
           create-checkout-session
           create-portal-session
@@ -132,6 +133,7 @@ jobs:
           notify-comment-mentions
           pdf-file-url
           send-profile-change-notification
+          sheet-sync
           stripe-webhook
           survey-agent
           survey-mcp
