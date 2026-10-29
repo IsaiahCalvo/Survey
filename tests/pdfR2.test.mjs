@@ -363,3 +363,11 @@ test('flag, migration, function config and CSP stay in step', () => {
   const csp = vercel.headers.flatMap((r) => r.headers).find((h) => h.key === 'Content-Security-Policy' && h.value.includes('connect-src')).value;
   assert.match(csp, /connect-src [^;]*https:\/\/\*\.r2\.cloudflarestorage\.com/);
 });
+
+test('the sweep cron call outlasts the sweep, and the repo never holds its secret', () => {
+  const sql = readFileSync(new URL('../supabase/migrations/20261029040000_archive_sweep_cron_timeout.sql', import.meta.url), 'utf8');
+  assert.match(sql, /cron\.alter_job/);
+  assert.match(sql, /timeout_milliseconds := 60000/);
+  // Edits the hand-made job in place; restating it would need the secret.
+  assert.doesNotMatch(sql, /cron\.schedule|x-cron-secret"\s*:\s*"/i);
+});
