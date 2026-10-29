@@ -20,12 +20,13 @@ import { isUndoKeyEvent, isRedoKeyEvent } from './utils/undoRedoHotkeys';
 import { calculateViewportSafePosition } from './utils/menuPositioning';
 import { HANDLE_FILL, HANDLE_RING, HANDLE_RADIUS } from './utils/handleStyle';
 // KAL-301 REDO: rotation chrome copies the day-one standard implementation.
-// - normalizeAngle / snapAngleToNearest45: same drag math + soft Shift-snap
+// - normalizeAngle: same drag math; Shift steps by the snap angle
 //   convention as useSVGInteraction.js's rotate branch (Phase 9/EDIT-11).
 // - selectionHandleVisibility metrics: same mtr circle size / icon size /
 //   rotation offset as SVGSelectionOverlay.jsx.
 // - RotationInputField: the app's standard angle pill (EDIT-12), reused as-is.
-import { normalizeAngle, snapAngleToNearest45 } from './utils/svgTransformMath';
+import { normalizeAngle } from './utils/svgTransformMath';
+import { readSnapAngle } from './utils/annotationPreferences.js';
 import { getSelectionHandleVisualMetrics, getAdaptiveSelectionHandleSpec } from './utils/selectionHandleVisibility.js';
 import RotationInputField from './components/RotationInputField';
 import { createStableActions } from './utils/stableActionProxy.js';
@@ -49,7 +50,7 @@ const MIN_REGION_SIZE = 5;
 // Owner 2026-10-22: Polygon area, drawn a corner per click like Bluebeam's
 // Add Space and Photoshop's Polygonal Lasso. Since 2026-10-28 it draws like
 // the Polygon markup tool: check marks on the first and latest corner close
-// or finish it, and Shift locks each new side to 15° (regionPolygonEdit.js).
+// or finish it, and Shift locks each new side to the snap angle (regionPolygonEdit.js).
 const DRAW_TOOL_TYPES = new Set(['rectangular', 'polygon', 'freehand']);
 // Owner 2026-10-26: Erase takes a whole area away where it is pressed or
 // dragged over (the phone's Delete key; Subtract cuts part of an area).
@@ -232,7 +233,7 @@ const RegionSelectionTool = ({
   const [polyOnCheck, setPolyOnCheck] = useState(false);
   const polyCornersRef = useRef([]);
   polyCornersRef.current = polyCorners;
-  // Add or Subtract is fixed by the first corner, so Shift (15° lock) or Alt
+  // Add or Subtract is fixed by the first corner, so Shift (angle lock) or Alt
   // pressed while drawing does not flip what the closed shape does.
   const polyModeRef = useRef(null);
   const [regions, setRegions] = useState(() => []);
@@ -1990,9 +1991,9 @@ const RegionSelectionTool = ({
         // KAL-301 REDO: rotation drag, copied from the standard rotate branch
         // in useSVGInteraction.js. The angle is the ABSOLUTE pointer direction
         // from the shape's bbox center, converted to Fabric-style degrees
-        // (0 = up) via normalizeAngle. There is NO always-on snap — the app's
-        // day-one convention is free rotation with a soft Shift-snap to the
-        // nearest 45° within a 3° threshold (EDIT-11 locked decision).
+        // (0 = up) via normalizeAngle. There is NO always-on snap: rotation is
+        // free, and Shift steps by the Settings snap angle (15° / 45° / 90°),
+        // the same as turning a mark (snapRotationDegrees).
         //
         // Coords are NOT touched here. The selected region and its entire
         // selection chrome (box + grabbers + mtr handle) render with a
@@ -2005,7 +2006,8 @@ const RegionSelectionTool = ({
         const radians = Math.atan2(y - center.cy, x - center.cx);
         let newAngle = normalizeAngle(radians);
         if (event.shiftKey) {
-          newAngle = snapAngleToNearest45(newAngle, 3);
+          const step = readSnapAngle();
+          newAngle = ((Math.round(newAngle / step) * step) % 360 + 360) % 360;
         }
 
         dragHasMovedRef.current = true;

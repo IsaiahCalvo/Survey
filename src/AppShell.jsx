@@ -55,7 +55,7 @@ import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
 import { RenameModal } from './home/BulkModals';
 import { useConfirmDialog } from './components/dialogPrompts';
-import { DISCARD_LOCAL_DRAFT_EVENT, closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction, tabIdsToDiscardOnClose } from './tabs/tabStrip.js';
+import { DISCARD_LOCAL_DRAFT_EVENT, RENAME_OPEN_DOCUMENT_EVENT, canRenameTab, closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction, tabIdsToDiscardOnClose } from './tabs/tabStrip.js';
 import { useTabSession } from './tabs/useTabSession.js';
 import {
   MobilePdfViewerDock,
@@ -2154,6 +2154,17 @@ export default function App({ devPreviewReturnTab = null }) {
     window.addEventListener('survey-open-pdf-tools', open);
     return () => window.removeEventListener('survey-open-pdf-tools', open);
   }, []);
+  // The phone viewer has no tab strip, so its More menu asks to rename the
+  // open document with an event; the same dialog the tab menu opens.
+  const signedInForRename = Boolean(user?.id);
+  useEffect(() => {
+    const rename = () => {
+      const tab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+      if (tab && !tab.isHome && canRenameTab(tab, signedInForRename)) setRenameTabId(tab.id);
+    };
+    window.addEventListener(RENAME_OPEN_DOCUMENT_EVENT, rename);
+    return () => window.removeEventListener(RENAME_OPEN_DOCUMENT_EVENT, rename);
+  }, [signedInForRename]);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   // Shift+S flips snapping (the rail's magnet button says the same).

@@ -35,6 +35,9 @@ import { downloadMyData } from '../services/accountExport';
 import {
   readAnnotationSnapping,
   writeAnnotationSnapping,
+  readSnapAngle,
+  writeSnapAngle,
+  SNAP_ANGLE_CHOICES,
   readTextboxAutoFit,
   writeTextboxAutoFit,
   subscribeAnnotationPreferences,
@@ -49,6 +52,7 @@ import {
   SUBSCRIPTION_LOAD_FAILED_TEXT,
 } from '../utils/accountPlatform';
 import { useTooltip } from './Tooltip';
+import ButtonGroup from './ButtonGroup.jsx';
 
 const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
 const SUBSCRIPTION_TIMEOUT_MS = 10_000;
@@ -85,9 +89,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   // the next text edit, so a change applies without a reload.
   const [annotationSnapping, setAnnotationSnapping] = useState(() => readAnnotationSnapping());
   const [textboxAutoFit, setTextboxAutoFit] = useState(() => readTextboxAutoFit());
+  const [snapAngle, setSnapAngle] = useState(() => readSnapAngle());
   useEffect(() => {
     if (!isOpen) return undefined;
-    const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); };
+    const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); setSnapAngle(readSnapAngle()); };
     refresh();
     return subscribeAnnotationPreferences(refresh);
   }, [isOpen]);
@@ -1167,6 +1172,20 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   <button type="button" className="account-switch" role="switch" aria-checked={annotationSnapping} aria-labelledby="account-pref-annotation-snapping" data-pref="annotation-snapping" onClick={() => setAnnotationSnapping(writeAnnotationSnapping(!annotationSnapping))}>
                     <span className="account-switch-track" aria-hidden="true" />
                   </button>
+                </div>
+                <div className="account-pref-row">
+                  <div className="account-pref-copy">
+                    <div className="account-pref-title" id="account-pref-snap-angle">Shift snap angle</div>
+                    <p className="account-pref-description">Hold Shift to keep lines, polygon sides and turns on these steps.</p>
+                  </div>
+                  <ButtonGroup
+                    size="sm"
+                    labelledBy="account-pref-snap-angle"
+                    className="account-pref-snap-angle"
+                    value={snapAngle}
+                    options={SNAP_ANGLE_CHOICES.map((deg) => ({ value: deg, label: `${deg}°`, ariaLabel: `${deg} degrees` }))}
+                    onChange={(deg) => setSnapAngle(writeSnapAngle(deg))}
+                  />
                 </div>
                 <h3 id="account-annotations-text-boxes">Text boxes</h3>
                 <div className="account-pref-row">
