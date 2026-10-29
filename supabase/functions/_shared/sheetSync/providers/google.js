@@ -198,10 +198,14 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
   return {
     kind: 'google',
 
+    // Always null, so every round reads the sheet. Drive's `version` does not
+    // move when someone types in a Google Sheet (seen live 2026-10-29: a cell
+    // edit left it unchanged for minutes), so skipping on it hid sheet edits
+    // until "Sync now". The call stays to catch a trashed or deleted sheet.
     async getVersion(fileId) {
-      const meta = await call(`${endpoints.drive}/drive/v3/files/${encodeURIComponent(fileId)}?fields=version,trashed`);
+      const meta = await call(`${endpoints.drive}/drive/v3/files/${encodeURIComponent(fileId)}?fields=trashed`);
       if (meta.trashed) throw providerError('google: the sheet is in the trash', 404);
-      return meta.version != null ? String(meta.version) : null;
+      return null;
     },
 
     async readGrid(fileId) {

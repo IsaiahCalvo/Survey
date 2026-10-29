@@ -102,7 +102,7 @@ test('provider meets the contract; tokens round-trip through encryption', async 
   await assert.rejects(decryptToken(sealed, 'key-b'));
 });
 
-test('first round fills the sheet with signed rows; an idle round reads nothing', async () => {
+test('first round fills the sheet with signed rows; a quiet round changes nothing', async () => {
   const ctx = await setup({ markers: { d1: door('d1', 'D-101', { checklistResponses: { c1: { selection: 'Y' }, c2: { selection: '84' } }, entityName: 'Installed' }), d2: door('d2', 'D-102') } });
   const first = await ctx.round();
   assert.equal(first.status, 'synced');
@@ -116,9 +116,32 @@ test('first round fills the sheet with signed rows; an idle round reads nothing'
   assert.equal(sheet.rows[1][6], 'Installed');
   assert.deepEqual(sheet.hidden, [0], 'Row ID column hidden');
   assert.ok(sheet.validations >= 2, 'drop-downs for answers and entity');
-  // Our own writes changed the version, so one more read settles it; then idle.
+  // Google rounds always read the sheet (Drive's version misses cell edits),
+  // so a round with nothing new still reads but writes nothing either way.
   assert.equal((await ctx.round()).status, 'synced');
-  assert.equal((await ctx.round()).status, 'idle');
+  const quiet = await ctx.round();
+  assert.equal(quiet.status, 'synced');
+  assert.deepEqual(quiet.summary, { toSheet: 0, toApp: 0, created: 0, appended: 0, deleted: 0, conflicts: 0 });
+});
+
+test('a sheet edit reaches the app even when Drive reports the same version', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  // Real Google: typing in a cell does not bump Drive's version, so Drive
+  // answers the same version every time here.
+  const frozenDrive = async (input, init) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes('/drive/v3/files/') && (!init || !init.method || init.method === 'GET')) {
+      return new Response(JSON.stringify({ version: '1', trashed: false }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    return fakeGoogleFetch(input, init);
+  };
+  ctx.provider = googleSheetsProvider({ endpoints, getAccessToken: async () => 'fake-access-1', fetchImpl: frozenDrive });
+  await ctx.round(); await ctx.round();
+  const r = await ctx.rowOf('d1');
+  await ctx.edit([{ row: r, col: await ctx.col('Notes'), value: 'Typed in the sheet' }]);
+  const round = await ctx.round();
+  assert.equal(round.status, 'synced');
+  assert.equal(round.summary.toApp, 1);
 });
 
 test('a field tech answer reaches the sheet; a PM edit reaches the app; both land on one row', async () => {
