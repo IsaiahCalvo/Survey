@@ -67,6 +67,24 @@ function plainCell(value, text, format) {
   return value;
 }
 
+// Drop-downs cover this many rows, like the desktop export.
+const DROP_DOWN_ROWS = 1000;
+
+/**
+ * The comma list for a column's drop-down, or null. Excel caps a typed list at 255
+ * characters and splits on commas, so a longer list or a choice holding a comma
+ * gets no drop-down (typing still works; the merge checks values anyway).
+ */
+export function dropDownChoices(column, layout) {
+  const key = String(column?.key || '');
+  let choices = null;
+  if (key === 'entity') choices = (layout?.entities || []).map((e) => e?.name).filter(Boolean);
+  else if (key.startsWith('answer:') && (!column.item?.kind || column.item.kind === 'choice')) choices = layout?.answerValues || null;
+  if (!choices?.length || choices.some((c) => String(c).includes(','))) return null;
+  const source = choices.map(String).join(',');
+  return source.length <= 255 ? source : null;
+}
+
 function graphError(status, body, headers, where) {
   const message = body?.error?.message || `Microsoft Graph ${where} failed (${status})`;
   const error = new Error(message);
@@ -196,10 +214,26 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     });
   }
 
-  async function addSheet(fileId, scope) {
+  // One sheet per scope (layout.js shape): header row, hidden Row ID column, and a
+  // drop-down on pick-one answer columns and the entity column.
+  async function addSheet(fileId, scope, layout) {
     const added = await workbook(fileId, 'POST', 'worksheets/add', { body: { name: scope.title }, where: 'addSheet' });
-    const header = scope.header || scope.columns || [];
-    if (header.length) await writeRow(fileId, added.id, 0, 0, header.map((h) => (typeof h === 'string' ? h : h?.title ?? '')));
+    const columns = scope.columns || (scope.header || []).map((h) => ({ header: typeof h === 'string' ? h : h?.title ?? '' }));
+    if (!columns.length) return added.id;
+    await writeRow(fileId, added.id, 0, 0, columns.map((c) => c.header ?? ''));
+    const path = sheetPath(added.id);
+    if (columns[0]?.key === 'rowId') {
+      await workbook(fileId, 'PATCH', `${path}/range(address='A:A')`, { body: { columnHidden: true }, where: 'hideRowId' });
+    }
+    for (const [index, column] of columns.entries()) {
+      const choices = dropDownChoices(column, layout);
+      if (!choices) continue;
+      const letter = columnLetter(index);
+      await workbook(fileId, 'PATCH', `${path}/range(address='${letter}2:${letter}${DROP_DOWN_ROWS}')/dataValidation`, {
+        body: { rule: { list: { inCellDropDown: true, source: choices } }, errorAlert: { showAlert: false } },
+        where: 'dropDown',
+      });
+    }
     return added.id;
   }
 
@@ -316,16 +350,17 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       const scopes = layout?.scopes || layout?.sheets || [];
       const sheetIds = {};
       const blank = await workbook(fileId, 'GET', 'worksheets?$select=id,name', { where: 'worksheets' });
-      for (const scope of scopes) sheetIds[scope.scopeId] = await addSheet(fileId, scope);
+      for (const scope of scopes) sheetIds[scope.scopeId] = await addSheet(fileId, scope, layout);
       // The blank file's own first sheet goes once the real ones exist.
       const starter = blank?.value?.[0];
       if (starter && scopes.length) await workbook(fileId, 'DELETE', sheetPath(starter.id), { where: 'deleteStarter' });
       return { fileId, url: created.webUrl, sheetIds };
     },
 
-    async addTabs(fileId, scopes) {
+    /** `scopes` from the layout; `layout` (optional) supplies the drop-down lists. */
+    async addTabs(fileId, scopes, layout = null) {
       const sheetIds = {};
-      for (const scope of scopes || []) sheetIds[scope.scopeId] = await addSheet(fileId, scope);
+      for (const scope of scopes || []) sheetIds[scope.scopeId] = await addSheet(fileId, scope, layout);
       return sheetIds;
     },
 

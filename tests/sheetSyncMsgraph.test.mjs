@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
 
 import {
-  blankWorkbookBytes, cellValueForWrite, columnLetter, createMsGraphProvider, msgraphFileId,
+  blankWorkbookBytes, cellValueForWrite, columnLetter, createMsGraphProvider, dropDownChoices, msgraphFileId,
   parseMsgraphFileId, rowRuns,
 } from '../supabase/functions/_shared/sheetSync/providers/msgraph.js';
 
@@ -103,7 +103,17 @@ function fakeGraph({ driveType = 'business' } = {}) {
         numberFormat: box((r, c) => target.formats[r]?.[c] || 'General'),
       });
     }
-    const range = /^\/range\(address='([^']+)'\)(\/delete)?/.exec(tail);
+    const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?/.exec(tail);
+    if (range && method === 'PATCH' && /^[A-Z]+:[A-Z]+$/.test(range[1])) {
+      target.hidden = target.hidden || [];
+      if (JSON.parse(init.body).columnHidden) target.hidden.push(range[1]);
+      return json(200, {});
+    }
+    if (range && range[2] === '/dataValidation') {
+      target.validation = target.validation || {};
+      target.validation[range[1]] = JSON.parse(init.body).rule.list.source;
+      return json(200, {});
+    }
     if (range) {
       const a = parseAddress(range[1]);
       if (method === 'POST' && range[2]) {
@@ -265,20 +275,37 @@ test('Graph errors keep their status and the retry wait', async () => {
 test('creates a workbook in the Survey folder with one sheet per scope', async () => {
   const graph = fakeGraph();
   const p = provider(graph);
-  const made = await p.createFile({
-    title: 'Fire/Level 1', layout: { scopes: [
-      { scopeId: 'm:cat1', title: 'Fire - L1', header: ['Row ID', 'Item'] },
-      { scopeId: 'm:cat2', title: 'Fire - L2', header: [{ title: 'Row ID' }, { title: 'Notes' }] },
-    ] },
-  });
+  const layout = {
+    scopes: [
+      { scopeId: 'm:cat1', title: 'Fire - L1', columns: [
+        { key: 'rowId', header: 'Row ID' }, { key: 'item', header: 'Item' }, { key: 'entity', header: 'Entity' },
+        { key: 'answer:q1', header: 'Works?' }, { key: 'answer:q2', header: 'Note', item: { kind: 'text' } },
+      ] },
+      { scopeId: 'm:cat2', title: 'Fire - L2', columns: [{ key: 'rowId', header: 'Row ID' }, { key: 'notes', header: 'Notes' }] },
+    ],
+    entities: [{ id: 'e1', name: 'Smoke detector' }, { id: 'e2', name: 'Pull station' }],
+    answerValues: ['Pass', 'Fail', 'N/A'],
+  };
+  const made = await p.createFile({ title: 'Fire/Level 1', layout });
   assert.match(made.fileId, /^drives\/b!drive\/items\/NEW-1$/);
   assert.match(made.url, /Fire-Level%201|Fire-Level 1/);
   const file = graph.files.get('NEW-1');
   assert.deepEqual(file.sheets.map((s) => s.name), ['Fire - L1', 'Fire - L2'], 'starter sheet removed');
+  assert.deepEqual(file.sheets[0].cells[0], ['Row ID', 'Item', 'Entity', 'Works?', 'Note']);
+  assert.deepEqual(file.sheets[0].hidden, ['A:A'], 'Row ID column hidden');
+  assert.deepEqual(file.sheets[0].validation, { 'C2:C1000': 'Smoke detector,Pull station', 'D2:D1000': 'Pass,Fail,N/A' });
   assert.deepEqual(file.sheets[1].cells[0], ['Row ID', 'Notes']);
   assert.deepEqual(made.sheetIds, { 'm:cat1': '{Fire - L1-id}', 'm:cat2': '{Fire - L2-id}' });
-  const more = await p.addTabs(made.fileId, [{ scopeId: 'm:cat3', title: 'Fire - L3', header: ['Row ID'] }]);
+  const more = await p.addTabs(made.fileId, [{ scopeId: 'm:cat3', title: 'Fire - L3', columns: [{ key: 'rowId', header: 'Row ID' }] }], layout);
   assert.deepEqual(more, { 'm:cat3': '{Fire - L3-id}' });
+});
+
+test('no drop-down when Excel could not hold the list', () => {
+  const long = { answerValues: Array.from({ length: 60 }, (_, i) => `Choice ${i}`) };
+  assert.equal(dropDownChoices({ key: 'answer:q' }, long), null);
+  assert.equal(dropDownChoices({ key: 'answer:q' }, { answerValues: ['Yes, done', 'No'] }), null);
+  assert.equal(dropDownChoices({ key: 'answer:q', item: { kind: 'choice' } }, { answerValues: ['Y', 'N'] }), 'Y,N');
+  assert.equal(dropDownChoices({ key: 'notes' }, { answerValues: ['Y'] }), null);
 });
 
 test('the built-in blank workbook is a real .xlsx', async () => {
