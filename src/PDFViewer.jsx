@@ -284,7 +284,7 @@ import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdentityRecords, applyWritebackVerification } from './services/excelIdentityRecord';
-import { computeRowFingerprints, diffRowFields } from './services/rowFingerprint';
+import { diffRowFields } from './services/rowFingerprint';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
@@ -322,7 +322,7 @@ import {
   resolveRegionRestoreCascade,
 } from './services/annotationTrashHistory';
 // KAL-307: server-minted workbook registration (one live workbook per survey).
-import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet } from './services/workbookRegistration';
+import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet, bindWorkbookLocation, exportCapabilityTier, workbookLocationFromDriveItem } from './services/workbookRegistration';
 import { EXPORT_REGISTRATION, resolveExportRegistration } from './services/excelExportRegistration';
 import { matchSheetToCategory, readSheetMap, writeSheetMap } from './services/excelSheetMap';
 // KAL-309: server-authoritative Excel change-set transport + materialize reducer.
@@ -331,6 +331,7 @@ import {
   fetchSince,
   ackMaterialization,
   resolveMaterializationConflict,
+  resolveConflictedMarker,
   materializeAcceptedOps,
   readFrontier,
   seedSyncState,
@@ -16068,13 +16069,24 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       // marker identity records exist to seed the server-side Excel baseline. The raw
       // syncToken is NOT retained here (embedded then discarded — security contract).
       let registeredWorkbookId = null;
+      let workbookLocation = null;
       try {
         const supabaseDocId = pdfFile?.id ?? null;
         const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
-        const capabilityTier =
-          selectedTemplate?.isSharePoint ? 'business'
-          : selectedTemplate?.isOneDrive ? 'personal'
-          : 'local';
+        // A new export does not know where it will be saved: it registers as a local
+        // file and the OneDrive/SharePoint save binds its real location afterwards
+        // (performOneDriveExport). A push to a linked work OneDrive file takes its
+        // drive and tier from the file itself when the template predates storing them.
+        if (targetPath && selectedTemplate?.isOneDrive && !selectedTemplate?.isSharePoint) {
+          const linkedFileId = oneDriveFileId || selectedTemplate.oneDriveFileId || null;
+          if (linkedFileId && selectedTemplate.graphDriveId) {
+            workbookLocation = { driveId: selectedTemplate.graphDriveId, itemId: linkedFileId, driveType: selectedTemplate.graphDriveType ?? null, capabilityTier: exportCapabilityTier(selectedTemplate) };
+          } else if (linkedFileId && graphClient) {
+            try { workbookLocation = workbookLocationFromDriveItem(await getFileById(graphClient, linkedFileId)); } catch { /* register as before */ }
+          }
+        }
+        const capabilityTier = !targetPath ? 'local'
+          : (workbookLocation?.capabilityTier || exportCapabilityTier(selectedTemplate));
         // A plain download never registers (it would retire the live workbook); a push
         // the server won't re-register keeps the linked file's own link
         // (services/excelExportRegistration.js).
@@ -16085,8 +16097,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           register: () => registerWorkbook({
             documentId:     supabaseDocId,
             templateId:     String(supabaseTemplateId),
-            graphDriveId:   selectedTemplate?.sharePointDriveId ?? null,
-            graphItemId:    selectedTemplate?.oneDriveFileId    ?? null,
+            graphDriveId:   targetPath ? (selectedTemplate?.sharePointDriveId || workbookLocation?.driveId || null) : null,
+            graphItemId:    targetPath ? (selectedTemplate?.oneDriveFileId || workbookLocation?.itemId || null) : null,
             capabilityTier,
           }),
           readLinkedRegistration: async () => {
@@ -16113,6 +16125,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         if (registration.kind === EXPORT_REGISTRATION.NEW || registration.kind === EXPORT_REGISTRATION.KEPT) {
           embedRegistrationIntoMetaSheet(metaSheet, registration.workbookId, registration.syncToken);
           registeredWorkbookId = registration.workbookId; // workbookId only (NOT the token)
+          // A kept registration from before work OneDrive counted as business: record
+          // where the file lives (the server allows only the owner or its registrant).
+          if (registration.kind === EXPORT_REGISTRATION.KEPT && workbookLocation?.capabilityTier && pdfFile?.id) {
+            const bound = await bindWorkbookLocation({
+              documentId: pdfFile.id,
+              templateId: String(selectedTemplate?.supabaseId || selectedTemplate?.id),
+              workbookId: registration.workbookId,
+              location: workbookLocation,
+              supabaseClient: supabase,
+            });
+            if (!bound.ok) console.warn('Excel: could not record the workbook location:', bound.error);
+          }
         } else if (registration.error) {
           // No token in the message.
           console.warn('KAL-307: workbook registration unavailable — export proceeds without registration:', registration.error?.message ?? registration.error);
@@ -16715,6 +16739,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
             const updatedTemplate = {
               ...selectedTemplate,
               linkedExcelPath: targetPath,
+              ...(workbookLocation ? { graphDriveId: workbookLocation.driveId, graphDriveType: workbookLocation.driveType ?? null } : {}),
               lastSyncTime: new Date().toISOString()
             };
             setSelectedTemplate(updatedTemplate);
@@ -16780,7 +16805,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           setExportPendingData({
             buffer: workbookBuffer,
             fileName: fileName,
-            identityRecords: identityRecordsByMarkerId
+            identityRecords: identityRecordsByMarkerId,
+            workbookId: registeredWorkbookId
           });
           // Keep isExporting true - modal buttons will reset it when export completes
           setShowExportLocationModal(true);
@@ -17317,6 +17343,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       }
 
       const oneDriveFileId = uploadResult?.id;
+      // Tell the server where the workbook now lives (drive, item, work or personal
+      // from Microsoft's drive type). It registered before the save, as a local file,
+      // and a shared survey only syncs a work/school workbook (Excel audit W4).
+      const savedLocation = workbookLocationFromDriveItem(uploadResult);
+      if (savedLocation?.capabilityTier && exportPendingData.workbookId && pdfFile?.id) {
+        const bound = await bindWorkbookLocation({
+          documentId: pdfFile.id,
+          templateId: String(selectedTemplate?.supabaseId || selectedTemplate?.id),
+          workbookId: exportPendingData.workbookId,
+          location: savedLocation,
+          supabaseClient: supabase,
+        });
+        if (!bound.ok) console.warn('Excel: could not record the workbook location:', bound.error);
+      }
 
       // Also save a local copy to the OneDrive sync folder so it's available immediately
       // (only for personal OneDrive, not SharePoint)
@@ -17351,6 +17391,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
         isOneDrive: true,
         isSharePoint: selection?.folder?.type === 'sharepoint',
         sharePointDriveId: selection?.folder?.driveId || null,
+        graphDriveId: savedLocation?.driveId || null,
+        graphDriveType: savedLocation?.driveType || null,
         lastSyncTime: new Date().toISOString()
       };
       setSelectedTemplate(updatedTemplate);
@@ -17399,7 +17441,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
       setPendingOneDriveExport(false);
       setOneDriveSaveSelection(null);
     }
-  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken, markExcelSyncCheckpoint]);
+  }, [exportPendingData, graphClient, pdfFile, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken, markExcelSyncCheckpoint]);
 
   // Handler for OneDrive save modal - checks for duplicates before saving
   const handleOneDriveSave = useCallback(async (selection) => {
@@ -17557,57 +17599,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     if (!entry) return;
 
     // KAL-309 (R2#4) — a server-synced conflict carries an opUuid (not the local
-    // excelValues/identityRecord). Resolve it server-side, drop it from the durable
-    // review meta, then re-reconcile: 'take-excel' flips the op back to 'accepted' so
-    // the next fetchSince re-materializes it; 'keep-app' just advances the frontier.
+    // excelValues/identityRecord). The client answers it from the op itself
+    // (resolveConflictedMarker): the choice decides only the disputed cells, Excel's
+    // other cells in the row land either way, and the baseline moves to what Excel now
+    // holds on both sides. The server records it as settled ('keep-app' or 'merged'),
+    // so the reducer flows past it. ('take-excel' set the op back to 'accepted', and the
+    // reducer then found the same conflict again: "Use Excel's" never took.)
     if (entry.opUuid) {
       const documentId = pdfFile?.id || null;
       const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
       if (!documentId || !templateId) return;
-      const resolution = choice === 'excel' ? 'take-excel' : 'keep-app';
-      // On 'keep-app' the user keeps the APP's version, so advance the server's stored baseline to the
-      // kept marker's current values — otherwise the server stays on the Excel value the apply committed
-      // and the NEXT edit to this marker false-conflicts. ('take-excel' needs none: the client adopts
-      // the Excel value, which already equals the stored state.)
-      let resolvedFingerprints = null;
-      let keptFp = null;
-      if (resolution === 'keep-app') {
-        try {
-          const kept = surveyMarkers[markerId];
-          const appVals = kept ? buildAppValuesByMarkerId({ [markerId]: kept }, selectedTemplate)[markerId] : null;
-          if (appVals) {
-            keptFp = await computeRowFingerprints(appVals);
-            resolvedFingerprints = { identityVector: keptFp.identityVectorFingerprint, fields: keptFp.fieldFingerprints };
-          }
-        } catch { /* leave null → server keeps the prior baseline (no worse than before the fix) */ }
+      const reviewKey = `excelSyncReview:${templateId}`;
+      const reviewMeta = { ...(excelSyncMetaGetStable(reviewKey) || {}) };
+      const revision = Number(reviewMeta[entry.opUuid]?.revision) || 0;
+      const { ops, error: fetchError } = await fetchSince({
+        supabaseClient: supabase, documentId, templateId, sinceRevision: Math.max(0, revision - 1),
+      });
+      const op = (ops || []).find((o) => (o?.op_uuid ?? o?.opUuid) === entry.opUuid) || null;
+      const marker = surveyMarkers[markerId];
+      const resolved = op && marker ? await resolveConflictedMarker({ marker, op, choice }) : null;
+      if (!resolved) {
+        showToast(`Could not load this change from Excel${fetchError ? `: ${fetchError}` : ''}. Try again.`, 'error');
+        return;
       }
       const { ok, error } = await resolveMaterializationConflict({
-        supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid, resolution, resolvedFingerprints,
+        supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid,
+        resolution: choice === 'excel' ? 'merged' : 'keep-app',
+        resolvedFingerprints: resolved.excelFingerprints,
       });
       if (!ok) { showToast(`Could not resolve conflict${error ? `: ${error}` : ''}.`, 'error'); return; }
-      // Mirror the server's advanced baseline LOCALLY (the missing half of the keep-mine fix): stamp the
-      // kept marker's fingerprints onto its excelSync so the NEXT edit's baseFingerprints — read from
-      // excelSync by the matcher — match the server's newly-advanced baseline. Without this the local
-      // baseline stays stale and the very next edit to this marker false-conflicts.
-      if (resolution === 'keep-app' && keptFp) {
-        setSurveyMarkers((prev) => {
-          const m = prev[markerId];
-          if (!m || !m.excelSync) return prev;
-          return {
-            ...prev,
-            [markerId]: { ...m, excelSync: {
-              ...m.excelSync,
-              fieldFingerprints: keptFp.fieldFingerprints,
-              identityVectorFingerprint: keptFp.identityVectorFingerprint,
-              fullRowFingerprint: keptFp.fullRowFingerprint,
-            } },
-          };
-        });
-      }
+      setSurveyMarkers((prev) => (prev[markerId] ? { ...prev, [markerId]: resolved.nextMarker } : prev));
       // Remove this op from the durable review set so the reducer flows PAST its revision.
-      const reviewMeta = { ...(excelSyncMetaGetStable(`excelSyncReview:${templateId}`) || {}) };
       delete reviewMeta[entry.opUuid];
-      excelSyncMetaSetStable(`excelSyncReview:${templateId}`, reviewMeta);
+      excelSyncMetaSetStable(reviewKey, reviewMeta);
       setPendingImportReview((prev) =>
         (prev || []).filter((e) => !(e && e.opUuid === entry.opUuid))
       );
