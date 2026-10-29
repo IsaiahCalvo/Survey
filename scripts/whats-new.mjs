@@ -5,6 +5,10 @@
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
   { date: '2026-10-28', items: [
+    'A page that fits between the side panels glides to the centre between them.',
+    'Projects: you can rename projects and project files.',
+    'Phones: a long press on a mark shows a small Duplicate and Delete bar.',
+    'Select mode in Documents, Archive, Templates and Projects stays steady: the file count holds and the New button stays put.',
     'Big drawings no longer freeze the page while saving in the background or when they first open.',
     'Spaces: turning a space off is quicker on big drawing sets.',
     'Phones: tool bars fit small screens, Export data says when the file is saved, a save in progress shows Saving... instead of Offline, and buttons stay clear of the notch when the phone is held sideways.',
