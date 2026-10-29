@@ -359,6 +359,17 @@ export async function materializeAcceptedOps({
   const skipped = [];
   let halted = false;
   let gap = false;
+  // Only a marker with an open conflict waits (Excel audit W6). Past the first
+  // conflict the frontier stays put, but ops for OTHER markers still materialize and
+  // are recorded, so the re-fetch after the conflict is answered skips them; ops for
+  // a waiting marker are left untouched and apply in order once it is answered.
+  let cursor = frontier;
+  const waitingMarkers = new Set();
+  const advanceFrontier = (revision) => {
+    if (halted) return;
+    frontier = revision;
+    writeFrontier({ setMeta, templateId, revision: frontier });
+  };
 
   // STRICT ascending excel_revision; only ops strictly above the frontier matter.
   const ordered = [...ops]
@@ -371,22 +382,30 @@ export async function materializeAcceptedOps({
     // If this op is NOT the next revision, there is a hole in what we fetched — stop
     // and signal a gap so the caller re-fetchSince (capped retry) rather than writing
     // the frontier past a missing revision (which would silently drop ops).
-    if (op.excelRevision !== frontier + 1) {
+    if (op.excelRevision !== cursor + 1) {
       gap = true;
       break;
     }
+    cursor = op.excelRevision;
 
     // op_status drives the action (Codex finding #2). A late local review record also
     // pins the op even if the server still reports 'accepted'.
     const prior = reviewSet[op.opUuid];
     const status = op.opStatus;
 
-    // 1) CONFLICT-REVIEW (server- or client-recorded) → HALT. Never materialize; pin
-    //    the frontier at the prior revision so later ops are not applied on top.
+    // 0) A later op for a marker that is waiting on a conflict: leave it for after.
+    if (waitingMarkers.has(op.markerAnnotationId)) {
+      continue;
+    }
+
+    // 1) CONFLICT-REVIEW (server- or client-recorded) → this marker waits. Never
+    //    materialize; pin the frontier at the prior revision so this marker's later
+    //    ops are not applied on top.
     if (status === 'client_conflict_review'
         || (prior && prior.status === 'client_conflict_review')) {
+      waitingMarkers.add(op.markerAnnotationId);
       halted = true;
-      break;
+      continue;
     }
 
     // 2) RESOLVED (keep-app / merged) → already settled server-side; do NOT re-overlay
@@ -397,8 +416,7 @@ export async function materializeAcceptedOps({
       };
       writeReviewSet({ setMeta, templateId, reviewSet });
       skipped.push(op.opUuid);
-      frontier = op.excelRevision;
-      writeFrontier({ setMeta, templateId, revision: frontier });
+      advanceFrontier(op.excelRevision);
       continue;
     }
 
@@ -406,8 +424,7 @@ export async function materializeAcceptedOps({
     //    advance the contiguous frontier over it.
     if (status === 'materialized' || (prior && prior.status === 'materialized')) {
       skipped.push(op.opUuid);
-      frontier = op.excelRevision;
-      writeFrontier({ setMeta, templateId, revision: frontier });
+      advanceFrontier(op.excelRevision);
       continue;
     }
 
@@ -425,10 +442,11 @@ export async function materializeAcceptedOps({
         try { await ack({ opUuid: op.opUuid, status: 'client_conflict_review' }); } catch { /* best-effort */ }
       }
       conflicts.push(op.opUuid);
-      // HALT: this op is "handled but unresolved" — it pins the frontier at the
-      // prior revision so later ops (incl. same-marker) are not applied on top.
+      // This op is "handled but unresolved": it pins the frontier at the prior
+      // revision and this marker waits; other markers carry on.
+      waitingMarkers.add(op.markerAnnotationId);
       halted = true;
-      break;
+      continue;
     }
 
     // Fully materialized. Record durably so a re-fetch is idempotent.
@@ -443,12 +461,41 @@ export async function materializeAcceptedOps({
     }
     materialized.push(op.opUuid);
 
-    // Advance the SINGLE frontier ONLY because this op is fully handled AND contiguous.
-    frontier = op.excelRevision;
-    writeFrontier({ setMeta, templateId, revision: frontier });
+    // Advance the SINGLE frontier ONLY because this op is fully handled AND contiguous
+    // (and no earlier conflict is still open).
+    advanceFrontier(op.excelRevision);
   }
 
   return { materialized, conflicts, skipped, frontier, halted, gap };
+}
+
+/**
+ * Answer a client_conflict_review op on a cloud document (Excel audit W6). The
+ * choice decides only the disputed cells: Excel's other changes in that row always
+ * land, and 'app' keeps the app's value in the disputed ones. The marker's excelSync
+ * baseline moves to what Excel now holds, so the next import neither reverts the
+ * kept value nor raises the same conflict again.
+ *
+ * @param {{ marker: object, op: object, choice: 'app'|'excel' }} params
+ *   op — a fetch_since row or Edge op (normalized here).
+ * @returns {Promise<{ nextMarker: object, appliedFieldKeys: string[],
+ *   conflictFieldKeys: string[], excelFingerprints: object|null }|null>}
+ *   null when the op is not an apply op for this marker.
+ */
+export async function resolveConflictedMarker({ marker, op: rawOp, choice }) {
+  const op = normalizeOp(rawOp);
+  if (!op || op.opType !== 'apply' || !marker) return null;
+  const conflictFieldKeys = await appVsExcelConflictKeys(marker, op);
+  const disputed = new Set(conflictFieldKeys);
+  const appliedFieldKeys = choice === 'excel'
+    ? [...op.changedFieldKeys]
+    : op.changedFieldKeys.filter((key) => !disputed.has(key));
+  const nextMarker = overlayChangedFields(structuredCloneSafe(marker), { ...op, changedFieldKeys: appliedFieldKeys });
+  const identity = op.identity || {};
+  const excelFingerprints = identity.fieldFingerprints
+    ? { identityVector: identity.identityVectorFingerprint ?? null, fields: identity.fieldFingerprints }
+    : null;
+  return { nextMarker, appliedFieldKeys, conflictFieldKeys, excelFingerprints };
 }
 
 // Normalize a fetch_since row OR an Edge outcome+payload into a uniform op shape
@@ -551,6 +598,13 @@ async function mergeOneMarkerLocked({ op, getMarkers, writeMarker }, attempt = 0
 // Excel value. (If the live value already equals either, there is no contested
 // edit to lose — apply is safe.)
 async function detectAppVsExcelConflict(marker, op) {
+  return (await appVsExcelConflictKeys(marker, op)).length > 0;
+}
+
+// The changedFieldKeys of `op` that are genuine both-changed conflicts on `marker`
+// (same rule as above, per field).
+async function appVsExcelConflictKeys(marker, op) {
+  const conflictKeys = [];
   const base = op.baseFingerprints || {};
   const fields = op.fields || {};
 
@@ -589,13 +643,11 @@ async function detectAppVsExcelConflict(marker, op) {
     //     conflict → route to review. NEVER silently overwrite an app-side clear.
     // When live hashing is unavailable, conservatively treat a base-present
     // divergence as a conflict (route to review rather than risk a clobber).
-    if (liveFps == null) return true;
-    const liveFp = readLiveFingerprint(liveFps, key);
-    if (liveFp !== baseFp) {
-      return true;
+    if (liveFps == null || readLiveFingerprint(liveFps, key) !== baseFp) {
+      conflictKeys.push(key);
     }
   }
-  return false;
+  return conflictKeys;
 }
 
 // Map a survey marker into the row-record shape computeRowFingerprints expects
