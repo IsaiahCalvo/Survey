@@ -126,6 +126,21 @@ function assertOrdered(text, markers, label) {
   }
 }
 
+export function assertEveryFunctionDeployed(deployWorkflow, functionNames) {
+  // 2026-10-29 — company-sso (#1285) and then sheet-sync (#1310) each landed
+  // without being added to the production deploy list, and the --remote gate
+  // stopped every ship until the list was fixed. Fail the PR instead.
+  const missing = functionNames.filter((name) => {
+    const escaped = name.replaceAll('-', '\\-');
+    return !new RegExp(`(?:^\\s+${escaped}\\s*$|--use-api ${escaped}\\s*$)`, 'm').test(deployWorkflow);
+  });
+  assert.deepEqual(
+    missing,
+    [],
+    `Supabase functions missing from deploy-production.yml: ${missing.join(', ')}`,
+  );
+}
+
 export function assertStaticReleaseContract(root = process.cwd()) {
   const migrationFiles = readdirSync(join(root, 'supabase', 'migrations'))
     .filter((name) => name.endsWith('.sql'));
@@ -174,6 +189,7 @@ export function assertStaticReleaseContract(root = process.cwd()) {
 
   const deployWorkflow = readFileSync(join(root, '.github', 'workflows', 'deploy-production.yml'), 'utf8');
   assert.match(deployWorkflow, /workflow_run:/);
+  assertEveryFunctionDeployed(deployWorkflow, functionNames);
   assertOrdered(deployWorkflow, [
     'supabase db push --linked --yes',
     'supabase functions deploy --project-ref',
