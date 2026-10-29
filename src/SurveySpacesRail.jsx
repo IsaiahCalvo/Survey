@@ -4296,7 +4296,8 @@ const SurveySpacesRail = ({
                         />
                       )}
                       {mobileMode ? (
-                        (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (
+                        // Updating the linked workbook needs the desktop app.
+                        (selectedTemplate.linkedExcelPath && linkedExcelExists === true && typeof window !== 'undefined' && window.electronAPI) ? (
                           <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
                             <button
                               type="button"
@@ -4528,6 +4529,9 @@ const SurveySpacesRail = ({
                             <Icon name="document" size={14} color="currentColor" />
                             Open Excel
                           </div>
+                          {/* Push and Pull read and write the linked file, which only the
+                              desktop app can do (Live Sync too: its pull reads the file there). */}
+                          {window.electronAPI && (
                           <div
                             onClick={() => {
                               handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
@@ -4540,10 +4544,11 @@ const SurveySpacesRail = ({
                             <Icon name="upload" size={14} color="currentColor" />
                             Push to Excel
                           </div>
+                          )}
                           {/* "Pull from Excel" reads the last SAVED copy from disk, which on
                               a local file open in Excel is stale and overlaps the automatic
                               import-on-save — so it's only offered for OneDrive workbooks. */}
-                          {selectedTemplate?.isOneDrive && (
+                          {selectedTemplate?.isOneDrive && window.electronAPI && (
                           <div
                             onClick={() => {
                               handleSyncFromExcel();
@@ -4557,7 +4562,7 @@ const SurveySpacesRail = ({
                             Pull from Excel
                           </div>
                           )}
-                          {selectedTemplate?.isOneDrive && (() => {
+                          {selectedTemplate?.isOneDrive && window.electronAPI && (() => {
                             // Amendment (b) capability gate: a refused verdict keeps the
                             // toggle visible but inert-with-reason. Clicking re-checks
                             // (retry); the plain-English reason comes from the shared
