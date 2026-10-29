@@ -83,8 +83,10 @@ test('every list header with Select / Add uses the shared icon, never a word', (
     for (const label of labels) assert.ok(source.includes(label), `${file}: ${label}`);
   }
   // The New template / New project primaries stay the page's one gold button.
-  assert.match(read('src/home/TemplatesEditor.jsx'), /<Icon name="plus" size=\{11\} \/>New template/);
-  assert.match(read('src/home/ProjectsFolderTree.jsx'), /<Icon name="plus" size=\{11\} \/>New project/);
+  // In select mode they shrink to "+ New" (owner 2026-10-28): the noun is a
+  // span the compact look hides.
+  assert.match(read('src/home/TemplatesEditor.jsx'), /<Icon name="plus" size=\{11\} \/>New<span className="hub-new-btn__noun" aria-hidden="true">&nbsp;template<\/span>/);
+  assert.match(read('src/home/ProjectsFolderTree.jsx'), /<Icon name="plus" size=\{11\} \/>New<span className="hub-new-btn__noun" aria-hidden="true">&nbsp;project<\/span>/);
 });
 
 test('select-mode action row: All, Duplicate, Move, Copy, Share, Delete - one component (owner 2026-10-02)', () => {

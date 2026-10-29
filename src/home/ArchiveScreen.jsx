@@ -72,6 +72,9 @@ const ledgerHeader = {
   fontSize: 11, letterSpacing: 0,
   color: 'var(--ink-200)', fontWeight: 600,
   padding: '8px 0',
+  /* Same 2px left edge as the rows, so the labels sit over their cells
+     (Documents, owner 2026-10-28). */
+  borderLeft: '2px solid transparent',
 };
 
 /* One template, used by the header and every row so the columns cannot drift:
@@ -271,7 +274,7 @@ export default function ArchiveScreen({
      used to be the one screen that shared this header without sharing its
      layout, so its count and buttons ran off the end of the title line. */
   const subtitle = (
-    <span className="archive-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+    <span className="archive-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
       <span className="archive-mobile-count"><b>{rows.length}</b> {rows.length === 1 ? 'item' : 'items'}</span>
       <span className="archive-mobile-select-row mobile-header-select-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <SectionIconButton

@@ -805,7 +805,12 @@ export function useSVGInteraction({
   // Grabbers keep one screen size during a pinch or wheel zoom, before the
   // retune above lands (utils/liveHandleZoom.js). Only while something here
   // is selected, so pages with no grabbers do no per-frame work.
-  const showsGrabbers = selectedIds.size > 0 || (selectedCalloutIds?.size ?? selectedCalloutIds?.length ?? 0) > 0;
+  // A picked Survey Marker counts too: Locate on page zooms right after the
+  // pick, and its grabbers were drawn at the old zoom until the retune landed
+  // (91 px at 800 %, then 11 px).
+  const showsGrabbers = selectedIds.size > 0
+    || (selectedCalloutIds?.size ?? selectedCalloutIds?.length ?? 0) > 0
+    || (selectedSurveyMarkerIds instanceof Set && selectedSurveyMarkerIds.size > 0);
   useLayoutEffect(() => {
     const svgEl = svgRef.current;
     if (!svgEl || !pageWidth || !showsGrabbers) return undefined;

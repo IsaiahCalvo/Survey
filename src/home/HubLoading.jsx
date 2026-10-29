@@ -60,7 +60,9 @@ const LoadingHeader = ({ tab }) => {
 const LoadingSubtitle = ({ tab }) => {
   if (tab === 'documents') {
     return (
-      <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }} aria-hidden="true">
+      // Centred like the loaded header (DocumentsLedger), so "N files" does
+      // not drop 3 px when the list arrives (owner 2026-10-28).
+      <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }} aria-hidden="true">
         <span className="documents-file-count hub-loading-metric-cell"><b>0</b> files<Block style={{ width: 30, height: 9 }} /></span>
         <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row">
           <span className="documents-mobile-select-main">

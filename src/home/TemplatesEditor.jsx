@@ -2416,7 +2416,7 @@ export default function TemplatesEditor({
         <span><b>{visibleTemplates.length}</b> {visibleTemplates.length === 1 ? 'template' : 'templates'}</span>
         {saveRow('templates-desktop-save-row')}
       </span>
-      <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
         <span className="templates-mobile-count">
           <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl
             ? (orderedMods.length === 1 ? 'module' : 'modules')
@@ -2531,18 +2531,18 @@ export default function TemplatesEditor({
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 8,
           }}>
             {/* Owner 2026-10-01: one header line - the page's one gold action
-                on the left, the quiet Select on the right. In select mode the
-                bulk actions take the gold button's place and Done stays exactly
-                where Select was, so nothing under the header moves. */}
+                on the left, the quiet Select on the right, and Done stays
+                exactly where Select was, so nothing under the header moves.
+                Owner 2026-10-28: the gold button stays in Select mode too; it
+                sheds its noun ("New") so the select actions fit beside it. */}
             <div className="hub-section-head hub-panel-head">
-              {!tplEdit ? (
-                <button
-                  className="hub-btn hub-btn--primary"
-                  onClick={createTemplate}
-                >
-                  <Icon name="plus" size={11} />New template
-                </button>
-              ) : null}
+              <button
+                className={`hub-btn hub-btn--primary hub-new-btn${tplEdit ? ' is-compact' : ''}`}
+                aria-label="New template"
+                onClick={createTemplate}
+              >
+                <Icon name="plus" size={11} />New<span className="hub-new-btn__noun" aria-hidden="true">&nbsp;template</span>
+              </button>
               <div className="hub-select-actions hub-section-actions">
                 <SectionIconButton
                   action="select"

@@ -223,9 +223,10 @@ test('width presets', () => {
   assert.equal(isQuickBarWidth('', 2), false);
 });
 
-test('mounted for the desktop layout only, with the tool bar\'s own colour controls', () => {
+test('mounted on desktop and phone (phone: Duplicate / Delete only), with the tool bar\'s own colour controls', () => {
   const shell = readFileSync(new URL('../src/AppShell.jsx', import.meta.url), 'utf8');
-  assert.match(shell, /<SelectionQuickBar[\s\S]*?enabled=\{Boolean\(isViewerVisible && !isMobileViewer && bottomToolbarApi\)\}/);
+  // Owner 2026-10-28: phones get a visible Delete for a picked mark too.
+  assert.match(shell, /<SelectionQuickBar[\s\S]*?enabled=\{Boolean\(isViewerVisible && bottomToolbarApi\)\}\s+phone=\{Boolean\(isMobileViewer\)\}/);
   assert.match(shell, /onOpenColourPicker=\{toggleAnnotationColourPicker\}/);
   // The picker opens under the bar's control like under the tool bar's.
   assert.match(shell, /closest\?\.\('#chrome-top-host, #chrome-sub-toolbar-host, \[data-selection-quick-bar\]'\)/);

@@ -9,19 +9,25 @@
  * drag edge and no remembered width any more (a width saved by the old
  * resizable panel is ignored).
  *
- * Why 260: each tab was opened in Chromium at 1440x900 on a 36-page PDF with
+ * The floor: each tab was opened in Chromium at 1440x900 on a 36-page PDF with
  * nested bookmarks and long names, and narrowed until something broke.
  * Pages keeps its thumbnails at their full 200px down to ~224; Search,
  * Bookmarks and Spaces keep every control, icon and the search box whole
  * down to ~220-240 (long names end in "..." at any width); History's colour
  * key (Added / Edited / Deleted / Restored) drops "Restored" to a second line
- * below 252. History sets the minimum; 260 is the next clean number.
+ * below 252. History sets the minimum.
+ *
+ * Owner 2026-10-28 (centring): 320, the same width as the Survey panel on the
+ * right. With 260 on the left and 320 on the right the page sat to one side of
+ * the tool bar whenever both were open ("maybe the right rail is coming out
+ * farther than the left rail"). Equal sides keep the page, the band between
+ * the panels and the tool bar on one centre line.
  *
  * One safety stays (batch-7 tablet check 2026-10-13): an open panel always
  * leaves MIN_VIEWER_VISIBLE px of the window for the document beside whatever
  * covers the RIGHT side (the right rail, and the 320px Survey panel while it
  * is open), and in Survey it stops short of the survey bar's centre group.
- * On a 1180px iPad and anything wider that never bites - the panel is 260 -
+ * On a 1180px iPad and anything wider that never bites - the panel is 320 -
  * it only narrows the panel on a smaller window (a 1024px iPad with the
  * Survey panel open), never below LEFT_PANEL_MIN_WIDTH.
  *
@@ -33,8 +39,8 @@
 import { SURVEY_BAR_PARTS, surveyRowWidth } from '../utils/responsiveToolbar.js';
 
 export const LEFT_RAIL_WIDTH = 48;
-/** The one width of every desktop left panel (see above for why 260). */
-export const LEFT_PANEL_WIDTH = 260;
+/** The one width of every desktop left panel (see above for why 320). */
+export const LEFT_PANEL_WIDTH = 320;
 /** The narrowest a too-small window may squeeze the panel to. */
 export const LEFT_PANEL_MIN_WIDTH = 200;
 /** The least document an open left panel leaves (about 40% of a 1024px iPad). */

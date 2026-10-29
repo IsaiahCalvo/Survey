@@ -47,9 +47,10 @@ test('section header actions are the shared icons, never words or gold', () => {
     // between them: Select/Done comes first in every select mode.
     assert.match(before.slice(-1600), /action="select"/, `Select sits just before Add ${thing}`);
   }
-  // The gold primary stays the page's one gold button.
-  assert.match(editor, /className="hub-btn hub-btn--primary"\s+onClick=\{createTemplate\}/);
-  assert.match(projects, /className="btn primary"\s+onClick=\{handleNewProject\}/);
+  // The gold primary stays the page's one gold button, and (owner
+  // 2026-10-28) stays in select mode as a compact "+ New".
+  assert.match(editor, /className=\{`hub-btn hub-btn--primary hub-new-btn\$\{tplEdit \? ' is-compact' : ''\}`\}\s+aria-label="New template"\s+onClick=\{createTemplate\}/);
+  assert.match(projects, /className=\{`btn primary hub-new-btn\$\{jobsEdit \? ' is-compact' : ''\}`\}\s+aria-label="New project"\s+onClick=\{handleNewProject\}/);
 });
 
 test('a category row toggles on a click anywhere; the grip alone drags', () => {
