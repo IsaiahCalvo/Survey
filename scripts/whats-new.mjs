@@ -4,6 +4,11 @@
 // Work still behind a feature flag stays off this list until it is on for all,
 // and beta features (Survey Nightly only, see src/featureFlags.js) never go here.
 export const WHATS_NEW = [
+  { date: '2026-10-29', items: [
+    'Excel: Push to Excel reads what was typed in Excel first, so it no longer wipes those edits, and it won\'t write over a save made while it runs.',
+    'Excel: a checklist item renamed after export keeps its column.',
+    'Excel: two surveys on the same template no longer pull from or write over each other\'s workbook.',
+  ] },
   { date: '2026-10-28', items: [
     'Holding Shift snaps lines to 15° steps. Pick 15°, 45° or 90° under Settings > Annotations > Shift snap angle.',
     'Phones: rename the open document from the More menu.',
