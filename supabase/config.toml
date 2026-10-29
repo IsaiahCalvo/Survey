@@ -378,6 +378,12 @@ verify_jwt = false
 [functions.excel-apply-changeset]
 verify_jwt = false
 
+# Live sheet sync. Browser-invoked (answers the CORS preflight, then checks the
+# Bearer JWT itself), and Google's consent page redirects to its
+# /oauth/callback with no JWT at all; the callback checks its signed state.
+[functions.sheet-sync]
+verify_jwt = false
+
 # Browser-invoked (same reasoning as excel-apply-changeset): the gateway JWT check
 # rejects the CORS preflight OPTIONS, breaking invoke() from the app. The function
 # does its OWN auth (auth.getUser on the Bearer JWT) plus a caller-scoped RLS

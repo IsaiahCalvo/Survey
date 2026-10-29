@@ -228,3 +228,4 @@ f05e2f5ad969dc918d5a9546dd5624b246617a52:tests/sharingInvitesLogicAudit.test.mjs
 f175ea8d6f5b51331efcccf029c02a8799253e1c:public/auth.md:generic-api-key:56
 fa296bc2a8d21699a71427b5b60064439577280d:src/services/__tests__/excelScenarioGaps.test.mjs:generic-api-key:35
 ffe977cfc58a00f4d65c674c784f289949761352:dist/assets/index-CGM1rYwo.js:jwt:414
+de117e8d6a4f4d296ee32f3ab5c5d7ea479d7b5b:tests/sheetSync.test.mjs:generic-api-key:34

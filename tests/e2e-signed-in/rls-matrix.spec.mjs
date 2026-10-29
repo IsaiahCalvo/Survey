@@ -144,6 +144,7 @@ const NOT_SWEPT = {
   integration_test_bytea_roundtrip: 'service only', invite_email_deliveries: 'service only',
   pdf_r2_copies: 'service only', pdf_r2_deletes: 'service only', r2_usage_daily: 'service only',
   rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
+  sheet_sync_connections: 'service only',
   // Their write triggers need a signed-in editor, so the service role cannot
   // seed a row. Reads need viewer access to the document.
   annotation_snapshots: 'editor writes only', annotation_updates: 'editor writes only',
@@ -160,6 +161,9 @@ const NOT_SWEPT = {
   // own guest row, and the secret's hash nobody; probed in
   // guest-links-security.spec.mjs.
   document_guest_links: 'own spec', document_guests: 'own spec',
+  // Live sheet links (Nightly): document members read a few columns, never the
+  // sync state; probed in sheet-sync.spec.mjs.
+  sheet_sync_links: 'own spec',
 };
 
 // What a collaborator on the shared document may read; the rest stays the owner's.

@@ -57,8 +57,12 @@ describe('wiring', () => {
   it('every function that reads a body runs it through parseBody', () => {
     assert.ok(fns.length >= 11, fns.join(','));
     for (const fn of fns) {
-      const src = readFileSync(new URL(`${fn}/index.ts`, dir), 'utf8');
-      assert.match(src, /from '\.\.\/_shared\/inputSchema\.js'/, fn);
+      let src = readFileSync(new URL(`${fn}/index.ts`, dir), 'utf8');
+      // A function that only hands the request to a shared service (sheet-sync)
+      // checks the body there, so node tests cover the same check.
+      const service = /from '\.\.\/(_shared\/[\w/]+\/service\.js)'/.exec(src);
+      if (service) src = readFileSync(new URL(service[1], dir), 'utf8');
+      assert.match(src, service ? /from '\.\.\/inputSchema\.js'/ : /from '\.\.\/_shared\/inputSchema\.js'/, fn);
       assert.match(src, /parseBody\(/, fn);
     }
   });
