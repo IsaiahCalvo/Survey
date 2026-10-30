@@ -290,6 +290,60 @@ test('a deleted tab can be put back; a sheet stops when its linker loses access;
   }
 });
 
+test('with nobody\'s survey open, the background sweep brings sheet edits in, as the linker', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerId = await userId(E2E_ACCOUNTS.owner);
+  const doc = await addDocument(admin, { id: ownerId }, { projectId: E2E_PROJECT.id, name: `Sheet sync sweep ${RUN}.pdf` });
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const ownerToken = await signInToken(E2E_ACCOUNTS.owner);
+  const ids = { documentId: doc.id, templateId: `e2e-sheet-sweep-${RUN}` };
+  const sweepUrl = `${functionUrl('sheet-sync')}/sweep`;
+  const sweepCall = (secret, body = {}) => fetch(sweepUrl, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...(secret ? { 'x-sheet-sync-sweep': secret } : {}) }, body: JSON.stringify(body),
+  });
+  try {
+    await writeMarkers(owner, doc.id, {
+      d1: { id: 'd1', name: 'D-301', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 20 }, checklistResponses: {} },
+    });
+    await connectGoogle(ownerToken);
+    const linked = await call(ownerToken, 'link', { ...ids, ...LAYOUT, title: 'Sheet sync sweep' });
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    const fileId = fileIdOf(linked.body.link.fileUrl);
+    const grid = (await fake(`/files/${fileId}`)).sheets.find((s) => s.title === TAB);
+
+    // The sweep answers only its own secret (made in the database).
+    expect((await sweepCall(null)).status).toBe(401);
+    expect((await sweepCall('not-the-secret')).status).toBe(401);
+    const { sweep_secret: secret } = await must('sweep secret', admin.from('sheet_sync_settings').select('sweep_secret').eq('id', 1).single());
+
+    // Just synced: not due yet.
+    expect(await (await sweepCall(secret)).json()).toMatchObject({ due: 0 });
+
+    // The PM types in the sheet; no device is open. A minute later the sweep
+    // runs a round, as the person who linked the sheet.
+    await fake(`/files/${fileId}/edit`, { title: TAB, edits: [{ row: 1, col: grid.rows[0].indexOf('Notes'), value: 'Typed with nobody in Survey' }] });
+    await must('backdate', admin.from('sheet_sync_links').update({ last_round_at: new Date(Date.now() - 2 * 60_000).toISOString() }).eq('document_id', doc.id));
+    const swept = await (await sweepCall(secret)).json();
+    expect(swept.due).toBeGreaterThanOrEqual(1);
+    expect(swept.results, JSON.stringify(swept)).toContain('synced');
+    expect((await markersOf(owner, doc.id)).d1.note?.text).toBe('Typed with nobody in Survey');
+    const row = await must('link row', admin.from('sheet_sync_links').select('last_change_at, last_round_at').eq('document_id', doc.id).single());
+    expect(row.last_change_at, 'a busy sheet is checked every minute').toBeTruthy();
+
+    // A survey the linker can no longer edit is not swept into.
+    await must('document handed to someone else', admin.from('documents').update({ user_id: await userId(E2E_ACCOUNTS.editor), project_id: null }).eq('id', doc.id));
+    await must('the owner row moves too', admin.from('document_collaborators').update({ user_id: await userId(E2E_ACCOUNTS.editor) }).eq('document_id', doc.id).eq('user_id', ownerId));
+    await must('backdate', admin.from('sheet_sync_links').update({ last_round_at: new Date(Date.now() - 2 * 60_000).toISOString() }).eq('document_id', doc.id));
+    await sweepCall(secret, {});
+    const after = await must('link row', admin.from('sheet_sync_links').select('status').eq('document_id', doc.id).single());
+    expect(after.status).toBe('broken');
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+  }
+});
+
 test('the Survey panel makes a live Google Sheet and keeps it in step', async ({ page }) => {
   test.setTimeout(150_000);
   if (process.env.E2E_FUNCTIONS_URL) {
