@@ -12,7 +12,7 @@ import SnappingToggle from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
-import { isPaintSelectionMixed } from '../utils/selectionRestyle.js';
+import { isPaintSelectionMixed } from '../utils/paintSelectionMixed.js';
 import { SheetOpacitySlider, SheetPreview, SheetRow, SheetScaleSlider, SheetSection, SheetSegmented, SheetSizeField, SheetSwatchRow } from './MobileToolSheetControls';
 import DismissBarrier from '../components/DismissBarrier';
 import PencilModeControl from '../components/PencilModeControl.jsx';

@@ -14,9 +14,14 @@ test('AppShell shares one viewer loader between React lazy and idle prefetch', (
   // download no longer blocks the viewer (each rail load has its own .catch),
   // and the viewer uses retryingLazy so a failed viewer chunk shows a quiet
   // retry line instead of the crash screen. The one shared loader is unchanged.
-  assert.match(appShellSource, /const loadPDFViewerModule = \(\) => Promise\.all\(\[\s*import\('\.\/PDFViewer'\),\s*PDFSidebarChunk\.load\(\)\.catch\(\(\) => null\),\s*SurveySpacesRailChunk\.load\(\)\.catch\(\(\) => null\),\s*\]\)/);
+  // DELIBERATE ASSERTION CHANGE (2026-10-30, launch audit): the per-tab Y.Doc
+  // provider (yjs and the live-sync stack) joins the same loader, so the
+  // sign-in screen and home list stop downloading it on a first visit.
+  assert.match(appShellSource, /const loadPDFViewerModule = \(\) => Promise\.all\(\[\s*import\('\.\/PDFViewer'\),\s*loadYDocProviderModule\(\),\s*PDFSidebarChunk\.load\(\)\.catch\(\(\) => null\),\s*SurveySpacesRailChunk\.load\(\)\.catch\(\(\) => null\),\s*\]\)/);
   assert.match(appShellSource, /retryingLazy\(\s*\(\) => loadPDFViewerModule\(\)/);
   assert.match(appShellSource, /schedulePdfViewerPrefetch\(loadPDFViewerModule\)/);
+  assert.match(appShellSource, /const YDocProvider = retryingLazy\(loadYDocProviderModule, ViewerLoadFailed\)/);
+  assert.doesNotMatch(appShellSource, /^import YDocProvider /m);
 });
 
 test('PDF viewer prefetch waits for page load, a short delay, and browser idle time', () => {

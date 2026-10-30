@@ -18,7 +18,7 @@ import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
 import Icon from '../Icons';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import MotionPresence from './MotionPresence.jsx';
-import { isTypingTarget } from '../utils/annotationFamilyRules';
+import { isTypingTarget } from '../utils/typingTarget.js';
 import {
   OPEN_SHORTCUTS_EVENT,
   chordKeycaps,

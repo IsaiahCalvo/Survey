@@ -34,7 +34,7 @@ import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/Ann
 import AnnotationDropdown from './components/AnnotationDropdown';
 import { StrokeSample } from './components/StrokeStyleCards';
 import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
-import { isPaintSelectionMixed } from './utils/selectionRestyle.js';
+import { isPaintSelectionMixed } from './utils/paintSelectionMixed.js';
 import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ExportMenu from './components/ExportMenu.jsx';
@@ -63,7 +63,6 @@ import {
   MobilePdfViewerToolRail,
 } from './mobile/MobilePdfViewerChrome';
 import { createKeyboardViewportController } from './mobile/keyboardViewport';
-import YDocProvider from './components/collab/YDocProvider.jsx';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
 import { guestTokenFrom } from './services/guestLinkToken.js';
@@ -231,8 +230,15 @@ const MemoSaveLogBanner = memo(SaveLogBanner);
 const MemoToastHost = memo(ToastHost);
 // A rail chunk that fails to download (offline, stale deploy) must not stop the
 // viewer opening: its area just stays empty (and asks again when it next mounts).
+//
+// The per-tab Y.Doc provider loads with the viewer too: it brings yjs and the
+// whole live-sync stack (~70 modules), which the sign-in screen and the home
+// list never use. Static, it was ~30% of what a first visit downloaded before
+// the sign-in screen could show (launch audit 2026-10-30, slow phone).
+const loadYDocProviderModule = () => import('./components/collab/YDocProvider.jsx');
 const loadPDFViewerModule = () => Promise.all([
   import('./PDFViewer'),
+  loadYDocProviderModule(),
   PDFSidebarChunk.load().catch(() => null),
   SurveySpacesRailChunk.load().catch(() => null),
 ]).then(([viewerModule]) => viewerModule);
@@ -284,6 +290,8 @@ const PDFViewer = retryingLazy(
   () => loadPDFViewerModule().then((m) => ({ default: memo(m.PDFViewer, behindTabPropsEqual) })),
   ViewerLoadFailed,
 );
+// Same loader family, so the idle prefetch above has already fetched it.
+const YDocProvider = retryingLazy(loadYDocProviderModule, ViewerLoadFailed);
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
@@ -4804,6 +4812,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     ...tabWrapperHiding(isVisible)
                   }}
                 >
+                  <Suspense fallback={<QuietLoading label={openingLabel(tab.name || tab.file?.name)} background="var(--surface-0)" />}>
                   <YDocProvider docId={tab.file?.id} isActive={isVisible}>
                     {/* KAL-49 — document lock banner. Mounted as a sibling
                         inside YDocProvider so it sees the same per-tab Y.Doc
@@ -4858,6 +4867,7 @@ export default function App({ devPreviewReturnTab = null }) {
                     />
                     </Suspense>
                   </YDocProvider>
+                  </Suspense>
                 </div>
               );
             })}

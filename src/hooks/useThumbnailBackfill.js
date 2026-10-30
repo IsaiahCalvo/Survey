@@ -24,7 +24,10 @@ import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
 import { createThumbnailBackfill, isBackfillHostVisible } from '../services/thumbnailBackfill';
 import { publishThumbnailUpdate } from '../services/thumbnailEvents';
 import { isUserBusy } from '../services/userActivity';
-import { encodeThumbnail, openRangedPdf, releaseCanvas, renderPageToCanvas } from '../services/thumbnailRender';
+// Loaded on first use, not with the Documents list: thumbnailRender brings the
+// mark painter and its geometry, which a first visit (and the sign-in screen)
+// never needs (launch audit 2026-10-30, slow-phone start).
+const loadThumbnailRender = () => import('../services/thumbnailRender');
 import { registerThumbnailBackfill } from '../home/thumbnailRequestPolicy';
 
 export const FULL_DOWNLOAD_MAX_BYTES = 1.5 * 1024 * 1024;
@@ -42,7 +45,7 @@ function skipError(reason) {
   return error;
 }
 
-async function openSource(doc, { pdfjsLib, downloadDocument }) {
+async function openSource(doc, { pdfjsLib, downloadDocument, openRangedPdf }) {
   if (doc.file) {
     const data = await readBlobAsArrayBuffer(doc.file);
     return { loadingTask: pdfjsLib.getDocument({ data, isEvalSupported: false, verbosity: pdfjsLib.VerbosityLevel.ERRORS }), stats: { bytes: 0, requests: 0 } };
@@ -82,13 +85,13 @@ export async function generatePageThumbnail(doc, { downloadDocument, isCancelled
     publishThumbnailUpdate({ docId: doc.id, key, source: 'page' });
     return { bytes: 0, requests: 0, imageBytes: reused.url.length, reused: true };
   }
-  const pdfjsLib = await loadPdfjs();
+  const [pdfjsLib, { encodeThumbnail, openRangedPdf, releaseCanvas, renderPageToCanvas }] = await Promise.all([loadPdfjs(), loadThumbnailRender()]);
   let source = null;
   let pdf = null;
   let page = null;
   let base = null;
   try {
-    source = await openSource(doc, { pdfjsLib, downloadDocument });
+    source = await openSource(doc, { pdfjsLib, downloadDocument, openRangedPdf });
     const guard = (promise) => (source.aborted ? Promise.race([promise, source.aborted]) : promise);
     try {
       pdf = await guard(source.loadingTask.promise);
