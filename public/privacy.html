@@ -19,65 +19,137 @@
 <body>
 <main>
   <h1>Privacy Policy</h1>
-  <p class="muted">Survey (surveytool.app) &middot; Effective 2026-10-20 (draft)</p>
+  <p class="muted">Survey (surveytool.app) &middot; Effective [date] (draft, awaiting legal review)</p>
+
+  <h2>Who we are</h2>
+  <p>Survey is run by Isaiah Calvo, an individual based in [state], United States
+  (&ldquo;we&rdquo;, &ldquo;us&rdquo;). This policy covers the Survey website, the Mac and
+  Windows apps, and the iPhone and Android apps. Contact details are at the end.</p>
 
   <h2>What we collect</h2>
-  <p>When you create an account we collect your email address and, if you sign in
-  with Google, the name and email Google shares with us. When you use Survey we
-  store the documents you upload, the annotations and survey data you create, and
-  basic technical logs needed to run the service.</p>
+  <p>When you create an account we collect your email address. If you sign in with
+  Google or with your company&rsquo;s single sign-on, we also get the name, email and
+  company details that service shares with us. When you use Survey we store the
+  documents you upload; the annotations, survey data, comments and photos or
+  recordings you add; who you invite and their role; the settings you choose; and
+  basic technical logs needed to run and secure the service. If someone invites
+  you or mentions you in a comment, we get your email address from them.</p>
+  <p>We use only the cookies and browser storage needed to keep you signed in and
+  remember your settings. On phones, Survey asks for the microphone only when you
+  use voice input, and reaches your files or share sheet only when you import or
+  export. The desktop apps check for and install updates.</p>
 
-  <h2>How your documents are handled</h2>
-  <p>Your PDFs and survey data are stored with our hosting provider (Supabase),
-  encrypted in transit and at rest. Documents are visible only to you and the
-  people you explicitly share them with. We do not send your documents to
-  third-party processors, we do not use them for advertising, and we do not train
-  machine-learning models on them unless you turn on the setting below.</p>
+  <h2>Who can see your documents</h2>
+  <p>A project&rsquo;s documents, marks and comments are visible to the people who
+  have access to that project, in the role they were given (owner, contributor or
+  viewer). Project members can see each other&rsquo;s names and email addresses. We
+  look at your content only to keep the service running and secure, when you ask
+  us for help, or when the law requires it.</p>
+
+  <h2>Service providers we use</h2>
+  <p>We do not sell your data or use it for advertising. We do share it with the
+  companies that run parts of Survey for us, and only as much as each one needs:</p>
+  <p>Supabase (database, file storage and server code; encrypted in transit and at
+  rest), Cloudflare R2 (a second copy of stored PDFs) [confirm: on in production], Vercel (website hosting),
+  Stripe (payments), Brevo (sign-in, invite and notification emails), Groq and
+  OpenAI (the AI assistant, see below), and Builder.io (usage statistics, see
+  below). Our providers process data in [countries to confirm, at least the
+  United States].</p>
+
+  <h2>AI assistant</h2>
+  <p>Survey&rsquo;s assistant uses AI. When you type or speak a request to it, we send
+  your request, any voice recording, and the survey data needed to answer it to
+  Groq, which runs the AI model. If Groq cannot turn your speech into text, we may
+  send the recording to OpenAI to do so. On phones, voice input may also use your
+  device&rsquo;s own speech recognition from Apple or Google. AI answers can be wrong;
+  check them before you rely on them.</p>
+  <p>You can also connect an outside AI tool to your account. That tool can then
+  read and change what your account can reach, and the tool&rsquo;s own privacy
+  policy covers what it does with that data. You can disconnect it at any
+  time.</p>
 
   <h2>Helping improve Survey (optional, off by default)</h2>
   <p>In Settings &rarr; Privacy you can turn on &ldquo;Let Survey learn from my survey
-  work.&rdquo; Only if you do, we may use the shapes you mark on your plans and the
-  corrections you make to tools like Smart fill to improve those tools for you and
-  other customers. We use the marks, not your whole documents; we do not share or
-  sell them, and we keep each company&rsquo;s data separate. You can turn it off at
-  any time, and we stop using new work from that moment. To have past
-  contributions removed, contact us below.</p>
+  work.&rdquo; Only if you do, we may use the shapes you mark on your plans, the
+  corrections you make to tools like Smart fill, and [confirm: the small part of
+  the plan around each mark] to improve those tools for everyone who uses Survey.
+  We do not use your whole documents, and we never show your marks or plans to
+  other customers or sell them. What other customers get is a better tool, not
+  your data. We never use data that comes from Google or Microsoft through a
+  connected sheet or file for this. Only turn it on for work you have the right to
+  share this way; if a project belongs to your employer or a client, ask them
+  first.</p>
+  <p>You can turn it off at any time, and we stop collecting new work from that
+  moment. To have the examples you already gave deleted, contact us; we remove
+  them from our stored examples and leave them out of future training. A tool
+  that was already improved with them keeps that improvement until it is next
+  rebuilt.</p>
 
   <h2>Payments</h2>
   <p>Payments are processed by Stripe. Your card details go directly to Stripe and
-  never touch our servers. We store only your subscription status and a Stripe
-  customer reference.</p>
+  never touch our servers. We store your subscription status, a Stripe customer
+  reference and [confirm: any other billing fields we keep].</p>
 
   <h2>Usage statistics</h2>
-  <p>When you are signed in, Survey sends short usage events (for example, which
-  tools were used and whether something failed) through our own server to Agent
-  Native Analytics (analytics.agent-native.com, run by Builder.io), which stores
-  them for us. Each event carries a random ID for your browser session, not your
-  name or email, and we remove email addresses, file names, links, tokens, document content and your marks before
-  anything is sent. We use them only to find bugs and see which features people
-  use, never for advertising.</p>
+  <p>When you are signed in on the website or the apps, Survey sends short usage
+  events (for example, which tools were used and whether something failed)
+  through our own server to Agent Native Analytics (analytics.agent-native.com,
+  run by Builder.io), which stores them for us for [period]. Each event carries a
+  random ID for your session instead of your name or email, and our server strips
+  email addresses, file names, links, tokens, document content and your marks
+  before anything is sent. We use these events only to find bugs and see which
+  features people use, never for advertising.</p>
 
-  <h2>Optional integrations</h2>
-  <p>If you connect Microsoft OneDrive/Excel, we access only the files you choose,
-  to provide the sync features you enable. You can disconnect at any time in
-  Settings.</p>
+  <h2>Connected Microsoft and Google files</h2>
+  <p>If you connect Microsoft OneDrive/Excel or a Google Sheet, we read and write
+  only the files or sheets you choose, to keep them in step with your survey. For
+  Google Sheets, our server checks the sheet on a schedule, even when Survey is
+  closed, until you disconnect. You can disconnect in Settings, or remove
+  Survey&rsquo;s access in your Microsoft or Google account. Copies already synced
+  stay where they are.</p>
+  <p>Survey&rsquo;s use of information received from Google APIs follows the
+  <a href="https://developers.google.com/terms/api-services-user-data-policy">Google
+  API Services User Data Policy</a>, including its Limited Use requirements.</p>
 
-  <h2>Deletion</h2>
-  <p>Deleting a document moves it to an archive you control, and archived items are
-  permanently purged after 30 days. Deleting your account removes your data,
-  subject to records we must keep for tax and accounting. Copies of your files
-  can stay in our internal storage backup for up to about 5 weeks after that,
-  until the backup is purged.</p>
+  <h2>Export and deletion</h2>
+  <p>You can export your data or delete your account yourself in Settings.</p>
+  <p>Deleting a document moves it to your Archive, where you can restore it for 30
+  days; after that it is removed from our live storage. Deleting your account
+  removes your profile and the projects you own from our live storage [confirm:
+  within what time]. Copies can stay in our storage backups for up to [confirmed
+  maximum, about 5 weeks] after removal, and then expire; we do not use backups
+  except to recover from a failure. We keep billing records as long as tax and
+  accounting law requires.</p>
+
+  <h2>Your rights</h2>
+  <p>Depending on where you live, you may have the right to see, copy, correct or
+  delete your personal data, to object to or limit some uses, and to withdraw any
+  permission you gave. Most of this you can do in Settings; for the rest, email
+  us. We will not treat you differently for using these rights.</p>
+  <p>If you are in the EU or UK: we use your data to provide the service you signed
+  up for, to meet legal duties such as tax records, for our interest in keeping
+  Survey secure and finding bugs, and with your permission for the optional
+  learning setting. When your data leaves the EU or UK, we rely on [safeguards to
+  confirm]. You can also complain to your local data protection authority.</p>
 
   <h2>What we don't do</h2>
-  <p>We do not sell your data. We do not share it with advertisers. We use no
-  third-party advertising or cross-site tracking.</p>
+  <p>We do not sell your personal information or share it for advertising, and we
+  use no third-party advertising or cross-site tracking. Because we do not track
+  you across other sites, we treat everyone the same whether or not their browser
+  sends a &ldquo;Do Not Track&rdquo; or Global Privacy Control signal.</p>
+
+  <h2>Children</h2>
+  <p>Survey is for work use and is not meant for anyone under 18. We do not
+  knowingly collect data from children; if you think a child has given us data,
+  contact us and we will delete it.</p>
 
   <h2>Contact</h2>
-  <p>Questions or requests: <a href="mailto:isaiahcalvo123@gmail.com">isaiahcalvo123@gmail.com</a>.</p>
+  <p>Isaiah Calvo, [mailing address]. Questions or requests:
+  <a href="mailto:isaiahcalvo123@gmail.com">isaiahcalvo123@gmail.com</a>.</p>
 
-  <p class="muted">We may update this policy as the product evolves; material
-  changes will be announced in the app.</p>
+  <p class="muted">We may update this policy as the product changes. For a
+  material change we will tell you by email and in the app before it takes
+  effect, and show the new date at the top.</p>
 </main>
 </body>
 </html>
