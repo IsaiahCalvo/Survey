@@ -101,6 +101,7 @@ function fakeGraph({ driveType = 'business' } = {}) {
         values: box((r, c) => rows[r]?.[c] ?? ''),
         text: box((r, c) => (target.formats[r]?.[c] ? '10/29/2026' : String(rows[r]?.[c] ?? ''))),
         numberFormat: box((r, c) => target.formats[r]?.[c] || 'General'),
+        valueTypes: box((r, c) => (/^#(N\/A|REF!|VALUE!|DIV\/0!)$/.test(String(rows[r]?.[c] ?? '')) ? 'Error' : 'String')),
       });
     }
     const range = /^\/range\(address='([^']+)'\)(\/delete|\/dataValidation)?/.exec(tail);
@@ -178,7 +179,7 @@ test('cells side by side on a row go out as one write', () => {
   assert.deepEqual(runs, [{ row: 2, col: 1, values: ["'b", "'c", "'D"] }, { row: 5, col: 1, values: ["'x"] }]);
 });
 
-test('reads every sheet in order, anchored at A1, with dates as shown text', async () => {
+test('reads every sheet in order, anchored at A1, with whole-day dates as YYYY-MM-DD', async () => {
   const graph = fakeGraph();
   const survey = graph.sheet('Fire - Level 1', 0, [['Row ID', 'Item', 'Date'], ['rid-1', 'D-1', 46324], [], ['rid-3', '=SUM', '']]);
   survey.formats[1] = [null, null, 'm/d/yyyy'];
@@ -188,12 +189,20 @@ test('reads every sheet in order, anchored at A1, with dates as shown text', asy
   graph.addFile('ITEM1', [meta, offset, survey, empty].map((s, i) => Object.assign(s, { position: [2, 1, 0, 3][i] })));
   const grid = await provider(graph).readGrid(FILE);
   assert.deepEqual(grid.sheets.map((s) => s.title), ['Fire - Level 1', 'Offset', '_SurveyMetadata', 'Empty']);
-  assert.deepEqual(grid.sheets[0].rows, [['Row ID', 'Item', 'Date'], ['rid-1', 'D-1', '10/29/2026'], [], ['rid-3', '=SUM']]);
+  assert.deepEqual(grid.sheets[0].rows, [['Row ID', 'Item', 'Date'], ['rid-1', 'D-1', '2026-10-29'], [], ['rid-3', '=SUM']]);
   assert.equal(grid.sheets[0].columnCount, 3);
   assert.deepEqual(grid.sheets[1].rows, [[], [null, null, 'x']]);
   assert.equal(grid.sheets[2].hidden, true);
   assert.deepEqual(grid.sheets[3].rows, []);
   assert.equal(graph.sessions.size, 1, 'one saving session for the whole read');
+});
+
+test('a failed formula reads as an error, never as its "#N/A" text', async () => {
+  const graph = fakeGraph();
+  const s = graph.sheet('S', 0, [['Row ID', 'Notes'], ['rid-1', '#N/A']]);
+  graph.addFile('ITEM1', [s]);
+  const grid = await provider(graph).readGrid(FILE);
+  assert.deepEqual(grid.sheets[0].rows[1], ['rid-1', { error: '#N/A' }]);
 });
 
 test('writes single cells and a formula-looking note stays text', async () => {

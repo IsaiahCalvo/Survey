@@ -37,6 +37,15 @@ const call = async (token, action, body = {}) => {
   });
   return { status: res.status, body: await res.json() };
 };
+// "Sync now": pressed right after another round, the server asks to wait a
+// moment (it spaces rounds out to spare the linker's quota).
+async function syncNow(token, body) {
+  for (let i = 0; ; i += 1) {
+    const res = await call(token, 'sync', { ...body, force: true });
+    if (res.body?.round?.status !== 'recent' || i >= 5) return res;
+    await new Promise((r) => setTimeout(r, (res.body.round.retryInMs || 1000) + 100));
+  }
+}
 const fake = async (path, body) => {
   const res = await fetch(`${functionUrl('e2e-fake-msgraph')}/__fake${path}`, body
     ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
@@ -168,7 +177,7 @@ test('two-way live sync between a survey and an Excel workbook on Microsoft 365'
       { row: 2, col: col('Item'), value: 'D-102' },
       { row: 2, col: col('Locked?'), value: 'N' },
     ] });
-    const fromSheet = await call(editorToken, 'sync', { ...ids, ...LAYOUT, force: true });
+    const fromSheet = await syncNow(editorToken, { ...ids, ...LAYOUT });
     expect(fromSheet.status, JSON.stringify(fromSheet.body)).toBe(200);
     expect(fromSheet.body.round.status).toBe('synced');
     let markers = await markersOf(owner, doc.id);
@@ -177,7 +186,7 @@ test('two-way live sync between a survey and an Excel workbook on Microsoft 365'
 
     // A field tech answers in the app; the workbook follows.
     await writeMarkers(owner, doc.id, { d1: { ...markers.d1, checklistResponses: { c1: { selection: 'Y' } } } });
-    expect((await call(ownerToken, 'sync', { ...ids, ...LAYOUT, force: true })).body.round.status).toBe('synced');
+    expect((await syncNow(ownerToken, { ...ids, ...LAYOUT })).body.round.status).toBe('synced');
     grid = await sheet();
     expect(grid.rows[rowOf('00101')][col('Locked?')]).toBe('Y');
 
@@ -185,7 +194,7 @@ test('two-way live sync between a survey and an Excel workbook on Microsoft 365'
     markers = await markersOf(owner, doc.id);
     await writeMarkers(owner, doc.id, { d1: { ...markers.d1, checklistResponses: { c1: { selection: 'N' } } } });
     await fake(`/files/${itemId}/edit`, { title: TAB, edits: [{ row: rowOf('00101'), col: col('Locked?'), value: 'N/A' }] });
-    const clash = await call(editorToken, 'sync', { ...ids, ...LAYOUT, force: true });
+    const clash = await syncNow(editorToken, { ...ids, ...LAYOUT });
     expect(clash.body.link.conflicts).toEqual([expect.objectContaining({ markerId: 'd1', fields: [expect.objectContaining({ app: 'N', sheet: 'N/A' })] })]);
     const picked = await call(editorToken, 'choose', { ...ids, markerId: 'd1', choice: 'app' });
     expect(picked.body.link.conflicts).toEqual([]);

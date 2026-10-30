@@ -72,6 +72,16 @@ export function buildSyncLayout({ template, kit, answerValues = ['Y', 'N', 'N/A'
       const checklist = checklistOf(category);
       const { headerRow, columnMapping } = buildSheetLayout(kit, checklist);
       const fields = Object.values(columnMapping);
+      // Every header in a tab is different: two lines both called "OK?", or a
+      // line called "Notes", would otherwise pair up by order and swap
+      // answers when someone moves a column. Later ones get " (2)", " (3)".
+      const usedHeaders = new Set();
+      const uniqueHeader = (text) => {
+        let out = text;
+        for (let n = 2; usedHeaders.has(out.trim().toLowerCase()); n += 1) out = `${text} (${n})`;
+        usedHeaders.add(out.trim().toLowerCase());
+        return out;
+      };
       const columns = headerRow.map((header, i) => {
         const field = fields[i];
         if (field.startsWith('checklist_')) {
@@ -82,6 +92,9 @@ export function buildSyncLayout({ template, kit, answerValues = ['Y', 'N', 'N/A'
         }
         return { key: FIELD_TO_KEY[field], header: String(header ?? '') };
       });
+      // The kit's own columns keep their names; checklist lines give way.
+      for (const c of columns) if (!c.key.startsWith('answer:')) c.header = uniqueHeader(c.header);
+      for (const c of columns) if (c.key.startsWith('answer:')) c.header = uniqueHeader(c.header);
       scopes.push({
         scopeId: scopeIdOf(module.id, category.id),
         moduleId: String(module.id),

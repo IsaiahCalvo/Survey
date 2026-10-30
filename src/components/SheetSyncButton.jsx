@@ -22,6 +22,8 @@ function useSheetSync({ documentId, template, markers, enabled }) {
   const [busy, setBusy] = useState(null); // 'connect' | 'link' | 'sync' | 'choose' | 'unlink' | 'disconnect'
   const [error, setError] = useState(null);
   const inFlight = useRef(false);
+  const again = useRef(false); // a change came in while a round was running
+  const retryTimer = useRef(null);
   const layoutInput = useMemo(() => sheetLayoutInput(template), [template]);
   const ids = useMemo(() => ({ documentId, templateId }), [documentId, templateId]);
 
@@ -35,14 +37,27 @@ function useSheetSync({ documentId, template, markers, enabled }) {
   const refresh = useCallback(async () => apply(await sheetSyncCall('status', ids)), [apply, ids]);
 
   const sync = useCallback(async ({ force = false } = {}) => {
-    if (inFlight.current) return null;
+    if (inFlight.current) { again.current = true; return null; }
     inFlight.current = true;
+    let res = null;
     try {
-      return apply(await sheetSyncCall('sync', { ...ids, ...layoutInput, force }));
+      res = apply(await sheetSyncCall('sync', { ...ids, ...layoutInput, force }));
+      return res;
     } finally {
       inFlight.current = false;
+      // Another device's round just ran or is running: ask again once it is
+      // done, so an edit here reaches the sheet in seconds, not at the next tick.
+      const wait = res?.round?.retryInMs;
+      if (again.current || wait) {
+        again.current = false;
+        clearTimeout(retryTimer.current);
+        retryTimer.current = setTimeout(() => { syncRef.current?.(); }, Math.min(Math.max(wait || 1000, 500), 10000));
+      }
     }
   }, [apply, ids, layoutInput]);
+  const syncRef = useRef(null);
+  syncRef.current = sync;
+  useEffect(() => () => clearTimeout(retryTimer.current), []);
 
   useEffect(() => {
     if (!enabled || !documentId || !templateId) return;
@@ -97,6 +112,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
 
   const link = useCallback((title, provider = 'google') => run('link', async () => apply(await sheetSyncCall('link', { ...ids, ...layoutInput, title, provider }))), [apply, ids, layoutInput, run]);
   const choose = useCallback((markerId, choice) => run('choose', async () => apply(await sheetSyncCall('choose', { ...ids, markerId, choice }))), [apply, ids, run]);
+  const putBackTab = useCallback((scopeId) => run('choose', async () => apply(await sheetSyncCall('choose', { ...ids, scopeId, choice: 'putBackTab' }))), [apply, ids, run]);
   const unlink = useCallback(() => run('unlink', async () => apply(await sheetSyncCall('unlink', ids))), [apply, ids, run]);
   const disconnect = useCallback((provider = 'google') => run('disconnect', async () => {
     const res = await sheetSyncCall('disconnect', { provider });
@@ -104,7 +120,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
   }), [refresh, run]);
   const syncNow = useCallback(() => run('sync', () => sync({ force: true })), [run, sync]);
 
-  return { status, busy, error, live, connect, link, choose, unlink, disconnect, syncNow };
+  return { status, busy, error, live, connect, link, choose, putBackTab, unlink, disconnect, syncNow };
 }
 
 const panelStyle = {
@@ -145,7 +161,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
   }, [open]);
 
   if (!documentId || !template) return null;
-  const waiting = (link?.conflicts?.length || 0) + (link?.removedInSheet?.length || 0);
+  const waiting = (link?.conflicts?.length || 0) + (link?.removedInSheet?.length || 0) + (link?.missingTabs?.length || 0);
   const googleOn = Boolean(status?.providers?.google?.configured ?? status?.configured);
   const microsoftOn = Boolean(status?.providers?.msgraph?.configured);
   const excelLink = link?.provider === 'msgraph';
@@ -230,10 +246,17 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
             {canEdit && <button type="button" style={btn} disabled={Boolean(busy)} onClick={() => sync.choose(r.markerId, 'putBack')}>Put the row back</button>}
           </div>
         ))}
+        {(link.missingTabs || []).map((t) => (
+          <div key={t.scopeId} style={{ borderTop: '1px solid var(--border)', padding: '8px 0' }}>
+            <p style={{ margin: '0 0 4px' }}>The <strong>{t.title}</strong> tab was deleted in the sheet. Its items are still here.</p>
+            {canEdit && <button type="button" style={btn} disabled={Boolean(busy)} onClick={() => sync.putBackTab(t.scopeId)}>Put the tab back</button>}
+          </div>
+        ))}
         {link.problems.length > 0 && (
           <div style={{ borderTop: '1px solid var(--border)', padding: '8px 0' }}>
             <p style={{ margin: '0 0 4px' }}>Not brought in from the sheet:</p>
             {link.problems.slice(0, 5).map((p, i) => <p key={i} style={{ margin: '0 0 2px', ...small }}>{p.message}</p>)}
+            {link.problems.length > 5 && <p style={{ margin: 0, ...small }}>and {link.problems.length - 5} more.</p>}
           </div>
         )}
         {(link.isConnectionOwner || status.role === 'owner') && (

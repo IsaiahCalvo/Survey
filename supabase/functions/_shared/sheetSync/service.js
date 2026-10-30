@@ -18,7 +18,7 @@
 //     the sheet with the sign-in of the person who linked it, and writes the
 //     markers as the field tech (append_annotation_update checks the role);
 //   * unlink: the person who linked it, or the document's owner.
-import { buildSyncLayout } from './layout.js';
+import { buildSyncLayout, layoutProblems } from './layout.js';
 import { runSheetRound } from './round.js';
 import { encryptToken, decryptToken } from './tokenCrypto.js';
 import {
@@ -36,7 +36,12 @@ import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../guestSession.js';
 export const SHEET_SYNC_FLAG = 'sheet-team-sync';
 const MARKER_FIELDS_FLAG = 'survey-marker-fields';
 const SNAPSHOT_ENC_GZIP = 2;
-const MIN_ROUND_GAP_MS = 3000; // two devices asking at once share one round
+// Rounds a link runs at most this often unless someone presses Sync now: every
+// device of every survey a person linked shares that person's Google quota
+// (60 reads a minute), and the whole app shares 300.
+const MIN_ROUND_GAP_MS = 8000;
+const MIN_FORCED_GAP_MS = 2000; // "Sync now" pressed again and again
+const LEASE_SECONDS = 120;
 const STATE_TTL_MS = 10 * 60 * 1000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_APP_ORIGINS = [
@@ -138,6 +143,18 @@ const stable = (v) => {
   return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(',')}}`;
 };
 
+// Part by part: the parts `next` changed from `was`, put onto `now`.
+function mergeParts(now, was, next) {
+  const isObj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
+  if (!isObj(was) || !isObj(next) || (now != null && !isObj(now))) return next;
+  const out = { ...(now || {}) };
+  for (const k of new Set([...Object.keys(was), ...Object.keys(next)])) {
+    if (stable(was[k]) === stable(next[k])) continue;
+    if (next[k] === undefined) delete out[k]; else out[k] = next[k];
+  }
+  return Object.keys(out).length || now ? out : undefined;
+}
+
 // Put only what the round changed onto the freshest copy of each marker, so an
 // edit someone made to another field (or another answer) meanwhile survives.
 export function mergeMarkerWrites(fresh, before, writes) {
@@ -150,14 +167,20 @@ export function mergeMarkerWrites(fresh, before, writes) {
     for (const key of new Set([...Object.keys(was), ...Object.keys(next)])) {
       if (stable(was[key]) === stable(next[key])) continue;
       if (key === 'checklistResponses') {
+        // Per answer, and inside an answer per part: a round sets `selection`;
+        // a comment, photo or new answer added meanwhile stays.
         const responses = { ...(now.checklistResponses || {}) };
         const a = was.checklistResponses || {};
         const b = next.checklistResponses || {};
         for (const cid of new Set([...Object.keys(a), ...Object.keys(b)])) {
           if (stable(a[cid]) === stable(b[cid])) continue;
-          if (b[cid] === undefined) delete responses[cid]; else responses[cid] = b[cid];
+          const merged1 = mergeParts(responses[cid], a[cid], b[cid]);
+          if (merged1 === undefined) delete responses[cid]; else responses[cid] = merged1;
         }
         merged.checklistResponses = responses;
+      } else if (key === 'note') {
+        // A round sets the note's text; photos or anything else on the note stay.
+        merged.note = mergeParts(now.note, was.note, next.note);
       } else if (next[key] === undefined) {
         delete merged[key];
       } else {
@@ -209,7 +232,8 @@ export async function handleSheetSync(req, deps) {
       answerValues: s.array(s.string({ max: 80 }), { max: 20, optional: true }),
       title: s.string({ max: 200, optional: true }),
       markerId: s.string({ max: 200, optional: true }),
-      choice: s.enum(['app', 'sheet', 'putBack'], { optional: true }),
+      choice: s.enum(['app', 'sheet', 'putBack', 'putBackTab'], { optional: true }),
+      scopeId: s.string({ max: 300, optional: true }),
       appOrigin: s.string({ max: 200, optional: true }),
       force: s.boolean({ optional: true }),
       provider: s.enum(['google', 'msgraph'], { optional: true }),
@@ -441,12 +465,20 @@ const sheetName = (provider) => (provider === 'msgraph' ? 'Excel workbook' : 'Go
 
 function layoutFrom(body) {
   if (!body.template || !body.kit) return null;
+  let layout;
   try {
-    return buildSyncLayout({ template: body.template, kit: body.kit, answerValues: body.answerValues || ['Y', 'N', 'N/A'] });
+    layout = buildSyncLayout({ template: body.template, kit: body.kit, answerValues: body.answerValues || ['Y', 'N', 'N/A'] });
   } catch {
     throw new SyncError('This survey template cannot be laid out as a sheet.', 400, 'bad_layout');
   }
+  // The same limits the sheet can hold (tabs, columns, names), checked here
+  // because the template comes from the device.
+  const problems = layout.scopes.length ? layoutProblems(layout) : [];
+  if (problems.length) throw new SyncError(`This survey template cannot be laid out as a sheet (${problems[0]}).`, 400, 'bad_layout');
+  return layout;
 }
+
+const ACCESS_TOKENS = new Map();
 
 async function providerFor(ctx, connectionUserId, provider = 'google') {
   if (provider === 'msgraph') return msgraphProviderFor(ctx, connectionUserId);
@@ -456,11 +488,16 @@ async function providerFor(ctx, connectionUserId, provider = 'google') {
     .select('refresh_token_enc').eq('user_id', connectionUserId).eq('provider', 'google').maybeSingle();
   if (!row) throw Object.assign(new Error('no connection'), { status: 401 });
   const refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
-  let access = null;
+  // Kept by this server instance between requests (an access token lasts an
+  // hour), so a round is not also a call to Google's token endpoint.
+  const cacheKey = `google:${connectionUserId}:${row.refresh_token_enc}`;
   const getAccessToken = async () => {
+    const access = ACCESS_TOKENS.get(cacheKey);
     if (access && access.expiresAt > Date.now() + 60_000) return access.accessToken;
-    access = await refreshGoogleToken({ ...g, refreshToken, fetchImpl: ctx.fetchImpl });
-    return access.accessToken;
+    const fresh = await refreshGoogleToken({ ...g, refreshToken, fetchImpl: ctx.fetchImpl });
+    if (ACCESS_TOKENS.size > 500) ACCESS_TOKENS.clear();
+    ACCESS_TOKENS.set(cacheKey, fresh);
+    return fresh.accessToken;
   };
   return googleSheetsProvider({ endpoints: g.endpoints, getAccessToken, fetchImpl: ctx.fetchImpl });
 }
@@ -522,19 +559,27 @@ function markerStore(ctx, documentId) {
   };
 }
 
-const publicLink = (link, userId) => (link ? {
-  provider: link.provider,
-  fileUrl: link.file_url,
-  title: link.title,
-  status: link.status,
-  lastRoundAt: link.last_round_at,
-  lastError: link.last_error,
-  isConnectionOwner: link.connection_user_id === userId,
-  conflicts: Object.entries(link.state?.conflicts || {}).map(([markerId, c]) => ({ markerId, ...c })),
-  removedInSheet: Object.entries(link.state?.removedInSheet || {}).map(([markerId, r]) => ({ markerId, ...r })),
-  problems: (link.state?.problems || []).slice(0, 50),
-  missingTabs: link.state?.missingTabs || [],
-} : null);
+// What the app shows about a link. Viewers see that it is live and when it
+// last synced, not what the sheet holds that the survey does not (yet):
+// values waiting on a choice and rows that could not come in.
+const publicLink = (link, userId, role = null) => {
+  if (!link) return null;
+  const editor = role === 'owner' || role === 'editor';
+  const titleOf = (scopeId) => (link.layout?.scopes || []).find((sc) => sc.scopeId === scopeId)?.title || 'A category';
+  return {
+    provider: link.provider,
+    fileUrl: link.file_url,
+    title: link.title,
+    status: link.status,
+    lastRoundAt: link.last_round_at,
+    lastError: link.last_error,
+    isConnectionOwner: link.connection_user_id === userId,
+    conflicts: editor ? Object.entries(link.state?.conflicts || {}).map(([markerId, c]) => ({ markerId, ...c })) : [],
+    removedInSheet: editor ? Object.entries(link.state?.removedInSheet || {}).map(([markerId, r]) => ({ markerId, ...r })) : [],
+    problems: editor ? (link.state?.problems || []).slice(0, 50) : [],
+    missingTabs: (link.state?.missingTabs || []).map((scopeId) => ({ scopeId, title: titleOf(scopeId) })),
+  };
+};
 
 async function statusFor(ctx, round = null) {
   const g = googleConfig(ctx.env);
@@ -555,7 +600,7 @@ async function statusFor(ctx, round = null) {
     google: { connected: Boolean(conn), email: conn?.account_email || null },
     microsoft: { connected: Boolean(msConn), email: msConn?.account_email || null },
     role,
-    link: publicLink(link, ctx.user.id),
+    link: publicLink(link, ctx.user.id, role),
     ...(round ? { round } : {}),
   };
 }
@@ -596,42 +641,91 @@ async function linkSheet(ctx) {
     state: { sheetIds: made.sheetIds },
     created_by: ctx.user.id,
   }).select(LINK_COLUMNS).single();
-  if (error) throw new SyncError('Could not save the sheet link.', 500, 'link_write');
+  if (error) {
+    // Two "Make a live sheet" presses at once: the database keeps one link per
+    // survey; the second file stays in the person's Drive, unsynced.
+    if (error.code === '23505') throw new SyncError('This survey already has a linked sheet.', 409, 'already_linked');
+    throw new SyncError('Could not save the sheet link.', 500, 'link_write');
+  }
   log('linked', { provider: ctx.provider, scopes: layout.scopes.length });
   const round = await runRoundFor(ctx, link, { provider, signing, force: true });
   return statusFor(ctx, round);
 }
 
-async function runRoundFor(ctx, link, { provider = null, signing = null, force = false } = {}) {
-  if (link.status === 'paused') return { status: 'paused' };
-  if (!force && link.backoff_until && new Date(link.backoff_until).getTime() > Date.now()) return { status: 'waiting' };
-  if (!force && link.last_round_at && Date.now() - new Date(link.last_round_at).getTime() < MIN_ROUND_GAP_MS
-      && !Object.keys(link.state?.choices || {}).length) {
-    return { status: 'recent' };
+// One round at a time per link. The lease carries a token; a round saves only
+// while it still holds its own token, so a round that ran past its lease
+// never overwrites the one that took over.
+async function takeLease(ctx, linkId, { waitMs = 0 } = {}) {
+  const until = Date.now() + waitMs;
+  for (;;) {
+    const { data } = await ctx.service.rpc('sheet_sync_take_lease_token', { p_link_id: linkId, p_seconds: LEASE_SECONDS });
+    if (typeof data === 'string' && data) return data;
+    if (Date.now() >= until) return null;
+    await new Promise((r) => setTimeout(r, 400));
   }
-  const { data: leased } = await ctx.service.rpc('sheet_sync_take_lease', { p_link_id: link.id, p_seconds: 60 });
-  if (leased !== true) return { status: 'busy' };
-  const release = (patch) => ctx.service.from('sheet_sync_links')
-    .update({ ...patch, lease_until: null, updated_at: new Date().toISOString() }).eq('id', link.id);
+}
+
+const releaseLease = (ctx, linkId, token, patch) => ctx.service.from('sheet_sync_links')
+  .update({ ...patch, lease_until: null, lease_token: null, updated_at: new Date().toISOString() })
+  .eq('id', linkId).eq('lease_token', token);
+
+async function readLink(ctx, linkId) {
+  const { data, error } = await ctx.service.from('sheet_sync_links').select(LINK_COLUMNS).eq('id', linkId).maybeSingle();
+  if (error) throw new SyncError('Could not read the sheet link.', 500, 'link_read');
+  return data;
+}
+
+async function runRoundFor(ctx, link, { provider = null, signing = null, force = false, leaseToken = null, change = null } = {}) {
+  if (link.status === 'paused') return { status: 'paused' };
+  if (!leaseToken) {
+    // Sync now skips the wait between rounds, never Google's "slow down".
+    if (link.backoff_until && new Date(link.backoff_until).getTime() > Date.now()) return { status: 'waiting' };
+    const gap = force ? MIN_FORCED_GAP_MS : MIN_ROUND_GAP_MS;
+    if (link.last_round_at && Date.now() - new Date(link.last_round_at).getTime() < gap) {
+      return { status: 'recent', retryInMs: gap - (Date.now() - new Date(link.last_round_at).getTime()) };
+    }
+  }
+  const token = leaseToken || await takeLease(ctx, link.id);
+  if (!token) return { status: 'busy', retryInMs: 3000 };
+  // Read the link fresh under the lease: another round may have just saved.
+  const fresh = await readLink(ctx, link.id);
+  if (!fresh) return { status: 'unlinked' };
+  Object.assign(link, fresh);
+  if (change) change(link);
+  const release = (patch) => releaseLease(ctx, link.id, token, patch);
   try {
+    // The sheet is reached with the linker's sign-in: only while the linker
+    // can still edit the survey. Someone removed from it keeps nothing.
+    const { data: linkerRole } = await ctx.service.rpc('sheet_sync_user_role', { p_document_id: link.document_id, p_user_id: link.connection_user_id });
+    if (linkerRole !== 'owner' && linkerRole !== 'editor') {
+      const message = `The person who linked this ${sheetName(link.provider)} is no longer an editor of this survey, so it stopped syncing. An editor can make a new live sheet.`;
+      await release({ status: 'broken', last_error: message, ...(change ? { state: link.state, baseline: link.baseline } : {}) });
+      Object.assign(link, { status: 'broken', last_error: message });
+      return { status: 'error', error: message };
+    }
     const p = provider || await providerFor(ctx, link.connection_user_id, link.provider);
     const sign = signing || await signingFor(ctx, link.document_id);
     const store = markerStore(ctx, link.document_id);
     let result = null;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      result = await runSheetRound({ link, provider: p, loadMarkers: store.load, saveMarkers: store.save, signing: sign, force: force || attempt > 0 });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      result = await runSheetRound({ link, provider: p, loadMarkers: store.load, saveMarkers: store.save, signing: sign, force: force || attempt > 0 || Boolean(change) });
       if (result.status !== 'retry') break;
     }
     if (result.status === 'synced') {
       await release({ ...result.patch, status: 'active', last_round_at: new Date().toISOString(), last_error: null, backoff_until: null });
       Object.assign(link, result.patch, { status: 'active', last_error: null, last_round_at: new Date().toISOString() });
+    } else if (result.status === 'retry') {
+      // Rows kept moving (someone sorting or typing fast): say so, try later.
+      const message = `The ${sheetName(link.provider)} kept changing while syncing. Trying again soon.`;
+      await release({ last_round_at: new Date().toISOString(), last_error: message, ...(change ? { state: link.state, baseline: link.baseline } : {}) });
+      Object.assign(link, { last_error: message });
     } else {
-      await release({ last_round_at: new Date().toISOString() });
+      await release({ last_round_at: new Date().toISOString(), ...(change ? { state: link.state, baseline: link.baseline } : {}) });
     }
     return { status: result.status, ...(result.summary ? { summary: result.summary } : {}) };
   } catch (err) {
     if (err instanceof SyncError) {
-      await release({ last_error: err.message });
+      await release({ last_error: err.message, ...(change ? { state: link.state, baseline: link.baseline } : {}) });
       throw err;
     }
     const status = Number(err?.status) || 500;
@@ -640,12 +734,14 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     const message = status === 401 ? `The ${who} sign-in used for this sheet stopped working. The person who linked it needs to connect ${who} again.`
       : status === 404 ? `The linked ${what} was deleted or is no longer shared with the person who linked it.`
       : status === 429 ? `${who} asked us to slow down. Syncing again in a minute.`
+      : status === 413 ? `The linked ${what} is too big to sync (over 250,000 cells in its synced tabs). Delete rows or tabs you no longer need.`
       : status === 409 && err?.code === 'personal-onedrive' ? 'This workbook is on a personal OneDrive, which cannot sync cell by cell.'
       : `Could not reach the ${what}. Trying again soon.`;
     const patch = { last_error: message };
     if (status === 401 || status === 404) patch.status = 'broken';
     if (status === 409 && err?.code === 'personal-onedrive') patch.status = 'paused';
     if (status === 429) patch.backoff_until = new Date(Date.now() + 60_000).toISOString();
+    if (change) Object.assign(patch, { state: link.state, baseline: link.baseline });
     await release(patch);
     Object.assign(link, patch);
     log('round_failed', { status });
@@ -669,19 +765,38 @@ async function syncLink(ctx) {
 }
 
 async function chooseConflict(ctx) {
-  const { documentId, templateId, markerId, choice } = ctx.body;
+  const { documentId, templateId, markerId, scopeId, choice } = ctx.body;
   await requireEditor(ctx, documentId);
-  if (!markerId || !choice) throw new SyncError('Say which row and which side.', 400, 'missing_choice');
+  if (choice === 'putBackTab' ? !scopeId : !markerId || !choice) throw new SyncError('Say which row and which side.', 400, 'missing_choice');
   const link = await linkFor(ctx, documentId, templateId);
   if (!link) throw new SyncError('This survey has no linked sheet.', 404, 'not_linked');
-  const state = { ...(link.state || {}) };
-  const known = choice === 'putBack' ? state.removedInSheet?.[markerId] : state.conflicts?.[markerId];
-  if (!known) return statusFor(ctx);
-  state.choices = { ...(state.choices || {}), [markerId]: choice };
-  await ctx.service.from('sheet_sync_links').update({ state }).eq('id', link.id);
-  link.state = state;
-  const round = await runRoundFor(ctx, link, { force: true });
-  return statusFor(ctx, round);
+  // The choice goes in under the lease, read fresh, so a round running at
+  // the same moment can neither lose it nor be undone by it.
+  const token = await takeLease(ctx, link.id, { waitMs: 8000 });
+  if (!token) throw new SyncError('The sheet is busy syncing. Try again in a moment.', 409, 'busy');
+  let known = false;
+  const change = (l) => {
+    const state = { ...(l.state || {}) };
+    if (choice === 'putBackTab') {
+      // "Put the tab back": forget the tab and its rows, so the next round
+      // makes the tab again and fills it from the survey.
+      known = (state.missingTabs || []).includes(scopeId) && state.sheetIds?.[scopeId] != null;
+      if (!known) return;
+      const { [scopeId]: _gone, ...sheetIds } = state.sheetIds;
+      state.sheetIds = sheetIds;
+      state.missingTabs = state.missingTabs.filter((id) => id !== scopeId);
+      const baseline = { ...(l.baseline || {}) };
+      for (const [id, b] of Object.entries(baseline)) if (b?.scopeId === scopeId) delete baseline[id];
+      l.baseline = baseline;
+    } else {
+      known = Boolean(choice === 'putBack' ? state.removedInSheet?.[markerId] : state.conflicts?.[markerId]);
+      if (!known) return;
+      state.choices = { ...(state.choices || {}), [markerId]: choice };
+    }
+    l.state = state;
+  };
+  const round = await runRoundFor(ctx, link, { force: true, leaseToken: token, change });
+  return statusFor(ctx, known ? round : null);
 }
 
 async function unlinkSheet(ctx) {
