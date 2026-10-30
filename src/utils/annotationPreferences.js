@@ -40,6 +40,35 @@ export function writeAnnotationSnapping(value) {
   return on;
 }
 
+// Shift's angle step (owner 2026-10-29): 15° (default), 45° or 90°. Every
+// Shift-snap reads it: line, arrow, polyline, polygon and measure segments,
+// corner drags, region sides and rotation.
+export const SNAP_ANGLE_KEY = 'survey:snap-angle';
+export const SNAP_ANGLE_CHOICES = Object.freeze([15, 45, 90]);
+export const SNAP_ANGLE_DEFAULT = 15;
+let snapAngleMemo = null;
+
+const asSnapAngle = (value) => {
+  const n = Number(value);
+  return SNAP_ANGLE_CHOICES.includes(n) ? n : null;
+};
+
+export function readSnapAngle() {
+  try {
+    const stored = asSnapAngle(storage()?.getItem(SNAP_ANGLE_KEY));
+    if (stored) return stored;
+  } catch { /* blocked storage */ }
+  return snapAngleMemo ?? SNAP_ANGLE_DEFAULT;
+}
+
+export function writeSnapAngle(value) {
+  const step = asSnapAngle(value) ?? SNAP_ANGLE_DEFAULT;
+  snapAngleMemo = step;
+  try { storage()?.setItem(SNAP_ANGLE_KEY, String(step)); } catch { /* blocked storage */ }
+  try { window.dispatchEvent(new CustomEvent(ANNOTATION_PREFERENCES_EVENT, { detail: { key: SNAP_ANGLE_KEY, value: step } })); } catch { /* no window */ }
+  return step;
+}
+
 export const TEXTBOX_AUTO_FIT_KEY = 'survey:textbox-auto-fit';
 export const TEXTBOX_AUTO_FIT_DEFAULT = true;
 export const ANNOTATION_PREFERENCES_EVENT = 'survey:annotation-preferences-changed';
@@ -81,12 +110,34 @@ export function writeTextboxAutoFit(value) {
   return on;
 }
 
+// Polyline "Curve" (Nightly, flag 'spline-polyline'): new polylines bend
+// smoothly through their corners. Off unless the user turns it on.
+export const POLYLINE_CURVE_KEY = 'survey:polyline-curve';
+let curveMemo = null;
+
+export function readPolylineCurve() {
+  try {
+    const raw = storage()?.getItem(POLYLINE_CURVE_KEY);
+    if (raw === 'on') return true;
+    if (raw === 'off') return false;
+  } catch { /* blocked storage */ }
+  return curveMemo ?? false;
+}
+
+export function writePolylineCurve(value) {
+  const on = !!value;
+  curveMemo = on;
+  try { storage()?.setItem(POLYLINE_CURVE_KEY, on ? 'on' : 'off'); } catch { /* blocked storage */ }
+  try { window.dispatchEvent(new CustomEvent(ANNOTATION_PREFERENCES_EVENT, { detail: { key: POLYLINE_CURVE_KEY, value: on } })); } catch { /* no window */ }
+  return on;
+}
+
 /** Subscribe to changes from this page (Settings) and other windows. */
 export function subscribeAnnotationPreferences(listener) {
   if (typeof window === 'undefined' || typeof listener !== 'function') return () => {};
   const onLocal = () => listener();
   const onStorage = (event) => {
-    if (!event || event.key == null || event.key === TEXTBOX_AUTO_FIT_KEY || event.key === ANNOTATION_SNAPPING_KEY) listener();
+    if (!event || event.key == null || event.key === TEXTBOX_AUTO_FIT_KEY || event.key === ANNOTATION_SNAPPING_KEY || event.key === POLYLINE_CURVE_KEY || event.key === SNAP_ANGLE_KEY) listener();
   };
   window.addEventListener(ANNOTATION_PREFERENCES_EVENT, onLocal);
   window.addEventListener('storage', onStorage);

@@ -2,7 +2,7 @@
 // just drawn, never on top of it, and the marker always has an entity.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { placeSurveyMarkerCard } from '../src/survey/markerPlacementCard.js';
+import { placeSurveyMarkerCard, TOAST_BAND } from '../src/survey/markerPlacementCard.js';
 import { resolveNextSurveyEntity } from '../src/survey/nextSurveyEntity.js';
 
 const viewport = { width: 1400, height: 900 };
@@ -29,10 +29,16 @@ test('a marker as wide as the window gets the card below it', () => {
   assert.equal(overlaps(pos, rect), false);
 });
 
-test('the card stays inside the window near the bottom edge', () => {
+test('the card stays inside the window, above the toast band, near the bottom edge', () => {
   const rect = { left: 300, top: 820, right: 400, bottom: 880 };
   const pos = placeSurveyMarkerCard(rect, card, viewport);
-  assert.equal(pos.top, 900 - 240 - 8);
+  assert.equal(pos.top, 900 - 240 - 8 - TOAST_BAND);
+});
+
+test('a window too short for the toast band still keeps the card inside it', () => {
+  const rect = { left: 300, top: 200, right: 400, bottom: 260 };
+  const pos = placeSurveyMarkerCard(rect, card, { width: 1400, height: 300 });
+  assert.equal(pos.top, 300 - 240 - 8);
 });
 
 test('no marker on screen: the card is centred', () => {
@@ -75,4 +81,13 @@ test('the fast Survey Marker checkpoint still writes its History row', async () 
   assert.ok(row, 'a History row is built');
   assert.match(row.summary, /created a survey marker on page 3/);
   assert.equal(row.annotation_id, 'surveyMarker-1');
+});
+
+test('a pen or finger keeps the card further off: they grab a mark from further away', () => {
+  const rect = { left: 300, top: 200, right: 500, bottom: 260 };
+  assert.deepEqual(placeSurveyMarkerCard(rect, card, viewport, { inputKind: 'mouse' }), { left: 512, top: 200 });
+  assert.deepEqual(placeSurveyMarkerCard(rect, card, viewport, { inputKind: 'pen' }), { left: 516, top: 200 });
+  assert.deepEqual(placeSurveyMarkerCard(rect, card, viewport, { inputKind: 'touch' }), { left: 520, top: 200 });
+  const nearRight = { left: 1100, top: 400, right: 1300, bottom: 460 };
+  assert.equal(placeSurveyMarkerCard(nearRight, card, viewport, { inputKind: 'pen' }).left, 1100 - 16 - card.width);
 });

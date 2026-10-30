@@ -178,3 +178,14 @@ test('a plan is worked out once per pair, then reused', () => {
   const first = planMorph('pen', 'textBox');
   assert.equal(planMorph('pen', 'textBox'), first, 'cached');
 });
+
+test('every Select / Edit toggle glyph, Done included, has morph geometry', () => {
+  // A glyph missing here silently skips the Select -> Done morph (#1200
+  // switched Done to checkCheck before its geometry existed).
+  const src = readFileSync(resolve(root, 'src/components/SectionIconButton.jsx'), 'utf8');
+  const done = /SECTION_DONE_ICON = '([^']+)'/.exec(src)?.[1];
+  const actions = /SECTION_ACTION_ICONS = Object\.freeze\(\{([\s\S]*?)\}\)/.exec(src)?.[1] || '';
+  const names = [done, ...[...actions.matchAll(/(?:select|edit): '([^']+)'/g)].map((m) => m[1])];
+  assert.equal(names.length, 3);
+  for (const name of names) assert.ok(MORPH_ICONS[name], `${name} has morph geometry`);
+});

@@ -29,6 +29,10 @@ import {
   readRegistrationFromMetaSheet,
   WORKBOOK_REGISTRATION_STATUS,
   WORKBOOK_REGISTRATION_CELLS,
+  bindWorkbookLocation,
+  capabilityTierForDriveType,
+  exportCapabilityTier,
+  workbookLocationFromDriveItem,
 } from '../src/services/workbookRegistration.js';
 
 // ---------------------------------------------------------------------------
@@ -358,4 +362,53 @@ test('legacy e2e: cells present → registered', () => {
   const parsed = readRegistrationFromMetaSheet({ workbook_id: VALID_WB_ID, sync_token: VALID_TOKEN });
   const status  = detectLegacyWorkbook({ workbookId: parsed.workbookId, syncToken: parsed.syncToken });
   assert.equal(status, WORKBOOK_REGISTRATION_STATUS.REGISTERED);
+});
+
+// ---------------------------------------------------------------------------
+// Workbook location (Excel audit W4)
+// ---------------------------------------------------------------------------
+
+test('capabilityTierForDriveType: work OneDrive and SharePoint libraries are business', () => {
+  assert.equal(capabilityTierForDriveType('business'), 'business');
+  assert.equal(capabilityTierForDriveType('documentLibrary'), 'business');
+  assert.equal(capabilityTierForDriveType('personal'), 'personal');
+  assert.equal(capabilityTierForDriveType(undefined), null);
+  assert.equal(capabilityTierForDriveType('weird'), null);
+});
+
+test('workbookLocationFromDriveItem reads an upload response', () => {
+  assert.deepEqual(
+    workbookLocationFromDriveItem({ id: 'item-1', parentReference: { driveId: 'drv-1', driveType: 'business' } }),
+    { driveId: 'drv-1', itemId: 'item-1', driveType: 'business', capabilityTier: 'business' },
+  );
+  assert.equal(workbookLocationFromDriveItem({ id: 'item-1' }), null);
+  assert.equal(workbookLocationFromDriveItem(null), null);
+});
+
+test('exportCapabilityTier: work OneDrive no longer registers as personal', () => {
+  assert.equal(exportCapabilityTier({ isOneDrive: true, isSharePoint: true }), 'business');
+  assert.equal(exportCapabilityTier({ isOneDrive: true, graphDriveType: 'business' }), 'business');
+  assert.equal(exportCapabilityTier({ isOneDrive: true, graphDriveType: 'personal' }), 'personal');
+  assert.equal(exportCapabilityTier({ isOneDrive: true }), 'personal');
+  assert.equal(exportCapabilityTier({ isOneDrive: false }), 'local');
+  assert.equal(exportCapabilityTier(null), 'local');
+});
+
+test('bindWorkbookLocation calls kal307_bind_workbook_location', async () => {
+  const client = makeFakeClient({ data: true });
+  const res = await bindWorkbookLocation({
+    documentId: 'doc-1', templateId: 'tpl-1', workbookId: VALID_WB_ID,
+    location: { driveId: 'drv-1', itemId: 'item-1', capabilityTier: 'business' },
+    supabaseClient: client,
+  });
+  assert.deepEqual(res, { ok: true, error: null });
+  assert.equal(client.calls[0].fn, 'kal307_bind_workbook_location');
+  assert.deepEqual(client.calls[0].params, {
+    p_document_id: 'doc-1', p_template_id: 'tpl-1', p_workbook_id: VALID_WB_ID,
+    p_graph_drive_id: 'drv-1', p_graph_item_id: 'item-1', p_capability_tier: 'business',
+  });
+  const missing = await bindWorkbookLocation({ documentId: 'doc-1', templateId: 'tpl-1', workbookId: VALID_WB_ID,
+    location: { driveId: 'drv-1', itemId: 'item-1', capabilityTier: null }, supabaseClient: client });
+  assert.equal(missing.ok, false);
+  assert.equal(client.calls.length, 1, 'no call without a tier');
 });

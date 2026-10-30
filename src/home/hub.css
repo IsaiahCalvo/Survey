@@ -68,7 +68,10 @@
   display: grid;
   letter-spacing: -0.005em;
 }
-.survey-hub .mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace; }
+/* Dates, times, sizes and counts: the interface font with even-width digits,
+   the same on every screen size (the phone rows always used it). Monospace is
+   kept for text people copy exactly: links, codes, keys. */
+.survey-hub .nums { font-variant-numeric: tabular-nums; }
 
 /* Shell — sidebar + main */
 .survey-hub .shell { display: grid; grid-template-columns: 148px 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; min-height: 0; }
@@ -367,10 +370,12 @@
     position: absolute;
     inset: -9px 0;
   }
-  /* iOS Safari zooms the page on focus of any field under 16px; the prompt
-     dialog's input paints 12.5px inline, so touch screens get 16px. */
+  /* The dialog field (DialogCard DIALOG_FIELD_STYLE: Rename, the prompt)
+     paints 13px / 32px inline. iOS Safari zooms the page on focus of any
+     field under 16px, and a finger needs 44, so touch screens get both. */
   .dialog-prompt-input {
     font-size: 16px !important;
+    height: 44px !important;
   }
 }
 
@@ -390,7 +395,7 @@
 .survey-hub .btn.tertiary:disabled,
 .hub-icon-btn:disabled { border-color: transparent; }
 
-.survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 600; }
 .survey-hub .pill.gold { background: var(--accent-soft); color: var(--gold); }
 .survey-hub .pill.blue { background: color-mix(in srgb, var(--blue) 15%, transparent); color: var(--blue); }
 /* The green and the rose tags map to the neutral one — see the :root note. */
@@ -593,17 +598,17 @@
 .hub-menu__item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--menu-item-gap);
   width: 100%;
   min-height: var(--menu-item-h);
   box-sizing: border-box;
   margin: 0;
-  padding: 0 10px;
+  padding: 0 var(--menu-item-pad-x);
   color: var(--text-1);
   background: transparent;
   border: 0;
   border-radius: var(--radius-xs);
-  font: 400 12px/16px var(--font-ui);
+  font: var(--menu-font);
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
@@ -617,6 +622,22 @@
 
 .hub-menu__item.is-danger {
   color: var(--danger-text);
+}
+
+/* MenuRows (components/MenuRows.jsx): the icon is quieter than the word, the
+   empty slot of a row with no icon keeps the words in line, and one line
+   sets Delete apart at the bottom. */
+.hub-menu__item:not(.is-danger):not(:disabled):not([aria-disabled='true']) > svg {
+  color: var(--text-3);
+}
+.hub-menu__icon-gap {
+  flex: none;
+  width: var(--row-icon);
+}
+.hub-menu__separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
 }
 
 .hub-menu__item:disabled,
@@ -663,7 +684,8 @@
     font-size: 15px;
     line-height: 20px;
   }
-  .hub-menu__item > svg {
+  .hub-menu__item > svg,
+  .hub-menu__icon-gap {
     width: var(--sheet-icon);
     height: var(--sheet-icon);
   }
@@ -1013,6 +1035,10 @@
     flex-wrap: wrap;
     gap: var(--mobile-header-row-gap) 8px;
     padding: var(--mobile-header-pad-y) var(--mobile-header-pad-x);
+    /* A phone held sideways puts the notch over a screen edge: the scroll
+       root pads for it, but this fixed header spans the screen. */
+    padding-left: max(var(--mobile-header-pad-x), var(--native-safe-area-left, env(safe-area-inset-left, 0px)));
+    padding-right: max(var(--mobile-header-pad-x), var(--native-safe-area-right, env(safe-area-inset-right, 0px)));
     flex: none;
     background: var(--ink-900);
     border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
@@ -5007,6 +5033,16 @@ button[aria-label="Edit color"]:active > span,
   min-height: 36px;
   box-sizing: border-box;
 }
+/* Owner 2026-10-28: Select mode no longer hides the gold "New template" /
+   "New project" button. It drops its noun to "+ New" so the select actions
+   (Done, All, Duplicate, Share, Delete) fit beside it in the 260px column. */
+.survey-hub .hub-new-btn {
+  flex: none;
+  white-space: nowrap;
+}
+.survey-hub .hub-new-btn.is-compact .hub-new-btn__noun {
+  display: none;
+}
 
 /* THE SECTION ACTIONS are icons since 2026-10-02 (owner: "The icons looked
    way better"): src/components/SectionIconButton.jsx, sized and styled in
@@ -5371,21 +5407,18 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
 }
 
 
-/* The row menu (⋮ or right-click) slides 6px in from the side it opens on,
-   100 ms, like Drawboard's Radix menus; a short fade keeps it calm. */
+/* The row menu (⋮ or right-click) grows out of its button like every action
+   menu (motion.css sv-menu-grow, owner 2026-10-28); opening upward it grows
+   from its lower corner. */
 .hub-menu.documents-row-menu {
-  animation: documents-row-menu-in var(--motion-menu) var(--ease-out) both;
+  animation: sv-menu-grow var(--motion-menu-open) var(--ease-glide) both;
+  transform-origin: top right;
 }
 .hub-menu.documents-row-menu.opens-up {
-  animation-name: documents-row-menu-in-up;
+  transform-origin: bottom right;
 }
-@keyframes documents-row-menu-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: none; }
-}
-@keyframes documents-row-menu-in-up {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-menu.documents-row-menu { animation: none; }
 }
 .hub-menu.documents-row-menu:focus {
   outline: none;
@@ -5616,15 +5649,30 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   }
 }
 
-/* Touch tablets: the Templates page's Excel layout and Checklist answers
-   pickers are 20px / 11px for a mouse; 36px and readable to a finger. The
-   !important beats their inline mouse sizing. */
+/* The Templates page's per-template pickers (Excel layout, Report layout,
+   Checklist answers): the app's setting pill (ValueSelect look="pill"), right
+   under the module count. */
+.hub-template-picker {
+  display: flex;
+  justify-content: flex-end;
+  max-width: 100%;
+  margin-top: 4px;
+}
+.hub-template-picker .annotation-dropdown {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+.hub-template-picker .chrome-pill {
+  max-width: 100%;
+}
+
+/* Touch tablets: 20px / 11px is for a mouse; 36px and readable to a finger. */
 @media (pointer: coarse) {
-  select.hub-export-kit,
-  select.hub-answer-set {
-    min-height: 36px !important;
-    font-size: 13px !important;
-    padding: 4px 8px !important;
+  .hub-template-picker .chrome-pill {
+    height: 36px;
+    padding: 0 10px;
+    font-size: 13px;
   }
 }
 
@@ -5664,14 +5712,20 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   .survey-hub .documents-ledger-grid.is-preview .documents-col-project { display: none; }
 }
 
-/* Document Access rows (AccessManagementModal). Desktop: one line of five
-   columns. A phone has no room for five: at 320px the Users column shrank to
-   0px and printed names / emails one letter per line over the next rows, and
-   Remove ran off the card. There the person (name + full email, wrapping)
-   takes the first line and role / status / actions the second. Rows sit in
-   a flex column that scrolls, so they must not shrink below their content
-   (they did, and each row slid under the next). */
-.access-grid { grid-template-columns: 30px 1fr 1fr 1fr 90px; flex-shrink: 0; }
+/* The access list rows, shared by Document access (AccessManagementModal)
+   and Manage team (ManageTeamModal) since the design review of 2026-10-27:
+   avatar, person, role, status / added, and the row's More button. A phone
+   has no room for five columns (at 320px the person column shrank to 0px and
+   printed one letter per line), so there the person takes the first line and
+   role / status / More the second. Rows sit in a flex column that scrolls, so
+   they must not shrink below their content. */
+.access-grid { grid-template-columns: 30px 1fr 1fr 1fr 24px; flex-shrink: 0; }
+/* The list under them keeps room for three rows (50px + 2px gap each, plus
+   its 18px padding), so the dialog opens at the size it keeps: it used to
+   open short with "Loading…", then grow ~100px and jump up (it is centred)
+   when the people came in. Longer lists still grow, once; a short window can
+   squeeze it. */
+.access-list { min-height: min(172px, 30vh); }
 @media (max-width: 600px) {
   .access-grid { grid-template-columns: 30px minmax(0, 1fr) auto auto; row-gap: 10px !important; }
   .access-grid > :nth-child(2) { grid-column: 2 / -1; }
@@ -5679,10 +5733,6 @@ html[data-mobile-viewport="locked"] .hub-autowidth::after {
   .access-grid > :nth-child(4) { grid-column: 3; grid-row: 2; }
   .access-grid > :nth-child(5) { grid-column: 4; grid-row: 2; }
   .access-grid--head > :nth-child(n+3) { display: none; }
-}
-/* The role picker is a bare 24px word; give it a 44px band to a finger. */
-@media (pointer: coarse) {
-  .access-role-select { height: 44px !important; }
 }
 
 /* Preview pane: double-clicking a row opens the file. Mouse/trackpad only;

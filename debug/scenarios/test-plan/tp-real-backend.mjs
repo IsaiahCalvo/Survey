@@ -142,7 +142,8 @@ export async function shareThroughApp(page, name, email) {
   await page.getByRole('button', { name: 'Invite', exact: true }).first().click();
   const dialog = page.getByRole('dialog').filter({ hasText: 'Share document' }).first();
   await dialog.waitFor({ timeout: 10_000 });
-  await dialog.locator('select').first().selectOption('Editor', { timeout: 5000 }).catch(() => {});
+  await dialog.getByRole('button', { name: 'Permission', exact: true }).click({ timeout: 5000 }).catch(() => {});
+  await page.getByRole('listbox', { name: 'Permission' }).getByRole('option', { name: 'Editor', exact: true }).click({ timeout: 5000 }).catch(() => {});
   await dialog.locator('textarea').first().fill(email, { timeout: 5000 }).catch(() => {});
   const send = dialog.getByRole('button', { name: /^Send/ }).first();
   if (await send.isEnabled().catch(() => false)) await send.click({ timeout: 5000 }).catch(() => {});

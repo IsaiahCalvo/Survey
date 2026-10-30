@@ -9,7 +9,12 @@
 // A flag is on for this browser when the first of these that answers says so:
 //   0. a beta flag in a stable production build: always off
 //   1. localStorage 'survey.flag.<key>' = '1' / '0' (or the flag's older key)
-//   2. the nightly build (VITE_RELEASE_CHANNEL=nightly) turns every flag on
+//   2. the nightly build (VITE_RELEASE_CHANNEL=nightly) turns every BETA flag
+//      on, except one marked nightlyOn: false (kept hidden). Rollout flags
+//      go on to steps 3-5 there as on stable, so Survey Nightly is the live
+//      app plus the beta features and nothing else
+//      (owner 2026-10-27: nightly turned 'pro-lock' on, so Survey tools
+//      were locked there and not on surveytool.app)
 //   3. a build-wide env var, where the flag has one
 //   4. the server's answer for this person, saved from the last load
 //      (feature_flags table: off, testers only, or on for everyone)
@@ -58,6 +63,12 @@ export const FEATURE_FLAGS = Object.freeze({
     label: 'Survey markers merge concurrent field edits',
     stage: 'rollout',
   }),
+  // Infrastructure, not a feature: opens read PDFs from their Cloudflare R2
+  // copy (services/pdfR2Source.js, docs/PDF-R2.md). Needs R2 set up first.
+  'pdf-r2': Object.freeze({
+    label: 'Open PDFs from the Cloudflare R2 copy (saves Supabase download costs)',
+    stage: 'rollout',
+  }),
   'custom-answers': Object.freeze({
     label: 'Make-your-own checklist answers in templates',
     stage: 'beta',
@@ -72,6 +83,63 @@ export const FEATURE_FLAGS = Object.freeze({
   }),
   'pinned-tools': Object.freeze({
     label: 'Pinned tools dock (favourite tools with their own colour and width)',
+    stage: 'beta',
+  }),
+  'counter-list': Object.freeze({
+    label: 'Counts list: rename, recolour and reorder counts in one place',
+    stage: 'beta',
+  }),
+  'company-admin': Object.freeze({
+    label: 'Company workspace: people, roles, seats, shared storage and activity log (Enterprise)',
+    stage: 'beta',
+  }),
+  'export-modes': Object.freeze({
+    label: 'Export PDF choices: annotated, flattened or plain, and which pages',
+    stage: 'beta',
+  }),
+  'grid-settings': Object.freeze({
+    label: 'Page grid spacing: fine, normal, wide or custom (paper or drawing units)',
+    stage: 'beta',
+  }),
+  'spline-polyline': Object.freeze({
+    label: 'Curved polyline: bend smoothly through the clicked corners',
+    stage: 'beta',
+  }),
+  'own-excel-layouts': Object.freeze({
+    label: 'Your own Excel layout: upload your sheet and match its columns',
+    stage: 'beta',
+  }),
+  // Owner 2026-10-27: wire it in but keep it hidden, so Nightly does not turn
+  // it on by itself; /flags or 'survey.flag.conditional-lines' = '1' does.
+  'conditional-lines': Object.freeze({
+    label: 'Conditional checklist lines: show a line only after a certain answer',
+    stage: 'beta',
+    nightlyOn: false,
+  }),
+  'document-versions': Object.freeze({
+    label: 'Version history: a new version keeps the old ones, with old-over-new compare',
+    stage: 'beta',
+  }),
+  'mark-library': Object.freeze({
+    label: 'Mark library: save marks to a personal or project library and drop them on any page',
+    stage: 'beta',
+  }),
+  'mark-comments': Object.freeze({
+    label: 'Comments on marks: threads, replies and @mentions with an email link',
+    stage: 'beta',
+  }),
+  'marker-tracking': Object.freeze({
+    label: 'Survey items: status, assigned to and due date, with list filters',
+    stage: 'beta',
+  }),
+  'guest-links': Object.freeze({
+    label: 'Guest links: open one document without an account, as viewer or editor, until a set time',
+    stage: 'beta',
+  }),
+  // The app's Google Sheets (and later Microsoft 365) live sync panel; the
+  // sheet-sync function also lets flag admins and Nightly testers link.
+  'sheet-team-sync': Object.freeze({
+    label: 'Live team sync with Google Sheets: phones, web and desktop write to the sheet',
     stage: 'beta',
   }),
 });
@@ -134,7 +202,7 @@ export function isFeatureOn(key, { storage = safeStorage(), env = readEnv() } = 
   if (own !== '1' && own !== '0' && def.legacyKey) own = read(storage, def.legacyKey);
   if (own === '1') return true;
   if (own === '0') return false;
-  if (releaseChannel(env) === 'nightly') return true;
+  if (def.stage === 'beta' && def.nightlyOn !== false && releaseChannel(env) === 'nightly') return true;
   if (def.env && env?.[def.env] === '1') return true;
   const cached = readCache(storage);
   return cached?.[key] === true;

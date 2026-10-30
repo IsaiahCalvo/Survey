@@ -35,21 +35,17 @@ test('the dialog corner token exists and the dialog cards use it', () => {
   assert.match(tokens, /--radius-dialog:\s*10px;/);
   const users = [
     'components/AccountSettings.css',
-    'components/ApplyRedactionsModal.css',
     'components/AuthModal.css',
     'components/PrintPanel.css',
     'components/collab/CleanupResidueReviewPanel.css',
     'components/collab/ConfirmDeleteModal.css',
     'components/collab/ReSignInModal.css',
-    'components/dialogPrompts.jsx',
     'components/SaveLogBanner.jsx',
-    'components/SpaceSelectionDialog.jsx',
     'components/revisions/RevisionsPanel.jsx',
     'home/AccessManagementModal.jsx',
     'home/BulkModals.jsx',
     'home/InviteAcceptPage.jsx',
     'components/ResetPasswordPage.jsx',
-    'home/CreateProjectModal.jsx',
     'home/ManageTeamModal.jsx',
     'home/ShareModal.jsx',
     'home/TemplatesEditor.jsx',
@@ -61,10 +57,11 @@ test('the dialog corner token exists and the dialog cards use it', () => {
     assert.ok(file, rel);
     assert.match(file.text, /var\(--radius-dialog\)/, rel);
   }
-  for (const rel of ['NewColumnsModal', 'ExcelLockedModal', 'DuplicateUploadModal', 'CreateCategoryModal',
-    'TemplateOverwriteWarningModal', 'ExcelSyncConfirmModal', 'OneDriveFileSaveModal', 'KeyboardShortcutsOverlay']) {
+  // The Excel, OneDrive, category, overwrite, duplicate and space-picker
+  // dialogs moved onto DialogCard (2026-10-26), which carries the token itself.
+  for (const rel of ['KeyboardShortcutsOverlay', 'DialogCard']) {
     const file = files.find(({ path }) => path.endsWith(`${rel}.jsx`));
-    assert.match(file.text, /borderRadius: BORDERS\.radius\.dialog/, rel);
+    assert.match(file.text, /borderRadius: (BORDERS\.radius\.dialog|'var\(--radius-dialog\)')/, rel);
   }
 });
 
@@ -74,7 +71,7 @@ test('the dialog shadow token exists and the drifted dialog cards use it', () =>
   assert.match(tokens, /--shadow-dialog:\s*0 24px 60px rgba\(0, 0, 0, 0\.55\);/);
   const theme = files.find(({ path }) => path.endsWith('theme.js')).text;
   assert.match(theme, /xl: 'var\(--shadow-dialog\)'/);
-  for (const rel of ['AccountSettings.css', 'ReSignInModal.css', 'CleanupResidueReviewPanel.css', 'CreateProjectModal.jsx',
+  for (const rel of ['AccountSettings.css', 'ReSignInModal.css', 'CleanupResidueReviewPanel.css', 'DialogCard.jsx',
     'SaveLogBanner.jsx', 'BookmarksPanel.jsx', 'RevisionsPanel.jsx', 'AccessManagementModal.jsx']) {
     const file = files.find(({ path }) => path.endsWith(rel));
     assert.match(file.text, /var\(--shadow-dialog\)/, rel);

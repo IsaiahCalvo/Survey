@@ -1,7 +1,8 @@
 /**
  * Draw / corner-drag snapping for lines, arrows, polylines, polygons and
  * measures (Drawboard parity):
- *  - Shift locks the segment from its anchor to 45° steps (0/45/90/...).
+ *  - Shift locks the segment from its anchor to the Settings snap angle
+ *    (15° by default, or 45° / 90°; readSnapAngle).
  *  - The point is pulled onto an existing line end or polygon/polyline corner
  *    on the same page within DRAW_SNAP_SCREEN_PX screen pixels. Endpoint snap
  *    wins over the angle lock (a corner you aim at is the stronger intent).
@@ -10,7 +11,8 @@
  * still locks the angle. Pure page-unit math, no DOM.
  */
 import { computeLineBboxCenter, getLineEndpoints } from './svgBoundingBox.js';
-import { readAnnotationSnapping } from './annotationPreferences.js';
+import { readAnnotationSnapping, readSnapAngle } from './annotationPreferences.js';
+import { polySplineStep } from './polySpline.js';
 
 export const DRAW_SNAP_SCREEN_PX = 8;
 // Touch / pen (no Shift, a fingertip covers the target): a wider endpoint
@@ -132,7 +134,10 @@ export function collectEndpointCandidates(objects, { excludeIndex = -1, own = nu
     if (type === 'line') pts = lineWorldEndpoints(obj);
     else if (type === 'polygon' || type === 'polyline') pts = polyWorldPoints(obj);
     if (!pts) return;
+    // A curved polyline offers its clicked corners, not every curve sample.
+    const step = polySplineStep(obj);
     pts.forEach((p, i) => {
+      if (step && i % step !== 0) return;
       if (own && own.index === index && own.skip?.has(i)) return;
       if (Number.isFinite(p.x) && Number.isFinite(p.y)) out.push(p);
     });
@@ -148,8 +153,13 @@ export function collectEndpointCandidates(objects, { excludeIndex = -1, own = nu
 export function drawSnapEventOptions(e, inverseScale) {
   const coarse = isCoarseSnapPointer(e);
   const inv = Number(inverseScale);
+  const stepDeg = readSnapAngle();
   return {
     shiftKey: !!e?.shiftKey,
+    stepDeg,
+    // The touch assist never pulls to steps finer than 45°: at 15° a ±5°
+    // window would catch most angles and nothing could be drawn freely.
+    assistStepDeg: Math.max(stepDeg, 45),
     tolPage: drawSnapScreenPx(e) * (Number.isFinite(inv) && inv > 0 ? inv : 1),
     // Snapping switched off (the rail's magnet / Shift+S): no angle assist.
     angleAssistDeg: coarse && readAnnotationSnapping() ? TOUCH_ANGLE_ASSIST_DEG : 0,
@@ -162,7 +172,7 @@ export function drawSnapEventOptions(e, inverseScale) {
  * snapped target (for the indicator) or null.
  */
 export function resolveDrawSnap(anchor, point, {
-  shiftKey = false, endpointSnap = true, candidates = [], tolPage = 0, stepDeg = 45, angleAssistDeg = 0, coarse = false,
+  shiftKey = false, endpointSnap = true, candidates = [], tolPage = 0, stepDeg = 45, assistStepDeg = stepDeg, angleAssistDeg = 0, coarse = false,
 } = {}) {
   if (!point) return { point, endpoint: null };
   if (endpointSnap) {
@@ -171,7 +181,7 @@ export function resolveDrawSnap(anchor, point, {
   }
   if (shiftKey && anchor) return { point: snapAngle(anchor, point, stepDeg), endpoint: null };
   if (angleAssistDeg > 0 && anchor) {
-    const locked = assistAngle(anchor, point, { stepDeg, tolDeg: angleAssistDeg });
+    const locked = assistAngle(anchor, point, { stepDeg: assistStepDeg, tolDeg: angleAssistDeg });
     if (locked) return { point: locked, endpoint: null };
   }
   return { point: { x: point.x, y: point.y }, endpoint: null };

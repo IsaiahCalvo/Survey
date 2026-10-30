@@ -16,17 +16,24 @@ import DismissBarrier from './components/DismissBarrier';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import SurveyHub from './home/SurveyHub';
 import CreateProjectModal from './home/CreateProjectModal';
-import PdfToolsDialog from './components/PdfToolsDialog';
+import { preloadedComponent } from './utils/preloadedComponent';
 import BodyPortal from './components/BodyPortal';
+
+// Renders closed until someone opens a PDF tool, so it stays off the first
+// load; the chunk is fetched once the dashboard mounts.
+const PdfToolsDialog = preloadedComponent(() => import('./components/PdfToolsDialog')).Component;
 import { resolveHubInitialLoading } from './home/hubInitialLoadingState.js';
 import { retryCompensatingCleanup, runCompensatingBatch } from './home/compensatingBatch.js';
 import { readPdfPageCount, mapUploadsBounded } from './home/pdfUploadWork.js';
+import { supersedeDocument } from './services/documentVersionService.js';
+import { isFeatureOn } from './featureFlags.js';
 import { moveOrCopyDocumentsAtomically, parseDocumentBatchRecovery } from './home/documentBatchOperations.js';
 import { mapAuthoritativeTemplateRows, persistTemplateSnapshot } from './home/templatePersistence.js';
 import { ownerDisplayName, parkForeignLocalExcelPath, sameTemplateConfig, sharedFromRow, splitTemplatesForSave, stripSharedFields } from './services/sharedTemplates.js';
 import { useAuth } from './contexts/AuthContext';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { useDocuments, useProjects, useStorage, useTemplates } from './hooks/useDatabase';
+import { beginLocalRename, confirmLocalRename, failLocalRename } from './hooks/documentNameBus.js';
 import { useSubscriptionLimits } from './hooks/useSubscriptionLimits';
 import { getSupabaseSession, supabase } from './supabaseClient';
 import { isStorageFileNotFoundError, isSupabaseRowNotFoundError } from './utils/storageErrors';
@@ -34,7 +41,7 @@ import { countSurveyMarkersReferencingChecklistItem } from './services/documentA
 import { computeContentSha256 } from './services/contentHash';
 import { ownDocumentObjectPath } from './services/documentFileReplace.js';
 import { cloneDocumentIntoProject, describeReusedCopies, isReusedCopy } from './home/cloneDocument.js';
-import { purgeAnnotationDoc } from './services/annotationDocSync';
+import { purgeAnnotationDoc } from './services/annotationDocPurge.js';
 import { lockDocument, unlockDocument } from './services/documentLockService.js';
 import { resolveDocumentMetadata } from './services/documentMetadataResolver.js';
 import { perfUpload } from './utils/performanceLogger';
@@ -368,6 +375,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         .eq('user_id', user.id)
         .eq('name', fileName)
         .eq('archived', false)
+        .is('superseded_by', null)
         .limit(50);
       query = projectId ? query.eq('project_id', projectId) : query.is('project_id', null);
       const { data: candidates, error } = await query;
@@ -394,10 +402,59 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     }
   };
 
+  // "Upload as new version": bring the old copy's marks and survey markers
+  // across to the same page and spot, before the viewer opens the new
+  // document so they are there on first paint. Returns whether the old copy
+  // may be archived: if the copy fails it stays in the list with its marks.
+  const carryMarksToReplacement = async (archiveDocId, newDoc, newDocId) => {
+    if (archiveDocId && replacesWithOlderVersion(newDoc)) return false;
+    if (!archiveDocId || newDoc?.id !== newDocId) return true;
+    try {
+      // Fetched here, not on the first load: it brings the mark store and its
+      // geometry, which Home never needs until a new version is uploaded.
+      const { carryMarksToNewVersion } = await import('./services/documentVersionMarks.js');
+      const { total } = await carryMarksToNewVersion({
+        client: supabase,
+        fromDocumentId: archiveDocId,
+        toDocumentId: newDocId,
+      });
+      if (total > 0) showToast(`Brought ${total} mark${total === 1 ? '' : 's'} across from the old version`, 'success');
+      return true;
+    } catch (err) {
+      console.error('Could not bring the marks across to the new version:', err);
+      showToast('The new version was added, but its marks couldn’t come across, so the old copy stays in your list.');
+      return false;
+    }
+  };
+
+  // The picked file's bytes matched an older version (version history,
+  // Nightly): it opens as that version and the current copy stays as it is.
+  const replacesWithOlderVersion = (doc) => {
+    if (!doc?.superseded_by) return false;
+    showToast('This file is an older version already kept in version history, so nothing was replaced.');
+    return true;
+  };
+
   // After the new row exists: archive the old same-name copy the user chose to
   // replace. Non-fatal on failure (both copies stay visible — recoverable).
-  const archiveReplacedDocument = async (archiveDocId) => {
+  // Version history (Nightly): the old copy is kept as an older version of the
+  // new one instead, which also takes it out of the lists.
+  const archiveReplacedDocument = async (archiveDocId, replacementId = null) => {
     if (!archiveDocId) return;
+    if (replacementId && replacementId !== archiveDocId && isFeatureOn('document-versions')) {
+      try {
+        if (await supersedeDocument(supabase, archiveDocId, replacementId) === 'superseded') {
+          setDocuments((current) => current.filter((d) => d.id !== archiveDocId));
+          return;
+        }
+      } catch (err) {
+        // Keep the current copy: archiving it here could leave neither copy
+        // in the list.
+        console.error('Could not keep the previous version:', err);
+        showToast('The new version was added, but it couldn’t be linked to the old copy, so both stay in your list.');
+        return;
+      }
+    }
     try {
       await deleteSupabaseDocument(archiveDocId);
     } catch (err) {
@@ -639,10 +696,10 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         }
 
         let resolvedDoc;
+        const newDocId = crypto.randomUUID();
         try {
           // Own object per row, named by the row id: a page edit on this
           // document must never rewrite another document's bytes.
-          const newDocId = crypto.randomUUID();
           resolvedDoc = await createSupabaseDocument({
             id: newDocId,
             name: file.name,
@@ -682,12 +739,18 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
             perfUpload.end(file.name);
             return; // nothing archived, nothing opened — safe retry
           }
-          await archiveReplacedDocument(duplicateGate.archiveDocId);
+          if (!(duplicateGate.archiveDocId && replacesWithOlderVersion(resolvedDoc))) {
+            await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
+          }
           await maybeOfferAlias(resolvedDoc, file.name, contentSha);
           if (openAfterUpload) await handleDocumentClick(resolvedDoc);
           refetchAllDocuments();
           perfUpload.end(file.name);
           return;
+        }
+
+        if (!(await carryMarksToReplacement(duplicateGate.archiveDocId, resolvedDoc, newDocId))) {
+          duplicateGate.archiveDocId = null;
         }
 
         // Stamp the resolved identity onto the in-memory File so the viewer opens
@@ -737,7 +800,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
             // "Upload as new version": archive the replaced copy only now that
             // the new bytes are DURABLE in storage — a failed upload must never
             // leave the old document hidden and the new row pointing at nothing.
-            await archiveReplacedDocument(duplicateGate.archiveDocId);
+            await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
 
             if (pageCount && pageCount !== resolvedDoc.page_count) {
               try { await updateSupabaseDocument(resolvedDoc.id, { page_count: pageCount }); } catch { /* non-fatal */ }
@@ -813,9 +876,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     if (!duplicateGate.proceed) return 'skipped';
 
     let resolvedDoc;
+    const newDocId = crypto.randomUUID();
     try {
       // Own object per row (see the Electron picker upload above).
-      const newDocId = crypto.randomUUID();
       resolvedDoc = await createSupabaseDocument({
         id: newDocId,
         name: file.name,
@@ -852,11 +915,17 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         setDashboardError('Couldn’t save the document to the cloud: ' + (upErr.message || 'Unknown error'));
         return 'failed'; // nothing archived, nothing opened — safe retry
       }
-      await archiveReplacedDocument(duplicateGate.archiveDocId);
+      if (!(duplicateGate.archiveDocId && replacesWithOlderVersion(resolvedDoc))) {
+        await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
+      }
       if (askDuplicates) await maybeOfferAlias(resolvedDoc, file.name, contentSha);
       if (openAfterUpload) await handleDocumentClick(resolvedDoc);
       refetchAllDocuments();
       return 'existing';
+    }
+
+    if (!(await carryMarksToReplacement(duplicateGate.archiveDocId, resolvedDoc, newDocId))) {
+      duplicateGate.archiveDocId = null;
     }
 
     file.id = resolvedDoc.id;
@@ -901,7 +970,7 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
         // "Upload as new version": archive the replaced copy only now that
         // the new bytes are DURABLE in storage — a failed upload must never
         // leave the old document hidden and the new row pointing at nothing.
-        await archiveReplacedDocument(duplicateGate.archiveDocId);
+        await archiveReplacedDocument(duplicateGate.archiveDocId, resolvedDoc.id);
 
         pageCountPromise.then(async (pageCount) => {
           if (pageCount !== null && pageCount !== resolvedDoc.page_count) {
@@ -1832,14 +1901,9 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const ids = selection.filter((entry) => !sharedIds.has(entry.id)).map((entry) => entry.id);
     if (ids.length === 0) return false;
     if (!user) { showToast('Please sign in to archive templates', 'warn'); return false; }
-    const confirmed = await askConfirm({
-      title: ids.length === 1 ? 'Move this template to Archive?' : `Move these ${ids.length} templates to Archive?`,
-      message: ids.length === 1
-        ? 'You can restore it from Archive for the next 30 days.'
-        : 'You can restore them from Archive for the next 30 days.',
-      confirmLabel: ids.length === 1 ? 'Move to Archive' : `Move ${ids.length} to Archive`,
-    });
-    if (!confirmed) return false;
+    // Owner 2026-10-27 (act first, then Undo): Archive keeps a template for 30
+    // days, so this no longer asks first - the rows go and the Undo toast
+    // brings them back, the same as documents and projects.
     // The RPC takes the templates ROW id; the editor works in config ids. The
     // display name comes from the same lookup so Archive names the template
     // instead of showing a generic label.
@@ -1886,6 +1950,14 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       );
       await refetchTemplates();
       notifyLibraryChanged();
+      if (succeeded.length) {
+        enqueueArchiveUndo({
+          kind: succeeded.length > 1 ? 'bulk' : 'single',
+          message: succeeded.length === 1 ? 'Template moved to Archive' : `Moved ${succeeded.length} templates to Archive`,
+          count: succeeded.length,
+          onUndo: () => { void undoArchivedTemplates(succeeded); },
+        });
+      }
     } catch (err) {
       console.error('[TemplateArchive] survey-hub:error', serializeError(err));
       showToast('Failed to archive templates: ' + (err.message || 'Unknown error'), 'error');
@@ -1893,6 +1965,25 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
       return false;
     }
     return succeededIds;
+  };
+
+  // Undo for the template toast above: restores them from Archive and reloads
+  // the list, which hands the editor its templates back.
+  const undoArchivedTemplates = async (succeeded) => {
+    try {
+      const { failed } = await restoreArchiveItems(succeeded);
+      if (failed.length) {
+        console.error('[TemplateArchive] survey-hub:undo-partial', JSON.stringify(failed.map(f => f.error)));
+        showToast(failed[0].error, 'error');
+      }
+    } catch (err) {
+      console.error('[TemplateArchive] survey-hub:undo-error', serializeError(err));
+      showToast('Couldn’t restore from Archive: ' + (err.message || 'Unknown error'), 'error');
+    }
+    try { await hubReloadTemplates(); } catch (err) {
+      console.error('[TemplateArchive] survey-hub:undo-reload', serializeError(err));
+    }
+    notifyLibraryChanged();
   };
 
   const hubSaveTemplates = async (nextTemplates) => {
@@ -2096,17 +2187,26 @@ const Dashboard = forwardRef(function Dashboard({ onDocumentSelect, onDocumentOp
     const name = String(nextName || '').trim();
     if (!doc?.id || !name) return false;
     if (!user) { showToast('Please sign in to rename documents', 'warn'); return false; }
+    const updatedAt = new Date().toISOString();
+    const previousName = doc.name;
+    // Every tab and list showing this document renames now
+    // (hooks/documentNameBus.js), before the database answers.
+    const renameToken = beginLocalRename(doc.id, name);
     try {
       setDocuments((prev) => prev.map((item) => (
-        item.id === doc.id ? { ...item, name, updated_at: new Date().toISOString() } : item
+        item.id === doc.id ? { ...item, updated_at: updatedAt } : item
       )));
-      await updateSupabaseDocument(doc.id, { name, updated_at: new Date().toISOString() });
+      const saved = await updateSupabaseDocument(doc.id, { name, updated_at: updatedAt });
+      // The saved row's updated_at is the database's own time; it orders
+      // this rename against ones from other screens.
+      confirmLocalRename(doc.id, renameToken, saved?.updated_at);
       await refetchDocuments();
       await refetchAllDocuments();
       return true;
     } catch (err) {
       console.error('[DocumentRename] survey-hub:error', serializeError(err));
       showToast('Failed to rename document: ' + (err.message || 'Unknown error'), 'error');
+      failLocalRename(doc.id, renameToken, previousName);
       await refetchDocuments();
       return false;
     }

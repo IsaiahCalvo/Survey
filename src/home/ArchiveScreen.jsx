@@ -72,6 +72,9 @@ const ledgerHeader = {
   fontSize: 11, letterSpacing: 0,
   color: 'var(--ink-200)', fontWeight: 600,
   padding: '8px 0',
+  /* Same 2px left edge as the rows, so the labels sit over their cells
+     (Documents, owner 2026-10-28). */
+  borderLeft: '2px solid transparent',
 };
 
 /* One template, used by the header and every row so the columns cannot drift:
@@ -271,7 +274,7 @@ export default function ArchiveScreen({
      used to be the one screen that shared this header without sharing its
      layout, so its count and buttons ran off the end of the title line. */
   const subtitle = (
-    <span className="archive-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+    <span className="archive-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
       <span className="archive-mobile-count"><b>{rows.length}</b> {rows.length === 1 ? 'item' : 'items'}</span>
       <span className="archive-mobile-select-row mobile-header-select-row" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <SectionIconButton
@@ -329,7 +332,19 @@ export default function ArchiveScreen({
     || namedSortFor(sortKey, sortDir)?.label
     || 'Sort';
 
-  const filterMenu = (
+  /* Design review 2026-10-27: on desktop the menu was a second sort control
+     beside the column headers ("Most recently archived" over an "Archived"
+     header). Desktop now names the type filter and keeps only the sorts no
+     header offers (Project, Size: the owner's 2026-08-07 list); File and
+     Most recently archived are the Name and Archived headers. The phone list
+     has no headers, so it keeps all four. */
+  const HEADER_SORT_KEYS = ['name', 'archived'];
+  const desktopSortOptions = ARCHIVE_SORT_OPTIONS.filter(({ key }) => !HEADER_SORT_KEYS.includes(key));
+  const activeFilterLabel = filter === 'all'
+    ? 'All types'
+    : (ARCHIVE_FILTERS.find(({ key }) => key === filter)?.label || 'All types');
+
+  const filterMenu = (sortOptions) => (
     <div className="archive-sort-menu" role="menu">
       {/* Type — Archive's own axis. Kept inside the one menu rather than a
           separate chip row so the actions slot holds what the other screens
@@ -349,7 +364,7 @@ export default function ArchiveScreen({
         </button>
       ))}
       <div className="archive-sort-menu-label" role="presentation">Sort by</div>
-      {ARCHIVE_SORT_OPTIONS.map(({ key, label }) => (
+      {sortOptions.map(({ key, label }) => (
         <button
           key={key}
           type="button"
@@ -365,7 +380,7 @@ export default function ArchiveScreen({
     </div>
   );
 
-  const filterButton = (
+  const filterButton = (label) => (
     <button
       className="btn archive-filter-button"
       type="button"
@@ -374,7 +389,7 @@ export default function ArchiveScreen({
       onClick={() => setMenuOpen((open) => !open)}
     >
       <Icon name="filter" size={12} />
-      <span>{activeSortLabel}</span>
+      <span>{label}</span>
     </button>
   );
 
@@ -387,15 +402,15 @@ export default function ArchiveScreen({
       {/* Mobile: filter menu + full-width search, exactly the
           .documents-mobile-search-row arrangement. */}
       <div className="archive-mobile-search-row" ref={menuRef}>
-        {filterButton}
-        {menuOpen && filterMenu}
+        {filterButton(activeSortLabel)}
+        {menuOpen && filterMenu(ARCHIVE_SORT_OPTIONS)}
         {searchField('100%')}
       </div>
       {/* Desktop: the same two controls, at their natural widths. */}
       <div className="archive-desktop-search" ref={desktopMenuRef}>
         <span style={{ position: 'relative', display: 'inline-flex' }}>
-          {filterButton}
-          {menuOpen && filterMenu}
+          {filterButton(activeFilterLabel)}
+          {menuOpen && filterMenu(desktopSortOptions)}
         </span>
         {searchField(240)}
       </div>
@@ -451,7 +466,7 @@ export default function ArchiveScreen({
      Only the vertical padding differs, because child rows sit tighter. */
   const daysCell = (item, padY = ROW_PAD_Y) => (
     <span
-      className="mono"
+      className="nums"
       style={{
         fontSize: 11, padding: `${padY}px 0`,
         color: item.daysRemaining <= URGENT_DAYS ? DANGER : 'inherit',
@@ -587,10 +602,10 @@ export default function ArchiveScreen({
               />
             ))}
             {entities.length > TEMPLATE_SWATCH_CAP && (
-              <span className="mono meta" style={{ fontSize: 11 }}>+{entities.length - TEMPLATE_SWATCH_CAP}</span>
+              <span className="nums meta" style={{ fontSize: 11 }}>+{entities.length - TEMPLATE_SWATCH_CAP}</span>
             )}
           </div>
-          <span className="mono meta" style={{ fontSize: 11 }}>{entities.length}</span>
+          <span className="nums meta" style={{ fontSize: 11 }}>{entities.length}</span>
         </>,
       );
     }
@@ -610,7 +625,7 @@ export default function ArchiveScreen({
             ids={team.shown.map(collaboratorColorId)}
             size={SUBLINE_GLYPH}
           />
-          <span className="mono meta" style={{ fontSize: 11 }}>{(item.collaborators || []).length}</span>
+          <span className="nums meta" style={{ fontSize: 11 }}>{(item.collaborators || []).length}</span>
         </>,
       );
     }
@@ -670,7 +685,7 @@ export default function ArchiveScreen({
               : <span style={{ width: 12, flex: 'none' }} />}
             <Icon name="folder" size={13} color="var(--gold)" />
             <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
-            <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>{item.childCount}</span>
+            <span className="nums" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>{item.childCount}</span>
           </div>
           {item.childCount === 0 && (
             <div className="meta" style={{ fontSize: 12, padding: '6px 0 6px 20px' }}>This project has no documents.</div>
@@ -726,7 +741,7 @@ export default function ArchiveScreen({
                     ? previewDisclosure(moduleKey, open, 'categories')
                     : <span style={{ width: 12, flex: 'none' }} />}
                   <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{mod.name}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
+                  <span className="nums" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
                     {categories.length} {categories.length === 1 ? 'category' : 'categories'}
                   </span>
                 </div>
@@ -736,7 +751,7 @@ export default function ArchiveScreen({
                      template I meant?" — a full checklist would bury that. */
                   <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0 3px 20px' }}>
                     <span className="meta" style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{cat.name}</span>
-                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
+                    <span className="nums" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
                       {cat.itemCount} {cat.itemCount === 1 ? 'item' : 'items'}
                     </span>
                   </div>
@@ -847,7 +862,7 @@ export default function ArchiveScreen({
             )}
           </div>
           <span className="meta" style={{ fontSize: 12, padding: `${ROW_PAD_Y}px 0` }}>{archiveTypeLabel(item.type)}</span>
-          <span className="mono" style={{ fontSize: 11, padding: `${ROW_PAD_Y}px 0` }}>{archivedDateLabel(item.archivedAt)}</span>
+          <span className="nums" style={{ fontSize: 11, padding: `${ROW_PAD_Y}px 0` }}>{archivedDateLabel(item.archivedAt)}</span>
           {daysCell(item)}
         </div>
         {/* Child documents of an archived project. They remain excluded from
@@ -895,7 +910,7 @@ export default function ArchiveScreen({
                 and these rows are exactly the ones whose expiry the user needs,
                 because a project takes them all with it. */}
             <span className="meta" style={{ fontSize: 12, padding: '8px 0' }}>{archiveTypeLabel(child.type)}</span>
-            <span className="mono" style={{ fontSize: 11, padding: '8px 0' }}>{archivedDateLabel(child.archivedAt)}</span>
+            <span className="nums" style={{ fontSize: 11, padding: '8px 0' }}>{archivedDateLabel(child.archivedAt)}</span>
             {daysCell(child, 8)}
           </div>
         ))}
@@ -1130,7 +1145,7 @@ export default function ArchiveScreen({
                   <div style={{ marginTop: 8, fontSize: 12 }}>{archivedDateLabel(previewItem.archivedAt)}</div>
                   <div className="section-label" style={{ marginTop: 14 }}>Time remaining</div>
                   <div
-                    className="mono"
+                    className="nums"
                     style={{ marginTop: 8, fontSize: 12, color: previewItem.daysRemaining <= URGENT_DAYS ? DANGER : 'inherit' }}
                   >{timeRemainingLabel(previewItem.expiresAt)}</div>
                 </div>

@@ -4,11 +4,11 @@
 appId: com.kalvoe.survey
 name: ios-signed-in
 ---
-- launchApp:
-    clearState: true
+# Freshly installed, so no clearState (it hung 16 min on the Mac runner).
+- launchApp
 - extendedWaitUntil:
     visible: "Welcome back"
-    timeout: 120000
+    timeout: 300000
 - takeScreenshot: 01-sign-in
 # The slow simulator drops keystrokes (a field came out empty or one
 # character, 2026-10-22), so paste both fields instead of typing them.
@@ -33,6 +33,14 @@ name: ios-signed-in
     visible: "More document options"
     timeout: 90000
 - takeScreenshot: 03-document-open
+# Launch audit 2026-10-30: the iOS walk passed for days while the viewer
+# showed "Couldn't open this PDF" (the toolbar loads either way). The page
+# itself must draw: no error screen, and the sample PDF's own link (its
+# overlay exists only once pdf.js has the page) shows up.
+- assertNotVisible: ".*Couldn.t open this PDF.*"
+- extendedWaitUntil:
+    visible: ".*Open link https://claude.com.*"
+    timeout: 60000
 # #1002: a Counter right after an Arrow is a full marker. iOS has no web view
 # inspector in CI, so this one is checked by screenshot; Android measures it.
 - tapOn: "Shapes"

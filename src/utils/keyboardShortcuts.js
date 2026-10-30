@@ -113,7 +113,7 @@ export const SHORTCUT_SECTIONS = [
     title: 'Polygon & Polyline',
     items: [
       { chords: ['click'], label: 'Place the next point' },
-      { chords: ['shift+click'], label: 'Keep the next segment at 45°' },
+      { chords: ['shift+click'], label: 'Lock the next segment to 15°, 45° or 90° (set in Settings)' },
       { chords: ['enter'], label: 'Finish the shape' },
       { chords: ['escape'], label: 'Discard the unfinished shape' },
     ],

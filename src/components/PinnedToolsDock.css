@@ -47,7 +47,7 @@
 }
 .pinned-dock.is-vertical { flex-direction: column; }
 .pinned-dock.is-horizontal { flex-direction: row; }
-.pinned-dock.is-dragging { pointer-events: none; }
+.pinned-dock.is-dragging { pointer-events: none; overflow: hidden; }
 
 .pinned-dock__pins {
   display: flex;
@@ -67,22 +67,15 @@
   flex: none;
   display: flex;
 }
-.pinned-dock__slot.is-dragged {
-  z-index: 1;
-  opacity: 0.7;
+.pinned-dock__slot.is-dragged { z-index: 1; }
+.pinned-dock__slot.is-dragged .pinned-dock__pin {
+  box-shadow: var(--shadow-popover);
+  background: var(--surface-3);
 }
-.pinned-dock__slot.has-drop-line::before,
-.pinned-dock__end-line {
-  content: '';
-  flex: none;
-  background: var(--accent);
-  border-radius: 1px;
+/* The other pins slide aside to open the dragged pin's slot. */
+.pinned-dock.is-reordering .pinned-dock__slot:not(.is-dragged) {
+  transition: transform 180ms cubic-bezier(0.25, 0.55, 0.35, 1);
 }
-.pinned-dock__slot.has-drop-line::before { position: absolute; }
-.pinned-dock.is-vertical .pinned-dock__slot.has-drop-line::before { left: 3px; right: 3px; top: -2px; height: 2px; }
-.pinned-dock.is-horizontal .pinned-dock__slot.has-drop-line::before { top: 3px; bottom: 3px; left: -2px; width: 2px; }
-.pinned-dock.is-vertical .pinned-dock__end-line { width: 22px; height: 2px; }
-.pinned-dock.is-horizontal .pinned-dock__end-line { width: 2px; height: 22px; }
 
 /* A pin is a little larger than a tool-bar button so its width figure has
    its own corner: the glyph sits a touch down-left of centre. */
@@ -95,7 +88,8 @@
 }
 /* The armed pin: the app's "chosen" gold, as a ring, since the glyph keeps
    the pin's own colour. A pseudo-element, so no button plate rule hides it. */
-.pinned-dock__pin[aria-pressed='true']::after {
+.pinned-dock__pin[aria-pressed='true']::after,
+.pinned-dock__pin[aria-current='true']::after {
   content: '';
   position: absolute;
   inset: 1px;
@@ -123,7 +117,8 @@
   font-variant-numeric: tabular-nums;
   z-index: 1;
 }
-.pinned-dock__pin[aria-pressed='true'] .pinned-dock__badge { color: var(--text-1); }
+.pinned-dock__pin[aria-pressed='true'] .pinned-dock__badge,
+.pinned-dock__pin[aria-current='true'] .pinned-dock__badge { color: var(--text-1); }
 
 .pinned-dock__remove {
   position: absolute;
@@ -163,6 +158,11 @@
   background: var(--overlay-scrim);
   animation: pinned-dock-zones-in 200ms ease-out;
 }
+.pinned-dock-zones.is-leaving {
+  opacity: 0;
+  animation: none;
+  transition: opacity 240ms ease-in-out;
+}
 @keyframes pinned-dock-zones-in { from { opacity: 0; } to { opacity: 1; } }
 .pinned-dock-zone {
   position: absolute;
@@ -179,7 +179,8 @@
 }
 .pinned-dock-zone.is-left,
 .pinned-dock-zone.is-right {
-  top: 50%;
+  /* The middle of the docked column, which keeps clear of the settings row. */
+  top: calc(50% + var(--chrome-bar-h) / 2);
   width: 42px;
   height: min(288px, 60%);
   transform: translateY(-50%);
@@ -234,8 +235,6 @@
 .pinned-dock-menu__heading {
   padding: 6px 8px 2px;
   font: 600 10px/14px var(--font-ui);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--text-3);
 }
 .pinned-dock-menu__rule { height: 1px; margin: 4px 2px; background: var(--border); }
@@ -275,7 +274,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .pinned-dock-zones { animation: none; }
+  .pinned-dock-zones.is-leaving { transition: none; }
   .pinned-dock-zone { transition: none; }
+  .pinned-dock.is-reordering .pinned-dock__slot:not(.is-dragged) { transition: none; }
 }
 
 /* Phone: one row standing on the phone's bottom bar (the page area runs
@@ -299,6 +300,29 @@
   min-width: 38px;
   height: 38px;
   min-height: 38px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* The "+N" slot (more pins than fit) and its grid of the rest. */
+.pinned-dock__count {
+  font: 600 var(--font-size-sm)/1 var(--font-ui);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.pinned-dock-menu.pinned-dock-menu--pins {
+  display: grid;
+  gap: 2px;
+}
+.pinned-dock-menu.pinned-dock-menu--pins .pinned-dock__pin {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  justify-content: center;
+}
+.pinned-dock-menu.pinned-dock-menu--pins .pinned-dock__remove {
+  width: 14px;
+  min-height: 14px;
   padding: 0;
   justify-content: center;
 }

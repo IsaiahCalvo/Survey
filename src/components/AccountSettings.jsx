@@ -28,10 +28,16 @@ import {
   isAccountDeletionConfirmed,
 } from './accountDeletionConfirm';
 import CrashReportsPanel from './CrashReportsPanel';
+import CompanyPanel from './company/CompanyPanel.jsx';
+import { isFeatureOn } from '../featureFlags.js';
+import { COMPANY_FLAG } from '../services/companyService.js';
 import { downloadMyData } from '../services/accountExport';
 import {
   readAnnotationSnapping,
   writeAnnotationSnapping,
+  readSnapAngle,
+  writeSnapAngle,
+  SNAP_ANGLE_CHOICES,
   readTextboxAutoFit,
   writeTextboxAutoFit,
   subscribeAnnotationPreferences,
@@ -46,6 +52,7 @@ import {
   SUBSCRIPTION_LOAD_FAILED_TEXT,
 } from '../utils/accountPlatform';
 import { useTooltip } from './Tooltip';
+import ButtonGroup from './ButtonGroup.jsx';
 
 const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
 const SUBSCRIPTION_TIMEOUT_MS = 10_000;
@@ -72,6 +79,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [message, setMessage] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
+  // Read once per open, like every flag: a /flags change shows on reload.
+  const [companyOn] = useState(() => isFeatureOn(COMPANY_FLAG));
   const [subscriptionViewTab, setSubscriptionViewTab] = useState('manage'); // 'manage' or 'usage'
   const dialogRef = useRef(null);
   const [deletionDialogOpen, setDeletionDialogOpen] = useState(false);
@@ -80,9 +89,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   // the next text edit, so a change applies without a reload.
   const [annotationSnapping, setAnnotationSnapping] = useState(() => readAnnotationSnapping());
   const [textboxAutoFit, setTextboxAutoFit] = useState(() => readTextboxAutoFit());
+  const [snapAngle, setSnapAngle] = useState(() => readSnapAngle());
   useEffect(() => {
     if (!isOpen) return undefined;
-    const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); };
+    const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); setSnapAngle(readSnapAngle()); };
     refresh();
     return subscribeAnnotationPreferences(refresh);
   }, [isOpen]);
@@ -492,8 +502,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
         {/* Header */}
         <div className="account-settings-header">
           <h2>Settings</h2>
-          <button className="account-settings-close" onClick={onClose} aria-label="Close">
-            <Icon name="close" size={14} />
+          <button className="account-settings-close" onClick={onClose} aria-label="Close" {...tip('Close', 'below')}>
+            <Icon name="close" size={13} />
           </button>
         </div>
 
@@ -537,6 +547,17 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   its own longer label on the sub-tab inside. */}
               Subscription
             </button>
+            {/* Enterprise company workspace (beta, Nightly only). */}
+            {companyOn && (
+              <button
+                onClick={() => setActiveTab('company')}
+                className={`account-sidebar-btn ${activeTab === 'company' ? 'active' : ''}`}
+                role="tab"
+                aria-selected={activeTab === 'company'}
+              >
+                Company
+              </button>
+            )}
             {/* Crash hunt 2026-10-07: this device's crash notes, to copy to us. */}
             <button
               onClick={() => setActiveTab('crash-reports')}
@@ -1048,10 +1069,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           <ul>
                             <li>Unlimited projects</li>
                             <li>Unlimited documents</li>
-                            <li>10GB Storage</li>
+                            <li>10 GB storage</li>
                             <li>Survey tools</li>
-                            <li>Templates & Regions</li>
-                            <li>Excel export</li>
+                            <li>Templates & regions</li>
+                            <li>Export data</li>
+                            <li>Share and edit together live</li>
                             <li>OneDrive integration</li>
                           </ul>
                         </div>
@@ -1097,12 +1119,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         </div>
                         <div className="account-subscription-features">
                           <ul>
-                            <li>Everything in Pro</li>
-                            <li>Team collaboration</li>
-                            <li>Real-time Editing</li>
-                            <li>1TB Team Storage</li>
-                            <li>SSO & Admin Tools</li>
+                            <li>Everything in Pro for every user</li>
+                            <li>1 TB storage</li>
                             <li>Priority support</li>
+                            <li>Admin console and SSO: coming soon</li>
                             <li>Custom integrations</li>
                           </ul>
                         </div>
@@ -1138,6 +1158,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
             )}
 
             {activeTab === 'crash-reports' && <CrashReportsPanel />}
+            {companyOn && activeTab === 'company' && <CompanyPanel />}
 
             {/* KAL-397 — Settings -> Annotations (Acrobat's name for it). */}
             {activeTab === 'annotations' && (
@@ -1151,6 +1172,20 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   <button type="button" className="account-switch" role="switch" aria-checked={annotationSnapping} aria-labelledby="account-pref-annotation-snapping" data-pref="annotation-snapping" onClick={() => setAnnotationSnapping(writeAnnotationSnapping(!annotationSnapping))}>
                     <span className="account-switch-track" aria-hidden="true" />
                   </button>
+                </div>
+                <div className="account-pref-row">
+                  <div className="account-pref-copy">
+                    <div className="account-pref-title" id="account-pref-snap-angle">Shift snap angle</div>
+                    <p className="account-pref-description">Hold Shift to keep lines, polygon sides and turns on these steps.</p>
+                  </div>
+                  <ButtonGroup
+                    size="sm"
+                    labelledBy="account-pref-snap-angle"
+                    className="account-pref-snap-angle"
+                    value={snapAngle}
+                    options={SNAP_ANGLE_CHOICES.map((deg) => ({ value: deg, label: `${deg}°`, ariaLabel: `${deg} degrees` }))}
+                    onChange={(deg) => setSnapAngle(writeSnapAngle(deg))}
+                  />
                 </div>
                 <h3 id="account-annotations-text-boxes">Text boxes</h3>
                 <div className="account-pref-row">

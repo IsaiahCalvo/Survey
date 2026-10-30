@@ -6,7 +6,7 @@
 // IoU >= 0.8. Runs the pixel engine exactly as the app does (pdf.js crop at
 // 3 px/unit, adaptive ink mask, tolerant flood) and the vector engine.
 // Usage: node debug/smart-fill/bench.mjs [pdf] [pages e.g. 6-11] [--json out]
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createCanvas } from '@napi-rs/canvas';
 import { adaptiveInkMaskFromRgba, findTagOutlineTolerant } from '../../src/survey/smartFillEngine.js';
@@ -14,8 +14,12 @@ import { extractClosedShapes, pickShapeAtPoint, pixelsBeatVector, pointInRing, v
 import { findOutlineWithTemplates, makeTemplateShape, vectorShapeMatchesTemplate } from '../../src/survey/smartFillTemplates.js';
 
 const args = process.argv.slice(2);
-const file = args[0] || 'debug/fixtures/package2-rev4.pdf';
-const [p0, p1] = (args[1] || '6-11').split('-').map(Number);
+// With no real shop drawing at the default path, the bench runs on the
+// made-up tag sheet (make-tag-sheet.mjs), page 1.
+const PRIVATE_DEFAULT = 'debug/fixtures/package2-rev4.pdf';
+const positional = args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')));
+const file = positional[0] || (existsSync(PRIVATE_DEFAULT) ? PRIVATE_DEFAULT : 'debug/fixtures/tag-sheet.pdf');
+const [p0, p1] = (positional[1] || (file === PRIVATE_DEFAULT ? '6-11' : '1-1')).split('-').map(Number);
 const jsonOut = args.includes('--json') ? args[args.indexOf('--json') + 1] : null;
 const engines = (args.includes('--engines') ? args[args.indexOf('--engines') + 1] : 'raster,vector,auto').split(',');
 const TAG_RE = /^\d{3}[A-Z]?-[A-Z0-9]+(-[A-Z0-9]+)*/;

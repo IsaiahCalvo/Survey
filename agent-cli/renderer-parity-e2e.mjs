@@ -70,6 +70,7 @@ import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './l
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 // pngjs ships in the repo's node_modules (also pixelmatch, but the metric here
 // is custom — per-channel threshold + tile budgets — so we decode with pngjs
@@ -104,7 +105,7 @@ const failures = [];
 const fail = (msg) => { failures.push(msg); console.error(`   ❌ ${msg}`); };
 
 const browser = await chromium.launch({ headless: HEADLESS });
-const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
 const page = await ctx.newPage();
 
 const consoleErrors = [];

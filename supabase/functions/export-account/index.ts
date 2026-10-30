@@ -75,6 +75,11 @@ async function collectRows(admin: AdminClient, userId: string) {
       ...await byUser(admin, 'document_annotations', '*', userId),
     ]),
     spaces: await readByIds(admin, 'spaces', '*', 'document_id', docIds),
+    // Comments on the person's documents, and the ones they wrote elsewhere.
+    mark_comments: uniqueById([
+      ...await readByIds(admin, 'mark_comments', '*', 'document_id', docIds),
+      ...await readAll(() => admin.from('mark_comments').select('*').eq('author_id', userId).order('id')),
+    ]),
     document_revisions: await readByIds(admin, 'document_revisions', '*', 'document_id', docIds),
     document_history_events: await byUser(admin, 'document_history_events', '*', userId),
     survey_sessions: surveySessions,

@@ -67,7 +67,7 @@ test('fork copies a kit to start the next customer\'s, which then publishes', as
 
 async function openTemplateEditor(page) {
   await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
-  const layout = page.getByRole('combobox', { name: 'Excel layout' });
+  const layout = page.getByRole('button', { name: 'Excel layout', exact: true }).filter({ visible: true }).first();
   if (!(await layout.isVisible().catch(() => false))) {
     await page.getByRole('button', { name: /New template|Create template|Add template/ }).filter({ visible: true }).first().click();
   }
@@ -80,10 +80,13 @@ test('the account given a kit sees it in Excel layout; RLS hides it from others'
   const rows = await (await clientFromPageSession(page)).from('kits').select('id');
   expect(rows.data.map((r) => r.id)).toEqual([KIT.id]);
   const layout = await openTemplateEditor(page);
-  await expect(layout.locator('option', { hasText: 'Acme doors (E2E)' })).toHaveCount(1);
+  await layout.click();
+  const list = page.getByRole('listbox', { name: 'Excel layout' });
+  await expect(list.getByRole('option', { name: /Acme doors \(E2E\)/ })).toHaveCount(1);
   // Picking the kit brings its Pass / Fail / N/A answers with it.
-  await layout.selectOption(KIT.id);
-  await expect(page.getByRole('combobox', { name: 'Checklist answers' }).filter({ visible: true }).first()).toHaveValue('pass-fail-na');
+  await list.getByRole('option', { name: /Acme doors \(E2E\)/ }).click();
+  await expect(layout).toHaveAttribute('data-value', KIT.id);
+  await expect(page.getByRole('button', { name: 'Checklist answers', exact: true }).filter({ visible: true }).first()).toHaveAttribute('data-value', 'pass-fail-na');
 });
 
 test('an account without the kit does not get it', async ({ page }) => {
@@ -91,6 +94,8 @@ test('an account without the kit does not get it', async ({ page }) => {
   const rows = await (await clientFromPageSession(page)).from('kits').select('id');
   expect(rows.data).toEqual([]);
   const layout = await openTemplateEditor(page);
-  await expect(layout.locator('option', { hasText: 'Wireless lock schedule' })).toHaveCount(1);
-  await expect(layout.locator('option', { hasText: 'Acme doors' })).toHaveCount(0);
+  await layout.click();
+  const list = page.getByRole('listbox', { name: 'Excel layout' });
+  await expect(list.getByRole('option', { name: /Wireless lock schedule/ })).toHaveCount(1);
+  await expect(list.getByRole('option', { name: /Acme doors/ })).toHaveCount(0);
 });

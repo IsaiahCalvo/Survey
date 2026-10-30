@@ -60,6 +60,12 @@ export function createTabChromeCache(isActive) {
       }
       return entry.callbacks;
     },
+    // The tab's newest wrapped API (null until its viewer has published one).
+    // Every open tab's rails render from this, so a hidden tab's rail keeps
+    // its own props while the active tab's rail updates.
+    peek(id, kind) {
+      return tabs.get(id)?.apis[kind]?.wrapped ?? null;
+    },
     activate(id, setters) {
       for (const kind of kinds) setters[kind](tabs.get(id)?.apis[kind]?.wrapped ?? null);
     },

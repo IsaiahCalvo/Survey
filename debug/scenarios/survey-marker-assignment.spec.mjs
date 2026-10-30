@@ -8,7 +8,7 @@ const templates = [{ id: 'work', name: 'Work Survey', entities: [
   { id: 'proposed', name: 'Proposed', categories: [{ id: 'doors', name: 'Doors', checklist: [{ id: 'door-check', text: 'Door checked?' }] }] },
 ] }];
 
-test('Survey placement chooses module, category and entity and Reuse keeps them', async ({ page, context }) => {
+test('Survey placement chooses module, category and entity and the category stays armed', async ({ page, context }) => {
   await context.route(/^https?:\/\/(?!localhost|127\.0\.0\.1)/, (route) => route.abort());
   await context.addInitScript((value) => { if (!localStorage.getItem('mobileWorkflowTemplates')) localStorage.setItem('mobileWorkflowTemplates', JSON.stringify(value)); }, templates);
   await page.setViewportSize({ width: 1400, height: 900 });
@@ -42,8 +42,12 @@ test('Survey placement chooses module, category and entity and Reuse keeps them'
   await page.keyboard.press('Escape');
   const row = page.locator('.survey-subrow');
   await row.getByRole('button', { name: 'Doors', exact: true }).click();
-  await row.getByRole('switch', { name: 'Reuse category' }).click();
+  // Owner 2026-10-26: no Reuse - the category stays armed, and every drawn
+  // marker's card names it; Enter places it.
   await draw(240);
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole('textbox', { name: 'Survey Marker name' })).toHaveValue(/^Doors \d+$/);
+  await page.keyboard.press('Enter');
   await expect(modal).toBeHidden();
   await expect(rail.getByRole('button', { name: 'New. Change entity' })).toHaveCount(2);
   await rail.locator('.survey-rail__marker-line').first().click({ button: 'right' });
@@ -53,7 +57,8 @@ test('Survey placement chooses module, category and entity and Reuse keeps them'
   await rail.locator('.survey-marker-category-row').filter({ hasText: 'Doors' }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Move', exact: true }).click();
   const move = page.getByRole('dialog', { name: 'Move categories', exact: true });
-  await move.getByRole('combobox', { name: 'Destination module' }).selectOption('module');
+  await move.getByRole('button', { name: 'Destination module', exact: true }).click();
+  await page.getByRole('listbox', { name: 'Destination module' }).getByRole('option', { name: 'Existing', exact: true }).click();
   await move.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(move).toBeHidden();
   await expect(row.getByRole('button', { name: 'Doors', exact: true })).toBeVisible();
@@ -154,8 +159,10 @@ test('template list right-click opens the existing item actions without Select m
   await expect(page.getByRole('menuitem', { name: 'Share', exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: 'Move', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Move items', exact: true });
-  await dialog.getByRole('button', { name: /Installation Phase/ }).click();
-  await page.getByRole('option', { name: 'Commissioning Phase', exact: true }).click();
+  const destination = dialog.getByRole('button', { name: 'Destination module', exact: true });
+  await expect(destination).toContainText('Installation Phase');
+  await destination.click();
+  await page.getByRole('listbox', { name: 'Destination module' }).getByRole('option', { name: 'Commissioning Phase', exact: true }).click();
   await dialog.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator('.tpl-cat-row').filter({ has: page.getByRole('textbox', { name: 'Category name, Doors', exact: true }) })).toHaveCount(0);
@@ -184,14 +191,19 @@ test.describe('phone Survey assignment', () => {
     await page.getByRole('button', { name: /Work Survey/ }).filter({ visible: true }).first().tap();
     await page.getByRole('button', { name: 'Open survey', exact: true }).tap();
     await expect.poll(() => page.locator('.mobile-survey-sheet').filter({ visible: true }).count()).toBe(0);
-    await page.getByRole('button', { name: 'Survey category Walls', exact: true }).tap();
+    // Owner 2026-10-26: the first category is armed when Survey opens; a
+    // second tap on the armed disc would hand the tool back to Pan.
+    await expect(page.getByRole('button', { name: 'Survey category Walls', exact: true })).toHaveAttribute('aria-pressed', 'true');
     const bounds = await page.locator('[data-svg-annotation-layer]').first().boundingBox();
     const x = Math.max(60, bounds.x + 50), y = Math.max(100, bounds.y + 100);
     await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 100, y + 70, { steps: 8 }); await page.mouse.up();
-    // Owner 2026-10-22: a marker always has an entity (the first when none
-    // is picked), so with a category armed it is placed at once - no card.
+    // Owner 2026-10-26: the card opens on every marker, already named;
+    // tapping off it places the marker.
+    const card = page.getByRole('dialog', { name: 'New Survey Marker' });
+    await expect(card).toBeVisible();
+    await page.locator('.survey-place-scrim').tap({ position: { x: 4, y: 4 } });
+    await expect(card).toHaveCount(0);
     await expect(page.locator('[data-survey-marker-id]')).toHaveCount(1);
-    await expect(page.getByRole('dialog', { name: 'New Survey Marker' })).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 });

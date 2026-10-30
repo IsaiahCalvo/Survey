@@ -26,6 +26,7 @@ async function loadPanel() {
     .replace("from 'react-dom'", `from ${JSON.stringify(pathToFileURL(require.resolve('react-dom')).href)}`)
     .replace("import { supabase } from '../../supabaseClient';", 'const supabase = null;')
     .replace("import Icon from '../../Icons';", 'const Icon = () => null;')
+    .replace("import { usePromptDialog } from '../dialogPrompts.jsx';", 'const usePromptDialog = () => [async () => null, null];')
     .replace("import { UndoToast } from '../collab/UndoToast.jsx';", 'const UndoToast = () => null;')
     .replace("from '../../hooks/useUndoToast.js'", `from ${JSON.stringify(new URL('../src/hooks/useUndoToast.js', import.meta.url).href)}`)
     .replace(/import \{[^}]+\} from '\.\.\/\.\.\/services\/documentRevisionService';/, 'const { createRevision, listRevisions, getRevision, restoreRevision } = globalThis.__historyPollingService;')
@@ -38,7 +39,8 @@ async function loadPanel() {
     .replace("from '../../utils/historyGeometry.js'", `from ${JSON.stringify(new URL('../src/utils/historyGeometry.js', import.meta.url).href)}`)
     .replace("from './historyPageOverlay.js'", `from ${JSON.stringify(new URL('../src/components/revisions/historyPageOverlay.js', import.meta.url).href)}`)
     // w64: the pick-on-the-page filter helpers are a plain module too.
-    .replace("from '../../utils/historyMarkFilter.js'", `from ${JSON.stringify(new URL('../src/utils/historyMarkFilter.js', import.meta.url).href)}`);
+    .replace("from '../../utils/historyMarkFilter.js'", `from ${JSON.stringify(new URL('../src/utils/historyMarkFilter.js', import.meta.url).href)}`)
+    .replace("from '../../utils/tabBehind.js'", `from ${JSON.stringify(new URL('../src/utils/tabBehind.js', import.meta.url).href)}`);
   const transformed = await transformWithOxc(source, fileURLToPath(sourceUrl), { lang: 'jsx' });
   const executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxUrl));
   return (await import(`data:text/javascript;base64,${Buffer.from(executable).toString('base64')}#${++moduleId}`)).default;

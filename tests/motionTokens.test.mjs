@@ -103,11 +103,17 @@ test('toasts use the shared toast motion (ToastHost and UndoToast), with no moti
 
 test('the shared dialogs keep their card for the exit through MotionPresence', () => {
   const bulk = read('src/home/BulkModals.jsx');
-  assert.equal(bulk.split('if (!open) return <MotionPresence open={false} />;').length - 1, 3, 'MoveCopy, Confirm, Rename');
-  assert.equal(bulk.split('<MotionPresence open>').length - 1, 3);
-  const prompts = read('src/components/dialogPrompts.jsx');
-  assert.match(prompts, /if \(!open\) return <MotionPresence open=\{false\} \/>;/);
-  assert.match(prompts, /<MotionPresence open>/);
+  assert.equal(bulk.split('if (!open) return <MotionPresence open={false} />;').length - 1, 1, 'MoveCopy');
+  assert.equal(bulk.split('<MotionPresence open>').length - 1, 1);
+  // Confirm (and every dialog on the one shell) gets it from DialogCard.
+  assert.match(bulk, /export function ConfirmModal[\s\S]*?<DialogCard\s+open=\{open\}/);
+  const card = read('src/components/DialogCard.jsx');
+  // An atRoot card mounts at the screen root, closing included.
+  assert.match(card, /if \(!open\) return mount\(<MotionPresence open=\{false\} \/>\);/);
+  assert.match(card, /<MotionPresence open>/);
+  // Rename and the prompt get it from DialogCard too (2026-10-27).
+  assert.match(bulk, /export function RenameModal[\s\S]*?<DialogCard\s+open=\{open\}/);
+  assert.match(read('src/components/dialogPrompts.jsx'), /<DialogCard\s+open=\{open\}/);
   const sheet = read('src/components/KeyboardShortcutsOverlay.jsx');
   assert.match(sheet, /return <MotionPresence open=\{false\} \/>;/);
   assert.match(sheet, /<MotionPresence open>\s*<div\s+data-keyboard-shortcuts-modal="true"/);

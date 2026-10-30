@@ -114,3 +114,20 @@ test('a changed answer list is a new template version; older bindings do not pro
   assert.equal(needsTemplateVersionChoice(reviewed, withSizes), false);
   assert.equal(needsTemplateVersionChoice(reviewed, { ...withSizes, answerSet: sizes.slice(0, 1) }), true);
 });
+
+test('the Excel layout and the Auto-mark as Complete switch are part of the version', () => {
+  const base = { id: 't1', name: 'Doors', modules: [], entities: [] };
+  const bound = bindUsedTemplate(base);
+  for (const changed of [{ ...base, exportKitId: 'wireless-lock-schedule' }, { ...base, autoComplete: false }]) {
+    assert.notEqual(templateFingerprint(changed), templateFingerprint(base));
+    assert.equal(needsTemplateVersionChoice(bound, changed), true);
+    // Bound before these joined the fingerprint, with the same setting: no question.
+    const older = { ...bindUsedTemplate(changed), fingerprint: templateFingerprint(base) };
+    assert.equal(needsTemplateVersionChoice(older, changed), false);
+  }
+  // The switch on is the default, the same version as unset.
+  assert.equal(templateFingerprint({ ...base, autoComplete: true }), templateFingerprint(base));
+  // A template with its own answers keeps the fingerprint it always had.
+  const answers = [{ value: 'Y', tone: 'good' }];
+  assert.equal(templateFingerprint({ ...base, answerSet: answers }), JSON.stringify({ answerSet: [{ tone: 'good', value: 'Y' }], entities: [], modules: [], name: 'Doors' }));
+});

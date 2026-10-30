@@ -62,6 +62,9 @@ test('every mark type gets its own words and glyph', () => {
     [{ actionType: 'text edit', annotationType: 'textbox' }, 'edited the text of a text box', 'textBox'],
     [{ actionType: 'create', annotationType: 'rect', restoredFromHistory: true }, 'restored a rectangle', 'rect'],
     [{ actionType: 'create', annotationType: 'surveyMarker', previewAnnotation: { type: 'surveyMarker', surveyMarker: { name: 'Door 3' } } }, 'added Survey Marker “Door 3”', 'survey'],
+    // Phone walk 2026-10-28: typing in a PDF form field read "added a mark".
+    [{ actionType: 'create', annotationType: 'form-field' }, 'filled in a form field', 'textBox'],
+    [{ actionType: 'move', previewAnnotation: { type: 'form-field', data: { type: 'form-field' } } }, 'moved a form field', 'textBox'],
   ];
   for (const [payload, words, glyph] of kinds) {
     const c = classifyHistoryRow(row('x', { payload }));

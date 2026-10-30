@@ -1,7 +1,8 @@
 import { chromium } from 'playwright';
 import { assertBrowserUsesLeasedAccount, installLeasedBrowserAccount } from './lib/leased-browser-session.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 const browser = await chromium.launch({ headless: true });
-const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
 const page = await ctx.newPage();
 const errs = [];
 page.on('pageerror', (e) => errs.push('PAGEERROR: ' + e.message));

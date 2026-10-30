@@ -1,0 +1,111 @@
+/* AnswerSetPicker / AnswerChips: an answer list drawn as the plates people
+   tap in Survey mode (src/surveyRailPanel.css .survey-rail__answer). */
+.answer-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+.answer-chip {
+  min-width: 24px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--text-1);
+  background: var(--border);
+}
+.answer-chip.is-good { color: var(--on-success-plate); background: var(--success-plate); }
+.answer-chip.is-bad { color: var(--on-danger-plate); background: var(--danger-plate); }
+.answer-chip.is-more { color: var(--text-3); background: transparent; }
+
+.answer-set-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.answer-set-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.answer-set-group__label {
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.answer-set-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--rule, var(--border));
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.answer-set-option:hover { background: var(--surface-3); }
+.answer-set-option.is-current { border-color: var(--accent, var(--text-2)); background: var(--surface-3); }
+.answer-set-option .answer-chips { flex: 1; }
+.answer-set-option__check {
+  flex: none;
+  width: 14px;
+  display: inline-flex;
+  color: var(--accent, var(--text-1));
+}
+@media (pointer: coarse) {
+  .answer-set-option { min-height: 44px; }
+}
+
+/* The template editor's "Answers" setting under the template name. */
+.template-answers-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 3px 8px 3px 10px;
+  border: 1px solid var(--rule, var(--border));
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.template-answers-button:hover { background: var(--surface-3); color: var(--text-1); }
+.template-answers-button__label { flex: none; font-weight: 600; }
+.template-answers-button .answer-chips { flex-wrap: nowrap; overflow: hidden; }
+@media (pointer: coarse) {
+  .template-answers-button { min-height: 44px; }
+}
+/* Phone: the button is the whole "Answers" row of the template options. */
+.survey-hub .templates-mobile-option .template-answers-button {
+  flex: 1;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-size: 14px;
+}
+.survey-hub .templates-mobile-option .template-answers-button:hover { background: transparent; }
+.survey-hub .templates-mobile-option .template-answers-button__label { font-weight: 400; }
+.survey-hub .templates-mobile-option .template-answers-button .answer-chips { margin-left: auto; }
+
+/* AnswerSetEditor as a dialog is portalled out of the editor's .ed-scope,
+   so it brings that scope's color names with it (TemplatesEditor.css). */
+.hub-answer-set-editor {
+  --ink: var(--text-1);
+  --ink-muted: var(--text-3);
+  --rule: var(--border);
+  --rule-strong: var(--border-strong);
+}

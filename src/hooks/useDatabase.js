@@ -16,13 +16,17 @@ import { coalesceRead } from './requestCoalescer.js';
 import { resolveDocumentMetadata, invalidateDocumentMetadata } from '../services/documentMetadataResolver.js';
 import { isScopedRequestCurrent } from './scopedRequestGuard.js';
 import { subscribeLibraryChange, subscribeTemplatesChange } from './libraryChangeBus.js';
+import { documentNameSequence, renameRows, subscribeDocumentNames, withRenamesSince } from './documentNameBus.js';
 import { mergeOwnAndSharedTemplateRows, isSharedTemplateRow } from '../services/sharedTemplates.js';
 import { storageDownloads } from '../services/storageDownloads.js';
 import { replaceDocumentFile } from '../services/documentFileReplace.js';
 import { pdfByteCache, readPdfThroughCache, bindPdfCacheToAuth, seedPdfCacheFromUpload, pdfCacheStamp, pdfCacheKey, pdfCacheInfoSize } from '../services/pdfByteCache.js';
-import { STREAM_SIGNED_URL_SECONDS } from '../services/cloudPdfStream.js';
+import { STREAM_SIGNED_URL_SECONDS, chooseCloudPdfOpenPath } from '../services/cloudPdfStream.js';
 import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.js';
-import { trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
+import { isPdfUploadPending, trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
+import { openSourceHeadStarts, openSourceCacheStamp } from '../services/openSourceHeadStart.js';
+import { requestR2PdfLink, downloadPdfFromR2 } from '../services/pdfR2Source.js';
+import { retryStorageRead } from '../services/storageRetry.js';
 import { bindLibraryListCacheToAuth } from './libraryListCache.js';
 import { useLibraryListCache } from './useLibraryListCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
@@ -38,7 +42,10 @@ if (supabase) bindLibraryListCacheToAuth(supabase);
 // HTTP cache must never answer the per-open access check (uploads are stored
 // with max-age=3600, and the metadata answer can carry it). Same route and
 // auth as storage-js's info() (the client's fetch adds the session token).
-async function fetchStoredPdfInfo(filePath) {
+function fetchStoredPdfInfo(filePath) {
+  return retryStorageRead(() => fetchStoredPdfInfoOnce(filePath));
+}
+async function fetchStoredPdfInfoOnce(filePath) {
   const api = supabase.storage.from('documents');
   const objectPath = `documents/${String(filePath).replace(/^\/+/, '')}`;
   try {
@@ -57,6 +64,17 @@ async function fetchStoredPdfInfo(filePath) {
     return { data: null, error };
   }
 }
+// The short-lived signed URL a cloud PDF is streamed from (cloudPdfStream.js):
+// its Cloudflare R2 copy when the 'pdf-r2' flag is on and the copy is ready
+// (services/pdfR2Source.js), else Supabase Storage.
+const signOpenSource = async (filePath) => {
+  const r2Url = await requestR2PdfLink(supabase, filePath);
+  if (r2Url) return { data: { signedUrl: r2Url }, error: null };
+  return retryStorageRead(() => supabase.storage
+    .from('documents')
+    .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS));
+};
+
 const withTimeout = (promise, ms) => Promise.race([
   promise,
   new Promise((resolve) => setTimeout(resolve, ms)),
@@ -309,6 +327,15 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
     });
   }, [user, projectId, enabled]);
 
+  // A rename made anywhere (another list, a tab menu, another screen) shows
+  // in this list at once (documentNameBus.js).
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return subscribeDocumentNames((rename) => {
+      setDocuments((current) => renameRows(current, rename));
+    });
+  }, [enabled]);
+
   // Pure query worker: runs the owned + collaborator-probe + conditional id=in
   // sequence as ONE unit and RETURNS the merged array (no setState here), so it
   // can be shared verbatim across instances by the coalescer.
@@ -322,7 +349,10 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
         // KAL-280 — user-archived documents live in Archive, not the library.
         // This is a SEPARATE column from `archived` above: that one is the
         // Free-tier downgrade flag, this one is the 30-day recoverable Archive.
-        .is('user_archived_at', null);
+        .is('user_archived_at', null)
+        // Version history: an older version of a document is reached from
+        // its newest copy, not listed on its own.
+        .is('superseded_by', null);
 
       if (projectId) query = query.eq('project_id', projectId);
       return query;
@@ -332,14 +362,26 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
     // run them concurrently instead of as a 2-step waterfall. Supabase resolves
     // (never rejects) with {data,error}, so the throw-on-owned-error semantics
     // below are preserved (the dependent missingIds query stays sequential).
-    const [ownedRes, collaboratorRows] = await Promise.all([
+    const [ownedRes, memberRows, guestRows] = await Promise.all([
       readLibraryRows(ownedQuery),
       readLibraryRows(() => supabase
         .from('document_collaborators')
         .select('document_id, role')
         .eq('user_id', user.id)
         .eq('status', 'active'), { cursorColumn: 'document_id' }),
+      // A guest (guest links, Nightly) reaches documents through the links it
+      // redeemed; the documents read below drops any whose link has ended.
+      user.is_anonymous
+        ? readLibraryRows(() => supabase
+          .from('document_guests')
+          .select('id, document_id')
+          .eq('user_id', user.id))
+        : Promise.resolve({ data: [], error: null }),
     ]);
+    const collaboratorRows = memberRows.error ? memberRows : {
+      data: [...(memberRows.data || []), ...(guestRows.data || []).map((row) => ({ document_id: row.document_id, role: 'guest' }))],
+      error: null,
+    };
     const { data, error } = ownedRes;
     if (error) throw error;
 
@@ -362,7 +404,8 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
             // The database enforces this as well (user_can_access_document
             // resolves only for the permanent owner while archived); filtering
             // here keeps the shared document out of the list in the first place.
-            .is('user_archived_at', null);
+            .is('user_archived_at', null)
+            .is('superseded_by', null);
           if (projectId) collaboratorQuery = collaboratorQuery.eq('project_id', projectId);
           return collaboratorQuery;
         });
@@ -404,15 +447,19 @@ export const useDocuments = (projectId = null, { enabled = true, listCache = fal
       requestScopeKey,
       currentScopeKey: documentScopeKeyRef.current,
     });
+    // A rename shown while this read is in flight must survive it: the read
+    // may have left the database before the rename was saved.
+    const renameSeqAtStart = documentNameSequence();
     try {
       setLoading(true);
       // The last error stays until a read succeeds (2026-10-07): a retry that
       // cleared it up front flashed the empty list between two error screens.
       const key = `documents:${user.id}:${projectId ?? 'null'}`;
-      const merged = coalesce
+      const read = coalesce
         ? await coalesceRead(key, runDocumentsQuery)
         : await runDocumentsQuery();
       if (!isCurrentRequest()) return [];
+      const merged = withRenamesSince(read, renameSeqAtStart);
       setDocuments(merged);
       setError(null);
       return merged;
@@ -904,11 +951,13 @@ export const useStorage = () => {
       path: filePath,
       fetchInfo: () => fetchStoredPdfInfo(filePath),
       download: async () => {
+        const fromR2 = await downloadPdfFromR2(supabase, filePath);
+        if (fromR2) return fromR2;
         // no-store: never the browser's HTTP copy (it could be an older
         // version than the one the check just named, and it outlives sign-out).
-        const { data, error } = await supabase.storage
+        const { data, error } = await retryStorageRead(() => supabase.storage
           .from('documents')
-          .download(filePath, {}, { cache: 'no-store' });
+          .download(filePath, {}, { cache: 'no-store' }));
         if (error) throw error;
         return data;
       },
@@ -928,15 +977,22 @@ export const useStorage = () => {
     const since = cache?.generation;
     const epoch = cache?.pathEpoch?.(filePath);
     const key = pdfCacheKey(actorId, filePath);
+    // The same two requests, already asked when the tab opened (startOpenSource).
+    const early = openSourceHeadStarts().take(key, openSourceCacheStamp(cache, filePath));
+    // Open speed: read this device's copy while the access check is out, not
+    // after it. Its bytes are served only if the check names their version.
+    const copy = early?.cached ?? ((key && cache && !cache.isDisabled) ? cache.peek(key) : null);
     const source = await resolveOpenDocumentSource({
-      fetchInfo: () => fetchStoredPdfInfo(filePath),
+      fetchInfo: () => early?.info ?? fetchStoredPdfInfo(filePath),
       readCached: async (data) => {
         const stamp = pdfCacheStamp(data);
-        return (stamp && key && cache && !cache.isDisabled) ? cache.get(key, stamp) : null;
+        if (!stamp || !key || !cache || cache.isDisabled) return null;
+        const held = await copy;
+        if (held?.stamp !== stamp) return null;
+        cache.use(key);
+        return held.bytes;
       },
-      sign: () => supabase.storage
-        .from('documents')
-        .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS),
+      sign: () => early?.signing ?? signOpenSource(filePath),
     });
     if (!source) return null;
     const info = { data: source.info };
@@ -955,6 +1011,24 @@ export const useStorage = () => {
         void cache.put({ actorId, path: filePath, stamp, bytes: buffer, since, epoch }).catch(() => {});
       },
     };
+  }, [user?.id]);
+
+  // Open speed: called when a cloud document's tab is created, so the access
+  // check and signed URL openDocumentStream needs are asked for while the
+  // viewer chunk loads (services/openSourceHeadStart.js). A path this device
+  // is still uploading is left to openDocumentStream, which waits for it, and
+  // an open that will not stream (desktop file:// build, offline) asks nothing.
+  const startOpenSource = useCallback((filePath) => {
+    if (!filePath || !isSupabaseAvailable() || isPdfUploadPending(filePath)) return false;
+    if (chooseCloudPdfOpenPath({ pdfFile: { filePath } }).path !== 'stream') return false;
+    const cache = pdfByteCache();
+    const key = pdfCacheKey(user?.id ?? null, filePath);
+    return openSourceHeadStarts().start(key, {
+      stamp: openSourceCacheStamp(cache, filePath),
+      fetchInfo: () => fetchStoredPdfInfo(filePath),
+      sign: () => signOpenSource(filePath),
+      readCached: (key && cache && !cache.isDisabled) ? () => cache.peek(key) : null,
+    });
   }, [user?.id]);
 
   const deleteDocumentFile = useCallback(async (filePath) => {
@@ -976,6 +1050,7 @@ export const useStorage = () => {
     replaceDocument,
     downloadDocument,
     openDocumentStream,
+    startOpenSource,
     deleteDocumentFile,
   };
 };
@@ -1176,6 +1251,13 @@ const DEFAULT_TOOL_PREFERENCES = {
   eraser: { strokeWidth: 10 },
   rect: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
   ellipse: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
+  // Owner 2026-10-26 ("polyline shows colour but not stroke width"): Polygon
+  // and Polyline carry their own line defaults like every other shape. With
+  // none they borrowed whatever the last tool left in the bar (Counter's 14 px
+  // badge radius became a 14 pt line) and a pinned Polyline / Polygon saved
+  // no width at all, so its pin showed a colour and no width.
+  polygon: { strokeColor: '#ff0000', strokeWidth: 2, fillColor: '#ffffff', fillOpacity: 0, strokeOpacity: 100 },
+  polyline: { strokeColor: '#ff0000', strokeWidth: 2, strokeOpacity: 100 },
   // UX 2026-09-09: the Cloud border style carries its OWN line defaults — the
   // approved revision-cloud studio's 2.5-unit crimson line — and remembers the
   // user's later line edits under this key while Cloud is armed, independent
@@ -1192,10 +1274,12 @@ const DEFAULT_TOOL_PREFERENCES = {
   // kept the fill left behind by Rectangle (white, the Shapes group's first
   // tool), so a fresh Shapes > Counter dropped white pins with white numbers -
   // invisible on a white page.
-  // No fillOpacity on purpose: the pin ignores it, and Polygon (no defaults of
-  // its own) inherits it - Rectangle's 0 keeps a Counter -> Polygon switch unfilled.
+  // No fillOpacity on purpose: the pin ignores it.
   counter: { strokeColor: '#ef4444', strokeWidth: 14, strokeOpacity: 100, fillColor: '#ef4444' },
-  text: { strokeColor: '#000000', strokeOpacity: 100 },
+  // Owner 2026-10-27 (pinned tools "all follow the same rules"): the Text
+  // box's Width box showed the last tool's width (Counter's 14) and a pinned
+  // Text box kept none. 1 is the border a new text box is drawn with.
+  text: { strokeColor: '#000000', strokeWidth: 1, strokeOpacity: 100, fillColor: '#ffffff', fillOpacity: 0 },
   note: { strokeColor: '#ffff00', fillColor: '#ffff00', strokeOpacity: 100, fillOpacity: 100 },
   underline: { strokeColor: '#ff0000', strokeOpacity: 100 },
   strikeout: { strokeColor: '#ff0000', strokeOpacity: 100 },
@@ -1334,8 +1418,14 @@ export const useDocumentToolPreferences = (documentId, supabaseDocId = null) => 
   }, [documentId, supabaseDocId, user]);
 
   // Get preferences for a specific tool (with defaults)
+  // A tool saved before one of its defaults existed (Polyline's width, Text
+  // box's width) still gets that default, rather than whatever the last tool
+  // left in the settings row.
   const getToolPreference = useCallback((toolId) => {
-    return toolPreferences[toolId] || DEFAULT_TOOL_PREFERENCES[toolId] || {};
+    const saved = toolPreferences[toolId];
+    const defaults = DEFAULT_TOOL_PREFERENCES[toolId];
+    if (!saved) return defaults || {};
+    return defaults ? { ...defaults, ...saved } : saved;
   }, [toolPreferences]);
 
   return {

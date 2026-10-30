@@ -21,6 +21,7 @@ import {
     userTemplateSubject,
     pinLinkToApp,
 } from './policy.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 // Transactional email via Brevo. Consolidated 2026-07-05 so the whole app uses
 // ONE email service — Brevo also sends the Supabase Auth login/reset emails.
@@ -60,7 +61,7 @@ async function classifyCaller(req: Request): Promise<CallerContext> {
     try {
         const supabase = createClient(supabaseUrl, anonKey);
         const { data: { user }, error } = await supabase.auth.getUser(token);
-        return !error && user ? { type: 'user', authHeader } : null;
+        return !error && user && !isGuestUser(user) ? { type: 'user', authHeader } : null;
     } catch {
         return null;
     }

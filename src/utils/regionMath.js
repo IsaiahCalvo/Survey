@@ -330,6 +330,29 @@ export const mergeRegions = (region1, region2) => {
   }
 };
 
+// An area is one outline with no holes, so a cut wholly inside one (a hole)
+// is kept by splitting the result down the hole's middle into hole-free
+// pieces. Every reader (the overlay, the editor, export, mark filters) then
+// sees the hole, and the overlay and editor union the pieces back seamlessly.
+export const splitPolygonHoles = (polygon, depth = 0) => {
+  if (!Array.isArray(polygon) || polygon.length < 2) return polygon ? [polygon] : [];
+  if (depth > 12) return [[polygon[0]]];
+  const holeXs = polygon[1].map(point => point[0]);
+  const cutX = (Math.min(...holeXs) + Math.max(...holeXs)) / 2;
+  const outerXs = polygon[0].map(point => point[0]);
+  const outerYs = polygon[0].map(point => point[1]);
+  const minX = Math.min(...outerXs) - 1;
+  const maxX = Math.max(...outerXs) + 1;
+  const minY = Math.min(...outerYs) - 1;
+  const maxY = Math.max(...outerYs) + 1;
+  const band = (left, right) => [[[left, minY], [right, minY], [right, maxY], [left, maxY], [left, minY]]];
+  const halves = [
+    ...(intersection([polygon], band(minX, cutX)) || []),
+    ...(intersection([polygon], band(cutX, maxX)) || []),
+  ];
+  return halves.flatMap(piece => splitPolygonHoles(piece, depth + 1));
+};
+
 // Subtract a region from another region.
 // options.thinTolerance (page units, default 1): when either outline has
 // smooth (freehand) points, the result is thinned along its curved parts so a
@@ -368,7 +391,7 @@ export const subtractRegionFromRegion = (subjectRegion, subtractRegion, options 
     const hasSmooth = regionHasSmoothOutline(subjectRegion) || regionHasSmoothOutline(subtractRegion);
     const smoothLookup = hasSmooth ? buildSmoothVertexLookup([subjectRegion, subtractRegion]) : null;
     const thinTolerance = Number.isFinite(options?.thinTolerance) && options.thinTolerance > 0 ? options.thinTolerance : 1;
-    for (const polygon of result) {
+    for (const polygon of result.flatMap(piece => splitPolygonHoles(piece))) {
       let coords = polygonToRegionCoords(polygon);
       let smoothVertices;
       if (smoothLookup && coords) {

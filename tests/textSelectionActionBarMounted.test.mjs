@@ -79,6 +79,10 @@ async function loadActionBar() {
   source = source.replace("import './TextSelectionActionBar.css';", '');
   const transformed = await transformWithOxc(source, componentPath, { lang: 'jsx' });
   let executable = transformed.code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
+  // Harness plumbing, as for Tooltip.jsx below: the component's own bare and
+  // relative imports, rewritten to absolute URLs.
+  executable = executable.replace('from "react"', `from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)}`);
+  executable = executable.replace('from "../utils/chromeInsets.js"', `from ${JSON.stringify(pathToFileURL(path.join(repoRoot, 'src/utils/chromeInsets.js')).href)}`);
   const tempDir = await mkdtemp(path.join(tmpdir(), 'text-action-bar-test-'));
   // Load the real shared tooltip dependency from the temporary JSX harness.
   const tooltipPath = path.join(repoRoot, 'src/components/Tooltip.jsx');
@@ -88,7 +92,7 @@ async function loadActionBar() {
   // Tooltip.jsx makes has to be rewritten to an absolute URL, because the
   // transpiled copy is written to a temp directory where '../utils/…' means
   // nothing. Add new Tooltip.jsx dependencies here.
-  for (const specifier of ['../viewerShared.js', '../utils/floatingUiGeometry.js', '../utils/toolShortcuts.js']) tooltipSource = tooltipSource.replace(`from '${specifier}'`, `from '${pathToFileURL(path.resolve(path.dirname(tooltipPath), specifier)).href}'`);
+  for (const specifier of ['../viewerShared.js', '../utils/floatingUiGeometry.js', '../utils/toolShortcuts.js', '../utils/quietFocus.js']) tooltipSource = tooltipSource.replace(`from '${specifier}'`, `from '${pathToFileURL(path.resolve(path.dirname(tooltipPath), specifier)).href}'`);
   const tooltipCode = (await transformWithOxc(tooltipSource, tooltipPath, { lang: 'jsx' })).code.replaceAll('"react/jsx-runtime"', JSON.stringify(jsxRuntimeUrl));
   await writeFile(path.join(tempDir, 'Tooltip.mjs'), tooltipCode);
   executable = executable.replace('"./Tooltip"', '"./Tooltip.mjs"');

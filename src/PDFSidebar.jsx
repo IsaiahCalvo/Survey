@@ -6,7 +6,7 @@
  * Default-export forwardRef component that hosts the Pages / Search Text /
  * Bookmarks / Spaces tab panels plus a Version History panel, and anchors the
  * collaboration footer (SyncStatusChip + PresenceAvatars) at the bottom.
- * Publishes its width as the `--app-sidebar-width` CSS var; exposes an
+ * Publishes its width for the storage notice (utils/chromeInsets.js); exposes an
  * `openSearchPanel` imperative handle. Rendered by App into the chrome host.
  */
 import React, { useState, useCallback, useImperativeHandle, useSyncExternalStore, lazy, Suspense } from 'react';
@@ -18,6 +18,10 @@ const SearchTextPanel = lazy(() => import('./sidebar/SearchTextPanel'));
 import BookmarksPanel from './sidebar/BookmarksPanel';
 import SpacesPanel from './sidebar/SpacesPanel';
 import LayersPanel from './sidebar/LayersPanel';
+// Beta 'mark-library' (Survey Nightly): loads only when the flag is on.
+const MarkLibraryPanel = lazy(() => import('./markLibrary/MarkLibraryPanel'));
+import CommentsPanel from './sidebar/CommentsPanel';
+import { OPEN_MARK_COMMENTS_EVENT, takePendingMarkCommentsFocus } from './services/markCommentsFocus.js';
 import SyncStatusChip from './components/SyncStatusChip';
 import PresenceAvatars from './components/PresenceAvatars';
 import { withDevFakePresence } from './components/presenceIdentity.js';
@@ -27,6 +31,7 @@ import { useSheetFocus } from './mobile/useSheetFocus';
 import { useTooltip } from './components/Tooltip';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
+import { publishChromeInset } from './utils/chromeInsets.js';
 import SectionIconButton from './components/SectionIconButton.jsx';
 import { openKeyboardShortcuts } from './utils/keyboardShortcuts.js';
 import {
@@ -145,6 +150,8 @@ const PANEL_TITLES = {
   spaces: 'Spaces',
   history: 'History',
   layers: 'Layers',
+  library: 'Library',
+  comments: 'Comments',
 };
 
 const PDFSidebar = React.forwardRef(({
@@ -191,7 +198,6 @@ const PDFSidebar = React.forwardRef(({
   onSpaceRenamePage,
   onSpaceRemovePage,
   onSpaceTransferRegion,
-  getSpaceRemovalImpact = null,
   onNavigateToSpacePage = null,
   onReorderSpaces,
   onExportSpaceCSV,
@@ -242,6 +248,10 @@ const PDFSidebar = React.forwardRef(({
   locateHistoryMark = null,
   focusHistoryMark = null,
   mobileMode = false,
+  // False while another tab is in front (AppShell keeps every open tab's rail
+  // mounted, TabChromeSlot): a hidden rail leaves the shared page settings and
+  // the panel-room rules to the front tab's rail.
+  tabActive = true,
   onPanelStateChange = null,
   // Layers panel ('layers' flag). layersEnabled false = no tab, no panel.
   layersEnabled = false,
@@ -250,7 +260,12 @@ const PDFSidebar = React.forwardRef(({
   onLayersChange = null,
   onActiveLayerChange = null,
   canEditLayers = true,
+  // Mark library tab ('mark-library' flag, beta). false = no tab, no panel.
+  markLibraryEnabled = false,
+  // Comments panel ('mark-comments' flag, Nightly). Needs a cloud document.
+  commentsEnabled = false,
 }, ref) => {
+  const commentsOn = Boolean(commentsEnabled && documentId);
   // Chunk D (owner 2026-10-13): the desktop rail comes back as it was left -
   // which panel and whether it was open - per user
   // (sidebar/panelLayoutStore.js). The phone's sheet always starts closed.
@@ -260,6 +275,8 @@ const PDFSidebar = React.forwardRef(({
   if (initialLayoutRef.current === null) {
     const stored = mobileMode ? DEFAULT_PANEL_LAYOUT : readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
     initialLayoutRef.current = (stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled)
+      || (stored.panel === 'library' && !markLibraryEnabled)
+      || (stored.panel === 'comments' && !commentsOn)
       ? { ...stored, panel: 'pages' }
       : stored;
   }
@@ -286,7 +303,7 @@ const PDFSidebar = React.forwardRef(({
   React.useEffect(() => {
     const leftJustOpened = wasCollapsedRef.current && !isCollapsed;
     wasCollapsedRef.current = isCollapsed;
-    if (mobileMode) return;
+    if (mobileMode || !tabActive) return;
     const yieldSide = resolveNarrowPanelYield({
       viewportWidth,
       room: sideRoom,
@@ -295,7 +312,7 @@ const PDFSidebar = React.forwardRef(({
     });
     if (yieldSide === 'left') setIsCollapsed(true);
     else if (yieldSide === 'right') requestRightPanelYield();
-  }, [isCollapsed, mobileMode, sideRoom, viewportWidth]);
+  }, [isCollapsed, mobileMode, sideRoom, viewportWidth, tabActive]);
   // Desktop (owner 2026-10-07, Drawboard rail): a closed panel stays drawn for
   // the slide that carries it back under the rail, instead of vanishing in
   // one frame. A timer, not animationend, ends it, so reduced motion (no
@@ -323,14 +340,16 @@ const PDFSidebar = React.forwardRef(({
   // its closing slide ends - the one width change at each end of the motion.
   const layoutOpen = !mobileMode && (!isCollapsed || panelLeaving);
   const layoutCollapsed = mobileMode ? isCollapsed : !layoutOpen;
-  // 2026-04-29: publish the live sidebar width as a CSS variable so the
+  // 2026-04-29: publish the live sidebar width so the
   // StorageFailureBanner overlay can anchor inside the PDF area without
   // running over the sidebar's vertical tool rail (Pages / Search /
   // Bookmarks / Spaces).
+  // (Published for the notice only, chromeInsets.js: a custom property on :root
+  // restyled the whole document on every change.)
   React.useEffect(() => {
-    if (typeof document === 'undefined' || !document.documentElement) return;
-    document.documentElement.style.setProperty('--app-sidebar-width', mobileMode ? '44px' : `${layoutOpen ? LEFT_RAIL_W + panelWidth : LEFT_RAIL_W}px`);
-  }, [layoutOpen, panelWidth, mobileMode]);
+    if (!tabActive) return;
+    publishChromeInset('left', mobileMode ? '44px' : `${layoutOpen ? LEFT_RAIL_W + panelWidth : LEFT_RAIL_W}px`);
+  }, [layoutOpen, panelWidth, mobileMode, tabActive]);
   // Remember the layout (desktop). A user arriving after the first render
   // (sign-in resolves late) gets their own saved layout - the rail's open
   // state too, unless it has been used in the meantime.
@@ -343,7 +362,8 @@ const PDFSidebar = React.forwardRef(({
     const stored = readPanelLayout(browserStorage(), layoutUserKey, layoutDocumentKey);
     if (!userTouchedLayoutRef.current) {
       setIsCollapsed(!stored.open);
-      setActiveTab((stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled) ? 'pages' : stored.panel);
+      setActiveTab((stored.panel === 'history' && !documentId) || (stored.panel === 'layers' && !layersEnabled)
+        || (stored.panel === 'library' && !markLibraryEnabled) || (stored.panel === 'comments' && !commentsOn) ? 'pages' : stored.panel);
     }
     // documentId is read once, as the stored layout lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -400,6 +420,8 @@ const PDFSidebar = React.forwardRef(({
   const openPanel = useCallback((panelId = 'pages', { focus = panelId === 'search', select = true } = {}) => {
     const validPanel = ['pages', 'search', 'bookmarks', 'spaces', 'history'].includes(panelId)
       || (panelId === 'layers' && layersEnabled)
+      || (panelId === 'library' && markLibraryEnabled)
+      || (panelId === 'comments' && commentsOn)
       ? panelId
       : 'pages';
     userTouchedLayoutRef.current = true;
@@ -409,7 +431,7 @@ const PDFSidebar = React.forwardRef(({
       setSearchSelectOnFocus(Boolean(select));
       setSearchFocusRequestToken((prev) => prev + 1);
     }
-  }, [layersEnabled]);
+  }, [layersEnabled, markLibraryEnabled, commentsOn]);
 
   const closePanel = useCallback(() => {
     userTouchedLayoutRef.current = true;
@@ -495,11 +517,31 @@ const PDFSidebar = React.forwardRef(({
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark' },
     { id: 'spaces', label: 'Spaces', icon: 'layers' },
     ...(layersEnabled ? [{ id: 'layers', label: 'Layers', icon: 'shapes' }] : []),
+    ...(markLibraryEnabled ? [{ id: 'library', label: 'Library', icon: 'library' }] : []),
+    ...(commentsOn ? [{ id: 'comments', label: 'Comments', icon: 'comment' }] : []),
   ];
 
   const toggleHistoryPanel = useCallback(() => {
     togglePanel('history');
   }, [togglePanel]);
+
+  // The selection bar's Comment button, or a link to a comment, opens the
+  // Comments panel on the tab in front (OPEN_MARK_COMMENTS_EVENT).
+  const [commentsFocusRequest, setCommentsFocusRequest] = useState(null);
+  React.useEffect(() => {
+    if (!commentsOn || !tabActive || typeof window === 'undefined') return undefined;
+    const onOpen = (event) => {
+      const detail = event?.detail || {};
+      if (detail.documentId && detail.documentId !== documentId) return;
+      takePendingMarkCommentsFocus(documentId);
+      openPanel('comments');
+      setCommentsFocusRequest({ ...detail, at: Date.now() });
+    };
+    const pending = takePendingMarkCommentsFocus(documentId);
+    if (pending) onOpen({ detail: pending });
+    window.addEventListener(OPEN_MARK_COMMENTS_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_MARK_COMMENTS_EVENT, onOpen);
+  }, [commentsOn, tabActive, documentId, openPanel]);
 
   // Phase F (motion & feel): finger-follow drag + velocity dismiss (dy>82 or
   // vy>0.65) + spring-back + slide-down exit, replacing the old flat 48px
@@ -1082,6 +1124,30 @@ const PDFSidebar = React.forwardRef(({
               </div>
             )}
 
+            {markLibraryEnabled && activeTab === 'library' && (
+              <div style={{ display: 'flex', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <Suspense fallback={null}>
+                  <MarkLibraryPanel phone={mobileMode} />
+                </Suspense>
+              </div>
+            )}
+
+            {commentsOn && (
+              <div style={{ display: activeTab === 'comments' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+                <CommentsPanel
+                  documentId={documentId}
+                  user={user}
+                  isActive={activeTab === 'comments' && !isCollapsed}
+                  pageNum={pageNum}
+                  canWrite={canEditLayers}
+                  locateHistoryMark={locateHistoryMark}
+                  focusHistoryMark={focusHistoryMark}
+                  onNavigateToPage={onNavigateToPage}
+                  focusRequest={commentsFocusRequest}
+                />
+              </div>
+            )}
+
             {/* Bookmarks Panel */}
             <div style={{ display: activeTab === 'bookmarks' ? 'flex' : 'none', flex: 1, flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <BookmarksPanel
@@ -1114,7 +1180,6 @@ const PDFSidebar = React.forwardRef(({
                 onSpaceRenamePage={onSpaceRenamePage}
                 onSpaceRemovePage={onSpaceRemovePage}
                 onSpaceTransferRegion={onSpaceTransferRegion}
-                getSpaceRemovalImpact={getSpaceRemovalImpact}
                 initiallyExpandedSpaceId={mobileMode ? regionEditReturnSpaceId : null}
                 expandedSpacesStoreRef={spacesExpandedStoreRef}
                 onNavigateToPage={onNavigateToSpacePage}

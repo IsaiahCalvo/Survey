@@ -41,6 +41,7 @@ test('real tab handler opens distinct IDs and reuses an ID after name or size ch
   let activeTab = null;
   const pending = { current: new Set() };
   let nextId = 0;
+  const headStarts = { sources: [] };
   const invoke = (incoming) => extractHandler(shellSource,
     'const handleDocumentSelect =', '  // DEV-ONLY: Auto-open test PDF', {
       tabs, openingPdfsRef: pending, selectedPDF: tabs[0].file,
@@ -50,6 +51,9 @@ test('real tab handler opens distinct IDs and reuses an ID after name or size ch
       setSelectedPDF() {}, setCurrentView() {}, setIsLoading() {},
       // 2026-10-07: the handler also clears the home's "Opening <file>…" cover.
       setPendingDocumentOpen() {},
+      // 2026-10-27 (open speed): a new tab asks for its cloud file's access
+      // check and signed URL while the viewer chunk loads.
+      startOpenSource: (path) => { headStarts.sources.push(path); },
       generateTabId: () => `new-${++nextId}`,
       setTimeout: callback => callback(),
     })(incoming);
@@ -59,6 +63,12 @@ test('real tab handler opens distinct IDs and reuses an ID after name or size ch
   invoke(file('a', { name: 'renamed.pdf', size: 999 }));
   assert.equal(tabs.length, 2);
   assert.equal(activeTab, 'tab-a');
+  // A reused tab asks for nothing; a local file has no cloud requests.
+  assert.deepEqual(headStarts.sources, []);
+  invoke(file('c', { filePath: 'owner/c.pdf' }));
+  assert.deepEqual(headStarts.sources, ['owner/c.pdf']);
+  invoke(file('d', { filePath: 'owner/d.pdf', arrayBuffer: async () => new ArrayBuffer(0) }));
+  assert.deepEqual(headStarts.sources, ['owner/c.pdf'], 'local bytes need no cloud requests');
 });
 
 test('a Home tap hands the library row to the viewer without downloading it first', async () => {

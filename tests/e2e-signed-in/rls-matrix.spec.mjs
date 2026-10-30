@@ -16,6 +16,7 @@ const PROJECT = E2E_PROJECT.id;
 const TEMPLATE = 'e2e00000-0000-4000-8000-000000000201';
 const SESSION = 'e2e00000-0000-4000-8000-000000000202';
 const KIT = 'rls-sweep';
+const ORG = 'e2e00000-0000-4000-8000-000000000203';
 
 async function must(label, request) {
   const { error } = await request;
@@ -69,6 +70,20 @@ async function seedOwnerRows(admin, ids) {
   await replace('survey_agent_voice_logs', 'user_id', owner, { user_id: owner, log: { turns: [] } });
   await must('kit', admin.from('kits').upsert({ id: KIT, version: '1.0.0', kind: 'toolKit', definition: {} }, { onConflict: 'id,version', ignoreDuplicates: true }));
   await replace('account_kits', 'user_id', owner, { user_id: owner, kit_id: KIT, kit_version: '1.0.0' });
+  await replace('survey_agent_memory', 'project_id', PROJECT, { project_id: PROJECT, kind: 'name', heard: 'rls', means: 'rls sweep', created_by: owner });
+  await replace('own_export_kits', 'user_id', owner, { user_id: owner, id: 'own-rls-sweep', label: 'RLS sweep', definition: {} });
+  await replace('mark_library_items', 'created_by', owner, {
+    library: 'personal', created_by: owner, name: 'RLS sweep item', payload: { version: 1, items: [] },
+  });
+  // The owner's company workspace (one company per person, so drop any other).
+  const { data: memberships } = await admin.from('organization_members').select('organization_id').eq('user_id', owner);
+  const orgs = [...new Set([ORG, ...(memberships || []).map((m) => m.organization_id)])];
+  await must('clear companies', admin.from('organizations').delete().in('id', orgs));
+  await must('organizations', admin.from('organizations').insert({ id: ORG, name: 'RLS sweep company', created_by: owner }));
+  await must('organization_members', admin.from('organization_members').insert({ organization_id: ORG, user_id: owner, role: 'owner' }));
+  await must('organization_invites', admin.from('organization_invites').insert({ organization_id: ORG, email: 'rls-sweep@example.com', role: 'member', invited_by: owner }));
+  await must('organization_activity', admin.from('organization_activity').insert({ organization_id: ORG, actor_id: owner, action: 'company.created' }));
+  await must('organization_domains', admin.from('organization_domains').insert({ organization_id: ORG, domain: 'rls-sweep.example', created_by: owner }));
 }
 
 // Each table, and the filter that picks out the owner's rows in it.
@@ -107,6 +122,14 @@ const ownerRows = (ids) => ({
   survey_agent_voice_logs: ['user_id', ids.owner],
   account_kits: ['user_id', ids.owner],
   kits: ['id', KIT],
+  survey_agent_memory: ['project_id', PROJECT],
+  own_export_kits: ['user_id', ids.owner],
+  mark_library_items: ['created_by', ids.owner],
+  organizations: ['id', ORG],
+  organization_members: ['organization_id', ORG],
+  organization_invites: ['organization_id', ORG],
+  organization_activity: ['organization_id', ORG],
+  organization_domains: ['organization_id', ORG],
 });
 
 // Tables and views the sweep above leaves out, and why. A new table fails the
@@ -119,7 +142,9 @@ const NOT_SWEPT = {
   email_send_events: 'service only', excel_sync_audit: 'service only', excel_sync_changesets: 'service only',
   excel_sync_head: 'service only', excel_sync_ops: 'service only', excel_sync_state: 'service only',
   integration_test_bytea_roundtrip: 'service only', invite_email_deliveries: 'service only',
+  pdf_r2_copies: 'service only', pdf_r2_deletes: 'service only', r2_usage_daily: 'service only',
   rowid_signing_secrets: 'service only', survey_agent_daily_usage: 'service only',
+  sheet_sync_connections: 'service only', sheet_sync_settings: 'service only',
   // Their write triggers need a signed-in editor, so the service role cannot
   // seed a row. Reads need viewer access to the document.
   annotation_snapshots: 'editor writes only', annotation_updates: 'editor writes only',
@@ -129,6 +154,16 @@ const NOT_SWEPT = {
   feature_flags: 'flag admins only', feature_flag_admins: 'flag admins only',
   // security_invoker views over swept tables, checked by user below.
   archived_projects_summary: 'view', daily_usage_summary: 'view', user_quota_status: 'view',
+  // Comments on marks (Nightly): written only through their RPCs; who reads
+  // what is probed in mark-comments.spec.mjs.
+  mark_comments: 'own spec',
+  // Guest links (Nightly): the owner reads links and guests, a guest only its
+  // own guest row, and the secret's hash nobody; probed in
+  // guest-links-security.spec.mjs.
+  document_guest_links: 'own spec', document_guests: 'own spec',
+  // Live sheet links (Nightly): document members read a few columns, never the
+  // sync state; probed in sheet-sync.spec.mjs.
+  sheet_sync_links: 'own spec',
 };
 
 // What a collaborator on the shared document may read; the rest stays the owner's.
@@ -136,6 +171,8 @@ const SHARED_WITH_COLLABORATORS = new Set([
   'projects', 'documents', 'document_collaborators', 'project_collaborators', 'document_annotations',
   'document_history_events', 'document_revisions', 'document_templates', 'doc_yjs_updates', 'doc_yjs_state',
   'document_presence', 'excel_workbook_registrations',
+  // The agent's notes belong to the project, so its members read them.
+  'survey_agent_memory',
 ]);
 
 let admin;
@@ -145,6 +182,7 @@ test.beforeAll(async () => {
   ids = await accountIds(admin);
   await seedOwnerRows(admin, ids);
 });
+test.afterAll(async () => { await admin.from('organizations').delete().eq('id', ORG); });
 
 async function visibleOwnerRows(client, table, [column, value]) {
   const { data, error } = await client.from(table).select('*').eq(column, value);

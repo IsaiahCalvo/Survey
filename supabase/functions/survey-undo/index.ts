@@ -22,6 +22,7 @@ import { docToSurveyMarkers, syncSurveyMarkersToDoc } from '../_shared/surveyMar
 import { bytesToPgHex, pgHexToBytes } from '../_shared/pgBytea.js';
 import { applyUndoDescriptor, UNDO_KINDS } from '../_shared/surveyUndoApply.js';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const MARKER_FIELDS_FLAG = 'survey-marker-fields';
 const SNAPSHOT_ENC_GZIP = 2;
@@ -128,6 +129,7 @@ Deno.serve(async (req) => {
   });
   const { data: userData, error: userError } = await db.auth.getUser(token);
   if (userError || !userData?.user) return json(401, { error: 'sign_in_required' });
+  if (isGuestUser(userData.user)) return json(403, { error: 'guest_not_allowed' });
 
   let raw: unknown;
   try { raw = await req.json(); } catch { return json(400, { error: 'bad_request' }); }

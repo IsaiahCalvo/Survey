@@ -268,11 +268,11 @@ test('the row gives ground in order: gutters, then labels (least useful first), 
 });
 
 test('labels collapse least-useful first and the width is the last to collapse', () => {
-  assert.deepEqual(COMPACT_ORDER, ['ends', 'blend', 'style', 'arrowhead', 'width']);
+  assert.deepEqual(COMPACT_ORDER, ['curve', 'ends', 'blend', 'style', 'arrowhead', 'width']);
 });
 
 test('settings move into More least-important first; the width is the last to go', () => {
-  assert.deepEqual(OVERFLOW_ORDER, ['bump', 'start', 'ends', 'blend', 'style', 'aa', 'arrowhead', 'series', 'width']);
+  assert.deepEqual(OVERFLOW_ORDER, ['bump', 'start', 'curve', 'ends', 'blend', 'style', 'aa', 'arrowhead', 'series', 'width']);
 });
 
 test('a pill reading "Mixed" never collapses; it moves into More instead', () => {

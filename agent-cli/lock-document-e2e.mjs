@@ -44,6 +44,7 @@ import {
   DOC_OWNED_NAME, DOC_PROJ_NAME, DOC_FOREIGN_NAME, DOC_DEL_NAME,
   PROJ_NAME, FOREIGN_LOCK_LABEL,
 } from './lib/kal75Fixtures.mjs';
+import { assertNoProdEnv, guardContext } from './lib/blockNonLoopback.mjs';
 
 const PORT = Number(process.env.PORT || 5175);
 const BASE = `http://localhost:${PORT}/`;
@@ -63,6 +64,7 @@ const expect = (cond, label) => {
 };
 
 async function startVite() {
+  assertNoProdEnv();
   const child = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], {
     cwd: process.cwd(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -94,7 +96,7 @@ async function main() {
       readHandlerOverrides: { project_collaborators: () => [] },
     });
 
-    const ctx = await browser.newContext({ viewport: { width: 1512, height: 900 } });
+    const ctx = await guardContext(browser.newContext({ viewport: { width: 1512, height: 900 } }));
     const page = await ctx.newPage();
     const logs = [];
     page.on('console', (m) => logs.push(m.text()));

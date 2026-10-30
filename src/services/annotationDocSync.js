@@ -458,6 +458,12 @@ export async function openAnnotationDoc({
   // caller must not treat it as hydrated: no writes, no imports. The handle
   // (resolved later) is the authoritative read.
   onPreview = null,
+  // Open speed (round 5): optional; returns a promise that settles once the
+  // viewer has drawn a page of the PDF. After this device's saved copy is
+  // previewed, the rest of the open waits for it (FIRST_PAGE_WAIT_MS at most).
+  whenFirstPageDrawn = null,
+  // Only a saved copy at least this big waits (tests lower it).
+  firstPageWaitMinBytes = FIRST_PAGE_WAIT_MIN_BYTES,
   // w33: routine checkpoint thresholds (see CHECKPOINT_EVERY_ROWS); tests
   // shrink them: { everyRows, ownBytes, minTailRows, idleMs, dueQuietMs }.
   checkpointPolicy = null,
@@ -492,7 +498,13 @@ export async function openAnnotationDoc({
     checkpointMirror: supabase ? createCheckpointMirror() : null,
     persistedDoc: createDetachedYDoc(`persisted:${documentId}:${activeWriterId}`),
     stagedSeeded: false,   // w29: stagedDoc is seeded from acceptedDoc late in the open
+    unbuiltStagedUpdates: [], // writes kept for an unbuilt stagedDoc (applyToStaged)
     localPersistenceDoc: null,
+    // Cold open: the snapshot, then any later updates, waiting to go into
+    // localPersistenceDoc once the open is done (deferSnapshotToLocalPersistence).
+    deferredPersistence: null,
+    // The open's clean-cache receipt, written once the open is done (writeOpenReceipt).
+    openReceiptPending: false,
     onLocalPersistenceUpdate: null,
     map: getAnnotationsMap(activeDoc),
     lastSeq: 0,            // highest annotation_updates.seq we've applied
@@ -635,6 +647,7 @@ export async function openAnnotationDoc({
       retryTimer: null,
       attempt: 0,
       scheduled: false,
+      lastQueuedAt: 0,
       blocked: 0, // queued edits waiting for this checkpoint (bulkDependencyFor)
     },
     lastLocalEditAt: 0,
@@ -649,6 +662,10 @@ export async function openAnnotationDoc({
     legacyPersistenceFactory,
     localSyncTimeoutMs,
     onPreview: typeof onPreview === 'function' ? onPreview : null,
+    whenFirstPageDrawn: typeof whenFirstPageDrawn === 'function' ? whenFirstPageDrawn : null,
+    firstPageWaitMinBytes: Number.isFinite(firstPageWaitMinBytes)
+      ? firstPageWaitMinBytes
+      : FIRST_PAGE_WAIT_MIN_BYTES,
     eraseEffectConsumer: typeof eraseEffectConsumer === 'function'
       ? eraseEffectConsumer
       : null,
@@ -734,6 +751,7 @@ export async function openAnnotationDoc({
             persistenceDatabaseName(documentId, actorUserId, state.persistenceGeneration),
             persistenceDoc,
           );
+          skipStoreEncodeWhileLoading(state.idbProvider, persistenceDoc);
         }
         const localReady = await whenSynced(state.idbProvider, localSyncTimeoutMs);
         if (!localReady) {
@@ -967,6 +985,8 @@ export async function openAnnotationDoc({
     // either sees this opening state or its bumped incarnation rejects open.
     registerActiveState(state);
     state.openComplete = true;
+    if (state.openReceiptPending) writeOpenReceiptWhenIdle(state);
+    if (state.deferredPersistence) flushDeferredPersistenceWhenIdle(state);
   } catch (err) {
     abortBackendPrefetch(state);
     clearEraseOutboxRetry(state);
@@ -993,6 +1013,7 @@ export async function openAnnotationDoc({
 }
 
 function destroyLocalPersistence(state) {
+  state.deferredPersistence = null;
   if (state.onLocalPersistenceUpdate) {
     try { state.doc.off('update', state.onLocalPersistenceUpdate); } catch { /* */ }
     state.onLocalPersistenceUpdate = null;
@@ -1026,6 +1047,10 @@ function attachLocalPersistenceMirror(state) {
       // applyAuthoritativeCloudUpdate, never that derived live update.
       || origin === REMOTE_ORIGIN
     ) return;
+    // A local edit (a bulk import skips the outbox, so this copy is its only
+    // local one until its checkpoint is stored) is written at once: fill the
+    // copy with what waits for it first.
+    if (state.deferredPersistence) flushDeferredPersistence(state);
     // This is one-way only: the provider observes `target`; no listener ever
     // applies target updates back to the live doc, so there is no update loop.
     Y.applyUpdate(target, update, HYDRATE_ORIGIN);
@@ -1066,8 +1091,99 @@ function localPersistenceNearTrim(state) {
 
 function applyToLocalPersistence(state, update) {
   if (!state.localPersistenceDoc) return;
+  if (state.deferredPersistence) {
+    state.deferredPersistence.push(update);
+    return;
+  }
   if (localPersistenceNearTrim(state)) freezePersistedCandidate(state);
   Y.applyUpdate(state.localPersistenceDoc, update, HYDRATE_ORIGIN);
+}
+
+// Yjs encodes a transaction's update only for a doc with 'update' listeners,
+// and y-indexeddb's store (_storeUpdate) is the only one on the local
+// persistence doc. Round 5 (open speed): two of its encodes at open are waste.
+//  - Loading: the provider applies its stored updates under its own origin,
+//    which its store ignores, yet Yjs still re-encodes all of them (~20 MB
+//    on a dense reopen) just to hand the store bytes it drops.
+//  - Cold open: the snapshot goes into an empty doc, so the update Yjs would
+//    encode is the snapshot again (~0.5 s for 20 MB). Storing the snapshot's
+//    own bytes is the same write (one stored update; a later load applies it
+//    to the same state).
+// Both skip only the encode: every doc gets the same applyUpdate calls in
+// the same order, and the store runs at the same point.
+function idbStoreListener(provider, doc) {
+  return provider?.doc === doc && typeof provider._storeUpdate === 'function'
+    ? provider._storeUpdate
+    : null;
+}
+
+function skipStoreEncodeWhileLoading(provider, doc) {
+  const store = idbStoreListener(provider, doc);
+  if (!store || provider.synced) return;
+  doc.off('update', store);
+  provider.once('synced', () => {
+    if (!provider._destroyed) doc.on('update', store);
+  });
+}
+
+function docIsEmpty(doc) {
+  return doc.store.clients.size === 0
+    && !doc.store.pendingStructs
+    && !doc.store.pendingDs;
+}
+
+function applySnapshotToLocalPersistence(state, bytes) {
+  const doc = state.localPersistenceDoc;
+  const store = idbStoreListener(state.idbProvider, doc);
+  if (!doc || !store || !state.idbProvider.db || !docIsEmpty(doc)) {
+    applyToLocalPersistence(state, bytes);
+    return;
+  }
+  if (localPersistenceNearTrim(state)) freezePersistedCandidate(state);
+  doc.off('update', store);
+  try {
+    Y.applyUpdate(doc, bytes, HYDRATE_ORIGIN);
+  } finally {
+    doc.on('update', store);
+  }
+  if (docIsEmpty(doc)) return; // nothing applied: Yjs would emit nothing
+  // IndexedDB clones the whole buffer behind a view: store exact bytes.
+  const own = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+    ? bytes
+    : bytes.slice();
+  store(own, HYDRATE_ORIGIN);
+}
+
+// Open speed (cold open, 2026-10-27): filling this device's offline copy with
+// the downloaded snapshot is one more full decode of every mark (~0.36 s and
+// ~27 MB on the big drawing set) that the open waited for, though nothing in
+// the open reads that copy: it is empty (nothing saved here yet), so the
+// pre-open local difference is empty either way. It is filled once the open
+// is done. Until then the snapshot and later cloud rows for it wait in order,
+// and are applied in that same order, so the copy ends up the same. The first
+// local edit, or a close, fills it first; a purge or failed open drops it
+// with the copy.
+function deferSnapshotToLocalPersistence(state, bytes) {
+  const doc = state.localPersistenceDoc;
+  if (!doc || !idbStoreListener(state.idbProvider, doc) || !state.idbProvider.db || !docIsEmpty(doc)) {
+    applySnapshotToLocalPersistence(state, bytes);
+    return;
+  }
+  state.deferredPersistence = [bytes];
+}
+
+function flushDeferredPersistence(state) {
+  const queued = state.deferredPersistence;
+  if (!queued) return;
+  state.deferredPersistence = null;
+  if (!state.localPersistenceDoc) return;
+  applySnapshotToLocalPersistence(state, queued[0]);
+  for (let i = 1; i < queued.length; i += 1) applyToLocalPersistence(state, queued[i]);
+}
+
+async function flushDeferredPersistenceWhenIdle(state) {
+  await waitForIdle(3000);
+  if (!state.destroyed) flushDeferredPersistence(state);
 }
 
 async function rotateCleanPersistence(state) {
@@ -1905,10 +2021,12 @@ async function settleAcceptedRecord(
   record.status = 'accepted';
   state.acceptedReceiptKeys.add(record.key);
   state.appendRecords.delete(record.key);
+  pruneKeptStagedUpdates(state);
   state.acceptedEditEpoch = Math.max(
     state.acceptedEditEpoch,
     Number(record.editEpoch) || 0,
   );
+  await writeOpenReceipt(state);
   try {
     const token = newCleanCheckpointToken();
     const outcome = {};
@@ -2160,6 +2278,8 @@ async function hydrateCleanAcceptedState(state) {
     ? new Uint8Array(clean.checkpointUpdate)
     : null;
   state.cleanSnapshotIdentity = normalizeSnapshotIdentity(clean?.snapshotIdentity);
+  state.cleanCopyRecordCount = clean?.records?.length || 0;
+  state.cleanCheckpointByteLength = clean?.checkpointUpdate?.byteLength || 0;
   startSnapshotPrefetch(state);
   const updates = [
     clean?.checkpointUpdate,
@@ -2174,7 +2294,10 @@ async function hydrateCleanAcceptedState(state) {
   // ~20 MB apply less): the open seeds it from the complete acceptedDoc,
   // which contains these updates, before anything reads it.
   for (const update of updates) Y.applyUpdate(state.doc, update, HYDRATE_ORIGIN);
-  if (updates.length) await emitOpenPreview(state, 'local-copy');
+  if (updates.length && await emitOpenPreview(state, 'local-copy')) {
+    const savedBytes = updates.reduce((sum, update) => sum + update.byteLength, 0);
+    if (savedBytes >= state.firstPageWaitMinBytes) await waitForFirstPageDrawn(state);
+  }
   for (const update of updates) {
     applyAcceptedUpdate(state, update);
   }
@@ -2182,23 +2305,55 @@ async function hydrateCleanAcceptedState(state) {
 
 // w29 preview: hand the caller what the live doc holds right now, then give
 // the browser a frame to paint it before the open's next heavy step.
+// Resolves true once a preview was handed over.
 async function emitOpenPreview(state, stage) {
   const onPreview = state.onPreview;
-  if (!onPreview || state.destroyed) return;
+  if (!onPreview || state.destroyed) return false;
   let byPage;
   try {
-    if (getAnnotationsMap(state.doc).size === 0) return;
+    if (getAnnotationsMap(state.doc).size === 0) return false;
     byPage = docToByPage(state.doc);
   } catch (error) {
     console.warn('[annotationDocSync] open preview read failed', error?.message);
-    return;
+    return false;
   }
   try {
     onPreview(byPage, { stage });
   } catch (error) {
     console.warn('[annotationDocSync] open preview failed', error?.message);
-    return;
+    return false;
   }
+  await waitForPaint();
+  return true;
+}
+
+// Open speed (round 5): on a reopen the saved copy is previewed about 1 s in,
+// but the steps after it (the accepted shadow, then loading the IndexedDB
+// copy: ~2 s of main thread on a dense document) ran before the PDF's own
+// steps got a turn, so the page stayed blank until ~4 s. They now wait until
+// the viewer has drawn a page, or FIRST_PAGE_WAIT_MS. Only when they run
+// changes: the same updates go to the same docs in the same order, and the
+// handle (hydration, writes) still resolves only after all of them.
+const FIRST_PAGE_WAIT_MS = 2500;
+// A small saved copy's shadow work is a few ms: waiting for the page there
+// only delays when the page takes input (clicks land on the preview blocker).
+// ~1 MB of saved copy is ~0.1 s of shadow work on a dense document.
+const FIRST_PAGE_WAIT_MIN_BYTES = 1024 * 1024;
+
+async function waitForFirstPageDrawn(state) {
+  const wait = state.whenFirstPageDrawn;
+  state.whenFirstPageDrawn = null;
+  if (!wait || state.destroyed) return;
+  let timer = null;
+  try {
+    await Promise.race([
+      Promise.resolve().then(wait).catch(() => {}),
+      new Promise((resolve) => { timer = setTimeout(resolve, FIRST_PAGE_WAIT_MS); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  // The page is drawn into its canvas; let that frame reach the screen.
   await waitForPaint();
 }
 
@@ -2442,8 +2597,7 @@ async function loadFromBackend(state) {
         // to these docs in between changes no result.
         await waitForIdle();
         applyAcceptedUpdate(state, bytes);
-        await waitForIdle();
-        applyToLocalPersistence(state, bytes);
+        deferSnapshotToLocalPersistence(state, bytes);
       } catch (err) {
         throw new Error(`snapshot decode failed: ${err?.message || 'invalid Yjs update'}`, { cause: err });
       }
@@ -2481,8 +2635,19 @@ async function loadFromBackend(state) {
   // 2. tail ops after the snapshot, in order (byte-safe pages, w26)
   let cursor = state.lastSeq;
   let error = null;
+  let tailRows = 0;
+  // Whether acceptedDoc is still exactly this device's saved copy (below):
+  // a tokened checkpoint with no records after it, plus a snapshot row it
+  // already holds. A tail row it also already holds changes nothing (Y.snapshot
+  // is a few ms; the full encode it can save is 100+ ms).
+  const cleanBeforeTail = (
+    snapRow?.alreadyHeld
+    && state.cleanCheckpointToken != null
+    && state.cleanCopyRecordCount === 0
+  ) ? Y.snapshot(state.acceptedDoc) : null;
   try {
     cursor = await readWalRowsAfter(state, cursor, 'annotation tail read', async (row) => {
+      tailRows += 1;
       await applyAuthoritativeCloudRow(state, row);
       state.lastSeq = Math.max(state.lastSeq, Number(row.seq));
     });
@@ -2493,17 +2658,51 @@ async function loadFromBackend(state) {
   if (error) throw new Error(`tail read: ${error.message}`);
   state.lastSeq = Math.max(state.lastSeq, cursor);
   state.coveredSeq = cursor;
-  // One acknowledged custom IndexedDB transaction is the clean-cache receipt.
-  // y-indexeddb's update observer is fire-and-forget and cannot authorize
-  // deleting an outbox record or claiming crash durability by call order.
+  // Nothing new since this device's saved copy: acceptedDoc is exactly the
+  // stored checkpoint, and the receipt below would encode every mark (~210 ms
+  // on a 240-sheet set), read the stored multi-MB copy back and write the
+  // same bytes under a new token (~300 ms of IndexedDB work on the main thread).
+  if (
+    cleanBeforeTail
+    && (tailRows === 0 || Y.equalSnapshots(cleanBeforeTail, Y.snapshot(state.acceptedDoc)))
+  ) {
+    if (!state.lastSnapshotBytes) state.lastSnapshotBytes = Math.round(state.cleanCheckpointByteLength / 4);
+    return;
+  }
+  // Open speed (2026-10-27): the receipt below encodes every mark and writes
+  // them to IndexedDB (~0.5 s on the big set, cold), and the open waited for
+  // it, though only the NEXT open reads it. It is written once this open is
+  // done (writeOpenReceiptWhenIdle), or at close. Its coverage, identity and
+  // encoding are still taken in one tick, so it claims exactly what it holds.
+  if (!state.lastSnapshotBytes && state.cleanCheckpointByteLength) {
+    state.lastSnapshotBytes = Math.round(state.cleanCheckpointByteLength / 4);
+  }
+  state.openReceiptPending = true;
+}
+
+// One acknowledged custom IndexedDB transaction is the clean-cache receipt.
+// y-indexeddb's update observer is fire-and-forget and cannot authorize
+// deleting an outbox record or claiming crash durability by call order.
+// Written once: when the open is done, at close, or first thing before any
+// other write of this device's saved copy (a settled row's compaction, a
+// written snapshot), so the saved copy changes in the same order as before.
+// Never rejects.
+function writeOpenReceipt(state) {
+  if (state.openReceiptPending) {
+    state.openReceiptPending = false;
+    state.openReceiptWrite = writeOpenReceiptNow(state).catch((error) => {
+      // Best effort, as any later compaction: the next open reads the cloud.
+      console.warn('[annotationDocSync] saving the opened copy locally failed', error?.message);
+    });
+  }
+  return state.openReceiptWrite || Promise.resolve();
+}
+
+async function writeOpenReceiptNow(state) {
   const acceptedUpdate = encodeSnapshot(state.acceptedDoc);
   // The checkpoint body was not downloaded (already held locally): estimate
   // its gzipped size for the checkpoint debounce (w30; ~4:1 on real marks).
   if (!state.lastSnapshotBytes) state.lastSnapshotBytes = Math.round(acceptedUpdate.length / 4);
-  state.acceptedEncoding = {
-    update: acceptedUpdate,
-    snapshot: Y.snapshot(state.acceptedDoc),
-  };
   const token = newCleanCheckpointToken();
   const outcome = {};
   const compacted = await state.outbox?.compactAccepted?.(
@@ -2524,6 +2723,13 @@ async function loadFromBackend(state) {
     },
   );
   noteCleanCompaction(state, compacted, token, outcome);
+}
+
+async function writeOpenReceiptWhenIdle(state) {
+  await waitForIdle(3000);
+  // A closing handle writes it itself, before its outbox closes.
+  if (state.destroyed || state.closePromise) return;
+  await writeOpenReceipt(state);
 }
 
 // ---- clean checkpoint bookkeeping (w29) ----------------------------------
@@ -2572,6 +2778,7 @@ function newCleanCheckpointToken() {
 // save here.
 async function recordWrittenSnapshotInCleanState(state, update, covered, identity, { transferUpdate = false } = {}) {
   if (!covered || !update || typeof state.outbox?.compactAccepted !== 'function') return;
+  await writeOpenReceipt(state);
   const token = newCleanCheckpointToken();
   const outcome = {};
   try {
@@ -2905,6 +3112,7 @@ function mapValueEqual(left, right) {
 function resetStagedToAccepted(state) {
   try { state.stagedDocRaw?.destroy(); } catch { /* */ }
   state.stagedDocRaw = null;
+  state.unbuiltStagedUpdates = [];
   seedStagedFromAccepted(state);
 }
 
@@ -2929,7 +3137,9 @@ function defineLazyStagedDoc(state) {
         if (state.stagedSeeded) {
           // w29: the encoding of acceptedDoc the open just made, when unchanged.
           Y.applyUpdate(doc, takeAcceptedEncoding(state) || encodeSnapshot(state.acceptedDoc), HYDRATE_ORIGIN);
+          for (const update of state.unbuiltStagedUpdates) Y.applyUpdate(doc, update, HYDRATE_ORIGIN);
         }
+        state.unbuiltStagedUpdates = [];
         state.stagedDocRaw = doc;
       }
       return state.stagedDocRaw;
@@ -2956,9 +3166,36 @@ function seedStagedFromAccepted(state) {
 }
 
 // The staged state for reading: the built doc, or acceptedDoc while it is
-// unbuilt (they are equal then). Never write through this.
+// unbuilt and nothing is pending (they are equal then). Never write through this.
 function stagedView(state) {
-  return state.stagedDocRaw || (state.stagedSeeded ? state.acceptedDoc : state.stagedDoc);
+  if (state.stagedDocRaw) return state.stagedDocRaw;
+  return state.stagedSeeded && state.unbuiltStagedUpdates.length === 0 ? state.acceptedDoc : state.stagedDoc;
+}
+
+// A write to stagedDoc. While it is unbuilt the update is kept and applied when
+// something reads it: the first edit after an open used to build it (one full
+// copy of acceptedDoc, ~0.7 s on a 240-sheet set, all at the edit's drop), and
+// an ordinary edit only writes it. Yjs updates commute, so applying them later,
+// over acceptedDoc as of then, builds the same document.
+function applyToStaged(state, update) {
+  if (!state.stagedDocRaw && state.stagedSeeded) {
+    state.unbuiltStagedUpdates.push(new Uint8Array(update));
+    return;
+  }
+  Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+}
+
+// Kept writes already in acceptedDoc (their rows were accepted) are dropped
+// once in a while, so a long session that never builds the staged doc does not
+// hold a copy of every edit it made. Y.snapshot walks the whole doc, so it runs
+// only when the kept list has doubled since the last pass.
+const KEPT_STAGED_PRUNE_MIN = 32;
+function pruneKeptStagedUpdates(state) {
+  const kept = state.unbuiltStagedUpdates;
+  if (state.stagedDocRaw || kept.length < (state.keptStagedPruneAt || KEPT_STAGED_PRUNE_MIN)) return;
+  const accepted = Y.snapshot(state.acceptedDoc);
+  state.unbuiltStagedUpdates = kept.filter((update) => !Y.snapshotContainsUpdate(accepted, update));
+  state.keptStagedPruneAt = Math.max(KEPT_STAGED_PRUNE_MIN, state.unbuiltStagedUpdates.length * 2);
 }
 
 function setRepairCheckpoint(state, checkpointUpdate, editEpoch) {
@@ -3190,7 +3427,7 @@ function deleteSetCoveredBy(inner, outer) {
 }
 
 function stageExactLocalUpdate(state, update) {
-  Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  applyToStaged(state, update);
   const stagedUpdate = new Uint8Array(update);
   const decoded = Y.decodeUpdate(stagedUpdate);
   if (decoded.structs.length === 0 && decoded.ds.clients.size === 0) return null;
@@ -3332,7 +3569,7 @@ async function replayOutbox(state) {
     if (!record.publishAfterAcceptance) {
       Y.applyUpdate(state.doc, record.update, HYDRATE_ORIGIN);
     }
-    Y.applyUpdate(state.stagedDoc, record.update, HYDRATE_ORIGIN);
+    applyToStaged(state, record.update);
     // w30: no whole-staged checkpoint here. stagedDoc already holds every
     // later local edit (live records no longer carry a per-edit checkpoint),
     // and a repair checkpoint must stop at this record: setRecordRepairCheckpoint
@@ -3370,7 +3607,7 @@ async function replayOutbox(state) {
         if (!laterRaw.publishAfterAcceptance) {
           Y.applyUpdate(state.doc, new Uint8Array(laterRaw.update), HYDRATE_ORIGIN);
         }
-        Y.applyUpdate(state.stagedDoc, new Uint8Array(laterRaw.update), HYDRATE_ORIGIN);
+        applyToStaged(state, new Uint8Array(laterRaw.update));
       }
       scheduleGapRepair(state);
       scheduleOutboxReplay(state, { delayed: true });
@@ -3674,9 +3911,10 @@ function runBulkTransaction(state, run) {
 
 function queueBulkUpdate(state, update, { alreadyStaged = false } = {}) {
   // Staged like any local update (stagedDoc = accepted + everything pending).
-  if (!alreadyStaged) Y.applyUpdate(state.stagedDoc, update, HYDRATE_ORIGIN);
+  if (!alreadyStaged) applyToStaged(state, update);
   const bytes = new Uint8Array(update);
   state.bulk.pending.push(bytes);
+  state.bulk.lastQueuedAt = Date.now();
   for (const [client, range] of updateClockRanges(bytes)) {
     const end = state.bulk.unaccepted.get(client) || 0;
     if (range.end > end) state.bulk.unaccepted.set(client, range.end);
@@ -3753,14 +3991,16 @@ async function runBulkFold(state) {
     return;
   }
   const updates = state.bulk.pending.slice();
-  const bulkUpdate = updates.length === 1 ? updates[0] : Y.mergeUpdates(updates);
+  // The parts as they are: the checkpoint worker merges them into its bytes
+  // (2026-10-28; merging them here took ~0.4 s on Package 2).
+  const bulkUpdate = updates.length === 1 ? updates[0] : updates;
   const folded = new Map();
   for (const update of updates) {
     for (const [client, range] of updateClockRanges(update)) {
       if (range.end > (folded.get(client) || 0)) folded.set(client, range.end);
     }
   }
-  syncTrace('bulk-fold-start', { bytes: bulkUpdate.length, parts: updates.length });
+  syncTrace('bulk-fold-start', { bytes: updates.reduce((sum, update) => sum + update.length, 0), parts: updates.length });
   const result = await writeSnapshot(state, {
     bulkUpdate,
     repairsGap: false,
@@ -3829,14 +4069,18 @@ async function runBulkFold(state) {
 }
 
 // Until this screen has no append of its own on the way (other than edits
-// waiting for this very checkpoint) and no local edit for BULK_QUIET_MS.
+// waiting for this very checkpoint), and no local edit and no import batch
+// for BULK_QUIET_MS.
 // Bounded: a screen that never pauses still gets its turn.
 async function waitForBulkQuiet(state) {
   const until = Date.now() + BULK_QUIET_MAX_WAIT_MS;
   while (!state.destroyed && !state.closePromise && Date.now() < until) {
     const appending = (Number(state.pendingAppends) || 0) - (Number(state.bulk.blocked) || 0) > 0;
     const editedRecently = Date.now() - (Number(state.lastLocalEditAt) || 0) < BULK_QUIET_MS;
-    if (!appending && !editedRecently) break;
+    // 2026-10-28: the import is saved a batch at a time (PDFViewer); fold it
+    // once the batches stop, not the first one alone.
+    const importing = Date.now() - (Number(state.bulk.lastQueuedAt) || 0) < BULK_QUIET_MS;
+    if (!appending && !editedRecently && !importing) break;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   // Rows other screens wrote are read in order first, so at_seq can be the
@@ -4748,6 +4992,7 @@ async function writeSnapshotOnce(state, {
   // 2026-10-07: a bulk import saved by this checkpoint (runBulkFold): the
   // bytes are acceptedDoc plus it, merged where acceptedDoc is encoded (the
   // checkpoint worker); acceptedDoc takes it in once the write is accepted.
+  // An update, or a list of them (its parts).
   bulkUpdate = null,
 } = {}, bodyMarkers = []) {
   const repairsGapAtStart = repairsGap ?? state.durabilityGap;
@@ -4788,8 +5033,24 @@ async function writeSnapshotOnce(state, {
   if (snapshotUpdate && atSeqAtEncode !== atSeq) mergeAcceptedAtStart = true;
   // w33: this capture covers every row this screen wrote so far.
   resetOwnCheckpointCounters(state);
+  // The app's Supabase client can send the worker's JSON bytes as the
+  // p_snapshot text without this thread ever holding the multi-MB string.
+  const asJsonBody = useCheckpointJsonBody(state);
+  // 2026-10-28: the merge with the accepted state is built by the checkpoint
+  // worker from its mirror of acceptedDoc, posted in THIS tick (so exactly
+  // acceptedDoc as it is now). On a big drawing the merge here (encode the
+  // whole document, apply both into a scratch doc, encode again) froze the
+  // page for ~1 s on every conflict retry. No mirror: merged here, as before.
+  let mergedInWorker = null;
   if (mergeAcceptedAtStart && snapshotUpdate) {
-    snapshotUpdate = mergeSnapshotUpdates(encodeSnapshot(state.acceptedDoc), snapshotUpdate);
+    mergedInWorker = requestMirrorCheckpoint(
+      state.checkpointMirror,
+      Y.encodeStateVector(state.acceptedDoc),
+      { asJsonBody, extraUpdate: snapshotUpdate },
+    );
+    if (!mergedInWorker) {
+      snapshotUpdate = mergeSnapshotUpdates(encodeSnapshot(state.acceptedDoc), snapshotUpdate);
+    }
   }
   syncTrace('snapshot-encode-start');
   const epochAtStart = epoch ?? (
@@ -4810,16 +5071,15 @@ async function writeSnapshotOnce(state, {
   // are acceptedDoc exactly as it is now (2026-10-06); later edits go into
   // the next checkpoint. No mirror: encoded here, as before.
   const encodesAccepted = !snapshotUpdate && !repairsGapAtStart;
-  // The app's Supabase client can send the worker's JSON bytes as the
-  // p_snapshot text without this thread ever holding the multi-MB string.
-  const asJsonBody = useCheckpointJsonBody(state);
   const withBulk = encodesAccepted && bulkUpdate ? bulkUpdate : null;
-  const mirrorCheckpoint = encodesAccepted
+  const mirrorCheckpoint = mergedInWorker || (encodesAccepted
     ? requestMirrorCheckpoint(state.checkpointMirror, Y.encodeStateVector(state.acceptedDoc), { asJsonBody, extraUpdate: withBulk })
-    : null;
+    : null);
   let updateAtStart = snapshotUpdate || (
     repairsGapAtStart ? encodeRepairCheckpoint(state) : (mirrorCheckpoint ? null : encodeSnapshot(state.acceptedDoc))
   );
+  // The bytes come from the worker's merge (above).
+  if (mergedInWorker) updateAtStart = null;
   if (withBulk && updateAtStart && !mirrorCheckpoint) {
     updateAtStart = mergeCheckpointWithUpdate(updateAtStart, withBulk);
   }
@@ -5017,7 +5277,9 @@ async function writeSnapshotOnce(state, {
         // Repair or rebased bytes may hold more: applied.
         if (!encodesAccepted && !(fromAccepted && !repairsGapAtStart)) applyAcceptedUpdate(state, updateAtStart);
         // Only the import is new to acceptedDoc (the rest is its own encoding).
-        else if (withBulk) applyAcceptedUpdate(state, withBulk);
+        else if (withBulk) {
+          for (const part of Array.isArray(withBulk) ? withBulk : [withBulk]) applyAcceptedUpdate(state, part);
+        }
         state.acceptedEditEpoch = Math.max(state.acceptedEditEpoch, epochAtStart || 0);
         await settleSnapshotCoveredRecords(state, updateAtStart, epochAtStart, prepared?.stateVector || null);
         await recordWrittenSnapshotInCleanState(state, updateAtStart, coverageAtStart, {
@@ -6705,7 +6967,16 @@ async function drainStateQueues(state) {
   }
 }
 
+// Handle -> state, for __test only.
+const testStates = new WeakMap();
+
 function makeHandle(state) {
+  const handle = buildHandle(state);
+  testStates.set(handle, state);
+  return handle;
+}
+
+function buildHandle(state) {
   return {
     documentId: state.documentId,
     clientId: state.clientId,
@@ -7210,6 +7481,8 @@ function makeHandle(state) {
 
     /** Current durable-write state for user-facing status. */
     getSyncStatus() { return currentSyncStatus(state); },
+    // This device's own store holds every edit (it survives a reload offline).
+    hasLocalStore() { return !!state.idbProvider; },
 
     /** Actor-safe status for the shipped actorless IndexedDB recovery store. */
     getLegacyRecoveryStatus() {
@@ -7326,6 +7599,10 @@ function makeHandle(state) {
           );
         } catch { /* */ }
       }
+      // A close soon after an open: write its receipt and fill the offline
+      // copy first.
+      await writeOpenReceipt(state);
+      flushDeferredPersistence(state);
       destroyLocalPersistence(state);
       try { await state.outbox?.close?.(); } catch { /* */ }
       try { state.acceptedDoc.destroy(); } catch { /* */ }
@@ -7490,6 +7767,7 @@ export const __test = {
   causalDependenciesForUpdate,
   clockRangeDecodeCount: () => clockRangeDecodes,
   stagedBuildCount: () => stagedBuilds,
+  keptStagedUpdateCount: (handle) => testStates.get(handle)?.unbuiltStagedUpdates.length ?? null,
   bytesToPgHex,
   pgHexToBytes,
   emitHistoryQuarantine,

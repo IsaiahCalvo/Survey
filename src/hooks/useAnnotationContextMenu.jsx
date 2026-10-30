@@ -19,6 +19,9 @@
 // useCallback-stable so the external callers that omit the setter from their
 // dependency arrays keep their referential identity.
 
+import MenuGlide from '../components/MenuGlide.jsx';
+import { menuIconFor } from '../utils/menuItems.js';
+import { queryFrontTab } from '../utils/tabBehind.js';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -183,6 +186,10 @@ export function useAnnotationContextMenu({ getPageObjects = null } = {}) {
 // Enter on Arrange opens it, Left closes it, Enter runs the focused item,
 // Escape closes the menu (dismissRules). A menu opened by touch keeps 44 px
 // targets (touchTargets.css + annotationContextMenu.css).
+// Design review 2026-10-27: the rows under the icon row carry an icon too,
+// like every other action menu (components/MenuRows.jsx picks by label).
+const MARK_ROW_ICONS = { arrange: 'layers', lock: 'lock', unlock: 'lock', saveToLibrary: 'library' };
+const markRowIcon = (it) => MARK_ROW_ICONS[it.key] || menuIconFor(it.label);
 const MENU_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Enter'];
 
 function MarkMenuBody({ layout, touchRows }) {
@@ -309,6 +316,7 @@ function MarkMenuBody({ layout, touchRows }) {
   const tipFor = (label) => (touchRows ? {} : tip(label, 'above'));
   return (
     <div ref={rootRef} className="annotation-menu-body">
+      <MenuGlide />
       <div role="group" aria-label="Edit" className="annotation-menu-quick">
         {layout.quick.map((it) => {
           const hint = tipFor(it.label);
@@ -347,6 +355,7 @@ function MarkMenuBody({ layout, touchRows }) {
             onPointerEnter={it.disabled ? undefined : onMouseHover(true)}
             onClick={it.disabled ? undefined : () => setArrangeOpen((open) => (touchRows ? !open : true))}
           >
+            {markRowIcon(it) && <Icon name={markRowIcon(it)} size={14} color="currentColor" />}
             <span>{it.label}</span>
             <span className="annotation-menu-chevron" aria-hidden="true">
               <Icon name="chevronRight" size={14} color="currentColor" />
@@ -381,6 +390,7 @@ function MarkMenuBody({ layout, touchRows }) {
           onPointerEnter={onMouseHover(false)}
           onClick={it.disabled ? undefined : it.onClick}
         >
+          {markRowIcon(it) && <Icon name={markRowIcon(it)} size={14} color="currentColor" />}
           {it.label}
         </div>
       )))}
@@ -449,6 +459,9 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     duplicateFamilySelection = null,
     familyClipboard = null,
     pasteFamilyAt = null,
+    // Mark library ('mark-library' beta): saveFamilyToLibrary(pageNumber,
+    // selection) opens the Save to library card on those marks.
+    saveFamilyToLibrary = null,
     // Owner ruling 2026-09-28 — Lock / Unlock on every object menu:
     // toggleLockSelection(pageNumber, { indices, calloutIds, markerIds }, lock)
     // and a Survey Marker record lookup by id.
@@ -569,7 +582,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     const zOrderFor = (index) => {
       const length = annotationsByPageRef.current?.[ctx.pageNumber]?.objects?.length || 0;
       const svg = typeof document !== 'undefined'
-        ? document.querySelector(`[data-svg-annotation-layer="${ctx.pageNumber}"]`)
+        ? queryFrontTab(`[data-svg-annotation-layer="${ctx.pageNumber}"]`)
         : null;
       const bboxOf = (i) => {
         const g = svg?.querySelector(`[data-annotation-index="${i}"]`)
@@ -600,6 +613,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
     const duplicateItem = (selection) => item('Duplicate', 'duplicate', () => {
       if (typeof duplicateFamilySelection === 'function') duplicateFamilySelection(ctx.pageNumber, selection);
     }, typeof duplicateFamilySelection === 'function');
+    // Mark library: "Save to library" on every mark menu (flag on only).
+    const libraryItems = (selection) => (typeof saveFamilyToLibrary === 'function'
+      ? [item('Save to library', 'saveToLibrary', () => saveFamilyToLibrary(ctx.pageNumber, selection))]
+      : []);
     // Owner ruling 2026-09-28: Lock / Unlock, right under Delete.
     const lockMenuItems = (members, selection) => {
       const spec = lockItemFor(members, selection);
@@ -686,6 +703,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // right-click's client coords. doPasteAny covers both clipboards.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem({ calloutIds: [ctx.calloutId] }),
+        ...libraryItems({ calloutIds: [ctx.calloutId] }),
         // UX: right-click Delete = the SAME gated delete as pressing Delete/
         // Backspace with the callout selected — PDFViewer's
         // handleDeleteSelectedCallouts (canModify ownership check, undo
@@ -780,6 +798,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         // is empty — matches Acrobat, Drawboard PDF, Bluebeam, Figma.
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem({ indices: [ctx.annotationIndex] }),
+        ...libraryItems({ indices: [ctx.annotationIndex] }),
         // UX: right-click Delete mirrors the keyboard Delete/Backspace path.
         // RULED 2026-09-28 owner: open editing + lock: Delete takes anyone's mark with no confirmation
         // (via the planner when present, for the History row); a user-locked mark
@@ -875,6 +894,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         item('Copy', 'copy', () => copyFamilySelection?.(ctx.pageNumber, { markerIds: [ctx.surveyMarkerId] }, 'copy')),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem({ markerIds: [ctx.surveyMarkerId] }),
+        ...libraryItems({ markerIds: [ctx.surveyMarkerId] }),
         item('Delete', 'delete', () => {
           if (typeof deleteSurveyMarkers === 'function') deleteSurveyMarkers([ctx.surveyMarkerId]);
         }, markerEditable),
@@ -1037,6 +1057,7 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
         }),
         item('Paste', 'paste', doPasteAny, hasAnyClipboard),
         duplicateItem(familySelection),
+        ...libraryItems(familySelection),
         // RULED 2026-09-28 owner: open editing + lock: multi-select Delete removes every member
         // that is not user-locked, with no confirmation (via the planner for the
         // History row).
@@ -1218,8 +1239,8 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           let pageRect = null;
           if (ctx.pageNumber != null) {
             const pageEl =
-              document.querySelector(`[data-diag-svg-wrapper="${ctx.pageNumber}"]`)
-              || document.querySelector(`[data-pal-root="${ctx.pageNumber}"]`);
+              queryFrontTab(`[data-diag-svg-wrapper="${ctx.pageNumber}"]`)
+              || queryFrontTab(`[data-pal-root="${ctx.pageNumber}"]`);
             if (pageEl) {
               // Walk up to the pdfjs page div so the bounds match
               // what the user visually sees as "the page".
@@ -1308,10 +1329,10 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
           zIndex: 10000,
           minWidth: 160,
           padding: 4,
-          fontSize: 12.5,
+          // Design review 2026-10-27: the action menu row (tokens.css --menu-*).
+          font: 'var(--menu-font)',
           color: 'var(--text-2)',
           letterSpacing: 0,
-          fontFamily: 'var(--font-ui)',
         }}
       >
         {/* UX: mobile menus lead with a muted title row + divider, matching the
@@ -1370,8 +1391,11 @@ export function renderAnnotationContextMenu(annotationContextMenu, closeAnnotati
                   font: '400 15px/20px var(--font-ui)',
                   color: it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)', // off: states.css section 6
                 } : {
-                  padding: '7px 12px',
-                  borderRadius: 5,
+                  display: 'flex',
+                  alignItems: 'center',
+                  minHeight: 'var(--menu-item-h)',
+                  padding: '0 var(--menu-item-pad-x)',
+                  borderRadius: 'var(--radius-xs)',
                   cursor: 'pointer',
                   userSelect: 'none',
                   color: it.key === 'delete' ? 'var(--danger-text)' : 'var(--text-1)', // off: states.css section 6

@@ -224,6 +224,13 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    comment: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.2 3.4a.5.5 0 0 1-.8-.4V16h0a1 1 0 0 1-1-1V5.5Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M8 8.5h8M8 11.5h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+
     retry: (size, color, style, className) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M20 11a8 8 0 1 0-2.34 5.66" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
@@ -256,6 +263,16 @@ const ICON_RENDERERS = {
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M3 6h18M3 12h9M3 18h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
         <path d="M12 21l.75-3 6.1-6.1a1.6 1.6 0 0 1 2.25 2.25L15 20.25z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    // "Done" for a list's Select / Edit mode (owner 2026-10-27, replacing
+    // 2026-10-26's check-check): the edit-list icon with its pen turned into
+    // a check, like Solar's list-check-minimalistic. The rows are editList's
+    // own, so Edit -> Done morphs only the pen.
+    editListDone: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M3 6h18M3 12h9M3 18h5" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M13 17l3 3 5-6" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
     // Spaces Areas tools (owner 2026-10-02, provisional): Rectangle area and
@@ -757,6 +774,16 @@ const ICON_RENDERERS = {
       </svg>
     ),
 
+    // Polyline "Curve" switch (Nightly, 2026-10-26): one smooth bend between
+    // two corner rings, the Polyline glyph's own stroke and node circle.
+    polylineCurve: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M6.2 15.4C9 6.5 15 17.5 17.8 8.6" fill="none" stroke={color} strokeWidth={ICON_STROKE_WIDTH} strokeLinecap="round" />
+        {nodeCircle('polyline-curve-node-0', 5, 17.5, color)}
+        {nodeCircle('polyline-curve-node-1', 19, 6.5, color)}
+      </svg>
+    ),
+
     // UX 2026-09-16: the diagonal now runs 3..21, the same span as the Rectangle
     // glyph's box, so Line and Arrow fill their buttons like their neighbours. On
     // the old 5..19 diagonal they measured 22% smaller than Rectangle and 30%
@@ -773,6 +800,15 @@ const ICON_RENDERERS = {
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
         <path d="M4 4H20V20H4Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
         <path d="M8 16L16 8M8 12L12 8M12 16L16 12" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ),
+    // Perimeter: the outline itself, with a dot on each corner it runs through.
+    measurePerimeter: (size, color, style, className) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={style} className={className}>
+        <path d="M12 3.5L20 9V18.5H4V9Z" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+        <circle cx="12" cy="3.5" r="1.5" fill={color} />
+        <circle cx="20" cy="18.5" r="1.5" fill={color} />
+        <circle cx="4" cy="18.5" r="1.5" fill={color} />
       </svg>
     ),
     measureScale: (size, color, style, className) => (

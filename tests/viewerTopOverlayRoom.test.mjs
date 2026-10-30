@@ -5,6 +5,8 @@ import {
   compensateScrollTopForRoom,
   computeTopOverlayInset,
   getViewerTopOverlays,
+  measureStripRect,
+  parseTranslateY,
   registerViewerTopOverlay,
   resolvePageLandingScrollTop,
   resolveRoomCompensationBase,
@@ -212,8 +214,32 @@ test('the viewer, the desktop host and the phone strips are wired to the room', 
   );
   // Every root strip's opening tag (attribute order free) carries the ref.
   const roots = body.match(/<div\s[^>]*?className="mobile-pdf-properties[ "][^>]*>/g) || [];
-  assert.ok(roots.length >= 7, `expected every phone strip root, found ${roots.length}`);
+  assert.ok(roots.length >= 6, `expected every phone strip root, found ${roots.length}`);
   roots.forEach((root) => assert.match(root, /ref=\{topOverlayRef\}/, `phone strip must register: ${root.slice(0, 90)}`));
   const groups = body.match(/<div\s[^>]*?className="mobile-pdf-properties__[^>]*>/g) || [];
   groups.forEach((group) => assert.doesNotMatch(group, /topOverlayRef/, 'only the strip root registers, never a group inside it'));
+});
+
+// Owner 2026-10-26 (item 38): the Survey bar is measured in the first frame of
+// its 5 px drop; the room above the page must not come out 5 px short.
+test('a strip is measured where it lands, not mid-drop', () => {
+  assert.equal(parseTranslateY('none'), 0);
+  assert.equal(parseTranslateY('3px'), 0);
+  assert.equal(parseTranslateY('0px -5px'), -5);
+  assert.equal(parseTranslateY('2px 1.5px 0px'), 1.5);
+  const body = { nodeType: 1 };
+  const wrapper = { nodeType: 1, parentElement: body, translate: '0px -5px' };
+  const bar = {
+    nodeType: 1, parentElement: wrapper, translate: 'none', ownerDocument: { body },
+    getBoundingClientRect: () => ({ left: 48, right: 1352, top: 64, bottom: 99, width: 1304, height: 35 }),
+  };
+  wrapper.ownerDocument = { body };
+  const win = { getComputedStyle: (n) => ({ translate: n.translate }) };
+  const r = measureStripRect(bar, win);
+  assert.equal(r.top, 69);
+  assert.equal(r.bottom, 104);
+  assert.equal(r.height, 35);
+  // nothing moving: the rect as it is
+  wrapper.translate = 'none';
+  assert.equal(measureStripRect(bar, win).top, 64);
 });

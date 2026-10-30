@@ -40,7 +40,8 @@ Rules:
 - A status that is an entity's name, said in any words ("not started", "100% installed" or "fully done" for "100% Complete"), is the entity: pass it as entity, never as checklist answers. Set an entity only when they name one.
 - When the answers are other words (Installed / Damaged), use answer_meaning ("busted" is Damaged). Answer only lines their words cover, with allowed values; never invent lines.
 - If their words could mean two answers ("it's done" over mixed lines, "mostly in"), ask one short question and change nothing yet.
-- Notes: short, clean sentences, no filler; keep their facts exactly, add none.
+- Notes: short, clean sentences, no filler; keep their facts exactly, add none. Use the project's learned wording (get_survey_context learned.wording: write the second for the first). If they word one fact two ways in a walk ("missing", "not installed"), write the way they say it most and ask once if you should always write it that way.
+- When they teach a name or wording ("whenever I say D101 I mean D-1-01", "third door on the first floor is D-1-03", "always write not installed, not missing"), call remember. After a new wording, also call tidy_notes so older notes match. "Forget D101" is forget. Learned names (learned.names) already work in item_name.
 - Photos or files they attached go on the item with attach_media; "take a photo" is take_photo.
 - When they tell you to do something, do it; don't ask to confirm. If they correct you ("no, D-118", "undo that"), call undo_last_turn, then redo it right.
 - A device named by kind and number, not tag ("camera 6 on the 4th floor"): use find_described with the kind, number, and floor or wing if said. Never ask for the wing or the full tag. If one item or plan tag clearly fits best, it is the one: show it (show_item, show_on_plan) when they ask to find it; work on it when they say what to record. A plan tag that is not an item yet becomes one with create_item when they say what to record or what it is ("it's a camera" names the category). If several fit equally, name them by page and ask.
@@ -117,10 +118,10 @@ function voiceAnnotationTools() {
 // people with the annotation-agent flag).
 export function buildSurveyAgentTools(answerValues, { annotations = false, markupOpen = true, webmcp = false, typedLines = false } = {}) {
   const answers = cleanAnswerValues(answerValues);
-  // A template with text or number lines (answer_kind in get_survey_context)
-  // cannot hold set_answers values to the answer list.
+  // A template with typed lines (answer_kind in get_survey_context) cannot
+  // hold set_answers values to the answer list.
   const answerValue = typedLines
-    ? { type: 'string', description: `One of ${answers.join(', ')}; for a line whose answer_kind is text, what was said; for number, the number only (no unit).` }
+    ? { type: 'string', description: `One of ${answers.join(', ')}; for a line with an answer_kind: text, what was said; number or count, the number only (no unit); score, a whole number on its scale (1 to scale); date, YYYY-MM-DD; many, any of its options joined with commas.` }
     : { type: 'string', enum: answers };
   const tool = (name, description, properties = {}, required = []) => ({
     type: 'function',
@@ -132,7 +133,7 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
   });
   return [
     tool('get_survey_context',
-      'The open survey: its template categories with checklist items (ids, text, and answer_kind text or number for lines that take what was said), the allowed answers, the entities, how many items each category has, and the item the person has selected, if any.'),
+      'The open survey: its template categories with checklist items (ids, text, and for lines that take what was said an answer_kind of text, number, score, count, date or many with its unit, min, max, scale, issueAt, issueIfPast or options), the allowed answers, the entities, how many items each category has, and the item the person has selected, if any.'),
     tool('find_items',
       'Search the items in this survey by name, forgiving of speech-to-text spelling ("D one seventeen" finds D-117). Returns up to 5 best matches with their category and a score from 0 to 1.',
       {
@@ -242,6 +243,28 @@ export function buildSurveyAgentTools(answerValues, { annotations = false, marku
       'Show the item to the person: open it in the survey list and go to it on the plan.',
       { item_id: id('The item id.') },
       ['item_id']),
+    // What the project taught the agent; not for browser agents.
+    ...(webmcp ? [] : [
+      tool('remember',
+        'Save, for everyone on this project, a name the person uses for an item (kind name: heard "D101", means the item, by its name as heard) or the words they want in notes (kind wording: heard "missing", means "not installed"). The same heard replaces the old one. One Undo takes it back.',
+        {
+          kind: { type: 'string', enum: ['name', 'wording'] },
+          heard: { type: 'string', description: 'What they say, as heard.' },
+          means: { type: 'string', description: 'kind name: the item it is. kind wording: the words to write instead.' },
+        },
+        ['kind', 'heard', 'means']),
+      tool('forget',
+        'Remove a saved name or wording by what they say ("forget D101").',
+        { heard: { type: 'string', description: 'The saved heard words.' } },
+        ['heard']),
+      tool('tidy_notes',
+        'Rewrite older notes in this drawing: every whole "from" becomes "to" (any case). Says how many notes changed; one Undo puts them back.',
+        {
+          from: { type: 'string', description: 'The words to replace.' },
+          to: { type: 'string', description: 'The words to write instead.' },
+        },
+        ['from', 'to']),
+    ]),
     ...(webmcp ? [
       tool('add_photo',
         'Attach a photo to an item from image data (editor). Pass the image as base64 (a data: URL is fine); the limit is 20MB. The photo is added to the item\'s note, and one Undo takes it back.',

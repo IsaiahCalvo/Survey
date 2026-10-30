@@ -25,7 +25,7 @@ import { composeColorForPatch } from './annotationData.js';
 import { renderPathToSvgAttrs } from './svgPathAttrs.js';
 import { createInkAnnotation, boundsOfCommands } from './paperAnnotationGeometry.js';
 import { isAbsoluteInkGeometry } from './inkGeometryTransform.js';
-import { toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
+import { cloudEngineKindForShape, toolSupportsCloudBorderStyle } from './pdfAnnotationAppearance.js';
 import { getAnnotationRenderIdentity } from './annotationStorageIdentity.js';
 import { isArrowLineMark, isCounterMark, markToolForAnnotation } from './markToolGroup.js';
 
@@ -168,8 +168,11 @@ export function restyleCapabilities(annotation) {
     };
   }
   if (type === 'polyline') {
+    // An open line is never clouded now (owner 2026-10-28); one saved as a
+    // cloud before then still lists Cloud, so its Style reads true and can be
+    // switched off.
     return {
-      ...none, stroke: true, width: true, lineStyle: true, cloud: toolSupportsCloudBorderStyle(type),
+      ...none, stroke: true, width: true, lineStyle: true, cloud: annotation.data?.pdfCloudIntensity != null,
     };
   }
   if (type === 'line') {
@@ -185,7 +188,7 @@ export function restyleCapabilities(annotation) {
 
 const lineStyleOf = (annotation) => {
   if (annotation?.data?.pdfCloudIntensity != null
-    && (toolSupportsCloudBorderStyle(lower(annotation.type)) || lower(annotation.type) === 'textbox')) {
+    && (cloudEngineKindForShape(lower(annotation.type)) || lower(annotation.type) === 'textbox')) {
     return 'cloud';
   }
   const dash = Array.isArray(annotation?.strokeDashArray) ? annotation.strokeDashArray : null;
@@ -872,15 +875,6 @@ export function restoreDragBaseline(byPage, pages, baseline) {
   return previous;
 }
 
-/**
- * True when the picked marks disagree on any colour the combined paint swatch
- * shows (border, fill, or either one's opacity). The swatch then wears the
- * custom disc's rainbow ring and plus instead of one mark's paint (owner
- * 2026-10-04, Test 43). A property only some members carry (an arrow has no
- * fill) is compared among the members that have it, so a circle and an arrow
- * with the same border are not mixed.
- */
-export function isPaintSelectionMixed(mixed) {
-  if (!mixed) return false;
-  return !!(mixed.strokeColor || mixed.fillColor || mixed.strokeOpacity || mixed.fillOpacity);
-}
+// Its own small module (the chrome loads with the home screen; this file
+// pulls the ink geometry in). Re-exported here for existing callers.
+export { isPaintSelectionMixed } from './paintSelectionMixed.js';

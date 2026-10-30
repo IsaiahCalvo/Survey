@@ -12,6 +12,7 @@ import {
   TEMPLATE_WORKFLOW_STORAGE_KEY,
 } from './survey-template.mjs';
 import { runDesktopSurveyTemplateWorkflow } from './survey-template-desktop.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 const baseUrlArg = process.argv.find((arg) => arg.startsWith('--base-url='))?.split('=')[1] || null;
 const headful = process.argv.includes('--headful');
@@ -31,20 +32,15 @@ async function runDevice(server, device) {
   const profile = device === 'mobile'
     ? { viewport: MOBILE_VIEWPORT, screen: MOBILE_VIEWPORT, deviceScaleFactor: 3, hasTouch: true, isMobile: true }
     : { viewport: { width: 1400, height: 900 }, screen: { width: 1400, height: 900 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false };
-  const context = await browser.newContext({ ...profile, locale: 'en-US' });
+  const context = await guardContext(browser.newContext({ ...profile, locale: 'en-US' }));
   await context.addInitScript((key) => {
     const sentinel = '__mobileWorkflowTemplatesInitialized';
     if (!sessionStorage.getItem(sentinel)) {
       localStorage.setItem(key, '[]');
-      localStorage.removeItem('surveyHub.templateOrder:isaiahcalvo123@gmail.com');
+      Object.keys(localStorage).filter((k) => k.startsWith('surveyHub.templateOrder:')).forEach((k) => localStorage.removeItem(k));
       sessionStorage.setItem(sentinel, '1');
     }
   }, TEMPLATE_WORKFLOW_STORAGE_KEY);
-  // Hermetic: the signed-out dev route still asks the configured Supabase for
-  // things like the document owner's profile, which answers 401 and fails the
-  // run's final no-browser-errors check. Only loopback is reachable here.
-  await context.route((url) => !['127.0.0.1', 'localhost'].includes(url.hostname)
-    && url.protocol !== 'data:' && url.protocol !== 'blob:', (route) => route.abort('blockedbyclient'));
   await context.route('**/api/analytics/track', async (route) => {
     await route.fulfill({
       status: 204,

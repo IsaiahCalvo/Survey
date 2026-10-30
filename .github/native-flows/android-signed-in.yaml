@@ -39,6 +39,14 @@ name: android-signed-in
     visible: "More document options"
     timeout: 90000
 - takeScreenshot: 03-document-open
+# Launch audit 2026-10-30: the iOS walk passed for days while the viewer
+# showed "Couldn't open this PDF" (the toolbar loads either way). The page
+# itself must draw: no error screen, and the sample PDF's own link (its
+# overlay exists only once pdf.js has the page) shows up.
+- assertNotVisible: ".*Couldn.t open this PDF.*"
+- extendedWaitUntil:
+    visible: ".*Open link https://claude.com.*"
+    timeout: 60000
 - tapOn: "More document options"
 - takeScreenshot: 04-more-menu
 - tapOn: "Export annotated PDF"
@@ -61,3 +69,59 @@ name: android-signed-in
 - extendedWaitUntil:
     visible: "More document options"
     timeout: 30000
+# Phone walk 2026-10-28: the phone's bottom panels open and close, and Survey's
+# "Export data" Excel file reaches the share sheet (the native download shim)
+# like the PDF does. Each panel button toggles its sheet. Export is off while a
+# survey has no items, so the export runs on the seeded agent drawing (it has
+# E2E Doors items); "Done" (Leave Survey) puts the Survey tool down and the
+# flow reopens the sample drawing, so the scripts after it find the plain
+# viewer with Pan armed.
+- tapOn: "Open spaces"
+- extendedWaitUntil:
+    visible: "Create space"
+    timeout: 30000
+- takeScreenshot: 07-spaces-sheet
+- tapOn: "Open spaces"
+- extendedWaitUntil:
+    notVisible: "Create space"
+    timeout: 30000
+- runFlow: android-open-agent-drawing.yaml
+- tapOn: "Open survey"
+- tapOn:
+    text: "E2E Doors.*"
+    optional: true
+- extendedWaitUntil:
+    visible: "Export data"
+    timeout: 30000
+- takeScreenshot: 08-survey-sheet
+# The share sheet opens over the spot where Export sat; a second "no change
+# yet" tap landed on its Bluetooth target.
+- tapOn:
+    text: "Export data"
+    retryTapIfNoChange: false
+# On the bare emulator only Bluetooth takes an .xlsx file, and Android opens
+# the one app that matches instead of a chooser: that is the file reaching the
+# share path too. A phone with Drive, Gmail or Excel shows the chooser.
+- extendedWaitUntil:
+    visible: ".*(Share|share|Copy|Nearby|Drive|Bluetooth).*"
+    timeout: 30000
+- takeScreenshot: 09-survey-export-share-sheet
+- pressKey: Back
+- extendedWaitUntil:
+    visible: "Leave Survey"
+    timeout: 30000
+- tapOn: "Leave Survey"
+- extendedWaitUntil:
+    notVisible: "Export data"
+    timeout: 30000
+- tapOn: "Back to documents"
+- extendedWaitUntil:
+    visible: ".*E2E Sample Drawing.*"
+    timeout: 60000
+- tapOn: ".*E2E Sample Drawing.*"
+- tapOn:
+    text: "Open file"
+    optional: true
+- extendedWaitUntil:
+    visible: "More document options"
+    timeout: 90000

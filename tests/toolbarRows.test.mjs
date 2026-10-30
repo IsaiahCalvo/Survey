@@ -107,7 +107,7 @@ test('Survey and annotation controls take turns, including stale selection conte
   }
   assert.equal(showsSurveyRow({ ...survey, showSurveyPanel: false }), false);
   assert.equal(showsSurveyRow({ ...survey, regionEditing: true }), false);
-  assert.equal(showsFormatRow({ ...survey, regionEditing: true }), true, 'region editing still owns its actions');
+  assert.equal(showsFormatRow({ ...survey, regionEditing: true }), false, 'region editing has no row 2 (owner 2026-10-26)');
 });
 
 test('pressing a group tool while Select is armed arms that tool and shows its group', () => {
@@ -200,7 +200,7 @@ test('row 2 coming and going in Select mode moves neither the Survey row nor the
   assert.match(pdfViewer, /const subRowHost = document\.getElementById\('chrome-survey-row-slot'\)\s*\|\| document\.getElementById\('chrome-sub-toolbar-host'\);/);
   // ...and the banner anchors as if row 2 were up the whole time Select is armed.
   assert.match(appShell, /const reserveFormatRowForBanner = selectArmed && !isMobileViewer;/);
-  assert.match(appShell, /setProperty\('--app-banner-top'/);
+  assert.match(appShell, /publishChromeInset\('bannerTop', `\$\{Math\.round\(bannerTop\)\}px`\)/);
   const banner = readFileSync(new URL('../src/components/collab/StorageFailureBanner.css', import.meta.url), 'utf8');
   assert.match(banner, /top: var\(--app-banner-top, var\(--app-chrome-top, 96px\)\);/);
 });
@@ -318,29 +318,29 @@ test('w47: the room kept for the widest loadout matches the Shapes group\'s eigh
 // tools." While a Space's areas are edited the desktop tool bar is in Areas
 // mode: the area tools stand where a group's tools go, the app's own Select
 // picks areas, and row 2 holds the actions.
-test('Areas mode: the area tools take the loadout, the actions take row 2, no drawing group shows', () => {
+test('Areas mode: the area tools take the loadout, there is no row 2, a drawing group leaves', () => {
   // The viewer publishes its armed tool a frame early, so either signal counts.
   assert.equal(isAreaEditing({ regionEditing: true, activeTool: 'pan' }), true);
   assert.equal(isAreaEditing({ regionEditing: false, activeTool: 'region-edit' }), true);
   assert.equal(isAreaEditing({ regionEditing: false, activeTool: 'select' }), false);
-  assert.equal(showsFormatRow({ regionEditing: true, activeTool: 'pan', contextTool: 'pan' }), true);
+  // Owner 2026-10-26: no hint, no Delete / Full page / Cancel / Done row.
+  assert.equal(showsFormatRow({ regionEditing: true, activeTool: 'pan', contextTool: 'pan' }), false);
   // A Draw row left open from before never shows beside the Areas tools.
   assert.equal(resolveToolBarGroup({ activeTool: 'region-edit', activeCategoryDropdown: 'draw' }), null);
   assert.equal(resolveToolBarGroup({ activeTool: 'pan', activeCategoryDropdown: 'draw', regionEditing: true }), null);
 
   const toolBar = appShell.slice(appShell.indexOf('data-toolbar-subtools="true"'), appShell.indexOf('id="chrome-subtools-host"'));
   assert.match(toolBar, /\{areasMode && renderAreaTools\(\)\}/);
-  const row2 = appShell.slice(appShell.indexOf('data-chrome-settings-holder="true"'), appShell.indexOf('data-eraser-mode-toggle="true"'));
-  assert.match(row2, /\{areasMode && renderAreaActions\(\)\}/);
+  assert.doesNotMatch(appShell, /renderAreaActions|data-area-hint|AREA_CONFIRM_STYLE/);
+  const areaTools = appShell.slice(appShell.indexOf('const renderAreaTools'), appShell.indexOf('const toolbarOverflowItems'));
+  assert.match(areaTools, /tool\('erase', 'Erase area', 'eraser'/);
   // One Select: in Areas mode the app's Select button arms the area Select.
   assert.match(appShell, /if \(isSelect && areasMode\) \{\s*\/\/[^\n]*\n\s*regionApi\.setToolType\?\.\('move'\);/);
-  // Done stands out without gold (owner 2026-10-04: no gold outside a
-  // dialog's primary button): a neutral plate with bright ink, and so does the
-  // inline full-page answer. Nothing on the row is gold.
-  const actions = appShell.slice(appShell.indexOf('const renderAreaActions'), appShell.indexOf('const toolbarOverflowItems'));
-  assert.equal((actions.match(/btn-primary/g) || []).length, 0, 'no gold button on the Areas row');
-  assert.equal((actions.match(/btn-secondary" style=\{AREA_CONFIRM_STYLE\}/g) || []).length, 2, 'Done, and the inline full-page answer');
-  assert.match(actions, /className="btn btn-sm btn-secondary" style=\{AREA_CONFIRM_STYLE\} onClick=\{regionApi\.confirm\}/);
+  // Draw, Shapes, Text and Survey stay live and leave area editing first,
+  // keeping the areas, like picking another tool anywhere.
+  assert.doesNotMatch(appShell, /disabled=\{areasMode\}|\|\| areasMode\}/);
+  assert.equal((appShell.match(/leaveAreasMode\(\);/g) || []).length, 4);
+  assert.match(appShell, /const leaveAreasMode = \(\) => \{ if \(areasMode\) regionApi\.leave\?\.\(\); \};/);
 });
 
 test('owner 2026-10-01: opening or closing a side panel never moves the tool bar', () => {

@@ -40,10 +40,13 @@
    scrollbars.
 */
 import { listExportKits, subscribeExportKits, getExportKit, DEFAULT_EXPORT_KIT_ID } from '../services/exportFormats/registry.js';
-import { DEFAULT_ANSWER_SET, answerPresetIdOf, answerSetPresets } from '../services/answerSets.js';
+import { DEFAULT_REPORT_KIT_ID, listReportKits } from '../services/reportKits/index.js';
+import { DEFAULT_ANSWER_SET, ITEM_ANSWER_KEYS, answerPresetIdOf, answerSetPresets, itemAnswerFields } from '../services/answerSets.js';
 import { isFeatureOn } from '../featureFlags.js';
-import AnswerSetEditor, { ItemKindPicker } from './AnswerSetEditor.jsx';
-import { useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
+import AnswerSetEditor, { ItemKindPicker, ShowIfPicker } from './AnswerSetEditor.jsx';
+import { copyLines, showIfOf } from '../services/conditionalLines.js';
+import { checklistItemKind, manyOptionsOf } from '../../supabase/functions/_shared/kitShape.js';
+import { lazy, Suspense, useState, useMemo, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { hoverOnly, useTooltip, withOwnHandlers } from '../components/Tooltip';
 import { createPortal, flushSync } from 'react-dom';
 import { reloadTemplatesAfterPendingSave } from './templatePersistence.js';
@@ -68,7 +71,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { HubShell, Icon, Search, EmptyState } from './HubShell';
 import { transferTemplateItems } from './templateItemTransfer';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
-import SwipeToDeleteRow from '../components/SwipeToDeleteRow.jsx';
+import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import {
   resolveTemplatesReload,
   createStableIdMint,
@@ -100,19 +103,34 @@ import {
 import { moveItemById } from '../reorder/flatReorderUtils.js';
 import { CALM_STRIP_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { restrictToHorizontalAxis } from '../reorder/axisLock.js';
+import useTabOverflow from '../reorder/useTabOverflow.js';
 import { pickByIds, removeByIds, duplicateAfterByIds } from './selectionById.js';
 import { countLabel } from './countLabel.js';
 import { flagRequiredInput, isBlank } from '../components/requiredInput';
+import AnswerSetPicker, { AnswerChips } from './AnswerSetPicker.jsx';
+import { TEMPLATE_EDITOR_REQUEST_EVENT, takeTemplateEditorRequest } from './templateEditorRequest';
 import './TemplatesEditor.css';
 import DismissBarrier from '../components/DismissBarrier';
+import ValueSelect from '../components/ValueSelect.jsx';
+import { ownKitCopyFor, templateOwnKitOf } from '../services/exportFormats/ownKitCopy.js';
 import { checkboxProps } from '../utils/keyActivate';
 import SharedTemplateBadge from '../components/SharedTemplateBadge.jsx';
 import { isSmartFillBetaEnabled } from '../survey/smartFillFlag.js';
 import { templateCategoryEmptyText } from './templateEmptyText.js';
+import { autoCompleteOn, findCompleteEntity } from '../utils/surveyAutoEntity.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+
+// Nightly 'own-excel-layouts': the dialog and its store load when first opened.
+const OwnExcelLayoutDialog = lazy(() => Promise.all([
+  import('./OwnExcelLayoutDialog.jsx'),
+  import('../services/exportFormats/ownKitStore.js'),
+]).then(([dialog, { ownKitStore }]) => ({
+  default: function OwnLayoutDialogWithStore(props) { return <dialog.default store={ownKitStore} {...props} />; },
+})));
 
 // The "make your own" choice in the checklist-answers picker.
 const OWN_ANSWERS = '__own__';
+const OWN_LAYOUT = '__own_layout__';
 
 /* Desktop/web already use this quiet chevron for category disclosure. Keep
    one shared glyph so mobile cannot drift to a different arrow treatment.
@@ -263,9 +281,9 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
           text,
         };
         if (it && typeof it === 'object') {
-          // Text / number items (nightly 'custom-answers'); pick-one stays bare.
-          if (it.kind === 'text' || it.kind === 'number') base.kind = it.kind;
-          if (it.kind === 'number' && typeof it.unit === 'string' && it.unit) base.unit = it.unit;
+          // Typed answer kinds (nightly 'custom-answers'); pick-one stays bare.
+          Object.assign(base, itemAnswerFields(it));
+          if (showIfOf(it)) base.showIf = showIfOf(it);
           if (it.archived === true) base.archived = true;
           if (typeof it.archivedAt === 'string') base.archivedAt = it.archivedAt;
           if (typeof it.lastKnownLabel === 'string') {
@@ -300,11 +318,48 @@ const buildRich = (templates, mint = (_key, prefix) => newId(prefix)) => templat
     // A template someone shared with me: its owner's face shows on the row.
     ...(t?.sharedFrom ? { sharedFrom: t.sharedFrom } : {}),
     ...(t?.exportKitId ? { exportKitId: t.exportKitId } : {}),
+    ...(templateOwnKitOf(t) ? { ownExportKit: t.ownExportKit } : {}),
+    ...(t?.reportKitId ? { reportKitId: t.reportKitId } : {}),
     ...(t?.answerSet ? { answerSet: t.answerSet } : {}),
+    // "Auto-mark as Complete" switch; unset means on.
+    ...(t?.autoComplete === false ? { autoComplete: false } : {}),
     // Smart fill tag shapes taught on drawings (beta); the editor only removes them.
     ...(Array.isArray(t?.smartFillShapes) && t.smartFillShapes.length ? { smartFillShapes: t.smartFillShapes } : {}),
   };
 });
+
+/* Owner 2026-10-27: "auto-mark as complete is a toggle". On (the default),
+   a marker turns Complete by itself once every checklist line is done; off,
+   Complete is only set by hand. Neither way takes Complete away. */
+function AutoCompleteSwitch({ template, onToggle, phone = false }) {
+  const on = autoCompleteOn(template);
+  const complete = findCompleteEntity(template.roster);
+  const id = `template-auto-complete-${phone ? 'phone' : 'desk'}-${template.id}`;
+  return (
+    <div className={`template-auto-complete${phone ? ' template-auto-complete--phone' : ''}`} data-auto-complete={on ? 'on' : 'off'}>
+      <div className="template-auto-complete__copy">
+        <div className="template-auto-complete__title" id={id}>Auto-mark as Complete</div>
+        <p className="template-auto-complete__hint">
+          {!complete
+            ? 'Add an entity named Complete to use this.'
+            : on
+              ? `Items turn ${complete.role || 'Complete'} once every line is done.`
+              : `Set ${complete.role || 'Complete'} by hand.`}
+        </p>
+      </div>
+      <button
+        type="button"
+        className="template-auto-complete__switch"
+        role="switch"
+        aria-checked={on}
+        aria-labelledby={id}
+        onClick={onToggle}
+      >
+        <span className="template-auto-complete__track" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
 
 /* Smart fill (beta, owner 2026-10-22): the tag shapes this template has
    learned. Each is taught on a drawing ("Teach a tag shape"); here they can
@@ -425,7 +480,7 @@ function SortableModuleTab({
       // gold, no scale, no inner block behind its label or count.
       data-drag-lifted={isDragging ? '' : undefined}
       style={{
-        transform: CSS.Transform.toString(transform),
+        transform: CSS.Translate.toString(transform),
         transition: tabTransition || undefined,
         display: 'flex',
         alignItems: 'center',
@@ -535,10 +590,27 @@ function SortableModuleTabs({
   onReorderModules,
   onOpenMenu,
   showCounts = true,
+  // Desktop (owner 2026-10-26): the tabs that fit, then a "+N" menu with the
+  // rest. The phone row keeps scrolling sideways.
+  fit = false,
   children,
 }) {
   const [activeId, setActiveId] = useState(null);
   const dragClampBoundsRef = useRef(null);
+  const rowRef = useRef(null);
+  const measureRef = useRef(null);
+  const [moreMenu, setMoreMenu] = useState(null);
+  const ids = modules.map((mod) => mod.id);
+  const openId = modules[openMod]?.id ?? null;
+  const { visible, hidden } = useTabOverflow({
+    ids,
+    activeId: openId,
+    rowRef,
+    measureRef,
+    enabled: fit,
+    contentKey: `${showCounts}:${modules.map((mod) => `${mod.name}:${(mod.categories || []).length}`).join('|')}`,
+  });
+  const indexOf = new Map(modules.map((mod, mi) => [mod.id, mi]));
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 160, tolerance: 5 } }),
@@ -585,17 +657,18 @@ function SortableModuleTabs({
         setActiveId(null);
       }}
     >
-      <SortableContext items={modules.map((mod) => mod.id)} strategy={horizontalListSortingStrategy}>
+      <SortableContext items={visible} strategy={horizontalListSortingStrategy}>
         <div
+          ref={rowRef}
           data-module-tab-list={String(activeId ?? '')}
-          style={{ display: 'flex', alignItems: 'stretch', gap: 0, borderBottom: '1px solid var(--rule)', minHeight: 26 }}
+          style={{ display: 'flex', alignItems: 'stretch', gap: 0, borderBottom: '1px solid var(--rule)', minHeight: 26, ...(fit ? { position: 'relative', overflowX: 'clip' } : null) }}
         >
-          {modules.map((mod, mi) => (
+          {visible.map((id) => modules[indexOf.get(id)]).filter(Boolean).map((mod) => (
             <SortableModuleTab
               key={mod.id}
               mod={mod}
-              index={mi}
-              isOn={openMod === mi}
+              index={indexOf.get(mod.id)}
+              isOn={openMod === indexOf.get(mod.id)}
               catCount={(mod.categories || []).length}
               showCount={showCounts}
               isRenaming={modRename === mod.id}
@@ -606,12 +679,67 @@ function SortableModuleTabs({
               onOpenMenu={onOpenMenu}
             />
           ))}
+          {fit && hidden.length > 0 && (
+            <button
+              type="button"
+              className="module-tab-more"
+              aria-haspopup="menu"
+              aria-expanded={Boolean(moreMenu)}
+              aria-label={`${hidden.length} more module${hidden.length === 1 ? '' : 's'}`}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setMoreMenu((m) => (m ? null : rect));
+              }}
+              style={MODULE_TAB_MORE_STYLE}
+            >
+              +{hidden.length}<span style={{ fontSize: 10, lineHeight: 1 }}>▾</span>
+            </button>
+          )}
+          {fit && (
+            /* The hidden copy the row is measured from: each tab's own box
+               (12px each side, count 6px after the label), not draggable. */
+            <div ref={measureRef} aria-hidden="true" style={{ position: 'absolute', top: 0, left: 0, display: 'flex', width: 'max-content', visibility: 'hidden', pointerEvents: 'none' }}>
+              {modules.map((mod, mi) => (
+                <div key={mod.id} data-measure-tab={mod.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', height: 32, maxWidth: 220, boxSizing: 'border-box', flex: '0 0 auto' }}>
+                  <span style={{ fontSize: 12, fontWeight: openMod === mi ? 500 : 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{mod.name}</span>
+                  {showCounts ? <span style={{ fontSize: 11, fontVariantNumeric: 'tabular-nums', flex: 'none' }}>{(mod.categories || []).length}</span> : null}
+                </div>
+              ))}
+              <span data-measure-more="" style={MODULE_TAB_MORE_STYLE}>+{Math.max(hidden.length, 9)}<span style={{ fontSize: 10, lineHeight: 1 }}>▾</span></span>
+            </div>
+          )}
           {children}
         </div>
       </SortableContext>
+      {moreMenu && (
+        <MoreMenu
+          anchorRect={moreMenu}
+          onClose={() => setMoreMenu(null)}
+          items={hidden.map((id) => ({ label: modules[indexOf.get(id)]?.name || 'Untitled module', onClick: () => onOpenModule(indexOf.get(id)) }))}
+        />
+      )}
     </DndContext>
   );
 }
+
+const MODULE_TAB_MORE_STYLE = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  flex: '0 0 auto',
+  height: 32,
+  padding: '0 10px',
+  boxSizing: 'border-box',
+  marginBottom: -1,
+  border: 0,
+  borderBottom: '2px solid transparent',
+  background: 'transparent',
+  color: 'var(--ink-muted)',
+  fontFamily: 'inherit',
+  fontSize: 12,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+};
 
 /* ============================================================
    Fixed-position "more" menu, portalled to document.body.
@@ -676,125 +804,6 @@ function MoreMenu({ anchorRect, items, onClose }) {
       </div>
     </>,
     document.body,
-  );
-}
-
-/* ============================================================
-   CustomSelect — a styled dropdown that replaces native <select>.
-   Native selects render an OS-themed popup that clashes with the
-   editor's warm-dark "paper-and-ink" palette. This is a styled
-   trigger button that opens a dark popup list. The popup is
-   portalled to document.body and fixed-positioned (measured from
-   the trigger) so the modal's overflow can never clip it.
-
-   Palette / font are hard hex/literal because the popup renders
-   outside the .ed-scope CSS-variable root:
-     card #181c24 · deep #12151c · rule #2a3140 · ink #f4f1ea
-     muted var(--text-3) · gold var(--accent) · font var(--font-ui)
-   ============================================================ */
-function CustomSelect({ value, options, onChange, placeholder = 'Select…', disabled = false }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const triggerRef = useRef(null);
-  const popRef = useRef(null);
-  const selected = options.find((o) => o.value === value) || null;
-
-  /* Scrolling invalidates the measured popup position. */
-  useEffect(() => {
-    if (!open) return undefined;
-    const onScroll = () => setOpen(false);
-    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
-    return () => {
-      window.removeEventListener('scroll', onScroll, { capture: true });
-    };
-  }, [open]);
-
-  /* Place the popup directly under the trigger, flipping up if it
-     would overflow the viewport. */
-  useEffect(() => {
-    if (!open || !triggerRef.current) { setPos(null); return; }
-    const r = triggerRef.current.getBoundingClientRect();
-    const ph = Math.min(240, Math.max(40, options.length * 30 + 8));
-    let top = r.bottom + 4;
-    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 4);
-    setPos({ left: r.left, top, width: r.width });
-  }, [open, options.length]);
-
-  return (
-    <>
-      <DismissBarrier
-        active={open}
-        insideRefs={[triggerRef, popRef]}
-        onDismiss={() => setOpen(false)}
-      />
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => { if (!disabled) setOpen((v) => !v); }}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-          width: '100%', background: 'var(--surface-1)', border: '1px solid var(--border-strong)',
-          borderRadius: 6, padding: '6px 10px', height: 32, boxSizing: 'border-box',
-          color: disabled ? 'var(--text-disabled)' : (selected ? 'var(--text-1)' : 'var(--text-3)'),
-          font: 'inherit', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
-          background: disabled ? 'var(--disabled-fill)' : 'var(--surface-1)',
-          fontFamily: 'var(--font-ui)', textAlign: 'left',
-          outline: 'none',
-        }}
-      >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {selected ? selected.label : placeholder}
-        </span>
-        <span style={{ color: 'var(--text-3)', fontSize: 10, lineHeight: 1, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .12s', flex: 'none' }}>▾</span>
-      </button>
-      {open && pos && createPortal(
-        <div
-          ref={popRef}
-          role="listbox"
-          data-modal-focus-layer="true"
-          style={{
-            position: 'fixed', zIndex: 5501,
-            left: pos.left, top: pos.top, width: pos.width,
-            background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8,
-            padding: 4, boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
-            maxHeight: 240, overflowY: 'auto',
-            fontFamily: 'var(--font-ui)',
-          }}
-        >
-          {options.length === 0 && (
-            <div style={{ padding: '7px 10px', fontSize: 12, color: 'var(--text-3)' }}>No options</div>
-          )}
-          {options.map((o) => {
-            const isSel = o.value === value;
-            return (
-              <button
-                key={o.value}
-                type="button"
-                role="option"
-                aria-selected={isSel}
-                onClick={() => { onChange(o.value); setOpen(false); }}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                  width: '100%', textAlign: 'left', background: isSel ? 'var(--surface-2)' : 'transparent',
-                  border: 0, color: isSel ? 'var(--accent)' : 'var(--text-1)',
-                  padding: '7px 10px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-                onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'var(--hover)'; }}
-                onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.label}</span>
-                {isSel && <Icon name="check" size={11} color="var(--accent)" />}
-              </button>
-            );
-          })}
-        </div>,
-        document.body,
-      )}
-    </>
   );
 }
 
@@ -1029,38 +1038,124 @@ export default function TemplatesEditor({
   /* The baseline a save makes once it lands: exactly the copy it sent. */
   const exportKitOptions = useSyncExternalStore(subscribeExportKits, listExportKits);
   /* Checklist answers: a preset, or (nightly 'custom-answers') the
-     template's own typed list. `answerEditorFor` is the template whose list
-     editor is open. */
+     template's own typed list. */
   const [customAnswers] = useState(() => isFeatureOn('custom-answers'));
+  const [conditionalLines] = useState(() => isFeatureOn('conditional-lines'));
+  // Report layout per template (nightly 'survey-report').
+  const [surveyReport] = useState(() => isFeatureOn('survey-report'));
+  // The per-template pickers: { value, options, onPick }. Desktop shows them
+  // as the app's drop-down (ValueSelect); the phone layout keeps the
+  // browser's wheel (pickerSelectProps).
+  // Nightly 'own-excel-layouts': the last choice makes a layout from their own sheet.
+  const [ownLayouts] = useState(() => isFeatureOn('own-excel-layouts'));
+  const [ownLayoutFor, setOwnLayoutFor] = useState(null);
+  const pickExportKit = (tplId, v) => mutateTpl(tplId, (t) => {
+    const { exportKitId: _k, ownExportKit: _own, ...rest } = t;
+    if (v === DEFAULT_EXPORT_KIT_ID) return rest;
+    const own = ownKitCopyFor(getExportKit(v));
+    return { ...rest, exportKitId: v, ...(own ? { ownExportKit: own } : {}) };
+  });
+  const exportKitPicker = (tpl, phone = false) => ({
+    value: tpl.exportKitId || DEFAULT_EXPORT_KIT_ID,
+    options: [
+      ...exportKitOptions.map((k) => ({ value: k.id, label: k.label || k.id })),
+      ...(ownLayouts ? [{ value: OWN_LAYOUT, label: 'Your own sheet…' }] : []),
+    ],
+    onPick: (v) => {
+      if (v === OWN_LAYOUT) { setOwnLayoutFor({ id: tpl.id, phone }); return; }
+      pickExportKit(tpl.id, v);
+    },
+  });
+  const ownLayoutDialog = (t, phone) => (ownLayouts && ownLayoutFor?.id === t.id && ownLayoutFor.phone === phone ? (
+    <Suspense fallback={null}>
+      <OwnExcelLayoutDialog
+        onSaved={(kitId) => { pickExportKit(t.id, kitId); setOwnLayoutFor(null); }}
+        onClose={() => setOwnLayoutFor(null)}
+      />
+    </Suspense>
+  ) : null);
+  const reportKitPicker = (tpl) => ({
+    value: tpl.reportKitId || DEFAULT_REPORT_KIT_ID,
+    options: listReportKits().map((k) => ({ value: k.id, label: k.label })),
+    onPick: (v) => mutateTpl(tpl.id, (t) => {
+      const { reportKitId: _r, ...rest } = t;
+      return v === DEFAULT_REPORT_KIT_ID ? rest : { ...rest, reportKitId: v };
+    }),
+  });
   const answerPresets = answerSetPresets({ extras: customAnswers });
   const [answerEditorFor, setAnswerEditorFor] = useState(null);
   const ownAnswerSetOf = (t) => t.answerSet || getExportKit(t.exportKitId)?.answerSet;
-  const answerPickerProps = (t) => {
+  // `answerEditorFor` is { id, phone }: the desktop and phone layouts are both
+  // mounted, and only the one that opened the dialog may show it.
+  const answerPicker = (t, phone = false) => {
     const presetId = answerPresetIdOf(ownAnswerSetOf(t), answerPresets);
-    const editing = customAnswers && answerEditorFor === t.id;
     return {
-      value: editing ? '' : presetId,
-      onChange: (e) => {
-        if (e.target.value === OWN_ANSWERS) { setAnswerEditorFor(t.id); return; }
-        if (!e.target.value) return; // "Custom" is the list already in use
-        setAnswerEditorFor(null);
-        const preset = answerPresets.find((p) => p.id === e.target.value);
+      value: presetId,
+      options: [
+        ...(presetId ? [] : [{ value: '', label: 'Custom' }]),
+        ...answerPresets.map((p) => ({ value: p.id, label: p.label })),
+        ...(customAnswers ? [{ value: OWN_ANSWERS, label: 'Edit answers…' }] : []),
+      ],
+      onPick: (v) => {
+        if (v === OWN_ANSWERS) { setAnswerEditorFor({ id: t.id, phone }); return; }
+        if (!v) return; // "Custom" is the list already in use
+        const preset = answerPresets.find((p) => p.id === v);
         mutateTpl(t.id, (cur) => {
           const { answerSet: _a, ...rest } = cur;
           return !preset || preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
         });
       },
-      children: [
-        (editing || !presetId) && <option key="custom" value="">Custom</option>,
-        ...answerPresets.map((p) => <option key={p.id} value={p.id}>{p.label}</option>),
-        customAnswers && !editing && <option key={OWN_ANSWERS} value={OWN_ANSWERS}>{presetId ? 'Make your own…' : 'Edit my answers…'}</option>,
-      ],
     };
   };
-  const answerListEditor = (t, phone) => (customAnswers && answerEditorFor === t.id ? (
+  const pickerSelectProps = ({ value, options, onPick }) => ({
+    value,
+    onChange: (e) => onPick(e.target.value),
+    children: options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>),
+  });
+  const pickerValueProps = ({ value, options, onPick }) => ({ value, options, onChange: onPick });
+  // Nightly: the list in use as chips on a labeled button; it opens the
+  // picker of ready-made lists, which hands over to the editor below.
+  const [answerPickerFor, setAnswerPickerFor] = useState(null);
+  const pickAnswerPreset = (t, preset) => mutateTpl(t.id, (cur) => {
+    const { answerSet: _a, ...rest } = cur;
+    return preset.answers === DEFAULT_ANSWER_SET ? rest : { ...rest, answerSet: preset.answers };
+  });
+  const answersButton = (t, phone = false) => {
+    const set = ownAnswerSetOf(t) || DEFAULT_ANSWER_SET;
+    return (
+      <>
+        <button
+          type="button"
+          className="template-answers-button"
+          aria-haspopup="dialog"
+          aria-label={`Checklist answers: ${set.map((a) => a.value).join(', ')}. Change`}
+          {...hoverOnly(tip('How people answer this template\'s checklist lines'))}
+          onClick={() => setAnswerPickerFor({ id: t.id, phone })}
+        >
+          <span className="template-answers-button__label">Answers</span>
+          <AnswerChips set={set} />
+          <Icon name="chevronDown" size={11} />
+        </button>
+        {answerPickerFor?.id === t.id && answerPickerFor.phone === phone && (
+          <AnswerSetPicker
+            templateName={t.name}
+            set={set}
+            presets={answerPresets}
+            onPick={(preset) => { pickAnswerPreset(t, preset); setAnswerPickerFor(null); }}
+            onMakeOwn={() => { setAnswerPickerFor(null); setAnswerEditorFor({ id: t.id, phone }); }}
+            onClose={() => setAnswerPickerFor(null)}
+          />
+        )}
+      </>
+    );
+  };
+  // The answer list opens as a dialog over the editor, seeded with the list
+  // in use (a preset too, so a preset can be changed after picking it).
+  const answerListEditor = (t, phone) => (customAnswers && answerEditorFor?.id === t.id && answerEditorFor.phone === phone ? (
     <AnswerSetEditor
       key={t.id}
       phone={phone}
+      modal={{ kicker: 'Checklist answers', title: t.name || 'Template' }}
       set={ownAnswerSetOf(t) || DEFAULT_ANSWER_SET}
       onCommit={(set) => mutateTpl(t.id, (cur) => ({ ...cur, answerSet: set }))}
       onClose={() => setAnswerEditorFor(null)}
@@ -1221,6 +1316,25 @@ export default function TemplatesEditor({
     }
   }, [visibleTemplates, selectedId]);
 
+  // "Edit template" from Survey mode: open that template (on the phone, its
+  // detail page), now if the editor is up, else as soon as it mounts.
+  useEffect(() => {
+    const openRequested = () => {
+      const request = takeTemplateEditorRequest();
+      if (!request?.templateId) return;
+      setSearch('');
+      setTemplateContentSearch('');
+      setSelected(request.templateId);
+      setOpenMod(0);
+      setOpenCat(-1);
+      setMobileEntitiesOpen(false);
+      setMobileTemplateOpen(true);
+    };
+    openRequested();
+    window.addEventListener(TEMPLATE_EDITOR_REQUEST_EVENT, openRequested);
+    return () => window.removeEventListener(TEMPLATE_EDITOR_REQUEST_EVENT, openRequested);
+  }, []);
+
   const tpl = rich.find((t) => t.id === selectedId) || visibleTemplates[0] || rich[0] || null;
   const orderedMods = tpl ? tpl.modules : [];
 
@@ -1376,7 +1490,7 @@ export default function TemplatesEditor({
             ...m, id: newId('m'),
             categories: m.categories.map((c) => ({
               ...c, id: newId('c'),
-              items: c.items.map((it) => ({ ...it, id: newId('i') })),
+              items: copyLines(c.items, () => newId('i')),
             })),
           })),
           roster: t.roster.map((r) => {
@@ -1423,6 +1537,23 @@ export default function TemplatesEditor({
      with "Add entity". */
   const DEFAULT_ROLES = ['GC', 'Subcontractor', 'My Company', '100% Complete', 'Removed'];
 
+  /* A just-added name field takes the caret with its text selected, so typing
+     names the new row at once. The desktop and phone trees are both in the
+     DOM (one hidden by CSS); only the copy on screen is focused. The row may
+     render a frame or two after the edit, so look again for a few frames. */
+  const focusVisibleInput = (selector, { select = true } = {}) => {
+    if (typeof document === 'undefined' || typeof requestAnimationFrame !== 'function') return;
+    let tries = 0;
+    const look = () => {
+      const el = [...document.querySelectorAll(selector)].find((candidate) => candidate.offsetParent !== null);
+      if (!el) { if (tries++ < 10) requestAnimationFrame(look); return; }
+      el.focus({ preventScroll: true });
+      el.scrollIntoView?.({ block: 'nearest' });
+      if (select) el.select?.();
+    };
+    requestAnimationFrame(look);
+  };
+
   /* UX: "New template" adds an empty template and opens it, exactly like Copy
      adds a duplicate — no modal. It is marked dirty so the existing Save bar
      persists it, which is the same path every other edit takes; nothing is
@@ -1448,8 +1579,21 @@ export default function TemplatesEditor({
     }]);
     markEdited();
     /* Open the new template so it reads as "created", matching how a new module
-       opens itself. */
-    setTimeout(() => setSelected(id), 0);
+       opens itself, with its name selected so typing names it at once. */
+    // On the phone the list stays up unless the new template's page opens
+    // (it was added out of sight at the bottom of the list).
+    const phone = mobileLayoutActive();
+    if (phone) captureMobileTemplateList();
+    setTimeout(() => {
+      setSelected(id);
+      if (phone) {
+        setOpenMod(0);
+        setOpenCat(-1);
+        setTemplateContentSearch('');
+        setMobileTemplateOpen(true);
+      }
+    }, 0);
+    focusVisibleInput('input[data-template-title]');
     if (onCreateTemplate) onCreateTemplate();
   };
 
@@ -1593,7 +1737,7 @@ export default function TemplatesEditor({
         ...m, id: newId('m'), name: `${m.name} copy`,
         categories: m.categories.map((c) => ({
           ...c, id: newId('c'),
-          items: c.items.map((it) => ({ ...it, id: newId('i') })),
+          items: copyLines(c.items, () => newId('i')),
         })),
       })),
     }));
@@ -1638,6 +1782,7 @@ export default function TemplatesEditor({
       }));
       setOpenMod(orderedMods.length);
       setOpenCat(0);
+      if (!mobileTemplateOpen) focusVisibleInput(`input[data-category-name-id="${categoryId}"]`);
       return;
     }
 
@@ -1651,6 +1796,7 @@ export default function TemplatesEditor({
     /* Open the new category so its (empty) checklist is immediately visible. */
     setOpenMod(targetIndex);
     setTimeout(() => setOpenCat((orderedMods[targetIndex].categories || []).length), 0);
+    if (!mobileTemplateOpen) focusVisibleInput(`input[data-category-name-id="${categoryId}"]`);
   };
   const addCategory = () => addCategoryToModule(openMod);
   const renameCategoryInModule = (moduleIndex, ci, name) => {
@@ -1679,7 +1825,7 @@ export default function TemplatesEditor({
         if (ids.has(c.id)) {
           out.push({
             ...c, id: newId('c'), name: `${c.name} copy`,
-            items: c.items.map((it) => ({ ...it, id: newId('i') })),
+            items: copyLines(c.items, () => newId('i')),
           });
         }
       });
@@ -1745,16 +1891,30 @@ export default function TemplatesEditor({
   // of empty checklist items." One blank row per category at a time: if the
   // category already holds an empty item, Add does not add another - it puts
   // the cursor in the blank row that is already there.
-  const addItemToModule = (moduleIndex, ci) => {
+  const addItemToModule = (moduleIndex, ci, { after = null } = {}) => {
     const current = tpl?.modules?.[moduleIndex]?.categories?.[ci];
-    const blank = (current?.items || []).find((item) => !String(item?.text || '').trim());
+    // `after` is the line Enter just committed: this render still sees it blank.
+    const blank = (current?.items || []).find((item) => item.id !== after && !String(item?.text || '').trim());
     if (blank) { focusChecklistItem(blank.id); return; }
     const id = newId('i');
     freshBlankItemsRef.current.add(id);
-    mutateCategoryInModule(moduleIndex, ci, (c) => ({ ...c, items: [...c.items, { id, text: '' }] }), { quiet: true });
+    mutateCategoryInModule(moduleIndex, ci, (c) => {
+      const items = c.items.slice();
+      const at = after ? items.findIndex((item) => item.id === after) : -1;
+      items.splice(at >= 0 ? at + 1 : items.length, 0, { id, text: '' });
+      return { ...c, items };
+    }, { quiet: true });
     focusChecklistItem(id);
   };
-  const addItem = (ci) => addItemToModule(openMod, ci);
+  const addItem = (ci, options) => addItemToModule(openMod, ci, options);
+  /* Enter on a line with text saves it and opens a new line under it, so a
+     checklist is typed in one go; Enter on an empty new line ends the list
+     (the blank line goes away on blur). */
+  const checklistEnter = (e, ci, itemId) => {
+    const hasText = !isBlank(e.currentTarget.value);
+    e.currentTarget.blur();
+    if (hasText) addItem(ci, { after: itemId });
+  };
   const renameItemInModule = (moduleIndex, ci, itemId, text) => {
     const current = tpl?.modules?.[moduleIndex]?.categories?.[ci]?.items?.find((it) => it.id === itemId);
     if (current && current.text === text) return;   // unchanged: nothing to save
@@ -1766,16 +1926,25 @@ export default function TemplatesEditor({
     }));
   };
   const renameItem = (ci, itemId, text) => renameItemInModule(openMod, ci, itemId, text);
-  /* Text / number items (nightly 'custom-answers'). Answers already given
-     keep their text; only how the card asks for the next one changes. */
-  const setItemKind = (ci, itemId, kind, unit) => mutateCategoryInModule(openMod, ci, (c) => ({
+  /* Typed answer kinds (nightly 'custom-answers'). Answers already given
+     keep their text; only how the card asks for the next one changes.
+     `fields` is the item's whole answer settings ({} for pick-one). */
+  // Nightly, hidden 'conditional-lines': `showIf` is { itemId, value } or null.
+  const setItemShowIf = (ci, itemId, showIf) => mutateCategoryInModule(openMod, ci, (c) => ({
     ...c,
     items: c.items.map((it) => {
       if (it.id !== itemId) return it;
-      const { kind: _k, unit: _u, ...rest } = it;
-      if (kind === 'text') return { ...rest, kind };
-      if (kind === 'number') return unit ? { ...rest, kind, unit } : { ...rest, kind };
-      return rest;
+      const { showIf: _old, ...rest } = it;
+      return showIf ? { ...rest, showIf } : rest;
+    }),
+  }));
+  const lineAnswersOf = (t) => (line) => (checklistItemKind(line) === 'many' ? manyOptionsOf(line) : (ownAnswerSetOf(t) || DEFAULT_ANSWER_SET));
+  const setItemKind = (ci, itemId, fields) => mutateCategoryInModule(openMod, ci, (c) => ({
+    ...c,
+    items: c.items.map((it) => {
+      if (it.id !== itemId) return it;
+      const rest = Object.fromEntries(Object.entries(it).filter(([k]) => !ITEM_ANSWER_KEYS.includes(k)));
+      return { ...rest, ...itemAnswerFields(fields) };
     }),
   }));
 
@@ -1914,6 +2083,29 @@ export default function TemplatesEditor({
   };
   const deleteItem = (ci, itemId) => deleteItemInModule(openMod, ci, itemId);
 
+  /* Owner 2026-10-27: slide a row left for its actions - the same handlers
+     as the row's ⋮ menu, in the select-mode order. Share is left off the
+     category and entity rows (it shares the whole template, which the
+     template row already offers). */
+  const templateSwipeActions = (t) => buildSwipeActions({
+    onDuplicate: () => duplicateTemplates(new Set([t.id])),
+    onShare: onShare ? () => onShare(t) : undefined,
+    onDelete: () => deleteTemplates(new Set([t.id])),
+    can: { delete: t.sharedFrom ? 'A template shared with you can only be archived by its owner' : true },
+  });
+  const categorySwipeActions = (cat) => buildSwipeActions({
+    onDuplicate: () => duplicateCategories(new Set([cat.id])),
+    onMove: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'move' }); },
+    onCopy: () => { setSelCats(new Set([cat.id])); setMoveModal({ count: 1, kind: 'category', mode: 'copy' }); },
+    onDelete: () => deleteCategories(new Set([cat.id])),
+  });
+  const entitySwipeActions = (ent) => buildSwipeActions({
+    onDuplicate: () => duplicateEntities(new Set([ent.id])),
+    onMove: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'move' }); },
+    onCopy: () => { setSelEntities(new Set([ent.id])); setMoveModal({ count: 1, kind: 'entity', mode: 'copy' }); },
+    onDelete: () => deleteEntities(new Set([ent.id])),
+  });
+
   /* --- entity-level --- */
   const addEntity = () => {
     if (!tpl) return;
@@ -2010,8 +2202,8 @@ export default function TemplatesEditor({
           /* Persist archived metadata so KAL-44 archive survives save/reload.
              Active items round-trip the simple shape unchanged. */
           const out = { id: it.id, text: it.text };
-          if (it.kind === 'text' || it.kind === 'number') out.kind = it.kind;
-          if (it.kind === 'number' && it.unit) out.unit = it.unit;
+          Object.assign(out, itemAnswerFields(it));
+          if (showIfOf(it)) out.showIf = showIfOf(it);
           if (it.archived === true) {
             out.archived = true;
             if (typeof it.archivedAt === 'string') out.archivedAt = it.archivedAt;
@@ -2025,7 +2217,7 @@ export default function TemplatesEditor({
         }),
       })),
     }));
-    const { exportKitId: _oldKit, answerSet: _oldAnswers, smartFillShapes: _oldShapes, ...originalRest } = original;
+    const { exportKitId: _oldKit, ownExportKit: _oldOwnKit, reportKitId: _oldReport, answerSet: _oldAnswers, autoComplete: _oldAuto, smartFillShapes: _oldShapes, ...originalRest } = original;
     // Smart fill shapes: the live list (a drawing may have added one since this
     // editor opened) minus the ones removed here. A template not saved yet (a
     // duplicate) has no live row, so it keeps the shapes it was made with.
@@ -2037,8 +2229,14 @@ export default function TemplatesEditor({
       ...(shapes.length ? { smartFillShapes: shapes } : {}),
       // Excel layout; unset means the standard export.
       ...(r.exportKitId ? { exportKitId: r.exportKitId } : {}),
+      // Your own Excel layout's copy, so teammates export in it too.
+      ...(r.exportKitId && r.ownExportKit ? { ownExportKit: r.ownExportKit } : {}),
+      // Report layout (nightly 'survey-report'); unset means the full report.
+      ...(r.reportKitId ? { reportKitId: r.reportKitId } : {}),
       // Checklist answers; unset means Y / N / N/A.
       ...(r.answerSet ? { answerSet: r.answerSet.map((a) => ({ value: a.value, tone: a.tone, ...(a.means ? { means: a.means } : {}) })) } : {}),
+      // Auto-mark as Complete; unset means on.
+      ...(r.autoComplete === false ? { autoComplete: false } : {}),
       id: r.id,
       name: r.name,
       modules: mods,
@@ -2218,7 +2416,7 @@ export default function TemplatesEditor({
         <span><b>{visibleTemplates.length}</b> {visibleTemplates.length === 1 ? 'template' : 'templates'}</span>
         {saveRow('templates-desktop-save-row')}
       </span>
-      <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="templates-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
         <span className="templates-mobile-count">
           <b>{mobileTemplateOpen && tpl ? orderedMods.length : visibleTemplates.length}</b> {mobileTemplateOpen && tpl
             ? (orderedMods.length === 1 ? 'module' : 'modules')
@@ -2333,19 +2531,26 @@ export default function TemplatesEditor({
             background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10, padding: 8,
           }}>
             {/* Owner 2026-10-01: one header line - the page's one gold action
-                on the left, the quiet Select on the right. In select mode the
-                bulk actions take the gold button's place and Done stays exactly
-                where Select was, so nothing under the header moves. */}
+                on the left, the quiet Select on the right, and Done stays
+                exactly where Select was, so nothing under the header moves.
+                Owner 2026-10-28: the gold button stays in Select mode too; it
+                sheds its noun ("New") so the select actions fit beside it. */}
             <div className="hub-section-head hub-panel-head">
-              {!tplEdit ? (
-                <button
-                  className="hub-btn hub-btn--primary"
-                  onClick={createTemplate}
-                >
-                  <Icon name="plus" size={11} />New template
-                </button>
-              ) : null}
+              <button
+                className={`hub-btn hub-btn--primary hub-new-btn${tplEdit ? ' is-compact' : ''}`}
+                aria-label="New template"
+                onClick={createTemplate}
+              >
+                <Icon name="plus" size={11} />New<span className="hub-new-btn__noun" aria-hidden="true">&nbsp;template</span>
+              </button>
               <div className="hub-select-actions hub-section-actions">
+                <SectionIconButton
+                  action="select"
+                  label={tplEdit ? 'Done' : 'Select'}
+                  nothingToSelect={visibleTemplates.length === 0}
+                  active={tplEdit}
+                  onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
+                />
                 {tplEdit && (
                   <>
                     {(() => {
@@ -2375,13 +2580,6 @@ export default function TemplatesEditor({
                     })()}
                   </>
                 )}
-                <SectionIconButton
-                  action="select"
-                  label={tplEdit ? 'Done' : 'Select'}
-                  nothingToSelect={visibleTemplates.length === 0}
-                  active={tplEdit}
-                  onClick={() => { const next = !tplEdit; setTplEdit(next); if (!next) setSelTpls(new Set()); }}
-                />
               </div>
             </div>
             <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
@@ -2404,6 +2602,7 @@ export default function TemplatesEditor({
                     id={t.id}
                   >
                     {({ attributes, listeners, isDragging }) => (
+                    <SwipeActionsRow label={t.name} disabled={tplEdit} actions={templateSwipeActions(t)} className="tpl-swipe-row">
                     <div
                       data-drag-rearrange-row
                       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setTplMenu({ id: t.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
@@ -2457,10 +2656,10 @@ export default function TemplatesEditor({
                               );
                             })}
                             {t.roster.length > 10 && (
-                              <span className="mono meta" style={{ fontSize: 11 }}>+{t.roster.length - 10}</span>
+                              <span className="nums meta" style={{ fontSize: 11 }}>+{t.roster.length - 10}</span>
                             )}
                           </div>
-                          <span className="mono meta" style={{ fontSize: 11 }}>{t.roster.length}</span>
+                          <span className="nums meta" style={{ fontSize: 11 }}>{t.roster.length}</span>
                         </div>
                         )}
                       </div>
@@ -2485,6 +2684,7 @@ export default function TemplatesEditor({
                         ><Icon name="more" size={14} /></button>
                       )}
                     </div>
+                    </SwipeActionsRow>
                     )}
                   </SortableRearrangeRow>
                 );
@@ -2532,6 +2732,7 @@ export default function TemplatesEditor({
                     onDoubleClick={(e) => e.currentTarget.select()}
                   />
                 </span>
+                {customAnswers && <div style={{ marginTop: 6 }}>{answersButton(tpl)}</div>}
               </div>
               {/* minWidth/maxWidth: the two layout pickers must shrink with a
                   narrow middle column (portrait tablet) instead of overflowing it. */}
@@ -2539,31 +2740,44 @@ export default function TemplatesEditor({
                 <div>{orderedMods.length} {orderedMods.length === 1 ? 'module' : 'modules'}</div>
                 {/* Excel layout (export kit). Only shown once there is a choice. */}
                 {exportKitOptions.length > 1 && (
-                  <select
-                    className="hub-export-kit"
-                    aria-label="Excel layout"
-                    value={tpl.exportKitId || DEFAULT_EXPORT_KIT_ID}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      mutateTpl(tpl.id, (t) => {
-                        const { exportKitId: _k, ...rest } = t;
-                        return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
-                      });
-                    }}
-                    {...hoverOnly(tip('Excel layout for this template. A linked workbook picks it up on its next full export.'))}
-                    style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
-                  >
-                    {exportKitOptions.map((k) => <option key={k.id} value={k.id}>{k.label || k.id}</option>)}
-                  </select>
+                  <div className="hub-template-picker">
+                    <ValueSelect
+                      look="pill"
+                      width="auto"
+                      className="hub-export-kit"
+                      label="Excel layout"
+                      hint="Excel layout for this template. A linked workbook picks it up on its next full export."
+                      {...pickerValueProps(exportKitPicker(tpl))}
+                    />
+                  </div>
                 )}
-                {/* Checklist answers for this template (default Y / N / N/A). */}
-                <select
-                  className="hub-answer-set"
-                  aria-label="Checklist answers"
-                  {...answerPickerProps(tpl)}
-                  {...hoverOnly(tip('Answers for this template\'s checklist items. Answers already given keep their text.'))}
-                  style={{ display: 'block', marginTop: 4, marginLeft: 'auto', maxWidth: '100%', font: 'inherit', fontSize: 11, color: 'var(--text-2)', background: 'transparent', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 4px' }}
-                />
+                {/* Report layout (report kit) for the Report button. */}
+                {surveyReport && (
+                  <div className="hub-template-picker">
+                    <ValueSelect
+                      look="pill"
+                      width="auto"
+                      className="hub-report-kit"
+                      label="Report layout"
+                      hint="What the PowerPoint report for this template shows."
+                      {...pickerValueProps(reportKitPicker(tpl))}
+                    />
+                  </div>
+                )}
+                {/* Checklist answers for this template (default Y / N / N/A).
+                    Nightly shows them as the Answers button under the name. */}
+                {!customAnswers && (
+                  <div className="hub-template-picker">
+                    <ValueSelect
+                      look="pill"
+                      width="auto"
+                      className="hub-answer-set"
+                      label="Checklist answers"
+                      hint="Answers for this template's checklist items. Answers already given keep their text."
+                      {...pickerValueProps(answerPicker(tpl))}
+                    />
+                  </div>
+                )}
                 {/* Smart fill (beta): tag shapes taught on drawings. */}
                 {smartFillBeta && (
                   <SmartFillShapeChips
@@ -2576,6 +2790,7 @@ export default function TemplatesEditor({
               </div>
             </div>
             {answerListEditor(tpl, false)}
+            {ownLayoutDialog(tpl, false)}
 
             <div style={{ padding: '6px 18px 14px', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
 
@@ -2607,6 +2822,7 @@ export default function TemplatesEditor({
                   onCancelRename={() => setModRename(null)}
                   onReorderModules={reorderMods}
                   onOpenMenu={(id, rect) => setModMenu({ id, rect })}
+                  fit
                 />
               </div>
 
@@ -2614,6 +2830,13 @@ export default function TemplatesEditor({
               <div className="hub-section-head" style={{ marginTop: 12, marginBottom: 8 }}>
                 <p className="micro hub-section-label" style={{ margin: 0 }}>Categories<span className="hub-section-count">{visibleCats.length}</span></p>
                 <div className="hub-section-actions">
+                  <SectionIconButton
+                    action="select"
+                    label={catEdit ? 'Done' : 'Select'}
+                    nothingToSelect={visibleCats.length === 0}
+                    active={catEdit}
+                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
+                  />
                     {catEdit && (() => {
                       const c = selCats.size;
                       const allSel = c === visibleCats.length && visibleCats.length > 0;
@@ -2630,13 +2853,6 @@ export default function TemplatesEditor({
                         />
                       );
                     })()}
-                  <SectionIconButton
-                    action="select"
-                    label={catEdit ? 'Done' : 'Select'}
-                    nothingToSelect={visibleCats.length === 0}
-                    active={catEdit}
-                    onClick={() => { const next = !catEdit; setCatEdit(next); if (!next) setSelCats(new Set()); }}
-                  />
                   {!catEdit ? (
                     <SectionIconButton action="add" label="Add category" onClick={addCategory} />
                   ) : null}
@@ -2686,6 +2902,7 @@ export default function TemplatesEditor({
                           box is just its text; ⋮ holds Rename / Delete. In
                           Select mode a click anywhere ticks the row.
                           [grip 24][chevron 22][name][...][count][⋮ 28] */}
+                      <SwipeActionsRow label={c.name} disabled={catEdit} actions={categorySwipeActions(c)}>
                       <div
                         data-drag-rearrange-row
                         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setCatMenu({ id: c.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
@@ -2760,6 +2977,7 @@ export default function TemplatesEditor({
                           ><Icon name="more" size={14} /></button>
                         )}
                       </div>
+                      </SwipeActionsRow>
 
                       {/* Expanded body — checklist items */}
                       <div
@@ -2787,6 +3005,7 @@ export default function TemplatesEditor({
                                 id={it.id}
                               >
                                 {({ attributes, listeners, isDragging }) => (
+                              <SwipeActionsRow label={it.text || 'Checklist item'} actions={buildSwipeActions({ onDelete: () => deleteItem(i, it.id) })} style={{ '--swipe-row-bg': 'var(--paper-deep)' }}>
                               <div
                                 data-drag-rearrange-row
                                 style={{
@@ -2808,15 +3027,20 @@ export default function TemplatesEditor({
                                   placeholder="Add checklist item"
                                   maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                   onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(i, it.id, v), () => discardFreshItem(i, it.id))}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') checklistEnter(e, i, it.id); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(i, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                 />
-                                {customAnswers && <ItemKindPicker item={it} onChange={(kind, unit) => setItemKind(i, it.id, kind, unit)} />}
+                                {customAnswers && (
+                                  <ItemKindPicker item={it} onChange={(fields) => setItemKind(i, it.id, fields)}>
+                                    {conditionalLines && <ShowIfPicker item={it} lines={items} answersOf={lineAnswersOf(tpl)} onChange={(c) => setItemShowIf(i, it.id, c)} />}
+                                  </ItemKindPicker>
+                                )}
                                 <button
                                   aria-label="Delete item" {...tip('Delete item')}
                                   onClick={(e) => { e.stopPropagation(); deleteItem(i, it.id); }}
                                   className="hub-icon-btn is-danger"
                                 ><Icon name="close" size={11} /></button>
                               </div>
+                              </SwipeActionsRow>
                                 )}
                               </SortableRearrangeRow>
                             ))}
@@ -2902,6 +3126,13 @@ export default function TemplatesEditor({
                   <p className="micro hub-section-label" style={{ margin: 0 }}>Entities<span className="hub-section-count">{tpl ? tpl.roster.length : 0}</span></p>
                 ) : null}
                 <div className="hub-section-actions">
+                <SectionIconButton
+                  action="select"
+                  label={entityEdit ? 'Done' : 'Select'}
+                  nothingToSelect={!tpl || (tpl.roster || []).length === 0}
+                  active={entityEdit}
+                  onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                />
                 {entityEdit && tpl && (() => {
                   const c = selEntities.size;
                   const allSel = c === tpl.roster.length && tpl.roster.length > 0;
@@ -2918,13 +3149,6 @@ export default function TemplatesEditor({
                     />
                   );
                 })()}
-                <SectionIconButton
-                  action="select"
-                  label={entityEdit ? 'Done' : 'Select'}
-                  nothingToSelect={!tpl || (tpl.roster || []).length === 0}
-                  active={entityEdit}
-                  onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                />
                 {!entityEdit ? (
                   <SectionIconButton action="add" label="Add entity" onClick={addEntity} disabled={!tpl} />
                 ) : null}
@@ -2960,6 +3184,7 @@ export default function TemplatesEditor({
                     >
                       {({ attributes, listeners, isDragging }) => (
                       <>
+                      <SwipeActionsRow label={r.role} disabled={entityEdit || isOpen} actions={entitySwipeActions(r)}>
                       {/* Same row rules as a category (owner 2026-10-01):
                           a click on the row opens / closes its colour panel,
                           the name renames (text-width hit box), the grip
@@ -3042,6 +3267,7 @@ export default function TemplatesEditor({
                           )
                         )}
                       </div>
+                      </SwipeActionsRow>
                       {showPanel && (() => {
                         const tab = colorTab[r.id] || 'presets';
                         const layer = layerTab[r.id] || 'fill';
@@ -3129,6 +3355,7 @@ export default function TemplatesEditor({
                 </SortableRearrangeList>
                 )}
               </div>
+              {tpl && <AutoCompleteSwitch template={tpl} onToggle={() => mutateTpl(tpl.id, (t) => { const { autoComplete: _a, ...rest } = t; return autoCompleteOn(t) ? { ...rest, autoComplete: false } : rest; })} />}
             </div>
           </aside>
 
@@ -3156,6 +3383,7 @@ export default function TemplatesEditor({
                       return (
                         <SortableRearrangeRow key={`mobile-template-${t.id}`} id={t.id}>
                           {({ attributes, listeners, isDragging }) => (
+                            <SwipeActionsRow label={t.name} disabled={tplEdit} actions={templateSwipeActions(t)} className="templates-mobile-swipe-row">
                             <div
                               data-drag-rearrange-row
                               role="button"
@@ -3221,6 +3449,7 @@ export default function TemplatesEditor({
                                 ><Icon name="more" size={14} /></button>
                               )}
                             </div>
+                            </SwipeActionsRow>
                           )}
                         </SortableRearrangeRow>
                       );
@@ -3272,26 +3501,25 @@ export default function TemplatesEditor({
                 {exportKitOptions.length > 1 && (
                   <label className="templates-mobile-option">
                     <span>Excel layout</span>
-                    <select
-                      aria-label="Excel layout"
-                      value={tpl.exportKitId || DEFAULT_EXPORT_KIT_ID}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        mutateTpl(tpl.id, (t) => {
-                          const { exportKitId: _k, ...rest } = t;
-                          return v === DEFAULT_EXPORT_KIT_ID ? rest : { ...rest, exportKitId: v };
-                        });
-                      }}
-                    >
-                      {exportKitOptions.map((k) => <option key={k.id} value={k.id}>{k.label || k.id}</option>)}
-                    </select>
+                    <select aria-label="Excel layout" {...pickerSelectProps(exportKitPicker(tpl, true))} />
                   </label>
                 )}
-                <label className="templates-mobile-option">
-                  <span>Answers</span>
-                  <select aria-label="Checklist answers" {...answerPickerProps(tpl)} />
-                </label>
+                {surveyReport && (
+                  <label className="templates-mobile-option">
+                    <span>Report layout</span>
+                    <select aria-label="Report layout" {...pickerSelectProps(reportKitPicker(tpl))} />
+                  </label>
+                )}
+                {customAnswers ? (
+                  <div className="templates-mobile-option">{answersButton(tpl, true)}</div>
+                ) : (
+                  <label className="templates-mobile-option">
+                    <span>Answers</span>
+                    <select aria-label="Checklist answers" {...pickerSelectProps(answerPicker(tpl, true))} />
+                  </label>
+                )}
                 {answerListEditor(tpl, true)}
+                {ownLayoutDialog(tpl, true)}
                 {smartFillBeta && (
                   <SmartFillShapeChips
                     phone
@@ -3352,6 +3580,14 @@ export default function TemplatesEditor({
                       const allSel = c === mobileVisibleCats.length && mobileVisibleCats.length > 0;
                       return (
                         <>
+                          <SectionIconButton
+                            phone
+                            action="select"
+                            label="Done"
+                            active
+                            className="templates-mobile-section-select"
+                            onClick={() => { setCatEdit(false); setSelCats(new Set()); }}
+                          />
                           <SelectModeButtons
                             phone
                             count={c}
@@ -3369,14 +3605,6 @@ export default function TemplatesEditor({
                             onCopy={() => setMoveModal({ count: c, kind: 'category', mode: 'copy' })}
                             onShare={() => { if (tpl) onShare && onShare(tpl); }}
                             onDelete={() => deleteCategories(visibleSelectedIds)}
-                          />
-                          <SectionIconButton
-                            phone
-                            action="select"
-                            label="Done"
-                            active
-                            className="templates-mobile-section-select"
-                            onClick={() => { setCatEdit(false); setSelCats(new Set()); }}
                           />
                         </>
                       );
@@ -3418,14 +3646,11 @@ export default function TemplatesEditor({
                                   ⋮ holds Rename / Delete; in Select mode a tap
                                   ticks the row.
                                   [grip 32][chevron 26][name][...][count][⋮ 36]
-                                  Owner 2026-10-02: swipe the row left for a
-                                  trash behind it - the ⋮ menu's Delete (off
-                                  in Select mode, where a tap ticks). */}
-                              <SwipeToDeleteRow
-                                label={`Delete ${c.name}`}
-                                disabled={catEdit}
-                                onDelete={() => deleteCategories(new Set([c.id]))}
-                              >
+                                  Owner 2026-10-27: swipe the row left for
+                                  Duplicate / Move / Copy / Delete behind it -
+                                  the ⋮ menu's own actions (off in Select
+                                  mode, where a tap ticks). */}
+                              <SwipeActionsRow label={c.name} disabled={catEdit} actions={categorySwipeActions(c)}>
                               <div
                                 data-drag-rearrange-row
                                 onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setCatMenu({ id: c.id, rect: { left: event.clientX, right: event.clientX + 150, top: event.clientY, bottom: event.clientY } }); }}
@@ -3482,7 +3707,7 @@ export default function TemplatesEditor({
                                   </span>
                                 )}
                               </div>
-                              </SwipeToDeleteRow>
+                              </SwipeActionsRow>
                               {open ? (
                                 <div className="templates-mobile-items">
                                   {items.length === 0 ? <div className="templates-mobile-empty">No checklist items yet.</div> : null}
@@ -3490,9 +3715,9 @@ export default function TemplatesEditor({
                                     {items.map((it) => (
                                       <SortableRearrangeRow key={`mobile-item-${it.id}`} id={it.id}>
                                         {({ attributes, listeners, isDragging }) => (
-                                          /* Owner 2026-10-02: swipe left for a trash
+                                          /* Owner 2026-10-02: swipe left for Delete
                                              behind the row - the same delete as its x. */
-                                          <SwipeToDeleteRow label="Delete item" onDelete={() => deleteItem(ci, it.id)}>
+                                          <SwipeActionsRow label={it.text || 'Checklist item'} actions={buildSwipeActions({ onDelete: () => deleteItem(ci, it.id) })}>
                                           <div data-drag-rearrange-row className="templates-mobile-item-row" style={customAnswers ? { gridTemplateColumns: '44px minmax(0, 1fr) auto 44px' } : undefined}>
                                             <DragRearrangeHandle {...attributes} {...listeners} isDragging={isDragging} style={{ width: 20, height: 20 }} />
                                             <input
@@ -3502,12 +3727,16 @@ export default function TemplatesEditor({
                                               placeholder="Add checklist item"
                                               maxLength={CHECKLIST_ITEM_MAX_LENGTH}
                                               onBlur={(e) => commitRequiredRow(e.currentTarget, it.text, CHECKLIST_BLANK_HINT, (v) => renameItem(ci, it.id, v), () => discardFreshItem(ci, it.id))}
-                                              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
+                                              onKeyDown={(e) => { if (e.key === 'Enter') checklistEnter(e, ci, it.id); else if (e.key === 'Escape') { if (!it.text) { discardFreshItem(ci, it.id); return; } e.currentTarget.value = it.text; e.currentTarget.blur(); } else flagChecklistLimitIfFull(e); }}
                                             />
-                                            {customAnswers && <ItemKindPicker phone item={it} onChange={(kind, unit) => setItemKind(ci, it.id, kind, unit)} />}
+                                            {customAnswers && (
+                                              <ItemKindPicker phone item={it} onChange={(fields) => setItemKind(ci, it.id, fields)}>
+                                                {conditionalLines && <ShowIfPicker item={it} lines={items} answersOf={lineAnswersOf(tpl)} onChange={(c) => setItemShowIf(ci, it.id, c)} />}
+                                              </ItemKindPicker>
+                                            )}
                                             <button type="button" aria-label="Delete item" {...tip('Delete item')} onClick={(e) => { e.stopPropagation(); deleteItem(ci, it.id); }}><Icon name="close" size={11} /></button>
                                           </div>
-                                          </SwipeToDeleteRow>
+                                          </SwipeActionsRow>
                                         )}
                                       </SortableRearrangeRow>
                                     ))}
@@ -3580,6 +3809,19 @@ export default function TemplatesEditor({
                     sheet's own title already says Entities, so the label goes;
                     Select sits left and New entity right on one row. */}
                 <div className="templates-mobile-select-inline templates-mobile-entity-toolbar">
+                  <SectionIconActions phone>
+                    <SectionIconButton
+                      phone
+                      action="select"
+                      label={entityEdit ? 'Done' : 'Select'}
+                      nothingToSelect={mobileVisibleEntities.length === 0}
+                      active={entityEdit}
+                      onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
+                    />
+                    {!entityEdit && (
+                      <SectionIconButton phone action="add" label="Add entity" className="templates-mobile-new-entity" onClick={addEntity} />
+                    )}
+                  </SectionIconActions>
                   {entityEdit && (() => {
                     const visibleSelectedIds = new Set(mobileVisibleEntities.filter((entity) => selEntities.has(entity.id)).map((entity) => entity.id));
                     const c = visibleSelectedIds.size;
@@ -3607,19 +3849,6 @@ export default function TemplatesEditor({
                       </span>
                     );
                   })()}
-                  <SectionIconActions phone>
-                    <SectionIconButton
-                      phone
-                      action="select"
-                      label={entityEdit ? 'Done' : 'Select'}
-                      nothingToSelect={mobileVisibleEntities.length === 0}
-                      active={entityEdit}
-                      onClick={() => { const next = !entityEdit; setEntityEdit(next); if (!next) setSelEntities(new Set()); }}
-                    />
-                    {!entityEdit && (
-                      <SectionIconButton phone action="add" label="Add entity" className="templates-mobile-new-entity" onClick={addEntity} />
-                    )}
-                  </SectionIconActions>
                 </div>
                 {mobileVisibleEntities.length === 0 ? (
                   <div className="templates-mobile-empty">No entities match this view.</div>
@@ -3636,6 +3865,7 @@ export default function TemplatesEditor({
                         <SortableRearrangeRow key={`mobile-entity-${r.id}`} id={r.id}>
                           {({ attributes, listeners, isDragging }) => (
                             <>
+                              <SwipeActionsRow label={r.role} disabled={entityEdit || isOpen} actions={entitySwipeActions(r)}>
                               {/* Same rules as a category row (owner 2026-10-01):
                                   a tap on the row opens / closes its colour
                                   panel; the name renames only while the panel
@@ -3692,6 +3922,7 @@ export default function TemplatesEditor({
                                   ><Icon name="more" size={14} /></button>
                                 )}
                               </div>
+                              </SwipeActionsRow>
                               {showPanel ? (() => {
                                 const layer = layerTab[r.id] || 'fill';
                                 const match = !!matchFill[r.id];
@@ -3755,6 +3986,7 @@ export default function TemplatesEditor({
                     })}
                   </SortableRearrangeList>
                 )}
+                <AutoCompleteSwitch phone template={tpl} onToggle={() => mutateTpl(tpl.id, (t) => { const { autoComplete: _a, ...rest } = t; return autoCompleteOn(t) ? { ...rest, autoComplete: false } : rest; })} />
                     </section>
                   </div>
                 </div>
@@ -4072,7 +4304,8 @@ export default function TemplatesEditor({
               inside a checklist category. */}
           <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <label style={{ fontSize: 12, color: 'var(--text-3)' }}>Destination template</label>
-            <CustomSelect
+            <ValueSelect
+              label="Destination template"
               value={moveDestTpl}
               onChange={setMoveDestTpl}
               placeholder="Choose a template…"
@@ -4084,7 +4317,8 @@ export default function TemplatesEditor({
               return (
                 <>
                   <label style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>Destination module</label>
-                  <CustomSelect
+                  <ValueSelect
+                    label="Destination module"
                     value={moveDestMod}
                     onChange={setMoveDestMod}
                     placeholder={mods.length ? 'Choose a module…' : 'This template has no modules'}

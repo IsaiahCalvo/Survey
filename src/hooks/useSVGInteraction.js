@@ -45,6 +45,7 @@ import {
 // helpers from lineDragMath (unit-tested in tests/lineDragMath.test.mjs).
 import { shouldSnapToLinear, getMidpoint } from '../utils/lineGeometry.js';
 import { movePolyVertexPoints } from '../utils/polyDraft.js';
+import { insertSplineCorner, keepPivot, moveSplineCorner, polySplineStep, splineSpanMidpoint } from '../utils/polySpline.js';
 import { collectEndpointCandidates, resolveDrawSnap, drawSnapEventOptions } from '../utils/drawSnap.js';
 // UX 2026-09-09: a cloud polygon/polyline vertex drag replays the approved
 // studio's moveVertex(): only the dragged vertex's corner is re-fitted and the
@@ -119,7 +120,11 @@ import { canModify, canSelect, isUserLocked } from '../lib/collab/permissionScop
 // Values match combined-tools FabricPDFCanvas collision logic (reference at
 // ~/Desktop/combined-tools/src/lib/calloutGeometry.ts). See isCalloutDragSafe
 // helper below for rule set + rationale.
-import { calculateCalloutConnection } from '../utils/calloutGeometry.js';
+import {
+  calculateCalloutConnection,
+  calloutDrawnBoxHeight,
+  projectPointToCalloutBoxAnchor,
+} from '../utils/calloutGeometry.js';
 import { HANDLE_RADIUS } from '../utils/handleStyle.js';
 import {
   beginAnnotationGesture,
@@ -444,7 +449,7 @@ export function useSVGInteraction({
     setSnapGuidesState(value);
   }, []);
   // Endpoint / corner drag snapping (drawSnap.js): Shift locks the segment
-  // from `anchor` to 45° steps; the point locks onto another line end or
+  // from `anchor` to the snap angle (Settings, 15° by default); the point locks onto another line end or
   // corner within 8 screen px unless Alt / the snapping preference is off.
   const snapDraggedPoint = (ds, anchor, point, e) => {
     const r = resolveDrawSnap(anchor, point, {
@@ -492,7 +497,7 @@ export function useSVGInteraction({
     // mode === 'callout-part'. See 14-CONTEXT.md Area 3 (Phase 14 drag MVP).
     // Four-place invariant: these fields are initialized here, SET at
     // pointerdown, READ at pointermove, and RESET at pointerup.
-    partType: null,                 // 'arrowTip' | 'knee' | 'textBox' | 'whole'
+    partType: null,                 // 'arrowTip' | 'knee' | 'textBox' | 'whole' | 'attach' | 'segTip' | 'segBox'
     calloutId: null,
     originalCalloutPositions: null, // snapshot of arrowTip/knee/textBoxPosition at drag-start
     // UX: Phase 15 UAT-3 Issue 3 — tracks the most recent callout state that
@@ -550,6 +555,20 @@ export function useSVGInteraction({
       && current.pointerType === 'pen'
       && pointerType === 'touch';
   }, []);
+
+  // A box select belongs to the pointer that began it. A finger's tap that
+  // picked a mark (rule 3) arms one, and when the pick re-renders the page
+  // the tap's release can land outside this layer and never end it; the next
+  // finger then had its drag swallowed by that stale box (phone callout move,
+  // 2026-10-26). A press from another pointer drops it, as the lasso hands
+  // off above; a resting palm never drops a pen's box.
+  const dropForeignMarquee = useCallback((e) => {
+    const current = marqueeStateRef.current;
+    if (!current || current.pointerId == null || current.pointerId === e.pointerId) return;
+    if (current.pointerType === 'pen' && e.pointerType === 'touch') return;
+    try { svgRef.current?.releasePointerCapture?.(current.pointerId); } catch (_) { /* optional */ }
+    applyMarqueeState(null);
+  }, [applyMarqueeState, svgRef]);
 
   // UX: when a drag commits (move or group-move with > 2px delta), stamp
   // this ref with `Date.now()`. The browser's native `dblclick` event fires
@@ -786,7 +805,12 @@ export function useSVGInteraction({
   // Grabbers keep one screen size during a pinch or wheel zoom, before the
   // retune above lands (utils/liveHandleZoom.js). Only while something here
   // is selected, so pages with no grabbers do no per-frame work.
-  const showsGrabbers = selectedIds.size > 0 || (selectedCalloutIds?.size ?? selectedCalloutIds?.length ?? 0) > 0;
+  // A picked Survey Marker counts too: Locate on page zooms right after the
+  // pick, and its grabbers were drawn at the old zoom until the retune landed
+  // (91 px at 800 %, then 11 px).
+  const showsGrabbers = selectedIds.size > 0
+    || (selectedCalloutIds?.size ?? selectedCalloutIds?.length ?? 0) > 0
+    || (selectedSurveyMarkerIds instanceof Set && selectedSurveyMarkerIds.size > 0);
   useLayoutEffect(() => {
     const svgEl = svgRef.current;
     if (!svgEl || !pageWidth || !showsGrabbers) return undefined;
@@ -1499,6 +1523,7 @@ export function useSVGInteraction({
         altHeld: false,
         active: false,
         pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
         keepOnClick: true,
       });
     }
@@ -1508,6 +1533,7 @@ export function useSVGInteraction({
 
   const handleAnnotationPointerDown = useCallback((e, index) => {
     e.stopPropagation();
+    dropForeignMarquee(e);
     if (dragStateRef.current?.active && dragStateRef.current.annotationIndex === index) {
       return;
     }
@@ -1857,7 +1883,7 @@ export function useSVGInteraction({
         ensureMoveStart(dragStateRef.current, annotations?.objects);
       }
     }
-  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount, activeTool, beginAreaSelectFromMark]);
+  }, [selectedIds, selectAnnotation, annotations, svgRef, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, selectedMarkerCount, activeTool, beginAreaSelectFromMark, dropForeignMarquee]);
 
   /**
    * Hover enter: show blue outline preview.
@@ -1983,6 +2009,7 @@ export function useSVGInteraction({
    * and the SVG root catches clicks anywhere inside them.
    */
   const handleSvgPointerDown = useCallback((e) => {
+    dropForeignMarquee(e);
     const activeTextRangeDrag = dragStateRef.current;
     if (
       activeTextRangeDrag?.mode === 'text-markup-horizontal'
@@ -2401,6 +2428,7 @@ export function useSVGInteraction({
         altHeld: !!e.altKey,
         active: false,
         pointerId: e.pointerId,
+        pointerType: e.pointerType || 'mouse',
       });
       try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch (_) { /* pointer capture optional */ }
       // Intentionally no deselectAll() here. If the user releases under
@@ -2413,7 +2441,7 @@ export function useSVGInteraction({
       deselectAll();
       clearSelectedMarkers();
     }
-  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark]);
+  }, [svgRef, deselectAll, callouts, onSelectedCalloutIdsChange, selectedCalloutIds, activeTool, selectionMode, lassoTouchOperation, lassoTouchMode, applyMarqueeState, applyLassoState, cancelLasso, pageWidth, pageHeight, selectedIds, annotations, isCalloutSelectable, clearSelectedMarkers, getGroupMarkerIds, getSurveyMarkerMembers, selectedMarkerCount, beginAreaSelectFromMark, dropForeignMarquee]);
 
   /**
    * Pointer move on root SVG: update visual transform during drag.
@@ -2448,7 +2476,7 @@ export function useSVGInteraction({
     // can't escape the page), and flip `active` once we cross the 5 px
     // min-drag threshold. Short-circuits before annotation drag math.
     const mq = marqueeStateRef.current;
-    if (mq) {
+    if (mq && (mq.pointerId == null || mq.pointerId === e.pointerId)) {
       const pt = screenToSVG(svgRef.current, e.clientX, e.clientY);
       const clampedX = Math.max(0, Math.min(pageWidth, pt.x));
       const clampedY = Math.max(0, Math.min(pageHeight, pt.y));
@@ -3291,7 +3319,8 @@ export function useSVGInteraction({
         };
         const pts = ds.originalPoints;
         const vi = ds.vertexIndex;
-        const neighbour = vi > 0 ? pts[vi - 1] : (ds.isPolygon ? pts[pts.length - 1] : pts[1]);
+        const gap = ds.splineStep || 1;
+        const neighbour = vi > 0 ? pts[vi - gap] : (ds.isPolygon ? pts[pts.length - 1] : pts[gap]);
         const snapped = snapDraggedPoint(ds, neighbour ? toWorld(neighbour) : null, toWorld({ x: localX, y: localY }), e);
         const back = toLocal(snapped);
         localX = back.x;
@@ -3301,7 +3330,10 @@ export function useSVGInteraction({
       // One definition of "move a single vertex", shared with the polygon /
       // polyline draft module: the dragged point is replaced, every other
       // point is copied through byte-for-byte so no neighbour drifts.
-      const newPoints = movePolyVertexPoints(ds.originalPoints, ds.vertexIndex, { x: localX, y: localY });
+      // A curved polyline moves the clicked corner and draws its curve again.
+      const newPoints = ds.splineStep
+        ? moveSplineCorner(ds.originalPoints, ds.splineStep, ds.vertexIndex, { x: localX, y: localY })
+        : movePolyVertexPoints(ds.originalPoints, ds.vertexIndex, { x: localX, y: localY });
 
       // UX 2026-04-20: keep the world rotation pivot anchored when a vertex
       // moves on a ROTATED polygon. The renderer re-derives rotCenter from
@@ -3982,7 +4014,7 @@ export function useSVGInteraction({
       newAngle = ((newAngle % 360) + 360) % 360;
 
       // Canvas audit chunk 3 (Drawboard): whole degrees, pulled to 0 / 90 /
-      // 180 / 270 within 4°; Shift = hard 15° steps (was a soft 45° snap
+      // 180 / 270 within 4°; Shift = hard snap-angle steps (Settings, 15° by default; was a soft 45° snap
       // that only caught within 3°); Alt = free.
       newAngle = snapRotationDegrees(newAngle, { shift: e.shiftKey, free: isSnapFreeModifier(e) });
       newAngle = ((newAngle % 360) + 360) % 360;
@@ -4114,6 +4146,53 @@ export function useSVGInteraction({
             y: original.textBoxPosition.y + dyNorm,
           };
           break;
+        // Owner 2026-10-26: the grabber halfway along a leader segment moves
+        // that segment as one piece. Arrow-to-knee carries the tip and the
+        // knee (the box stays); knee-to-box carries the knee and the box (the
+        // tip stays on what it points at). The other segment stretches.
+        case 'segTip':
+          proposed.arrowTip = {
+            x: original.arrowTip.x + dxNorm,
+            y: original.arrowTip.y + dyNorm,
+          };
+          proposed.knee = {
+            x: original.knee.x + dxNorm,
+            y: original.knee.y + dyNorm,
+          };
+          break;
+        case 'segBox':
+          proposed.knee = {
+            x: original.knee.x + dxNorm,
+            y: original.knee.y + dyNorm,
+          };
+          proposed.textBoxPosition = {
+            x: original.textBoxPosition.x + dxNorm,
+            y: original.textBoxPosition.y + dyNorm,
+          };
+          break;
+        case 'attach': {
+          // The leader's attach grabber slides along the box border, on the
+          // sides the knee lies outside of (calloutGeometry textBoxAnchor).
+          // Nothing else moves, so there is no rule to break.
+          const boxLeft = original.textBoxPosition.x * W;
+          const boxTop = original.textBoxPosition.y * H;
+          const boxW = Math.max(18, (original.textBoxWidth || 0) * W);
+          const boxH = calloutDrawnBoxHeight((original.textBoxHeight || 0) * H, original.fontSize);
+          const anchor = projectPointToCalloutBoxAnchor(
+            svgPoint,
+            { x: original.knee.x * W, y: original.knee.y * H },
+            boxLeft, boxTop, boxLeft + boxW, boxTop + boxH,
+          );
+          if (!anchor) return;
+          const anchorPatch = { textBoxAnchor: anchor };
+          ds.currentCalloutPatch = anchorPatch;
+          setVisualTransform({
+            id: 'callout',
+            calloutPreviews: { [ds.calloutId]: anchorPatch },
+          });
+          setInteractionState('dragging');
+          return;
+        }
         case 'whole': {
           // w59: a whole-callout move keeps the callout on the page with the
           // same rigid rule as marks, the arrow-key nudge and group moves
@@ -4265,6 +4344,7 @@ export function useSVGInteraction({
         ds.partType === 'knee'
         || ds.partType === 'textBox'
         || ds.partType === 'textBoxResize'
+        || ds.partType === 'segBox'
       ) {
         // UX: 2026-05-18 — knee / textbox / resize drags count as "safe" only
         // when nothing overlaps: knee and arrow stay outside the box, each
@@ -4312,6 +4392,12 @@ export function useSVGInteraction({
           break;
         case 'textBox':
           patch = { textBoxPosition: proposed.textBoxPosition };
+          break;
+        case 'segTip':
+          patch = { arrowTip: proposed.arrowTip, knee: proposed.knee };
+          break;
+        case 'segBox':
+          patch = { knee: proposed.knee, textBoxPosition: proposed.textBoxPosition };
           break;
         case 'whole':
           patch = {
@@ -4436,7 +4522,7 @@ export function useSVGInteraction({
     //   - Above-threshold release: resolve hits, apply selection per
     //     modifier rules, clear marquee state.
     const mq = marqueeStateRef.current;
-    if (mq) {
+    if (mq && (mq.pointerId == null || mq.pointerId === e.pointerId)) {
       const wasActive = mq.active;
       applyMarqueeState(null);
       try { svgRef.current?.releasePointerCapture?.(mq.pointerId ?? e.pointerId); } catch (_) { /* optional */ }
@@ -5417,7 +5503,8 @@ export function useSVGInteraction({
         return base && commitCalloutPatch ? { ...base, ...commitCalloutPatch } : base;
       })();
 
-      if (ds.lastSafeCalloutPositions && ds.partType !== 'whole') {
+      // An attach drag only slides the leader's end along the box: nothing to check.
+      if (ds.lastSafeCalloutPositions && ds.partType !== 'whole' && ds.partType !== 'attach') {
         const W = pageWidth || 1;
         const H = pageHeight || 1;
         const last = ds.lastSafeCalloutPositions;
@@ -5483,7 +5570,10 @@ export function useSVGInteraction({
           const dropClearsCorners = (p) =>
             dropBoxCorners.every((c) => Math.hypot(p.x - c.x, p.y - c.y) >= minHandleToHandle);
           let dropSafe = true;
-          if (ds.partType === 'knee' || ds.partType === 'textBox' || ds.partType === 'textBoxResize') {
+          if (
+            ds.partType === 'knee' || ds.partType === 'textBox' || ds.partType === 'textBoxResize'
+            || ds.partType === 'segBox'
+          ) {
             // UX: free drag during mouse-down, release checks the final spot.
             // Invalid if the knee or arrow lands inside the textbox, OR the
             // knee→arrow line cuts through the textbox, OR any handle touches
@@ -5555,6 +5645,8 @@ export function useSVGInteraction({
               ds.partType === 'arrowTip'
               || ds.partType === 'textBox'
               || ds.partType === 'textBoxResize'
+              || ds.partType === 'segTip'
+              || ds.partType === 'segBox'
             ) {
               // UX: Phase 15 UAT-3 (2026-04-18) — when the final state is
               // valid but required auto-routing (stored knee sits inside
@@ -5763,6 +5855,7 @@ export function useSVGInteraction({
    */
   const handleHandlePointerDown = useCallback((e, handleId) => {
     e.stopPropagation();
+    dropForeignMarquee(e);
     const activeTextRangeDrag = dragStateRef.current;
     if (
       activeTextRangeDrag?.mode === 'text-markup-horizontal'
@@ -6110,13 +6203,24 @@ export function useSVGInteraction({
       const segmentIndex = Number(handleId.slice('insert-vertex-'.length));
       const count = obj.points?.length || 0;
       const closed = String(obj.type).toLowerCase() === 'polygon';
-      if (!Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= count - (closed ? 0 : 1)) return;
+      // On a curved polyline the "+" names the span between two clicked
+      // corners; the new corner lands on the curve halfway along it.
+      const splineStep = polySplineStep(obj);
+      const sides = splineStep ? (count - 1) / splineStep : count - (closed ? 0 : 1);
+      if (!Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= sides) return;
       obj = deepClone(obj);
-      const from = obj.points[segmentIndex];
-      const to = obj.points[(segmentIndex + 1) % count];
-      obj.points.splice(segmentIndex + 1, 0, { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
+      if (splineStep) {
+        // The new curve's box can differ from the old one; keepPivot holds a
+        // turned line's corners where they were (Codex review on #1214).
+        obj = keepPivot(obj, obj.points, insertSplineCorner(obj.points, splineStep, segmentIndex, splineSpanMidpoint(obj.points, splineStep, segmentIndex)));
+        handleId = `vertex-${(segmentIndex + 1) * splineStep}`;
+      } else {
+        const from = obj.points[segmentIndex];
+        const to = obj.points[(segmentIndex + 1) % count];
+        obj.points.splice(segmentIndex + 1, 0, { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 });
+        handleId = `vertex-${segmentIndex + 1}`;
+      }
       if (obj.data?.pdfCloudVertexState) delete obj.data.pdfCloudVertexState;
-      handleId = `vertex-${segmentIndex + 1}`;
       try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch { /* optional */ }
     }
 
@@ -6215,7 +6319,8 @@ export function useSVGInteraction({
         // Cloud parity: snapshot the studio shape at drag start (its stored
         // per-vertex memory when it has one, else a fresh makeShape fit) in the
         // engine frame, so every move can replay moveVertex() from it.
-        const cloudSpec = resolveAnnotationCloudSpec(obj);
+        const splineStep = polySplineStep(obj);
+        const cloudSpec = splineStep ? null : resolveAnnotationCloudSpec(obj);
         const cloudVertexEdit = cloudSpec && (cloudSpec.kind === 'polygon' || cloudSpec.kind === 'polyline')
           ? (() => {
               const enginePoints = cloudPolyEnginePoints(obj);
@@ -6237,6 +6342,7 @@ export function useSVGInteraction({
           annotationIndex: selectedIndex,
           ctmInverse,
           vertexIndex,
+          splineStep,
           cloudVertexEdit,
           // Per-field sync (2026-09-24): the release writes only this mark's
           // own change (drag start → last frame) onto the page as it is then.
@@ -6557,7 +6663,7 @@ export function useSVGInteraction({
       };
       diagLog('[BboxScaleDiag] start ' + JSON.stringify(startPayload));
     } catch (err) { console.warn('[BboxScaleDiag] start log failed', err); }
-  }, [selectedIds, annotations, svgRef, selectedCalloutIds, callouts, getGroupMarkerIds, getSurveyMarkerMembers, pageWidth, pageHeight, pageNumber]);
+  }, [selectedIds, annotations, svgRef, selectedCalloutIds, callouts, getGroupMarkerIds, getSurveyMarkerMembers, pageWidth, pageHeight, pageNumber, dropForeignMarquee]);
 
   // ---------------------------------------------------------------------------
   // Group delete (Plan 03): remove all selected annotations

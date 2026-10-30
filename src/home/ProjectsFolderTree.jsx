@@ -23,6 +23,7 @@
 */
 import { canManageProject, canManageProjectFile, projectSelectionCan } from './projectFilePermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
+import MenuRows from '../components/MenuRows.jsx';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { hoverOnly, useTooltip } from '../components/Tooltip';
 import { createPortal } from 'react-dom';
@@ -32,9 +33,11 @@ import { presenceInitials } from '../components/presenceIdentity.js';
 import { userColorFill } from '../utils/userColors.js';
 import { countLabel } from './countLabel.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from '../components/SectionIconButton.jsx';
-import ManageTeamModal from './ManageTeamModal';
+import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
+import { preloadedComponent } from '../utils/preloadedComponent';
 import { listProjectCollaboratorsForProjects } from '../services/projectInviteService';
-import { MoveCopyModal } from './BulkModals';
+import { MoveCopyModal, RenameModal } from './BulkModals';
+import { manageSelectionBlock } from './documentPermissions.js';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
 import { pickByIds } from './selectionById';
@@ -46,6 +49,10 @@ import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
 import { resolveProjectDropTarget } from '../utils/fileDrop.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+
+// Renders closed until someone picks Manage team, so it stays off the first
+// load; the chunk is fetched when the projects tree mounts.
+const ManageTeamModal = preloadedComponent(() => import('./ManageTeamModal')).Component;
 
 /* Literal palette — used by the portal popups, which render outside the
    `.survey-hub` root and therefore cannot inherit its CSS variables. */
@@ -104,7 +111,7 @@ const ProjectTeamSummary = ({ memberIds, lookupMember }) => (
       ids={memberIds.slice(0, 3)}
       size={14}
     />
-    <span className="mono meta" style={{ fontSize: 11 }}>{memberIds.length}</span>
+    <span className="nums meta" style={{ fontSize: 11 }}>{memberIds.length}</span>
   </div>
 );
 
@@ -163,23 +170,7 @@ function PopupMenu({ anchorRect, onClose, items, align = 'right', minWidth = 160
         className="hub-menu"
         style={{ top, left, minWidth: menuWidth }}
       >
-        {items.map((it) => (
-          <button
-            key={it.label}
-            type="button"
-            role="menuitem"
-            className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
-            disabled={it.reason ? undefined : it.disabled}
-            aria-disabled={it.reason ? true : undefined}
-            {...(it.reason ? tip(it.reason) : {})}
-            onClick={() => { if (it.disabled && !it.reason) return; onClose(); activateOrExplain(it.reason, it.onClick); }}
-          >
-            {it.iconNode
-              ? it.iconNode
-              : (it.icon && <Icon name={it.icon} size={12} color={it.danger ? HEX.danger : HEX.muted} />)}
-            {it.label}
-          </button>
-        ))}
+        <MenuRows items={items} tip={tip} onClose={onClose} />
       </div>
     </>,
     document.body,
@@ -206,6 +197,7 @@ export default function ProjectsFolderTree({
   projectPreferences = {},
   onProjectPreferencesChange,
   onDeleteDocuments,
+  onRenameDocument,
   onLockDocument,
   onPdfTools,
   onShare,
@@ -261,6 +253,9 @@ export default function ProjectsFolderTree({
   // what to anchor to. `null` when closed.
   const [teamMenu, setTeamMenu] = useState(null); // { id, rect }
   const [fileMenu, setFileMenu] = useState(null); // { id, rect }
+  // Rename from a row menu (owner 2026-10-28: projects and their files can be
+  // renamed like Documents): { kind: 'project' | 'file', id, name } | null.
+  const [renameTarget, setRenameTarget] = useState(null);
 
   // Manage Project modal — controlled entirely by local state. Opened by the
   // header "Manage Team" button and the per-project menu's "Manage project".
@@ -593,15 +588,15 @@ export default function ProjectsFolderTree({
   const nameDirty = !!(draftProject && nameDraft.value.trim() && nameDraft.value.trim() !== draftProject.name);
   const editProjectName = useCallback((id, value) => setNameDraft({ id, value }), []);
   const cancelProjectName = useCallback(() => setNameDraft(null), []);
+  // Not inside a setNameDraft updater: updaters run during render, and
+  // renameProject calls the parent's onRenameProject (a setState up the tree).
   const saveProjectName = useCallback(() => {
-    setNameDraft((draft) => {
-      if (!draft) return null;
-      const name = draft.value.trim();
-      const project = projectById.get(draft.id);
-      if (project && name && name !== project.name) renameProject(draft.id, name);
-      return null;
-    });
-  }, [projectById, renameProject]);
+    if (!nameDraft) return;
+    const name = nameDraft.value.trim();
+    const project = projectById.get(nameDraft.id);
+    setNameDraft(null);
+    if (project && name && name !== project.name) renameProject(nameDraft.id, name);
+  }, [nameDraft, projectById, renameProject]);
   // A draft belongs to one project. Once that project is no longer the one on
   // screen (desktop panel or phone drill-down), the draft is dropped rather
   // than carried across to another project's name.
@@ -896,7 +891,7 @@ export default function ProjectsFolderTree({
         <span><b>{filtered.length}</b> {filtered.length === 1 ? 'project' : 'projects'}</span>
         {projectSaveRow('hub-desktop-save-row')}
       </span>
-      <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+      <span className="projects-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
         <span className="projects-mobile-count">
           <b>{mobileDrillProject ? mobileDrillFiles.length : filtered.length}</b> {mobileDrillProject
             ? (mobileDrillFiles.length === 1 ? 'file' : 'files')
@@ -906,6 +901,33 @@ export default function ProjectsFolderTree({
       </span>
     </>
   );
+  /* Owner 2026-10-27: slide a project or file row left for the same actions
+     as its ⋮ menu, in the select-mode order, with the same owner rules. A
+     file outside the open project (Recent) only offers Share and Delete. */
+  const projectSwipeActions = (p) => {
+    const ownerOnly = canManageProject(p, user?.id) || 'Only the project owner can do this';
+    return buildSwipeActions({
+      lead: 'share',
+      onDuplicate: () => duplicateProjects([p.id]),
+      onShare: onShare ? () => onShare(p) : undefined,
+      onDelete: () => deleteProjects([p.id]),
+      can: { share: ownerOnly, delete: ownerOnly },
+    });
+  };
+  const fileSwipeActions = (f) => {
+    const project = projectById.get(f.project_id) || null;
+    const manage = canManageProjectFile(f, project, user?.id) || 'Only the uploader or project owner can do this';
+    const inOpen = Boolean(open && f.project_id === open.id);
+    return buildSwipeActions({
+      lead: 'share',
+      onDuplicate: inOpen ? () => duplicateFiles([f.id]) : undefined,
+      onMove: inOpen ? () => openMoveCopy([f], 'move') : undefined,
+      onCopy: inOpen ? () => openMoveCopy([f], 'copy') : undefined,
+      onShare: onShareDocument ? () => onShareDocument([f]) : (onShare ? () => onShare(project || open) : undefined),
+      onDelete: inOpen ? () => deleteFiles([f.id]) : (onDeleteDocuments ? () => onDeleteDocuments([f]) : undefined),
+      can: { share: manage, delete: manage },
+    });
+  };
   const renderMobileFileRow = (f, keyPrefix = 'mobile-file', dragHandle = null) => {
     const isChecked = selFiles.has(f.id);
     const ownerId = f.user_id ?? f.owner ?? projectTeam(projectById.get(f.project_id))[0] ?? null;
@@ -914,8 +936,8 @@ export default function ProjectsFolderTree({
        cue the desktop file ledger uses. The check box on its own was the only
        mark a picked row carried. */
     return (
+      <SwipeActionsRow key={`${keyPrefix}-${f.id}`} label={f.name} disabled={fileSelect} actions={fileSwipeActions(f)}>
       <div
-        key={`${keyPrefix}-${f.id}`}
         data-document-id={f.id}
         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setFileMenu({ id: f.id, rect: { left: event.clientX, right: event.clientX + 168, top: event.clientY, bottom: event.clientY } }); setTeamMenu(null); }}
         className={`projects-mobile-file-row ${dragHandle ? 'reorderable' : ''}${fileSelect && isChecked ? ' is-selected' : ''}`}
@@ -950,6 +972,7 @@ export default function ProjectsFolderTree({
           ><Icon name="more" size={14} /></button>
         )}
       </div>
+      </SwipeActionsRow>
     );
   };
 
@@ -970,19 +993,27 @@ export default function ProjectsFolderTree({
         {/* LEFT — tree */}
         <div className="card" style={{ padding: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {/* Owner 2026-10-01: one header line - the page's one gold action
-              on the left, the quiet Select on the right. In select mode the
-              bulk actions take the gold button's place and Done stays where
-              Select was, so the list under it never moves. */}
+              on the left, the quiet Select on the right, and Done stays where
+              Select was, so the list under it never moves. Owner 2026-10-28:
+              the gold button stays in Select mode too; it sheds its noun
+              ("New") so the select actions fit beside it. */}
           <div className="hub-section-head hub-panel-head">
-            {!jobsEdit ? (
-              <button
-                className="btn primary"
-                onClick={handleNewProject}
-              >
-                <Icon name="plus" size={11} />New project
-              </button>
-            ) : null}
+            <button
+              className={`btn primary hub-new-btn${jobsEdit ? ' is-compact' : ''}`}
+              aria-label="New project"
+              onClick={handleNewProject}
+            >
+              <Icon name="plus" size={11} />New<span className="hub-new-btn__noun" aria-hidden="true">&nbsp;project</span>
+            </button>
             <div className="hub-select-actions hub-section-actions">
+              <SectionIconButton
+                data-testid="project-select-toggle"
+                action="select"
+                label={jobsEdit ? 'Done' : 'Select'}
+                nothingToSelect={filtered.length === 0}
+                active={jobsEdit}
+                onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
+              />
               {/* Duplicate clones each selected project into the local list;
                   Share opens the share flow for the first selected project;
                   Delete removes each selected project and lets the host
@@ -1000,14 +1031,6 @@ export default function ProjectsFolderTree({
                   deleteProps={{ 'data-testid': 'delete-selected-projects' }}
                 />
               )}
-              <SectionIconButton
-                data-testid="project-select-toggle"
-                action="select"
-                label={jobsEdit ? 'Done' : 'Select'}
-                nothingToSelect={filtered.length === 0}
-                active={jobsEdit}
-                onClick={() => { const next = !jobsEdit; setJobsEdit(next); if (!next) setSelProj(new Set()); }}
-              />
             </div>
           </div>
           <div className="slim-scroll hub-side-list" style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
@@ -1032,6 +1055,7 @@ export default function ProjectsFolderTree({
                   id={p.id}
                 >
                   {({ attributes, listeners, isDragging }) => (
+                  <SwipeActionsRow label={p.name} disabled={jobsEdit} actions={projectSwipeActions(p)}>
                   <div
                     data-drag-rearrange-row
                     data-project-id={p.id}
@@ -1106,6 +1130,7 @@ export default function ProjectsFolderTree({
                       ><Icon name="more" size={14} /></button>
                     )}
                   </div>
+                  </SwipeActionsRow>
                   )}
                 </SortableRearrangeRow>
               );
@@ -1159,6 +1184,13 @@ export default function ProjectsFolderTree({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 28, marginBottom: 4, overflow: 'hidden', flexWrap: 'nowrap', justifyContent: 'space-between' }}>
                     <span className="hub-section-label" style={{ fontSize: 11, letterSpacing: 0, color: 'var(--ink-200)', fontWeight: 600 }}>Files<span className="hub-section-count">{openFiles.length}</span></span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+                      <SectionIconButton
+                        action="select"
+                        label={fileSelect ? 'Done' : 'Select'}
+                        nothingToSelect={openFiles.length === 0}
+                        active={fileSelect}
+                        onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
+                      />
                       {fileSelect && (() => {
                         // Effective selection is DERIVED from the current rows
                         // — never the raw id set, which may hold stale ids of
@@ -1186,13 +1218,6 @@ export default function ProjectsFolderTree({
                           />
                         );
                       })()}
-                      <SectionIconButton
-                        action="select"
-                        label={fileSelect ? 'Done' : 'Select'}
-                        nothingToSelect={openFiles.length === 0}
-                        active={fileSelect}
-                        onClick={() => { const next = !fileSelect; setFileSelect(next); if (!next) setSelFiles(new Set()); }}
-                      />
                     </div>
                   </div>
                   <div className="projects-file-grid" style={{ display: 'grid', gap: 12, padding: '0 10px 6px', fontSize: 11, color: 'var(--ink-200)', letterSpacing: 0 }}>
@@ -1218,6 +1243,7 @@ export default function ProjectsFolderTree({
                             id={f.id}
                           >
                             {({ attributes, listeners, isDragging }) => (
+                          <SwipeActionsRow label={f.name} disabled={fileSelect} actions={fileSwipeActions(f)} style={{ borderRadius: 6 }}>
                           <div
                             data-drag-rearrange-row
                             data-document-id={f.id}
@@ -1259,7 +1285,7 @@ export default function ProjectsFolderTree({
                             {/* 16px line: the mono glyph box is 14px, so an even
                                 leading keeps it on the row's centre line (an
                                 inherited 15.4px line sat it 0.7px high). */}
-                            <span className="mono meta" style={{ fontSize: 11, lineHeight: '16px' }}>{shortWhen(f)}</span>
+                            <span className="nums meta" style={{ fontSize: 11, lineHeight: '16px' }}>{shortWhen(f)}</span>
                             {fileSelect ? (
                               <span
                                 {...checkboxProps(isChecked, () => toggleFileSel(f.id), `Select ${f.name}`)}
@@ -1284,6 +1310,7 @@ export default function ProjectsFolderTree({
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
+                          </SwipeActionsRow>
                             )}
                           </SortableRearrangeRow>
                         );
@@ -1434,6 +1461,7 @@ export default function ProjectsFolderTree({
                     return (
                       <SortableRearrangeRow key={`drill-folder-${p.id}`} id={p.id}>
                         {({ attributes, listeners, isDragging }) => (
+                          <SwipeActionsRow label={p.name} disabled={jobsEdit} actions={projectSwipeActions(p)}>
                           <div
                             data-drag-rearrange-row
                             data-project-id={p.id}
@@ -1495,6 +1523,7 @@ export default function ProjectsFolderTree({
                               ><Icon name="more" size={14} /></button>
                             )}
                           </div>
+                          </SwipeActionsRow>
                         )}
                       </SortableRearrangeRow>
                     );
@@ -2026,20 +2055,21 @@ export default function ProjectsFolderTree({
             items={[
               // "Add member" opens the invite/share popup — same flow as
               // "Get link to project". Only "Manage project" opens the modal.
+              { label: 'Rename', onClick: () => setRenameTarget({ kind: 'project', id: proj.id, name: proj.name || '' }) },
               { label: 'Duplicate', onClick: () => duplicateProjects([proj.id]) },
               { label: 'Share', reason: ownerOnly, onClick: () => onShare?.(proj) },
               { label: 'Delete', danger: true, reason: ownerOnly, onClick: () => { void deleteProjects([proj.id]); } },
               { icon: 'users', label: 'Add member', reason: ownerOnly, onClick: () => onShare && onShare(proj) },
-              { icon: 'arrow-r', label: 'Get link to project', onClick: () => onShare && onShare(proj) },
+              { label: 'Get link to project', onClick: () => onShare && onShare(proj) },
               { icon: 'upload', label: 'Upload files', onClick: () => { setOpenId(proj.id); addFiles(proj); } },
               {
                 // Pin / unpin — toggles local pinned state; the row floats to
                 // the top of the list and shows a pin icon when pinned.
-                iconNode: <PinIcon size={12} color={projPinned ? HEX.gold : HEX.muted} />,
+                iconNode: <PinIcon size={14} color={projPinned ? HEX.gold : 'currentColor'} />,
                 label: projPinned ? 'Unpin project' : 'Pin project',
                 onClick: () => togglePin(proj.id),
               },
-              { icon: 'more', label: 'Manage project', onClick: () => setTeamModalProject(proj) },
+              { label: 'Manage project', onClick: () => setTeamModalProject(proj) },
             ]}
           />
         );
@@ -2062,6 +2092,7 @@ export default function ProjectsFolderTree({
             onClose={() => setFileMenu(null)}
             minWidth={168}
             items={[
+              ...(onRenameDocument ? [{ label: 'Rename', reason: manageSelectionBlock([f], user?.id, 'rename'), onClick: () => setRenameTarget({ kind: 'file', id: f.id, name: f.name || '' }) }] : []),
               { label: 'Duplicate', onClick: () => duplicateFiles([f.id]) },
               { label: 'Move to project', onClick: () => openMoveCopy([f], 'move') },
               { label: 'Copy to project', onClick: () => openMoveCopy([f], 'copy') },
@@ -2104,6 +2135,23 @@ export default function ProjectsFolderTree({
           button, already set to that mode. On confirm it moves or copies the
           chosen files into the destination project, mutating local document
           state. */}
+      <RenameModal
+        open={!!renameTarget}
+        onClose={() => setRenameTarget(null)}
+        title={renameTarget?.kind === 'file' ? 'Rename document' : 'Rename project'}
+        initialName={renameTarget?.name || ''}
+        onConfirm={(name) => {
+          const target = renameTarget;
+          const next = String(name || '').trim();
+          if (!target || !next || next === target.name) return;
+          if (target.kind === 'project') {
+            renameProject(target.id, next);
+            return;
+          }
+          const file = localDocs.find((d) => d.id === target.id);
+          if (file) void onRenameDocument?.(file, next);
+        }}
+      />
       <MoveCopyModal
         open={moveOpen}
         initialMode={moveMode}

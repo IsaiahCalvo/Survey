@@ -31,7 +31,7 @@
  * - Escape  = cancel + revert to pre-edit angle
  * - Blur    = commit (Figma/Excalidraw convention)
  * - ArrowUp/ArrowDown    = ±1° immediate commit
- * - Shift+ArrowUp/Down   = ±45° immediate commit
+ * - Shift+ArrowUp/Down   = ± the snap angle (Settings, 15° by default), immediate commit
  * - Invalid input (non-numeric, empty) on commit/blur = silent revert
  *
  * Drag-wins rule (Pitfall 9):
@@ -55,6 +55,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { normalizeTypedDegrees, computeInputPosition, ROTATION_PILL } from '../utils/rotationInputHelpers';
+import { readSnapAngle } from '../utils/annotationPreferences.js';
 
 // UX: project-wide font stack re-declared locally per house style (used in 14+
 // files including App.jsx:116). The 2026-04-08 Fabric.js multi-font gotcha
@@ -354,7 +355,7 @@ function RotationInputField({
       }
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault();
-        const step = (e.shiftKey ? 45 : 1) * (e.key === 'ArrowUp' ? 1 : -1);
+        const step = (e.shiftKey ? readSnapAngle() : 1) * (e.key === 'ArrowUp' ? 1 : -1);
         const cur = Number(inputRef.current?.value);
         const base = Number.isFinite(cur) ? cur : Math.round(angleRef.current);
         const next = normalizeTypedDegrees(base + step);
@@ -454,9 +455,9 @@ function RotationInputField({
     if (e.key === 'ArrowUp') {
       e.preventDefault();
       // UX: ±1° per press matches engineering-drawing intuition; Shift+Arrow
-      // jumps by 45° (the Phase 12 snap increment) so users can quickly cycle
-      // 0/45/90/135. Scoped to this input — no global keydown listener.
-      const step = e.shiftKey ? 45 : 1;
+      // jumps by the Settings snap angle (15° / 45° / 90°), the same step as
+      // Shift while turning. Scoped to this input — no global keydown listener.
+      const step = e.shiftKey ? readSnapAngle() : 1;
       const current = Number(inputRef.current?.value);
       const base = Number.isFinite(current) ? current : Math.round(angle);
       const newValue = normalizeTypedDegrees(base + step);
@@ -468,7 +469,7 @@ function RotationInputField({
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      const step = e.shiftKey ? 45 : 1;
+      const step = e.shiftKey ? readSnapAngle() : 1;
       const current = Number(inputRef.current?.value);
       const base = Number.isFinite(current) ? current : Math.round(angle);
       const newValue = normalizeTypedDegrees(base - step);

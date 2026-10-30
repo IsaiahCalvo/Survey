@@ -139,7 +139,7 @@ export default function FeatureFlagsPage() {
         Unfinished features stay hidden until you turn them on here.
         Features marked Nightly only show in Survey Nightly and never on surveytool.app, whatever you pick;
         they reach surveytool.app once they are moved to stable in the code.
-        {releaseChannel() === 'nightly' ? ' This is Survey Nightly, where every feature is on no matter what you pick.' : ''}
+        {releaseChannel() === 'nightly' ? ' This is Survey Nightly, where every Nightly only feature is on no matter what you pick; the rest follow what you pick, as on surveytool.app.' : ''}
       </p>
       {flags.map((f) => <FlagRow key={f.key} flag={f} onSave={saveFlag} />)}
       {flags.length === 0 && !message && <p style={{ color: C.inkSoft }}>No features are waiting behind a switch.</p>}

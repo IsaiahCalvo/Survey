@@ -178,6 +178,7 @@ const TYPE_WORDS = {
   markup: 'a text highlight',
   space: 'a space',
   region: 'a region',
+  formField: 'a form field',
   mark: 'a mark',
 };
 
@@ -200,6 +201,7 @@ const TYPE_GLYPHS = {
   markup: 'formatHighlight',
   space: 'layers',
   region: 'layers',
+  formField: 'textBox',
   marks: 'shapes',
   mark: 'shapes',
   excel: 'survey',
@@ -235,6 +237,8 @@ export function historyTypeKey(value, annotation = null) {
   if (['highlight', 'underline', 'strikeout', 'squiggly', 'text-markup', 'textmarkup'].includes(text)) return 'markup';
   if (text === 'space') return 'space';
   if (text === 'region') return 'region';
+  // A typed-in or ticked PDF form field is saved as a 'form-field' object.
+  if (text === 'form-field') return 'formField';
   return 'mark';
 }
 
@@ -389,10 +393,14 @@ function bulkSingleType(payload) {
   return historyTypeKey(annotation?.data?.type || annotation?.type, annotation);
 }
 
+// Typing into or ticking a PDF form field saves it as a new or changed
+// 'form-field' object; "added a mark" read as if a drawing had appeared.
+const FORM_FIELD_FILL_KINDS = new Set(['created', 'edited', 'textEdited']);
+
 function finish(kind, typeKey, row, count = 0) {
   return {
     kind,
-    verb: VERBS[kind] || 'edited',
+    verb: typeKey === 'formField' && FORM_FIELD_FILL_KINDS.has(kind) ? 'filled in' : (VERBS[kind] || 'edited'),
     noun: nounFor(typeKey, row, count),
     typeKey,
     glyph: historyGlyphFor(count > 1 ? 'marks' : typeKey),

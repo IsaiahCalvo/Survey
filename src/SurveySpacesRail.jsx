@@ -10,10 +10,14 @@
 // Accurate rename candidate: SurveyRail.jsx.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { revealInOwnScroller } from './utils/revealInOwnScroller.js';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from './Icons';
 import ListItemContextMenu from './components/ListItemContextMenu';
+import SwipeActionsRow, { buildSwipeActions } from './components/SwipeActionsRow.jsx';
 import SurveyCategoryMoveDialog from './components/SurveyCategoryMoveDialog';
+import SurveyMarkerTransferDialog from './components/SurveyMarkerTransferDialog';
+import SurveyModuleTabs from './components/SurveyModuleTabs';
 import CreateCategoryModal from './components/CreateCategoryModal';
 import Spinner from './components/Spinner';
 import { useTooltip } from './components/Tooltip';
@@ -26,10 +30,12 @@ import reviewWarningIcon from './assets/review-warning.svg';
 import { SYNC_TONE_COLORS, liveSyncGateStatus, liveSyncVerifyStatus, syncMessagePresentation } from './services/excelSyncStatus';
 import { compareSurveyMarkersForOrder } from './utils/surveyMarkerOrdering';
 import { showToast } from './utils/toast';
-import { reportAnnotationDeleteOutcome } from './services/annotationDeleteOutcome.js';
 import { watchLightPopover } from './components/dismissRules.js';
 import { useConfirmDialog } from './components/dialogPrompts';
 import SurveyMarkerNotes from './components/SurveyMarkerNotes';
+import SurveyMarkerTracking, { SurveyMarkerTrackingBadge } from './components/SurveyMarkerTracking.jsx';
+import { useDocumentPeople } from './hooks/useDocumentPeople.js';
+import { EMPTY_TRACKING_FILTER, nextTracking, passesTrackingFilter, todayKey } from './utils/markerTracking.js';
 import { buildNoteWithMedia, normalizeNoteMedia, uploadSurveyMedia } from './services/surveyMediaService';
 import SurveyAgentPanel from './components/SurveyAgentPanel.jsx';
 import { isSurveyAgentEnabled } from './agent/surveyAgentFlag.js';
@@ -49,17 +55,22 @@ import './mobile/mobileSurveyPanel.css';
 import './surveyRailPanel.css';
 import { RAIL_CONTROL, RAIL_CONTROL_GLYPH, RAIL_GLYPH, getPDFId } from './viewerShared';
 import { useViewerSideOccluderRef } from './utils/viewerSideOverlay.js';
-import { resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
+import { autoCompleteOn, resolveAutoCompleteEntity } from './utils/surveyAutoEntity.js';
+import { shownChecklist } from './services/conditionalLines.js';
+import { reportKitFor } from './services/reportKits/index.js';
 import { answerMeans, answerSetFor, answerTone, itemKind, sameAnswer } from './services/answerSets.js';
-import TypedAnswerInput from './components/TypedAnswerInput.jsx';
+import TypedAnswerInput, { CHOICE_BUTTONS_MAX, ChoiceSelect } from './components/TypedAnswerInput.jsx';
+import SurveyReportMenu from './components/SurveyReportMenu.jsx';
+import SheetSyncButton from './components/SheetSyncButton.jsx';
 import { resolveSurveyMarkerPromptName } from './utils/surveyMarkerNamePrompt.js';
 import { captureMorph, playMorph, prefersReducedMotion } from './surveyRailMorph.js';
 import SectionIconButton, { SectionIconActions, SelectModeButtons } from './components/SectionIconButton.jsx';
+import { glideAcrossNextChange } from './utils/loadoutTransition.js';
 import SharedTemplateBadge from './components/SharedTemplateBadge.jsx';
-import { removeSurveyMarkersFromPages } from './utils/surveyMarkerPageRemoval.js';
 import useSurveyRecents from './hooks/useSurveyRecents';
 import { SURVEY_LIST_SEARCH_FROM, surveyTemplateSections } from './utils/surveyPickLists.js';
 import { publishSideRoom, subscribeRightPanelYield } from './sidebar/panelLayoutStore.js';
+import { publishChromeInset } from './utils/chromeInsets.js';
 import { useProLock } from './hooks/useProLock.js';
 import { keyboardControlProps } from './utils/keyboardActivation.js';
 
@@ -451,19 +462,22 @@ const SurveySpacesRail = ({
   activeSpaceId,
   addCategoryAsNewTemplate,
   addCategoryToCurrentTemplate,
-  annotationsByPage,
   applyLayoutDrivenZoom,
   categorySelectModeActive,
   copiedItemSelection,
   copyModeActive,
   DEFAULT_SURVEY_MARKER_OPACITY,
-  deleteAnnotations,
   deleteCategory = () => {},
+  deleteSurveyMarkers = null,
   handleMoveSurveyCategories,
+  transferSurveyMarkers,
+  surveyTemplateVersionForDocument,
+  reorderSurveyModules,
   duplicateSurveyMarker,
   canEditSurveyCategories = false,
   canModifySurveyMarkerItem,
-  documentSyncEnabled,
+  // The viewer's Undo (AppShell's top bar), for the swipe-delete Undo toast.
+  onUndoLastChange = null,
   expandedCategories,
   expandedSurveyMarkers,
   exportMenuRef,
@@ -520,7 +534,6 @@ const SurveySpacesRail = ({
   onRequestCreateTemplate,
   onSelectSurveyTemplate,
   pdfFile,
-  scale,
   selectedCategories,
   selectedCategoryId,
   // Survey calm gold (2026-10-01): true while the Survey Marker tool is armed,
@@ -543,7 +556,6 @@ const SurveySpacesRail = ({
   setActiveCategoryDropdown,
   setActiveTool,
   setAnnotations,
-  setAnnotationsByPage,
   setCategorySelectModeActive,
   setCategorySelectModeForCategory,
   setCopiedItemSelection,
@@ -564,6 +576,7 @@ const SurveySpacesRail = ({
   setShowSurveyPanel,
   setSurveyMarkers,
   setSurveyMarkersToRemoveByPage,
+  checkpointSurveyAnswer,
   showExportMenu,
   showRegionSelection,
   showSurveyPanel,
@@ -582,6 +595,10 @@ const SurveySpacesRail = ({
   expandRequestKey = 0,
   collapseRequestKey = 0,
   onCollapseChange = null,
+  // False while another tab is in front (AppShell keeps every open tab's rail
+  // mounted, TabChromeSlot): a hidden rail leaves the shared page settings,
+  // Escape and the panel-room rules to the front tab's rail.
+  tabActive = true,
   mobileMode = false,
   // Owner or editor of the document (PDFViewer's canRestoreFromHistory): may
   // add and remove Survey media and move legacy inline media to storage.
@@ -595,15 +612,33 @@ const SurveySpacesRail = ({
   // two showed users two different tooltips on the same control).
   const tip = useTooltip();
   const proLocked = useProLock();
-  // Nightly 'survey-report': a PowerPoint report beside Export data.
+  // Nightly 'survey-report': a report beside Export data (PowerPoint, PDF, Excel or CSV).
   const [surveyReportOn] = useState(() => isFeatureOn('survey-report'));
+  const [sheetSyncOn] = useState(() => isFeatureOn('sheet-team-sync'));
+  // Nightly: the template menu links to the Templates editor (answers, lines).
+  const [customAnswersOn] = useState(() => isFeatureOn('custom-answers'));
+  // Nightly, hidden: a line can show only after a certain answer.
+  const [conditionalLinesOn] = useState(() => isFeatureOn('conditional-lines'));
+  const shownLines = (category, responses) => shownChecklist(category?.checklist, responses, { on: conditionalLinesOn });
+  // Nightly 'marker-tracking': status, who has it and a due date per item,
+  // with Assigned to me / Late / Hide done chips over the list.
+  const [trackingOn] = useState(() => isFeatureOn('marker-tracking'));
+  const [trackingFilter, setTrackingFilter] = useState(EMPTY_TRACKING_FILTER);
+  const trackingPeople = useDocumentPeople(pdfFile?.id || null, { enabled: trackingOn });
   const [isReporting, setIsReporting] = useState(false);
-  const handleSurveyReport = async () => {
+  // The report layout comes from the live template: it is an output choice,
+  // not part of the template version a document keeps.
+  const reportKitOf = () => reportKitFor(availableSurveyTemplates.find((t) => t.id === selectedTemplate?.id) || selectedTemplate);
+  const handleSurveyReport = async (format = 'pptx') => {
     if (proLocked('excel') || isReporting) return;
     setIsReporting(true);
     try {
-      const { downloadSurveyReport } = await import('./services/surveyReportPptx.js');
-      await downloadSurveyReport({ template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '' });
+      const input = { template: selectedTemplate, markers: surveyMarkers, documentName: pdfFile?.name || '', kit: reportKitOf() };
+      // The PDF puts a crop of the plan beside each issue.
+      if (format === 'pdf') await (await import('./services/surveyReportPdf.js')).downloadSurveyReportPdf({ ...input, planFile: pdfFile });
+      else if (format === 'xlsx') await (await import('./services/surveyReportXlsx.js')).downloadSurveyReportXlsx(input);
+      else if (format === 'csv') (await import('./services/surveyReportCsv.js')).downloadSurveyReportCsv(input);
+      else await (await import('./services/surveyReportPptx.js')).downloadSurveyReport(input);
     } catch (error) {
       console.error('Failed to create the survey report', error);
     } finally {
@@ -645,31 +680,36 @@ const SurveySpacesRail = ({
   }, [isSurveyPanelCollapsed, mobileMode]);
   const desktopSurveyPanelShown = !isSurveyPanelCollapsed || railPanelLeaving;
   // KAL-420 follow-up (2026-10-13): publish what this rail covers on the
-  // right, as PDFSidebar publishes --app-sidebar-width on the left, so the
+  // right, as PDFSidebar publishes the left rail's width, so the
   // storage / clean-up notice (StorageFailureBanner.css) ends at the rail
   // instead of running under it with its × out of reach. Desktop: the 48px
   // rail, plus the 320px panel while it is drawn. Phone: nothing (the
   // Survey sheet comes up from the bottom).
   useEffect(() => {
-    if (typeof document === 'undefined' || !document.documentElement) return;
-    document.documentElement.style.setProperty(
-      '--app-right-rail-width',
-      mobileMode ? '0px' : `${desktopSurveyPanelShown ? 48 + 320 : 48}px`,
-    );
+    if (!tabActive) return;
+    // For the notice only (chromeInsets.js): a custom property on :root
+    // restyled the whole document on every change.
+    publishChromeInset('right', mobileMode ? '0px' : `${desktopSurveyPanelShown ? 48 + 320 : 48}px`);
     // The left panel's width limit reads the same cover (panelLayoutStore.js).
     publishSideRoom({ rightCover: mobileMode ? 0 : (desktopSurveyPanelShown ? 48 + 320 : 48) });
-  }, [mobileMode, desktopSurveyPanelShown]);
+  }, [mobileMode, desktopSurveyPanelShown, tabActive]);
   // Desktop/tablet pass 2026-10-21 (item 1): the left panel was just opened
   // beside this panel on a window too narrow for both - this one gives way
   // (PDFSidebar, resolveNarrowPanelYield). Survey itself stays on.
   useEffect(() => {
-    if (mobileMode) return undefined;
+    if (mobileMode || !tabActive) return undefined;
     return subscribeRightPanelYield(() => setIsSurveyPanelCollapsed(true));
-  }, [mobileMode]);
+  }, [mobileMode, tabActive]);
+  // Every open tab keeps its own rail (docs/TAB-SWITCHING.md): only the
+  // front tab's rail owns these shared values, so closing a tab behind it
+  // leaves them alone.
+  const tabActiveRef = useRef(tabActive);
+  tabActiveRef.current = tabActive;
   useEffect(() => () => {
+    if (!tabActiveRef.current) return;
     publishSideRoom({ rightCover: 48 });
-    // Gone: later UI reading the token falls back to its own default.
-    if (typeof document !== 'undefined') document.documentElement?.style.removeProperty('--app-right-rail-width');
+    // Gone: later UI reading the width falls back to its own default.
+    publishChromeInset('right', null);
   }, []);
   const [openEntityDropdownId, setOpenEntityDropdownId] = useState(null);
   // The template switcher (owner 2026-10-01, "hybrid" design): the template
@@ -701,6 +741,8 @@ const SurveySpacesRail = ({
   const availableSurveyTemplates = Array.isArray(surveyTemplates) ? surveyTemplates : [];
   const [listContextMenu, setListContextMenu] = useState(null);
   const [movingCategoryIds, setMovingCategoryIds] = useState(null);
+  // Move / Copy Survey Markers to another category: { mode, ids, categoryId }.
+  const [markerTransfer, setMarkerTransfer] = useState(null);
   // The templates used most recently on this device (the desktop template
   // menu's own list - same storage key), for the phone switch list's "Recent".
   const recentTemplateIds = useSurveyRecents('template', 'all', selectedTemplate?.id ?? null);
@@ -873,9 +915,11 @@ const SurveySpacesRail = ({
         .find((el) => el.getAttribute('data-survey-marker-name-input') === targetId);
       if (input && input.offsetParent !== null) {
         justPlacedSurveyMarkerIdRef.current = targetId;
-        input.focus({ preventScroll: false });
+        // Never scroll the frame around the panel: it may still be sliding
+        // in from off screen (utils/revealInOwnScroller.js).
+        input.focus({ preventScroll: true });
         input.select();
-        input.scrollIntoView?.({ block: 'nearest' });
+        revealInOwnScroller(input);
         return;
       }
       frames += 1;
@@ -1024,7 +1068,7 @@ const SurveySpacesRail = ({
       tooltip="Close"
       onClick={(event) => {
         const fromKeyboard = event.detail === 0;
-        const railHost = event.currentTarget.closest('#chrome-right-host') || document;
+        const railHost = event.currentTarget.closest('[data-chrome-tab-slot], #chrome-right-host') || document;
         toggleDesktopSurveyPanel();
         if (fromKeyboard) {
           requestAnimationFrame(() => {
@@ -1132,7 +1176,7 @@ const SurveySpacesRail = ({
   // first - a text field, a dialog, a menu, an open popover (which consumes
   // it, src/components/dismissRules.js R5) - keeps it.
   useEffect(() => {
-    if (!armedCategoryId || typeof window === 'undefined') return undefined;
+    if (!armedCategoryId || !tabActive || typeof window === 'undefined') return undefined;
     const onKeyDown = (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -1141,7 +1185,7 @@ const SurveySpacesRail = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [armedCategoryId, setActiveTool]);
+  }, [armedCategoryId, setActiveTool, tabActive]);
 
   // Switch to another template. The current one only closes the switcher.
   const switchSurveyTemplate = (template) => {
@@ -1203,7 +1247,7 @@ const SurveySpacesRail = ({
 
   // Desktop menu keys: up / down / Home / End move between templates.
   const handleTemplateMenuKeyDown = (event) => {
-    const items = [...(templateSwitchListRef.current?.querySelectorAll('[role="menuitemradio"]') || [])];
+    const items = [...(templateSwitchListRef.current?.querySelectorAll('[role="menuitemradio"], [role="menuitem"]') || [])];
     if (!items.length) return;
     const index = items.indexOf(document.activeElement);
     let next = null;
@@ -1444,6 +1488,7 @@ const SurveySpacesRail = ({
   // the panel re-renders, so it passes the answers it already set.
   const applyChecklistResponseSelection = (annotationId, markerModuleId, category, markerRowName, checklistItemId, option, baseResponses = null) => {
     const currentMarker = surveyMarkers[annotationId] || {};
+    if (currentMarker.checklistResponses?.[checklistItemId]?.selection !== option) checkpointSurveyAnswer?.(annotationId);
     const nextResponses = {
       ...(baseResponses || currentMarker.checklistResponses),
       [checklistItemId]: {
@@ -1465,10 +1510,15 @@ const SurveySpacesRail = ({
       }
     }));
 
+    // The template's "Auto-mark as Complete" switch is off: leave the entity
+    // alone. The switch is a setting, not part of the template version a
+    // document keeps, so it is read from the live template.
+    const liveTemplate = surveyTemplates.find((t) => String(t?.id) === String(selectedTemplate?.id)) || selectedTemplate;
+    if (!autoCompleteOn(liveTemplate)) return;
     const { moduleData } = findMarkerMatchingItem(annotationId, markerModuleId, category);
     const completeEntity = resolveAutoCompleteEntity({
       answerSet: answerSetFor(selectedTemplate),
-      checklist: category?.checklist,
+      checklist: shownLines(category, nextResponses),
       responses: nextResponses,
       entities: selectedTemplate?.entities,
       currentEntityId: moduleData?.entityId || currentMarker.entityId || null,
@@ -1504,7 +1554,10 @@ const SurveySpacesRail = ({
   // patch is functional, so a text save and an upload finishing at the same
   // moment both land. `requireExisting`: an upload that finishes after its
   // Survey Marker was deleted must not bring a stub of it back.
-  const updateSurveyMarkerNote = useCallback((annotationId, updater, { requireExisting = false } = {}) => {
+  // `lineAnswer`: a Photo or Signature line's { lineId, answerOf(nextNote) },
+  // written in the same update so the answer lands even if the line's
+  // control is gone by the time an upload finishes.
+  const updateSurveyMarkerNote = useCallback((annotationId, updater, { requireExisting = false, lineAnswer = null } = {}) => {
     if (!annotationId) return;
     setSurveyMarkers(prev => {
       const existing = prev?.[annotationId];
@@ -1525,11 +1578,18 @@ const SurveySpacesRail = ({
       }
       const nextNote = updater(prevNote);
       if (!nextNote || nextNote === prevNote) return prev;
+      const answered = lineAnswer ? {
+        checklistResponses: {
+          ...existing?.checklistResponses,
+          [lineAnswer.lineId]: { ...existing?.checklistResponses?.[lineAnswer.lineId], selection: lineAnswer.answerOf(nextNote) },
+        },
+      } : {};
       return {
         ...prev,
         [annotationId]: {
           ...(existing || {}),
-          note: nextNote
+          note: nextNote,
+          ...answered,
         }
       };
     });
@@ -1557,6 +1617,15 @@ const SurveySpacesRail = ({
     const t = setTimeout(() => setSurveyAgentStarting(false), 5000);
     return () => clearTimeout(t);
   }, [surveyAgentStarting]);
+  // Another tab came to the front: the agent is put away and stops listening,
+  // as it did when a tab switch rebuilt this rail.
+  useEffect(() => {
+    if (tabActive) return;
+    setSurveyAgentMounted(false);
+    setSurveyAgentView('hidden');
+    setSurveyAgentActivity({ handsFree: false, phase: 'idle' });
+    setSurveyAgentStarting(false);
+  }, [tabActive]);
   const [surveyRailEl, setSurveyRailEl] = useState(null);
   const showSurveyAgentChat = useCallback(() => { setSurveyAgentMounted(true); setSurveyAgentView('chat'); setSurveyAgentStarting(false); }, []);
   const hideSurveyAgentChat = useCallback(() => setSurveyAgentView('hidden'), []);
@@ -1579,6 +1648,8 @@ const SurveySpacesRail = ({
       template: showSurveyPanel ? selectedTemplate || null : null,
       markers: surveyMarkers || {},
       documentId: pdfFile?.id || null,
+      // The project the drawing is in: what the agent learns is kept per project.
+      projectId: pdfFile?.projectId || null,
       // Which document a message waiting for signal belongs to: the cloud
       // id, or name and size for a local file (as its markers are kept).
       waitKey: pdfFile ? (pdfFile.id || getPDFId(pdfFile)) : null,
@@ -1675,6 +1746,41 @@ const SurveySpacesRail = ({
     </>
   ) : null;
 
+  // Photo and Signature lines keep their image on the marker's note media.
+  const lineMediaProps = (annotationId) => ({
+    note: surveyMarkers?.[annotationId]?.note,
+    documentId: pdfFile?.id || null,
+    markerId: annotationId,
+    canEdit: canEditSurveyMarkers !== false,
+    onUpdateNote: (updater, options) => updateSurveyMarkerNote(annotationId, updater, options),
+  });
+  const updateSurveyMarkerTracking = useCallback((annotationId, patch) => {
+    if (!annotationId) return;
+    setSurveyMarkers(prev => {
+      const existing = prev?.[annotationId];
+      if (!existing) return prev;
+      const tracking = nextTracking(existing, patch, { by: user?.id || null });
+      if (tracking === existing.tracking) return prev;
+      const next = { ...existing };
+      if (tracking) next.tracking = tracking;
+      else delete next.tracking;
+      return { ...prev, [annotationId]: next };
+    });
+  }, [setSurveyMarkers, user?.id]);
+  const renderSurveyMarkerTracking = (annotationId, variant) => (trackingOn ? (
+    <SurveyMarkerTracking
+      key={`tracking-${annotationId}`}
+      variant={variant}
+      marker={surveyMarkers?.[annotationId]}
+      people={trackingPeople}
+      userId={user?.id || null}
+      canEdit={canEditSurveyMarkers !== false}
+      onChange={(patch) => updateSurveyMarkerTracking(annotationId, patch)}
+    />
+  ) : null);
+  const renderSurveyMarkerTrackingBadge = (annotationId) => (trackingOn ? (
+    <SurveyMarkerTrackingBadge marker={surveyMarkers?.[annotationId]} people={trackingPeople} userId={user?.id || null} tip={tip} />
+  ) : null);
   const renderSurveyMarkerNotes = (annotationId, variant) => (
     <SurveyMarkerNotes
       key={annotationId}
@@ -1693,8 +1799,8 @@ const SurveySpacesRail = ({
   // progress ("2/3" answered of the category's active items) and whether the
   // Survey Marker has a note and how many photos / videos it carries.
   const getSurveyMarkerProgress = (annotationId, category) => {
-    const active = (category?.checklist || []).filter((item) => item && item.archived !== true);
     const responses = surveyMarkers?.[annotationId]?.checklistResponses || {};
+    const active = shownLines(category, responses);
     const answered = active.filter((item) => Boolean(responses[item.id]?.selection)).length;
     // A typed text line answered "N" (a direction, say) is not a No.
     const no = active.filter((item) => itemKind(item) === 'choice' && responses[item.id]?.selection === 'N').length;
@@ -1731,6 +1837,7 @@ const SurveySpacesRail = ({
     const { text, mediaCount } = getSurveyMarkerNoteInfo(annotationId);
     return (
       <span className={className}>
+        {renderSurveyMarkerTrackingBadge(annotationId)}
         {text ? (
           <span className="survey-marker-badge" aria-label="Has a note">
             <Icon name="note" size={12} color="currentColor" />
@@ -1815,7 +1922,7 @@ const SurveySpacesRail = ({
           </div>
         );
       }
-      const checklist = (category?.checklist || []).filter((item) => item && item.archived !== true);
+      const checklist = shownLines(category, surveyMarkers[annotationId]?.checklistResponses);
       body = (
         <>
           {/* The whole checklist, every row - no 4-row window scrolling inside
@@ -1835,6 +1942,15 @@ const SurveySpacesRail = ({
                     <TypedAnswerInput
                       phone
                       item={item}
+                      value={response}
+                      media={lineMediaProps(annotationId)}
+                      onCommit={(v) => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, v)}
+                    />
+                  ) : answerSetFor(selectedTemplate).length > CHOICE_BUTTONS_MAX ? (
+                    <ChoiceSelect
+                      phone
+                      item={item}
+                      set={answerSetFor(selectedTemplate)}
                       value={response}
                       onCommit={(v) => applyChecklistResponseSelection(annotationId, markerModuleId, category, surveyMarker.name || '', item.id, v)}
                     />
@@ -1865,6 +1981,7 @@ const SurveySpacesRail = ({
           {/* NOTES / MEDIA SLOT: the note edited in place and the media strip
               (audit chunk B, owner 2026-10-01) - the same block the desktop
               row shows. */}
+          {renderSurveyMarkerTracking(annotationId, 'phone')}
           <div className="mobile-survey-open-notes" data-slot="survey-notes-media">
             {renderSurveyMarkerNotes(annotationId, 'phone')}
           </div>
@@ -2117,6 +2234,68 @@ const SurveySpacesRail = ({
       return changed ? next : prev;
     });
   }, [setSurveyMarkers]);
+
+  /* Owner 2026-10-27: slide a category or Survey Marker row left for its
+     actions - the same ones, rules and delete paths as its right-click menu.
+     Both act at once with Undo on a toast: a Survey Marker delete is one
+     Undo step; a category delete (with its markers) is undone by its toast
+     (PDFViewer handleDeleteSurveyCategoriesWithUndo). */
+  const categorySwipeActions = (category) => {
+    const moduleCount = (selectedTemplate?.modules || selectedTemplate?.spaces || []).length;
+    const markerIds = Object.entries(surveyMarkers || {})
+      .filter(([, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === category.id)
+      .map(([id]) => id);
+    return buildSwipeActions({
+      onMove: () => setMovingCategoryIds([category.id]),
+      onCopy: () => { setSelectedCategories({ [category.id]: true }); setShowSpaceSelection(true); },
+      onDelete: () => deleteCategory(selectedModuleId, category.id),
+      can: {
+        move: (canEditSurveyCategories && moduleCount > 1) || 'Choose an editable document with another module',
+        copy: markerIds.length > 0 || 'This category has no items to copy',
+        delete: (canEditSurveyCategories && markerIds.every((id) => canModifySurveyMarkerItem?.(id) !== false))
+          || 'Use the latest template in an editable document to delete categories',
+      },
+    });
+  };
+  const deleteSurveyMarkerNow = async (id, name) => {
+    const label = name || 'Survey Marker';
+    if (typeof onUndoLastChange !== 'function') {
+      if (await askConfirm({ title: `Delete ${label}?`, message: 'Delete this Survey Marker?', confirmLabel: 'Delete', danger: true })) handleDeleteSurveyMarkerItem(id);
+      return;
+    }
+    handleDeleteSurveyMarkerItem(id);
+    showToast(`Deleted ${label}`, 'info', { action: { label: 'Undo', onClick: () => onUndoLastChange() }, duration: 5000 });
+  };
+  // Several at once (select mode, copy mode): one Undo step for all of them
+  // (the viewer's family delete), so the toast's Undo brings them all back.
+  const deleteSurveyMarkersNow = (ids) => {
+    const list = (ids || []).filter((id) => surveyMarkers?.[id]);
+    if (list.length === 0) return;
+    if (typeof deleteSurveyMarkers !== 'function') {
+      list.forEach((id) => handleDeleteSurveyMarkerItem(id));
+      return;
+    }
+    deleteSurveyMarkers(list);
+    const label = list.length === 1 ? (surveyMarkers[list[0]]?.name || 'Survey Marker') : `${list.length} Survey Markers`;
+    showToast(`Deleted ${label}`, 'info', typeof onUndoLastChange === 'function'
+      ? { action: { label: 'Undo', onClick: () => onUndoLastChange() }, duration: 5000 }
+      : undefined);
+  };
+  const surveyMarkerSwipeActions = (row, name) => {
+    const marker = { ...row, ...(surveyMarkers?.[row.id] || {}), id: row.id };
+    const canModify = canModifySurveyMarkerItem?.(marker.id) !== false;
+    return buildSwipeActions({
+      onDuplicate: duplicateSurveyMarker ? () => duplicateSurveyMarker(marker.id) : undefined,
+      onMove: () => setMarkerTransfer({ mode: 'move', ids: [marker.id], categoryId: marker.categoryId ?? null }),
+      onCopy: () => setMarkerTransfer({ mode: 'copy', ids: [marker.id], categoryId: marker.categoryId ?? null }),
+      onDelete: () => deleteSurveyMarkerNow(marker.id, name),
+      can: {
+        duplicate: Boolean(marker.pageNumber) || 'Place it on a page first',
+        move: canModify || 'This one is locked or not yours to move',
+        delete: canModify || 'This one is locked or not yours to delete',
+      },
+    });
+  };
 
   return (
           <>
@@ -2436,6 +2615,24 @@ const SurveySpacesRail = ({
                               </button>
                             );
                           })}
+                          {customAnswersOn && onRequestCreateTemplate && (
+                            <>
+                              <div className="survey-rail__menu-separator" role="separator" />
+                              <button
+                                type="button"
+                                role="menuitem"
+                                tabIndex={-1}
+                                className="survey-rail__menu-item survey-rail__template-edit"
+                                onClick={() => {
+                                  closeTemplateSwitcher({ focusTitle: false });
+                                  onRequestCreateTemplate({ mode: 'open-editor', templateId: selectedTemplate.id });
+                                }}
+                              >
+                                <Icon name="edit" size={13} color="currentColor" />
+                                <span className="survey-rail__template-option-name">Edit template…</span>
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                       {mobileMode && !categorySelectModeActive && selectedTemplate.linkedExcelPath && lastSyncMessage && (() => {
@@ -2612,14 +2809,18 @@ const SurveySpacesRail = ({
                       of the panel (active = bright ink with a 2px ink bar, the home
                       template editor's tabs; no gold) instead of the old boxed
                       prev / pill / next navigator. Same selectSurveyModule handler. */}
-                  {/* UX 2026-09-23 (owner: desktop survey polish): desktop takes the
-                      phone's module TABS too, sized for the rail (32px, 12px words,
-                      active = bright ink with a 2px ink bar; no gold) instead of the
-                      boxed prev / gold-edged pill / next navigator. Same
-                      selectSurveyModule handler; the tab row scrolls sideways when a
-                      template has more modules than fit. */}
-                  {surveyModuleOptions.length > 0 && (
-                    <div className={mobileMode ? 'mobile-survey-module-tabs' : 'survey-rail__tabs'} role="tablist" aria-label="Modules">
+                  {/* Desktop (owner 2026-10-26): the tabs that fit, then a "+N"
+                      menu with the rest; drag a tab to reorder the modules. */}
+                  {!mobileMode && surveyModuleOptions.length > 0 && (
+                    <SurveyModuleTabs
+                      modules={surveyModuleOptions}
+                      activeId={selectedModuleId}
+                      onSelect={selectSurveyModule}
+                      onReorder={canEditSurveyCategories ? reorderSurveyModules : undefined}
+                    />
+                  )}
+                  {mobileMode && surveyModuleOptions.length > 0 && (
+                    <div className="mobile-survey-module-tabs" role="tablist" aria-label="Modules">
                       {surveyModuleOptions.map((module) => {
                         const isActive = module.id === selectedModuleId;
                         return (
@@ -2683,8 +2884,12 @@ const SurveySpacesRail = ({
 
                       // Get surveyMarkers for this module, grouped by category
                       const surveyMarkersByCategory = {};
+                      const trackingToday = todayKey();
+                      let moduleHasMarkers = false;
                       Object.entries(surveyMarkers).forEach(([annotationId, surveyMarker]) => {
                         const surveyMarkerModuleId = surveyMarker.moduleId;
+                        if (surveyMarkerModuleId === selectedModuleId && surveyMarker.categoryId) moduleHasMarkers = true;
+                        if (trackingOn && !passesTrackingFilter(surveyMarker, trackingFilter, { userId: user?.id || null, today: trackingToday })) return;
                         if (surveyMarkerModuleId === selectedModuleId && surveyMarker.categoryId) {
                           if (!surveyMarkersByCategory[surveyMarker.categoryId]) {
                             surveyMarkersByCategory[surveyMarker.categoryId] = [];
@@ -2722,7 +2927,7 @@ const SurveySpacesRail = ({
                             const selectedCategoryCount = Object.keys(selectedCategories).filter(id => selectedCategories[id]).length;
                             const hasSelectedCategories = selectedCategoryCount > 0;
 
-                            const deleteSelectedCategories = async () => {
+                            const deleteSelectedCategories = () => {
                               const selectedCatIds = Object.keys(selectedCategories).filter(id => selectedCategories[id]);
                               if (selectedCatIds.length === 0) {
                                 showToast('Please select at least one category to delete.', 'warn');
@@ -2739,67 +2944,11 @@ const SurveySpacesRail = ({
                                 showToast('Some items in these categories are locked — unlock them first.', 'info');
                                 return;
                               }
-                              const confirmed = await askConfirm({
-                                title: `Delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'}?`,
-                                message: `Are you sure you want to delete ${selectedCatIds.length} categor${selectedCatIds.length !== 1 ? 'ies' : 'y'} and all items within?`,
-                                confirmLabel: `Delete categor${selectedCatIds.length !== 1 ? 'ies' : 'y'}`,
-                                danger: true,
-                              });
-                              if (!confirmed) {
-                                return;
-                              }
-
-                              selectedCatIds.forEach(catId => {
-                                const surveyMarkersInCategory = Object.entries(surveyMarkers).filter(([_, h]) => {
-                                  const hModuleId = h.moduleId;
-                                  return hModuleId === selectedModuleId && h.categoryId === catId;
-                                });
-
-                                surveyMarkersInCategory.forEach(([annotationId, surveyMarker]) => {
-                                  if (surveyMarker.pageNumber && surveyMarker.bounds) {
-                                    setSurveyMarkersToRemoveByPage(prev => ({
-                                      ...prev,
-                                      [surveyMarker.pageNumber]: [...(prev[surveyMarker.pageNumber] || []), surveyMarker.bounds]
-                                    }));
-                                  }
-                                });
-
-                                setSurveyMarkers(prev => {
-                                  const updated = { ...prev };
-                                  surveyMarkersInCategory.forEach(([annotationId]) => {
-                                    delete updated[annotationId];
-                                  });
-                                  return updated;
-                                });
-                                // KAL-502: the page draws markers from newSurveyMarkersByPage,
-                                // so take them off there too (as the ✕ delete does), or
-                                // their boxes stay drawn until a reload. Then empty the
-                                // removal queue, as the other delete paths do.
-                                const deletedForPage = surveyMarkersInCategory.map(([id, marker]) => ({
-                                  id, pageNumber: marker?.pageNumber, bounds: marker?.bounds,
-                                }));
-                                setNewSurveyMarkersByPage(prev => removeSurveyMarkersFromPages(prev, deletedForPage));
-                                setTimeout(() => {
-                                  setSurveyMarkersToRemoveByPage(prev => {
-                                    const updated = { ...prev };
-                                    deletedForPage.forEach(({ pageNumber }) => { if (pageNumber) delete updated[pageNumber]; });
-                                    return updated;
-                                  });
-                                }, 100);
-
-                                const documentId = pdfFile?.id;
-                                const surveyMarkerIdsToDelete = surveyMarkersInCategory.map(([id]) => id);
-                                if (documentId && user?.id && documentSyncEnabled && surveyMarkerIdsToDelete.length > 0) {
-                                  deleteAnnotations(documentId, surveyMarkerIdsToDelete)
-                                    .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'rail-category-delete', onceKey: documentId }))
-                                    .catch(err => {
-                                      console.error('[App] Error deleting annotations from Supabase:', err);
-                                    });
-                                }
-                              });
                               // All ticked categories in ONE call. One call per category
                               // let the last call win (each started from the same old
-                              // template), so only the last category went away.
+                              // template), so only the last category went away. It
+                              // acts at once and takes their Survey Markers too; the
+                              // toast's Undo brings both back (PDFViewer).
                               deleteCategory(selectedModuleId, selectedCatIds);
 
                               setCategorySelectModeActive(false);
@@ -2810,9 +2959,10 @@ const SurveySpacesRail = ({
                             /* The ONE "Categories" head line (owner 2026-10-02: works like
                                the Templates editor). Label left; on the right the shared
                                section icons (src/components/SectionIconButton.jsx):
-                               [Select] [Add category]. Select turns the right side into the
-                               shared select-mode row - All, Move, Copy, Delete - and Add
-                               turns into the Done check in the same spot. Same 28px hit /
+                               [Select] [Add category]. Select turns the right side into
+                               Done (list + check) then the shared select-mode row - All,
+                               Move, Copy, Delete: the one order every select mode uses
+                               (owner 2026-10-26). Same 28px hit /
                                16px glyph, hover and press as the Templates editor; no gold.
                                Move and Copy are two actions (owner: never one "Move/Copy"). */
                             const allCategoriesSelected = categoriesForModule.length > 0
@@ -2828,6 +2978,7 @@ const SurveySpacesRail = ({
                                 <SectionIconActions className="survey-rail__cats-actions">
                                   {categorySelectModeActive ? (
                                     <>
+                                      <SectionIconButton action="select" label="Done" active onClick={exitCategorySelect} />
                                       <SelectModeButtons
                                         count={selectedCategoryCount}
                                         allSelected={allCategoriesSelected}
@@ -2862,7 +3013,6 @@ const SurveySpacesRail = ({
                                         onCopy={() => setShowSpaceSelection(true)}
                                         onDelete={deleteSelectedCategories}
                                       />
-                                      <SectionIconButton action="select" label="Done" active onClick={exitCategorySelect} />
                                     </>
                                   ) : (
                                     <>
@@ -2975,195 +3125,20 @@ const SurveySpacesRail = ({
 
                               {/* Delete button */}
                               <button
-                                onClick={async () => {
+                                onClick={() => {
                                   const selectedIds = Object.keys(copiedItemSelection).filter(id => copiedItemSelection[id]);
                                   if (selectedIds.length === 0) return;
 
-                                  // Confirm deletion
-                                  const confirmed = await askConfirm({
-                                    title: `Delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`,
-                                    message: `Are you sure you want to delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}?`,
-                                    confirmLabel: `Delete ${selectedIds.length} item${selectedIds.length !== 1 ? 's' : ''}`,
-                                    danger: true,
-                                  });
-                                  if (!confirmed) {
-                                    return;
+                                  // Act first (owner rule): one Undo step, Undo on the toast.
+                                  deleteSurveyMarkersNow(selectedIds);
+
+                                  // Leave copy mode once nothing is left in this space.
+                                  if (selectedSpaceId) {
+                                    const selectedSet = new Set(selectedIds);
+                                    const left = Object.entries(surveyMarkers || {})
+                                      .some(([id, h]) => h.spaceId === selectedSpaceId && !selectedSet.has(id));
+                                    if (!left) setCopyModeActive(false);
                                   }
-
-                                  // Capture surveyMarkers before deletion (state is async)
-                                  const surveyMarkersToDelete = selectedIds.map(id => surveyMarkers[id]).filter(Boolean);
-
-                                  // Delete surveyMarkers from surveyMarkers
-                                  setSurveyMarkers(prev => {
-                                    const updated = { ...prev };
-                                    selectedIds.forEach(id => {
-                                      delete updated[id];
-                                    });
-
-                                    // Check if all items in the current space have been deleted
-                                    // If so, exit copy mode automatically
-                                    if (selectedSpaceId) {
-                                      const remainingSurveyMarkers = Object.entries(updated)
-                                        .filter(([_, h]) => h.spaceId === selectedSpaceId);
-                                      if (remainingSurveyMarkers.length === 0) {
-                                        // Use setTimeout to ensure state updates are processed
-                                        setTimeout(() => {
-                                          setCopyModeActive(false);
-                                          setCopiedItemSelection({});
-                                        }, 0);
-                                      }
-                                    }
-
-                                    return updated;
-                                  });
-
-                                  // Trigger removal from canvas via surveyMarkersToRemoveByPage (same as working ✕ button)
-                                  surveyMarkersToDelete.forEach(surveyMarker => {
-                                    const pageNum = surveyMarker.pageNumber;
-                                    const bounds = surveyMarker.bounds;
-
-                                    if (pageNum && bounds) {
-                                      setSurveyMarkersToRemoveByPage(prev => ({
-                                        ...prev,
-                                        [pageNum]: [...(prev[pageNum] || []), bounds]
-                                      }));
-                                    }
-                                  });
-
-                                  // Clear the removal queue after a short delay to allow processing
-                                  setTimeout(() => {
-                                    surveyMarkersToDelete.forEach(surveyMarker => {
-                                      const pageNum = surveyMarker.pageNumber;
-                                      if (pageNum) {
-                                        setSurveyMarkersToRemoveByPage(prev => {
-                                          const updated = { ...prev };
-                                          delete updated[pageNum];
-                                          return updated;
-                                        });
-                                      }
-                                    });
-                                  }, 100);
-
-                                  // Delete surveyMarker rectangles from PDF canvas (annotationsByPage) - keep for backward compatibility
-                                  surveyMarkersToDelete.forEach(surveyMarker => {
-                                    const pageNum = surveyMarker.pageNumber;
-                                    if (pageNum && annotationsByPage[pageNum]) {
-                                      setAnnotationsByPage(prev => {
-                                        const pageAnnotations = prev[pageNum];
-                                        if (!pageAnnotations || !pageAnnotations.objects) return prev;
-
-                                        // Get the current scale for coordinate conversion
-                                        const currentScale = scale;
-
-                                        // Filter out surveyMarker rectangles that match this surveyMarker's bounds
-                                        const filteredObjects = pageAnnotations.objects.filter(obj => {
-                                          // Check if this is a surveyMarker rectangle (with any opacity)
-                                          if (obj.type !== 'rect') return true;
-                                          if (!obj.fill || typeof obj.fill !== 'string') return true;
-                                          if (!obj.fill.includes('rgba')) return true;
-
-                                          // Canvas coordinates are at canvas scale, need to normalize for comparison
-                                          const objX = (obj.left || 0) / currentScale;
-                                          const objY = (obj.top || 0) / currentScale;
-                                          const objWidth = (obj.width || 0) / currentScale;
-                                          const objHeight = (obj.height || 0) / currentScale;
-
-                                          const bounds = surveyMarker.bounds || {};
-                                          const surveyMarkerX = bounds.x || bounds.left || 0;
-                                          const surveyMarkerY = bounds.y || bounds.top || 0;
-                                          const surveyMarkerWidth = bounds.width || (bounds.right ? bounds.right - bounds.left : 0) || 0;
-                                          const surveyMarkerHeight = bounds.height || (bounds.bottom ? bounds.bottom - bounds.top : 0) || 0;
-
-                                          // Check if bounds match (with tolerance in normalized coordinates)
-                                          const tolerance = 5 / currentScale; // Convert tolerance to normalized coordinates
-                                          if (Math.abs(objX - surveyMarkerX) < tolerance &&
-                                            Math.abs(objY - surveyMarkerY) < tolerance &&
-                                            Math.abs(objWidth - surveyMarkerWidth) < tolerance &&
-                                            Math.abs(objHeight - surveyMarkerHeight) < tolerance) {
-                                            return false; // Remove this object
-                                          }
-                                          return true; // Keep this object
-                                        });
-
-                                        return {
-                                          ...prev,
-                                          [pageNum]: {
-                                            ...pageAnnotations,
-                                            objects: filteredObjects
-                                          }
-                                        };
-                                      });
-                                    }
-                                  });
-
-                                  // Delete associated items and annotations
-                                  surveyMarkersToDelete.forEach(surveyMarker => {
-
-                                    // Find associated item by matching name and category
-                                    const categoryName = getCategoryName(selectedTemplate, surveyMarker.moduleId, surveyMarker.categoryId);
-                                    const matchingItem = itemsByNameType.get(`${surveyMarker.name}\0${categoryName}`);
-
-                                    if (matchingItem) {
-                                      // Find and delete annotations for this item in this space
-                                      setAnnotations(prev => {
-                                        const updated = { ...prev };
-                                        Object.values(updated).forEach(ann => {
-                                          if (ann.itemId === matchingItem.itemId && ann.spaceId === surveyMarker.moduleId) {
-                                            delete updated[ann.annotationId];
-                                          }
-                                        });
-                                        return updated;
-                                      });
-
-                                      // Check if item has data in other modules - if not, delete the item
-                                      const surveyMarkerModuleId = surveyMarker.moduleId;
-                                      const moduleName = getModuleName(selectedTemplate, surveyMarkerModuleId);
-                                      const dataKey = getModuleDataKey(moduleName);
-                                      const item = items[matchingItem.itemId];
-
-                                      if (item) {
-                                        // Remove the module-specific data
-                                        const updatedItem = { ...item };
-                                        delete updatedItem[dataKey];
-
-                                        // Check if item has any module data left
-                                        const allModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
-                                        const hasOtherModuleData = allModules.some(module => {
-                                          const moduleId = module.id;
-                                          if (moduleId === surveyMarkerModuleId) return false;
-                                          const otherModuleName = getModuleName(selectedTemplate, moduleId);
-                                          const otherDataKey = getModuleDataKey(otherModuleName);
-                                          return updatedItem[otherDataKey] && Object.keys(updatedItem[otherDataKey]).length > 0;
-                                        });
-
-                                        if (hasOtherModuleData) {
-                                          // Item exists in other modules, just remove this module's data
-                                          setItems(prev => ({
-                                            ...prev,
-                                            [matchingItem.itemId]: updatedItem
-                                          }));
-                                        } else {
-                                          // Item doesn't exist in other spaces, delete it entirely
-                                          setItems(prev => {
-                                            const updated = { ...prev };
-                                            delete updated[matchingItem.itemId];
-                                            return updated;
-                                          });
-                                        }
-                                      }
-                                    }
-                                  });
-
-                                  // Delete from Supabase document_annotations table
-                                  const documentId = pdfFile?.id;
-                                  if (documentId && user?.id && documentSyncEnabled) {
-                                    deleteAnnotations(documentId, selectedIds)
-                                      .then((result) => reportAnnotationDeleteOutcome(result, { showToast, source: 'rail-selected-delete', onceKey: documentId }))
-                                      .catch(err => {
-                                        console.error('[App] Error deleting annotations from Supabase:', err);
-                                      });
-                                  }
-
                                   // Clear selection (copy mode will be automatically exited if all items in space are deleted)
                                   setCopiedItemSelection({});
                                 }}
@@ -3225,6 +3200,28 @@ const SurveySpacesRail = ({
                               >
                                 Cancel
                               </button>
+                            </div>
+                          ) : null}
+
+                          {trackingOn && moduleHasMarkers ? (
+                            <div
+                              className={`survey-tracking-filters${mobileMode ? ' survey-tracking-filters--phone' : ''}`}
+                              role="group"
+                              aria-label="Show items"
+                              data-testid="survey-tracking-filters"
+                            >
+                              {[['mine', 'Assigned to me'], ['overdue', 'Late'], ['hideDone', 'Hide done']].map(([key, label]) => (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  className="survey-tracking-chip"
+                                  aria-pressed={trackingFilter[key] === true}
+                                  data-tracking-filter={key}
+                                  onClick={() => setTrackingFilter((f) => ({ ...f, [key]: !f[key] }))}
+                                >
+                                  {label}
+                                </button>
+                              ))}
                             </div>
                           ) : null}
 
@@ -3340,6 +3337,11 @@ const SurveySpacesRail = ({
                                         transition: isDragging ? 'none' : undefined
                                       }}
                                     >
+                                      <SwipeActionsRow
+                                        label={category.name || 'Untitled category'}
+                                        disabled={isCategorySelectable || isItemSelectModeActiveForCategory || isDragging}
+                                        actions={categorySwipeActions(category)}
+                                      >
                                       <div
                                         data-drag-rearrange-row
                                         className="survey-marker-category-row"
@@ -3436,29 +3438,122 @@ const SurveySpacesRail = ({
                                                 <span>Place</span>
                                               </button>
                                             )}
-                                            {/* Owner 2026-10-01 ("that Select line should get
-                                                moved over"): an open category's Select is a small
-                                                word in its own row, not a line of its own under it.
-                                                While selecting, the toolbar line takes its place. */}
-                                            {!mobileMode && isExpanded && surveyMarkerCount > 0 && !copyModeActive && !categorySelectModeActive && !isItemSelectModeActiveForCategory && (
-                                              <SectionIconButton
-                                                action="select"
-                                                className="survey-marker-category-select"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setItemSelectModeActive(prev => ({
-                                                    ...prev,
-                                                    [category.id]: true
-                                                  }));
-                                                  setSelectedItemsInCategory(prev => ({
-                                                    ...prev,
-                                                    [category.id]: {}
-                                                  }));
-                                                }}
-                                                label={`Select Survey Markers in ${category.name || 'category'}`}
-                                                tooltip="Select"
-                                              />
-                                            )}
+                                            {/* Owner 2026-10-26 ("show those icons, like other edit modes do"):
+                                                an open category's Select swaps in place for its select-mode
+                                                loadout - All, Move, Copy, Delete, Done - on the category's own row,
+                                                not on a new line under it. */}
+                                            {!mobileMode && isExpanded && surveyMarkerCount > 0 && !copyModeActive && !categorySelectModeActive && (() => {
+                                              // The count left of the loadout glides with it (owner 2026-10-28).
+                                              const glideCount = (from) => glideAcrossNextChange(
+                                                from?.closest?.('.survey-marker-category-row')?.querySelector('.survey-marker-category-main-count'),
+                                              );
+                                              const exitItemSelect = (event) => {
+                                                glideCount(event?.currentTarget);
+                                                setItemSelectModeActive(prev => {
+                                                  const updated = { ...prev };
+                                                  delete updated[category.id];
+                                                  return updated;
+                                                });
+                                                setSelectedItemsInCategory(prev => {
+                                                  const updated = { ...prev };
+                                                  delete updated[category.id];
+                                                  return updated;
+                                                });
+                                              };
+                                              const allItemsSelected = categorySurveyMarkers.length > 0
+                                                && categorySurveyMarkers.every(h => selectedItemsForCategory[h.id] === true);
+                                              return (
+                                                <SectionIconActions
+                                                  className="survey-marker-category-select-actions"
+                                                  role={isItemSelectModeActiveForCategory ? 'toolbar' : undefined}
+                                                  aria-label={isItemSelectModeActiveForCategory ? 'Item selection actions' : undefined}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                >
+                                                  {isItemSelectModeActiveForCategory ? (
+                                                    <>
+                                                      <SectionIconButton action="select" label="Done" active onClick={exitItemSelect} />
+                                                      <SelectModeButtons
+                                                        count={itemSelectedCount}
+                                                        total={categorySurveyMarkers.length}
+                                                        allSelected={allItemsSelected}
+                                                        onToggleAll={() => {
+                                                          const newSelection = {};
+                                                          if (!allItemsSelected) {
+                                                            categorySurveyMarkers.forEach(h => {
+                                                              newSelection[h.id] = true;
+                                                            });
+                                                          }
+                                                          setSelectedItemsInCategory(prev => ({
+                                                            ...prev,
+                                                            [category.id]: newSelection
+                                                          }));
+                                                        }}
+                                                        can={{
+                                                          move: Object.keys(selectedItemsForCategory)
+                                                            .filter((id) => selectedItemsForCategory[id])
+                                                            .every((id) => canModifySurveyMarkerItem?.(id) !== false)
+                                                            || 'Some of these are locked or not yours to move',
+                                                        }}
+                                                        // Owner 2026-10-26: Move and Copy pick a template, a
+                                                        // module in it, then a category in that module.
+                                                        onMove={() => setMarkerTransfer({ mode: 'move', ids: Object.keys(selectedItemsForCategory).filter((id) => selectedItemsForCategory[id]), categoryId: category.id })}
+                                                        onCopy={() => setMarkerTransfer({ mode: 'copy', ids: Object.keys(selectedItemsForCategory).filter((id) => selectedItemsForCategory[id]), categoryId: category.id })}
+                                                        onDelete={() => {
+                                                          const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
+                                                          if (selectedItemIds.length === 0) {
+                                                            showToast('Please select at least one item to delete.', 'warn');
+                                                            return;
+                                                          }
+                                                          // Act first (owner rule): one Undo step, Undo on the toast.
+                                                          deleteSurveyMarkersNow(selectedItemIds);
+
+                                                          // Clear selection and exit item select mode if no items left
+                                                          const selectedSet = new Set(selectedItemIds);
+                                                          const remainingItems = categorySurveyMarkers.filter(h => !selectedSet.has(h.id));
+                                                          if (remainingItems.length === 0) {
+                                                            setItemSelectModeActive(prev => {
+                                                              const updated = { ...prev };
+                                                              delete updated[category.id];
+                                                              return updated;
+                                                            });
+                                                            setSelectedItemsInCategory(prev => {
+                                                              const updated = { ...prev };
+                                                              delete updated[category.id];
+                                                              return updated;
+                                                            });
+                                                          } else {
+                                                            setSelectedItemsInCategory(prev => {
+                                                              const updated = { ...prev };
+                                                              updated[category.id] = {};
+                                                              return updated;
+                                                            });
+                                                          }
+                                                        }}
+                                                      />
+                                                    </>
+                                                  ) : (
+                                                    <SectionIconButton
+                                                      action="select"
+                                                      className="survey-marker-category-select"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        glideCount(e.currentTarget);
+                                                        setItemSelectModeActive(prev => ({
+                                                          ...prev,
+                                                          [category.id]: true
+                                                        }));
+                                                        setSelectedItemsInCategory(prev => ({
+                                                          ...prev,
+                                                          [category.id]: {}
+                                                        }));
+                                                      }}
+                                                      label={`Select Survey Markers in ${category.name || 'category'}`}
+                                                      tooltip="Select"
+                                                    />
+                                                  )}
+                                                </SectionIconActions>
+                                              );
+                                            })()}
                                             {!mobileMode && surveyMarkerCount > 0 && (
                                               <button
                                                 className="survey-marker-category-arrow"
@@ -3497,6 +3592,7 @@ const SurveySpacesRail = ({
                                             )}
                                           </div>
                                       </div>
+                                      </SwipeActionsRow>
 
                                       {/* Expanded surveyMarkers list */}
                                       {mobileMode && isExpanded && surveyMarkerCount === 0 && (
@@ -3507,111 +3603,6 @@ const SurveySpacesRail = ({
                                           {/* UX (mobile demo parity): the inline item Select /
                                               All / Copy / Delete toolbar is desktop-only admin
                                               chrome — not part of the demo's mobile sheet. */}
-                                          {/* An open category's Select (owner 2026-10-02: the same select
-                                              mode as the Categories head and the Templates editor): the
-                                              line under the category holds the shared select-mode row -
-                                              All, Copy, Delete - and Done, right-aligned so Done sits
-                                              under the Select icon it replaced. Items have no move flow,
-                                              so there is no Move here. */}
-                                          {!copyModeActive && !mobileMode && !categorySelectModeActive && isItemSelectModeActiveForCategory && (() => {
-                                            const exitItemSelect = () => {
-                                              setItemSelectModeActive(prev => {
-                                                const updated = { ...prev };
-                                                delete updated[category.id];
-                                                return updated;
-                                              });
-                                              setSelectedItemsInCategory(prev => {
-                                                const updated = { ...prev };
-                                                delete updated[category.id];
-                                                return updated;
-                                              });
-                                            };
-                                            const allItemsSelected = categorySurveyMarkers.length > 0
-                                              && categorySurveyMarkers.every(h => selectedItemsForCategory[h.id] === true);
-                                            return (
-                                            <div className="survey-marker-inline-select-row">
-                                              <SectionIconActions className="survey-marker-select-toolbar" role="toolbar" aria-label="Item selection actions">
-                                                <SelectModeButtons
-                                                  count={itemSelectedCount}
-                                                  total={categorySurveyMarkers.length}
-                                                  allSelected={allItemsSelected}
-                                                  onToggleAll={() => {
-                                                    const newSelection = {};
-                                                    if (!allItemsSelected) {
-                                                      categorySurveyMarkers.forEach(h => {
-                                                        newSelection[h.id] = true;
-                                                      });
-                                                    }
-                                                    setSelectedItemsInCategory(prev => ({
-                                                      ...prev,
-                                                      [category.id]: newSelection
-                                                    }));
-                                                  }}
-                                                  onCopy={() => {
-                                                    const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
-                                                    if (selectedItemIds.length === 0) {
-                                                      showToast('Please select at least one item to copy.', 'warn');
-                                                      return;
-                                                    }
-                                                    // Store selected items for copy operation
-                                                    setCopiedItemSelection(prev => {
-                                                      const newSelection = { ...prev };
-                                                      selectedItemIds.forEach(id => {
-                                                        newSelection[id] = true;
-                                                      });
-                                                      return newSelection;
-                                                    });
-                                                    setShowSpaceSelection(true);
-                                                  }}
-                                                  onDelete={async () => {
-                                                    const selectedItemIds = Object.keys(selectedItemsForCategory).filter(id => selectedItemsForCategory[id]);
-                                                    if (selectedItemIds.length === 0) {
-                                                      showToast('Please select at least one item to delete.', 'warn');
-                                                      return;
-                                                    }
-                                                    const confirmed = await askConfirm({
-                                                      title: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
-                                                      message: `Are you sure you want to delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}?`,
-                                                      confirmLabel: `Delete ${selectedItemIds.length} item${selectedItemIds.length !== 1 ? 's' : ''}`,
-                                                      danger: true,
-                                                    });
-                                                    if (!confirmed) {
-                                                      return;
-                                                    }
-
-                                                    // Delete selected items
-                                                    selectedItemIds.forEach(annotationId => {
-                                                      handleDeleteSurveyMarkerItem(annotationId);
-                                                    });
-
-                                                    // Clear selection and exit item select mode if no items left
-                                                    const selectedSet = new Set(selectedItemIds);
-                                                    const remainingItems = categorySurveyMarkers.filter(h => !selectedSet.has(h.id));
-                                                    if (remainingItems.length === 0) {
-                                                      setItemSelectModeActive(prev => {
-                                                        const updated = { ...prev };
-                                                        delete updated[category.id];
-                                                        return updated;
-                                                      });
-                                                      setSelectedItemsInCategory(prev => {
-                                                        const updated = { ...prev };
-                                                        delete updated[category.id];
-                                                        return updated;
-                                                      });
-                                                    } else {
-                                                      setSelectedItemsInCategory(prev => {
-                                                        const updated = { ...prev };
-                                                        updated[category.id] = {};
-                                                        return updated;
-                                                      });
-                                                    }
-                                                  }}
-                                                />
-                                                <SectionIconButton action="select" label="Done" active onClick={exitItemSelect} />
-                                              </SectionIconActions>
-                                            </div>
-                                            );
-                                          })()}
 
                                           <SortableRearrangeList
                                             ids={categorySurveyMarkers.map((surveyMarker) => surveyMarker.id)}
@@ -3696,6 +3687,11 @@ const SurveySpacesRail = ({
                                                     });
                                                   };
                                                   return (
+                                              <SwipeActionsRow
+                                                label={surveyMarkerName || fallbackName || 'Survey Marker'}
+                                                disabled={isMarkerSelectable || isSurveyMarkerExpanded || isEntityDropdownOpenForMarker || isDragging || (mobileMode && annotationId === mobileDetailMarkerId)}
+                                                actions={surveyMarkerSwipeActions({ ...surveyMarker, id: annotationId }, surveyMarkerName || fallbackName)}
+                                              >
                                               <div
                                                 id={`highlight-item-${surveyMarker.id}`}
                                                 onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setListContextMenu({ type: 'marker', id: surveyMarker.id, name: surveyMarker.name, x: event.clientX, y: event.clientY }); }}
@@ -3959,8 +3955,9 @@ const SurveySpacesRail = ({
                                                   {/* A note that exists is a small glyph on the CLOSED
                                                       line (an indicator, not a button); media count and
                                                       checklist progress as on the phone row. */}
-                                                  {(noteTextValue && !isSurveyMarkerExpanded) || mediaCount > 0 || progress.total > 0 ? (
+                                                  {(noteTextValue && !isSurveyMarkerExpanded) || mediaCount > 0 || progress.total > 0 || (trackingOn && surveyMarker.tracking) ? (
                                                     <span className="survey-rail__marker-badges">
+                                                      {renderSurveyMarkerTrackingBadge(annotationId)}
                                                       {noteTextValue && !isSurveyMarkerExpanded ? (
                                                         <span className="survey-marker-badge" aria-label="Has a note" {...tip('Has a note', 'left')}>
                                                           <Icon name="note" size={12} color="currentColor" />
@@ -4015,7 +4012,7 @@ const SurveySpacesRail = ({
                                                     below so new markers don't see them as active
                                                     prompts, but old responses still surface. */}
                                                 {
-                                                  !mobileMode && isSurveyMarkerExpanded && category.checklist && category.checklist.filter(item => item && item.archived !== true).map(item => {
+                                                  !mobileMode && isSurveyMarkerExpanded && category.checklist && shownLines(category, surveyMarkers[annotationId]?.checklistResponses).map(item => {
                                                     const response = surveyMarkers[annotationId]?.checklistResponses?.[item.id] || {};
                                                     const isSelected = response.selection;
                                                     // Y / N / N/A: one grey well, the answers are words and
@@ -4030,6 +4027,14 @@ const SurveySpacesRail = ({
                                                         {itemKind(item) !== 'choice' ? (
                                                           <TypedAnswerInput
                                                             item={item}
+                                                            value={isSelected}
+                                                            media={lineMediaProps(annotationId)}
+                                                            onCommit={(v) => applyChecklistResponseSelection(annotationId, selectedModuleId, category, surveyMarker.name || '', item.id, v)}
+                                                          />
+                                                        ) : answerSetFor(selectedTemplate).length > CHOICE_BUTTONS_MAX ? (
+                                                          <ChoiceSelect
+                                                            item={item}
+                                                            set={answerSetFor(selectedTemplate)}
                                                             value={isSelected}
                                                             onCommit={(v) => applyChecklistResponseSelection(annotationId, selectedModuleId, category, surveyMarker.name || '', item.id, v)}
                                                           />
@@ -4092,8 +4097,6 @@ const SurveySpacesRail = ({
                                                         <div style={{
                                                           fontSize: '10px',
                                                           color: 'var(--text-3)',
-                                                          textTransform: 'uppercase',
-                                                          letterSpacing: '0.6px',
                                                           marginBottom: '4px',
                                                           fontWeight: 600,
                                                         }}>
@@ -4169,8 +4172,10 @@ const SurveySpacesRail = ({
                                                 {/* Notes and media, inline (owner 2026-10-01,
                                                     replaces the 600px Note dialog) - the same
                                                     block the phone's open Survey Marker shows. */}
+                                                {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerTracking(annotationId, 'desktop')}
                                                 {!mobileMode && isSurveyMarkerExpanded && renderSurveyMarkerNotes(annotationId, 'desktop')}
                                               </div>
+                                              </SwipeActionsRow>
                                                   );
                                                 }}
                                               </SortableRearrangeRow>
@@ -4281,21 +4286,28 @@ const SurveySpacesRail = ({
                         <span>{isExporting ? 'Exporting\u2026' : 'Export data'}</span>
                       </button>
                       {surveyReportOn && (
-                        <button
-                          type="button"
+                        <SurveyReportMenu
                           className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
-                          onClick={() => { if (surveyHasItems) handleSurveyReport(); }}
-                          disabled={isReporting || !surveyHasItems}
-                          {...(mobileMode ? {} : tip(surveyHasItems ? 'Download a PowerPoint report: progress chart per category and the items with issues' : 'Add a survey item to make a report', 'above'))}
-                        >
-                          {isReporting
-                            ? <Spinner size={mobileMode ? 16 : 14} color="var(--text-1)" trackColor="var(--surface-3)" />
-                            : <Icon name="document" size={mobileMode ? 16 : 14} color="currentColor" />}
-                          <span>{isReporting ? 'Making report\u2026' : 'Report'}</span>
-                        </button>
+                          phone={mobileMode}
+                          disabled={!surveyHasItems}
+                          busy={isReporting}
+                          hint={surveyHasItems ? `Download a report (${reportKitOf().label}) as PowerPoint, PDF, Excel or CSV. Pick the layout in the template.` : 'Add a survey item to make a report'}
+                          onPick={handleSurveyReport}
+                        />
+                      )}
+                      {sheetSyncOn && pdfFile?.id && (
+                        <SheetSyncButton
+                          className={mobileMode ? 'mobile-survey-foot__export' : 'survey-rail__foot-export'}
+                          phone={mobileMode}
+                          documentId={pdfFile.id}
+                          template={selectedTemplate}
+                          markers={surveyMarkers}
+                          documentName={pdfFile?.name || ''}
+                        />
                       )}
                       {mobileMode ? (
-                        (selectedTemplate.linkedExcelPath && linkedExcelExists === true) ? (
+                        // Updating the linked workbook needs the desktop app.
+                        (selectedTemplate.linkedExcelPath && linkedExcelExists === true && typeof window !== 'undefined' && window.electronAPI) ? (
                           <div className="mobile-survey-sheet-export-wrap" ref={mobileExportMenuRef}>
                             <button
                               type="button"
@@ -4527,6 +4539,9 @@ const SurveySpacesRail = ({
                             <Icon name="document" size={14} color="currentColor" />
                             Open Excel
                           </div>
+                          {/* Push and Pull read and write the linked file, which only the
+                              desktop app can do (Live Sync too: its pull reads the file there). */}
+                          {window.electronAPI && (
                           <div
                             onClick={() => {
                               handleExportSurveyToExcel(selectedTemplate.linkedExcelPath);
@@ -4539,10 +4554,11 @@ const SurveySpacesRail = ({
                             <Icon name="upload" size={14} color="currentColor" />
                             Push to Excel
                           </div>
+                          )}
                           {/* "Pull from Excel" reads the last SAVED copy from disk, which on
                               a local file open in Excel is stale and overlaps the automatic
                               import-on-save — so it's only offered for OneDrive workbooks. */}
-                          {selectedTemplate?.isOneDrive && (
+                          {selectedTemplate?.isOneDrive && window.electronAPI && (
                           <div
                             onClick={() => {
                               handleSyncFromExcel();
@@ -4556,7 +4572,7 @@ const SurveySpacesRail = ({
                             Pull from Excel
                           </div>
                           )}
-                          {selectedTemplate?.isOneDrive && (() => {
+                          {selectedTemplate?.isOneDrive && window.electronAPI && (() => {
                             // Amendment (b) capability gate: a refused verdict keeps the
                             // toggle visible but inert-with-reason. Clicking re-checks
                             // (retry); the plain-English reason comes from the shared
@@ -4838,18 +4854,30 @@ const SurveySpacesRail = ({
               items={listContextMenu.type === 'category' ? [
                 { label: 'Move', disabled: !canEditSurveyCategories || (selectedTemplate?.modules || selectedTemplate?.spaces || []).length < 2, onClick: () => setMovingCategoryIds([listContextMenu.id]) },
                 { label: 'Copy Survey Markers', disabled: !Object.values(surveyMarkers || {}).some((marker) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id), onClick: () => { setSelectedCategories({ [listContextMenu.id]: true }); setShowSpaceSelection(true); } },
-                { label: 'Delete', danger: true, disabled: !canEditSurveyCategories || Object.entries(surveyMarkers || {}).some(([id, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id && !canModifySurveyMarkerItem?.(id)), onClick: async () => {
-                  if (!await askConfirm({ title: `Delete ${listContextMenu.name || 'category'}?`, message: 'This deletes the category and its Survey Markers.', confirmLabel: 'Delete', danger: true })) return;
-                  Object.entries(surveyMarkers || {}).filter(([, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id).forEach(([id]) => handleDeleteSurveyMarkerItem(id));
-                  deleteCategory(selectedModuleId, listContextMenu.id);
-                } },
+                { label: 'Delete', danger: true, disabled: !canEditSurveyCategories || Object.entries(surveyMarkers || {}).some(([id, marker]) => marker.moduleId === selectedModuleId && marker.categoryId === listContextMenu.id && !canModifySurveyMarkerItem?.(id)), onClick: () => deleteCategory(selectedModuleId, listContextMenu.id) },
               ] : [
                 { label: 'Duplicate', disabled: !surveyMarkers[listContextMenu.id]?.pageNumber, onClick: () => duplicateSurveyMarker?.(listContextMenu.id) },
-                { label: 'Copy to module', onClick: () => { setCopiedItemSelection({ [listContextMenu.id]: true }); setShowSpaceSelection(true); } },
-                { label: 'Delete', danger: true, disabled: !canModifySurveyMarkerItem?.(listContextMenu.id), onClick: async () => {
-                  if (await askConfirm({ title: `Delete ${listContextMenu.name || 'Survey Marker'}?`, message: 'Delete this Survey Marker?', confirmLabel: 'Delete', danger: true })) handleDeleteSurveyMarkerItem(listContextMenu.id);
-                } },
+                { label: 'Move to…', disabled: !canModifySurveyMarkerItem?.(listContextMenu.id), onClick: () => setMarkerTransfer({ mode: 'move', ids: [listContextMenu.id], categoryId: surveyMarkers[listContextMenu.id]?.categoryId ?? null }) },
+                { label: 'Copy to…', onClick: () => setMarkerTransfer({ mode: 'copy', ids: [listContextMenu.id], categoryId: surveyMarkers[listContextMenu.id]?.categoryId ?? null }) },
+                { label: 'Delete', danger: true, disabled: !canModifySurveyMarkerItem?.(listContextMenu.id), onClick: () => deleteSurveyMarkerNow(listContextMenu.id, listContextMenu.name) },
               ]}
+            />}
+            {markerTransfer && <SurveyMarkerTransferDialog
+              mode={markerTransfer.mode}
+              count={markerTransfer.ids.length}
+              currentTemplate={selectedTemplate}
+              templates={availableSurveyTemplates.map((template) => surveyTemplateVersionForDocument?.(template) || template)}
+              from={{ templateId: selectedTemplate?.id ?? null, moduleId: selectedModuleId, categoryId: markerTransfer.categoryId }}
+              onConfirm={(target) => {
+                const result = transferSurveyMarkers?.({ mode: markerTransfer.mode, ids: markerTransfer.ids, ...target });
+                if (result?.ok) {
+                  // Leave select mode in the category the markers came from.
+                  setItemSelectModeActive((prev) => { const next = { ...prev }; delete next[markerTransfer.categoryId]; return next; });
+                  setSelectedItemsInCategory((prev) => { const next = { ...prev }; delete next[markerTransfer.categoryId]; return next; });
+                }
+                return result || { ok: false };
+              }}
+              onClose={() => setMarkerTransfer(null)}
             />}
             {movingCategoryIds && <SurveyCategoryMoveDialog
         modules={selectedTemplate?.modules || selectedTemplate?.spaces || []}
@@ -4882,7 +4910,9 @@ const SurveySpacesRail = ({
             {mobileMode && typeof document !== 'undefined'
               ? createPortal(<div style={{ position: 'relative', zIndex: 10003 }}>{confirmDialogElement}</div>, document.body)
               : confirmDialogElement}
-            {surveyAgentMounted && surveyAgentEnabled && showSurveyPanel && selectedTemplate && (
+            {/* A hidden tab's agent is put away (it stops listening), as it was
+                when switching tabs rebuilt this rail. */}
+            {surveyAgentMounted && tabActive && surveyAgentEnabled && showSurveyPanel && selectedTemplate && (
               <SurveyAgentPanel
                 mobileMode={mobileMode}
                 host={surveyRailEl}

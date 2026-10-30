@@ -113,3 +113,97 @@ test('Package 2 Rev 4 page 7: every Schneider tag fills from its middle', async 
   }
   await task.destroy();
 });
+
+// --- Revision clouds (owner 2026-10-26: "fill any type of cloud") ----------
+
+// A cloud round a box: `perSide` scallops a side, each a curve bulging out.
+function cloudArcs(x0, y0, x1, y1, perSide, bulge = 4) {
+  const corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+  const normals = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  const arcs = [];
+  for (let side = 0; side < 4; side += 1) {
+    const [ax, ay] = corners[side];
+    const [bx, by] = corners[(side + 1) % 4];
+    const [nx, ny] = normals[side];
+    for (let i = 0; i < perSide; i += 1) {
+      const p = [ax + ((bx - ax) * i) / perSide, ay + ((by - ay) * i) / perSide];
+      const q = [ax + ((bx - ax) * (i + 1)) / perSide, ay + ((by - ay) * (i + 1)) / perSide];
+      arcs.push([p, [p[0] + nx * bulge, p[1] + ny * bulge], [q[0] + nx * bulge, q[1] + ny * bulge], q]);
+    }
+  }
+  return arcs;
+}
+const arcPath = ([p, c1, c2, q]) => new Float32Array([0, p[0], p[1], 2, c1[0], c1[1], c2[0], c2[1], q[0], q[1]]);
+const cloudOnePath = (arcs) => new Float32Array([0, arcs[0][0][0], arcs[0][0][1],
+  ...arcs.flatMap(([, c1, c2, q]) => [2, c1[0], c1[1], c2[0], c2[1], q[0], q[1]]), 4]);
+
+test('a cloud drawn as separate arcs, end to start, is one cloud shape (Schneider style)', () => {
+  const arcs = cloudArcs(100, 100, 400, 260, 8);
+  const list = opList(arcs.map((a) => ({ op: 'path', data: arcPath(a) })));
+  const shapes = extractClosedShapes(list, OPS, [1, 0, 0, 1, 0, 0]);
+  const clouds = shapes.filter((s) => s.cloud);
+  assert.equal(clouds.length, 1);
+  const [x0, y0, x1, y1] = box(clouds[0].ring);
+  assert.ok(x0 < 100 && y0 < 100 && x1 > 400 && y1 > 260, `${x0},${y0},${x1},${y1}`);
+});
+
+test('a cloud drawn as one path of curves is a cloud shape too, bigger than any tag', () => {
+  const list = opList([{ op: 'path', data: cloudOnePath(cloudArcs(50, 50, 650, 450, 12, 8)) }]);
+  const clouds = extractClosedShapes(list, OPS, [1, 0, 0, 1, 0, 0]).filter((s) => s.cloud);
+  assert.equal(clouds.length, 1);
+  assert.ok(clouds[0].width > 600);
+});
+
+test('circles, rounded boxes, open arc runs and broken chains are not clouds', () => {
+  const rounded = new Float32Array([0, 110, 100, 1, 290, 100, 2, 300, 100, 300, 100, 300, 110, 1, 300, 190,
+    2, 300, 200, 300, 200, 290, 200, 1, 110, 200, 2, 100, 200, 100, 200, 100, 190, 1, 100, 110,
+    2, 100, 100, 100, 100, 110, 100, 4]);
+  const arcs = cloudArcs(500, 100, 700, 200, 6);
+  const list = opList([
+    { op: 'path', data: circlePath(50, 50, 40) },
+    { op: 'path', data: rounded },
+    // A run of arcs that never closes (a door swing row, a cloud cut short).
+    ...arcs.slice(0, 15).map((a) => ({ op: 'path', data: arcPath(a) })),
+    { op: 'path', data: rectPath(800, 100, 20, 20) },
+    ...arcs.slice(15).map((a) => ({ op: 'path', data: arcPath(a) })),
+  ]);
+  const shapes = extractClosedShapes(list, OPS, [1, 0, 0, 1, 0, 0]);
+  assert.equal(shapes.filter((s) => s.cloud).length, 0);
+});
+
+test('a tap on a tag inside a cloud fills the tag; elsewhere in the cloud, the cloud', () => {
+  const arcs = cloudArcs(100, 100, 400, 260, 8);
+  const list = opList([
+    ...arcs.map((a) => ({ op: 'path', data: arcPath(a) })),
+    { op: 'path', data: circlePath(150, 150, 10) },
+  ]);
+  const shapes = extractClosedShapes(list, OPS, [1, 0, 0, 1, 0, 0]);
+  const tag = pickShapeAtPoint(shapes, { x: 150, y: 152 });
+  assert.deepEqual(box(tag.ring), [140, 140, 160, 160]);
+  assert.equal(tag.cloud, undefined);
+  const cloud = pickShapeAtPoint(shapes, { x: 300, y: 200 });
+  assert.equal(cloud.cloud, true);
+  assert.equal(vectorAnswerIsTagSized(cloud), true);
+});
+
+test('cloud marks on the page (imported or drawn in Survey) are cloud shapes', async () => {
+  const { cloudMarkShapes } = await import('../src/survey/smartFillClouds.js');
+  const shapes = cloudMarkShapes([
+    { type: 'polygon', left: 100, top: 100, points: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 100 }], data: { pdfCloudIntensity: 2 } },
+    { type: 'rect', left: 300, top: 300, width: 100, height: 50, data: { pdfCloudIntensity: 1 } },
+    { type: 'rect', left: 0, top: 0, width: 10, height: 10, data: {} },
+    { type: 'polygon', left: 0, top: 0, points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 5 }], data: { pdfCloudIntensity: 2 }, visible: false },
+  ]);
+  assert.equal(shapes.length, 2);
+  assert.ok(shapes.every((s) => s.cloud && s.mark));
+  assert.ok(pointInRing(220, 120, shapes[0].ring));
+  assert.ok(pointInRing(350, 320, shapes[1].ring));
+});
+
+test('Smart fill only gets the cloud marks the page draws, never ones on a hidden layer or scope', () => {
+  const src = readFileSync('src/components/SVGAnnotationLayer.jsx', 'utf8');
+  const call = src.slice(src.indexOf("runMarkerShapeProvider('smartFill'"), src.indexOf("runMarkerShapeProvider('smartFill'") + 600);
+  assert.match(call, /marks: visibleAnnotationObjectsRef\.current/);
+  assert.doesNotMatch(call, /marks: annotationsRef/);
+  assert.match(src, /visibleAnnotationObjectsRef\.current = Array\.isArray\(filteredAnnotations\)/);
+});

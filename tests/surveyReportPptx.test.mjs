@@ -31,7 +31,7 @@ test('the plan holds the totals, a chart row per used category and the issues', 
   assert.deepEqual(plan.tiles.map((t) => t.value), [4, 2, 1, 1, 1]);
   assert.deepEqual(plan.chart.categories, ['Door', 'Camera']);
   assert.deepEqual(plan.chart.series.map((s) => s.values), [[2, 0], [1, 0], [0, 1]]);
-  assert.deepEqual(plan.issueRows, [{ category: 'Door', item: 'D-2', lines: 'Lock works: Fail' }]);
+  assert.deepEqual(plan.issueRows.map(({ id, ...row }) => row), [{ category: 'Door', item: 'D-2', lines: 'Lock works: Fail' }]);
 });
 
 const slideFiles = (zip) => Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f));
@@ -60,4 +60,42 @@ test('an empty survey still makes a deck, and file names are safe', async () => 
   assert.equal(Object.keys(zip.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f)).length, 3);
   assert.equal(surveyReportFileName({ name: 'A/B: "C"' }), 'A B C report.pptx');
   assert.equal(surveyReportFileName(null), 'Survey report.pptx');
+});
+
+test('report kits: every built-in kit is valid and draws a real deck', async () => {
+  const { BUILT_IN_REPORT_KITS, listReportKits, reportKitFor, validateReportKit, DEFAULT_REPORT_KIT_ID } = await import('../src/services/reportKits/index.js');
+  assert.equal(listReportKits()[0].id, DEFAULT_REPORT_KIT_ID);
+  assert.equal(reportKitFor({}).id, DEFAULT_REPORT_KIT_ID);
+  assert.equal(reportKitFor({ reportKitId: 'issues-report' }).id, 'issues-report');
+  assert.equal(reportKitFor({ reportKitId: 'gone' }).id, DEFAULT_REPORT_KIT_ID, 'an unknown kit falls back to the full report');
+  const markers = { d1: marker('D-1', 'door', { a: 'Pass' }), d2: marker('D-2', 'door', { a: 'Fail' }), c1: marker('C-1', 'cam', {}) };
+  const slides = {};
+  for (const kit of BUILT_IN_REPORT_KITS) {
+    assert.deepEqual(validateReportKit(kit), [], kit.id);
+    const zip = await JSZip.loadAsync(await buildSurveyReport(PptxGenJS, { template: { ...template, reportKitId: kit.id }, markers }).write({ outputType: 'nodebuffer' }));
+    const charts = await Promise.all(Object.keys(zip.files).filter((f) => /^ppt\/charts\/chart\d+\.xml$/.test(f)).map((f) => zip.file(f).async('string')));
+    slides[kit.id] = { count: slideFiles(zip).length, charts };
+  }
+  // Full: cover, progress (tiles + bar chart), table, issues.
+  assert.equal(slides['full-report'].count, 4);
+  assert.match(slides['full-report'].charts[0], /<c:barChart>/);
+  // Progress: cover, progress (tiles + pie), table.
+  assert.equal(slides['progress-report'].count, 3);
+  assert.match(slides['progress-report'].charts[0], /<c:pieChart>/);
+  // Issues list: cover, issues; no chart.
+  assert.equal(slides['issues-report'].count, 2);
+  assert.equal(slides['issues-report'].charts.length, 0);
+});
+
+test('a report kit only names blocks the engine can draw', async () => {
+  const { validateReportKit } = await import('../src/services/reportKits/index.js');
+  const ok = { id: 'my-kit', kind: 'reportKit', version: '1.0.0', minEngine: 1, label: 'Mine', blocks: [{ type: 'chart', style: 'pie' }] };
+  assert.deepEqual(validateReportKit(ok), []);
+  assert.match(validateReportKit({ ...ok, blocks: [{ type: 'script' }] }).join(), /type unknown/);
+  assert.match(validateReportKit({ ...ok, blocks: [{ type: 'chart', style: 'radar' }] }).join(), /stacked or pie/);
+  assert.match(validateReportKit({ ...ok, blocks: [] }).join(), /1 to 10 blocks/);
+  assert.match(validateReportKit({ ...ok, kind: 'exportKit' }).join(), /reportKit/);
+  // A chart drawn on its own gets its own Progress slide.
+  const zip = await JSZip.loadAsync(await buildSurveyReport(PptxGenJS, { template, markers: { d: marker('D-1', 'door', { a: 'Pass' }) }, kit: ok }).write({ outputType: 'nodebuffer' }));
+  assert.equal(slideFiles(zip).length, 1);
 });

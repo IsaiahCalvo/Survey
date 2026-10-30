@@ -29,5 +29,9 @@ test('AppShell keeps the hidden home screen and tab strip memoised with stable h
   assert.match(appShell, /onShowAuthModal=\{stableShowAuthModal\}/);
   assert.match(appShell, /<MemoTabBar[\s\S]{0,200}onTabClick=\{stableTabClick\}/);
   assert.match(appShell, /const SurveySpacesRail = memo\(SurveySpacesRailChunk\.Component\)/);
-  assert.match(appShell, /onCollapseChange=\{handleRightRailCollapseChange\}/);
+  // Each open tab keeps its own Survey rail (docs/TAB-SWITCHING.md); its
+  // collapse handler is made once per tab and kept, so the memoised rail is
+  // not re-rendered by a new function on every shell render.
+  assert.match(appShell, /onCollapseChange=\{railCollapseHandlerFor\(tab\.id\)\}/);
+  assert.match(appShell, /if \(!railCollapseHandlersRef\.current\[tabId\]\) \{/);
 });

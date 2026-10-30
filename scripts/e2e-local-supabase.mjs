@@ -37,6 +37,7 @@ import {
   E2E_PROJECT,
   E2E_SURVEY,
 } from '../tests/e2e-signed-in/accounts.mjs';
+import { E2E_R2, E2E_R2_SERVER_ENDPOINT, startE2eMinio, stopE2eMinio } from './e2e-minio.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STACK_DIR = path.resolve(ROOT, process.env.E2E_STACK_DIR || '.e2e/supabase-stack');
@@ -97,7 +98,10 @@ export function buildStackConfig(source) {
     }
     // Every test client signs in from 127.0.0.1, so the per-IP sign-in limit
     // (30 per 5 minutes) would stop scripts/db-load-test.mjs after 30 users.
-    if (section === 'auth.rate_limit' && /^(sign_in_sign_ups|token_refresh)\s*=/.test(line)) {
+    // Guest links (Nightly) sign guests in anonymously. Only the test stack
+    // turns that on; production's own setting is changed by hand, never here.
+    if (section === 'auth' && /^enable_anonymous_sign_ins\s*=/.test(line)) return 'enable_anonymous_sign_ins = true';
+    if (section === 'auth.rate_limit' && /^(sign_in_sign_ups|token_refresh|anonymous_users)\s*=/.test(line)) {
       return line.replace(/=.*/, '= 10000');
     }
     if (section === 'auth' && /^site_url\s*=/.test(line)) return `site_url = "${E2E_BASE_URL}"`;
@@ -105,7 +109,7 @@ export function buildStackConfig(source) {
       return `additional_redirect_urls = ["${E2E_BASE_URL}", "${E2E_BASE_URL.replace('127.0.0.1', 'localhost')}"]`;
     }
     return line;
-  }).join('\n') + FAKE_GROQ_CONFIG;
+  }).join('\n') + FAKE_GROQ_CONFIG + FAKE_GOOGLE_CONFIG + FAKE_MSGRAPH_CONFIG;
 }
 
 // The fake Groq (scripts/e2e-fake-groq.mjs) runs as one more edge function in
@@ -115,6 +119,18 @@ export function buildStackConfig(source) {
 const FAKE_GROQ_FUNCTION = 'e2e-fake-groq';
 const FAKE_GROQ_CONFIG = `\n[functions.${FAKE_GROQ_FUNCTION}]\nverify_jwt = false\n`;
 export const FAKE_GROQ_BASE_URL = `http://kong:8000/functions/v1/${FAKE_GROQ_FUNCTION}`;
+
+// The fake Google (scripts/e2e-fake-google.mjs) for the live sheet sync, the
+// same way: sheet-sync reaches it inside the Docker network; the browser
+// reaches its consent page (and sheet-sync's callback) on the stack's port.
+const FAKE_GOOGLE_FUNCTION = 'e2e-fake-google';
+const FAKE_GOOGLE_CONFIG = `\n[functions.${FAKE_GOOGLE_FUNCTION}]\nverify_jwt = false\n`;
+export const FAKE_GOOGLE_BASE_URL = `http://kong:8000/functions/v1/${FAKE_GOOGLE_FUNCTION}`;
+export const E2E_STACK_API_URL = 'http://127.0.0.1:54421';
+// And the fake Microsoft (scripts/e2e-fake-msgraph.mjs): sign-in + Excel API.
+const FAKE_MSGRAPH_FUNCTION = 'e2e-fake-msgraph';
+const FAKE_MSGRAPH_CONFIG = `\n[functions.${FAKE_MSGRAPH_FUNCTION}]\nverify_jwt = false\n`;
+export const FAKE_MSGRAPH_BASE_URL = `http://kong:8000/functions/v1/${FAKE_MSGRAPH_FUNCTION}`;
 
 function prepareWorkdir() {
   const supabaseDir = path.join(STACK_DIR, 'supabase');
@@ -147,11 +163,43 @@ function prepareWorkdir() {
     'Deno.serve(fakeGroqHandler);',
     '',
   ].join('\n'));
+  const googleDir = path.join(functionsDir, FAKE_GOOGLE_FUNCTION);
+  fs.mkdirSync(googleDir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'scripts/e2e-fake-google.mjs'), path.join(googleDir, 'fake.mjs'));
+  fs.writeFileSync(path.join(googleDir, 'index.ts'), [
+    "import { fakeGoogleHandler } from './fake.mjs';",
+    'Deno.serve(fakeGoogleHandler);',
+    '',
+  ].join('\n'));
+  const msgraphDir = path.join(functionsDir, FAKE_MSGRAPH_FUNCTION);
+  fs.mkdirSync(msgraphDir, { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'scripts/e2e-fake-msgraph.mjs'), path.join(msgraphDir, 'fake.mjs'));
+  fs.writeFileSync(path.join(msgraphDir, 'index.ts'), [
+    "import { fakeMsgraphHandler } from './fake.mjs';",
+    'Deno.serve(fakeMsgraphHandler);',
+    '',
+  ].join('\n'));
   fs.writeFileSync(path.join(functionsDir, '.env'), [
     'GROQ_API_KEY=e2e-fake-no-calls',
     `GROQ_BASE_URL=${FAKE_GROQ_BASE_URL}`,
     `SURVEY_AGENT_TESTERS=${E2E_ACCOUNTS.owner.email}`,
     'SURVEY_AGENT_TTS=off',
+    // Live sheet sync talks to the fake Google; nothing reaches Google.
+    'GOOGLE_SHEETS_CLIENT_ID=e2e-fake-client',
+    'GOOGLE_SHEETS_CLIENT_SECRET=e2e-fake-secret',
+    `GOOGLE_OAUTH_AUTH_URL=${E2E_STACK_API_URL}/functions/v1/${FAKE_GOOGLE_FUNCTION}/o/oauth2/v2/auth`,
+    `GOOGLE_OAUTH_TOKEN_URL=${FAKE_GOOGLE_BASE_URL}/token`,
+    `GOOGLE_OAUTH_REVOKE_URL=${FAKE_GOOGLE_BASE_URL}/revoke`,
+    `GOOGLE_SHEETS_API_BASE=${FAKE_GOOGLE_BASE_URL}`,
+    `GOOGLE_DRIVE_API_BASE=${FAKE_GOOGLE_BASE_URL}`,
+    'MS_GRAPH_CLIENT_SECRET=e2e-fake-ms-secret',
+    `MS_GRAPH_AUTHORIZE_URL=${E2E_STACK_API_URL}/functions/v1/${FAKE_MSGRAPH_FUNCTION}/oauth2/v2.0/authorize`,
+    `MS_GRAPH_TOKEN_URL=${FAKE_MSGRAPH_BASE_URL}/oauth2/v2.0/token`,
+    `MS_GRAPH_API_BASE=${FAKE_MSGRAPH_BASE_URL}/v1.0`,
+    `SHEET_SYNC_PUBLIC_URL=${E2E_STACK_API_URL}/functions/v1/sheet-sync`,
+    `SHEET_SYNC_APP_ORIGINS=${E2E_BASE_URL}`,
+    // pdf-file-url copies PDFs into the stack's MinIO (scripts/e2e-minio.mjs).
+    ...Object.entries({ ...E2E_R2, R2_SERVER_ENDPOINT: E2E_R2_SERVER_ENDPOINT }).map(([k, v]) => `${k}=${v}`),
     '',
   ].join('\n'));
   log(`workdir ${path.relative(ROOT, STACK_DIR)}: ${repoMigrations.length} migrations`);
@@ -183,6 +231,8 @@ function writeEnvFile(status) {
     `E2E_BASE_URL=${E2E_BASE_URL}`,
     '# Local GoTrue has no CAPTCHA; an empty key turns the Turnstile widget off.',
     'VITE_TURNSTILE_SITE_KEY=',
+    '# The MinIO standing in for Cloudflare R2 (scripts/e2e-minio.mjs).',
+    ...Object.entries(E2E_R2).map(([k, v]) => `E2E_${k}=${v}`),
     '',
   ].join('\n');
   fs.writeFileSync(ENV_FILE, body, { mode: 0o600 });
@@ -429,6 +479,31 @@ async function waitForStorage(apiUrl, timeoutMs = 10 * 60 * 1000) {
   fail('storage did not come up within 10 minutes');
 }
 
+// The signed-in CI pins SUPABASE_INTERNAL_IMAGE_REGISTRY=ghcr.io (public.ecr.aws
+// kept refusing), and with a pin the CLI tries no other registry. ghcr.io
+// throttles bursts of pulls ("toomanyrequests"), and CI starts five e2e shards
+// plus the native walks at once: on 2026-10-28 one burst failed every shard in
+// its first minute, for minutes on end. So a start that fails fast is retried
+// without the pin (the CLI then tries public.ecr.aws, then ghcr.io, then Docker
+// Hub). A start that failed slowly is a real fault and is not retried.
+function startStack(args) {
+  const retries = [
+    { wait: 15_000 },
+    { wait: 45_000 },
+  ];
+  for (let attempt = 0; ; attempt += 1) {
+    const started = Date.now();
+    const result = runCli(args, { allowFail: true });
+    if (result.status === 0) return;
+    const quick = Date.now() - started < 3 * 60_000;
+    const retry = retries[attempt];
+    if (!quick || !retry) fail(`supabase ${args.join(' ')} failed (exit ${result.status})`);
+    delete process.env.SUPABASE_INTERNAL_IMAGE_REGISTRY;
+    log(`supabase start failed quickly (exit ${result.status}), likely an image pull limit; retrying in ${retry.wait / 1000}s from any registry`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, retry.wait);
+  }
+}
+
 async function main() {
   const command = process.argv[2] || 'up';
   if (command === 'up') {
@@ -449,11 +524,12 @@ async function main() {
     // migrations outlast the CLI's health wait, and a failed start tears the
     // stack down, so a retry starts over. Skip that wait and poll storage here.
     const ignoreHealth = process.env.E2E_IGNORE_HEALTH === '1';
-    runCli(['start', '-x', EXCLUDED.join(','), ...(ignoreHealth ? ['--ignore-health-check'] : [])]);
+    startStack(['start', '-x', EXCLUDED.join(','), ...(ignoreHealth ? ['--ignore-health-check'] : [])]);
     const status = readStatus();
     if (!status) fail('stack started but `supabase status` failed');
     if (ignoreHealth) await waitForStorage(status.API_URL);
     await seed(writeEnvFile(status));
+    if (process.env.E2E_R2 !== 'off') await startE2eMinio({ network: `supabase_network_${PROJECT_ID}`, log });
     log(`ready. Run the suite with: npm run test:e2e:signed-in`);
   } else if (command === 'env') {
     const status = readStatus();
@@ -473,6 +549,7 @@ async function main() {
       return;
     }
     runCli(['stop', '--no-backup'], { allowFail: true });
+    stopE2eMinio();
     log('stopped (data volumes removed)');
   } else {
     fail(`unknown command "${command}" (use up | seed | env | status | down)`);

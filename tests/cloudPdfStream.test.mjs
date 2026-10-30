@@ -161,6 +161,23 @@ test('a getData failure after a streamed open is reported (cache + mirror check 
   assert.equal(all.length, 0);
 });
 
+test('closing a streamed document before all bytes arrive does not start a fallback download', async () => {
+  const lib = fakePdfjs();
+  let rejectData;
+  const task = { destroyed: false, destroy: async () => { task.destroyed = true; rejectData(new Error('Worker was destroyed')); } };
+  const pdf = { numPages: 1, getData: () => new Promise((_, reject) => { rejectData = reject; }), loadingTask: task };
+  lib.getDocument = () => Object.assign(task, { promise: Promise.resolve(pdf) });
+  const failed = [];
+  const result = await tryOpenCloudPdfStream({
+    pdfjsReady: Promise.resolve(lib), filePath: 'a', probeTag: async () => 'untagged', source: async () => ({ url: 'u' }),
+    onAllBytes: () => {}, onBytesFailed: (e) => failed.push(e.message),
+  });
+  assert.equal(result.pdf, pdf);
+  await pdf.loadingTask.destroy();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(failed, []);
+});
+
 // --- Mirrored files never paint unmirrored: the pre-paint tag probe ---
 import { probePdfPresentationTag } from '../src/services/cloudPdfStream.js';
 import { PDFDocument } from 'pdf-lib';

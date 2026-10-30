@@ -1,25 +1,31 @@
-// Smart fill (beta) on the real Schneider drawing set, Package 2 - Rev 4
-// (owner report 2026-10-22: "it's not filling Schneider tags consistently").
-// Tags that touch a wall, a leader line or the next tag used to leak or say
-// "too big"; Smart fill now reads the drawing's own tag outlines. And when a
-// tag is missed, "Teach a tag shape" boxes it, saves the shape in the survey
-// template, and Find more finds every tag like it.
+// Smart fill (beta) on Schneider-style tags (owner report 2026-10-22: "it's
+// not filling Schneider tags consistently"). Tags that touch a wall, a leader
+// line or the next tag used to leak or say "too big"; Smart fill now reads the
+// drawing's own tag outlines. Owner 2026-10-27: a tap places the Survey
+// Marker at once, the same as a drawn box (no Apply step), and the tag
+// teaching tools (Teach a tag shape, Smart fill shapes, Find more) are on
+// hold, so the tool bar does not offer them. The sheet is a small made-up one
+// (debug/smart-fill/make-tag-sheet.mjs) that copies what makes Schneider tags
+// hard, so the test stays fast.
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { E2E_ACCOUNTS, E2E_PROJECT } from './accounts.mjs';
 import { adminClient, expect, signIn, test } from './helpers.mjs';
 
-const FIXTURE = 'debug/fixtures/package2-rev4.pdf';
-// Sheet SEC-B01E-P2 (page 7), page units. Each touches a wall or another tag.
-const PAGE = 7;
+// Tag boxes in page units, from the script that draws the sheet.
+const FIXTURE = 'debug/fixtures/tag-sheet.pdf';
+const PAGE = 1;
 const PAGE_WIDTH = 1224;
 const TAGS = {
-  'C95 (touches a wall)': [263.9, 513.2, 284.2, 533.4],
-  'C27 (overlaps C26)': [82, 549.7, 102.2, 569.9],
-  'C93 (touches C94)': [83.5, 496.4, 103.7, 516.7],
+  'touches a wall': [289.9, 509.9, 310.1, 530.1],
+  'overlaps the next tag': [89.9, 549.9, 110.1, 570.1],
+  'touches the next tag': [89.9, 496.4, 110.1, 516.6],
 };
-const R1224 = [294.7, 553.1, 314.9, 573.3];
+// A revision cloud drawn as separate arcs (its scallops reach 4 past the box
+// it is drawn round), with a tag inside it.
+const CLOUD = [636, 636, 1004, 744];
+const CLOUD_TAG = [689.9, 679.9, 710.1, 700.1];
 
 async function seed(admin) {
   const { data } = await admin.auth.admin.listUsers({ perPage: 200 });
@@ -27,7 +33,7 @@ async function seed(admin) {
   const docId = randomUUID();
   const templateId = randomUUID();
   const templateName = `E2E Smart fill ${Date.now()}`;
-  const docName = `E2E Package 2 SF ${Date.now()}.pdf`;
+  const docName = `E2E Tag sheet SF ${Date.now()}.pdf`;
   const bytes = fs.readFileSync(path.resolve(FIXTURE));
   const filePath = `${ownerId}/${docId}.pdf`;
   const up = await admin.storage.from('documents').upload(filePath, new Blob([bytes], { type: 'application/pdf' }), {
@@ -44,7 +50,7 @@ async function seed(admin) {
   if (template.error) throw template.error;
   const doc = await admin.from('documents').insert({
     id: docId, user_id: ownerId, project_id: E2E_PROJECT.id, name: docName,
-    file_path: filePath, file_size: bytes.length, page_count: 36,
+    file_path: filePath, file_size: bytes.length, page_count: 1,
   });
   if (doc.error) throw doc.error;
   return { docId, docName, filePath, templateId, templateName };
@@ -74,10 +80,26 @@ async function openSmartFill(page, seeded) {
 
 // Page units -> screen px on the sheet as it sits now.
 async function outlineBox(locator) {
+  // A marker's outline is its hit path; getBBox leaves the stroke out.
   return locator.evaluate((el) => {
     const b = el.getBBox();
     return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
   });
+}
+
+// Scroll the viewer until a page-unit box is on screen, then map it.
+async function onScreen(page, sheet, area) {
+  const view = page.viewportSize();
+  for (let i = 0; i < 6; i += 1) {
+    const s = await toScreen(sheet, area);
+    const below = s.y1 - (view.height - 60);
+    const above = 60 - s.y0;
+    if (below <= 0 && above <= 0) return s;
+    await page.mouse.move(view.width / 2, view.height / 2);
+    await page.mouse.wheel(0, below > 0 ? below : -above);
+    await page.waitForTimeout(300);
+  }
+  return toScreen(sheet, area);
 }
 
 async function toScreen(sheet, [x0, y0, x1, y1]) {
@@ -86,80 +108,42 @@ async function toScreen(sheet, [x0, y0, x1, y1]) {
   return { x0: box.x + x0 * k, y0: box.y + y0 * k, x1: box.x + x1 * k, y1: box.y + y1 * k, k };
 }
 
-test('a tap fills each touching Schneider tag exactly, then Apply makes it a Survey Marker', async ({ page }) => {
+test('a tap fills each touching Schneider tag exactly and places it as a Survey Marker, with no Apply step', async ({ page }) => {
   test.setTimeout(240_000);
   const admin = adminClient();
   const seeded = await seed(admin);
   try {
     const sheet = await openSmartFill(page, seeded);
-    for (const [name, tag] of Object.entries(TAGS)) {
-      const s = await toScreen(sheet, tag);
-      // Tap the tag's lower-left cell.
-      await page.mouse.click(s.x0 + (s.x1 - s.x0) * 0.35, s.y0 + (s.y1 - s.y0) * 0.7);
-      const preview = page.locator('[data-smart-fill-preview="true"]');
-      await expect(preview, name).toBeVisible({ timeout: 10_000 });
-      // The outline itself, in page units (the dashed stroke is drawn outside it).
-      const b = await outlineBox(preview);
-      expect(Math.abs(b.x0 - tag[0]), `${name} left`).toBeLessThan(1);
-      expect(Math.abs(b.y0 - tag[1]), `${name} top`).toBeLessThan(1);
-      expect(Math.abs(b.x1 - tag[2]), `${name} right`).toBeLessThan(1);
-      expect(Math.abs(b.y1 - tag[3]), `${name} bottom`).toBeLessThan(1);
+    // The tag teaching tools are on hold (owner 2026-10-27).
+    await expect(page.getByRole('button', { name: 'Teach a tag shape' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Smart fill shapes', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Find tags like your Smart fill shapes' })).toHaveCount(0);
+    const markers = page.locator(`[data-overlay-page="${PAGE}"] [data-survey-marker-kind="polygon"]`);
+    const card = page.getByRole('dialog', { name: 'New Survey Marker' });
+    const taps = [
+      ...Object.entries(TAGS).map(([name, tag]) => [name, tag, [0.35, 0.7]]),
+      // Inside a revision cloud: a tap off the tag fills the cloud, a tap on
+      // the tag still fills just the tag.
+      ['cloud', CLOUD, [0.75, 0.6]],
+      ['tag in the cloud', CLOUD_TAG, [0.35, 0.7]],
+    ];
+    for (const [i, [name, want, at]] of taps.entries()) {
+      const s = await onScreen(page, sheet, want);
+      await page.mouse.click(s.x0 + (s.x1 - s.x0) * at[0], s.y0 + (s.y1 - s.y0) * at[1]);
+      // The marker is on the page at once with the same card a drawn box opens.
+      await expect(markers, name).toHaveCount(i + 1, { timeout: 10_000 });
+      await expect(card, name).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Apply' })).toHaveCount(0);
+      await expect(page.locator('[data-smart-fill-preview="true"]')).toHaveCount(0);
+      const b = await outlineBox(markers.nth(i).locator('[data-survey-marker-hit-target="true"]'));
+      for (const [k, side] of [[0, 'x0'], [1, 'y0'], [2, 'x1'], [3, 'y1']]) {
+        expect(Math.abs(b[side] - want[k]), `${name} ${side}`).toBeLessThan(1);
+      }
+      await card.getByRole('option', { name: /Camera/ }).click();
+      await expect(card).toBeHidden();
     }
-    // The last one becomes a marker.
-    await page.getByRole('button', { name: 'Apply' }).click();
-    const card = page.getByRole('dialog', { name: 'New Survey Marker' });
-    await expect(card).toBeVisible();
-    await card.getByRole('option', { name: /Camera/ }).click();
-    await expect(card).toBeHidden();
-    await expect(page.locator(`[data-overlay-page="${PAGE}"] [data-survey-marker-kind="polygon"]`)).toHaveCount(1);
-  } finally {
-    await cleanup(admin, seeded);
-  }
-});
-
-test('Teach a tag shape saves it in the template, and Find more finds every tag like it', async ({ page }) => {
-  test.setTimeout(240_000);
-  const admin = adminClient();
-  const seeded = await seed(admin);
-  try {
-    const sheet = await openSmartFill(page, seeded);
-    await page.getByRole('button', { name: 'Teach a tag shape' }).click();
-    await expect(page.getByRole('button', { name: 'Teach a tag shape' })).toHaveAttribute('aria-pressed', 'true');
-    // Box the door tag with a little room around it.
-    const s = await toScreen(sheet, [R1224[0] - 3, R1224[1] - 3, R1224[2] + 3, R1224[3] + 3]);
-    await page.mouse.move(s.x0, s.y0);
-    await page.mouse.down();
-    await page.mouse.move((s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, { steps: 4 });
-    await page.mouse.move(s.x1, s.y1, { steps: 4 });
-    await page.mouse.up();
-    const preview = page.locator('[data-smart-fill-preview="true"]');
-    await expect(preview).toBeVisible({ timeout: 10_000 });
-    const b = await outlineBox(preview);
-    expect(Math.abs(b.x0 - R1224[0])).toBeLessThan(1);
-    expect(Math.abs(b.x1 - b.x0 - (R1224[2] - R1224[0]))).toBeLessThan(1);
-
-    await page.getByRole('button', { name: 'Save shape' }).click();
-    const card = page.getByRole('dialog', { name: 'New Survey Marker' });
-    await expect(card).toBeVisible();
-    await card.getByRole('option', { name: /Card Reader/ }).click();
-    await expect(card).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Teach a tag shape' })).toHaveAttribute('aria-pressed', 'false');
-
-    // Saved in the template row, for everyone who uses it.
-    await expect.poll(async () => {
-      const { data } = await admin.from('templates').select('config').eq('id', seeded.templateId).single();
-      return data?.config?.smartFillShapes?.length || 0;
-    }, { timeout: 20_000 }).toBe(1);
-    const { data: row } = await admin.from('templates').select('config').eq('id', seeded.templateId).single();
-    const shape = row.config.smartFillShapes[0];
-    expect(Math.abs(shape.width - 20.2)).toBeLessThan(0.5);
-    // Modules and entities are untouched.
-    expect(row.config.modules[0].categories.map((c) => c.name)).toEqual(['Camera', 'Card Reader']);
-
-    // Find more: every tag of that shape on the sheet is offered.
-    await page.getByRole('button', { name: 'Find more' }).click();
-    await expect.poll(() => page.locator(`[data-overlay-page="${PAGE}"] [data-smart-fill-match="true"]`).count(), { timeout: 30_000 })
-      .toBeGreaterThan(40);
+    await expect(markers).toHaveCount(taps.length);
+    await page.screenshot({ path: 'test-results/smart-fill-placed.png' });
   } finally {
     await cleanup(admin, seeded);
   }

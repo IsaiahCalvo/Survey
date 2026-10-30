@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import Icon from '../Icons';
 import { useTooltip } from './Tooltip';
+import MenuGlide from './MenuGlide.jsx';
 import './AnnotationDropdown.css';
 
 /**
@@ -35,6 +36,7 @@ export default function AnnotationDropdown({
   onSelect,
   renderOption,
   children,
+  footer = null,
   align = 'start',
   contentWidth,
   className = '',
@@ -204,6 +206,7 @@ export default function AnnotationDropdown({
               thing to read. The accessible name lives on the listbox. */}
           {children ?? (
             <div className="annotation-dropdown__options" role="listbox" aria-label={label}>
+              <MenuGlide />
               {options.map((option, index) => {
                 const active = option.value === value;
                 return (
@@ -215,7 +218,7 @@ export default function AnnotationDropdown({
                     aria-selected={active}
                     tabIndex={focusedIndex === index ? 0 : -1}
                     className={active ? 'is-active' : ''}
-                    style={option.style}
+                    style={{ '--menu-row': index, ...option.style }}
                     onPointerDown={(event) => {
                       if (preserveFocus) event.preventDefault();
                     }}
@@ -241,6 +244,7 @@ export default function AnnotationDropdown({
               })}
             </div>
           )}
+          {footer}
         </Popover.Content>
       )}
     </Popover.Root>

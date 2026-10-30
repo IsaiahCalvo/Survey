@@ -110,8 +110,6 @@ const UsageIndicator = () => {
           fontSize: '14px',
           fontWeight: 600,
           color: 'var(--text-1)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px'
         }}>
           Usage
         </h3>
@@ -135,14 +133,12 @@ const UsageIndicator = () => {
           // warm washes stacked in one small card is the large warm wash this
           // palette exists to prevent.
           color: 'var(--accent)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px',
           backgroundColor: 'var(--surface-3)',
           border: '1px solid var(--border)',
           padding: '2px 8px',
           borderRadius: '4px'
         }}>
-          {tier}
+          {String(tier || '').charAt(0).toUpperCase() + String(tier || '').slice(1)}
         </span>
       </div>
 

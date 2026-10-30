@@ -30,29 +30,29 @@ const ALLOWED = {
   'src/SurveySpacesRail.jsx': 1,
   'src/components/AccountSettings.jsx': 1,
   'src/components/AuthModal.jsx': 1,
-  'src/components/CreateCategoryModal.jsx': 1,
-  'src/components/DuplicateUploadModal.jsx': 1,
-  'src/components/ExcelLockedModal.jsx': 1,
-  'src/components/ExcelSyncConfirmModal.jsx': 1,
+  'src/components/DialogCard.jsx': 1,
+  'src/components/ExportPdfDialog.jsx': 1,
   'src/components/KeyboardShortcutsOverlay.jsx': 1,
-  'src/components/NewColumnsModal.jsx': 1,
-  'src/components/OneDriveFileSaveModal.jsx': 1,
+  // The signature pad's scrim and dialog, and the line controls' click-through wrappers.
+  'src/components/LineMediaAnswer.jsx': 4,
   'src/components/PdfToolsDialog.jsx': 1,
   'src/components/PdfjsRedactionMarkLayer.jsx': 1,
   'src/components/PrintPanel.jsx': 2,
   'src/components/SaveLogBanner.jsx': 1,
-  'src/components/SpaceSelectionDialog.jsx': 1,
-  'src/components/SurveyCategoryMoveDialog.jsx': 1,
   'src/components/SurveyMediaCapture.jsx': 1,
   'src/components/SurveyMediaStrip.jsx': 1,
-  'src/components/SurveyTemplateVersionDialog.jsx': 1,
-  'src/components/TemplateOverwriteWarningModal.jsx': 1,
+  // Click-through wrapper that keeps the status / assignee / due pickers'
+  // presses off the rail row under it; each picker owns the keyboard.
+  'src/components/SurveyMarkerTracking.jsx': 1,
   'src/components/ToastHost.jsx': 1,
+  // Click-through wrappers that keep an answer drop-down's presses off the
+  // rail row under it; the drop-down's own <button> owns the keyboard.
+  'src/components/TypedAnswerInput.jsx': 2,
   'src/components/collab/ConfirmDeleteModal.jsx': 1,
-  'src/components/dialogPrompts.jsx': 1,
   'src/components/revisions/RevisionsPanel.jsx': 3,
   'src/home/AccessManagementModal.jsx': 1,
-  'src/home/BulkModals.jsx': 3,
+  'src/home/AnswerSetEditor.jsx': 1,
+  'src/home/BulkModals.jsx': 1,
   'src/home/CreateProjectModal.jsx': 1,
   'src/home/DocumentsLedger.jsx': 1,
   'src/home/HubShell.jsx': 2,
@@ -109,7 +109,8 @@ test('sort headers, rows, select boxes, option cards and menu items are keyboard
   assert.equal(count(read('src/home/ProjectsFolderTree.jsx'), box), 5);
   assert.equal(count(read('src/home/TemplatesEditor.jsx'), ready), 5);
   assert.equal(count(read('src/home/TemplatesEditor.jsx'), box), 4);
-  assert.equal(count(read('src/RegionSelectionTool.jsx'), /role: 'menuitem'/g), 5);
+  // The area menu's icon row is real buttons; its two rows carry the props.
+  assert.equal(count(read('src/RegionSelectionTool.jsx'), /role: 'menuitem'/g), 1);
   assert.equal(count(read('src/SurveySpacesRail.jsx'), /role: 'menuitem'/g), 5);
   assert.equal(count(read('src/hooks/useAnnotationContextMenu.jsx'), /role: 'menuitem', disabled: it\.disabled/g), 1);
   for (const file of ['src/components/CreateCategoryModal.jsx', 'src/components/NewColumnsModal.jsx', 'src/components/ExcelSyncConfirmModal.jsx']) {

@@ -1,19 +1,56 @@
-import { useRef, useState } from 'react';
-import { useFocusTrap } from '../hooks/useFocusTrap';
-import { COLORS } from '../theme';
+// src/components/SurveyCategoryMoveDialog.jsx
+//
+// Survey panel → Select → Move: pick the module the chosen categories move to.
+// On DialogCard, the app's one dialog look (owner 2026-10-26), with the hub
+// buttons in its footer; Enter submits (the card is a form).
+
+import { useState } from 'react';
+import BodyPortal from './BodyPortal';
+import DialogCard from './DialogCard.jsx';
+import ValueSelect from './ValueSelect.jsx';
+import { COLORS, Z_INDEX } from '../theme';
+
 export default function SurveyCategoryMoveDialog({ modules, sourceId, count, onMove, onClose }) {
   const [destination, setDestination] = useState('');
   const [error, setError] = useState('');
-  const ref = useRef(null); useFocusTrap(ref, true, { onEscape: onClose });
-  return <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 10002, display: 'grid', placeItems: 'center', background: COLORS.modal.overlay, backdropFilter: 'blur(8px)' }}>
-    <form ref={ref} role="dialog" aria-modal="true" aria-label="Move categories" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); const result = onMove(destination); if (result?.ok) onClose(); else setError(result?.reason || 'Could not move these categories.'); }} style={{ boxSizing: 'border-box', maxHeight: 'calc(100dvh - 40px)', overflowY: 'auto', background: COLORS.modal.surface, color: COLORS.modal.textPrimary, border: `1px solid ${COLORS.modal.border}`, borderRadius: 8, width: 380, maxWidth: '90vw', padding: 24 }}>
-      <h3 style={{ margin: '0 0 12px' }}>Move {count} {count === 1 ? 'category' : 'categories'}</h3>
-      <p style={{ fontSize: 13, color: COLORS.modal.textMuted }}>The categories and their Survey Markers move together. Their answers and page locations stay the same.</p>
-      <label style={{ display: 'grid', gap: 8, fontSize: 13 }}>Destination module<select aria-label="Destination module" value={destination} onChange={(event) => { setDestination(event.target.value); setError(''); }} style={{ background: COLORS.modal.panel, color: COLORS.modal.textPrimary, padding: 10, border: `1px solid ${COLORS.modal.borderStrong}`, borderRadius: 6 }}>
-        <option value="">Choose a module</option>{modules.filter((entry) => entry.id !== sourceId).map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
-      </select></label>
-      {error && <p role="alert" style={{ color: 'var(--danger)', fontSize: 13 }}>{error}</p>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}><button type="button" className="btn btn-default" onClick={onClose}>Cancel</button><button type="submit" className="btn btn-primary" disabled={!destination}>Move</button></div>
-    </form>
-  </div>;
+  const submit = (event) => {
+    event.preventDefault();
+    const result = onMove(destination);
+    if (result?.ok) onClose();
+    else setError(result?.reason || 'Could not move these categories.');
+  };
+
+  return (
+    <BodyPortal>
+      <DialogCard
+        as="form"
+        ariaLabel="Move categories"
+        title={`Move ${count} ${count === 1 ? 'category' : 'categories'}`}
+        message="The categories and their Survey Markers move together. Their answers and page locations stay the same."
+        onClose={onClose}
+        zIndex={Z_INDEX.modalOverlay}
+        cardProps={{ onSubmit: submit }}
+        footer={(
+          <>
+            <button type="button" className="hub-btn dialog-touch-pad" onClick={onClose}>Cancel</button>
+            <button type="submit" className="hub-btn hub-btn--primary dialog-touch-pad" disabled={!destination}>Move</button>
+          </>
+        )}
+      >
+        <div style={{ display: 'grid', gap: 14 }}>
+          <div style={{ display: 'grid', gap: 6, fontSize: 12, color: COLORS.modal.textMuted }}>
+            <span aria-hidden="true">Destination module</span>
+            <ValueSelect
+              label="Destination module"
+              value={destination}
+              placeholder="Choose a module"
+              options={modules.filter((entry) => entry.id !== sourceId).map((entry) => ({ value: entry.id, label: entry.name }))}
+              onChange={(next) => { setDestination(next); setError(''); }}
+            />
+          </div>
+          {error ? <p role="alert" style={{ margin: 0, color: 'var(--danger)', fontSize: 13 }}>{error}</p> : null}
+        </div>
+      </DialogCard>
+    </BodyPortal>
+  );
 }

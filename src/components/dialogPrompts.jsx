@@ -29,28 +29,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConfirmModal } from '../home/BulkModals';
-import { closeButtonStyle } from '../home/hubControls';
-import { Icon } from '../home/HubShell';
-import { C } from '../uiPalette';
-import { useFocusTrap } from '../hooks/useFocusTrap';
-import MotionPresence from './MotionPresence.jsx';
-import { useTooltip } from './Tooltip';
-
-// Literal hex colors mirror src/home/BulkModals.jsx: these overlays render
-// outside the `.survey-hub` root where the palette CSS variables aren't in
-// scope. Keep in sync with that file's `C` map.
-
-const overlay = {
-  position: 'fixed', inset: 0, background: C.scrim,
-  backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1300,
-  fontFamily: 'var(--font-ui)',
-};
-
-const cancelButtonStyle = {
-  background: 'transparent', border: 0, color: C.muted, padding: '6px 10px',
-  fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6,
-};
+import DialogCard from './DialogCard.jsx';
+import { DIALOG_FIELD_STYLE, DIALOG_LABEL_STYLE } from './DialogCard.jsx';
 
 /**
  * Themed stand-in for native `prompt()`.
@@ -68,27 +48,18 @@ export function PromptModal({
   placeholder = '',
   defaultValue = '',
   confirmLabel = 'OK',
+  zIndex,
   onSubmit,
   onCancel,
 }) {
-  const tip = useTooltip();
   const [value, setValue] = useState(defaultValue);
   const inputRef = useRef(null);
-  const cardRef = useRef(null);
 
   // Reset the field every time the dialog opens so a previous answer never
   // leaks into the next one.
   useEffect(() => {
     if (open) setValue(defaultValue);
   }, [open, defaultValue]);
-
-  // Accessibility (KAL-66): the shared modal primitive (src/hooks/useFocusTrap)
-  // like ConfirmModal — Tab stays inside, Escape cancels, the text field takes
-  // focus on open, and focus returns to whatever opened the dialog.
-  useFocusTrap(cardRef, open, { onEscape: onCancel });
-
-  // Closed: MotionPresence plays the exit of the last open card (motion.css).
-  if (!open) return <MotionPresence open={false} />;
 
   const submit = () => { onSubmit?.(value); };
 
@@ -97,68 +68,50 @@ export function PromptModal({
   // so a stray tap never throws the typing away.
   const onScrim = () => { if (value === defaultValue) onCancel?.(); };
 
+  // Design review 2026-10-27: the prompt had its own card (a boxed x, an ALL
+  // CAPS label, a small gold button). It now sits on the one dialog shell
+  // (DialogCard: KAL-66 focus trap, Escape cancels, focus goes back to the
+  // opener) with the shared field and hub buttons.
   return (
-    <MotionPresence open>
-    <div onClick={onScrim} style={overlay}>
-      <div
-        ref={cardRef}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={typeof title === 'string' && title ? title : 'Enter a value'}
-        style={{ width: 400, maxWidth: '92vw', background: C.card, border: `1px solid ${C.rule}`, borderRadius: 'var(--radius-dialog)', boxShadow: 'var(--shadow-dialog)', color: C.ink, overflow: 'hidden' }}
-      >
-        <div style={{ padding: '18px 18px 14px', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.015em' }}>{title}</div>
-            {message && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>{message}</div>}
-            {label && (
-              <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>
-                {label}
-              </div>
-            )}
-            <input
-              ref={inputRef}
-              className="dialog-prompt-input"
-              type="text"
-              aria-label={label || title || undefined}
-              value={value}
-              placeholder={placeholder}
-              onChange={(e) => setValue(e.target.value)}
-              // Enter submits, matching the native prompt()'s keyboard contract.
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
-              style={{
-                width: '100%', boxSizing: 'border-box', marginTop: label ? 0 : 14,
-                // A text field's edge is the only thing saying "type here", so
-                // it takes the identifying rule (tokens.css revision 4).
-                background: C.deep, border: `1px solid ${C.ruleStrong}`, borderRadius: 6,
-                color: C.ink, padding: '7px 10px', fontSize: 12.5, fontFamily: 'inherit',
-                outline: 'none',
-              }}
-            />
-          </div>
-          <button onClick={onCancel} {...tip('Close', 'below')} aria-label="Close" className="dialog-close-touch-pad" style={closeButtonStyle({ borderColor: C.ruleStrong, color: C.muted })}><Icon name="close" size={13} /></button>
-        </div>
-        <div style={{ padding: '12px 16px', borderTop: `1px solid ${C.rule}`, background: C.deep, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} className="dialog-touch-pad" style={cancelButtonStyle}>Cancel</button>
-          <button
-            className="dialog-touch-pad"
-            onClick={submit}
-            style={{ background: C.gold, color: 'var(--accent-text)', border: 0, borderRadius: 6, padding: '5px 14px', height: 28, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-    </MotionPresence>
+    <DialogCard
+      open={open}
+      title={title}
+      ariaLabel={typeof title === 'string' && title ? title : 'Enter a value'}
+      message={message}
+      onClose={onCancel}
+      onScrim={onScrim}
+      width={400}
+      zIndex={zIndex}
+      footer={(
+        <>
+          <button type="button" className="hub-btn dialog-touch-pad" onClick={onCancel}>Cancel</button>
+          <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={submit}>{confirmLabel}</button>
+        </>
+      )}
+    >
+      <label style={{ display: 'block', marginTop: message ? 2 : 0 }}>
+        {label && <span style={DIALOG_LABEL_STYLE}>{label}</span>}
+        <input
+          ref={inputRef}
+          className="dialog-prompt-input"
+          type="text"
+          aria-label={label || title || undefined}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => setValue(e.target.value)}
+          // Enter submits, matching the native prompt()'s keyboard contract.
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }}
+          style={DIALOG_FIELD_STYLE}
+        />
+      </label>
+    </DialogCard>
   );
 }
 
 /**
  * `const [askConfirm, confirmDialog] = useConfirmDialog();`
  *
- * `askConfirm({ title, message, confirmLabel, danger })` returns a Promise
+ * `askConfirm({ title, message, confirmLabel, danger, zIndex })` returns a Promise
  * that resolves `true` only when the user presses the primary button, and
  * `false` for every dismissal path (Cancel, ×, Escape, scrim click).
  * Render `confirmDialog` somewhere in the component's tree.
@@ -210,6 +163,7 @@ export function useConfirmDialog() {
       message={state?.message}
       confirmLabel={state?.confirmLabel}
       danger={!!state?.danger}
+      zIndex={state?.zIndex}
       onConfirm={() => settle(true)}
       onClose={() => settle(false)}
     />
@@ -221,7 +175,7 @@ export function useConfirmDialog() {
 /**
  * `const [askPrompt, promptDialog] = usePromptDialog();`
  *
- * `askPrompt({ title, message, label, placeholder, defaultValue, confirmLabel })`
+ * `askPrompt({ title, message, label, placeholder, defaultValue, confirmLabel, zIndex })`
  * returns a Promise resolving to the entered string (possibly '') on confirm,
  * or `null` on any dismissal — the same contract native `prompt()` had.
  */
@@ -261,6 +215,7 @@ export function usePromptDialog() {
       placeholder={state?.placeholder}
       defaultValue={state?.defaultValue ?? ''}
       confirmLabel={state?.confirmLabel}
+      zIndex={state?.zIndex}
       onSubmit={(value) => settle(value)}
       onCancel={() => settle(null)}
     />

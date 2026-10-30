@@ -24,7 +24,12 @@
 //   - Several marks picked: only what applies to every one of them
 //     (utils/selectionQuickBar.js planSelectionQuickBar).
 //   - Survey Markers: the template's entity swatches in place of colour.
-//   - The phone has its own selection strip; this bar is desktop layout only.
+//   - The phone has its own selection strip for colour and line, so there
+//     (`phone`) the bar holds only Duplicate and Delete, sized for a finger
+//     (owner 2026-10-28: a visible Delete, like Drawboard; long press still
+//     opens the full menu).
+import { isInTabBehind } from '../utils/tabBehind.js';
+import { resolveViewerOcclusionInsets } from '../utils/searchMatchNavigation.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from '../Icons';
@@ -87,13 +92,13 @@ function useSelectedItems() {
   return useMemo(() => [...byPage.values()].flat(), [byPage]);
 }
 
-// Every opened document tab keeps its viewer mounted (AppShell hides the
-// others with display: none), so a plain querySelector can land in a hidden
+// Every opened document tab keeps its viewer mounted (a tab behind keeps real
+// sizes, utils/tabBehind.js), so a plain querySelector can land in a hidden
 // tab and the bar never showed on any tab but the first opened (batch-6
 // verify). Prefer the element that is on screen.
 const shownElement = (selector) => {
   const all = document.querySelectorAll(selector);
-  for (const element of all) if (element.getClientRects().length > 0) return element;
+  for (const element of all) if (!isInTabBehind(element) && element.getClientRects().length > 0) return element;
   return all[0] || null;
 };
 
@@ -105,17 +110,28 @@ const visibleRect = (element) => {
 };
 
 /** The viewer area the bar must stay inside: under the tool bars. */
-function viewerBounds() {
+function viewerBounds(phone = false) {
   const container = shownElement('[data-testid="pdf-container"]')
     || shownElement('[data-mobile-pdf-surface="false"]');
   const rect = container?.getBoundingClientRect?.();
   let top = Math.max(rect ? rect.top : 0, 0);
-  const bottom = Math.min(rect ? rect.bottom : window.innerHeight, window.innerHeight);
+  let bottom = Math.min(rect ? rect.bottom : window.innerHeight, window.innerHeight);
   const host = document.getElementById('chrome-sub-toolbar-host');
   const hostRect = host && getComputedStyle(host).display !== 'none' ? host.getBoundingClientRect() : null;
   if (hostRect && hostRect.height > 0 && hostRect.bottom < bottom) top = Math.max(top, hostRect.bottom);
-  const left = Math.max(rect ? rect.left : 0, 0);
-  const right = Math.min(rect ? rect.right : window.innerWidth, window.innerWidth);
+  let left = Math.max(rect ? rect.left : 0, 0);
+  let right = Math.min(rect ? rect.right : window.innerWidth, window.innerWidth);
+  if (phone && rect) {
+    // The phone's tool strip, tool rail, dock and sheets lie over the page.
+    const occluders = Array.from(document.querySelectorAll('[data-viewer-occluder], .mobile-pdf-tools, .mobile-pdf-properties'))
+      .filter((node) => !isInTabBehind(node) && node.getClientRects().length > 0)
+      .map((node) => node.getBoundingClientRect());
+    const insets = resolveViewerOcclusionInsets(rect, occluders);
+    top = Math.max(top, rect.top + insets.top);
+    bottom = Math.min(bottom, rect.bottom - insets.bottom);
+    left = Math.max(left, rect.left + insets.left);
+    right = Math.min(right, rect.right - insets.right);
+  }
   return { left, top, right, bottom };
 }
 
@@ -138,12 +154,16 @@ function readSelection(items) {
   const rects = [];
   const handles = [];
   let gesture = false;
+  let gestureLayer = null;
   let inert = false;
   let locked = false;
   for (const page of pages) {
     const svg = pageLayer(page);
     if (!svg) continue;
-    if (svg.getAttribute('data-selection-gesture') === 'true') gesture = true;
+    if (svg.getAttribute('data-selection-gesture') === 'true') {
+      gesture = true;
+      gestureLayer = gestureLayer || svg;
+    }
     if (svg.getAttribute('data-selection-chrome-inert') === 'true') inert = true;
     if (svg.querySelector('[data-selection-lock-badge]')) locked = true;
     svg.querySelectorAll('.svg-selection-overlay').forEach((overlay) => {
@@ -179,8 +199,20 @@ function readSelection(items) {
     const rect = visibleRect(field);
     if (rect) open.push(rect);
   });
-  return { frame: selectionFrameRect(rects), gesture, inert, locked, ...selectionKeepOut({ handles, extra: open }) };
+  return { frame: selectionFrameRect(rects), gesture, gestureLayer, inert, locked, ...selectionKeepOut({ handles, extra: open }) };
 }
+
+// A move, resize or rotate hides the bar for its whole length, yet every frame
+// of it rewrites the page and wakes the placement pass. While the same pick's
+// page layer is still mid-gesture, nothing a full read finds can show the bar,
+// and that read scans the whole viewer (a document-wide query per page, three
+// more over every mark of the layer): about 2 ms a frame on a dense sheet.
+// So the pass only checks that one flag until the gesture ends.
+const gestureStillHeld = (held, items) => Boolean(held
+  && held.items === items
+  && held.layer.isConnected
+  && held.layer.getAttribute('data-selection-gesture') === 'true'
+  && held.layer.getClientRects().length > 0);
 
 const sameLook = (a, b) => a.visible === b.visible && a.side === b.side && a.locked === b.locked && a.readOnly === b.readOnly;
 
@@ -193,6 +225,10 @@ export default function SelectionQuickBar({
   entities = null,
   surveyMarkers = null,
   onPickEntity,
+  // Comments on marks (Nightly): start a thread on the one picked mark.
+  onComment = null,
+  // The phone layout: Duplicate and Delete only (see the header).
+  phone = false,
   tip,
 }) {
   const contextTip = useTooltip();
@@ -209,25 +245,40 @@ export default function SelectionQuickBar({
   const active = Boolean(enabled && items.length > 0 && !editingText);
   const activeRef = useRef(active);
   activeRef.current = active;
+  const phoneRef = useRef(phone);
+  phoneRef.current = phone;
 
   // One placement pass: read the selection, place the bar, show or hide it.
   const frameRef = useRef(0);
   const turningRef = useRef(false);
+  const heldGestureRef = useRef(null);
   const place = useCallback(() => {
     frameRef.current = 0;
     const bar = barRef.current;
     if (!bar) return;
     const readOnly = document.body?.getAttribute('data-readonly') === 'true';
     let next = { visible: false, side: 'above', locked: false, readOnly };
+    if (activeRef.current && !readOnly && gestureStillHeld(heldGestureRef.current, itemsRef.current)) {
+      // Hidden, as the full read would leave it; the pick (so its lock) is
+      // the one that read saw when the gesture started.
+      bar.setAttribute('data-visible', 'false');
+      setLook((current) => {
+        const held = { ...current, visible: false, side: 'above', readOnly };
+        return sameLook(current, held) ? current : held;
+      });
+      return;
+    }
+    heldGestureRef.current = null;
     if (activeRef.current && !readOnly) {
       const selection = readSelection(itemsRef.current);
+      if (selection.gestureLayer) heldGestureRef.current = { layer: selection.gestureLayer, items: itemsRef.current };
       next.locked = selection.locked;
       if (selection.frame && !selection.gesture && !turningRef.current && !selection.inert) {
         const placed = computeSelectionQuickBarPosition({
           selectionRect: selection.frame,
           keepOut: selection.keepOut,
           preferBelow: selection.preferBelow,
-          bounds: viewerBounds(),
+          bounds: viewerBounds(phoneRef.current),
           barWidth: bar.offsetWidth,
           barHeight: bar.offsetHeight,
         });
@@ -434,7 +485,9 @@ export default function SelectionQuickBar({
   };
 
   const groups = [];
-  if (plan?.colour === 'dots' && paint) {
+  if (phone) {
+    // Colour and line live on the phone's own strip.
+  } else if (plan?.colour === 'dots' && paint) {
     groups.push(
       <span key="colour" className="selection-quick-bar__group" data-annotation-color-trigger>
         <QuickColourDots
@@ -490,7 +543,7 @@ export default function SelectionQuickBar({
       />,
     );
   }
-  if (plan?.width || plan?.style) {
+  if (!phone && (plan?.width || plan?.style)) {
     groups.push(
       <span key="line" className="selection-quick-bar__group" data-selection-quick-line>
         <button
@@ -511,11 +564,12 @@ export default function SelectionQuickBar({
   }
   groups.push(
     <span key="actions" className="selection-quick-bar__group">
+      {onComment && items.length === 1 && button('Comment', 'comment', () => onComment(items[0]), { 'data-selection-quick-comment': 'true' })}
       {plan?.duplicate && button('Duplicate', 'duplicate', () => runKey('duplicate'))}
       {plan?.remove && button('Delete', 'trash', () => runKey('delete'))}
     </span>,
   );
-  if (plan?.more) {
+  if (plan?.more && !phone) {
     groups.push(
       <span key="more" className="selection-quick-bar__group">
         {button('More', 'more', openMore, { 'aria-haspopup': 'menu' })}
@@ -578,7 +632,7 @@ export default function SelectionQuickBar({
     </div>
   ) : null;
 
-  // The phone layout (and a viewer that is not on screen) draws nothing.
+  // A viewer that is not on screen draws nothing.
   if (typeof document === 'undefined' || !enabled) return null;
   return createPortal(
     <div
@@ -587,6 +641,7 @@ export default function SelectionQuickBar({
       data-selection-quick-bar="true"
       data-visible={visible ? 'true' : 'false'}
       data-side={look.side}
+      data-phone={phone ? 'true' : undefined}
       role="toolbar"
       aria-label="Selection actions"
       aria-hidden={visible ? undefined : 'true'}

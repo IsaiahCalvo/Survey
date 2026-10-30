@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveViteConfigEnv } from './viteEnvConfig.mjs';
+import { pdfjsAssetsPlugin } from './scripts/vite-pdfjs-assets.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -308,6 +309,9 @@ export default defineConfig(({ mode }) => {
       debugFixturesPlugin(),
       spikeLogSavePlugin(),
       devAuthBootstrapPlugin(env, devAuthBootstrapToken, devAuthRelay),
+      // pdf.js image decoders + standard fonts (JPEG 2000 / JBIG2 scans did
+      // not draw without them; launch audit 2026-10-30). src/utils/pdfjsAssets.js
+      pdfjsAssetsPlugin(),
     ],
     server: {
       // Port is set via CLI flag from find-port.js

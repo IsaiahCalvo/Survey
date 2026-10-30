@@ -89,16 +89,19 @@
   font-family: var(--font-ui);
 }
 
+/* Design review 2026-10-27: the one dialog x (DialogCard's hub-icon-btn: 24px,
+   no fill or box, a 13px glyph in --text-3). It was a filled, boxed 32px
+   square, unlike every other dialog's. */
 .account-settings-close {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 0;
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
   color: var(--text-3);
   padding: 0;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -107,14 +110,9 @@
   font-family: inherit;
 }
 
-/* UX 2026-09-22 (revision 4): the hover fill, the brighter glyph and the scale
-   already answer the pointer. The edge used to jump to the identifying
-   --border-strong as well, which tokens.css reserves for a control whose edge
-   is its only definition — a filled close button is not one. */
+/* Hover like the hub icon buttons: the glyph brightens, nothing else moves. */
 .account-settings-close:hover {
-  background: var(--hover);
   color: var(--text-1);
-  transform: scale(1.05);
 }
 
 .account-settings-body {
@@ -218,6 +216,12 @@
   letter-spacing: -0.02em;
 }
 
+.account-pref-row + h3 {
+  /* A second heading in one section (Annotations: Snapping, then Text boxes)
+     needs room above it; it sat right under the row before. */
+  margin-top: 28px;
+}
+
 .account-section-description {
   font-size: 12.5px;
   color: var(--text-3);
@@ -264,12 +268,13 @@
   margin-bottom: 12px;
 }
 
+/* The dialog field label (DialogCard DIALOG_LABEL_STYLE): 11px, muted,
+   sentence case. No tracked capitals anywhere (owner 2026-10-02; the launch
+   audit found Settings still shouting FIRST NAME / EMAIL). */
 .account-form-group label {
-  font-size: 10.5px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 /* A text field's edge is the only thing saying "type here", so it carries the
@@ -383,6 +388,14 @@
   gap: 16px;
 }
 
+.account-pref-row + .account-pref-row {
+  margin-top: 18px;
+}
+
+.account-pref-snap-angle {
+  flex-shrink: 0;
+}
+
 .account-pref-copy {
   min-width: 0;
 }
@@ -443,7 +456,9 @@
 }
 
 .account-switch[aria-checked='true'] .account-switch-track {
-  background: var(--text-2);
+  /* On is gold, like the page grid switches (design review 2026-10-27: a
+     grey "on" read as off). */
+  background: var(--accent);
   box-shadow: none;
 }
 
@@ -534,8 +549,10 @@
   cursor: not-allowed;
 }
 
+/* Launch audit 2026-10-30: General mixed short and full-width buttons. Every
+   action on the page is now its own width, lined up on the left. */
 .account-btn-secondary-full {
-  width: 100%;
+  align-self: flex-start;
 }
 
 .account-btn-danger {
@@ -889,7 +906,7 @@
     padding-bottom: calc(18px + var(--native-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
   }
 
-  /* The 32px close keeps its look; a transparent pad makes it 44px to a finger. */
+  /* The 24px close keeps its look; a transparent pad makes it 44px to a finger. */
   .account-settings-close {
     position: relative;
   }
@@ -897,7 +914,7 @@
   .account-settings-close::after {
     content: '';
     position: absolute;
-    inset: -7px;
+    inset: -10px;
   }
 
   .account-settings-body {

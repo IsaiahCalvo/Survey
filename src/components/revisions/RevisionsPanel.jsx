@@ -36,6 +36,7 @@
 // while the tab is hidden), and every read is dropped if you switched
 // documents meanwhile. Named versions stay hidden until rebuilt (w55 defect 3).
 
+import { queryFrontTab } from '../../utils/tabBehind.js';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { UndoToast } from '../collab/UndoToast.jsx';
@@ -78,6 +79,7 @@ import {
 import { historyAnnotationBox, historyAnnotationInkBox, historyBulkGhosts, historyRowGhostAnnotation, historyUnionBox } from '../../utils/historyGeometry.js';
 import { createHistoryPageOverlay, findMarkElements, measureMarkBox, measureMarksBox } from './historyPageOverlay.js';
 import { attachTooltip, useTooltip } from '../Tooltip';
+import { usePromptDialog } from '../dialogPrompts.jsx';
 
 const DRAWER_WIDTH = 360;
 const HISTORY_PANEL_STYLE_ID = 'document-history-panel-style';
@@ -185,7 +187,8 @@ function ensureHistoryPanelStyle() {
     .dh-peek > span { padding: 0 6px 0 4px; color: var(--text-3); font-size: 11px; }
     .dh-peek button { border: 0; background: none; color: var(--text-3); font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 5px; cursor: pointer; }
     .dh-peek button.on { background: var(--surface-3); color: var(--text-1); }
-    .dh-empty { padding: 24px var(--dh-edge); color: var(--text-3); font-size: 13px; line-height: 1.5; }
+    /* One empty line for every side panel (design review 2026-10-27): centred, 32px down, as Search and Bookmarks. */
+    .dh-empty { padding: 32px var(--dh-edge); text-align: center; color: var(--text-3); font-size: 13px; line-height: 1.4; }
     .dh-more { display: block; margin: 6px auto 10px; padding: 6px 10px; border: 0; background: none; color: var(--text-3);
       font: inherit; font-size: 12px; cursor: pointer; }
     .dh-more:hover { color: var(--text-1); }
@@ -295,6 +298,9 @@ export default function RevisionsPanel({
   const [err, setErr] = useState(null);
   const [viewingRevision, setViewingRevision] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Themed prompt for the revision label (design review 2026-10-27: it was
+  // the browser's own prompt box).
+  const [askPrompt, promptDialog] = usePromptDialog();
   const [statusMsg, setStatusMsg] = useState(null);
   // "Restored vN · Undo": Undo restores the auto revision saved just before.
   const { toast: restoreUndoToast, enqueue: enqueueRestoreUndo, dismiss: dismissRestoreUndo } = useUndoToast();
@@ -581,7 +587,13 @@ export default function RevisionsPanel({
 
   const handleSave = useCallback(async () => {
     if (!documentId || busy) return;
-    const label = window.prompt('Label for this revision (optional):', '');
+    const label = await askPrompt({
+      title: 'Save a version',
+      label: 'Label (optional)',
+      placeholder: 'e.g. Sent to client',
+      confirmLabel: 'Save version',
+      zIndex: 10000,
+    });
     if (label === null) return; // user cancelled
     setBusy(true);
     setStatusMsg(null);
@@ -594,7 +606,7 @@ export default function RevisionsPanel({
     } finally {
       setBusy(false);
     }
-  }, [documentId, refresh, busy]);
+  }, [documentId, refresh, busy, askPrompt]);
 
   const handleOpenReadOnly = useCallback(async (rev) => {
     if (busy) return;
@@ -846,7 +858,7 @@ export default function RevisionsPanel({
       if (clickSeq !== activityClickSeqRef.current) return; // a newer selection owns the page marks
       const measured = live && markId ? measureMarkBox(document, markId, pageNumber) : null;
       const pageReady = typeof document !== 'undefined'
-        && document.querySelector(`svg[data-svg-annotation-layer="${pageNumber}"]`);
+        && queryFrontTab(`svg[data-svg-annotation-layer="${pageNumber}"]`);
       if (!pageReady || (live && !measured && attempt < 4)) {
         if (attempt < 8) {
           window.setTimeout(() => draw(attempt + 1), 120);
@@ -1854,6 +1866,7 @@ export default function RevisionsPanel({
 
   return (
     <>
+      {promptDialog}
       {/* Launcher */}
       <button
         type="button"

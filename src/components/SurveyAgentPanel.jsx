@@ -32,13 +32,19 @@ import { startNativeHandsFree } from '../agent/nativeHandsFree.js';
 import { loadNativeSpeech } from '../agent/nativeSpeechLoader.js';
 import { isSureHearing, sharesMicSafely, startDeviceHearing } from '../agent/deviceHearing.js';
 import { keepScreenAwake } from '../agent/keepAwake.js';
-import { levelFromRms, setMicLevel, startStreamMeter } from '../agent/micLevel.js';
-import { AGENT_LANGS, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays, readAgentLang, writeAgentLang } from '../agent/agentLanguage.js';
+import { getMicLevel, levelFromRms, setMicLevel, startStreamMeter, subscribeMicLevel } from '../agent/micLevel.js';
+import { AGENT_LANG, CANCEL_WORDS, SHUTTER_WORDS, agentLocale, agentSays } from '../agent/agentLanguage.js';
 import { dropWaiting, keepWaiting, loadWaiting } from '../agent/waitingStore.js';
 import { useAudioRecorder } from './SurveyMediaCapture';
 import SurveyAgentCamera from './SurveyAgentCamera';
 import { useTooltip } from './Tooltip';
+import AgentLearnedDialog from './AgentLearnedDialog.jsx';
+import { createAgentMemoryStore } from '../agent/agentMemory.js';
 import './surveyAgentPanel.css';
+
+// What the agent learned per project (names, note wording), shared by every
+// panel so the item lookups see what a save just added.
+const agentMemory = createAgentMemoryStore(supabase);
 
 const blobToBase64 = (blob) => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -91,6 +97,44 @@ const ArrowUpIcon = () => (
     <path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" />
   </svg>
 );
+
+// Hands-free (ChatGPT's voice-mode button): a small sound wave.
+const WaveIcon = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+    <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
+  </svg>
+);
+const StopIcon = () => (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
+    <rect x="5" y="5" width="14" height="14" rx="2.5" />
+  </svg>
+);
+
+// The live waveform the typing line turns into while the mic records: the
+// newest loudness readings scroll in from the right. Bars are written to the
+// DOM straight from the level feed, so the page does not re-render per frame.
+const WAVE_BARS = 40;
+function MicWaveform() {
+  const barsRef = useRef(null);
+  useEffect(() => {
+    const levels = new Array(WAVE_BARS).fill(0);
+    let latest = getMicLevel();
+    const off = subscribeMicLevel((v) => { latest = v; });
+    const timer = setInterval(() => {
+      levels.shift();
+      levels.push(latest);
+      const bars = barsRef.current?.children;
+      if (!bars) return;
+      for (let i = 0; i < bars.length; i += 1) bars[i].style.transform = `scaleY(${Math.max(0.12, levels[i]).toFixed(3)})`;
+    }, 70);
+    return () => { off(); clearInterval(timer); };
+  }, []);
+  return (
+    <div className="survey-agent__wave" ref={barsRef} aria-hidden="true">
+      {Array.from({ length: WAVE_BARS }, (_, i) => <span key={i} />)}
+    </div>
+  );
+}
 
 // A tapped mic sends once the person has been quiet this long after talking.
 const TAP_END_SILENCE_MS = 1600;
@@ -148,11 +192,7 @@ export default function SurveyAgentPanel({
   // Spoken replies: the server's natural voice when it has one, else the
   // device's own voice.
   const voice = useMemo(() => createAgentVoice({ call: rawCall }), [rawCall]);
-  // English or Spanish: how it hears, answers and speaks.
-  const [lang, setLang] = useState(() => readAgentLang());
-  const langRef = useRef(lang);
-  langRef.current = lang;
-  const speak = (text, opts = {}) => voice.speak(text, { locale: agentLocale(langRef.current), ...opts });
+  const speak = (text, opts = {}) => voice.speak(text, { locale: agentLocale(), ...opts });
   const stopSpeaking = voice.stop;
   const attachmentsRef = useRef(new Map());
   const [status, setStatus] = useState(null);
@@ -160,7 +200,7 @@ export default function SurveyAgentPanel({
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const undoLastRef = useRef(() => null);
-  const toolbox = useMemo(() => createSurveyAgentToolbox({ attachments: attachmentsRef.current, undoLastTurn: () => undoLastRef.current(), getDocument: activeAgentDocument }), []);
+  const toolbox = useMemo(() => createSurveyAgentToolbox({ attachments: attachmentsRef.current, undoLastTurn: () => undoLastRef.current(), getDocument: activeAgentDocument, memory: agentMemory }), []);
   // Messages said or typed with no signal, sent in order once it is back.
   const queueRef = useRef([]);
   const [queued, setQueued] = useState(0);
@@ -256,23 +296,6 @@ export default function SurveyAgentPanel({
     photoResolveRef.current?.(null);
   }, []);
 
-  const toggleLang = () => {
-    const next = lang === 'es' ? 'en' : 'es';
-    setLang(next);
-    langRef.current = next;
-    writeAgentLang(next);
-    // Hands-free: the device listens in the new language from now on.
-    if (deviceHearingRef.current) {
-      deviceHearingRef.current.stop();
-      deviceHearingRef.current = startDeviceHearing({ lang: agentLocale(next) });
-    }
-    if (micRef.current?.native) {
-      micRef.current.stop();
-      micRef.current = null;
-      startHandsFreeRef.current();
-    }
-  };
-
   const toggleSpeak = () => {
     const next = !speakReplies;
     if (next) unlockPlayback();
@@ -284,6 +307,8 @@ export default function SurveyAgentPanel({
   const push = (entry) => setEntries((list) => [...list, { id: newId('e'), ...entry }]);
   // 'sending' | 'sent' | 'failed' | null, for the Send voice log button.
   const [logState, setLogState] = useState(null);
+  // "What Survey learned" for the drawing's project.
+  const [learnedOpen, setLearnedOpen] = useState(false);
   sendLogRef.current = async (reason = 'manual') => {
     if (reason === 'manual') setLogState('sending');
     const release = typeof __BUILD_STAMP__ !== 'undefined' ? __BUILD_STAMP__ : null;
@@ -321,6 +346,7 @@ export default function SurveyAgentPanel({
       getDocument: activeAgentDocument,
       requestPhoto,
       walkItems: () => [...walkItemsRef.current],
+      memory: agentMemory,
     });
     try {
       const result = await runSurveyAgentTurn({
@@ -331,7 +357,7 @@ export default function SurveyAgentPanel({
         answerValues: answerSetFor(bridge.template).map((a) => a.value),
         typedLines: templateHasTypedItems(bridge.template),
         annotations,
-        lang: langRef.current,
+        lang: AGENT_LANG,
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
       toolbox.settle(result.changes);
@@ -491,7 +517,7 @@ export default function SurveyAgentPanel({
     const busy = waitReasonRef.current === 'busy_try_again';
     const first = !savedNoticeRef.current;
     if (!busy) savedNoticeRef.current = true;
-    speakOutRef.current(agentSays(langRef.current, busy ? 'savedBusy' : first ? 'savedFirst' : 'saved'), { here: true });
+    speakOutRef.current(agentSays(busy ? 'savedBusy' : first ? 'savedFirst' : 'saved'), { here: true });
   };
   const enqueueRef = useRef(enqueue);
   enqueueRef.current = enqueue;
@@ -550,7 +576,7 @@ export default function SurveyAgentPanel({
     try {
       const audio = await blobToBase64(file);
       const b = surveyAgentBridge.current;
-      const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, lang: langRef.current, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
+      const out = await call({ action: 'transcribe', audio, mime: file.type, duration_ms: durationMs, lang: AGENT_LANG, hints: transcriptionHints(b, { recent: recentItemsRef.current }) });
       const heard = snapItemNames(cleanTranscript(out?.text), Object.values(b?.markers || {}).map((m) => m?.name));
       voiceLog.event('heard', { source: 'server', text: heard });
       return heard;
@@ -756,7 +782,7 @@ export default function SurveyAgentPanel({
       return;
     }
     if (unsure) {
-      if (speakRef.current) speak(agentSays(langRef.current, 'sayAgain')).catch(() => {});
+      if (speakRef.current) speak(agentSays('sayAgain')).catch(() => {});
       return;
     }
     joinerRef.current.add({ text, cutIn: Boolean(cutIn) });
@@ -780,7 +806,7 @@ export default function SurveyAgentPanel({
       micRef.current = speech
         ? await startNativeHandsFree({
           speech,
-          lang: agentLocale(langRef.current),
+          lang: agentLocale(),
           onText: (text, info) => onNativeTextRef.current(text, info),
           onHearing: (on) => onHearingChange(on),
           onBargeIn: () => stopSpeaking(),
@@ -795,7 +821,7 @@ export default function SurveyAgentPanel({
         onLevel: (v) => setMicLevel(levelFromRms(v)),
       });
       voiceLog.event('mic_started', { native: Boolean(micRef.current.native) });
-      if (!micRef.current.native) deviceHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
+      if (!micRef.current.native) deviceHearingRef.current = startDeviceHearing({ lang: agentLocale() });
       awakeRef.current?.release();
       awakeRef.current = keepScreenAwake();
       handsFreeRef.current = true;
@@ -828,6 +854,13 @@ export default function SurveyAgentPanel({
   };
 
   const speechMeterRef = useRef(null);
+  // Cancel: stop hearing and drop what was heard, with nothing sent.
+  const cancelBrowserSpeech = () => {
+    const rec = speechRef.current;
+    if (!rec) return;
+    rec.cancelled = true;
+    try { rec.abort(); } catch { /* already stopped */ }
+  };
   const toggleBrowserSpeech = () => {
     const Recognition = browserSpeech();
     if (!Recognition) return;
@@ -836,7 +869,7 @@ export default function SurveyAgentPanel({
       return;
     }
     const rec = new Recognition();
-    rec.lang = agentLocale(langRef.current);
+    rec.lang = agentLocale();
     rec.interimResults = true;
     rec.continuous = true;
     let finalText = '';
@@ -855,6 +888,7 @@ export default function SurveyAgentPanel({
       speechMeterRef.current?.stop();
       speechMeterRef.current = null;
       setListening(false);
+      if (rec.cancelled) { setDraft(''); return; }
       // Send what is in the box, so a word fixed while listening is kept.
       const typed = draftRef.current.trim();
       if (typed || finalText.trim()) sendRef.current(typed || finalText);
@@ -885,7 +919,7 @@ export default function SurveyAgentPanel({
   const startTalk = () => {
     if (recorder.state !== 'idle') return;
     pttHearingRef.current?.stop();
-    pttHearingRef.current = startDeviceHearing({ lang: agentLocale(langRef.current) });
+    pttHearingRef.current = startDeviceHearing({ lang: agentLocale() });
     recorder.start();
   };
   // Let go before the mic is open (the permission prompt): send once it is.
@@ -1023,6 +1057,13 @@ export default function SurveyAgentPanel({
   }, [view, host, onClose]);
 
   const thinking = busy || transcribing;
+  // The right-hand button is hands-free until there is something to send.
+  // While hands-free is on, typed words or a file get a Send beside Stop, so
+  // they can go without ending the voice session (Codex review on #1199).
+  const handsFreeAvailable = Boolean(status?.transcription) && canHandsFree();
+  const hasContent = Boolean(draft.trim()) || pendingFiles.length > 0;
+  const showSend = hasContent || (!handsFree && !handsFreeAvailable);
+  const showHandsFree = handsFree || (handsFreeAvailable && !showSend);
   const micHearing = handsFree ? livePhase === 'hearing' : pttHearing || listening;
   const panel = (
     <section
@@ -1036,40 +1077,21 @@ export default function SurveyAgentPanel({
       <header className="survey-agent__head">
         <span className="survey-agent__badge" aria-hidden="true"><SparkleIcon /></span>
         <span className="survey-agent__title">Survey agent <span className="survey-agent__beta">Beta</span></span>
-        {status?.transcription && canHandsFree() && (
+        {logState !== null || entries.length > 0 ? (
           <button
             type="button"
-            className="survey-agent__pill survey-agent__handsfree"
-            aria-pressed={handsFree}
-            aria-label={handsFree ? 'Stop hands-free' : 'Hands-free'}
-            disabled={!ready && !handsFree}
-            onClick={handsFree ? stopHandsFree : startHandsFree}
+            className="survey-agent__log"
+            disabled={logState === 'sending'}
+            onClick={() => sendLogRef.current('manual')}
           >
-            <span className="survey-agent__pill-dot" aria-hidden="true" />
-            {handsFree ? 'Stop' : 'Hands-free'}
+            {logState === 'sent' ? 'Voice log sent' : logState === 'failed' ? 'Could not send. Try again' : logState === 'sending' ? 'Sending…' : 'Send voice log'}
           </button>
-        )}
-        <button
-          type="button"
-          className="survey-agent__pill"
-          aria-label={`Language: ${AGENT_LANGS[lang].label}`}
-          {...tip('English or Spanish', 'left')}
-          onClick={toggleLang}
-        >
-          {AGENT_LANGS[lang].short}
-        </button>
-        {canSpeakReplies() && (
-          <button
-            type="button"
-            className="survey-agent__icon"
-            aria-pressed={speakReplies}
-            aria-label={speakReplies ? 'Voice on' : 'Voice off'}
-            {...tip(speakReplies ? 'Replies are read out. Tap to stop.' : 'Replies are not read out. Tap to hear them.', 'left')}
-            onClick={toggleSpeak}
-          >
-            <SpeakerIcon muted={!speakReplies} />
+        ) : null}
+        {surveyAgentBridge.current?.projectId ? (
+          <button type="button" className="survey-agent__log" onClick={() => setLearnedOpen(true)}>
+            Learned
           </button>
-        )}
+        ) : null}
         <button type="button" className="survey-agent__icon" aria-label={host ? 'Back to Survey' : 'Close Survey agent'} onClick={onClose}>
           <Icon name="close" size={16} color="currentColor" />
         </button>
@@ -1176,34 +1198,62 @@ export default function SurveyAgentPanel({
             hidden
             onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
           />
-          <textarea
-            ref={inputRef}
-            className="survey-agent__input"
-            rows={1}
-            value={draft}
-            placeholder={recording ? (micHearing ? 'Hearing you...' : 'Listening...') : handsFree ? 'Hands-free is on. Just talk.' : 'Ask, or say what you see'}
-            aria-label="Message the Survey agent"
-            disabled={!ready}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); unlockPlayback(); sendAndSpeak(draft); }
-            }}
-          />
+          {/* Owner 2026-10-26 (after ChatGPT's phone chat box): while the
+              mic records, the typing line turns into a live waveform. */}
+          {recording ? (
+            <div className="survey-agent__wave-row" role="status" aria-label={micHearing ? 'Hearing you' : 'Listening'}>
+              <MicWaveform />
+              {listening && draft ? <span className="survey-agent__wave-text">{draft.length > 60 ? `…${draft.slice(-60)}` : draft}</span> : null}
+            </div>
+          ) : (
+            <textarea
+              ref={inputRef}
+              className="survey-agent__input"
+              rows={1}
+              value={draft}
+              placeholder={handsFree ? 'Hands-free is on. Just talk.' : 'Ask, or say what you see'}
+              aria-label="Message the Survey agent"
+              disabled={!ready}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); unlockPlayback(); sendAndSpeak(draft); }
+              }}
+            />
+          )}
+          {/* One row of tools inside the box: attach and read-aloud on the
+              left; talk, then hands-free (or Send once there is something to
+              send) on the right. Recording swaps the left side for Cancel. */}
           <div className="survey-agent__tools">
-            <button type="button" className="survey-agent__icon" aria-label="Add photos or files" {...tip('Add photos or files', 'left')} disabled={!ready} onClick={() => fileInputRef.current?.click()}>
-              <Icon name="paperclip" size={18} color="currentColor" />
-            </button>
-            <span className="survey-agent__spacer" />
-            {logState !== null || entries.length > 0 ? (
+            {recording && !handsFree ? (
               <button
                 type="button"
-                className="survey-agent__log"
-                disabled={logState === 'sending'}
-                onClick={() => sendLogRef.current('manual')}
+                className="survey-agent__icon"
+                aria-label="Cancel"
+                {...tip('Cancel', 'right')}
+                onClick={() => { if (listening) cancelBrowserSpeech(); else cancelTalk(); }}
               >
-                {logState === 'sent' ? 'Voice log sent' : logState === 'failed' ? 'Could not send. Try again' : logState === 'sending' ? 'Sending…' : 'Send voice log'}
+                <Icon name="close" size={18} color="currentColor" />
               </button>
-            ) : null}
+            ) : (
+              <>
+                <button type="button" className="survey-agent__icon" aria-label="Add photos or files" {...tip('Add photos or files', 'right')} disabled={!ready} onClick={() => fileInputRef.current?.click()}>
+                  <Icon name="paperclip" size={18} color="currentColor" />
+                </button>
+                {canSpeakReplies() && (
+                  <button
+                    type="button"
+                    className="survey-agent__icon"
+                    aria-pressed={speakReplies}
+                    aria-label={speakReplies ? 'Read replies aloud: on' : 'Read replies aloud: off'}
+                    {...tip(speakReplies ? 'Replies are read aloud. Tap to stop.' : 'Replies are not read aloud. Tap to hear them.', 'right')}
+                    onClick={toggleSpeak}
+                  >
+                    <SpeakerIcon muted={!speakReplies} />
+                  </button>
+                )}
+              </>
+            )}
+            <span className="survey-agent__spacer" />
             {canTalk && (
               <button
                 type="button"
@@ -1238,18 +1288,33 @@ export default function SurveyAgentPanel({
                 onClick={(e) => { if (!holdable || e.detail === 0) toggleTalk(); }}
               >
                 <span className="survey-agent__mic-ring" aria-hidden="true" />
-                <Icon name="mic" size={18} color="currentColor" />
+                {recording ? <ArrowUpIcon /> : <Icon name="mic" size={18} color="currentColor" />}
               </button>
             )}
-            <button
-              type="submit"
-              className="survey-agent__send"
-              aria-label="Send"
-              {...tip('Send', 'left')}
-              disabled={!ready || thinking || (!draft.trim() && !pendingFiles.length)}
-            >
-              <ArrowUpIcon />
-            </button>
+            {!(recording && !handsFree) && showSend && (
+              <button
+                type="submit"
+                className="survey-agent__send"
+                aria-label="Send"
+                {...tip('Send', 'left')}
+                disabled={!ready || thinking || (!draft.trim() && !pendingFiles.length)}
+              >
+                <ArrowUpIcon />
+              </button>
+            )}
+            {!(recording && !handsFree) && showHandsFree && (
+              <button
+                type="button"
+                className={`survey-agent__send survey-agent__handsfree${handsFree ? ' is-on' : ''}`}
+                aria-pressed={handsFree}
+                aria-label={handsFree ? 'Stop hands-free' : 'Hands-free'}
+                {...tip(handsFree ? 'Stop hands-free' : 'Hands-free: just talk, hear the reply, talk again', 'left')}
+                disabled={!ready && !handsFree}
+                onClick={handsFree ? stopHandsFree : startHandsFree}
+              >
+                {handsFree ? <StopIcon /> : <WaveIcon />}
+              </button>
+            )}
           </div>
           {holdUi.holding && (
             <span className="survey-agent__hold-hint" role="status">
@@ -1258,6 +1323,14 @@ export default function SurveyAgentPanel({
           )}
         </div>
       </form>
+      {learnedOpen && surveyAgentBridge.current?.projectId ? (
+        <AgentLearnedDialog
+          store={agentMemory}
+          projectId={surveyAgentBridge.current.projectId}
+          canEdit={surveyAgentBridge.current.canEdit !== false}
+          onClose={() => setLearnedOpen(false)}
+        />
+      ) : null}
     </section>
   );
   return typeof document !== 'undefined' ? createPortal(panel, host || document.body) : panel;

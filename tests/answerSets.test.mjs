@@ -25,8 +25,9 @@ test('a template set is used; a broken one falls back to the default', () => {
   assert.equal(isDoneAnswer(pass, 'Y'), false);
   assert.equal(answerSetFor({ answerSet: [{ value: 'a,b', tone: 'good' }, { value: 'c', tone: 'bad' }] }), DEFAULT_ANSWER_SET);
   assert.equal(answerSetFor({ answerSet: [] }), DEFAULT_ANSWER_SET);
-  const seven = Array.from({ length: 7 }, (_, i) => ({ value: `A${i}`, tone: 'good' }));
-  assert.equal(answerSetFor({ answerSet: seven }), DEFAULT_ANSWER_SET);
+  const many = (n) => Array.from({ length: n }, (_, i) => ({ value: `A${i}`, tone: 'good' }));
+  assert.equal(answerSetFor({ answerSet: many(20) }).length, 20);
+  assert.equal(answerSetFor({ answerSet: many(21) }), DEFAULT_ANSWER_SET);
   assert.ok(validateAnswerSet([{ value: 'A', tone: 'good' }, { value: 'A', tone: 'bad' }]).length);
   assert.ok(validateAnswerSet([{ value: 'A', tone: 'great' }, { value: 'B', tone: 'bad' }]).length);
 });
@@ -91,6 +92,20 @@ test('extra presets are valid and only offered with the flag', async () => {
   assert.equal(answerPresetIdOf([{ value: 'Ok', tone: 'good' }], answerSetPresets({ extras: true })), '');
 });
 
+test('the picker groups hold every preset once, and no two presets are the same list', async () => {
+  const { ANSWER_SET_GROUPS, answerSetPresets } = await import('../src/services/answerSets.js');
+  const all = answerSetPresets({ extras: true });
+  const grouped = ANSWER_SET_GROUPS.flatMap((g) => g.ids);
+  assert.deepEqual([...grouped].sort(), all.map((p) => p.id).sort());
+  const lists = all.map((p) => JSON.stringify(p.answers));
+  assert.equal(new Set(lists).size, lists.length);
+  // The ratings people asked for (2026-10-27).
+  const values = (id) => all.find((p) => p.id === id).answers.map((a) => a.value).join(' ');
+  assert.equal(values('score-1-5'), '1 2 3 4 5');
+  assert.equal(values('score-1-5-na'), '1 2 3 4 5 N/A');
+  assert.equal(values('score-1-10'), '1 2 3 4 5 6 7 8 9 10');
+});
+
 test('a typed-in list is saved only when usable, with a plain reason when not', async () => {
   const { cleanAnswerSet, answerSetProblem, sameAnswerSet } = await import('../src/services/answerSets.js');
   assert.deepEqual(cleanAnswerSet([{ value: ' Small ', tone: 'neutral', extra: 1 }]), [{ value: 'Small', tone: 'neutral' }]);
@@ -120,7 +135,7 @@ test('text and number items: saved answer, done, issue and Excel rule', async ()
   const text = { id: 'a', text: 'Serial', kind: 'text' };
   const num = { id: 'b', text: 'Height', kind: 'number', unit: 'ft' };
   const pick = { id: 'c', text: 'Installed' };
-  assert.deepEqual([text, num, pick, { kind: 'photo' }].map(itemKind), ['text', 'number', 'choice', 'choice']);
+  assert.deepEqual([text, num, pick, { kind: 'video' }].map(itemKind), ['text', 'number', 'choice', 'choice']);
   assert.equal(typedAnswer(text, '  SN-1 '), 'SN-1');
   assert.equal(typedAnswer(num, '1,200'), '1200');
   assert.equal(typedAnswer(num, ' 8.5 '), '8.5');

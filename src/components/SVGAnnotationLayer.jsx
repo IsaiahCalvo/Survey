@@ -20,10 +20,13 @@
  * Phase 9 Plan 02: Drag-to-move, resize-by-handle, rotation visual + pointer wiring
  * Phase 9 Plan 03: Multi-select group ops (group-move visual, group bbox, delete)
  */
+import { isInTabBehind } from '../utils/tabBehind.js';
 import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
 import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
+import { POLYLINE_CURVE_SET_EVENT, polySplineStep, setPolylineCurve, splineSpanMidpoint } from '../utils/polySpline.js';
+import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
@@ -67,7 +70,8 @@ import {
 // focus sits; only a real typing surface keeps those keys for itself — and
 // (2026-09-10) not even that when it is a numeric chrome field that opted out.
 import { draftOwnsKeyboard, releaseFocusForDraftTool } from '../utils/draftKeyboardTarget.js';
-import { calculateCalloutConnection } from '../utils/calloutGeometry';
+import { calculateCalloutConnection, calloutAnchorSidesForKnee } from '../utils/calloutGeometry';
+import { layoutCalloutLeaderGrabbers, leaderGrabberHitRadius } from '../utils/calloutLeaderGrabbers.js';
 import { historyTypeKey } from '../utils/historyFeed.js';
 import { broadcastPageSelection } from '../utils/historyMarkFilter.js';
 // Callout rendering is owned entirely by the dedicated `filteredCallouts` loop
@@ -84,6 +88,7 @@ import { clampResizeScale } from '../utils/resizeMinimum.js';
 import { shouldAutoSelectAfterCommit } from '../utils/autoSelectAfterCommit.js';
 import { canToolGrabSelection, isSelectFamilyTool, isSelectionGestureActive } from '../utils/selectModes.js';
 import { liftedMoveIndices as liftedMoveIndicesFor, liftTranslate } from '../utils/dragLift.js';
+import { createMarkWrapperCache, mapMarkWrappers, markWrapperIsLive } from '../utils/markWrapperCache.js';
 import { classifySelectionGrabTarget, isPageCalloutSelected, pageSelectionMarkGroups, resolvePagePress } from '../utils/toolPressRouting.js';
 import { dropStashedSelection, peekStashedSelection, stashPageSelection } from '../utils/pageSelectionPresence.js';
 import { useSelectionGrabHandoff } from '../hooks/useSelectionGrabHandoff.js';
@@ -98,6 +103,7 @@ import useInputModality from '../hooks/useInputModality.js';
 // createCallout) — do NOT replace with the null stub.
 import { createCallout } from './Callout/types';
 import { screenToSVG, normalizeAngle, clampInverseScale } from '../utils/svgTransformMath';
+import { GRAB_HANDLE_CURSOR, ROTATE_HANDLE_CURSOR } from '../utils/handleCursors.js';
 // Unified renderer phase 2 — SVG-native creation commit builders (byte-stable
 // twins of the retired FabricDrawingCanvas serialization) + gesture diag.
 import {
@@ -190,29 +196,10 @@ import { beginLiveStroke } from '../services/annotationLiveStrokes.js';
 import LiveStrokeGhosts from './LiveStrokeGhosts.jsx';
 import { crossPageGhostFor, crossPageGhostKind, subscribeCrossPageGhost } from '../utils/crossPageMove.js';
 // Owner 2026-10-13: Survey Marker draw modes — Rectangle / Freehand / Smart fill.
-import { buildDotMarkerBounds, buildPolygonMarkerBounds, buildStrokeMarkerBounds, markerShapePathData } from '../survey/markerShapes.js';
+import { buildDotMarkerBounds, buildPolygonMarkerBounds, buildStrokeMarkerBounds } from '../survey/markerShapes.js';
 import { getMarkerStrokeWidth, useMarkerStrokeWidth } from '../survey/markerStrokeWidth.js';
 import '../survey/smartFillBeta.js';
-import { findSimilarOnPage, outlineInBox, prewarmSmartFillPage } from '../survey/smartFillProvider.js';
-import { makeTemplateShape } from '../survey/smartFillTemplates.js';
-import {
-  getSmartFillTeachArmed,
-  getSmartFillTemplateName,
-  getSmartFillTemplateShapes,
-  saveSmartFillTemplateShape,
-  setSmartFillTeachArmed,
-} from '../survey/smartFillTemplateShapes.js';
-import { latestSmartFillSample, saveSmartFillSample } from '../survey/smartFillSamples.js';
-import { SMART_FILL_CLEAR_MATCHES_EVENT, shouldClearSmartFillMatches } from '../survey/smartFillMatchEvents.js';
-import { offeredSmartFillMatches as filterOfferedSmartFillMatches, isSmartFillMatchSourceGone } from '../utils/smartFillMatches.js';
-import { markerShapeHitTest } from '../survey/markerShapes.js';
-import { showToast, dismissToast, TOAST_USER_DISMISS_EVENT } from '../utils/toast';
-// The toast store renames a toast whose id is still showing, so a later
-// dismissToast(id) would miss it; clear the old one first.
-const showSmartFillFindToast = (message, type, options) => {
-  dismissToast('smart-fill-find');
-  return showToast(message, type, options);
-};
+import { prewarmSmartFillPage } from '../survey/smartFillProvider.js';
 import { useEffectiveMarkerDrawMode } from '../survey/markerDrawMode.js';
 import { getMarkerShapePdfDocument, isSmartFillPressLive, runMarkerShapeProvider } from '../survey/markerShapeProviders.js';
 import {
@@ -496,9 +483,11 @@ const hoverGlowStrokeInset = (obj) => {
 const EMPTY_SURVEY_MARKER_IDS = new Set();
 
 import {
+  POLYGON_MEASURE_KINDS,
   buildMeasureLabel,
   layoutMeasureLabel,
   measureLineEndpoints,
+  measureScaleBar,
   pageScaleFromObjects,
   stampMeasure,
 } from '../utils/measure/measureScale.js';
@@ -541,6 +530,41 @@ function renderMeasureLabel(label, key, unitsPerPx) {
       >
         {label.text}
       </text>
+    </g>
+  );
+}
+
+// Live scale bar (Drawboard Projects): while a measure tool is armed on a page
+// with a scale, a round real length drawn at the page's bottom-left corner at
+// a fixed screen size, so the user can see the scale is right at a glance.
+function renderMeasureScaleBar(scale, pageHeight, unitsPerPx) {
+  const bar = measureScaleBar(scale, unitsPerPx);
+  if (!bar) return null;
+  const u = unitsPerPx;
+  const x0 = 16 * u;
+  const y = pageHeight - 16 * u;
+  const x1 = x0 + bar.lengthPt;
+  const tick = 5 * u;
+  const pill = layoutMeasureLabel({ kind: 'area', text: bar.text, x: (x0 + x1) / 2, y: y - 16 * u, angle: 0 }, u);
+  return (
+    <g className="measure-scale-bar" data-measure-scale-bar={bar.text} style={{ pointerEvents: 'none', userSelect: 'none' }}>
+      <path
+        d={`M${x0} ${y - tick}V${y}H${x1}V${y - tick}`}
+        fill="none"
+        stroke="rgb(255, 255, 255)"
+        strokeWidth={4 * u}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d={`M${x0} ${y - tick}V${y}H${x1}V${y - tick}`}
+        fill="none"
+        stroke="rgb(31, 41, 55)"
+        strokeWidth={1.5 * u}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {renderMeasureLabel({ kind: 'area', text: bar.text, x: pill.cx, y: pill.cy, angle: 0 }, 'scale-bar-text', u)}
     </g>
   );
 }
@@ -847,6 +871,9 @@ const SVGAnnotationLayerBody = memo(({
     return labels;
   }, [annotations, effectiveMeasureScale, hiddenLayerIds]);
   const renderedAnnotationEntriesRef = useRef([]);
+  // Every mark this page draws (hidden layers and scopes left out), for Smart
+  // fill's cloud marks: a tap must never fill a cloud the user can't see.
+  const visibleAnnotationObjectsRef = useRef([]);
   // w52: ids of the callouts this page shows AND lets the user pick (visible
   // in context + interactive for the active space). Null until the first
   // callout pass lands, which reads as "all pass" (boot parity).
@@ -926,6 +953,12 @@ const SVGAnnotationLayerBody = memo(({
   // ---------------------------------------------------------------------------
   // Interaction hook (Phase 9)
   // ---------------------------------------------------------------------------
+  // Stable (reads a ref): a new function each render gave the hook's
+  // handlePointerUp a new identity on every drag frame, which made every
+  // mark's wrapper rebuild (utils/markWrapperCache.js keys on it).
+  const getSelectableAnnotationIndices = useCallback(() => renderedAnnotationEntriesRef.current
+    .filter((entry) => !isBlockedFromAreaSelection(entry.obj))
+    .map((entry) => entry.index), []);
   const {
     selectedIds, hoveredId, inverseScale, interactionState, activeCalloutDrag, visualTransform,
     dragState,
@@ -999,9 +1032,7 @@ const SVGAnnotationLayerBody = memo(({
     // hook's marquee post-filter + click hit-test gate.
     viewerId,
     documentOwnerId,
-    getSelectableAnnotationIndices: () => renderedAnnotationEntriesRef.current
-      .filter((entry) => !isBlockedFromAreaSelection(entry.obj))
-      .map((entry) => entry.index),
+    getSelectableAnnotationIndices,
     // Phase 35 Plan 04 — page number + bulk-delete interceptor for
     // deleteSelected snapshot capture and App.jsx modal routing.
     pageNumber,
@@ -1399,7 +1430,7 @@ const SVGAnnotationLayerBody = memo(({
   const shapeCreationRef = useRef(null);
   useEffect(() => { shapeCreationRef.current = shapeCreation; }, [shapeCreation]);
   // Line / arrow / polyline / polygon / measure drawing snaps (drawSnap.js):
-  // Shift locks the new segment to 45° steps; the point locks onto another
+  // Shift locks the new segment to the snap angle (15° / 45° / 90°); the point locks onto another
   // line end or corner on this page within 8 screen px (Alt or the snapping
   // preference off disables that pull). `drawSnapEndpoint` is the indicator.
   const [drawSnapEndpoint, setDrawSnapEndpoint] = useState(null);
@@ -1440,6 +1471,7 @@ const SVGAnnotationLayerBody = memo(({
   // ---------------------------------------------------------------------------
   const [polyDraft, setPolyDraft] = useState(null);
   const polyDraftRef = useRef(null);
+  const { on: polylineCurve } = usePolylineCurve();
   useEffect(() => { polyDraftRef.current = polyDraft; }, [polyDraft]);
 
   // Coalesced page-space sampling with the fabric canvas's exact 0.2-page-px
@@ -1656,6 +1688,8 @@ const SVGAnnotationLayerBody = memo(({
       // Touch must stay with the native text layer so long-press selection and
       // the OS copy menu keep working after a mark has been selected.
       if (event.pointerType === 'touch') return;
+      // A layer in a tab behind keeps real rects under the pointer.
+      if (isInTabBehind(svgRef.current)) return;
       // UX: a native text drag keeps ownership until release, even when
       // it passes near the prior selection's handles (Phase 19 preserves them).
       if (event.type === 'pointermove' && event.buttons !== 0
@@ -1765,7 +1799,8 @@ const SVGAnnotationLayerBody = memo(({
     };
     const ctxOf = () => {
       const band = polyEdgeBandElRef.current;
-      return band?.isConnected ? band.__polyEdgeCtx : null;
+      // A tab behind keeps real sizes; its band must not claim the front tab's press.
+      return band?.isConnected && !isInTabBehind(band) ? band.__polyEdgeCtx : null;
     };
     let lastPointerDownAt = NaN;
     const onPointerDown = (e) => {
@@ -1838,10 +1873,30 @@ const SVGAnnotationLayerBody = memo(({
     const updated = deepClone(annotations);
     updated.objects[annotationIndex] = next;
     onSaveAnnotations(updated, { source: 'object:modified', action: 'vertex-insert', checkpointPolicy: 'normal' });
-    setFocusedPolyVertex({ annotationIndex, vertexIndex: segmentIndex + 1 });
+    const step = polySplineStep(obj);
+    setFocusedPolyVertex({ annotationIndex, vertexIndex: step ? (Math.floor(segmentIndex / step) + 1) * step : segmentIndex + 1 });
     return true;
   }, [annotations, onSaveAnnotations]);
   const selectedPolyIndex = selectedIds.size === 1 ? Array.from(selectedIds)[0] : null;
+  // The toolbar's Curve switch on a picked polyline (Nightly). Every page
+  // hears it; only the page holding the one picked polyline acts.
+  useEffect(() => {
+    if (selectedPolyIndex == null) return undefined;
+    const onSet = (event) => {
+      if (typeof onSaveAnnotations !== 'function') return;
+      if (document.body.getAttribute('data-readonly') === 'true') return;
+      const obj = annotations?.objects?.[selectedPolyIndex];
+      if (!obj || isUserLocked(obj)) return;
+      const next = setPolylineCurve(obj, !!event?.detail?.curved);
+      if (!next) return;
+      const updated = deepClone(annotations);
+      updated.objects[selectedPolyIndex] = next;
+      onSaveAnnotations(updated, { source: 'object:modified', action: 'polyline-curve', checkpointPolicy: 'normal' });
+      setFocusedPolyVertex(null);
+    };
+    window.addEventListener(POLYLINE_CURVE_SET_EVENT, onSet);
+    return () => window.removeEventListener(POLYLINE_CURVE_SET_EVENT, onSet);
+  }, [annotations, onSaveAnnotations, selectedPolyIndex]);
   useEffect(() => {
     if (focusedPolyVertex && focusedPolyVertex.annotationIndex !== selectedPolyIndex) setFocusedPolyVertex(null);
     if (polyVertexMenu && polyVertexMenu.annotationIndex !== selectedPolyIndex) setPolyVertexMenu(null);
@@ -2699,31 +2754,6 @@ const SVGAnnotationLayerBody = memo(({
   const smartFillLive = isSmartFillPressLive({ activeTool, markerDrawMode, isTabActive });
   const smartFillLiveRef = useRef(smartFillLive);
   smartFillLiveRef.current = smartFillLive;
-  // Owner 2026-10-20 (beta): a found outline is a PREVIEW first. The user
-  // checks the whole outline, then presses Apply on the toast; a new tap,
-  // another mode or tool, or closing the toast drops it. Matches the
-  // playground's review-then-Apply rule: nothing fills on its own.
-  const [smartFillPreview, setSmartFillPreview] = useState(null);
-  const clearSmartFillPreview = useCallback(() => {
-    setSmartFillPreview(null);
-    dismissToast('smart-fill-preview');
-  }, []);
-  // Tapping the preview toast away is Cancel: the outline goes with it.
-  useEffect(() => {
-    if (!smartFillPreview) return undefined;
-    const onUserDismiss = (event) => {
-      if (event?.detail?.id === 'smart-fill-preview') setSmartFillPreview(null);
-    };
-    window.addEventListener(TOAST_USER_DISMISS_EVENT, onUserDismiss);
-    return () => window.removeEventListener(TOAST_USER_DISMISS_EVENT, onUserDismiss);
-  }, [smartFillPreview]);
-  // Owner 2026-10-20 (beta): "find more like this". After a tag is applied,
-  // its outline is remembered (this browser only) and Smart fill can look for
-  // the same kind of tag on the page. Matches show as blue outlines; each one
-  // is added only when the user taps it (still review-first, and each goes
-  // through the normal create path: category, entity, undo).
-  const [smartFillMatches, setSmartFillMatches] = useState([]);
-  const smartFillScanAbortRef = useRef(null);
   // Owner 2026-10-22: read this page's own drawing (its tag outlines) as
   // soon as Smart fill is armed and the page is on screen, so the first tap
   // answers at once. Pages off screen wait: pdf.js reads one page at a time,
@@ -2750,23 +2780,13 @@ const SVGAnnotationLayerBody = memo(({
   }, [pageNumber, smartFillLive]);
   useEffect(() => {
     if (!smartFillLive) smartFillAbortRef.current?.abort?.();
-    if (!smartFillLive) clearSmartFillPreview();
-    if (!smartFillLive) {
-      smartFillScanAbortRef.current?.abort?.();
-      setSmartFillMatches([]);
-      dismissToast('smart-fill-find');
-    }
-  }, [clearSmartFillPreview, smartFillLive]);
-  useEffect(() => () => {
-    smartFillScanAbortRef.current?.abort?.();
-    dismissToast('smart-fill-preview');
-    dismissToast('smart-fill-find');
-  }, []);
+  }, [smartFillLive]);
+  // Owner 2026-10-27: a found outline becomes a Survey Marker at once, the
+  // same as a drawn box: no Check it / Apply step.
   const startSmartFill = useCallback((point) => {
     smartFillAbortRef.current?.abort?.();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     smartFillAbortRef.current = controller;
-    clearSmartFillPreview();
     setSmartFillPending(point);
     const pageEl = svgRef.current?.closest?.('[data-page-number]');
     const pageCanvas = pageEl?.querySelector?.('canvas') || null;
@@ -2775,228 +2795,26 @@ const SVGAnnotationLayerBody = memo(({
       point,
       pageSize: { width, height },
       pageCanvas,
+      // Cloud marks this page draws fill like clouds in the drawing.
+      marks: visibleAnnotationObjectsRef.current,
       signal: controller?.signal || null,
     }).then((result) => {
       if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
       const markerBounds = result ? buildPolygonMarkerBounds(result) : null;
       if (!markerBounds || typeof onSurveyMarkerCreated !== 'function') return;
-      const apply = () => {
-        if (!smartFillLiveRef.current) return;
-        setSmartFillPreview(null);
-        recordAnnotationCommit({
-          surface: 'SVGAnnotationLayer',
-          source: 'survey-marker:create',
-          action: 'survey-marker-smart-fill',
-          pageNumber,
-        });
-        onSurveyMarkerCreated(markerBounds, { smartFill: true });
-        const sample = saveSmartFillSample(markerBounds.shape.polygons[0][0]);
-        if (sample) {
-          showSmartFillFindToast('Survey Marker added. Want Smart fill to find more tags like it on this page?', 'success', {
-            id: 'smart-fill-find',
-            duration: Infinity,
-            action: { label: 'Find more', onClick: () => findMoreLikeThisRef.current?.(sample, markerBounds) },
-          });
-        }
-      };
-      setSmartFillPreview({ bounds: markerBounds, apply });
-      showToast('Smart fill found this outline. Check it, then Apply.', 'info', {
-        id: 'smart-fill-preview',
-        duration: Infinity,
-        action: { label: 'Apply', onClick: apply },
+      recordAnnotationCommit({
+        surface: 'SVGAnnotationLayer',
+        source: 'survey-marker:create',
+        action: 'survey-marker-smart-fill',
+        pageNumber,
       });
+      onSurveyMarkerCreated(markerBounds, { smartFill: true });
     }).finally(() => {
       if (smartFillAbortRef.current !== controller) return;
       smartFillAbortRef.current = null;
       setSmartFillPending(null);
     });
-  }, [clearSmartFillPreview, height, onSurveyMarkerCreated, pageNumber, width]);
-
-  // Owner 2026-10-22: "Teach a tag shape". When Smart fill misses a tag, the
-  // user drags a box round it; the outline inside is shown for a check, and
-  // Save shape keeps it in the survey template (so Smart fill looks for that
-  // shape on every drawing), adds the Survey Marker and offers Find more.
-  const [smartFillTeachBox, setSmartFillTeachBox] = useState(null);
-  const finishSmartFillTeach = useCallback((box) => {
-    const x = Math.min(box.x0, box.x1);
-    const y = Math.min(box.y0, box.y1);
-    const w = Math.abs(box.x1 - box.x0);
-    const h = Math.abs(box.y1 - box.y0);
-    if (w < 4 || h < 4) {
-      showToast('Teach a tag shape: drag a box around the tag Smart fill missed.', 'info', { id: 'smart-fill-no-match' });
-      return;
-    }
-    const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
-    Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber)).catch(() => null)
-      .then((pdfPage) => outlineInBox({ box: { x, y, width: w, height: h }, pageSize: { width, height }, pdfPage: pdfPage || null, pageCanvas }))
-      .then((found) => {
-        if (!smartFillLiveRef.current) return;
-        if (!found?.ok) {
-          showToast('Teach a tag shape: that box is too small. Drag around the whole tag.', 'info', { id: 'smart-fill-no-match' });
-          return;
-        }
-        const markerBounds = buildPolygonMarkerBounds({ type: 'Polygon', coordinates: [found.ring] });
-        if (!markerBounds || typeof onSurveyMarkerCreated !== 'function') return;
-        const apply = () => {
-          if (!smartFillLiveRef.current) return;
-          setSmartFillPreview(null);
-          const count = getSmartFillTemplateShapes().length;
-          const shape = makeTemplateShape(found.ring, { name: `Tag shape ${count + 1}`, source: found.source });
-          const where = getSmartFillTemplateName();
-          setSmartFillTeachArmed(false);
-          recordAnnotationCommit({
-            surface: 'SVGAnnotationLayer',
-            source: 'survey-marker:create',
-            action: 'survey-marker-smart-fill-teach',
-            pageNumber,
-          });
-          onSurveyMarkerCreated(markerBounds, { smartFill: true });
-          const sample = saveSmartFillSample(found.ring);
-          void saveSmartFillTemplateShape(shape).then((saved) => {
-            const said = !saved?.ok
-              ? 'Survey Marker added, but the tag shape could not be saved.'
-              : saved.where === 'template'
-                ? `Saved to ${where}. Smart fill now looks for this shape on every drawing.`
-                : 'Saved in this browser. Smart fill now looks for this shape here.';
-            showSmartFillFindToast(said, saved?.ok ? 'success' : 'error', {
-              id: 'smart-fill-find',
-              duration: Infinity,
-              action: { label: 'Find more', onClick: () => findMoreLikeThisRef.current?.(sample, markerBounds) },
-            });
-          });
-        };
-        setSmartFillPreview({ bounds: markerBounds, apply });
-        showToast('Is this the whole tag? Save it so Smart fill finds this shape next time.', 'info', {
-          id: 'smart-fill-preview',
-          duration: Infinity,
-          action: { label: 'Save shape', onClick: apply },
-        });
-      });
   }, [height, onSurveyMarkerCreated, pageNumber, width]);
-  const startSmartFillTeach = useCallback((point, pointerId) => {
-    smartFillAbortRef.current?.abort?.();
-    clearSmartFillPreview();
-    let box = { x0: point.x, y0: point.y, x1: point.x, y1: point.y };
-    setSmartFillTeachBox(box);
-    const svg = svgRef.current;
-    const stop = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onCancel);
-      setSmartFillTeachBox(null);
-    };
-    const onMove = (ev) => {
-      if (ev.pointerId !== pointerId) return;
-      const p = screenToSVG(svg, ev.clientX, ev.clientY);
-      if (!p) return;
-      box = { ...box, x1: p.x, y1: p.y };
-      setSmartFillTeachBox(box);
-    };
-    const onUp = (ev) => {
-      if (ev.pointerId !== pointerId) return;
-      stop();
-      finishSmartFillTeach(box);
-    };
-    const onCancel = (ev) => { if (ev.pointerId === pointerId) stop(); };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onCancel);
-  }, [clearSmartFillPreview, finishSmartFillTeach]);
-
-  const findMoreLikeThisRef = useRef(null);
-  const smartFillMatchSourceRef = useRef(null);
-  const surveyMarkersRef = useRef(surveyMarkers);
-  surveyMarkersRef.current = surveyMarkers;
-  findMoreLikeThisRef.current = (sample, skipBounds = null, { quietIfNone = false } = {}) => {
-    // Taught tag shapes are searched for too, with or without a last sample.
-    if ((!sample && !getSmartFillTemplateShapes().length) || !smartFillLiveRef.current) return;
-    smartFillScanAbortRef.current?.abort?.();
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    smartFillScanAbortRef.current = controller;
-    const pageCanvas = svgRef.current?.closest?.('[data-page-number]')?.querySelector?.('canvas') || null;
-    if (!quietIfNone) showSmartFillFindToast('Smart fill is looking for matching tags…', 'info', { id: 'smart-fill-find', duration: Infinity });
-    Promise.resolve(getMarkerShapePdfDocument()?.getPage?.(pageNumber)).catch(() => null).then((pdfPage) => findSimilarOnPage({
-      pageCanvas, pageSize: { width, height }, sample, pdfPage: pdfPage || null, signal: controller?.signal || null,
-    })).then((res) => {
-      if (controller?.signal?.aborted || !smartFillLiveRef.current) return;
-      if (!res.ok) {
-        if (quietIfNone) return;
-        showSmartFillFindToast(res.reason === 'not-ready'
-          ? 'Smart fill: the page is still loading. Try again.'
-          : 'Smart fill couldn’t finish looking on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
-        return;
-      }
-      const centre = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
-      const inside = (pt, b) => b && pt.x >= b.x && pt.x <= b.x + b.width && pt.y >= b.y && pt.y <= b.y + b.height;
-      const matches = res.polygons
-        .map((polygon) => buildPolygonMarkerBounds(polygon))
-        .filter((b) => b && !inside(centre(b), skipBounds))
-        // A tag that already has a marker here is not "more" (the tool-bar
-        // search has no skipBounds, so it re-offered the tag just applied).
-        .filter((b) => !(surveyMarkersRef.current || []).some((m) => m && inside(centre(b), m)));
-      const sourceAt = skipBounds ? centre(skipBounds) : null;
-      smartFillMatchSourceRef.current = sourceAt
-        ? ((surveyMarkersRef.current || []).find((m) => m && inside(sourceAt, m))?.annotationId ?? null)
-        : null;
-      setSmartFillMatches(matches);
-      // From the tool bar every page in view looks; only pages with matches speak.
-      if (quietIfNone && !matches.length) return;
-      showSmartFillFindToast(matches.length
-        ? `Found ${matches.length} more like it. Tap each blue outline to add it.`
-        : 'No other tags like it on this page.', 'info', { id: 'smart-fill-find', duration: 10000 });
-    });
-  };
-  // A deleted category takes the matches found from its marker with it.
-  useEffect(() => {
-    const onClear = (event) => {
-      if (!shouldClearSmartFillMatches(smartFillMatchSourceRef.current, event?.detail?.markerIds || [])) return;
-      smartFillScanAbortRef.current?.abort?.();
-      setSmartFillMatches([]);
-      dismissToast('smart-fill-find');
-    };
-    window.addEventListener(SMART_FILL_CLEAR_MATCHES_EVENT, onClear);
-    return () => window.removeEventListener(SMART_FILL_CLEAR_MATCHES_EVENT, onClear);
-  }, []);
-  // "Find tags like my sample" from the tool bar (any page in view, any drawing).
-  useEffect(() => {
-    const onFind = () => {
-      if (!smartFillLiveRef.current) return;
-      const rect = svgRef.current?.getBoundingClientRect?.();
-      if (!rect || rect.bottom < 0 || rect.top > window.innerHeight) return;
-      findMoreLikeThisRef.current?.(latestSmartFillSample(), null, { quietIfNone: true });
-    };
-    window.addEventListener('smart-fill-find-similar', onFind);
-    return () => window.removeEventListener('smart-fill-find-similar', onFind);
-  }, []);
-  // A tap on a found match adds it; returns true when the tap was used.
-  // A match stays offered until a Survey marker actually lands on it, so a
-  // tap whose new-marker card is cancelled keeps it.
-  const offeredSmartFillMatches = useMemo(
-    () => filterOfferedSmartFillMatches(smartFillMatches, surveyMarkers),
-    [smartFillMatches, surveyMarkers],
-  );
-  // Matches found from a marker leave with it (its category deleted, or the
-  // marker itself), so no blue outline outlives its source.
-  useEffect(() => {
-    if (!smartFillMatches.length) return;
-    if (!isSmartFillMatchSourceGone(smartFillMatchSourceRef.current, surveyMarkers)) return;
-    smartFillMatchSourceRef.current = null;
-    smartFillScanAbortRef.current?.abort?.();
-    setSmartFillMatches([]);
-    dismissToast('smart-fill-find');
-  }, [smartFillMatches, surveyMarkers]);
-  const applySmartFillMatchAt = useCallback((point) => {
-    const hit = offeredSmartFillMatches.find((b) => markerShapeHitTest(b.shape, point, 0));
-    if (!hit || typeof onSurveyMarkerCreated !== 'function') return false;
-    recordAnnotationCommit({
-      surface: 'SVGAnnotationLayer',
-      source: 'survey-marker:create',
-      action: 'survey-marker-smart-fill-match',
-      pageNumber,
-    });
-    onSurveyMarkerCreated(hit, { smartFill: true });
-    return true;
-  }, [offeredSmartFillMatches, onSurveyMarkerCreated, pageNumber]);
 
   // ---------------------------------------------------------------------------
   // Polygon / polyline click-to-place commit + cancel.
@@ -3046,10 +2864,11 @@ const SVGAnnotationLayerBody = memo(({
       selectedModuleId,
       stampRegionId,
       activeRegionId,
+      curve: polylineCurve,
     });
     if (!builtJson) return false;
-    const rawJson = (tool === 'polygon' && measureMode === 'area')
-      ? stampMeasure(builtJson, 'area', effectiveMeasureScale)
+    const rawJson = (tool === 'polygon' && POLYGON_MEASURE_KINDS.includes(measureMode))
+      ? stampMeasure(builtJson, measureMode, effectiveMeasureScale)
       : builtJson;
 
     const json = stampAnnotationCreationIdentity(rawJson, { authorId: viewerId });
@@ -3075,7 +2894,7 @@ const SVGAnnotationLayerBody = memo(({
   }, [
     effectiveMeasureScale, measureMode,
     activeRegionId, activeTool, cloudIntensity, fillColor, fillOpacity, isRegionOverlayEnabled,
-    lineBorderStyle, onSaveAnnotations, pageNumber, selectAnnotation, selectedModuleId,
+    lineBorderStyle, onSaveAnnotations, pageNumber, polylineCurve, selectAnnotation, selectedModuleId,
     selectedSpaceId, spaces, strokeColor, strokeOpacity, strokeWidth, viewerId,
   ]);
 
@@ -3418,6 +3237,8 @@ const SVGAnnotationLayerBody = memo(({
   // fabric canvas pinch handler.
   useEffect(() => {
     const cancelPinchGesture = () => {
+      // A Smart fill tap still being read places nothing once it is a pinch.
+      smartFillAbortRef.current?.abort?.();
       if (!shapeCreationRef.current) return;
       // Sync ref clear: the window pointerup listener is still attached until
       // the passive effect detaches it — without this a finger-lift racing
@@ -4422,6 +4243,9 @@ const SVGAnnotationLayerBody = memo(({
     renderedAnnotationEntriesRef.current = Array.isArray(filteredAnnotations)
       ? filteredAnnotations.filter((entry) => entry?.isObjectInteractive)
       : [];
+    visibleAnnotationObjectsRef.current = Array.isArray(filteredAnnotations)
+      ? filteredAnnotations.map((entry) => entry.obj)
+      : [];
     if (typeof window !== 'undefined') {
       if (!window.__renderedAnnotationRegistry) window.__renderedAnnotationRegistry = {};
       window.__renderedAnnotationRegistry[pageNumber] = renderedAnnotationEntriesRef.current.map((entry) => ({
@@ -5327,6 +5151,9 @@ const SVGAnnotationLayerBody = memo(({
     handleSurveyMarkerPointerDown,
     hoveredSurveyMarkerId,
     inverseScale,
+    // markHitBand sizes the hit band by input; without this a pen-drawn
+    // marker kept the mouse band until some other change re-rendered it.
+    inputKind,
     isSelectTool,
     selectedSurveyMarkerId,
     surveyMarkerPreviewBounds,
@@ -5440,8 +5267,33 @@ const SVGAnnotationLayerBody = memo(({
       tbX, tbY, tbW, tbH,
       { x: kX, y: kY },
       { x: atX, y: atY },
-      0
+      0,
+      callout.textBoxAnchor || null,
     );
+    // The selected callout's text-box grabbers and leader grabbers, placed
+    // on the box and leader exactly as renderCallout draws them (its box is
+    // taller by the descender strip).
+    const showChrome = isSelected && showHandles;
+    const visBox = showChrome ? calloutVisibleBox(callout, W, H) : null;
+    const boxLayout = visBox ? calloutBoxHandleLayout(callout, visBox) : null;
+    const calloutSegmentR = HANDLE_RADIUS_SECONDARY * clampInverseScale(inverseScale);
+    const leaderGrabbers = visBox ? layoutCalloutLeaderGrabbers({
+      conn: calculateCalloutConnection(
+        visBox.x, visBox.y, visBox.width, visBox.height,
+        { x: kX, y: kY },
+        { x: atX, y: atY },
+        0,
+        callout.textBoxAnchor || null,
+      ),
+      knee: { x: kX, y: kY },
+      arrowTip: { x: atX, y: atY },
+      boxGrabbers: Object.values(boxLayout?.anchors || {}),
+      radius: calloutHandleR,
+      secondaryRadius: calloutSegmentR,
+      attachMovable: calloutAnchorSidesForKnee(
+        { x: kX, y: kY }, visBox.x, visBox.y, visBox.x + visBox.width, visBox.y + visBox.height,
+      ).length > 0,
+    }) : null;
     return (
       <g
         key={`callout-hit-${callout.id}`}
@@ -5485,7 +5337,7 @@ const SVGAnnotationLayerBody = memo(({
           cy={atY}
           r={calloutHitR}
           fill="transparent"
-          style={{ cursor: 'grab', pointerEvents: 'all' }}
+          style={{ cursor: GRAB_HANDLE_CURSOR, pointerEvents: 'all' }}
         />
         {/* UX: Phase 15 UAT-3 (2026-04-18) — knee hit target tracks the
             AUTO-ROUTED midpoint (effectiveKnee) when idle so users grab
@@ -5502,7 +5354,7 @@ const SVGAnnotationLayerBody = memo(({
           // only be grabbed by landing on it.
           r={calloutHitR}
           fill="transparent"
-          style={{ cursor: 'grab', pointerEvents: 'all' }}
+          style={{ cursor: GRAB_HANDLE_CURSOR, pointerEvents: 'all' }}
         />
         {/* UX: Phase 15 UAT-3 (2026-04-17) — visible drag chrome when the
             callout is selected. Knee + arrow tip use combined-tools'
@@ -5644,24 +5496,63 @@ const SVGAnnotationLayerBody = memo(({
                 data, so no rotate grabber. Each carries data-callout-part
                 textBox-<id> and lets the press bubble to the delegated
                 callout handler (useSVGInteraction 'textBoxResize'). */}
-            {(() => {
-              const layout = calloutBoxHandleLayout(callout, calloutVisibleBox(callout, W, H));
-              if (!layout) return null;
+            {boxLayout && (
+              <SVGSelectionOverlay
+                bbox={boxLayout.bbox}
+                handleAnchors={boxLayout.anchors}
+                frameRect={boxLayout.frame}
+                alwaysShowResizeHandles={!!boxLayout.frame}
+                hideBoundingBox={!boxLayout.frame}
+                padding={0}
+                inverseScale={inverseScale}
+                hideRotationHandle
+                delegateHandlePress
+                handlePartAttributes={(id) => ({ 'data-callout-part': `textBox-${id}` })}
+              />
+            )}
+            {/* Owner 2026-10-26: the leader's attach point on the box (slides
+                along the border) and a grabber halfway along each leader
+                line (moves that line as one piece) - utils/calloutLeaderGrabbers.js.
+                Drawn last so a grabber stepped clear of a box corner is never
+                under that corner's press pad. */}
+            {leaderGrabbers && ['attach', 'segBox', 'segTip'].map((part) => {
+              const at = leaderGrabbers[part];
+              if (!at) return null;
+              const dotR = part === 'attach' ? calloutHandleR : calloutSegmentR;
+              const others = [
+                { x: atX, y: atY }, { x: kX, y: kY },
+                ...Object.values(boxLayout?.anchors || {}),
+                leaderGrabbers.attach, leaderGrabbers.segBox, leaderGrabbers.segTip,
+              ].filter((p) => p && p !== at);
+              const hitR = leaderGrabberHitRadius(at, calloutHitR, dotR, others);
               return (
-                <SVGSelectionOverlay
-                  bbox={layout.bbox}
-                  handleAnchors={layout.anchors}
-                  frameRect={layout.frame}
-                  alwaysShowResizeHandles={!!layout.frame}
-                  hideBoundingBox={!layout.frame}
-                  padding={0}
-                  inverseScale={inverseScale}
-                  hideRotationHandle
-                  delegateHandlePress
-                  handlePartAttributes={(id) => ({ 'data-callout-part': `textBox-${id}` })}
-                />
+                <g key={`callout-leader-${part}`} data-callout-part={part}>
+                  <circle
+                    data-handle-hit-pad={`callout-${part}`}
+                    cx={at.x}
+                    cy={at.y}
+                    r={hitR}
+                    fill="transparent"
+                    style={{ cursor: GRAB_HANDLE_CURSOR, pointerEvents: 'all', touchAction: 'none' }}
+                  />
+                  <circle
+                    data-callout-leader-grabber={part}
+                    cx={at.x}
+                    cy={at.y}
+                    r={dotR}
+                    fill={HANDLE_FILL}
+                    stroke={ringColor}
+                    strokeWidth={1.5}
+                    vectorEffect="non-scaling-stroke"
+                    style={{
+                      filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.15))',
+                      cursor: GRAB_HANDLE_CURSOR,
+                      pointerEvents: 'all',
+                    }}
+                  />
+                </g>
               );
-            })()}
+            })}
           </>
         )}
       </g>
@@ -5929,6 +5820,10 @@ const SVGAnnotationLayerBody = memo(({
             key={`callout-handles-${displayCallout.id || i}`}
             data-callout-handle-overlay="true"
             transform={groupMoveTransform}
+            // A pen press here must never start a text selection: one left
+            // behind by a drag turns the next grabber press into a native
+            // drag-and-drop that swallows the rest of the stroke.
+            style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
             data-edit-entry-kind={editEntryTargetsMounted ? 'callout' : undefined}
             data-pan-edit-entry={editEntryTargetsMounted ? 'true' : undefined}
             onPointerEnter={() => handleCalloutPointerEnter(displayCallout.id)}
@@ -6139,6 +6034,7 @@ const SVGAnnotationLayerBody = memo(({
   // Cached only for the committed objects this layer was handed (immutable
   // state); live previews build new objects and are always computed fresh.
   const markGeometryCacheRef = useRef(null);
+  const markWrapperCacheRef = useRef(null);
   if (!markGeometryCacheRef.current) {
     markGeometryCacheRef.current = { bbox: new WeakMap(), pathTransform: new WeakMap(), bakedPath: new WeakMap() };
   }
@@ -6158,8 +6054,7 @@ const SVGAnnotationLayerBody = memo(({
   // the mark itself paints (filled in by the loop below), so the value and the
   // pill follow every handle, bend and move frame by frame.
   const liveMeasureLabels = new Map();
-  const wrappedAnnotations = stagedAnnotations
-    .map(({ obj, index: i, element, isObjectInteractive }) => {
+  const renderMarkWrapper = ({ obj, index: i, element, isObjectInteractive }) => {
     // During resize, create a temporary modified copy for rendering
     // (Imported paths use SVG transform instead — handled in computedTransform below)
     let renderObj = obj;
@@ -7332,7 +7227,29 @@ const SVGAnnotationLayerBody = memo(({
         })()}
       </g>
     );
-  });
+  };
+  // Perf (dense-sheet drags): a mark whose inputs did not change keeps its
+  // wrapper element, so a drag frame rebuilds and reconciles only the marks
+  // it moves (utils/markWrapperCache.js). Every value renderMarkWrapper reads
+  // from this component is listed here or in the per-mark key
+  // (tests/markWrapperCache.test.mjs checks the list against the body).
+  if (!markWrapperCacheRef.current) markWrapperCacheRef.current = createMarkWrapperCache();
+  const markWrapperLiveState = { visualTransform, counterHandlePreview, editingAnnotationIndex };
+  const markWrapperMultiSelection = ((selectedIds?.size || 0) + (effectiveSelectedCalloutIds?.size || 0)) > 1;
+  const wrappedAnnotations = mapMarkWrappers(
+    markWrapperCacheRef.current,
+    [
+      markWrapperMultiSelection, annotationHitTargetsInteractive, editEntryTargetsMounted,
+      effectiveMeasureScale, inverseScale, inputKind, pageNumber, applyLineEditPreview,
+      handleAnnotationPointerDown, handleAnnotationPointerEnter, handleAnnotationPointerLeave,
+      handleAnnotationDoubleClick, handlePointerMove, handlePointerUp,
+    ],
+    stagedAnnotations,
+    (entry) => (markWrapperIsLive(entry.index, markWrapperLiveState)
+      ? null
+      : [entry.obj, entry.element, entry.isObjectInteractive, selectedIds.has(entry.index), hoveredId === entry.index]),
+    renderMarkWrapper,
+  );
 
   // w52 (2026-09-28): ONE stack per page. Callouts are drawn in their slot
   // among every other mark (filteredCallouts carries each slot as
@@ -7812,8 +7729,7 @@ const SVGAnnotationLayerBody = memo(({
                 startClient: { x: e.clientX, y: e.clientY }, pointerType: e.pointerType, passed: false,
               });
             } else if (point && markerDrawMode === 'smartFill') {
-              if (getSmartFillTeachArmed()) startSmartFillTeach(point, e.pointerId);
-              else if (!applySmartFillMatchAt(point)) startSmartFill(point);
+              startSmartFill(point);
             }
             e.preventDefault();
             return;
@@ -7989,6 +7905,8 @@ const SVGAnnotationLayerBody = memo(({
             fill: liveTextEditBounds.fill || '#007AFF',
             stroke: liveTextEditBounds.stroke || '#000000',
             strokeWidth: liveTextEditBounds.strokeWidth ?? 1,
+            ...(liveTextEditBounds.backgroundColor ? { backgroundColor: liveTextEditBounds.backgroundColor } : {}),
+            ...(liveTextEditBounds.strokeDashArray ? { strokeDashArray: liveTextEditBounds.strokeDashArray } : {}),
             text: liveTextEditBounds.text || '',
             opacity: 1,
             // w43: a box drawn with the Style picker on Cloud previews its
@@ -8196,11 +8114,13 @@ const SVGAnnotationLayerBody = memo(({
           x2: shapeCreation.current.x - (shapeCreation.start.x + shapeCreation.current.x) / 2,
           y2: shapeCreation.current.y - (shapeCreation.start.y + shapeCreation.current.y) / 2,
         }, 'length', null), measureMode === 'calibrate' ? null : effectiveMeasureScale), 'measure-draft-length', clampInverseScale(inverseScale))}
-      {measureMode === 'area' && polyDraft && polyDraft.tool === 'polygon' && polyDraft.points.length >= 2
+      {POLYGON_MEASURE_KINDS.includes(measureMode) && polyDraft && polyDraft.tool === 'polygon' && polyDraft.points.length >= 2
         && renderMeasureLabel(buildMeasureLabel(stampMeasure({
           type: 'polygon',
           points: polyDraft.preview ? [...polyDraft.points, polyDraft.preview] : polyDraft.points,
-        }, 'area', null), effectiveMeasureScale), 'measure-draft-area', clampInverseScale(inverseScale))}
+        }, measureMode, null), effectiveMeasureScale), `measure-draft-${measureMode}`, clampInverseScale(inverseScale))}
+      {measureMode && measureMode !== 'calibrate' && effectiveMeasureScale
+        && renderMeasureScaleBar(effectiveMeasureScale, height, clampInverseScale(inverseScale))}
       {polyDraft && polyDraft.points.length > 0 && (() => {
         const runPoints = polyDraft.preview
           ? [...polyDraft.points, polyDraft.preview]
@@ -8219,6 +8139,7 @@ const SVGAnnotationLayerBody = memo(({
           strokeWidth: Number(strokeWidth) || 3,
           lineBorderStyle,
           cloudIntensity,
+          curve: polylineCurve,
         });
         const controls = polyDraftFinishControlPoints(polyDraft);
         const canClose = canClosePolyDraft(polyDraft);
@@ -8326,48 +8247,6 @@ const SVGAnnotationLayerBody = memo(({
           style={{ pointerEvents: 'none' }}
         />
       )}
-      {/* Smart fill beta: the box being dragged round a tag to teach it. */}
-      {smartFillTeachBox && (
-        <rect
-          data-smart-fill-teach-box="true"
-          x={Math.min(smartFillTeachBox.x0, smartFillTeachBox.x1)}
-          y={Math.min(smartFillTeachBox.y0, smartFillTeachBox.y1)}
-          width={Math.abs(smartFillTeachBox.x1 - smartFillTeachBox.x0)}
-          height={Math.abs(smartFillTeachBox.y1 - smartFillTeachBox.y0)}
-          fill="rgba(74, 144, 226, 0.08)"
-          stroke="#4A90E2"
-          strokeWidth={1.5 * clampInverseScale(inverseScale)}
-          strokeDasharray="5,4"
-          style={{ pointerEvents: 'none' }}
-        />
-      )}
-      {/* Smart fill beta: the found outline, waiting for Apply. */}
-      {smartFillPreview && (
-        <path
-          data-smart-fill-preview="true"
-          d={markerShapePathData(smartFillPreview.bounds.shape)}
-          fill="rgba(74, 144, 226, 0.25)"
-          fillRule="evenodd"
-          stroke="#4A90E2"
-          strokeWidth={2 * clampInverseScale(inverseScale)}
-          strokeDasharray="5,4"
-          style={{ pointerEvents: 'none' }}
-        />
-      )}
-      {/* Smart fill beta: tags that match the sample, waiting for a tap. */}
-      {offeredSmartFillMatches.map((b, k) => (
-        <path
-          key={`smart-fill-match-${k}`}
-          data-smart-fill-match="true"
-          d={markerShapePathData(b.shape)}
-          fill="rgba(74, 144, 226, 0.15)"
-          fillRule="evenodd"
-          stroke="#4A90E2"
-          strokeWidth={1.5 * clampInverseScale(inverseScale)}
-          strokeDasharray="3,3"
-          style={{ pointerEvents: 'none' }}
-        />
-      ))}
       {/* w32: other screens' strokes while they are being drawn. */}
       <LiveStrokeGhosts documentId={documentId} pageNumber={pageNumber} />
       {/* Owner after Test 46: a mark carried over from another page, at the
@@ -8626,7 +8505,7 @@ const SVGAnnotationLayerBody = memo(({
                 r={counterHitPad / 2}
                 fill="transparent"
                 stroke="none"
-                style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+                style={{ cursor: ROTATE_HANDLE_CURSOR, pointerEvents: 'auto', touchAction: 'none' }}
                 {...counterRotateHandlers}
               />
               <circle
@@ -8639,10 +8518,11 @@ const SVGAnnotationLayerBody = memo(({
                 vectorEffect="non-scaling-stroke"
                 style={{
                   // UX: rotation handle is the only interactive chrome in counter
-                  // selection mode (Shottr UX). Cursor 'grab' signals draggability;
-                  // pointer-events 'auto' so it remains hit-testable even though the
-                  // surrounding SVG layer flips to pointer-events:none in edit mode.
-                  cursor: 'grab',
+                  // selection mode (Shottr UX). The turn grabber's pointing hand
+                  // (utils/handleCursors.js); pointer-events 'auto' so it remains
+                  // hit-testable even though the surrounding SVG layer flips to
+                  // pointer-events:none in edit mode.
+                  cursor: ROTATE_HANDLE_CURSOR,
                   pointerEvents: 'auto',
                   // UX: same scale as handleR above (clamped, so the shadow
                   // stops growing on extreme zoom-out). Matches SVGSelectionOverlay.
@@ -8860,7 +8740,7 @@ const SVGAnnotationLayerBody = memo(({
           const handleR = HANDLE_RADIUS * handleIs;
           const handleStyle = {
             filter: `drop-shadow(0 ${1 * handleIs}px ${3 * handleIs}px rgba(0,0,0,0.15))`,
-            cursor: 'grab',
+            cursor: GRAB_HANDLE_CURSOR,
             pointerEvents: 'auto',
           };
           // UX 2026-09-16: an invisible pad behind each endpoint / bend grabber
@@ -8896,7 +8776,7 @@ const SVGAnnotationLayerBody = memo(({
               rx={lineHitPad / 4}
               fill="transparent"
               stroke="none"
-              style={{ cursor: 'grab', pointerEvents: 'auto', touchAction: 'none' }}
+              style={{ cursor: GRAB_HANDLE_CURSOR, pointerEvents: 'auto', touchAction: 'none' }}
               onPointerDown={(e) => { if (lineToolChainsFromEnd(e, handleId)) return; e.stopPropagation(); handleHandlePointerDown(e, handleId); }}
             />
           );
@@ -8913,8 +8793,8 @@ const SVGAnnotationLayerBody = memo(({
           // UX: 3rd handle, visibly smaller than endpoints (r=5 vs r=7) to
           // signal "secondary control" per 15-UI-SPEC §A. Same white-fill /
           // blue-ring / drop-shadow as the endpoints so the visual language
-          // is unified. cursor:'grab' so all three handles share grabbable
-          // semantics. Dispatches handleId='midpoint' to the existing hook
+          // is unified. All three show the point grabbers' pointing hand
+          // (utils/handleCursors.js). Dispatches handleId='midpoint' to the existing hook
           // dispatcher — wired in useSVGInteraction.js Plan 15-03 Task 3.
           // The curve-bend handle is intentionally a touch smaller than the
           // primary handles (HANDLE_RADIUS_SECONDARY vs HANDLE_RADIUS) so it
@@ -9038,15 +8918,20 @@ const SVGAnnotationLayerBody = memo(({
           // vertex handles + shadows stop growing on extreme zoom-out (no-op at rest).
           const vHandleIs = clampInverseScale(inverseScale);
           const vHandleR = HANDLE_RADIUS * vHandleIs;
+          // A curved polyline stores its drawn curve; only every step-th
+          // point is a clicked corner with a handle (polySpline.js).
+          const splineStep = polySplineStep(obj);
+          const isCorner = (i) => !splineStep || i % splineStep === 0;
+          const cornerWorldPoints = splineStep ? worldPoints.filter((_, i) => isCorner(i)) : worldPoints;
           // UX 2026-09-16: an invisible hit disc sits behind each vertex dot so
           // the corner can be grabbed without landing on the 11 px dot — 32 px
           // wide on a mouse (Drawboard PDF measures 34 x 34 on its handles),
           // 44 pt on a finger (Apple HIG). Screen-constant via the clamped
           // inverse scale. It shrinks when two corners sit closer together than
           // a full pad, so the nearer corner always wins the press.
-          const vNeighbourSpacing = worldPoints.length > 1
-            ? worldPoints.reduce((best, wp, i) => {
-              const prev = worldPoints[(i - 1 + worldPoints.length) % worldPoints.length];
+          const vNeighbourSpacing = cornerWorldPoints.length > 1
+            ? cornerWorldPoints.reduce((best, wp, i) => {
+              const prev = cornerWorldPoints[(i - 1 + cornerWorldPoints.length) % cornerWorldPoints.length];
               const gap = Math.hypot(wp.x - prev.x, wp.y - prev.y);
               return gap > 0 && gap < best ? gap : best;
             }, Infinity)
@@ -9059,7 +8944,7 @@ const SVGAnnotationLayerBody = memo(({
           }) / 2;
           const vHandleStyle = {
             filter: `drop-shadow(0 ${1 * vHandleIs}px ${3 * vHandleIs}px rgba(0,0,0,0.15))`,
-            cursor: 'grab',
+            cursor: GRAB_HANDLE_CURSOR,
             pointerEvents: 'auto',
           };
           const clearVertexLongPress = () => {
@@ -9273,11 +9158,13 @@ const SVGAnnotationLayerBody = memo(({
                   Hidden while a corner is being dragged (they would trail the
                   old outline) and on sides too short to fit one beside the
                   corner dots. */}
-              {!modifierMoveActive && interactionState === 'idle' && worldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? worldPoints.length : -1).map((wp, i) => {
-                const next = worldPoints[(i + 1) % worldPoints.length];
+              {!modifierMoveActive && interactionState === 'idle' && cornerWorldPoints.slice(0, String(obj.type).toLowerCase() === 'polygon' ? cornerWorldPoints.length : -1).map((wp, i) => {
+                const next = cornerWorldPoints[(i + 1) % cornerWorldPoints.length];
                 if (Math.hypot(next.x - wp.x, next.y - wp.y) < vHandleR * 6) return null;
-                const x = (wp.x + next.x) / 2;
-                const y = (wp.y + next.y) / 2;
+                // On a curve the "+" sits on the curve, halfway between corners.
+                const onCurve = splineStep ? splineSpanMidpoint(worldPoints, splineStep, i) : null;
+                const x = onCurve ? onCurve.x : (wp.x + next.x) / 2;
+                const y = onCurve ? onCurve.y : (wp.y + next.y) / 2;
                 return <g key={`insert-vertex-${i}`} role="button" aria-label="Add vertex" data-add-vertex={i} onPointerDown={(e) => { e.stopPropagation(); handleHandlePointerDown(e, `insert-vertex-${i}`); }} style={{ cursor: 'crosshair', pointerEvents: 'auto' }}>
                   <circle cx={x} cy={y} r={vTouchHitR || vHandleR * 2} fill="transparent" />
                   <circle cx={x} cy={y} r={vHandleR * 0.75} fill={HANDLE_FILL} stroke={HANDLE_RING} strokeWidth={vHandleIs} />
@@ -9285,7 +9172,7 @@ const SVGAnnotationLayerBody = memo(({
                 </g>;
               })}
               {/* w58: Cmd / Ctrl held -> corner grabbers hide (move instead). */}
-              {!modifierMoveActive && worldPoints.map((wp, i) => (
+              {!modifierMoveActive && worldPoints.map((wp, i) => isCorner(i) && (
                 <g key={`vertex-${i}`}>
                   {vTouchHitR > 0 && (
                     <circle
@@ -9297,7 +9184,7 @@ const SVGAnnotationLayerBody = memo(({
                       fill="transparent"
                       stroke="none"
                       data-poly-vertex-index={i}
-                      style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                      style={{ pointerEvents: 'auto', cursor: GRAB_HANDLE_CURSOR }}
                       onPointerDown={onVertexPointerDown(i)}
                       onContextMenu={onVertexContextMenu(i)}
                     />
@@ -9763,6 +9650,8 @@ const SVGAnnotationLayerBody = memo(({
                   // Owner ruling 2026-09-28: a lock on the group frame when
                   // any selected member is locked (it stays put in a move).
                   locked={groupHasLockedMember}
+                  // The frame turns in this wrapper, not in its bbox.
+                  cursorRotationOffset={totalAngle}
                 />
                 {/* Invisible hit-test rect so the resolver's
                     getBoundingClientRect fallback has a concrete

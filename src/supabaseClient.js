@@ -8,7 +8,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { isAuthRetryableFetchError, navigatorLock } from '@supabase/auth-js';
-import { createSafeNavigatorLock } from './utils/safeNavigatorLock.js';
+import { createSafeNavigatorLock, createTabBatchedLock } from './utils/safeNavigatorLock.js';
 import {
   checkpointBodyFetch,
   enableCheckpointBodySubstitution,
@@ -32,7 +32,8 @@ const env = import.meta.env || {};
 // Plain-HTTP mobile development hosts are not secure contexts, so Safari and
 // WKWebView omit navigator.locks. Fall back to auth-js's inline behavior there;
 // otherwise retain the timeout clamp and cross-tab locking used on desktop.
-const clampedAuthLock = createSafeNavigatorLock(navigatorLock);
+// Calls queued in this tab share one grant (see createTabBatchedLock).
+const clampedAuthLock = createTabBatchedLock(createSafeNavigatorLock(navigatorLock));
 const supabaseUrl = env.VITE_SUPABASE_URL;
 const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY;
 const supabaseProjectRef = (() => {

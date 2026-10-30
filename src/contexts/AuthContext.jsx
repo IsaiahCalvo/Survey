@@ -20,6 +20,18 @@ import {
 import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
 import { pdfByteCache } from '../services/pdfByteCache.js';
 import { loadAccountExportKits } from '../services/exportFormats/accountKits.js';
+import { isFeatureOn } from '../featureFlags.js';
+
+// Where Supabase sends the browser back after a Google or company sign-in.
+// In Electron window.location.origin may be file://, which can't take a
+// redirect, so it returns to the current page instead.
+function authRedirectTarget() {
+  if (window.electronAPI) return window.location.href.split('#')[0];
+  if (/^\/mobile(?:\/|$)/.test(window.location.pathname)) {
+    return `${window.location.origin}/mobile`;
+  }
+  return window.location.origin;
+}
 
 export const AuthContext = createContext({});
 
@@ -347,6 +359,15 @@ export const AuthProvider = ({ children }) => {
   // canceled / error; the active tier on active|trialing. Never throws on a
   // Supabase error (logs + returns 'free'); only an unexpected throw rejects.
   const resolveSubscriptionTier = async (userId) => {
+    // my_effective_tier() is the same rule on the server, plus a paid company
+    // seat (Enterprise company workspace) lifting Free or Pro to Enterprise.
+    // A database without it yet (older local stack) falls back to the row.
+    const effective = await supabase.rpc('my_effective_tier');
+    if (!effective.error && typeof effective.data === 'string') return effective.data;
+    if (effective.error && !['PGRST202', '42883'].includes(effective.error.code)) {
+      console.error('Error fetching subscription tier:', effective.error);
+      return 'free';
+    }
     const { data, error } = await supabase
       .from('user_subscriptions')
       .select('tier, status')
@@ -560,7 +581,16 @@ export const AuthProvider = ({ children }) => {
     let off = null;
     let cancelled = false;
     loadAccountExportKits(supabase).then((fn) => { if (cancelled) fn(); else off = fn; }).catch(() => {});
-    return () => { cancelled = true; off?.(); };
+    // Nightly: layouts this person made from their own sheet.
+    // Loaded on demand to keep it off the first load.
+    let ownStore = null;
+    if (isFeatureOn('own-excel-layouts')) {
+      import('../services/exportFormats/ownKitStore.js')
+        .then(({ ownKitStore }) => { ownStore = ownKitStore; return ownKitStore.load(); })
+        .then(() => { if (cancelled) ownStore?.unload(); })
+        .catch(() => {});
+    }
+    return () => { cancelled = true; off?.(); ownStore?.unload(); };
   }, [user?.id]);
 
   // Refetch subscription tier when window regains focus (user returns from Stripe)
@@ -656,19 +686,7 @@ export const AuthProvider = ({ children }) => {
       return data;
     }
 
-    // For Electron, use a proper redirect URL
-    // In Electron, window.location.origin might be file:// which doesn't work for OAuth
-    // Use the current window location or a custom protocol
-    let redirectTo = window.location.origin;
-    if (/^\/mobile(?:\/|$)/.test(window.location.pathname)) {
-      redirectTo = `${window.location.origin}/mobile`;
-    }
-    
-    // If we're in Electron (detected by checking for electronAPI)
-    if (window.electronAPI) {
-      // Use the current location - Electron will handle the redirect
-      redirectTo = window.location.href.split('#')[0]; // Remove any existing hash
-    }
+    const redirectTo = authRedirectTarget();
 
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -695,13 +713,20 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Sign in with SSO
-  const signInWithSSO = async (domain) => {
+  const signInWithSSO = async (domain, captchaToken) => {
     if (!isSupabaseAvailable()) {
       throw new Error('Supabase is not configured');
     }
 
+    // Without redirectTo Supabase sends everyone back to the Site URL
+    // (surveytool.app), which drops Nightly, /mobile and desktop users on the
+    // wrong app after their company login.
     const { data, error } = await supabase.auth.signInWithSSO({
       domain,
+      options: {
+        redirectTo: authRedirectTarget(),
+        ...(captchaToken ? { captchaToken } : {}),
+      },
     });
 
     if (error) throw error;
@@ -896,6 +921,7 @@ export const AuthProvider = ({ children }) => {
       multiUserEdit: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
       advancedSurvey: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
       excelExport: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
+      oneDrive: ['pro', 'enterprise', 'developer'].includes(subscriptionTier),
       sso: ['enterprise', 'developer'].includes(subscriptionTier),
     }
   };

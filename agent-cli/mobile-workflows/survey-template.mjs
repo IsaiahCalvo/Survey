@@ -207,8 +207,12 @@ async function coverTouchReorderPersistence({ page, touch, baseUrl, artifacts })
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
   await waitForTemplateModel(page, (templates) => templates.length >= 2, 'seeded templates');
   const originalTemplates = await readTemplates(page);
-  const orderPreferenceKey = 'surveyHub.templateOrder:isaiahcalvo123@gmail.com';
-  const originalOrderPreference = await page.evaluate((key) => localStorage.getItem(key), orderPreferenceKey);
+  // The order preference is keyed per user (`surveyHub.templateOrder:<user id or email>`),
+  // so match on the prefix rather than hard-coding which identity the app picks.
+  const orderPreferencePrefix = 'surveyHub.templateOrder:';
+  const originalOrderPreferences = await page.evaluate((prefix) => Object.fromEntries(
+    Object.keys(localStorage).filter((k) => k.startsWith(prefix)).map((k) => [k, localStorage.getItem(k)]),
+  ), orderPreferencePrefix);
 
   const templateRows = page.locator('.templates-mobile-row:visible');
   const secondTemplateId = originalTemplates[1].id;
@@ -218,8 +222,9 @@ async function coverTouchReorderPersistence({ page, touch, baseUrl, artifacts })
     page.locator(`[data-sortable-rearrange-item="${originalTemplates[0].id}"]:visible`),
     'template touch reorder',
   );
-  await page.waitForFunction(({ key, id }) => JSON.parse(localStorage.getItem(key) || '[]')?.[0] === id,
-    { key: orderPreferenceKey, id: secondTemplateId }, { timeout: 5_000 });
+  await page.waitForFunction(({ prefix, id }) => Object.keys(localStorage)
+    .some((k) => k.startsWith(prefix) && JSON.parse(localStorage.getItem(k) || '[]')?.[0] === id),
+    { prefix: orderPreferencePrefix, id: secondTemplateId }, { timeout: 5_000 });
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
   invariant((await templateRows.first().innerText()).includes(originalTemplates[1].name), 'Template touch reorder changed after reload');
 
@@ -282,14 +287,14 @@ async function coverTouchReorderPersistence({ page, touch, baseUrl, artifacts })
   invariant(reloaded.modules.find((module) => module.id === 'm1').categories.find((category) => category.id === 'c1').checklist[0].id === 'i2', 'Item touch reorder changed after reload');
   await artifacts?.screenshot?.(page, 'template-touch-reorders-reloaded');
 
-  await page.evaluate(({ key, orderKey, orderValue, templates: snapshot }) => {
+  await page.evaluate(({ key, orderPrefix, orderValues, templates: snapshot }) => {
     localStorage.setItem(key, JSON.stringify(snapshot));
-    if (orderValue == null) localStorage.removeItem(orderKey);
-    else localStorage.setItem(orderKey, orderValue);
+    Object.keys(localStorage).filter((k) => k.startsWith(orderPrefix)).forEach((k) => localStorage.removeItem(k));
+    Object.entries(orderValues).forEach(([k, v]) => localStorage.setItem(k, v));
   }, {
     key: TEMPLATE_WORKFLOW_STORAGE_KEY,
-    orderKey: orderPreferenceKey,
-    orderValue: originalOrderPreference,
+    orderPrefix: orderPreferencePrefix,
+    orderValues: originalOrderPreferences,
     templates: restoreTemplates,
   });
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
@@ -758,6 +763,12 @@ async function runMarkerThroughCreatedSurvey({ page, touch, ids, artifacts }) {
       { x: box.x + box.width * (0.55 + attempt * 0.08), y: top + (bottom - top) * 0.48 },
       { steps: 12 },
     );
+    // A new marker now opens a placement card and only commits once the user
+    // taps outside or picks a category; pick the preselected category.
+    const placeCategory = page.locator('.survey-place [role="option"][aria-selected="true"]').first();
+    if (await placeCategory.waitFor({ state: 'visible', timeout: 3_000 }).then(() => true, () => false)) {
+      await tapLocator(touch, placeCategory, 'survey marker placement category');
+    }
     try {
       await page.waitForFunction((prior) => {
         const ids = new Set([...document.querySelectorAll('[data-survey-marker-id]')]

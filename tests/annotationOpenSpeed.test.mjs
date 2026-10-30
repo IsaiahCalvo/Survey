@@ -437,3 +437,161 @@ test('a merged checkpoint is never claimed as covered, and onlyIfCovered never m
   assert.equal(after.checkpointToken, before.checkpointToken);
   assert.deepEqual(after.snapshotIdentity, before.snapshotIdentity);
 });
+
+// Cold open (2026-10-27): the downloaded snapshot goes into this device's
+// offline copy after the open, not during it; the first local edit, or a
+// close, fills it first.
+test('a cold open fills the offline copy after the open; a local edit or a close fills it first', async () => {
+  const documentId = 'open-speed-deferred-offline-copy';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const seed = await open(alice, { documentId, outboxStore: createMemoryAnnotationOutbox(), clientId: 's1' });
+  seed.applyByPage({ 1: { objects: [rect('k1'), rect('k2')] } });
+  await seed.drain();
+  assert.equal(await seed.flushSnapshot(), true, 'the checkpoint is written');
+  await seed.destroy();
+
+  // A stand-in for y-indexeddb: it stores every update its doc emits.
+  const providers = [];
+  const localPersistenceFactory = async (_name, target) => {
+    const provider = { doc: target, db: {}, synced: true, stored: [] };
+    provider._storeUpdate = (update, origin) => { if (origin !== provider) provider.stored.push(update); };
+    provider.destroy = () => target.off('update', provider._storeUpdate);
+    target.on('update', provider._storeUpdate);
+    providers.push(provider);
+    return provider;
+  };
+  const replayed = (provider) => {
+    const doc = new Y.Doc();
+    for (const update of provider.stored) Y.applyUpdate(doc, update);
+    return [...doc.getMap('marks').keys()].sort();
+  };
+  const coldOpen = (clientId) => openAnnotationDoc({
+    documentId,
+    supabase: cloud.makeClient('user-b').supabase,
+    clientId,
+    actorUserId: 'user-b',
+    enableLocal: true,
+    enableRealtime: false,
+    doc: new Y.Doc(),
+    outboxStore: createMemoryAnnotationOutbox(),
+    localPersistenceFactory,
+    legacyPersistenceFactory: async () => ({ synced: true, destroy() {}, async clearDocument() {} }),
+  });
+
+  const previousIndexedDb = globalThis.indexedDB;
+  globalThis.indexedDB = {};
+  try {
+    const handle = await coldOpen('b1');
+    const provider = providers.at(-1);
+    try {
+      assert.deepEqual(ids(handle.getByPage()), ['k1', 'k2'], 'the marks show');
+      assert.equal(provider.stored.length, 0, 'the open wrote nothing to the copy');
+      assert.equal(provider.doc.store.clients.size, 0, 'and did not decode the snapshot into it');
+      // A local edit before the copy is filled fills it at once (a bulk
+      // import has no other local copy until its checkpoint is stored).
+      handle.applyByPage({ 1: { objects: [...handle.getByPage()[1].objects, rect('k3')] } });
+      assert.deepEqual(replayed(provider), ['k1', 'k2', 'k3'], 'the edit is in the copy at once, after the snapshot');
+      await handle.drain();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const first = new Y.Doc();
+      Y.applyUpdate(first, provider.stored[0]);
+      assert.deepEqual([...first.getMap('marks').keys()].sort(), ['k1', 'k2'], 'the snapshot is stored first, as one update');
+      assert.deepEqual(replayed(provider), ['k1', 'k2', 'k3'], 'the copy holds the snapshot and the later edit');
+      assert.deepEqual([...provider.doc.getMap('marks').keys()].sort(), ['k1', 'k2', 'k3']);
+    } finally {
+      await handle.destroy();
+    }
+
+    // Closed before the copy is filled: the close fills it.
+    const quick = await coldOpen('b2');
+    const quickProvider = providers.at(-1);
+    assert.equal(quickProvider.stored.length, 0);
+    await quick.destroy();
+    assert.deepEqual(replayed(quickProvider), ['k1', 'k2', 'k3'], 'the close filled the copy');
+  } finally {
+    globalThis.indexedDB = previousIndexedDb;
+  }
+});
+
+test('a reopen with nothing new since the saved copy writes no receipt; a new cloud row still does', async () => {
+  const documentId = 'open-speed-no-receipt';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const outbox = createMemoryAnnotationOutbox();
+  const compactions = [];
+  const realCompact = outbox.compactAccepted.bind(outbox);
+  outbox.compactAccepted = (...args) => { compactions.push(args[3]); return realCompact(...args); };
+
+  const first = await open(alice, { documentId, outboxStore: outbox, clientId: 'a1' });
+  first.applyByPage({ 1: { objects: [rect('r1'), rect('r2')] } });
+  await first.drain();
+  assert.equal(await first.flushSnapshot(), true);
+  await first.destroy();
+  const savedBefore = await outbox.loadCleanState(documentId, 'user-a');
+
+  // Unchanged: the saved copy is exactly what the cloud holds.
+  compactions.length = 0;
+  const second = await open(alice, { documentId, outboxStore: outbox, clientId: 'a2' });
+  try {
+    assert.deepEqual(ids(second.getByPage()), ['r1', 'r2']);
+    assert.equal(compactions.length, 0, 'the open writes no receipt for an unchanged copy');
+    const savedAfter = await outbox.loadCleanState(documentId, 'user-a');
+    assert.equal(savedAfter.checkpointToken, savedBefore.checkpointToken, 'the saved copy is untouched');
+    // Still a working handle: a new mark is saved, and written down locally once accepted.
+    second.applyByPage({ 1: { objects: [...second.getByPage()[1].objects, rect('r3')] } });
+    await second.drain();
+  } finally {
+    await second.destroy();
+  }
+
+  // A row the saved copy lacks (r3, after the snapshot row): the open writes a receipt.
+  compactions.length = 0;
+  const third = await open(alice, { documentId, outboxStore: outbox, clientId: 'a3' });
+  try {
+    assert.deepEqual(ids(third.getByPage()), ['r1', 'r2', 'r3']);
+    assert.ok(!compactions.includes(true), 'the open itself does not wait for the receipt');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(compactions.includes(true), 'a forced receipt is written once the open is done, when the cloud has something new');
+  } finally {
+    await third.destroy();
+  }
+
+  // The same row again (still after the snapshot row), but now in the saved copy: no receipt.
+  compactions.length = 0;
+  const fourth = await open(alice, { documentId, outboxStore: outbox, clientId: 'a4' });
+  try {
+    assert.deepEqual(ids(fourth.getByPage()), ['r1', 'r2', 'r3']);
+    assert.equal(compactions.length, 0, 'a tail row the saved copy already holds needs no receipt');
+  } finally {
+    await fourth.destroy();
+  }
+});
+
+test('a close right after the open still writes its receipt, holding what the open read', async () => {
+  const documentId = 'open-speed-receipt-at-close';
+  const cloud = createCloud(documentId);
+  const alice = cloud.makeClient('user-a');
+  const outbox = createMemoryAnnotationOutbox();
+  const first = await open(alice, { documentId, outboxStore: outbox, clientId: 'a1' });
+  first.applyByPage({ 1: { objects: [rect('r1')] } });
+  await first.drain();
+  assert.equal(await first.flushSnapshot(), true);
+  await first.destroy();
+
+  // Someone else adds r2 after that snapshot row.
+  const bob = cloud.makeClient('user-b');
+  const other = await open(bob, { documentId, outboxStore: createMemoryAnnotationOutbox(), clientId: 'b1' });
+  other.applyByPage({ 1: { objects: [...other.getByPage()[1].objects, rect('r2')] } });
+  await other.drain();
+  await other.destroy();
+
+  // Alice opens (reads r2 from the cloud) and closes at once.
+  const second = await open(alice, { documentId, outboxStore: outbox, clientId: 'a2' });
+  assert.deepEqual(ids(second.getByPage()), ['r1', 'r2']);
+  await second.destroy();
+  const clean = await outbox.loadCleanState(documentId, 'user-a');
+  const saved = new Y.Doc();
+  Y.applyUpdate(saved, new Uint8Array(clean.checkpointUpdate));
+  assert.deepEqual([...saved.getMap('marks').keys()].sort(), ['r1', 'r2'], 'the close wrote the receipt');
+});

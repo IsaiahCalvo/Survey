@@ -5,7 +5,7 @@
  * One device preference (annotationPreferences.js, also in Settings >
  * Annotations) covers every snap: lining a moved / resized mark up with other
  * marks, pulling a line end onto another line's end, the touch angle assist
- * and rotation's right-angle magnet. Shift's 45° / 15° steps still apply, and
+ * and rotation's right-angle magnet. Shift's snap-angle steps still apply, and
  * holding Alt mid-drag still skips snapping for that drag.
  *
  * Renders whatever button the host wants (desktop rail button or phone menu
@@ -20,7 +20,7 @@ import {
   writeAnnotationSnapping,
 } from '../utils/annotationPreferences.js';
 import { isSnappingToggleKey } from '../utils/keyboardShortcuts.js';
-import { isTypingTarget } from '../utils/annotationFamilyRules.js';
+import { isTypingTarget } from '../utils/typingTarget.js';
 import { showToast } from '../utils/toast.js';
 
 export const useAnnotationSnapping = () => {

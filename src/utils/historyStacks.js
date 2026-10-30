@@ -257,7 +257,17 @@ export function scopeLegacyRestoreToOwnSlices(meta, currentState, target, { dire
   if (SURVEY_MARKER_REASON.test(reason)) {
     const id = context.annotationId != null ? String(context.annotationId) : null;
     const targetMarkers = target.surveyMarkers || {};
-    if (id) {
+    if (id && reason === 'survey-marker:answer' && hasOwnKey(out.surveyMarkers, id) && hasOwnKey(targetMarkers, id)) {
+      // An answer step puts back the answers only. The Complete entity an
+      // answer set by itself is never undone (owner ruling 2026-10-01), and it
+      // also lives on the linked item and the box colour, which Undo keeps.
+      const marker = { ...out.surveyMarkers[id] };
+      if (hasOwnKey(targetMarkers[id], 'checklistResponses')) marker.checklistResponses = targetMarkers[id].checklistResponses;
+      else delete marker.checklistResponses;
+      out.surveyMarkers = { ...out.surveyMarkers, [id]: marker };
+      if (hasOwnKey(current, 'pendingSurveyMarkerUi')) out.pendingSurveyMarkerUi = current.pendingSurveyMarkerUi;
+      else delete out.pendingSurveyMarkerUi;
+    } else if (id) {
       const next = { ...out.surveyMarkers };
       if (hasOwnKey(targetMarkers, id)) next[id] = targetMarkers[id];
       else delete next[id];

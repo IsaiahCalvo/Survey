@@ -20,6 +20,9 @@ test('Spaces edit mode, visibility animation, copy, move and scoped Undo', async
   await page.getByRole('switch', { name: 'Turn on space', exact: true }).first().click();
   await expect(button(page, 'Exit Fix19 Space A')).toHaveCount(0);
   await expect(page.locator('.spaces-region__marks').first()).toHaveCSS('color', 'rgb(216, 168, 78)');
+  // A switch that is on is gold like every lit toggle, never --success green.
+  await expect.poll(() => page.getByRole('switch', { name: /^Turn off space/ }).first()
+    .evaluate((element) => getComputedStyle(element, '::before').backgroundColor)).toBe('rgb(216, 168, 78)');
   const toggle = page.locator('.space-region-card .spaces-switch').first();
   await page.waitForTimeout(250);
   const frames = await toggle.evaluate(async (element) => {
@@ -37,23 +40,25 @@ test('Spaces edit mode, visibility animation, copy, move and scoped Undo', async
   await button(page, 'Edit Spaces').click();
   await expect(page.locator('.spaces-panel .space-card__delete')).toHaveCount(3);
   await button(page, 'Edit the regions on page 1').click();
-  await expect(page.locator('[data-area-hint]')).toBeVisible();
-  await button(page, 'Cancel').click();
+  await expect(page.locator('[data-region-edit-layer]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-region-edit-layer]')).toHaveCount(0);
   await page.evaluate(() => window.__fix19SurveyRegionHarness.createAnnotation({ id: 'spaces-owned', scope: 'region' }));
   await expect.poll(() => page.evaluate(() => window.__fix20CollabHarness.getState().annotations.filter((mark) => mark.id === 'spaces-owned').length)).toBe(1);
   await button(page, 'Move or copy region on page 1').click();
   await page.getByRole('textbox', { name: 'Destination page' }).fill('2');
   await button(page, 'Copy region').click();
-  await expect(page.getByRole('menu', { name: 'Move or copy Region 1' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Move or copy Region 1' })).toHaveCount(0);
   await expect(button(page, 'Go to page 2')).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__fix20CollabHarness.getState().annotations.filter((mark) => mark.id === 'spaces-owned').length)).toBe(1);
   await button(page, 'Undo').click();
   await expect(button(page, 'Go to page 2')).toHaveCount(0);
   await button(page, 'Move or copy region on page 1').click();
-  await page.getByRole('radio', { name: /Fix19 Space B/ }).click();
+  await page.getByRole('button', { name: 'Destination space', exact: true }).click();
+  await page.getByRole('listbox', { name: 'Destination space' }).getByRole('option', { name: 'Fix19 Space B', exact: true }).click();
   await page.getByRole('textbox', { name: 'Destination page' }).fill('3');
   await button(page, 'Move region').click();
-  await expect(page.getByRole('menu', { name: 'Move or copy Region 1' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Move or copy Region 1' })).toHaveCount(0);
   await button(page, 'Open Fix19 Space B').click();
   await button(page, 'Go to page 3').click();
   const markPage = () => page.locator('[data-annotation-id="spaces-owned"]').evaluateAll((elements) => elements.map((element) => element.closest('[data-page-number]')?.dataset.pageNumber));

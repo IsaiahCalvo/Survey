@@ -53,6 +53,10 @@ export function buildPdfCalloutMetadata(callout, pageNumber = null, part = null)
     textBoxPosition,
     textBoxWidth,
     textBoxHeight,
+    // Pinned leader attach point (calloutGeometry), when the user set one.
+    ...(callout.textBoxAnchor && typeof callout.textBoxAnchor === 'object'
+      ? { textBoxAnchor: { side: callout.textBoxAnchor.side, t: finiteOrNull(callout.textBoxAnchor.t) } }
+      : {}),
     moduleId: callout.moduleId ?? callout.spaceId ?? null,
     regionId: callout.regionId ?? null,
     spaceId: callout.spaceId ?? null,

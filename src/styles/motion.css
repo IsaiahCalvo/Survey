@@ -33,6 +33,15 @@
 @keyframes sv-menu-in-up {
   from { opacity: 0; translate: 0 var(--motion-menu-shift, 8px); }
 }
+/* Drop-downs (owner 2026-10-28): an action menu grows out of the button it
+   opens from (transform-origin: the corner nearest that button), and each
+   row arrives a moment after the one above it. */
+@keyframes sv-menu-grow {
+  from { opacity: 0; scale: 0.94; }
+}
+@keyframes sv-menu-row-in {
+  from { opacity: 0; translate: 6px 0; }
+}
 @keyframes sv-fade-in {
   from { opacity: 0; }
 }
@@ -86,6 +95,26 @@
     animation-name: sv-menu-in-up;
   }
 
+  /* ACTION MENUS (the shared .hub-menu card: row More menus, right-click,
+     Export, the access and team row menus) grow out of their button. The
+     card's corner nearest the button is its --menu-origin (default: under a
+     More button at the row's right end). */
+  :where(.hub-menu) {
+    animation: sv-menu-grow var(--motion-menu-open) var(--ease-glide);
+    transform-origin: var(--menu-origin, top right);
+  }
+  :where(.hub-menu.opens-up) {
+    --menu-origin: bottom right;
+  }
+
+  /* DROP-DOWN ROWS arrive one after another (--menu-row is the row's place,
+     set by MenuRows and AnnotationDropdown; capped so a long list is not
+     slow). Filled backwards so a row waiting its turn is not seen first. */
+  :where(.hub-menu, .annotation-dropdown__options) > :where([role="menuitem"], [role="option"]) {
+    animation: sv-menu-row-in var(--motion-menu-row) var(--ease-glide) backwards;
+    animation-delay: calc(min(var(--menu-row, 0), 10) * var(--motion-menu-stagger));
+  }
+
   /* DIALOGS: 150 ms, fade in from 0.98 scale. The scrim behind fades in on
      the same clock: the inline-styled full-screen scrims (the usual shape,
      a fixed div whose child is the dialog card) and the named ones. */
@@ -96,9 +125,7 @@
     [style*="position: fixed"]:has(> [role="dialog"][aria-modal="true"]),
     [style*="position: fixed"]:has(> [role="alertdialog"][aria-modal="true"]),
     .documents-mobile-detail-scrim,
-    .templates-mobile-modal-scrim,
-    .create-project-modal-scrim,
-    .apply-redactions-backdrop
+    .templates-mobile-modal-scrim
   ) {
     animation: sv-fade-in var(--motion-dialog) var(--ease-out);
   }
@@ -122,4 +149,18 @@
 [data-motion-state="closing"],
 [data-motion-state="closing"] * {
   pointer-events: none !important;
+}
+
+/* A document shown again (Home and back) stays exactly as it was left (owner
+   2026-10-26, item 38): the viewer comes back from display: none, which
+   restarts these entry animations, so for a moment they run at 0s and land
+   at once. src/hooks/useViewerReturnQuiet.js sets and clears the mark. */
+:root[data-viewer-returning] :is(
+  .survey-surface-in,
+  .survey-entitybar,
+  .chrome-row-drop-in,
+  .left-rail__panel,
+  #survey-rail-panel
+) {
+  animation-duration: 0s !important;
 }

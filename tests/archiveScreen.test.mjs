@@ -815,10 +815,17 @@ test('the header is built on the Documents / Projects structure', () => {
   assert.match(DOCS, /No documents match your search\./);
 
   // The filter button reuses the hub's filter icon + active-sort label pattern.
-  assert.match(SCREEN, /<Icon name="filter" size=\{12\} \/>\s*\n\s*<span>\{activeSortLabel\}<\/span>/);
+  // The phone button names the sort; the desktop one names the type filter,
+  // because desktop sorts by column header (design review 2026-10-27).
+  assert.match(SCREEN, /<Icon name="filter" size=\{12\} \/>\s*\n\s*<span>\{label\}<\/span>/);
+  assert.match(SCREEN, /archive-mobile-search-row[\s\S]*?\{filterButton\(activeSortLabel\)\}\s*\{menuOpen && filterMenu\(ARCHIVE_SORT_OPTIONS\)\}/);
+  assert.match(SCREEN, /archive-desktop-search[\s\S]*?\{filterButton\(activeFilterLabel\)\}\s*\{menuOpen && filterMenu\(desktopSortOptions\)\}/);
+  // Desktop keeps the sorts no column header offers (Project, Size).
+  assert.match(SCREEN, /const HEADER_SORT_KEYS = \['name', 'archived'\];/);
+  assert.match(SCREEN, /\{sortOptions\.map\(/);
   assert.match(DOCS, /<Icon name="filter" size=\{12\} \/>\s*\n\s*<span>\{activeSortLabel\}<\/span>/);
   // Type filtering survives, folded into that one menu rather than a chip row.
-  assert.match(SCREEN, /const filterMenu = \([\s\S]*?ARCHIVE_FILTERS\.map[\s\S]*?ARCHIVE_SORT_OPTIONS\.map/);
+  assert.match(SCREEN, /const filterMenu = \(sortOptions\) => \([\s\S]*?ARCHIVE_FILTERS\.map[\s\S]*?sortOptions\.map/);
   // The menu is styled at base scope, because Archive renders it on desktop too.
   assert.match(CSS, /^\.survey-hub \.archive-sort-menu \{/m);
 });

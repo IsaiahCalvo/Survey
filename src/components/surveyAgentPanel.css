@@ -66,24 +66,6 @@
 .survey-agent__badge.is-big svg { width: 20px; height: 20px; }
 .survey-agent__badge.is-spinning svg { animation: survey-agent-spin 1.6s linear infinite; }
 @keyframes survey-agent-spin { to { transform: rotate(360deg); } }
-.survey-agent__pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--border-strong, var(--border));
-  border-radius: var(--radius-pill, 999px);
-  background: transparent;
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.survey-agent__pill:hover:not(:disabled) { background: var(--hover, rgba(255, 255, 255, 0.05)); color: var(--text-1); }
-.survey-agent__pill:disabled { opacity: 0.45; cursor: default; }
-.survey-agent__pill-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
 .survey-agent__icon {
   position: relative;
   display: inline-flex;
@@ -264,7 +246,7 @@
 .survey-agent__tools { display: flex; align-items: center; gap: 2px; padding: 4px 6px 6px; }
 .survey-agent__spacer { flex: 1; }
 .survey-agent__log {
-  margin-right: 4px;
+  margin-right: 2px;
   padding: 2px 6px;
   border: 0;
   background: none;
@@ -292,6 +274,43 @@
 .survey-agent__send:hover:not(:disabled) { background: var(--accent-light, #edc26d); }
 .survey-agent.is-phone .survey-agent__send { width: 44px; height: 44px; }
 .survey-agent__send:disabled { background: var(--surface-3, rgba(255, 255, 255, 0.08)); color: var(--text-3); cursor: default; }
+
+/* Recording: the typing line becomes a live waveform (owner 2026-10-26,
+   after ChatGPT's phone chat box). Bar heights come from MicWaveform. */
+.survey-agent__wave-row {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 8px 12px 2px;
+  overflow: hidden;
+}
+.survey-agent__wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+}
+.survey-agent__wave > span {
+  flex: 1;
+  min-width: 2px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--text-2);
+  transform: scaleY(0.12);
+  transition: transform 70ms linear;
+}
+.survey-agent__wave-text {
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (prefers-reduced-motion: reduce) {
+  .survey-agent__wave > span { transition: none; }
+}
 .survey-agent__pending { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
 .survey-agent__chip {
   display: inline-flex;
@@ -335,17 +354,12 @@
   .survey-agent__shimmer { color: var(--text-2); background: none; }
 }
 
-/* Hands-free: a live line saying what the agent is doing, so a person
-   walking the site can tell at a glance whether to talk. */
-.survey-agent__handsfree[aria-pressed="true"] {
-  color: var(--on-danger, #fff);
-  background: var(--danger-fill, #a8403c);
-  border-color: transparent;
-}
-.survey-agent__handsfree[aria-pressed="true"] .survey-agent__pill-dot {
-  background: #fff;
-  animation: survey-agent-pulse 1.2s ease-in-out infinite;
-}
+/* Hands-free: the right-hand button in the box (ChatGPT's voice-mode
+   button), red with a stop square while it runs; a live line above the box
+   says what the agent is doing, so a person walking the site can tell at a
+   glance whether to talk. */
+.survey-agent__handsfree.is-on { color: var(--on-danger, #fff); background: var(--danger-fill, #a8403c); }
+.survey-agent__handsfree.is-on:hover:not(:disabled) { background: var(--danger, #d95a56); }
 .survey-agent__live {
   display: flex;
   align-items: center;
@@ -383,7 +397,6 @@
 .survey-agent.is-phone { font-size: 15px; }
 .survey-agent.is-phone .survey-agent__head { gap: 6px; padding: 8px 8px 8px 12px; }
 .survey-agent.is-phone .survey-agent__title { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.survey-agent.is-phone .survey-agent__pill { min-height: 44px; padding: 0 12px; font-size: 14px; }
 .survey-agent.is-phone .survey-agent__msg.is-user .survey-agent__body { max-width: 92%; }
 .survey-agent.is-phone .survey-agent__undo { min-height: 44px; padding: 0 14px; }
 .survey-agent.is-phone .survey-agent__suggestion { padding: 12px 14px; font-size: 15px; }
@@ -473,4 +486,74 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .survey-agent-dots__dot { animation: none !important; }
+}
+
+/* "What Survey learned" (AgentLearnedDialog, Nightly beta). */
+.agent-learned__section + .agent-learned__section { margin-top: 14px; }
+.agent-learned__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-2);
+}
+.agent-learned__count { font-weight: 400; color: var(--text-3); }
+.agent-learned__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.agent-learned__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border);
+}
+.agent-learned__text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.agent-learned__text strong { color: var(--text-1); font-weight: 600; }
+.agent-learned__remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.agent-learned__remove:hover { color: var(--text-1); background: var(--surface-3); }
+.agent-learned__empty { margin: 0; font-size: 13px; color: var(--text-3); }
+.agent-learned__undo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.agent-learned__undo-btn {
+  padding: 2px 6px;
+  border: 0;
+  background: none;
+  color: var(--text-1);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
 }

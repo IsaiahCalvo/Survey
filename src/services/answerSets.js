@@ -8,7 +8,9 @@
  * An export kit may carry a set too (`kit.answerSet`); the template's own wins.
  */
 import { getExportKit } from './exportFormats/registry.js';
-import { ANSWER_MEANS_MAX, checklistItemKind, typedAnswerFor, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
+import {
+  ANSWER_MEANS_MAX, APP_ONLY_KINDS as APP_ONLY_KINDS_LIST, checklistItemKind, itemAnswerFor, itemAnswerHint, scoreScaleOf, typedAnswerIsIssue, validateAnswerSet,
+} from '../../supabase/functions/_shared/kitShape.js';
 import { categoriesOf, checklistOf, modulesOf } from './templateConfigShape.js';
 
 export { ANSWER_MEANS_MAX, ANSWER_TONES, MIN_ANSWERS, MAX_ANSWERS, validateAnswerSet } from '../../supabase/functions/_shared/kitShape.js';
@@ -65,6 +67,7 @@ export const ANSWER_SET_PRESETS = Object.freeze([
 // More ready-made sets, shown only with the nightly 'custom-answers' flag.
 const freezeSet = (pairs) => Object.freeze(pairs.map(([value, tone]) => Object.freeze({ value, tone })));
 export const EXTRA_ANSWER_SET_PRESETS = Object.freeze([
+  Object.freeze({ id: 'yes-no-na-words', label: 'Yes / No / N/A', answers: freezeSet([['Yes', 'good'], ['No', 'bad'], ['N/A', 'neutral']]) }),
   Object.freeze({ id: 'yes-no', label: 'Y / N', answers: freezeSet([['Y', 'good'], ['N', 'bad']]) }),
   Object.freeze({ id: 'done', label: 'Done', answers: freezeSet([['Done', 'good']]) }),
   Object.freeze({
@@ -74,9 +77,64 @@ export const EXTRA_ANSWER_SET_PRESETS = Object.freeze([
   }),
   Object.freeze({
     id: 'score-1-5',
-    label: 'Score 1 to 5',
+    label: 'Rating 1 to 5',
     answers: freezeSet([['1', 'bad'], ['2', 'bad'], ['3', 'neutral'], ['4', 'good'], ['5', 'good']]),
   }),
+  Object.freeze({ id: 'yes-no-words', label: 'Yes / No', answers: freezeSet([['Yes', 'good'], ['No', 'bad']]) }),
+  Object.freeze({ id: 'ok-not-ok-na', label: 'OK / Not OK / N/A', answers: freezeSet([['OK', 'good'], ['Not OK', 'bad'], ['N/A', 'neutral']]) }),
+  Object.freeze({ id: 'pass-fail', label: 'Pass / Fail', answers: freezeSet([['Pass', 'good'], ['Fail', 'bad']]) }),
+  // Not tested is a problem: the device still needs a visit.
+  Object.freeze({
+    id: 'pass-fail-not-tested-na',
+    label: 'Pass / Fail / Not tested / N/A',
+    answers: freezeSet([['Pass', 'good'], ['Fail', 'bad'], ['Not tested', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({
+    id: 'compliant-na',
+    label: 'Compliant / Not compliant / N/A',
+    answers: freezeSet([['Compliant', 'good'], ['Not compliant', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({ id: 'safe-unsafe-na', label: 'Safe / Unsafe / N/A', answers: freezeSet([['Safe', 'good'], ['Unsafe', 'bad'], ['N/A', 'neutral']]) }),
+  Object.freeze({
+    id: 'excellent-good-fair-poor-na',
+    label: 'Excellent / Good / Fair / Poor / N/A',
+    answers: freezeSet([['Excellent', 'good'], ['Good', 'good'], ['Fair', 'neutral'], ['Poor', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({
+    id: 'present-missing-na',
+    label: 'Present / Missing / N/A',
+    answers: freezeSet([['Present', 'good'], ['Missing', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({
+    id: 'complete-incomplete-na',
+    label: 'Complete / Incomplete / N/A',
+    answers: freezeSet([['Complete', 'good'], ['Incomplete', 'bad'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({ id: 'open-closed', label: 'Open / Closed', answers: freezeSet([['Open', 'neutral'], ['Closed', 'neutral']]) }),
+  Object.freeze({
+    id: 'score-1-5-na',
+    label: 'Rating 1 to 5 / N/A',
+    answers: freezeSet([['1', 'bad'], ['2', 'bad'], ['3', 'neutral'], ['4', 'good'], ['5', 'good'], ['N/A', 'neutral']]),
+  }),
+  Object.freeze({
+    id: 'score-1-10',
+    label: 'Rating 1 to 10',
+    answers: freezeSet(Array.from({ length: 10 }, (_, i) => [String(i + 1), i < 3 ? 'bad' : i < 6 ? 'neutral' : 'good'])),
+  }),
+  Object.freeze({ id: 'low-medium-high', label: 'Low / Medium / High', answers: freezeSet([['Low', 'neutral'], ['Medium', 'neutral'], ['High', 'neutral']]) }),
+]);
+
+// How the answer picker groups the ready-made sets (nightly). Every preset
+// is in exactly one group.
+export const ANSWER_SET_GROUPS = Object.freeze([
+  Object.freeze({ label: 'Yes or no', ids: Object.freeze(['yes-no-na', 'yes-no-na-words', 'yes-no', 'yes-no-words', 'ok-not-ok-na', 'done']) }),
+  Object.freeze({ label: 'Pass or fail', ids: Object.freeze(['pass-fail-na', 'pass-fail', 'pass-fail-not-tested-na', 'compliant-na', 'safe-unsafe-na']) }),
+  Object.freeze({ label: 'Condition', ids: Object.freeze(['good-fair-poor-na', 'excellent-good-fair-poor-na']) }),
+  Object.freeze({
+    label: 'Status',
+    ids: Object.freeze(['installed-missing-damaged-na', 'works-not-working-na', 'present-missing-na', 'complete-incomplete-na', 'open-closed']),
+  }),
+  Object.freeze({ label: 'Ratings and sizes', ids: Object.freeze(['score-1-5', 'score-1-5-na', 'score-1-10', 'low-medium-high', 'small-medium-large']) }),
 ]);
 
 /** The presets the template editor offers. */
@@ -154,6 +212,8 @@ export function isDoneAnswer(set, value) {
   return tone === 'good' || tone === 'neutral';
 }
 
+// Excel's limit on a typed-in drop-down list, quotes included.
+export const EXCEL_LIST_MAX = 257;
 /** The Excel dropdown list for the set, e.g. '"Y,N,N/A"'. */
 export function excelAnswerListFormula(set) {
   return `"${set.map((a) => a.value).join(',')}"`;
@@ -161,23 +221,30 @@ export function excelAnswerListFormula(set) {
 
 /*
  * Item kinds (nightly 'custom-answers'). A checklist item is pick-one by
- * default (the template's answer set). `item.kind` 'text' or 'number' makes
- * it take a typed answer instead, with an optional `item.unit` ("ft", "V").
+ * default (the template's answer set). `item.kind` makes it take a typed
+ * answer instead: text, number (unit, min, max), score (1..5 or 1..10, an
+ * issue line), count (whole number, min, max), date (issue once past) or
+ * pick many (its own options, each good / bad / neutral), photo or
+ * signature (filled in the app; the image is on the item's note media).
  * Answers stay plain strings in `selection`, so sync, import, history and the
- * row fingerprints need no change.
+ * row fingerprints need no change. The rules live in kitShape.js so the
+ * agent and the connector share them.
  */
-export const ITEM_KINDS = Object.freeze(['choice', 'text', 'number']);
-export const ITEM_UNIT_MAX = 12;
-export { TYPED_ANSWER_MAX } from '../../supabase/functions/_shared/kitShape.js';
+export {
+  APP_ONLY_KINDS, ITEM_ANSWER_KEYS, ITEM_KINDS, ITEM_UNIT_MAX, SCORE_SCALES, TYPED_ANSWER_MAX, dateAnswerOf, itemAnswerFields, itemAnswerHint,
+  itemAnswerSpec, manyOptionsOf, manyPicked, photoAnswerText, scoreScaleOf, signatureAnswerText,
+  typedAnswerIsIssue,
+} from '../../supabase/functions/_shared/kitShape.js';
 
 export const itemKind = checklistItemKind;
+const APP_ONLY_KINDS_SET = new Set(APP_ONLY_KINDS_LIST);
 
 /**
- * A typed answer as it should be saved: '' for blank, the trimmed text, or a
- * plain number ("1,200" -> "1200"). null when a number item gets no number.
+ * A typed answer as it should be saved: '' for blank, else the clean value
+ * ("1,200" -> "1200", "10/22/2026" -> "2026-10-22"); null when it does not fit.
  */
 export function typedAnswer(item, raw) {
-  return typedAnswerFor(itemKind(item), raw);
+  return itemAnswerFor(item, raw);
 }
 
 /** Whether an item's answer counts as done (drives the auto Complete entity). */
@@ -188,31 +255,61 @@ export function isItemDone(item, set, value) {
   return typed !== null && typed !== '';
 }
 
-/** Whether an item's answer is an issue: only a pick-one answer marked bad. */
-export function isItemIssue(item, set, value) {
-  return itemKind(item) === 'choice' && answerTone(set, value) === 'bad';
+/**
+ * Whether an item's answer is an issue: a pick-one answer marked bad, or a
+ * typed answer past the item's line (out of min / max, a low score, a date
+ * gone by).
+ */
+export function isItemIssue(item, set, value, today) {
+  if (itemKind(item) === 'choice') return answerTone(set, value) === 'bad';
+  return typedAnswerIsIssue(item, value, today);
 }
 
 /** The Excel cell rule for an item's column, or null for none (text). */
 export function excelValidationFor(item, set) {
   const kind = itemKind(item);
-  if (kind === 'text') return null;
+  // Photo and signature cells only report what the app holds.
+  if (kind === 'text' || APP_ONLY_KINDS_SET.has(kind)) return null;
+  const hint = itemAnswerHint(item);
+  const rule = (type, operator, formulae, errorTitle, error) => ({
+    type, operator, allowBlank: true, formulae, showErrorMessage: true, errorStyle: 'error', errorTitle, error,
+    ...(hint && hint !== 'Number' ? { showInputMessage: true, promptTitle: 'Answer', prompt: hint.slice(0, 255) } : {}),
+  });
   if (kind === 'number') {
+    return rule('decimal', 'between', [-1e15, 1e15], 'Invalid number', `Please enter a number${item?.unit ? ` (${item.unit})` : ''}`);
+  }
+  if (kind === 'score') {
+    const top = scoreScaleOf(item);
+    return rule('whole', 'between', [1, top], 'Invalid score', `Please enter a whole number from 1 to ${top}`);
+  }
+  if (kind === 'count') return rule('whole', 'between', [0, 1e9], 'Invalid count', 'Please enter a whole number, 0 or more');
+  if (kind === 'date') return rule('date', 'greaterThan', [new Date(Date.UTC(1900, 0, 1))], 'Invalid date', 'Please enter a date');
+  if (kind === 'many') {
+    return { ...rule('textLength', 'lessThanOrEqual', [255], 'Too long', 'Please keep it to 255 characters'), prompt: `${hint}, separated by commas`.slice(0, 255) };
+  }
+  const list = excelAnswerListFormula(set);
+  if (list.length > EXCEL_LIST_MAX) {
+    // Excel refuses a typed-in list this long: keep the answers' length rule
+    // and name them in the cell's hint instead.
     return {
-      type: 'decimal',
-      operator: 'between',
+      type: 'textLength',
+      operator: 'lessThanOrEqual',
       allowBlank: true,
-      formulae: [-1e15, 1e15],
+      formulae: [20],
       showErrorMessage: true,
       errorStyle: 'error',
-      errorTitle: 'Invalid number',
-      error: `Please enter a number${item?.unit ? ` (${item.unit})` : ''}`,
+      errorTitle: 'Invalid selection',
+      error: 'Please type one of the answers',
+      showInputMessage: true,
+      promptTitle: 'Answers',
+      prompt: `Pick one of ${set.map((a) => a.value).join(', ')}`.slice(0, 255),
+      ...excelMeansPrompt(set),
     };
   }
   return {
     type: 'list',
     allowBlank: true,
-    formulae: [excelAnswerListFormula(set)],
+    formulae: [list],
     showErrorMessage: true,
     errorStyle: 'error',
     errorTitle: 'Invalid selection',
@@ -238,7 +335,7 @@ export function excelAnswerFills(set) {
   return set.map((a) => ({ value: a.value, argb: TONE_FILL[a.tone] || TONE_FILL.neutral }));
 }
 
-/** True when any checklist item in the template is a text or number item. */
+/** True when any checklist item in the template takes a typed answer. */
 export function templateHasTypedItems(template) {
   return modulesOf(template).some((m) => categoriesOf(m).some((c) => checklistOf(c).some((it) => itemKind(it) !== 'choice')));
 }

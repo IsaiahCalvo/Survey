@@ -97,16 +97,19 @@ test('Categories head line: the shared section icons, Select then Add; select mo
   const select = head.indexOf('label="Select"');
   const add = head.indexOf('label="Add category"');
   assert.ok(select > 0 && add > select, 'Select comes before Add');
-  // Owner 2026-10-02: select mode is All, Move, Copy, Delete then Done (Add's
-  // spot) - the shared row, Move and Copy two separate actions.
+  // Owner 2026-10-26: select mode is Done, then All, Move, Copy, Delete - the
+  // one order of every select mode; Move and Copy two separate actions.
   const on = head.slice(0, head.indexOf('label="Select"'));
-  assert.match(on, /<SelectModeButtons[\s\S]*onToggleAll=[\s\S]*onMove=[\s\S]*onCopy=\{\(\) => setShowSpaceSelection\(true\)\}[\s\S]*onDelete=\{deleteSelectedCategories\}[\s\S]*\/>\s*<SectionIconButton action="select" label="Done" active/);
+  assert.match(on, /<SectionIconButton action="select" label="Done" active onClick=\{exitCategorySelect\} \/>\s*<SelectModeButtons[\s\S]*onToggleAll=[\s\S]*onMove=[\s\S]*onCopy=\{\(\) => setShowSpaceSelection\(true\)\}[\s\S]*onDelete=\{deleteSelectedCategories\}/);
   assert.doesNotMatch(rail, />\s*Move\/Copy\s*</);
   assert.doesNotMatch(desk, /survey-rail__word-btn|survey-rail__cats-icon/);
-  // An open category's item select mode uses the same row (no Move: items have no move flow).
-  const items = rail.slice(rail.indexOf('aria-label="Item selection actions"'), rail.indexOf('onClick={exitItemSelect}'));
-  assert.match(items, /<SelectModeButtons[\s\S]*onCopy=[\s\S]*onDelete=/);
-  assert.doesNotMatch(items, /onMove=/);
+  // An open category's item select mode uses the same row, in the category's
+  // own line (owner 2026-10-26), with Move and Copy to template -> module ->
+  // category.
+  // Done first, like every select mode.
+  const itemsStart = rail.indexOf("'Item selection actions'");
+  const items = rail.slice(itemsStart, rail.indexOf('</>', itemsStart));
+  assert.match(items, /<>\s*<SectionIconButton action="select" label="Done" active onClick=\{exitItemSelect\} \/>\s*<SelectModeButtons[\s\S]*onMove=[\s\S]*onCopy=[\s\S]*onDelete=/);
   assert.match(rail, /<SectionIconButton\s+action="select"\s+className="survey-marker-category-select"/);
   // Same glyphs as the shared SectionIconButton pair.
   assert.match(read('src/components/SectionIconButton.jsx'), /select: 'listChecks',\s*add: 'plus',/);

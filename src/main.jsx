@@ -432,6 +432,10 @@ import { installInputModalityTracking } from './utils/inputModality.js';
 // <html data-input="mouse|pen|touch">: the input in use right now (last press
 // or hover). Selection grabbers size their hit pads from it (touch audit T3).
 if (typeof window !== 'undefined') installInputModalityTracking(window);
+import { installFocusRingSource } from './utils/focusRingSource.js';
+// <html data-focus-ring="pointer|keyboard">: focus rings only while the
+// keyboard is moving focus (owner 2026-10-26, the stray "white border").
+if (typeof window !== 'undefined') installFocusRingSource(window);
 
 // Suppress PDF.js "TT: undefined function" warnings
 // Suppress PDF.js "TT: undefined function" warnings

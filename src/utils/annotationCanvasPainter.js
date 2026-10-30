@@ -1019,8 +1019,13 @@ function drawText(context, object) {
   if (!cloudBorderGeometry && toNumber(object.strokeWidth) > 0 && isVisiblePaint(object.stroke)) {
     context.strokeStyle = object.stroke;
     context.lineWidth = toNumber(object.strokeWidth);
-    if (typeof context.setLineDash === 'function') context.setLineDash([]);
+    if (typeof context.setLineDash === 'function') {
+      context.setLineDash(Array.isArray(object.strokeDashArray) && object.strokeDashArray.length > 0
+        ? object.strokeDashArray.map((value) => toNumber(value))
+        : []);
+    }
     context.strokeRect(0, 0, effectiveWidth, effectiveHeight);
+    if (typeof context.setLineDash === 'function') context.setLineDash([]);
   }
 
   const pad = TEXT_PADDING;
@@ -1573,6 +1578,7 @@ function drawCallout(context, callout, pageWidth, pageHeight, displayScale = 1) 
     knee,
     arrowTip,
     0,
+    callout.textBoxAnchor || null,
   );
 
   const arrowheadStyle = callout.style?.arrowheadStyle ?? ARROWHEAD_STYLES.SOLID_TRIANGLE;

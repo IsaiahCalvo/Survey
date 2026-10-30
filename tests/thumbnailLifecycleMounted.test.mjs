@@ -63,6 +63,7 @@ async function mount(t, { priority = false, failDownload = false } = {}) {
     .replace("from 'react'", `from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)}`)
     .replace("import { loadPdfjs } from '../utils/pdfWorkerConfig';", 'const loadPdfjs = async () => globalThis.__thumbnailLifecycleState.pdfjs;')
     .replace("import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';", 'const readBlobAsArrayBuffer = async () => new ArrayBuffer(1);')
+    .replace("from '../utils/pdfjsAssets.js'", `from ${JSON.stringify(new URL('../src/utils/pdfjsAssets.js', import.meta.url).href)}`)
     .replace("import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';", "const thumbnailStore = () => ({ get: async () => null, put: async () => true }); const thumbCacheKey = doc => doc?.id;")
     .replace("from './thumbnailRequestPolicy'", `from ${JSON.stringify(new URL('../src/home/thumbnailRequestPolicy.js', import.meta.url).href)}`);
   const transformed = await transformWithOxc(source, fileURLToPath(componentUrl), { lang: 'jsx' });

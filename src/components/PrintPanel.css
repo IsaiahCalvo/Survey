@@ -171,7 +171,6 @@
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
 .pp-label {
-  text-transform: uppercase; font-size: 11px; letter-spacing: 0.8px;
   color: var(--pp-muted); font-weight: 600;
 }
 .pp-range-input {
@@ -350,7 +349,7 @@
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 8px;
 }
-.pp-preview-sub { color: var(--pp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; display: inline-flex; align-items: center; }
+.pp-preview-sub { color: var(--pp-muted); font-size: 11px; display: inline-flex; align-items: center; }
 /* UX 2026-04-23: inline page picker inside the preview header. Matches
    the uppercase-muted label visually but is a real dropdown-backed text
    input so users can type a page or open the datalist and pick one. */
@@ -533,7 +532,6 @@
   margin-bottom: 5px;
 }
 .pp-section-title {
-  text-transform: uppercase; font-size: 11px; letter-spacing: 0.9px;
   color: var(--pp-ink-2); font-weight: 700;
 }
 .pp-section-hint {
@@ -543,7 +541,6 @@
 /* Scope label shared by the Select range input */
 .pp-scope-label {
   color: var(--pp-muted); font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.6px;
   margin-right: 2px;
 }
 
@@ -578,51 +575,18 @@
 }
 .pp-scope-select-input input:focus { border-color: var(--text-3); box-shadow: none; }
 
-/* UX 2026-04-24: the native select fills the entire pill so clicking
-   anywhere on the dropdown opens it — not just a narrow strip of text.
-   The wrapper carries the visual chrome (background, border, caret),
-   and the select is absolutely positioned over the top with its own
-   padding for alignment. */
+/* A dropdown slot: the drop-down itself is the app's ValueSelect (setting
+   pill, shared menu), so the slot only sizes it. */
 .pp-dd {
-  position: relative;
   display: flex; align-items: center;
-  background: var(--pp-bg); color: var(--pp-ink);
-  border: 1px solid var(--pp-border-strong);
-  border-radius: 6px;
-  font-size: 13px; cursor: pointer; font-family: inherit;
   width: 100%;
-  min-height: 30px;
-  padding: 0;
+  min-width: 0;
 }
-.pp-dd-caret {
-  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  color: var(--pp-muted); font-size: 10px; pointer-events: none;
-  z-index: 1;
-}
-.pp-dd select {
-  position: absolute; inset: 0;
-  appearance: none; background: transparent; color: var(--pp-ink);
-  border: 0; outline: none; font: inherit;
-  width: 100%; height: 100%;
-  padding: 6px 28px 6px 10px;
-  cursor: pointer;
-}
-.pp-dd select option { background: var(--pp-panel); color: var(--pp-ink); }
 
 .pp-fit-row {
   display: flex; align-items: center; justify-content: space-between;
   margin-top: 6px;
 }
-.pp-seg {
-  display: inline-flex; background: var(--pp-bg);
-  border: 1px solid var(--pp-border); border-radius: 6px; padding: 2px;
-}
-.pp-seg button {
-  background: transparent; color: var(--pp-muted);
-  border: 0; border-radius: 4px;
-  padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: inherit;
-}
-.pp-seg button.is-active { color: var(--pp-accent); }
 
 /* Orientation row */
 .pp-orient-row { display: flex; gap: 8px; align-items: center; }
@@ -640,16 +604,14 @@
 .pp-paper-row .pp-dd { flex: 1 1 auto; min-width: 0; }
 .pp-match-page {
   display: inline-flex; align-items: center; gap: 6px;
-  color: var(--pp-muted); font-size: 11px; text-transform: uppercase;
-  letter-spacing: 0.6px;
+  color: var(--pp-muted); font-size: 11px;
 }
 .pp-match-label { color: var(--pp-muted); }
 /* G6 fix 2026-06-12: Custom W × H dimension inputs (inches). */
 .pp-custom-row {
   display: flex; align-items: center; gap: 6px;
   margin-top: 6px;
-  color: var(--pp-muted); font-size: 11px; text-transform: uppercase;
-  letter-spacing: 0.6px;
+  color: var(--pp-muted); font-size: 11px;
 }
 .pp-custom-dim {
   background: var(--pp-bg); color: var(--pp-ink-2);
@@ -739,9 +701,9 @@
 }
 .pp-footer-dest .pp-dd {
   min-width: 240px; max-width: 360px;
-  box-sizing: border-box;
-  height: 23px;
-  padding: 0 28px 0 10px;
+}
+.pp-footer-dest .value-select--field .chrome-pill {
+  height: 24px;
 }
 .pp-footer-totals {
   color: var(--pp-muted); font-size: 12px;
@@ -985,16 +947,12 @@
 }
 
 /* Four controls in this panel had no hover and no press at all: the two
-   dropdown shells, a segmented button and the toggle. One hover, one press,
+   dropdown shells and the toggle (the Fit choice is the shared ButtonGroup). One hover, one press,
    both from the shared palette (UX 2026-09-22, revision-3 palette). */
-.pp-dd:hover,
-.pp-seg button:not(.is-active):hover,
 .pp-tog:hover {
   background: var(--pp-hover);
 }
 
-.pp-dd:active,
-.pp-seg button:not(.is-active):active,
 .pp-tog:active {
   background: var(--pp-pressed);
 }

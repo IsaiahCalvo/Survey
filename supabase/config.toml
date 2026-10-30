@@ -366,11 +366,22 @@ verify_jwt = false
 [functions.export-account]
 verify_jwt = false
 
+# Browser-invoked company sign-in setup (Enterprise company workspace); same
+# preflight reasoning as delete-account. Checks the caller's company role itself.
+[functions.company-sso]
+verify_jwt = false
+
 # Browser-invoked: the gateway JWT check rejects the CORS preflight OPTIONS (no JWT on preflight),
 # breaking invoke() from the app. The function does its OWN auth (auth.getUser on the Bearer JWT +
 # registration token_hash + actor-role) and answers OPTIONS with CORS headers, so the gateway check
 # is redundant. Same pattern as stripe-webhook above.
 [functions.excel-apply-changeset]
+verify_jwt = false
+
+# Live sheet sync. Browser-invoked (answers the CORS preflight, then checks the
+# Bearer JWT itself), and Google's consent page redirects to its
+# /oauth/callback with no JWT at all; the callback checks its signed state.
+[functions.sheet-sync]
 verify_jwt = false
 
 # Browser-invoked (same reasoning as excel-apply-changeset): the gateway JWT check
@@ -428,4 +439,15 @@ verify_jwt = false
 # their own token. Answers a CORS preflight without a token and checks the
 # person's Bearer token itself, like survey-mcp.
 [functions.survey-undo]
+verify_jwt = false
+
+# Short-lived Cloudflare R2 links for stored PDFs. Browser-invoked: answers the
+# CORS preflight, then lets Storage check the caller's own token.
+[functions.pdf-file-url]
+verify_jwt = false
+
+# Comment @mention email (Nightly). Browser-invoked: answers the CORS
+# preflight, then does its own auth (auth.getUser on the Bearer JWT) and only
+# emails for the caller's own fresh comment.
+[functions.notify-comment-mentions]
 verify_jwt = false

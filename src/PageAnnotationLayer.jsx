@@ -61,6 +61,7 @@ import { getMidpoint, shouldSnapToLinear, getCurvedPath, getCurveEndAngle } from
 import { calculateCalloutConnection } from './utils/calloutGeometry';
 import { debugLog, debugWarn, isDebugEnabled, setDebugData } from './utils/pdfDebug';
 import { useTooltip } from './components/Tooltip';
+import { isInTabBehind } from './utils/tabBehind.js';
 
 // Apply custom Drawboard-style controls and selection visuals
 configureFabricOverrides();
@@ -4879,6 +4880,8 @@ const PageAnnotationLayer = memo(({
 
     // Global Keydown
     const handleKeyDown = (e) => {
+      // Only the front tab answers keys (docs/TAB-SWITCHING.md S6).
+      if (isInTabBehind(canvasRef.current)) return;
       // Escape Key
       if (e.key === 'Escape') {
         const canvas = fabricRef.current;
@@ -5918,7 +5921,7 @@ const PageAnnotationLayer = memo(({
 
         // Find container and scroll it
         const canvasElement = canvasRef.current;
-        let containerElement = document.querySelector('[data-testid="pdf-container"]');
+        let containerElement = canvasElement?.closest?.('[data-testid="pdf-container"]') || null;
         if (!containerElement && canvasElement) {
           let parent = canvasElement.parentElement;
           while (parent && parent !== document.body) {
@@ -8701,6 +8704,8 @@ const PageAnnotationLayer = memo(({
       if (e.key !== 'Backspace' && e.key !== 'Delete') {
         return;
       }
+      // Only the front tab answers keys (docs/TAB-SWITCHING.md S6).
+      if (isInTabBehind(canvasRef.current)) return;
 
       // Check if user is typing in an input field, textarea, or contenteditable element
       const activeElement = document.activeElement;

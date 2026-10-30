@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import DismissBarrier from './DismissBarrier';
 import Icon from '../Icons';
 import { useTooltip, withOwnHandlers } from './Tooltip';
+import ValueSelect from './ValueSelect.jsx';
+import ButtonGroup from './ButtonGroup.jsx';
 import './PrintPanel.css';
 
 const printPanelDebug = (...args) => {
@@ -300,15 +302,17 @@ function PagePicker({ value, options, onChange }) {
   );
 }
 
-function Dropdown({ value, options, onChange, width }) {
+// The app's own drop-down (ValueSelect), never the browser's list.
+function Dropdown({ label, value, options, onChange, width, size }) {
   return (
     <div className="pp-dd" style={width ? { width } : undefined}>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((opt) => (
-          <option key={opt.id} value={opt.id}>{opt.label}</option>
-        ))}
-      </select>
-      <span className="pp-dd-caret">▾</span>
+      <ValueSelect
+        label={label}
+        value={value}
+        size={size}
+        options={options.map((opt) => ({ value: opt.id, label: opt.label }))}
+        onChange={onChange}
+      />
     </div>
   );
 }
@@ -1094,7 +1098,7 @@ export default function PrintPanel({
             they can type or pick which page's size to copy. Every page
             in scope is then printed on that size. */}
         <div className="pp-paper-row">
-          <Dropdown value={paperSize} options={PAPER_OPTIONS} onChange={setPaperSize} />
+          <Dropdown label="Page size" value={paperSize} options={PAPER_OPTIONS} onChange={setPaperSize} />
           {paperSize === 'match' && (
             <span className="pp-match-page">
               <span className="pp-match-label">of page</span>
@@ -1137,10 +1141,13 @@ export default function PrintPanel({
         )}
         <div className="pp-fit-row">
           <span className="pp-hint" style={{ margin: 0 }}>Fit</span>
-          <div className="pp-seg">
-            <button className={fitMode === 'proportional' ? 'is-active' : ''} onClick={() => setFitMode('proportional')}>Proportional</button>
-            <button className={fitMode === 'stretch' ? 'is-active' : ''} onClick={() => setFitMode('stretch')}>Stretch</button>
-          </div>
+          <ButtonGroup
+            label="Fit"
+            size="sm"
+            value={fitMode}
+            options={[{ value: 'proportional', label: 'Proportional' }, { value: 'stretch', label: 'Stretch' }]}
+            onChange={setFitMode}
+          />
         </div>
       </div>
 
@@ -1150,7 +1157,7 @@ export default function PrintPanel({
           <span className="pp-section-hint">auto matches aspect</span>
         </div>
         <div className="pp-orient-row">
-          <Dropdown value={orientation} options={ORIENT_OPTIONS} onChange={setOrientation} />
+          <Dropdown label="Page orientation" value={orientation} options={ORIENT_OPTIONS} onChange={setOrientation} />
           <div className="pp-rotbtns" aria-label="Rotate content">
             <button className="pp-rbtn" {...tip('Rotate counter-clockwise 90°', 'below')} aria-label="Rotate counter-clockwise" type="button" onClick={() => handleRotate(-90)}>
               <CcwArrow />
@@ -1467,6 +1474,8 @@ export default function PrintPanel({
           <div className="pp-footer-dest">
             <span>🖨</span>
             <Dropdown
+              label="Printer"
+              size="sm"
               value={destination}
               options={[
                 ...printers.map((p) => ({ id: p.id, label: p.label })),

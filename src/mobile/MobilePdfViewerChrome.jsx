@@ -6,11 +6,13 @@ import { ANNOTATION_SIZE_PRESETS } from '../components/AnnotationSizeControl';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS } from '../utils/annotationSize';
 import CompactColorPicker, { PRESET_COLORS } from '../components/CompactColorPicker';
 import PageGridToggle from '../components/PageGridToggle';
+import { PageGridSettingsPanel } from '../components/PageGridSettings';
+import { isFeatureOn } from '../featureFlags.js';
 import SnappingToggle from '../components/SnappingToggle.jsx';
 import { composeTextColor, splitTextColor } from '../utils/textColorOpacity';
 import { resolveFontSizeDraft } from '../utils/selectedTextFormatting.js';
 import { QuickColourDots, QuickPaintSwatch } from '../components/QuickStyleControls';
-import { isPaintSelectionMixed } from '../utils/selectionRestyle.js';
+import { isPaintSelectionMixed } from '../utils/paintSelectionMixed.js';
 import { SheetOpacitySlider, SheetPreview, SheetRow, SheetScaleSlider, SheetSection, SheetSegmented, SheetSizeField, SheetSwatchRow } from './MobileToolSheetControls';
 import DismissBarrier from '../components/DismissBarrier';
 import PencilModeControl from '../components/PencilModeControl.jsx';
@@ -40,6 +42,11 @@ import { formatPageTotal } from '../utils/pageTotalLabel.js';
 import { MOBILE_MEASURE_ITEMS, applyMobileMeasurePick, applyMobileShapePick, isMobileShapeToolActive } from './mobileShapeRail.js';
 import './mobilePdfViewer.css';
 import { useTooltip } from '../components/Tooltip';
+import { SECTION_DONE_ICON } from '../components/SectionIconButton.jsx';
+import { OPEN_EXPORT_PDF_EVENT } from '../utils/exportPdfModes.js';
+import { RENAME_OPEN_DOCUMENT_EVENT } from '../tabs/tabStrip.js';
+import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
+import { POLYLINE_CURVE_SET_EVENT } from '../utils/polySpline.js';
 
 // UX 2026-09-16 (phone sweep, owner ruling "everything reads a little big").
 // ONE glyph:control ratio for every phone tier, and it is Drawboard's: its
@@ -638,9 +645,12 @@ function MobileStripSegmented({ ariaLabel, value, options, onChange, width }) {
             aria-label={option.ariaLabel || option.label}
             className={active ? 'is-active' : ''}
             onClick={() => onChange?.(option.value)}
+            data-press-label=""
           >
-            {option.icon ? <Icon name={option.icon} size={12} color="currentColor" /> : null}
-            {option.label}
+            <span>
+              {option.icon ? <Icon name={option.icon} size={12} color="currentColor" /> : null}
+              {option.label}
+            </span>
           </button>
         );
       })}
@@ -1071,10 +1081,17 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
           disabled={!bottomToolbarApi?.exportAnnotatedPdf}
           onClick={() => {
             commitPanelTyping();
+            // Nightly (flag 'export-modes'): the choices dialog AppShell owns.
+            if (isFeatureOn('export-modes') && bottomToolbarApi?.exportPdfWithOptions) {
+              window.dispatchEvent(new CustomEvent(OPEN_EXPORT_PDF_EVENT));
+              return;
+            }
             bottomToolbarApi?.exportAnnotatedPdf?.();
           }}
         >
-          <Icon name="share" size={HEADER_GLYPH} color="currentColor" />
+          {/* Design review 2026-10-27: the download glyph, as on the
+              desktop top bar's Export (it was the share glyph here). */}
+          <Icon name="download" size={HEADER_GLYPH} color="currentColor" />
         </button>
       </div>
 
@@ -1221,6 +1238,8 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
                     <span>Page grid</span>
                     {on && <Icon name="check" size={14} color="currentColor" />}
                   </button>
+                  {/* Nightly (flag 'grid-settings'): the spacing, under the row. */}
+                  {on && isFeatureOn('grid-settings') && <PageGridSettingsPanel on={on} toggle={toggle} phone showSwitch={false} />}
                 </div>
               )} />
               <SnappingToggle render={({ on, toggle }) => (
@@ -1301,6 +1320,7 @@ export function MobilePdfViewerHeader({ id, documentName, onBack, topToolbarApi,
 
 export function MobileToolProperties({ api, onOpenSurveyList }) {
   const tip = useTooltip();
+  const polylineCurve = usePolylineCurve();
   // 2026-07-12 (Phase E, demo parity): which colour control has the shared
   // CompactColorPicker takeover open. null | 'textColor' | 'fill' | 'stroke'
   // | 'fontColorLive'. Replaces the old OS <input type=color> swatches so
@@ -1359,27 +1379,24 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
 
   if (api.regionEditing && api.regionToolbarApi) {
     const region = api.regionToolbarApi;
-    // UX (demo parity): tapping "Full Page" swaps this strip into an inline
-    // "Make region full page?" Confirm/Cancel step instead of a browser
-    // dialog — matches demo App.tsx:1644-1658 / AnnotationFormattingBar.tsx:195-207.
-    if (region.fullPageConfirmPending) {
-      return (
-        <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Confirm full page region" ref={topOverlayRef}>
-          <span className="mobile-pdf-properties__confirm-label">Make region full page?</span>
-          <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirmFullPage}>Confirm</button>
-          <button type="button" onClick={region.cancelFullPage}>Cancel</button>
-        </div>
-      );
-    }
     return (
-      // Owner 2026-10-01 (Spaces toolbar): the same actions, in the same order,
-      // as the desktop tool bar's Areas row - what you can do to the areas,
-      // then Cancel, then Done (the one gold button) on the trailing edge.
+      // Owner 2026-10-26: no Cancel, no Full page. Delete takes the picked
+      // area away (the rail's Erase takes any area away by touch; deleting
+      // every area gives the whole page back), and Done - the house check,
+      // as in every Select / Edit mode - leaves keeping the areas, as does
+      // picking any drawing group in the rail. Undo takes either back.
       <div className="mobile-pdf-properties mobile-pdf-properties--actions" data-mobile-tool-properties="true" role="toolbar" aria-label="Area editing" ref={topOverlayRef}>
         <button type="button" disabled={!region.canDelete} onClick={region.deleteSelected}>Delete</button>
-        <button type="button" disabled={!region.canSetFullPage} onClick={region.setFullPage}>Full page</button>
-        <button type="button" onClick={region.cancel}>Cancel</button>
-        <button type="button" className="mobile-pdf-properties__primary" onClick={region.confirm}>Done</button>
+        <button
+          type="button"
+          className="mobile-pdf-properties__done"
+          data-glyph-only=""
+          aria-label="Done"
+          {...tip('Done', 'below')}
+          onClick={region.leave}
+        >
+          <Icon name={SECTION_DONE_ICON} size={20} color="currentColor" />
+        </button>
       </div>
     );
   }
@@ -1395,19 +1412,17 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
       <div className="mobile-pdf-properties mobile-pdf-properties--survey" data-mobile-tool-properties="true" role="toolbar" aria-label="Survey placement" ref={topOverlayRef}>
         {/* App-styled dropdown (OWNER DECISION 3) replaces the OS module roller. */}
         {/* Owner 2026-09-30 (survey bar design, decided after a design review):
-              [ Module v ] (switch) Reuse   (centred)
+              [ Module v ]   (centred)
             - The pill is exactly as wide as its LONGEST module name
               (fitOptions: every name sits invisibly in one grid cell), so
-              switching module never moves the switch; it shrinks and
+              switching module never moves anything; it shrinks and
               ellipsises only when the row runs out of room.
-            - "Keep active" is the desktop survey row's plateless switch,
-              relabelled "Repeat", then "Reuse" (owner 2026-10-01): it keeps
-              the CATEGORY armed after a Survey Marker is placed (PDFViewer
-              clears selectedCategoryId otherwise).
+            - (The "Reuse" switch is gone, owner 2026-10-26: the category
+              always stays picked, the first one by default.)
             Owner 2026-10-07 (survey bar round, after a debate - the floating
             Survey chip under the top bar is gone): the strip names the mode
             itself and is the way out, the desktop bar's twin:
-              [glyph template v]  [ Module v ] (switch) Reuse   Done
+              [glyph template v]  [ Module v ]   Done
             The template is a menu (switch template); it is the one item
             that gives way when the strip runs out of room (ellipsis). "Done"
             leaves Survey with an Undo toast; 44px finger target. */}
@@ -1451,18 +1466,7 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
           options={(survey.modules || []).map((module) => ({ value: module.id, label: module.name || 'Untitled Module' }))}
           onChange={(value) => survey.onSelectModule?.(value)}
         />
-        <button
-          type="button"
-          className="mobile-pdf-properties__keep"
-          role="switch"
-          aria-checked={Boolean(survey.keepCategoryActive)}
-          aria-label="Reuse category"
-          onClick={() => survey.onKeepCategoryActiveChange?.(!survey.keepCategoryActive)}
-        >
-          <span className="mobile-pdf-properties__keep-track" aria-hidden="true" />
-          <span>Reuse</span>
-        </button>
-        {/* A rule keeps "Reuse" and "Done" from reading as one phrase. */}
+        {/* A rule keeps the module and "Done" from reading as one phrase. */}
         <span aria-hidden="true" className="mobile-pdf-properties__divider mobile-pdf-properties__done-rule" />
         <button
           type="button"
@@ -1916,7 +1920,9 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
   const widthOptions = withCurrentValue(ANNOTATION_SIZE_PRESETS.width, sizeValue).map((width) => ({
     value: width,
     label: `${width} pt`,
-    preview: strokeSample(width, 12),
+    // Owner 2026-10-26 (note item 33): the pill shows the number only; the
+    // line sample cut it off. The desktop pill dropped it in #1196; the list
+    // rows keep their samples.
     menuPreview: strokeSample(width, 24),
   }));
   // Board 6: the eraser's size field reads a bare number with a round nib
@@ -2244,8 +2250,9 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
             if (api.canEnterTextEdit || api.richTextEditor) api.onEnterTextEdit();
             else openSheet('text');
           }}
+          data-press-label=""
         >
-          Aa
+          <span>Aa</span>
         </button>
       )}
       {/* "..." at the end of every tool strip opens that tool's settings panel
@@ -2533,6 +2540,25 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
                         />
                       </SheetRow>
                     )}
+                    {/* Curve (Nightly, flag 'spline-polyline'): the next
+                        polylines, and a picked one, bend through their corners. */}
+                    {polylineCurve.available && (tool === 'polyline' || api.selectedPolyline) && (
+                      <SheetRow label="Curve">
+                        <SheetSegmented
+                          ariaLabel="Polyline curve"
+                          value={(api.selectedPolyline ? api.selectedPolyline.curved : polylineCurve.on) ? 'curved' : 'straight'}
+                          options={[
+                            { value: 'straight', label: 'Straight', ariaLabel: 'Straight sides' },
+                            { value: 'curved', label: 'Curved', ariaLabel: 'Curved through corners' },
+                          ]}
+                          onChange={(value) => {
+                            const curved = value === 'curved';
+                            polylineCurve.set(curved);
+                            if (api.selectedPolyline) window.dispatchEvent(new CustomEvent(POLYLINE_CURVE_SET_EVENT, { detail: { curved } }));
+                          }}
+                        />
+                      </SheetRow>
+                    )}
                     {/* UX 2026-09-09: once Cloud is picked the Bump size sits
                         right under it - same 1..20 clamp as the desktop bar,
                         so a cloud looks the same wherever it was set. */}
@@ -2730,8 +2756,8 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
   const activeGroup = TOOL_TO_GROUP[activeTool] || null;
   // Owner 2026-10-01 (Spaces toolbar): while a Space's areas are edited the
   // rail's own Select picks areas (no second Select), the area tools are the
-  // open group's tools (so they morph in like a group switch), and the drawing
-  // groups wait, dimmed, until Done or Cancel. Pan stays Pan.
+  // open group's tools (so they morph in like a group switch), and a drawing
+  // group leaves area editing, keeping the areas. Pan stays Pan.
   // Until the tool publishes its state (a render after the mode starts) the
   // rail draws its opening state, so the area tools morph in as one change.
   const regionApi = isAreaEditing(bottomToolbarApi) ? (bottomToolbarApi.regionToolbarApi || REGION_TOOLBAR_OPENING_STATE) : null;
@@ -2923,13 +2949,17 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
             <RailButton
               key={groupId}
               active={!regionApi && (activeGroup === groupId || openCategory === groupId)}
-              disabled={Boolean(regionApi)}
               icon={group.icon}
               label={group.label}
               data-tool-switch="true"
               // View-only: Draw / Shapes / Text dim and go inert (ReadOnlyGate.css).
               data-readonly-disabled="true"
-              onClick={() => { if (!regionApi) toggleCategory(groupId); }}
+              // Area editing: a drawing group leaves it, keeping the areas,
+              // and opens that group (owner 2026-10-26).
+              onClick={() => {
+                if (regionApi) regionApi.leave?.();
+                toggleCategory(groupId);
+              }}
             />
           ))}
           {/* Owner 2026-10-01: the desktop group-switch morph on the phone
@@ -2968,6 +2998,14 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       label="Lasso area"
                       data-morph-icon="areaFreehand"
                       onClick={() => regionApi.setToolType?.('freehand')}
+                    />
+                    <RailButton
+                      active={regionDrawing && regionApi.toolType === 'erase'}
+                      icon="eraser"
+                      glyph={SUBTOOL_GLYPH}
+                      label="Erase area"
+                      data-morph-icon="eraser"
+                      onClick={() => regionApi.setToolType?.('erase')}
                     />
                     <div className="mobile-pdf-tools__divider is-short" />
                     <RailButton
@@ -3033,7 +3071,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                       style={{
                         position: 'fixed',
                         left: Math.max(8, Math.min(measureMenuRect.left, window.innerWidth - 188)),
-                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - 160)),
+                        top: Math.max(8, Math.min(measureMenuRect.top, window.innerHeight - 208)),
                         width: 180,
                         background: 'var(--surface-2)',
                         border: '1px solid var(--border)',
@@ -3215,7 +3253,7 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
                 }}
               >
                 <Icon name="download" size={16} color="currentColor" />
-                Export review package
+                Export review package (ZIP)
               </button>
               {/* Merge, split, compress, OCR... on this document; AppShell
                   listens and opens the Documents dialog (PdfToolsDialog). */}
@@ -3228,6 +3266,22 @@ export function MobilePdfViewerToolRail({ bottomToolbarApi, leftRailApi, signedI
               >
                 <Icon name="document" size={16} color="currentColor" />
                 PDF tools…
+              </button>
+              {/* The phone has no tab strip to right-click, so the open
+                  document is renamed from here (owner 2026-10-29: everything
+                  with a name can be renamed). AppShell opens the same dialog
+                  the tab menu does. */}
+              <button
+                type="button"
+                data-mobile-rename-document="true"
+                disabled={!leftRailApi?.documentId}
+                onClick={() => {
+                  setMoreOpen(false);
+                  window.dispatchEvent(new CustomEvent(RENAME_OPEN_DOCUMENT_EVENT));
+                }}
+              >
+                <Icon name="edit" size={16} color="currentColor" />
+                Rename document…
               </button>
               {/* RULED 2026-09-22 (owner): "More = Export + Save log". Save log
                   used to be gated on window.Capacitor.isNativePlatform(), so the

@@ -19,6 +19,8 @@
  *   - the signed URL, a range request, CORS or the parse fails or times out.
  */
 
+import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
+
 export const STREAM_RANGE_CHUNK_BYTES = 256 * 1024;
 export const STREAM_OPEN_TIMEOUT_MS = 10_000;
 export const STREAM_SIGNED_URL_SECONDS = 10 * 60;
@@ -298,7 +300,10 @@ export async function tryOpenCloudPdfStream({
         onStreamBroken(error);
       },
     });
-    loadingTask = pdfjs.getDocument(streamGetDocumentOptions(opened.url, pdfjs.VerbosityLevel?.ERRORS, transport ? { transport, length } : {}));
+    loadingTask = pdfjs.getDocument({
+      ...streamGetDocumentOptions(opened.url, pdfjs.VerbosityLevel?.ERRORS, transport ? { transport, length } : {}),
+      ...pdfjsAssetOptions(pdfjs),
+    });
     // A timeout leaves this promise behind; it must not become unhandled.
     loadingTask.promise?.catch?.(() => {});
     const timeout = new Promise((_, reject) => {
@@ -312,7 +317,12 @@ export async function tryOpenCloudPdfStream({
       // once it is all here, hand the bytes on (device cache, mirror check).
       pdf.getData().then((bytes) => {
         try { opened.onBytes?.(bytes); } finally { onAllBytes(bytes); }
-      }).catch((error) => onBytesFailed(error));
+      }).catch((error) => {
+        // Closing the document (or opening another) destroys its loading
+        // task; that is not a broken stream, so no fallback download.
+        if (loadingTask?.destroyed) return;
+        onBytesFailed(error);
+      });
     }
     return { pdf };
   } catch (error) {

@@ -63,7 +63,8 @@ test("row 2's Callout controls are the armed tool's: colour, Width, Style, Arrow
   assert.match(width, /bottomToolbarApi\.contextTool === 'callout'/);
   const style = APP_SHELL.slice(APP_SHELL.indexOf("toolbarSlot('style'") - 1500, APP_SHELL.indexOf("toolbarSlot('style'"));
   assert.match(style, /bottomToolbarApi\.contextTool === 'callout'/);
-  const head = APP_SHELL.slice(APP_SHELL.indexOf("toolbarSlot('arrowhead'") - 1200, APP_SHELL.indexOf("toolbarSlot('arrowhead'"));
+  // 2026-10-26: the pill's own ends handler sits between the gate and the slot.
+  const head = APP_SHELL.slice(APP_SHELL.indexOf("toolbarSlot('arrowhead'") - 2800, APP_SHELL.indexOf("toolbarSlot('arrowhead'"));
   assert.match(head, /bottomToolbarApi\.contextTool === 'callout'/);
   const aa = APP_SHELL.slice(APP_SHELL.indexOf("toolbarSlot('aa'") - 400, APP_SHELL.indexOf("toolbarSlot('aa'"));
   assert.match(aa, /bottomToolbarApi\.contextTool === 'callout'/);

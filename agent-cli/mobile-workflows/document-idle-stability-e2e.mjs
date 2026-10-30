@@ -6,8 +6,10 @@
 // every high-resolution first-page preview.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 import { ensureViteServer } from '../mobile-annotations/vite-server.mjs';
+import { guardContext } from '../lib/blockNonLoopback.mjs';
 
 const documentCount = Number(process.env.DOCUMENT_STRESS_COUNT || 60);
 const visibleThumbBudget = Number(process.env.DOCUMENT_THUMB_BUDGET || 16);
@@ -18,13 +20,13 @@ const baseUrl = server.baseUrl;
 let browser;
 try {
 browser = await chromium.launch({ headless: process.env.HEADFUL !== '1' });
-const context = await browser.newContext({
+const context = await guardContext(browser.newContext({
   viewport: { width: 390, height: 844 },
   screen: { width: 390, height: 844 },
   deviceScaleFactor: 3,
   hasTouch: true,
   isMobile: true,
-});
+}));
 
 const failures = [];
 const consoleMessages = [];
@@ -37,7 +39,13 @@ page.on('console', (message) => {
   }
 });
 
-await page.addInitScript(({ count }) => {
+// List rows render only from the device cache or local bytes (data:/blob:);
+// a row never fetches a server URL (home/thumbnailRequestPolicy.js), and the
+// idle backfill only fetches cloud file_paths. So the fixture carries the PDF
+// as local bytes, like a document kept on the device.
+const fixtureDataUrl = `data:application/pdf;base64,${readFileSync(new URL('../../debug/fixtures/clickable-link-test.pdf', import.meta.url)).toString('base64')}`;
+
+await page.addInitScript(({ count, dataUrl }) => {
   const now = Date.now();
   const documents = Array.from({ length: count }, (_, index) => ({
     id: `idle-stress-${index}`,
@@ -48,12 +56,12 @@ await page.addInitScript(({ count }) => {
     pages: 1,
     created_at: new Date(now - index * 86_400_000).toISOString(),
     updated_at: new Date(now - index * 3_600_000).toISOString(),
-    dataUrl: '/debug-fixtures/clickable-link-test.pdf',
+    dataUrl,
   }));
   localStorage.setItem('mobileWorkflowDocuments', JSON.stringify(documents));
   localStorage.setItem('mobileWorkflowProjects', '[]');
   localStorage.setItem('mobileWorkflowTemplates', '[]');
-}, { count: documentCount });
+}, { count: documentCount, dataUrl: fixtureDataUrl });
 
 const route = `${baseUrl}/?hubPreview=1&workflowE2E=1&tab=documents&mobileNav=tabs&nativeShell=expo`;
 await page.goto(route, { waitUntil: 'domcontentloaded', timeout: 30_000 });

@@ -34,15 +34,18 @@ export const PINNABLE_TOOLS = Object.freeze([
 
 const KIND_BY_ID = new Map(PINNABLE_TOOLS.map((entry) => [entry.id, entry]));
 
+// One rule for every pin (owner 2026-10-27, "they all follow the same
+// rules"): a pin keeps what the settings row shows for its tool - the colour
+// dot, the size box and the Style picker - and shows the colour as its glyph
+// and the size in its corner. Which of those a tool has:
 // Tools whose line style (solid / dashed / dotted / cloud) is part of the pin.
-const LINE_STYLE_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'callout']);
+const LINE_STYLE_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'callout', 'text']);
 const LINE_STYLES = new Set(['solid', 'dashed', 'dotted', 'cloud']);
-const CLOUD_LINE_TOOLS = new Set(['ellipse', 'polygon', 'polyline', 'callout']);
+const CLOUD_LINE_TOOLS = new Set(['ellipse', 'polygon', 'callout', 'text']);
 // Tools with a fill as well as a line.
 const FILL_TOOLS = new Set(['rect', 'ellipse', 'polygon', 'callout', 'counter']);
-// Tools with no settings of their own in the tool settings store (the eraser's
-// size lives elsewhere): the pin only arms them.
-const BARE_TOOLS = new Set(['eraser']);
+// Tools with a size and no colour: the eraser.
+const SIZE_ONLY_TOOLS = new Set(['eraser']);
 
 export const pinKind = (id) => KIND_BY_ID.get(id) || null;
 
@@ -74,16 +77,19 @@ const cleanNumber = (value, min, max) => {
  */
 export function pinStyleFor(kindId, raw = {}) {
   const kind = pinKind(kindId);
-  if (!kind || BARE_TOOLS.has(kind.tool)) return {};
+  if (!kind) return {};
   const style = {};
+  if (SIZE_ONLY_TOOLS.has(kind.tool)) {
+    const size = cleanNumber(raw.strokeWidth, 1, 100);
+    if (size !== undefined) style.strokeWidth = Math.round(size);
+    return style;
+  }
   const strokeColor = cleanColor(raw.strokeColor);
   if (strokeColor) style.strokeColor = strokeColor;
   const strokeOpacity = cleanNumber(raw.strokeOpacity, 0, 100);
   if (strokeOpacity !== undefined) style.strokeOpacity = strokeOpacity;
-  if (kind.tool !== 'text') {
-    const strokeWidth = cleanNumber(raw.strokeWidth, 0.1, 200);
-    if (strokeWidth !== undefined) style.strokeWidth = strokeWidth;
-  }
+  const strokeWidth = cleanNumber(raw.strokeWidth, 0.1, 200);
+  if (strokeWidth !== undefined) style.strokeWidth = strokeWidth;
   if (FILL_TOOLS.has(kind.tool)) {
     const fillColor = cleanColor(raw.fillColor);
     if (fillColor) style.fillColor = fillColor;
@@ -129,7 +135,7 @@ export function pinBadge(pin) {
   return Number(width.toFixed(2)).toString().replace(/^0(?=\.)/, '');
 }
 
-/** Plain words for a pin: "Pen, red, 3 wide". */
+/** Plain words for a pin, in the settings row's units: "Pen, red, 3 pt". */
 export function pinDescription(pin) {
   const kind = pinKind(pin?.kind);
   if (!kind) return '';
@@ -137,7 +143,7 @@ export function pinDescription(pin) {
   const color = pinFaceColor(pin);
   if (color) parts.push(colorName(color));
   const badge = pinBadge(pin);
-  if (badge) parts.push(`${badge} wide`);
+  if (badge) parts.push(`${badge} pt`);
   const lineStyle = pin.style?.lineStyle;
   if (lineStyle && lineStyle !== 'solid' && !kind.lineStyle) parts.push(lineStyle);
   return parts.join(', ');
@@ -183,6 +189,8 @@ export const DOCK_PLACEMENTS = Object.freeze(['left', 'right', 'bottom']);
 export const DEFAULT_PINNED_TOOLS_STATE = Object.freeze({
   visible: true,
   placement: 'right',
+  // Compact dock: at most COMPACT_DOCK_SLOTS slots, the rest behind "+N".
+  compact: false,
   pins: Object.freeze([]),
 });
 
@@ -204,6 +212,7 @@ export function sanitizePinnedToolsState(raw) {
   return {
     visible: typeof raw.visible === 'boolean' ? raw.visible : DEFAULT_PINNED_TOOLS_STATE.visible,
     placement: DOCK_PLACEMENTS.includes(raw.placement) ? raw.placement : DEFAULT_PINNED_TOOLS_STATE.placement,
+    compact: typeof raw.compact === 'boolean' ? raw.compact : DEFAULT_PINNED_TOOLS_STATE.compact,
     pins,
   };
 }
@@ -267,6 +276,10 @@ export function createPinnedToolsStore({ storage = safeStorage(), key = PINNED_T
       if (!DOCK_PLACEMENTS.includes(placement) || placement === state.placement) return;
       commit({ ...state, placement });
     },
+    setCompact(compact) {
+      if (Boolean(compact) === state.compact) return;
+      commit({ ...state, compact: Boolean(compact) });
+    },
     setVisible(visible) {
       if (Boolean(visible) === state.visible) return;
       commit({ ...state, visible: Boolean(visible) });
@@ -307,11 +320,77 @@ export function chooseDockPlacement(bounds, width, height, current = null, exitB
   return center <= side ? 'left' : 'right';
 }
 
+const smoothstep = (t) => t * t * (3 - 2 * t);
+const clamp01 = (t) => Math.min(1, Math.max(0, t));
+
+/**
+ * The magnet (walkthu getMagnetizedTranslation): how far to pull the carried
+ * dock toward the zone it would land in. `bounds` is where the grip alone
+ * would put it (box in page-area pixels), `home` the zone's centre. The pull
+ * grows smoothly from nothing at the middle of the page area to most of the
+ * way at the edge (86% at the sides, 56% for the bottom band), and the sides
+ * let go of the dock's height as it nears the bottom band so the two magnets
+ * never fight. Returns the { x, y } to add.
+ */
+export function magnetPull(bounds, target, width, height, home) {
+  if (!target || !home || !(width > 0) || !(height > 0)) return { x: 0, y: 0 };
+  const { side, bottom } = snapDistances(width, height);
+  const raw = target === 'left'
+    ? 1 - bounds.left / Math.max(1, side)
+    : target === 'right'
+      ? (bounds.right - (width - side)) / Math.max(1, side)
+      : 1 - (height - bounds.bottom) / Math.max(1, bottom);
+  const strength = smoothstep(clamp01(raw)) * (target === 'bottom' ? 0.56 : 0.86);
+  if (target === 'bottom') {
+    return { x: 0, y: (home.bottom - bounds.bottom) * strength };
+  }
+  const nearBottom = smoothstep(clamp01((bounds.bottom - (height - bottom * 2)) / Math.max(1, bottom)));
+  const pull = strength * (1 - nearBottom);
+  const cx = (bounds.left + bounds.right) / 2;
+  const cy = (bounds.top + bounds.bottom) / 2;
+  return { x: (home.x - cx) * pull, y: (home.y - cy) * pull };
+}
+
+/**
+ * Where a pin sits in slots once the dragged one lands at `to` (an index
+ * among the other pins): the others close up behind it and open a gap in
+ * front of it. Returns the slot shift (-1, 0 or 1) for the pin at `index`.
+ */
+export function reorderShift(index, from, to) {
+  if (from < 0 || index === from) return 0;
+  const among = index > from ? index - 1 : index;
+  const final = among < to ? among : among + 1;
+  return final - index;
+}
+
 /** How long the drop glide lasts: longer for a longer trip (walkthu's rule). */
 export function dropDurationMs(from, to) {
   const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
   const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
   return Math.round(Math.min(320, Math.max(240, 240 + Math.hypot(dx, dy) * 0.18)));
+}
+
+// A big dock (owner 2026-10-27: 17 pins was "such a big thing" to move between
+// edges): the compact dock is 7 slots long, a carried dock 6, and a docked one
+// never runs past its edge. When the pins do not all fit, the last slot is a
+// "+N" button that holds the rest, so no pin is ever hidden in a silent scroll.
+export const COMPACT_DOCK_SLOTS = 7;
+export const CARRIED_DOCK_SLOTS = 6;
+
+/** How many slots fit in `room` px, each `slot` px long (gap included). */
+export function slotsThatFit(room, slot, gap = 0) {
+  if (!Number.isFinite(room)) return Infinity;
+  return Math.max(1, Math.floor((room + gap) / slot));
+}
+
+/**
+ * How many pins the dock shows: all of them when they fit in `slots`, else
+ * one fewer than the slots so the "+N" button takes the last one.
+ */
+export function visiblePinCount(total, slots = Infinity) {
+  if (!(total > 0)) return 0;
+  if (total <= slots) return total;
+  return Math.max(1, slots - 1);
 }
 
 /** Which slot a dragged pin lands in, from the pointer and the pins' boxes. */

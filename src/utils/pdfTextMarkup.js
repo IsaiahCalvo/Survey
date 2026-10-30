@@ -1,3 +1,4 @@
+import { queryFrontTab } from './tabBehind.js';
 import { pagePresentationFrame } from './pagePresentation.js';
 import { maxOf, minOf } from './arrayExtrema.js';
 
@@ -591,7 +592,7 @@ const resizeTextMarkupFromTextLayer = (annotation, handleId, pointer, pageWidth,
   const storedRange = annotation?.data?.textRange;
   const pageNumber = Number(annotation?.data?.pageNumber);
   if (!Number.isFinite(storedRange?.start) || !Number.isFinite(storedRange?.end) || !Number.isFinite(pageNumber)) return null;
-  const pageEl = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+  const pageEl = queryFrontTab(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
   const textLayer = pageEl?.querySelector?.('.pdfjsTextLayer.is-interactive');
   const pageRect = pagePresentationFrame(pageEl);
   if (!textLayer || !pageRect?.width || !pageRect?.height || !pageWidth || !pageHeight) return null;
@@ -811,8 +812,8 @@ export function restorePdfjsTextSelection(selectionPayload) {
   if (!pages.length) return false;
   const first = pages[0];
   const last = pages.at(-1);
-  const firstLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${first.pageNumber}"] .pdfjsTextLayer:is(.is-interactive, .is-pan-text)`);
-  const lastLayer = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${last.pageNumber}"] .pdfjsTextLayer:is(.is-interactive, .is-pan-text)`);
+  const firstLayer = queryFrontTab(`.survey-pdfjs-page-div[data-page-number="${first.pageNumber}"] .pdfjsTextLayer:is(.is-interactive, .is-pan-text)`);
+  const lastLayer = queryFrontTab(`.survey-pdfjs-page-div[data-page-number="${last.pageNumber}"] .pdfjsTextLayer:is(.is-interactive, .is-pan-text)`);
   const start = boundaryAtTextOffset(firstLayer, first.textRange.start);
   const end = boundaryAtTextOffset(lastLayer, last.textRange.end);
   if (!start || !end) return false;

@@ -8,14 +8,20 @@
  * - Press a pin to arm it. While it is armed, colour / width / line style
  *   changes in the settings row are saved into that pin.
  * - "+" pins the tool in use, or any tool, with no limit on how many.
- * - Drag a pin along the dock to reorder it (mouse or pen); Alt+arrows from
- *   the keyboard. Right-click a pin to duplicate or unpin it; "Edit pins" in
- *   the dock's menu shows a remove mark on each for touch.
- * - Drag the grip to dock it left, right or bottom; drop zones show while you
- *   drag and the dock glides into place (walkthu's favourite-tools dock).
- *   Arrow keys on the grip move it too.
+ * - Drag a pin along the dock to reorder it (mouse or pen): the others slide
+ *   aside and it glides into its slot; Alt+arrows from the keyboard.
+ *   Right-click a pin to duplicate or unpin it; "Edit pins" in the dock's
+ *   menu shows a remove mark on each for touch.
+ * - Drag the grip to dock it left, right or bottom, as walkthu's
+ *   favourite-tools dock: drop zones fade in, the nearest one pulls the dock
+ *   in like a magnet, the dock morphs to that zone's shape, and it glides
+ *   into place on release. Arrow keys on the grip move it too.
+ * - A big dock stays small to carry and never runs off its edge (owner
+ *   2026-10-27, 17 pins): carried, it folds to its grip and first five pins;
+ *   docked, the pins that do not fit (or past 7 slots with "Compact dock" on)
+ *   wait behind a "+N" button in the last slot.
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import Icon from '../Icons.jsx';
 import { watchLightPopover } from './dismissRules.js';
@@ -23,10 +29,12 @@ import { useMenuFocus } from '../hooks/useMenuFocus.js';
 import { withOwnHandlers } from './Tooltip.jsx';
 import {
   PINNABLE_TOOLS,
+  CARRIED_DOCK_SLOTS,
+  COMPACT_DOCK_SLOTS,
   chooseDockPlacement,
   colorLuminance,
-  createPinnedToolsStore,
   dropDurationMs,
+  magnetPull,
   makePin,
   pinBadge,
   pinDescription,
@@ -34,22 +42,25 @@ import {
   pinKind,
   pinKindForTool,
   reorderIndexAt,
+  reorderShift,
+  slotsThatFit,
+  visiblePinCount,
 } from '../pinnedTools/pinnedTools.js';
 import { armPin, endPinSession, pinEditFromViewer, sessionStatus, startingStyleFor } from '../pinnedTools/pinSession.js';
+import { PinIcon, getPinnedToolsStore, usePinnedTools } from '../pinnedTools/pinnedToolsShared.jsx';
 import './PinnedToolsDock.css';
 
-let sharedStore = null;
-export function getPinnedToolsStore() {
-  sharedStore ??= createPinnedToolsStore();
-  return sharedStore;
-}
-
-export function usePinnedTools(store = getPinnedToolsStore()) {
-  return useSyncExternalStore(store.subscribe, store.getState, store.getState);
-}
+export { PinIcon, getPinnedToolsStore, usePinnedTools };
 
 const DRAG_START_PX = 6;
 const SETTLE_EASING = 'cubic-bezier(0.25, 0.55, 0.35, 1)';
+const DOCK_MORPH_MS = 320;
+const DOCK_MORPH_EASING = 'cubic-bezier(0.4, 0, 0.2, 1)';
+const ZONES_FADE_OUT_MS = 240;
+const PIN_SLIDE_MS = 180;
+const PIN_GAP_PX = 2; // .pinned-dock__pins gap
+const PIN_SIZE_PX = 32; // .pinned-dock__pin
+const PHONE_PIN_SIZE_PX = 38;
 
 const prefersReducedMotion = () => (
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
@@ -72,15 +83,6 @@ function PinGlyph({ kindId, color, size = 16 }) {
     <span className="pinned-dock__glyph" style={{ filter: glyphHalo(color) }} aria-hidden="true">
       <Icon name={kind.iconName} size={size} color={color || 'currentColor'} />
     </span>
-  );
-}
-
-export function PinIcon({ size = 16 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M9 4h6l-1 6 3 3H7l3-3-1-6Z" />
-      <path d="M12 13v7" />
-    </svg>
   );
 }
 
@@ -124,6 +126,32 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const suppressClickRef = useRef(false);
   const settleCleanupRef = useRef(null);
   const wasVisibleRef = useRef(visible);
+
+  // How long the pins' row may be: the shell's length less the dock's own
+  // buttons (measured while docked, not while carried).
+  const [room, setRoom] = useState(Infinity);
+  useLayoutEffect(() => {
+    const shell = shellRef.current;
+    if (!shell || !visible) return undefined;
+    const measure = () => {
+      const dock = dockRef.current;
+      const list = listRef.current;
+      if (!dock || !list || dockDragRef.current) return;
+      const docked = placement !== 'bottom';
+      const own = docked
+        ? dock.offsetHeight - list.offsetHeight
+        : dock.offsetWidth - list.offsetWidth;
+      const length = docked ? shell.clientHeight : shell.clientWidth;
+      if (!(length > 0)) return;
+      const next = Math.max(0, length - own);
+      setRoom((current) => (Math.abs(current - next) < 1 ? current : next));
+    };
+    measure();
+    if (typeof ResizeObserver !== 'function') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, [placement, visible, editing, Boolean(api)]);
 
   const setSession = useCallback((next) => {
     sessionRef.current = next;
@@ -230,12 +258,26 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     closeMenu();
   };
 
+  // A pin behind "+N" cannot be dragged into view: its menu moves it first.
+  const moveToStart = (pin) => {
+    closeMenu();
+    flipPins(() => store.movePin(pin.id, 0));
+  };
+
   // --- dock drag (grip) -----------------------------------------------------
-  // The grip stays under the pointer while the dock is carried (it is lifted
-  // a little: 1.1x, 0.95x from the bottom). Over a drop zone the dock already
-  // takes that zone's shape (a column at the sides, a row at the bottom), as
-  // walkthu's does, so the drop only has to glide it into place.
+  // walkthu's favourite-tools dock, move for move:
+  // - Pressed and moved 6px, the dock lifts (1.1x; 0.95x from the bottom) and
+  //   a dim veil with the three drop zones fades in.
+  // - The grip stays under the pointer, except that the zone the dock would
+  //   land in pulls it in (magnetPull): nothing at the middle of the page
+  //   area, most of the way at the edge.
+  // - Over a zone the dock takes that zone's shape (a column at the sides, a
+  //   row at the bottom), and its box morphs to it over 320ms rather than
+  //   jumping, its tools fading back in.
+  // - Every frame it is kept inside the page area.
+  // - Let go, it glides home (FLIP, 240-320ms by distance) and the veil fades.
   const dockDragRef = useRef(null);
+  const morphRef = useRef(null);
   const onGripPointerDown = (event) => {
     if (event.button !== 0) return;
     const dock = dockRef.current;
@@ -257,9 +299,22 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
       activated: false,
       target: null,
       root,
+      frame: 0,
       scale: prefersReducedMotion() ? 1 : (placement === 'bottom' ? 0.95 : 1.1),
     };
-    // Where the dock must move so its grip sits under the pointer.
+    // Where the zone a placement lands in sits, in page-area pixels.
+    const homeOf = (target) => {
+      const zone = document.querySelector(`[data-pinned-dock-zone="${target}"]`);
+      const rect = zone?.getBoundingClientRect();
+      if (!rect || !(rect.width > 0)) return null;
+      return {
+        x: rect.left + rect.width / 2 - drag.root.left,
+        y: rect.top + rect.height / 2 - drag.root.top,
+        bottom: rect.bottom - drag.root.top,
+      };
+    };
+    // Put the grip under the pointer, pick the zone from there, let that
+    // zone's magnet pull the dock in, and keep it inside the page area.
     drag.place = () => {
       const grip = dock.querySelector('[data-pinned-tools-grip]');
       if (!grip) return;
@@ -269,21 +324,38 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
       const s = drag.activated ? drag.scale : 1;
       const gx = grip.offsetLeft + grip.offsetWidth / 2 - w / 2;
       const gy = grip.offsetTop + grip.offsetHeight / 2 - h / 2;
-      const tx = drag.lastX - drag.grabX - (shellRect.left + dock.offsetLeft + w / 2 + s * gx);
-      const ty = drag.lastY - drag.grabY - (shellRect.top + dock.offsetTop + h / 2 + s * gy);
+      const baseX = shellRect.left + dock.offsetLeft + w / 2;
+      const baseY = shellRect.top + dock.offsetTop + h / 2;
+      let tx = drag.lastX - drag.grabX - (baseX + s * gx);
+      let ty = drag.lastY - drag.grabY - (baseY + s * gy);
+      if (drag.activated) {
+        const { root: area } = drag;
+        const free = {
+          left: baseX + tx - (w * s) / 2 - area.left,
+          right: baseX + tx + (w * s) / 2 - area.left,
+          top: baseY + ty - (h * s) / 2 - area.top,
+          bottom: baseY + ty + (h * s) / 2 - area.top,
+        };
+        const target = chooseDockPlacement(free, area.width, area.height, drag.target);
+        if (target !== drag.target) {
+          drag.target = target;
+          // Measured before React reshapes it, for the morph.
+          drag.morphFrom = { width: w, height: h };
+          setDockDrag({ target });
+        }
+        const pull = magnetPull(free, target, area.width, area.height, homeOf(target));
+        tx += pull.x;
+        ty += pull.y;
+        const left = baseX + tx - (w * s) / 2;
+        const top = baseY + ty - (h * s) / 2;
+        tx += Math.max(0, area.left + 1 - left) - Math.max(0, left + w * s - (area.left + area.width - 1));
+        ty += Math.max(0, area.top + 1 - top) - Math.max(0, top + h * s - (area.top + area.height - 1));
+      }
       dock.style.translate = `${tx}px ${ty}px`;
     };
-    drag.retarget = () => {
-      const rect = dock.getBoundingClientRect();
-      const target = chooseDockPlacement({
-        left: rect.left - drag.root.left,
-        right: rect.right - drag.root.left,
-        bottom: rect.bottom - drag.root.top,
-      }, drag.root.width, drag.root.height, drag.target);
-      if (target !== drag.target) {
-        drag.target = target;
-        setDockDrag({ target });
-      }
+    const tick = () => {
+      drag.place();
+      drag.frame = window.requestAnimationFrame(tick);
     };
     const move = (ev) => {
       if (ev.pointerId !== drag.pointerId) return;
@@ -296,26 +368,34 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
         dock.style.transformOrigin = 'center';
         dock.style.transition = prefersReducedMotion() ? 'none' : 'scale 110ms cubic-bezier(0.2, 0.8, 0.2, 1)';
         dock.style.scale = String(drag.scale);
+        // A long dock folds to its carried size as it lifts.
+        drag.morphFrom = { width: dock.offsetWidth, height: dock.offsetHeight };
+        setDockDrag({ target: null });
+        // The morph and the zones move under a still pointer too.
+        drag.frame = window.requestAnimationFrame(tick);
       }
       drag.place();
-      drag.retarget();
     };
     const finish = (ev, drop) => {
       if (ev.pointerId !== drag.pointerId) return;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
+      window.cancelAnimationFrame(drag.frame);
       dockDragRef.current = null;
       if (!drag.activated) return;
       const from = dock.getBoundingClientRect();
+      morphRef.current?.cancel();
+      morphRef.current = null;
       dock.style.transition = 'none';
       dock.style.removeProperty('translate');
       dock.style.scale = '1';
       flushSync(() => {
         setDockDrag(null);
+        setZonesLeaving(true);
         if (drop && drag.target) store.setPlacement(drag.target);
       });
-      settleInto(dock, from);
+      settleInto(dock, from, drag.root);
     };
     const up = (ev) => finish(ev, true);
     const cancel = (ev) => finish(ev, false);
@@ -324,21 +404,47 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     window.addEventListener('pointercancel', cancel);
   };
 
-  // The dock changed shape under the pointer: put its grip back under it.
+  // The dock changed shape under the pointer: morph its box from the old
+  // shape to the new one (its tools reflow inside at once, clipped, and fade
+  // back in), and put its grip back under the pointer.
   useLayoutEffect(() => {
     const drag = dockDragRef.current;
-    if (!drag) return;
+    const dock = dockRef.current;
+    if (!drag || !dock) return;
+    const from = drag.morphFrom;
+    drag.morphFrom = null;
+    const to = { width: dock.offsetWidth, height: dock.offsetHeight };
+    if (from && !prefersReducedMotion() && typeof dock.animate === 'function'
+      && (Math.abs(from.width - to.width) > 1 || Math.abs(from.height - to.height) > 1)) {
+      morphRef.current?.cancel();
+      morphRef.current = dock.animate(
+        [{ width: `${from.width}px`, height: `${from.height}px` }, { width: `${to.width}px`, height: `${to.height}px` }],
+        { duration: DOCK_MORPH_MS, easing: DOCK_MORPH_EASING },
+      );
+      listRef.current?.animate?.([{ opacity: 0.3 }, { opacity: 1 }], { duration: DOCK_MORPH_MS, easing: DOCK_MORPH_EASING });
+    }
     drag.place();
-  }, [dockDrag?.target]);
+  }, [dockDrag?.target, Boolean(dockDrag)]);
+
+  // The veil fades out after the drop rather than vanishing.
+  const [zonesLeaving, setZonesLeaving] = useState(false);
+  useEffect(() => {
+    if (!zonesLeaving) return undefined;
+    const timer = window.setTimeout(() => setZonesLeaving(false), prefersReducedMotion() ? 0 : ZONES_FADE_OUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [zonesLeaving]);
 
   // FLIP: start the docked box where the dragged one was and glide it home.
-  const settleInto = (dock, from) => {
+  // The start is kept inside the page area (`area`), so a dock let go half
+  // off an edge does not swing in from outside.
+  const settleInto = (dock, from, area = null) => {
     const clear = () => {
       dock.style.removeProperty('transition');
       dock.style.removeProperty('transform');
       dock.style.removeProperty('translate');
       dock.style.removeProperty('scale');
       dock.style.removeProperty('transform-origin');
+      dock.style.removeProperty('overflow');
       settleCleanupRef.current = null;
     };
     const to = dock.getBoundingClientRect();
@@ -348,16 +454,32 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     }
     const sx = from.width / to.width;
     const sy = from.height / to.height;
+    // A dock that unfolds as it lands (carried small, docked long) grows its
+    // box from the carried size instead of stretching its pins.
+    const unfolds = typeof dock.animate === 'function'
+      && (Math.abs(from.width - to.width) > 1 || Math.abs(from.height - to.height) > 1)
+      && Math.abs(sx - sy) > 0.03;
     const scale = Math.abs(sx - sy) <= 0.03 ? (sx + sy) / 2 : 1;
-    const dx = (from.left + from.width / 2) - (to.left + to.width / 2);
-    const dy = (from.top + from.height / 2) - (to.top + to.height / 2);
+    const clampTo = (value, min, max) => (max < min ? value : Math.min(max, Math.max(min, value)));
+    const fromX = area
+      ? clampTo(from.left + from.width / 2, area.left + to.width / 2, area.left + area.width - to.width / 2)
+      : from.left + from.width / 2;
+    const fromY = area
+      ? clampTo(from.top + from.height / 2, area.top + to.height / 2, area.top + area.height - to.height / 2)
+      : from.top + from.height / 2;
+    const dx = fromX - (to.left + to.width / 2);
+    const dy = fromY - (to.top + to.height / 2);
     const duration = dropDurationMs(from, to);
     dock.style.transformOrigin = 'center';
     dock.style.scale = String(scale);
     dock.style.transform = `translate(${dx / scale}px, ${dy / scale}px)`;
     void dock.getBoundingClientRect();
-    if (scale === 1 && Math.abs(sx - sy) > 0.03) {
-      // The dock turned (side <-> bottom): fade its pins in as it lands.
+    if (unfolds) {
+      dock.style.overflow = 'hidden';
+      dock.animate(
+        [{ width: `${from.width}px`, height: `${from.height}px` }, { width: `${to.width}px`, height: `${to.height}px` }],
+        { duration, easing: SETTLE_EASING },
+      );
       listRef.current?.animate?.([{ opacity: 0.35 }, { opacity: 1 }], { duration, easing: SETTLE_EASING });
     }
     let done = false;
@@ -391,27 +513,61 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   };
 
   // --- pin drag (reorder) ---------------------------------------------------
+  // The pin lifts and follows the pointer along the dock; the others slide
+  // aside to open its slot (rather than a line marking it), and on release it
+  // glides into that slot. Alt+arrows move it a slot with the same glide.
+  // `mutate` runs the reorder; every pin then glides from where it was drawn.
+  const flipPins = (mutate) => {
+    const list = listRef.current;
+    const before = new Map();
+    list?.querySelectorAll('[data-pin-slot]').forEach((el) => before.set(el.dataset.pinSlot, el.getBoundingClientRect()));
+    flushSync(mutate);
+    if (!list || prefersReducedMotion()) return;
+    list.querySelectorAll('[data-pin-slot]').forEach((el) => {
+      const was = before.get(el.dataset.pinSlot);
+      if (!was || typeof el.animate !== 'function') return;
+      const now = el.getBoundingClientRect();
+      const dx = was.left - now.left;
+      const dy = was.top - now.top;
+      if (Math.hypot(dx, dy) < 0.5) return;
+      el.animate(
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0px, 0px)' }],
+        { duration: PIN_SLIDE_MS, easing: SETTLE_EASING },
+      );
+    });
+  };
+
   const onPinPointerDown = (event, pin, index) => {
     if (event.button !== 0 || event.pointerType === 'touch' || editing) return;
     const list = listRef.current;
     if (!list) return;
     const startX = event.clientX;
     const startY = event.clientY;
+    const slotEl = event.currentTarget.closest('[data-pin-slot]');
     let activated = false;
     let target = index;
+    let rects = [];
+    let scroll0 = { x: 0, y: 0 };
+    let slot = 0;
     const pinId = pin.id;
-    const rects = () => [...list.querySelectorAll('[data-pin-slot]')]
-      .filter((el) => el.dataset.pinSlot !== pinId)
-      .map((el) => el.getBoundingClientRect());
     const move = (ev) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (!activated) {
         if (Math.abs(vertical ? dy : dx) < DRAG_START_PX) return;
         activated = true;
+        // The other pins' boxes as laid out now, before any slides aside.
+        rects = [...list.querySelectorAll('[data-pin-slot]')]
+          .filter((el) => el.dataset.pinSlot !== pinId)
+          .map((el) => el.getBoundingClientRect());
+        scroll0 = { x: list.scrollLeft, y: list.scrollTop };
+        slot = (vertical ? slotEl?.offsetHeight : slotEl?.offsetWidth) + PIN_GAP_PX || 0;
       }
-      target = reorderIndexAt({ x: ev.clientX, y: ev.clientY }, rects(), vertical);
-      setPinDrag({ pinId, index: target, offset: vertical ? dy : dx });
+      // A long dock scrolls under the pin: measure in its scrolled frame.
+      const sx = list.scrollLeft - scroll0.x;
+      const sy = list.scrollTop - scroll0.y;
+      target = reorderIndexAt({ x: ev.clientX + sx, y: ev.clientY + sy }, rects, vertical);
+      setPinDrag({ pinId, index: target, offset: vertical ? dy + sy : dx + sx, slot });
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -420,8 +576,10 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
       if (!activated) return;
       suppressClickRef.current = true;
       window.setTimeout(() => { suppressClickRef.current = false; }, 0);
-      setPinDrag(null);
-      store.movePin(pinId, target);
+      flipPins(() => {
+        setPinDrag(null);
+        store.movePin(pinId, target);
+      });
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -433,7 +591,7 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
     const delta = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 }[event.key];
     if (!delta) return;
     event.preventDefault();
-    store.movePin(pin.id, Math.max(0, Math.min(pins.length - 1, index + delta)));
+    flipPins(() => store.movePin(pin.id, Math.max(0, Math.min(pins.length - 1, index + delta))));
     const id = pin.id;
     window.requestAnimationFrame(() => listRef.current?.querySelector(`[data-pin-slot="${CSS.escape(id)}"] button`)?.focus());
   };
@@ -469,22 +627,137 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
   const session = sessionRef.current;
   const activeTool = api.activeTool;
 
-  const zones = dockDrag ? (
-    <div className="pinned-dock-zones" aria-hidden="true" data-pinned-dock-zones="true">
+  // The veil stays a moment after the drop to fade out (zonesLeaving).
+  const zones = dockDrag || zonesLeaving ? (
+    <div
+      className={`pinned-dock-zones${dockDrag ? '' : ' is-leaving'}`}
+      aria-hidden="true"
+      data-pinned-dock-zones="true"
+      data-visible={dockDrag ? 'true' : 'false'}
+    >
       {['left', 'right', 'bottom'].map((zone) => (
         <div
           key={zone}
-          className={`pinned-dock-zone is-${zone}${dockDrag.target === zone ? ' is-target' : ''}`}
+          className={`pinned-dock-zone is-${zone}${dockDrag?.target === zone ? ' is-target' : ''}`}
           data-pinned-dock-zone={zone}
-          data-active={dockDrag.target === zone ? 'true' : 'false'}
+          data-active={dockDrag?.target === zone ? 'true' : 'false'}
         />
       ))}
     </div>
   ) : null;
 
-  // The insertion line while a pin is dragged along the dock.
-  const dropLine = pinDrag ? pinDrag.index : null;
   const draggedIndex = pinDrag ? pins.findIndex((pin) => pin.id === pinDrag.pinId) : -1;
+  const slotStyle = (pin, index) => {
+    if (!pinDrag) return undefined;
+    const axis = vertical ? 'translateY' : 'translateX';
+    if (pin.id === pinDrag.pinId) return { transform: `${axis}(${pinDrag.offset}px) scale(1.08)` };
+    const shift = reorderShift(index, draggedIndex, pinDrag.index);
+    return shift ? { transform: `${axis}(${shift * pinDrag.slot}px)` } : undefined;
+  };
+
+  // How many pins the dock shows (the phone's row scrolls under a finger).
+  const carried = Boolean(dockDrag);
+  const slotLength = (phone ? PHONE_PIN_SIZE_PX : PIN_SIZE_PX) + PIN_GAP_PX;
+  let slots = phone ? Infinity : slotsThatFit(room, slotLength, PIN_GAP_PX);
+  if (!phone && state.compact) slots = Math.min(slots, COMPACT_DOCK_SLOTS);
+  if (carried) slots = Math.min(slots, CARRIED_DOCK_SLOTS);
+  const shown = visiblePinCount(pins.length, slots);
+  const hidden = pins.slice(shown);
+  const armedPin = session ? pins.find((pin) => pin.id === session.pinId && activeTool === pinKind(pin.kind)?.tool) : null;
+  const armedHidden = armedPin && hidden.includes(armedPin) ? armedPin : null;
+
+  const renderPin = (pin, index, { inMenu = false } = {}) => {
+    const kind = pinKind(pin.kind);
+    const color = pinFaceColor(pin);
+    const badge = pinBadge(pin);
+    const description = pinDescription(pin);
+    const pressed = armedPin === pin;
+    return (
+      <div
+        key={pin.id}
+        className={`pinned-dock__slot${pinDrag?.pinId === pin.id ? ' is-dragged' : ''}`}
+        data-pin-slot={inMenu ? undefined : pin.id}
+        style={inMenu ? undefined : slotStyle(pin, index)}
+      >
+        <button
+          type="button"
+          className={`btn chrome-subcontrol pinned-dock__pin ${pressed ? 'btn-active' : 'btn-ghost'}`}
+          role={inMenu ? 'menuitem' : undefined}
+          aria-pressed={inMenu ? undefined : pressed}
+          aria-current={inMenu && pressed ? 'true' : undefined}
+          aria-label={`Pinned ${description}`}
+          aria-keyshortcuts={inMenu ? undefined : 'Alt+ArrowUp Alt+ArrowDown'}
+          data-pinned-tool={pin.kind}
+          data-pin-id={pin.id}
+          data-pin-color={color || undefined}
+          data-pin-width={badge || undefined}
+          data-pin-armed={pressed ? 'true' : undefined}
+          data-tool-switch="true"
+          {...withOwnHandlers(bindTip(description, inMenu ? 'above' : tipSide), inMenu ? {} : {
+            onPointerDown: (event) => onPinPointerDown(event, pin, index),
+            onKeyDown: (event) => onPinKeyDown(event, pin, index),
+          })}
+          onClick={(event) => {
+            if (suppressClickRef.current) return;
+            // A phone has no right-click: tapping the armed pin
+            // again opens its menu (as Drawboard does).
+            if (phone && pressed) {
+              openMenu('pin', event.currentTarget, { pinId: pin.id });
+              return;
+            }
+            if (inMenu) closeMenu();
+            arm(pin);
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            openMenu('pin', event.currentTarget, { pinId: pin.id });
+          }}
+        >
+          <PinGlyph kindId={pin.kind} color={color} />
+          {badge ? <span className="pinned-dock__badge" aria-hidden="true">{badge}</span> : null}
+        </button>
+        {editing ? (
+          <button
+            type="button"
+            className="pinned-dock__remove"
+            aria-label={`Unpin ${description}`}
+            data-pin-remove={pin.id}
+            onClick={() => unpin(pin.id)}
+          >
+            <Icon name="close" size={10} color="currentColor" />
+          </button>
+        ) : null}
+      </div>
+    );
+  };
+
+  // The last slot when the pins do not all fit: "+N", or the armed pin's
+  // glyph when the armed one is among them. It opens them as a grid.
+  const moreLabel = `${hidden.length} more pinned tool${hidden.length === 1 ? '' : 's'}`;
+  const moreButton = hidden.length ? (
+    <div className="pinned-dock__slot">
+      <button
+        type="button"
+        className={`btn chrome-subcontrol pinned-dock__pin pinned-dock__more ${armedHidden || menu?.kind === 'more' ? 'btn-active' : 'btn-ghost'}`}
+        aria-label={armedHidden ? `${moreLabel}; ${pinDescription(armedHidden)} is in use` : moreLabel}
+        aria-haspopup="menu"
+        aria-expanded={menu?.kind === 'more'}
+        aria-pressed={armedHidden ? true : undefined}
+        data-pinned-tools-more={hidden.length}
+        {...bindTip(armedHidden ? `${pinDescription(armedHidden)} and ${hidden.length - 1} more` : moreLabel, tipSide)}
+        onClick={(event) => openMenu('more', event.currentTarget)}
+      >
+        {armedHidden ? (
+          <>
+            <PinGlyph kindId={armedHidden.kind} color={pinFaceColor(armedHidden)} />
+            <span className="pinned-dock__badge" aria-hidden="true">+{hidden.length}</span>
+          </>
+        ) : (
+          <span className="pinned-dock__count" aria-hidden="true">+{hidden.length}</span>
+        )}
+      </button>
+    </div>
+  ) : null;
 
   return (
     <>
@@ -492,108 +765,48 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
       <div ref={shellRef} className={`pinned-dock-shell is-${placement}${phone ? ' is-phone' : ''}`} data-pinned-dock-shell={placement}>
         <div
           ref={dockRef}
-          className={`pinned-dock ${vertical ? 'is-vertical' : 'is-horizontal'}${dockDrag ? ' is-dragging' : ''}`}
+          className={`pinned-dock ${vertical ? 'is-vertical' : 'is-horizontal'}${carried ? ' is-dragging' : ''}${pinDrag ? ' is-reordering' : ''}`}
           role="toolbar"
           aria-label="Pinned tools"
           aria-orientation={vertical ? 'vertical' : 'horizontal'}
           data-pinned-tools-dock="true"
           data-placement={placement}
+          data-pins-shown={shown}
         >
           <div ref={listRef} className="pinned-dock__pins">
-            {pins.map((pin, index) => {
-              const kind = pinKind(pin.kind);
-              const color = pinFaceColor(pin);
-              const badge = pinBadge(pin);
-              const description = pinDescription(pin);
-              const pressed = Boolean(session && session.pinId === pin.id && activeTool === kind.tool);
-              // Index among the pins other than the dragged one.
-              const slotIndex = draggedIndex >= 0 && index > draggedIndex ? index - 1 : index;
-              const showLineBefore = dropLine != null && pin.id !== pinDrag.pinId && slotIndex === dropLine;
-              return (
-                <div
-                  key={pin.id}
-                  className={`pinned-dock__slot${pinDrag?.pinId === pin.id ? ' is-dragged' : ''}${showLineBefore ? ' has-drop-line' : ''}`}
-                  data-pin-slot={pin.id}
-                  style={pinDrag?.pinId === pin.id
-                    ? { transform: vertical ? `translateY(${pinDrag.offset}px)` : `translateX(${pinDrag.offset}px)` }
-                    : undefined}
-                >
-                  <button
-                    type="button"
-                    className={`btn chrome-subcontrol pinned-dock__pin ${pressed ? 'btn-active' : 'btn-ghost'}`}
-                    aria-pressed={pressed}
-                    aria-label={`Pinned ${description}`}
-                    aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-                    data-pinned-tool={pin.kind}
-                    data-pin-id={pin.id}
-                    data-pin-color={color || undefined}
-                    data-pin-width={badge || undefined}
-                    data-tool-switch="true"
-                    {...withOwnHandlers(bindTip(description, tipSide), {
-                      onPointerDown: (event) => onPinPointerDown(event, pin, index),
-                      onKeyDown: (event) => onPinKeyDown(event, pin, index),
-                    })}
-                    onClick={(event) => {
-                      if (suppressClickRef.current) return;
-                      // A phone has no right-click: tapping the armed pin
-                      // again opens its menu (as Drawboard does).
-                      if (phone && pressed) {
-                        openMenu('pin', event.currentTarget, { pinId: pin.id });
-                        return;
-                      }
-                      arm(pin);
-                    }}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      openMenu('pin', event.currentTarget, { pinId: pin.id });
-                    }}
-                  >
-                    <PinGlyph kindId={pin.kind} color={color} />
-                    {badge ? <span className="pinned-dock__badge" aria-hidden="true">{badge}</span> : null}
-                  </button>
-                  {editing ? (
-                    <button
-                      type="button"
-                      className="pinned-dock__remove"
-                      aria-label={`Unpin ${description}`}
-                      data-pin-remove={pin.id}
-                      onClick={() => unpin(pin.id)}
-                    >
-                      <Icon name="close" size={10} color="currentColor" />
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })}
-            {dropLine != null && dropLine >= pins.length - 1 && draggedIndex >= 0 ? (
-              <span className="pinned-dock__end-line" aria-hidden="true" />
-            ) : null}
+            {pins.slice(0, shown).map((pin, index) => renderPin(pin, index))}
+            {moreButton}
           </div>
-          <button
-            type="button"
-            className="btn chrome-subcontrol btn-ghost pinned-dock__add"
-            aria-label="Pin a tool"
-            aria-haspopup="menu"
-            aria-expanded={menu?.kind === 'add'}
-            data-pinned-tools-add="true"
-            {...bindTip('Pin a tool', tipSide)}
-            onClick={(event) => openMenu('add', event.currentTarget)}
-          >
-            <Icon name="plus" size={16} color="currentColor" />
-          </button>
-          <span className="pinned-dock__rule" aria-hidden="true" />
-          <button
-            type="button"
-            className={`btn chrome-subcontrol pinned-dock__settings ${menu?.kind === 'settings' || editing ? 'btn-active' : 'btn-ghost'}`}
-            aria-label="Pinned tools menu"
-            aria-haspopup="menu"
-            aria-expanded={menu?.kind === 'settings'}
-            data-pinned-tools-menu="true"
-            {...bindTip('Pinned tools menu', tipSide)}
-            onClick={(event) => openMenu('settings', event.currentTarget)}
-          >
-            <Icon name="moreHorizontal" size={16} color="currentColor" />
-          </button>
+          {/* Carried, the dock is only its pins and its grip. */}
+          {carried ? null : (
+            <>
+              <button
+                type="button"
+                className="btn chrome-subcontrol btn-ghost pinned-dock__add"
+                aria-label="Pin a tool"
+                aria-haspopup="menu"
+                aria-expanded={menu?.kind === 'add'}
+                data-pinned-tools-add="true"
+                {...bindTip('Pin a tool', tipSide)}
+                onClick={(event) => openMenu('add', event.currentTarget)}
+              >
+                <Icon name="plus" size={16} color="currentColor" />
+              </button>
+              <span className="pinned-dock__rule" aria-hidden="true" />
+              <button
+                type="button"
+                className={`btn chrome-subcontrol pinned-dock__settings ${menu?.kind === 'settings' || editing ? 'btn-active' : 'btn-ghost'}`}
+                aria-label="Pinned tools menu"
+                aria-haspopup="menu"
+                aria-expanded={menu?.kind === 'settings'}
+                data-pinned-tools-menu="true"
+                {...bindTip('Pinned tools menu', tipSide)}
+                onClick={(event) => openMenu('settings', event.currentTarget)}
+              >
+                <Icon name="moreHorizontal" size={16} color="currentColor" />
+              </button>
+            </>
+          )}
           {phone ? null : (
           <button
             type="button"
@@ -618,17 +831,28 @@ export default function PinnedToolsDock({ api, tip, store: suppliedStore, phone 
           placement={placement}
           phone={phone}
           pins={pins}
+          hiddenPins={hidden}
+          renderPin={renderPin}
+          compact={state.compact}
           editing={editing}
           currentKind={currentKind}
           onPinCurrent={pinCurrent}
           onAdd={(kindId) => addPin(kindId, startingStyleFor(apiRef.current, sessionRef.current, kindId))}
           onUnpin={unpin}
           onDuplicate={duplicate}
+          onMoveToStart={moveToStart}
           onPlacement={(next) => {
             closeMenu();
             const dock = dockRef.current;
             const from = dock?.getBoundingClientRect();
             flushSync(() => store.setPlacement(next));
+            if (dock && from) settleInto(dock, from);
+          }}
+          onToggleCompact={() => {
+            closeMenu();
+            const dock = dockRef.current;
+            const from = dock?.getBoundingClientRect();
+            flushSync(() => store.setCompact(!state.compact));
             if (dock && from) settleInto(dock, from);
           }}
           onToggleEditing={() => { setEditing((value) => !value); closeMenu(); }}
@@ -657,11 +881,29 @@ function menuPosition(rect, placement, width = 240) {
 }
 
 function PinnedToolsMenu({
-  menuRef, menu, placement, phone, pins, editing, currentKind, onPinCurrent, onAdd, onUnpin, onDuplicate,
-  onPlacement, onToggleEditing, onHide, api,
+  menuRef, menu, placement, phone, pins, hiddenPins, renderPin, compact, editing, currentKind, onPinCurrent, onAdd,
+  onUnpin, onDuplicate, onMoveToStart, onPlacement, onToggleCompact, onToggleEditing, onHide, api,
 }) {
-  const width = menu.kind === 'add' ? 264 : 200;
+  // The "+N" grid: five pins a row, each the dock's own pin button.
+  const moreColumns = Math.min(5, Math.max(1, hiddenPins.length));
+  const width = menu.kind === 'add' ? 264 : menu.kind === 'more' ? moreColumns * 34 + 10 : 200;
   const style = { ...menuPosition(menu.rect, placement, width), width };
+  if (menu.kind === 'more') {
+    if (!hiddenPins.length) return null;
+    const first = pins.length - hiddenPins.length;
+    return (
+      <div
+        ref={menuRef}
+        role="menu"
+        aria-label="More pinned tools"
+        className="pinned-dock-menu pinned-dock-menu--pins"
+        style={{ ...style, gridTemplateColumns: `repeat(${moreColumns}, 32px)` }}
+        data-pinned-tools-more-menu="true"
+      >
+        {hiddenPins.map((pin, index) => renderPin(pin, first + index, { inMenu: true }))}
+      </div>
+    );
+  }
   if (menu.kind === 'pin') {
     const pin = pins.find((entry) => entry.id === menu.pinId);
     if (!pin) return null;
@@ -670,6 +912,11 @@ function PinnedToolsMenu({
         <button type="button" role="menuitem" onClick={() => onDuplicate(pin)}>
           <Icon name="duplicate" size={14} color="currentColor" /><span>Duplicate</span>
         </button>
+        {pins[0]?.id === pin.id ? null : (
+          <button type="button" role="menuitem" data-pin-move-first="true" onClick={() => onMoveToStart(pin)}>
+            <Icon name="chevronUp" size={14} color="currentColor" /><span>Move to start</span>
+          </button>
+        )}
         <button type="button" role="menuitem" className="is-danger" onClick={() => onUnpin(pin.id)}>
           <Icon name="close" size={14} color="currentColor" /><span>Unpin</span>
         </button>
@@ -688,6 +935,11 @@ function PinnedToolsMenu({
                 <span>{label}</span>
               </button>
             ))}
+            <div className="pinned-dock-menu__rule" />
+            <button type="button" role="menuitemcheckbox" aria-checked={compact} onClick={onToggleCompact} data-pinned-tools-compact="true">
+              <span className="pinned-dock-menu__check">{compact ? <Icon name="check" size={14} color="currentColor" /> : null}</span>
+              <span>Compact dock ({COMPACT_DOCK_SLOTS} slots)</span>
+            </button>
             <div className="pinned-dock-menu__rule" />
           </>
         )}

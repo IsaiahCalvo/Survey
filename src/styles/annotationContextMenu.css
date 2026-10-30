@@ -63,6 +63,11 @@
 }
 
 /* ---- rows ---------------------------------------------------------------- */
+/* Positioned so the hover strip (MenuGlide) measures its rows against it. */
+.annotation-menu-body {
+  position: relative;
+}
+
 .annotation-menu-separator {
   height: 1px;
   background: var(--border);
@@ -72,13 +77,20 @@
 .annotation-menu-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 7px 12px;
+  gap: var(--menu-item-gap);
+  min-height: var(--menu-item-h);
+  box-sizing: border-box;
+  padding: 0 var(--menu-item-pad-x);
   border-radius: 5px;
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
   color: var(--text-1);
+}
+
+.annotation-menu-row > svg {
+  flex: none;
+  color: var(--text-3);
 }
 
 .annotation-menu-chevron {

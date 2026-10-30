@@ -13,7 +13,7 @@
  *   - Active share links are listed grouped (link-only invites with no
  *     target_email).
  */
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import ShareModal from './ShareModal';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -42,6 +42,13 @@ import { USER_INITIALS_INK, userColorFill } from '../utils/userColors.js';
 import { Icon } from './HubShell';
 import { C } from '../uiPalette';
 import { useTooltip } from '../components/Tooltip';
+import DismissBarrier from '../components/DismissBarrier';
+import MenuRows from '../components/MenuRows.jsx';
+import { menuAtButton, menuRowHeight } from '../utils/menuItems.js';
+import { isFeatureOn } from '../featureFlags.js';
+
+// Guest links (Nightly) load only when an owner opens this with the flag on.
+const GuestLinksSection = lazy(() => import('../guest/GuestLinksSection.jsx'));
 
 
 const ROLES = ['Owner', 'Editor', 'Viewer'];
@@ -67,10 +74,47 @@ function initialsOf(name) {
 }
 
 function labelForKind(kind) {
-  if (kind === 'template') return 'Template Access';
-  if (kind === 'document') return 'Document Access';
+  if (kind === 'template') return 'Template access';
+  if (kind === 'document') return 'Document access';
   return 'Access';
 }
+
+/* One person (or invite, or link) in the access list. Design review
+   2026-10-27: Share and Manage team listed the same people two ways (a role
+   drop-down, a Status column and a Remove button per row here; plain text and
+   a More menu there), and here emails broke mid-word ("e2e-viewer@example.co /
+   m") and the owner's row showed a dead Remove. Both now share Manage team's
+   row: the name and email on one line each (cut with an ellipsis, the full
+   text in the chip), the role as a word, and every action in the row's More
+   menu (the shared action menu, components/MenuRows.jsx). */
+function AccessRow({ rowProps, pending = false, avatar, primary, secondary, role, status, tip, menuOpen, onMenu, onCloseMenu, menuItems }) {
+  // The menu is fixed to the window at the More button, so the scrolling list
+  // never clips it.
+  const [at, setAt] = useState(null);
+  const rows = menuItems.filter(Boolean).length + (menuItems.some((it) => it?.danger) ? 1 : 0);
+  const line = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 };
+  return (
+    <div {...rowProps} className="access-grid" style={{ position: 'relative', display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 50, boxSizing: 'border-box', ...(pending ? { background: 'var(--surface-2)' } : null) }}>
+      <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: '50%', background: avatar.background, color: avatar.color, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, flex: 'none' }}>{avatar.text}</div>
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div {...tip(primary)} style={{ ...line, fontSize: 13, fontWeight: 600 }}>{primary}</div>
+        {secondary ? <div {...tip(secondary)} style={{ ...line, fontFamily: MONO_FONT, fontSize: 11, color: C.muted }}>{secondary}</div> : null}
+      </div>
+      <div style={{ ...line, fontSize: 12, color: C.inkSoft }}>{role}</div>
+      <div style={{ ...line, fontSize: 12, fontWeight: 600 }}>{status}</div>
+      <button type="button" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="More" {...tip('More')} onClick={(e) => { e.stopPropagation(); setAt(menuAtButton(e.currentTarget.getBoundingClientRect(), { height: rows * menuRowHeight() + 16, viewport: { width: window.innerWidth, height: window.innerHeight } })); onMenu(); }} className="hub-icon-btn dialog-close-touch-pad" style={{ justifySelf: 'end' }}>
+        <Icon name="more" size={14} />
+      </button>
+      {menuOpen && at && (
+        <div role="menu" aria-label={`${primary} actions`} data-access-menu-surface="true" className="hub-menu" onClick={(e) => e.stopPropagation()} style={{ left: at.left, top: at.top, zIndex: 1400, width: 180 }}>
+          <MenuRows items={menuItems} tip={tip} tipSide="left" onClose={onCloseMenu} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const NO_LIST = { documentId: null, members: [], invites: [], ownerProfile: null };
 
 export default function AccessManagementModal({ open, onClose, kind = 'document', item = null, user = null }) {
   const tip = useTooltip();
@@ -83,25 +127,34 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   }, [item]);
 
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [members, setMembers] = useState([]);   // real collaborator rows
-  const [invites, setInvites] = useState([]);   // real invite rows
-  const [ownerProfile, setOwnerProfile] = useState(null);
+  // The real collaborator and invite rows, and whose they are. The dialog
+  // stays mounted between opens, so a list loaded for another document is
+  // never shown: this one shows "Loading" until its own rows come in.
+  const [list, setList] = useState(NO_LIST);
+  const fresh = list.documentId != null && list.documentId === documentId;
+  const members = fresh ? list.members : NO_LIST.members;
+  const invites = fresh ? list.invites : NO_LIST.invites;
+  const ownerProfile = fresh ? list.ownerProfile : null;
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [linksOpen, setLinksOpen] = useState(false);
+  // The row whose More menu is open ('m:<id>', 'i:<id>' or 'l:<id>').
+  const [openMenu, setOpenMenu] = useState(null);
   const cardRef = useRef(null);
+  const [guestLinksOn] = useState(() => isFeatureOn('guest-links'));
 
   // Accessibility (KAL-66): the shared modal primitive — Tab stays inside the
   // dialog, Escape closes it, focus moves in on open and returns to the opener
   // on close. The nested ShareModal (Invite) registers on the same open-dialog
   // stack (src/hooks/modalStack.js), so while it is open Tab and Escape belong
   // to it and this dialog waits underneath.
-  useFocusTrap(cardRef, Boolean(open), { onEscape: onClose });
+  // Escape first closes an open row menu, then the dialog.
+  useFocusTrap(cardRef, Boolean(open), { onEscape: () => (openMenu ? setOpenMenu(null) : onClose?.()) });
 
   const refresh = useCallback(async () => {
-    if (!documentId) { setMembers([]); setInvites([]); return; }
+    if (!documentId) { setList(NO_LIST); return; }
     setLoading(true);
     setError('');
     try {
@@ -110,9 +163,12 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
         listDocumentInvites(documentId),
         getDocumentOwnerProfile(documentId).catch(() => null),
       ]);
-      setMembers(Array.isArray(colRes?.data) ? colRes.data : []);
-      setInvites(Array.isArray(invRes?.data) ? invRes.data : []);
-      setOwnerProfile(owner || null);
+      setList({
+        documentId,
+        members: Array.isArray(colRes?.data) ? colRes.data : [],
+        invites: Array.isArray(invRes?.data) ? invRes.data : [],
+        ownerProfile: owner || null,
+      });
     } catch (err) {
       console.error('[KAL-31] AccessManagementModal load failed:', err);
       setError(err?.message || 'Could not load access list.');
@@ -128,6 +184,8 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
   }, [open, refresh]);
 
   const ownerCount = members.filter((m) => String(m.role).toLowerCase() === 'owner').length;
+  const isOwner = Boolean(currentUser?.id) && (item?.user_id === currentUser.id
+    || members.some((m) => m.user_id === currentUser.id && String(m.role).toLowerCase() === 'owner'));
   const documentName = item?.name || item?.title || 'Untitled';
   const inviterName = currentUser?.user_metadata?.full_name || currentUser?.email || 'An owner';
 
@@ -249,10 +307,13 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
             <span />
           </div>
 
-          <div className="slim-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '6px 8px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {loading && <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>Loading collaborators…</div>}
+          <DismissBarrier active={openMenu != null} insideSelector="[data-access-menu-surface='true']" onDismiss={() => setOpenMenu(null)} />
+          <div className="slim-scroll access-list" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '6px 8px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* Only before this document's rows first arrive: a refresh (on
+                reopen, or after a change) keeps the rows where they are. */}
+            {loading && !fresh && <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>Loading collaborators…</div>}
 
-            {!loading && members.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
+            {fresh && members.length === 0 && emailPending.length === 0 && activeLinks.length === 0 && (
               <div style={{ padding: '20px 12px', color: C.muted, fontSize: 12 }}>No collaborators yet. Use Invite to add one.</div>
             )}
 
@@ -260,55 +321,63 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
             {members.map((m) => {
               const rl = String(m.role || '').toLowerCase();
               const ident = memberIdentity(m, { owner: ownerProfile, currentUser });
-              const initials = initialsOf(ident.primary);
               const isLastOwner = rl === 'owner' && ownerCount <= 1;
+              const menuKey = `m:${m.id || m.user_id}`;
+              const email = m.email || m.user?.email || ident.secondary || (ident.primary.includes('@') ? ident.primary : '');
               return (
-                <div key={m.id || `${m.user_id}-${m.document_id}`} data-kal31-row="member" data-kal31-role={rl} className="access-grid" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 56, boxSizing: 'border-box' }}>
-                  <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: '50%', background: colorFor(m.user_id || m.user?.email || m.email), color: USER_INITIALS_INK, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 600, flex: 'none' }}>{initials}</div>
-                  <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div {...tip(ident.title)} style={{ fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere', lineHeight: 1.25 }}>{ident.primary}</div>
-                    {ident.secondary ? <div {...tip(ident.secondary)} style={{ fontSize: 11, color: C.muted, overflowWrap: 'anywhere', lineHeight: 1.25 }}>{ident.secondary}</div> : null}
-                  </div>
-                  <select className="access-role-select"
-                    value={roleLabel(rl)}
-                    disabled={busy}
-                    onChange={(e) => handleRoleChange(m, e.target.value)}
-                    style={{ background: 'transparent', border: 0, padding: '0 14px 0 0', color: C.inkSoft, font: 'inherit', fontFamily: 'inherit', fontSize: 12, height: 24, lineHeight: '24px', textAlign: 'left', cursor: busy ? 'not-allowed' : 'pointer', width: 'max-content', maxWidth: '100%' }}
-                  >
-                    {ROLES.map((role) => <option key={role}>{role}</option>)}
-                  </select>
-                  <div style={{ fontSize: 12, color: 'var(--text-2)', fontWeight: 600 }}>{m.status === 'active' ? 'Active' : (m.status || 'Active')}</div>
-                  <button
-                    disabled={busy || isLastOwner}
-                    onClick={() => handleRemove(m)}
-                    // KAL-65: the visible word is the name; the chip only says
-                    // why the button is off (a bare "Remove" chip just echoed it).
-                    {...(isLastOwner ? tip('At least one owner must remain') : {})}
-                    data-kal31-remove="true"
-                    className="hub-btn is-danger dialog-touch-pad"
-                    style={{ justifySelf: 'end' }}
-                  >
-                    Remove
-                  </button>
-                </div>
+                <AccessRow
+                  key={m.id || `${m.user_id}-${m.document_id}`}
+                  rowProps={{ 'data-kal31-row': 'member', 'data-kal31-role': rl }}
+                  avatar={{ text: initialsOf(ident.primary), background: colorFor(m.user_id || m.user?.email || m.email), color: USER_INITIALS_INK }}
+                  primary={ident.primary}
+                  secondary={ident.secondary}
+                  role={roleLabel(rl)}
+                  status={<span style={{ color: 'var(--text-2)' }}>{m.status === 'active' ? 'Active' : roleLabel(m.status || 'Active')}</span>}
+                  tip={tip}
+                  menuOpen={openMenu === menuKey}
+                  onMenu={() => setOpenMenu(openMenu === menuKey ? null : menuKey)}
+                  onCloseMenu={() => setOpenMenu(null)}
+                  // The last owner can't lose the role or be removed; the rows
+                  // say why instead of doing nothing (the old Remove button sat
+                  // greyed out with no reason).
+                  menuItems={[
+                    ...ROLES.filter((role) => role.toLowerCase() !== rl).map((role) => ({
+                      label: `Make ${role.toLowerCase()}`,
+                      disabled: busy,
+                      reason: isLastOwner ? 'At least one owner must remain' : null,
+                      onClick: () => handleRoleChange(m, role),
+                    })),
+                    { label: 'Copy email', disabled: !email, onClick: async () => {
+                      const result = await copyTextToClipboard(email, { surface: 'document_access_member_email' });
+                      if (result.ok) { setError(''); setStatus('Email copied.'); }
+                      else { setStatus(''); setError('Survey could not copy this email.'); }
+                    } },
+                    { label: 'Remove access', danger: true, disabled: busy, reason: isLastOwner ? 'At least one owner must remain' : null, onClick: () => handleRemove(m) },
+                  ]}
+                />
               );
             })}
 
             {/* Pending email invites. */}
             {emailPending.map((inv) => (
-              <div key={inv.id} data-kal31-row="invite" className="access-grid" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, minHeight: 56, boxSizing: 'border-box', background: 'var(--surface-2)' }}>
-                <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--text-3)', color: 'var(--accent-text)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>{initialsOf(inv.target_email)}</div>
-                <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div {...tip(inv.target_email)} style={{ fontSize: 13, fontWeight: 600, overflowWrap: 'anywhere', lineHeight: 1.25 }}>{inv.target_email}</div>
-                  <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted }}>expires {new Date(inv.expires_at).toLocaleDateString()}</div>
-                </div>
-                <div style={{ fontSize: 12, color: C.inkSoft }}>{roleLabel(inv.intended_role)}</div>
-                <div style={{ fontSize: 12, color: C.gold, fontWeight: 600 }}>Pending</div>
-                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                  <button disabled={busy} onClick={() => handleResend(inv)} className="hub-btn dialog-touch-pad">Resend</button>
-                  <button disabled={busy} onClick={() => handleRevoke(inv)} className="hub-btn is-danger dialog-touch-pad">Revoke</button>
-                </div>
-              </div>
+              <AccessRow
+                key={inv.id}
+                pending
+                rowProps={{ 'data-kal31-row': 'invite' }}
+                avatar={{ text: initialsOf(inv.target_email), background: 'var(--text-3)', color: 'var(--accent-text)' }}
+                primary={inv.target_email}
+                secondary={`expires ${new Date(inv.expires_at).toLocaleDateString()}`}
+                role={roleLabel(inv.intended_role)}
+                status={<span style={{ color: C.gold }}>Pending</span>}
+                tip={tip}
+                menuOpen={openMenu === `i:${inv.id}`}
+                onMenu={() => setOpenMenu(openMenu === `i:${inv.id}` ? null : `i:${inv.id}`)}
+                onCloseMenu={() => setOpenMenu(null)}
+                menuItems={[
+                  { label: 'Resend invite', disabled: busy, onClick: () => handleResend(inv) },
+                  { label: 'Revoke invite', danger: true, disabled: busy, onClick: () => handleRevoke(inv) },
+                ]}
+              />
             ))}
 
             {/* Active link-only invites group. */}
@@ -321,25 +390,36 @@ export default function AccessManagementModal({ open, onClose, kind = 'document'
                   {linksOpen ? '▾' : '▸'} Active share links ({activeLinks.length})
                 </button>
                 {linksOpen && activeLinks.map((inv) => (
-                  <div key={inv.id} data-kal31-row="link" className="access-grid" style={{ display: 'grid', gap: 14, alignItems: 'center', padding: '8px 10px', borderRadius: 6, height: 56, boxSizing: 'border-box' }}>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--surface-3)', color: C.ink, display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flex: 'none' }}>L</div>
-                    <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>Link invite</div>
-                      <div style={{ fontFamily: MONO_FONT, fontSize: 11, color: C.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{buildInviteUrl(inv)}</div>
-                    </div>
-                    <div style={{ fontSize: 12, color: C.inkSoft }}>{roleLabel(inv.intended_role)}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>created {new Date(inv.created_at).toLocaleDateString()}</div>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <button disabled={busy} onClick={async () => {
+                  <AccessRow
+                    key={inv.id}
+                    rowProps={{ 'data-kal31-row': 'link' }}
+                    avatar={{ text: 'L', background: 'var(--surface-3)', color: C.ink }}
+                    primary="Link invite"
+                    secondary={buildInviteUrl(inv)}
+                    role={roleLabel(inv.intended_role)}
+                    status={<span style={{ color: C.muted, fontWeight: 400 }}>created {new Date(inv.created_at).toLocaleDateString()}</span>}
+                    tip={tip}
+                    menuOpen={openMenu === `l:${inv.id}`}
+                    onMenu={() => setOpenMenu(openMenu === `l:${inv.id}` ? null : `l:${inv.id}`)}
+                    onCloseMenu={() => setOpenMenu(null)}
+                    menuItems={[
+                      { label: 'Copy link', disabled: busy, onClick: async () => {
                         const result = await copyTextToClipboard(buildInviteUrl(inv), { surface: 'document_access_link' });
                         if (result.ok) { setError(''); setStatus('Link copied.'); }
                         else { setStatus(''); setError('Survey could not copy this share link.'); }
-                      }} className="hub-btn dialog-touch-pad">Copy</button>
-                      <button disabled={busy} onClick={() => handleRevoke(inv)} className="hub-btn is-danger dialog-touch-pad">Revoke</button>
-                    </div>
-                  </div>
+                      } },
+                      { label: 'Revoke link', danger: true, disabled: busy, onClick: () => handleRevoke(inv) },
+                    ]}
+                  />
                 ))}
               </div>
+            )}
+
+            {/* Guest links (Nightly): owners only; the server checks too. */}
+            {guestLinksOn && kind === 'document' && documentId && isOwner && (
+              <Suspense fallback={null}>
+                <GuestLinksSection client={supabase} documentId={documentId} />
+              </Suspense>
             )}
           </div>
 

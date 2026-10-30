@@ -20,15 +20,21 @@ import DocumentsLedger from './DocumentsLedger';
 import ProjectsFolderTree from './ProjectsFolderTree';
 import TemplatesEditor from './TemplatesEditor';
 const ArchiveScreenContainer = lazy(() => import('./ArchiveScreenContainer'));
-import ShareModal from './ShareModal';
 import { templateShareTarget } from './templateShareTarget';
-import AccessManagementModal from './AccessManagementModal';
+import { preloadedComponent } from '../utils/preloadedComponent';
 import { HubChromeContext, HubShell } from './HubShell';
 import HubLoading from './HubLoading';
 import useAutoRetryLoad from './useAutoRetryLoad';
 import { installOverlayScrollbars } from '../utils/overlayScrollbars';
+import { TEMPLATE_EDITOR_REQUEST_EVENT, hasTemplateEditorRequest } from './templateEditorRequest';
 const AccountSettings = lazy(() => import('../components/AccountSettings').then(m => ({ default: m.AccountSettings })));
 import './hub.css';
+
+// The share dialogs render closed on every Home visit, so they need not be on
+// the first load: their chunk is fetched once the hub mounts, well before
+// anyone can click Share, and they then open with no wait.
+const ShareModal = preloadedComponent(() => import('./ShareModal')).Component;
+const AccessManagementModal = preloadedComponent(() => import('./AccessManagementModal')).Component;
 
 const TAB_KEY = 'survey-hub-tab';
 
@@ -83,6 +89,7 @@ export default function SurveyHub({
   const tip = useTooltip();
   const [tab, setTab] = useState(() => {
     if (initialTab) return initialTab;
+    if (hasTemplateEditorRequest()) return 'templates';
     try { return localStorage.getItem(TAB_KEY) || 'documents'; } catch { return 'documents'; }
   });
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
@@ -98,6 +105,14 @@ export default function SurveyHub({
      document-level listener covers the lists, the sheets and the portalled
      menus, so no list has to wire itself up. */
   useEffect(() => installOverlayScrollbars(), []);
+
+  // "Edit template" from Survey mode lands on the Templates tab; the editor
+  // there opens the asked-for template (templateEditorRequest.js).
+  useEffect(() => {
+    const onRequest = () => startTransition(() => setTab('templates'));
+    window.addEventListener(TEMPLATE_EDITOR_REQUEST_EVENT, onRequest);
+    return () => window.removeEventListener(TEMPLATE_EDITOR_REQUEST_EVENT, onRequest);
+  }, []);
 
   // A list that could not load tries again by itself (connection back, app back
   // in front, widening timer) instead of waiting on its Try again button.

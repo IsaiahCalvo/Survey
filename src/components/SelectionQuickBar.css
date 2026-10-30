@@ -35,6 +35,13 @@
   white-space: nowrap;
 }
 
+/* Design review 2026-10-27: the right-click menu on a mark opens over the
+   selection, so while it is up the quick bar steps aside (both used to show,
+   one on top of the other). It comes back when the menu closes. */
+body:has([data-annotation-context-menu]) .selection-quick-bar {
+  visibility: hidden;
+}
+
 /* Hidden: still laid out (so it can be measured and placed before it shows),
    never seen, never pressed. */
 .selection-quick-bar[data-visible='false'] {
@@ -237,4 +244,14 @@
   .selection-quick-bar__popover {
     animation: none;
   }
+}
+
+/* Phone (owner 2026-10-28): Duplicate and Delete only, at finger size. */
+.selection-quick-bar[data-phone='true'] {
+  height: 44px;
+  padding: 0 3px;
+}
+.selection-quick-bar[data-phone='true'] .selection-quick-bar__button {
+  width: 40px;
+  height: 40px;
 }

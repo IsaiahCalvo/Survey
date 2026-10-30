@@ -15,6 +15,10 @@ import CounterSeriesMenu from './components/CounterSeriesMenu.jsx';
 // (Note: CLAUDE.md still says the guard lives in AppShell; that line is stale.)
 
 import PageGridToggle, { PageGridGlyph } from './components/PageGridToggle';
+import DocumentVersionsButton, { DocumentVersionsDialogs, useDocumentVersions } from './components/DocumentVersionsButton.jsx';
+import { requestMarkCommentsFocus } from './services/markCommentsFocus.js';
+import { OPEN_EXPORT_PDF_EVENT } from './utils/exportPdfModes.js';
+import { PageGridMenu } from './components/PageGridSettings';
 import SnappingToggle, { SnappingGlyph, snappingLabel, useSnappingShortcut } from './components/SnappingToggle.jsx';
 import Dashboard from './Dashboard';
 import { createTabChromeCache } from './utils/tabChromeCache.js';
@@ -28,8 +32,9 @@ import QuietLoading, { openingLabel } from './components/QuietLoading';
 import ToastHost from './components/ToastHost';
 import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/AnnotationSizeControl';
 import AnnotationDropdown from './components/AnnotationDropdown';
+import { StrokeSample } from './components/StrokeStyleCards';
 import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
-import { isPaintSelectionMixed } from './utils/selectionRestyle.js';
+import { isPaintSelectionMixed } from './utils/paintSelectionMixed.js';
 import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ExportMenu from './components/ExportMenu.jsx';
@@ -50,7 +55,7 @@ import ActiveSpaceChip from './sidebar/ActiveSpaceChip';
 import TabBar from './TabBar';
 import { RenameModal } from './home/BulkModals';
 import { useConfirmDialog } from './components/dialogPrompts';
-import { DISCARD_LOCAL_DRAFT_EVENT, closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction, tabIdsToDiscardOnClose } from './tabs/tabStrip.js';
+import { DISCARD_LOCAL_DRAFT_EVENT, RENAME_OPEN_DOCUMENT_EVENT, canRenameTab, closeConfirmFor, persistableDocumentId, pickActiveTabAfterClose, tabIdsForCloseAction, tabIdsToDiscardOnClose } from './tabs/tabStrip.js';
 import { useTabSession } from './tabs/useTabSession.js';
 import {
   MobilePdfViewerDock,
@@ -61,6 +66,8 @@ import { createKeyboardViewportController } from './mobile/keyboardViewport';
 import YDocProvider from './components/collab/YDocProvider.jsx';
 import { ARROWHEAD_MENU_ORDER, ARROWHEAD_SHORT_LABELS } from './components/Callout/types';
 import { AuthModal } from './components/AuthModal';
+import { guestTokenFrom } from './services/guestLinkToken.js';
+import { supabase as guestSupabase } from './supabaseClient';
 import { FORM_TOOL_IDS } from './components/formDesignerTools';
 import { ZOOM_MODES } from './utils/zoomController';
 import { createPortal } from 'react-dom';
@@ -70,15 +77,23 @@ import { showToast } from './utils/toast';
 import { randomUUID } from './utils/randomUUIDPolyfill';
 import { getDocumentOpenKey, isSameDocumentTab } from './utils/documentTabIdentity.js';
 import { schedulePdfViewerPrefetch } from './utils/pdfViewerPrefetch';
-import { preloadedComponent, retryingLazy } from './utils/preloadedComponent.js';
+import { canFetchChunksNow, preloadedComponent, retryingLazy } from './utils/preloadedComponent.js';
+import { behindTabPropsEqual } from './utils/behindTabProps.js';
 import { shouldWarnBeforeUnloadForTab } from './utils/beforeUnloadGuard.js';
 import { getSelectFamilyLabel, getSelectModeIconName, isSelectFamilyTool, isSelectModeActive, SELECT_MODE_OPTIONS } from './utils/selectModes.js';
 import { computeTextMarkupPickerPosition } from './utils/pdfTextMarkup.js';
 import { getLiveZoomViewerId, isLiveZoomEventForViewer, LIVE_ZOOM_EVENT } from './utils/liveZoomEvents.js';
 import { useAuth } from './contexts/AuthContext';
+import { supabase, isSupabaseAvailable } from './supabaseClient';
+import { renameRows, subscribeDocumentNames } from './hooks/documentNameBus.js';
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import useStableHandler from './hooks/useStableHandler.js';
 import useFileDropZone from './hooks/useFileDropZone.js';
+import useViewerReturnQuiet from './hooks/useViewerReturnQuiet.js';
+import useActiveOnlyCounter from './hooks/useActiveOnlyCounter.js';
+import TabChromeSlot from './components/TabChromeSlot.jsx';
+import { publishChromeInset } from './utils/chromeInsets.js';
+import { tabWrapperHiding } from './utils/tabBehind.js';
 import FileDropOverlay from './components/FileDropOverlay.jsx';
 import { useMSGraph } from './contexts/MSGraphContext';
 import { startsInSignUp, useOptionalAuth } from './components/OptionalAuthPrompt';
@@ -92,8 +107,10 @@ import { TooltipChipHost, TooltipContext, TooltipProvider, makeTooltipBinding } 
 import { useViewerTopOverlayRef } from './utils/viewerTopOverlay.js';
 import DismissBarrier from './components/DismissBarrier.jsx';
 import PencilModeControl, { usePencilMode } from './components/PencilModeControl.jsx';
-import PinnedToolsDock, { PinIcon, getPinnedToolsStore, usePinnedTools } from './components/PinnedToolsDock.jsx';
+import { PinIcon, getPinnedToolsStore, usePinnedTools } from './pinnedTools/pinnedToolsShared.jsx';
 import { isFeatureOn } from './featureFlags.js';
+import { usePolylineCurve } from './hooks/usePolylineCurve.js';
+import { POLYLINE_CURVE_SET_EVENT } from './utils/polySpline.js';
 import { sanitizeZoomInput } from './utils/pageNavigationMath.js';
 import { showsColourRule, showsPaintSwatch, showsQuickColourDots } from './utils/toolbarColourGroup.js';
 import { isAreaEditing, REGION_TOOLBAR_OPENING_STATE, resolveToolBarGroup, showsFormatRow, showsSurveyRow } from './utils/toolbarRows.js';
@@ -103,6 +120,7 @@ import { isToolGroupPressed } from './utils/toolbarToolPressed.js';
 import { pendingInviteRedirect } from './utils/pendingInvite.js';
 import { useProLock } from './hooks/useProLock.js';
 import { formatPageTotal } from './utils/pageTotalLabel.js';
+import { requestTemplateEditor } from './home/templateEditorRequest';
 
 // The dot between the current page and the page total in the right-rail
 // footer: a drawn 2px circle in the total's grey (see the rail audit note at
@@ -120,20 +138,23 @@ const RAIL_PAGE_DOT_STYLE = Object.freeze({
 });
 
 function RailLiveZoomText({ fallback, viewerId }) {
-  const [livePercentage, setLivePercentage] = useState(null);
+  // The live value belongs to the viewer that sent it. After a tab switch the
+  // previous tab's value is never drawn, not even for the one frame before an
+  // effect could clear it (it used to show the old tab's zoom for a frame).
+  const [live, setLive] = useState(null);
 
   useEffect(() => {
-    setLivePercentage(null);
+    setLive(null);
     const onLiveZoom = (event) => {
       if (!isLiveZoomEventForViewer(event?.detail, viewerId)) return;
       const percentage = Number(event?.detail?.percentage);
-      if (Number.isFinite(percentage)) setLivePercentage(percentage);
+      if (Number.isFinite(percentage)) setLive({ viewerId, percentage });
     };
     window.addEventListener(LIVE_ZOOM_EVENT, onLiveZoom);
     return () => window.removeEventListener(LIVE_ZOOM_EVENT, onLiveZoom);
   }, [viewerId]);
 
-  return <>{livePercentage ?? fallback}%</>;
+  return <>{live?.viewerId === viewerId ? live.percentage : fallback}%</>;
 }
 
 // Owner 2026-10-02 (footer lock: "these numbers need to be able to add digits
@@ -159,6 +180,14 @@ function FooterSlot({ widest, field = null, children = null }) {
 }
 const footerSlotFieldStyle = { position: 'absolute', inset: 0, width: '100%', boxSizing: 'border-box' };
 
+// Two Survey Nightly betas render only with their flag on, so their code stays
+// off the first load: the chunk is fetched when AppShell mounts with the flag
+// on (see the effect beside pinnedToolsEnabled), well before it is needed.
+const PinnedToolsDockChunk = preloadedComponent(() => import('./components/PinnedToolsDock.jsx'));
+const PinnedToolsDock = PinnedToolsDockChunk.Component;
+const ExportPdfDialogChunk = preloadedComponent(() => import('./components/ExportPdfDialog'));
+const ExportPdfDialog = ExportPdfDialogChunk.Component;
+
 // Lazy boundary: the dashboard paints without pulling in the viewer (and its
 // fabric / annotation / Excel weight). The viewer chunk fetches the first time
 // a PDF tab is opened (or earlier, from the idle prefetch).
@@ -171,6 +200,26 @@ const SurveySpacesRailChunk = preloadedComponent(() => import('./SurveySpacesRai
 // Memoised: its props come from the published rightRailApi plus a few stable
 // values, so a page change while scrolling no longer re-renders the Survey rail.
 const SurveySpacesRail = memo(SurveySpacesRailChunk.Component);
+// Memoised for the same reason: every open tab keeps its own left rail, and a
+// hidden tab's rail holds still while the shell re-renders for the front tab.
+const MemoPDFSidebar = memo(PDFSidebar);
+// One tab's Survey rail. The shell's phone requests ("open / close the Survey
+// sheet") are counters; only the front tab's rail hears a bump.
+function RightRailForTab({ api, active, mobileMode, onUndoLastChange, expandRequestKey, collapseRequestKey, onCollapseChange }) {
+  const expandBumps = useActiveOnlyCounter(expandRequestKey, active);
+  const collapseBumps = useActiveOnlyCounter(collapseRequestKey, active);
+  return (
+    <SurveySpacesRail
+      {...api}
+      tabActive={active}
+      mobileMode={mobileMode}
+      onUndoLastChange={onUndoLastChange}
+      expandRequestKey={(api.expandRequestKey || 0) + expandBumps}
+      collapseRequestKey={collapseBumps}
+      onCollapseChange={onCollapseChange}
+    />
+  );
+}
 // The hidden home screen and the desktop tab strip skip re-rendering when App
 // re-renders for viewer reasons (page number, zoom, tool state): their props
 // are kept stable below with useStableHandler. Before this, every page change
@@ -230,13 +279,18 @@ function ViewerLoadFailed() {
     </button>
   );
 }
+// A tab behind skips the renders its parent does for the front tab.
 const PDFViewer = retryingLazy(
-  () => loadPDFViewerModule().then((m) => ({ default: m.PDFViewer })),
+  () => loadPDFViewerModule().then((m) => ({ default: memo(m.PDFViewer, behindTabPropsEqual) })),
   ViewerLoadFailed,
 );
 // Lazy boundary: the compact color picker only renders deep inside the bottom
 // toolbar when a rich-text or annotation color picker is explicitly opened.
 const CompactColorPicker = lazy(() => import('./components/CompactColorPicker'));
+// Guest links (Nightly): the join card and badge load only for a guest link
+// or a guest session, never on a normal first load.
+const GuestLinkGate = lazy(() => import('./guest/GuestLinkGate.jsx'));
+const GuestBadge = lazy(() => import('./guest/GuestLinkGate.jsx').then((m) => ({ default: m.GuestBadge })));
 
 /* Dev build stamp (git hash · dev-server start time, injected by vite.config's
    __BUILD_STAMP__ define). It used to render as a fixed chip in the bottom-left
@@ -451,24 +505,6 @@ const ARROWHEAD_MENU_OPTIONS = Object.freeze(ARROWHEAD_MENU_ORDER.map((value) =>
 })));
 
 /*
- * PASS 7 (boards 10 + 16, owner ruling): ARROW ENDS is one dropdown with three
- * values and the same three Lucide glyphs on desktop and in the phone sheet.
- * It writes the two pieces of state the app already has:
- *   End  — the head sits on the finish only        (bothEnds off)
- *   Both — the head is mirrored onto the start too (bothEnds on)
- *   None — no head at either end                   (head style 'none')
- * so nothing new is stored, and picking a head in the Arrowhead pill moves this
- * control back off None by itself.
- */
-const ARROW_ENDS_OPTIONS = Object.freeze([
-  Object.freeze({ value: 'end', label: 'End', icon: 'moveRight' }),
-  Object.freeze({ value: 'both', label: 'Both', icon: 'moveHorizontal' }),
-  // `arrowEndsNone` is the set's own minus: the same 2 -> 22 rule the other two
-  // ends draw, which is what board 16 shows and what "all the same length" means.
-  Object.freeze({ value: 'none', label: 'None', icon: 'arrowEndsNone' }),
-]);
-
-/*
  * PASS 7 (2026-09-22, owner ruling): a text mark's BLEND — the one setting the
  * highlight tools carry beyond colour and it was the last native <select> left
  * in the desktop chrome: a grey 62x28 browser widget sitting among 20px pills,
@@ -514,7 +550,7 @@ const BLEND_MODE_SAMPLES = Object.freeze({
 export default function App({ devPreviewReturnTab = null }) {
   useEffect(() => schedulePdfViewerPrefetch(loadPDFViewerModule), []);
 
-  const { replaceDocument } = useStorage();
+  const { replaceDocument, startOpenSource } = useStorage();
 
   // Microsoft Graph authentication hook
   const { graphClient, isAuthenticated: isMSAuthenticated, login: msLogin, account: msAccount, needsReconnect: msNeedsReconnect, ensureFreshToken, getAuthSignals: msGetAuthSignals } = useMSGraph();
@@ -935,11 +971,6 @@ export default function App({ devPreviewReturnTab = null }) {
   const setShowStyleMenu = useCallback((next) => setDropdownOpen('style', next), [setDropdownOpen]);
   const showCounterSeriesMenu = openAnnotationDropdown === 'counter-series';
   const setShowCounterSeriesMenu = useCallback((next) => setDropdownOpen('counter-series', next), [setDropdownOpen]);
-  // PASS 7: Arrow ends (End / Both / None) is a dropdown of its own now, and the
-  // eraser's two kinds moved out of a dropdown into a segmented toggle — so
-  // 'eraser-type' is gone from this list and 'arrow-ends' takes its place.
-  const showArrowEndsMenu = openAnnotationDropdown === 'arrow-ends';
-  const setShowArrowEndsMenu = useCallback((next) => setDropdownOpen('arrow-ends', next), [setDropdownOpen]);
   // PASS 7 (2026-09-22): the text-mark BLEND pill — the last native <select> in
   // the desktop chrome, now the same dropdown every other setting uses.
   const showBlendMenu = openAnnotationDropdown === 'blend';
@@ -1020,8 +1051,29 @@ export default function App({ devPreviewReturnTab = null }) {
   // about to be created with is as worth seeing as the formatting it already has,
   // and the user used to have to draw a box and double-click into it to find out
   // what font the next one would use.
-  const [showTextFormatBar, setShowTextFormatBar] = useState(true);
+  // Owner 2026-10-26: a picked or armed text box / callout shows its REGULAR
+  // settings (colour, width, style) first; "Aa" swaps the text settings into
+  // the same row in their place, and swaps them back out. So the bar starts
+  // hidden, and goes back to hidden whenever text leaves the row or a
+  // different text box / callout is picked.
+  const [showTextFormatBar, setShowTextFormatBar] = useState(false);
   const textFormatSource = resolveTextFormatting(bottomToolbarApi);
+  const textFormatTargetKey = bottomToolbarApi?.textFormatTargetKey ?? null;
+  const hasTextFormatSource = !!textFormatSource;
+  const lastTextFormatTargetRef = useRef(null);
+  useEffect(() => {
+    if (!hasTextFormatSource) {
+      lastTextFormatTargetRef.current = null;
+      setShowTextFormatBar(false);
+      return;
+    }
+    // Opening the picked box for typing drops the key (the editor takes
+    // over); only a NEW pick resets the row.
+    if (textFormatTargetKey && textFormatTargetKey !== lastTextFormatTargetRef.current) {
+      if (lastTextFormatTargetRef.current !== null) setShowTextFormatBar(false);
+      lastTextFormatTargetRef.current = textFormatTargetKey;
+    }
+  }, [hasTextFormatSource, textFormatTargetKey]);
   // UX 2026-09-23 (owner: text colour opacity everywhere text colour is
   // picked). The text colour carries its own opacity (utils/textColorOpacity):
   // the picker edits both, and a quick dot changes the colour but keeps the
@@ -1188,7 +1240,6 @@ export default function App({ devPreviewReturnTab = null }) {
       }
       if (!insideDropdown && !inside('[data-style-menu]')) setShowStyleMenu(false);
       if (!insideDropdown && !inside('[data-arrowhead-menu]')) setShowArrowheadMenu(false);
-      if (!insideDropdown && !inside('[data-arrow-ends-menu]')) setShowArrowEndsMenu(false);
       if (!inside('[data-font-color-picker]')) setShowFontColorPicker(false);
       if (!insideDropdown && !inside('[data-font-family-menu]')) setShowFontFamilyMenu(false);
       if (!insideDropdown && !inside('[data-font-size-menu]')) setShowFontSizeMenu(false);
@@ -1235,7 +1286,6 @@ export default function App({ devPreviewReturnTab = null }) {
     setCounterSeriesContextMenu(null);
     setShowStyleMenu(false);
     setShowArrowheadMenu(false);
-    setShowArrowEndsMenu(false);
   }, [bottomToolbarApi?.contextTool]);
 
   /*
@@ -1314,6 +1364,19 @@ export default function App({ devPreviewReturnTab = null }) {
       : []
   ));
 
+  // A shared template's own Excel layout (Nightly 'own-excel-layouts') rides
+  // in the template, so everyone who opens it exports in that layout.
+  // Loaded only when a template carries one, to keep it off the first load.
+  useEffect(() => {
+    if (!appTemplates.some((t) => t?.ownExportKit)) return undefined;
+    let off = null;
+    let gone = false;
+    import('./services/exportFormats/ownKits.js')
+      .then(({ registerTemplateKits }) => { if (!gone) off = registerTemplateKits(appTemplates); })
+      .catch(() => {});
+    return () => { gone = true; off?.(); };
+  }, [appTemplates]);
+
   const handleTemplatesChange = useCallback((nextTemplates) => {
     const normalized = Array.isArray(nextTemplates) ? nextTemplates : [];
     setAppTemplates(normalized);
@@ -1333,7 +1396,14 @@ export default function App({ devPreviewReturnTab = null }) {
   })));
 
   // Authentication state
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, signOut: authSignOut } = useAuth();
+  // Guest links (Survey Nightly only, beta flag 'guest-links'): /?guest=<secret>
+  // opens one shared document without an account (guest/GuestLinkGate.jsx).
+  const [guestLinksEnabled] = useState(() => isFeatureOn('guest-links'));
+  const [guestLinkToken] = useState(() => (typeof window === 'undefined' ? null : guestTokenFrom(window.location.href)));
+  // "I have an account" on the guest card hands over to the normal sign-in.
+  const [guestChoseSignIn, setGuestChoseSignIn] = useState(false);
+  const guestJoinPending = Boolean(guestLinksEnabled && guestLinkToken && !user && !guestChoseSignIn);
   const proLocked = useProLock();
   const { showAuthModal, setShowAuthModal, handleDismiss, authPromptDismissed } = useOptionalAuth();
 
@@ -1354,6 +1424,39 @@ export default function App({ devPreviewReturnTab = null }) {
         if (!cancelled) stop = startSurveyMediaDeleteRetry(signedInUserId);
       })
       .catch(() => { /* retried on a later start */ });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [signedInUserId]);
+
+  // A rename shows everywhere at once (hooks/documentNameBus.js): the open
+  // tabs of that document (tab, tooltip, overflow list, phone header, the
+  // viewer's export and print names) and the shell's library list, whether
+  // the rename came from the Documents tab, a tab menu or another screen.
+  useEffect(() => subscribeDocumentNames((rename) => {
+    setTabs((prev) => {
+      let changed = false;
+      const next = prev.map((tab) => {
+        if (persistableDocumentId(tab) !== rename.id || tab.name === rename.name) return tab;
+        changed = true;
+        return { ...tab, name: rename.name };
+      });
+      return changed ? next : prev;
+    });
+    setDocuments((prev) => renameRows(prev, rename));
+  }), []);
+  // Renames made on another device, window or by the owner of a shared
+  // document arrive over Realtime (services/documentNameRealtime.js).
+  useEffect(() => {
+    if (!signedInUserId || !isSupabaseAvailable()) return undefined;
+    let stop = null;
+    let cancelled = false;
+    import('./services/documentNameRealtime')
+      .then(({ subscribeDocumentRenames }) => {
+        if (!cancelled) stop = subscribeDocumentRenames(supabase, signedInUserId);
+      })
+      .catch(() => { /* local renames still show; others on the next read */ });
     return () => {
       cancelled = true;
       stop?.();
@@ -1431,6 +1534,9 @@ export default function App({ devPreviewReturnTab = null }) {
 
     // Mark this PDF as being opened
     openingPdfsRef.current.add(pdfKey);
+    // Open speed: ask for the cloud file's access check and signed URL now,
+    // while the viewer chunk loads (services/openSourceHeadStart.js).
+    if (typeof file.arrayBuffer !== 'function' && file.filePath) startOpenSource(file.filePath);
 
     // Create new tab
     const newTab = {
@@ -1524,6 +1630,12 @@ export default function App({ devPreviewReturnTab = null }) {
     );
 
     const url = new URL(window.location.href);
+    // A mention email links to one comment (Nightly, 'mark-comments').
+    const commentId = url.searchParams.get('comment');
+    if (commentId && isFeatureOn('mark-comments')) {
+      requestMarkCommentsFocus({ documentId: String(documentToOpen.id), commentId });
+    }
+    url.searchParams.delete('comment');
     url.searchParams.delete('docId');
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   }, [documents]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1809,19 +1921,16 @@ export default function App({ devPreviewReturnTab = null }) {
   }, [bottomToolbarApi, activeTabId, currentView, tabs]);
 
   // Rename from the tab menu = the home's Rename (Dashboard's rename of the
-  // document row). The tab shows the new name at once and goes back if the
-  // rename fails (Dashboard shows the error toast).
+  // document row). That rename announces the new name on the name bus, so
+  // every tab and list shows it at once and goes back if the rename fails
+  // (Dashboard shows the error toast).
   const renameTab = renameTabId ? tabs.find((t) => t.id === renameTabId) || null : null;
   const handleRenameTabConfirm = async (nextName) => {
     const tab = tabsRef.current.find((t) => t.id === renameTabId);
     const documentId = persistableDocumentId(tab);
     if (!tab || !documentId) return;
-    const previousName = tab.name;
-    const sameDocument = (t) => persistableDocumentId(t) === documentId;
-    const row = documents.find((d) => String(d?.id) === String(documentId)) || { id: documentId, name: previousName };
-    setTabs((prev) => prev.map((t) => (sameDocument(t) ? { ...t, name: nextName } : t)));
-    const renamed = await dashboardRef.current?.renameDocument?.(row, nextName);
-    if (!renamed) setTabs((prev) => prev.map((t) => (sameDocument(t) ? { ...t, name: previousName } : t)));
+    const row = documents.find((d) => String(d?.id) === String(documentId)) || { id: documentId, name: tab.name };
+    await dashboardRef.current?.renameDocument?.({ ...row, name: tab.name }, nextName);
   };
 
   const handleTabMenuAction = (action, tabId) => {
@@ -1927,7 +2036,12 @@ export default function App({ devPreviewReturnTab = null }) {
   };
 
   const handleCreateTemplateRequest = (options) => {
-    if (options?.mode === 'edit' && options.templateId) {
+    if (options?.mode === 'open-editor' && options.templateId) {
+      // Survey bar "Edit template": the home Templates editor, that template open.
+      requestTemplateEditor(options.templateId);
+      setActiveTabId(HOME_TAB_ID);
+      setCurrentView('dashboard');
+    } else if (options?.mode === 'edit' && options.templateId) {
       dashboardRef.current?.openEditTemplateModal?.(options.templateId, {
         moduleId: options.moduleId,
         startAddingCategory: options.startAddingCategory
@@ -1965,10 +2079,37 @@ export default function App({ devPreviewReturnTab = null }) {
   const stableAnnotationsExistChange = useStableHandler(handleAnnotationsExistChange);
   const stableViewStateChange = useStableHandler(handleViewStateChange);
   const stableTemplatesChange = useStableHandler(handleTemplatesChange);
-  const handleRightRailCollapseChange = useStableHandler((collapsed) => {
-    setMobileSurveyPanelOpen(!collapsed);
-    rightRailApi?.onCollapseChange?.(collapsed);
-  });
+  // useTemplates hands back a new refetch every render; a tab behind compares
+  // its props to skip renders, so it gets one that keeps its identity.
+  const stableRefetchTemplates = useStableHandler(refetchTemplates);
+  // Each open tab keeps its own rails (TabChromeSlot). On the phone only the
+  // front tab's rails exist: its sheets start closed for every document.
+  const railTabs = useMemo(() => tabs.filter((tab) => !tab.isHome && (!isNarrowShell || tab.id === activeTabId)), [tabs, isNarrowShell, activeTabId]);
+  // Whether each tab's Survey panel is shut, as its own rail last said, so the
+  // shell's copy follows the front tab without the rail being built again.
+  const railCollapsedByTabRef = useRef({});
+  const railCollapseHandlersRef = useRef({});
+  const railCollapseHandlerFor = (tabId) => {
+    if (!railCollapseHandlersRef.current[tabId]) {
+      railCollapseHandlersRef.current[tabId] = (collapsed) => {
+        railCollapsedByTabRef.current[tabId] = collapsed;
+        if (activeTabIdRef.current !== tabId) return;
+        setMobileSurveyPanelOpen(!collapsed);
+        chromeCache.peek(tabId, 'right')?.onCollapseChange?.(collapsed);
+      };
+    }
+    return railCollapseHandlersRef.current[tabId];
+  };
+  useLayoutEffect(() => {
+    const open = new Set(tabs.map((tab) => tab.id));
+    for (const ref of [railCollapsedByTabRef, railCollapseHandlersRef]) {
+      for (const id of Object.keys(ref.current)) if (!open.has(id)) delete ref.current[id];
+    }
+  }, [tabs]);
+  useLayoutEffect(() => {
+    if (activeTabId === HOME_TAB_ID) return;
+    setMobileSurveyPanelOpen(railCollapsedByTabRef.current[activeTabId] === false);
+  }, [activeTabId]);
 
   // Determine what to render based on active tab. Keep this before any
   // conditional return because hooks below depend on it.
@@ -1977,7 +2118,8 @@ export default function App({ devPreviewReturnTab = null }) {
   // on the open document. A file that isn't saved to the account yet has no
   // stored copy for the tools to read, so Dashboard explains that instead.
   const openPdfToolsForActiveTab = async () => {
-    const file = tabs.find((t) => t.id === activeTabId)?.file;
+    const openTab = tabs.find((t) => t.id === activeTabId);
+    const file = openTab?.file;
     // The open tab already holds the PDF, so the tools work offline too. A
     // streamed open (#1097) has no File, only the library row: take the bytes
     // from the viewer's loaded pdf.js document instead of downloading again.
@@ -2002,7 +2144,7 @@ export default function App({ devPreviewReturnTab = null }) {
         }));
       }
     }
-    dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null, blob }]);
+    dashboardRef.current?.openPdfTools?.([{ id: file?.id || null, name: openTab?.name || file?.name, file_path: file?.supabaseFilePath || null, project_id: file?.projectId ?? null, blob }]);
   };
   const openPdfToolsRef = useRef(openPdfToolsForActiveTab);
   openPdfToolsRef.current = openPdfToolsForActiveTab;
@@ -2012,13 +2154,58 @@ export default function App({ devPreviewReturnTab = null }) {
     window.addEventListener('survey-open-pdf-tools', open);
     return () => window.removeEventListener('survey-open-pdf-tools', open);
   }, []);
+  // The phone viewer has no tab strip, so its More menu asks to rename the
+  // open document with an event; the same dialog the tab menu opens.
+  const signedInForRename = Boolean(user?.id);
+  useEffect(() => {
+    const rename = () => {
+      const tab = tabsRef.current.find((t) => t.id === activeTabIdRef.current);
+      if (tab && !tab.isHome && canRenameTab(tab, signedInForRename)) setRenameTabId(tab.id);
+    };
+    window.addEventListener(RENAME_OPEN_DOCUMENT_EVENT, rename);
+    return () => window.removeEventListener(RENAME_OPEN_DOCUMENT_EVENT, rename);
+  }, [signedInForRename]);
   const isViewerVisible = activeTab && !activeTab.isHome && selectedPDF && currentView === 'viewer';
   const isMobileViewer = Boolean(isNarrowShell && isViewerVisible);
   // Shift+S flips snapping (the rail's magnet button says the same).
   useSnappingShortcut(Boolean(isViewerVisible));
+  useViewerReturnQuiet(Boolean(isViewerVisible), activeTabId);
   // Pinned tools dock (Survey Nightly only, beta flag 'pinned-tools'):
   // components/PinnedToolsDock.jsx. Read once at load, like every flag.
   const [pinnedToolsEnabled] = useState(() => isFeatureOn('pinned-tools'));
+  // Export PDF choices (Survey Nightly only, beta flag 'export-modes'):
+  // components/ExportPdfDialog.jsx. The phone header asks with an event.
+  const [exportModesEnabled] = useState(() => isFeatureOn('export-modes'));
+  const [exportPdfDialogOpen, setExportPdfDialogOpen] = useState(false);
+  useEffect(() => {
+    if (!canFetchChunksNow()) return;
+    if (pinnedToolsEnabled) PinnedToolsDockChunk.load().catch(() => {});
+    if (exportModesEnabled) ExportPdfDialogChunk.load().catch(() => {});
+  }, [pinnedToolsEnabled, exportModesEnabled]);
+  useEffect(() => {
+    if (!exportModesEnabled) return undefined;
+    const open = () => setExportPdfDialogOpen(true);
+    window.addEventListener(OPEN_EXPORT_PDF_EVENT, open);
+    return () => window.removeEventListener(OPEN_EXPORT_PDF_EVENT, open);
+  }, [exportModesEnabled]);
+
+  // Version history (Survey Nightly only, beta flag 'document-versions'):
+  // components/DocumentVersionsButton.jsx.
+  const [documentVersionsEnabled] = useState(() => isFeatureOn('document-versions'));
+  // Comments on marks (Survey Nightly only, beta flag 'mark-comments'):
+  // sidebar/CommentsPanel.jsx in the left rail, Comment on the selection bar.
+  const [markCommentsEnabled] = useState(() => isFeatureOn('mark-comments'));
+  const commentOnMark = useCallback((item) => {
+    const documentId = activeTab?.file?.id;
+    if (!documentId || !item?.id) return;
+    requestMarkCommentsFocus({ documentId: String(documentId), markId: item.id, pageNumber: item.pageNumber });
+  }, [activeTab?.file?.id]);
+  const documentVersions = useDocumentVersions(documentVersionsEnabled ? activeTab?.file?.id || null : null, handleDocumentSelect);
+
+  // Page grid spacing (Survey Nightly only, beta flag 'grid-settings').
+  const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
+
+  const polylineCurve = usePolylineCurve();
   const pinnedTools = usePinnedTools();
   // PDFs dragged in from the computer onto an open document (owner request
   // 2026-10-13, as in Drawboard): uploaded the same way as the Upload button
@@ -2169,9 +2356,10 @@ export default function App({ devPreviewReturnTab = null }) {
   // edited the tool bar is in AREAS mode: the area shapes and the Add /
   // Subtract mode stand where a group's tools go (the loadout, so they morph
   // in like any group switch), the app's own Select picks areas (one Select,
-  // V as always), Pan and zoom stay, and row 2 holds the actions (Delete area,
-  // Full page, Cancel, Done). The drawing groups wait, dimmed, until Done or
-  // Cancel. RegionSelectionTool publishes the state; PDFViewer forwards it.
+  // V as always), Pan and zoom stay. A drawing group (Draw, Shapes, Text,
+  // Survey) leaves area editing, keeping the areas, and arms that group, as
+  // picking another tool does everywhere (owner 2026-10-26, no Done button).
+  // RegionSelectionTool publishes the state; PDFViewer forwards it.
   // The tool publishes its state a render after the viewer enters the mode;
   // until then the bar draws the tool's opening state (Rectangle, Add), so
   // the Areas tools take over in the same frame as the mode and morph in as
@@ -2185,6 +2373,7 @@ export default function App({ devPreviewReturnTab = null }) {
   const surveyMarkerModesInToolBar = !areasMode && !isMobileViewer
     && bottomToolbarApi?.activeTool === 'survey-marker' && Boolean(rightRailApi?.showSurveyPanel);
   const areasPanArmed = areasMode && bottomToolbarApi?.activeTool === 'pan';
+  const leaveAreasMode = () => { if (areasMode) regionApi.leave?.(); };
   // A group left open from before (Draw's row) must not draw its tools beside
   // the Areas tools.
   useEffect(() => {
@@ -2385,7 +2574,16 @@ export default function App({ devPreviewReturnTab = null }) {
         }
       }
 
-      document.documentElement.style.setProperty('--app-chrome-top', `${Math.round(chromeBottom)}px`);
+      // Published for the few things hung from the top bar (chromeInsets.js),
+      // not on :root: a custom property there restyles the whole document, and
+      // tabs with and without the Survey row would pay it on every switch.
+      // Phone-only CSS still reads it from :root; there only the front tab's
+      // chrome exists.
+      const chromeTopPx = `${Math.round(chromeBottom)}px`;
+      publishChromeInset('top', chromeTopPx);
+      if (isMobileViewer && document.documentElement.style.getPropertyValue('--app-chrome-top') !== chromeTopPx) {
+        document.documentElement.style.setProperty('--app-chrome-top', chromeTopPx);
+      }
 
       // RULED 2026-09-26 owner: select modes in top bar (w46). In Select mode
       // row 2 now comes and goes as a mark is picked and dropped (it has
@@ -2398,7 +2596,7 @@ export default function App({ devPreviewReturnTab = null }) {
         const barH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chrome-bar-h')) || 36;
         bannerTop = chromeBottom + barH;
       }
-      document.documentElement.style.setProperty('--app-banner-top', `${Math.round(bannerTop)}px`);
+      publishChromeInset('bannerTop', `${Math.round(bannerTop)}px`);
     };
 
     const scheduleUpdate = () => {
@@ -2496,10 +2694,12 @@ export default function App({ devPreviewReturnTab = null }) {
                   </div>
   );
 
-  // Areas mode (owner 2026-10-01, see regionApi above). The shapes and the
-  // mode toggle are the loadout's 28px .chrome-subcontrol buttons with the
+  // Areas mode (owner 2026-10-01, see regionApi above). The shapes, Erase and
+  // the mode toggle are the loadout's 28px .chrome-subcontrol buttons with the
   // gold-glyph armed state, like pen / highlighter / eraser; a rule between
-  // the two pairs. While Pan or Select is armed no shape is lit, but Add /
+  // the two sets. There is no row 2 (owner 2026-10-26): Enter leaves keeping
+  // the areas, Esc leaves dropping them (Undo on a toast), Delete or Erase
+  // removes an area, and any other tool leaves keeping them. While Pan or Select is armed no shape is lit, but Add /
   // Subtract still say which way the next shape will go.
   const renderAreaTools = () => {
     const drawing = regionApi.toolType !== 'move' && !areasPanArmed;
@@ -2529,84 +2729,22 @@ export default function App({ devPreviewReturnTab = null }) {
         {tool('rectangle', 'Rectangle area', 'areaRect', drawing && regionApi.toolType === 'rectangular', () => regionApi.setToolType?.('rectangular'))}
         {tool('polygon', 'Polygon area', 'areaPolygon', drawing && regionApi.toolType === 'polygon', () => regionApi.setToolType?.('polygon'))}
         {tool('freehand', 'Lasso area', 'areaFreehand', drawing && regionApi.toolType === 'freehand', () => regionApi.setToolType?.('freehand'))}
+        {/* Owner 2026-10-26: Erase (E) takes whole areas away; Delete does
+            the same to the picked one. */}
+        {tool('erase', 'Erase area', 'eraser', drawing && regionApi.toolType === 'erase', () => regionApi.setToolType?.('erase'))}
         <div className="chrome-divider" />
         {tool('add', 'Add to area', 'plus', regionApi.selectionMode === 'add', () => regionApi.setSelectionMode?.('add'))}
         {tool('subtract', 'Subtract from area', 'minus', regionApi.selectionMode === 'subtract', () => regionApi.setSelectionMode?.('subtract'))}
       </div>
     );
   };
-  // Row 2 in Areas mode: what can be done to the areas, then how to leave -
-  // Cancel a ghost, Done a quiet neutral plate (owner: no gold outside a
-  // dialog's primary button - this was the one gold button on any tool row).
-  // Full page asks first (inline, in this row) when it would replace areas
-  // already drawn.
-  const AREA_CONFIRM_STYLE = { color: 'var(--text-1)', fontWeight: 600 };
-  const renderAreaActions = () => {
-    if (regionApi.fullPageConfirmPending) {
-      return (
-        <div data-area-actions="confirm-full-page" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-          <span style={{ color: 'var(--text-2)', fontSize: '12px' }}>Replace these regions with the full page?</span>
-          <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancelFullPage}>Keep regions</button>
-          <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirmFullPage}>Use full page</button>
-        </div>
-      );
-    }
-    // Owner 2026-10-22: the bold "Regions" word read as a button and did
-    // nothing. In its place a quiet line says how the armed tool works
-    // (Bluebeam / Photoshop polygon rules: click each corner, close on the
-    // first corner, Enter or a double-click). It keeps one width, so the
-    // buttons beside it never shift as the words change. Then what can be
-    // done to the areas, then how to leave.
-    const corners = regionApi.polygonCorners || 0;
-    const hint = areasPanArmed
-      ? 'Drag to move around the page'
-      : regionApi.toolType === 'move'
-        ? (regionApi.canDelete ? 'Drag to move · Delete removes it' : 'Click an area to pick it')
-        : regionApi.toolType === 'polygon'
-          ? (corners === 0
-            ? 'Click each corner'
-            : (corners < 3 ? 'Click the next corner · Backspace takes one back' : 'Click the first corner or press Enter to close'))
-          : regionApi.toolType === 'freehand'
-            ? 'Drag around the area'
-            : 'Drag to draw an area';
-    return (
-      <div data-area-actions="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-gap)' }}>
-        <span data-area-hint="true" aria-live="polite" style={{ color: 'var(--text-3)', fontSize: '12px', fontWeight: 400, marginRight: '8px', whiteSpace: 'nowrap', width: '288px', flex: '0 1 auto', minWidth: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hint}</span>
-        <button
-          type="button"
-          className="btn btn-sm btn-default"
-          disabled={!regionApi.canDelete}
-          onClick={regionApi.deleteSelected}
-          aria-label="Delete area"
-          {...chromeTip(regionApi.canDelete ? 'Delete the picked area (Delete)' : 'Pick an area to delete it', 'below')}
-        >
-          Delete
-        </button>
-        {/* Always drawn (greyed when the area already is the page), so the
-            row never shifts. */}
-        <button
-          type="button"
-          className="btn btn-sm btn-default"
-          disabled={!regionApi.canSetFullPage}
-          onClick={regionApi.setFullPage}
-          {...chromeTip(regionApi.canSetFullPage ? 'Use the whole page as the area' : 'The area already is the whole page', 'below')}
-        >
-          Full page
-        </button>
-        <div className="chrome-divider" />
-        <button type="button" className="btn btn-sm btn-default" onClick={regionApi.cancel} {...chromeTip('Leave without saving', 'below')}>
-          Cancel
-        </button>
-        <button type="button" className="btn btn-sm btn-secondary" style={AREA_CONFIRM_STYLE} onClick={regionApi.confirm} {...chromeTip('Save the areas (Enter)', 'below')}>
-          Done
-        </button>
-      </div>
-    );
-  };
-
   const toolbarOverflowItems = [];
   toolbarOverflowSlotsRef.current = [];
+  // Owner 2026-10-26: with the text settings swapped in, row 2 holds them and
+  // the Aa that swaps them back - none of the regular settings.
+  const textSettingsSwapped = showTextFormatting && !surveyRowShown;
   const toolbarSlot = (id, render, { canCompact = true, label } = {}) => {
+    if (textSettingsSwapped && id !== 'aa') return null;
     if (toolbarPlan.overflow.includes(id)) {
       const definition = slotDefinition(id);
       toolbarOverflowSlotsRef.current.push({ id, divider: id === 'aa', canCompact });
@@ -2689,7 +2827,7 @@ export default function App({ devPreviewReturnTab = null }) {
         {isMobileViewer ? (
           <MobilePdfViewerHeader
             id="chrome-top-host"
-            documentName={selectedPDF?.name || activeTab?.name || 'Document'}
+            documentName={activeTab?.name || selectedPDF?.name || 'Document'}
             onBack={handleBack}
             topToolbarApi={topToolbarApi}
             bottomToolbarApi={bottomToolbarApi}
@@ -2787,6 +2925,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   onTurnOff={turnOffSpaceFromChip}
                 />
               )}
+              <DocumentVersionsButton state={documentVersions} tip={chromeTip} />
               {/* Export annotated PDF — browser-visible entry point for the
                   same handler the desktop File menu drives. */}
               <button
@@ -2807,19 +2946,29 @@ export default function App({ devPreviewReturnTab = null }) {
               <ExportMenu
                 tooltip={chromeTip('More export options', 'below')}
                 items={[
-                  { label: 'Annotated PDF', onSelect: bottomToolbarApi.exportAnnotatedPdf },
+                  exportModesEnabled && typeof bottomToolbarApi.exportPdfWithOptions === 'function'
+                    ? {
+                      label: 'Export PDF…',
+                      icon: 'download',
+                      title: 'Annotated, flattened or plain, and which pages.',
+                      onSelect: () => setExportPdfDialogOpen(true),
+                    }
+                    : { label: 'Export annotated PDF', icon: 'download', onSelect: bottomToolbarApi.exportAnnotatedPdf },
                   {
-                    label: 'Markup only (XFDF)',
+                    label: 'Export markup (XFDF)',
+                    icon: 'download',
                     title: 'Your marks in a separate file for Acrobat or Bluebeam. Your PDF stays the same.',
                     onSelect: bottomToolbarApi.exportXfdf,
                   },
                   {
-                    label: 'Review package (ZIP)',
+                    label: 'Export review package (ZIP)',
+                    icon: 'download',
                     title: 'Your marks, a log of changes and page pictures in one ZIP file. Your PDF stays the same.',
                     onSelect: bottomToolbarApi.exportReviewBundle,
                   },
                   {
                     label: 'PDF tools…',
+                    icon: 'document',
                     title: 'Merge, split, compress, make searchable and more. The result is saved as a new document.',
                     onSelect: openPdfToolsForActiveTab,
                   },
@@ -3050,6 +3199,7 @@ export default function App({ devPreviewReturnTab = null }) {
                      whose tool group keeps its sub-row for as long as one of
                      that group's tools is the armed tool. Shapes and Text below
                      carry the same guard, so all three behave alike. */
+                  leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'draw') return;
                   bottomToolbarApi.setActiveCategoryDropdown('draw');
                   if (!['pen', 'highlighter', 'text-highlight', 'eraser'].includes(bottomToolbarApi.activeTool)) {
@@ -3062,7 +3212,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Draw"
-                disabled={areasMode}
               >
                 <Icon name="drawGroup" size={CHROME_GLYPH} />
               </button>
@@ -3073,6 +3222,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   /* UX 2026-09-22: see Draw above — a second click on the lit
                      Shapes button keeps the shape row, because closing it used
                      to leave a shape tool armed and unseeable. */
+                  leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'shape') return;
                   bottomToolbarApi.setActiveCategoryDropdown('shape');
                   if (!['rect', 'ellipse', 'polygon', 'polyline', 'line', 'arrow', 'counter'].includes(bottomToolbarApi.activeTool)) {
@@ -3085,7 +3235,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Shapes"
-                disabled={areasMode}
               >
                 <Icon name="shapes" size={CHROME_GLYPH} />
               </button>
@@ -3095,6 +3244,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 onClick={() => {
                   /* UX 2026-09-22: see Draw above — a second click on the lit
                      Text button keeps its row, for the same reason. */
+                  leaveAreasMode();
                   if (bottomToolbarApi.activeCategoryDropdown === 'review') return;
                   bottomToolbarApi.setActiveCategoryDropdown('review');
                   if (!REVIEW_TOOL_IDS.includes(bottomToolbarApi.activeTool)) {
@@ -3107,7 +3257,6 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-tool-group="true"
                 data-tool-switch="true"
                 aria-label="Text"
-                disabled={areasMode}
               >
                 <Icon name="textGroup" size={CHROME_GLYPH} />
               </button>
@@ -3131,7 +3280,7 @@ export default function App({ devPreviewReturnTab = null }) {
               >
                 <button
                   type="button"
-                  onClick={() => bottomToolbarApi.surveyToolbar?.onArmMarker()}
+                  onClick={() => { leaveAreasMode(); bottomToolbarApi.surveyToolbar?.onArmMarker(); }}
                   {...chromeTip('Survey', 'below')}
                   className={`btn chrome-control ${surveyRowShown ? 'btn-active' : 'btn-default'}`}
                   data-tool-group="true"
@@ -3139,7 +3288,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   data-survey-tool="true"
                   aria-label="Survey"
                   aria-pressed={surveyRowShown}
-                  disabled={!surveyToolAvailable || areasMode}
+                  disabled={!surveyToolAvailable}
                 >
                   <Icon name="survey" size={CHROME_GLYPH} />
                 </button>
@@ -3341,7 +3490,6 @@ export default function App({ devPreviewReturnTab = null }) {
                   prototype-context-toolbar.html. Other tools keep the
                   rectangle swatch until they migrate. */}
               <div data-toolbar-settings-row="true" style={{ display: 'flex', alignItems: 'center', gap: 'var(--chrome-settings-gap, var(--chrome-gap))', position: 'relative' }}>
-                {areasMode && renderAreaActions()}
                 {/* First run walk 2026-10-21 (#10): the text formatting
                     controls now sit IN row 2, after the Aa button, instead of
                     in a third bar under it - two stacked bars covered a row of
@@ -3688,8 +3836,9 @@ export default function App({ devPreviewReturnTab = null }) {
                         onClick={() => bottomToolbarApi.setEraserMode(mode)}
                         {...chromeTip(full, 'below')}
                         aria-label={full}
+                        data-press-label=""
                       >
-                        {short}
+                        <span>{short}</span>
                       </button>
                     ))}
                   </div>
@@ -3700,7 +3849,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 )}
                 {/* 2026-05-25: Eraser hides the color swatch entirely — only
                     the diameter input below remains visible for that tool. */}
-                {bottomToolbarApi.activeTool !== 'eraser' && (
+                {bottomToolbarApi.activeTool !== 'eraser' && !textSettingsSwapped && (
                   <>
                 {/* PASS 7 (boards 8-12, owner rulings) — THE COLOUR CLUSTER.
                     Both controls in here are the shared ones the phone strip
@@ -4028,37 +4177,14 @@ export default function App({ devPreviewReturnTab = null }) {
                   onOpenChange={(open) => setDropdownOpen('size', open)}
                   // PASS 7 (boards 8-13, owner ruling "width is a dropdown
                   // ONLY"): the pill presentation. Every numeric setting in the
-                  // bar carries its unit, so "2" reads "2 pt". The line width
-                  // leads with a stroke drawn at the weight it will paint; the
-                  // eraser leads with a dot, because what it sets is the size of
-                  // a round rubber; the counter's pin size leads with nothing,
-                  // because a pin has no line to preview.
+                  // bar carries its unit, so "2" reads "2 pt". Owner 2026-10-26
+                  // (#33): the pill is the number alone - the small stroke
+                  // drawn before it cut "12.5 pt" off; the card draws it.
                   variant="pill"
                   unit="pt"
                   width="var(--chrome-field-w)"
-                  // The size card paints its sample in the colour the tool
-                  // will draw; the eraser and the counter pin preview a dot.
-                  color={bottomToolbarApi.activeTool === 'eraser'
-                    ? '#9ca3af'
-                    : (bottomToolbarApi.selectionMixed?.strokeColor ? undefined : (bottomToolbarApi.selectedStrokeColor ?? bottomToolbarApi.strokeColor))}
+                  // The eraser and the counter pin pick sizes as dots.
                   previewShape={bottomToolbarApi.activeTool === 'eraser' || bottomToolbarApi.contextTool === 'counter' ? 'dot' : 'stroke'}
-                  preview={bottomToolbarApi.activeTool === 'eraser' ? (
-                    <span
-                      aria-hidden="true"
-                      style={{ display: 'block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor' }}
-                    />
-                  ) : bottomToolbarApi.contextTool === 'counter' ? null : (
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        display: 'block',
-                        width: '12px',
-                        height: 0,
-                        borderTop: `${Math.max(1, Math.min(6, Math.round(Number(bottomToolbarApi.strokeWidthInputValue) || 1)))}px solid currentColor`,
-                        borderRadius: '1px',
-                      }}
-                    />
-                  )}
                 />
                 ), {
                   canCompact: !(bottomToolbarApi.activeTool !== 'eraser' && bottomToolbarApi.selectionMixed?.width),
@@ -4145,6 +4271,7 @@ export default function App({ devPreviewReturnTab = null }) {
                   // (no row ticked) until one is chosen for all of them.
                   const styleMixed = !!bottomToolbarApi.selectionMixed?.lineStyle;
                   if (bottomToolbarApi.selectionCapabilities?.lineStyle === false) return null;
+                  const styleOptions = LINE_STYLE_OPTIONS.filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle);
                   return toolbarSlot('style', (compact) => (
                   <AnnotationDropdown
                     compact={compact}
@@ -4153,27 +4280,57 @@ export default function App({ devPreviewReturnTab = null }) {
                     label="Style"
                     value={styleMixed ? '__mixed' : styleValue}
                     triggerContent={styleMixed ? 'Mixed' : undefined}
-                    options={LINE_STYLE_OPTIONS.filter((option) => option.value !== 'cloud' || bottomToolbarApi.supportsCloudStyle)}
+                    options={styleOptions}
                     onSelect={bottomToolbarApi.setLineBorderStyle}
                     dataMarker="data-style-menu"
                     /* PASS 7 (boards 9-12 + 15): the pill shows the LINE it
-                       will draw, then names it; every row in its menu is the
-                       same drawing at the menu's 24px sample width. */
+                       will draw, then names it. */
                     preview={<Icon name={LINE_STYLE_SAMPLE_ICONS[styleValue] || 'lineSampleSolid'} size={18} color="currentColor" />}
+                    /* Owner 2026-10-28: "a little simpler" - the style menu
+                       is the plain list every other menu is: each row draws
+                       its line, then names it. */
                     renderOption={(option) => (
                       <>
                         <span className="annotation-dropdown__sample" aria-hidden="true">
-                          <Icon name={LINE_STYLE_SAMPLE_ICONS[option.value]} size={24} color="currentColor" />
+                          <StrokeSample width={28} height={14} pad={1} strokePx={1.75} dash={option.value} />
                         </span>
                         <span>{option.label}</span>
                       </>
                     )}
                     width="var(--chrome-field-w-style)"
                     contentWidth="var(--chrome-field-w-style)"
+                    contentClassName="stroke-list-popover"
                   />
                   ), { canCompact: !styleMixed });
                   })()
                 )}
+                {/* Curve (Nightly, flag 'spline-polyline'): the polyline bends
+                    smoothly through its corners. Sets the tool's next lines
+                    and, with a polyline picked, turns that one too. */}
+                {polylineCurve.available && (bottomToolbarApi.contextTool === 'polyline' || bottomToolbarApi.selectedPolyline) && toolbarSlot('curve', (compact) => {
+                  const picked = bottomToolbarApi.selectedPolyline;
+                  const curveOn = picked ? picked.curved : polylineCurve.on;
+                  return (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={curveOn}
+                      aria-label="Curve"
+                      data-polyline-curve="true"
+                      className="chrome-text-toggle"
+                      // A setting, like B / I / U: pressed is a --surface-3 plate.
+                      style={{ ...textToggleStyle(curveOn), width: 'auto', minWidth: 'var(--chrome-text-toggle-w)', gap: '4px', padding: compact ? '0 2px' : '0 6px 0 4px', font: '600 11px/1 var(--font-ui)' }}
+                      onClick={() => {
+                        polylineCurve.set(!curveOn);
+                        if (picked) window.dispatchEvent(new CustomEvent(POLYLINE_CURVE_SET_EVENT, { detail: { curved: !curveOn } }));
+                      }}
+                      {...chromeTip(curveOn ? 'Curve on: bends through each corner' : 'Curve off: straight sides', 'below')}
+                    >
+                      <Icon name="polylineCurve" size={16} color="currentColor" />
+                      {!compact && <span>Curve</span>}
+                    </button>
+                  );
+                })}
                 {/* 2026-05-25: Bump number input — shows only when the border
                     style is Cloud, on the same shapes that offer Cloud at all
                     (see supportsCloudStyle above). Drives how big the cloud's
@@ -4217,102 +4374,110 @@ export default function App({ devPreviewReturnTab = null }) {
                     />
                   </label>
                 ), { canCompact: false })}
-                {/* 2026-05-25: Arrow tool (or selected callout) — custom
-                    arrowhead menu that always opens downward and shows every
-                    option at once (native select scrolls / picks its own
-                    direction). Callouts have their own arrowhead end so the
-                    same picker drives both. */}
+                {/* Owner 2026-10-26 (#11): ONE arrow-ends pill replaces the
+                    Arrowhead and Arrow ends pills. Side by side they read
+                    "Solid" (the line) "Solid" (the head) "End", and "no head"
+                    was offered twice. The pill draws the arrow as it will be;
+                    its card holds which ends (End / Both ends, arrow only - a
+                    callout has one end) and the head tiles, None among them.
+                    It writes the same two pieces of state as before (head
+                    style, both ends), so nothing new is stored. */}
                 {(bottomToolbarApi.contextTool === 'arrow' || bottomToolbarApi.contextTool === 'callout') && bottomToolbarApi.setArrowheadStyle && (() => {
-                  const live = bottomToolbarApi.arrowheadStyle;
+                  const live = bottomToolbarApi.arrowheadStyle || 'none';
                   const options = ARROWHEAD_MENU_OPTIONS.some((option) => option.value === live)
                     ? ARROWHEAD_MENU_OPTIONS
-                    : [{ value: live, label: ARROWHEAD_SHORT_LABELS[live] || 'Arrowhead', icon: 'arrowheadOpen' }, ...ARROWHEAD_MENU_OPTIONS];
-                  const iconFor = (value) => options.find((option) => option.value === value)?.icon || 'arrowheadSolid';
+                    : [{ value: live, label: ARROWHEAD_SHORT_LABELS[live] || 'Arrowhead' }, ...ARROWHEAD_MENU_OPTIONS];
+                  const isArrow = bottomToolbarApi.contextTool === 'arrow' && !!bottomToolbarApi.setArrowBothEnds;
                   const headMixed = !!bottomToolbarApi.selectionMixed?.arrowheadStyle;
+                  // w41: picked arrows with different ends read "Mixed".
+                  const endsMixed = isArrow && !!bottomToolbarApi.selectionMixed?.arrowBothEnds;
+                  const both = isArrow && live !== 'none' && !!bottomToolbarApi.arrowBothEnds;
+                  const anyMixed = headMixed || endsMixed;
+                  const setEnds = (next) => {
+                    // w41: several picked arrows take the ends in one
+                    // write, each keeping its own head style.
+                    if (typeof bottomToolbarApi.setGroupArrowEnds === 'function') {
+                      bottomToolbarApi.setGroupArrowEnds(next);
+                      return;
+                    }
+                    if (next === 'none') {
+                      bottomToolbarApi.setArrowheadStyle?.('none');
+                      return;
+                    }
+                    // Coming back from no head: the line needs a head again
+                    // before "which ends" can mean anything, so restore the
+                    // default filled head.
+                    if (bottomToolbarApi.arrowheadStyle === 'none') {
+                      bottomToolbarApi.setArrowheadStyle?.('solidTriangle');
+                    }
+                    bottomToolbarApi.setArrowBothEnds(next === 'both');
+                  };
+                  const pillLabel = anyMixed
+                    ? 'Mixed'
+                    : (options.find((option) => option.value === live)?.label || 'Arrowhead');
                   return toolbarSlot('arrowhead', (compact) => (
                   <AnnotationDropdown
                     compact={compact}
                     open={showArrowheadMenu}
                     onOpenChange={setShowArrowheadMenu}
-                    label="Arrowhead"
-                    value={headMixed ? '__mixed' : live}
-                    triggerContent={headMixed ? 'Mixed' : undefined}
+                    label={isArrow ? 'Arrow ends' : 'Arrowhead'}
+                    value={anyMixed ? '__mixed' : live}
+                    triggerContent={pillLabel}
                     options={options}
-                    onSelect={bottomToolbarApi.setArrowheadStyle}
                     dataMarker="data-arrowhead-menu"
-                    /* PASS 7 (boards 10 + 15): the pill draws the head it will
-                       put on the line, and each row draws its own. */
-                    preview={<Icon name={iconFor(live)} size={15} color="currentColor" />}
+                    preview={(
+                      <StrokeSample
+                        width={22}
+                        height={14}
+                        pad={1}
+                        strokePx={1.5}
+                        endHead={anyMixed ? 'vShape' : live}
+                        startHead={!anyMixed && both ? live : 'none'}
+                        headScale={0.8}
+                      />
+                    )}
+                    /* Owner 2026-10-28: "a little simpler" - one plain list
+                       of heads, each row drawing its arrow, and for an arrow a
+                       single Both ends switch under it (a callout has one
+                       end). Picking None takes the heads off both ends. */
+                    onSelect={(next) => {
+                      if (isArrow && next === 'none') setEnds('none');
+                      else bottomToolbarApi.setArrowheadStyle(next);
+                    }}
                     renderOption={(option) => (
                       <>
                         <span className="annotation-dropdown__sample" aria-hidden="true">
-                          <Icon name={option.icon} size={16} color="currentColor" />
+                          <StrokeSample width={28} height={14} pad={1} strokePx={1.5} endHead={option.value} startHead={both && option.value !== 'none' ? option.value : 'none'} headScale={0.85} />
                         </span>
                         <span>{option.label}</span>
                       </>
                     )}
+                    footer={isArrow ? (
+                      <>
+                        <div className="annotation-dropdown__separator" role="presentation" />
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={!endsMixed && both}
+                          data-arrow-both-ends="true"
+                          className={`annotation-dropdown__option stroke-list__switch${!endsMixed && both ? ' is-active' : ''}`}
+                          onClick={() => setEnds(both ? 'end' : 'both')}
+                        >
+                          <span className="annotation-dropdown__sample" aria-hidden="true">
+                            <StrokeSample width={28} height={14} pad={1} strokePx={1.5} endHead="vShape" startHead="vShape" headScale={0.85} />
+                          </span>
+                          <span>Both ends</span>
+                          {!endsMixed && both ? (
+                            <span className="stroke-list__check" aria-hidden="true"><Icon name="check" size={12} color="currentColor" /></span>
+                          ) : null}
+                        </button>
+                      </>
+                    ) : null}
                     width="var(--chrome-field-w-arrowhead)"
                     contentWidth="var(--chrome-field-w-arrowhead)"
+                    contentClassName="stroke-list-popover"
                   />
-                  ), { canCompact: !headMixed });
-                })()}
-                {/* PASS 7 (boards 10 + 16, owner ruling): ARROW ENDS is a
-                    dropdown of three — End, Both, None — replacing the "both
-                    ends" on/off button. A toggle could only say "both or not",
-                    so "no head at all" had to be found in the Arrowhead list
-                    instead; the three ends now sit together in one control, with
-                    the identical glyphs the phone's arrow sheet shows. Arrow
-                    tool only (a callout has one end). */}
-                {bottomToolbarApi.contextTool === 'arrow' && bottomToolbarApi.setArrowBothEnds && (() => {
-                  const endsValue = bottomToolbarApi.arrowheadStyle === 'none'
-                    ? 'none'
-                    : (bottomToolbarApi.arrowBothEnds ? 'both' : 'end');
-                  const iconFor = (value) => ARROW_ENDS_OPTIONS.find((option) => option.value === value)?.icon || 'moveRight';
-                  // w41: picked arrows with different ends read "Mixed".
-                  const endsMixed = !!(bottomToolbarApi.selectionMixed?.arrowBothEnds
-                    || bottomToolbarApi.selectionMixed?.arrowheadStyle);
-                  return toolbarSlot('ends', (compact) => (
-                  <AnnotationDropdown
-                    compact={compact}
-                    open={showArrowEndsMenu}
-                    onOpenChange={setShowArrowEndsMenu}
-                    label="Arrow ends"
-                    value={endsMixed ? '__mixed' : endsValue}
-                    triggerContent={endsMixed ? 'Mixed' : undefined}
-                    options={ARROW_ENDS_OPTIONS}
-                    onSelect={(next) => {
-                      // w41: several picked arrows take the ends in one
-                      // write, each keeping its own head style.
-                      if (typeof bottomToolbarApi.setGroupArrowEnds === 'function') {
-                        bottomToolbarApi.setGroupArrowEnds(next);
-                        return;
-                      }
-                      if (next === 'none') {
-                        bottomToolbarApi.setArrowheadStyle?.('none');
-                        return;
-                      }
-                      // Coming back from None: the line needs a head again
-                      // before "which ends" can mean anything, so restore the
-                      // default solid head the boards show.
-                      if (bottomToolbarApi.arrowheadStyle === 'none') {
-                        bottomToolbarApi.setArrowheadStyle?.('solidTriangle');
-                      }
-                      bottomToolbarApi.setArrowBothEnds(next === 'both');
-                    }}
-                    dataMarker="data-arrow-ends-menu"
-                    preview={<Icon name={iconFor(endsValue)} size={15} color="currentColor" />}
-                    renderOption={(option) => (
-                      <>
-                        <span className="annotation-dropdown__sample" aria-hidden="true">
-                          <Icon name={option.icon} size={16} color="currentColor" />
-                        </span>
-                        <span>{option.label}</span>
-                      </>
-                    )}
-                    width="var(--chrome-field-w-ends)"
-                    contentWidth="var(--chrome-field-w-ends)"
-                  />
-                  ), { canCompact: !endsMixed });
+                  ), { canCompact: !anyMixed });
                 })()}
                 {/* PASS 7 (2026-09-22 review): the rule that closes the value
                     group before "Aa". Every other group in bars 1-3 is fenced
@@ -4393,8 +4558,9 @@ export default function App({ devPreviewReturnTab = null }) {
                     {...chromeTip(showTextFormatting ? 'Hide text formatting' : 'Text formatting', 'below')}
                     aria-label="Edit text"
                     aria-pressed={showTextFormatting}
+                    data-press-label=""
                   >
-                    Aa
+                    <span>Aa</span>
                   </button>
                 ), { canCompact: false })}
                 {/* w42 (2026-09-26): the More (⋯) button — only there while a
@@ -4458,14 +4624,22 @@ export default function App({ devPreviewReturnTab = null }) {
                 auxCloseRequestKey={mobileAuxCloseRequestKey}
               />
             )}
-            {leftRailApi && (
-              <PDFSidebar
-                key={leftRailApi.documentId || activeTabId}
-                {...leftRailApi}
-                mobileMode={isMobileViewer}
-                onPanelStateChange={setMobileDocumentPanelState}
-              />
-            )}
+            {railTabs.map((tab) => {
+              const api = chromeCache.peek(tab.id, 'left');
+              if (!api) return null;
+              const active = tab.id === activeTabId;
+              return (
+                <TabChromeSlot key={tab.id} tabId={tab.id} active={active}>
+                  <MemoPDFSidebar
+                    {...api}
+                    tabActive={active}
+                    commentsEnabled={markCommentsEnabled}
+                    mobileMode={isMobileViewer}
+                    onPanelStateChange={setMobileDocumentPanelState}
+                  />
+                </TabChromeSlot>
+              );
+            })}
           </div>
           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
             {/* UX 2026-05-14: chrome-sub-toolbar-host — App-level mount point
@@ -4613,15 +4787,21 @@ export default function App({ devPreviewReturnTab = null }) {
               const tabViewState = tab.viewState;
               const chrome = chromeCache.callbacks(tab.id, chromeSetters);
 
+              // A tab behind keeps its styles and layout (utils/tabBehind.js):
+              // no paint, no clicks, no focus, and coming back is one cheap frame.
+              // No `inert` here: it is inherited, so toggling it restyles the
+              // whole tab, which is the cost this avoids.
               return (
                 <div
                   key={tab.id}
+                  data-viewer-tab={tab.id}
+                  data-tab-behind={isVisible ? undefined : 'true'}
                   style={{
                     position: 'absolute',
                     inset: 0,
                     background: 'var(--surface-1)',
                     zIndex: isVisible ? 5000 : 4000, // Keep lower z-index when hidden
-                    display: isVisible ? 'block' : 'none'
+                    ...tabWrapperHiding(isVisible)
                   }}
                 >
                   <YDocProvider docId={tab.file?.id} isActive={isVisible}>
@@ -4641,10 +4821,11 @@ export default function App({ devPreviewReturnTab = null }) {
                         ));
                       }}
                     />
-                    <Suspense fallback={<QuietLoading label={openingLabel(tab.file?.name)} background="var(--surface-0)" />}>
+                    <Suspense fallback={<QuietLoading label={openingLabel(tab.name || tab.file?.name)} background="var(--surface-0)" />}>
                     <PDFViewer
                       pdfFile={tab.file}
                       pdfFilePath={tab.filePath}
+                      documentName={tab.name}
                       onBack={stableBack}
                       tabId={tab.id}
                       isActive={isVisible}
@@ -4663,7 +4844,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       onViewStateChange={stableViewStateChange}
                       templates={appTemplates}
                       onTemplatesChange={stableTemplatesChange}
-                      onRefetchTemplates={refetchTemplates}
+                      onRefetchTemplates={stableRefetchTemplates}
                       user={user}
                       isMSAuthenticated={isMSAuthenticated}
                       msLogin={msLogin}
@@ -4722,16 +4903,24 @@ export default function App({ devPreviewReturnTab = null }) {
               zIndex: 5600
             }}
           >
-            {rightRailApi && (
-              <SurveySpacesRail
-                key={rightRailApi.pdfFile?.id || activeTabId}
-                {...rightRailApi}
-                mobileMode={isMobileViewer}
-                expandRequestKey={(rightRailApi.expandRequestKey || 0) + mobileSurveyRequestKey}
-                collapseRequestKey={mobileSurveyCollapseRequestKey}
-                onCollapseChange={handleRightRailCollapseChange}
-              />
-            )}
+            {railTabs.map((tab) => {
+              const api = chromeCache.peek(tab.id, 'right');
+              if (!api) return null;
+              const active = tab.id === activeTabId;
+              return (
+                <TabChromeSlot key={tab.id} tabId={tab.id} active={active}>
+                  <RightRailForTab
+                    api={api}
+                    active={active}
+                    mobileMode={isMobileViewer}
+                    onUndoLastChange={active ? (topToolbarApi?.onUndo || null) : null}
+                    expandRequestKey={mobileSurveyRequestKey}
+                    collapseRequestKey={mobileSurveyCollapseRequestKey}
+                    onCollapseChange={railCollapseHandlerFor(tab.id)}
+                  />
+                </TabChromeSlot>
+              );
+            })}
             {/* Spacer pushes the bottom slot to the bottom of the rail. */}
             <div style={{ flex: 1 }} />
 
@@ -5097,7 +5286,25 @@ export default function App({ devPreviewReturnTab = null }) {
                       {api.isZoomMenuOpen && fitMenu({ right: '100%', bottom: 0, marginRight: '6px' })}
                     </div>
                     {/* Drawboard gap #10: View > page grid overlay. */}
-                    <PageGridToggle render={({ on, toggle }) => (
+                    <PageGridToggle render={({ on, toggle }) => (gridSettingsEnabled ? (
+                      // Nightly (flag 'grid-settings'): the button opens the
+                      // grid card - show or hide, and the spacing.
+                      <PageGridMenu on={on} toggle={toggle} renderButton={({ open, ref, onClick }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          onClick={onClick}
+                          aria-label="Page grid"
+                          aria-haspopup="dialog"
+                          aria-expanded={open}
+                          data-page-grid-toggle="true"
+                          {...chromeTip(open ? undefined : 'Page grid', 'left')}
+                          style={{ ...footerBtn(), color: on || open ? 'var(--text-1)' : 'var(--text-3)' }}
+                        >
+                          <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
+                        </button>
+                      )} />
+                    ) : (
                       <button
                         type="button"
                         onClick={toggle}
@@ -5109,7 +5316,7 @@ export default function App({ devPreviewReturnTab = null }) {
                       >
                         <PageGridGlyph size={RAIL_CONTROL_GLYPH} />
                       </button>
-                    )} />
+                    ))} />
                     {/* Owner 2026-10-22: snapping's switch, beside the grid
                         (Bluebeam keeps SNAP and GRID side by side too). */}
                     <SnappingToggle render={({ on, toggle }) => (
@@ -5182,19 +5389,33 @@ export default function App({ devPreviewReturnTab = null }) {
       </div>
 
       {/* Authentication Modal */}
+      {guestLinksEnabled && (guestLinkToken || user?.is_anonymous) ? (
+        <Suspense fallback={null}>
+          <GuestLinkGate
+            client={guestSupabase}
+            token={guestLinkToken}
+            user={user}
+            authReady={!authLoading}
+            onSignIn={() => { setGuestChoseSignIn(true); setShowAuthModal(true); }}
+          />
+          <GuestBadge user={user} onLeave={() => { authSignOut?.(); }} />
+        </Suspense>
+      ) : null}
       <AuthModal
-        isOpen={showAuthModal}
+        isOpen={showAuthModal && !guestJoinPending}
         initialMode={startsInSignUp() ? 'signup' : 'login'}
         onClose={() => setShowAuthModal(false)}
         onDismiss={!authPromptDismissed ? handleDismiss : null}
       />
 
       {/* Drawboard canvas audit, chunk 4: the floating quick bar over a
-          selection (desktop layout; the phone has its own selection strip).
-          Its colour controls are the tool bar's own (same paint, same picker),
-          and a Survey Marker's entity changes through the entity bar's write. */}
+          selection. Its colour controls are the tool bar's own (same paint,
+          same picker), and a Survey Marker's entity changes through the
+          entity bar's write. On the phone it holds Duplicate and Delete only;
+          colour and line stay on the phone's own selection strip. */}
       <SelectionQuickBar
-        enabled={Boolean(isViewerVisible && !isMobileViewer && bottomToolbarApi)}
+        enabled={Boolean(isViewerVisible && bottomToolbarApi)}
+        phone={Boolean(isMobileViewer)}
         api={bottomToolbarApi}
         paint={annotationPaint}
         swatch={bottomToolbarApi && showsPaintSwatch(bottomToolbarApi) ? {
@@ -5204,6 +5425,7 @@ export default function App({ devPreviewReturnTab = null }) {
         onOpenColourPicker={toggleAnnotationColourPicker}
         entities={rightRailApi?.selectedTemplate?.entities || null}
         surveyMarkers={rightRailApi?.surveyMarkers || null}
+        onComment={markCommentsEnabled && activeTab?.file?.id ? commentOnMark : null}
         onPickEntity={(entityId, markerIds) => {
           rightRailApi?.rememberSurveyEntity?.(entityId);
           (markerIds || []).forEach((markerId) => rightRailApi?.surveyEntityApplyRef?.current?.(markerId, entityId));
@@ -5217,6 +5439,15 @@ export default function App({ devPreviewReturnTab = null }) {
           covered the zoom controls; that pill is gone, and the sheet itself
           renders nothing until it is opened.) */}
       <KeyboardShortcutsOverlay />
+      {exportModesEnabled && (
+        <ExportPdfDialog
+          open={exportPdfDialogOpen && Boolean(bottomToolbarApi?.exportPdfWithOptions)}
+          api={bottomToolbarApi}
+          fileName={activeTab?.name || activeTab?.file?.name || ''}
+          onClose={() => setExportPdfDialogOpen(false)}
+        />
+      )}
+      <DocumentVersionsDialogs state={documentVersions} />
       <TooltipChipHost setterRef={shellTooltipSetterRef} />
     </TooltipContext.Provider>
   );

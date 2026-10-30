@@ -1494,7 +1494,7 @@ html[data-native-shell="expo"] .mobile-pdf-header {
   padding: 6px;
   color: var(--text-2);
   background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   z-index: 7200;
@@ -1791,8 +1791,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 .mobile-pdf-properties__more,
 .mobile-pdf-properties__text-button,
 .mobile-pdf-properties__segmented > button,
-.mobile-pdf-properties--actions > button,
-.mobile-pdf-properties__keep {
+.mobile-pdf-properties--actions > button {
   position: relative;
 }
 
@@ -1805,8 +1804,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 .mobile-pdf-properties__edit::after,
 .mobile-pdf-properties__more::after,
 .mobile-pdf-properties__text-button::after,
-.mobile-pdf-properties--actions > button::after,
-.mobile-pdf-properties__keep::after {
+.mobile-pdf-properties--actions > button::after {
   content: '';
   position: absolute;
   inset-block: -5px -19px;
@@ -1901,32 +1899,24 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   cursor: not-allowed;
 }
 
-/* UX 2026-07-12 (Phase C, demo parity): inline "Make region full page?"
-   question shown when Full Page flips the region strip into its confirm step
-   (demo styles.ts regionConfirmText — 12/900, max-width 146). */
-.mobile-pdf-properties__confirm-label {
-  max-width: 146px;
-  flex: 0 0 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-1);
-  font-size: 12px;
-  font-weight: 900;
+/* Done on the Areas strip (owner 2026-10-26: no Cancel, no Full page): the
+   house check, bare - no plate, no border - like Done in every Select / Edit
+   mode. The pad pair is the borderless one. */
+.mobile-pdf-properties--actions > .mobile-pdf-properties__done {
+  width: var(--mobile-strip-control-h);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: transparent;
 }
-
-/* Done / Confirm on the Areas strip: a quiet neutral plate, bright ink - not
-   gold (owner: no gold outside a dialog's primary button; this was the one
-   gold button on any phone tool strip). Same plate as the strip's pills. */
-.mobile-pdf-properties--actions > .mobile-pdf-properties__primary {
-  color: var(--text-1);
-  background: var(--surface-3);
-  border-color: var(--border-strong);
+.mobile-pdf-properties--actions > .mobile-pdf-properties__done::after {
+  inset-block: -5px -19px;
 }
 
 /* SURVEY STRIP (owner 2026-09-30: "Keep Active looks bad - a box around a
    checkbox with text"; the module pill is far wider than it needs).
-      [ Module v ] (switch) Reuse
+      [ Module v ]
 
    The pill is as wide as its LONGEST option (MobileStyledSelect fitOptions) and
    may shrink to 72px, ellipsising, when the row runs out of room.
@@ -1965,12 +1955,12 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 }
 
 /* Owner 2026-10-07 (survey bar round): the strip runs edge to edge -
-     [glyph template v]   [ Module v ] (switch) Reuse   Done
+     [glyph template v]   [ Module v ]   Done
    The template opens the strip on the left, "Done" closes it on the right,
-   and the module pill + Reuse sit centred between them (auto margins). The
+   and the module pill sits centred between them (auto margins). The
    template name gives way FIRST when the strip runs short (a far larger
    shrink factor than the module pill's), down to the glyph, a letter or two
-   and its chevron; Reuse and Done never shrink. Checked at 375 and 390. */
+   and its chevron; Done never shrinks. Checked at 375 and 390. */
 .mobile-pdf-properties--survey > .mobile-pdf-properties__survey-template {
   flex: 0 50 auto;
   min-width: 52px;
@@ -2023,73 +2013,6 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 
 .mobile-pdf-properties__done:active {
   background: var(--pressed);
-}
-
-/* "Reuse" (was "Keep active", then "Repeat"; it keeps the CATEGORY armed
-   after a marker is placed): the desktop survey row's switch (.survey-subrow__keep in
-   src/styles.css) at the strip's scale - a 24x14 track with a 10px knob, then
-   the word in the strip's 11px/600, 6px apart. No plate, no border. Off: a
-   --surface-3 track with an inset --border-strong ring, word --text-2. On: a
-   neutral --text-2 ink track (survey calm gold 2026-10-01: Reuse is a setting,
-   gold is kept for the armed category), knob +10px, word --text-1. One button; its 44px pad is the
-   shared -5/-19/-2 above. */
-.mobile-pdf-properties__keep {
-  height: var(--mobile-strip-control-h);
-  padding: 0 2px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-2);
-  background: transparent;
-  border: 0;
-  font: 600 var(--mobile-strip-type)/1 var(--font-ui);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-}
-
-.mobile-pdf-properties__keep[aria-checked='true'] {
-  color: var(--text-1);
-}
-
-.mobile-pdf-properties__keep-track {
-  position: relative;
-  flex: 0 0 auto;
-  width: 24px;
-  height: 14px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  background: var(--surface-3);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-  transition: background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.mobile-pdf-properties__keep-track::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s ease;
-}
-
-.mobile-pdf-properties__keep[aria-checked='true'] .mobile-pdf-properties__keep-track {
-  background: var(--text-2);
-  box-shadow: none;
-}
-
-.mobile-pdf-properties__keep[aria-checked='true'] .mobile-pdf-properties__keep-track::after {
-  transform: translateX(10px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mobile-pdf-properties__keep-track,
-  .mobile-pdf-properties__keep-track::after {
-    transition: none;
-  }
 }
 
 /* MobileStyledSelect fitOptions: every option label stacked in one grid cell,
@@ -2494,7 +2417,7 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   gap: 2px;
   color: var(--text-2);
   background: var(--surface-3);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   z-index: 7300;
@@ -2505,7 +2428,6 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
   padding: 5px 7px;
   color: var(--text-3);
   font-size: 10px;
-  text-transform: uppercase;
 }
 
 .mobile-pdf-properties__menu > button {
@@ -3208,7 +3130,12 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
 .mobile-pdf-dock {
   height: var(--mobile-viewer-dock-height);
   min-height: var(--mobile-viewer-dock-height);
+  /* Phone walk 2026-10-28: a phone held sideways in Safari puts the notch over
+     a screen edge; the page root pads for it, but this fixed dock spans the
+     screen, so Spaces / Survey sat under the notch. */
   padding: 16px 20px var(--mobile-dock-reserve);
+  padding-left: max(20px, var(--native-safe-area-left, env(safe-area-inset-left, 0px)));
+  padding-right: max(20px, var(--native-safe-area-right, env(safe-area-inset-right, 0px)));
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -3414,6 +3341,9 @@ html[data-native-shell="expo"] .mobile-pdf-work-area #chrome-sub-toolbar-host {
      only its 12px. The users sheet keeps its own equivalent padding override
      below (css order wins). */
   padding-bottom: 12px;
+  /* Sideways phone: keep the sheet's content out from under the notch. */
+  padding-left: var(--native-safe-area-left, env(safe-area-inset-left, 0px));
+  padding-right: var(--native-safe-area-right, env(safe-area-inset-right, 0px));
   z-index: 6500 !important;
   /* UX (owner ruling 2026-09-17): NO keyframe here. The entrance used to be
      `animation: mobilePdfSheetIn 180ms ease-out !important`, a 24px nudge +
@@ -4094,10 +4024,20 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
 }
 
 @media (max-width: 340px) {
+  /* 320px phones: the line / arrow strip measured 328px of controls and the
+     live text strip put its alignment button past the right edge. Tighter
+     divider air and a narrower font pill bring both inside the screen. */
+  :root {
+    --mobile-strip-divider-inset: 2px;
+    --mobile-strip-font-w: 82px;
+  }
   .mobile-pdf-header__document { left: 4px; max-width: 156px; gap: 2px; }
   .mobile-pdf-header__history { right: 4px; gap: 2px; }
   .mobile-pdf-header__export { margin-left: 6px; }
-  .mobile-pdf-dock { padding-inline: 14px; }
+  .mobile-pdf-dock {
+    padding-left: max(14px, var(--native-safe-area-left, env(safe-area-inset-left, 0px)));
+    padding-right: max(14px, var(--native-safe-area-right, env(safe-area-inset-right, 0px)));
+  }
 }
 
 /* ============================================================================
@@ -4551,7 +4491,6 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   --sp-grip-pad: 12px;      /* the Survey sheet grip inset: its glyph on the 16px gutter */
   --sp-step: 12px;
   --sp-field-r: 12px;
-  --sp-num-w: 18px;
   --sp-chev-w: 28px;
   --sp-page-w: 26px;
   --sp-col-w: 40px;
@@ -4578,6 +4517,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   --sp-label-type: 14px;
   --sp-field-type: 16px;
   --sp-small-type: 12px;
+  --sp-caption-type: 12px;
   font-family: var(--sheet-font);
 }
 

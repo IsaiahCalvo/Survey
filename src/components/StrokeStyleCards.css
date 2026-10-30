@@ -1,0 +1,18 @@
+/* Owner 2026-10-28 ("a little simpler"): the Style and Arrow ends menus are
+   plain lists - each row draws its line, then names it. The drawing column is
+   wider than the 24px glyph column so a line reads as a line. */
+.annotation-dropdown__popover.stroke-list-popover {
+  --chrome-menu-sample-w: 32px;
+}
+
+/* "Both ends" under the arrow heads: on reads as gold ink with a tick, like
+   the current row, and nothing else. */
+.stroke-list__switch {
+  position: relative;
+}
+
+.stroke-list__check {
+  margin-left: auto;
+  display: inline-flex;
+  line-height: 0;
+}

@@ -7,10 +7,10 @@
  * blocked when getOtherSurveysUsingTemplate reports other surveys depend on the template;
  * calls onConfirm(option, newTemplateName) or onClose (Skip Import).
  */
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { useFocusTrap } from '../hooks/useFocusTrap';
+import { useState, useEffect, useMemo } from 'react';
+import DialogCard from './DialogCard.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
-import { COLORS, TYPOGRAPHY, BORDERS, SHADOWS } from '../theme';
+import { COLORS, TYPOGRAPHY, BORDERS } from '../theme';
 import { getOtherSurveysUsingTemplate } from '../hooks/useDatabase';
 import { showToast } from '../utils/toast';
 
@@ -29,11 +29,7 @@ const NewColumnsModal = ({
   const [nameError, setNameError] = useState('');
   const [otherSurveys, setOtherSurveys] = useState([]);
   const [isCheckingUsage, setIsCheckingUsage] = useState(false);
-  const dialogRef = useRef(null);
 
-  // Accessibility: the shared focus trap keeps Tab inside the dialog, closes
-  // it on Escape, and returns focus to whatever opened it.
-  useFocusTrap(dialogRef, isOpen, { onEscape: onClose });
 
   // Calculate totals for different change types
   const changeSummary = useMemo(() => {
@@ -159,64 +155,22 @@ const NewColumnsModal = ({
     onClose();
   };
 
+  // The app's one dialog shell (src/components/DialogCard.jsx, owner
+  // 2026-10-26: every dialog follows the same design).
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: COLORS.modal.overlay,
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000,
-      }}
-      onClick={handleSkip}
+    <DialogCard
+      title={getModalTitle()}
+      message={getModalDescription()}
+      onClose={handleSkip}
+      width={460}
+      zIndex={10000}
+      footer={(
+        <>
+          <button type="button" className="hub-btn dialog-touch-pad" onClick={handleSkip}>Skip import</button>
+          <button type="button" className="hub-btn hub-btn--primary dialog-touch-pad" onClick={handleConfirm} disabled={!selectedOption || (selectedOption === 'newTemplate' && (!newTemplateName.trim() || nameError))}>Continue import</button>
+        </>
+      )}
     >
-      <div
-        style={{
-          background: COLORS.modal.surface,
-          borderRadius: BORDERS.radius.dialog,
-          padding: '24px',
-          maxWidth: '500px',
-          width: '90%',
-          maxHeight: '80vh',
-          overflow: 'auto',
-          boxShadow: SHADOWS.xl,
-          border: `1px solid ${COLORS.modal.border}`,
-        }}
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div style={{ marginBottom: '16px' }}>
-          <h3 style={{
-            margin: 0,
-            fontSize: TYPOGRAPHY.fontSize['2xl'],
-            fontWeight: TYPOGRAPHY.fontWeight.semibold,
-            color: COLORS.text.secondary,
-            fontFamily: TYPOGRAPHY.fontFamily.default,
-            marginBottom: '8px',
-          }}>
-            {getModalTitle()}
-          </h3>
-          <p style={{
-            margin: 0,
-            fontSize: TYPOGRAPHY.fontSize.md,
-            color: COLORS.text.muted,
-            fontFamily: TYPOGRAPHY.fontFamily.default,
-            lineHeight: TYPOGRAPHY.lineHeight.normal,
-          }}>
-            {getModalDescription()}
-          </p>
-        </div>
-
         {/* List of column changes by category */}
         <div style={{
           background: COLORS.background.tertiary,
@@ -247,8 +201,6 @@ const NewColumnsModal = ({
                     color: 'var(--accent)',
                     marginBottom: '4px',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
                   }}>
                     + Added
                   </div>
@@ -278,8 +230,6 @@ const NewColumnsModal = ({
                     color: 'var(--danger-text)',
                     marginBottom: '4px',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
                   }}>
                     - Removed
                   </div>
@@ -522,65 +472,7 @@ const NewColumnsModal = ({
             )}
           </div>
         </div>
-
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={handleSkip}
-            style={{
-              padding: '8px 16px',
-              background: COLORS.background.elevated,
-              color: COLORS.text.tertiary,
-              border: `1px solid ${COLORS.border.default}`,
-              borderRadius: BORDERS.radius.md,
-              fontSize: TYPOGRAPHY.fontSize.md,
-              fontWeight: TYPOGRAPHY.fontWeight.medium,
-              cursor: 'pointer',
-              fontFamily: TYPOGRAPHY.fontFamily.default,
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
-              e.currentTarget.style.borderColor = COLORS.modal.borderActive;
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = COLORS.background.elevated;
-              e.currentTarget.style.borderColor = COLORS.border.default;
-            }}
-          >
-            Skip import
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={!selectedOption || (selectedOption === 'newTemplate' && (!newTemplateName.trim() || nameError))}
-            style={{
-              padding: '8px 16px',
-              background: (selectedOption && (selectedOption !== 'newTemplate' || (newTemplateName.trim() && !nameError))) ? COLORS.modal.primaryButton : COLORS.modal.primaryButtonDisabled,
-              color: COLORS.text.primary,
-              border: `1px solid ${(selectedOption && (selectedOption !== 'newTemplate' || (newTemplateName.trim() && !nameError))) ? COLORS.modal.borderActive : COLORS.border.default}`,
-              borderRadius: BORDERS.radius.md,
-              fontSize: TYPOGRAPHY.fontSize.md,
-              fontWeight: TYPOGRAPHY.fontWeight.medium,
-              cursor: (selectedOption && (selectedOption !== 'newTemplate' || (newTemplateName.trim() && !nameError))) ? 'pointer' : 'not-allowed',
-              fontFamily: TYPOGRAPHY.fontFamily.default,
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!selectedOption || (selectedOption === 'newTemplate' && (!newTemplateName.trim() || nameError))) return;
-              e.currentTarget.style.background = COLORS.modal.primaryButtonHover;
-              e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
-            }}
-            onMouseLeave={(e) => {
-              if (!selectedOption || (selectedOption === 'newTemplate' && (!newTemplateName.trim() || nameError))) return;
-              e.currentTarget.style.background = COLORS.modal.primaryButton;
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          >
-            Continue import
-          </button>
-        </div>
-      </div>
-    </div>
+    </DialogCard>
   );
 };
 

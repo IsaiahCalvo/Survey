@@ -12,6 +12,7 @@
  * Pure JS — Node test runner imports this directly.
  */
 import { applyScope } from './annotationCreationCommit.js';
+import { composeColorForPatch } from './annotationData.js';
 
 // TEXT_PADDING lives in svgAnnotationRenderers.jsx (a .jsx module the Node
 // test runner can't import); the value is the annotation text-gutter contract
@@ -122,6 +123,39 @@ const applyTextStyle = (json, style = {}) => {
  *
  * Returns null for blank text — matching the fabric path's discard branch.
  */
+/**
+ * A NEW text box's box paint from the settings row while the Text box tool is
+ * armed: the colour swatch's ring is its border, its centre the background,
+ * the Width box its border width and the Style picker its dashes (owner
+ * 2026-10-27: the Width box did nothing - every new box got a black 1 pt
+ * border and the ring's colour went to the text instead). A picked text box
+ * maps the same fields (PDFViewer selectedPreviewColors / patchSelectedFill).
+ * Cloud is drawn from cloudIntensity, so it carries no dashes here.
+ */
+// A new text box's glyph colour until the Aa row changes it (plain black,
+// as new text boxes have always started).
+export const NEW_TEXT_BOX_FONT_COLOR = '#000000';
+
+export function newTextBoxPaint({
+  strokeColor = '#000000',
+  strokeOpacity = 100,
+  strokeWidth = 1,
+  fillColor = null,
+  fillOpacity = 0,
+  lineBorderStyle = 'solid',
+} = {}) {
+  const width = Number(strokeWidth);
+  const fillAlpha = Number(fillOpacity);
+  return {
+    stroke: composeColorForPatch(strokeColor || '#000000', strokeOpacity),
+    strokeWidth: Number.isFinite(width) && width >= 0 ? width : 1,
+    backgroundColor: fillColor && Number.isFinite(fillAlpha) && fillAlpha > 0
+      ? composeColorForPatch(fillColor, fillAlpha)
+      : null,
+    strokeDashArray: lineBorderStyle === 'dashed' ? [6, 4] : lineBorderStyle === 'dotted' ? [2, 4] : null,
+  };
+}
+
 export function buildNewTextCommitJSON({
   text,
   left,
@@ -134,6 +168,9 @@ export function buildNewTextCommitJSON({
   fill = '#007AFF',
   stroke = '#000000',
   strokeWidth = 1,
+  // newTextBoxPaint: the box's background and dashes (null = none).
+  backgroundColor = null,
+  strokeDashArray = null,
   // KAL-88 — Decision 11 companion: survey/region scope stamps, same inputs
   // as the shape/line/freehand builders in annotationCreationCommit.js.
   selectedModuleId = null,
@@ -173,6 +210,8 @@ export function buildNewTextCommitJSON({
     underline: false,
     linethrough: false,
   };
+  if (backgroundColor) json.backgroundColor = backgroundColor;
+  if (Array.isArray(strokeDashArray) && strokeDashArray.length) json.strokeDashArray = [...strokeDashArray];
   applyTextStyle(json, style);
   const cloud = Number(cloudIntensity);
   if (cloudIntensity != null && Number.isFinite(cloud)) {

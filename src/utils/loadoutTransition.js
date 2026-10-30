@@ -165,6 +165,63 @@ export function planLoadoutSwap(before, after) {
   return kinds;
 }
 
+/** The kind of one pair of slots (see planLoadoutSwap). */
+const pairKind = (b, a) => {
+  if (b && a) {
+    if (b.sig === a.sig) return 'stay';
+    return isMorphableIcon(b.icon) && isMorphableIcon(a.icon) ? 'morph' : 'swap';
+  }
+  return a ? 'grow' : 'shrink';
+};
+
+/**
+ * Owner 2026-10-27: "when I hit Done, it doesn't properly retract that
+ * loadout or change the loadout back to what it was before. It looks a little
+ * off." A list header's select row (Select / Done, All, Duplicate, Move,
+ * Copy, Share, Delete) pairs its controls by WHAT they are - their `key`, the
+ * button's data-section-action - not by where they sit, so Select pairs with
+ * Done (and morphs into it) even when the row grows to its left, and a control
+ * with no key (the gold "New project" button, a section label) stays only
+ * when the very same control is in both sets. The tool bar's slots carry no
+ * key and still pair by position, slot 1 with slot 1 (w49).
+ *
+ * `before` / `after` are the slots in order ({ sig, icon, key }). Returns
+ * { keyed, pairs }: each pair is { b, a, id, kind } - the index in each set
+ * (-1 when only in the other), an id that follows the slot from one change to
+ * the next (the index when pairing by position), and its kind as in
+ * planLoadoutSwap.
+ */
+export function pairLoadoutUnits(before, after) {
+  const keyed = [...before, ...after].some((unit) => unit?.key);
+  if (!keyed) {
+    const pairs = [];
+    for (let i = 0; i < Math.max(before.length, after.length); i += 1) {
+      const b = i < before.length ? i : -1;
+      const a = i < after.length ? i : -1;
+      pairs.push({ b, a, id: i, kind: pairKind(before[b], after[a]) });
+    }
+    return { keyed, pairs };
+  }
+  const used = new Set();
+  const seen = new Map();
+  const idOf = (unit) => {
+    const base = unit.key || `@${unit.sig}`;
+    const n = seen.get(base) || 0;
+    seen.set(base, n + 1);
+    return n ? `${base}#${n}` : base;
+  };
+  const pairs = after.map((unit, a) => {
+    const b = before.findIndex((other, i) => !used.has(i)
+      && (unit.key ? other.key === unit.key : !other.key && other.sig === unit.sig));
+    if (b >= 0) used.add(b);
+    return { b, a, id: idOf(unit), kind: pairKind(before[b], unit) };
+  });
+  before.forEach((unit, b) => {
+    if (!used.has(b)) pairs.push({ b, a: -1, id: idOf(unit), kind: 'shrink' });
+  });
+  return { keyed, pairs };
+}
+
 export function prefersReducedMotion(win = typeof window === 'undefined' ? undefined : window) {
   try {
     return Boolean(win?.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
@@ -208,10 +265,15 @@ export function loadoutSignature(root) {
   return tokens.join('|');
 }
 
+const SECTION_KEY = 'data-section-action';
+
 // Boxes that only group the controls in a row: looked through, so each
 // control inside animates (or stays) on its own.
 const WRAPPER = /^(data-toolbar-settings-row|data-chrome-subtools-host|data-chrome-strip|data-select-mode-toggle|data-area-tools)$/;
-const isWrapper = (element) => [...(element.attributes || [])].some((a) => WRAPPER.test(a.name));
+const isWrapper = (element) => [...(element.attributes || [])].some((a) => WRAPPER.test(a.name))
+  // A box that only groups a list header's icons (the select-mode actions
+  // span, a header's actions div): each icon in it is a control of its own.
+  || (!isControl(element) && [...(element.children || [])].some((child) => child.getAttribute?.(SECTION_KEY) != null));
 
 /** The slot's controls as the eye reads them, left to right: its children,
  * looking through wrapper boxes. Popovers are skipped. */
@@ -254,14 +316,18 @@ export function makeGhost(copy) {
   return copy;
 }
 
-/** On screen: laid out and not hidden. */
+/** On screen: laid out and not hidden. A box with `display: contents` (the
+ * phone header flattens its select row that way in select mode) draws no box
+ * of its own: it is on screen when one of its controls is. */
 function isShown(element, win) {
-  if (!element?.isConnected || !element.getClientRects?.().length) return false;
-  try {
-    return win?.getComputedStyle?.(element)?.visibility !== 'hidden';
-  } catch {
-    return true;
+  if (!element?.isConnected) return false;
+  let style = null;
+  try { style = win?.getComputedStyle?.(element) || null; } catch { /* read it as drawn */ }
+  if (style?.display === 'contents') {
+    return [...(element.children || [])].some((child) => !child.closest?.(OUTSIDE_LOADOUT) && isShown(child, win));
   }
+  if (!element.getClientRects?.().length) return false;
+  return style?.visibility !== 'hidden';
 }
 
 
@@ -272,6 +338,49 @@ export function morphIconOf(unit) {
   if (own) return own;
   const inner = unit.querySelector?.('[data-morph-icon]');
   return inner?.getAttribute?.('data-morph-icon') || null;
+}
+
+/** A list header control's key (what it is: select, all, delete...), if any. */
+const unitKey = (unit) => unit?.getAttribute?.(SECTION_KEY) || null;
+
+/** The centre of an element as drawn, in the viewport, or null. */
+function centreOf(element) {
+  try {
+    const box = element?.getBoundingClientRect?.();
+    if (!box || !Number.isFinite(box.left) || !Number.isFinite(box.top)) return null;
+    return { x: box.left + (box.width || 0) / 2, y: box.top + (box.height || 0) / 2 };
+  } catch {
+    return null;
+  }
+}
+
+/** Every box around `element` and how far each is scrolled. */
+function scrollState(element) {
+  const state = [];
+  for (let box = element?.parentElement; box; box = box.parentElement) {
+    state.push([box, Number(box.scrollLeft) || 0, Number(box.scrollTop) || 0]);
+  }
+  return state;
+}
+
+/** How far those boxes have scrolled since (what moved on screen). */
+function scrolledSince(state) {
+  let x = 0;
+  let y = 0;
+  for (const [box, left, top] of state) {
+    x += (Number(box.scrollLeft) || 0) - left;
+    y += (Number(box.scrollTop) || 0) - top;
+  }
+  return { x, y };
+}
+
+/** A copy of the slot without the ghost layer (when it lives inside it). */
+function copyWithoutLayer(slot) {
+  const copy = slot.cloneNode(true);
+  for (const node of [...(copy.querySelectorAll?.('*') || [])]) {
+    if (node.getAttribute?.('data-loadout-layer') != null) node.remove?.() ?? node.parentNode?.removeChild(node);
+  }
+  return copy;
 }
 
 const buttonOf = (unit) => (unit?.matches?.('button') ? unit : unit?.querySelector?.('button')) || null;
@@ -352,6 +461,46 @@ function growState(kind, animation, motion) {
 }
 
 /**
+ * Run `fn` once the frame being built has painted (the next frame's rAF, then
+ * a task). Setup that reads styles and boxes is free there; inside the commit
+ * that built the DOM each read forces a style and layout pass. Returns a
+ * cancel. Without requestAnimationFrame it runs on a timer.
+ */
+/**
+ * Owner 2026-10-28: a count that sits just left of a header's loadout (the
+ * Survey panel's category rows) jumped sideways the moment Select mode grew
+ * the loadout or Done shrank it. Call this before the change: in the frame the
+ * change first paints, the element glides from where it was to its new spot
+ * with the loadout's own timing.
+ */
+export function glideAcrossNextChange(element, win = typeof window === 'undefined' ? undefined : window) {
+  if (!element?.getBoundingClientRect || !win?.requestAnimationFrame || prefersReducedMotion(win)) return;
+  const before = element.getBoundingClientRect().left;
+  win.requestAnimationFrame(() => {
+    if (!element.isConnected || typeof element.animate !== 'function') return;
+    const dx = before - element.getBoundingClientRect().left;
+    if (Math.abs(dx) < 0.5) return;
+    element.animate([{ translate: `${dx}px 0px` }, { translate: '0px 0px' }], {
+      duration: LOADOUT_MOTION.durationMs, easing: LOADOUT_MOTION.easing,
+    });
+  });
+}
+
+export function afterPaint(fn, win = typeof window === 'undefined' ? undefined : window) {
+  if (!win) return () => {};
+  let timer = null;
+  let frame = null;
+  const run = () => { timer = win.setTimeout(() => { timer = null; fn(); }, 0); };
+  if (typeof win.requestAnimationFrame === 'function') frame = win.requestAnimationFrame(() => { frame = null; run(); });
+  else run();
+  return () => {
+    if (frame != null) win.cancelAnimationFrame?.(frame);
+    if (timer != null) win.clearTimeout(timer);
+    frame = null; timer = null;
+  };
+}
+
+/**
  * Watch `slot` and animate each change of loadout (see the top of this file).
  * `layer` is an empty box laid exactly where the slot's own positioning
  * context is (the ghost copy keeps the slot's inline position, so it lands on
@@ -371,10 +520,16 @@ function growState(kind, animation, motion) {
 export function attachLoadoutTransition(slot, layer, { win = typeof window === 'undefined' ? undefined : window, motion = LOADOUT_MOTION } = {}) {
   if (!slot || !layer || !win?.MutationObserver) return () => {};
   const now = () => win.performance?.now?.() ?? Date.now();
+  // The layer can sit inside the slot (a list header's own box): a copy of the
+  // slot never carries a copy of it, or of the ghosts it is drawing.
+  layer.setAttribute?.('data-loadout-layer', '');
   let signature = loadoutSignature(slot);
   let wasShown = isShown(slot, win);
   let snapshot = null;
-  let previous = []; // the live slots at the last snapshot: { element, sig, icon, colour }
+  // The live slots at the last snapshot: { element, sig, icon, key, colour,
+  // centre } - centre is where it was drawn on screen.
+  let previous = [];
+  let scrolls = [];
 
   const timelineNow = () => {
     const t = win.document?.timeline?.currentTime;
@@ -383,17 +538,19 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
   const colourOf = (unit) => colourTrack(buttonOf(unit), win, timelineNow());
   if (win.requestIdleCallback || win.setTimeout) warmMorphPlans(win);
   const takeSnapshot = () => {
-    snapshot = slot.cloneNode(true);
+    snapshot = copyWithoutLayer(slot);
+    scrolls = scrollState(slot);
     previous = loadoutUnits(slot).map((element) => ({
-      element, sig: unitSignature(element), icon: morphIconOf(element), colour: colourOf(element),
+      element, sig: unitSignature(element), icon: morphIconOf(element), key: unitKey(element), colour: colourOf(element),
+      centre: centreOf(element),
     }));
   };
   takeSnapshot();
 
   const ghosts = new Set(); // { element, live: count of units still shrinking }
   const arriving = new Map(); // live unit → its grow animation
-  const shrinking = new Map(); // slot index → { unit, animation, sig, ghost }
-  const morphs = new Map(); // slot index → morph run
+  const shrinking = new Map(); // slot id → { unit, animation, sig, ghost }
+  const morphs = new Map(); // slot id → morph run
   let frame = null;
 
   const releaseGhost = (ghost) => {
@@ -406,19 +563,19 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
     shrinking.clear();
   };
 
-  const shrink = (unit, from, ghost, index, sig) => {
+  const shrink = (unit, from, ghost, id, sig) => {
     const animation = unit.animate?.(loadoutKeyframes('out', { motion, from }), {
       duration: motion.durationMs * (from ? Math.max(0.3, from.opacity) : 1), easing: motion.easing, fill: 'forwards',
     });
     if (!animation) { if (unit.style) unit.style.visibility = 'hidden'; return; }
     ghost.live += 1;
     const entry = { unit, animation, sig, ghost };
-    if (index != null) shrinking.set(index, entry);
+    if (id != null) shrinking.set(id, entry);
     let released = false;
     const done = () => {
       if (released) return;
       released = true;
-      if (shrinking.get(index) === entry) shrinking.delete(index);
+      if (shrinking.get(id) === entry) shrinking.delete(id);
       releaseGhost(ghost);
     };
     animation.onfinish = done;
@@ -473,7 +630,7 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
   const endMorph = (run, { keepOverlay = false } = {}) => {
     run.glyphHide?.cancel?.();
     if (!keepOverlay) run.svg.remove?.();
-    for (const [index, other] of morphs) if (other === run) morphs.delete(index);
+    for (const [id, other] of morphs) if (other === run) morphs.delete(id);
   };
   const tick = () => {
     frame = null;
@@ -497,7 +654,7 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
     animation.onfinish = () => run.svg.remove?.();
     animation.oncancel = () => run.svg.remove?.();
   };
-  const startMorph = (index, unit, from, fromColour, startedAt = now()) => {
+  const startMorph = (id, unit, from, fromColour, startedAt = now()) => {
     const button = buttonOf(unit);
     const glyph = glyphOf(button);
     const icon = morphIconOf(unit);
@@ -527,9 +684,9 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
       colourFrom: fromColour || toColour, colourTo: toColour || fromColour, colourStart: startedAt, colourMs: motion.durationMs,
       glyphHide: glyph.animate?.([{ opacity: 0 }, { opacity: 0 }], { duration: motion.durationMs * 10, fill: 'forwards' }),
     };
-    morphs.get(index)?.svg?.remove?.();
-    morphs.set(index, run);
-    place(run); // row 1's buttons never move while a morph runs
+    morphs.get(id)?.svg?.remove?.();
+    morphs.set(id, run);
+    place(run); // nothing moves while a morph runs (a moved slot swaps instead)
     draw(run, 0);
     if (frame == null) frame = win.requestAnimationFrame(tick);
     return true;
@@ -544,60 +701,125 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
     dropGhosts();
   };
 
+  /**
+   * A list header's leaving controls, each a lifeless copy laid exactly where
+   * the eye last saw it (`at`: its centre on screen), so it shrinks out in
+   * place - never shifted by the row's new width or by a box that draws
+   * differently out of its row (owner 2026-10-27: the old row slid right and
+   * was cut off by the panel edge, or dropped 6px, as Done was pressed).
+   * Returns the ghost, or null when this document cannot build one.
+   */
+  const placedGhost = (units, at) => {
+    const doc = layer.ownerDocument;
+    if (typeof doc?.createElement !== 'function') return null;
+    // Fixed, so no scrolling box around the row clips it: the phone header's
+    // select row scrolls sideways and would cut off the actions leaving row 2.
+    const holder = doc.createElement('span');
+    Object.assign(holder.style, { position: 'fixed', left: '0px', top: '0px', width: '0px', height: '0px' });
+    units.forEach((unit) => {
+      Object.assign(unit.style, { position: 'absolute', margin: '0px', left: '0px', top: '0px' });
+      holder.appendChild(unit);
+    });
+    makeGhost(holder);
+    layer.appendChild(holder);
+    units.forEach((unit, k) => {
+      const target = at[k];
+      const drawn = centreOf(unit);
+      if (!target || !drawn) return;
+      unit.style.left = `${target.x - drawn.x}px`;
+      unit.style.top = `${target.y - drawn.y}px`;
+    });
+    return holder;
+  };
+
   const swap = () => {
     // Every morph of one switch runs on one clock (planning one can take a
     // few ms the first time; the slots must still land together).
     const at = now();
     const beforeUnits = loadoutUnits(snapshot);
     const afterUnits = loadoutUnits(slot);
-    const after = afterUnits.map((element) => ({ element, sig: unitSignature(element), icon: morphIconOf(element) }));
-    const kinds = planLoadoutSwap(previous, after);
+    const after = afterUnits.map((element) => ({ element, sig: unitSignature(element), icon: morphIconOf(element), key: unitKey(element) }));
+    const { keyed, pairs } = pairLoadoutUnits(previous, after);
+    const pairById = new Map(pairs.map((pair) => [pair.id, pair]));
     // Where each old slot was on screen (a change caught mid-way).
     const beforeState = previous.map(({ element }) => (arriving.has(element) ? growState('in', arriving.get(element), motion) : null));
+    // ...and where it was drawn (less any scrolling since).
+    const scrolled = scrolledSince(scrolls);
+    const seenAt = (b) => {
+      const centre = previous[b]?.centre;
+      return centre ? { x: centre.x - scrolled.x, y: centre.y - scrolled.y } : null;
+    };
+    // A list header's control in both sets whose spot moved (Select at the
+    // right end of a header is Done at the start of the select row): it does
+    // not jump there, nor slide over its neighbours - nothing in a loadout
+    // moves sideways (w49). The old one shrinks out where it was and the new
+    // one grows in at its spot, like any other swap - still morphing from the
+    // old glyph as it grows, so Edit's pen visibly turns into Done's check
+    // (owner 2026-10-27).
+    if (keyed) {
+      for (const pair of pairs) {
+        if (pair.kind !== 'morph' && pair.kind !== 'stay') continue;
+        const was = seenAt(pair.b);
+        const is = centreOf(afterUnits[pair.a]);
+        if (was && is && Math.hypot(was.x - is.x, was.y - is.y) > 2) {
+          pair.morphAsItGrows = pair.kind === 'morph';
+          pair.kind = 'swap';
+        }
+      }
+    }
 
     // The old side: a copy of the old set, showing only what shrinks out.
-    const outgoing = kinds.map((kind, i) => i < beforeUnits.length && (kind === 'shrink' || kind === 'swap') && !morphs.has(i));
-    let ghost = null;
-    if (outgoing.some(Boolean)) {
-      ghost = { element: makeGhost(snapshot), live: 0 };
-      ghosts.add(ghost);
-      layer.appendChild(ghost.element);
-    }
+    const outgoing = pairs.filter((pair) => pair.b >= 0 && pair.b < beforeUnits.length
+      && (pair.kind === 'shrink' || pair.kind === 'swap') && !morphs.has(pair.id));
     // Morphs caught mid-way whose slot no longer morphs shrink out as drawn.
-    for (const [i, run] of [...morphs]) {
-      if (kinds[i] === 'morph' || kinds[i] === 'stay') continue;
+    for (const [id, run] of [...morphs]) {
+      const kind = pairById.get(id)?.kind;
+      if (kind === 'morph' || kind === 'stay') continue;
       shrinkMorph(run);
     }
-    if (ghost) {
-      beforeUnits.forEach((unit, i) => {
-        if (outgoing[i]) shrink(unit, beforeState[i], ghost, i, previous[i]?.sig);
-        else if (unit.style) unit.style.visibility = 'hidden';
-      });
+    if (outgoing.length) {
+      let element = keyed
+        ? placedGhost(outgoing.map((pair) => beforeUnits[pair.b]), outgoing.map((pair) => seenAt(pair.b)))
+        : null;
+      if (!element) {
+        element = makeGhost(snapshot);
+        layer.appendChild(element);
+        const leaving = new Set(outgoing.map((pair) => pair.b));
+        beforeUnits.forEach((unit, b) => { if (!leaving.has(b) && unit.style) unit.style.visibility = 'hidden'; });
+      }
+      const ghost = { element, live: 0 };
+      ghosts.add(ghost);
+      outgoing.forEach((pair) => shrink(beforeUnits[pair.b], beforeState[pair.b], ghost, pair.id, previous[pair.b]?.sig));
       if (ghost.live <= 0) { ghost.live = 1; releaseGhost(ghost); }
     }
 
     // The new side.
-    kinds.forEach((kind, i) => {
-      const unit = afterUnits[i];
+    pairs.forEach((pair) => {
+      const unit = afterUnits[pair.a];
       if (!unit) return;
-      if (kind === 'morph') {
-        const running = morphs.get(i);
-        const from = running ? morphNow(running) : { geometry: previous[i].icon, colour: colourAt(previous[i].colour, timelineNow()) };
+      if (pair.kind === 'morph') {
+        const running = morphs.get(pair.id);
+        const from = running ? morphNow(running) : { geometry: previous[pair.b].icon, colour: colourAt(previous[pair.b].colour, timelineNow()) };
         if (running) endMorph(running);
-        if (startMorph(i, unit, from.geometry, from.colour, at)) return;
+        if (startMorph(pair.id, unit, from.geometry, from.colour, at)) return;
         grow(unit);
         return;
       }
-      if (kind === 'grow' || kind === 'swap') {
+      if (pair.kind === 'grow' || pair.kind === 'swap') {
         // The same control still shrinking out here (Shapes → Pan → Shapes):
         // it turns round and grows back from where it had got to.
-        const back = shrinking.get(i);
-        if (back && back.sig === after[i].sig && kind === 'grow') {
+        const back = shrinking.get(pair.id);
+        if (back && back.sig === after[pair.a].sig && pair.kind === 'grow') {
           const from = growState('out', back.animation, motion);
           back.animation.cancel?.();
           if (back.unit.style) back.unit.style.visibility = 'hidden';
           grow(unit, from);
           return;
+        }
+        // The morph measures the glyph first: once the button is growing its
+        // box reads at the start scale and the overlay would come out small.
+        if (pair.morphAsItGrows && startMorph(pair.id, unit, previous[pair.b].icon, colourAt(previous[pair.b].colour, timelineNow()), at)) {
+          morphs.get(pair.id)?.svg.animate?.(loadoutKeyframes('in', { motion }), { duration: motion.durationMs, easing: motion.easing, fill: 'backwards' });
         }
         grow(unit);
       }
@@ -640,6 +862,46 @@ export function attachLoadoutTransition(slot, layer, { win = typeof window === '
     observer.disconnect();
     cancelAll();
   };
+}
+
+/**
+ * A row select mode hides (the phone header's search row): where it is drawn
+ * and how it lays out, so a copy of it can leave from there once it is gone.
+ * Null when it is not on screen.
+ */
+export function measureRevealRow(row) {
+  const rects = row?.getClientRects?.();
+  if (!rects?.length) return null;
+  const box = row.getBoundingClientRect();
+  let display = 'flex';
+  try { display = row.ownerDocument.defaultView.getComputedStyle(row).display; } catch { /* flex */ }
+  return { row, box, display };
+}
+
+/**
+ * The row just hidden by select mode leaves the way the tool bar's row 2 does
+ * (useLeavingRow): a lifeless copy laid where it was drawn sinks
+ * ROW_MOTION.outTravelPx and fades over ROW_MOTION.outMs, then goes.
+ */
+export function playRevealRowLeave({ row, box, display }, host) {
+  const copy = makeGhost(row.cloneNode(true));
+  // Typed text lives in the property, not the attribute a copy carries.
+  const from = [...row.querySelectorAll('input, textarea')];
+  [...copy.querySelectorAll('input, textarea')].forEach((field, k) => { field.value = from[k]?.value ?? ''; });
+  Object.assign(copy.style, {
+    position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`,
+    margin: '0px', display, boxSizing: 'border-box',
+  });
+  host.appendChild(copy);
+  const animation = copy.animate?.([
+    { opacity: 1, translate: '0px 0px' },
+    { opacity: 0, translate: `0px ${ROW_MOTION.outTravelPx}px` },
+  ], { duration: ROW_MOTION.outMs, easing: ROW_MOTION.outEasing, fill: 'forwards' });
+  if (!animation) { copy.remove(); return; }
+  let done = false;
+  const finish = () => { if (!done) { done = true; copy.remove(); } };
+  animation.onfinish = finish;
+  animation.oncancel = finish;
 }
 
 // An open popover or menu: Radix triggers carry aria-expanded, the colour

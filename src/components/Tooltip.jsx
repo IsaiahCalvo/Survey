@@ -47,6 +47,7 @@ import { createPortal } from 'react-dom';
 import { FONT_FAMILY } from '../viewerShared.js';
 import { viewportClampDelta } from '../utils/floatingUiGeometry.js';
 import { tooltipForLabel } from '../utils/toolShortcuts.js';
+import { isQuietFocus } from '../utils/quietFocus.js';
 
 /**
  * The canonical tooltip look. Every tooltip in the app is painted from this one
@@ -248,6 +249,8 @@ export function makeTooltipBinding(setTooltip) {
       if (e?.buttons) return;
       const isFocus = e?.type === 'focus';
       if (isFocus && !el.matches?.(':focus-visible')) return;
+      // Focus handed back by a closing dialog is not the person moving focus.
+      if (isFocus && isQuietFocus(el)) return;
       const paint = () => {
         tooltipTiming.pendingTimer = null;
         if (!el.isConnected || pressedControls.has(el)) return;

@@ -28,6 +28,17 @@ const CURVE_STEPS = 8;
 export const VECTOR_TAG_MIN_SIZE = 5;
 export const VECTOR_TAG_MAX_SIZE = 120;
 
+// Revision clouds (owner 2026-10-26: "fill any type of cloud"). Schneider
+// sheets draw a cloud as a chain of separate arcs, each its own little path,
+// end to start; others draw it as one path of curves. Either way it is a loop
+// of scallops: curves only, meeting at sharp inward points. A cloud may be far
+// bigger than a tag, up to most of a sheet.
+export const VECTOR_CLOUD_MIN_SIZE = 20;
+export const VECTOR_CLOUD_MAX_SIZE = 2400;
+const CLOUD_MIN_SCALLOPS = 6;
+const CLOUD_PIECE_MAX_CURVES = 4;
+const CLOUD_JOIN_GAP = 0.6;
+
 function multiply(m1, m2) {
   return [
     m1[0] * m2[0] + m1[2] * m2[1],
@@ -112,7 +123,64 @@ function pathBox(data, tx) {
   return minX <= maxX ? [minX, minY, maxX, maxY] : null;
 }
 
-function finishSubpath(out, pts, curved, closedFlag, opts) {
+// Sharp inward points along a ring: where one scallop meets the next. `joins`
+// are the ring indices where one curve ends and the next begins.
+function countScallopPoints(ring, joins) {
+  let signed = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    signed += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+  }
+  if (!signed) return 0;
+  const n = ring.length;
+  let count = 0;
+  for (const at of joins) {
+    const p = ring[(at + n) % n];
+    // Step off the join a little each way: a curve is flattened into short
+    // pieces, so the neighbours right next to it are nearly on one line.
+    const a = ring[(at - 2 + n) % n];
+    const b = ring[(at + 2) % n];
+    const ux = p[0] - a[0]; const uy = p[1] - a[1];
+    const vx = b[0] - p[0]; const vy = b[1] - p[1];
+    const cross = ux * vy - uy * vx;
+    const dot = ux * vx + uy * vy;
+    const turn = Math.atan2(cross, dot);
+    // A scallop point turns against the loop's own direction, sharply.
+    if (Math.sign(cross) !== Math.sign(signed) && Math.abs(turn) > 0.45) count += 1;
+  }
+  return count;
+}
+
+function ringBox(ring) {
+  let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+/**
+ * The cloud shape for a closed loop of curves, or null when it is not one:
+ * curves only, at least CLOUD_MIN_SCALLOPS sharp inward points, and most
+ * curve joins being such points or smooth halves of one scallop.
+ */
+export function cloudShapeFromRing(points, joins, { minSize = VECTOR_CLOUD_MIN_SIZE, maxSize = VECTOR_CLOUD_MAX_SIZE } = {}) {
+  if (!Array.isArray(points) || points.length < 3 * CLOUD_MIN_SCALLOPS) return null;
+  const [fx, fy] = points[0];
+  const [lx, ly] = points[points.length - 1];
+  const b = ringBox(points);
+  const size = Math.max(b.width, b.height);
+  if (size < minSize || size > maxSize || Math.min(b.width, b.height) < minSize * 0.25) return null;
+  if (Math.hypot(lx - fx, ly - fy) > Math.max(1, 0.01 * size)) return null;
+  const ring = points.slice(0, -1);
+  const scallops = countScallopPoints(ring, joins.filter((j) => j > 0 && j < ring.length));
+  if (scallops < CLOUD_MIN_SCALLOPS || scallops < 0.3 * joins.length) return null;
+  const area = ringArea(ring);
+  if (!(area > 0)) return null;
+  return { ring, ...b, area, curved: true, cloud: true };
+}
+
+function finishSubpath(out, pts, curved, closedFlag, opts, joins = null) {
   if (pts.length < 3) return;
   const [fx, fy] = pts[0];
   const [lx, ly] = pts[pts.length - 1];
@@ -123,6 +191,11 @@ function finishSubpath(out, pts, curved, closedFlag, opts) {
   }
   const w = maxX - minX;
   const h = maxY - minY;
+  if (opts.clouds && curved && joins?.length >= CLOUD_MIN_SCALLOPS) {
+    const closedRing = closedFlag && Math.hypot(lx - fx, ly - fy) > 1e-6 ? [...pts, pts[0]] : pts;
+    const cloud = cloudShapeFromRing(closedRing, joins);
+    if (cloud) { out.push(cloud); return; }
+  }
   if (Math.max(w, h) < opts.minSize || Math.max(w, h) > opts.maxSize || Math.min(w, h) < opts.minSize * 0.5) return;
   // Closed by a close-path, or by ending where it started.
   const gap = Math.hypot(lx - fx, ly - fy);
@@ -142,10 +215,39 @@ export function extractClosedShapes(operatorList, OPS, viewportTransform, {
   minSize = VECTOR_TAG_MIN_SIZE,
   maxSize = VECTOR_TAG_MAX_SIZE,
   maxShapes = 20000,
+  clouds = true,
 } = {}) {
   const shapes = [];
   if (!operatorList?.fnArray || !OPS) return shapes;
-  const opts = { minSize, maxSize };
+  const opts = { minSize, maxSize, clouds };
+  // A cloud drawn as separate arcs: each arc path starts where the last one
+  // ended. Collected here until the run breaks, then tested as one loop.
+  let chain = null;
+  const endChain = () => {
+    if (chain && chain.pieces >= CLOUD_MIN_SCALLOPS) {
+      const cloud = cloudShapeFromRing(chain.pts, chain.joins);
+      if (cloud && (!chain.clip || boxInClip(cloud, chain.clip))) shapes.push(cloud);
+    }
+    chain = null;
+  };
+  const feedChain = (pts, curves, lines, joins) => {
+    if (!clouds) return;
+    if (lines > 0 || curves < 1 || curves > CLOUD_PIECE_MAX_CURVES || pts.length < 2) { endChain(); return; }
+    const start = pts[0];
+    if (chain) {
+      const end = chain.pts[chain.pts.length - 1];
+      if (Math.hypot(start[0] - end[0], start[1] - end[1]) <= CLOUD_JOIN_GAP) {
+        const offset = chain.pts.length - 1;
+        chain.joins.push(offset);
+        for (const j of joins) if (j > 0) chain.joins.push(offset + j);
+        for (let k = 1; k < pts.length; k += 1) chain.pts.push(pts[k]);
+        chain.pieces += 1;
+        return;
+      }
+      endChain();
+    }
+    chain = { pts: pts.slice(), joins: joins.filter((j) => j > 0), pieces: 1, clip };
+  };
   const { fnArray, argsArray } = operatorList;
   // Graphics state: the transform and the clip box (page units). A path
   // outside the clip is not on the sheet (CAD sheets clip one big floor plan
@@ -192,20 +294,31 @@ export function extractClosedShapes(operatorList, OPS, viewportTransform, {
     const before = shapes.length;
     let pts = [];
     let curved = false;
+    let curves = 0;
+    let lines = 0;
+    let joins = [];
     let cx = 0; let cy = 0;
+    const endSubpath = (closedFlag) => {
+      finishSubpath(shapes, pts, curved, closedFlag, opts, joins);
+      if (paintOp !== OPS.endPath && !closedFlag) feedChain(pts, curves, lines, joins);
+      else if (closedFlag) endChain();
+    };
     for (let k = 0; k < data.length;) {
       const code = data[k];
       if (code === MOVE) {
-        finishSubpath(shapes, pts, curved, false, opts);
+        if (pts.length) endSubpath(false);
         cx = data[k + 1]; cy = data[k + 2];
         pts = [tx(cx, cy)];
-        curved = false;
+        curved = false; curves = 0; lines = 0; joins = [];
         k += 3;
       } else if (code === LINE) {
         cx = data[k + 1]; cy = data[k + 2];
         pts.push(tx(cx, cy));
+        lines += 1;
         k += 3;
       } else if (code === CURVE) {
+        if (curves > 0) joins.push(pts.length - 1);
+        curves += 1;
         const [x1, y1, x2, y2, x3, y3] = [data[k + 1], data[k + 2], data[k + 3], data[k + 4], data[k + 5], data[k + 6]];
         for (let s = 1; s <= CURVE_STEPS; s += 1) {
           const t = s / CURVE_STEPS; const u = 1 - t;
@@ -216,6 +329,8 @@ export function extractClosedShapes(operatorList, OPS, viewportTransform, {
         cx = x3; cy = y3; curved = true;
         k += 7;
       } else if (code === QUAD) {
+        if (curves > 0) joins.push(pts.length - 1);
+        curves += 1;
         const [x1, y1, x2, y2] = [data[k + 1], data[k + 2], data[k + 3], data[k + 4]];
         for (let s = 1; s <= CURVE_STEPS; s += 1) {
           const t = s / CURVE_STEPS; const u = 1 - t;
@@ -224,15 +339,15 @@ export function extractClosedShapes(operatorList, OPS, viewportTransform, {
         cx = x2; cy = y2; curved = true;
         k += 5;
       } else if (code === CLOSE) {
-        finishSubpath(shapes, pts, curved, true, opts);
+        endSubpath(true);
         pts = pts.length ? [pts[0]] : [];
-        curved = false;
+        curved = false; curves = 0; lines = 0; joins = [];
         k += 1;
       } else {
         break; // unknown code: stop reading this path
       }
     }
-    finishSubpath(shapes, pts, curved, false, opts);
+    if (pts.length > 1) endSubpath(false);
     // Drop what the clip hides (mostly outside it).
     if (clip && shapes.length > before) {
       for (let k = shapes.length - 1; k >= before; k -= 1) {
@@ -243,6 +358,7 @@ export function extractClosedShapes(operatorList, OPS, viewportTransform, {
       }
     }
   }
+  endChain();
   const visible = covers.length
     ? shapes.filter((sh, index) => !covers.some(({ box, at }) => at > index
       && sh.minX >= box[0] - 0.5 && sh.maxX <= box[2] + 0.5 && sh.minY >= box[1] - 0.5 && sh.maxY <= box[3] + 0.5))
@@ -261,6 +377,12 @@ function dedupeShapes(shapes) {
     out.push(s);
   }
   return out;
+}
+
+function boxInClip(shape, clip) {
+  const ix = Math.max(0, Math.min(shape.maxX, clip[2]) - Math.max(shape.minX, clip[0]));
+  const iy = Math.max(0, Math.min(shape.maxY, clip[3]) - Math.max(shape.minY, clip[1]));
+  return ix * iy >= 0.8 * shape.width * shape.height;
 }
 
 function bboxContains(outer, inner, slack) {
@@ -295,7 +417,7 @@ export function pickShapeAtPoint(shapes, point, { prefer = null } = {}) {
   let best = pool[0];
   // Climb from a cell to the tag that holds it.
   for (let guard = 0; guard < 4; guard += 1) {
-    const parent = holding.find((s) => s !== best && s.area > best.area * 1.15 && s.area <= best.area * 6
+    const parent = holding.find((s) => s !== best && !s.cloud && s.area > best.area * 1.15 && s.area <= best.area * 6
       && bboxContains(s, best, 0.5)
       && (Math.abs(s.minX - best.minX) < 1 || Math.abs(s.maxX - best.maxX) < 1
         || Math.abs(s.minY - best.minY) < 1 || Math.abs(s.maxY - best.maxY) < 1));
@@ -314,9 +436,9 @@ export function shapeToPolygon(shape) {
 // lines; the pixels then get a say.
 export const VECTOR_CHECK_SIZE = 40;
 
-/** Is the vector answer small enough to trust without asking the pixels? */
+/** Is the vector answer small enough to trust without asking the pixels? A cloud always is. */
 export function vectorAnswerIsTagSized(shape) {
-  return Boolean(shape) && Math.max(shape.width, shape.height) <= VECTOR_CHECK_SIZE;
+  return Boolean(shape) && (shape.cloud === true || Math.max(shape.width, shape.height) <= VECTOR_CHECK_SIZE);
 }
 
 /**

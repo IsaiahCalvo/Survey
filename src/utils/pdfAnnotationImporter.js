@@ -63,11 +63,15 @@ import {
   parsePdfAppAnnotationMetadata,
 } from './pdfAppAnnotationMetadata.js';
 import {
+  drawNamedStampAppearance,
   getPdfStampRotation,
+  namedStampColor,
+  namedStampLabel,
   renderPdfStampAppearances,
 } from './pdfStampProxy.js';
 import { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 import { maxOf, minOf } from './arrayExtrema.js';
+import { normalizeCalloutBoxAnchor } from './calloutGeometry.js';
 export { buildCloudPathCommands } from './pdfAnnotationAppearance.js';
 
 const pdfImportDebug = (...args) => {
@@ -88,10 +92,11 @@ const pdfImportDebug = (...args) => {
  * - Circle (ellipses) → Fabric.js Circle
  * - Line / PolyLine / Polygon → Fabric.js Line/Polyline/Polygon
  * - Text notes / Caret / Underline / StrikeOut / Squiggly
- * - Stamp with /AP /N → locked PNG proxy
+ * - Stamp → locked PNG proxy: its /AP /N painted by pdf.js, else (no /AP, or
+ *   one pdf.js cannot paint) drawn from its /Name like Acrobat's standard set
  *
  * Unsupported types (preserved but not imported):
- * - Stamp without /AP /N, Link, Widget, Popup, FileAttachment, Sound, Movie, etc.
+ * - Widget, Popup, FileAttachment, Sound, Movie, etc.
  */
 
 // Supported annotation subtypes that we can convert to Fabric.js
@@ -120,6 +125,34 @@ const PDF_NATIVE_ANNOTATION_IDENTITY_VERSION = 1;
 const PDF_NATIVE_RECT_ROUNDING_FACTOR = 10_000;
 
 let pdfLibPromise = null;
+
+// A big drawing (Package 2: ~3,000 ink marks) reads and converts for seconds
+// in all; the page and input get a turn every ~12 ms of it. A MessageChannel
+// task, not setTimeout: browsers throttle timers in background tabs (see
+// buildRawAnnotationMetadataById), not messages.
+const IMPORT_SLICE_MS = 12;
+const importNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+function yieldToEventLoop() {
+  if (typeof MessageChannel !== 'function') return new Promise((resolve) => setTimeout(resolve, 0));
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve();
+    };
+    channel.port2.postMessage(null);
+  });
+}
+// Await before each unit of work: yields once the work since the last yield
+// passed IMPORT_SLICE_MS.
+function createImportSlicer() {
+  let sliceStartedAt = importNow();
+  return async () => {
+    if (importNow() - sliceStartedAt < IMPORT_SLICE_MS) return;
+    await yieldToEventLoop();
+    sliceStartedAt = importNow();
+  };
+}
 
 async function loadPdfLibCore() {
   if (!pdfLibPromise) {
@@ -2283,14 +2316,17 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
     const directCandidatesByPage = new Map();
     const rawAnnotationsByPage = new Map();
 
-    rawPdfDoc.getPages().forEach((page, pageIndex) => {
+    const yieldIfDue = createImportSlicer();
+    const pages = rawPdfDoc.getPages();
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+      const page = pages[pageIndex];
       const annots = page.node.lookup(PDFName.of('Annots'));
-      if (!annots || typeof annots.asArray !== 'function') return;
+      if (!annots || typeof annots.asArray !== 'function') continue;
       const pageNumber = pageIndex + 1;
       const directCandidates = [];
       const rawAnnotations = [];
 
-      annots.asArray().forEach((annotRef, annotsIndex) => {
+      const readAnnotation = (annotRef, annotsIndex) => {
         const dict = rawPdfDoc.context.lookup(annotRef);
         if (!dict || typeof dict.get !== 'function') return;
 
@@ -2481,10 +2517,15 @@ async function buildRawAnnotationMetadataById(rawPdfBytes) {
         idCandidates.forEach((candidate) => {
           metadataById.set(candidate, metadata);
         });
-      });
+      };
+      const annotRefs = annots.asArray();
+      for (let annotsIndex = 0; annotsIndex < annotRefs.length; annotsIndex += 1) {
+        await yieldIfDue();
+        readAnnotation(annotRefs[annotsIndex], annotsIndex);
+      }
       directCandidatesByPage.set(pageNumber, directCandidates);
       rawAnnotationsByPage.set(pageNumber, rawAnnotations);
-    });
+    }
 
     return { metadataById, directCandidatesByPage, rawAnnotationsByPage };
   } catch (error) {
@@ -2802,8 +2843,8 @@ function convertPdfRectToViewportRect(rect, viewport, scale = 1) {
   };
 }
 
-function convertStampToImageProxy(annotation, viewport, scale, appearanceDataUrl) {
-  if (!annotation?.hasAppearance || typeof appearanceDataUrl !== 'string') return null;
+function convertStampToImageProxy(annotation, viewport, scale, appearanceDataUrl, drawnStamp = null) {
+  if (typeof appearanceDataUrl !== 'string') return null;
   const rect = convertPdfRectToViewportRect(annotation.rect, viewport, scale);
   if (!rect || rect.width <= 0 || rect.height <= 0) return null;
   const opacity = Number(annotation.CA ?? annotation.opacity ?? 1);
@@ -2837,6 +2878,7 @@ function convertStampToImageProxy(annotation, viewport, scale, appearanceDataUrl
       // pdf.js applies the appearance stream's /Matrix while it paints the
       // PNG, but it does not apply the annotation dictionary's /Rotate.
       pdfStampAppearanceRotationBaked: !hasExplicitRotation,
+      ...(drawnStamp ? { pdfStampDrawnFromName: drawnStamp } : {}),
     },
   };
 }
@@ -5145,6 +5187,7 @@ function convertCircleToFabricCircle(annotation, viewport, scale = 1) {
       ...(counterMetadata.series?.name != null ? { seriesName: counterMetadata.series.name } : {}),
       ...(counterMetadata.series?.color != null ? { seriesColor: counterMetadata.series.color } : {}),
       ...(counterMetadata.series?.start != null ? { seriesStart: counterMetadata.series.start } : {}),
+      ...(counterMetadata.series?.order != null ? { seriesOrder: counterMetadata.series.order } : {}),
       ...(counterMetadata.group?.id != null ? { groupId: counterMetadata.group.id } : {}),
       ...(counterMetadata.group?.sequence != null ? { sequence: counterMetadata.group.sequence } : {}),
       ...(counterMetadata.data?.numberColor != null ? { numberColor: counterMetadata.data.numberColor } : {}),
@@ -5632,6 +5675,7 @@ export function convertPdfAnnotationToFabric(annotation, viewport, scale = 1, ra
         viewport,
         scale,
         context.stampAppearanceDataUrl,
+        context.stampDrawnFromName || null,
       ));
     default:
       // Unsupported annotation type
@@ -5682,10 +5726,7 @@ export function categorizeAnnotations(annotations) {
     // screen (Acrobat hides it too), and the print copy strips it for screen
     // parity. It is not "unsupported" either, so no notice is raised.
     if (isPdfAnnotationHiddenFromView(annotation)) return;
-    if (
-      SUPPORTED_SUBTYPES.includes(annotation.subtype)
-      && (annotation.subtype !== 'Stamp' || annotation.hasAppearance === true)
-    ) {
+    if (SUPPORTED_SUBTYPES.includes(annotation.subtype)) {
       supported.push(annotation);
     } else if (annotation.subtype && !SILENT_IGNORE_SUBTYPES.includes(annotation.subtype)) {
       // Only report types that are truly unsupported (not common companion annotations)
@@ -5791,6 +5832,9 @@ function normalizeImportedAppCallout(metadata) {
     textBoxHeight,
     text: metadata.text || '',
     style: metadata.style && typeof metadata.style === 'object' ? metadata.style : {},
+    ...(normalizeCalloutBoxAnchor(metadata.textBoxAnchor)
+      ? { textBoxAnchor: normalizeCalloutBoxAnchor(metadata.textBoxAnchor) }
+      : {}),
     ...(metadata.moduleId ? { moduleId: metadata.moduleId } : {}),
     ...(metadata.regionId ? { regionId: metadata.regionId } : {}),
     ...(metadata.spaceId ? { spaceId: metadata.spaceId } : {}),
@@ -5836,6 +5880,8 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
   // so a large doc does not spike pdf.js worker memory) instead of paying one
   // serial getPage+getAnnotations round-trip per page, then fold results in page
   // order so the returned maps are identical to the old sequential loop.
+  // One slicer for every page: the pages convert concurrently on this thread.
+  const yieldIfDue = createImportSlicer();
   const processPage = async (pageNum) => {
     const localUnsupported = new Set();
     const localUnsupportedCounts = new Map();
@@ -5988,8 +6034,33 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
           console.warn('Failed to render imported stamp appearances:', error);
         }
       }
+      // A stamp pdf.js could not paint (no /AP, or a failed paint) is drawn
+      // from its /Name instead of being left out.
+      const drawNamedStamp = options.drawNamedStampAppearance || drawNamedStampAppearance;
+      const stampAppearanceFor = (normalized) => {
+        const key = normalized.id || normalized.name;
+        const painted = stampAppearanceDataUrls.get(key);
+        if (normalized.subtype !== 'Stamp' || painted || options.diagnosticsOnly) {
+          return { stampAppearanceDataUrl: painted };
+        }
+        const rect = Array.isArray(normalized.rect) ? normalized.rect : null;
+        if (!rect) return {};
+        const label = namedStampLabel(normalized.name, normalized.contentsObj?.str ?? normalized.contents);
+        try {
+          const dataUrl = drawNamedStamp({
+            label,
+            color: namedStampColor(label, normalized.color ? pdfColorToHex(normalized.color) : null),
+            widthPt: Math.abs(rect[2] - rect[0]),
+            heightPt: Math.abs(rect[3] - rect[1]),
+          });
+          return dataUrl ? { stampAppearanceDataUrl: dataUrl, stampDrawnFromName: label } : {};
+        } catch {
+          return {};
+        }
+      };
 
       for (const annotation of supported) {
+        await yieldIfDue();
         try {
           const rawMetadata = getRawAnnotationMetadataForAnnotation(annotation, rawMetadataById);
           const normalized = applyRawMetadataToAnnotation(annotation, rawMetadata);
@@ -6060,7 +6131,7 @@ export async function importAnnotationsFromPdf(pdfDoc, options = {}) {
               pageNumber: pageNum,
               textContent,
               linkPageNumber,
-              stampAppearanceDataUrl: stampAppearanceDataUrls.get(annotation.id || annotation.name),
+              ...stampAppearanceFor(normalized),
             },
           );
           const convertedObjects = converted

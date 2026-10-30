@@ -4,15 +4,15 @@
  * Intended UX:
  *   - owner 2026-10-14 ("It can barely be resized ... just pick one size ...
  *     the smallest size that makes sense for all the tabs"): every panel is
- *     one fixed width, 260px - History's colour key needs 252 to stay on one
- *     line, the widest need of the five tabs (measured in Chromium at
- *     1440x900). No drag edge, no remembered width (an old saved width is
+ *     one fixed width. Owner 2026-10-28: 320px, the Survey panel's width, so
+ *     the page sits on the tool bar's centre line with both sides open
+ *     (History's colour key needs 252, the widest need of the tabs). No drag edge, no remembered width (an old saved width is
  *     ignored).
  *   - a small window may narrow it: it never leaves less than 400px of
  *     document beside whatever covers the right side (the right rail, the
  *     Survey panel), and in Survey never reaches into the survey bar's centre
  *     group (batch-7 tablet check) - never below 200px. On a 1180px iPad and
- *     wider it is always 260.
+ *     wider it is always 320.
  *   - which panel was open, and whether, comes back per user across reloads
  *     (localStorage, never throwing) - Chunk D, 2026-10-13;
  *   - opening / closing slides the panel with a transform, so the page is not
@@ -53,18 +53,18 @@ const memoryStorage = () => {
   };
 };
 
-test('one fixed width: every panel is 260px (owner 2026-10-14)', () => {
-  assert.equal(LEFT_PANEL_WIDTH, 260);
+test('one fixed width: every panel is 320px, the Survey panel width (owner 2026-10-14, 2026-10-28)', () => {
+  assert.equal(LEFT_PANEL_WIDTH, 320);
   assert.equal(LEFT_RAIL_WIDTH, 48);
   // Desktop windows and the 1180px iPad: always the one width, Survey or not.
   for (const vw of [1180, 1280, 1366, 1440, 1920, 2560]) {
-    assert.equal(leftPanelWidth(vw), 260, `${vw}`);
-    assert.equal(leftPanelWidth(vw, { rightCover: 48, surveyCentreX: null }), 260, `${vw} rail only`);
-    assert.equal(leftPanelWidth(vw, { rightCover: 368, surveyCentreX: vw / 2 }), 260, `${vw} Survey panel open`);
+    assert.equal(leftPanelWidth(vw), 320, `${vw}`);
+    assert.equal(leftPanelWidth(vw, { rightCover: 48, surveyCentreX: null }), 320, `${vw} rail only`);
+    assert.equal(leftPanelWidth(vw, { rightCover: 368, surveyCentreX: vw / 2 }), 320, `${vw} Survey panel open`);
   }
   // No width given (server render, a test): the one width.
-  assert.equal(leftPanelWidth(undefined), 260);
-  assert.equal(leftPanelWidth(0), 260);
+  assert.equal(leftPanelWidth(undefined), 320);
+  assert.equal(leftPanelWidth(0), 320);
   // The resize feature is gone: no per-panel limits, drag or key handlers.
   for (const gone of ['PANEL_WIDTHS', 'panelWidthSpec', 'panelMaxWidth', 'clampPanelWidth', 'widthFromDrag', 'widthFromKey', 'KEYBOARD_STEP']) {
     assert.equal(gone in store, false, gone);
@@ -78,10 +78,10 @@ test('a small window narrows the panel so the document and the survey bar keep r
   // Survey panel closed: the survey bar's centre spot is the limit (it stops
   // SURVEY_CENTRE_CLEARANCE short: start piece, gutter, 4 chips + "All N").
   assert.equal(SURVEY_CENTRE_CLEARANCE, 176);
-  assert.equal(leftPanelWidth(1024, { rightCover: 48, surveyCentreX: 512 }), 260);
+  assert.equal(leftPanelWidth(1024, { rightCover: 48, surveyCentreX: 512 }), 512 - 48 - 176);
   assert.equal(leftPanelWidth(900, { rightCover: 48, surveyCentreX: 450 }), 450 - 48 - 176);
   // Not in Survey on a 1024 iPad: the full width.
-  assert.equal(leftPanelWidth(1024, { rightCover: 48, surveyCentreX: null }), 260);
+  assert.equal(leftPanelWidth(1024, { rightCover: 48, surveyCentreX: null }), 320);
   // Never below the floor, however little room.
   assert.equal(LEFT_PANEL_MIN_WIDTH, 200);
   assert.equal(leftPanelWidth(500, { rightCover: 368 }), 200);
@@ -175,9 +175,10 @@ test('wiring: no resize edge, no remembered width; the phone keeps its sheet', (
   // Only which panel and whether it was open are saved.
   assert.match(sidebar, /writePanelLayout\(browserStorage\(\), layoutUserKey, \{ open: !isCollapsed, panel: activeTab \}, layoutDocumentKey\);/);
   // The rail is the 48px column plus the one panel width while laid out open,
-  // and --app-sidebar-width (the storage notice's left edge) says the same.
+  // and the width published for the storage notice's left edge says the same
+  // (chromeInsets.js, not a :root custom property).
   assert.match(sidebar, /'--left-panel-w': mobileMode \? undefined : `\$\{panelWidth\}px`,/);
-  assert.match(sidebar, /setProperty\('--app-sidebar-width', mobileMode \? '44px' : `\$\{layoutOpen \? LEFT_RAIL_W \+ panelWidth : LEFT_RAIL_W\}px`\)/);
+  assert.match(sidebar, /publishChromeInset\('left', mobileMode \? '44px' : `\$\{layoutOpen \? LEFT_RAIL_W \+ panelWidth : LEFT_RAIL_W\}px`\)/);
   // The phone keeps its sheet: no stored open state.
   assert.match(sidebar, /const stored = mobileMode \? DEFAULT_PANEL_LAYOUT : readPanelLayout\(browserStorage\(\), layoutUserKey, layoutDocumentKey\);/);
 });

@@ -63,11 +63,19 @@ import {
   rubberClamp,
   rubberScale,
 } from '../utils/elasticEdges.js';
+import {
+  DRAG_AXIS_SNAP,
+  WHEEL_AXIS_SNAP,
+  createAxisSnap,
+  limitHorizontalDelta,
+  resolveHorizontalPanRange,
+} from '../utils/panAxisRules.js';
 import { trackSurveyAnalyticsEvent } from '../utils/surveyAnalytics';
 import PdfjsTextLayer from './PdfjsTextLayer';
 import { getPageViewBase, getPageViewSizes, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
+import { destroyPdfDocument } from '../utils/destroyPdfDocument.js';
 import {
-  getDocumentMinimumScale,
+  getWidthFitMinimumScale,
   getWheelZoomScale,
   normalizeWheelDelta,
 } from '../utils/pdfZoomMath';
@@ -91,6 +99,7 @@ import {
   computeTopOverlayInset,
   computePushStripInset,
   getViewerTopOverlays,
+  measureStripRect,
   resolvePageLandingScrollTop,
   resolvePushStripScroll,
   resolveRoomCompensationBase,
@@ -109,6 +118,8 @@ import usePhoneLayout from '../hooks/usePhoneLayout.js';
 import useCoarsePointer from '../hooks/useCoarsePointer.js';
 import { hasTouchInput } from '../utils/layoutMode.js';
 import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
+import { isInTabBehind } from '../utils/tabBehind.js';
+import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import {
   compensateScrollLeftForColumnWidth,
   resolveCentredPageLeft,
@@ -121,6 +132,7 @@ import {
   compensateScrollLeftForSideRoom,
   computeSideOverlayInsets,
   getViewerSideOccluders,
+  resolveBandCentreScrollLeft,
   resolveSideRoom,
   shouldAutoRefit,
   shouldRefitForBand,
@@ -245,15 +257,12 @@ function getFitWidthForContainer(containerWidth, metrics) {
   const available = Math.max(1, Number(containerWidth) - metrics.padX * 2);
   return metrics.maxPageWidth ? Math.min(available, metrics.maxPageWidth) : available;
 }
+// Zoom-out floor: a quarter of fit width, Drawboard's (pdfZoomMath.js). The
+// height is no longer part of it; the argument stays for the callers.
 function getMinimumScaleForLayout(dims, containerHeight, metrics, containerWidth) {
-  return getDocumentMinimumScale({
-    viewportHeight: containerHeight,
-    pageHeights: dims.map((dim) => dim.h),
+  return getWidthFitMinimumScale({
     viewportWidth: getFitWidthForContainer(containerWidth, metrics),
-    pageWidths: dims.map((dim) => dim.w),
-    pageGap: metrics.gap,
-    fixedTopInset: metrics.padTop,
-    fixedBottomInset: metrics.padBottom,
+    pageWidths: dims.filter((dim) => !dim.hidden).map((dim) => dim.w),
     absoluteMinimumScale: MIN_SCALE,
     maximumScale: MAX_SCALE,
   });
@@ -413,7 +422,7 @@ function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes) {
 // the buffer it receives, so byte sources are CLONED here.
 function buildGetDocumentParams(source, password) {
   if (source == null) return null;
-  const base = { isEvalSupported: false };
+  const base = { isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib) };
   if (password) base.password = password;
   if (source instanceof Uint8Array) return { ...base, data: source.slice(0) };
   if (source instanceof ArrayBuffer) return { ...base, data: new Uint8Array(source.slice(0)) };
@@ -1423,6 +1432,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   onFormFieldClick,
   // eslint-disable-next-line no-unused-vars
   onFormFieldDoubleClick,
+  // False while this viewer's tab is behind another (utils/tabBehind.js).
+  tabActive = true,
 }, ref) {
   const viewerId = useMemo(() => id || `pdfjsViewer_${(pdfjsContainerSeq += 1)}`, [id]);
   const rotation = 0; // intrinsic /Rotate is baked by pdf.js; app handles rotation by rewriting bytes
@@ -1561,7 +1572,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const appliedSideRoomRef = useRef(NO_SIDE_INSETS);
   const sideScrollSnapshotRef = useRef(null);
   const sideInsetRef = useRef(NO_SIDE_INSETS);
-  // The zoom-out floor (the whole document fits) is measured against the band
+  // The sideways glide that centres a fitting page between the panels, and
+  // the side-panel measurer's handles for a tab coming back to the front.
+  const bandCentreGlideRef = useRef(null);
+  const sideMeasureRef = useRef(null);
+  // The zoom-out floor (a quarter of fit width) is measured against the band
   // between open side panels, not the full viewer: otherwise a fit to that
   // band (refitForBand) was clamped back to the full-width fit and a one-page
   // document stayed under the panels (desktop pass 2026-10-21, item 1).
@@ -1577,6 +1592,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   const lastScrollAtRef = useRef(-Infinity);
   const rasterQuietTimerRef = useRef(0);
   const gestureHoldsRasterRef = useRef(() => false);
+  const pressHeldRef = useRef(false); // a pointer is down in the viewer
   if (!rasterQueueRef.current) {
     rasterQueueRef.current = createPageRasterQueue({
       isVisible: (index) => {
@@ -1610,6 +1626,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   panTextMarkAtRef.current = panTextMarkAt;
   const panDeltaRef = useRef({ x: 0, y: 0 });
   const panRafRef = useRef(0);
+  // Rails for a drag pan (mouse, pen, finger): utils/panAxisRules.js.
+  const panAxisSnapRef = useRef(null);
+  if (!panAxisSnapRef.current) panAxisSnapRef.current = createAxisSnap(DRAG_AXIS_SNAP);
   // Shared flick physics (src/utils/panMomentum.js) drives BOTH the mobile
   // touch pan and the desktop mouse / space-drag pan, so the two surfaces can
   // never drift into two different feels.
@@ -1659,6 +1678,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // glide, a bounce or a scroll moves the page only pages showing nothing do.
   gestureHoldsRasterRef.current = (kind = 'sharpen') => {
     if (zoomInteractionRef.current || mobileTouchRef.current?.mode === 'pinch') return true;
+    if (kind === 'prefetch' && pressHeldRef.current) return true;
     const moving = panInteractionRef.current
       || Boolean(elasticRef.current?.anim)
       || performance.now() - lastScrollAtRef.current < RASTER_SCROLL_QUIET_MS;
@@ -1689,6 +1709,30 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     scheduleRasterQuietPump();
   }, [scheduleRasterQuietPump]);
   useEffect(() => () => { if (rasterQuietTimerRef.current) clearTimeout(rasterQuietTimerRef.current); }, []);
+  // Drawing a page ahead of need (its far-zoom thumbnail) waits while a
+  // pointer is pressed in the viewer: dragging, resizing or drawing a mark
+  // keeps the page still, yet each pdf.js slice of that draw is a frame's
+  // worth of main thread taken from the gesture.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return undefined;
+    const onDown = () => { pressHeldRef.current = true; };
+    const onUp = () => {
+      if (!pressHeldRef.current) return;
+      pressHeldRef.current = false;
+      scheduleRasterQuietPump();
+    };
+    el.addEventListener('pointerdown', onDown, { capture: true, passive: true });
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onUp, true);
+    window.addEventListener('blur', onUp);
+    return () => {
+      el.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+      window.removeEventListener('blur', onUp);
+    };
+  }, [scheduleRasterQuietPump]);
   const layoutMetrics = useMemo(() => resolveLayoutMetrics(phoneLayout), [phoneLayout]);
   const layoutMetricsRef = useRef(layoutMetrics);
   layoutMetricsRef.current = layoutMetrics;
@@ -1733,6 +1777,29 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const nextLeft = Math.min(Math.max(0, el.scrollLeft), maxLeft);
     if (Math.abs(el.scrollLeft - nextLeft) > 0.5) el.scrollLeft = nextLeft;
   }, [getHorizontalScrollMax]);
+
+  // Where a pan may take scrollLeft from here (docs/VIEWER-PAN-ZOOM-RULES.md):
+  // a page that fits the band between the side panels never moves sideways,
+  // except to slide out from under a panel that opened over it.
+  const getHorizontalPanRange = useCallback(() => {
+    const el = scrollerRef.current;
+    const scale = scaleRef.current;
+    const maxLeft = getHorizontalScrollMax(scale);
+    if (!el || zoomInteractionRef.current || mobileTouchRef.current?.mode === 'pinch') {
+      return { lo: 0, hi: maxLeft, fits: false };
+    }
+    const pageWidth = widestPagePtRef.current * scale;
+    return resolveHorizontalPanRange({
+      scrollLeft: el.scrollLeft,
+      maxLeft,
+      pageLeft: sideRoomRef.current.left + (getColumnWidthAtScale(scale) - pageWidth) / 2 - el.scrollLeft,
+      pageWidth,
+      viewportWidth: containerWRef.current,
+      insetLeft: sideInsetRef.current.left,
+      insetRight: sideInsetRef.current.right,
+      margin: layoutMetricsRef.current.padX,
+    });
+  }, [getColumnWidthAtScale, getHorizontalScrollMax]);
 
   // ---- load document --------------------------------------------------------
   // Owner 2026-10-01 (instant page operations): when the new source is a page
@@ -1812,7 +1879,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       thumbCacheRef.current.clear();
       if (prev) {
         pageRasterCacheClearDocument(rasterDocKey(prev));
-        if (getPageViewBase(prev) !== getPageViewBase(externalPdf)) { try { prev.destroy(); } catch { /* noop */ } }
+        if (getPageViewBase(prev) !== getPageViewBase(externalPdf)) void destroyPdfDocument(prev);
       }
       cb.current.onPageContainersChange?.({}, { reason: 'document_unload', count: 0 });
       cb.current.onDocumentUnload?.();
@@ -1828,7 +1895,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       try {
         const pdf = externalPdf || await task.promise;
         if (cancelled) {
-          if (!externalPdf) { try { pdf.destroy(); } catch { /* noop */ } }
+          if (!externalPdf) void destroyPdfDocument(pdf);
           return;
         }
         pdfRef.current = pdf;
@@ -1847,8 +1914,8 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
 
         const el = scrollerRef.current;
         const cw = el ? el.clientWidth : 800;
-        const hasViewport = el && cw > 0 && el.clientHeight > 0;
-        // Inactive tabs can finish loading with display:none. Fit once the real
+        const hasViewport = el && !isInTabBehind(el) && cw > 0 && el.clientHeight > 0;
+        // Inactive tabs can finish loading behind. Fit once the real
         // viewport appears, rather than fitting a zero-sized box to the zoom floor.
         if (!hasViewport) pendingViewportFitRef.current = { source: activeSource, target: 'fit' };
         // A fresh open lands on Fit page (PDFViewer asks for it right after
@@ -2091,7 +2158,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // ---- which pages are mounted ---------------------------------------------
   const recomputeWindow = useCallback(() => {
     const el = scrollerRef.current;
-    if (!el || !el.clientWidth || !el.clientHeight || !layout.tops.length) return;
+    if (!el || isInTabBehind(el) || !el.clientWidth || !el.clientHeight || !layout.tops.length) return;
     // layout.tops are raw-content-space; padTop shifts pages down relative to
     // scroll, so the visibility window is expressed in raw space by subtracting it.
     const padTop = layout.padTop;
@@ -2142,6 +2209,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el) return undefined;
     const update = () => {
       // A hidden tab has no viewport; keep its last measured page window.
+      if (isInTabBehind(el)) return;
       if (el.clientWidth > 0) setContainerW(el.clientWidth);
       // containerH drives padTop (vertical centering). Guard against a 0 height
       // during mount/teardown so padTop doesn't transiently center against nothing.
@@ -2187,12 +2255,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const observed = new Set();
     const measure = () => {
       raf = 0;
-      if (!el.clientWidth || !el.clientHeight) return;
+      if (isInTabBehind(el) || !el.clientWidth || !el.clientHeight) return;
       const strips = getViewerTopOverlays().filter((node) => node?.isConnected);
       topReserveRef.current = strips.some((node) => node.getAttribute?.('data-viewer-top-reserve') === 'true');
       const inset = computeTopOverlayInset(
         el.getBoundingClientRect(),
-        strips.map((node) => node.getBoundingClientRect()),
+        strips.map((node) => measureStripRect(node)),
       );
       if (inset !== topInsetRef.current) {
         topInsetRef.current = inset;
@@ -2200,9 +2268,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       }
       // A push strip (the Survey bar) moves what was under it down instead of
       // covering it (desktop/tablet pass 2026-10-21, item 4).
+      // The bar is also a strip, so it grows the room above the page, and the
+      // room's own layout effect then scrolls down to hold the page still.
+      // Pushing before that has landed found no scroll to take back at the top
+      // of the document, and the bar kept covering the page's top (owner
+      // 2026-10-26, item 38): wait for the room, then push.
+      if (appliedTopRoomRef.current !== topRoomRef.current) { schedule(); return; }
       const pushRects = [];
       strips.forEach((node) => {
-        if (node.getAttribute?.('data-viewer-top-push') === 'true') pushRects.push(node.getBoundingClientRect());
+        if (node.getAttribute?.('data-viewer-top-push') === 'true') pushRects.push(measureStripRect(node));
       });
       const pushInset = computePushStripInset(el.getBoundingClientRect(), pushRects);
       const push = pushStripRef.current;
@@ -2214,7 +2288,22 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
           applied: push.applied,
         });
         pushStripRef.current = { inset: pushInset, applied: next.applied };
-        if (Math.abs(next.scrollTop - el.scrollTop) > 0.5) el.scrollTop = next.scrollTop;
+        if (Math.abs(next.scrollTop - el.scrollTop) > 0.5) {
+          const before = el.scrollTop;
+          el.scrollTop = next.scrollTop;
+          // The page glides into its new place instead of stepping a bar's
+          // height in one frame (owner 2026-10-26, item 38: "top bars need to
+          // come down smoothly"): held where it was, then eased home on the
+          // edge spring, drawn in this same frame as the scroll change.
+          const shift = before - el.scrollTop;
+          if (Math.abs(shift) > 0.5 && !prefersReducedMotion()) {
+            const hold = layoutShiftRef.current;
+            hold.absorb(shift, performance.now());
+            layoutShiftYRef.current = hold.frame(performance.now()).y;
+            paintLiveFrame();
+            if (!layoutShiftRafRef.current) layoutShiftRafRef.current = requestAnimationFrame(stepLayoutShift);
+          }
+        }
       }
     };
     const schedule = () => {
@@ -2246,7 +2335,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     // attached (found live 2026-09-23: the strips' room stayed 0). The COUNT,
     // not the pageSizes array, which is a new array on many renders and would
     // tear the observer down before its first measurement ran.
-  }, [syncTopRoom, pageSizes?.length || 0]);
+  }, [paintLiveFrame, stepLayoutShift, syncTopRoom, pageSizes?.length || 0]);
 
   // Hold the page still when the room changes: move the scroll offset by the
   // same amount, in the same frame the content's top margin changes.
@@ -2302,10 +2391,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return undefined;
     let raf = 0;
+    let lastWidth = 0;
     const observed = new Set();
     const measure = () => {
       raf = 0;
-      if (!el.clientWidth || !el.clientHeight) return;
+      if (isInTabBehind(el) || !el.clientWidth || !el.clientHeight) return;
+      const widthChanged = lastWidth > 0 && Math.abs(el.clientWidth - lastWidth) > 0.5;
+      lastWidth = el.clientWidth;
       const panels = getViewerSideOccluders()
         .filter((node) => node?.isConnected && node.getAttribute?.('data-viewer-occluder') === 'side');
       const next = computeSideOverlayInsets(
@@ -2320,8 +2412,79 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // part of a fitted page re-fits it to the band between the panels
         // (and a band-driven re-fit grows back when the panel closes). Next
         // frame, once the side room and its scroll compensation are applied.
-        requestAnimationFrame(() => refitForBand());
+        requestAnimationFrame(() => { refitForBand(); requestCentre(); });
+      } else if (widthChanged) {
+        requestCentre();
       }
+    };
+    // Owner 2026-10-28 ("sometimes it's off-center, sometimes it's not ... it
+    // needs to be more consistent"): a page that fits between the panels sits
+    // centred between them, after a panel opens or closes, after its tab comes
+    // back to the front and after the viewer changes width. This replaces the
+    // 2026-09-23 rule that a panel floats over a page that stays put, which
+    // left the page under an opening panel (260 px off) and kept whatever
+    // offset the tab had when you came back. It glides there like a page move
+    // (250 ms, stops when you scroll, press or touch). A page wider than the
+    // band stays where it is: you are reading part of it.
+    let centreRaf = 0;
+    let centreTries = 0;
+    let quietFrames = 0;
+    const cancelCentreGlide = () => {
+      const glide = bandCentreGlideRef.current;
+      bandCentreGlideRef.current = null;
+      glide?.cancel('cancel');
+    };
+    const bandCentreTarget = () => {
+      const s = scaleRef.current;
+      const i = Math.max(0, (currentPageRef.current || 1) - 1);
+      const d = dimsPtRef.current[i];
+      if (!d || !(s > 0)) return null;
+      const insets = sideInsetRef.current;
+      const pageWidth = d.w * s;
+      if (pageWidth > el.clientWidth - insets.left - insets.right + 0.5) return null;
+      return resolveBandCentreScrollLeft({
+        pageLeft: getPageLeftAtScaleRef.current(i, s),
+        pageWidth,
+        viewportWidth: el.clientWidth,
+        insets,
+        maxScrollLeft: el.scrollWidth - el.clientWidth,
+      });
+    };
+    const centreInBand = () => {
+      centreRaf = 0;
+      if (!el.isConnected || isInTabBehind(el) || !(el.clientWidth > 0)) return;
+      // Wait out the side room commit, a zoom (its anchor or glide) and a
+      // gesture, and then two still frames, so a re-fit lands first.
+      const busy = gestureRef.current || pendingAnchorRef.current || zoomGlideRef.current
+        || appliedSideRoomRef.current !== sideRoomRef.current;
+      quietFrames = busy ? 0 : quietFrames + 1;
+      if (quietFrames < 2) {
+        if (centreTries++ < 60) centreRaf = requestAnimationFrame(centreInBand);
+        return;
+      }
+      const target = bandCentreTarget();
+      if (target == null || Math.abs(target - el.scrollLeft) < 0.5) return;
+      cancelCentreGlide();
+      let glide = null;
+      // The side room is held while it glides (the scroll handler would
+      // otherwise shrink it under the glide) and settled once it ends.
+      glide = startPageGlide({
+        el,
+        to: target,
+        axis: 'left',
+        shouldStop: () => Boolean(gestureRef.current || pendingAnchorRef.current || zoomGlideRef.current),
+        onEnd: () => {
+          if (glide && bandCentreGlideRef.current !== glide) return;
+          bandCentreGlideRef.current = null;
+          syncSideRoom();
+        },
+      });
+      bandCentreGlideRef.current = glide;
+    };
+    const requestCentre = () => {
+      centreTries = 0;
+      quietFrames = 0;
+      if (!centreRaf) centreRaf = requestAnimationFrame(centreInBand);
     };
     const refitForBand = () => {
       const lastFit = lastFitRef.current;
@@ -2329,7 +2492,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const s = scaleRef.current;
       if (Math.abs(s - lastFit.scale) > 1e-3) return; // zoomed since the fit: leave it
       const d = dimsPtRef.current[lastFit.pageIndex];
-      if (!d || !(el.clientWidth > 0)) return;
+      if (!d || isInTabBehind(el) || !(el.clientWidth > 0)) return;
       const insets = sideInsetRef.current;
       if (!shouldRefitForBand({
         pageLeft: getPageLeftAtScaleRef.current(lastFit.pageIndex, s) - el.scrollLeft,
@@ -2375,13 +2538,17 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     syncObserved();
     const unsubscribe = subscribeViewerSideOccluders(syncObserved);
     window.addEventListener('resize', schedule);
+    sideMeasureRef.current = { schedule, requestCentre };
     return () => {
+      sideMeasureRef.current = null;
       unsubscribe();
       window.removeEventListener('resize', schedule);
       Array.from(observed).forEach(forget);
       mo?.disconnect();
       ro.disconnect();
       if (raf) cancelAnimationFrame(raf);
+      if (centreRaf) cancelAnimationFrame(centreRaf);
+      cancelCentreGlide();
     };
     // pageCount: the scroller only mounts once the document has pages (see the
     // strip measurer above).
@@ -2440,9 +2607,11 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         // Strips closed while you were scrolled up into their room: give the
         // room back as it scrolls off screen.
         if (topRoomRef.current > topInsetRef.current) syncTopRoom();
-        // Same for a side panel closed while its room is on screen.
-        if (sideRoomRef.current.left > sideInsetRef.current.left
-          || sideRoomRef.current.right > sideInsetRef.current.right) syncSideRoom();
+        // Same for a side panel closed while its room is on screen (held while
+        // the centring glide runs; it settles the room when it ends).
+        if (!bandCentreGlideRef.current
+          && (sideRoomRef.current.left > sideInsetRef.current.left
+            || sideRoomRef.current.right > sideInsetRef.current.right)) syncSideRoom();
         recomputeWindow();
       });
     };
@@ -2616,8 +2785,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let shownX = newX - left;
     let shownY = newY - top;
     if (elastic) {
-      const shownLeft = rubberClamp(freeLeftAt(displayScale), 0,
-        getHorizontalScrollMax(displayScale), containerWRef.current);
+      // A page that fits sideways does not stretch sideways under a pinch
+      // either (docs/VIEWER-PAN-ZOOM-RULES.md): it zooms about its centre
+      // line until it is wider than the band between the panels.
+      const band = containerWRef.current - sideInsetRef.current.left - sideInsetRef.current.right;
+      const displayMaxLeft = getHorizontalScrollMax(displayScale);
+      const shownLeft = widestPagePtRef.current * displayScale <= band + 0.5
+        ? Math.min(Math.max(0, freeLeftAt(displayScale)), displayMaxLeft)
+        : rubberClamp(freeLeftAt(displayScale), 0, displayMaxLeft, containerWRef.current);
       const shownTop = rubberClamp(freeTopAt(displayScale), 0,
         predictedMaxTopAt(displayScale), containerHRef.current);
       shownX = pointXAt(displayScale) - shownLeft;
@@ -3303,8 +3478,20 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const el = scrollerRef.current;
     if (!el || isMobileSurface) return undefined;
     const overscroll = createWheelOverscroll();
+    const rails = createAxisSnap(WHEEL_AXIS_SNAP);
+    const hasOwnWheelScroller = (target, root) => {
+      for (let node = target; node && node !== root && node.nodeType === 1; node = node.parentElement) {
+        if (node.isContentEditable || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT') return true;
+        if (node.scrollHeight > node.clientHeight + 1 || node.scrollWidth > node.clientWidth + 1) {
+          const { overflowX, overflowY } = getComputedStyle(node);
+          if (/auto|scroll/.test(overflowX) || /auto|scroll/.test(overflowY)) return true;
+        }
+      }
+      return false;
+    };
     let raf = 0;
     let idleTimer = 0;
+    let restoreLeft = null;
     const show = (x, y) => {
       const prev = wheelShiftRef.current;
       if (prev.x === x && prev.y === y) return false;
@@ -3331,7 +3518,6 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (!(e.ctrlKey || e.metaKey) && zoomGlideRef.current) zoomGlideFinishRef.current?.();
       // Zoom (ctrl/cmd+wheel) owns the gesture: a stretch springs home under it.
       if (e.ctrlKey || e.metaKey || gestureRef.current) { if (overscroll.active()) release(); return; }
-      if (prefersReducedMotion()) return;
       let dx = normalizeWheelDelta(e.deltaX, e.deltaMode, el.clientWidth);
       let dy = normalizeWheelDelta(e.deltaY, e.deltaMode, el.clientHeight);
       if (e.shiftKey && dx === 0) { dx = dy; dy = 0; }
@@ -3339,6 +3525,42 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       const notch = e.deltaMode !== 0 || Math.max(Math.abs(dx), Math.abs(dy)) >= 50;
       const maxLeft = getHorizontalScrollMax(scaleRef.current);
       const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      // Axis rules (docs/VIEWER-PAN-ZOOM-RULES.md): a touchpad scroll that
+      // is almost straight runs on a rail, and a page that fits sideways
+      // never scrolls or stretches sideways. Wherever the browser could move
+      // the page sideways (zoomed in, or a side panel's scroll room) the
+      // viewer scrolls every touchpad event itself: Chrome only lets a
+      // stream's later events be cancelled if its first one was, so rails
+      // that skipped "already straight" events would come and go mid-swipe.
+      // With no sideways scroll at all the browser keeps scrolling on its own.
+      const range = getHorizontalPanRange();
+      let ruledX = dx;
+      let ruledY = dy;
+      if (!notch && maxLeft > 0.5 && !range.fits) ({ dx: ruledX, dy: ruledY } = rails.step(dx, dy, now));
+      ruledX = limitHorizontalDelta(ruledX, el.scrollLeft, range);
+      // A live form field or list box under the pointer that can scroll on
+      // its own keeps the wheel (PdfjsFormLayer's textarea / select).
+      const takeOver = maxLeft > 0.5 && (!notch || ruledX !== dx || ruledY !== dy)
+        && !hasOwnWheelScroller(e.target, el);
+      const manual = takeOver && e.cancelable;
+      if (manual) {
+        e.preventDefault();
+      } else if (takeOver && range.fits && ruledX !== dx && restoreLeft === null) {
+        // Too late to stop the browser: put a locked page back before the
+        // next paint.
+        restoreLeft = el.scrollLeft + ruledX;
+        requestAnimationFrame(() => {
+          if (restoreLeft !== null) el.scrollLeft = restoreLeft;
+          restoreLeft = null;
+        });
+      }
+      dx = ruledX;
+      dy = ruledY;
+      const scrollManually = (byX, byY) => {
+        if (byX) el.scrollLeft += byX;
+        if (byY) el.scrollTop += byY;
+      };
+      if (prefersReducedMotion()) { if (manual) scrollManually(dx, dy); return; }
       const left = Math.min(Math.max(0, el.scrollLeft), maxLeft);
       const top = Math.min(Math.max(0, el.scrollTop), maxTop);
       // One axis per event (the dominant one), so a vertical swipe's sideways
@@ -3358,10 +3580,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       });
       if (result.prevent) {
         e.preventDefault();
+        // The event pulled a stretch back in: only what is left of it
+        // scrolls on that axis.
+        if (manual) scrollManually(vertical ? dx : 0, vertical ? 0 : dy);
         if (result.scrollBy) {
           if (vertical) el.scrollTop += result.scrollBy;
           else el.scrollLeft += result.scrollBy;
         }
+      } else if (manual) {
+        scrollManually(dx, dy);
       }
       if (overscroll.active()) schedule();
       if (idleTimer) clearTimeout(idleTimer);
@@ -3387,7 +3614,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       overscroll.reset();
       if (show(0, 0)) setLiveGestureFrame((frame) => frame + 1);
     };
-  }, [getHorizontalScrollMax, isMobileSurface, paintLiveFrame]);
+  }, [getHorizontalPanRange, getHorizontalScrollMax, isMobileSurface, paintLiveFrame]);
 
   // ---- pan: Space always overrides the active tool; writes are rAF-batched --
   const setPanInteraction = useCallback((active) => {
@@ -3408,6 +3635,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const dragging = Boolean(panPointerRef.current);
     const armed = spacePanRef.current || interactionModeRef.current === 'Pan';
     el.dataset.spacePan = dragging ? 'dragging' : (armed ? 'armed' : 'off');
+    // Held Space pans from anywhere; the Pan tool lets a selection's grabbers
+    // keep their own cursor (the style block below).
+    el.dataset.panSource = spacePanRef.current ? 'space' : 'tool';
     el.style.cursor = dragging ? 'grabbing' : (armed ? 'grab' : '');
     // Pan over text: while the I-beam shows (or a Pan text selection is live)
     // no ancestor of the text may be user-select:none, or the browser refuses
@@ -3431,9 +3661,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const excess = panExcessRef.current;
     // Pure step per axis (elasticEdges.js); a page that fits has no scroll
     // range, so all of the finger's travel is excess in the finger's direction.
-    const sx = resolveElasticPanStep({
-      scroll: el.scrollLeft, max: getHorizontalScrollMax(scaleRef.current), excess: excess.x, delta: dx, dimension: containerWRef.current,
-    });
+    // Sideways, a page that fits does not move or stretch at all (only out
+    // from under a panel): docs/VIEWER-PAN-ZOOM-RULES.md.
+    const range = getHorizontalPanRange();
+    const sx = range.fits
+      ? { scroll: el.scrollLeft + limitHorizontalDelta(-dx, el.scrollLeft, range), excess: 0, shown: 0 }
+      : resolveElasticPanStep({
+        scroll: el.scrollLeft, max: range.hi, excess: excess.x, delta: dx, dimension: containerWRef.current,
+      });
     const sy = resolveElasticPanStep({
       scroll: el.scrollTop, max: el.scrollHeight - el.clientHeight, excess: excess.y, delta: dy, dimension: containerHRef.current,
     });
@@ -3461,7 +3696,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     if (!excess.x && !excess.y) elasticRef.current = null;
     paint();
-  }, [getHorizontalScrollMax, paintLiveFrame]);
+  }, [getHorizontalPanRange, paintLiveFrame]);
 
   // The over-the-bounce pan edge offset springs home on its own clock.
   const stepPanEdge = useCallback(() => {
@@ -3482,6 +3717,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // past the edge. Reduced motion keeps the hard edge. (Was inside the phone
   // touch effect; shared so desktop drags spring the same way.)
   const beginElasticPan = useCallback(() => {
+    panAxisSnapRef.current.reset();
     const elastic = !prefersReducedMotion();
     const caught = catchElastic();
     touchPanElasticRef.current = elastic;
@@ -3543,20 +3779,29 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (panEdgeRafRef.current) cancelAnimationFrame(panEdgeRafRef.current);
   }, []);
 
+  // A frame's worth of drag travel, kept on its rail (utils/panAxisRules.js).
+  // A page locked sideways needs no rail: its up/down part moves as it is.
+  const railPanDelta = useCallback((delta) => {
+    if (!delta.x && !delta.y) return delta;
+    if (getHorizontalPanRange().fits) return delta;
+    const railed = panAxisSnapRef.current.step(delta.x, delta.y, performance.now());
+    return { x: railed.dx, y: railed.dy };
+  }, [getHorizontalPanRange]);
+
   const flushPan = useCallback(() => {
     if (panRafRef.current) {
       cancelAnimationFrame(panRafRef.current);
       panRafRef.current = 0;
     }
     const el = scrollerRef.current;
-    const delta = panDeltaRef.current;
+    const delta = railPanDelta(panDeltaRef.current);
     panDeltaRef.current = { x: 0, y: 0 };
     if (!el || (!delta.x && !delta.y)) return;
     if (touchPanElasticRef.current) { applyElasticPan(delta.x, delta.y); return; }
-    el.scrollLeft -= delta.x;
+    el.scrollLeft += limitHorizontalDelta(-delta.x, el.scrollLeft, getHorizontalPanRange());
     el.scrollTop -= delta.y;
     clampHorizontalScroll();
-  }, [applyElasticPan, clampHorizontalScroll]);
+  }, [applyElasticPan, clampHorizontalScroll, getHorizontalPanRange, railPanDelta]);
 
   const schedulePan = useCallback((dx, dy) => {
     panDeltaRef.current.x += dx;
@@ -3565,15 +3810,15 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     panRafRef.current = requestAnimationFrame(() => {
       panRafRef.current = 0;
       const el = scrollerRef.current;
-      const delta = panDeltaRef.current;
+      const delta = railPanDelta(panDeltaRef.current);
       panDeltaRef.current = { x: 0, y: 0 };
       if (!el) return;
       if (touchPanElasticRef.current) { applyElasticPan(delta.x, delta.y, true); return; }
-      el.scrollLeft -= delta.x;
+      el.scrollLeft += limitHorizontalDelta(-delta.x, el.scrollLeft, getHorizontalPanRange());
       el.scrollTop -= delta.y;
       clampHorizontalScroll();
     });
-  }, [applyElasticPan, clampHorizontalScroll]);
+  }, [applyElasticPan, clampHorizontalScroll, getHorizontalPanRange, railPanDelta]);
 
   const restorePanInteraction = useCallback(() => {
     setPanInteraction(spacePanRef.current || Boolean(panPointerRef.current));
@@ -3592,6 +3837,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // Kept fresh during render (same pattern as cb/scaleRef above) so the single
   // long-lived momentum runner never closes over a stale callback identity.
   panMomentumHooksRef.current.clamp = clampHorizontalScroll;
+  panMomentumHooksRef.current.range = getHorizontalPanRange;
   panMomentumHooksRef.current.restore = restorePanInteraction;
   panMomentumHooksRef.current.mark = markPanCoast;
   // Phone only: a flick that runs into an edge hands its speed to the edge
@@ -3658,10 +3904,13 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         if (!el) return;
         const beforeLeft = el.scrollLeft;
         const beforeTop = el.scrollTop;
-        el.scrollLeft += dx;
+        // A page that fits sideways glides only up and down, and never
+        // bounces off a side it was never allowed to reach.
+        const stepX = limitHorizontalDelta(dx, beforeLeft, panMomentumHooksRef.current.range?.());
+        el.scrollLeft += stepX;
         el.scrollTop += dy;
         panMomentumHooksRef.current.clamp?.();
-        panMomentumHooksRef.current.bounce?.(dx - (el.scrollLeft - beforeLeft), dy - (el.scrollTop - beforeTop));
+        panMomentumHooksRef.current.bounce?.(stepX - (el.scrollLeft - beforeLeft), dy - (el.scrollTop - beforeTop));
       },
       onFrame: ({ left, top, vx, vy }) => {
         panMomentumHooksRef.current.mark?.(left, top);
@@ -3727,7 +3976,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       try { el.releasePointerCapture(pointer.id); } catch { /* already released */ }
     }
     updatePanPresentation();
-    const release = glide && pointer ? panVelocityRef.current.release(options?.at ?? performance.now()) : null;
+    const measured = glide && pointer ? panVelocityRef.current.release(options?.at ?? performance.now()) : null;
+    // The glide runs along the rail the drag ended on.
+    const release = measured ? { ...measured, ...panAxisSnapRef.current.release(measured.vx, measured.vy) } : null;
     panVelocityRef.current.reset();
     // A mouse drag past an edge springs home like a finger (any release; a
     // stop-dead one from rest), and its glide bounces off the far edge.
@@ -3748,6 +3999,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     let spaceForControl = false;
     const activateSpacePan = (event) => {
       if (!isSpaceKey(event)) return;
+      // Every open tab keeps its viewer; only the front one answers keys
+      // (docs/TAB-SWITCHING.md S6). A tab behind used to arm its own pan and,
+      // on a quick tap, flip its tool to Pan.
+      if (isInTabBehind(scrollerRef.current)) return;
       if (isEditableTarget(event.target) || isEditableTarget(document.activeElement)) return;
       if (!spacePanRef.current && spaceBelongsToFocusedControl(document.activeElement, { tabbedTo: focusModality.tabbedTo() })) {
         spaceForControl = true;
@@ -3769,6 +4024,9 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     };
     const releaseSpacePan = (event) => {
       if (event?.type === 'keyup' && !isSpaceKey(event)) return;
+      // A tab behind holds no pan of its own, and must not cancel the key-up
+      // that presses a focused button in the front tab.
+      if (event?.type === 'keyup' && !spacePanRef.current && isInTabBehind(scrollerRef.current)) return;
       const passedToControl = spaceForControl;
       spaceForControl = false;
       if (event?.type === 'keyup' && !passedToControl) {
@@ -4242,8 +4500,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       setMobileTouchMode(null);
       flushPan();
       // Let go while pulled past an edge: that axis carries its speed on
-      // (glide back in, or the edge spring) - see releaseElasticPan.
-      const release = releaseElasticPan(velocityX, velocityY);
+      // (glide back in, or the edge spring) - see releaseElasticPan. The
+      // glide runs along the rail the drag ended on.
+      const railed = panAxisSnapRef.current.release(velocityX, velocityY);
+      const release = releaseElasticPan(railed.vx, railed.vy);
       releaseLayoutShift();
       startPanInertia(release.vx, release.vy, { elastic: release.elastic, touch: true });
     };
@@ -4771,7 +5031,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     if (!el) return;
     let newScale = target;
     const isFit = target === 'fit' || target === 'fitw' || target === 'fith';
-    if (isFit && !(el.clientWidth > 0 && el.clientHeight > 0)) {
+    if (isFit && (isInTabBehind(el) || !(el.clientWidth > 0 && el.clientHeight > 0))) {
       pendingViewportFitRef.current = { source: latestActiveSourceRef.current, target, options };
       return;
     }
@@ -4844,8 +5104,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const inset = Math.min(topInsetRef.current, el.clientHeight);
     applyAnchoredScale(newScale, side.left + bandW / 2, inset + (el.clientHeight - inset) / 2);
     if (isFit && lastFitRef.current) lastFitRef.current.scale = scaleRef.current;
-    // An automatic re-fit stops here: the visible middle stays put.
-    if (!isFit || (auto && !band) || !dimsPtRef.current.length) return;
+    // An automatic re-fit stops here: the visible middle stays put. The first
+    // fit since the document opened still lands across: a panel open at load
+    // can be measured before it, so no band re-fit follows to move the page
+    // out from under the panel.
+    const firstFit = auto && !band && !lastFit;
+    if (!isFit || (auto && !band && !firstFit) || !dimsPtRef.current.length) return;
     // A fit you pick lands the page. Fit page / Fit height promise the whole
     // page height on screen: its own top gap just below any tool strips, which
     // with the fitted scale leaves the matching gap at the bottom. Anchoring on
@@ -4865,7 +5129,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       insets: side,
       maxScrollLeft: getHorizontalScrollMax(s),
     });
-    const landTop = target !== 'fitw' && !band ? landing.scrollTop : null;
+    const landTop = target !== 'fitw' && !band && !firstFit ? landing.scrollTop : null;
     const landLeft = landing.scrollLeft;
     if (Math.abs(scaleRef.current - before) > 1e-4 && pendingAnchorRef.current) {
       pendingAnchorRef.current = {
@@ -4882,6 +5146,16 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         else el.scrollTop = Math.max(0, landTop);
       }
       el.scrollLeft = landLeft;
+      // A zoom that has not laid out yet (the first fit, when a panel was
+      // open at load) would land its older anchor over this one on commit and
+      // leave the page under the panel.
+      if (pendingAnchorRef.current) {
+        pendingAnchorRef.current = {
+          ...pendingAnchorRef.current,
+          ...(landTop != null ? { top: landTop } : null),
+          left: landLeft,
+        };
+      }
     }
   }, [applyAnchoredScale, getPageLeftAtScale, getHorizontalScrollMax, phoneLayout]);
   zoomToScaleRef.current = zoomToScale;
@@ -4904,9 +5178,21 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const pending = pendingViewportFitRef.current;
     const el = scrollerRef.current;
     if (!pending || pending.source !== activeSource || !pageSizes.length
-      || !(el?.clientWidth > 0 && el.clientHeight > 0)) return;
+      || isInTabBehind(el) || !(el?.clientWidth > 0 && el.clientHeight > 0)) return;
     zoomToScale(pending.target, pending.options);
   }, [activeSource, containerW, containerH, pageSizes, viewportFitRevision, zoomToScale]);
+  // Coming to the front: its size did not change (a tab behind keeps its
+  // layout), so no ResizeObserver fires. Resume a fit asked for while behind
+  // in this same frame.
+  useLayoutEffect(() => {
+    if (tabActive && pendingViewportFitRef.current) setViewportFitRevision((revision) => revision + 1);
+    // Back at the front: measure the panels again (they may have opened or
+    // closed while it was behind) and centre the page between them.
+    if (tabActive) {
+      sideMeasureRef.current?.schedule();
+      sideMeasureRef.current?.requestCentre();
+    }
+  }, [tabActive]);
 
   // RULED 2026-09-28 owner: History option A — clicking a History row takes
   // you to the mark: its page, zoomed so the mark fills about 40% of the part
@@ -4916,6 +5202,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
   // blow up to full magnification. `rect` is in page units (the annotation
   // layer's viewBox). Goes through applyAnchoredScale, so it signals
   // gesture-start (zoomGeneration) like every other imperative zoom.
+  // Options: `fill` (share of the free view the mark takes), `maxScale` (a
+  // zoom ceiling in place of 4x the page fit: Locate on page zooms to the
+  // marker's extents), and `leftInset` / `rightInset` / `topInset` /
+  // `bottomInset` for covers the viewer does not track itself (the phone's
+  // tool strip and sheets); the side panels and tool strips it does track
+  // always count.
   const focusPageRect = useCallback((pageNumber, rect, options = {}) => {
     const el = scrollerRef.current;
     const dims = dimsPtRef.current;
@@ -4928,8 +5220,12 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     const h = Math.max(8, Number(rect.height) || 0);
     if (![x, y, w, h].every(Number.isFinite)) return false;
     cancelPanInertia(false);
-    const side = sideInsetRef.current;
-    const inset = Math.min(topInsetRef.current, el.clientHeight);
+    const extra = (key) => Math.max(0, Number(options[key]) || 0);
+    const side = {
+      left: Math.max(sideInsetRef.current.left, extra('leftInset')),
+      right: Math.max(sideInsetRef.current.right, extra('rightInset')),
+    };
+    const inset = Math.min(Math.max(topInsetRef.current, extra('topInset')), el.clientHeight);
     const bandW = Math.max(1, el.clientWidth - side.left - side.right);
     // A sheet covering the bottom of the viewer (the phone History sheet)
     // shrinks the part you can see; the mark lands in what is left.
@@ -4950,7 +5246,10 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
     });
     const fill = Number(options.fill) > 0 ? Number(options.fill) : 0.4;
     const wanted = Math.min((bandW * fill) / w, (bandH * fill) / h);
-    const ceiling = Math.min(isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE, fitScale * 4);
+    const ceiling = Math.min(
+      isMobileSurface ? MOBILE_MAX_SCALE : MAX_SCALE,
+      Number(options.maxScale) > 0 ? Number(options.maxScale) : fitScale * 4,
+    );
     const target = options.keepZoom
       ? scaleRef.current
       : Math.max(fitScale, Math.min(wanted, ceiling));
@@ -5072,7 +5371,7 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
       if (event.key !== 'PageDown' && event.key !== 'PageUp') return;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
       const el = scrollerRef.current;
-      if (!el || !el.isConnected || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
+      if (!el || !el.isConnected || isInTabBehind(el) || el.clientHeight <= 0 || el.getClientRects().length === 0) return;
       const target = event.target instanceof Element ? event.target : null;
       if (target && target !== document.body && target !== document.documentElement && !el.contains(target)) {
         if (isEditableTarget(target)) return;
@@ -5673,7 +5972,14 @@ const PdfjsViewerContainer = forwardRef(function PdfjsViewerContainer({
         [data-mobile-pdf-surface]:not([data-space-pan='dragging']),
         [data-mobile-pdf-surface]:not([data-space-pan='dragging']) > [data-pdfjs-content] { cursor: grab; }
         :where([data-mobile-pdf-surface] .survey-pdfjs-page-div) { cursor: auto; }
-        [data-space-pan='armed'], [data-space-pan='armed'] * { cursor: grab !important; }
+        /* Pan is a selection mode (Drawboard): under the Pan TOOL a selected
+           mark's grabbers still resize / turn / re-aim it, so they keep the
+           cursor they declare (utils/handleCursors.js). Held Space pans from
+           anywhere, so it keeps the hand everywhere. The :where() keeps this
+           rule as weak as a plain "armed *" so the I-beam and link rules
+           still win over it. */
+        [data-space-pan='armed'],
+        [data-space-pan='armed'] *:where(:not([data-pan-source='tool'] svg[data-svg-annotation-layer] :is([data-resize-handle], [data-handle-hit-pad], [data-rotation-handle], [data-rotation-handle] *, [data-callout-leader-grabber], [data-callout-handle-overlay] :is([data-callout-part='knee'], [data-callout-part='arrowTip'])))) { cursor: grab !important; }
         /* Pan opens links on a click, so a link shows the hand (utils/linkClickPolicy.js). */
         [data-space-pan='armed'] :is([data-text-markup-link], [data-pdfjs-link-layer] a) { cursor: pointer !important; }
         [data-space-pan='dragging'], [data-space-pan='dragging'] * { cursor: grabbing !important; }

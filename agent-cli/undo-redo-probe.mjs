@@ -34,6 +34,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fullSnapshot, runMatrixSequence } from './undo-redo-probe-matrix.mjs';
+import { guardContext } from './lib/blockNonLoopback.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -61,8 +62,8 @@ const log = (...parts) => console.log(`[w37 ${new Date().toISOString().slice(11,
 
 const PROFILE_ROOT = opt('profile-dir', path.join(os.homedir(), '.cache', 'survey-sync-probe-profiles'));
 const contextOptions = { viewport: { width: 1440, height: 900 }, headless: !flag('headed') };
-const ctxA = await chromium.launchPersistentContext(path.join(PROFILE_ROOT, 'W37A'), contextOptions);
-const ctxB = SECOND ? await chromium.launchPersistentContext(path.join(PROFILE_ROOT, 'W37B'), contextOptions) : null;
+const ctxA = await guardContext(chromium.launchPersistentContext(path.join(PROFILE_ROOT, 'W37A'), contextOptions));
+const ctxB = SECOND ? await guardContext(chromium.launchPersistentContext(path.join(PROFILE_ROOT, 'W37B'), contextOptions)) : null;
 const contexts = [ctxA, ctxB].filter(Boolean);
 const LEASED = !flag('dev-auto-login');
 if (LEASED) {

@@ -15,12 +15,13 @@ import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 
 import { readOriginalPdfBytes } from './services/embeddedImportBytes.js';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { pdfjsAssetOptions } from './utils/pdfjsAssets.js';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
-import { jsonEqual } from './utils/jsonEqual.js';
+import { jsonEqual, jsonEqualSteps } from './utils/jsonEqual.js';
 import { isCloudSaveConfirmed } from './utils/cloudSaveBaseline.js';
 import { mergeEditOntoCurrent } from './utils/dragCommitMerge.js';
-import { countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
+import { buildRemovePageToast, buildSpaceDeleteToast, countSpaceCascadeImpact, isSpaceScopedEntry, resolveSpaceCascadeScope } from './utils/spaceCascadeImpact.js';
 import { EMBEDDED_IMPORT_INCOMPLETE_KEY, EMBEDDED_IMPORT_MARKER_KEY, embeddedImportDecision, embeddedImportFailedPages, embeddedImportMarkerDecision, selectEmbeddedImportObjects } from './utils/embeddedImportGate.js';
 import { READ_ONLY_BLOCKED_KEYS } from './utils/toolShortcuts.js';
 import { resolveSpaceTap } from './utils/spaceTapToggle.js';
@@ -28,7 +29,7 @@ import { sanitizeTemplateConfig } from './utils/templateConfig.js';
 import useSharedDocumentTemplates from './hooks/useSharedDocumentTemplates.js';
 import { migrateSidebarData } from './utils/sidebarPersistence.js';
 import { resolveMarkerEntityFromName } from './utils/surveyMarkerEntityResolver.js';
-import { removeCategoriesFromModules, toCategoryIdList } from './utils/surveyCategoryDelete.js';
+import { removeCategoriesFromModules, restoreCategoriesToModules, toCategoryIdList } from './utils/surveyCategoryDelete.js';
 import {
   capturePendingSurveyMarkerUi,
   deletePendingSurveyMarkerUi,
@@ -83,11 +84,22 @@ import SurveyEntityBar from './components/SurveyEntityBar';
 import SurveyTemplateMenu from './components/SurveyTemplateMenu';
 import Icon from './Icons';
 import MeasureScaleDialog from './components/MeasureScaleDialog';
-import { applyPageScale, pageScaleFromObjects } from './utils/measure/measureScale.js';
+import {
+  MEASURE_SCALES_META_KEY,
+  POLYGON_MEASURE_KINDS,
+  applyPageScale,
+  measureBaseTool,
+  metaScaleForPage,
+  nextMeasureScaleMeta,
+  normalizeMeasureScaleMeta,
+  pageScaleFromObjects,
+  rememberRecentMeasureScale,
+} from './utils/measure/measureScale.js';
 import LightweightAnnotationOverlay from './components/LightweightAnnotationOverlay';
 import { useDocumentThumbnailCapture } from './hooks/useDocumentThumbnailCapture';
 import NewColumnsModal from './components/NewColumnsModal';
 import OneDriveFileSaveModal from './components/OneDriveFileSaveModal';
+import DialogCard from './components/DialogCard.jsx';
 import PDFPageCanvas from './components/PDFPageCanvas';
 import PageAnnotationLayer, { ARROWHEAD_STYLES } from './PageAnnotationLayer';
 import PrintPanel from './components/PrintPanel';
@@ -96,6 +108,7 @@ import { createPrintPageError, waitForPrintImages } from './utils/printImageRead
 import RegionSelectionTool from './RegionSelectionTool';
 import SVGAnnotationLayer from './components/SVGAnnotationLayer';
 import SaveLogBanner from './components/SaveLogBanner';
+import { useConfirmDialog } from './components/dialogPrompts.jsx';
 import Spinner from './components/Spinner';
 import QuietLoading, { openingLabel } from './components/QuietLoading';
 import SearchHighlightLayer from './components/SearchHighlightLayer';
@@ -119,8 +132,10 @@ import OcrTextLayer from './components/OcrTextLayer';
 import SpaceRegionOverlay from './SpaceRegionOverlay';
 import PdfjsViewerContainer from './components/PdfjsViewerContainer';
 import SurveyTemplateVersionDialog from './components/SurveyTemplateVersionDialog';
-import { acceptTemplateVersion, bindUsedTemplate, needsTemplateVersionChoice, isRetainedSurveyTemplate, isSurveyTemplateRestorationReady, hasSurveyTemplateMarks, startSurveyTemplateObservation, observeUnusedSurveyTemplateUpdate, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
+import { acceptTemplateVersion, bindUsedTemplate, followModuleOrder, needsTemplateVersionChoice, isRetainedSurveyTemplate, isSurveyTemplateRestorationReady, hasSurveyTemplateMarks, startSurveyTemplateObservation, observeUnusedSurveyTemplateUpdate, readTemplateBinding, templateBindingKey, templateFingerprint, writeTemplateBinding } from './utils/surveyTemplateBinding';
 import { planSurveyCategoryTransferRestore, surveyCategoryTransferCheckpoint, surveyCategoryTransferStepId } from './utils/surveyCategoryTransferHistory';
+import { planSurveyMarkerTransfer } from './utils/surveyMarkerTransfer.js';
+import { notifyTemplatesChanged } from './hooks/libraryChangeBus.js';
 import { moveSurveyCategories } from './utils/surveyCategoryMove';
 import SurveyMarkerPlacementDialog from './components/SurveyMarkerPlacementDialog';
 import { resolveNextSurveyEntity } from './survey/nextSurveyEntity.js';
@@ -176,7 +191,7 @@ import {
   refitTextboxToText,
   resolveTextStyleWrite,
 } from './utils/selectedTextFormatting.js';
-import { buildNewTextCommitJSON, TEXT_PADDING } from './utils/textEditCommit.js';
+import { buildNewTextCommitJSON, NEW_TEXT_BOX_FONT_COLOR, newTextBoxPaint, TEXT_PADDING } from './utils/textEditCommit.js';
 import {
   applyRestyleChange,
   applyRestyleChangeToPage,
@@ -228,6 +243,7 @@ import {
   isSurveyMarkerPlaced,
   placeSurveyMarkerRecord,
   unplaceSurveyMarkerRecord,
+  SURVEY_MARKER_HISTORY_TYPE,
 } from './utils/surveyMarkerFamily.js';
 import { overlayLiveSurveyMarkers } from './services/annotationLiveMarkers.js';
 import {
@@ -269,7 +285,7 @@ import { isPlacedSurveyMarker } from './services/surveyMarkerSyncDiff';
 import { forceUnplacedImportedMarker, freezeGeometryFromOriginal } from './services/importFieldWhitelist';
 import { stampExportAck, wasReceivedByExcel } from './services/excelExportAck';
 import { buildMarkerIdentityRecord, buildMarkerIdentityRecords, applyMarkerIdentityRecords, applyWritebackVerification } from './services/excelIdentityRecord';
-import { computeRowFingerprints } from './services/rowFingerprint';
+import { diffRowFields } from './services/rowFingerprint';
 import { loadBaseline, saveBaseline, clearBaseline } from './services/excelSyncBaselineStore';
 import { generateRowIdToken } from './services/rowIdToken';
 import { getOrCreateDocumentSecret, resolveDocumentSecret } from './services/rowIdSecretStore';
@@ -281,7 +297,7 @@ import { buildMarkerRowValues, resolveMarkerModuleData } from './services/marker
 import { excelLockFilePath, isOwnerFileFor, parentDir } from './services/excelLockFile';
 import { reviewReasonMessage } from './services/excelReviewMessages';
 import { selectUnplacedRows, isWholeChangeSetHeld, unplacedRowKey } from './services/excelUnplacedRows';
-import { applyExcelValuesToMarker } from './services/excelConflictResolve';
+import { applyExcelFieldsToMarker, applyExcelValuesToMarker, excelFieldsForConflictChoice } from './services/excelConflictResolve';
 import { makeTombstone, addTombstone, removeTombstone, purgeExpired } from './services/surveyMarkerTrash';
 import { loadTrash, saveTrash } from './services/surveyMarkerTrashStore';
 import { buildSurveyMarkerDeleteHistoryRow, applySurveyMarkerRestore } from './services/surveyMarkerHistory';
@@ -307,13 +323,18 @@ import {
   resolveRegionRestoreCascade,
 } from './services/annotationTrashHistory';
 // KAL-307: server-minted workbook registration (one live workbook per survey).
-import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet } from './services/workbookRegistration';
+import { registerWorkbook, embedRegistrationIntoMetaSheet, readRegistrationFromMetaSheet, bindWorkbookLocation, exportCapabilityTier, workbookLocationFromDriveItem } from './services/workbookRegistration';
+import { EXPORT_REGISTRATION, resolveExportRegistration } from './services/excelExportRegistration';
+import { matchSheetToCategory, readColumnMap, readSheetMap, renameMovedHeaders, writeSheetMap } from './services/excelSheetMap';
+import { belongsToAnotherSurvey, readWorkbookSurvey, writeWorkbookSurvey } from './services/excelWorkbookSurvey';
+import { PULL_BEFORE_PUSH, hasRowWaitingOnChoice, isVersionMismatch, pullAllowsPush, readWorkbookVersion, uploadIfMatch, workbookChangedSincePull } from './services/excelPushGate';
 // KAL-309: server-authoritative Excel change-set transport + materialize reducer.
 import {
   submitChangeSet,
   fetchSince,
   ackMaterialization,
   resolveMaterializationConflict,
+  resolveConflictedMarker,
   materializeAcceptedOps,
   readFrontier,
   seedSyncState,
@@ -321,7 +342,7 @@ import {
 } from './services/excelSyncClient';
 import { enqueueWriteback } from './services/rowIdWritebackQueue';
 import { readPendingChangeset, writePendingChangeset, clearPendingChangeset } from './services/excelSyncPendingChangeset';
-import { buildCounterSeriesDeletionUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
+import { buildCounterSeriesDeletionUpdates, buildCounterSeriesOrderUpdates, getCounterSeriesList, pickNextSeriesColor, renumberCounters, resolveCounterSeriesPaint } from './utils/counterNumbering';
 import { COUNTER_SIZE_MAX, COUNTER_SIZE_MIN, ANNOTATION_WIDTH_DECIMALS, canSnapshotToolSettings, normalizeAnnotationSize, sanitizeAnnotationSizeDraft } from './utils/annotationSize';
 import { getHistoryDebugRows, getHistoryFingerprint, getYjsHistoryTarget, historyFingerprintsEqual, isLegacyAnnotationHistoryMeta, migrateHistorySpaces, normalizeCanvasJsonForHistory, normalizeHistoryReason, summarizeAnnotationPageTransitionForDebug, summarizeHistoryDelta, summarizeHistorySnapshot } from './utils/historyHelpers';
 import { pageOperationCheckpoint, pageOperationStepId } from './utils/pageOperationHistory.js';
@@ -365,6 +386,13 @@ import { bookmarkDeleteMessage, removeBookmarkWithDescendants, restoreRemovedBoo
 import { useYDoc } from './hooks/useYDoc.js';
 import { useZoomState } from './hooks/useZoomState';
 import { isFeatureOn } from './featureFlags.js';
+// Beta 'mark-library' (Survey Nightly): save marks once, drop them on any page.
+import MarkLibraryPlacementLayer from './markLibrary/MarkLibraryPlacementLayer.jsx';
+import MarkLibrarySaveDialog from './markLibrary/MarkLibrarySaveDialog.jsx';
+import { markLibraryStore } from './markLibrary/markLibraryStore.js';
+import { LIBRARY_PAYLOAD_MAX_BYTES, libraryPayloadBytes, libraryPayloadFromClipboard, planLibraryPlacement } from './markLibrary/markLibraryModel.js';
+import { fitPlacedTextBoxes, resolveLibraryDrop } from './markLibrary/markLibraryViewer.js';
+import { PAGE_GRID_SETTINGS_EVENT, applyPageGridPageSteps, applyPageGridSettings, loadPageGridSettings } from './utils/pageGrid';
 import { LAYERS_META_KEY, DEFAULT_LAYER_ID, DEFAULT_LAYER_STATE, normalizeLayerState, hiddenLayerIdSet, resolveActiveLayerId, withoutHiddenLayers, calloutsWithoutHiddenLayers, stampNewObjectsOnLayer, stampNewMarksByPage } from './utils/layers.js';
 import { PAGE_PRESENTATION_META_KEY, normalizePagePresentations, pagePresentationFrame, clientPointInPageFrame, clientPastePointInPageFrame } from './utils/pagePresentation.js';
 import { normalizePresentationPdf, pdfBytesHavePresentationTag } from './utils/pdfPagePresentation.js';
@@ -374,6 +402,7 @@ import { useAnnotationContextMenu, renderAnnotationContextMenu } from './hooks/u
 import { usePageOperations } from './hooks/usePageOperations.js';
 import { usePageViewDocument } from './hooks/usePageViewDocument.js';
 import { getPageViewBase } from './utils/pageViewDocument.js';
+import { destroyPdfDocument, pdfOrDestroy } from './utils/destroyPdfDocument.js';
 import { getSelectFamilyTransition, getToolSwitchSelectionClearReason, isSelectFamilyTool, loadSelectMode, resolveEscape, resolveTextDoubleClick, resolveToolPress, saveSelectMode, shouldBackdropPressDeselect, shouldEscapeDeselect, shouldShowHoverHalo } from './utils/selectModes.js';
 import { classifyPagePress, ownGroupMarkFilter } from './utils/toolPressRouting.js';
 import { CALLOUT_MARK_GROUP, getMarkGroup } from './utils/markToolGroup.js';
@@ -536,18 +565,20 @@ import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } 
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
 import { rememberLastSurveyTemplate, resolveLastSurveyTemplate, surveyMemoryDocumentKey } from './utils/surveyLastTemplate.js';
 import { shouldCaptureToolSwitchDiag } from './utils/toolSwitchDiag.js';
+import { createPageDrawnSignal } from './utils/pageDrawnSignal.js';
+import { polySplineStep } from './utils/polySpline.js';
 import { carryMarkerShape, MARKER_STROKE_WIDTHS, restyleStrokeMarkerBounds, strokeMarkerWidth } from './survey/markerShapes.js';
 import { setMarkerStrokeWidth, useMarkerStrokeWidth } from './survey/markerStrokeWidth.js';
 import { useShownMarkerDrawMode } from './survey/markerDrawMode.js';
 import { usePickedSurveyMarker } from './survey/usePickedSurveyMarker.js';
+import { useBriefHold } from './hooks/useBriefHold.js';
 import { setMarkerShapePdfDocument } from './survey/markerShapeProviders.js';
 import { FloatingTooltip, makeTooltipBinding } from './components/Tooltip';
 import { getExportKit, DEFAULT_EXPORT_KIT_ID } from './services/exportFormats/registry.js';
-import { buildSheetLayout, buildSheetRow, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
-import { answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
+import { buildSheetLayout, buildSheetRow, excelCellAnswer, toStandardHeaders } from './services/exportFormats/sheetLayout.js';
+import { APP_ONLY_KINDS, answerSetFor, excelAnswerFills, excelValidationFor, itemKind } from './services/answerSets.js';
 import { createTextMarkupAnnotation, getExcludedPdfTextMarkupIds, getSelectionPageRanges, normalizeTextLinkUrl, quadBounds, resolveTextMarkupEditPaint, restorePdfjsTextSelection, TEXT_MARKUP_DEFAULT_PAINT } from './utils/pdfTextMarkup.js';
-import { notifySmartFillCategoriesDeleted } from './survey/smartFillMatchEvents.js';
-import { setActiveSmartFillTemplate, withTemplateShape } from './survey/smartFillTemplateShapes.js';
+import { setActiveSmartFillTemplate } from './survey/smartFillTemplateShapes.js';
 import {
   buildOcrCacheKey,
   hasUsableEmbeddedText,
@@ -558,6 +589,12 @@ import {
   resolveLocalOcrProvider,
   saveCachedOcrResult,
 } from './utils/localOcrProvider.js';
+import { isInTabBehind } from './utils/tabBehind.js';
+
+// Every open tab keeps its viewer mounted, and a tab behind keeps real sizes at
+// the same screen spot (utils/tabBehind.js). Look this tab's pages and
+// overlays up under its own root (pdfjsWrapperRef), never document-wide.
+const queryInViewer = (root, selector) => root?.querySelector?.(selector) || null;
 
 // KAL-309: read the workbook registration (workbook_id + sync_token) out of a
 // loaded ExcelJS workbook's hidden _SurveyMetadata sheet (cells B5/B6). Duck-typed
@@ -587,19 +624,29 @@ function readWorkbookRegistration(workbook) {
 // timer there meant that dismissing an editor and tapping another annotation
 // inside the same 600ms selected nothing. See panQuickClickSuppressedRef.
 const PAN_EDIT_ENTRY_RESTORE_MS = 600;
+// Locate on page (owner note 2026-10-26, item 28): the marker takes about half
+// of the view you can see, never zoomed in past 800%.
+const SURVEY_LOCATE_FILL = 0.5;
+const SURVEY_LOCATE_MAX_SCALE = 8;
 
 // w37: erase Undo/Redo visibility check with the viewer's JSON equality.
 const eraseTransitionChangedScreen = (result, before, meta) => (
   eraseTransitionChangedScreenWith(result, before, meta, jsonEqual)
 );
 
-export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
+export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, onCloseAfterFailure, tabId, isActive, documentLocked = false, mobileMode = false, onTopToolbarApiChange, onBottomToolbarApiChange, onLeftRailApiChange, onRightRailApiChange, onPageDrop, onUpdatePDFFile, onRequestCreateTemplate, initialViewState, onViewStateChange, templates = [], onTemplatesChange, onRefetchTemplates, user, isMSAuthenticated, msLogin, graphClient, msAccount, msNeedsReconnect, ensureFreshToken, msGetAuthSignals, entities, setEntities, onUnsavedAnnotationsChange, onAnnotationsExistChange }) {
   // Phase 35 UAT diag — mirror current PDF filename to window so the dev-only
   // phase35Diag logger can prefix every gate decision with the file under test.
   // Production-stripped via import.meta.env.MODE check; tree-shakes from prod.
   if (import.meta.env.MODE !== 'production' && typeof window !== 'undefined') {
     window.__currentPdfName = pdfFile?.name || null;
   }
+  // The name people see (tab name, from the name bus: a rename shows at once).
+  // pdfFile.name stays the file's own name and keys storage and effects; it
+  // must not drive anything a person reads. The ref serves callbacks.
+  const pdfDisplayName = documentName || pdfFile?.name || '';
+  const pdfDisplayNameRef = useRef(pdfDisplayName);
+  pdfDisplayNameRef.current = pdfDisplayName;
   const pdfjsViewerElementId = `pdfjs-pdf-viewer-${tabId || 'default'}`;
   const containerRef = useRef();
   const contentRef = useRef();
@@ -1271,6 +1318,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   });
   // Page 1 of the open document has been drawn (work that can wait starts then).
   const firstPageDrawnRef = useRef({ drawn: false, resolve: null });
+  // Any page of the open document has been drawn (the annotation open waits on it).
+  const [pageDrawnSignal] = useState(createPageDrawnSignal);
   // KAL-46 / sleep-wake: bounds how many times the load watchdog will silently
   // auto-retry a hung download (dead socket after display sleep/wake) before it
   // gives up and surfaces the retryable error screen. Reset whenever a fresh
@@ -2025,7 +2074,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (!entry?.host?.isConnected) return;
       const pageNumber = Number(pageKey);
       const livePage = Number.isFinite(pageNumber)
-        ? document.querySelector(`[id$="_pageDiv_${pageNumber - 1}"]`)
+        ? queryInViewer(pdfjsWrapperRef.current, `[id$="_pageDiv_${pageNumber - 1}"]`)
         : null;
       const liveRect = livePage?.getBoundingClientRect?.();
       const hasLiveRect = liveRect && liveRect.width > 0 && liveRect.height > 0;
@@ -3094,16 +3143,18 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Annotation tools state
   const [activeTool, setActiveTool] = useState('pan');
   // Measure tools ride on the Line / Polygon tools: measureMode only says the
-  // commit is a measurement ('length' | 'area') or a calibration line.
-  // measureScales holds scales set this session per page (also saved on the
-  // page's measurements); measureScaleDialog is { pageNumber, lengthPt?, line? }.
+  // commit is a measurement ('length' | 'area' | 'perimeter') or a calibration
+  // line. measureScaleMeta is the document's saved scales, one page or all
+  // pages (synced doc meta; a page's measurements also carry its scale);
+  // measureScaleDialog is { pageNumber, lengthPt?, line? }.
   const [measureMode, setMeasureMode] = useState(null);
-  const [measureScales, setMeasureScales] = useState({});
+  const [measureScaleMeta, setMeasureScaleMeta] = useState(() => normalizeMeasureScaleMeta(null));
+  const measureScaleMetaRef = useRef(measureScaleMeta);
+  measureScaleMetaRef.current = measureScaleMeta;
   const [measureScaleDialog, setMeasureScaleDialog] = useState(null);
   const [measureMenuRect, setMeasureMenuRect] = useState(null);
   useEffect(() => {
-    const base = measureMode === 'area' ? 'polygon' : 'line';
-    if (measureMode && activeTool !== base) setMeasureMode(null);
+    if (measureMode && activeTool !== measureBaseTool(measureMode)) setMeasureMode(null);
   }, [activeTool, measureMode]);
   // Select-family mode for annotation gestures. PDF text keeps its existing
   // activeTool='text-select' path, so this state can grow without changing it.
@@ -3261,12 +3312,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const dir = activeTool === 'eraser' ? 'enter-eraser' : 'exit-eraser';
           requestAnimationFrame(() => requestAnimationFrame(() => {
             try {
-              const host = document.querySelector('[data-annotation-real-surface="1"]');
+              const host = (pdfjsWrapperRef.current || document).querySelector('[data-annotation-real-surface="1"]');
               const hostRect = host?.getBoundingClientRect();
-              const canvas = document.querySelector('[data-annotation-presentation-canvas="1"]');
+              const canvas = (pdfjsWrapperRef.current || document).querySelector('[data-annotation-presentation-canvas="1"]');
               const canvasRect = canvas?.getBoundingClientRect();
-              const detail = document.querySelector('[data-annotation-detail-canvas="1"]');
-              const svg = document.querySelector('svg[data-svg-annotation-layer="1"]');
+              const detail = (pdfjsWrapperRef.current || document).querySelector('[data-annotation-detail-canvas="1"]');
+              const svg = (pdfjsWrapperRef.current || document).querySelector('svg[data-svg-annotation-layer="1"]');
               const svgRect = svg?.getBoundingClientRect();
               const rect = (r) => r ? { x: +r.x.toFixed(3), y: +r.y.toFixed(3), w: +r.width.toFixed(3), h: +r.height.toFixed(3) } : null;
               console.log(`[EraserParityDiag] ${dir} pdf=${pdfFile?.name || pdfFile?.file_name || '?'} ` + JSON.stringify({
@@ -3408,17 +3459,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const [fillOpacity, setFillOpacity] = useState(100);
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [cloudIntensity, setCloudIntensity] = useState(2);
-  const [textStyleDefaults, setTextStyleDefaults] = useState({
-    fontColor: '#1e293b',
-    fontFamily: 'Helvetica',
-    fontSize: 16,
-    bold: true,
-    italic: false,
-    underline: false,
-    strike: false,
-    textAlign: 'left',
-    verticalAlign: 'top',
+  // The Aa row's style for the next new mark, kept per tool: a new text box
+  // starts plain and a new callout starts bold, as each did before the text
+  // tool honoured the Aa row; a change on one tool's row stays with that tool.
+  const [textStyleDefaultsByTool, setTextStyleDefaultsByTool] = useState(() => {
+    const base = {
+      fontColor: '#1e293b',
+      fontFamily: 'Helvetica',
+      fontSize: 16,
+      bold: true,
+      italic: false,
+      underline: false,
+      strike: false,
+      textAlign: 'left',
+      verticalAlign: 'top',
+    };
+    return { text: { ...base, fontColor: NEW_TEXT_BOX_FONT_COLOR, bold: false }, callout: base };
   });
+  const textStyleTool = activeTool === 'callout' ? 'callout' : 'text';
+  const textStyleDefaults = textStyleDefaultsByTool[textStyleTool];
   const [selectedToolbarAnnotation, setSelectedToolbarAnnotation] = useState(null);
   const [liveTextSelection, setLiveTextSelection] = useState(null);
   const liveTextSelectionRef = useRef(null);
@@ -3498,6 +3557,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   const handleCounterGroupUpdateRef = useRef(null);
   const handleDeleteCounterSeriesRef = useRef(null);
   const handleRenameCounterSeriesRef = useRef(null);
+  const handleRecolorCounterSeriesRef = useRef(null);
+  const handleReorderCounterSeriesRef = useRef(null);
   const counterSeriesActiveRef = useRef(isActive);
   counterSeriesActiveRef.current = isActive;
   const commitTextMarkupDocumentTransactionRef = useRef(null);
@@ -3533,6 +3594,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   ), []);
   const handleDeleteCounterSeriesFromToolbar = useCallback((seriesId) => (
     handleDeleteCounterSeriesRef.current?.(seriesId) || { ok: false, reason: 'unavailable' }
+  ), []);
+  const handleRecolorCounterSeriesFromToolbar = useCallback((seriesId, paint) => (
+    handleRecolorCounterSeriesRef.current?.(seriesId, paint) || { ok: false, reason: 'unavailable' }
+  ), []);
+  const handleReorderCounterSeriesFromToolbar = useCallback((orderedIds) => (
+    handleReorderCounterSeriesRef.current?.(orderedIds) || { ok: false, reason: 'unavailable' }
   ), []);
   // `refit` (optional): runs on the patched object before it is saved, in the
   // same write - the text bar uses it to grow a text box to fit a bigger font
@@ -4274,6 +4341,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // dismiss rules in utils/selectModes.js (Escape: every tool; backdrop
   // press: Select family, and a click under the Shapes / Text tools).
   useEffect(() => {
+    // Every open tab keeps its viewer; only the front one answers keys and
+    // presses on the window (docs/TAB-SWITCHING.md S6). Escape in the front
+    // tab used to put a tab behind down to Pan.
+    if (isActive === false) return undefined;
     const escapeDeselects = shouldEscapeDeselect(activeTool);
     const backdropDeselects = shouldBackdropPressDeselect(activeTool);
     if (!escapeDeselects && !backdropDeselects) return undefined;
@@ -4356,7 +4427,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (escapeDeselects) window.removeEventListener('keydown', clear, true);
       if (backdropDeselects) window.removeEventListener('pointerdown', clear, true);
     };
-  }, [activeTool, clearAnnotationSelectionForContextChange, editingAnnotation, setActiveToolLogged]);
+  }, [activeTool, clearAnnotationSelectionForContextChange, editingAnnotation, isActive, setActiveToolLogged]);
 
   const textSelectGestureActiveRef = useRef(false);
 
@@ -4927,8 +4998,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let deltaY = 0.05;
     if (cursorPosition && Number.isFinite(cursorPosition.clientX) && Number.isFinite(cursorPosition.clientY)) {
       try {
-        const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
-        const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
+        const svgWrap = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
+        const palRoot = queryInViewer(pdfjsWrapperRef.current, `[data-pal-root="${pageNumber}"]`);
         const pageDiv = (svgWrap || palRoot)?.closest?.('.survey-pdfjs-page-div') || null;
         const pageRect = pageDiv?.getBoundingClientRect?.() || null;
         if (pageRect && pageRect.width > 0 && pageRect.height > 0) {
@@ -5370,6 +5441,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Excel sync modals and state
   const [showExcelLockedModal, setShowExcelLockedModal] = useState(false);
   const [showExcelSyncConfirmModal, setShowExcelSyncConfirmModal] = useState(false);
+  // Themed confirm for the Excel import's stale-file and bulk-delete checks
+  // (design review 2026-10-27: they were the browser's own confirm box).
+  const [askConfirm, confirmDialog] = useConfirmDialog();
   const [applyRedactionsModalOpen, setApplyRedactionsModalOpen] = useState(false);
   const [pendingRedactionRequest, setPendingRedactionRequest] = useState(null);
   const [applyRedactionsBusy, setApplyRedactionsBusy] = useState(false);
@@ -5648,7 +5722,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             let svgDomBounds = null;
             try {
               const nodes = Array.from(
-                document.querySelectorAll(`[data-diag-svg-wrapper] [data-annotation-index="${i}"]`)
+                (pdfjsWrapperRef.current || document).querySelectorAll(`[data-diag-svg-wrapper] [data-annotation-index="${i}"]`)
               );
               if (nodes.length > 0) {
                 const rect = nodes[0].getBoundingClientRect();
@@ -5728,13 +5802,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           domState: (() => {
             try {
               const svgLayerWrappers = Array.from(
-                document.querySelectorAll('[data-diag-svg-wrapper]')
+                (pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-svg-wrapper]')
               );
               const eraserWrappers = Array.from(
-                document.querySelectorAll('[data-diag-eraser-wrapper]')
+                (pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-eraser-wrapper]')
               );
               const allSvgAnnotations = Array.from(
-                document.querySelectorAll('[data-diag-svg-wrapper] svg [data-annotation-index]')
+                (pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-svg-wrapper] svg [data-annotation-index]')
               );
               const visibleSvgAnnotations = allSvgAnnotations.filter((el) => {
                 const wrapper = el.closest('[data-diag-svg-wrapper]');
@@ -5742,7 +5816,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 return getComputedStyle(wrapper).visibility !== 'hidden';
               });
               const eraserCanvases = Array.from(
-                document.querySelectorAll('[data-diag-eraser-wrapper] canvas')
+                (pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-eraser-wrapper] canvas')
               );
               return {
                 svgWrapperCount: svgLayerWrappers.length,
@@ -5802,7 +5876,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             // 1. SVG annotation layer + wrapper for the current page
             try {
-              const svgLayer = document.querySelector(`[data-svg-annotation-layer="${pageNum}"]`);
+              const svgLayer = (pdfjsWrapperRef.current || document).querySelector(`[data-svg-annotation-layer="${pageNum}"]`);
               if (svgLayer) {
                 out[`svg-layer:${pageNum}`] = {
                   kind: 'svg-layer',
@@ -5949,7 +6023,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Works without any new IPC and avoids the capturePage focus/cursor side-effect.
         let svgMarkup = null;
         try {
-          const wrappers = Array.from(document.querySelectorAll('[data-diag-svg-wrapper]'));
+          const wrappers = Array.from((pdfjsWrapperRef.current || document).querySelectorAll('[data-diag-svg-wrapper]'));
           svgMarkup = wrappers.map((w) => {
             const svg = w.querySelector('svg');
             return svg ? svg.outerHTML : '<!-- no svg in wrapper -->';
@@ -6149,7 +6223,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const latest = templates.find((template) => template.id === id || template.supabaseId === id);
     const editingSelected = selectedTemplate && (selectedTemplate.id === id || selectedTemplate.supabaseId === id);
     if (editingSelected && latest && templateFingerprint(latest) !== templateFingerprint(selectedTemplate)) return Promise.reject(new Error('Use the latest template before updating its shared definition.'));
-    return updateSupabaseTemplateRow(id, changes);
+    // The home Templates page reads its own list: tell it to read again, so a
+    // change made in the Survey panel (module or category order, a moved
+    // category) shows there without a reload.
+    return updateSupabaseTemplateRow(id, changes).then((result) => {
+      notifyTemplatesChanged();
+      return result;
+    });
   }, [templates, selectedTemplate, updateSupabaseTemplateRow]);
   const hasSwitchedToSurveyMarkerRef = useRef(false);
   const [toolbarHeights, setToolbarHeights] = useState({ top: 56, bottom: 56 });
@@ -6172,15 +6252,30 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveTool('survey-marker');
     setShowSurveyPanel(true);
   }, []);
+  // The version of a template this document opens: the one it kept (with the
+  // latest module order when only the order changed), else the latest.
+  const surveyTemplateVersionForDocument = useCallback((template) => {
+    if (!template) return null;
+    const binding = readSurveyTemplateBinding(template.id);
+    if (!binding?.used) return template;
+    return followModuleOrder(binding.snapshot, template) || binding.snapshot;
+  }, [readSurveyTemplateBinding]);
   const handleSelectSurveyTemplate = useCallback((template, options = {}) => {
     if (!template) return;
-    const binding = readSurveyTemplateBinding(template.id);
+    let binding = readSurveyTemplateBinding(template.id);
+    // Only the module order changed (Templates page or another screen): the
+    // document takes the new order without asking.
+    const reordered = binding?.used ? followModuleOrder(binding.snapshot, template) : null;
+    if (reordered) {
+      binding = acceptTemplateVersion(binding, reordered, true);
+      storeSurveyTemplateBinding(template.id, binding);
+    }
     if (needsTemplateVersionChoice(binding, template) || (options.forceVersionChoice && binding?.used && templateFingerprint(template) !== binding.fingerprint)) {
       setPendingTemplateVersion({ binding, latest: template });
       return;
     }
     enterSurveyTemplateVersion(binding?.used ? binding.snapshot : template);
-  }, [readSurveyTemplateBinding, enterSurveyTemplateVersion]);
+  }, [readSurveyTemplateBinding, storeSurveyTemplateBinding, enterSurveyTemplateVersion]);
 
   const requireCurrentSurveyTemplate = useCallback(() => {
     const latest = appTemplates.find((template) => template.id === selectedTemplate?.id);
@@ -6349,8 +6444,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (typeof document === 'undefined' || !Number.isFinite(clientX) || !Number.isFinite(clientY)) {
       return null;
     }
+    const viewerRoot = pdfjsWrapperRef.current;
     const direct = document.elementFromPoint?.(clientX, clientY)?.closest?.('.survey-pdfjs-page-div');
-    if (direct) {
+    if (direct && viewerRoot?.contains(direct)) {
       pdfjsLastCursorPageRef.current = direct;
       return direct;
     }
@@ -6373,7 +6469,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // elementFromPoint can return our overlay instead of the PDF page. For
     // cursor-centric zoom we still need the real page under that screen point;
     // otherwise zoom falls back to rough scroll-ratio math and drifts down/right.
-    const pages = Array.from(document.querySelectorAll('.survey-pdfjs-page-div'));
+    const pages = Array.from(viewerRoot?.querySelectorAll('.survey-pdfjs-page-div') || []);
     for (const page of pages) {
       const rect = page.getBoundingClientRect?.();
       if (!rect || rect.width <= 0 || rect.height <= 0) continue;
@@ -7444,7 +7540,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const viewerHost = [
       viewer?.element,
       typeof document !== 'undefined' ? document.getElementById(pdfjsViewerElementId) : null,
-      typeof document !== 'undefined' ? document.querySelector?.('.survey-pdfjs-viewer') : null
+      queryInViewer(pdfjsWrapperRef.current, '.survey-pdfjs-viewer')
     ].find((candidate) => candidate?.isConnected) || null;
     if (!viewerHost) {
       return null;
@@ -7971,7 +8067,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // every mounted page on every render, and the search walked every mark of
     // the pages before it (owner 2026-10-06, smooth zoom).
     const domHost = !directHost?.isConnected && typeof document !== 'undefined'
-      ? document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
+      ? queryInViewer(pdfjsWrapperRef.current, `.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`)
       : null;
     const host = directHost?.isConnected ? directHost : domHost;
     const hasContainer = !!host?.isConnected;
@@ -8257,6 +8353,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [scheduleTextSearchHighlightRefresh]);
 
   const handlePdfjsPageRenderComplete = useCallback((payload) => {
+    pageDrawnSignal.markDrawn();
     reconcilePdfjsScaleFromRenderedPage('page-render-complete');
     scheduleTextSearchHighlightRefresh('page-render-complete', 80);
     if (payload?.pageNumber === 1 && !firstPageDrawnRef.current.drawn) {
@@ -8275,7 +8372,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(recordPaint);
     else setTimeout(recordPaint, 0);
-  }, [reconcilePdfjsScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
+  }, [pageDrawnSignal, reconcilePdfjsScaleFromRenderedPage, scheduleTextSearchHighlightRefresh]);
 
   const handlePdfjsWrapperWheel = useCallback((event) => {
     if (!usePdfjsRenderer) return;
@@ -8423,14 +8520,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(null); // Category selected for highlighting
-  const [surveyKeepCategoryActive, setSurveyKeepCategoryActive] = useState(false);
   // Desktop survey sub-row: whether the Survey module menu is open.
   const [surveyModuleMenuOpen, setSurveyModuleMenuOpen] = useState(false);
   const [surveyMarkerWidthMenuOpen, setSurveyMarkerWidthMenuOpen] = useState(false);
   // Owner 2026-10-22: a Survey Marker picked under Select or Pan brings up the
   // survey bar, as a picked counter brings up the counter's bar.
   const pickedSurveyMarker = usePickedSurveyMarker();
-  const surveyMarkerPicked = Boolean(pickedSurveyMarker) && (isSelectFamilyTool(activeTool) || activeTool === 'pan');
+  // Owner note 2026-10-26 (item 38, "everything gets pushed and comes back"):
+  // Locate on page, or a click from one marker to the next, swaps the pick
+  // through a render with nothing picked. The survey bar left for it and came
+  // back, moving the page under it down and up. A pick on its way counts, and
+  // a gap that short is held (useBriefHold).
+  const surveyMarkerPickHeld = useBriefHold(Boolean(pickedSurveyMarker) || Boolean(pendingSurveyMarkerSelection));
+  const surveyMarkerPicked = surveyMarkerPickHeld && (isSelectFamilyTool(activeTool) || activeTool === 'pan');
   const markerStrokeWidth = useMarkerStrokeWidth();
   const shownMarkerDrawMode = useShownMarkerDrawMode();
   // Owner 2026-10-22: the freehand marker's stroke width on the survey bar -
@@ -8549,9 +8651,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // under the Cloud key while a cloud line is chosen (paintPreferenceKey).
   // Read through a ref so the published functions never go stale.
   const toolStyleIoRef = useRef(null);
-  toolStyleIoRef.current = { getToolPreference, updateToolPreference, lineBorderStyle };
+  toolStyleIoRef.current = { getToolPreference, updateToolPreference, lineBorderStyle, eraserSize };
   const readToolStyle = useCallback((tool, lineStyle) => {
     const io = toolStyleIoRef.current;
+    // The eraser's only setting is its size (the bar's Size box), kept as the
+    // pin's width like every other tool's.
+    if (tool === 'eraser') return { strokeWidth: io.eraserSize };
     const line = lineStyle || io.lineBorderStyle;
     const strokeKey = line === 'cloud' && toolSupportsCloudBorderStyle(tool) ? 'cloud' : tool;
     const own = io.getToolPreference(tool);
@@ -8567,8 +8672,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, []);
   const writeToolStyle = useCallback((tool, style = {}) => {
     const io = toolStyleIoRef.current;
+    if (tool === 'eraser') {
+      const size = Math.round(Number(style.strokeWidth));
+      if (Number.isFinite(size)) {
+        const clamped = Math.min(Math.max(size, 1), 100);
+        io.eraserSize = clamped;
+        setEraserSize(clamped);
+        if (!isEraserSizeFocusedRef.current) {
+          eraserSizeInputValueRef.current = String(clamped);
+          setEraserSizeInputValue(String(clamped));
+        }
+      }
+      return;
+    }
     const lineStyle = style.lineStyle || io.lineBorderStyle;
-    if (style.lineStyle && style.lineStyle !== io.lineBorderStyle) setLineBorderStyle(style.lineStyle);
+    // Always set it: the ref holds the last render's style, and a pin left a
+    // moment ago may have just put another one back (Cloud after a cloud pin).
+    if (style.lineStyle) {
+      io.lineBorderStyle = style.lineStyle;
+      setLineBorderStyle(style.lineStyle);
+    }
     const strokeKey = lineStyle === 'cloud' && toolSupportsCloudBorderStyle(tool) ? 'cloud' : tool;
     const pick = (fields) => Object.fromEntries(fields.filter((f) => style[f] !== undefined).map((f) => [f, style[f]]));
     const stroke = pick(['strokeColor', 'strokeOpacity', 'strokeWidth']);
@@ -9241,7 +9364,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
       textStyleDragTargetKeyRef.current = write.dragRecord;
       if (write.action === 'defaults') {
-        setTextStyleDefaults(write.defaults);
+        setTextStyleDefaultsByTool((prev) => ({ ...prev, [textStyleTool]: write.defaults }));
         return;
       }
       if (write.action !== 'patch') return;
@@ -9260,7 +9383,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           : null);
       }
     });
-  }, [pickBarTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
+  }, [pickBarTool, textStyleTool, handlePatchSelectedAnnotation, handlePatchSelectedCallout]);
 
   const handleStrokeWidthChange = useCallback((width) => {
     setStrokeWidth(width);
@@ -11904,7 +12027,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       const overlay = attachOverlayToPageDiv(pageNumber);
-      const wrapper = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+      const wrapper = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
       const isGated = wrapper?.getAttribute?.('data-annotation-hydration-gated') === 'true';
       const wrapperStyle = wrapper ? window.getComputedStyle(wrapper) : null;
       const visibleWrapper = !!wrapper && wrapperStyle?.display !== 'none' && wrapperStyle?.visibility !== 'hidden';
@@ -12843,6 +12966,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [clearLocalRedoForNewStep, createHistoryMeta, getAnnotationPageHistorySnapshot, getHistoryFingerprint, getHistorySnapshot, getSurveyMarkerHistorySnapshot, normalizeHistoryReason, pushHistoryDebugEvent]);
 
+  // A checklist answer is its own Undo step (Ctrl+Z after a wrong answer took
+  // the whole Survey Marker away). An answer never touches the pages, so it
+  // takes the light Survey Marker checkpoint.
+  const checkpointSurveyAnswer = useCallback((annotationId) => {
+    addHistoryCheckpoint('survey-marker:answer', { annotationId, checkpointMode: 'survey-marker-create' });
+  }, [addHistoryCheckpoint]);
+
   // Phase 35 Plan 03 — per-user delete authority. documentOwnerId comes from
   // the documents-table user_id attached to pdfFile at Dashboard load time
   // (see handleDocumentClick / file.user_id sites). pdfFile is a File-like
@@ -13148,14 +13278,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           ? { cloudIntensity: Math.max(1, Number(newMarkStyle.cloudIntensity) || 2) }
           : {}),
         ...(mobileMode ? {
-          fontColor: textStyleDefaults.fontColor,
-          fontFamily: textStyleDefaults.fontFamily,
-          fontSize: textStyleDefaults.fontSize,
-          bold: textStyleDefaults.bold,
-          italic: textStyleDefaults.italic,
-          underline: textStyleDefaults.underline,
-          strikethrough: textStyleDefaults.strike,
-          textAlign: textStyleDefaults.textAlign,
+          fontColor: textStyleDefaultsByTool.callout.fontColor,
+          fontFamily: textStyleDefaultsByTool.callout.fontFamily,
+          fontSize: textStyleDefaultsByTool.callout.fontSize,
+          bold: textStyleDefaultsByTool.callout.bold,
+          italic: textStyleDefaultsByTool.callout.italic,
+          underline: textStyleDefaultsByTool.callout.underline,
+          strikethrough: textStyleDefaultsByTool.callout.strike,
+          textAlign: textStyleDefaultsByTool.callout.textAlign,
         } : {}),
       },
     };
@@ -13180,7 +13310,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       source: 'callout:create',
       action: 'callout-create',
     });
-  }, [commitCalloutMutation, newMarkStyle.strokeColor, newMarkStyle.strokeOpacity, newMarkStyle.fillColor, newMarkStyle.fillOpacity, mobileMode, newMarkStyle.strokeWidth, newMarkStyle.lineBorderStyle, newMarkStyle.cloudIntensity, textStyleDefaults, user?.id]);
+  }, [commitCalloutMutation, newMarkStyle.strokeColor, newMarkStyle.strokeOpacity, newMarkStyle.fillColor, newMarkStyle.fillOpacity, mobileMode, newMarkStyle.strokeWidth, newMarkStyle.lineBorderStyle, newMarkStyle.cloudIntensity, textStyleDefaultsByTool.callout, user?.id]);
 
   // UX: Phase 14 CALL-10 (drag MVP) — pointerup commit for a callout drag.
   // Called from useSVGInteraction's 'callout-part' drag mode on pointerup
@@ -13599,7 +13729,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         const caretAnchor = buildCaretAnchor({
           x: event.clientX,
           y: event.clientY,
-          host: document.querySelector(`[data-diag-svg-wrapper="${candidate.pageNumber}"] ${hostSelector}`),
+          host: queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${candidate.pageNumber}"] ${hostSelector}`),
         });
         opened = candidate.kind === 'callout'
           ? requestAnnotationEditEntryRef.current({
@@ -13720,7 +13850,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       .filter((page) => Number.isFinite(page) && page > 0);
     if (pages.length === 0) return;
     const pageInView = (page) => {
-      const element = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${page}"]`);
+      const element = queryInViewer(pdfjsWrapperRef.current, `.survey-pdfjs-page-div[data-page-number="${page}"]`);
       const rect = element?.getBoundingClientRect?.();
       if (!rect || rect.width <= 0 || rect.height <= 0) return false;
       return rect.bottom > 40 && rect.top < (window.innerHeight - 40)
@@ -15325,7 +15455,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   // KAL-461: a delete (a folder takes everything in it) happens at once and
   // the Undo toast puts the rows back where they were. The toast hook is
-  // declared further down, hence the ref.
+  // declared further down, hence the ref (space delete, page removal and category delete use
+  // it too).
   const bookmarkUndoToastRef = useRef(null);
   const handleBookmarkDelete = useCallback((id) => {
     const { removed } = removeBookmarkWithDescendants(bookmarks, id);
@@ -15616,8 +15747,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return ids;
   }, [pdfFile?.id, setCalloutsIfPersistedChanged]);
 
+  // Spaces chunk A: what removing these pages (null = the whole space) would
+  // delete, for the Undo toast's words. Reads the live refs the cascade reads,
+  // so the number shown is the number deleted.
+  const getSpaceRemovalImpact = useCallback((spaceId, pageIds = null) => countSpaceCascadeImpact({
+    spaceId,
+    space: (spacesRef.current || []).find((space) => space?.id === spaceId) || null,
+    pageIds,
+    annotationsByPage: annotationsByPageRef.current || {},
+    callouts: calloutsRef.current || [],
+    surveyMarkers: surveyMarkersRef.current || {},
+    getMarkId: getHistoryAnnotationId,
+  }), []);
+
   const handleSpaceRemovePage = useCallback((spaceId, pageId) => {
     if (!requireSpaceManagement()) return;
+    // Act first (owner rule): no question; the toast's Undo is the timeline
+    // Undo, which puts back the page and everything the cascade took.
+    const removedFrom = (spacesRef.current || []).find((s) => s.id === spaceId);
+    const removeToastMessage = buildRemovePageToast({
+      spaceName: removedFrom?.name,
+      pageId,
+      impact: getSpaceRemovalImpact(spaceId, [pageId]),
+    });
     // Spaces chunk A: one Undo step — the space's page list plus exactly the
     // marks the cascade removed (same shape as space:delete; see
     // historyStacks.scopeLegacyRestoreToOwnSlices).
@@ -15688,20 +15840,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
       return nextSpaces;
     });
-  }, [activeSpaceId, addHistoryCheckpoint, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
-
-  // Spaces chunk A: what removing these pages (null = the whole space) would
-  // delete, for the confirm in SpacesPanel. Reads the live refs the cascade
-  // reads, so the number shown is the number deleted.
-  const getSpaceRemovalImpact = useCallback((spaceId, pageIds = null) => countSpaceCascadeImpact({
-    spaceId,
-    space: (spacesRef.current || []).find((space) => space?.id === spaceId) || null,
-    pageIds,
-    annotationsByPage: annotationsByPageRef.current || {},
-    callouts: calloutsRef.current || [],
-    surveyMarkers: surveyMarkersRef.current || {},
-    getMarkId: getHistoryAnnotationId,
-  }), []);
+    bookmarkUndoToastRef.current?.({
+      kind: 'single',
+      message: removeToastMessage,
+      onUndo: () => { handleUndoRef.current?.(); },
+    });
+  }, [activeSpaceId, addHistoryCheckpoint, cascadeDeleteScopedAppState, getSpaceRemovalImpact, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSpaceRenamePage = useCallback((spaceId, pageId, newLabel) => {
     if (!requireSpaceManagement()) return;
@@ -15749,65 +15893,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
     }));
   }, [requireSpaceManagement]);
-
-  const handleSpaceClearRegions = useCallback((spaceId, pageId) => {
-    if (!requireSpaceManagement()) return;
-    cascadeDeleteScopedAppState({
-      spaceId,
-      pageIds: [pageId],
-      reason: 'space-page-regions-clear',
-    });
-    // No undo step records this cascade: it must not be claimed by a later one.
-    pendingSpaceCascadeRef.current = null;
-
-    setSpaces(prev => {
-      const beforeSpace = prev.find(s => s.id === spaceId);
-      const beforePage = beforeSpace?.assignedPages?.find(p => p.pageId === pageId);
-
-      const updated = prev.map(space => {
-        if (space.id !== spaceId) {
-          return space;
-        }
-
-        const assignedPages = space.assignedPages || [];
-        const pageIndex = assignedPages.findIndex(page => page.pageId === pageId);
-
-        let updatedPages;
-        if (pageIndex >= 0) {
-          // Page exists, update it
-          updatedPages = assignedPages.map((page, index) => {
-            if (index === pageIndex) {
-              return {
-                ...page,
-                wholePageIncluded: true,
-                regions: []
-              };
-            }
-            return page;
-          });
-        } else {
-          // Page doesn't exist, create it
-          updatedPages = [
-            ...assignedPages,
-            {
-              pageId: pageId,
-              wholePageIncluded: true,
-              regions: []
-            }
-          ];
-        }
-
-        const afterPage = updatedPages.find(p => p.pageId === pageId);
-
-        return {
-          ...space,
-          assignedPages: updatedPages
-        };
-      });
-
-      return updated;
-    });
-  }, [cascadeDeleteScopedAppState, requireSpaceManagement]);
 
   const handleReorderSpaces = useCallback((fromIndex, toIndex) => {
     if (!requireSpaceManagement()) return;
@@ -15891,16 +15976,46 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
   }, [getUserInitials]);
 
+  // Set once handleSyncFromExcel exists (below): pulls Excel's latest, then pushes.
+  const requestPushAfterPullRef = useRef(null);
+  // Set below with the latest template and Microsoft client: the linked file's version.
+  const readLinkedWorkbookVersionRef = useRef(async () => null);
   const handleExportSurveyToExcel = useCallback(async (targetPath = null, options = {}) => {
-    const { silent = false } = options;
+    const { silent = false, afterPull = false, pulledVersion = null, retried = false } = options;
     if (!features?.excelExport) {
       if (!silent) showToast(withUpgradeHint('Excel export is part of the Pro plan.', 'Please upgrade to use this tool.'), 'warn');
       return;
     }
     // If called from event handler, targetPath will be the event object
     if (targetPath && typeof targetPath !== 'string') targetPath = null;
+    // Writing into the linked workbook happens in the desktop app. In a browser or the
+    // phone app this used to fall through to a plain download while saying the shared
+    // workbook was updated.
+    if (targetPath && !window.electronAPI) {
+      if (!silent) showToast('Updating the linked workbook works in the desktop app. Use Export data to download a copy.', 'warn');
+      return;
+    }
     if (!selectedTemplate) {
       if (!silent) showToast('Please select a survey template before exporting.', 'warn');
+      return;
+    }
+    const localWorkbookIsOpen = async (path) => {
+      try {
+        const lockPath = excelLockFilePath(path);
+        if (lockPath && await window.electronAPI.fileExists(lockPath)) return true;
+        // Fallback only blocks when the lock file belongs to THIS exact workbook —
+        // a different open workbook in the same folder must not block this push.
+        const dirEntries = await window.electronAPI.listDir(parentDir(path));
+        return Array.isArray(dirEntries) && dirEntries.some(name => isOwnerFileFor(name, path));
+      } catch {
+        // If we cannot determine open-state, fall through and attempt the write.
+        return false;
+      }
+    };
+    // Check before registering: an owner's push registers a new workbook id, which
+    // retires the one in the file. Stopping after that left the open file unsyncable.
+    if (targetPath && !selectedTemplate.isOneDrive && await localWorkbookIsOpen(targetPath)) {
+      showToast('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.', 'warn');
       return;
     }
     // A customer's Excel layout loads after sign-in. Never write the standard
@@ -15920,6 +16035,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setHasPendingExcelSyncChanges(true);
       }
       debugLog('Excel automatic writeback disabled (Stage 0 safety switch) — survey marked not-synced; skipping silent whole-file upload.');
+      return;
+    }
+
+    // A push rebuilds the whole workbook from the app, which overwrote anything typed
+    // in Excel since the last pull (Excel audit W5). Pull that in first; the push runs
+    // once the import has committed, so it is built from the merged markers.
+    // Desktop only: the pull reads the linked file through the desktop app.
+    if (targetPath && !afterPull && window.electronAPI && requestPushAfterPullRef.current) {
+      requestPushAfterPullRef.current({ targetPath, silent });
       return;
     }
 
@@ -15949,6 +16073,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       metaSheet.getCell('B3').value = rowIdExportId;
       metaSheet.getCell('A4').value = 'app_version';
       metaSheet.getCell('B4').value = '1.0';
+      // Which survey this file is for: another survey on the same template won't
+      // pull from it or push over it (services/excelWorkbookSurvey.js).
+      writeWorkbookSurvey(metaSheet, pdfFile?.id);
 
       // KAL-307: server-minted workbook registration.
       // registerWorkbook() calls the kal307_register_workbook RPC (SECURITY DEFINER).
@@ -15961,27 +16088,79 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // marker identity records exist to seed the server-side Excel baseline. The raw
       // syncToken is NOT retained here (embedded then discarded — security contract).
       let registeredWorkbookId = null;
+      let workbookLocation = null;
       try {
         const supabaseDocId = pdfFile?.id ?? null;
         const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
-        if (supabaseDocId && supabaseTemplateId) {
-          const capabilityTier =
-            selectedTemplate?.isSharePoint ? 'business'
-            : selectedTemplate?.isOneDrive ? 'personal'
-            : 'local';
-          const registration = await registerWorkbook({
+        // A new export does not know where it will be saved: it registers as a local
+        // file and the OneDrive/SharePoint save binds its real location afterwards
+        // (performOneDriveExport). A push to a linked work OneDrive file takes its
+        // drive and tier from the file itself when the template predates storing them.
+        if (targetPath && selectedTemplate?.isOneDrive && !selectedTemplate?.isSharePoint) {
+          const linkedFileId = oneDriveFileId || selectedTemplate.oneDriveFileId || null;
+          if (linkedFileId && selectedTemplate.graphDriveId) {
+            workbookLocation = { driveId: selectedTemplate.graphDriveId, itemId: linkedFileId, driveType: selectedTemplate.graphDriveType ?? null, capabilityTier: exportCapabilityTier(selectedTemplate) };
+          } else if (linkedFileId && graphClient) {
+            try { workbookLocation = workbookLocationFromDriveItem(await getFileById(graphClient, linkedFileId)); } catch { /* register as before */ }
+          }
+        }
+        const capabilityTier = !targetPath ? 'local'
+          : (workbookLocation?.capabilityTier || exportCapabilityTier(selectedTemplate));
+        // A plain download never registers (it would retire the live workbook); a push
+        // the server won't re-register keeps the linked file's own link
+        // (services/excelExportRegistration.js).
+        const registration = await resolveExportRegistration({
+          isDesktop: Boolean(window.electronAPI),
+          isLinkedPush: Boolean(targetPath),
+          canRegister: Boolean(supabaseDocId && supabaseTemplateId),
+          register: () => registerWorkbook({
             documentId:     supabaseDocId,
             templateId:     String(supabaseTemplateId),
-            graphDriveId:   selectedTemplate?.sharePointDriveId ?? null,
-            graphItemId:    selectedTemplate?.oneDriveFileId    ?? null,
+            graphDriveId:   targetPath ? (selectedTemplate?.sharePointDriveId || workbookLocation?.driveId || null) : null,
+            graphItemId:    targetPath ? (selectedTemplate?.oneDriveFileId || workbookLocation?.itemId || null) : null,
             capabilityTier,
-          });
+          }),
+          readLinkedRegistration: async () => {
+            let linkedData;
+            if (selectedTemplate?.isOneDrive) {
+              if (!graphClient) throw new Error('not signed in to Microsoft');
+              const linkedFileId = oneDriveFileId || selectedTemplate.oneDriveFileId;
+              linkedData = linkedFileId
+                ? await downloadExcelFile(graphClient, linkedFileId)
+                : await downloadExcelFileByPath(graphClient, selectedTemplate.oneDriveApiPath || targetPath);
+            } else {
+              linkedData = await window.electronAPI.readFile(targetPath);
+            }
+            const linkedBook = new ExcelJS.Workbook();
+            await linkedBook.xlsx.load(linkedData);
+            return readWorkbookRegistration(linkedBook);
+          },
+        });
+        if (registration.kind === EXPORT_REGISTRATION.BLOCK) {
+          setIsExporting(false);
+          if (!silent) showToast('Couldn\u2019t read the linked workbook, so nothing was pushed. Check your connection and try again.', 'warn');
+          return;
+        }
+        if (registration.kind === EXPORT_REGISTRATION.NEW || registration.kind === EXPORT_REGISTRATION.KEPT) {
           embedRegistrationIntoMetaSheet(metaSheet, registration.workbookId, registration.syncToken);
           registeredWorkbookId = registration.workbookId; // workbookId only (NOT the token)
-          // registration.syncToken is no longer referenced after embedRegistrationIntoMetaSheet returns.
+          // A kept registration from before work OneDrive counted as business: record
+          // where the file lives (the server allows only the owner or its registrant).
+          if (registration.kind === EXPORT_REGISTRATION.KEPT && workbookLocation?.capabilityTier && pdfFile?.id) {
+            const bound = await bindWorkbookLocation({
+              documentId: pdfFile.id,
+              templateId: String(selectedTemplate?.supabaseId || selectedTemplate?.id),
+              workbookId: registration.workbookId,
+              location: workbookLocation,
+              supabaseClient: supabase,
+            });
+            if (!bound.ok) console.warn('Excel: could not record the workbook location:', bound.error);
+          }
+        } else if (registration.error) {
+          // No token in the message.
+          console.warn('KAL-307: workbook registration unavailable — export proceeds without registration:', registration.error?.message ?? registration.error);
         }
-        // If documentId or templateId is absent (offline / local-only), silently skip registration.
-        // The workbook will be detected as 'unregistered-legacy' on import.
+        // registration.syncToken is no longer referenced after this block.
       } catch (regErr) {
         // Registration failure must not block the export.  Log a warning (no token in the message).
         console.warn('KAL-307: workbook registration failed — export proceeds without registration:', regErr?.message ?? regErr);
@@ -16121,6 +16300,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               moduleId,
               categoryId: category.id,
               columnMapping,
+              checklistHeaders: checklistItems.map((item) => ({ itemId: item.id, header: item.text || '' })),
               headerRow: 1,
               dataStartRow: 2
             });
@@ -16199,7 +16379,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // Style header row
               if (rowIndex === 0) {
                 excelRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-                  cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                  cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
                   cell.fill = {
                     type: 'pattern',
                     pattern: 'solid',
@@ -16374,14 +16554,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             rowIdColumn.hidden = true;
             rowIdColumn.numFmt = '@'; // text — never coerced to a number/date
 
-            // Changed By, Changed Date, Item (width 15)
+            // Changed By, Changed Date (width 15). Item and the checklist
+            // columns grow to their longest name or header (up to a point;
+            // longer headers wrap), so nothing opens cut off.
+            const fitWidth = (texts) => Math.min(36, Math.max(15, ...texts.map((t) => String(t ?? '').length + 2)));
             worksheet.getColumn(colOf.changed_by).width = 15;
             worksheet.getColumn(colOf.changed_date).width = 15;
-            worksheet.getColumn(itemColIndex).width = 15;
+            worksheet.getColumn(itemColIndex).width = fitWidth(dataRows.map((row) => row[itemColIndex - 1]));
 
-            // Columns 5 to lastChecklistCol: Checklist items (width 15 each)
             for (let col = firstChecklistCol; col <= lastChecklistCol; col++) {
-              worksheet.getColumn(col).width = 15;
+              worksheet.getColumn(col).width = fitWidth([dataRows[0]?.[col - 1]]);
             }
 
             // Entity column (width 15)
@@ -16390,9 +16572,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             // Notes column (width 50)
             const notesColIndex = colOf.notes;
             worksheet.getColumn(notesColIndex).width = 50;
+
+            // The header stays in view while scrolling, and the sheet prints
+            // one page wide in landscape with the header on every page.
+            worksheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+            worksheet.pageSetup = {
+              ...worksheet.pageSetup,
+              orientation: 'landscape',
+              fitToPage: true,
+              fitToWidth: 1,
+              fitToHeight: 0,
+              printTitlesRow: '1:1',
+            };
           });
         });
       }
+
+      // Sheet → (space, category) ids in the hidden metadata sheet, so the import still
+      // finds a sheet after a rename or a " (2)" suffix (services/excelSheetMap.js).
+      writeSheetMap(metaSheet, schemaMappings);
 
       // Durable per-marker identity records (fingerprints of the exact visible row
       // values + this export's id), keyed by marker id. Stamped onto the markers on a
@@ -16411,7 +16609,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // server import has no trusted baseline and routes every row to 'review'. Derives
       // the registration server-side from workbookId (R2#3) — no registration.id/generation.
       // Best-effort + non-blocking: a failure here must never fail the export.
-      try {
+      // A push to a linked workbook seeds only after the file is saved: a kept
+      // registration's baseline must not move ahead of a workbook still holding
+      // the old rows (Excel open, upload failed).
+      const seedServerBaseline = async () => { try {
         const seedDocId = pdfFile?.id ?? null;
         const seedTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
         if (registeredWorkbookId && seedDocId && seedTemplateId) {
@@ -16451,7 +16652,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
       } catch (seedErr) {
         console.warn('KAL-309 D.6: server baseline seeding failed — export proceeds:', seedErr?.message ?? seedErr);
-      }
+      } };
+      if (!targetPath) await seedServerBaseline();
 
       // NOTE: we deliberately do NOT lock the Row ID column or protect the sheet.
       // Excel sort physically rewrites every column in a row (including a locked one),
@@ -16474,6 +16676,15 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // Write workbook to buffer
       const workbookBuffer = await workbook.xlsx.writeBuffer();
 
+      // The file changed after the pull read it (saved in Excel mid-push): pull again
+      // once, then give up rather than overwrite it (Excel audit W5).
+      const stopForNewerWorkbook = () => {
+        setIsExporting(false);
+        if (!retried) requestPushAfterPullRef.current?.({ targetPath, silent, retried: true });
+        else if (!silent) showToast('The Excel file changed while pushing, so nothing was overwritten. Push again.', 'warn');
+      };
+      const workbookMovedOn = async () => workbookChangedSincePull(pulledVersion, await readLinkedWorkbookVersionRef.current(targetPath));
+
       if (window.electronAPI) {
         if (targetPath) {
           // Silent save (Sync to Excel) - handled by handleSyncToExcel
@@ -16488,6 +16699,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
               // Check if Live Sync is enabled with active session - use cell-level updates
               if (liveSyncEnabled && excelSessionId && oneDriveFileId && liveSyncStatus === 'connected') {
+                if (await workbookMovedOn()) { stopForNewerWorkbook(); return; }
 
                 // Update each worksheet via session API
                 for (const ws of workbook.worksheets) {
@@ -16535,7 +16747,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 // the cloud version directly, not the local synced copy
                 if (oneDriveFileId) {
                   // Prefer upload by file ID (more reliable, tracks file across moves/renames)
-                  await uploadFileContentById(graphClient, oneDriveFileId, workbookBuffer);
+                  try {
+                    await uploadFileContentById(graphClient, oneDriveFileId, workbookBuffer, { ifMatch: uploadIfMatch(pulledVersion) });
+                  } catch (uploadErr) {
+                    if (isVersionMismatch(uploadErr)) { stopForNewerWorkbook(); return; }
+                    throw uploadErr;
+                  }
                 } else {
                   // Fall back to upload by path
                   await uploadExcelFile(graphClient, targetPath, workbookBuffer);
@@ -16545,25 +16762,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               // Local file: never overwrite a workbook the user has open in Excel.
               // macOS lets the write succeed, but Excel's autosave then clobbers it —
               // so detect Excel's owner/lock file and ask the user to close Excel first.
-              let excelIsOpen = false;
-              try {
-                const lockPath = excelLockFilePath(targetPath);
-                if (lockPath && await window.electronAPI.fileExists(lockPath)) {
-                  excelIsOpen = true;
-                } else {
-                  // Fallback only blocks when the lock file belongs to THIS exact workbook —
-                  // a different open workbook in the same folder must not block this push.
-                  const dirEntries = await window.electronAPI.listDir(parentDir(targetPath));
-                  if (Array.isArray(dirEntries) && dirEntries.some(name => isOwnerFileFor(name, targetPath))) excelIsOpen = true;
-                }
-              } catch {
-                // If we cannot determine open-state, fall through and attempt the write.
-              }
-              if (excelIsOpen) {
+              if (await localWorkbookIsOpen(targetPath)) {
                 setIsExporting(false);
                 showToast('This Excel file is open. Please close it in Excel, then push again — the app can’t safely update the file while Excel has it open.', 'warn');
                 return;
               }
+              if (await workbookMovedOn()) { stopForNewerWorkbook(); return; }
               // Use local filesystem
               await window.electronAPI.writeFile(targetPath, workbookBuffer);
             }
@@ -16571,6 +16775,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             const updatedTemplate = {
               ...selectedTemplate,
               linkedExcelPath: targetPath,
+              ...(workbookLocation ? { graphDriveId: workbookLocation.driveId, graphDriveType: workbookLocation.driveType ?? null } : {}),
               lastSyncTime: new Date().toISOString()
             };
             setSelectedTemplate(updatedTemplate);
@@ -16600,6 +16805,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
             // Mark that linked Excel file exists (ensures dropdown menu shows)
             setLinkedExcelExists(true);
+            await seedServerBaseline();
             markExcelExportSynced(updatedTemplate, identityRecordsByMarkerId);
 
             // Local-file export just rewrote the workbook (with every marker's
@@ -16635,7 +16841,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           setExportPendingData({
             buffer: workbookBuffer,
             fileName: fileName,
-            identityRecords: identityRecordsByMarkerId
+            identityRecords: identityRecordsByMarkerId,
+            workbookId: registeredWorkbookId
           });
           // Keep isExporting true - modal buttons will reset it when export completes
           setShowExportLocationModal(true);
@@ -16655,6 +16862,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         document.body.removeChild(link);
         setTimeout(() => URL.revokeObjectURL(url), 0);
         setIsExporting(false);
+        // A phone browser saves it without a word, like the PDF export did
+        // before its toast: say where the file went.
+        showToast(`Downloaded ${link.download}`, 'success');
       }
     } catch (error) {
       console.error('Failed to create Excel export', error);
@@ -17052,12 +17262,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Push survey data to linked Excel with retry logic for locked files
   const pushToExcelWithRetry = useCallback(async (
     isRetry = false,
-    { throwOnFailure = false } = {},
+    { throwOnFailure = false, afterPull = false, pulledVersion = null, retried = false } = {},
   ) => {
     if (!selectedTemplate?.linkedExcelPath) return;
 
     try {
-      await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true });
+      await handleExportSurveyToExcel(selectedTemplate.linkedExcelPath, { silent: true, afterPull, pulledVersion, retried });
       // Show success message (especially important after retry)
       if (isRetry) {
         showToast('Excel file updated successfully!', 'success');
@@ -17069,7 +17279,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         // Show the locked file modal
         setExcelLockedFilePath(selectedTemplate.linkedExcelPath);
         setExcelLockedIsOneDrive(selectedTemplate.isOneDrive || false);
-        setPendingExcelSyncCallback(() => () => pushToExcelWithRetry(true));
+        setPendingExcelSyncCallback(() => () => pushToExcelWithRetry(true, { afterPull }));
         setShowExcelLockedModal(true);
       } else {
         // For other errors, just log - don't interrupt the save flow
@@ -17169,6 +17379,20 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
 
       const oneDriveFileId = uploadResult?.id;
+      // Tell the server where the workbook now lives (drive, item, work or personal
+      // from Microsoft's drive type). It registered before the save, as a local file,
+      // and a shared survey only syncs a work/school workbook (Excel audit W4).
+      const savedLocation = workbookLocationFromDriveItem(uploadResult);
+      if (savedLocation?.capabilityTier && exportPendingData.workbookId && pdfFile?.id) {
+        const bound = await bindWorkbookLocation({
+          documentId: pdfFile.id,
+          templateId: String(selectedTemplate?.supabaseId || selectedTemplate?.id),
+          workbookId: exportPendingData.workbookId,
+          location: savedLocation,
+          supabaseClient: supabase,
+        });
+        if (!bound.ok) console.warn('Excel: could not record the workbook location:', bound.error);
+      }
 
       // Also save a local copy to the OneDrive sync folder so it's available immediately
       // (only for personal OneDrive, not SharePoint)
@@ -17203,6 +17427,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         isOneDrive: true,
         isSharePoint: selection?.folder?.type === 'sharepoint',
         sharePointDriveId: selection?.folder?.driveId || null,
+        graphDriveId: savedLocation?.driveId || null,
+        graphDriveType: savedLocation?.driveType || null,
         lastSyncTime: new Date().toISOString()
       };
       setSelectedTemplate(updatedTemplate);
@@ -17251,7 +17477,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setPendingOneDriveExport(false);
       setOneDriveSaveSelection(null);
     }
-  }, [exportPendingData, graphClient, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken, markExcelSyncCheckpoint]);
+  }, [exportPendingData, graphClient, pdfFile, selectedTemplate, updateSupabaseTemplate, handleTemplatesChange, appTemplates, ensureFreshToken, markExcelSyncCheckpoint]);
 
   // Handler for OneDrive save modal - checks for duplicates before saving
   const handleOneDriveSave = useCallback(async (selection) => {
@@ -17409,57 +17635,39 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (!entry) return;
 
     // KAL-309 (R2#4) — a server-synced conflict carries an opUuid (not the local
-    // excelValues/identityRecord). Resolve it server-side, drop it from the durable
-    // review meta, then re-reconcile: 'take-excel' flips the op back to 'accepted' so
-    // the next fetchSince re-materializes it; 'keep-app' just advances the frontier.
+    // excelValues/identityRecord). The client answers it from the op itself
+    // (resolveConflictedMarker): the choice decides only the disputed cells, Excel's
+    // other cells in the row land either way, and the baseline moves to what Excel now
+    // holds on both sides. The server records it as settled ('keep-app' or 'merged'),
+    // so the reducer flows past it. ('take-excel' set the op back to 'accepted', and the
+    // reducer then found the same conflict again: "Use Excel's" never took.)
     if (entry.opUuid) {
       const documentId = pdfFile?.id || null;
       const templateId = selectedTemplate?.supabaseId || selectedTemplate?.id || null;
       if (!documentId || !templateId) return;
-      const resolution = choice === 'excel' ? 'take-excel' : 'keep-app';
-      // On 'keep-app' the user keeps the APP's version, so advance the server's stored baseline to the
-      // kept marker's current values — otherwise the server stays on the Excel value the apply committed
-      // and the NEXT edit to this marker false-conflicts. ('take-excel' needs none: the client adopts
-      // the Excel value, which already equals the stored state.)
-      let resolvedFingerprints = null;
-      let keptFp = null;
-      if (resolution === 'keep-app') {
-        try {
-          const kept = surveyMarkers[markerId];
-          const appVals = kept ? buildAppValuesByMarkerId({ [markerId]: kept }, selectedTemplate)[markerId] : null;
-          if (appVals) {
-            keptFp = await computeRowFingerprints(appVals);
-            resolvedFingerprints = { identityVector: keptFp.identityVectorFingerprint, fields: keptFp.fieldFingerprints };
-          }
-        } catch { /* leave null → server keeps the prior baseline (no worse than before the fix) */ }
+      const reviewKey = `excelSyncReview:${templateId}`;
+      const reviewMeta = { ...(excelSyncMetaGetStable(reviewKey) || {}) };
+      const revision = Number(reviewMeta[entry.opUuid]?.revision) || 0;
+      const { ops, error: fetchError } = await fetchSince({
+        supabaseClient: supabase, documentId, templateId, sinceRevision: Math.max(0, revision - 1),
+      });
+      const op = (ops || []).find((o) => (o?.op_uuid ?? o?.opUuid) === entry.opUuid) || null;
+      const marker = surveyMarkers[markerId];
+      const resolved = op && marker ? await resolveConflictedMarker({ marker, op, choice }) : null;
+      if (!resolved) {
+        showToast(`Could not load this change from Excel${fetchError ? `: ${fetchError}` : ''}. Try again.`, 'error');
+        return;
       }
       const { ok, error } = await resolveMaterializationConflict({
-        supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid, resolution, resolvedFingerprints,
+        supabaseClient: supabase, documentId, templateId, opUuid: entry.opUuid,
+        resolution: choice === 'excel' ? 'merged' : 'keep-app',
+        resolvedFingerprints: resolved.excelFingerprints,
       });
       if (!ok) { showToast(`Could not resolve conflict${error ? `: ${error}` : ''}.`, 'error'); return; }
-      // Mirror the server's advanced baseline LOCALLY (the missing half of the keep-mine fix): stamp the
-      // kept marker's fingerprints onto its excelSync so the NEXT edit's baseFingerprints — read from
-      // excelSync by the matcher — match the server's newly-advanced baseline. Without this the local
-      // baseline stays stale and the very next edit to this marker false-conflicts.
-      if (resolution === 'keep-app' && keptFp) {
-        setSurveyMarkers((prev) => {
-          const m = prev[markerId];
-          if (!m || !m.excelSync) return prev;
-          return {
-            ...prev,
-            [markerId]: { ...m, excelSync: {
-              ...m.excelSync,
-              fieldFingerprints: keptFp.fieldFingerprints,
-              identityVectorFingerprint: keptFp.identityVectorFingerprint,
-              fullRowFingerprint: keptFp.fullRowFingerprint,
-            } },
-          };
-        });
-      }
+      setSurveyMarkers((prev) => (prev[markerId] ? { ...prev, [markerId]: resolved.nextMarker } : prev));
       // Remove this op from the durable review set so the reducer flows PAST its revision.
-      const reviewMeta = { ...(excelSyncMetaGetStable(`excelSyncReview:${templateId}`) || {}) };
       delete reviewMeta[entry.opUuid];
-      excelSyncMetaSetStable(`excelSyncReview:${templateId}`, reviewMeta);
+      excelSyncMetaSetStable(reviewKey, reviewMeta);
       setPendingImportReview((prev) =>
         (prev || []).filter((e) => !(e && e.opUuid === entry.opUuid))
       );
@@ -17478,8 +17686,21 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const entities = selectedTemplate?.entities || [];
 
     let nextMarker = { ...marker, excelSync: record };
-    if (choice === 'excel') {
-      // applyExcelValuesToMarker spreads the marker, so the re-stamped excelSync is preserved.
+    // The choice decides only the disputed fields: Excel's other edits still land, and
+    // the app's other edits are never overwritten (excelFieldsForConflictChoice). The
+    // marker still holds the last-sync baseline here, so "what Excel changed" is exact.
+    const baselineFp = marker.excelSync?.fieldFingerprints;
+    const incomingFp = record?.fieldFingerprints;
+    if (baselineFp && incomingFp) {
+      const fields = excelFieldsForConflictChoice({
+        choice,
+        excelChangedFields: diffRowFields(baselineFp, incomingFp),
+        conflictFields: entry.conflictFields || []
+      });
+      nextMarker = applyExcelFieldsToMarker(nextMarker, excelValues, entities, fields);
+    } else if (choice === 'excel') {
+      // No baseline to diff against: whole row, as before. applyExcelValuesToMarker
+      // spreads the marker, so the re-stamped excelSync is preserved.
       nextMarker = applyExcelValuesToMarker(nextMarker, excelValues, entities);
     }
     const updatedMap = { ...surveyMarkers, [markerId]: nextMarker };
@@ -17766,7 +17987,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
     let staleImportAccepted = false;
     if (recency.verdict === RECENCY.STALE_WORKBOOK) {
-      if (!window.confirm(staleManualConfirmText())) {
+      if (!(await askConfirm({
+        title: 'Import an older Excel file?',
+        message: <span style={{ whiteSpace: 'pre-line' }}>{staleManualConfirmText()}</span>,
+        confirmLabel: 'Import anyway',
+        zIndex: 10000,
+      }))) {
         setLastSyncMessage('Sync cancelled. No changes were made.');
         setTimeout(() => setLastSyncMessage(''), 5000);
         return;
@@ -17836,7 +18062,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         const trimmedText = colText.toString().trim();
         const checklistItem = checklistItems.find(c => c.text === trimmedText);
-        if (checklistItem) {
+        // Photo and signature lines only report what the app holds.
+        if (checklistItem && !APP_ONLY_KINDS.includes(itemKind(checklistItem))) {
           colToChecklistId[index] = checklistItem.id;
         }
       });
@@ -18198,9 +18425,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return `${categoryName} - ${moduleName} (${counts.total} items)`;
       }).join('\n');
 
-      const confirmed = window.confirm(
-        `This will delete ALL items from the following categories:\n\n${scopeNames}\n\nAre you sure you want to proceed?`
-      );
+      const confirmed = await askConfirm({
+        title: 'Delete every item in these categories?',
+        message: <span style={{ whiteSpace: 'pre-line' }}>{`This sync deletes ALL items from:\n\n${scopeNames}`}</span>,
+        confirmLabel: 'Delete and sync',
+        danger: true,
+        zIndex: 10000,
+      });
 
       if (!confirmed) {
         showToast('Sync cancelled. No changes were made.', 'info');
@@ -18403,7 +18634,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : 'Sync complete! No changes found.';
       showToast(reviewNote, 'info');
     }
-  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync, askConfirm]);
 
   // Helper: Execute auto-sync import with canvas color tracking
   const executeAutoExcelImport = useCallback(async (worksheetDataList, templateToUse, importMeta = null) => {
@@ -18483,7 +18714,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
         const trimmedText = colText.toString().trim();
         const checklistItem = checklistItems.find(c => c.text === trimmedText);
-        if (checklistItem) {
+        // Photo and signature lines only report what the app holds.
+        if (checklistItem && !APP_ONLY_KINDS.includes(itemKind(checklistItem))) {
           colToChecklistId[index] = checklistItem.id;
         }
       });
@@ -18851,9 +19083,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         return `${categoryName} - ${moduleName} (${counts.total} items)`;
       }).join('\n');
 
-      const confirmed = window.confirm(
-        `This will delete ALL items from the following categories:\n\n${scopeNames}\n\nAre you sure you want to proceed?`
-      );
+      const confirmed = await askConfirm({
+        title: 'Delete every item in these categories?',
+        message: <span style={{ whiteSpace: 'pre-line' }}>{`This sync deletes ALL items from:\n\n${scopeNames}`}</span>,
+        confirmLabel: 'Delete and sync',
+        danger: true,
+        zIndex: 10000,
+      });
 
       if (!confirmed) {
         setLastSyncMessage('Sync cancelled. No changes were made.');
@@ -19090,7 +19326,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       setLastSyncMessage((importReviewItems.length > 0 ? `${importReviewItems.length} need your choice` : 'No changes found'));
       setTimeout(() => setLastSyncMessage(''), 5000);
     }
-  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync]);
+  }, [surveyMarkers, items, setItems, setAnnotations, scale, setAnnotationsByPage, markExcelSyncCheckpoint, pdfFile, pdfId, runServerExcelSync, askConfirm]);
 
   // Helper: Create new template with added checklist items from new columns
   const handleCreateNewTemplateFromColumns = useCallback(async (newColumnsByCategory, templateName) => {
@@ -19438,7 +19674,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const importTrigger = options?.silent === true ? 'auto' : 'manual';
     if (!selectedTemplate?.linkedExcelPath) {
       showToast('No Excel file linked to this survey.', 'error');
-      return;
+      return PULL_BEFORE_PUSH.FAILED;
     }
 
     if (window.electronAPI) {
@@ -19448,7 +19684,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           // Use OneDrive API to download
           if (!graphClient) {
             showToast('Please sign in to Microsoft to sync with OneDrive.', 'warn');
-            return;
+            return PULL_BEFORE_PUSH.FAILED;
           }
 
           // Ensure fresh token before API call
@@ -19456,7 +19692,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             const tokenValid = await ensureFreshToken();
             if (!tokenValid) {
               showToast('Microsoft session expired. Please reconnect your account.', 'warn');
-              return;
+              return PULL_BEFORE_PUSH.FAILED;
             }
           }
 
@@ -19472,7 +19708,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             fileData = await downloadExcelFileByPath(graphClient, apiPath);
           }
         } else {
-          // Use local filesystem
+          // Use local filesystem. A push may recreate a linked file that was moved away.
+          if (options?.beforePush && window.electronAPI.fileExists
+              && !(await window.electronAPI.fileExists(selectedTemplate.linkedExcelPath))) {
+            return PULL_BEFORE_PUSH.MISSING;
+          }
           fileData = await window.electronAPI.readFile(selectedTemplate.linkedExcelPath);
         }
         const ExcelJS = (await import('exceljs')).default;
@@ -19486,6 +19726,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           workbookExportStamp: readWorkbookExportStamp(workbook), trigger: importTrigger,
           workbookId: importReg.workbookId, syncToken: importReg.syncToken,
         };
+        if (belongsToAnotherSurvey(readWorkbookSurvey(workbook), pdfFile?.id)) {
+          if (!options?.silent) showToast('This Excel file belongs to another survey that uses the same template, so nothing was imported. Export this survey to its own file.', 'warn');
+          return PULL_BEFORE_PUSH.FOREIGN;
+        }
+        const importSheetMap = readSheetMap(workbook);
+        const importColumnMap = readColumnMap(workbook);
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {}; // { categoryId: { displayName, columns: [{ columnIndex, text }] } }
@@ -19499,8 +19745,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           worksheet.eachRow((row, rowNumber) => {
             const rowData = [];
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-              // Number cells (a Number line's answer) come back as text, like the app saves them.
-              rowData[colNumber - 1] = typeof cell.value === 'number' ? String(cell.value) : cell.value;
+              // Number and date cells come back as text, like the app saves them.
+              rowData[colNumber - 1] = excelCellAnswer(cell.value);
             });
             // TRUE 1-based sheet row (eachRow skips empty rows, so the jsonData index
             // is "nth non-empty row", NOT the sheet row). Non-index expando on the row
@@ -19516,30 +19762,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
-          // Iterate all modules and categories in selectedTemplate to find match
-          let matchedCategory = null;
-          let matchedModuleId = null;
-          let matchedModuleName = null;
-
-          const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
-          for (const mod of modules) {
-            if (matchedCategory) break;
-            const categories = mod.categories || [];
-            for (const cat of categories) {
-              const rawName = `${cat.name || 'Category'} - ${mod.name || 'Module'}`.trim() || 'Sheet';
-              const invalidChars = /[\\/?*[\]:]/g;
-              const cleaned = rawName.replace(invalidChars, '').substring(0, 31) || 'Sheet';
-
-              if (cleaned === sheetName) {
-                matchedCategory = cat;
-                matchedModuleId = mod.id;
-                matchedModuleName = mod.name;
-                break;
-              }
-            }
-          }
-
-          if (!matchedCategory) return;
+          // The hidden sheet list first (renamed categories still match), then the name rule.
+          const sheetMatch = matchSheetToCategory({
+            sheetName, modules: selectedTemplate.modules || selectedTemplate.spaces || [], sheetMap: importSheetMap
+          });
+          if (!sheetMatch) return;
+          const { category: matchedCategory, moduleId: matchedModuleId, moduleName: matchedModuleName } = sheetMatch;
+          // A checklist item renamed in the app keeps its column (hidden column list).
+          renameMovedHeaders(headerRow, { sheetName, checklistItems: matchedCategory.checklist || [], columnMap: importColumnMap });
 
           // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];
@@ -19624,18 +19854,69 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             importMeta
           });
           setShowNewColumnsModal(true);
-          return; // Pause here, continue after user decision
+          return PULL_BEFORE_PUSH.PAUSED; // Pause here, continue after user decision
         }
 
         // No new columns, proceed with normal import
         await executeExcelImport(worksheetDataList, selectedTemplate, importMeta);
+        return PULL_BEFORE_PUSH.DONE;
 
       } catch (error) {
         console.error('Failed to sync from Excel:', error);
         showToast('Failed to read or parse the linked Excel file.', 'error');
+        return PULL_BEFORE_PUSH.FAILED;
       }
     }
-  }, [selectedTemplate, graphClient, ensureFreshToken, executeExcelImport]);
+    return PULL_BEFORE_PUSH.FAILED;
+  }, [selectedTemplate, graphClient, ensureFreshToken, executeExcelImport, pdfFile?.id]);
+
+  readLinkedWorkbookVersionRef.current = (targetPath) => readWorkbookVersion(selectedTemplate?.isOneDrive
+    ? { oneDriveFileId: oneDriveFileId || selectedTemplate.oneDriveFileId || null, getDriveItem: (id) => getFileETag(graphClient, id) }
+    : { localPath: targetPath, getFileStats: window.electronAPI?.getFileStats });
+
+  // Pull before push (Excel audit W5). The pull's marker changes commit first; the
+  // effect then pushes from them, unless a row tied to a marker still waits for a
+  // choice (pushing would overwrite Excel's side of it).
+  const pushAfterPullRef = useRef(null);
+  const pullBeforePushInFlightRef = useRef(false);
+  const [pushAfterPullTick, setPushAfterPullTick] = useState(0);
+  requestPushAfterPullRef.current = async ({ targetPath, silent, retried = false }) => {
+    if (pullBeforePushInFlightRef.current) return;
+    pullBeforePushInFlightRef.current = true;
+    try {
+      // Read before the pull, so a save in Excel at any point after it stops the push.
+      const pulledVersion = await readLinkedWorkbookVersionRef.current(targetPath);
+      const status = await handleSyncFromExcel({ silent: true, beforePush: true });
+      if (!pullAllowsPush(status)) {
+        if (status === PULL_BEFORE_PUSH.PAUSED) {
+          showToast('Choose what to do with the new Excel columns, then push again.', 'warn');
+        } else if (status === PULL_BEFORE_PUSH.FOREIGN) {
+          showToast('This Excel file belongs to another survey that uses the same template, so nothing was pushed. Export this survey to its own file.', 'warn');
+        } else if (!silent) {
+          showToast('Couldn\u2019t read Excel\u2019s latest changes, so nothing was pushed. Try again.', 'warn');
+        }
+        return;
+      }
+      pushAfterPullRef.current = { targetPath, silent, pulledVersion, retried };
+      setPushAfterPullTick((tick) => tick + 1);
+    } finally {
+      pullBeforePushInFlightRef.current = false;
+    }
+  };
+  useEffect(() => {
+    const pending = pushAfterPullRef.current;
+    if (!pending) return;
+    pushAfterPullRef.current = null;
+    if (hasRowWaitingOnChoice(pendingImportReview, surveyMarkers)) {
+      showToast('Some rows changed in Excel need your choice first (red marks in the Survey panel). Answer them, then push again.', 'warn');
+      return;
+    }
+    const after = { afterPull: true, pulledVersion: pending.pulledVersion, retried: pending.retried };
+    if (pending.silent) pushToExcelWithRetry(false, after);
+    else handleExportSurveyToExcel(pending.targetPath, after);
+    // Runs once per pull (the tick); reads the markers and review list that pull committed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pushAfterPullTick]);
 
   // Local "Excel is closed" Row ID flush (Amendment 2026-06-08(b) step 3,
   // HANDOFF item 3b — rowIdLocalWriteback.js). Runs ONLY at existing settle
@@ -19721,6 +20002,13 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           workbookExportStamp: readWorkbookExportStamp(workbook), trigger: 'auto',
           workbookId: importReg.workbookId, syncToken: importReg.syncToken,
         };
+        if (belongsToAnotherSurvey(readWorkbookSurvey(workbook), pdfFile?.id)) {
+          setLastSyncMessage('This Excel file belongs to another survey');
+          setTimeout(() => setLastSyncMessage(''), 5000);
+          return;
+        }
+        const importSheetMap = readSheetMap(workbook);
+        const importColumnMap = readColumnMap(workbook);
 
         // Phase 1: Parse worksheets and detect new columns
         const allNewColumns = {};
@@ -19733,8 +20021,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           worksheet.eachRow((row, rowNumber) => {
             const rowData = [];
             row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-              // Number cells (a Number line's answer) come back as text, like the app saves them.
-              rowData[colNumber - 1] = typeof cell.value === 'number' ? String(cell.value) : cell.value;
+              // Number and date cells come back as text, like the app saves them.
+              rowData[colNumber - 1] = excelCellAnswer(cell.value);
             });
             // TRUE 1-based sheet row (eachRow skips empty rows, so the jsonData index
             // is "nth non-empty row", NOT the sheet row). Non-index expando on the row
@@ -19750,29 +20038,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           jsonData[0] = toStandardHeaders(jsonData[0], getExportKit(selectedTemplate?.exportKitId), getExportKit(DEFAULT_EXPORT_KIT_ID));
           const headerRow = jsonData[0];
 
-          let matchedCategory = null;
-          let matchedModuleId = null;
-          let matchedModuleName = null;
-
-          const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
-          for (const mod of modules) {
-            if (matchedCategory) break;
-            const categories = mod.categories || [];
-            for (const cat of categories) {
-              const rawName = `${cat.name || 'Category'} - ${mod.name || 'Module'}`.trim() || 'Sheet';
-              const invalidChars = /[\\/?*[\]:]/g;
-              const cleaned = rawName.replace(invalidChars, '').substring(0, 31) || 'Sheet';
-
-              if (cleaned === sheetName) {
-                matchedCategory = cat;
-                matchedModuleId = mod.id;
-                matchedModuleName = mod.name;
-                break;
-              }
-            }
-          }
-
-          if (!matchedCategory) return;
+          // The hidden sheet list first (renamed categories still match), then the name rule.
+          const sheetMatch = matchSheetToCategory({
+            sheetName, modules: selectedTemplate.modules || selectedTemplate.spaces || [], sheetMap: importSheetMap
+          });
+          if (!sheetMatch) return;
+          const { category: matchedCategory, moduleId: matchedModuleId, moduleName: matchedModuleName } = sheetMatch;
+          // A checklist item renamed in the app keeps its column (hidden column list).
+          renameMovedHeaders(headerRow, { sheetName, checklistItems: matchedCategory.checklist || [], columnMap: importColumnMap });
 
           // Detect column changes: new columns, removed columns, and reordering
           const checklistItems = matchedCategory.checklist || [];
@@ -19875,7 +20148,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         setTimeout(() => setLastSyncMessage(''), 5000);
       }
     }
-  }, [addHistoryCheckpoint, selectedTemplate, graphClient, executeAutoExcelImport]);
+  }, [addHistoryCheckpoint, selectedTemplate, graphClient, executeAutoExcelImport, pdfFile?.id]);
 
   // Set up file watcher when Excel file is linked
   useEffect(() => {
@@ -21573,6 +21846,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     metaSet: excelSyncMetaSet,
     metaSubscribe: subscribeDocumentMeta,
     hasStoredMarks: annotationDocHasStoredMarks,
+    hasLocalStore: annotationDocHasLocalStore,
     beginBulkImport: annotationDocBeginBulkImport,
     whenBulkImportSaved: annotationDocWhenBulkImportSaved,
     // w53: other screens' in-flight Survey Marker / spaces changes (draw only).
@@ -21616,7 +21890,16 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     docRole: yjsDocRole,
     // w33: no one-time store compaction write while the document is locked.
     documentLocked,
+    whenFirstPageDrawn: pageDrawnSignal.whenDrawn,
   });
+  // Read by Save: whether the shared document already keeps this work safe
+  // (its store on this device, or every change already in the cloud).
+  const annotationDocHoldsWorkRef = useRef(() => false);
+  annotationDocHoldsWorkRef.current = () => Boolean(
+    cloudSyncEnabled && pdfFile?.id && user?.id
+    && cloudSyncStatus?.healthy
+    && (annotationDocHasLocalStore() || cloudSyncQueueSize === 0)
+  );
   templateBindingAccessRef.current = {
     get: excelSyncMetaGet,
     set: (...args) => canRestoreFromHistory && excelSyncMetaSet(...args),
@@ -21672,9 +21955,58 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setSelectedModuleId(module?.id || null);
     setSelectedCategoryId((id) => (module?.categories || []).some((category) => category.id === id) ? id : null);
   }, [selectedTemplate, showSurveyPanel, appTemplates, selectedModuleId, currentSurveyTemplateHasMarks, surveyTemplateRestorationReady, readSurveyTemplateBinding]);
+  // The open survey follows a module reorder made elsewhere (Templates page,
+  // another screen) at once: same version, new order (followModuleOrder).
+  useLayoutEffect(() => {
+    if (!selectedTemplate) return;
+    const reordered = followModuleOrder(selectedTemplate, appTemplates.find((template) => template.id === selectedTemplate.id));
+    if (!reordered) return;
+    setSelectedTemplate(reordered);
+    const binding = readSurveyTemplateBinding(selectedTemplate.id);
+    if (binding?.used) storeSurveyTemplateBinding(selectedTemplate.id, acceptTemplateVersion(binding, reordered, true));
+  }, [selectedTemplate, appTemplates, readSurveyTemplateBinding, storeSurveyTemplateBinding]);
+
+  // Page grid spacing ('grid-settings' flag): applies the saved spacing, and
+  // for drawing sizes (ft, m) gives each page div its own step from that
+  // page's measure scale (utils/pageGrid.js).
+  const [gridSettingsEnabled] = useState(() => isFeatureOn('grid-settings'));
+  const [gridSettings, setGridSettings] = useState(() => loadPageGridSettings());
+  useEffect(() => {
+    if (!gridSettingsEnabled) return undefined;
+    applyPageGridSettings(gridSettings);
+    const onChange = (e) => setGridSettings(e.detail || loadPageGridSettings());
+    window.addEventListener(PAGE_GRID_SETTINGS_EVENT, onChange);
+    return () => window.removeEventListener(PAGE_GRID_SETTINGS_EVENT, onChange);
+  }, [gridSettingsEnabled, gridSettings]);
+  useEffect(() => {
+    // Only this viewer's pages: other tabs stay mounted (hidden) with their
+    // own drawings and scales (Codex review on #1211).
+    const container = pdfjsWrapperRef.current;
+    if (!gridSettingsEnabled || !container) return;
+    applyPageGridPageSteps(gridSettings, (pageNumber) => (
+      pageScaleFromObjects(annotationsByPage?.[pageNumber]?.objects) || metaScaleForPage(measureScaleMeta, pageNumber)
+    ), container);
+  }, [gridSettingsEnabled, gridSettings, annotationsByPage, measureScaleMeta, numPages]);
+  useEffect(() => {
+    if (!normalAnnotationHydration?.ready || normalAnnotationHydration.documentId !== pdfFile?.id) return undefined;
+    const apply = (value) => setMeasureScaleMeta(normalizeMeasureScaleMeta(value));
+    apply(excelSyncMetaGet(MEASURE_SCALES_META_KEY));
+    return subscribeDocumentMeta(MEASURE_SCALES_META_KEY, apply);
+  }, [normalAnnotationHydration, pdfFile?.id, excelSyncMetaGet, subscribeDocumentMeta]);
   // Layers panel ('layers' flag): the layer list rides the synced doc meta;
   // the active layer is this screen's own choice.
   const [layersEnabled] = useState(() => isFeatureOn('layers'));
+  // Mark library ('mark-library' beta): the store follows the front tab's
+  // signed-in person and document project; libraryDraft is the marks the
+  // Save to library card is open for.
+  const [markLibraryEnabled] = useState(() => isFeatureOn('mark-library'));
+  const [libraryDraft, setLibraryDraft] = useState(null);
+  useEffect(() => {
+    if (!markLibraryEnabled || isActive === false) return;
+    markLibraryStore.setContext({ userId: user?.id || null, projectId: pdfFile?.projectId || null });
+  }, [markLibraryEnabled, isActive, user?.id, pdfFile?.projectId]);
+  // Nightly: the survey bar's template menu links to the Templates editor.
+  const [customAnswersEnabled] = useState(() => isFeatureOn('custom-answers'));
   const [layerState, setLayerState] = useState(DEFAULT_LAYER_STATE);
   const [activeLayerId, setActiveLayerId] = useState(DEFAULT_LAYER_ID);
   useEffect(() => {
@@ -21692,12 +22024,23 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   activeLayerIdRef.current = effectiveActiveLayerId;
   const hiddenLayerIds = useMemo(() => (layersEnabled ? hiddenLayerIdSet(layerState) : null), [layersEnabled, layerState]);
   hiddenLayerIdsRef.current = hiddenLayerIds;
+  // Any write to the root's style restyles the whole page (~0.1 s on a big
+  // drawing set), so a tab switch leaves the value for the tab coming to the
+  // front to overwrite, and only a changed value is written
+  // (docs/TAB-SWITCHING.md). The front tab clears it when it closes.
+  const pdfOpacityFrontRef = useRef(false);
+  pdfOpacityFrontRef.current = layersEnabled && isActive !== false;
   useEffect(() => {
-    if (!layersEnabled || isActive === false || typeof document === 'undefined') return undefined;
+    if (!layersEnabled || isActive === false || typeof document === 'undefined') return;
     const root = document.documentElement;
-    root.style.setProperty('--survey-pdf-content-opacity', String(layerState.pdfOpacity));
-    return () => root.style.removeProperty('--survey-pdf-content-opacity');
+    const value = String(layerState.pdfOpacity);
+    if (root.style.getPropertyValue('--survey-pdf-content-opacity') !== value) {
+      root.style.setProperty('--survey-pdf-content-opacity', value);
+    }
   }, [layersEnabled, isActive, layerState.pdfOpacity]);
+  useEffect(() => () => {
+    if (pdfOpacityFrontRef.current) document.documentElement.style.removeProperty('--survey-pdf-content-opacity');
+  }, []);
   const deletedPdfAnnotations = useMemo(() => filterRestoredPdfAnnotationTombstones([
     ...new Map(
       [...durableDeletedPdfAnnotations, ...locallyDeletedPdfAnnotations]
@@ -22155,6 +22498,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSpaceDelete = useCallback((id) => {
     if (!requireSpaceManagement()) return;
+    // Act first (owner rule): no question; the toast's Undo is the timeline
+    // Undo, which brings back the space and everything the cascade took.
+    const deleteToastMessage = buildSpaceDeleteToast({
+      spaceName: (spacesRef.current || []).find((s) => s.id === id)?.name,
+      impact: getSpaceRemovalImpact(id, null),
+    });
     // Checkpoint history before deleting space
     // w37: the checkpoint keeps this very context object; the cascade below
     // adds what it removed to it (cascadeIds).
@@ -22196,7 +22545,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     if (selectedSpaceId === id) {
       setSelectedSpaceId(null);
     }
-  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+    bookmarkUndoToastRef.current?.({
+      kind: 'single',
+      message: deleteToastMessage,
+      onUndo: () => { handleUndoRef.current?.(); },
+    });
+  }, [addHistoryCheckpoint, activeSpaceId, selectedSpaceId, cascadeDeleteScopedAppState, getSpaceRemovalImpact, pdfFile?.id, requireSpaceManagement, user]);
 
   const handleSetActiveSpace = useCallback((spaceId) => {
     // Spaces chunk A: a space with no pages filters out every page and blanked
@@ -22954,46 +23308,28 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     finishRegionEditSession();
   }, [finishRegionEditSession]);
 
-  const handleRegionSetFullPage = useCallback(() => {
+  // `target` saves for a given space and page instead of the open session:
+  // the Undo on the "Area changes dropped" toast, after Esc ended it.
+  const handleRegionComplete = useCallback((regions, target = null) => {
     if (!requireSpaceManagement()) return;
-    if (!activeSpaceId || !regionSelectionPage) {
-      console.warn('[App] ERROR: Missing activeSpaceId or regionSelectionPage', { activeSpaceId, regionSelectionPage });
-      return;
-    }
-
-    handleSpaceClearRegions(activeSpaceId, regionSelectionPage);
-
-    // Close the region selection tool after setting full page
-    finishRegionEditSession();
-  }, [activeSpaceId, regionSelectionPage, handleSpaceClearRegions, finishRegionEditSession, requireSpaceManagement]);
-
-  const canSetRegionToFullPage = useMemo(() => {
-    if (!activeSpaceId || !regionSelectionPage) return false;
-    const space = spaces.find(s => s.id === activeSpaceId);
-    if (!space) return false;
-    const pageEntry = space.assignedPages?.find(p => p.pageId === regionSelectionPage);
-    if (!pageEntry) return false;
-    return pageEntry.wholePageIncluded === false;
-  }, [spaces, activeSpaceId, regionSelectionPage]);
-
-  const handleRegionComplete = useCallback((regions) => {
-    if (!requireSpaceManagement()) return;
-    if (!activeSpaceId || !regionSelectionPage) {
-      console.warn('[App-RegionEdit] handleRegionComplete ignored — missing activeSpaceId or regionSelectionPage', {
-        activeSpaceId,
-        regionSelectionPage,
+    const targetSpaceId = target ? target.spaceId : activeSpaceId;
+    const targetPageId = target ? target.pageId : regionSelectionPage;
+    if (!targetSpaceId || !targetPageId) {
+      console.warn('[App-RegionEdit] handleRegionComplete ignored — missing targetSpaceId or targetPageId', {
+        targetSpaceId,
+        targetPageId,
         incomingCount: Array.isArray(regions) ? regions.length : 0
       });
       return;
     }
 
-    const space = spaces.find(s => s.id === activeSpaceId);
+    const space = spaces.find(s => s.id === targetSpaceId);
     if (!space) {
       return;
     }
 
     const updatedPages = [...(space.assignedPages || [])];
-    const pageIndex = updatedPages.findIndex(p => p.pageId === regionSelectionPage);
+    const pageIndex = updatedPages.findIndex(p => p.pageId === targetPageId);
 
     // Requirement: "A region can contain multiple areas (polygons) within it"
     // Combine all additive regions (non-touching areas) into a single region object
@@ -23030,8 +23366,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     });
 
     appDebug('[App-RegionEdit] handleRegionComplete — saving regions', {
-      activeSpaceId,
-      regionSelectionPage,
+      targetSpaceId,
+      targetPageId,
       incomingCount: Array.isArray(regions) ? regions.length : 0,
       additiveCount: additiveRegions.length,
       migratedCount: migratedRegions.length,
@@ -23046,8 +23382,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       .filter((regionId) => regionId && !nextRegionIds.has(regionId));
     if (removedRegionIds.length > 0) {
       cascadeDeleteScopedAppState({
-        spaceId: activeSpaceId,
-        pageIds: [regionSelectionPage],
+        spaceId: targetSpaceId,
+        pageIds: [targetPageId],
         regionIds: removedRegionIds,
         reason: 'region-delete-or-replace',
       });
@@ -23057,7 +23393,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // produces no journal rows — only a confirmed Confirm reaches this path.
       const documentId = pdfFile?.id || null;
       if (documentId) {
-        const activeSpace = (spacesRef.current || []).find((s) => s.id === activeSpaceId);
+        const activeSpace = (spacesRef.current || []).find((s) => s.id === targetSpaceId);
         const spaceName = activeSpace?.name || null;
         const actorName =
           user?.user_metadata?.full_name
@@ -23072,7 +23408,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         for (const region of removedRegions) {
           const trashRow = buildRegionDeleteHistoryRow({
             region,
-            spaceId: activeSpaceId,
+            spaceId: targetSpaceId,
             spaceName,
             documentId,
             userId: user?.id || null,
@@ -23084,22 +23420,25 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       }
     }
 
+    // Owner 2026-10-26 (the Full page button is gone): deleting every area
+    // gives the whole page back, never a page with nothing in it.
+    const wholePageIncluded = validMigratedRegions.length === 0;
     if (pageIndex >= 0) {
       updatedPages[pageIndex] = {
         ...updatedPages[pageIndex],
-        wholePageIncluded: false,
+        wholePageIncluded,
         regions: validMigratedRegions
       };
     } else {
       updatedPages.push({
-        pageId: regionSelectionPage,
-        wholePageIncluded: false,
+        pageId: targetPageId,
+        wholePageIncluded,
         regions: validMigratedRegions
       });
     }
 
     setRegionOverlayDisabled(prev => {
-      const key = `${activeSpaceId}-${regionSelectionPage}`;
+      const key = `${targetSpaceId}-${targetPageId}`;
       if (prev.get(key) !== true) {
         return prev;
       }
@@ -23107,12 +23446,29 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       next.delete(key);
       return next;
     });
-    handleSpaceUpdate(activeSpaceId, { assignedPages: updatedPages });
-    setActiveSpaceId(activeSpaceId);
-    setSelectedSpaceId(activeSpaceId);
+    handleSpaceUpdate(targetSpaceId, { assignedPages: updatedPages });
+    if (target) return;
+    setActiveSpaceId(targetSpaceId);
+    setSelectedSpaceId(targetSpaceId);
     finishRegionEditSession();
     // Keep selectedSpaceId set - don't clear it when region selection completes
   }, [activeSpaceId, regionSelectionPage, spaces, handleSpaceUpdate, finishRegionEditSession, cascadeDeleteScopedAppState, pdfFile?.id, requireSpaceManagement, user]);
+
+  // Read at click time: the toast can outlive several renders.
+  const handleRegionCompleteRef = useRef(handleRegionComplete);
+  handleRegionCompleteRef.current = handleRegionComplete;
+  const handleRestoreDroppedRegions = useCallback((spaceId, pageId, regions) => {
+    handleRegionCompleteRef.current(regions, { spaceId, pageId });
+  }, []);
+
+  // The Spaces panel's edit button, pressed again, leaves the way the tool
+  // does: keeping the areas (there is no Cancel any more).
+  const regionToolbarApiRef = useRef(null);
+  regionToolbarApiRef.current = mobileRegionToolbarApi;
+  const handleLeaveRegionEdit = useCallback(() => {
+    if (regionToolbarApiRef.current?.leave) regionToolbarApiRef.current.leave();
+    else finishRegionEditSession();
+  }, [finishRegionEditSession]);
 
   // KAL-313 (2026-06-11): region trash journaling moved INTO handleRegionComplete
   // above — commit time, gated on the removedRegionIds diff. The old
@@ -23497,6 +23853,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Track unsaved annotation changes
   const [hasUnsavedAnnotations, setHasUnsavedAnnotations] = useState(false);
   const savedAnnotationsByPageRef = useRef({});
+  // A compare waiting for idle (below); quitting runs it first.
+  const pendingUnsavedCheckRef = useRef(null);
+  // The marks the last check saw, and the marks whose compare still waits.
+  const checkedByPageRef = useRef(null);
+  const waitingByPageRef = useRef(null);
 
   // Mark annotations as dirty when they change
   const cloudSyncKeyRef = useRef(null);
@@ -23534,21 +23895,68 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // Compare current with saved to detect changes. jsonEqual answers exactly
     // like comparing the two JSON.stringify strings, without building them
     // (w29: ~70 ms per change on a 3,000-mark document).
-    const matchesSaved = jsonEqual(annotationsByPage, savedAnnotationsByPageRef.current);
-
-    if (!matchesSaved && Object.keys(annotationsByPage).length > 0) {
-      setHasUnsavedAnnotations(true);
-      // Notify parent component
-      if (onUnsavedAnnotationsChange) {
-        onUnsavedAnnotationsChange(true);
-      }
+    const reportUnsaved = (matchesSaved) => {
+      pendingUnsavedCheckRef.current = null;
+      if (waitingByPageRef.current === annotationsByPage) waitingByPageRef.current = null;
+      const unsaved = !matchesSaved && Object.keys(annotationsByPage).length > 0;
+      if (unsaved) setHasUnsavedAnnotations(true);
+      if (onUnsavedAnnotationsChange) onUnsavedAnnotationsChange(unsaved);
+      return unsaved;
+    };
+    const checkNow = () => reportUnsaved(jsonEqual(annotationsByPage, savedAnnotationsByPageRef.current));
+    // A whole-document rebuild (the open, a cloud apply) shares no page with
+    // the marks before it, and an equal compare against the saved copy walks
+    // every mark: ~60 ms each, five times while a 3,000-mark document opens.
+    // Such a compare runs a page at a time in idle slices; a newer rebuild
+    // drops it, and a re-run for the same marks (a sync status change) keeps
+    // waiting. Marks it finds equal become the saved copy, so later edits
+    // compare only their own pages. An edit keeps its untouched pages, so it
+    // is checked at once, as before.
+    const saved = savedAnnotationsByPageRef.current;
+    const previous = checkedByPageRef.current;
+    checkedByPageRef.current = annotationsByPage;
+    const pages = Object.keys(annotationsByPage);
+    const rebuilt = pages.length > 1 && (
+      waitingByPageRef.current === annotationsByPage
+      || (previous !== null && previous !== annotationsByPage
+        && !pages.some((page) => previous[page] === annotationsByPage[page]))
+    );
+    const idle = typeof requestIdleCallback === 'function';
+    let sliceId = null;
+    if (rebuilt) {
+      let against = saved;
+      let steps = jsonEqualSteps(annotationsByPage, against);
+      const slice = () => {
+        sliceId = null;
+        if (savedAnnotationsByPageRef.current !== against) {
+          against = savedAnnotationsByPageRef.current;
+          steps = jsonEqualSteps(annotationsByPage, against);
+        }
+        const until = performance.now() + 8;
+        for (;;) {
+          const step = steps.next();
+          if (step.done) {
+            if (step.value && savedAnnotationsByPageRef.current === against) {
+              savedAnnotationsByPageRef.current = annotationsByPage;
+            }
+            reportUnsaved(step.value);
+            return;
+          }
+          if (performance.now() > until) break;
+        }
+        sliceId = idle ? requestIdleCallback(slice, { timeout: 500 }) : setTimeout(slice, 0);
+      };
+      pendingUnsavedCheckRef.current = checkNow;
+      waitingByPageRef.current = annotationsByPage;
+      sliceId = idle ? requestIdleCallback(slice, { timeout: 500 }) : setTimeout(slice, 0);
     } else {
-      // Notify parent component when there are no unsaved changes
-      if (onUnsavedAnnotationsChange) {
-        onUnsavedAnnotationsChange(false);
-      }
+      checkNow();
     }
-    return () => { if (confirmTimer) clearTimeout(confirmTimer); };
+    return () => {
+      if (confirmTimer) clearTimeout(confirmTimer);
+      if (sliceId != null) (idle ? cancelIdleCallback : clearTimeout)(sliceId);
+      if (pendingUnsavedCheckRef.current === checkNow) pendingUnsavedCheckRef.current = null;
+    };
   }, [pdfId, annotationsByPage, onUnsavedAnnotationsChange, pdfFile?.id, cloudSyncEnabled, cloudSyncStatus, cloudSyncQueueSize]);
 
   // Hardening (audit 2026-04-30 #3): notify the App-level beforeunload guard
@@ -23665,7 +24073,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const api = window.electronAPI;
     try {
       let redactionsSanitizedForExport = 0;
-      const defaultName = (pdfFile.name || 'document').replace(/\.pdf$/i, '') + '-annotated.pdf';
+      const defaultName = (pdfDisplayNameRef.current || 'document').replace(/\.pdf$/i, '') + '-annotated.pdf';
       const annotationCounts = summarizeAnnotationCountsForSaveExport(annotationsByPage, callouts, surveyMarkers);
       console.log('[PDFSaveExport] action start ' + JSON.stringify({
         actionType: 'pdf-export',
@@ -23798,6 +24206,116 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     hiddenLayerIds,
   ]);
 
+  // Export PDF choices (Nightly, flag 'export-modes'): annotated (the same
+  // bytes as Export annotated PDF), flattened (the same bytes Print makes) or
+  // plain (no marks), for every page, this page, pages with marks or a typed
+  // list. Pure helpers live in utils/exportPdfModes.js.
+  const exportPageInfo = useCallback(async () => {
+    const { pagesWithMarks } = await import('./utils/exportPdfModes.js');
+    return {
+      numPages: Number(numPages) || 0,
+      currentPage: pageNum,
+      marked: pagesWithMarks({
+        annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+        surveyMarkers: printableSurveyMarkers,
+      }),
+    };
+  }, [numPages, pageNum, annotationsByPage, hiddenLayerIds, printableSurveyMarkers]);
+
+  const handleExportPdfWithOptions = useCallback(async ({ mode = 'annotated', pages = 'all', custom = '' } = {}) => {
+    if (!pdfFile) {
+      showToast('Open a PDF first.', 'warn');
+      return { ok: false, error: 'Open a PDF first.' };
+    }
+    const modes = await import('./utils/exportPdfModes.js');
+    const bytesKit = await import('./utils/exportPdfBytes.js');
+    const info = await exportPageInfo();
+    const picked = modes.pickExportPages({ choice: pages, custom, ...info });
+    if (picked.error) return { ok: false, error: picked.error };
+    let redactionsSanitized = 0;
+    try {
+      const source = await getExportSourcePdf();
+      let bytes;
+      if (mode === 'plain') {
+        bytes = await bytesKit.stripMarkupAnnotations(source, { pageTransformations });
+      } else if (mode === 'flattened') {
+        const { buildPrintableRegularAnnotationPayload, savePDFWithFlattenedRegularAnnotationsForPrint } =
+          await import('./utils/pdfAnnotationsPdfLib');
+        const payload = buildPrintableRegularAnnotationPayload({
+          annotationsByPage: withoutHiddenLayers(printableAnnotationsByPageRef.current || {}, hiddenLayerIds),
+          callouts: calloutsWithoutHiddenLayers(callouts || [], hiddenLayerIds).filter((callout) => isAnnotationVisibleInSurveyMode({
+            moduleId: callout?.moduleId ?? null,
+            regionId: callout?.regionId ?? null,
+            showSurveyPanel,
+            selectedModuleId,
+          })),
+          surveyMarkers: printableSurveyMarkers,
+          spaces,
+        });
+        bytes = await savePDFWithFlattenedRegularAnnotationsForPrint(source, payload.annotationsByPage, pageSizes, {
+          returnBytes: true,
+          pageTransformations,
+          actionType: 'pdf-export-flattened',
+          documentId: pdfFile?.id || pdfFile?.name || null,
+          callouts: payload.callouts,
+          surveyMarkers: payload.surveyMarkers,
+          spaces,
+          printableDiagnostics: payload.diagnostics,
+          screenAnnotationsByPage: annotationsByPage,
+          deletedPdfAnnotations,
+        });
+      } else {
+        const { savePDFWithAnnotationsPdfLib } = await import('./utils/pdfAnnotationsPdfLib');
+        bytes = await savePDFWithAnnotationsPdfLib(
+          source,
+          withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
+          pageSizes,
+          null,
+          {
+            returnBytes: true,
+            actionType: 'pdf-export',
+            documentId: pdfFile?.id || null,
+            pageTransformations,
+            callouts: calloutsWithoutHiddenLayers(callouts, hiddenLayerIds),
+            surveyMarkers: printableSurveyMarkers,
+            activeModuleId: isSurveyVisibilityContext({ showSurveyPanel, selectedModuleId }) ? selectedModuleId : null,
+            spaces,
+            deletedPdfAnnotations,
+            onRedactionsSanitized: (count) => { redactionsSanitized = count; },
+          }
+        );
+      }
+      if (!bytes) return { ok: false, error: 'Nothing to export.' };
+      if (picked.pages) bytes = await bytesKit.keepOnlyPages(bytes, picked.pages);
+      const fileName = modes.exportFileName(pdfDisplayNameRef.current || pdfFile.name, mode, picked.pages);
+      const outcome = await bytesKit.deliverPdf(bytes, fileName, { title: 'Export PDF' });
+      if (outcome === 'canceled') return { ok: false, canceled: true };
+      if (redactionsSanitized > 0) {
+        showToast(`${redactionsSanitized} redaction marks were exported as outlines without their replacement text`, 'info');
+      } else if (outcome === 'downloaded') {
+        showToast(`Downloaded ${fileName}`, 'success');
+      }
+      return { ok: true, fileName };
+    } catch (err) {
+      console.error('[ExportPdfWithOptions] failed:', err);
+      return { ok: false, error: `Export failed: ${err?.message || err}` };
+    }
+  }, [
+    annotationsByPage,
+    callouts,
+    deletedPdfAnnotations,
+    exportPageInfo,
+    getExportSourcePdf,
+    hiddenLayerIds,
+    pageSizes,
+    pageTransformations,
+    pdfFile,
+    printableSurveyMarkers,
+    selectedModuleId,
+    showSurveyPanel,
+    spaces,
+  ]);
+
   // KAL-393: "Export markup (XFDF)" — a sidecar built from the same
   // inputs and writer as Export annotated PDF. The source PDF is not changed.
   const handleExportXfdf = useCallback(async () => {
@@ -23809,7 +24327,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const { runXfdfExport, xfdfResultMessage } = await import('./utils/xfdfExport/runXfdfExport.js');
       const result = await runXfdfExport({
         sourcePdf: await getExportSourcePdf(),
-        pdfName: pdfFile.name || 'document.pdf',
+        pdfName: pdfDisplayNameRef.current || 'document.pdf',
         annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
         pageSizes,
         exportOptions: {
@@ -23856,7 +24374,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const { runAnnotationBundleExport, bundleResultMessage } = await import('./utils/annotationBundle/runAnnotationBundleExport.js');
       const result = await runAnnotationBundleExport({
         sourcePdf: await getExportSourcePdf(),
-        pdfName: pdfFile.name || 'document.pdf',
+        pdfName: pdfDisplayNameRef.current || 'document.pdf',
         documentId: pdfFile?.id || null,
         annotationsByPage: withoutHiddenLayers(annotationsByPage, hiddenLayerIds),
         pageSizes,
@@ -23931,7 +24449,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           deletedPdfAnnotations,
         },
       );
-      const baseName = (pdfFile.name || 'document').replace(/\.pdf$/i, '');
+      const baseName = (pdfDisplayNameRef.current || 'document').replace(/\.pdf$/i, '');
       const outputName = `${baseName}-redacted.pdf`;
       const redactedBytes = await applyPermanentPdfRedactions({
         annotatedPdfBytes: annotatedBytes,
@@ -24061,9 +24579,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       } else {
         // Keep the dirty state and retry path even if a cloud flush can run.
         // Auto-save failures must be visible too: no local backup was written.
+        // A drawing past the browser's ~5 M character limit (Package 2: 11 M)
+        // can never fit this backup; while the shared document holds the work
+        // that is not a loss, and a red toast every 30 s only scares people.
         setHasUnsavedAnnotations(true);
         onUnsavedAnnotationsChange?.(true, tabId);
-        showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
+        if (!annotationDocHoldsWorkRef.current()) {
+          showToast('Could not save a local copy. Keep this document open and retry Save.', 'error');
+        }
       }
       // Report a failed local write before any network wait can outlast the
       // desktop quit grace period. Other save callers need no callback.
@@ -24161,7 +24684,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     const handleBeforeQuit = async ({ quitAttemptId } = {}) => {
       let saved = true;
-      if (hasUnsavedAnnotations) {
+      if (hasUnsavedAnnotations || pendingUnsavedCheckRef.current?.()) {
         try {
           saved = await handleSaveDocument(true, (localBackupSaved) => {
             if (!localBackupSaved) {
@@ -24300,6 +24823,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       const docName = pdfFile.name || 'unknown';
       const analyticsLoadStartedAt = performance.now();
       firstPageDrawnRef.current = { drawn: false, resolve: null };
+      pageDrawnSignal.reset();
       firstPagePaintAnalyticsRef.current = {
         startedAt: analyticsLoadStartedAt,
         byteSizeBucket: 'unknown',
@@ -24388,7 +24912,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               if (!isCancelled && latestPdfFileRef.current === pdfFile) setLoadRetryToken((t) => t + 1);
             },
           }) : null;
-          if (isCancelled) { try { await streamed?.pdf?.destroy(); } catch { /* noop */ } return; }
+          if (isCancelled) { await destroyPdfDocument(streamed?.pdf); return; }
           if (streamed?.pdf) {
             streamedPdf = streamed.pdf;
             openedByStream = true;
@@ -24458,11 +24982,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
           const transferCloudBytes = Boolean(pdfFile?.id);
           const primaryPdfData = transferCloudBytes ? arrayBuffer : arrayBuffer.slice(0);
           if (transferCloudBytes) arrayBuffer = null;
-          const loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
+          const loadingTask = pdfjsLib.getDocument({ isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib),
             data: primaryPdfData,
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
-          pdf = await loadingTask.promise;
+          pdf = await pdfOrDestroy(loadingTask);
           perfLoad.mark(docName, 'PDF.js document parsed');
           trackSurveyAnalyticsEvent('survey_pdf_parse_completed', {
             byteSizeBucket,
@@ -24479,14 +25003,14 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
               arrayBuffer = await retryBlob.arrayBuffer();
             }
             // Use fresh buffer clone for recovery attempt
-            const recoveryTask = pdfjsLib.getDocument({ isEvalSupported: false,
+            const recoveryTask = pdfjsLib.getDocument({ isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib),
               data: arrayBuffer.slice(0),
               verbosity: pdfjsLib.VerbosityLevel.ERRORS,
               stopAtErrors: false,
               disableAutoFetch: true,
               disableStream: true
             });
-            pdf = await recoveryTask.promise;
+            pdf = await pdfOrDestroy(recoveryTask);
             perfLoad.mark(docName, 'PDF.js document parsed (recovery mode)');
           } catch (recoveryError) {
             // UX: 2026-04-19 — some Acrobat-saved PDFs use compressed
@@ -24507,12 +25031,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
                 parseSpeed: pdfLib.ParseSpeeds.Fastest,
               });
               const rewritten = await rewriteDoc.save({ useObjectStreams: false });
-              const rewriteTask = pdfjsLib.getDocument({ isEvalSupported: false,
+              const rewriteTask = pdfjsLib.getDocument({ isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib),
                 data: rewritten.buffer.slice(0),
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                 stopAtErrors: false,
               });
-              pdf = await rewriteTask.promise;
+              pdf = await pdfOrDestroy(rewriteTask);
               // Update the buffer downstream consumers see so the annotation
               // importer also reads the rewritten bytes.
               arrayBuffer = rewritten.buffer;
@@ -24525,7 +25049,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         }
         }
         if (isCancelled) {
-          try { await pdf.destroy(); } catch { /* noop */ }
+          await destroyPdfDocument(pdf);
           return;
         }
         setPdfDoc(pdf);
@@ -24990,7 +25514,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   useEffect(() => { if (isActive) setMarkerShapePdfDocument(pdfDoc); }, [isActive, pdfDoc]);
   useEffect(() => () => {
     if (!pdfBaseDoc) return;
-    try { pdfBaseDoc.destroy(); } catch { /* noop */ }
+    void destroyPdfDocument(pdfBaseDoc);
   }, [pdfBaseDoc]);
 
   // KAL-46 / sleep-wake recovery watchdog.
@@ -25343,96 +25867,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
     return run(0);
   }, [getBoundsCenter, goToPage, pageSizes, resolvePageContentElement, scrollMode, usePdfjsRenderer]);
-
-  const centerSurveyMarkerElementInViewer = useCallback((annotationId, options = {}) => {
-    if (!annotationId) return false;
-    const {
-      behavior = 'auto',
-      retryBehavior = 'auto',
-      maxRetries = usePdfjsRenderer ? 12 : 6,
-      retryDelay = usePdfjsRenderer ? 80 : 40,
-      leftInset = 0,
-      rightInset = 0,
-      skipIfClosePx = 0,
-    } = options;
-
-    const escapeSelectorValue = (value) => (
-      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-        ? CSS.escape(String(value))
-        : String(value).replace(/["\\]/g, '\\$&')
-    );
-    const selector = `[data-survey-marker-id="${escapeSelectorValue(annotationId)}"]`;
-
-    const run = (attempt = 0) => {
-      const container = containerRef.current;
-      const groupElement = typeof document !== 'undefined' ? document.querySelector(selector) : null;
-      const element = groupElement?.querySelector?.(':scope > rect') || groupElement;
-      if (!container || !element) {
-        if (attempt < maxRetries && typeof window !== 'undefined') {
-          window.setTimeout(() => run(attempt + 1), retryDelay);
-        }
-        return false;
-      }
-
-      const containerRect = container.getBoundingClientRect();
-      const elementRect = element.getBoundingClientRect();
-      if (!(elementRect.width > 0) || !(elementRect.height > 0)) {
-        if (attempt < maxRetries && typeof window !== 'undefined') {
-          window.setTimeout(() => run(attempt + 1), retryDelay);
-        }
-        return false;
-      }
-
-      const containerWidth = Number(container.clientWidth) || containerRect.width;
-      const containerHeight = Number(container.clientHeight) || containerRect.height;
-      let effectiveRightInset = Math.max(0, rightInset);
-      if (typeof document !== 'undefined') {
-        const occludingLeft = Array.from(document.querySelectorAll('body *'))
-          .map((node) => node?.getBoundingClientRect?.())
-          .filter((rect) => (
-            rect &&
-            rect.width > 120 &&
-            rect.height >= containerRect.height * 0.75 &&
-            rect.left > containerRect.left + containerRect.width * 0.65 &&
-            rect.left < containerRect.right &&
-            rect.top <= containerRect.top + 4 &&
-            rect.bottom >= containerRect.bottom - 4
-          ))
-          .reduce((minLeft, rect) => Math.min(minLeft, rect.left), Infinity);
-        if (Number.isFinite(occludingLeft)) {
-          effectiveRightInset = Math.max(effectiveRightInset, containerRect.right - occludingLeft);
-        }
-      }
-      const visibleWidth = Math.max(80, containerWidth - Math.max(0, leftInset) - effectiveRightInset);
-      const visibleHeight = Math.max(80, containerHeight);
-      const elementCenterX = elementRect.left + elementRect.width / 2;
-      const elementCenterY = elementRect.top + elementRect.height / 2;
-      const viewportCenterX = containerRect.left + Math.max(0, leftInset) + visibleWidth / 2;
-      const viewportCenterY = containerRect.top + visibleHeight / 2;
-
-      const targetScrollLeft = container.scrollLeft + elementCenterX - viewportCenterX;
-      const targetScrollTop = container.scrollTop + elementCenterY - viewportCenterY;
-      const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      const nextLeft = Math.max(0, Math.min(targetScrollLeft, maxScrollLeft));
-      const nextTop = Math.max(0, Math.min(targetScrollTop, maxScrollTop));
-      const isCloseEnough =
-        skipIfClosePx > 0 &&
-        Math.abs(container.scrollLeft - nextLeft) <= skipIfClosePx &&
-        Math.abs(container.scrollTop - nextTop) <= skipIfClosePx;
-
-      if (isCloseEnough) return true;
-
-      container.scrollTo({
-        left: nextLeft,
-        top: nextTop,
-        behavior: attempt > 0 ? retryBehavior : behavior,
-      });
-      return true;
-    };
-
-    return run(0);
-  }, [usePdfjsRenderer]);
 
   // Navigate to a search match with zoom and centering
   const navigateToMatch = useCallback((match, index, navigationOptions = undefined) => {
@@ -26293,6 +26727,19 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     setActiveCategoryDropdown('survey');
     setActiveToolLogged('survey-marker');
   }, [setActiveToolLogged]);
+  // Owner 2026-10-26 ("By default, the first category is selected"): in
+  // Survey a category is always picked - one of the module in use, else that
+  // module's first - so a drawn marker already has its category, module and
+  // entity (Reuse, which cleared it after each marker, is gone).
+  useEffect(() => {
+    if (!showSurveyPanel || !selectedTemplate) return;
+    const modules = selectedTemplate.modules || selectedTemplate.spaces || [];
+    const module = modules.find((entry) => entry.id === selectedModuleId) || modules[0] || null;
+    const categories = module?.categories || [];
+    if (categories.some((category) => category.id === selectedCategoryId)) return;
+    const first = categories[0]?.id || null;
+    if (first !== selectedCategoryId) setSelectedCategoryId(first);
+  }, [showSurveyPanel, selectedTemplate, selectedModuleId, selectedCategoryId]);
 
   useEffect(() => {
     if (!mobileSurveyEntityId) return;
@@ -26399,7 +26846,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (selectedAnnot?.data?.type !== 'text-markup') return null;
       const bounds = quadBounds(selectedAnnot.data.quads);
       const selectedPageNumber = Number(selectedAnnot.data.pageNumber || selectedToolbarAnnotation?.pageNumber);
-      const pageElement = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${selectedPageNumber}"]`);
+      const pageElement = queryInViewer(pdfjsWrapperRef.current, `.survey-pdfjs-page-div[data-page-number="${selectedPageNumber}"]`);
       const pageRect = pageElement?.getBoundingClientRect?.();
       const pageSize = pageSizesRef.current?.[selectedPageNumber];
       if (!bounds || !pageRect || !pageSize?.width || !pageSize?.height) return null;
@@ -26597,8 +27044,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         onApplyEntity: handleMobileSurveyEntityApply,
         onArmMarker: handleMobileSurveyArmMarker,
         surveyMarkers,
-        keepCategoryActive: surveyKeepCategoryActive,
-        onKeepCategoryActiveChange: setSurveyKeepCategoryActive,
         // Owner 2026-10-07 (survey bar round): the strip opens with the
         // template's name (a menu to switch template) and ends with "Done",
         // which leaves Survey with an Undo toast.
@@ -26622,6 +27067,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // disagree on - the bar shows those as mixed (no colour ringed, a dash
       // in Width, "Mixed" in the style menus) until the user sets them.
       selectionCapabilities,
+      // One picked polyline: whether it is curved (the Curve switch, Nightly).
+      selectedPolyline: !groupSummary && selectedType === 'polyline' ? { curved: polySplineStep(selectedAnnot) > 0 } : null,
       selectionMixed: groupSummary ? groupSummary.mixed : null,
       selectionCount: groupSummary ? groupSummary.count : (selectedToolbarAnnotation || selectedToolbarCallout ? 1 : 0),
       strokeWidthInputValue: strokeWidthInputValueRef.current,
@@ -26652,6 +27099,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // The selected text box / callout's own text style while one is
       // selected, else the tool's defaults (see selectedTextTarget above).
       textStyleDefaults: selectedTextTarget ? selectedTextTarget.style : textStyleDefaults,
+      // Which text box / callout that is, so the bar opens on its regular
+      // settings each time a different one is picked (owner 2026-10-26).
+      textFormatTargetKey: selectedTextTarget?.key ?? null,
       onTextStyleDefaultsChange: handleTextStyleSourceChange,
       // Review 2026-09-23: callout text is always vertically centred (the
       // renderer and the editor ignore verticalAlign), so the top / middle /
@@ -26675,7 +27125,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         : selectionMappedTool && pickBarTool === 'select'
         ? (selectedToolbarCallout
           ? true
-          : (selectedAnnot?.data?.type !== 'counter' && toolOffersCloudLineStyle(selectedType)))
+          : (selectedAnnot?.data?.type !== 'counter' && (toolOffersCloudLineStyle(selectedType)
+            // A polyline saved as a cloud before lines lost Cloud (2026-10-28).
+            || (selectedType === 'polyline' && selectedAnnot?.data?.pdfCloudIntensity != null))))
         : toolOffersCloudLineStyle(activeTool),
       cloudIntensity,
       setCloudIntensity: handleCloudIntensityChange,
@@ -26689,6 +27141,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       onSwitchCounterSeries: handleSwitchCounterSeries,
       onDeleteCounterSeries: handleDeleteCounterSeriesFromToolbar,
       onRenameCounterSeries: handleRenameCounterSeriesFromToolbar,
+      onRecolorCounterSeries: handleRecolorCounterSeriesFromToolbar,
+      onReorderCounterSeries: handleReorderCounterSeriesFromToolbar,
       selectedCounterSeriesId,
       selectedCounterSeriesSize: selectedCounterSeries?.count || 0,
       selectedCounterSeriesStart: selectedCounterSeriesId
@@ -26753,7 +27207,10 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       // KAL-393: XFDF sidecar ("Export markup").
       exportXfdf: handleExportXfdf,
       // KAL-410: review package ZIP.
-      exportReviewBundle: handleExportReviewBundle
+      exportReviewBundle: handleExportReviewBundle,
+      // Export PDF choices (Nightly, flag 'export-modes').
+      exportPdfWithOptions: handleExportPdfWithOptions,
+      exportPageInfo
     });
   }, [
     isActive,
@@ -26795,7 +27252,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleMobileSurveyEntityApply,
     handleMobileSurveyArmMarker,
     surveyMarkers,
-    surveyKeepCategoryActive,
     appTemplates,
     handleSwitchSurveyTemplateById,
     handleLeaveSurvey,
@@ -26828,6 +27284,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handleSwitchCounterSeries,
     handleDeleteCounterSeriesFromToolbar,
     handleRenameCounterSeriesFromToolbar,
+    handleRecolorCounterSeriesFromToolbar,
+    handleReorderCounterSeriesFromToolbar,
     handleSelectedCounterSeriesStartChange,
     fillColor,
     fillOpacity,
@@ -26867,7 +27325,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     handlePageInputBlur,
     handleExportAnnotatedPDF,
     handleExportXfdf,
-    handleExportReviewBundle
+    handleExportReviewBundle,
+    handleExportPdfWithOptions,
+    exportPageInfo
   ]);
 
   // UX 2026-07-12: clear this instance's published bottom-toolbar API on unmount.
@@ -26893,6 +27353,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Every tab listens on the window; only the front one answers (S6). A
+      // tab behind keeps real layout now, so its arrows or paste would act.
+      if (isInTabBehind(pdfjsWrapperRef.current)) return;
       // Rule 12 (utils/selectModes.js): every tool letter below switches
       // through this and says so (a switch other than Select <-> Pan drops
       // the selection, owner 2026-10-04).
@@ -29608,7 +30071,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       })();
       return {
         documentId: pdfFile?.id || null,
-        documentName: pdfFile?.name || null,
+        documentName: pdfDisplayNameRef.current || null,
         userId: user?.id || null,
         email: user?.email || null,
         documentOwnerId,
@@ -29816,6 +30279,66 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return { ok: true };
   }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
   handleRenameCounterSeriesRef.current = handleRenameCounterSeries;
+
+  // The counts list (beta 'counter-list', CounterSeriesMenu): recolour a
+  // whole count's pin and number from its row. Same rules as a rename.
+  const handleRecolorCounterSeries = useCallback((seriesId, paint) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
+    const patch = {};
+    if (typeof paint?.fill === 'string' && paint.fill) patch.fill = paint.fill;
+    if (typeof paint?.numberColor === 'string' && paint.numberColor) patch.numberColor = paint.numberColor;
+    if (!Object.keys(patch).length) return { ok: false, reason: 'invalid-paint' };
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    const permission = checkCounterSeriesEdit(annotationsByPageRef.current, seriesId, { viewerId, documentOwnerId });
+    if (!permission.ok) return permission;
+    handleCounterGroupUpdateRef.current?.(seriesId, patch);
+    // The count new pins land in: the tool's own colours follow it.
+    if (activeCounterSeriesIdRef.current === seriesId) {
+      if (patch.fill) setFillColor(patch.fill);
+      if (patch.numberColor) setStrokeColor(patch.numberColor);
+    }
+    return { ok: true };
+  }, [user?.id, documentOwnerId, yjsUndoCtx?.userId]);
+  handleRecolorCounterSeriesRef.current = handleRecolorCounterSeries;
+
+  // The counts list's drag to reorder: every pin carries its count's place
+  // (buildCounterSeriesOrderUpdates), saved as ONE undo step over all pages.
+  const handleReorderCounterSeries = useCallback((orderedIds) => {
+    if (!counterSeriesActiveRef.current || !canRestoreFromHistoryRef.current) return { ok: false, reason: 'forbidden' };
+    const allPages = annotationsByPageRef.current || {};
+    const viewerId = yjsUndoCtx?.userId || user?.id || null;
+    for (const seriesId of Array.isArray(orderedIds) ? orderedIds : []) {
+      const permission = checkCounterSeriesEdit(allPages, seriesId, { viewerId, documentOwnerId });
+      if (!permission.ok) return permission;
+    }
+    const plan = buildCounterSeriesOrderUpdates(allPages, orderedIds);
+    if (!plan.ok) return plan;
+    if (plan.updates.length === 0) return { ok: true };
+    const pageActions = plan.updates.map(({ pageKey, json }) => {
+      const numericKey = Number(pageKey);
+      const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+      return buildAnnotationHistoryAction({ pageNumber, previousPage: allPages[pageKey], nextPage: json });
+    }).filter(Boolean);
+    const scoped = filterAnnotationHistoryActionByOwner(
+      { type: 'fabric:document-batch', actions: pageActions },
+      viewerId,
+      documentOwnerId,
+    );
+    plan.updates.forEach(({ pageKey, json }) => {
+      const numericKey = Number(pageKey);
+      const pageNumber = Number.isFinite(numericKey) ? numericKey : pageKey;
+      handleSaveAnnotations(pageNumber, json, {
+        source: 'counter:series-reorder',
+        action: 'counter-series-reorder',
+        checkpointPolicy: 'skip',
+      });
+      endPagePreviewGesture(previewBaselineByPageRef.current, gestureFieldTouchesByPageRef.current, pageNumber);
+    });
+    if (scoped?.actions?.length) pushLocalAnnotationHistoryAction(scoped);
+    setCounterUITick((tick) => tick + 1);
+    return { ok: true };
+  }, [documentOwnerId, handleSaveAnnotations, pushLocalAnnotationHistoryAction, user?.id, yjsUndoCtx?.userId]);
+  handleReorderCounterSeriesRef.current = handleReorderCounterSeries;
 
   // Request deletion of one complete counter series. The existing shared
   // confirmation modal handles both ordinary and cross-author series. The
@@ -30101,8 +30624,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       let dx = 20 + repeatOffset;
       let dy = 20 + repeatOffset;
       try {
-        const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
-        const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
+        const svgWrap = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
+        const palRoot = queryInViewer(pdfjsWrapperRef.current, `[data-pal-root="${pageNumber}"]`);
         const pageDiv = (svgWrap || palRoot)?.closest?.('.survey-pdfjs-page-div') || null;
         const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
         const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
@@ -30169,8 +30692,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let pastedLeft = originalLeft + 20 + repeatOffset;
     let pastedTop = originalTop + 20 + repeatOffset;
     try {
-      const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
-      const palRoot = document.querySelector(`[data-pal-root="${pageNumber}"]`);
+      const svgWrap = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
+      const palRoot = queryInViewer(pdfjsWrapperRef.current, `[data-pal-root="${pageNumber}"]`);
       const pageDiv = (svgWrap || palRoot)?.closest?.('.survey-pdfjs-page-div') || null;
       const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
       const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
@@ -30331,7 +30854,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       .filter((entry) => entry?.annotationId)
       .map((entry) => ({ id: String(entry.annotationId), stack: entry.stack || null }));
     const svg = typeof document !== 'undefined'
-      ? document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`)
+      ? queryInViewer(pdfjsWrapperRef.current, `[data-svg-annotation-layer="${pageNumber}"]`)
       : null;
     const bboxOfEntry = (entry) => {
       if (!svg) return null;
@@ -30397,7 +30920,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       if (direction === 'back') return 0;
       const stepFallback = direction === 'forward' ? fromIndex + 1 : fromIndex - 1;
       if (direction !== 'forward' && direction !== 'backward') return fromIndex;
-      const svg = document.querySelector(`[data-svg-annotation-layer="${pageNumber}"]`);
+      const svg = queryInViewer(pdfjsWrapperRef.current, `[data-svg-annotation-layer="${pageNumber}"]`);
       if (!svg) return stepFallback;
       // w52: callouts render in the same stack but carry data-stack-index
       // (not data-annotation-index, which routes clicks to the shape path).
@@ -30855,6 +31378,26 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }, 300);
   }, [surveyMarkers, selectedTemplate, showSurveyPanel, rightRailCollapsed, requestRightRailExpand, mobileMode]);
 
+  // A Survey Marker picked on the page opens its row in the open Survey panel
+  // (desktop), as a markup list follows the picked markup. The panel is not
+  // opened for it, and the phone sheet is left alone so it never covers the
+  // page under the finger.
+  const pickedSurveyMarkerId = pickedSurveyMarker?.annotationId || null;
+  useEffect(() => {
+    if (!pickedSurveyMarkerId || mobileMode || !showSurveyPanel || rightRailCollapsed) return undefined;
+    const marker = surveyMarkers[pickedSurveyMarkerId];
+    if (!marker?.categoryId) return undefined;
+    if (marker.moduleId) setSelectedModuleId(marker.moduleId);
+    setExpandedCategories((prev) => (prev[marker.categoryId] && Object.keys(prev).length === 1 ? prev : { [marker.categoryId]: true }));
+    setExpandedSurveyMarkers((prev) => (prev[pickedSurveyMarkerId] && Object.keys(prev).length === 1 ? prev : { [pickedSurveyMarkerId]: true }));
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(`highlight-item-${pickedSurveyMarkerId}`)?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+    // Only a new pick moves the panel; edits to the marker do not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedSurveyMarkerId]);
+
   // Survey audit P1-5 (phone "Locate on page"): newest locate wins.
   const surveyLocateTokenRef = useRef(0);
 
@@ -30881,274 +31424,67 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       });
     }
 
+    // Owner note 2026-10-26 (item 28): "it doesn't automatically go to it
+    // every single time and center on it ... It should zoom properly to the
+    // extents of it as well, and it should do that on the first click."
+    // One synchronous move through the viewer's zoom-to-mark (the same one
+    // History rows use): the page, a zoom that makes the marker about half of
+    // the view you can see (never past 800%, never out past fitting the page),
+    // and the marker centred between the panels and tool strips. It is pure
+    // layout maths, so it does not wait for the page to draw and cannot land
+    // short the way the old measure-and-retry centring did.
+    const token = surveyLocateTokenRef.current + 1;
+    surveyLocateTokenRef.current = token;
+    const focus = (insets = {}) => {
+      if (surveyLocateTokenRef.current !== token) return;
+      const focused = focusHistoryMark(pageNumber, bounds, {
+        fill: SURVEY_LOCATE_FILL,
+        maxScale: SURVEY_LOCATE_MAX_SCALE,
+        ...insets,
+      });
+      if (!focused) goToPage(pageNumber, { bypassActiveSpace: true });
+    };
+
     // Survey audit P1-5 (phone): the Survey sheet has just been lowered to
-    // its standard height (SurveySpacesRail). Once it has settled, fit the
+    // its standard height (SurveySpacesRail). Once it has settled, land the
     // marker in the page you can still see - above the sheet, beside the tool
-    // rail - with drawing around it: the box takes at most ~40% of that area's
-    // width and height (it used to fill the width, under a full-screen sheet).
-    // The zoom goes through the normal viewer zoom, so zoomGeneration and the
-    // pdf.js commit run exactly as for the zoom buttons.
+    // rail.
     if (mobileMode && typeof window !== 'undefined' && typeof document !== 'undefined') {
-      const token = surveyLocateTokenRef.current + 1;
-      surveyLocateTokenRef.current = token;
-      const isCurrent = () => surveyLocateTokenRef.current === token;
-      const readInsets = () => {
+      window.setTimeout(() => {
         const container = containerRef.current;
-        if (!container) return { left: 0, right: 0, top: 0, bottom: 0 };
+        if (!container) return;
         const occluders = Array.from(document.querySelectorAll('[data-viewer-occluder], .mobile-pdf-tools, .mobile-pdf-properties'))
           .filter((node) => node.getClientRects().length > 0)
           .map((node) => node.getBoundingClientRect());
-        return resolveViewerOcclusionInsets(container.getBoundingClientRect(), occluders);
-      };
-      const readRenderedScale = () => {
-        const pageContainer =
-          pageContainersRef.current?.[pageNumber] ||
-          pdfjsPageContainersStateRef.current?.[pageNumber] ||
-          pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
-          null;
-        const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
-        const pageRect = pageElement?.getBoundingClientRect?.();
-        const pageSize = pageSizesRef.current?.[pageNumber] || {};
-        if (!pageRect || !(pageRect.width > 0) || !(Number(pageSize.width) > 0)) return null;
-        return pageRect.width / Number(pageSize.width);
-      };
-      const centerInVisibleArea = () => {
-        const insets = readInsets();
-        return centerPageBoundsInViewer(pageNumber, bounds, {
-          behavior: 'auto',
-          retryBehavior: 'auto',
-          maxRetries: 18,
-          retryDelay: 60,
-          navigateFirst: true,
+        const insets = resolveViewerOcclusionInsets(container.getBoundingClientRect(), occluders);
+        debugMark('survey_locate_phone', { pageNumber, annotationId, insets });
+        focus({
           leftInset: insets.left,
           rightInset: insets.right,
           topInset: insets.top,
           bottomInset: insets.bottom,
         });
-      };
-      window.setTimeout(() => {
-        if (!isCurrent()) return;
-        const container = containerRef.current;
-        if (!container) return;
-        const insets = readInsets();
-        const visibleWidth = Math.max(80, container.clientWidth - insets.left - insets.right);
-        const visibleHeight = Math.max(80, container.clientHeight - insets.top - insets.bottom);
-        const boxWidth = Math.max(1, Number(bounds.width) || 1);
-        const boxHeight = Math.max(1, Number(bounds.height) || 1);
-        const fitScale = Math.min((visibleWidth * 0.4) / boxWidth, (visibleHeight * 0.4) / boxHeight);
-        const targetScale = Math.min(3, Math.max(0.35, fitScale));
-        const currentScale = readRenderedScale() || Math.max(0.01, Number(scaleRef.current) || 1);
-        debugMark('survey_locate_phone', { pageNumber, annotationId, insets, visibleWidth, visibleHeight, currentScale, targetScale });
-        if (Math.abs(targetScale - currentScale) / currentScale < 0.04) {
-          centerInVisibleArea();
-          return;
-        }
-        centerPageBoundsInViewer(pageNumber, bounds, { behavior: 'auto', navigateFirst: true, maxRetries: 18, retryDelay: 60 });
-        setScaleWithViewportPreservation(targetScale, { preserveCenter: false, mode: ZOOM_MODES.MANUAL });
-        const startedAt = Date.now();
-        const waitForZoom = () => {
-          if (!isCurrent()) return;
-          const rendered = readRenderedScale();
-          if ((rendered && Math.abs(rendered - targetScale) / targetScale < 0.015) || Date.now() - startedAt > 1500) {
-            centerInVisibleArea();
-            // The viewer re-anchors its scroll a layout pass after the commit.
-            window.setTimeout(() => { if (isCurrent()) centerInVisibleArea(); }, 120);
-            return;
-          }
-          window.setTimeout(waitForZoom, 30);
-        };
-        window.setTimeout(waitForZoom, 30);
       }, 320);
       return;
     }
 
-    const currentScale = Math.max(0.01, Number(scaleRef.current) || Number(scale) || 1);
-    const targetScale = Math.max(currentScale, 1.5);
-    const shouldZoom = targetScale > currentScale + 0.05;
-
-    debugMark('survey_locate_start', {
-      pageNumber,
-      annotationId,
-      currentScale,
-      targetScale,
-      shouldZoom,
-    });
-
-    const centerRenderedSurveyMarker = ({
-      behavior = 'auto',
-      retryBehavior = 'auto',
-      skipIfClosePx = 8,
-    } = {}) => {
-      if (!annotationId) return false;
-      return centerSurveyMarkerElementInViewer(annotationId, {
-        behavior,
-        retryBehavior,
-        maxRetries: usePdfjsRenderer ? 14 : 8,
-        retryDelay: usePdfjsRenderer ? 80 : 40,
-        rightInset: 0,
-        skipIfClosePx,
-      });
-    };
-
-    const centerSurveyMarker = ({
-      navigateFirst = true,
-      behavior = 'smooth',
-      retryBehavior = 'smooth',
-      skipIfClosePx = 0,
-      exactDelay = usePdfjsRenderer ? 120 : 60,
-      preferRenderedSurveyMarker = true,
-    } = {}) => {
-      const shouldRunExactPass = Number.isFinite(exactDelay) && exactDelay >= 0;
-      if (preferRenderedSurveyMarker && centerRenderedSurveyMarker({
-        behavior,
-        retryBehavior,
-        skipIfClosePx: Math.max(4, skipIfClosePx || 8),
-      })) {
-        if (annotationId && shouldRunExactPass && typeof window !== 'undefined') {
-          window.setTimeout(() => centerRenderedSurveyMarker({
-            behavior: 'auto',
-            retryBehavior: 'auto',
-            skipIfClosePx: 0,
-          }), exactDelay);
-        }
-        return true;
-      }
-
-      const centered = centerPageBoundsInViewer(pageNumber, bounds, {
-        behavior,
-        maxRetries: usePdfjsRenderer ? 18 : 8,
-        retryDelay: usePdfjsRenderer ? 80 : 40,
-        // The PDF area is already narrowed when the Survey panel is open.
-        rightInset: 0,
-        navigateFirst,
-        settlePasses: 0,
-        settleDelay: usePdfjsRenderer ? 140 : 70,
-        retryBehavior,
-        skipIfClosePx
-      });
-      if (annotationId && shouldRunExactPass && typeof window !== 'undefined') {
-        window.setTimeout(() => centerRenderedSurveyMarker({
-          behavior: retryBehavior,
-          retryBehavior,
-          skipIfClosePx: skipIfClosePx || 0,
-        }), exactDelay);
-      }
-      return centered;
-    };
-
-    const getRenderedPageScale = () => {
-      if (typeof document === 'undefined') return null;
-      const pageContainer =
-        pageContainersRef.current?.[pageNumber] ||
-        pdfjsPageContainersStateRef.current?.[pageNumber] ||
-        pdfjsViewerRef.current?.getPageContainer?.(pageNumber) ||
-        null;
-      const pageElement = resolvePageContentElement(pageContainer) || pageContainer;
-      const pageRect = pageElement?.getBoundingClientRect?.();
-      const pageSize = pageSizesRef.current?.[pageNumber] || {};
-      if (!pageRect || !(pageRect.width > 0) || !(Number(pageSize.width) > 0)) {
-        return null;
-      }
-      return pageRect.width / Number(pageSize.width);
-    };
-
-    const centerAfterZoomSettles = () => {
-      if (typeof window === 'undefined') return;
-      const maxAttempts = usePdfjsRenderer ? 30 : 8;
-      const retryDelay = usePdfjsRenderer ? 40 : 25;
-      const initialScrollWidth = Number(containerRef.current?.scrollWidth) || 0;
-      const initialScrollHeight = Number(containerRef.current?.scrollHeight) || 0;
-      const scaleRatio = currentScale > 0 ? targetScale / currentScale : 1;
-      const expectedZoomText = `${Math.round(targetScale * 100)}%`;
-
-      const readZoomDomState = () => {
-        if (typeof document === 'undefined') {
-          return { renderedScale: null, scrollReady: false, toolbarReady: false };
-        }
-        const container = containerRef.current;
-        const zoomText = Array.from(document.querySelectorAll('button'))
-          .map((button) => (button.innerText || '').trim())
-          .find((text) => /^\d+%$/.test(text)) || '';
-        const scrollReady =
-          !!container &&
-          scaleRatio > 1.05 &&
-          (
-            (initialScrollWidth > 0 && container.scrollWidth >= initialScrollWidth * Math.min(scaleRatio * 0.82, scaleRatio - 0.1)) ||
-            (initialScrollHeight > 0 && container.scrollHeight >= initialScrollHeight * Math.min(scaleRatio * 0.82, scaleRatio - 0.1))
-          );
-
-        return {
-          renderedScale: getRenderedPageScale(),
-          scrollReady,
-          toolbarReady: zoomText === expectedZoomText,
-        };
-      };
-
-      const run = (attempt = 0) => {
-        const { renderedScale, scrollReady, toolbarReady } = readZoomDomState();
-        const scaleReady =
-          !usePdfjsRenderer ||
-          (Number.isFinite(renderedScale) && Math.abs(renderedScale - targetScale) <= 0.08) ||
-          scrollReady ||
-          toolbarReady ||
-          attempt >= maxAttempts;
-
-        if (!scaleReady) {
-          window.setTimeout(() => run(attempt + 1), retryDelay);
-          return;
-        }
-
-        const centered = centerSurveyMarker({
-          navigateFirst: true,
-          behavior: 'auto',
-          retryBehavior: 'auto',
-          skipIfClosePx: 0,
-          exactDelay: null,
-        });
-
-        debugMark('survey_locate_zoom_center', {
-          pageNumber,
-          annotationId,
-          targetScale,
-          renderedScale,
-          scrollReady,
-          toolbarReady,
-          attempt,
-          centered,
-        });
-      };
-
-      window.setTimeout(() => run(0), retryDelay);
-    };
-
-    if (shouldZoom) {
-      setScaleWithViewportPreservation(targetScale, { preserveCenter: false });
-      centerAfterZoomSettles();
-      return;
+    // Three frames on (~50 ms): the switch to Select drops the armed tool's own
+    // row (the entity bar), the viewer's ResizeObserver sees it the frame
+    // after and measures the strips that are left in the frame after that.
+    // Centring then uses the view as it will stay.
+    debugMark('survey_locate', { pageNumber, annotationId });
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      const raf = window.requestAnimationFrame;
+      raf(() => raf(() => raf(() => focus())));
+    } else {
+      focus();
     }
-
-    debugMark('survey_locate_direct_center', {
-      pageNumber,
-      annotationId,
-      targetScale: currentScale,
-    });
-    centerSurveyMarker({
-      navigateFirst: true,
-      behavior: 'smooth',
-      retryBehavior: 'smooth',
-      exactDelay: null,
-    });
   }, [
-    centerSurveyMarkerElementInViewer,
-    centerPageBoundsInViewer,
+    focusHistoryMark,
     goToPage,
     mobileMode,
-    resolvePageContentElement,
-    scale,
     setActiveTool,
-    setScaleWithViewportPreservation,
     setPendingSurveyMarkerSelection,
-    usePdfjsRenderer
   ]);
 
   const handlePendingSurveyMarkerSelectionConsumed = useCallback(() => {
@@ -31469,6 +31805,48 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return action;
   }, [applySurveyMarkerFamilyAction, documentOwnerId, user?.id]);
   commitSurveyMarkerFamilyPatchRef.current = commitSurveyMarkerFamilyPatch;
+
+  // Survey panel Move / Copy (owner 2026-10-26): Survey Markers go to another
+  // category - in this module, another module or another template. One Undo
+  // step; the same lock / ownership gate as a drag. The panel then shows where
+  // they went.
+  const handleTransferSurveyMarkers = useCallback(({ mode, ids, templateId, moduleId, categoryId }) => {
+    if (documentLocked || yjsDocRole === 'viewer') return { ok: false, reason: 'This document is read-only.' };
+    // Another template opens in the version this document kept (the picker
+    // lists that version), so check the category is really there first.
+    const current = selectedTemplateRef.current;
+    const otherTemplate = Boolean(templateId) && templateId !== current?.id;
+    const destination = otherTemplate
+      ? surveyTemplateVersionForDocument(templates.find((entry) => entry?.id === templateId))
+      : current;
+    const destinationModule = (destination?.modules || destination?.spaces || []).find((mod) => mod?.id === moduleId);
+    if (!(destinationModule?.categories || []).some((cat) => cat?.id === categoryId)) {
+      return { ok: false, reason: 'That category is not in the version of the template this document uses.' };
+    }
+    const viewerId = user?.id ?? null;
+    const plan = planSurveyMarkerTransfer({
+      mode, ids, moduleId, categoryId,
+      markers: surveyMarkersRef.current || {},
+      mayEdit: (record) => !isUserLocked(record) && (
+        !viewerId || !documentOwnerId || canModifySurveyMarker({ surveyMarker: record, viewerId, documentOwnerId })
+      ),
+      mintId: () => `surveyMarker-${crypto.randomUUID()}`,
+      userId: viewerId,
+    });
+    if (!plan.ok) return plan;
+    const action = buildSurveyMarkerHistoryAction(plan.changes);
+    if (!action) return { ok: false, reason: 'Nothing to change.' };
+    // A marker's Excel row is keyed by its module and category: re-export.
+    if (selectedTemplateRef.current?.linkedExcelPath) pendingExcelSyncAfterDeleteRefBridge.current = true;
+    applySurveyMarkerFamilyAction(action);
+    pushLocalAnnotationHistoryAction(action);
+    // Open the version the markers were placed in, without the "keep or use
+    // latest" question: cancelling that would leave them out of sight.
+    if (otherTemplate) enterSurveyTemplateVersion(destination);
+    setSelectedModuleId(moduleId);
+    setExpandedCategories((expanded) => ({ ...expanded, [categoryId]: true }));
+    return { ok: true, ids: plan.ids };
+  }, [documentLocked, yjsDocRole, user?.id, documentOwnerId, templates, surveyTemplateVersionForDocument, applySurveyMarkerFamilyAction, pushLocalAnnotationHistoryAction, enterSurveyTemplateVersion]);
 
   // Set true by handleSurveyMarkerDeleted once a delete commits; the effect
   // below watches surveyMarkers and re-exports the linked Excel so the
@@ -31827,6 +32205,41 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     }
   }, [requireCurrentSurveyTemplate, selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig]);
 
+  // Owner 2026-10-26: drag a module tab in the Survey panel to reorder the
+  // template's modules, the same order the home Templates page shows.
+  const handleReorderSurveyModules = useCallback((activeId, overId) => {
+    if (!requireCurrentSurveyTemplate()) return;
+    if (!selectedTemplate || !activeId || !overId || activeId === overId) return;
+    const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
+    const updatedModules = moveItemById(sourceModules, activeId, overId);
+    if (updatedModules === sourceModules) return;
+    const updatedTemplate = {
+      ...selectedTemplate,
+      modules: updatedModules,
+      spaces: updatedModules,
+      updatedAt: new Date().toISOString()
+    };
+    const supabaseTemplateId = selectedTemplate?.supabaseId || selectedTemplate?.id;
+    setSelectedTemplate(updatedTemplate);
+    // The document keeps the template version it was surveyed with: this
+    // order is now that version.
+    const binding = readSurveyTemplateBinding(updatedTemplate.id);
+    if (binding?.used) storeSurveyTemplateBinding(updatedTemplate.id, acceptTemplateVersion(binding, updatedTemplate, true));
+    if (handleTemplatesChange && appTemplates) {
+      handleTemplatesChange(appTemplates.map(t =>
+        (t.id === updatedTemplate.id || t.supabaseId === supabaseTemplateId) ? updatedTemplate : t
+      ));
+    }
+    if (updateSupabaseTemplate && supabaseTemplateId) {
+      updateSupabaseTemplate(supabaseTemplateId, {
+        config: sanitizeTemplateConfig(updatedTemplate),
+        updated_at: updatedTemplate.updatedAt
+      }).catch(err => {
+        console.warn('Failed to persist survey module order:', err);
+      });
+    }
+  }, [requireCurrentSurveyTemplate, selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, readSurveyTemplateBinding, storeSurveyTemplateBinding]);
+
   const handleMoveSurveyCategories = useCallback((categoryIds, destinationId) => {
     if (!requireCurrentSurveyTemplate()) return { ok: false, reason: 'Use the latest template before changing its categories.' };
     if (documentLocked || yjsDocRole === 'viewer') return { ok: false, reason: 'This document is read-only.' };
@@ -31906,10 +32319,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // survey template (template.smartFillShapes) so they travel with it. They
   // are not part of the template's versioned definition: read and written on
   // the latest row, whatever snapshot this document is using.
-  const saveSmartFillShapeToTemplate = useCallback(async (shape) => {
+  // `update` turns the template's shape list into the new one (add, rename,
+  // remove: smartFillTemplateShapes.js).
+  const saveSmartFillShapeToTemplate = useCallback(async (update) => {
     const latest = appTemplates.find((template) => template.id === selectedTemplate?.id) || selectedTemplate;
     if (!latest) throw new Error('No survey template is open.');
-    const next = { ...latest, smartFillShapes: withTemplateShape(latest.smartFillShapes, shape), updatedAt: new Date().toISOString() };
+    const next = { ...latest, smartFillShapes: update(Array.isArray(latest.smartFillShapes) ? latest.smartFillShapes : []), updatedAt: new Date().toISOString() };
     if (next.supabaseId) await updateSupabaseTemplateRow(next.supabaseId, { config: sanitizeTemplateConfig(next), updated_at: next.updatedAt });
     setSelectedTemplate((current) => (current?.id === next.id ? { ...current, smartFillShapes: next.smartFillShapes } : current));
     onTemplatesChange?.(appTemplates.map((template) => template.id === next.id ? next : template));
@@ -31931,12 +32346,12 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // ONE call: separate calls each started from the same old template, so the
   // last one won and the earlier categories came back.
   const handleDeleteSurveyCategoryDefinition = useCallback((moduleId, categoryIdOrIds) => {
-    if (!requireCurrentSurveyTemplate()) return;
+    if (!requireCurrentSurveyTemplate()) return false;
     const categoryIds = toCategoryIdList(categoryIdOrIds);
-    if (!selectedTemplate || !moduleId || categoryIds.length === 0) return;
+    if (!selectedTemplate || !moduleId || categoryIds.length === 0) return false;
     const sourceModules = selectedTemplate.modules || selectedTemplate.spaces || [];
     const { modules: updatedModules, changed } = removeCategoriesFromModules(sourceModules, moduleId, categoryIds);
-    if (!changed) return;
+    if (!changed) return false;
 
     const updatedAt = new Date().toISOString();
     const updatedTemplate = {
@@ -31948,9 +32363,6 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const templateId = selectedTemplate.supabaseId || selectedTemplate.id;
     setSelectedTemplate(updatedTemplate);
     setSelectedCategoryId((current) => categoryIds.includes(current) ? null : current);
-    notifySmartFillCategoriesDeleted(categoryIds, Object.entries(surveyMarkersRef.current || {})
-      .filter(([, marker]) => marker?.moduleId === moduleId && categoryIds.includes(marker?.categoryId))
-      .map(([annotationId]) => annotationId));
 
     if (handleTemplatesChange && appTemplates) {
       handleTemplatesChange(appTemplates.map((template) => (
@@ -31967,7 +32379,80 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
         showToast('Category deleted locally but could not be saved to the cloud.', 'error');
       });
     }
+    return true;
   }, [requireCurrentSurveyTemplate, selectedTemplate, handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
+
+  // Act first (owner rule): deleting a category takes its Survey Markers with
+  // it at once, and the toast's Undo puts the categories back where they were
+  // and brings their markers back. The template is not on the Undo timeline,
+  // so this is a toast Undo, not a timeline step; the markers go through the
+  // established marker delete (trash, History row, Excel row) and come back
+  // the way an Undo of a family delete brings them back.
+  const restoreSurveyCategoriesRef = useRef(null);
+  const handleRestoreSurveyCategories = useCallback((moduleId, removed, markers) => {
+    const template = selectedTemplateRef.current;
+    if (template && moduleId) {
+      const sourceModules = template.modules || template.spaces || [];
+      const { modules: updatedModules, changed } = restoreCategoriesToModules(sourceModules, moduleId, removed);
+      if (changed) {
+        const updatedAt = new Date().toISOString();
+        const updatedTemplate = { ...template, modules: updatedModules, spaces: updatedModules, updatedAt };
+        const templateId = template.supabaseId || template.id;
+        setSelectedTemplate(updatedTemplate);
+        if (handleTemplatesChange && appTemplates) {
+          handleTemplatesChange(appTemplates.map((entry) => (
+            entry.id === updatedTemplate.id || entry.supabaseId === templateId ? updatedTemplate : entry
+          )));
+        }
+        if (updateSupabaseTemplate && templateId) {
+          updateSupabaseTemplate(templateId, { config: sanitizeTemplateConfig(updatedTemplate), updated_at: updatedAt }).catch((error) => {
+            console.warn('Failed to persist survey category restore:', error);
+            showToast('Category restored locally but could not be saved to the cloud.', 'error');
+          });
+        }
+      }
+    }
+    const missing = (markers || []).filter(({ id }) => !surveyMarkersRef.current?.[id]);
+    if (missing.length > 0) {
+      applySurveyMarkerFamilyActionRef.current?.({
+        type: SURVEY_MARKER_HISTORY_TYPE,
+        changes: missing.map(({ id, record }) => ({ id, before: null, after: record })),
+      });
+    }
+  }, [handleTemplatesChange, appTemplates, updateSupabaseTemplate, sanitizeTemplateConfig, showToast]);
+  restoreSurveyCategoriesRef.current = handleRestoreSurveyCategories;
+
+  const handleDeleteSurveyCategoriesWithUndo = useCallback((moduleId, categoryIdOrIds) => {
+    const categoryIds = toCategoryIdList(categoryIdOrIds);
+    const sourceModules = selectedTemplate?.modules || selectedTemplate?.spaces || [];
+    const { removed } = removeCategoriesFromModules(sourceModules, moduleId, categoryIds);
+    const markers = Object.entries(surveyMarkersRef.current || {})
+      .filter(([, marker]) => marker?.moduleId === moduleId && categoryIds.includes(marker?.categoryId))
+      .map(([id, record]) => ({ id, record }));
+    // A locked marker is never deleted, not by a category delete either.
+    if (markers.some(({ record }) => isUserLocked(record))) {
+      showToast('Some items in these categories are locked — unlock them first.', 'info');
+      return;
+    }
+    if (!handleDeleteSurveyCategoryDefinition(moduleId, categoryIds)) return;
+    if (markers.length > 0) {
+      applySurveyMarkerFamilyActionRef.current?.({
+        type: SURVEY_MARKER_HISTORY_TYPE,
+        changes: markers.map(({ id, record }) => ({ id, before: record, after: null })),
+      });
+    }
+    const names = removed.map(({ category }) => category?.name || 'category');
+    const what = names.length === 1 ? names[0] : `${names.length} categories`;
+    const markerNote = markers.length > 0
+      ? `, with ${markers.length} Survey Marker${markers.length === 1 ? '' : 's'}`
+      : '';
+    bookmarkUndoToastRef.current?.({
+      kind: names.length > 1 ? 'bulk' : 'single',
+      message: `Deleted ${what}${markerNote}`,
+      count: names.length,
+      onUndo: () => restoreSurveyCategoriesRef.current?.(moduleId, removed, markers),
+    });
+  }, [selectedTemplate, handleDeleteSurveyCategoryDefinition, showToast]);
 
   // The eraser previews only markers this viewer can actually delete. Saved
   // markers use the canonical source-owned permission adapter; a marker absent
@@ -32075,7 +32560,8 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const categorizeDialogMarkerId = mobileMode ? null : (pendingSurveyMarker?.id || null);
   useEffect(() => {
-    if (!categorizeDialogMarkerId || typeof window === 'undefined') return undefined;
+    // Only the front tab answers keys (S6).
+    if (!categorizeDialogMarkerId || isActive === false || typeof window === 'undefined') return undefined;
     const onKeyDown = (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       // The card's module list is open: its own Escape closes only the list.
@@ -32086,7 +32572,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [categorizeDialogMarkerId, cancelSurveyMarkerPlacement]);
+  }, [categorizeDialogMarkerId, cancelSurveyMarkerPlacement, isActive]);
 
   // UX: w53 — Delete with several Survey Markers selected (a family
   // selection of markers only) deletes them as ONE undo step. Each marker
@@ -32461,7 +32947,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     let dx = 20 + repeatOffset;
     let dy = 20 + repeatOffset;
     try {
-      const svgWrap = document.querySelector(`[data-diag-svg-wrapper="${pageNumber}"]`);
+      const svgWrap = queryInViewer(pdfjsWrapperRef.current, `[data-diag-svg-wrapper="${pageNumber}"]`);
       const pageDiv = svgWrap?.closest?.('.survey-pdfjs-page-div') || null;
       const svgEl = svgWrap?.querySelector?.('svg') || pageDiv?.querySelector?.('svg[viewBox]') || null;
       const vb = svgEl?.getAttribute?.('viewBox')?.split(/\s+/) || null;
@@ -32508,6 +32994,58 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const dy = Number.isFinite(offset?.dy) ? offset.dy : DUPLICATE_OFFSET_PAGE_UNITS;
     return commitFamilyPaste(offset?.toPage ?? pageNumber, clipboard, dx, dy);
   }, [collectFamilySelection, commitFamilyPaste]);
+
+  // Mark library: the picked marks as a library item (the Save card opens on
+  // them). Same collection as Duplicate, so every family member can go in.
+  const saveFamilyToLibrary = useCallback((pageNumber, selection) => {
+    const collected = collectFamilySelection(pageNumber, selection);
+    const { width, height } = pageSizeFor(pageNumber);
+    const payload = libraryPayloadFromClipboard(buildFamilyClipboard({
+      pageNumber,
+      objects: collected.objects,
+      indices: collected.indices,
+      callouts: collected.callouts,
+      markers: collected.markers,
+      pageMarkers: collected.pageMarkers,
+      pageWidth: width,
+      pageHeight: height,
+    }));
+    if (!payload) { showToast('Text highlights can\'t go in the library.', 'info'); return false; }
+    if (libraryPayloadBytes(payload) > LIBRARY_PAYLOAD_MAX_BYTES) {
+      showToast('Those marks are too big to save (the limit is about 1 MB; large images count most).', 'error');
+      return false;
+    }
+    setLibraryDraft(payload);
+    return true;
+  }, [collectFamilySelection, showToast]);
+
+  // Mark library: drop an item at a screen point ({ clientX, clientY }) or in
+  // the middle of the page in view ({ center: true }). A paste of the item's
+  // marks (one save, one Undo step, they become the selection), with its
+  // {{tokens}} filled in and measurements on the landing page's scale.
+  const placeLibraryItemAt = useCallback((item, where) => {
+    if (familyEditsBlocked()) { showToast('This document can\'t be changed right now.', 'info'); return false; }
+    const drop = resolveLibraryDrop(pdfjsWrapperRef.current, where, pageNumRef.current || pageNum, pageSizeFor);
+    if (!drop) return false;
+    const { width, height } = pageSizeFor(drop.pageNumber);
+    const plan = planLibraryPlacement(item?.payload, {
+      point: drop.point,
+      pageWidth: width,
+      pageHeight: height,
+      pageNumber: drop.pageNumber,
+      landingScale: pageScaleFromObjects(annotationsByPageRef.current?.[drop.pageNumber]?.objects)
+        || metaScaleForPage(measureScaleMetaRef.current, drop.pageNumber) || null,
+      tokens: {
+        authorName: user?.user_metadata?.full_name || '',
+        authorEmail: user?.email || '',
+        documentName: pdfDisplayNameRef.current || '',
+        projectName: markLibraryStore.getState().access.projectName || '',
+      },
+    });
+    if (!plan) { showToast('That item can\'t be placed.', 'error'); return false; }
+    fitPlacedTextBoxes(plan.clipboard);
+    return commitFamilyPaste(drop.pageNumber, plan.clipboard, plan.dx, plan.dy);
+  }, [commitFamilyPaste, pageNum, pdfFile?.name, showToast, user]);
 
   // w53: a saved marker is a family member; one still being placed is not.
   const isSurveyMarkerFamilyMember = useCallback((annotationId) => (
@@ -33015,69 +33553,34 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       };
     });
 
-    // If a category is already selected, place the Survey Marker straight
-    // away with its default name and open it in the Survey panel.
-    if (selectedCategoryId && (chosenEntity || !(selectedTemplate.entities || []).length)) {
-      // UX (mobile demo parity): commit instantly with the default name and
-      // open the marker (demo App.tsx:1155). Owner 2026-10-01 ("Yes, inline
-      // like phone"): desktop too - the Entity and Name pop-ups are gone; the
-      // new marker opens in the rail with its name field focused and its
-      // Entity menu right there. Escape on that untouched name takes the
-      // placement back (one Undo step, SurveySpacesRail). The entity it starts
-      // with: chosenEntity above (the last one picked, else the first).
-      const placementEntity = chosenEntity;
-      const placementEntityColor = chosenEntityColor;
-      // Phone: a Smart fill marker keeps the tool armed and the sheet shut, so
-      // its "Find more" toast survives and the found outlines stay tappable.
-      const smartFillOnPhone = mobileMode && createOptions?.smartFill === true;
-      commitMobileSurveyMarker({
-        id: annotationId,
-        // Owner ruling 2026-09-28: the creator stamp (lock rights).
-        ...(user?.id ? { userId: user.id } : {}),
-        pageNumber,
-        bounds,
-        moduleId: effectiveModuleId,
-        regionId: pageRegionId,
-        ...(placementEntity ? {
-          entityId: placementEntity.id,
-          entityName: placementEntity.name,
-          entityColor: placementEntityColor,
-        } : {})
-      }, selectedCategoryId, { openPanel: !smartFillOnPhone });
-      if (!mobileMode) {
-        setSurveyMarkerNameFocusRequest({ id: annotationId, tick: Date.now() });
-      }
-
-      if (!surveyKeepCategoryActive && !smartFillOnPhone) {
-        setSelectedCategoryId(null);
-        setMobileSurveyEntityId(null);
-        // UX (mobile demo parity): with "Keep active" unchecked, the tool
-        // reverts to pan after each placement (demo App.tsx:1156-1161) so the
-        // next touch scrolls the page instead of drawing another Survey
-        // Marker. Desktop keeps the survey-marker tool armed (unchanged).
-        if (mobileMode) setActiveTool('pan');
-      }
-      if (!smartFillOnPhone) setShowSurveyPanel(true);
-    } else {
-      // No category selected, show category selection modal (only if survey panel is visible)
-      if (showSurveyPanel) {
-        setPendingSurveyMarker({
-          id: annotationId,
-          // Owner ruling 2026-09-28: the creator stamp (lock rights).
-          ...(user?.id ? { userId: user.id } : {}),
-          pageNumber,
-          bounds,
-          moduleId: effectiveModuleId,
-          regionId: pageRegionId,
-          ...(chosenEntity ? {
-            entityId: chosenEntity.id,
-            entityName: chosenEntity.name,
-            entityColor: chosenEntityColor,
-          } : {})
-        });
-      }
+    const placedMarker = {
+      id: annotationId,
+      // Owner ruling 2026-09-28: the creator stamp (lock rights).
+      ...(user?.id ? { userId: user.id } : {}),
+      pageNumber,
+      bounds,
+      moduleId: effectiveModuleId,
+      regionId: pageRegionId,
+      ...(chosenEntity ? {
+        entityId: chosenEntity.id,
+        entityName: chosenEntity.name,
+        entityColor: chosenEntityColor,
+      } : {})
+    };
+    // An agent's marker places at once. A Smart fill marker goes through the
+    // same card as a drawn box (owner 2026-10-27: "work the same as the
+    // others").
+    if (createOptions?.direct === true && selectedCategoryId && (chosenEntity || !(selectedTemplate.entities || []).length)) {
+      commitMobileSurveyMarker(placedMarker, selectedCategoryId, { openPanel: true });
+      setShowSurveyPanel(true);
+    } else if (showSurveyPanel) {
+      // Owner 2026-10-26: every drawn marker opens its card beside it - the
+      // category (the armed one, the first by default), module and entity are
+      // already picked and can still be changed there, and its name ("Camera
+      // 7") is ready to type over. Enter, or a press off the card, places it.
+      setPendingSurveyMarker(placedMarker);
     }
-  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, surveyKeepCategoryActive, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
+  }, [addHistoryCheckpoint, selectedModuleId, selectedTemplate, selectedCategoryId, showSurveyPanel, pendingLocationItem, activeSpaceId, selectedSpaceId, getPageSurveyRegionId, buildSurveyMarkerPreview, normalizeSurveyMarkerColor, hexToRgba, DEFAULT_SURVEY_MARKER_OPACITY, mobileMode, commitMobileSurveyMarker, requestRightRailExpand, user?.id]);
 
   // WebMCP: an agent adds Survey markers through the same path as a drawn
   // box (history, sync, server role check). Only the active tab answers.
@@ -33148,7 +33651,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       getPageSize: (page) => agentMarkerStateRef.current.pageSizes?.[page] || null,
       addSurveyMarker: (page, bounds) => {
         recordAnnotationCommit({ surface: 'webmcp', source: 'survey-marker:create', action: 'survey-marker-agent', pageNumber: page });
-        agentMarkerStateRef.current.handleSurveyMarkerCreated(page, bounds);
+        agentMarkerStateRef.current.handleSurveyMarkerCreated(page, bounds, { direct: true });
       },
       // Survey agent (find_on_plan): a page's words with boxes, from the
       // text layer, else from text recognition the person already ran.
@@ -33674,17 +34177,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     const updateDimensions = () => {
       // UX 2026-05-14: chrome-bottom-host was deleted when all tools moved
       // up to the top bar. The effect now reads only chrome-top-host and
-      // treats bottom chrome height as 0. The Save Log banner anchors via
-      // --app-chrome-top which still tracks the top bar's bottom edge
-      // dynamically (even when the top bar wraps onto a second row).
+      // treats bottom chrome height as 0. The top bar's bottom edge is
+      // published by AppShell (utils/chromeInsets.js), not here.
       const topEl = typeof document !== 'undefined' ? document.getElementById('chrome-top-host') : null;
       if (topEl) {
-        const topRect = topEl.getBoundingClientRect();
-        const topHeight = topRect.height;
-        setToolbarHeights({ top: topHeight, bottom: 0 });
-        if (typeof document !== 'undefined' && document.documentElement) {
-          document.documentElement.style.setProperty('--app-chrome-top', `${Math.round(topRect.bottom)}px`);
-        }
+        setToolbarHeights({ top: topEl.getBoundingClientRect().height, bottom: 0 });
       }
 
       if (middleAreaRef.current) {
@@ -33874,6 +34371,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [showAnnotationColorPicker, textLinkEditorOpen]);
 
   useEffect(() => {
+    // Only the front tab listens on the document (S6); a tab behind keeps
+    // its text selection state as it was left.
+    if (isActive === false) return undefined;
     // Pan selects text too once a mouse / pen rests on it (owner 2026-10-14).
     if (!isTextSelectionCaptureTool(activeTool)) {
       // Owner 2026-10-02: a just-drawn callout opens its text editor and the
@@ -33922,7 +34422,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       document.removeEventListener('touchend', captureSoon, true);
       document.removeEventListener('keydown', onKeyDown, true);
     };
-  }, [activeTool, capturePdfjsTextSelection, clearLiveTextSelection, showAnnotationColorPicker, textLinkEditorOpen]);
+  }, [activeTool, capturePdfjsTextSelection, clearLiveTextSelection, isActive, showAnnotationColorPicker, textLinkEditorOpen]);
 
   useEffect(() => {
     try { localStorage.setItem('survey:text-markup-overlap-mode', textMarkupOverlapMode); } catch { /* noop */ }
@@ -33967,7 +34467,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
       sourceMarks.length ? sourceMarks : [annotation],
     );
     const bounds = quadBounds(annotation.data.quads);
-    const pageElement = document.querySelector(`.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
+    const pageElement = queryInViewer(pdfjsWrapperRef.current, `.survey-pdfjs-page-div[data-page-number="${pageNumber}"]`);
     const pageRect = pageElement?.getBoundingClientRect?.();
     const pageSize = pageSizesRef.current?.[pageNumber];
     if (!bounds || !pageRect || !pageSize?.width || !pageSize?.height) return null;
@@ -34499,6 +34999,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
 
   const handleSelectPdfjsTextMarkupFromClientPoint = useCallback((event) => {
     if (!['select', 'text-select'].includes(activeTool)) return false;
+    // Every tab listens on the document; a tab behind keeps real page rects
+    // under the pointer, so it must not take the front tab's press.
+    if (isInTabBehind(pdfjsWrapperRef.current)) return false;
     if (!event || typeof event.clientX !== 'number' || typeof event.clientY !== 'number') return false;
     if (event.target?.closest?.('[data-annotation-context-menu], [data-toolbar], button, input, textarea, select, a[href], .survey-pdfjs-hyperlink, .survey-pdfjs-pdfviewer-formFields')) return false;
     const isPlainPdfTextTarget = !!event.target?.closest?.('.survey-pdfjs-text-layer, .survey-pdfjs-text');
@@ -34653,6 +35156,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   }, [activeTool, handleSelectPdfjsTextMarkupFromClientPoint]);
 
   useEffect(() => {
+    // Only the front tab answers keys (S6): Delete in the front tab used to
+    // delete a highlight left selected in a tab behind.
+    if (isActive === false) return undefined;
     const handleNativeTextMarkupDelete = (event) => {
       if (activeTool !== 'select' && !NATIVE_TEXT_MARKUP_TOOLS.has(activeTool)) return;
       if (event.key !== 'Delete' && event.key !== 'Backspace') return;
@@ -34674,7 +35180,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     return () => {
       document.removeEventListener('keydown', handleNativeTextMarkupDelete, { capture: true });
     };
-  }, [activeTool, onUnsavedAnnotationsChange, tabId]);
+  }, [activeTool, isActive, onUnsavedAnnotationsChange, tabId]);
 
   // Filter annotations by active module for rendering on PDF
   const filteredAnnotationsForPages = useMemo(() => {
@@ -35499,6 +36005,9 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
   // can be traced in a Save Log dump. We log every panel event we can see.
   useEffect(() => {
     // 2026-04-29: silenced — repeated on every component mount (every render path with React StrictMode). Re-enable via window.__DIAG_PRINT_PANEL_MOUNT = true.
+    // Only the front tab prints (S6): Ctrl+P and the Electron Print menu used
+    // to start a print in every open tab.
+    if (isActive === false || typeof window === 'undefined') return undefined;
     if (typeof window !== 'undefined' && window.__DIAG_PRINT_PANEL_MOUNT) console.log('[PrintPanel] mount — binding Cmd/Ctrl+P listeners. electronAPI available:', !!window.electronAPI, 'onPrintPdf available:', !!window.electronAPI?.onPrintPdf);
 
     // Native/system printing is the default. Product status and prototype
@@ -35636,7 +36145,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
             matchPageDims: null,
           });
         }
-        const docName = (pdfFile?.name || 'Document');
+        const docName = (pdfDisplayNameRef.current || 'Document');
         const jobSpec = {
           docName,
           variant: 'J',
@@ -35710,7 +36219,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, onBack, onCloseAfterFailure, t
     // capture froze numPages at 0 from the very first render, which
     // made Cmd/Ctrl+P log "no pages to print" forever after).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [numPages, pageSizes, pdfFile, pageTransformations]);
+  }, [numPages, pageSizes, pdfFile, pageTransformations, isActive]);
 
   // Pages data fed to the PrintPanel — derived from the Pdfjs-reported
   // pageSizes map. Falls back to Letter portrait if sizes aren't populated yet
@@ -36236,12 +36745,11 @@ ${pageBlocks}
       onSetActiveSpace: handleSetActiveSpace,
       onExitSpaceMode: handleExitSpaceMode,
       onRequestRegionEdit: handleRequestRegionEdit,
-      onCancelRegionEdit: handleCancelRegionEdit,
+      onCancelRegionEdit: handleLeaveRegionEdit,
       onSpaceAssignPages: handleSpaceAssignPages,
       onSpaceRenamePage: handleSpaceRenamePage,
       onSpaceRemovePage: handleSpaceRemovePage,
       onSpaceTransferRegion: handleSpaceTransferRegion,
-      getSpaceRemovalImpact,
       onNavigateToSpacePage: handleNavigateToSpacePage,
       onReorderSpaces: handleReorderSpaces,
       onExportSpaceCSV: handleExportSpaceToCSV,
@@ -36290,6 +36798,7 @@ ${pageBlocks}
       onLayersChange: handleLayersChange,
       onActiveLayerChange: setActiveLayerId,
       canEditLayers: canRestoreFromHistory,
+      markLibraryEnabled,
     };
     onLeftRailApiChange((prev) => {
       if (prev) {
@@ -36311,6 +36820,7 @@ ${pageBlocks}
     isActive,
     onLeftRailApiChange,
     layersEnabled,
+    markLibraryEnabled,
     layerState,
     effectiveActiveLayerId,
     handleLayersChange,
@@ -36355,12 +36865,11 @@ ${pageBlocks}
     handleSetActiveSpace,
     handleExitSpaceMode,
     handleRequestRegionEdit,
-    handleCancelRegionEdit,
+    handleLeaveRegionEdit,
     handleSpaceAssignPages,
     handleSpaceRenamePage,
     handleSpaceRemovePage,
     handleSpaceTransferRegion,
-    getSpaceRemovalImpact,
     handleNavigateToSpacePage,
     handleReorderSpaces,
     handleExportSpaceToCSV,
@@ -36417,8 +36926,12 @@ ${pageBlocks}
       copyModeActive,
       DEFAULT_SURVEY_MARKER_OPACITY,
       deleteAnnotations,
-      deleteCategory: handleDeleteSurveyCategoryDefinition,
+      deleteCategory: handleDeleteSurveyCategoriesWithUndo,
+      deleteSurveyMarkers: handleDeleteSurveyMarkers,
       handleMoveSurveyCategories,
+      transferSurveyMarkers: handleTransferSurveyMarkers,
+      surveyTemplateVersionForDocument,
+      reorderSurveyModules: handleReorderSurveyModules,
       canEditSurveyCategories: !documentLocked && yjsDocRole !== 'viewer' && !surveyTemplateIsRetained,
       canModifySurveyMarkerItem: (id) => !documentLocked && yjsDocRole !== 'viewer' && canModifySurveyMarker({ surveyMarker: surveyMarkers[id], viewerId: user?.id, documentOwnerId }),
       duplicateSurveyMarker: (id) => { const marker = surveyMarkers[id]; if (marker?.pageNumber) duplicateFamilySelection(marker.pageNumber, { markerIds: [id] }); },
@@ -36527,6 +37040,7 @@ ${pageBlocks}
       setShowSurveyPanel,
       setSurveyMarkers,
       setSurveyMarkersToRemoveByPage,
+      checkpointSurveyAnswer,
       showExportMenu,
       showRegionSelection,
       showSurveyPanel,
@@ -36574,8 +37088,12 @@ ${pageBlocks}
     copyModeActive,
     DEFAULT_SURVEY_MARKER_OPACITY,
     deleteAnnotations,
-    handleDeleteSurveyCategoryDefinition,
+    handleDeleteSurveyCategoriesWithUndo,
+    handleDeleteSurveyMarkers,
     handleMoveSurveyCategories,
+    handleTransferSurveyMarkers,
+    surveyTemplateVersionForDocument,
+    handleReorderSurveyModules,
     surveyTemplateIsRetained,
     documentLocked,
     yjsDocRole,
@@ -36673,6 +37191,7 @@ ${pageBlocks}
     setShowSurveyPanel,
     setSurveyMarkers,
     setSurveyMarkersToRemoveByPage,
+    checkpointSurveyAnswer,
     showExportMenu,
     showRegionSelection,
     showSurveyPanel,
@@ -36714,29 +37233,39 @@ ${pageBlocks}
   const handleMeasureCalibrateLine = useCallback((pageNumber, lengthPt, line) => {
     setMeasureScaleDialog({ pageNumber, lengthPt, line });
   }, []);
-  // Apply a page scale: re-stamp every measurement on the page (labels follow,
-  // one undo step) and keep a calibration line as a Length measurement so the
-  // scale is saved with the document even before anything else is measured.
-  const applyMeasureScale = useCallback((scale) => {
+  // Apply a scale to one page or all pages: save it in the document meta (so
+  // a page with no measurements keeps it), re-stamp every measurement on the
+  // pages it covers (labels follow, one undo step per page) and keep a
+  // calibration line as a Length measurement.
+  const applyMeasureScale = useCallback((scale, { allPages = false } = {}) => {
     const dialog = measureScaleDialog;
     setMeasureScaleDialog(null);
     if (!dialog || !scale) return;
     const { pageNumber, line } = dialog;
-    setMeasureScales((prev) => ({ ...prev, [pageNumber]: scale }));
-    const pageJson = annotationsByPageRef.current?.[pageNumber] || { objects: [] };
-    const extra = line ? [line] : [];
-    const hasMeasures = (pageJson.objects || []).some((o) => o?.data?.measure);
-    if (!hasMeasures && !extra.length) return;
-    handleSaveAnnotationsWithTextMarkupAtomicity(
-      pageNumber,
-      applyPageScale(pageJson, scale, extra),
-      { source: 'measure:set-scale', tool: 'line' },
-    );
+    rememberRecentMeasureScale(scale);
+    const nextMeta = nextMeasureScaleMeta(measureScaleMetaRef.current, pageNumber, scale, { allPages });
+    setMeasureScaleMeta(nextMeta);
+    pagePresentationMetaSetRef.current?.(MEASURE_SCALES_META_KEY, nextMeta, 'local');
+    const byPage = annotationsByPageRef.current || {};
+    const pages = allPages
+      ? [...new Set([pageNumber, ...Object.keys(byPage).map(Number)])]
+      : [pageNumber];
+    for (const page of pages) {
+      const pageJson = byPage[page] || { objects: [] };
+      const extra = line && page === pageNumber ? [line] : [];
+      const hasMeasures = (pageJson.objects || []).some((o) => o?.data?.measure);
+      if (!hasMeasures && !extra.length) continue;
+      handleSaveAnnotationsWithTextMarkupAtomicity(
+        page,
+        applyPageScale(pageJson, scale, extra),
+        { source: 'measure:set-scale', tool: 'line' },
+      );
+    }
     if (measureMode === 'calibrate') setMeasureMode('length');
   }, [handleSaveAnnotationsWithTextMarkupAtomicity, measureMode, measureScaleDialog]);
 
   if (pdfLoadError) {
-    const docName = pdfFile?.name || 'this document';
+    const docName = pdfDisplayName || 'this document';
     return (
       <>
       <div style={{
@@ -36857,7 +37386,7 @@ ${pageBlocks}
         background: 'var(--surface-0)',
         fontFamily: FONT_FAMILY
       }}>
-        <QuietLoading label={openingLabel(pdfFile?.name)} />
+        <QuietLoading label={openingLabel(pdfDisplayName)} />
       </div>
       {browserPrintDocument}
       </>
@@ -36876,8 +37405,9 @@ ${pageBlocks}
         <MeasureScaleDialog
           pageNumber={measureScaleDialog.pageNumber}
           lengthPt={measureScaleDialog.lengthPt ?? null}
+          pageCount={numPages}
           currentScale={pageScaleFromObjects(annotationsByPageRef.current?.[measureScaleDialog.pageNumber]?.objects)
-            || measureScales[measureScaleDialog.pageNumber]}
+            || metaScaleForPage(measureScaleMeta, measureScaleDialog.pageNumber)}
           onApply={applyMeasureScale}
           onCalibrate={() => {
             setMeasureScaleDialog(null);
@@ -36892,7 +37422,7 @@ ${pageBlocks}
         open={printPanelOpen}
         onClose={() => setPrintPanelOpen(false)}
         onPrint={handlePrintPanelPrint}
-        docName={pdfFile?.name || 'Untitled.pdf'}
+        docName={pdfDisplayName || 'Untitled.pdf'}
         pages={printPanelPages}
         printers={printPanelPrinters}
         getThumbnail={printPanelGetThumbnail}
@@ -36951,6 +37481,7 @@ ${pageBlocks}
         duplicateFamilySelection,
         familyClipboard,
         pasteFamilyAt,
+        saveFamilyToLibrary: markLibraryEnabled ? saveFamilyToLibrary : null,
         viewerId: user?.id ?? null,
         documentOwnerId,
         selectedCalloutIds,
@@ -36987,6 +37518,13 @@ ${pageBlocks}
           },
         },
       })}
+
+      {markLibraryEnabled && (
+        <MarkLibraryPlacementLayer active={isActive !== false} rootRef={pdfjsWrapperRef} place={placeLibraryItemAt} />
+      )}
+      {markLibraryEnabled && (
+        <MarkLibrarySaveDialog open={Boolean(libraryDraft)} payload={libraryDraft} onClose={() => setLibraryDraft(null)} />
+      )}
 
       {/* Unsupported Annotations Notice — see UnsupportedAnnotationsNotice.jsx
           for the owner-approved UX (friendly names, once per document open,
@@ -37069,6 +37607,7 @@ ${pageBlocks}
         {showRegionSelection && (
           <RegionSelectionTool
             active={showRegionSelection}
+            tabActive={isActive !== false}
             mobileMode={mobileMode}
             onMobileToolbarApiChange={setMobileRegionToolbarApi}
             onRequestRegionTool={() => setActiveTool(REGION_EDIT_TOOL)}
@@ -37081,8 +37620,7 @@ ${pageBlocks}
             pageWidth={regionSelectionPage ? (pageSizes[regionSelectionPage]?.width || 0) : 0}
             pageHeight={regionSelectionPage ? (pageSizes[regionSelectionPage]?.height || 0) : 0}
             initialRegions={initialRegionsForSelection}
-            onSetFullPage={handleRegionSetFullPage}
-            canSetFullPage={canSetRegionToFullPage}
+            onRestoreRegions={handleRestoreDroppedRegions}
             onHistoryStateChange={handleRegionHistoryStateChange}
             userId={user?.id ?? null}
           />
@@ -37294,6 +37832,7 @@ ${pageBlocks}
                   <PdfjsViewerContainer
                     id={pdfjsViewerElementId}
                     ref={pdfjsViewerRef}
+                    tabActive={isActive !== false}
                     className={`survey-pdfjs-viewer ${activeTool === 'select' ? 'survey-pdfjs-select-mode' : 'survey-pdfjs-standard-mode'}`}
                     documentSource={pdfDoc}
                     visiblePageNumbers={activeSpacePages}
@@ -37574,47 +38113,12 @@ ${pageBlocks}
                       const shouldHideNativePdfAnnotationLayer = Boolean(
                         nativePdfAnnotationPolicy?.hideNativeLayer
                       );
-                      const nativePdfAnnotationCanvasId = `${pdfjsViewerElementId}_annotationCanvas_${pageNumber - 1}`;
-                      const nativePdfPageDivId = `${pdfjsViewerElementId}_pageDiv_${pageNumber - 1}`;
-                      const nativePdfAnnotationLayerHideCss = `
-                        [id="${nativePdfAnnotationCanvasId}"],
-                        [id="${nativePdfAnnotationCanvasId}"] *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-canvas,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-canvas *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-layer,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-layer *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-selection,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-annotation-selection *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-container,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-container *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-div,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-resize-div *,
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdornerLayer"],
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdornerLayer"] *,
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdorner_svg"],
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdorner_svg"] *,
-                        [id="${nativePdfPageDivId}"] [id$="_diagramAdorner"],
-                        [id="${nativePdfPageDivId}"] [id$="_SelectorElement"],
-                        [id="${nativePdfPageDivId}"] [id*="SelectorElement"],
-                        [id="${nativePdfPageDivId}"] .e-adorner-layer0,
-                        [id="${nativePdfPageDivId}"] .e-adorner-layer1,
-                        [id="${nativePdfPageDivId}"] .e-adorner-layer2 {
-                          visibility: hidden !important;
-                          pointer-events: none !important;
-                        }
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-pdfviewer-formFields,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-pdfviewer-formFields *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-container,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-container *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-div,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-checkbox-div *,
-                        [id="${nativePdfPageDivId}"] .survey-pdfjs-hyperlink {
-                          visibility: visible !important;
-                          pointer-events: auto !important;
-                        }
-                      `;
+                      // No per-page <style> hides the native annotation layer any
+                      // more: pdf.js draws pages with AnnotationMode.DISABLE, so no
+                      // native annotation DOM exists, and its old Syncfusion-era
+                      // "[id=page] .x *" rules matched nothing yet were tried on
+                      // every element of every restyle (a stylesheet per drawn
+                      // page, per tab). tests/pageStyleSelectors.test.mjs.
 
                       return createPortal(
                         <div
@@ -37652,11 +38156,6 @@ ${pageBlocks}
                           data-page-annotation-object-count={pageAnnotationObjects.length}
                           data-page-callout-count={pageCalloutCount}
                         >
-                          {shouldHideNativePdfAnnotationLayer && (
-                            <style>
-                              {nativePdfAnnotationLayerHideCss}
-                            </style>
-                          )}
                           {activeTool === 'text-select' && ocrStateByPage[pageNumber]?.status === 'complete' && (
                             <OcrTextLayer
                               words={ocrStateByPage[pageNumber].result?.words || []}
@@ -38273,7 +38772,7 @@ ${pageBlocks}
                                   onRequestEditMode={getSvgLayerPageHandlers(pageNumber).onRequestEditMode}
                                   activeTool={activeTool}
                                   measureMode={measureMode}
-                                  measureScale={measureScales[pageNumber] || null}
+                                  measureScale={metaScaleForPage(measureScaleMeta, pageNumber)}
                                   onMeasureCalibrate={handleMeasureCalibrateLine}
                                   // UX 2026-09-15 (Drawboard parity — Pan is a selection
                                   // mode): mount the edit-entry HIT LAYER under Pan.
@@ -38875,7 +39374,11 @@ ${pageBlocks}
                                   caretAnchor={editingAnnotation.caretAnchor || null}
                                   textBoxWidth={editingAnnotation.textBoxWidth}
                                   textBoxHeight={editingAnnotation.textBoxHeight}
-                                  newTextStyle={mobileMode ? textStyleDefaults : null}
+                                  // A new text box takes what the bar shows: the Aa row's text
+                                  // style (desktop used to drop it, like callouts never did) and
+                                  // the paint row's border colour, width, fill and line style.
+                                  newTextStyle={textStyleDefaultsByTool.text}
+                                  newTextPaint={newTextBoxPaint(newMarkStyle)}
                                   newTextCloudIntensity={lineBorderStyle === 'cloud' ? Math.max(1, Number(cloudIntensity) || 2) : null}
                                   authorId={user?.id ?? null}
                                   // KAL-88 — survey/region scope inputs for NEW text commits;
@@ -39347,12 +39850,11 @@ ${pageBlocks}
                             padding: '4px 8px',
                             fontSize: '10px',
                             color: 'var(--text-3)',
-                            textTransform: 'uppercase',
                             fontWeight: 600,
                             borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
-                            SurveyMarker Type
+                            Survey marker type
                           </div>
                           <button
                             onClick={(e) => {
@@ -39412,6 +39914,7 @@ ${pageBlocks}
                     const measureItems = [
                       { key: 'length', label: 'Length', iconName: 'measureLength' },
                       { key: 'area', label: 'Area', iconName: 'measureArea' },
+                      { key: 'perimeter', label: 'Perimeter', iconName: 'measurePerimeter' },
                       { key: 'scale', label: 'Page scale…', iconName: 'measureScale' },
                     ];
                     const pressed = !!measureMode || !!measureScaleDialog;
@@ -39422,7 +39925,7 @@ ${pageBlocks}
                         setMeasureScaleDialog({ pageNumber: pageNum });
                         return;
                       }
-                      setActiveTool(item === 'area' ? 'polygon' : 'line');
+                      setActiveTool(measureBaseTool(item));
                       setMeasureMode(item);
                     };
                     return (
@@ -39475,7 +39978,7 @@ ${pageBlocks}
                                   style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 40, justifyContent: 'flex-start', padding: '0 10px' }}
                                   onClick={(e) => {
                                     pick(m.key);
-                                    if (m.key === 'area') releaseFocusForDraftTool(e.currentTarget);
+                                    if (POLYGON_MEASURE_KINDS.includes(m.key)) releaseFocusForDraftTool(e.currentTarget);
                                   }}
                                 >
                                   <Icon name={m.iconName} size={CHROME_GLYPH} />
@@ -39720,12 +40223,11 @@ ${pageBlocks}
                             padding: '4px 8px',
                             fontSize: '10px',
                             color: 'var(--text-3)',
-                            textTransform: 'uppercase',
                             fontWeight: 600,
                             borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
-                            Counter Series
+                            Counter series
                           </div>
                           {/* UX: popup rows are inline-styled, NOT using
                               the project's `.btn` class. Reason: `.btn`
@@ -40080,12 +40582,11 @@ ${pageBlocks}
                             padding: '4px 8px',
                             fontSize: '10px',
                             color: 'var(--text-3)',
-                            textTransform: 'uppercase',
                             fontWeight: 600,
                             borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
-                            {isUnderlineMenu ? 'Underline Type' : 'Strike Type'}
+                            {isUnderlineMenu ? 'Underline type' : 'Strike type'}
                           </div>
                           {isUnderlineMenu ? (
                             <>
@@ -40129,26 +40630,28 @@ ${pageBlocks}
                    Now the sub-row's own tool chip (28px, no fill; chosen = gold
                    glyph only, like every other tool) - they were 30px grey discs
                    that turned solid gold.
-                 - KEEP ACTIVE: after a Survey Marker is placed, keep the same
-                   category armed so the next drag places another one; off, the
-                   category is cleared after each placement. Now the app's switch
-                   (the Spaces one, drawn to the 20px pill height) with its word -
-                   it was a native checkbox.
+                 - (Reuse, the "keep the category armed" switch, is gone:
+                   owner 2026-10-26 - the category always stays picked, the
+                   first one by default.)
                  The category chips stay on the bar's centre and the two side groups
                  hang off them, as before, so the chips never move when the module
                  name changes. Rules are the shared .chrome-divider. */
               /* Owner 2026-10-13 ("the panel pushes the sub-toolbar out of
                  place ... The things in the center should stay in the center"):
-                 the CENTRE group - module menu, category chips, Reuse - sits on
-                 the tool bar's centre and never moves when a side panel opens or
-                 closes; only the two END pieces (template menu, Done) move in and
-                 out with the panels, and give ground first in a narrow window
-                 (template name -> glyph, Done -> check). Then the centre:
-                 shorter module name, Reuse without its word, module + Reuse into
-                 a More menu beside the template menu, tighter chips, and last
-                 fewer chips before "All N" - nothing hidden (planSurveyBar in
-                 utils/responsiveToolbar.js; measured by useSurveyBarFit). Which
-                 chips show is decided by count (SurveyCategoryChips). */
+                 the CENTRE group sits on the tool bar's centre and never moves
+                 when a side panel opens or closes; only the two END pieces
+                 (template menu, Done) move in and out with the panels, and give
+                 ground first in a narrow window (template name -> glyph, Done ->
+                 check). Then the centre: shorter module name, module (+ Width)
+                 into a More menu beside the template menu, tighter chips, and
+                 last fewer chips and swatches before "All N" - nothing hidden
+                 (planSurveyBar in utils/responsiveToolbar.js; measured by
+                 useSurveyBarFit). Which chips show is decided by count
+                 (SurveyCategoryChips).
+                 Owner 2026-10-26 ("I honestly don't see a reason why we need
+                 this to be in two different rows"): ONE row - the entity
+                 swatches open the centre group ("put them on the left"), then
+                 the module menu, the category chips and the freehand Width. */
               const look = surveyBarLook(surveyBarFit.plan.step);
               const moduleMenu = (inMore) => (
                 <AnnotationDropdown
@@ -40179,8 +40682,11 @@ ${pageBlocks}
                     label: module.name || 'Untitled module'
                   }))}
                   onSelect={(moduleId) => {
+                    // A module's first category is picked with it (owner
+                    // 2026-10-26: "By default, the first category is selected").
+                    const nextModule = modules.find((module) => module.id === moduleId) || null;
                     setSelectedModuleId(moduleId || null);
-                    setSelectedCategoryId(null);
+                    setSelectedCategoryId(nextModule?.categories?.[0]?.id || null);
                     setActiveTool('survey-marker');
                   }}
                   disabled={modules.length === 0}
@@ -40188,24 +40694,6 @@ ${pageBlocks}
                   contentWidth="var(--radix-popover-trigger-width)"
                   dataMarker="data-survey-module-menu"
                 />
-              );
-              const reuseSwitch = (inMore) => (
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={surveyKeepCategoryActive}
-                  aria-label="Reuse category"
-                  className="survey-subrow__keep tertiary"
-                  onClick={() => setSurveyKeepCategoryActive((on) => !on)}
-                  {...chromeTip('Reuse the category: keep it armed after placing a Survey Marker', 'below')}
-                >
-                  <span className="survey-subrow__track" aria-hidden="true" />
-                  {/* Owner 2026-09-30: "Keep active" -> "Repeat"; 2026-10-01:
-                      "Repeat" -> "Reuse" (it keeps the CATEGORY armed), same
-                      word as the phone bar. In More the row names it; the
-                      compact bar keeps the switch alone. */}
-                  {inMore || look.reuse === 'compact' ? null : <span>Reuse</span>}
-                </button>
               );
               const markerWidthValue = pickedMarkerWidth != null ? Math.round(pickedMarkerWidth) : markerStrokeWidth;
               const applyMarkerWidth = (value) => {
@@ -40234,24 +40722,13 @@ ${pageBlocks}
                     variant="pill"
                     unit="pt"
                     width="var(--chrome-field-w)"
-                    preview={(
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          display: 'block',
-                          width: '12px',
-                          height: 0,
-                          borderTop: `${Math.max(1, Math.min(6, Math.round(markerWidthValue / 4)))}px solid currentColor`,
-                          borderRadius: '1px',
-                        }}
-                      />
-                    )}
+                    // Owner 2026-10-26 (#33): no stroke drawing in the pill;
+                    // it cut the number off. The card draws the stroke.
                   />
                 </span>
               ) : null;
               const moreItems = look.more ? [
                 { id: 'survey-module', label: 'Module', node: moduleMenu(true) },
-                { id: 'survey-reuse', label: 'Reuse category', node: reuseSwitch(true) },
                 ...(markerWidthMenu ? [{ id: 'survey-marker-width', label: 'Width', node: markerWidthMenu }] : []),
               ] : [];
 
@@ -40285,9 +40762,13 @@ ${pageBlocks}
                       onSelect={handleSwitchSurveyTemplateById}
                       compact={surveyBarFit.plan.template === 'glyph'}
                       className="survey-subrow__template"
+                      onEditTemplate={customAnswersEnabled && selectedTemplate?.id && onRequestCreateTemplate
+                        ? () => onRequestCreateTemplate({ mode: 'open-editor', templateId: selectedTemplate.id })
+                        : null}
                     />
-                    {/* Narrow: the module menu and Reuse wait in More, beside
-                        the template menu, so the centre is the chips alone. */}
+                    {/* Narrow: the module menu (and Width) wait in More, beside
+                        the template menu, so the centre is the swatches and
+                        the chips. */}
                     {look.more && (
                       <div className="survey-subrow__more">
                         <ToolbarOverflowMenu items={moreItems} tooltip={chromeTip('More', 'below')} />
@@ -40296,6 +40777,17 @@ ${pageBlocks}
                   </div>
 
                   <div className="survey-subrow__centre" data-survey-bar-centre="true">
+                    {!mobileMode && (selectedTemplate?.entities || []).length > 0 && (
+                      <SurveyEntityBar
+                        templateId={selectedTemplate.id}
+                        entities={selectedTemplate.entities}
+                        nextEntityId={nextSurveyEntity?.id || null}
+                        surveyMarkers={surveyMarkers}
+                        onPick={handleSurveyEntityBarPick}
+                        tip={chromeTip}
+                        max={surveyBarFit.plan.entityRowMax}
+                      />
+                    )}
                     {!look.more && (
                       <div className="survey-subrow__module">
                         {moduleMenu(false)}
@@ -40316,14 +40808,8 @@ ${pageBlocks}
                         setActiveTool('survey-marker');
                       }}
                     />
-                    {!look.more && (
-                      <div className="survey-subrow__reuse">
-                        <div className="chrome-divider" aria-hidden="true" />
-                        {reuseSwitch(false)}
-                      </div>
-                    )}
                     {markerWidthMenu && !look.more && (
-                      <div className="survey-subrow__reuse" data-survey-marker-width="true">
+                      <div className="survey-subrow__width" data-survey-marker-width="true">
                         <div className="chrome-divider" aria-hidden="true" />
                         {markerWidthMenu}
                       </div>
@@ -40338,7 +40824,7 @@ ${pageBlocks}
                       onClick={handleLeaveSurvey}
                       {...chromeTip('Leave Survey', 'below')}
                     >
-                      {surveyBarFit.plan.done === 'glyph' ? <Icon name="check" size={16} color="currentColor" /> : 'Done'}
+                      {surveyBarFit.plan.done === 'glyph' ? <Icon name="editListDone" size={16} color="currentColor" /> : 'Done'}
                     </button>
                   </div>
                 </div>
@@ -40385,31 +40871,12 @@ ${pageBlocks}
           }
           // Desktop: Survey placement and annotation formatting share the
           // subtoolbar. The Survey button restores placement without changing
-          // the template, module, category, entity, or Reuse choice.
+          // the template, module, category or entity choice.
           const subRowGroup = (showSurveyPanel && selectedTemplate && (mobileMode || showsSurveyRow({ activeTool, showSurveyPanel, regionEditing: showRegionSelection, surveyMarkerPicked })))
             ? 'survey'
             : (activeCategoryDropdown && activeCategoryDropdown !== 'survey' && !TOOL_BAR_GROUPS.includes(activeCategoryDropdown) ? activeCategoryDropdown : null);
           if (subRowGroup && subRowHost) {
             rows.push(renderSubRow(subRowGroup, subRowHost, false));
-          }
-          // Owner 2026-10-13: the template's entities as swatches in a third
-          // bar under the survey bar (desktop; none when it has no entities).
-          // A picked marker shows its own entity on its floating bar; this bar
-          // picks the NEXT marker's, so it shows only with the tool armed.
-          if (subRowGroup === 'survey' && subRowHost && !mobileMode && activeTool === 'survey-marker' && (selectedTemplate?.entities || []).length > 0) {
-            rows.push(createPortal(
-              <SurveyEntityBar
-                templateId={selectedTemplate.id}
-                entities={selectedTemplate.entities}
-                nextEntityId={nextSurveyEntity?.id || null}
-                surveyMarkers={surveyMarkers}
-                onPick={handleSurveyEntityBarPick}
-                tip={chromeTip}
-                max={surveyBarFit.plan.entityRowMax}
-              />,
-              subRowHost,
-              'survey-entity-row'
-            ));
           }
           return rows;
         })()}
@@ -40421,7 +40888,7 @@ ${pageBlocks}
         {/* Space Selection Modal */}
         {/* Portalled to document.body by SpaceSelectionDialog so it sits above
             both rails and the toolbars instead of under them. */}
-        {showSpaceSelection && (<SpaceSelectionDialog open onClose={() => setShowSpaceSelection(false)}>
+        {showSpaceSelection && (<SpaceSelectionDialog open title="Copy to a module" onClose={() => setShowSpaceSelection(false)}>
                 {appTemplates.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
                     <p>No templates available. Please create a template first.</p>
@@ -40438,7 +40905,7 @@ ${pageBlocks}
                   if (allSpaces.length === 0) {
                     return (
                       <div style={{ textAlign: 'center', padding: '40px', color: COLORS.modal.textMuted }}>
-                        <p>No spaces available in any template.</p>
+                        <p>No modules in any template.</p>
                       </div>
                     );
                   }
@@ -41029,13 +41496,21 @@ ${pageBlocks}
             mobile={mobileMode}
             onCancel={() => cancelSurveyMarkerPlacement(pendingSurveyMarker.id)}
             onEntityChange={(entity) => recolorPendingSurveyMarker(pendingSurveyMarker.id, entity)}
+            defaultNameFor={(categoryId, moduleId) => generateDefaultSurveyMarkerName(
+              getCategoryName(selectedTemplate, moduleId, categoryId),
+              Object.values(surveyMarkers).filter((marker) => marker.categoryId === categoryId),
+            )}
             onConfirm={(marker, categoryId) => {
+              // The name was given on the card, so the panel only opens on
+              // the marker (no name field focused there).
               commitMobileSurveyMarker(marker, categoryId);
               rememberSurveyEntity(marker.entityId);
               setSelectedModuleId(marker.moduleId);
-              setSelectedCategoryId(surveyKeepCategoryActive ? categoryId : null);
-              if (!mobileMode) setSurveyMarkerNameFocusRequest({ id: marker.id, tick: Date.now() });
-              else if (!surveyKeepCategoryActive) setActiveTool('pan');
+              // The category stays picked for the next marker.
+              setSelectedCategoryId(categoryId);
+              // Phone: the next touch scrolls the page again (touch is pan
+              // first); "+ Place" or the marker menu arms the tool.
+              if (mobileMode) setActiveTool('pan');
               setPendingSurveyMarker(null);
             }}
           />
@@ -41827,55 +42302,17 @@ ${pageBlocks}
         }
       </div >
 
-      {/* Export Location Choice Modal */}
+      {/* Export Location Choice Modal: the app's one dialog shell (owner
+          2026-10-26: every dialog follows the same design). */}
       {showExportLocationModal && exportPendingData && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: COLORS.modal.overlay,
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10000,
-          animation: 'fadeIn 0.2s ease-out'
-        }}>
-          <div style={{
-            background: COLORS.modal.surface,
-            borderRadius: BORDERS.radius.xl,
-            padding: '24px',
-            maxWidth: '460px',
-            width: '90%',
-            boxShadow: SHADOWS.xl,
-            border: `1px solid ${COLORS.modal.border}`,
-            fontFamily: FONT_FAMILY,
-            animation: 'fadeIn 0.2s ease-out'
-          }}>
-            <h2 style={{
-              color: COLORS.modal.textPrimary,
-              marginBottom: '8px',
-              fontSize: TYPOGRAPHY.fontSize['3xl'],
-              fontWeight: TYPOGRAPHY.fontWeight.semibold,
-              letterSpacing: '-0.01em',
-              lineHeight: TYPOGRAPHY.lineHeight.tight,
-              fontFamily: FONT_FAMILY
-            }}>
-              Choose export location
-            </h2>
-            <p style={{
-              color: COLORS.modal.textMuted,
-              marginBottom: '18px',
-              lineHeight: TYPOGRAPHY.lineHeight.normal,
-              fontSize: TYPOGRAPHY.fontSize.lg,
-              letterSpacing: '-0.01em',
-              fontFamily: FONT_FAMILY
-            }}>
-              Choose where to export this Excel file.
-            </p>
+        <DialogCard
+          title="Choose export location"
+          message="Choose where to export this Excel file."
+          onClose={() => { setShowExportLocationModal(false); setExportPendingData(null); setIsExporting(false); }}
+          width={420}
+          zIndex={10000}
+          footer={<button type="button" className="hub-btn dialog-touch-pad" onClick={() => { setShowExportLocationModal(false); setExportPendingData(null); setIsExporting(false); }}>Cancel</button>}
+        >
             <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
               <button
                 onClick={async () => {
@@ -42070,45 +42507,8 @@ ${pageBlocks}
                   </div>
                 )}
               </button>
-              <button
-                onClick={() => {
-                  setShowExportLocationModal(false);
-                  setExportPendingData(null);
-                  setIsExporting(false);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  background: COLORS.modal.secondaryButton,
-                  border: `1px solid ${COLORS.modal.borderStrong}`,
-                  borderRadius: BORDERS.radius.md,
-                  color: COLORS.text.tertiary,
-                  fontSize: '13px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  letterSpacing: '-0.01em',
-                  marginTop: '2px',
-                  fontFamily: FONT_FAMILY
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = COLORS.modal.secondaryButtonHover;
-                  e.currentTarget.style.borderColor = COLORS.modal.borderActive;
-                  e.currentTarget.style.color = COLORS.modal.textPrimary;
-                  e.currentTarget.style.boxShadow = COLORS.modal.hoverGlow;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = COLORS.modal.secondaryButton;
-                  e.currentTarget.style.borderColor = COLORS.modal.borderStrong;
-                  e.currentTarget.style.color = COLORS.text.tertiary;
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                Cancel
-              </button>
             </div>
-          </div>
-        </div>
+        </DialogCard>
       )}
 
       {/* OneDrive File Save Modal */}
@@ -42303,8 +42703,8 @@ ${pageBlocks}
               <div>
                 <button
                   onClick={async () => {
-                    if (!features?.sso) {
-                      showToast(withUpgradeHint('OneDrive integration is part of the Enterprise plan.', 'Please upgrade.'), 'warn');
+                    if (!features?.oneDrive) {
+                      showToast(withUpgradeHint('OneDrive is part of the Pro plan.', 'Please upgrade.'), 'warn');
                       return;
                     }
                     try {
@@ -42423,6 +42823,7 @@ ${pageBlocks}
         }}
         fileName={selectedTemplate?.linkedExcelPath?.split('/').pop() || 'Excel file'}
       />
+      {confirmDialog}
       {browserPrintDocument}
       {typeof document !== 'undefined' && createPortal(
         <ApplyRedactionsModal

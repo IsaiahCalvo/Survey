@@ -876,7 +876,7 @@ button,
 /* ==========================================================================
    SURVEY SUB-ROW (desktop, owner 2026-09-23: "doesn't look like the rest of
    the dropdowns ... make it look more aesthetic and intentional")
-   [glyph template v] ...... [Module v] | (C)(D)(AC) | Reuse ...... Done
+   [glyph template v] ... (E)(E) | [Module v] | (C)(D)(AC) | Width ... Done
    Every size is a chrome token: the pills are .chrome-pill (AnnotationDropdown),
    the chips are .chrome-subcontrol, the rules are .chrome-divider.
    ========================================================================== */
@@ -885,7 +885,8 @@ button,
      things in the center should stay in the center. The peripherals on the
      left and right ... can move in and out"; "It should sit centered, just
      like the other annotation tools sit centered"):
-     - the CENTRE group (module menu, chips, Reuse) is pinned to the tool
+     - the CENTRE group (entity swatches, module menu, chips, Width) is
+       pinned to the tool
        bar's centre (--survey-centre-x, the Draw / Shapes / Text icons' centre,
        set by useSurveyBarFit on the row slot) and never moves when a side
        panel opens or closes;
@@ -930,8 +931,9 @@ button,
   gap: 4px;
 }
 
-/* The More (...) menu that takes the module menu and Reuse in a narrow bar:
-   it joins the template menu at the left end, so the centre is the chips. */
+/* The More (...) menu that takes the module menu (and Width) in a narrow bar:
+   it joins the template menu at the left end, so the centre is the swatches
+   and the chips. */
 .survey-subrow__more {
   flex: 0 0 auto;
   margin-left: 4px;
@@ -971,7 +973,7 @@ button,
   margin-left: auto;
 }
 
-.survey-subrow__reuse {
+.survey-subrow__width {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -1127,28 +1129,18 @@ button,
   max-width: min(300px, calc(100vw - 24px));
 }
 
-/* THE ENTITY BAR (desktop, owner 2026-10-13: "Display entities as swatches in
-   a separate bar, matching the current mobile layout"). The third 36px bar,
-   under the survey bar: the template's entities as the tool bar's own colour
-   discs (QuickColourDots - the colour's own ring and a check, no gold),
-   centred on the same spot as the survey bar's centre group, so it never moves
-   when a side panel opens either. Swatch names show on hover. */
-.survey-entitybar {
-  position: relative;
-  width: 100%;
-  height: var(--chrome-bar-h);
-  box-sizing: border-box;
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
-  cursor: default;
+/* THE ENTITY SWATCHES (desktop; owner 2026-10-13 "Display entities as
+   swatches", owner 2026-10-26 "put them on the left" of the one survey bar):
+   the template's entities as the tool bar's own colour discs (QuickColourDots
+   - the colour's own ring and a check, no gold), opening the centre group
+   before the module menu, a rule after them. Names show on hover. */
+.survey-subrow__entities {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
 }
 
-.survey-entitybar .survey-entitybar__centre {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--survey-centre-x, 50%);
-  transform: translateX(-50%);
+.survey-subrow__entities .survey-entitybar__centre {
   display: flex;
   align-items: center;
   /* Planned with the swatches' 6px gutter (SURVEY_BAR_PARTS.swatchGap); a
@@ -1186,76 +1178,6 @@ button,
   padding: 0 6px;
   color: var(--text-3);
   font: 600 11px/1 var(--font-ui);
-}
-
-/* "Keep active": the app's switch (the Spaces one) at the chrome's 20px pill
-   height, then its word. The whole control is one button with an invisible
-   pad; hover brightens the word, never a plate. On = a neutral ink track. */
-.survey-subrow__keep {
-  height: var(--chrome-field-h);
-  padding: 0 2px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-2);
-  background: transparent;
-  border: 0;
-  border-radius: var(--chrome-radius);
-  font: 600 11px/1 var(--font-ui);
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-@media (hover: hover) {
-  .survey-subrow__keep:hover {
-    color: var(--text-1);
-  }
-}
-
-.survey-subrow__keep:active {
-  background: transparent;
-}
-
-.survey-subrow__keep:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-
-.survey-subrow__track {
-  position: relative;
-  flex: 0 0 auto;
-  width: 24px;
-  height: 14px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  background: var(--surface-3);
-  box-shadow: inset 0 0 0 1px var(--border-strong);
-  transition: background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.survey-subrow__track::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.2s ease;
-}
-
-.survey-subrow__keep[aria-checked='true'] .survey-subrow__track {
-  /* Survey calm gold (2026-10-01): Reuse is a setting, not "what a touch on
-     the page will do now", so ON is a neutral ink track, not gold. */
-  background: var(--text-2);
-  box-shadow: none;
-}
-
-.survey-subrow__keep[aria-checked='true'] .survey-subrow__track::after {
-  transform: translateX(10px);
 }
 
 /* Survey calm gold (2026-10-01): the current module in the survey bar's menu
@@ -1301,9 +1223,7 @@ button,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .survey-subrow,
-  .survey-subrow__track,
-  .survey-subrow__track::after {
+  .survey-subrow {
     transition: none;
   }
 }
@@ -1399,14 +1319,15 @@ input[type="text"].survey-marker-name-inline:focus {
    Structure (src/sidebar/SpacesPanel.jsx):
      .spaces-panel__head  ........ [Exit space x] [export] [+]
                           phone: Spaces  [export] [+] Done
-     .space-card          grip 2 > Space 1 ........................ (switch) trash
+     .space-card          grip > Space 1 ........................ (switch) trash
+                                3 regions
        .space-card__add   [ Add pages (e.g. 3, 6-9, 12)                | + ]
-       .space-region-card      2 Region 2 .. edit bulb move copy (switch) trash
+       .space-region-card   2 Region 2 ........... edit bulb move (switch) trash
 
-   Columns: the grip sits in the Survey grip gutter (28; phone 32), the page
-   count starts right after it, and everything nested starts one step (12)
-   further in: --sp-nest-x = 40 on desktop (the rows' text line, --row-text-x),
-   44 on the phone. The add-pages field is the one recessed well
+   Columns: the grip sits in the Survey grip gutter (28; phone 32), always
+   (owner 2026-10-26), so edit mode moves nothing; the fold arrow follows it
+   and a region's page number sits under the arrow. Out of edit mode the
+   trash column stays, empty, for the same reason. The add-pages field is the one recessed well
    (--panel-well, the Survey notes box's well); nothing else paints a fill.
 
    States are the Survey rows' (states.css tokens): hover (desktop pointer
@@ -1430,14 +1351,13 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-step: 12px;          /* one nesting level (Survey --sv-step) */
   --sp-nest-x: calc(var(--sp-grip-w) + var(--sp-step)); /* 40 = --row-text-x */
   /* Owner 2026-10-22: one column grid for both line kinds. --sp-lead is the
-     gutter before the count: the panel inset at rest, the grip gutter while
-     editing (the grip fills it). A region's page number sits in the chevron
-     column, its name in the space name column, and its switch and trash in
-     the space's switch and trash columns. */
-  --sp-lead: var(--sp-edge);
-  --sp-name-x: calc(var(--sp-lead) + var(--sp-num-w) + var(--sp-chev-w) + 2px);
+     grip gutter before the fold arrow, the same in and out of edit mode
+     (owner 2026-10-26: "there should be no shifting"). A region's page number
+     sits in the chevron column, its name in the space name column, and its
+     switch and trash in the space's switch and trash columns. */
+  --sp-lead: var(--sp-grip-w);
+  --sp-name-x: calc(var(--sp-lead) + var(--sp-chev-w) + 2px);
   --sp-field-r: 8px;        /* the add-pages field's right inset */
-  --sp-num-w: 14px;         /* the space's page count */
   --sp-chev-w: 16px;
   --sp-page-w: 22px;        /* a region's page number */
   --sp-col-w: 24px;         /* a glyph button's column */
@@ -1462,6 +1382,7 @@ input[type="text"].survey-marker-name-inline:focus {
   --sp-label-type: 12px;
   --sp-field-type: 12px;
   --sp-small-type: 11px;
+  --sp-caption-type: 10px;  /* the region count under a space's name */
   --sp-title-type: 13px;
   --sp-status-type: 11px;
 }
@@ -1563,11 +1484,7 @@ input[type="text"].survey-marker-name-inline:focus {
    (states.css), which also hides this hairline, so nothing here paints a
    second surface. */
 
-/* ---- the space row: grip · count · arrow · name ...... switch · trash ---- */
-.spaces-panel.is-edit-mode {
-  --sp-lead: var(--sp-grip-w);
-}
-
+/* ---- the space row: grip · arrow · name ............. switch · trash ---- */
 .space-card__head {
   display: flex;
   align-items: center;
@@ -1590,18 +1507,28 @@ input[type="text"].survey-marker-name-inline:focus {
   box-sizing: border-box;
 }
 
-/* The page count: a plain small muted figure, no circle, right after the
-   grip gutter (a region's page number sits one step further in). */
+/* The name with its region count under it (owner 2026-10-26: "something a
+   little more minimal ... smaller and underneath"). */
+.space-card__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-left: 2px;
+  padding: 3px 0;
+}
+
 .space-card__count {
-  flex: 0 0 auto;
-  min-width: var(--sp-num-w);
-  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
   color: var(--text-3);
-  font-size: var(--sp-small-type);
+  font-size: var(--sp-caption-type);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
-  text-align: left;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .space-card__chevron {
@@ -1637,7 +1564,6 @@ input[type="text"].survey-marker-name-inline:focus {
   flex: 0 1 auto;
   min-width: 1ch;
   max-width: 100%;
-  margin-left: 2px;
 }
 
 .space-card__name-fit::after,
@@ -1694,8 +1620,8 @@ input[type="text"].space-card__name:focus-visible {
 }
 
 /* ---- switches: the column is the hit area, the track is drawn inside ----
-   ON is the app's calm neutral "on" (the Survey "Reuse" switch, --text-2
-   track), never gold (owner 2026-10-02). */
+   ON is gold, like every lit toggle in Spaces (design review 2026-10-27; it
+   was --success green, which tokens.css keeps for status dots only). */
 .spaces-switch {
   position: relative;
   flex: 0 0 var(--sp-switch-w);
@@ -1722,7 +1648,7 @@ input[type="text"].space-card__name:focus-visible {
 }
 
 .spaces-switch[aria-checked='true']::before {
-  background: var(--success);
+  background: var(--accent);
   box-shadow: none;
 }
 
@@ -1792,7 +1718,7 @@ input[type="text"].space-card__name:focus-visible {
   cursor: not-allowed;
 }
 
-/* A lit state (marks shown, areas being edited) is bright ink, not gold. */
+/* An open menu (Move or copy) is bright ink: it is not a picked tool. */
 .space-card__icon.is-on:not([aria-disabled='true']) {
   color: var(--text-1);
 }
@@ -1801,7 +1727,16 @@ input[type="text"].space-card__name:focus-visible {
   color: var(--danger);
 }
 
-.spaces-region__marks.is-on:not([aria-disabled='true']) {
+/* The trash column, kept empty out of edit mode. */
+.space-card__spare {
+  pointer-events: none;
+}
+
+/* A toggle that is on (marks shown, areas being edited) is gold ink, like a
+   picked tool, and stays gold under the pointer (owner 2026-10-26: the bulb
+   turned white on hover). The hover below steps aside for .is-on. */
+.spaces-region__marks.is-on:not([aria-disabled='true']),
+.spaces-region__edit.is-on:not([aria-disabled='true']) {
   color: var(--accent);
 }
 
@@ -1942,12 +1877,12 @@ input[type="text"].space-card__add-input {
   flex: 0 0 auto;
   /* Its figure is centred in the chevron column (owner 2026-10-22: "the
      one should be under the dropdown chevron"). */
-  width: calc(var(--sp-lead) + var(--sp-num-w) + var(--sp-chev-w));
+  width: calc(var(--sp-lead) + var(--sp-chev-w));
   align-self: stretch;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 0 0 calc(var(--sp-lead) + var(--sp-num-w));
+  padding: 0 0 0 var(--sp-lead);
   overflow: visible;
   white-space: nowrap;
   box-sizing: border-box;
@@ -2050,32 +1985,8 @@ input[type="text"].spaces-region__name-input:focus-visible {
   color: var(--text-3);
 }
 
-/* ---- the Export menu (portalled; AnchoredPopover hangs it under Export) -- */
-.spaces-export--menu {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translate(-50%, 0);
-  margin-top: 2px;
-  min-width: 168px;
-  padding: 4px;
-  box-sizing: border-box;
-  display: grid;
-  background: var(--surface-3);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  box-shadow: var(--shadow-popover);
-  font-family: var(--font-ui);
-}
-
-/* ---- "Export <space>": desktop menu under Export, phone sheet ----------- */
-.spaces-export--menu {
-  left: auto;
-  right: -40px;
-  transform: none;
-  width: 236px;
-}
-
+/* ---- "Export <space>": desktop card beside Export (CalloutPopover), phone
+   sheet ------------------------------------------------------------------- */
 .spaces-export__head {
   display: flex;
   align-items: center;
@@ -2195,41 +2106,211 @@ input[type="text"].spaces-region__name-input:focus-visible {
   background: var(--pressed);
 }
 
-/* ---- Move or copy a region (owner 2026-10-22): the Export menu's card,
-   hung under the row's button and kept inside the window by AnchoredPopover.
-   The page is the add-pages well; Up/Down step it. ------------------------ */
-.spaces-transfer--menu {
-  right: auto;
+/* ---- The Spaces cards (Move or copy, Export): owner 2026-10-28, they DROP
+   DOWN from their button over what is below, like every drop-down in the
+   app - the menu surface, edge, corner, shadow and 140ms slide of
+   AnnotationDropdown's menu. AnchoredPopover hangs the card under a
+   zero-size point centred on the button. ----------------------------------- */
+.spaces-dropdown-card {
+  position: absolute;
+  top: 100%;
   left: 50%;
   transform: translate(-50%, 0);
+  margin-top: 6px;
+  box-sizing: border-box;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  font-family: var(--font-ui);
+  animation: surveySurfaceIn 140ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spaces-dropdown-card { animation: none; }
+}
+
+.spaces-export-menu {
+  width: 236px;
+  padding: 4px;
+  display: grid;
+}
+
+.spaces-transfer-menu {
+  width: 212px;
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+}
+
+.spaces-transfer__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 18px;
+  padding: 0 2px;
+}
+
+.spaces-transfer__head > strong {
+  flex: none;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.spaces-transfer__what {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.spaces-transfer__head > .spaces-export__close {
+  margin-left: auto;
+}
+
+/* The space drop-down is the app's own setting pill (AnnotationDropdown,
+   .chrome-pill): surface step, no border, the shared menu under it. The list
+   sits over the card (z 7000). */
+.annotation-dropdown.spaces-transfer__space {
+  display: flex;
+  width: 100%;
+}
+
+.spaces-transfer__space .chrome-pill {
+  height: 24px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* A full-width pill reads as a field, so its chevron must be easy to see
+   (owner 2026-10-28: "hard to see that there is a drop down"). */
+.spaces-transfer__space .chrome-pill__chevron {
+  color: var(--text-2);
+}
+
+.spaces-transfer__space .chrome-pill__chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.annotation-dropdown__popover.spaces-transfer-space-menu {
+  z-index: 7100;
+}
+
+.spaces-transfer__label {
+  padding: 0 2px;
+  color: var(--text-3);
+  font-size: 11px;
 }
 
 .spaces-transfer__page {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 8px 4px;
+  gap: 6px;
 }
 
+/* The page field: one setting pill, "3 / 36" (the rail's page box, laid
+   flat). --surface-3, no border; the number is the input, the total is ink. */
 .spaces-transfer__field {
-  flex: 0 0 auto;
-  width: 56px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-radius: var(--chrome-field-radius);
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: text;
+}
+
+.spaces-transfer__field:focus-within {
+  color: var(--text-2);
 }
 
 input[type="text"].spaces-transfer__input {
-  text-align: center;
+  min-width: 1.5ch;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: content-box;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-1);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 .spaces-transfer__of {
-  color: var(--text-3);
-  font-size: 11px;
+  white-space: nowrap;
 }
 
-.spaces-transfer__hint {
-  padding: 0 8px 2px;
+/* Always one line (owner: the card must not shrink when a space is picked). */
+.spaces-transfer__status {
+  min-height: 14px;
+  padding: 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+/* Copy and Move: bare glyphs at the end of the page line. Owner: "we always
+   color the icon, we never color the box around the icon" - no fill, no
+   border; ink lights when they can act. */
+.spaces-transfer__actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.spaces-transfer__act {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s ease;
+}
+
+.spaces-transfer__act:disabled {
+  color: var(--text-disabled);
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .spaces-transfer__act:not(:disabled):hover {
+    color: var(--text-1);
+  }
+}
+
+.spaces-transfer__note {
+  padding: 0 2px;
+  color: var(--text-3);
+  font-size: 12px;
 }
 
 .spaces-export__action:disabled {
@@ -2329,6 +2410,85 @@ input[type="text"].spaces-transfer__input {
 
 .spaces-export-sheet .spaces-export__action > small {
   font-size: 12px;
+}
+
+/* Phone: the same card's parts at finger size. */
+.spaces-export-sheet .spaces-transfer__head {
+  min-height: 44px;
+  align-items: center;
+}
+
+.spaces-export-sheet .spaces-transfer__head > strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.spaces-export-sheet .spaces-transfer__what {
+  font-size: 13px;
+}
+
+.spaces-export-sheet .spaces-transfer__label {
+  font-size: 13px;
+}
+
+.spaces-export-sheet .spaces-transfer__space {
+  margin-top: 4px;
+}
+
+.spaces-export-sheet .spaces-transfer__space .chrome-pill {
+  height: 44px;
+  padding: 0 14px 0 12px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.spaces-export-sheet .spaces-transfer__space .chrome-pill__chevron svg {
+  width: 16px;
+  height: 16px;
+}
+
+.spaces-transfer-space-menu--phone .annotation-dropdown__options > button {
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.spaces-export-sheet .spaces-transfer__page {
+  margin-top: 12px;
+}
+
+.spaces-export-sheet .spaces-transfer__field {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.spaces-export-sheet .spaces-transfer__status {
+  font-size: 12px;
+}
+
+.spaces-export-sheet .spaces-transfer__status {
+  min-height: 18px;
+  line-height: 18px;
+  padding-top: 6px;
+}
+
+.spaces-export-sheet .spaces-transfer__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.spaces-export-sheet .spaces-transfer__act {
+  width: auto;
+  height: 44px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.spaces-export-sheet .spaces-transfer__note {
+  padding-top: 8px;
 }
 
 /* ---- the active space outside the panel (Spaces chunk B) ---------------
@@ -2447,7 +2607,7 @@ input[type="text"].spaces-transfer__input {
     background: var(--hover);
   }
   .space-card__chevron:hover,
-  .space-card__icon:not([aria-disabled='true']):hover,
+  .space-card__icon:not([aria-disabled='true']):not(.is-on):hover,
   .spaces-region__page:hover,
   .space-card__add-go:hover {
     color: var(--text-1);
@@ -2460,7 +2620,8 @@ input[type="text"].spaces-transfer__input {
     border-bottom-color: var(--border-strong);
   }
   .spaces-export__space:hover,
-  .spaces-export__action:not(:disabled):hover {
+  .spaces-export__action:not(:disabled):hover,
+  .spaces-transfer__field:hover {
     background: var(--hover);
   }
   .spaces-panel__exit-chip:hover > svg {

@@ -18,6 +18,16 @@
 // took to be acknowledged. Every gesture is undone (Ctrl+Z) afterwards. Also
 // the JS heap after a forced GC once the doc is open and after the switch.
 // PROFILE=<file> records a CPU profile of each gesture of the first run.
+// CPU=<n> slows the page n times once it is open (a slower laptop or tablet).
+// PAINT=1 lists, per gesture, 2D canvas draw calls and canvas context, size
+// and export calls (with the calling code) per canvas.
+// DROP=1 also reports the long frames in the 1.5 s after the mouse is released
+// (dropLoafMs / dropScriptMs / dropOver33) and all main-thread task time then
+// (dropTaskMs): the cost of saving the edit. DROP_MS=<ms> sets that window.
+// RENDERS=1 counts React commits during the moves and, per component, how many
+// times it rendered (a stub DevTools hook; name the components with an
+// unminified build: `vite build --mode e2e --minify false`), plus how many DOM
+// elements React reconciled with new props ('<host elements>').
 import fs from 'node:fs';
 import { chromium } from '@playwright/test';
 
@@ -81,6 +91,45 @@ async function markTargets(page, count) {
   }, count);
 }
 
+// A DevTools hook stub: per commit, walk only the subtrees React touched and
+// count the components that did render work (the PerformedWork flag).
+function installRenderCounter() {
+  const nameOf = (f) => {
+    const t = f.type;
+    if (!t) return null;
+    const inner = t.type || t.render || t;
+    return t.displayName || f.elementType?.displayName || inner.displayName || inner.name || 'anonymous';
+  };
+  const COMPONENT_TAGS = new Set([0, 1, 11, 14, 15]);
+  const walk = (fiber, by) => {
+    for (let f = fiber; f; f = f.sibling) {
+      // A DOM element React reconciled with new props (a skipped one keeps them).
+      if (f.tag === 5 && (!f.alternate || f.memoizedProps !== f.alternate.memoizedProps)) by['<host elements>'] = (by['<host elements>'] || 0) + 1;
+      if (COMPONENT_TAGS.has(f.tag) && (f.flags & 1)) {
+        const n = nameOf(f);
+        by[n] = (by[n] || 0) + 1;
+      }
+      if (f.child && !(f.alternate && f.alternate.child === f.child)) walk(f.child, by);
+    }
+  };
+  window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+    supportsFiber: true,
+    isDisabled: false,
+    renderers: new Map(),
+    inject(r) { const id = this.renderers.size + 1; this.renderers.set(id, r); return id; },
+    checkDCE() {},
+    onScheduleFiberRoot() {},
+    onCommitFiberUnmount() {},
+    onPostCommitFiberRoot() {},
+    onCommitFiberRoot(_id, root) {
+      const rc = window.__renderCount;
+      if (!rc || !rc.on) return;
+      rc.commits += 1;
+      walk(root.current.child, rc.by);
+    },
+  };
+}
+
 async function startSampling(page) {
   await page.evaluate(() => {
     const s = { frames: [], loaf: [], on: true, t0: performance.now() };
@@ -115,9 +164,12 @@ async function stopSampling(page) {
       frames: f.length,
       meanFrame: f.length ? sum(f) / f.length : 0,
       p95Frame: f.length ? f[Math.min(f.length - 1, Math.floor(f.length * 0.95))] : 0,
+      // A missed vsync: 16.7 ms plus 1 ms of timer jitter.
+      overVsync: f.filter((x) => x > 17.7).length,
       over33: f.filter((x) => x > 33.4).length,
       loafCount: s.loaf.length,
       loafMs: sum(s.loaf.map((l) => l.dur)),
+      loafLongest: Math.max(0, ...s.loaf.map((l) => l.dur)),
       loafScriptMs: sum(s.loaf.map((l) => l.script)),
       ...(window.__loafDetail ? { loaf: s.loaf.map((l) => `${Math.round(l.at)}+${Math.round(l.dur)} script=${Math.round(l.script)} render=${Math.round(l.render)} ${l.top.join(' ')}`) } : {}),
     };
@@ -133,6 +185,7 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
   const trace = profile && process.env.TRACE ? profile.replace(/\.cpuprofile$/, '.trace.json') : null;
   if (trace) await page.context().browser().startTracing(page, { path: trace, categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'blink', 'cc', 'gpu', 'viz'] });
   else if (profile) { await cdp.send('Profiler.enable'); await cdp.send('Profiler.setSamplingInterval', { interval: 200 }); await cdp.send('Profiler.start'); }
+  if (process.env.PAINT) await page.evaluate(() => { window.__paint?.clear(); window.__paintOn = true; });
   await send('mousePressed', from.x, from.y, 1);
   await startSampling(page);
   // MUTATIONS=1: count what the DOM changes during the moves (which nodes a frame repaints).
@@ -156,6 +209,11 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
       window.__mo.observe(document.body, { subtree: true, attributes: true, childList: true, characterData: true });
     });
   }
+  if (process.env.RENDERS) await page.evaluate(() => { window.__renderCount = { on: true, commits: 0, by: {} }; });
+  // Main-thread time the moves cost (CDP Performance metrics, all frames).
+  await cdp.send('Performance.enable');
+  const metrics = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value]));
+  const m0 = await metrics();
   const t0 = Date.now();
   for (let i = 1; i <= MOVES; i += 1) {
     const tick = Date.now();
@@ -165,13 +223,43 @@ async function drag(page, cdp, from, dx, dy, { shift = false, profile = null, wa
   }
   const wall = Date.now() - t0;
   const stats = await stopSampling(page);
+  const m1 = await metrics();
+  const delta = (k) => (m1[k] - m0[k]) * 1000;
+  Object.assign(stats, { taskMs: delta('TaskDuration'), scriptMs: delta('ScriptDuration'), styleMs: delta('RecalcStyleDuration'), layoutMs: delta('LayoutDuration') });
+  if (process.env.RENDERS) {
+    const rc = await page.evaluate(() => { const r = window.__renderCount; r.on = false; return { commits: r.commits, by: r.by }; });
+    stats.commits = rc.commits;
+    stats.hostElements = rc.by['<host elements>'] || 0;
+    stats.renders = Object.entries(rc.by).reduce((a, [k, v]) => (k === '<host elements>' ? a : a + v), 0);
+    stats.topRenders = Object.entries(rc.by).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([k, v]) => `${v} ${k}`);
+  }
   if (process.env.MUTATIONS) {
     stats.mutations = await page.evaluate(() => { window.__mo.disconnect(); return [...window.__mutations].sort((x, y) => y[1] - x[1]).slice(0, 15).map(([k, v]) => `${v} ${k}`); });
   }
   stats.watchedMovedPx = (await leftOf()) - before;
+  if (process.env.PAINT) {
+    stats.paint = await page.evaluate(() => { window.__paintOn = false; return [...window.__paint].sort((a, b) => b[1] - a[1]).slice(0, 20).map(([k, v]) => `${v} ${k}`); });
+  }
   if (trace) await page.context().browser().stopTracing();
   else if (profile) { const { profile: cpu } = await cdp.send('Profiler.stop'); fs.writeFileSync(profile, JSON.stringify(cpu)); }
+  const dropProfile = profile && !trace && process.env.DROP ? profile.replace(/\.cpuprofile$/, '-drop.cpuprofile') : null;
+  if (dropProfile) await cdp.send('Profiler.start');
+  const m2 = process.env.DROP ? await metrics() : null;
+  // DROP=1: what the drop itself costs (the edit is saved into the marks).
+  // Sampling starts before the release so the release's own frame is counted.
+  if (process.env.DROP) await startSampling(page);
   await send('mouseReleased', from.x + dx, from.y + dy, 0);
+  if (process.env.DROP) {
+    await sleep(Number(process.env.DROP_MS) || 1500);
+    const after = await stopSampling(page);
+    const m3 = await metrics();
+    stats.dropTaskMs = (m3.TaskDuration - m2.TaskDuration) * 1000;
+    if (dropProfile) { const { profile: cpu } = await cdp.send('Profiler.stop'); fs.writeFileSync(dropProfile, JSON.stringify(cpu)); }
+    stats.dropLoafMs = after.loafMs;
+    stats.dropScriptMs = after.loafScriptMs;
+    stats.dropOver33 = after.over33;
+    stats.dropLoafLongest = after.loafLongest;
+  }
   return { ...stats, wall };
 }
 
@@ -190,9 +278,41 @@ async function selectionHandles(page) {
 async function oneRun(browser, { profile = null } = {}) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   await context.route((u) => !['data:', 'blob:'].includes(u.protocol) && !['127.0.0.1', 'localhost'].includes(u.hostname), (r) => r.abort('blockedbyclient'));
+  if (process.env.RENDERS) await context.addInitScript(installRenderCounter);
+  // PAINT=1 counts 2D canvas draw calls per canvas during each gesture.
+  if (process.env.PAINT) {
+    await context.addInitScript(() => {
+      const counts = new Map(); window.__paint = counts; window.__paintOn = false;
+      const desc = (c) => {
+        const el = c.canvas;
+        if (!(el instanceof HTMLCanvasElement)) return `offscreen ${el.width}x${el.height}`;
+        const host = el.closest('[data-page-number],[data-overlay-page],[data-page]');
+        const pg = host?.getAttribute('data-page-number') || host?.getAttribute('data-overlay-page') || host?.getAttribute('data-page') || '?';
+        return `${String(el.className || '(no class)').slice(0, 40)} p${pg} ${el.width}x${el.height}${el.isConnected ? '' : ' detached'}`;
+      };
+      const note = (k) => { if (window.__paintOn) { const st = (new Error().stack || '').split('\n').slice(2, 5).map((l) => l.trim().replace(/https?:\/\/[^/]+\//, '')).join(' < '); const key = `${k} @ ${st}`; counts.set(key, (counts.get(key) || 0) + 1); } };
+      for (const fn of ['getContext', 'toDataURL', 'toBlob', 'transferToImageBitmap']) {
+        const orig = HTMLCanvasElement.prototype[fn];
+        if (orig) HTMLCanvasElement.prototype[fn] = function (...a) { note(`${fn} ${desc({ canvas: this })}`); return orig.apply(this, a); };
+      }
+      for (const prop of ['width', 'height']) {
+        const d = Object.getOwnPropertyDescriptor(HTMLCanvasElement.prototype, prop);
+        Object.defineProperty(HTMLCanvasElement.prototype, prop, { ...d, set(v) { note(`set ${prop} ${desc({ canvas: this })}`); d.set.call(this, v); } });
+      }
+      for (const fn of ['fill', 'stroke', 'fillText', 'drawImage', 'fillRect', 'clearRect', 'putImageData']) {
+        const orig = CanvasRenderingContext2D.prototype[fn];
+        CanvasRenderingContext2D.prototype[fn] = function (...a) {
+          if (window.__paintOn) { const k = `${fn} ${desc(this)}`; counts.set(k, (counts.get(k) || 0) + 1); }
+          return orig.apply(this, a);
+        };
+      }
+    });
+  }
   const page = await context.newPage();
   await signInAndOpen(page);
   const cdp = await context.newCDPSession(page);
+  // CPU=<n> slows the page n times after it is open (a slower laptop or tablet).
+  if (process.env.CPU) await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU) });
   if (process.env.LOAF_DETAIL) await page.evaluate(() => { window.__loafDetail = true; });
   const heapOpenMB = await heapMB(cdp);
   const marks = await page.locator('[data-overlay-page="1"] [data-annotation-index]').count();
@@ -260,7 +380,7 @@ if (PROFILE) {
   }
   const summary = { marks: runs[0].marks, heapOpenMB: Math.round(median(runs.map((r) => r.heapOpenMB)) * 10) / 10, heapAfterSwitchMB: Math.round(median(runs.map((r) => r.heapAfterSwitchMB)) * 10) / 10 };
   for (const g of ['toolSwitch', ...GESTURES]) {
-    summary[g] = Object.fromEntries(['frames', 'meanFrame', 'p95Frame', 'over33', 'loafCount', 'loafMs', 'loafScriptMs', 'wall']
+    summary[g] = Object.fromEntries(['frames', 'meanFrame', 'p95Frame', 'overVsync', 'over33', 'loafCount', 'loafMs', 'loafScriptMs', 'taskMs', 'scriptMs', 'styleMs', 'layoutMs', 'commits', 'renders', 'hostElements', 'wall', 'dropLoafMs', 'dropScriptMs', 'dropOver33', 'dropTaskMs']
       .map((k) => [k, Math.round(median(runs.map((r) => r[g]?.[k] ?? 0)) * 10) / 10]));
   }
   console.log('MEDIANS', JSON.stringify(summary));

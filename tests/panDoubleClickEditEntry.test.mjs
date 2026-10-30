@@ -96,7 +96,7 @@ test('the caret anchor is stored relative to the annotation box, not the viewpor
   // Opening the editor can scroll the page; a raw client point then lands
   // outside the editor (observed live under Text Select, 500px off).
   assert.match(viewerSource, /const caretAnchor = buildCaretAnchor\(\{/);
-  assert.match(viewerSource, /host: document\.querySelector\(`\[data-diag-svg-wrapper="\$\{candidate\.pageNumber\}"\] \$\{hostSelector\}`\)/);
+  assert.match(viewerSource, /host: queryInViewer\(pdfjsWrapperRef\.current, `\[data-diag-svg-wrapper="\$\{candidate\.pageNumber\}"\] \$\{hostSelector\}`\)/);
   assert.match(interactionSource, /host: event\?\.target\?\.closest\?\.\('\[data-callout-id\], \[data-annotation-index\]'\)/);
   assert.match(overlaySource, /resolveCaretAnchorPoint\(anchor, rect\)/);
 });

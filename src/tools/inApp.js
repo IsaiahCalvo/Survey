@@ -73,14 +73,16 @@ export async function runInAppTool(id, sources, opts = {}, progress = () => {}) 
       return [{ ...out(`${stem} (compressed).pdf`, bytes), before: first.bytes.length }];
     }
     case 'ocr': {
-      const [{ ocrPdf }, { makePageReader }, { openPdfjs }] = await Promise.all([import('./ocr.js'), import('./ocr-browser.js'), import('./browser.js')]);
-      const reader = makePageReader(await openPdfjs(first.bytes.slice()), { skipText: opts.skipText !== false, progress });
+      const [{ ocrPdf }, { makePageReader }, { openPdfjs, closePdfjs }] = await Promise.all([import('./ocr.js'), import('./ocr-browser.js'), import('./browser.js')]);
+      const pdf = openPdfjs(first.bytes.slice());
+      const reader = makePageReader(await pdf, { skipText: opts.skipText !== false, progress });
       try {
         const r = await ocrPdf(first.bytes, reader.readPage, (i, total) => progress(`Reading page ${i + 1} of ${total}`));
         const note = r.skipped ? `${r.skipped} of ${r.pages} pages already had text and were left as they were.` : undefined;
         return [{ ...out(`${stem} (searchable).pdf`, r.bytes), note }];
       } finally {
         await reader.close();
+        await closePdfjs(pdf);
       }
     }
     case 'flatten': {

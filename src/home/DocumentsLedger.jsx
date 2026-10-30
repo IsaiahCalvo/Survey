@@ -15,6 +15,7 @@ import { HubShell, Icon, Avatar, PdfThumb, Search, EmptyState } from './HubShell
 import { countLabel } from './countLabel.js';
 import { presenceInitials } from '../components/presenceIdentity.js';
 import SectionIconButton, { SelectModeButtons } from '../components/SectionIconButton.jsx';
+import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import { MoveCopyModal, RenameModal } from './BulkModals';
 import PdfPageThumb from './PdfPageThumb';
 import { useThumbnailBackfill } from '../hooks/useThumbnailBackfill';
@@ -28,6 +29,7 @@ import useModalFocusTrap from './useModalFocusTrap';
 import { isPhoneLayout } from '../utils/layoutMode.js';
 import { canManageDocument, manageSelectionBlock } from './documentPermissions.js';
 import { activateOrExplain } from '../utils/disabledReasonToast.js';
+import MenuRows from '../components/MenuRows.jsx';
 import sampleFloorPlanUrl from '../assets/sample-floor-plan.pdf?url';
 import useFileDropZone from '../hooks/useFileDropZone';
 import FileDropOverlay from '../components/FileDropOverlay';
@@ -41,6 +43,7 @@ import {
   selectionModeFromEvent,
 } from './documentSelection.js';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { preloadPdfViewerNow } from '../utils/pdfViewerPrefetch.js';
 
 const ledgerHeader = {
   background: 'var(--ink-700)',
@@ -51,6 +54,10 @@ const ledgerHeader = {
   fontSize: 11, letterSpacing: 0,
   color: 'var(--ink-200)', fontWeight: 600,
   padding: '8px 0',
+  /* The rows carry a 2px left edge (gold on the previewed row); the header
+     keeps the same edge so its select-all box and labels sit over the row
+     boxes and cells, not 2px left of them (owner 2026-10-28). */
+  borderLeft: '2px solid transparent',
 };
 
 // Survey calm gold (2026-10-01): no ribbon colour equals the accent gold.
@@ -135,20 +142,7 @@ function DocumentActionMenu({ anchorRect, point = null, items, onClose, returnFo
         onKeyDown={onKeyDown}
         onContextMenu={(event) => event.preventDefault()}
       >
-        {items.map((it) => (
-          <button
-            key={it.label}
-            type="button"
-            role="menuitem"
-            className={`hub-menu__item${it.danger ? ' is-danger' : ''}`}
-            disabled={it.reason ? undefined : it.disabled}
-            aria-disabled={it.reason ? true : undefined}
-            {...(it.reason ? tip(it.reason, 'right') : {})}
-            onClick={() => { if (it.disabled && !it.reason) return; onClose(); activateOrExplain(it.reason, it.onClick); }}
-          >
-            {it.label}
-          </button>
-        ))}
+        <MenuRows items={items} tip={tip} tipSide="right" onClose={onClose} />
       </div>
     </>,
     document.body,
@@ -513,6 +507,9 @@ export default function DocumentsLedger({
   const stickyCell = (selected) => ({
     position: 'sticky', left: 0, zIndex: 2,
     background: selected ? 'var(--ink-600)' : 'var(--ink-700)',
+    // Fades with its row (hub.css, 150ms): changed at once it showed as a
+    // dark box over the name while the rest of the row faded (2026-10-27).
+    transition: 'background-color 150ms var(--ease-standard)',
     padding: '12px 14px',
     display: 'flex', alignItems: 'center', gap: 10,
     minWidth: 0,
@@ -553,7 +550,10 @@ export default function DocumentsLedger({
       onDismiss={() => setMobileSortOpen(false)}
       menu
     />
-    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10 }}>
+    {/* Centred, not baseline (owner 2026-10-28): Select mode's taller row
+        moved the baseline and pushed "N files" down 3 px. Centred in the
+        header's fixed 22 px band, the count stays put in both modes. */}
+    <span className="documents-mobile-summary" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
       <span className="documents-file-count"><b>{docs.length}</b> {docs.length === 1 ? 'file' : 'files'}</span>
       <span className="documents-select-row mobile-header-select-row documents-mobile-select-sort-row documents-select-toolbar">
         <span className="documents-mobile-select-main">
@@ -571,7 +571,7 @@ export default function DocumentsLedger({
             return (
               <span className="documents-select-actions mobile-header-select-actions" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
                 <SelectModeButtons
-                  phone
+                  phone={isPhoneLayout()}
                   count={docSelCount}
                   allSelected={allSel}
                   total={docs.length}
@@ -728,13 +728,32 @@ export default function DocumentsLedger({
       />
     </div>
   );
+  /* Owner 2026-10-27: slide a document left for Duplicate, Move, Copy, Share
+     and Delete - the select-mode actions for just this one, with the same
+     owner rules as its menu. Delete moves it to Archive with an Undo. */
+  const documentSwipeActions = (d) => {
+    const pickOnly = () => setSelDocs(new Set([d.id]));
+    return buildSwipeActions({
+      lead: 'share',
+      onDuplicate: onDuplicate ? () => onDuplicate([d.raw]) : undefined,
+      onMove: onMoveCopy ? () => { pickOnly(); setMoveMode('move'); setMoveOpen(true); } : undefined,
+      onCopy: onMoveCopy ? () => { pickOnly(); setMoveMode('copy'); setMoveOpen(true); } : undefined,
+      onShare: onShare ? () => onShare([d.raw]) : undefined,
+      onDelete: onDelete ? () => onDelete([d.raw]) : undefined,
+      can: {
+        share: manageSelectionBlock([d.raw], user?.id, 'share') || true,
+        delete: manageSelectionBlock([d.raw], user?.id, 'delete') || true,
+      },
+    });
+  };
   const renderMobileCard = (d) => {
     const isChecked = selDocs.has(d.id);
     return (
+      <SwipeActionsRow key={`mobile-${d.id}`} label={d.name} disabled={docSelectMode} actions={documentSwipeActions(d)} className="mobile-doc-swipe">
       <div
-        key={`mobile-${d.id}`}
         data-document-id={d.id}
         className={`mobile-doc-card${docSelectMode && isChecked ? ' is-selected' : ''}`}
+        onPointerDown={preloadPdfViewerNow}
         onClick={() => openMobileDoc(d)}
         role="button"
         tabIndex={0}
@@ -755,6 +774,7 @@ export default function DocumentsLedger({
           {renderMobileThumb(d)}
         </div>
       </div>
+      </SwipeActionsRow>
     );
   };
 
@@ -831,8 +851,8 @@ export default function DocumentsLedger({
                 const isFilled = docSelectMode ? isChecked : (isChecked || (selDocs.size === 0 && isPreviewed));
                 const isDragging = Boolean(docDrag && docDrag.ids.includes(d.id));
                 return (
+                  <SwipeActionsRow key={d.id} label={d.name} disabled={docSelectMode} actions={documentSwipeActions(d)}>
                   <div
-                    key={d.id}
                     data-document-id={d.id}
                     className={`documents-ledger-row ${gridClass}${isFilled ? ' is-selected' : ''}${isDragging ? ' is-dragging' : ''}`}
                     // KAL-66: data-, not aria-selected - a plain div may not
@@ -844,6 +864,7 @@ export default function DocumentsLedger({
                     onDragEnd={onRowDragEnd}
                     // Shift/Ctrl-click must not paint a text selection across rows.
                     onMouseDown={(event) => { if (event.shiftKey || event.metaKey || event.ctrlKey) event.preventDefault(); }}
+                    onPointerDown={preloadPdfViewerNow}
                     onClick={(event) => onDesktopRowClick(event, d)}
                     {...keyboardControlProps()}
                     onContextMenu={(event) => onDesktopRowContextMenu(event, d)}
@@ -910,11 +931,11 @@ export default function DocumentsLedger({
                         empty, as the phone row, the preview and the phone details
                         already do; it used to print a mono "N/A". */}
                       {d.project === 'Sandbox' ? null : d.project}</span>
-                    <div className="mono" style={{ fontSize: 11, padding: '10px 0', lineHeight: 1.35 }}>
+                    <div className="nums" style={{ fontSize: 11, padding: '10px 0', lineHeight: 1.35 }}>
                       <div style={{ fontWeight: 600 }}>{d.touchedTime}</div>
                       <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>
                     </div>
-                    <span className="mono documents-col-size" style={{ fontSize: 11, padding: '12px 0' }}>{d.size}</span>
+                    <span className="nums documents-col-size" style={{ fontSize: 11, padding: '12px 0' }}>{d.size}</span>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <button
                         aria-haspopup="menu"
@@ -926,6 +947,7 @@ export default function DocumentsLedger({
                       ><Icon name="more" size={14} /></button>
                     </div>
                   </div>
+                  </SwipeActionsRow>
                 );
               })}
             </div>
@@ -1036,11 +1058,11 @@ export default function DocumentsLedger({
               <div style={{ marginTop: 14, flex: 'none', display: 'grid', gap: 10 }}>
                 <div>
                   <div className="section-label">Last edited</div>
-                  <div className="mono" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.lastEditedAbs}</div>
+                  <div className="nums" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.lastEditedAbs}</div>
                 </div>
                 <div>
                   <div className="section-label">Uploaded</div>
-                  <div className="mono" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.uploadedAbs}</div>
+                  <div className="nums" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.uploadedAbs}</div>
                 </div>
               </div>
               {/* Flexible spacer — soaks up spare height so the action buttons

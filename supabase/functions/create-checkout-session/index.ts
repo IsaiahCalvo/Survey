@@ -6,6 +6,7 @@ import { deleteStripeCustomer } from '../_shared/accountDeletion.ts';
 import { ensurePersistedStripeCustomer } from '../_shared/stripeCustomerPersistence.ts';
 import { isAgentSession, AGENT_REFUSED_MESSAGE } from '../_shared/agentSession.ts';
 import { parseBody, s } from '../_shared/inputSchema.js';
+import { GUEST_REFUSED_MESSAGE, isGuestUser } from '../_shared/guestSession.js';
 
 const corsHeaders = {
     // ⚠️ INTENTIONAL — do NOT tighten to an origin allowlist (false positive if an
@@ -58,6 +59,13 @@ Deno.serve(async (req) => {
             throw new Error('Invalid user token');
         }
 
+        if (isGuestUser(user)) {
+            return new Response(
+                JSON.stringify({ error: GUEST_REFUSED_MESSAGE }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+        }
+
         if (isAgentSession(authHeader)) {
             return new Response(
                 JSON.stringify({ error: AGENT_REFUSED_MESSAGE }),
@@ -70,11 +78,14 @@ Deno.serve(async (req) => {
             tier: s.enum(['pro', 'enterprise'], { optional: true }),
             billingPeriod: s.enum(['monthly', 'annual'], { optional: true }),
             returnUrl: s.string({ max: 2048, optional: true }),
+            // Enterprise is bought by a company workspace for a number of seats.
+            orgId: s.string({ max: 64, pattern: /^[0-9a-f-]{36}$/i, optional: true }),
+            seats: s.integer({ min: 1, max: 100000, optional: true }),
         }, await req.json().catch(() => ({})));
         if (!parsed.ok) {
             return new Response(JSON.stringify({ error: parsed.error }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
-        const { tier = 'pro', billingPeriod = 'monthly', returnUrl } = parsed.value as { tier?: string, billingPeriod?: string, returnUrl?: string };
+        const { tier = 'pro', billingPeriod = 'monthly', returnUrl, orgId, seats } = parsed.value as { tier?: string, billingPeriod?: string, returnUrl?: string, orgId?: string, seats?: number };
 
         // Validate tier
         if (!['pro', 'enterprise'].includes(tier)) {
@@ -97,6 +108,36 @@ Deno.serve(async (req) => {
             priceId = requirePrice('STRIPE_ENTERPRISE_PRICE_ID');
         } else {
             throw new Error('Invalid tier');
+        }
+
+        // Enterprise seats belong to a company workspace the caller owns. The
+        // quantity is never below 3 (the plan minimum) or below the people and
+        // open invites already holding seats.
+        let company: { id: string, quantity: number } | null = null;
+        if (tier === 'enterprise') {
+            if (!orgId) {
+                return new Response(JSON.stringify({ error: 'Enterprise is bought for a company workspace. Create one in Settings, Company.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            const { data: membership } = await supabase.from('organization_members')
+                .select('role').eq('organization_id', orgId).eq('user_id', user.id).maybeSingle();
+            if (membership?.role !== 'owner') {
+                return new Response(JSON.stringify({ error: 'Only a company owner can buy seats.' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            const { data: org } = await supabase.from('organizations')
+                .select('id, billing_status').eq('id', orgId).single();
+            if (org && ['active', 'trialing', 'past_due'].includes(org.billing_status)) {
+                return new Response(JSON.stringify({ error: 'This company already has a plan. Change seats from Manage billing.' }), { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            const [{ count: members }, { count: invites }] = await Promise.all([
+                supabase.from('organization_members').select('user_id', { count: 'exact', head: true }).eq('organization_id', orgId),
+                supabase.from('organization_invites').select('id', { count: 'exact', head: true }).eq('organization_id', orgId)
+                    .is('accepted_at', null).is('revoked_at', null).is('declined_at', null).gt('expires_at', new Date().toISOString()),
+            ]);
+            const wanted = seats ?? 3;
+            if (wanted > 1000) {
+                return new Response(JSON.stringify({ error: 'For more than 1000 seats, email us.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            company = { id: orgId, quantity: Math.max(3, wanted, (members || 0) + (invites || 0)) };
         }
 
         // Check if user already has a Stripe customer ID
@@ -172,7 +213,7 @@ Deno.serve(async (req) => {
             line_items: [
                 {
                     price: priceId,
-                    quantity: 1,
+                    quantity: company ? company.quantity : 1,
                 },
             ],
             mode: 'subscription',
@@ -190,6 +231,11 @@ Deno.serve(async (req) => {
                 },
             },
         };
+
+        if (company) {
+            sessionParams.metadata = { org_id: company.id, payer_id: user.id, tier: 'enterprise' };
+            sessionParams.subscription_data = { metadata: { org_id: company.id, payer_id: user.id, tier: 'enterprise' } };
+        }
 
         // Add 7-day trial for Pro tier
         if (tier === 'pro') {

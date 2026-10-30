@@ -359,6 +359,27 @@
   --row-icon: 14px;
   --row-text-x: 40px;     /* where the text starts on a row with a grip and an icon */
   --menu-item-h: 28px;    /* one item in a popup menu */
+  /* One row of an ACTION menu (design review 2026-10-27): the home row menus,
+     right-click on a mark or a page, Export. They were 11, 12 and 13px with
+     6, 9, 10 and 12px insets; now they all read these. */
+  --menu-font: 400 13px/16px var(--font-ui);
+  --menu-item-pad-x: 10px;
+  --menu-item-gap: 10px;
+
+  /* --- TEXT SIZES (design review 2026-10-27) ---------------------------- */
+  /* Seven sizes. 10 a tiny badge; 11 a label or caption; 12 small text; 13
+     body and menu rows; 14 a strong row; 16 a field on a phone and phone
+     sheet rows; 18 a title. Bigger titles use 20, 22, 24 or 28. Half sizes
+     (10.5, 11.5, 12.5) and 9, 15, 17 are off the scale.
+     tests/sizeScaleRatchet.test.mjs stops new off-scale sizes, corners and
+     typed-in colours. */
+  --font-size-xs: 10px;
+  --font-size-sm: 11px;
+  --font-size-md: 12px;
+  --font-size-base: 13px;
+  --font-size-lg: 14px;
+  --font-size-xl: 16px;
+  --font-size-2xl: 18px;
 
   /* --- CORNERS (owner 2026-10-02) --------------------------------------- */
   /* Five radii. A control's corner is 6; a small chip or a menu item 4; a
@@ -471,6 +492,13 @@ button {
   --motion-panel: 200ms;         /* side panels, a second toolbar row */
   --motion-collapse: 300ms;      /* a folding section */
   --motion-state: 150ms;         /* hover / pressed / selected colour changes */
+  /* Drop-downs (owner 2026-10-28, from the 21st.dev menus he picked): a menu
+     grows out of its button or unrolls under its field, its rows arrive one
+     after another, and the hover strip glides from row to row. */
+  --motion-menu-open: 180ms;     /* a drop-down growing / unrolling open */
+  --motion-menu-row: 160ms;      /* one row arriving */
+  --motion-menu-stagger: 14ms;   /* the gap between two rows arriving */
+  --motion-glide: 180ms;         /* the hover strip moving to the next row */
 
   --motion-menu-shift: 8px;      /* how far a menu slides in */
   --motion-toast-shift: 8px;
@@ -483,6 +511,7 @@ button {
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-in: cubic-bezier(0.32, 0, 0.67, 0);
   --ease-emphasized: cubic-bezier(0.87, 0, 0.13, 1);
+  --ease-glide: cubic-bezier(0.23, 1, 0.32, 1);  /* quint out: the drop-downs */
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -496,5 +525,9 @@ button {
     --motion-panel: 0ms;
     --motion-collapse: 0ms;
     --motion-state: 0ms;
+    --motion-menu-open: 0ms;
+    --motion-menu-row: 0ms;
+    --motion-menu-stagger: 0ms;
+    --motion-glide: 0ms;
   }
 }

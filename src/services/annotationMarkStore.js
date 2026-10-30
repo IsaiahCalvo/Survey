@@ -104,9 +104,38 @@ export function stableStringify(value) {
   return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
 }
 
+// Equal exactly when stableStringify says so, without building the strings
+// (2026-10-28: adopting 3,000 freshly imported ink marks spent ~0.3 s turning
+// both copies of every point list into JSON). Where the two walks could ever
+// disagree (a non-object on one side), the strings decide.
 function valuesEqual(left, right) {
   if (left === right) return true;
-  return stableStringify(left) === stableStringify(right);
+  const leftIsObject = left !== null && typeof left === 'object';
+  const rightIsObject = right !== null && typeof right === 'object';
+  if (!leftIsObject || !rightIsObject) return stableStringify(left) === stableStringify(right);
+  const leftValue = isYMap(left) ? left.toJSON() : left;
+  const rightValue = isYMap(right) ? right.toJSON() : right;
+  const leftIsArray = Array.isArray(leftValue);
+  if (leftIsArray !== Array.isArray(rightValue)) return false;
+  if (leftIsArray) {
+    if (leftValue.length !== rightValue.length) return false;
+    for (let index = 0; index < leftValue.length; index += 1) {
+      const leftItem = leftValue[index] === undefined ? null : leftValue[index];
+      const rightItem = rightValue[index] === undefined ? null : rightValue[index];
+      if (!valuesEqual(leftItem, rightItem)) return false;
+    }
+    return true;
+  }
+  let rightKeyCount = 0;
+  for (const key of Object.keys(rightValue)) if (rightValue[key] !== undefined) rightKeyCount += 1;
+  let leftKeyCount = 0;
+  for (const key of Object.keys(leftValue)) {
+    if (leftValue[key] === undefined) continue;
+    leftKeyCount += 1;
+    if (!Object.prototype.propertyIsEnumerable.call(rightValue, key) || rightValue[key] === undefined) return false;
+    if (!valuesEqual(leftValue[key], rightValue[key])) return false;
+  }
+  return leftKeyCount === rightKeyCount;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,8 +1,9 @@
 // Spaces audit chunk A (2026-10-01): safety and correctness.
 //   1. A space with no pages can't be turned on, and an active space that
 //      lost its pages shows a "No pages in <space>" card (not a black viewer).
-//   2. Removing a page from a space / deleting a space asks first, with the
-//      real counts of what the cascade deletes, and is one Undo step.
+//   2. Removing a page from a space / deleting a space happens at once (owner
+//      rule 2026-10-27: act first, Undo, never a confirm), is one Undo step,
+//      and its Undo toast names the real counts of what the cascade took.
 //   3. Phone: Edit areas moves the Spaces sheet out of the way.
 //   4. Phone: region rename reaches the shared keyboard lift.
 //   5. The space row counts pages, not drawn areas.
@@ -10,8 +11,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  buildDeleteSpaceConfirm,
-  buildRemovePageConfirm,
+  buildRemovePageToast,
+  buildSpaceDeleteToast,
   countSpaceCascadeImpact,
   formatSpaceCountLabel,
   isSpaceScopedEntry,
@@ -66,32 +67,32 @@ test('impact count = what the cascade rule deletes, per page and per space', () 
   assert.equal(isSpaceScopedEntry({ pageNumber: 3, spaceId: 'sp' }, explicit), false, 'explicit regions only');
 });
 
-test('confirm text states the real consequence; a bare page needs no confirm', () => {
-  const prompt = buildRemovePageConfirm({ spaceName: 'Space 2', pageId: 3, impact: { marks: 4, surveyMarkers: 0, areas: 1 } });
-  assert.equal(prompt.title, 'Remove p.3 from Space 2?');
-  assert.match(prompt.message, /^This also deletes 4 marks placed in Space 2 on p\.3\. Its 1 drawn area goes too\./);
-  assert.equal(prompt.danger, true);
-  assert.equal(prompt.confirmLabel, 'Remove');
-  const both = buildRemovePageConfirm({ spaceName: 'S', pageId: 1, impact: { marks: 1, surveyMarkers: 2, areas: 0 } });
-  assert.match(both.message, /deletes 1 mark and 2 Survey Markers placed in S on p\.1\./);
-  assert.equal(buildRemovePageConfirm({ spaceName: 'S', pageId: 1, impact: { marks: 0, surveyMarkers: 0, areas: 0 } }), null);
-  const del = buildDeleteSpaceConfirm({ spaceName: 'Space 2', pageCount: 2, impact: { marks: 3, surveyMarkers: 1 } });
-  assert.equal(del.title, 'Delete Space 2?');
-  assert.equal(del.message, 'This also deletes 3 marks and 1 Survey Marker placed in Space 2. Its 2 pages stay in the document.');
-  assert.doesNotMatch(del.message, /will not delete/i, 'the old misleading text is gone');
-  assert.equal(buildDeleteSpaceConfirm({ spaceName: 'E', pageCount: 0, impact: null }).message, 'No marks are deleted.');
+test('the Undo toast states what went with it', () => {
+  assert.equal(
+    buildRemovePageToast({ spaceName: 'Space 2', pageId: 3, impact: { marks: 4, surveyMarkers: 0, areas: 1 } }),
+    'Removed p.3 from Space 2, with 4 marks',
+  );
+  assert.equal(
+    buildRemovePageToast({ spaceName: 'S', pageId: 1, impact: { marks: 1, surveyMarkers: 2, areas: 0 } }),
+    'Removed p.1 from S, with 1 mark and 2 Survey Markers',
+  );
+  assert.equal(buildRemovePageToast({ spaceName: 'S', pageId: 1, impact: null }), 'Removed p.1 from S');
+  assert.equal(
+    buildSpaceDeleteToast({ spaceName: 'Space 2', impact: { marks: 3, surveyMarkers: 1 } }),
+    'Deleted Space 2, with 3 marks and 1 Survey Marker',
+  );
+  assert.equal(buildSpaceDeleteToast({ spaceName: 'E', impact: null }), 'Deleted E');
 });
 
-test('row count label counts pages, areas apart', () => {
-  assert.equal(formatSpaceCountLabel(3, 2), '3 pages · 2 areas');
-  assert.equal(formatSpaceCountLabel(1, 0), '1 page');
-  assert.equal(formatSpaceCountLabel(0, 0), '0 pages');
+test('row count is a small region line under the space name', () => {
+  // DELIBERATE CHANGE (owner 2026-10-26): the count left the front of the row
+  // ("something a little more minimal ... smaller and underneath").
+  assert.equal(formatSpaceCountLabel(3), '3 regions');
+  assert.equal(formatSpaceCountLabel(1), '1 region');
+  assert.equal(formatSpaceCountLabel(0), 'No regions');
   const panel = read('src/sidebar/SpacesPanel.jsx');
-  // DELIBERATE CHANGE (owner 2026-10-02, Spaces cards restored): the row
-  // shows the PAGE count as a plain muted figure again (the layout he had);
-  // the whole "3 pages · 2 areas" label is its accessible name and tooltip.
-  assert.match(panel, /data-space-meta\s+aria-label=\{regionCountLabel\}\s+\{\.\.\.tip\(regionCountLabel, 'below'\)\}\s*>\s*\{pageCount\}\s*<\/span>/, 'the visible count is the page count, named by the page / area label');
-  assert.match(panel, /formatSpaceCountLabel\(pageCount, regionCount\)/);
+  assert.match(panel, /<\/span>\s*<span className="space-card__count" data-space-meta>\{regionCountLabel\}<\/span>\s*<\/span>/, 'the count sits under the name, inside the title');
+  assert.match(panel, /formatSpaceCountLabel\(pageCount\)/);
 });
 
 test('page removal is one Undo step: Undo puts the page and its cascaded marks back, Redo removes them', () => {
@@ -118,7 +119,7 @@ test('PDFViewer wiring: shared cascade rule, remove-page checkpoint, empty-space
   const cascade = src.slice(src.indexOf('const cascadeDeleteScopedAppState = useCallback'), src.indexOf('const handleSpaceRemovePage = useCallback'));
   assert.match(cascade, /resolveSpaceCascadeScope\(/);
   assert.match(cascade, /isSpaceScopedEntry\(entry, scope\)/);
-  const remove = src.slice(src.indexOf('const handleSpaceRemovePage = useCallback'), src.indexOf('const getSpaceRemovalImpact = useCallback'));
+  const remove = src.slice(src.indexOf('const handleSpaceRemovePage = useCallback'), src.indexOf('const handleSpaceRenamePage = useCallback'));
   assert.ok(remove.indexOf("addHistoryCheckpoint('space:remove-page'") >= 0, 'page removal records an Undo step');
   assert.ok(remove.indexOf("addHistoryCheckpoint('space:remove-page'") < remove.indexOf('cascadeDeleteScopedAppState({'),
     'the checkpoint is taken before the cascade deletes anything');
@@ -135,13 +136,16 @@ test('PDFViewer wiring: shared cascade rule, remove-page checkpoint, empty-space
   assert.match(read('src/mobile/MobilePdfViewerChrome.jsx'), /bottomToolbarApi\?\.activeSpaceHasNoPages \? 0 : \(bottomToolbarApi\?\.pageNum \|\| 1\)/);
 });
 
-test('SpacesPanel: themed confirms, blocked switch, region rename reaches the keyboard lift', () => {
+test('SpacesPanel: no confirms (act first + Undo), blocked switch, region rename reaches the keyboard lift', () => {
   const panel = read('src/sidebar/SpacesPanel.jsx');
   assert.doesNotMatch(panel, /window\.confirm/);
-  assert.match(panel, /useConfirmDialog\(\)/);
-  assert.match(panel, /buildRemovePageConfirm\(/);
-  assert.match(panel, /buildDeleteSpaceConfirm\(/);
-  assert.match(panel, /createPortal\(/, 'the confirm renders above the phone sheet');
+  assert.doesNotMatch(panel, /useConfirmDialog\(\)|askConfirm\(/);
+  const viewer = read('src/PDFViewer.jsx');
+  const remove = viewer.slice(viewer.indexOf('const handleSpaceRemovePage = useCallback('), viewer.indexOf('const handleSpaceRenamePage = useCallback('));
+  assert.match(remove, /message: removeToastMessage,\s*onUndo: \(\) => \{ handleUndoRef\.current\?\.\(\); \}/);
+  const del = viewer.slice(viewer.indexOf('const handleSpaceDelete = useCallback('), viewer.indexOf('const handleSetActiveSpace = useCallback('));
+  assert.match(del, /message: deleteToastMessage,\s*onUndo: \(\) => \{ handleUndoRef\.current\?\.\(\); \}/);
+  assert.match(panel, /createPortal\(/, 'the export sheet renders above the phone sheet');
   assert.match(panel, /const isSwitchBlocked = !isActive && pageCount === 0;/);
   assert.match(panel, /aria-disabled=\{isSwitchBlocked \|\| undefined\}/);
   assert.match(panel, /'Add pages first'/);
@@ -158,5 +162,6 @@ test('PDFSidebar (phone): the region tool hides the Spaces sheet and brings it b
   assert.match(effect, /if \(isRegionSelectionActive\)/);
   assert.match(effect, /closePanel\(\)/);
   assert.match(effect, /openPanel\('spaces'\)/);
-  assert.match(src, /getSpaceRemovalImpact=\{getSpaceRemovalImpact\}/);
+  // The counts are for the viewer's Undo toast now; the panel asks nothing.
+  assert.doesNotMatch(src, /getSpaceRemovalImpact/);
 });

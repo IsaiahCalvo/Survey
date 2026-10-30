@@ -57,11 +57,12 @@ test('an admin publishes a kit on /kits, gives it to a customer, and the custome
   const customer = await other.newPage();
   await signIn(customer, E2E_ACCOUNTS.editor);
   await customer.getByRole('tab', { name: /Templates/ }).or(customer.getByRole('button', { name: /^Templates$/ })).filter({ visible: true }).first().click();
-  const layout = customer.getByRole('combobox', { name: 'Excel layout' });
+  const layout = customer.getByRole('button', { name: 'Excel layout', exact: true }).filter({ visible: true }).first();
   if (!(await layout.isVisible().catch(() => false))) {
     await customer.getByRole('button', { name: /New template|Create template|Add template/ }).filter({ visible: true }).first().click();
   }
-  await expect(layout.locator('option', { hasText: 'Admin made (E2E)' })).toHaveCount(1);
+  await layout.click();
+  await expect(customer.getByRole('listbox', { name: 'Excel layout' }).getByRole('option', { name: /Admin made \(E2E\)/ })).toHaveCount(1);
   await other.close();
 
   await page.getByRole('button', { name: `Take ${KIT_ID} from ${E2E_ACCOUNTS.editor.email}` }).click();

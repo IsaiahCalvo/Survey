@@ -187,7 +187,7 @@
   /* Floating over the --panel-bg rail: --surface-3 + the one popover shadow
      (owner 2026-10-02, one surface rule). */
   background: var(--surface-3);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
 }
@@ -235,6 +235,30 @@
    kept for the armed category only (what a touch on the page will do now). */
 .survey-rail .survey-rail__template-option[aria-checked='true'] .survey-rail__template-option-name {
   color: var(--text-1);
+}
+
+/* Nightly: under the templates, a way to the Templates editor (answers,
+   lines). Same row height and type as a template row. */
+.survey-rail .survey-rail__template-menu .survey-rail__menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+.survey-rail .survey-rail__template-menu .survey-rail__template-edit {
+  appearance: none;
+  width: 100%;
+  height: 28px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: var(--sv-label-type);
+  font-weight: 500;
+  text-align: left;
 }
 
 /* A template shared with you (owner 2026-10-07): its owner's face sits
@@ -359,7 +383,7 @@
 .survey-rail .survey-marker-entity-options {
   padding: 5px;
   background: var(--surface-3);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   box-sizing: border-box;
@@ -538,6 +562,54 @@
 
 .survey-rail .survey-rail__tabs > button:active > span {
   opacity: 0.6;
+}
+
+/* Desktop (owner 2026-10-26): the tabs that fit, then a "+N" menu with the
+   rest, instead of a row that scrolls modules out of sight. Nothing scrolls,
+   so the scroll-edge fade is off. */
+.survey-rail .survey-rail__tabs.survey-rail__tabs--fit {
+  position: relative;
+  overflow: hidden;
+  -webkit-mask-image: none;
+  mask-image: none;
+  animation: none;
+}
+
+/* A name wider than the whole rail shrinks with an ellipsis, so the "+N"
+   button always stays in the row (nothing scrolls here to reach it). */
+.survey-rail .survey-rail__tabs.survey-rail__tabs--fit > button {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.survey-rail .survey-rail__tabs.survey-rail__tabs--fit > button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.survey-rail .survey-rail__tabs > button.survey-rail__tabs-more {
+  flex: 0 0 auto;
+  min-width: 0;
+  gap: 2px;
+  padding: 2px 8px 0;
+  font-weight: 500;
+}
+
+/* The hidden copy of the row the tabs are measured from. */
+.survey-rail .survey-rail__tabs.survey-rail__tabs-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.survey-rail .survey-rail__tabs.survey-rail__tabs-measure > button {
+  flex: 0 0 auto;
 }
 
 /* ---------- THE LIST ----------------------------------------------------- */

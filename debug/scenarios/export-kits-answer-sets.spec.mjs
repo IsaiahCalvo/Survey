@@ -38,8 +38,13 @@ async function pickInEditor(page) {
   await expect(page.locator('.survey-hub')).toBeVisible({ timeout: 90_000 });
   await page.getByRole('tab', { name: /Templates/ }).or(page.getByRole('button', { name: /^Templates$/ })).first().click();
   await page.getByText('Lock Survey', { exact: true }).first().click();
-  await page.getByRole('combobox', { name: 'Excel layout' }).selectOption('wireless-lock-schedule');
-  await page.getByRole('combobox', { name: 'Checklist answers' }).selectOption('pass-fail-na');
+  // The pickers are the app's drop-down: press the pill, then the row.
+  const pick = async (name, label) => {
+    await page.getByRole('button', { name, exact: true }).filter({ visible: true }).first().click();
+    await page.getByRole('listbox', { name }).getByRole('option', { name: label, exact: true }).click();
+  };
+  await pick('Excel layout', 'Wireless lock schedule');
+  await pick('Checklist answers', 'Pass / Fail / N/A');
   await page.getByRole('button', { name: 'Save', exact: true }).first().click();
   await expect.poll(async () => page.evaluate(() => {
     const t = JSON.parse(localStorage.getItem('mobileWorkflowTemplates') || '[]').find((x) => x.name === 'Lock Survey');
