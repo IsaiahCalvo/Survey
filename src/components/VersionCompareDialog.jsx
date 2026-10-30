@@ -13,6 +13,7 @@ import { Z_INDEX } from '../theme';
 import { useTooltip } from './Tooltip';
 import { supabase } from '../supabaseClient';
 import { loadPdfjs } from '../utils/pdfWorkerConfig.js';
+import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import {
   COMPARE_NEW_INK,
   COMPARE_OLD_INK,
@@ -30,7 +31,7 @@ async function openVersionPdf(documentId) {
   const { data: blob, error: downloadError } = await supabase.storage.from('documents').download(row.file_path);
   if (downloadError || !blob) throw new Error('Could not download that version');
   const pdfjs = await loadPdfjs();
-  return pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+  return pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), ...pdfjsAssetOptions(pdfjs) }).promise;
 }
 
 async function renderInked(pdf, pageNumber, pixelsPerPoint, ink) {

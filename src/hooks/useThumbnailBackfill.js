@@ -29,6 +29,7 @@ import { isUserBusy } from '../services/userActivity';
 // never needs (launch audit 2026-10-30, slow-phone start).
 const loadThumbnailRender = () => import('../services/thumbnailRender');
 import { registerThumbnailBackfill } from '../home/thumbnailRequestPolicy';
+import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 
 export const FULL_DOWNLOAD_MAX_BYTES = 1.5 * 1024 * 1024;
 export const RANGED_PAGE_BUDGET_BYTES = 8 * 1024 * 1024;
@@ -48,7 +49,7 @@ function skipError(reason) {
 async function openSource(doc, { pdfjsLib, downloadDocument, openRangedPdf }) {
   if (doc.file) {
     const data = await readBlobAsArrayBuffer(doc.file);
-    return { loadingTask: pdfjsLib.getDocument({ data, isEvalSupported: false, verbosity: pdfjsLib.VerbosityLevel.ERRORS }), stats: { bytes: 0, requests: 0 } };
+    return { loadingTask: pdfjsLib.getDocument({ data, isEvalSupported: false, verbosity: pdfjsLib.VerbosityLevel.ERRORS, ...pdfjsAssetOptions(pdfjsLib) }), stats: { bytes: 0, requests: 0 } };
   }
   const filePath = doc.file_path || doc.filePath;
   if (!filePath || looksLocalPath(filePath)) throw skipError('no-cloud-source');
@@ -57,7 +58,7 @@ async function openSource(doc, { pdfjsLib, downloadDocument, openRangedPdf }) {
     const blob = await downloadDocument(filePath);
     const data = await readBlobAsArrayBuffer(blob);
     return {
-      loadingTask: pdfjsLib.getDocument({ data, isEvalSupported: false, verbosity: pdfjsLib.VerbosityLevel.ERRORS }),
+      loadingTask: pdfjsLib.getDocument({ data, isEvalSupported: false, verbosity: pdfjsLib.VerbosityLevel.ERRORS, ...pdfjsAssetOptions(pdfjsLib) }),
       stats: { bytes: data.byteLength, requests: 1 },
     };
   }

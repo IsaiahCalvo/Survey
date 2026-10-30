@@ -1,6 +1,7 @@
 // Browser-only helpers for the free tools: canvas image codec, pdf.js page
 // rendering, image preparation and saving files.
 import { loadPdfjs } from '../utils/pdfWorkerConfig.js';
+import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import { ToolError } from './errors.js';
 import { qpdfRunner } from './qpdf.js';
 import { jpegInfo } from './jpeg.js';
@@ -100,6 +101,7 @@ export async function openPdfjs(bytes) {
   };
   return pdfjs.getDocument({
     range, length: bytes.length, disableAutoFetch: true, disableStream: true, isEvalSupported: false,
+    ...pdfjsAssetOptions(pdfjs),
   }).promise;
 }
 

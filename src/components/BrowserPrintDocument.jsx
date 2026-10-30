@@ -4,6 +4,7 @@ import { loadPdfjs } from '../utils/pdfWorkerConfig.js';
 import { buildBrowserPrintLayout } from '../utils/browserPrintLayout.js';
 import { createPrintPageError, waitForPrintImages } from '../utils/printImageReadiness.js';
 import { showToast } from '../utils/toast.js';
+import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 
 const PRINT_RENDER_SCALE = 2;
 const EMPTY_RENDER_STATE = { ready: false, pages: [], error: '', pageNumber: 0, pageCount: 0, inputs: null };
@@ -99,7 +100,7 @@ const BrowserPrintDocument = forwardRef(function BrowserPrintDocument({
         );
         if (!mountedRef.current || !sameInputs(jobInputs, latestInputsRef.current)) return false;
 
-        loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
+        loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib) });
         loadingTaskRef.current = loadingTask;
         const pdf = await loadingTask.promise;
         if (!mountedRef.current) return false;

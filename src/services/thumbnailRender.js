@@ -11,6 +11,7 @@
 import { paintAnnotationCanvas, paintAnnotationCanvasInSlices } from '../utils/annotationCanvasPainter.js';
 import { isAnnotationVisibleInContext } from '../utils/annotationVisibilityRules.js';
 import { projectPaperInkForPresentation } from '../utils/paperInkPresentation.js';
+import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 
 export const THUMB_TARGET_PX = 720;
 const RENDER_TIMEOUT_MS = 20_000;
@@ -253,6 +254,7 @@ export async function openRangedPdf({ pdfjsLib, url, maxBytes, fetchImpl = fetch
     disableStream: true,
     isEvalSupported: false,
     verbosity: pdfjsLib.VerbosityLevel.ERRORS,
+    ...pdfjsAssetOptions(pdfjsLib),
   });
   return { loadingTask, stats, aborted };
 }
