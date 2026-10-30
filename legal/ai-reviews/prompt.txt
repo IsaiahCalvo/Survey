@@ -1,0 +1,167 @@
+You are an experienced technology lawyer (US privacy law incl. CCPA/CPRA and state privacy laws, GDPR/UK GDPR, consumer subscription law, app-store rules for Apple and Google Play, SaaS contracts). Audit the Privacy Policy and Terms of Service for the app "Survey". The live pages are https://surveytool.app/privacy.html and https://surveytool.app/terms.html ; the full text, the draft changes not yet live, and facts about what the product actually does are all below, so you can work from this text alone. This is a review only: do not edit any files.
+
+Give feedback as a lawyer would. Specifically:
+1. Places where the text does not match what the product does (missing processors, false or risky promises).
+2. Missing sections or disclosures a launch-ready policy and terms need (and which law or store rule requires each).
+3. Risky or unenforceable wording, and anything that exposes the owner to liability.
+4. Problems with the draft changes.
+For each issue give: severity (High / Medium / Low), the section it affects, why it matters, and suggested replacement or added wording in plain English. Put the most serious issues first. End with a short list of questions only the owner or a human lawyer can answer. Plain text or Markdown output.
+
+----- PACKET -----
+# Survey legal review packet
+
+Written: 2026-10-30. Survey (surveytool.app) is a PDF viewer and markup tool for
+construction/field survey work. It ships as a website, a Mac/Windows desktop app,
+and iPhone/Android apps. Not yet launched to the public; preparing for launch.
+
+## Facts about the service (from the code, 2026-10-30)
+
+Use these to check whether the policy and terms match what the product does.
+
+- Accounts: email sign-in and Google sign-in; a company single-sign-on option exists.
+- Storage and backend: Supabase (database, file storage, server functions). Website
+  hosted on Vercel.
+- Payments: Stripe (checkout, billing portal, webhooks). Pro plan, 7-day free trial.
+- Email: Brevo sends sign-in, invite, comment-mention and profile-change emails.
+- Sharing: users invite others to projects; roles are owner, contributor, viewer.
+  Comments can @mention people, which emails them.
+- Microsoft OneDrive/Excel two-way sync (user chooses files).
+- Google Sheets two-way sync (user connects a Google account and picks a sheet);
+  a server job reads the sheet on a schedule.
+- AI assistant ("Survey agent"): the user types or speaks requests; text, audio and
+  the survey data needed to answer go to Groq (open models such as gpt-oss) and,
+  as a fallback for speech-to-text, OpenAI. Users can also connect outside AI
+  tools to their account (an "MCP" connector).
+- Usage analytics (draft, see PR text below): events sent via our server to
+  Agent Native Analytics (Builder.io).
+- Account export and account deletion are self-serve. Deleted documents sit in an
+  archive for 30 days, then a scheduled job purges them; storage backups can hold
+  copies about 5 more weeks.
+- Desktop app auto-updates; phone apps use device speech recognition, files and
+  share sheet.
+- Operator: an individual (Isaiah Calvo), United States. No company entity, mailing
+  address, governing law or age limit is named in the current text.
+
+## LIVE TEXT 1: Privacy Policy (surveytool.app/privacy.html)
+
+
+## Privacy Policy
+Survey (surveytool.app) · Effective 2026-08-20
+
+### What we collect
+When you create an account we collect your email address and, if you sign in
+with Google, the name and email Google shares with us. When you use Survey we
+store the documents you upload, the annotations and survey data you create, and
+basic technical logs needed to run the service.
+
+### How your documents are handled
+Your PDFs and survey data are stored with our hosting provider (Supabase),
+encrypted in transit and at rest. Documents are visible only to you and the
+people you explicitly share them with. We do not send your documents to
+third-party processors, we do not use them for advertising, and we do not train
+machine-learning models on them.
+
+### Payments
+Payments are processed by Stripe. Your card details go directly to Stripe and
+never touch our servers. We store only your subscription status and a Stripe
+customer reference.
+
+### Optional integrations
+If you connect Microsoft OneDrive/Excel, we access only the files you choose,
+to provide the sync features you enable. You can disconnect at any time in
+Settings.
+
+### Deletion
+Deleting a document moves it to an archive you control, and archived items are
+permanently purged after 30 days. Deleting your account removes your data,
+subject to records we must keep for tax and accounting.
+
+### What we don't do
+We do not sell your data. We do not share it with advertisers. We use no
+third-party advertising or cross-site tracking.
+
+### Contact
+Questions or requests: isaiahcalvo123@gmail.com.
+
+We may update this policy as the product evolves; material
+changes will be announced in the app.
+
+
+## LIVE TEXT 2: Terms of Service (surveytool.app/terms.html)
+
+
+## Terms of Service
+Survey (surveytool.app) · Effective 2026-08-20
+
+### The service
+Survey lets you view, annotate, and survey PDF documents, collaborate with
+people you invite, and sync survey data with Excel. By creating an account you
+agree to these terms.
+
+### Your content
+You own the documents and data you upload. You grant us only the rights
+needed to store, display, and process them so the service can work. You are
+responsible for having the right to upload what you upload.
+
+### Subscriptions and billing
+Paid plans are billed through Stripe on a recurring basis until cancelled.
+You can cancel any time from Settings; your plan stays active until the end of
+the paid period. Refunds for exceptional situations are handled case by case —
+contact us.
+
+### Acceptable use
+Don't use Survey to break the law, infringe others' rights, probe or disrupt
+the service, or attempt to access other users' data. We may suspend accounts
+that do.
+
+### Availability and changes
+We work to keep Survey reliable but provide it "as is", without warranty of
+uninterrupted availability. Features may change as the product evolves.
+Deleted items are recoverable from your archive for 30 days; keep your own
+copies of anything critical.
+
+### Liability
+To the extent permitted by law, our liability for any claim related to the
+service is limited to the amount you paid us in the twelve months before the
+claim arose.
+
+### Contact
+Questions: isaiahcalvo123@gmail.com.
+
+We may update these terms as the product evolves; material
+changes will be announced in the app.
+
+
+## DRAFT CHANGES not yet live (pull request #840)
+
+Privacy Policy, changed sentence in "How your documents are handled":
+"...we do not train machine-learning models on them unless you turn on the setting below."
+
+New Privacy section "Helping improve Survey (optional, off by default)":
+In Settings → Privacy you can turn on "Let Survey learn from my survey work." Only if
+you do, we may use the shapes you mark on your plans and the corrections you make to
+tools like Smart fill to improve those tools for you and other customers. We use the
+marks, not your whole documents; we do not share or sell them, and we keep each
+company's data separate. You can turn it off at any time, and we stop using new work
+from that moment. To have past contributions removed, contact us below.
+
+New Privacy section "Usage statistics":
+When you are signed in, Survey sends short usage events (for example, which tools were
+used and whether something failed) through our own server to Agent Native Analytics
+(analytics.agent-native.com, run by Builder.io), which stores them for us. Each event
+carries a random ID for your browser session, not your name or email, and we remove
+email addresses, file names, links, tokens, document content and your marks before
+anything is sent. We use them only to find bugs and see which features people use,
+never for advertising.
+
+Privacy "Deletion", added: Copies of your files can stay in our internal storage
+backup for up to about 5 weeks after that, until the backup is purged.
+
+Terms "Your content", added: If you turn on "Let Survey learn from my survey work" in
+Settings, you also let us use your survey marks and Smart fill corrections to improve
+Survey, as our Privacy Policy describes. This is optional and off unless you turn it
+on. You can turn it off at any time.
+
+Terms "Subscriptions and billing", added: Pro starts with a 7-day free trial: cancel
+before it ends and you are not charged. When a paid plan ends, your account moves to
+the Free plan; projects and documents over the Free limit are archived, not deleted.
