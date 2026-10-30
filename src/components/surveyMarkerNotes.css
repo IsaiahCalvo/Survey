@@ -540,8 +540,8 @@
   padding: 4px;
   display: grid;
   background: var(--surface-3);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
 }
 

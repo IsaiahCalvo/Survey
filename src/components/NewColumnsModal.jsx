@@ -201,8 +201,6 @@ const NewColumnsModal = ({
                     color: 'var(--accent)',
                     marginBottom: '4px',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
                   }}>
                     + Added
                   </div>
@@ -232,8 +230,6 @@ const NewColumnsModal = ({
                     color: 'var(--danger-text)',
                     marginBottom: '4px',
                     fontFamily: TYPOGRAPHY.fontFamily.default,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.5px',
                   }}>
                     - Removed
                   </div>

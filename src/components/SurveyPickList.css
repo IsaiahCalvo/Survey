@@ -62,8 +62,6 @@
   padding: 4px 6px 3px;
   color: var(--text-3);
   font: 600 10px/1.2 var(--font-ui);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
 .survey-pick__row {

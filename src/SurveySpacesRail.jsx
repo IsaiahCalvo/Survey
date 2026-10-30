@@ -4097,8 +4097,6 @@ const SurveySpacesRail = ({
                                                         <div style={{
                                                           fontSize: '10px',
                                                           color: 'var(--text-3)',
-                                                          textTransform: 'uppercase',
-                                                          letterSpacing: '0.6px',
                                                           marginBottom: '4px',
                                                           fontWeight: 600,
                                                         }}>

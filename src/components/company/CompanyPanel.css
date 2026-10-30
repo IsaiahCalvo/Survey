@@ -54,8 +54,6 @@
   font-size: var(--font-size-sm);
   font-weight: 700;
   color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .company-stat-value {
   font-size: 14px;

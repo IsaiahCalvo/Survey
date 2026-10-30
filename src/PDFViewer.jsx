@@ -39849,12 +39849,11 @@ ${pageBlocks}
                             padding: '4px 8px',
                             fontSize: '10px',
                             color: 'var(--text-3)',
-                            textTransform: 'uppercase',
                             fontWeight: 600,
                             borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
-                            SurveyMarker Type
+                            Survey marker type
                           </div>
                           <button
                             onClick={(e) => {
@@ -40223,12 +40222,11 @@ ${pageBlocks}
                             padding: '4px 8px',
                             fontSize: '10px',
                             color: 'var(--text-3)',
-                            textTransform: 'uppercase',
                             fontWeight: 600,
                             borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
-                            Counter Series
+                            Counter series
                           </div>
                           {/* UX: popup rows are inline-styled, NOT using
                               the project's `.btn` class. Reason: `.btn`
@@ -40583,12 +40581,11 @@ ${pageBlocks}
                             padding: '4px 8px',
                             fontSize: '10px',
                             color: 'var(--text-3)',
-                            textTransform: 'uppercase',
                             fontWeight: 600,
                             borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
-                            {isUnderlineMenu ? 'Underline Type' : 'Strike Type'}
+                            {isUnderlineMenu ? 'Underline type' : 'Strike type'}
                           </div>
                           {isUnderlineMenu ? (
                             <>

@@ -466,7 +466,7 @@ export default function ArchiveScreen({
      Only the vertical padding differs, because child rows sit tighter. */
   const daysCell = (item, padY = ROW_PAD_Y) => (
     <span
-      className="mono"
+      className="nums"
       style={{
         fontSize: 11, padding: `${padY}px 0`,
         color: item.daysRemaining <= URGENT_DAYS ? DANGER : 'inherit',
@@ -602,10 +602,10 @@ export default function ArchiveScreen({
               />
             ))}
             {entities.length > TEMPLATE_SWATCH_CAP && (
-              <span className="mono meta" style={{ fontSize: 11 }}>+{entities.length - TEMPLATE_SWATCH_CAP}</span>
+              <span className="nums meta" style={{ fontSize: 11 }}>+{entities.length - TEMPLATE_SWATCH_CAP}</span>
             )}
           </div>
-          <span className="mono meta" style={{ fontSize: 11 }}>{entities.length}</span>
+          <span className="nums meta" style={{ fontSize: 11 }}>{entities.length}</span>
         </>,
       );
     }
@@ -625,7 +625,7 @@ export default function ArchiveScreen({
             ids={team.shown.map(collaboratorColorId)}
             size={SUBLINE_GLYPH}
           />
-          <span className="mono meta" style={{ fontSize: 11 }}>{(item.collaborators || []).length}</span>
+          <span className="nums meta" style={{ fontSize: 11 }}>{(item.collaborators || []).length}</span>
         </>,
       );
     }
@@ -685,7 +685,7 @@ export default function ArchiveScreen({
               : <span style={{ width: 12, flex: 'none' }} />}
             <Icon name="folder" size={13} color="var(--gold)" />
             <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{item.name}</span>
-            <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>{item.childCount}</span>
+            <span className="nums" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>{item.childCount}</span>
           </div>
           {item.childCount === 0 && (
             <div className="meta" style={{ fontSize: 12, padding: '6px 0 6px 20px' }}>This project has no documents.</div>
@@ -741,7 +741,7 @@ export default function ArchiveScreen({
                     ? previewDisclosure(moduleKey, open, 'categories')
                     : <span style={{ width: 12, flex: 'none' }} />}
                   <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{mod.name}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
+                  <span className="nums" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
                     {categories.length} {categories.length === 1 ? 'category' : 'categories'}
                   </span>
                 </div>
@@ -751,7 +751,7 @@ export default function ArchiveScreen({
                      template I meant?" — a full checklist would bury that. */
                   <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0 3px 20px' }}>
                     <span className="meta" style={{ fontSize: 12, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{cat.name}</span>
-                    <span className="mono" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
+                    <span className="nums" style={{ fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>
                       {cat.itemCount} {cat.itemCount === 1 ? 'item' : 'items'}
                     </span>
                   </div>
@@ -862,7 +862,7 @@ export default function ArchiveScreen({
             )}
           </div>
           <span className="meta" style={{ fontSize: 12, padding: `${ROW_PAD_Y}px 0` }}>{archiveTypeLabel(item.type)}</span>
-          <span className="mono" style={{ fontSize: 11, padding: `${ROW_PAD_Y}px 0` }}>{archivedDateLabel(item.archivedAt)}</span>
+          <span className="nums" style={{ fontSize: 11, padding: `${ROW_PAD_Y}px 0` }}>{archivedDateLabel(item.archivedAt)}</span>
           {daysCell(item)}
         </div>
         {/* Child documents of an archived project. They remain excluded from
@@ -910,7 +910,7 @@ export default function ArchiveScreen({
                 and these rows are exactly the ones whose expiry the user needs,
                 because a project takes them all with it. */}
             <span className="meta" style={{ fontSize: 12, padding: '8px 0' }}>{archiveTypeLabel(child.type)}</span>
-            <span className="mono" style={{ fontSize: 11, padding: '8px 0' }}>{archivedDateLabel(child.archivedAt)}</span>
+            <span className="nums" style={{ fontSize: 11, padding: '8px 0' }}>{archivedDateLabel(child.archivedAt)}</span>
             {daysCell(child, 8)}
           </div>
         ))}
@@ -1145,7 +1145,7 @@ export default function ArchiveScreen({
                   <div style={{ marginTop: 8, fontSize: 12 }}>{archivedDateLabel(previewItem.archivedAt)}</div>
                   <div className="section-label" style={{ marginTop: 14 }}>Time remaining</div>
                   <div
-                    className="mono"
+                    className="nums"
                     style={{ marginTop: 8, fontSize: 12, color: previewItem.daysRemaining <= URGENT_DAYS ? DANGER : 'inherit' }}
                   >{timeRemainingLabel(previewItem.expiresAt)}</div>
                 </div>

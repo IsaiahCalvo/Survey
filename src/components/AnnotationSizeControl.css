@@ -102,10 +102,12 @@
   /* UX 2026-09-17 (revision-2 palette, owner approved): every popover in the
      app paints the SAME surface. This one used to be --surface-0, darker than
      the bar it opens from, while the Select menu beside it used a different
-     grey again. A menu is a card on a panel: --surface-2, with the strong edge
-     so it separates from whatever is behind it. */
+     grey again. A menu is a card on a panel: --surface-2 with the subtle
+     --border edge every pop-up card shares (tokens.css: a card's edge is
+     decoration; the shadow lifts it). The strong edge drew the light outline
+     the owner kept calling a white border (2026-10-27, 2026-10-30 audit). */
   background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   /* The one popup corner and shadow (tokens.css --radius-md / --shadow-popover). */
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);

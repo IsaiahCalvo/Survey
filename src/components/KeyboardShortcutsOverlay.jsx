@@ -201,8 +201,6 @@ const KeyboardShortcutsOverlay = () => {
                   fontWeight: TYPOGRAPHY.fontWeight.semibold,
                   color: COLORS.text.tertiary,
                   fontFamily: TYPOGRAPHY.fontFamily.default,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
                   fontSize: TYPOGRAPHY.fontSize.sm,
                 }}
               >

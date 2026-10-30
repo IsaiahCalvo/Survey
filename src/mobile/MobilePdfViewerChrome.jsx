@@ -1920,7 +1920,9 @@ export function MobileToolProperties({ api, onOpenSurveyList }) {
   const widthOptions = withCurrentValue(ANNOTATION_SIZE_PRESETS.width, sizeValue).map((width) => ({
     value: width,
     label: `${width} pt`,
-    preview: strokeSample(width, 12),
+    // Owner 2026-10-26 (note item 33): the pill shows the number only; the
+    // line sample cut it off. The desktop pill dropped it in #1196; the list
+    // rows keep their samples.
     menuPreview: strokeSample(width, 24),
   }));
   // Board 6: the eraser's size field reads a bare number with a round nib

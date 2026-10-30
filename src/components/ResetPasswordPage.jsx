@@ -161,7 +161,7 @@ export default function ResetPasswordPage() {
         <div style={{ padding: '20px 22px 14px', borderBottom: `1px solid ${C.rule}`, display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ width: 4, height: 32, background: accent, borderRadius: 2, flex: 'none' }} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 10.5, letterSpacing: '0.14em', textTransform: 'uppercase', color: C.muted, fontWeight: 700 }}>Survey · Reset Password</div>
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Survey · Reset password</div>
             <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.015em', marginTop: 4 }}>{heading}</div>
           </div>
         </div>
@@ -263,8 +263,7 @@ export default function ResetPasswordPage() {
 function labelStyle() {
   return {
     display: 'flex', flexDirection: 'column', gap: 6,
-    color: C.muted, fontSize: 11.5, fontWeight: 600,
-    letterSpacing: '0.06em', textTransform: 'uppercase',
+    color: C.muted, fontSize: 11, fontWeight: 500,
   };
 }
 

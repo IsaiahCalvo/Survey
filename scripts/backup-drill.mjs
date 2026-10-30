@@ -139,6 +139,18 @@ function main() {
       path.join(stackDir, 'supabase', 'config.toml'),
       drillConfig(fs.readFileSync(path.join(ROOT, 'supabase/config.toml'), 'utf8')),
     );
+    // `supabase link` records production's service versions in supabase/.temp.
+    // Without them the throwaway stack runs the CLI's default auth image, whose
+    // auth tables can lag production's (10-26: one_time_tokens.expires_at was
+    // missing locally, so the auth data in the dump would not load).
+    const linkedVersions = path.join(ROOT, 'supabase', '.temp');
+    if (fs.existsSync(linkedVersions)) {
+      const temp = path.join(stackDir, 'supabase', '.temp');
+      fs.mkdirSync(temp, { recursive: true });
+      for (const name of fs.readdirSync(linkedVersions)) {
+        if (/-version$/.test(name)) fs.copyFileSync(path.join(linkedVersions, name), path.join(temp, name));
+      }
+    }
     log('starting a throwaway local stack');
     started = true;
     cli(['start', '--workdir', stackDir, '-x', 'studio,imgproxy,mailpit,postgres-meta,edge-runtime,logflare,vector,supavisor'], { capture: true });

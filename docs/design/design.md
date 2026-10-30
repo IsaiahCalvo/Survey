@@ -1,5 +1,10 @@
 # Survey Home Design Source
 
+> **Superseded (2026-10-30).** The single design guide is now
+> [`docs/DESIGN-GUIDE.md`](../DESIGN-GUIDE.md). This file predates the
+> September palette and the October owner rulings (sentence case, no tracked
+> capitals, subtle pop-up edges) and is kept for history only.
+
 This file captures the product design language from the Survey home page only.
 Its purpose is to let the PDF viewer and mobile app adapt toward the home page,
 not the other way around.

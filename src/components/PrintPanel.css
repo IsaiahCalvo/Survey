@@ -171,7 +171,6 @@
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
 .pp-label {
-  text-transform: uppercase; font-size: 11px; letter-spacing: 0.8px;
   color: var(--pp-muted); font-weight: 600;
 }
 .pp-range-input {
@@ -350,7 +349,7 @@
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 8px;
 }
-.pp-preview-sub { color: var(--pp-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; display: inline-flex; align-items: center; }
+.pp-preview-sub { color: var(--pp-muted); font-size: 11px; display: inline-flex; align-items: center; }
 /* UX 2026-04-23: inline page picker inside the preview header. Matches
    the uppercase-muted label visually but is a real dropdown-backed text
    input so users can type a page or open the datalist and pick one. */
@@ -533,7 +532,6 @@
   margin-bottom: 5px;
 }
 .pp-section-title {
-  text-transform: uppercase; font-size: 11px; letter-spacing: 0.9px;
   color: var(--pp-ink-2); font-weight: 700;
 }
 .pp-section-hint {
@@ -543,7 +541,6 @@
 /* Scope label shared by the Select range input */
 .pp-scope-label {
   color: var(--pp-muted); font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.6px;
   margin-right: 2px;
 }
 
@@ -607,16 +604,14 @@
 .pp-paper-row .pp-dd { flex: 1 1 auto; min-width: 0; }
 .pp-match-page {
   display: inline-flex; align-items: center; gap: 6px;
-  color: var(--pp-muted); font-size: 11px; text-transform: uppercase;
-  letter-spacing: 0.6px;
+  color: var(--pp-muted); font-size: 11px;
 }
 .pp-match-label { color: var(--pp-muted); }
 /* G6 fix 2026-06-12: Custom W × H dimension inputs (inches). */
 .pp-custom-row {
   display: flex; align-items: center; gap: 6px;
   margin-top: 6px;
-  color: var(--pp-muted); font-size: 11px; text-transform: uppercase;
-  letter-spacing: 0.6px;
+  color: var(--pp-muted); font-size: 11px;
 }
 .pp-custom-dim {
   background: var(--pp-bg); color: var(--pp-ink-2);
