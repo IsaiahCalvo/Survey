@@ -68,7 +68,10 @@
   display: grid;
   letter-spacing: -0.005em;
 }
-.survey-hub .mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace; }
+/* Dates, times, sizes and counts: the interface font with even-width digits,
+   the same on every screen size (the phone rows always used it). Monospace is
+   kept for text people copy exactly: links, codes, keys. */
+.survey-hub .nums { font-variant-numeric: tabular-nums; }
 
 /* Shell — sidebar + main */
 .survey-hub .shell { display: grid; grid-template-columns: 148px 1fr; grid-template-rows: minmax(0, 1fr); height: 100%; min-height: 0; }
@@ -392,7 +395,7 @@
 .survey-hub .btn.tertiary:disabled,
 .hub-icon-btn:disabled { border-color: transparent; }
 
-.survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.survey-hub .pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 600; }
 .survey-hub .pill.gold { background: var(--accent-soft); color: var(--gold); }
 .survey-hub .pill.blue { background: color-mix(in srgb, var(--blue) 15%, transparent); color: var(--blue); }
 /* The green and the rose tags map to the neutral one — see the :root note. */

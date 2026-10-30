@@ -20,7 +20,7 @@ import {
   writeAnnotationSnapping,
 } from '../utils/annotationPreferences.js';
 import { isSnappingToggleKey } from '../utils/keyboardShortcuts.js';
-import { isTypingTarget } from '../utils/annotationFamilyRules.js';
+import { isTypingTarget } from '../utils/typingTarget.js';
 import { showToast } from '../utils/toast.js';
 
 export const useAnnotationSnapping = () => {

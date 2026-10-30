@@ -172,7 +172,7 @@ const ActivityModal = ({ member, projectId, onClose }) => {
           ) : items.map((ev) => (
             <div key={ev.documentId} style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 14, alignItems: "center", padding: "8px 10px", borderRadius: 6, height: 42, boxSizing: "border-box" }}>
               <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ev.file}</div>
-              <div className="mono" style={{ fontFamily: MONO_FONT, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.25 }}>
+              <div className="nums" style={{ display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.25 }}>
                 <span style={{ fontSize: 12, color: BONE_200, fontWeight: 600 }}>{ev.time}</span>
                 <span style={{ fontSize: 11, color: INK_200 }}>{ev.date}</span>
               </div>
@@ -330,7 +330,7 @@ const InviteModal = ({ project, onClose, currentUser, canInvite, onChanged }) =>
           <div>
             <div style={{ fontSize: 11, letterSpacing: 0, color: INK_200, fontWeight: 600, marginBottom: 8 }}>Share link</div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 96px 82px", gap: 6 }}>
-              <div className="mono" style={{ fontFamily: MONO_FONT, flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
+              <div className="nums" style={{ fontFamily: MONO_FONT, flex: 1, minWidth: 0, background: INK_800, border: `1px solid ${INK_500}`, borderRadius: 6, padding: "0 11px", height: 30, display: "flex", alignItems: "center", fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{url}</div>
               <ValueSelect label="Link permission" value={linkRole} onChange={setLinkRole} options={ROLE_CHOICES} size="sm" />
               <button onClick={copyLink} disabled={busy || !!blockedReason} className="hub-btn">{copied ? "Copied" : "Copy link"}</button>
             </div>
@@ -760,7 +760,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     <div data-user-avatar="" style={{ width: 30, height: 30, borderRadius: "50%", background: colorFor(m.userId || m.id), color: USER_INITIALS_INK, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 600, flex: "none" }}>{m.initials || initialsOf(m.name)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}{m.isCreator ? " · creator" : ""}</div>
-                      <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>
+                      <div className="nums" style={{ fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>
                     </div>
                     {editMode && !m.isCreator ? (
                       <div style={{ position: "relative", minWidth: 0 }}>
@@ -790,7 +790,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     ) : (
                       <div style={{ fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{m.role}</div>
                     )}
-                    <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 12, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.added}</div>
+                    <div className="nums" style={{ fontSize: 12, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.added}</div>
                     {editMode ? (
                       m.isCreator ? <span /> : (
                         <span {...checkboxProps(checked, () => toggleSel(m.id), `Select ${m.name || m.email || 'member'}`)} onClick={(e) => { e.stopPropagation(); toggleSel(m.id); }}
@@ -836,7 +836,7 @@ export default function ManageTeamModal({ open, onClose, project, members }) {
                     <div style={{ width: 30, height: 30, borderRadius: "50%", background: isLink ? 'var(--surface-3)' : INK_200, color: isLink ? BONE_100 : "var(--accent-text)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 800, flex: "none" }}>{isLink ? 'L' : initialsOf(inv.target_email)}</div>
                     <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{label}</div>
-                      <div className="mono" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isLink ? buildInviteUrl(inv) : `expires ${fmtDate(inv.expires_at)}`}</div>
+                      <div className="nums" style={{ fontFamily: MONO_FONT, fontSize: 11, color: INK_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isLink ? buildInviteUrl(inv) : `expires ${fmtDate(inv.expires_at)}`}</div>
                     </div>
                     <div style={{ fontSize: 12, color: BONE_200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 14 }}>{roleLabel(inv.intended_role)}</div>
                     <div style={{ fontSize: 12, color: GOLD, fontWeight: 600 }}>Pending</div>

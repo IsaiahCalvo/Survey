@@ -1,5 +1,5 @@
 import { documentedChords } from './keyboardShortcuts.js';
-import { isTypingTarget } from './annotationFamilyRules.js';
+import { isTypingTarget } from './typingTarget.js';
 
 const STORAGE_KEY = 'survey:keyboard-shortcuts';
 const assignable = (chord) => !/(click|arrows|space|escape|enter|delete|backspace|pageup|pagedown|\?)/.test(chord);

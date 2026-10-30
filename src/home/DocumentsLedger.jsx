@@ -931,11 +931,11 @@ export default function DocumentsLedger({
                         empty, as the phone row, the preview and the phone details
                         already do; it used to print a mono "N/A". */}
                       {d.project === 'Sandbox' ? null : d.project}</span>
-                    <div className="mono" style={{ fontSize: 11, padding: '10px 0', lineHeight: 1.35 }}>
+                    <div className="nums" style={{ fontSize: 11, padding: '10px 0', lineHeight: 1.35 }}>
                       <div style={{ fontWeight: 600 }}>{d.touchedTime}</div>
                       <div style={{ color: 'var(--text-3)' }}>{d.touchedAbs}</div>
                     </div>
-                    <span className="mono documents-col-size" style={{ fontSize: 11, padding: '12px 0' }}>{d.size}</span>
+                    <span className="nums documents-col-size" style={{ fontSize: 11, padding: '12px 0' }}>{d.size}</span>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <button
                         aria-haspopup="menu"
@@ -1058,11 +1058,11 @@ export default function DocumentsLedger({
               <div style={{ marginTop: 14, flex: 'none', display: 'grid', gap: 10 }}>
                 <div>
                   <div className="section-label">Last edited</div>
-                  <div className="mono" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.lastEditedAbs}</div>
+                  <div className="nums" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.lastEditedAbs}</div>
                 </div>
                 <div>
                   <div className="section-label">Uploaded</div>
-                  <div className="mono" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.uploadedAbs}</div>
+                  <div className="nums" style={{ fontSize: 12, marginTop: 3 }}>{previewDoc.uploadedAbs}</div>
                 </div>
               </div>
               {/* Flexible spacer — soaks up spare height so the action buttons

@@ -268,12 +268,13 @@
   margin-bottom: 12px;
 }
 
+/* The dialog field label (DialogCard DIALOG_LABEL_STYLE): 11px, muted,
+   sentence case. No tracked capitals anywhere (owner 2026-10-02; the launch
+   audit found Settings still shouting FIRST NAME / EMAIL). */
 .account-form-group label {
-  font-size: 10.5px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 /* A text field's edge is the only thing saying "type here", so it carries the
@@ -548,8 +549,10 @@
   cursor: not-allowed;
 }
 
+/* Launch audit 2026-10-30: General mixed short and full-width buttons. Every
+   action on the page is now its own width, lined up on the left. */
 .account-btn-secondary-full {
-  width: 100%;
+  align-self: flex-start;
 }
 
 .account-btn-danger {

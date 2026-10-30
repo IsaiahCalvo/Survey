@@ -37,7 +37,11 @@ test('annotation dropdowns share the Width preset surface and Radix behavior', (
   // popover surface, edge, radius, shadow and row height — is unchanged, and
   // pinning the token rather than a hex is what makes them unable to drift.
   assert.match(css, /background: var\(--surface-2\)/);
-  assert.match(css, /border: 1px solid var\(--border-strong\)/);
+  // DELIBERATE ASSERTION CHANGE (2026-10-30, launch audit): the edge is the
+  // subtle --border every pop-up card shares (tokens.css: a card's edge is
+  // decoration). The strong edge read as the light "white border" the owner
+  // asked to remove everywhere. tests/popupCardEdge.test.mjs guards the rest.
+  assert.match(css, /border: 1px solid var\(--border\)/);
   // DELIBERATE ASSERTION CHANGE (2026-10-04, polish pass): the shadow and the
   // corner are the shared --shadow-popover / --radius-md tokens now (owner
   // 2026-10-02 corner scale: "a card or a popup 8"), the same values every

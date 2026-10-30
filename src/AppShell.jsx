@@ -34,7 +34,7 @@ import AnnotationSizeControl, { ANNOTATION_SIZE_PRESETS } from './components/Ann
 import AnnotationDropdown from './components/AnnotationDropdown';
 import { StrokeSample } from './components/StrokeStyleCards';
 import { QuickColourDots, QuickPaintSwatch } from './components/QuickStyleControls';
-import { isPaintSelectionMixed } from './utils/selectionRestyle.js';
+import { isPaintSelectionMixed } from './utils/paintSelectionMixed.js';
 import BodyPortal from './components/BodyPortal.js';
 import AnchoredPopover from './components/AnchoredPopover';
 import ExportMenu from './components/ExportMenu.jsx';

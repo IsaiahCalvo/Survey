@@ -45,6 +45,7 @@ async function mount(t, docs) {
     .replace("from 'react'", `from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)}`)
     .replace("import { loadPdfjs } from '../utils/pdfWorkerConfig';", 'const loadPdfjs = async () => { globalThis.__thumbnailLazyState.renders++; throw new Error("no pdf.js in this test"); };')
     .replace("import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';", 'const readBlobAsArrayBuffer = async () => new ArrayBuffer(1);')
+    .replace("from '../utils/pdfjsAssets.js'", `from ${JSON.stringify(new URL('../src/utils/pdfjsAssets.js', import.meta.url).href)}`)
     .replace("import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';",
       'const thumbnailStore = () => ({ get: async (key) => { globalThis.__thumbnailLazyState.reads.push(key); return globalThis.__thumbnailLazyState.stored.get(key) || null; }, put: async () => true }); const thumbCacheKey = doc => doc?.id ? `${doc.id}::${doc.file_path}` : null;')
     .replace("from './thumbnailRequestPolicy'", `from ${JSON.stringify(new URL('../src/home/thumbnailRequestPolicy.js', import.meta.url).href)}`);

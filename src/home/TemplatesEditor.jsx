@@ -2656,10 +2656,10 @@ export default function TemplatesEditor({
                               );
                             })}
                             {t.roster.length > 10 && (
-                              <span className="mono meta" style={{ fontSize: 11 }}>+{t.roster.length - 10}</span>
+                              <span className="nums meta" style={{ fontSize: 11 }}>+{t.roster.length - 10}</span>
                             )}
                           </div>
-                          <span className="mono meta" style={{ fontSize: 11 }}>{t.roster.length}</span>
+                          <span className="nums meta" style={{ fontSize: 11 }}>{t.roster.length}</span>
                         </div>
                         )}
                       </div>

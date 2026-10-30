@@ -187,7 +187,7 @@
   /* Floating over the --panel-bg rail: --surface-3 + the one popover shadow
      (owner 2026-10-02, one surface rule). */
   background: var(--surface-3);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
 }
@@ -383,7 +383,7 @@
 .survey-rail .survey-marker-entity-options {
   padding: 5px;
   background: var(--surface-3);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   box-sizing: border-box;

@@ -19,6 +19,7 @@
    node is rendered instead — the existing stylised placeholder. */
 import { useState, useEffect, useRef } from 'react';
 import { loadPdfjs } from '../utils/pdfWorkerConfig';
+import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import { readBlobAsArrayBuffer } from '../utils/blobArrayBuffer';
 import { thumbnailStore, thumbCacheKey } from '../services/thumbnailStore';
 import {
@@ -130,14 +131,14 @@ const renderFirstPage = async (arrayBuffer) => {
   let canvas;
   try {
     // Clone the buffer — pdf.js detaches it when transferring to the worker.
-    loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
+    loadingTask = pdfjsLib.getDocument({ isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib),
       data: arrayBuffer.slice(0),
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
     });
     pdf = await loadingTask.promise;
   } catch {
     await loadingTask?.destroy().catch(() => {});
-    loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
+    loadingTask = pdfjsLib.getDocument({ isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib),
       data: arrayBuffer.slice(0),
       verbosity: pdfjsLib.VerbosityLevel.ERRORS,
       stopAtErrors: false,

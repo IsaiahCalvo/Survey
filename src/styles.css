@@ -2119,7 +2119,7 @@ input[type="text"].spaces-region__name-input:focus-visible {
   margin-top: 6px;
   box-sizing: border-box;
   background: var(--surface-2);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   font-family: var(--font-ui);

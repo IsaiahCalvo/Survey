@@ -119,6 +119,7 @@ import useCoarsePointer from '../hooks/useCoarsePointer.js';
 import { hasTouchInput } from '../utils/layoutMode.js';
 import { notePageDrawn, pageMounted, pageUnmounted, PAGE_CACHE_KEEP_MOBILE, PAGE_CACHE_KEEP_DESKTOP } from '../utils/pdfPageCacheTrim';
 import { isInTabBehind } from '../utils/tabBehind.js';
+import { pdfjsAssetOptions } from '../utils/pdfjsAssets.js';
 import {
   compensateScrollLeftForColumnWidth,
   resolveCentredPageLeft,
@@ -421,7 +422,7 @@ function pageThumbOffer(pageId, src, srcScale, thumbScale, maxBytes) {
 // the buffer it receives, so byte sources are CLONED here.
 function buildGetDocumentParams(source, password) {
   if (source == null) return null;
-  const base = { isEvalSupported: false };
+  const base = { isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib) };
   if (password) base.password = password;
   if (source instanceof Uint8Array) return { ...base, data: source.slice(0) };
   if (source instanceof ArrayBuffer) return { ...base, data: new Uint8Array(source.slice(0)) };

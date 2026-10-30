@@ -111,7 +111,7 @@ const ProjectTeamSummary = ({ memberIds, lookupMember }) => (
       ids={memberIds.slice(0, 3)}
       size={14}
     />
-    <span className="mono meta" style={{ fontSize: 11 }}>{memberIds.length}</span>
+    <span className="nums meta" style={{ fontSize: 11 }}>{memberIds.length}</span>
   </div>
 );
 
@@ -1285,7 +1285,7 @@ export default function ProjectsFolderTree({
                             {/* 16px line: the mono glyph box is 14px, so an even
                                 leading keeps it on the row's centre line (an
                                 inherited 15.4px line sat it 0.7px high). */}
-                            <span className="mono meta" style={{ fontSize: 11, lineHeight: '16px' }}>{shortWhen(f)}</span>
+                            <span className="nums meta" style={{ fontSize: 11, lineHeight: '16px' }}>{shortWhen(f)}</span>
                             {fileSelect ? (
                               <span
                                 {...checkboxProps(isChecked, () => toggleFileSel(f.id), `Select ${f.name}`)}

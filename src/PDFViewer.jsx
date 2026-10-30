@@ -15,6 +15,7 @@ import { checkCounterSeriesEdit } from './utils/counterSeriesActions.js';
 
 import { readOriginalPdfBytes } from './services/embeddedImportBytes.js';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { pdfjsAssetOptions } from './utils/pdfjsAssets.js';
 import { loadPdfjs } from './utils/pdfWorkerConfig';
 import { deepClone } from './utils/deepClone.js';
 import { jsonEqual, jsonEqualSteps } from './utils/jsonEqual.js';
@@ -24981,7 +24982,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
           const transferCloudBytes = Boolean(pdfFile?.id);
           const primaryPdfData = transferCloudBytes ? arrayBuffer : arrayBuffer.slice(0);
           if (transferCloudBytes) arrayBuffer = null;
-          const loadingTask = pdfjsLib.getDocument({ isEvalSupported: false,
+          const loadingTask = pdfjsLib.getDocument({ isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib),
             data: primaryPdfData,
             verbosity: pdfjsLib.VerbosityLevel.ERRORS
           });
@@ -25002,7 +25003,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
               arrayBuffer = await retryBlob.arrayBuffer();
             }
             // Use fresh buffer clone for recovery attempt
-            const recoveryTask = pdfjsLib.getDocument({ isEvalSupported: false,
+            const recoveryTask = pdfjsLib.getDocument({ isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib),
               data: arrayBuffer.slice(0),
               verbosity: pdfjsLib.VerbosityLevel.ERRORS,
               stopAtErrors: false,
@@ -25030,7 +25031,7 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
                 parseSpeed: pdfLib.ParseSpeeds.Fastest,
               });
               const rewritten = await rewriteDoc.save({ useObjectStreams: false });
-              const rewriteTask = pdfjsLib.getDocument({ isEvalSupported: false,
+              const rewriteTask = pdfjsLib.getDocument({ isEvalSupported: false, ...pdfjsAssetOptions(pdfjsLib),
                 data: rewritten.buffer.slice(0),
                 verbosity: pdfjsLib.VerbosityLevel.ERRORS,
                 stopAtErrors: false,
@@ -39849,12 +39850,11 @@ ${pageBlocks}
                             padding: '4px 8px',
                             fontSize: '10px',
                             color: 'var(--text-3)',
-                            textTransform: 'uppercase',
                             fontWeight: 600,
                             borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
-                            SurveyMarker Type
+                            Survey marker type
                           </div>
                           <button
                             onClick={(e) => {
@@ -40223,12 +40223,11 @@ ${pageBlocks}
                             padding: '4px 8px',
                             fontSize: '10px',
                             color: 'var(--text-3)',
-                            textTransform: 'uppercase',
                             fontWeight: 600,
                             borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
-                            Counter Series
+                            Counter series
                           </div>
                           {/* UX: popup rows are inline-styled, NOT using
                               the project's `.btn` class. Reason: `.btn`
@@ -40583,12 +40582,11 @@ ${pageBlocks}
                             padding: '4px 8px',
                             fontSize: '10px',
                             color: 'var(--text-3)',
-                            textTransform: 'uppercase',
                             fontWeight: 600,
                             borderBottom: '1px solid var(--border)',
                             marginBottom: '4px'
                           }}>
-                            {isUnderlineMenu ? 'Underline Type' : 'Strike Type'}
+                            {isUnderlineMenu ? 'Underline type' : 'Strike type'}
                           </div>
                           {isUnderlineMenu ? (
                             <>
