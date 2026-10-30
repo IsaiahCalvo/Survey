@@ -778,7 +778,10 @@ const SWEEP_TIERS = [
 const SWEEP_MAX_LINKS = 30;
 const SWEEP_PARALLEL = 4;
 
-const ownUrl = (env) => (env.SHEET_SYNC_PUBLIC_URL || `${String(env.SUPABASE_URL || '').replace(/\/$/, '')}/functions/v1/sheet-sync`).replace(/\/$/, '');
+// The sweep calls itself server to server, so it uses SUPABASE_URL (inside a
+// local stack that is the gateway's in-network address), never
+// SHEET_SYNC_PUBLIC_URL, which is the browser-facing address for sign-in.
+const ownUrl = (env) => (env.SHEET_SYNC_SWEEP_URL || `${String(env.SUPABASE_URL || '').replace(/\/$/, '')}/functions/v1/sheet-sync`).replace(/\/$/, '');
 
 // The cron job needs this function's address, which only the function knows.
 let urlRemembered = false;
