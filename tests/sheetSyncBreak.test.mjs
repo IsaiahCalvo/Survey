@@ -318,3 +318,20 @@ test('a deleted synced tab makes the filtered read fall back, not fail', async (
   const grid = await provider.readGrid(ctx.fileId, { sheetIds: ids });
   assert.deepEqual(grid.sheets.map((s) => s.title), ['Cameras - Level 1']);
 });
+
+test('the background sweep checks busy sheets every minute and quiet ones rarely', async () => {
+  const { sweepDueAt } = await import('../supabase/functions/_shared/sheetSync/service.js');
+  const now = Date.parse('2026-10-30T12:00:00Z');
+  const at = (ms) => new Date(now - ms).toISOString();
+  const min = 60 * 1000;
+  const due = (link) => (sweepDueAt(link, now) - now) / min;
+  // Changed 10 minutes ago, last round 30 s ago: due in 30 s.
+  assert.equal(due({ last_change_at: at(10 * min), last_round_at: at(0.5 * min) }), 0.5);
+  // Changed 3 hours ago: every 5 minutes.
+  assert.equal(due({ last_change_at: at(180 * min), last_round_at: at(min) }), 4);
+  // Changed 3 days ago: every 30 minutes.
+  assert.equal(due({ last_change_at: at(3 * 1440 * min), last_round_at: at(min) }), 29);
+  // Never changed or long quiet: every 6 hours; never synced: due now.
+  assert.equal(due({ last_change_at: null, last_round_at: at(min) }), 359);
+  assert.ok(due({ last_change_at: null, last_round_at: null }) < 0);
+});

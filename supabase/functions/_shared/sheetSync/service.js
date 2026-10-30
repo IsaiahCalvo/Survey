@@ -207,6 +207,7 @@ export async function handleSheetSync(req, deps) {
     if (req.method === 'GET' && url.pathname.endsWith('/oauth/callback')) return await oauthCallback(url, deps);
     if (req.method === 'GET' && url.pathname.endsWith('/oauth/msgraph/callback')) return await msgraphCallback(url, deps);
     if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+    if (url.pathname.endsWith('/sweep')) return await sweep(req, deps);
     const supabaseUrl = env.SUPABASE_URL;
     const anonKey = env.SUPABASE_ANON_KEY;
     const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -240,6 +241,8 @@ export async function handleSheetSync(req, deps) {
     }, raw);
     if (!parsed.ok) return json({ error: 'invalid_request', detail: parsed.error }, 400);
 
+    const service = deps.createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+    rememberOwnUrl(env, service);
     const ctx = {
       ...deps,
       fetchImpl: deps.fetchImpl || fetch,
@@ -250,7 +253,7 @@ export async function handleSheetSync(req, deps) {
       provider: parsed.value.provider || 'google',
       providerGiven: Boolean(parsed.value.provider),
       userDb: deps.createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } }),
-      service: deps.createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } }),
+      service,
     };
     switch (parsed.value.action) {
       case 'status': return json(await statusFor(ctx));
@@ -446,7 +449,7 @@ async function fieldMapsOn(ctx) {
 
 // ---- links ---------------------------------------------------------------------
 
-const LINK_COLUMNS = 'id, document_id, template_id, provider, connection_user_id, file_id, file_url, title, layout, baseline, state, remote_version, app_hash, status, last_round_at, last_error, backoff_until, created_by';
+const LINK_COLUMNS = 'id, document_id, template_id, provider, connection_user_id, file_id, file_url, title, layout, baseline, state, remote_version, app_hash, status, last_round_at, last_change_at, last_error, backoff_until, created_by';
 
 // The survey's linked sheet. linkSheet keeps it to one per survey + template,
 // so without a named provider the one there is the answer.
@@ -712,7 +715,11 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
       if (result.status !== 'retry') break;
     }
     if (result.status === 'synced') {
-      await release({ ...result.patch, status: 'active', last_round_at: new Date().toISOString(), last_error: null, backoff_until: null });
+      const moved = Object.entries(result.summary || {}).some(([k, n]) => k !== 'conflicts' && Number(n) > 0);
+      await release({
+        ...result.patch, status: 'active', last_round_at: new Date().toISOString(), last_error: null, backoff_until: null,
+        ...(moved ? { last_change_at: new Date().toISOString() } : {}),
+      });
       Object.assign(link, result.patch, { status: 'active', last_error: null, last_round_at: new Date().toISOString() });
     } else if (result.status === 'retry') {
       // Rows kept moving (someone sorting or typing fast): say so, try later.
@@ -743,10 +750,139 @@ async function runRoundFor(ctx, link, { provider = null, signing = null, force =
     if (status === 429) patch.backoff_until = new Date(Date.now() + 60_000).toISOString();
     if (change) Object.assign(patch, { state: link.state, baseline: link.baseline });
     await release(patch);
+    if (status === 429) {
+      // The quota is the linker's, shared by every sheet they linked: all of
+      // them wait, not just this one.
+      await ctx.service.from('sheet_sync_links').update({ backoff_until: patch.backoff_until })
+        .eq('connection_user_id', link.connection_user_id).eq('provider', link.provider);
+    }
     Object.assign(link, patch);
     log('round_failed', { status });
-    return { status: 'error', error: message };
+    return { status: 'error', error: message, ...(status === 429 ? { rateLimited: true } : {}) };
   }
+}
+
+// ---- background sweep -------------------------------------------------------
+// A cron job (migration 20261030030000) posts here every minute with the
+// sweep secret from sheet_sync_settings. The sweep picks linked sheets no
+// device has synced lately and runs each in its own request (its own CPU
+// budget), as the person who linked it. Busy sheets every minute, quiet ones
+// rarely, so Google's quota goes where edits are.
+const SWEEP_TIERS = [
+  // [changed within, check every]
+  [60 * 60 * 1000, 60 * 1000],
+  [24 * 60 * 60 * 1000, 5 * 60 * 1000],
+  [7 * 24 * 60 * 60 * 1000, 30 * 60 * 1000],
+  [Infinity, 6 * 60 * 60 * 1000],
+];
+const SWEEP_MAX_LINKS = 30;
+const SWEEP_PARALLEL = 4;
+
+// The sweep calls itself server to server, so it uses SUPABASE_URL (inside a
+// local stack that is the gateway's in-network address), never
+// SHEET_SYNC_PUBLIC_URL, which is the browser-facing address for sign-in.
+const ownUrl = (env) => (env.SHEET_SYNC_SWEEP_URL || `${String(env.SUPABASE_URL || '').replace(/\/$/, '')}/functions/v1/sheet-sync`).replace(/\/$/, '');
+
+// The cron job needs this function's address, which only the function knows.
+let urlRemembered = false;
+function rememberOwnUrl(env, service) {
+  if (urlRemembered || !env.SUPABASE_URL) return;
+  urlRemembered = true;
+  service.from('sheet_sync_settings').update({ function_url: ownUrl(env), updated_at: new Date().toISOString() })
+    .eq('id', 1).is('function_url', null)
+    .then(() => {}, () => { urlRemembered = false; });
+}
+
+function secretsMatch(a, b) {
+  const x = new TextEncoder().encode(String(a));
+  const y = new TextEncoder().encode(String(b));
+  if (!x.length || x.length !== y.length) return false;
+  let diff = 0;
+  for (let i = 0; i < x.length; i += 1) diff |= x[i] ^ y[i];
+  return diff === 0;
+}
+
+/** When a link is next due for a background round (ms since epoch). */
+export function sweepDueAt(link, now = Date.now()) {
+  const changed = link.last_change_at ? new Date(link.last_change_at).getTime() : 0;
+  const every = SWEEP_TIERS.find(([within]) => now - changed < within)[1];
+  const last = link.last_round_at ? new Date(link.last_round_at).getTime() : 0;
+  return last + every;
+}
+
+// The linker's database calls, made by the server on their behalf.
+const asUser = (service, userId) => ({
+  from: (table) => service.from(table),
+  rpc: async (name, args = {}) => {
+    const { data, error } = await service.rpc('sheet_sync_as_user', { p_user_id: userId, p_call: name, p_args: args });
+    return { data, error };
+  },
+});
+
+async function sweep(req, deps) {
+  const { env } = deps;
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return json({ error: 'server_misconfigured' }, 500);
+  const service = deps.createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  const { data: settings } = await service.from('sheet_sync_settings').select('sweep_secret').eq('id', 1).maybeSingle();
+  const given = (req.headers.get('x-sheet-sync-sweep') || '').trim();
+  if (!settings?.sweep_secret || !secretsMatch(given, settings.sweep_secret)) return json({ error: 'unauthorized' }, 401);
+  let body = {};
+  try { body = (await req.json()) || {}; } catch { /* none */ }
+  const fetchImpl = deps.fetchImpl || fetch;
+
+  if (typeof body.linkId === 'string' && UUID.test(body.linkId)) {
+    const { data: link } = await service.from('sheet_sync_links').select(LINK_COLUMNS).eq('id', body.linkId).maybeSingle();
+    if (!link || link.status !== 'active') return json({ status: 'skipped' });
+    if (Date.now() < sweepDueAt(link)) return json({ status: 'recent' });
+    const ctx = {
+      ...deps, fetchImpl, service, body: {}, provider: link.provider, providerGiven: true,
+      user: { id: link.connection_user_id }, userDb: asUser(service, link.connection_user_id),
+    };
+    try {
+      const round = await runRoundFor(ctx, link, {});
+      log('swept', { status: round.status });
+      return json({ status: round.status, rateLimited: Boolean(round.rateLimited) });
+    } catch (err) {
+      log('sweep_failed', { code: err?.code, status: err?.status });
+      return json({ status: 'error' });
+    }
+  }
+
+  // Which sheets are due: live, not waiting out a "slow down", not mid-round.
+  const now = Date.now();
+  const { data: links } = await service.from('sheet_sync_links')
+    .select('id, last_round_at, last_change_at, backoff_until, lease_until')
+    .eq('status', 'active')
+    .order('last_round_at', { ascending: true, nullsFirst: true })
+    .limit(500);
+  const due = (links || []).filter((l) => (!l.backoff_until || new Date(l.backoff_until).getTime() <= now)
+    && (!l.lease_until || new Date(l.lease_until).getTime() <= now)
+    && sweepDueAt(l, now) <= now).slice(0, SWEEP_MAX_LINKS);
+  const results = [];
+  let stop = false;
+  const queue = [...due];
+  const worker = async () => {
+    while (queue.length && !stop) {
+      const link = queue.shift();
+      try {
+        const res = await fetchImpl(`${ownUrl(env)}/sweep`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-sheet-sync-sweep': settings.sweep_secret },
+          body: JSON.stringify({ linkId: link.id }),
+        });
+        const out = await res.json().catch(() => ({}));
+        results.push(out.status || `http_${res.status}`);
+        // Google said slow down: that is likely the whole app's quota. Stop
+        // this minute's sweep; the next one tries again.
+        if (out.rateLimited) stop = true;
+      } catch {
+        results.push('unreachable');
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(SWEEP_PARALLEL, due.length) }, worker));
+  log('sweep', { due: due.length, ran: results.length, stopped: stop });
+  return json({ due: due.length, results });
 }
 
 async function syncLink(ctx) {
