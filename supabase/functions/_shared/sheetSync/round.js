@@ -2,7 +2,7 @@
 // the markers (engine.js), write both sides, return what to save on the link.
 // Everything outside is passed in (provider, marker store), so the edge
 // function, node tests and a future scheduled job run the same code.
-import { planSheetRound, appRecordOf } from './engine.js';
+import { planSheetRound, appRecordOf, sameCell } from './engine.js';
 import { assertProvider } from './providers/contract.js';
 
 const sameId = (a, b) => a != null && b != null && String(a) === String(b);
@@ -56,12 +56,22 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     return { status: 'idle' };
   }
 
-  const grid = await provider.readGrid(link.file_id);
+  // Only the synced tabs, unless one has to be added (then every title counts).
+  const grid = await provider.readGrid(link.file_id, newScopes.length ? {} : { sheetIds: Object.values(state.sheetIds || {}) });
   if (newScopes.length) {
-    // Categories added to the template since the file was made get a tab.
-    const added = await provider.addTabs(link.file_id, newScopes, layout);
+    // Categories added to the template since the file was made (or a tab put
+    // back) get a tab, named apart from the tabs already there: a clash makes
+    // the provider refuse the whole call, round after round.
+    const used = new Set(grid.sheets.map((s) => String(s.title).toLowerCase()));
+    const named = newScopes.map((scope) => {
+      let title = scope.title;
+      for (let n = 2; used.has(title.toLowerCase()); n += 1) title = `${scope.title.slice(0, 95)} (${n})`;
+      used.add(title.toLowerCase());
+      return title === scope.title ? scope : { ...scope, title };
+    });
+    const added = await provider.addTabs(link.file_id, named, layout);
     state.sheetIds = { ...(state.sheetIds || {}), ...added };
-    for (const scope of newScopes) {
+    for (const scope of named) {
       if (added[scope.scopeId] == null) continue;
       grid.sheets.push({ sheetId: String(added[scope.scopeId]), title: scope.title, rows: [scope.columns.map((c) => c.header)] });
     }
@@ -74,14 +84,18 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
 
   if (hasWork(plan)) {
     // A sort or row insert in the sheet since the read would move rows under
-    // us: check every Row ID we write next to is still where it was.
+    // us, and a person typing would have their cell overwritten: check every
+    // Row ID we write next to is still where it was, and every cell we write
+    // still holds what the plan was made from. Anything moved: plan again.
     const checks = [...plan.verify, ...plan.deletes.map((d) => ({ ...d, col: d.rowIdCol }))];
     if (checks.length) {
       const now2 = await provider.readCells(link.file_id, checks);
-      const moved = checks.some((c, i) => String(now2[i] ?? '').trim() !== String(c.token ?? '').trim());
+      const moved = checks.some((c, i) => ('expect' in c
+        ? !sameCell(now2[i], c.expect)
+        : String(now2[i] ?? '').trim() !== String(c.token ?? '').trim()));
       if (moved) return { status: 'retry' };
     }
-    const headerWrites = plan.headerAdds.map((h) => ({ sheetId: h.sheetId, title: h.title, row: 0, col: h.col, value: h.header }));
+    const headerWrites = plan.headerAdds.map((h) => ({ sheetId: h.sheetId, title: h.title, row: h.row ?? 0, col: h.col, value: h.header, header: true }));
     if (headerWrites.length || plan.cellWrites.length) await provider.writeCells(link.file_id, [...headerWrites, ...plan.cellWrites]);
     if (plan.appends.length) await provider.appendRows(link.file_id, plan.appends);
     if (plan.deletes.length) {

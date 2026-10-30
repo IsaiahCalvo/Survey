@@ -36,6 +36,15 @@ const call = async (token, action, body = {}) => {
   });
   return { status: res.status, body: await res.json() };
 };
+// "Sync now": pressed right after another round, the server asks to wait a
+// moment (it spaces rounds out to spare the linker's Google quota).
+async function syncNow(token, body) {
+  for (let i = 0; ; i += 1) {
+    const res = await call(token, 'sync', { ...body, force: true });
+    if (res.body?.round?.status !== 'recent' || i >= 5) return res;
+    await new Promise((r) => setTimeout(r, (res.body.round.retryInMs || 1000) + 100));
+  }
+}
 const fake = async (path, body) => {
   const res = await fetch(`${functionUrl('e2e-fake-google')}/__fake${path}`, body
     ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
@@ -175,7 +184,7 @@ test('two-way live sync between a survey and a Google Sheet', async () => {
       { row: 2, col: col('Item'), value: 'D-102' },
       { row: 2, col: col('Locked?'), value: 'N' },
     ] });
-    const fromSheet = await call(editorToken, 'sync', { ...ids, ...LAYOUT, force: true });
+    const fromSheet = await syncNow(editorToken, { ...ids, ...LAYOUT });
     expect(fromSheet.status, JSON.stringify(fromSheet.body)).toBe(200);
     expect(fromSheet.body.round.status).toBe('synced');
     let markers = await markersOf(owner, doc.id);
@@ -187,7 +196,7 @@ test('two-way live sync between a survey and a Google Sheet', async () => {
 
     // A field tech answers in the app; the sheet follows.
     await writeMarkers(owner, doc.id, { d1: { ...markers.d1, checklistResponses: { c1: { selection: 'Y' } } } });
-    expect((await call(ownerToken, 'sync', { ...ids, ...LAYOUT, force: true })).body.round.status).toBe('synced');
+    expect((await syncNow(ownerToken, { ...ids, ...LAYOUT })).body.round.status).toBe('synced');
     grid = await sheet();
     expect(grid.rows[rowOf('D-101')][col('Locked?')]).toBe('Y');
 
@@ -195,7 +204,7 @@ test('two-way live sync between a survey and a Google Sheet', async () => {
     markers = await markersOf(owner, doc.id);
     await writeMarkers(owner, doc.id, { d1: { ...markers.d1, checklistResponses: { c1: { selection: 'N' } } } });
     await fake(`/files/${fileId}/edit`, { title: TAB, edits: [{ row: rowOf('D-101'), col: col('Locked?'), value: 'N/A' }] });
-    const clash = await call(editorToken, 'sync', { ...ids, ...LAYOUT, force: true });
+    const clash = await syncNow(editorToken, { ...ids, ...LAYOUT });
     expect(clash.body.link.conflicts).toEqual([expect.objectContaining({
       markerId: 'd1', name: 'D-101', fields: [expect.objectContaining({ key: 'answer:c1', app: 'N', sheet: 'N/A' })],
     })]);
@@ -216,6 +225,68 @@ test('two-way live sync between a survey and a Google Sheet', async () => {
   } finally {
     await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
     await admin.from('documents').delete().eq('id', doc.id);
+  }
+});
+
+test('a deleted tab can be put back; a sheet stops when its linker loses access; viewers see no sheet values', async () => {
+  test.setTimeout(120_000);
+  const admin = adminClient();
+  const ownerId = await userId(E2E_ACCOUNTS.owner);
+  const editorId = await userId(E2E_ACCOUNTS.editor);
+  // The editor links this one, so the beta is on for them too.
+  await must('flag on for the editor', admin.from('feature_flags').update({
+    tester_emails: [E2E_ACCOUNTS.owner.email, E2E_ACCOUNTS.editor.email],
+  }).eq('key', FLAG));
+  const doc = await addDocument(admin, { id: ownerId }, { projectId: E2E_PROJECT.id, name: `Sheet sync access ${RUN}.pdf` });
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const [ownerToken, editorToken, viewerToken] = await Promise.all(
+    ['owner', 'editor', 'viewer'].map((key) => signInToken(E2E_ACCOUNTS[key])),
+  );
+  const ids = { documentId: doc.id, templateId: `e2e-sheet-access-${RUN}` };
+  try {
+    await writeMarkers(owner, doc.id, {
+      d1: { id: 'd1', name: 'D-201', moduleId: 'm1', categoryId: 'doors', pageNumber: 1, bounds: { x: 10, y: 10, width: 20, height: 20 }, checklistResponses: {} },
+    });
+    await connectGoogle(editorToken);
+    const linked = await call(editorToken, 'link', { ...ids, ...LAYOUT, title: 'Sheet sync access' });
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    const fileId = fileIdOf(linked.body.link.fileUrl);
+    // A second link for the same survey, from another provider or a double
+    // press, is refused.
+    expect((await call(ownerToken, 'link', { ...ids, ...LAYOUT, title: 'Again', provider: 'google' })).status).toBe(409);
+
+    // The PM deletes the tab: the panel lists it and puts it back with its rows.
+    await fake(`/files/${fileId}/delete-tab`, { title: TAB });
+    const gone = await syncNow(ownerToken, { ...ids, ...LAYOUT });
+    expect(gone.body.link.missingTabs).toEqual([{ scopeId: 'm1:doors', title: TAB }]);
+    const back = await call(ownerToken, 'choose', { ...ids, scopeId: 'm1:doors', choice: 'putBackTab' });
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    expect(back.body.link.missingTabs).toEqual([]);
+    const tab = (await fake(`/files/${fileId}`)).sheets.find((s) => s.title === TAB);
+    expect(tab.rows.some((r) => r.includes('D-201')), 'the item is back on its tab').toBe(true);
+
+    // A bad value waits as a problem; editors see it, viewers do not.
+    await fake(`/files/${fileId}/edit`, { title: TAB, edits: [{ row: 1, col: tab.rows[0].indexOf('Locked?'), value: 'Maybe' }] });
+    expect((await syncNow(ownerToken, { ...ids, ...LAYOUT })).body.link.problems.length).toBeGreaterThan(0);
+    const viewerSees = (await call(viewerToken, 'status', ids)).body.link;
+    expect(viewerSees.problems).toEqual([]);
+    expect(viewerSees.conflicts).toEqual([]);
+
+    // The editor who linked it is taken off the survey (here: the document
+    // leaves the project they edit). The next round stops syncing with their
+    // Google sign-in instead of carrying on.
+    await must('document out of the project', admin.from('documents').update({ project_id: null }).eq('id', doc.id));
+    const after = await syncNow(ownerToken, { ...ids, ...LAYOUT });
+    expect(after.body.round.status).toBe('error');
+    expect(after.body.link.status).toBe('broken');
+    expect(after.body.link.lastError).toMatch(/no longer an editor/);
+    const row = await must('link row', admin.from('sheet_sync_links').select('connection_user_id, lease_token').eq('document_id', doc.id).single());
+    expect(row).toEqual({ connection_user_id: editorId, lease_token: null });
+  } finally {
+    await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
+    await admin.from('documents').delete().eq('id', doc.id);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', editorId);
+    await admin.from('feature_flags').update({ tester_emails: [E2E_ACCOUNTS.owner.email] }).eq('key', FLAG);
   }
 });
 
@@ -252,6 +323,18 @@ test('the Survey panel makes a live Google Sheet and keeps it in step', async ({
     await panel.getByRole('button', { name: 'Sync now' }).click();
     await expect(panel.getByRole('button', { name: 'Sync now' })).toBeEnabled({ timeout: 30_000 });
     await expect(panel.getByRole('alert')).toHaveCount(0);
+
+    // The PM deletes the category's tab: the panel says so and puts it back.
+    await fake(`/files/${fileId}/delete-tab`, { title: tab.title });
+    await expect(async () => {
+      await panel.getByRole('button', { name: 'Sync now' }).click();
+      await expect(panel.getByRole('button', { name: 'Put the tab back' })).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 30_000 });
+    await expect(panel.getByText(`The ${tab.title} tab was deleted in the sheet.`)).toBeVisible();
+    await panel.getByRole('button', { name: 'Put the tab back' }).click();
+    await expect(panel.getByRole('button', { name: 'Put the tab back' })).toHaveCount(0, { timeout: 30_000 });
+    const rebuilt = (await fake(`/files/${fileId}`)).sheets.find((s) => s.title === tab.title);
+    expect(rebuilt.rows.some((r) => r[3] === E2E_SURVEY.itemName)).toBe(true);
   } finally {
     await adminClient().from('sheet_sync_links').delete().eq('document_id', E2E_SURVEY.documentId);
   }

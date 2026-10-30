@@ -32,8 +32,14 @@ const plain = (cell) => {
   if ('boolValue' in v) return v.boolValue;
   return null;
 };
+// Cells tests set to { error: '#N/A' } act as a failed formula, and
+// { date: serial, text } as a date the sheet shows in its own locale.
 const effective = (value) => {
   if (value == null || value === '') return {};
+  if (typeof value === 'object' && value.error) return { effectiveValue: { errorValue: { type: 'N_A', message: 'x' } }, formattedValue: value.error };
+  if (typeof value === 'object' && 'date' in value) {
+    return { effectiveValue: { numberValue: value.date }, formattedValue: value.text, effectiveFormat: { numberFormat: { type: 'DATE' } } };
+  }
   if (typeof value === 'number') return { effectiveValue: { numberValue: value }, formattedValue: String(value) };
   if (typeof value === 'boolean') return { effectiveValue: { boolValue: value }, formattedValue: value ? 'TRUE' : 'FALSE' };
   return { effectiveValue: { stringValue: String(value) }, formattedValue: String(value) };
@@ -110,6 +116,10 @@ function batchUpdate(f, requests) {
     } else if (kind === 'setDataValidation') {
       sheetById(f, body.range.sheetId).validations += 1;
       replies.push({});
+    } else if (kind === 'repeatCell') {
+      const sheet = sheetById(f, body.range.sheetId);
+      if (body.cell?.userEnteredFormat?.numberFormat?.type === 'TEXT') (sheet.textColumns ||= []).push(body.range.startColumnIndex);
+      replies.push({});
     } else {
       return { error: gErr(400, `fake google: unsupported request ${kind}`) };
     }
@@ -163,7 +173,7 @@ export async function fakeGoogleHandler(req) {
   // --- test hooks ----------------------------------------------------------
   if (path.startsWith('/__fake/')) {
     if (path === '/__fake/reset') { resetFakeGoogle(); return json(200, { ok: true }); }
-    const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/trash|\/insert-row|\/delete-row)?$/.exec(path);
+    const m = /^\/__fake\/files\/([^/]+)(\/edit|\/sort|\/trash|\/insert-row|\/delete-row|\/delete-tab)?$/.exec(path);
     if (path === '/__fake/files') return json(200, { files: [...store.files.keys()] });
     const f = m && store.files.get(decodeURIComponent(m[1]));
     if (!f) return json(404, { error: 'no such file' });
@@ -179,6 +189,8 @@ export async function fakeGoogleHandler(req) {
       sheet.rows.splice(body.row, 0, body.values || []);
     } else if (m[2] === '/delete-row') {
       sheet.rows.splice(body.row, 1);
+    } else if (m[2] === '/delete-tab') {
+      f.sheets = f.sheets.filter((s) => s !== sheet);
     } else if (m[2] === '/trash') {
       f.trashed = true;
     }
@@ -213,7 +225,7 @@ export async function fakeGoogleHandler(req) {
       sheets: f.sheets.map((s) => ({ properties: { sheetId: s.sheetId, title: s.title } })),
     });
   }
-  m = /^\/v4\/spreadsheets\/([^/:?]+)(:batchUpdate|\/values:batchGetByDataFilter)?$/.exec(path);
+  m = /^\/v4\/spreadsheets\/([^/:?]+)(:batchUpdate|:getByDataFilter|\/values:batchGetByDataFilter)?$/.exec(path);
   if (m) {
     const f = file(decodeURIComponent(m[1]));
     if (!f) return gErr(404, 'Requested entity was not found.', 'NOT_FOUND');
@@ -222,6 +234,32 @@ export async function fakeGoogleHandler(req) {
         sheets: f.sheets.map((s) => ({
           properties: { sheetId: s.sheetId, title: s.title, gridProperties: { rowCount: s.rowCount, columnCount: s.columnCount } },
           data: [{ rowData: s.rows.map((row) => ({ values: (row || []).map(effective) })) }],
+        })),
+      });
+    }
+    if (m[2] === ':getByDataFilter') {
+      // Grid data for each gridRange, one GridData block per range, the way
+      // Google answers: only the tabs a filter names.
+      const bySheet = new Map();
+      for (const df of body.dataFilters || []) {
+        const g = df.gridRange || {};
+        const sheet = sheetById(f, g.sheetId);
+        if (!sheet) return gErr(400, `No grid with id: ${g.sheetId}`, 'INVALID_ARGUMENT');
+        const r0 = g.startRowIndex ?? 0;
+        const r1 = g.endRowIndex ?? sheet.rows.length;
+        const c0 = g.startColumnIndex ?? 0;
+        const c1 = g.endColumnIndex ?? Infinity;
+        const rowData = [];
+        for (let r = r0; r < Math.min(r1, sheet.rows.length); r += 1) {
+          rowData.push({ values: (sheet.rows[r] || []).slice(c0, c1 === Infinity ? undefined : c1).map(effective) });
+        }
+        if (!bySheet.has(sheet.sheetId)) bySheet.set(sheet.sheetId, { sheet, data: [] });
+        bySheet.get(sheet.sheetId).data.push({ startRow: r0, startColumn: c0, rowData });
+      }
+      return json(200, {
+        sheets: [...bySheet.values()].map(({ sheet, data }) => ({
+          properties: { sheetId: sheet.sheetId, title: sheet.title, gridProperties: { rowCount: sheet.rowCount, columnCount: sheet.columnCount } },
+          data,
         })),
       });
     }

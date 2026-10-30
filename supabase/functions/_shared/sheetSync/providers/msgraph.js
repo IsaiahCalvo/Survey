@@ -9,6 +9,7 @@
 //
 // fileId is `drives/<driveId>/items/<itemId>` (driveIds hold `!`, so no short form).
 // Rows and columns are 0-based from A1; row 0 is the header.
+import { cellError } from './contract.js';
 
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 // Graph closes a saving session after about 5 minutes idle; reopen a bit before.
@@ -62,9 +63,19 @@ function isDateFormat(format) {
   return /[dmyhs]/i.test(bare);
 }
 
-function plainCell(value, text, format) {
+// A whole-day date (no hours or seconds in the format) as YYYY-MM-DD from its
+// serial, so "05/10" reads the same day in any locale; a failed formula as
+// { error } (contract.js), never as its "#N/A" text.
+function plainCell(value, text, format, type) {
   if (value === '' || value === undefined) return null;
-  if (typeof value === 'number' && isDateFormat(format)) return text ?? value;
+  if (type === 'Error') return cellError(typeof value === 'string' ? value : text);
+  if (typeof value === 'number' && isDateFormat(format)) {
+    const bare = String(format).replace(/"[^"]*"|\\.|\[[^\]]*\]/g, '');
+    if (!/[hs]/i.test(bare) && Number.isInteger(value) && value > 60) {
+      return new Date(Math.round((value - 25569) * 86400000)).toISOString().slice(0, 10);
+    }
+    return text ?? value;
+  }
   return value;
 }
 
@@ -221,7 +232,8 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     const added = await workbook(fileId, 'POST', 'worksheets/add', { body: { name: scope.title }, where: 'addSheet' });
     const columns = scope.columns || (scope.header || []).map((h) => ({ header: typeof h === 'string' ? h : h?.title ?? '' }));
     if (!columns.length) return added.id;
-    await writeRow(fileId, added.id, 0, 0, columns.map((c) => c.header ?? ''));
+    // As text: a header starting with "=" must never become a live formula.
+    await writeRow(fileId, added.id, 0, 0, columns.map((c) => cellValueForWrite(c.header ?? '')));
     const path = sheetPath(added.id);
     if (columns[0]?.key === 'rowId') {
       await workbook(fileId, 'PATCH', `${path}/range(address='A:A')`, { body: { columnHidden: true }, where: 'hideRowId' });
@@ -254,7 +266,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       const list = await workbook(fileId, 'GET', 'worksheets?$select=id,name,position,visibility', { where: 'worksheets' });
       const sheets = [];
       for (const sheet of [...(list?.value || [])].sort((a, b) => a.position - b.position)) {
-        const used = await usedRange(fileId, sheet.id, 'rowIndex,columnIndex,rowCount,columnCount,values,text,numberFormat');
+        const used = await usedRange(fileId, sheet.id, 'rowIndex,columnIndex,rowCount,columnCount,values,text,numberFormat,valueTypes');
         const rows = [];
         const rowOffset = used?.rowIndex || 0;
         const colOffset = used?.columnIndex || 0;
@@ -265,7 +277,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
           for (let r = 0; r < rowOffset; r += 1) rows.push([]);
           values.forEach((line, r) => {
             const out = new Array(colOffset).fill(null);
-            line.forEach((value, c) => out.push(plainCell(value, used.text?.[r]?.[c], used.numberFormat?.[r]?.[c])));
+            line.forEach((value, c) => out.push(plainCell(value, used.text?.[r]?.[c], used.numberFormat?.[r]?.[c], used.valueTypes?.[r]?.[c])));
             while (out.length && out[out.length - 1] === null) out.pop();
             rows.push(out);
           });
@@ -290,11 +302,11 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
         const minCol = Math.min(...group.map((c) => c.col));
         const maxCol = Math.max(...group.map((c) => c.col));
         const address = `${cellAddress(minRow, minCol)}:${cellAddress(maxRow, maxCol)}`;
-        const box = await workbook(fileId, 'GET', `${sheetPath(sheetId)}/range(address='${address}')?$select=values,text,numberFormat`, { where: 'readCells' });
+        const box = await workbook(fileId, 'GET', `${sheetPath(sheetId)}/range(address='${address}')?$select=values,text,numberFormat,valueTypes`, { where: 'readCells' });
         for (const cell of group) {
           const r = cell.row - minRow;
           const c = cell.col - minCol;
-          out.set(cell, plainCell(box?.values?.[r]?.[c], box?.text?.[r]?.[c], box?.numberFormat?.[r]?.[c]));
+          out.set(cell, plainCell(box?.values?.[r]?.[c], box?.text?.[r]?.[c], box?.numberFormat?.[r]?.[c], box?.valueTypes?.[r]?.[c]));
         }
       }
       return (cells || []).map((cell) => out.get(cell) ?? null);

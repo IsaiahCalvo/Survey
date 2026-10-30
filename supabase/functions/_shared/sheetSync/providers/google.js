@@ -8,13 +8,21 @@
 // writes per minute per person, 300 per project. A round costs one Drive
 // call when nothing changed, plus one read and at most three writes when
 // something did; the runner spaces rounds out, and a 429 backs it off.
-import { providerError } from './contract.js';
+import { providerError, cellError } from './contract.js';
 
 export const GOOGLE_SCOPES = Object.freeze(['openid', 'email', 'https://www.googleapis.com/auth/drive.file']);
 
 const DATE_TYPES = new Set(['DATE', 'TIME', 'DATE_TIME']);
 const ROW_ID_HEADER_GREY = { red: 0.75, green: 0.75, blue: 0.75 };
-const VALIDATION_ROWS = 2000;
+// Biggest sheet a round reads (cells across the synced tabs). Past it a round
+// would run out of the edge function's time and memory on every try.
+export const MAX_GRID_CELLS = 250000;
+const GRID_FIELDS = 'sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)),'
+  + 'data(startRow,startColumn,rowData(values(effectiveValue,formattedValue,effectiveFormat/numberFormat/type))))';
+// Columns a person types words into: formatted as plain text, so Google keeps
+// "00123", a 20-digit serial number or "3/4" as typed instead of turning them
+// into numbers or dates (as the export's columns are).
+const TEXT_KINDS = new Set(['choice', 'text', 'many']);
 
 export const googleEndpoints = (env = {}) => ({
   auth: env.GOOGLE_OAUTH_AUTH_URL || 'https://accounts.google.com/o/oauth2/v2/auth',
@@ -96,16 +104,32 @@ export async function revokeGoogleToken({ endpoints, token, fetchImpl = fetch })
   } catch { /* the token is deleted on our side either way */ }
 }
 
+// A Sheets date serial (days since 1899-12-30) as YYYY-MM-DD.
+const isoDay = (serial) => new Date(Math.round((serial - 25569) * 86400000)).toISOString().slice(0, 10);
+
 const cellOf = (c) => {
   if (!c || typeof c !== 'object') return null;
-  const type = c.effectiveFormat?.numberFormat?.type;
-  if (type && DATE_TYPES.has(type)) return c.formattedValue ?? null;
   const v = c.effectiveValue;
+  if (v && 'errorValue' in v) return cellError(c.formattedValue || '#ERROR!');
+  const type = c.effectiveFormat?.numberFormat?.type;
+  if (type === 'DATE' && typeof v?.numberValue === 'number' && Number.isInteger(v.numberValue)) return isoDay(v.numberValue);
+  if (type && DATE_TYPES.has(type)) return c.formattedValue ?? null;
   if (!v) return null;
   if ('stringValue' in v) return v.stringValue;
   if ('numberValue' in v) return v.numberValue;
   if ('boolValue' in v) return v.boolValue;
-  return null; // errorValue and anything new
+  return null; // anything new
+};
+
+// Rows of one GridData block, placed at its start row and column.
+const placeRows = (grid, into = []) => {
+  const r0 = Number(grid?.startRow) || 0;
+  const c0 = Number(grid?.startColumn) || 0;
+  (grid?.rowData || []).forEach((r, i) => {
+    const row = into[r0 + i] || (into[r0 + i] = []);
+    (r?.values || []).forEach((cell, j) => { row[c0 + j] = cellOf(cell); });
+  });
+  return into;
 };
 
 const cellData = (value) => {
@@ -130,12 +154,30 @@ function validationRequests(sheetId, scope, layout) {
     if (!values?.length) return;
     out.push({
       setDataValidation: {
-        range: { sheetId: Number(sheetId), startRowIndex: 1, endRowIndex: VALIDATION_ROWS, startColumnIndex: i, endColumnIndex: i + 1 },
+        // No end row: the whole column, however long the survey gets.
+        range: { sheetId: Number(sheetId), startRowIndex: 1, startColumnIndex: i, endColumnIndex: i + 1 },
         rule: {
           condition: { type: 'ONE_OF_LIST', values: values.map((v) => ({ userEnteredValue: String(v) })) },
           showCustomUi: true,
           strict: false, // a typed value is read and checked by the sync, never refused by the sheet
         },
+      },
+    });
+  });
+  return out;
+}
+
+function textFormatRequests(sheetId, scope) {
+  const out = [];
+  scope.columns.forEach((col, i) => {
+    const text = ['rowId', 'changedBy', 'item', 'entity', 'notes'].includes(col.key)
+      || (col.key.startsWith('answer:') && TEXT_KINDS.has(col.item?.kind || 'choice'));
+    if (!text) return;
+    out.push({
+      repeatCell: {
+        range: { sheetId: Number(sheetId), startRowIndex: 1, startColumnIndex: i, endColumnIndex: i + 1 },
+        cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } },
+        fields: 'userEnteredFormat.numberFormat',
       },
     });
   });
@@ -208,23 +250,42 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       return null;
     },
 
-    async readGrid(fileId) {
-      const fields = 'sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)),'
-        + 'data(rowData(values(effectiveValue,formattedValue,effectiveFormat/numberFormat/type))))';
-      const book = await call(sheetsUrl(fileId, `?includeGridData=true&fields=${encodeURIComponent(fields)}`));
-      return {
-        sheets: (book.sheets || []).map((s) => {
-          const sheetId = String(s.properties?.sheetId ?? 0);
-          const columnCount = Number(s.properties?.gridProperties?.columnCount) || 26;
-          columnCounts.set(`${fileId}:${sheetId}`, columnCount);
-          const rowData = s.data?.[0]?.rowData || [];
-          return { sheetId, title: String(s.properties?.title || ''), columnCount, rows: rowData.map((r) => (r?.values || []).map(cellOf)) };
-        }),
-      };
+    // `opts.sheetIds`: read only these tabs (the synced ones), so a big tab a
+    // person added for their own notes costs nothing. Without it, every tab.
+    async readGrid(fileId, { sheetIds = null } = {}) {
+      const whole = () => call(sheetsUrl(fileId, `?includeGridData=true&fields=${encodeURIComponent(GRID_FIELDS)}`));
+      const book = sheetIds?.length
+        ? await call(sheetsUrl(fileId, `:getByDataFilter?fields=${encodeURIComponent(GRID_FIELDS)}`), {
+          method: 'POST',
+          body: { includeGridData: true, dataFilters: sheetIds.map((id) => ({ gridRange: { sheetId: Number(id) } })) },
+        }).catch((err) => {
+          // A synced tab someone deleted makes Google refuse the filter: read
+          // every tab instead, so the round can say which one is missing.
+          if (err?.status === 400) return whole();
+          throw err;
+        })
+        : await whole();
+      let cells = 0;
+      const sheets = (book.sheets || []).map((s) => {
+        const sheetId = String(s.properties?.sheetId ?? 0);
+        const columnCount = Number(s.properties?.gridProperties?.columnCount) || 26;
+        columnCounts.set(`${fileId}:${sheetId}`, columnCount);
+        const rows = [];
+        for (const grid of s.data || []) placeRows(grid, rows);
+        for (let i = 0; i < rows.length; i += 1) {
+          rows[i] = rows[i] || [];
+          cells += rows[i].length;
+        }
+        return { sheetId, title: String(s.properties?.title || ''), columnCount, rows };
+      });
+      if (cells > MAX_GRID_CELLS) throw providerError(`google: sheet too big (${cells} cells)`, 413);
+      return { sheets };
     },
 
     async readCells(fileId, cells) {
-      // One range per tab column, rows 0..lowest asked, instead of one per cell.
+      // One range per tab column, rows 0..lowest asked, instead of one per
+      // cell; read as grid data so values come back exactly as readGrid gives
+      // them (dates, errors) and compare like for like.
       const groups = new Map();
       for (const c of cells) {
         const key = `${c.sheetId}:${c.col}`;
@@ -232,15 +293,21 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       }
       const keys = [...groups.keys()];
       const body = {
-        valueRenderOption: 'UNFORMATTED_VALUE',
+        includeGridData: true,
         dataFilters: keys.map((k) => {
           const [sheetId, col] = k.split(':');
           return { gridRange: { sheetId: Number(sheetId), startRowIndex: 0, endRowIndex: groups.get(k), startColumnIndex: Number(col), endColumnIndex: Number(col) + 1 } };
         }),
       };
-      const res = await call(sheetsUrl(fileId, '/values:batchGetByDataFilter'), { method: 'POST', body });
-      const columns = new Map(keys.map((k, i) => [k, (res.valueRanges?.[i]?.valueRange?.values || []).map((r) => r?.[0] ?? null)]));
-      return cells.map((c) => columns.get(`${c.sheetId}:${c.col}`)?.[c.row] ?? null);
+      const res = await call(sheetsUrl(fileId, ':getByDataFilter'), { method: 'POST', body });
+      const columns = new Map(); // `${sheetId}:${col}` -> rows
+      for (const s of res.sheets || []) {
+        for (const grid of s.data || []) {
+          const key = `${s.properties?.sheetId}:${Number(grid?.startColumn) || 0}`;
+          columns.set(key, placeRows({ ...grid, startColumn: 0 }, columns.get(key) || []));
+        }
+      }
+      return cells.map((c) => columns.get(`${c.sheetId}:${c.col}`)?.[c.row]?.[0] ?? null);
     },
 
     async writeCells(fileId, cells) {
@@ -249,8 +316,8 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
         ...cells.map((c) => ({
           updateCells: {
             start: { sheetId: Number(c.sheetId), rowIndex: c.row, columnIndex: c.col },
-            rows: [{ values: [c.row === 0 ? headerCell(c.value) : cellData(c.value)] }],
-            fields: c.row === 0 ? 'userEnteredValue,userEnteredFormat' : 'userEnteredValue',
+            rows: [{ values: [c.header ? headerCell(c.value) : cellData(c.value)] }],
+            fields: c.header ? 'userEnteredValue,userEnteredFormat' : 'userEnteredValue',
           },
         })),
       ]);
@@ -291,6 +358,7 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       });
       await batchUpdate(book.spreadsheetId, layout.scopes.flatMap((scope) => (sheetIds[scope.scopeId] == null ? [] : [
         hideRowIdColumn(sheetIds[scope.scopeId], scope),
+        ...textFormatRequests(sheetIds[scope.scopeId], scope),
         ...validationRequests(sheetIds[scope.scopeId], scope, layout),
       ])));
       return { fileId: String(book.spreadsheetId), url: String(book.spreadsheetUrl || `https://docs.google.com/spreadsheets/d/${book.spreadsheetId}/edit`), sheetIds };
@@ -308,6 +376,7 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
       await batchUpdate(fileId, scopes.flatMap((scope) => (out[scope.scopeId] == null ? [] : [
         { updateCells: { start: { sheetId: Number(out[scope.scopeId]), rowIndex: 0, columnIndex: 0 }, rows: [{ values: scope.columns.map((c) => headerCell(c.header)) }], fields: 'userEnteredValue,userEnteredFormat' } },
         hideRowIdColumn(out[scope.scopeId], scope),
+        ...textFormatRequests(out[scope.scopeId], scope),
         ...(layout ? validationRequests(out[scope.scopeId], scope, layout) : []),
       ])));
       return out;
