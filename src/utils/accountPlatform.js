@@ -210,6 +210,11 @@ export const withUpgradeHint = (message, hint, windowObject) => (
   isPurchaseUiHidden(windowObject) ? message : `${message} ${hint}`
 );
 
-// App Store 4.8: Google sign-in would require offering Sign in with Apple too,
-// so the iOS app hides it. Android, web and Electron keep it.
-export const isGoogleSignInHidden = (windowObject) => getNativeAppPlatform(windowObject) === 'ios';
+// Both store apps hide Google sign-in. iOS: App Store 4.8 would require Sign
+// in with Apple too. Android: signInWithOAuth hands accounts.google.com to the
+// system browser (Capacitor opens outside hosts there, and Google refuses
+// sign-in inside a WebView), and the redirect back to https://localhost never
+// reaches the app, so the button would sign people in to Chrome instead.
+// Bring it back on Android with a Custom Tab + app-link callback.
+// Web and Electron keep it.
+export const isGoogleSignInHidden = (windowObject) => getNativeAppPlatform(windowObject) !== null;

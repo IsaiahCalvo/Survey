@@ -31,9 +31,9 @@ test('every checkout / billing-portal / upgrade entry point is gated', () => {
   }
 });
 
-test('Google sign-in is hidden on iOS native only (App Store 4.8)', () => {
+test('Google sign-in is hidden in both store apps (App Store 4.8; no OAuth return path on Android yet)', () => {
   assert.equal(isGoogleSignInHidden(cap(true, 'ios')), true);
-  assert.equal(isGoogleSignInHidden(cap(true, 'android')), false);
+  assert.equal(isGoogleSignInHidden(cap(true, 'android')), true);
   assert.equal(isGoogleSignInHidden(cap(false, 'web')), false);
   assert.equal(isGoogleSignInHidden({}), false);
   assert.match(read('src/components/AuthModal.jsx'), /\{!isGoogleSignInHidden\(\) && \(\s*<button\s+type="button"\s+className="auth-google-btn"/);
