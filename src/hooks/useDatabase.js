@@ -26,6 +26,7 @@ import { resolveOpenDocumentSource } from '../services/openDocumentStreamSource.
 import { isPdfUploadPending, trackPdfUpload, waitForPdfUpload } from '../services/pendingPdfUploads.js';
 import { openSourceHeadStarts, openSourceCacheStamp } from '../services/openSourceHeadStart.js';
 import { requestR2PdfLink, downloadPdfFromR2 } from '../services/pdfR2Source.js';
+import { retryStorageRead } from '../services/storageRetry.js';
 import { bindLibraryListCacheToAuth } from './libraryListCache.js';
 import { useLibraryListCache } from './useLibraryListCache.js';
 import { readLibraryRows, readLibraryIdChunks, sortLibraryRows } from './libraryPagination.js';
@@ -41,7 +42,10 @@ if (supabase) bindLibraryListCacheToAuth(supabase);
 // HTTP cache must never answer the per-open access check (uploads are stored
 // with max-age=3600, and the metadata answer can carry it). Same route and
 // auth as storage-js's info() (the client's fetch adds the session token).
-async function fetchStoredPdfInfo(filePath) {
+function fetchStoredPdfInfo(filePath) {
+  return retryStorageRead(() => fetchStoredPdfInfoOnce(filePath));
+}
+async function fetchStoredPdfInfoOnce(filePath) {
   const api = supabase.storage.from('documents');
   const objectPath = `documents/${String(filePath).replace(/^\/+/, '')}`;
   try {
@@ -66,9 +70,9 @@ async function fetchStoredPdfInfo(filePath) {
 const signOpenSource = async (filePath) => {
   const r2Url = await requestR2PdfLink(supabase, filePath);
   if (r2Url) return { data: { signedUrl: r2Url }, error: null };
-  return supabase.storage
+  return retryStorageRead(() => supabase.storage
     .from('documents')
-    .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS);
+    .createSignedUrl(filePath, STREAM_SIGNED_URL_SECONDS));
 };
 
 const withTimeout = (promise, ms) => Promise.race([
@@ -951,9 +955,9 @@ export const useStorage = () => {
         if (fromR2) return fromR2;
         // no-store: never the browser's HTTP copy (it could be an older
         // version than the one the check just named, and it outlives sign-out).
-        const { data, error } = await supabase.storage
+        const { data, error } = await retryStorageRead(() => supabase.storage
           .from('documents')
-          .download(filePath, {}, { cache: 'no-store' });
+          .download(filePath, {}, { cache: 'no-store' }));
         if (error) throw error;
         return data;
       },
