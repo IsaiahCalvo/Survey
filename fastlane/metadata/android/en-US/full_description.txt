@@ -1,0 +1,27 @@
+Survey is PDF markup and counting for construction and engineering drawings. Open a drawing set on your Android phone or tablet, walk the site, mark what you see and count what is there.
+
+COUNT ITEMS ON THE PLAN
+Make a category for each thing you count: outlets, desks, sprinklers, doors. Tap each item and Survey drops a numbered marker and keeps a running total for every category.
+
+SITE SURVEYS ON THE DRAWING
+Pick a checklist template, drop a survey marker on each item, and answer Yes, No or N/A right on the plan. Add notes, photos, short videos and voice notes from your camera and mic. Everything stays with the spot on the drawing it is about.
+
+RED-PEN MARKUP
+Pen and highlighter that follow a stylus or your finger. Rectangles, ellipses, revision clouds, lines, polylines and arrows, each with its own color and line weight. Text and callouts that point at the exact spot. Measure lengths and areas.
+
+SPACES
+Group the pages and areas that belong together, like one room across every sheet, and keep their markups in one place.
+
+BIG DRAWING SETS STAY FAST
+Pinch to zoom from the whole sheet down to one dimension. Thumbnails, bookmarks and search help you find the sheet you need.
+
+SEND IT TO THE OFFICE
+Export your survey as a spreadsheet that opens in Excel, Google Sheets or Numbers, one sheet per category plus a summary. Your work syncs, so you can start in the field and finish at your desk on the web.
+
+BUILT FOR
+- Field surveys and site walks
+- Punch lists
+- As-built redlines
+- Counting items before a bid
+
+Questions or ideas? Visit surveytool.app/faq.

@@ -259,7 +259,7 @@ ${body}
     <div><h2 class="fh">Compare</h2>${COMPARE.map((c) => `<a href="/compare/${c.slug}">Survey vs ${c.them.split(' ')[0]}</a>`).join('')}</div>${TOOL_LINKS.length ? `
     <div><h2 class="fh">Free PDF tools</h2>${TOOL_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}</div>` : ''}
     <div><h2 class="fh">Get started</h2><a href="${APP}">Log in</a><a href="${SIGNUP}">Start free</a><a href="${MAIL}">Contact</a><a href="/status">Status</a></div>
-    <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a></div>
+    <div><h2 class="fh">Legal</h2><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/delete-account">Delete account</a></div>
   </div>
   <p class="copy">© <span class="yr">2026</span> Survey</p>
 </div></footer>
@@ -564,6 +564,37 @@ const status = page({
   scripts: STATUS_SCRIPT,
 });
 
+// Delete account: the web link Google Play (and Apple) want, so a person can
+// learn how to remove their account without installing the app first. The
+// steps must match AccountSettings.jsx (General tab, Delete account, type
+// DELETE) and what supabase/functions/delete-account removes.
+const deleteAccount = page({
+  path: '/delete-account', crumb: 'Delete your account',
+  title: 'Delete your account | Survey',
+  desc: 'How to delete your Survey account and the data it holds.',
+  body: `<section class="page-head"><div class="wrap narrow"><h1>Delete your account</h1><p class="lede">You can delete your Survey account yourself, from the app on any device. It takes a minute.</p></div></section>
+<section class="sec tight"><div class="wrap narrow">
+<h2>In the app</h2>
+<ol class="steps">
+<li><h3>Open Settings</h3><p>Sign in to Survey on the web, your phone or your tablet. Open the account menu (your name or initials) and pick Settings.</p></li>
+<li><h3>Stay on General</h3><p>Scroll to the bottom of the General tab.</p></li>
+<li><h3>Delete account</h3><p>Tap Delete account, type DELETE, then confirm.</p></li>
+<li><h3>Done</h3><p>You are signed out and the account is gone. This cannot be undone.</p></li>
+</ol>
+<p class="fine">Want a copy first? Download my data, just above Delete account, saves one ZIP with your documents, markups, survey photos and audio.</p>
+<h2>Can't sign in?</h2>
+<p><a href="${MAIL}?subject=Delete%20my%20Survey%20account">Email us</a> from the address on the account and ask us to delete it. We delete it and write back to confirm.</p>
+<h2>What gets deleted</h2>
+<ul class="ticks">
+<li>Your login, name and email address</li>
+<li>Your projects, documents, markups, survey answers and templates</li>
+<li>Photos, videos and voice notes on your survey markers</li>
+<li>Your plan, and the billing customer record at our payment provider</li>
+</ul>
+<p>Documents someone else shared with you stay with their owner. Crash reports and usage counts never hold your name or email. Records we must keep for tax and accounting are kept only as long as the law requires, as our <a href="/privacy.html">privacy policy</a> says.</p>
+</div></section>`,
+});
+
 const longDate = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 const whatsNew = page({
   path: '/whats-new', crumb: "What's new",
@@ -682,14 +713,14 @@ ${cta('Try Survey free on your own drawings')}`,
 // Importing this file (build-free-tools.mjs does, for the layout) must not
 // rewrite the pages, so the writes only run when it is the script itself.
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq, 'status/index.html': status, 'whats-new/index.html': whatsNew, 'use-with-ai/index.html': useWithAi };
+  const out = { ...usePages, ...comparePages, 'use-cases/index.html': useIndex, '404.html': notFound, 'welcome/index.html': home, 'features/index.html': features, 'devices/index.html': devices, 'pricing/index.html': pricing, 'faq/index.html': faq, 'status/index.html': status, 'delete-account/index.html': deleteAccount, 'whats-new/index.html': whatsNew, 'use-with-ai/index.html': useWithAi };
   for (const [p, html] of Object.entries(out)) {
     const f = join(root, p);
     mkdirSync(dirname(f), { recursive: true });
     writeFileSync(f, html);
   }
 
-  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', '/use-with-ai', '/status', '/whats-new', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
+  const urls = ['/welcome', '/features', '/devices', '/pricing', '/faq', '/use-cases', '/use-with-ai', '/status', '/delete-account', '/whats-new', ...USES.map((u) => '/use-cases/' + u.slug), ...COMPARE.map((c) => '/compare/' + c.slug), ...TOOL_PATHS, '/privacy.html', '/terms.html'];
   writeFileSync(join(root, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${ORIGIN}${u}</loc><lastmod>${TODAY}</lastmod></url>`).join('\n')}
