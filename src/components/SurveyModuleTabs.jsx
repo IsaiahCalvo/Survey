@@ -11,6 +11,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { CALM_STRIP_AUTO_SCROLL } from '../reorder/dragAutoScroll.js';
 import { restrictToHorizontalAxis } from '../reorder/axisLock.js';
 import useTabOverflow from '../reorder/useTabOverflow.js';
+import { dragGlide } from '../reorder/dragMotion.js';
+import useDropSettle from '../reorder/useDropSettle.js';
 import ListItemContextMenu from './ListItemContextMenu';
 import Icon from '../Icons';
 
@@ -26,7 +28,7 @@ const keepInRow = ({ transform, draggingNodeRect, containerNodeRect }) => {
 const MODIFIERS = [restrictToHorizontalAxis, keepInRow];
 
 function ModuleTab({ module, isActive, canDrag, onSelect }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: module.id, disabled: !canDrag });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: module.id, disabled: !canDrag, transition: dragGlide() });
   return (
     <button
       ref={setNodeRef}
@@ -70,10 +72,12 @@ export default function SurveyModuleTabs({ modules, activeId, onSelect, onReorde
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+  const noteDrop = useDropSettle('data-survey-module-tab');
   const handleDragEnd = useCallback(({ active, over }) => {
+    noteDrop(active.id);
     if (!over || active.id === over.id) return;
     flushSync(() => onReorder?.(active.id, over.id));
-  }, [onReorder]);
+  }, [noteDrop, onReorder]);
 
   return (
     <div ref={rowRef} className="survey-rail__tabs survey-rail__tabs--fit" role="tablist" aria-label="Modules">

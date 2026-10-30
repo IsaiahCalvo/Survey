@@ -84,6 +84,8 @@ import {
 import CompactColorPicker from '../components/CompactColorPicker';
 import DragRearrangeHandle from '../reorder/DragRearrangeHandle';
 import { SortableRearrangeList, SortableRearrangeRow } from '../reorder/SortableRearrangeList';
+import { dragGlide } from '../reorder/dragMotion.js';
+import useDropSettle from '../reorder/useDropSettle.js';
 import {
   archiveChecklistItem,
   isActiveChecklistItem,
@@ -459,6 +461,7 @@ function SortableModuleTab({
   } = useSortable({
     id: mod.id,
     disabled: isRenaming,
+    transition: dragGlide(),
   });
 
   const activeInk = isOn ? 'var(--ink)' : 'var(--ink-muted)';
@@ -629,9 +632,11 @@ function SortableModuleTabs({
     },
   ], []);
 
+  const noteDrop = useDropSettle('data-module-tab-id');
   const handleDragEnd = useCallback(({ active, over }) => {
     setActiveId(null);
     dragClampBoundsRef.current = null;
+    noteDrop(active.id);
     if (!over || active.id === over.id) return;
     const fromIndex = modules.findIndex((mod) => mod.id === active.id);
     const toIndex = modules.findIndex((mod) => mod.id === over.id);
@@ -639,7 +644,7 @@ function SortableModuleTabs({
     flushSync(() => {
       onReorderModules(fromIndex, toIndex);
     });
-  }, [modules, onReorderModules]);
+  }, [modules, noteDrop, onReorderModules]);
 
   return (
     <DndContext

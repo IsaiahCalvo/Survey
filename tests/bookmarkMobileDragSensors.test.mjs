@@ -83,33 +83,25 @@ test('phone rows are dnd-kit sortables sharing the desktop projection', () => {
   }
   assert.match(mobileBranch, /<SortableContext items=\{sortedIds\}/);
   // The projected depth drives the live reparent feedback on the phone too,
-  // with the same landing slot as desktop. (UX 2026-10-01, owner: no gold
+  // as the lifted row's own indent. (UX 2026-10-01, owner: no gold
   // glow — the folder drop-target tint the 2026-09-30 round added is gone,
   // so no dropTargetState is passed any more.)
   assert.match(mobileBranch, /projectedDepth=\{item\.id === activeId && projected \? projected\.depth : null\}/);
   assert.doesNotMatch(source, /dropTargetState|data-bookmark-drop-target/);
-  assert.match(mobileBranch, /landingSlot=\{item\.id === activeId && projected \?/);
+  // Owner 2026-10-30: no dashed landing slot on either layout.
+  assert.doesNotMatch(source, /landingSlot|data-bookmark-drop-slot/);
 });
 
 /*
- * UX 2026-10-01 — owner: "I don't want the yellow glow". The landing slot is
- * quiet and neutral on both layouts; nothing a drag paints is accent.
- * Second pass the same day ("a uniform colour / uniform style when it gets
- * picked up"): the slot is now the app's ONE drag slot (--drag-slot-*, the
- * dashed outline every vertical list shows), and the lifted row is the app's
- * one lift (data-drag-lifted), not a per-panel surface + shadow.
+ * UX 2026-10-01 — owner: "I don't want the yellow glow"; nothing a drag paints
+ * is accent. Owner 2026-10-30: "I don't think I like the dotted lines that
+ * show where it's going to drop" — the landing slot is gone on both layouts;
+ * the rows part to open the gap.
  */
-test('the drag landing slot is the shared neutral slot, never gold', () => {
-  const desktopRow = source.slice(source.indexOf('const BookmarkTreeRow = ('), source.indexOf('const MobileBookmarkRow = ('));
-  const slot = desktopRow.slice(desktopRow.indexOf('data-bookmark-drop-slot'));
-  assert.match(slot.slice(0, 700), /background: 'var\(--drag-slot-bg\)'/);
-  assert.match(slot.slice(0, 700), /border: 'var\(--drag-slot-border\)'/);
-  assert.doesNotMatch(slot.slice(0, 700), /--accent/);
+test('a bookmark drag paints no landing slot and no gold', () => {
   const css = readFileSync(fileURLToPath(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url)), 'utf8');
-  const rule = css.slice(css.indexOf('.mobile-bookmark-drop-slot {'));
-  const body = rule.slice(0, rule.indexOf('}'));
-  assert.doesNotMatch(body, /--accent/);
-  assert.match(body, /border: var\(--drag-slot-border\)/);
+  assert.doesNotMatch(css, /mobile-bookmark-drop-slot|--drag-slot-/);
+  assert.doesNotMatch(source, /--drag-slot-/);
   assert.doesNotMatch(css, /data-bookmark-drop-target/);
 });
 
@@ -264,13 +256,12 @@ test('bookmark drags stay smooth: finger-locked row, gliding layout, one clock',
   assert.doesNotMatch(autoExpand, /setExpandingFolderIds/);
   // A fold animation never strips the parted rows' offsets during a drag.
   assert.match(source, /isGroupAnimationActive && !isDraggingAny/);
-  // One glide for rows (both layouts), slot and indent.
-  assert.match(source, /export const BOOKMARK_SORT_TRANSITION = \{ duration: BOOKMARK_DRAG_GLIDE_MS, easing: BOOKMARK_DRAG_GLIDE_EASING \};/);
+  // One glide for rows (both layouts) and indent: the app's one drag glide
+  // (reorder/dragMotion.js, owner 2026-10-30).
+  assert.match(source, /export const BOOKMARK_SORT_TRANSITION = DRAG_GLIDE;/);
+  assert.match(source, /const BOOKMARK_DRAG_GLIDE_MS = DRAG_GLIDE_MS;\s*const BOOKMARK_DRAG_GLIDE_EASING = DRAG_GLIDE_EASING;/);
   assert.equal(source.match(/transition: BOOKMARK_SORT_TRANSITION,/g)?.length, 2);
-  const glide = /const BOOKMARK_DRAG_GLIDE_MS = (\d+);\s*const BOOKMARK_DRAG_GLIDE_EASING = '([^']+)';/.exec(source);
-  assert.ok(glide, 'the drag glide constants');
   const css = readFileSync(fileURLToPath(new URL('../src/mobile/mobilePdfViewer.css', import.meta.url)), 'utf8');
   const ruleOf = (selector) => { const rule = css.slice(css.indexOf(`${selector} {`)); return rule.slice(0, rule.indexOf('}')); };
-  assert.ok(ruleOf('.mobile-bookmark-drop-slot').includes(`top ${glide[1]}ms ${glide[2]}, left ${glide[1]}ms ${glide[2]}`));
-  assert.ok(ruleOf('.mobile-bookmark-row').includes(`padding-left ${glide[1]}ms ${glide[2]}`));
+  assert.ok(ruleOf('.mobile-bookmark-row').includes('padding-left var(--motion-drag) var(--ease-out)'));
 });

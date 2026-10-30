@@ -39,6 +39,8 @@ import { useTooltip } from '../components/Tooltip';
 import SwipeActionsRow, { buildSwipeActions } from '../components/SwipeActionsRow.jsx';
 import SectionIconButton, { SectionIconActions } from '../components/SectionIconButton.jsx';
 import { keyboardControlProps } from '../utils/keyboardActivation.js';
+import { DRAG_GLIDE, DRAG_GLIDE_CSS, DRAG_GLIDE_EASING, DRAG_GLIDE_MS } from '../reorder/dragMotion.js';
+import useDropSettle from '../reorder/useDropSettle.js';
 
 // The one interface font (tokens.css --font-ui, owner 2026-10-02).
 const FONT_FAMILY = 'var(--font-ui)';
@@ -71,12 +73,22 @@ const bookmarkTreeMeasuring = {
  * Now the lifted row is placed from the finger itself every frame
  * (placeLiftedBookmarkRow), a row whose layout moves mid-drag glides from
  * where it was drawn (glideBookmarkLayoutShift; new rows fade in), and every
- * drag motion shares one 180ms ease-out (a retargeted glide never stalls).
+ * drag motion shares the app's one drag glide (a retargeted glide never
+ * stalls). Since 2026-10-30 there is no landing slot: the rows part to open
+ * the gap and the lifted row's own indent shows the depth it will land at.
  */
-const BOOKMARK_DRAG_GLIDE_MS = 180;
-const BOOKMARK_DRAG_GLIDE_EASING = 'cubic-bezier(0.25, 0.5, 0.25, 1)';
-const BOOKMARK_DRAG_GLIDE = `${BOOKMARK_DRAG_GLIDE_MS}ms ${BOOKMARK_DRAG_GLIDE_EASING}`;
-export const BOOKMARK_SORT_TRANSITION = { duration: BOOKMARK_DRAG_GLIDE_MS, easing: BOOKMARK_DRAG_GLIDE_EASING };
+// Owner 2026-10-30: the app's one drag glide (reorder/dragMotion.js), so a
+// bookmark moves exactly like a Space, a template or a PDF tab.
+const BOOKMARK_DRAG_GLIDE_MS = DRAG_GLIDE_MS;
+const BOOKMARK_DRAG_GLIDE_EASING = DRAG_GLIDE_EASING;
+const BOOKMARK_DRAG_GLIDE = DRAG_GLIDE_CSS;
+export const BOOKMARK_SORT_TRANSITION = DRAG_GLIDE;
+
+// The row that moves: the sortable's draggable node. Since the swipe-to-delete
+// wrapper (2026-10-27) it is no longer the slot's first child; writing the
+// drag offset onto that wrapper left a dropped row hanging where the pointer
+// let go of it, over the row below (frame capture, owner 2026-10-30).
+const dragRowOf = (outer) => outer?.querySelector('[data-bookmark-drag-row]') || null;
 
 // The drawn (transition-current) vertical offset of an element's transform.
 const readDrawnTranslateY = (element) => {
@@ -96,7 +108,7 @@ const placeLiftedBookmarkRow = (list, live) => {
   const outers = list.querySelectorAll('[data-bookmark-row-id]');
   if (!outers.length) return;
   const outer = Array.from(outers).find((node) => node.dataset.bookmarkRowId === live.id);
-  const row = outer?.firstElementChild;
+  const row = dragRowOf(outer);
   if (!row) return;
   const first = outers[0].getBoundingClientRect().top;
   const last = outers[outers.length - 1].getBoundingClientRect().bottom;
@@ -160,7 +172,6 @@ const BookmarkTreeRow = ({
   isGroupAnimationActive = false,
   childCount = 0,
   isSelected = false,
-  landingSlot = null,
   numPages,
   onToggle,
   onNavigate,
@@ -301,6 +312,7 @@ const BookmarkTreeRow = ({
       >
       <div
         ref={isClone ? undefined : setDraggableNodeRef}
+        data-bookmark-drag-row={isClone ? undefined : item.id}
         // The app's one picked-up look (states.css [data-drag-lifted], owner
         // 2026-10-01): solid raised surface, soft shadow, no inner block.
         data-drag-lifted={isClone || isActiveRow ? '' : undefined}
@@ -578,33 +590,6 @@ const BookmarkTreeRow = ({
         )}
       </div>
       </SwipeActionsRow>
-      {isActiveRow && landingSlot ? (
-        // Where the drop will land: the app's one drag slot (a quiet dashed
-        // outline, --drag-slot-*) in the gap the rows opened, stepped in to
-        // the projected depth (no gold — owner, 2026-10-01). It sits under
-        // the lifted row and shows whenever the row is not right on top of
-        // it (e.g. while a folder dwell holds it).
-        // Its `top` is set from the live layout after each commit (the
-        // panel's drag layout effect), so a folder opening mid-drag never
-        // throws it off its gap.
-        <div
-          aria-hidden="true"
-          data-bookmark-drop-slot
-          style={{
-            position: 'absolute',
-            zIndex: -1,
-            pointerEvents: 'none',
-            left: landingSlot.depth * BOOKMARK_INDENTATION_WIDTH,
-            right: 0,
-            height: BOOKMARK_ROW_INNER_PX,
-            boxSizing: 'border-box',
-            background: 'var(--drag-slot-bg)',
-            border: 'var(--drag-slot-border)',
-            borderRadius: 'var(--drag-lift-radius)',
-            transition: `top ${BOOKMARK_DRAG_GLIDE}, left ${BOOKMARK_DRAG_GLIDE}`,
-          }}
-        />
-      ) : null}
     </div>
   );
 };
@@ -651,7 +636,6 @@ const MobileBookmarkRow = ({
   item,
   depth,
   projectedDepth,
-  landingSlot = null,
   isEditMode = false,
   onToggle,
   onNavigate,
@@ -696,6 +680,7 @@ const MobileBookmarkRow = ({
       >
       <div
         ref={setDraggableNodeRef}
+        data-bookmark-drag-row={item.id}
         className={`mobile-bookmark-row${isDragging ? ' is-dragging' : ''}`}
         data-drag-lifted={isDragging ? '' : undefined}
         style={{
@@ -778,18 +763,6 @@ const MobileBookmarkRow = ({
         )}
       </div>
       </SwipeActionsRow>
-      {isDragging && landingSlot ? (
-        // The desktop's landing slot (see BookmarkTreeRow), phone indent;
-        // its `top` comes from the live layout, as on desktop.
-        <div
-          aria-hidden="true"
-          data-bookmark-drop-slot
-          className="mobile-bookmark-drop-slot"
-          style={{
-            left: landingSlot.depth * MOBILE_BOOKMARK_INDENT_PX,
-          }}
-        />
-      ) : null}
     </div>
   );
 };
@@ -878,7 +851,6 @@ const BookmarksPanel = ({
   const bookmarkListRef = useRef(null);
   const liveDragRef = useRef(null);
   const dragLayoutRef = useRef(null);
-  const dropSlotRef = useRef({ node: null, top: 0 });
 
   // Desktop and phone share the reference lists' sensor: a pointer drag (mouse
   // or touch) engages after BOOKMARK_DRAG_ACTIVATION's 6px of movement.
@@ -1159,7 +1131,7 @@ const BookmarksPanel = ({
     // children), so the first drag frame already glides.
     const list = bookmarkListRef.current;
     const outers = list ? Array.from(list.querySelectorAll('[data-bookmark-row-id]')) : [];
-    const activeRow = outers.find((node) => node.dataset.bookmarkRowId === active.id)?.firstElementChild;
+    const activeRow = dragRowOf(outers.find((node) => node.dataset.bookmarkRowId === active.id));
     const startEvent = typeof window !== 'undefined' ? window.event : null;
     liveDragRef.current = activeRow && typeof activatorEvent?.clientY === 'number'
       ? {
@@ -1170,7 +1142,6 @@ const BookmarksPanel = ({
       }
       : null;
     dragLayoutRef.current = new Map(outers.map((node) => [node.dataset.bookmarkRowId, node.offsetTop]));
-    dropSlotRef.current = { node: null, top: 0 };
     if (
       activeItem?.type === 'folder' &&
       activeItem.children?.length > 0 &&
@@ -1211,7 +1182,9 @@ const BookmarksPanel = ({
     document.body.classList.remove('drag-rearrange-dragging');
   }, [clearAutoExpandTimer]);
 
+  const noteBookmarkDrop = useDropSettle('data-bookmark-drag-row');
   const handleDragEnd = useCallback(({ active, over }) => {
+    noteBookmarkDrop(active.id);
     const autoExpandedFolderIds = Array.from(autoExpandedFoldersRef.current);
     const draggedCollapsedFolderId = collapsedDragFolderIdRef.current;
     collapsedDragFolderIdRef.current = null;
@@ -1244,9 +1217,10 @@ const BookmarksPanel = ({
         animateCollapseFolders(foldersToRecollapse);
       }, GROUP_DRAG_SETTLE_COLLAPSE_DELAY_MS);
     }
-  }, [animateCollapseFolders, bookmarkTree, expandFolderOnly, persistBookmarkTree, resetDragState]);
+  }, [animateCollapseFolders, bookmarkTree, expandFolderOnly, noteBookmarkDrop, persistBookmarkTree, resetDragState]);
 
-  const handleDragCancel = useCallback(() => {
+  const handleDragCancel = useCallback(({ active } = {}) => {
+    noteBookmarkDrop(active?.id);
     const foldersToRecollapse = Array.from(autoExpandedFoldersRef.current);
     const draggedCollapsedFolderId = collapsedDragFolderIdRef.current;
     collapsedDragFolderIdRef.current = null;
@@ -1255,7 +1229,7 @@ const BookmarksPanel = ({
       expandFolderOnly(draggedCollapsedFolderId);
     }
     animateCollapseFolders(foldersToRecollapse);
-  }, [animateCollapseFolders, expandFolderOnly, resetDragState]);
+  }, [animateCollapseFolders, expandFolderOnly, noteBookmarkDrop, resetDragState]);
 
   useEffect(() => () => {
     clearAutoExpandTimer();
@@ -1340,9 +1314,7 @@ const BookmarksPanel = ({
 
   // Mid-drag layout changes glide: after each commit, a row whose layout top
   // moved (a folder opened or closed above it) starts from where it was drawn,
-  // a row that just appeared fades in, and the landing slot is set from the
-  // live layout of the committed spot (the over row's box) — so it holds its
-  // gap when the lifted row's own layout moves.
+  // and a row that just appeared fades in.
   useLayoutEffect(() => {
     const list = bookmarkListRef.current;
     const previous = dragLayoutRef.current;
@@ -1352,7 +1324,7 @@ const BookmarksPanel = ({
     dragLayoutRef.current = layout;
     outers.forEach((node) => {
       const id = node.dataset.bookmarkRowId;
-      const row = node.firstElementChild;
+      const row = dragRowOf(node);
       if (id === activeId || !row) return;
       if (!previous.has(id)) {
         row.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: BOOKMARK_DRAG_GLIDE_MS, easing: BOOKMARK_DRAG_GLIDE_EASING });
@@ -1361,34 +1333,6 @@ const BookmarksPanel = ({
       const shift = previous.get(id) - layout.get(id);
       if (shift) glideBookmarkLayoutShift(row, shift);
     });
-
-    const activeIndex = outers.findIndex((node) => node.dataset.bookmarkRowId === activeId);
-    const activeOuter = outers[activeIndex];
-    const slot = activeOuter?.querySelector('[data-bookmark-drop-slot]');
-    if (!slot) return;
-    const overId = dragIntentRef.current?.overId ?? activeId;
-    const overIndex = outers.findIndex((node) => node.dataset.bookmarkRowId === overId);
-    const over = outers[overIndex];
-    let top = 0;
-    if (over && overIndex !== activeIndex) {
-      top = (overIndex > activeIndex
-        ? over.offsetTop + over.offsetHeight - activeOuter.offsetHeight
-        : over.offsetTop) - activeOuter.offsetTop;
-    }
-    const state = dropSlotRef.current;
-    const baseShift = previous.has(activeId) ? previous.get(activeId) - layout.get(activeId) : 0;
-    if (state.node !== slot || baseShift) {
-      // A new slot lands in place; a slot whose row moved keeps its drawn
-      // spot and glides on from there.
-      const transition = slot.style.transition;
-      const from = state.node === slot ? parseFloat(getComputedStyle(slot).top) + baseShift : top;
-      slot.style.transition = 'none';
-      slot.style.top = `${from}px`;
-      void slot.offsetHeight;
-      slot.style.transition = transition;
-    }
-    if (state.node !== slot || state.top !== top || baseShift) slot.style.top = `${top}px`;
-    dropSlotRef.current = { node: slot, top };
   });
 
   const handleNavigate = useCallback((pageRef) => {
@@ -2126,7 +2070,6 @@ const BookmarksPanel = ({
                   item={item}
                   depth={depth}
                   projectedDepth={item.id === activeId && projected ? projected.depth : null}
-                  landingSlot={item.id === activeId && projected ? { depth: projected.depth } : null}
                   isEditMode={isEditMode}
                   onToggle={toggleExpand}
                   onNavigate={handleNavigate}
@@ -2433,7 +2376,6 @@ const BookmarksPanel = ({
                     item={item}
                     depth={item.depth}
                     projectedDepth={item.id === activeId && projected ? projected.depth : null}
-                      landingSlot={item.id === activeId && projected ? { depth: projected.depth } : null}
                     activeDepth={activeSortableItem?.depth}
                     isEditMode={isEditMode}
                     isDraggingAny={Boolean(activeId)}

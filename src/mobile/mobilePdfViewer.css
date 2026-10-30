@@ -4222,29 +4222,10 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   flex: 0 0 auto;
 }
 
-/* UX 2026-09-30 (owner: drags into / out of folders must feel controlled) —
-   the dragged row's slot is a stacking context so its landing slot can sit
-   UNDER the lifted row, in the gap the other rows opened. */
+/* The dragged row rides above the rows it passes. */
 .mobile-bookmark-slot.is-dragging {
   position: relative;
   z-index: 2;
-}
-
-.mobile-bookmark-drop-slot {
-  position: absolute;
-  z-index: -1;
-  right: 0;
-  height: 44px;
-  pointer-events: none;
-  /* The app's one drag slot (tokens.css DRAG LIFT, owner 2026-10-01): a quiet
-     dashed outline, no gold, the same as every other list's landing gap. */
-  box-sizing: border-box;
-  background: var(--drag-slot-bg);
-  border: var(--drag-slot-border);
-  border-radius: var(--drag-lift-radius);
-  /* The drag's one glide (BookmarksPanel BOOKMARK_DRAG_GLIDE, UX 2026-10-01):
-     rows, slot and indent all move on the same 180ms ease-out. */
-  transition: top 180ms cubic-bezier(0.25, 0.5, 0.25, 1), left 180ms cubic-bezier(0.25, 0.5, 0.25, 1);
 }
 
 /* One line of the list. The depth indent is padding INSIDE the row (set per
@@ -4267,7 +4248,7 @@ html[data-keyboard-open='true'] [data-mobile-sheet]:not([data-sheet-keyboard='pa
   box-sizing: border-box;
   background: var(--sheet-bg);
   border-bottom: 1px solid var(--border);
-  transition: padding-left 180ms cubic-bezier(0.25, 0.5, 0.25, 1);
+  transition: padding-left var(--motion-drag) var(--ease-out);
 }
 
 /* Lifted row while dragging. Its look is the app's one picked-up look

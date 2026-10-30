@@ -582,29 +582,11 @@ html[data-focus-ring='pointer'] :is(.tab-strip-list__open, .hero-swatch, .docume
   [data-drag-lifted] > :not([data-drag-keep-fill]) {
     border-color: transparent !important;
   }
-  /* A held grip is :active the whole drag; its glyph keeps its size. */
-  [data-drag-lifted] [data-glyph-only] > *,
+  /* A held grip is :active the whole drag; its glyph keeps its size. Only
+     the PRESSED glyph: an open space's fold arrow is turned with a transform
+     too, and lost its turn while its space was held (owner 2026-10-30). */
+  [data-drag-lifted] [data-glyph-only]:active > *,
   [data-drag-lifted] [data-drag-rearrange-handle] > * {
     transform: none !important;
-  }
-  /* The slot the lifted item will land in: one quiet dashed outline, the same
-     in every vertical list. SortableRearrangeList places it from the drag's
-     layout (--drag-slot-top / --drag-slot-height); a pseudo-element so the
-     list's :first-child / :last-child rules never see an extra node. */
-  [data-sortable-rearrange-list][data-drag-slot] {
-    position: relative;
-  }
-  [data-sortable-rearrange-list][data-drag-slot]::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: var(--drag-slot-top, 0px);
-    height: var(--drag-slot-height, 0px);
-    box-sizing: border-box;
-    border: var(--drag-slot-border);
-    border-radius: var(--drag-lift-radius);
-    background: var(--drag-slot-bg);
-    pointer-events: none;
   }
 }
