@@ -45,10 +45,14 @@ export default function useTabOverflow({ ids, activeId, rowRef, measureRef, enab
     return () => observer.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey, activeId, enabled, contentKey]);
-  // Ids that left the template since the last measure drop out at once.
-  const known = new Set(ids);
-  const visible = fit.visible.filter((id) => known.has(id));
-  const hidden = fit.hidden.filter((id) => known.has(id));
-  const placed = new Set([...visible, ...hidden]);
-  return { visible: [...visible, ...ids.filter((id) => !placed.has(id))], hidden };
+  // The tabs keep the order of `ids` at once, even before the next measure:
+  // a drag-reorder that drew one frame in the old order made the passed tabs
+  // jump a whole tab back and glide forward again on the drop (frame capture,
+  // owner 2026-10-30). Ids that left drop out at once; new ones show until
+  // the measure places them.
+  const hiddenSet = new Set(fit.hidden);
+  return {
+    visible: ids.filter((id) => !hiddenSet.has(id)),
+    hidden: ids.filter((id) => hiddenSet.has(id)),
+  };
 }

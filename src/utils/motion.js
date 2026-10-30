@@ -17,6 +17,8 @@ export const MOTION_MS = Object.freeze({
   panel: 200,
   collapse: 300,
   state: 150,
+  // Drag to reorder: the gap opening and the dropped item settling.
+  drag: 200,
 });
 
 // How long a toast stays (Drawboard: info / success 3 s, error / warning 9 s).

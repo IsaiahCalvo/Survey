@@ -328,13 +328,11 @@
      a soft drop shadow with a faint neutral hairline, 6px corners on every item,
      no gold, no focus ring, no scale (the text stays exactly where it was).
      The rule that applies it is `[data-drag-lifted]` in states.css.
-     The slot the item will land in is one quiet dashed outline, the same in
-     every vertical list (SortableRearrangeList) and in Bookmarks. */
+     Where it will land shows only as the gap the other items open (owner
+     2026-10-30: no dashed outline); the glide is --motion-drag. */
   --drag-lift-bg: var(--surface-3);
   --drag-lift-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06);
   --drag-lift-radius: 6px;
-  --drag-slot-bg: rgba(255, 255, 255, 0.02);
-  --drag-slot-border: 1px dashed var(--border-strong);
 
   /* --- ONE UI FONT (owner 2026-10-02, UI consistency audit) -------------- */
   /* Every piece of interface text - desktop, web and phone - uses the
@@ -499,6 +497,10 @@ button {
   --motion-menu-row: 160ms;      /* one row arriving */
   --motion-menu-stagger: 14ms;   /* the gap between two rows arriving */
   --motion-glide: 180ms;         /* the hover strip moving to the next row */
+  /* Drag to reorder (owner 2026-10-30, "make the animation consistent"):
+     every list, tab row, bookmark tree and page grid opens the gap and
+     settles the dropped item on this one glide (src/reorder/dragMotion.js). */
+  --motion-drag: 200ms;
 
   --motion-menu-shift: 8px;      /* how far a menu slides in */
   --motion-toast-shift: 8px;
@@ -529,5 +531,6 @@ button {
     --motion-menu-row: 0ms;
     --motion-menu-stagger: 0ms;
     --motion-glide: 0ms;
+    --motion-drag: 0ms;
   }
 }

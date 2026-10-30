@@ -7,7 +7,7 @@
  * onReorder via flushSync on drop and emits [SortableRearrange] drag-diagnostic
  * logs. Used wherever survey lists/rows are reordered by drag.
  */
-import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
   DndContext,
@@ -27,7 +27,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CALM_LIST_AUTO_SCROLL } from './dragAutoScroll.js';
-import { getDragSlotRect } from './dragSlot.js';
+import { dragGlide, settleDroppedItem } from './dragMotion.js';
 import { restrictToVerticalAxis } from './axisLock.js';
 
 export const DENSE_ROW_DRAG_OPACITY = 0.62;
@@ -135,34 +135,6 @@ const getDragClampBounds = (layoutSnapshot) => {
   };
 };
 
-// The dashed landing slot (see ./dragSlot.js): this list's own rows, measured
-// when the drag starts, in the list's coordinates.
-const measureSlotRows = (listNode) => {
-  if (!listNode) return null;
-  const listRect = listNode.getBoundingClientRect();
-  return Array.from(listNode.querySelectorAll('[data-sortable-rearrange-item]'))
-    .filter((node) => node.closest('[data-sortable-rearrange-list]') === listNode)
-    .map((node) => {
-      const rect = node.getBoundingClientRect();
-      return {
-        id: node.dataset.sortableRearrangeItem,
-        top: rect.top - listRect.top - listNode.clientTop,
-        height: rect.height,
-      };
-    });
-};
-
-const showDragSlot = (listNode, rect) => {
-  if (!listNode || !rect) return;
-  listNode.style.setProperty('--drag-slot-top', `${rect.top.toFixed(1)}px`);
-  listNode.style.setProperty('--drag-slot-height', `${rect.height.toFixed(1)}px`);
-  listNode.setAttribute('data-drag-slot', '');
-};
-
-const hideDragSlot = (listNode) => {
-  listNode?.removeAttribute('data-drag-slot');
-};
-
 export function SortableRearrangeList({
   ids,
   onReorder,
@@ -185,8 +157,7 @@ export function SortableRearrangeList({
   const dragDiagRef = useRef(null);
   const dragClampBoundsRef = useRef(null);
   const lastOverIdRef = useRef(null);
-  const listRef = useRef(null);
-  const slotRowsRef = useRef(null);
+  const droppedRef = useRef(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -293,6 +264,8 @@ export function SortableRearrangeList({
 
   const handleDragEnd = useCallback(({ active, over }) => {
     const didReorder = Boolean(over && active.id !== over.id);
+    // Where the held row is drawn at release; it glides from here into its gap.
+    droppedRef.current = { id: active.id, rect: getSortableRearrangeItemNode(active.id)?.getBoundingClientRect() ?? null };
     onBeforeDragEnd?.({
       activeId: active.id,
       overId: over?.id ?? null,
@@ -309,8 +282,6 @@ export function SortableRearrangeList({
     }
     setActiveId(null);
     dragClampBoundsRef.current = null;
-    slotRowsRef.current = null;
-    hideDragSlot(listRef.current);
     finishDragDiag('end', {
       overId: over?.id ?? null,
       didReorder,
@@ -327,6 +298,13 @@ export function SortableRearrangeList({
       didReorder,
     });
   }, [dropSettleMs, finishDragDiag, onBeforeDragEnd, onDragEnd, onReorder, suppressDropTransforms]);
+
+  useLayoutEffect(() => {
+    if (activeId != null || !droppedRef.current) return;
+    const { id, rect } = droppedRef.current;
+    droppedRef.current = null;
+    settleDroppedItem(getSortableRearrangeItemNode(id), rect);
+  }, [activeId]);
 
   const dropTransformSuppressionValue = useMemo(() => ({
     activeId: dropTransformSuppressedActiveId,
@@ -366,8 +344,6 @@ export function SortableRearrangeList({
           useDragOverlay: false,
           variableHeight,
         }));
-        slotRowsRef.current = measureSlotRows(listRef.current);
-        showDragSlot(listRef.current, getDragSlotRect(slotRowsRef.current, active.id, active.id));
         setActiveId(active.id);
         onDragStart?.({ activeId: active.id });
       }}
@@ -394,9 +370,6 @@ export function SortableRearrangeList({
           diag.overId = overId;
           diag.overChangeCount += 1;
         }
-        if (slotRowsRef.current) {
-          showDragSlot(listRef.current, getDragSlotRect(slotRowsRef.current, active.id, overId ?? active.id));
-        }
         onDragOver?.({
           activeId: active.id,
           overId,
@@ -407,8 +380,6 @@ export function SortableRearrangeList({
         const cancelledActiveId = active?.id ?? activeId;
         setActiveId(null);
         dragClampBoundsRef.current = null;
-        slotRowsRef.current = null;
-        hideDragSlot(listRef.current);
         finishDragDiag('cancel', {
           overId: null,
           didReorder: false,
@@ -419,7 +390,6 @@ export function SortableRearrangeList({
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
         <DropTransformSuppressionContext.Provider value={dropTransformSuppressionValue}>
           <div
-            ref={listRef}
             data-sortable-rearrange-list={String(activeId ?? '')}
             // Owner 2026-09-22: no `minHeight: 100%` here. Inside a padded
             // scroll container it made the list taller than the container's
@@ -460,7 +430,14 @@ export function SortableRearrangeRow({
     transition,
     isDragging,
     isSorting,
-  } = useSortable({ id, disabled, animateLayoutChanges, transition: transitionOption });
+  } = useSortable({
+    id,
+    disabled,
+    animateLayoutChanges,
+    // Every list opens its gap and settles a drop on the one shared glide
+    // (./dragMotion.js); a row passes its own only for a reason of its own.
+    transition: transitionOption === undefined ? dragGlide() : transitionOption,
+  });
   const dropTransformSuppression = useContext(DropTransformSuppressionContext);
   const isDropTransformSuppressed = !!dropTransformSuppression.isSuppressed;
   const isSuppressedActiveRow = isDropTransformSuppressed

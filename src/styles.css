@@ -3943,19 +3943,13 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
   outline-offset: 1px;
 }
 
-/* Pages tab drag: the card a page was lifted from shows the app's one drag
-   slot - the quiet dashed outline - in the shape of the page, where the page
-   will land (its picture hidden: the lifted copy rides above). Other selected
-   pages carried along fade while they ride. */
-[data-page-card][data-drag-placeholder] > :not([data-page-preview]),
+/* Pages tab drag (owner 2026-10-30: no dashed landing outline anywhere): the
+   card a page was lifted from is an empty gap that moves with the pages
+   parting around it (its picture hidden: the lifted copy rides above).
+   Other selected pages carried along fade while they ride. */
+[data-page-card][data-drag-placeholder] > *,
 [data-page-card][data-drag-placeholder] [data-page-preview] > * {
   visibility: hidden;
-}
-[data-page-card][data-drag-placeholder] [data-page-preview] {
-  background: var(--drag-slot-bg) !important;
-  border-color: transparent !important;
-  outline: var(--drag-slot-border) !important;
-  outline-offset: 0 !important;
 }
 [data-page-card][data-drag-rider] {
   opacity: 0.35;
