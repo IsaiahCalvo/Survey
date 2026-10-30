@@ -78,3 +78,31 @@ export function validateNewPassword(password, confirmPassword, opts = {}) {
   if (password !== confirmPassword) return 'Passwords do not match';
   return null;
 }
+
+// auth-js reports a 502/503/504 from the API gateway, or a dropped connection,
+// as AuthRetryableFetchError, and its message is the response body: often just
+// "{}", which the sign-in form showed as the whole error. The iPhone app walk
+// hit it when the slow CI machine's sign-in server was restarting.
+export const AUTH_SERVER_HICCUP_MESSAGE = "Couldn't reach the sign-in server. Check your connection and try again.";
+
+export function isAuthServerHiccup(error) {
+  return error?.name === 'AuthRetryableFetchError';
+}
+
+export function authErrorMessage(error, fallback = 'An error occurred') {
+  if (isAuthServerHiccup(error)) return AUTH_SERVER_HICCUP_MESSAGE;
+  return error?.message || fallback;
+}
+
+// A password sign-in retries a server hiccup a few times before giving up.
+// Not with a captcha token: Turnstile tokens are single-use, and a retry
+// could spend one the server already took, which reads as a failed check.
+export const SIGN_IN_RETRY_DELAYS_MS = [1_000, 3_000, 6_000];
+
+export async function retryAuthServerHiccups(attempt, { canRetry = true, delaysMs = SIGN_IN_RETRY_DELAYS_MS, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  for (let i = 0; ; i += 1) {
+    const result = await attempt();
+    if (!canRetry || i >= delaysMs.length || !isAuthServerHiccup(result?.error)) return result;
+    await sleep(delaysMs[i]);
+  }
+}

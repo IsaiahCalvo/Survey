@@ -18,6 +18,7 @@ import {
   recoverSupabaseAuthSession,
 } from '../supabaseClient';
 import { requestAccountDeletion, unlinkOAuthProvider } from '../utils/accountPlatform';
+import { retryAuthServerHiccups } from '../components/authFlow.js';
 import { pdfByteCache } from '../services/pdfByteCache.js';
 import { loadAccountExportKits } from '../services/exportFormats/accountKits.js';
 import { isFeatureOn } from '../featureFlags.js';
@@ -649,11 +650,11 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase is not configured');
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await retryAuthServerHiccups(() => supabase.auth.signInWithPassword({
       email,
       password,
       ...(captchaToken ? { options: { captchaToken } } : {}),
-    });
+    }), { canRetry: !captchaToken });
 
     if (error) {
       const bootstrapSession = await runDevAuthBootstrapIfCaptchaBlocked(error, email);
