@@ -15,6 +15,15 @@ name: ios-signed-in
 - tapOn: "Email"
 - setClipboard: "e2e-owner@example.com"
 - pasteText
+# The paste itself can land nowhere (field still empty, 2026-10-30), so paste
+# again into the empty field before moving on.
+- runFlow:
+    when:
+      notVisible: "e2e-owner@example.com"
+    commands:
+      - tapOn: "you@example.com"
+      - pasteText
+- assertVisible: "e2e-owner@example.com"
 - tapOn: "Password"
 - setClipboard: "E2e-local-only-123!"
 - pasteText

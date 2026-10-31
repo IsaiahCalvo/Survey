@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { hasCoarsePointer } from '../hooks/useCoarsePointer';
-import { resendCooldownRemainingMs, passwordMeetsRequirements } from './authFlow';
+import { resendCooldownRemainingMs, passwordMeetsRequirements, authErrorMessage } from './authFlow';
 import PasswordRequirements from './PasswordRequirements';
 import Spinner from './Spinner';
 import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
@@ -152,7 +152,7 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
         }, 3000);
       }
     } catch (err) {
-      const msg = err.message || 'An error occurred';
+      const msg = authErrorMessage(err);
       // Turnstile tokens are single-use; a failed attempt burns this one, so
       // always issue a fresh widget before the user retries.
       if (captchaMode) resetCaptcha();
