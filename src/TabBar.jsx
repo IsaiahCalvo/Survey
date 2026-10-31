@@ -44,6 +44,8 @@ import { useTooltip } from './components/Tooltip';
 import DismissBarrier from './components/DismissBarrier';
 import { canRenameTab } from './tabs/tabStrip.js';
 import './TabBar.css';
+import { dragGlide } from './reorder/dragMotion.js';
+import useDropSettle from './reorder/useDropSettle.js';
 // Phase 30 — per-tab subscription to the dual-write retry queue. Each tab
 // renders its own dot independently when its documentId has at least one
 // non-quarantined queue entry. CONTEXT.md AC-13 / 30-UI-SPEC.md Surface 3.
@@ -355,7 +357,7 @@ function SortablePdfTab(props) {
     transition,
     isDragging,
     isSorting,
-  } = useSortable({ id: props.tab.id });
+  } = useSortable({ id: props.tab.id, transition: dragGlide() });
 
   return (
     <TabItem
@@ -612,7 +614,9 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
     createTabBoundsModifier(),
   ], []);
 
+  const noteTabDrop = useDropSettle('data-pdf-tab-id');
   const handleTabDragEnd = useCallback(({ active, over }) => {
+    noteTabDrop(active.id);
     if (!over || active.id === over.id) return;
 
     const fromIndex = pdfTabs.findIndex((tab) => tab.id === active.id);
@@ -624,7 +628,7 @@ const TabBar = ({ tabs, activeTabId, onTabClick, onTabClose, onTabReorder, onTab
     flushSync(() => {
       onTabReorder(homeTab ? [homeTab, ...reorderedPdfTabs] : reorderedPdfTabs);
     });
-  }, [homeTab, onTabReorder, pdfTabs]);
+  }, [homeTab, noteTabDrop, onTabReorder, pdfTabs]);
 
   const openMenu = useCallback((tabId, point, tabNode, viaKeyboard = false) => {
     setListAnchor(null);

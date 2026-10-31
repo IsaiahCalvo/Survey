@@ -29,6 +29,7 @@ const TOKEN_FOR = {
   dialog: '--motion-dialog', dialogExit: '--motion-dialog-exit',
   toast: '--motion-toast', toastExit: '--motion-toast-exit',
   panel: '--motion-panel', collapse: '--motion-collapse', state: '--motion-state',
+  drag: '--motion-drag',
 };
 
 test('tokens.css holds the Drawboard-measured durations, and src/utils/motion.js mirrors them', () => {

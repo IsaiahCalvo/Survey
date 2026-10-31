@@ -1277,9 +1277,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                   </div>
                 </div>
 
-                {/* Google Drive — hidden on iOS unless already linked
-                    elsewhere (App Store 4.8; the row stays so it can be
-                    disconnected). */}
+                {/* Google Drive — hidden in the store apps unless already
+                    linked elsewhere (see isGoogleSignInHidden; the row stays
+                    so it can be disconnected). */}
                 {(!isGoogleSignInHidden() || user?.app_metadata?.provider === 'google' || user?.identities?.some(id => id.provider === 'google')) && (
                 <div className="account-connected-account" style={{ marginTop: '16px' }}>
                   <div className="account-connected-account-info">

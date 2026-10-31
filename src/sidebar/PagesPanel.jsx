@@ -43,6 +43,7 @@ import { PageMenuList } from './PageActionsMenu.jsx';
 import { availableActions, buildPageMenuItems, runPageMenuAction } from './pageMenuItems.js';
 import { copyPagesAfter, duplicatePages, movePagesNextTo, movePagesToIndex } from '../utils/pageSelectionOperations.js';
 import { thumbnailBoxStyle } from './pageThumbnailBox.js';
+import { DRAG_GLIDE } from '../reorder/dragMotion.js';
 import { getPageViewBase, pageViewKey, pageViewUprightKey } from '../utils/pageViewDocument.js';
 import { notePageDrawn, PAGE_CACHE_KEEP_DESKTOP, PAGE_CACHE_KEEP_MOBILE } from '../utils/pdfPageCacheTrim.js';
 import {
@@ -89,7 +90,8 @@ const PAGE_DRAG_TOUCH_DELAY_MS = 300;
 const PAGE_DOUBLE_TAP_MS = 320;
 // The lifted page rides above the sheets (7400) and below the page menu.
 const PAGE_DRAG_OVERLAY_Z = 8500;
-const PAGE_SLIDE = { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
+// The app's one drag glide (owner 2026-10-30), shared with every list and tab row.
+const PAGE_SLIDE = DRAG_GLIDE;
 // The slots are measured all through a drag, not once at pick-up: pages
 // further down draw their pictures (and take their real shape) while the list
 // scrolls under a carried page, and a slot measured before that would send
@@ -1472,8 +1474,8 @@ const PagesPanel = ({
   }, [cardKeys, endDrag, landDrop, numPages, onReorderPages, pageByCardKey, sortableIds, visiblePages]);
 
   const dropAnimation = useMemo(() => (reducedMotion || !dropGlide ? null : {
-    duration: 180,
-    easing: 'cubic-bezier(0.2, 0, 0, 1)',
+    duration: DRAG_GLIDE.duration,
+    easing: DRAG_GLIDE.easing,
     sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }),
   }), [reducedMotion, dropGlide]);
 
@@ -1681,7 +1683,7 @@ const PagesPanel = ({
                 // Owner 2026-10-07 ("a gold box bigger than the page ... I
                 // want that gold box just to outline the page"): the card
                 // itself has no selected fill or border; the selected outline
-                // and the drop slot hug the page picture (styles.css
+                // hugs the page picture (styles.css
                 // .pages-panel-card.is-selected [data-page-preview]).
                 border: '1px solid transparent',
                 borderRadius: '4px',
