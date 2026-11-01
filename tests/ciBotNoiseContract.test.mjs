@@ -93,7 +93,7 @@ test('auto-merging a bump re-runs the full suite on main and can reach productio
     'ci.yml must accept a manual dispatch, or the re-run above cannot happen',
   );
   assert.ok(
-    autoMerge.indexOf('gh pr merge') < autoMerge.indexOf('gh workflow run ci.yml'),
+    autoMerge.indexOf('gh pr merge') < autoMerge.search(/gh workflow run ci\.yml[^\n]*--ref main/),
     'the re-dispatch must come AFTER the merge, or it tests the wrong commit',
   );
 });
@@ -161,5 +161,26 @@ test('the workflow-name pairing guard covers every workflow_run consumer', () =>
     /dependabot-auto-merge\.yml/,
     'release-integrity.mjs must pin dependabot-auto-merge.yml to the CI '
       + 'workflow name too -- it matches on the display name, same as deploy',
+  );
+});
+
+test('a green bump that fell behind main is brought up to date and re-tested', () => {
+  // Since 2026-10-28 main only merges a branch that is up to date, and
+  // Dependabot rebases only on a conflict, so a green bump behind main used to
+  // sit open forever. The auto-merge now merges main into it, re-runs CI on
+  // the bump's branch (a GITHUB_TOKEN push starts no run by itself), and comes
+  // back to merge when that dispatched run is green.
+  assert.match(autoMerge, /pulls\/\$detail\/update-branch/);
+  assert.match(autoMerge, /expected_head_sha="\$TESTED_SHA"/);
+  assert.match(autoMerge, /gh workflow run ci\.yml[^\n]*--ref "\$HEAD_BRANCH"/);
+  assert.ok(
+    autoMerge.indexOf('update-branch') < autoMerge.indexOf('gh pr merge'),
+    'the up-to-date check must come before the merge attempt',
+  );
+  // The dispatched run must be able to wake the merge again, but only for a
+  // Dependabot branch — never for the main re-run after a merge.
+  assert.match(
+    autoMerge,
+    /workflow_run\.event == 'workflow_dispatch' &&\s*startsWith\(github\.event\.workflow_run\.head_branch, 'dependabot\/'\)/,
   );
 });
