@@ -259,9 +259,11 @@ jobs:
   # chose a 3-hour cadence. Runs on every finished CI run (any branch) and
   # decides whether a window is open:
   #   - nothing new: the newest green main commit is already live → skip;
-  #   - run by hand, or a commit since the live one says `[deploy now]` in its
-  #     message → ship now (urgent fixes; rollbacks are Vercel's instant
-  #     rollback and never wait on this);
+  #   - run by hand, or a commit since the live one has `[deploy now]` in its
+  #     TITLE → ship now (urgent fixes; rollbacks are Vercel's instant
+  #     rollback and never wait on this). 2026-11-01, owner's call: title
+  #     only. Matching the whole message let a squash merge ship early just
+  #     because a PR body or an inner commit mentioned the tag;
   #   - otherwise ship only when what is live was built 3 hours ago or more.
   pick:
     runs-on: ubuntu-latest
@@ -327,8 +329,8 @@ jobs:
             echo "Run by hand: shipping $sha."; echo "ship=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           if [ -n "$live" ] && git cat-file -e "$live^{commit}" 2>/dev/null \
-            && git log --format=%B "$live..$sha" | grep -qF '[deploy now]'; then
-            echo "A commit since $live asks for [deploy now]: shipping $sha."
+            && git log --format=%s "$live..$sha" | grep -qF '[deploy now]'; then
+            echo "A commit title since $live asks for [deploy now]: shipping $sha."
             echo "ship=true" >> "$GITHUB_OUTPUT"; echo "urgent=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           age=999999
