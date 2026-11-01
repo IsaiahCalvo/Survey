@@ -188,7 +188,7 @@ jobs:
 
       - name: Upload perf results
         if: ${{ inputs.perf && always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: big-doc-perf
           path: perf-out/
@@ -196,7 +196,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-signed-in-report-${{ matrix.shard }}
           path: |
@@ -210,7 +210,7 @@ jobs:
       # uploaded when every test passed first time.
       - name: Upload traces of flaky tests
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-signed-in-flaky-${{ matrix.shard }}
           path: test-results/e2e-signed-in/

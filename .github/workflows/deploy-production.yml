@@ -222,7 +222,7 @@ jobs:
         run: mkdir -p .vercel-capped && date -u +%FT%TZ > .vercel-capped/at && echo "key=vercel-capped-$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
         id: capmark
       - if: failure() && steps.vercel.outputs.capped == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .vercel-capped
           key: ${{ steps.capmark.outputs.key }}
@@ -283,7 +283,7 @@ jobs:
 
       - name: When did Vercel's daily cap last refuse a deploy?
         id: cap
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .vercel-capped
           key: vercel-capped-none
