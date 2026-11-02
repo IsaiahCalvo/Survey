@@ -3605,6 +3605,14 @@ svg[data-svg-annotation-layer][data-selection-hover="move"] {
   cursor: move;
 }
 
+/* Owner 2026-11-02 (copy Drawboard, utils/pageEdgeRules.js): grabbers draw
+   past the page edge. The page holding the selection paints above the other
+   pages, so a grabber hanging over the gap or the next page is seen and
+   grabbed, never covered. Pages never overlap, so nothing else changes. */
+.survey-pdfjs-page-div:has(svg[data-page-has-selection="true"]) {
+  z-index: 50;
+}
+
 /* Drawboard rule 11 (owner 2026-10-02, utils/selectModes.js): while the
    selection is being moved, resized or rotated its frame and handles step out
    of the way, and come back on release. Opacity (not display) so the grabber

@@ -23,13 +23,14 @@
 import { isInTabBehind } from '../utils/tabBehind.js';
 import { boxWorldBounds, markerIdsByGap } from '../utils/surveyMarkerFamily.js';
 import { isOnHiddenLayer, stampNewObjectsOnLayer } from '../utils/layers.js';
-import { cloneElement, memo, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
+import { cloneElement, memo, useId, useMemo, useEffect, useLayoutEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { POLYLINE_CURVE_SET_EVENT, polySplineStep, setPolylineCurve, splineSpanMidpoint } from '../utils/polySpline.js';
 import { usePolylineCurve } from '../hooks/usePolylineCurve.js';
 import { canRemovePolyVertex, cloudPolyEdgeReach, insertPolyVertex, insertVertexOnNearestEdge, createPolyEdgePressGate, polyEdgeDebugEnabled, polyEdgeTouchStartMayArm, polyEdgeHitAtClient, polyVertexMenuLayout, removePolyVertex } from '../utils/polyVertices.js';
 import { contextMenuInputOf, isTouchMenuInput } from '../utils/touchLongPress.js';
 import { deepClone } from '../utils/deepClone.js';
+import { clampPointToPage } from '../utils/pageEdgeRules.js';
 import { maxOf, minOf } from '../utils/arrayExtrema.js';
 import { resolveEditEntryKind } from '../utils/annotationEditRoute.js';
 import {
@@ -1427,6 +1428,12 @@ const SVGAnnotationLayerBody = memo(({
   //             bumps once per pointermove batch to repaint the preview.
   // ---------------------------------------------------------------------------
   const [shapeCreation, setShapeCreation] = useState(null);
+  // Page clip for the marks (the root <svg> no longer clips: grabbers draw
+  // past the page edge). One id per mounted layer.
+  const layerUid = useId();
+  const pageClipId = `svg-page-clip-${pageNumber}-${layerUid.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  // Where a picked Survey Marker's grabbers render, outside the page clip.
+  const [selectionChromeHost, setSelectionChromeHost] = useState(null);
   const shapeCreationRef = useRef(null);
   useEffect(() => { shapeCreationRef.current = shapeCreation; }, [shapeCreation]);
   // Line / arrow / polyline / polygon / measure drawing snaps (drawSnap.js):
@@ -2692,6 +2699,8 @@ const SVGAnnotationLayerBody = memo(({
     if ((tool === 'line' || tool === 'arrow') && finalClientPoint && state.start) {
       end = resolveCreationSnap(state.start, end, finalClientPoint);
     }
+    // Drawboard: the drag-out end stays on the page (pageEdgeRules.js).
+    end = clampPointToPage(end, width, height);
 
     if (tool === 'survey-marker') {
       const left = Math.min(state.start.x, end.x);
@@ -2741,6 +2750,7 @@ const SVGAnnotationLayerBody = memo(({
     isRegionOverlayEnabled, lineBorderStyle, onSaveAnnotations,
     onSurveyMarkerCreated, pageNumber, selectAnnotation, selectedModuleId, selectedSpaceId,
     spaces, strokeColor, strokeOpacity, strokeWidth, viewerId, resolveCreationSnap,
+    width, height,
   ]);
 
   // Owner 2026-10-13: Smart fill. A press asks the registered provider
@@ -3094,6 +3104,8 @@ const SVGAnnotationLayerBody = memo(({
         if (point && draft && (draft.tool === 'line' || draft.tool === 'arrow') && draft.start) {
           point = resolveCreationSnap(draft.start, point, e);
         }
+        // Owner 2026-11-02 (copy Drawboard): a drawn shape stops at the page edge.
+        point = clampPointToPage(point, width, height);
         setShapeCreation((prev) => (prev ? {
           ...prev,
           ...(point ? { current: point } : {}),
@@ -3162,7 +3174,7 @@ const SVGAnnotationLayerBody = memo(({
       }
       e.preventDefault();
       e.stopPropagation();
-      const point = screenToSVG(svg, e.clientX, e.clientY);
+      const point = clampPointToPage(screenToSVG(svg, e.clientX, e.clientY), width, height);
       replaceDraft({ ...placing, endPointerId: e.pointerId, ...(point ? { current: point } : {}) });
     };
     const onCancel = (e) => {
@@ -3183,7 +3195,7 @@ const SVGAnnotationLayerBody = memo(({
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
     };
-  }, [shapeCreation, appendCoalescedPagePoints, endLiveStroke, resolveCreationSnap]);
+  }, [shapeCreation, appendCoalescedPagePoints, endLiveStroke, resolveCreationSnap, width, height]);
 
   // Escape abandons a drag-out / click-placed shape draft (freehand ink has
   // its own rules). Capture phase + stopPropagation, like the polygon draft's
@@ -5124,28 +5136,37 @@ const SVGAnnotationLayerBody = memo(({
           onPointerLeave={() => setHoveredSurveyMarkerId((prev) => (prev === annotationId ? null : prev))}
         />
         )}
-        {isSelectedSurveyMarker && (
-          <SVGSelectionOverlay
-            bbox={{
-              left: bbox.left,
-              top: bbox.top,
-              width: bbox.width,
-              height: bbox.height,
-              angle: bbox.angle,
-            }}
-            inverseScale={inverseScale}
-            onHandleDrag={(e, handleId) => handleSurveyMarkerHandlePointerDown(e, entry, handleId)}
-            isGroupSelection={false}
-            hideBoundingBox={false}
-            padding={0}
-            // w58: Cmd / Ctrl held hides the resize grabbers (rotate stays).
-            hideResizeHandles={modifierMoveActive}
-            locked={Boolean(entry.surveyMarker.lockedBy)}
-          />
-        )}
+        {isSelectedSurveyMarker && selectionChromeHost && createPortal((
+          // Out of the page clip (owner 2026-11-02): the grabbers draw past
+          // the page edge. Same live translate and pointer rule as the marker.
+          <g
+            data-survey-marker-chrome={annotationId}
+            transform={liveDx || liveDy ? `translate(${liveDx} ${liveDy})` : undefined}
+            style={{ pointerEvents: isSelectTool ? 'auto' : 'none' }}
+          >
+            <SVGSelectionOverlay
+              bbox={{
+                left: bbox.left,
+                top: bbox.top,
+                width: bbox.width,
+                height: bbox.height,
+                angle: bbox.angle,
+              }}
+              inverseScale={inverseScale}
+              onHandleDrag={(e, handleId) => handleSurveyMarkerHandlePointerDown(e, entry, handleId)}
+              isGroupSelection={false}
+              hideBoundingBox={false}
+              padding={0}
+              // w58: Cmd / Ctrl held hides the resize grabbers (rotate stays).
+              hideResizeHandles={modifierMoveActive}
+              locked={Boolean(entry.surveyMarker.lockedBy)}
+            />
+          </g>
+        ), selectionChromeHost)}
       </g>
     );
   }, [
+    selectionChromeHost,
     handleSurveyMarkerHandlePointerDown,
     handleSurveyMarkerDoubleClick,
     handleSurveyMarkerPointerDown,
@@ -7509,11 +7530,20 @@ const SVGAnnotationLayerBody = memo(({
     ));
   }, [stagedAnnotations]);
 
+  // Owner 2026-11-02 (copy Drawboard, utils/pageEdgeRules.js): marks are
+  // clipped to the page, grabbers are not. While a mark turns, the part past
+  // the edge shows (Drawboard does the same) and is clipped again on release.
+  const pageClipPath = `url(#${pageClipId})`;
+  const marksClipPath = (isRotating || isSurveyMarkerRotating) ? undefined : pageClipPath;
+
   return (
     <>
     <svg
       ref={svgRef}
       data-svg-annotation-layer={pageNumber}
+      // styles.css lifts the picked page above its neighbours, so grabbers
+      // hanging past its edge are never under the next page.
+      data-page-has-selection={pageHasSelection ? 'true' : undefined}
       // A press on the selection under Pan belongs to the selection, not the
       // pan scroller (its documented opt-out seam).
       data-pan-interactive={selectionGrabArmed ? 'true' : undefined}
@@ -7551,7 +7581,10 @@ const SVGAnnotationLayerBody = memo(({
         pointerEvents: isInteractive && (
           activeTool !== 'text-select' || textSelectManipulationArmed || interactionState !== 'idle'
         ) ? 'auto' : 'none',
-        overflow: 'hidden',
+        // Owner 2026-11-02 (copy Drawboard): the selection's grabbers draw past
+        // the page edge and stay grabbable. The marks themselves are clipped
+        // to the page by pageClipPath below, not by this box.
+        overflow: 'visible',
         // One-finger creation strokes must not scroll the page on touch
         // devices — the fabric upper canvas used to set this implicitly.
         touchAction: (isCreationTool || (activeTool === 'select' && selectionMode === 'lasso')) ? 'none' : undefined,
@@ -7870,11 +7903,21 @@ const SVGAnnotationLayerBody = memo(({
       // (double-tap resolved through resolveAnnotationAt) is what fires in Pan.
       onDoubleClick={(isSelectTool || panEditEntryEnabled) ? handleAnnotationDoubleClick : undefined}
     >
+      <defs>
+        <clipPath id={pageClipId}>
+          <rect x={0} y={0} width={width} height={height} />
+        </clipPath>
+      </defs>
+      <g data-page-clip="marks" clipPath={marksClipPath}>
       {uniformTextMarkupElements}
       {/* w53: Survey Markers draw inside stackedMarks, each in its place in
           the page's one stack. They are stored outside annotations.objects,
           so renderSurveyMarkerEntry owns their click, move and resize. */}
       {pageMarks}
+      </g>
+      {/* A picked Survey Marker's grabbers are portaled here, out of the
+          page clip (renderSurveyMarkerEntry). */}
+      <g data-selection-chrome-host="true" ref={setSelectionChromeHost} />
       {/* Owner 2026-10-01: selecting a Survey Marker never shows a floating
           Delete chip beside it (phone or desktop, one or many). Delete stays
           on the long-press / right-click menu, the Delete key and the Survey
@@ -7882,6 +7925,8 @@ const SVGAnnotationLayerBody = memo(({
       {/* w52: callouts are drawn inside stackedMarks above (one stack); a
           selected callout's handles sit here, above every mark. */}
       {filteredCallouts.selectedOverlays}
+      {/* Live previews, marquee and lasso stay clipped to the page as before. */}
+      <g data-page-clip="previews" clipPath={pageClipPath}>
       {/* UX: Plan 15-04 Issue 2 — new-text creation preview. FabricEditCanvas
           paints the in-flight textbox transparent during create (same pattern
           as existing-text edit) and broadcasts live bounds with
@@ -8350,7 +8395,9 @@ const SVGAnnotationLayerBody = memo(({
           />
         </g>
       )}
+      </g>
       {/* Selection overlays — rendered on top of all annotations */}
+      {/* Outside the page clip: a grabber past the page edge is never cut off. */}
       {/* Single selection: individual bounding box with handles.
           UX: Phase 19 follow-up — suppress this when a callout is also
           selected. With one annotation + one callout the combined count

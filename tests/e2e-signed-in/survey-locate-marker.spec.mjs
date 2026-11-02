@@ -136,7 +136,7 @@ test('Locate on page centres and zooms to the marker on the first click, every t
       // jump for about half a second (91 px at 800 %), then snapped to size.
       // One screen size from the first frame after the jump.
       const grabber = await page.evaluate((id) => document
-        .querySelector(`[data-survey-marker-id="${id}"] [data-resize-handle="br"]`)
+        .querySelector(`[data-survey-marker-chrome="${id}"] [data-resize-handle="br"]`)
         ?.getBoundingClientRect().width ?? null, marker.id);
       expect(grabber, `${marker.name} grabber one size at once`).not.toBeNull();
       expect(Math.abs(grabber - 11), `${marker.name} grabber ${grabber}px`).toBeLessThan(1);
