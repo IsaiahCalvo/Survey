@@ -3284,7 +3284,7 @@ export default function App({ devPreviewReturnTab = null }) {
                 data-survey-tool-slot="true"
                 data-shown={surveyToolAvailable ? 'true' : 'false'}
                 aria-hidden={surveyToolAvailable ? undefined : true}
-                inert={surveyToolAvailable ? undefined : ''}
+                inert={!surveyToolAvailable}
                 style={{
                   position: 'absolute', left: '100%', top: '50%',
                   transform: 'translateY(-50%)',

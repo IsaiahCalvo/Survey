@@ -66,5 +66,5 @@ test('a lifted drag still ends on the page layer', () => {
   // the next Undo removed the pin).
   assert.match(LAYER, /if \(liftedMarks\.length && !e\.currentTarget\.hasPointerCapture\?\.\(e\.pointerId\)\) \{\s*try \{ e\.currentTarget\.setPointerCapture\(e\.pointerId\); \}/);
   const start = LAYER.indexOf('{liftedMarks.length > 0 && (');
-  assert.match(LAYER.slice(start, start + 700), /<div\s+inert=""/);
+  assert.match(LAYER.slice(start, start + 700), /<div\s+inert\s/);
 });
