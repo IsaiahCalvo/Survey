@@ -56,6 +56,9 @@ export const SHORTCUT_SECTIONS = [
       // Drawboard canvas audit chunk 6: one view at a time, gliding.
       { chords: ['pageup'], label: 'Scroll up one screen' },
       { chords: ['pagedown'], label: 'Scroll down one screen' },
+      // Launch polish 2026-11-02: first / last page, gliding.
+      { chords: ['home'], label: 'First page' },
+      { chords: ['end'], label: 'Last page' },
       // Owner 2026-10-22: snapping had no switch anyone could find.
       { chords: ['shift+s'], label: 'Turn snapping on or off' },
     ],
@@ -159,6 +162,8 @@ const NAMED_KEYS = {
   arrows: 'Arrow keys',
   pageup: 'Page Up',
   pagedown: 'Page Down',
+  home: 'Home',
+  end: 'End',
   click: 'Click',
   drag: 'Drag',
   'right-drag': 'Right-drag',
