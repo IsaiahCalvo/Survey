@@ -82,13 +82,12 @@ test('require company sign-in: password sessions at the domain are signed out an
   await expect(steered.getByText('example.com asks you to sign in with your work account')).toBeVisible();
 
   // And the server says no to the password token itself (sign-in hook).
-  const direct = await (await apiClientFor(null)).auth.signInWithPassword({ email: E2E_ACCOUNTS.free.email, password: E2E_ACCOUNTS.free.password });
-  expect(direct.error?.message || '').toMatch(/sign in with your work account/);
+  // (apiClientFor signs in through the auth API and throws GoTrue's answer.)
+  await expect(apiClientFor(E2E_ACCOUNTS.free)).rejects.toThrow(/sign in with your work account/);
 
   // Disconnecting SSO drops the requirement, so nobody is stuck.
   await admin.from('organizations').update({ sso_provider_id: null }).eq('id', org);
-  const back = await (await apiClientFor(null)).auth.signInWithPassword({ email: E2E_ACCOUNTS.free.email, password: E2E_ACCOUNTS.free.password });
-  expect(back.error).toBeNull();
+  await expect(apiClientFor(E2E_ACCOUNTS.free)).resolves.toBeTruthy();
 });
 
 test('a paid company shares one storage pool', async () => {
