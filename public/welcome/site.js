@@ -1,5 +1,11 @@
 (function () {
   var root = document.documentElement;
+
+  // The font sheet loads as media="print" so it never holds up the first
+  // paint, then switches on here. This used to be an inline onload="..."
+  // handler, which the site's content security policy blocks (vercel.json).
+  var fontCss = document.querySelectorAll('link[data-font-css]');
+  for (var i = 0; i < fontCss.length; i++) fontCss[i].media = 'all';
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   var y = document.querySelector('.yr');
