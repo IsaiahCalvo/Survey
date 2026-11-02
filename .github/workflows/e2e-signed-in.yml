@@ -104,7 +104,7 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=8192
 
-      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+      - uses: supabase/setup-cli@d239d1052f6f024a8d746d7e5aeddead63b9cb53 # v3.1.0
         with:
           version: 2.111.0
 
@@ -188,7 +188,7 @@ jobs:
 
       - name: Upload perf results
         if: ${{ inputs.perf && always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: big-doc-perf
           path: perf-out/
@@ -196,7 +196,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-signed-in-report-${{ matrix.shard }}
           path: |
@@ -210,7 +210,7 @@ jobs:
       # uploaded when every test passed first time.
       - name: Upload traces of flaky tests
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-signed-in-flaky-${{ matrix.shard }}
           path: test-results/e2e-signed-in/
