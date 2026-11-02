@@ -9,7 +9,10 @@
 //
 // Who may do what:
 //   * connect / disconnect Google or Microsoft: any signed-in person (their own
-//     sign-in);
+//     sign-in). The consent page's answer is parked with a one-time code that
+//     only the browser that said yes gets; it becomes the person's connection
+//     only when the same Survey account sends the code back ('claim'), so a
+//     consent link sent to someone else links nothing;
 //   * link a survey to a new sheet: an editor or owner of the document, signed
 //     in to that provider, with the beta on (flag 'sheet-team-sync' or a
 //     Nightly tester);
@@ -43,6 +46,10 @@ const MIN_ROUND_GAP_MS = 8000;
 const MIN_FORCED_GAP_MS = 2000; // "Sync now" pressed again and again
 const LEASE_SECONDS = 120;
 const STATE_TTL_MS = 10 * 60 * 1000;
+const CLAIM_TTL_MS = 10 * 60 * 1000;
+const CLAIM_MAX_TRIES = 5;
+// 8 letters from 32 (no 0/O, 1/I): about a trillion codes, five tries.
+const CLAIM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_APP_ORIGINS = [
   'https://surveytool.app', 'https://surveytool-nightly.vercel.app',
@@ -225,7 +232,7 @@ export async function handleSheetSync(req, deps) {
     let raw;
     try { raw = await req.json(); } catch { return json({ error: 'invalid_json' }, 400); }
     const parsed = parseBody({
-      action: s.enum(['status', 'connect', 'disconnect', 'link', 'sync', 'choose', 'unlink']),
+      action: s.enum(['status', 'connect', 'claim', 'disconnect', 'link', 'sync', 'choose', 'unlink']),
       documentId: s.string({ max: 64, pattern: UUID, optional: true }),
       templateId: s.string({ max: 128, optional: true }),
       template: s.record({ maxBytes: 1024 * 1024, optional: true }),
@@ -238,6 +245,7 @@ export async function handleSheetSync(req, deps) {
       appOrigin: s.string({ max: 200, optional: true }),
       force: s.boolean({ optional: true }),
       provider: s.enum(['google', 'msgraph'], { optional: true }),
+      code: s.string({ max: 32, optional: true }),
     }, raw);
     if (!parsed.ok) return json({ error: 'invalid_request', detail: parsed.error }, 400);
 
@@ -258,6 +266,7 @@ export async function handleSheetSync(req, deps) {
     switch (parsed.value.action) {
       case 'status': return json(await statusFor(ctx));
       case 'connect': return json(ctx.provider === 'msgraph' ? await connectMicrosoft(ctx) : await connectGoogle(ctx));
+      case 'claim': return json(await claimSignIn(ctx));
       case 'disconnect': return json(ctx.provider === 'msgraph' ? await disconnectMicrosoft(ctx) : await disconnectGoogle(ctx));
       case 'link': return json(await linkSheet(ctx));
       case 'sync': return json(await syncLink(ctx));
@@ -300,9 +309,9 @@ async function oauthCallback(url, deps) {
   const { env } = deps;
   const g = googleConfig(env);
   const fallback = appOrigins(env)[0];
-  const back = (origin, result) => new Response(null, {
+  const back = (origin, result, claim = '') => new Response(null, {
     status: 302,
-    headers: { Location: `${origin}/google-connected.html?result=${encodeURIComponent(result)}`, 'Cache-Control': 'no-store' },
+    headers: { Location: `${origin}/google-connected.html?result=${encodeURIComponent(result)}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
   });
   if (!g.configured) return back(fallback, 'not_configured');
   const state = await readState(g.clientSecret, url.searchParams.get('state'));
@@ -315,23 +324,89 @@ async function oauthCallback(url, deps) {
     const tokens = await exchangeGoogleCode({ ...g, code, fetchImpl: deps.fetchImpl || fetch });
     if (!tokens.scope.includes('drive.file')) return back(origin, 'no_access');
     const service = deps.createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-    const { error } = await service.from('sheet_sync_connections').upsert({
-      user_id: state.u,
-      provider: 'google',
-      account_email: tokens.email,
-      refresh_token_enc: await encryptToken(tokens.refreshToken, tokenKey(env)),
-      scopes: tokens.scope,
-      updated_at: new Date().toISOString(),
+    const claim = await parkSignIn(service, env, {
+      userId: state.u, provider: 'google', email: tokens.email, refreshToken: tokens.refreshToken, scopes: tokens.scope,
     });
-    if (error) throw new Error('store failed');
-    // A link that broke because this sign-in stopped working works again.
-    await service.from('sheet_sync_links').update({ status: 'active', last_error: null })
-      .eq('connection_user_id', state.u).eq('provider', 'google').eq('status', 'broken');
-    return back(origin, 'connected');
+    return back(origin, 'finish', claim);
   } catch (err) {
     log('oauth_failed', { status: err?.status });
     return back(origin, 'failed');
   }
+}
+
+// ---- finishing a sign-in --------------------------------------------------------
+// The consent page lands in whatever browser said yes. The tokens wait here
+// (sheet_sync_pending_connections) until the Survey account that pressed
+// Connect sends back the code that only that browser got.
+
+function newClaimCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (b) => CLAIM_ALPHABET[b % CLAIM_ALPHABET.length]).join('');
+}
+
+const normalizeClaimCode = (code) => String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+const claimCodeHash = (env, code) => hmac(`claim:${tokenKey(env)}`, normalizeClaimCode(code));
+
+// In the fragment, so it never reaches a server log or a Referer header.
+const claimFragment = (code) => (code ? `#code=${code.slice(0, 4)}-${code.slice(4)}` : '');
+
+async function parkSignIn(service, env, { userId, provider, email, refreshToken, scopes }) {
+  const now = Date.now();
+  // Old ones nobody claimed: gone.
+  await service.from('sheet_sync_pending_connections').delete().lt('expires_at', new Date(now).toISOString());
+  const code = newClaimCode();
+  const { error } = await service.from('sheet_sync_pending_connections').upsert({
+    user_id: userId,
+    provider,
+    code_hash: await claimCodeHash(env, code),
+    account_email: email,
+    refresh_token_enc: await encryptToken(refreshToken, tokenKey(env)),
+    scopes,
+    attempts: 0,
+    expires_at: new Date(now + CLAIM_TTL_MS).toISOString(),
+    created_at: new Date(now).toISOString(),
+  });
+  if (error) throw new Error('store failed');
+  return code;
+}
+
+async function claimSignIn(ctx) {
+  const provider = ctx.provider;
+  const who = provider === 'msgraph' ? 'Microsoft' : 'Google';
+  const pending = () => ctx.service.from('sheet_sync_pending_connections').delete()
+    .eq('user_id', ctx.user.id).eq('provider', provider);
+  const { data: row } = await ctx.service.from('sheet_sync_pending_connections')
+    .select('code_hash, account_email, refresh_token_enc, scopes, attempts, expires_at')
+    .eq('user_id', ctx.user.id).eq('provider', provider).maybeSingle();
+  if (!row || new Date(row.expires_at).getTime() <= Date.now()) {
+    throw new SyncError(`That ${who} sign-in ran out. Press Connect ${who} again.`, 410, 'claim_expired');
+  }
+  if (Number(row.attempts) >= CLAIM_MAX_TRIES) {
+    await pending();
+    throw new SyncError(`Too many wrong codes. Press Connect ${who} again.`, 429, 'claim_locked');
+  }
+  if (!secretsMatch(await claimCodeHash(ctx.env, ctx.body.code), row.code_hash)) {
+    await ctx.service.from('sheet_sync_pending_connections').update({ attempts: Number(row.attempts) + 1 })
+      .eq('user_id', ctx.user.id).eq('provider', provider);
+    log('claim_wrong', { provider });
+    throw new SyncError('That code does not match. Check the code the browser shows and try again.', 400, 'claim_wrong');
+  }
+  const { error } = await ctx.service.from('sheet_sync_connections').upsert({
+    user_id: ctx.user.id,
+    provider,
+    account_email: row.account_email,
+    refresh_token_enc: row.refresh_token_enc,
+    scopes: row.scopes,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new SyncError(`Could not save the ${who} sign-in. Try again.`, 500, 'claim_store');
+  await pending();
+  // A link that broke because this sign-in stopped working works again.
+  await ctx.service.from('sheet_sync_links').update({ status: 'active', last_error: null })
+    .eq('connection_user_id', ctx.user.id).eq('provider', provider).eq('status', 'broken');
+  log('claimed', { provider });
+  return { ok: true, provider, email: row.account_email || null };
 }
 
 async function disconnectGoogle(ctx) {
@@ -373,9 +448,9 @@ async function msgraphCallback(url, deps) {
   const { env } = deps;
   const ms = msgraphConfig(env);
   const fallback = appOrigins(env)[0];
-  const back = (origin, result) => new Response(null, {
+  const back = (origin, result, claim = '') => new Response(null, {
     status: 302,
-    headers: { Location: `${origin}/google-connected.html?provider=msgraph&result=${encodeURIComponent(result)}`, 'Cache-Control': 'no-store' },
+    headers: { Location: `${origin}/google-connected.html?provider=msgraph&result=${encodeURIComponent(result)}${claimFragment(claim)}`, 'Cache-Control': 'no-store' },
   });
   if (!ms) return back(fallback, 'not_configured');
   const state = await readState(ms.clientSecret, url.searchParams.get('state'));
@@ -390,18 +465,10 @@ async function msgraphCallback(url, deps) {
     if (!tokens.scopes.some((sc) => /files\.readwrite/i.test(sc))) return back(origin, 'no_access');
     const account = await fetchMsgraphAccount(tokens.accessToken, { fetch: fetchImpl, graphBase: ms.graphBase });
     const service = deps.createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-    const { error } = await service.from('sheet_sync_connections').upsert({
-      user_id: state.u,
-      provider: 'msgraph',
-      account_email: account.email,
-      refresh_token_enc: await encryptToken(tokens.refreshToken, tokenKey(env)),
-      scopes: tokens.scopes.join(' '),
-      updated_at: new Date().toISOString(),
+    const claim = await parkSignIn(service, env, {
+      userId: state.u, provider: 'msgraph', email: account.email, refreshToken: tokens.refreshToken, scopes: tokens.scopes.join(' '),
     });
-    if (error) throw new Error('store failed');
-    await service.from('sheet_sync_links').update({ status: 'active', last_error: null })
-      .eq('connection_user_id', state.u).eq('provider', 'msgraph').eq('status', 'broken');
-    return back(origin, 'connected');
+    return back(origin, 'finish', claim);
   } catch (err) {
     log('oauth_failed', { provider: 'msgraph', status: err?.status, code: err?.code });
     return back(origin, err?.code === 'no_refresh_token' ? 'no_access' : 'failed');
@@ -488,7 +555,7 @@ async function providerFor(ctx, connectionUserId, provider = 'google') {
   const g = googleConfig(ctx.env);
   if (!g.configured) throw new SyncError('Google Sheets is not set up on this server yet.', 503, 'not_configured');
   const { data: row } = await ctx.service.from('sheet_sync_connections')
-    .select('refresh_token_enc').eq('user_id', connectionUserId).eq('provider', 'google').maybeSingle();
+    .select('refresh_token_enc, account_email').eq('user_id', connectionUserId).eq('provider', 'google').maybeSingle();
   if (!row) throw Object.assign(new Error('no connection'), { status: 401 });
   const refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
   // Kept by this server instance between requests (an access token lasts an
@@ -502,14 +569,15 @@ async function providerFor(ctx, connectionUserId, provider = 'google') {
     ACCESS_TOKENS.set(cacheKey, fresh);
     return fresh.accessToken;
   };
-  return googleSheetsProvider({ endpoints: g.endpoints, getAccessToken, fetchImpl: ctx.fetchImpl });
+  // The linker's account: Survey's own writes show as theirs in the file.
+  return Object.assign(googleSheetsProvider({ endpoints: g.endpoints, getAccessToken, fetchImpl: ctx.fetchImpl }), { accountEmail: row.account_email || null });
 }
 
 async function msgraphProviderFor(ctx, connectionUserId) {
   const ms = msgraphConfig(ctx.env);
   if (!ms) throw new SyncError('Microsoft 365 is not set up on this server yet.', 503, 'not_configured');
   const { data: row } = await ctx.service.from('sheet_sync_connections')
-    .select('refresh_token_enc').eq('user_id', connectionUserId).eq('provider', 'msgraph').maybeSingle();
+    .select('refresh_token_enc, account_email').eq('user_id', connectionUserId).eq('provider', 'msgraph').maybeSingle();
   if (!row) throw Object.assign(new Error('no connection'), { status: 401 });
   let refreshToken = await decryptToken(row.refresh_token_enc, tokenKey(ctx.env));
   let access = null;
@@ -524,7 +592,7 @@ async function msgraphProviderFor(ctx, connectionUserId) {
     }
     return access.accessToken;
   };
-  return createMsGraphProvider({ getAccessToken, fetch: ctx.fetchImpl, baseUrl: ms.graphBase });
+  return Object.assign(createMsGraphProvider({ getAccessToken, fetch: ctx.fetchImpl, baseUrl: ms.graphBase }), { accountEmail: row.account_email || null });
 }
 
 async function signingFor(ctx, documentId) {
@@ -641,7 +709,7 @@ async function linkSheet(ctx) {
     file_url: made.url,
     title,
     layout,
-    state: { sheetIds: made.sheetIds },
+    state: { sheetIds: made.sheetIds, lastWriteAt: new Date().toISOString() },
     created_by: ctx.user.id,
   }).select(LINK_COLUMNS).single();
   if (error) {

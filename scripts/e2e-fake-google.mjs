@@ -50,7 +50,15 @@ function file(id) {
   return f && !f.trashed ? f : null;
 }
 const sheetById = (f, sheetId) => f.sheets.find((s) => s.sheetId === Number(sheetId));
-const touch = (f) => { f.version += 1; };
+// Who changed the file last, as Drive's lastModifyingUser shows it. API
+// writes are the signed-in account's (the linker); /__fake edits are a person
+// in the sheet, a teammate unless the test names someone (`by`, `at`).
+export const FAKE_SHEET_EDITOR = Object.freeze({ displayName: 'Jamie Field', emailAddress: 'jamie@example.com' });
+const touch = (f, by = { displayName: 'Pat Manager', emailAddress: FAKE_GOOGLE_EMAIL }, at = null) => {
+  f.version += 1;
+  f.modifiedBy = by;
+  f.modifiedTime = at || new Date().toISOString();
+};
 const setCell = (sheet, row, col, value) => {
   while (sheet.rows.length <= row) sheet.rows.push([]);
   const r = sheet.rows[row];
@@ -194,7 +202,7 @@ export async function fakeGoogleHandler(req) {
     } else if (m[2] === '/trash') {
       f.trashed = true;
     }
-    touch(f);
+    touch(f, body?.by || FAKE_SHEET_EDITOR, body?.at || null);
     return json(200, { ok: true });
   }
 
@@ -204,7 +212,13 @@ export async function fakeGoogleHandler(req) {
   if (m && req.method === 'GET') {
     const f = store.files.get(decodeURIComponent(m[1]));
     if (!f) return gErr(404, 'File not found', 'notFound');
-    return json(200, { version: String(f.version), trashed: Boolean(f.trashed) });
+    const by = f.modifiedBy;
+    return json(200, {
+      version: String(f.version),
+      trashed: Boolean(f.trashed),
+      ...(f.modifiedTime ? { modifiedTime: f.modifiedTime } : {}),
+      ...(by ? { lastModifyingUser: { displayName: by.displayName, emailAddress: by.emailAddress, me: by.emailAddress === FAKE_GOOGLE_EMAIL } } : {}),
+    });
   }
 
   // --- Sheets ----------------------------------------------------------------
