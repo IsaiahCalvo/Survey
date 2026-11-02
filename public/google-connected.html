@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Google Sheets | Survey</title>
 <meta name="robots" content="noindex" />
+<meta name="referrer" content="no-referrer" />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <style>
 :root{--paper:#fff;--ink:#141a2b;--soft:#5b6372;--sheet:#f5f6f8;color-scheme:light dark}
@@ -13,25 +14,39 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--
 main{max-width:420px;background:var(--sheet);border-radius:16px;padding:32px;text-align:center}
 h1{font-size:24px;margin:0 0 8px}
 p{margin:0;color:var(--soft)}
+#code{display:none;margin:16px 0 0;font:600 28px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.08em;color:var(--ink)}
+#codeNote{display:none;margin:8px 0 0;font-size:14px}
 </style>
 </head>
 <body>
 <main>
   <h1 id="title">Google is connected</h1>
   <p id="text">You can close this tab and go back to Survey. Your survey picks it up in a few seconds.</p>
+  <p id="code"></p>
+  <p id="codeNote">Using the Survey desktop or phone app? Type this code there.</p>
 </main>
 <script>
 // Google's and Microsoft's consent pages send people here through the
 // sheet-sync function (supabase/functions/_shared/sheetSync/service.js,
 // oauthCallback and msgraphCallback).
+//
+// result=finish: the sign-in waits for the Survey account that pressed Connect
+// to send back the code in this page's #fragment (service.js claimSignIn).
+// The Survey tab that opened this one is on the same site, so it reads the code
+// from localStorage and finishes on its own; the desktop and phone apps ask the
+// person to type it. Someone who was sent another person's consent link keeps
+// the code here, so their account is never linked to the sender's.
 (function () {
   var params = new URLSearchParams(location.search);
   var result = params.get('result') || 'connected';
+  var code = (new URLSearchParams(location.hash.replace(/^#/, ''))).get('code') || '';
+  if (result === 'finish' && !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)) result = 'failed';
   // The same page answers Microsoft's sign-in (?provider=msgraph).
   var ms = params.get('provider') === 'msgraph';
   var who = ms ? 'Microsoft' : 'Google';
   var copy = {
     connected: [who + ' is connected', 'You can close this tab and go back to Survey. Your survey picks it up in a few seconds.'],
+    finish: ['Almost done', 'Go back to Survey. It finishes connecting ' + who + ' in a few seconds.'],
     cancelled: [who + ' was not connected', 'You stopped before saying yes. Close this tab and try again from Survey.'],
     no_access: [who + ' was not connected', ms
       ? 'Survey needs permission to edit Excel files and to stay signed in. Close this tab and try again. If your company blocks new apps, ask your IT team to allow Survey.'
@@ -43,6 +58,17 @@ p{margin:0;color:var(--soft)}
   if (ms) document.title = 'Microsoft 365 | Survey';
   document.getElementById('title').textContent = copy[0];
   document.getElementById('text').textContent = copy[1];
+  if (result === 'finish') {
+    try {
+      localStorage.setItem('survey-sheet-sync-claim', JSON.stringify({ provider: ms ? 'msgraph' : 'google', code: code, at: Date.now() }));
+    } catch (e) { /* the code below still works */ }
+    // Out of the address bar and history once it is saved.
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* stays */ }
+    var codeEl = document.getElementById('code');
+    codeEl.textContent = code;
+    codeEl.style.display = 'block';
+    document.getElementById('codeNote').style.display = 'block';
+  }
   if (result === 'connected') {
     try { if (window.opener) window.opener.postMessage({ type: ms ? 'survey-microsoft-connected' : 'survey-google-connected' }, location.origin); } catch (e) { /* the app polls too */ }
     setTimeout(function () { try { window.close(); } catch (e) { /* stays open */ } }, 1500);

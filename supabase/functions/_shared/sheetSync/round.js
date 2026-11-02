@@ -2,7 +2,7 @@
 // the markers (engine.js), write both sides, return what to save on the link.
 // Everything outside is passed in (provider, marker store), so the edge
 // function, node tests and a future scheduled job run the same code.
-import { planSheetRound, appRecordOf, sameCell } from './engine.js';
+import { planSheetRound, appRecordOf, sameCell, SHEET_EDITOR_UNKNOWN } from './engine.js';
 import { assertProvider } from './providers/contract.js';
 
 const sameId = (a, b) => a != null && b != null && String(a) === String(b);
@@ -27,6 +27,42 @@ export async function appHashOf(layout, markers) {
   }
   rows.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   return sha256Hex(stableStringify(rows));
+}
+
+// Survey writes to the sheet as the linker, so the file's "last changed by"
+// shows the linker after every round that wrote. The linker counts only for a
+// change at least this long after Survey's last write; nearer than that it may
+// still be Survey's own write showing (Drive and OneDrive record changes a
+// little late), and the edit is credited to "Sheet".
+const OWN_WRITE_SETTLE_MS = 60_000;
+
+function initialsOf(text) {
+  const words = String(text || '').split(/[\s._-]+/).filter((w) => /[a-z0-9]/i.test(w));
+  if (!words.length) return '';
+  const first = words[0][0];
+  const last = words.length > 1 ? words[words.length - 1][0] : '';
+  return `${first}${last}`.toUpperCase();
+}
+
+/**
+ * Changed By for what came in from the sheet this round: the initials of the
+ * person who last changed the file, like the app's own Changed By, marked
+ * "(sheet)", e.g. "JD (sheet)". "Sheet" when the provider cannot say, or when
+ * the last change may be Survey's own write.
+ * @param {{name?:string, email?:string, me?:boolean, at?:string|null}|null} editor
+ * @param {{selfEmail?:string|null, lastWriteAt?:string|null}} [opts]
+ */
+export function sheetEditorLabel(editor, { selfEmail = null, lastWriteAt = null } = {}) {
+  if (!editor) return SHEET_EDITOR_UNKNOWN;
+  const email = String(editor.email || '').trim().toLowerCase();
+  const self = editor.me === true || Boolean(email && selfEmail && email === String(selfEmail).trim().toLowerCase());
+  if (self) {
+    const at = Date.parse(editor.at || '');
+    const wrote = Date.parse(lastWriteAt || '');
+    if (!Number.isFinite(at) || !Number.isFinite(wrote) || at <= wrote + OWN_WRITE_SETTLE_MS) return SHEET_EDITOR_UNKNOWN;
+  }
+  const who = initialsOf(editor.name) || initialsOf(email.split('@')[0]);
+  return who ? `${who} (sheet)` : SHEET_EDITOR_UNKNOWN;
 }
 
 const hasWork = (plan) => plan.cellWrites.length || plan.appends.length || plan.deletes.length || plan.headerAdds.length;
@@ -77,11 +113,15 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     }
   }
 
+  const sheetEditor = sheetEditorLabel(provider.lastEditor?.(link.file_id) ?? null, {
+    selfEmail: provider.accountEmail ?? null, lastWriteAt: state.lastWriteAt ?? null,
+  });
   const plan = await planSheetRound({
-    layout, grid, markers, baseline: link.baseline || {}, state, signing, now,
+    layout, grid, markers, baseline: link.baseline || {}, state, signing, now, sheetEditor,
     ...(newMarkerId ? { newMarkerId } : {}),
   });
 
+  let wroteAt = state.lastWriteAt ?? null;
   if (hasWork(plan)) {
     // A sort or row insert in the sheet since the read would move rows under
     // us, and a person typing would have their cell overwritten: check every
@@ -102,6 +142,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
       const sorted = [...plan.deletes].sort((a, b) => (sameId(a.sheetId, b.sheetId) ? b.row - a.row : String(a.sheetId).localeCompare(String(b.sheetId))));
       await provider.deleteRows(link.file_id, sorted);
     }
+    wroteAt = new Date().toISOString();
   }
   if (Object.keys(plan.markerWrites).length) await saveMarkers(plan.markerWrites);
 
@@ -111,7 +152,7 @@ export async function runSheetRound({ link, provider, loadMarkers, saveMarkers, 
     summary: plan.summary,
     patch: {
       baseline: plan.baseline,
-      state: plan.state,
+      state: wroteAt ? { ...plan.state, lastWriteAt: wroteAt } : plan.state,
       // The version read BEFORE the grid: if the sheet changed during the
       // round (including our own writes), the next round reads it again.
       remote_version: version,

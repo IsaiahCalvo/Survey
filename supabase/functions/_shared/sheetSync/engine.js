@@ -27,6 +27,8 @@ import { columnIsEditable } from './layout.js';
 import { isCellError } from './providers/contract.js';
 
 const SCALAR_KEYS = ['changedBy', 'changedDate', 'item', 'entity', 'notes'];
+// Changed By for a sheet edit when nobody can say who made it.
+export const SHEET_EDITOR_UNKNOWN = 'Sheet';
 const NUMBER_KINDS = new Set(['number', 'score', 'count']);
 const MAX_TEXT = 5000;
 // New items one round brings in from the sheet. A pasted block of thousands
@@ -249,6 +251,8 @@ const displayOf = (value) => {
  *        removedInSheet, tombstones, columnsSeen, problems
  * @param {{keyId:string, secret:string, signingDocId:string}} args.signing
  * @param {() => string} [args.newMarkerId]
+ * @param {string} [args.sheetEditor]  Changed By for items changed or added in
+ *        the sheet this round (round.js sheetEditorLabel)
  * @param {Date} [args.now]
  * @returns {Promise<object>} the plan (see bottom of the function)
  */
@@ -260,6 +264,7 @@ export async function planSheetRound({
   state = {},
   signing,
   newMarkerId = () => `surveyMarker-${crypto.randomUUID()}`,
+  sheetEditor = SHEET_EDITOR_UNKNOWN,
   now = new Date(),
 }) {
   const nextBaseline = { ...baseline };
@@ -538,7 +543,7 @@ export async function planSheetRound({
         categoryId: scope.categoryId,
         checklistResponses: {},
         note: {},
-        changedBy: '',
+        changedBy: sheetEditor,
         changedDate: nowIso,
         pageNumber: null,
         bounds: null,
@@ -657,6 +662,7 @@ export async function planSheetRound({
         }
       }
       if (appChanged) {
+        updated.changedBy = sheetEditor;
         updated.changedDate = nowIso;
         plan.markerWrites[markerId] = updated;
       }

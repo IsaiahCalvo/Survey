@@ -52,7 +52,15 @@ function parseAddress(address) {
   return { r1: +pa[2] - 1, c1: colIndex(pa[1]), r2: +pb[2] - 1, c2: colIndex(pb[1]) };
 }
 
-const touch = (f) => { f.version += 1; };
+// Who changed the workbook last (driveItem lastModifiedBy). Graph writes are
+// the signed-in account's; /__fake edits are a teammate unless the test names
+// someone (`by`, `at`).
+export const FAKE_WORKBOOK_EDITOR = Object.freeze({ displayName: 'Jamie Field', email: 'jamie@example.com' });
+const touch = (f, by = null, at = null) => {
+  f.version += 1;
+  f.modifiedBy = by || { displayName: 'Pat Manager', email: FAKE_MS_EMAIL };
+  f.modifiedAt = at || new Date().toISOString();
+};
 function setCell(sheet, row, col, value) {
   while (sheet.cells.length <= row) sheet.cells.push([]);
   sheet.cells[row][col] = value;
@@ -80,6 +88,8 @@ function itemJson(id, f) {
     id, name: f.name, cTag: `"c:{${id}},${f.version}"`, eTag: `"{${id}},${f.version}"`,
     webUrl: `https://contoso.sharepoint.example/Survey/${encodeURIComponent(f.name)}`,
     parentReference: { driveId: DRIVE, driveType: store.driveType },
+    ...(f.modifiedBy ? { lastModifiedBy: { user: { displayName: f.modifiedBy.displayName, email: f.modifiedBy.email } } } : {}),
+    ...(f.modifiedAt ? { lastModifiedDateTime: f.modifiedAt } : {}),
   };
 }
 
@@ -150,7 +160,7 @@ export async function fakeMsgraphHandler(req) {
     } else if (m[2] === '/delete-row') {
       sheet.cells.splice(body.row, 1);
     }
-    touch(f);
+    touch(f, body?.by || FAKE_WORKBOOK_EDITOR, body?.at || null);
     return json(200, { ok: true });
   }
 
@@ -225,6 +235,14 @@ export async function fakeMsgraphHandler(req) {
   }
   if (method === 'PATCH' && a.wholeCols) {
     if (body?.columnHidden) sheet.hidden.push(range[1]);
+    return json(200, {});
+  }
+  if (method === 'PATCH' && body?.numberFormat && !body?.values) {
+    const formats = body.numberFormat;
+    if (formats.length !== a.r2 - a.r1 + 1 || formats.some((line) => line.length !== a.c2 - a.c1 + 1)) {
+      return gErr(400, 'InvalidArgument', 'The number of rows or columns in the input array doesn\'t match the size or dimensions of the range.');
+    }
+    sheet.textColumns = [...new Set([...(sheet.textColumns || []), range[1]])];
     return json(200, {});
   }
   if (method === 'PATCH') {
