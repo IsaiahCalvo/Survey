@@ -3995,3 +3995,24 @@ body.survey-copy-drag,
 body.survey-copy-drag * {
   cursor: copy !important;
 }
+
+/* NO BACKDROP BLUR ON WEAK DEVICES (launch polish 2026-11-02). Every dialog,
+   sheet and modal scrim blurs the page under it (blur(8px) with
+   --overlay-scrim). On a weak GPU that blur is re-drawn every frame the
+   dialog animates or the page behind it repaints, and dialogs felt slow.
+   src/utils/backdropBlur.js marks a weak device <html data-backdrop-blur="off">;
+   the same goes for a system set to reduce transparency. The scrim colour
+   deepens instead (tokens.css). `!important` is what beats the inline
+   backdropFilter most dialogs set in their style props. */
+html[data-backdrop-blur="off"] *,
+html[data-backdrop-blur="off"] *::before,
+html[data-backdrop-blur="off"] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+@media (prefers-reduced-transparency: reduce) {
+  *, *::before, *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}

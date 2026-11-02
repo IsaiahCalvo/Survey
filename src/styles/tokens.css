@@ -454,6 +454,17 @@
   --sheet-divider: 1px solid var(--border);
 }
 
+/* Weak devices (src/utils/backdropBlur.js) and people who ask their system
+   for less transparency get no backdrop blur (styles.css). Without the blur
+   the page under a dialog reads sharper, so the scrim is a little deeper to
+   keep the dialog standing clear of it (launch polish 2026-11-02). */
+html[data-backdrop-blur="off"] {
+  --overlay-scrim: rgba(13, 15, 20, 0.68);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --overlay-scrim: rgba(13, 15, 20, 0.68); }
+}
+
 /* A button with no font of its own takes its parent's (the one interface
    font) instead of the browser's default, which is Arial on Windows and
    Linux (owner 2026-10-02, UI consistency audit). Any rule that names a
