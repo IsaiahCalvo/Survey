@@ -15,7 +15,7 @@ import { FEATURE_FLAGS } from '../src/featureFlags.js';
 import { csvCell, surveyItemsCsv, surveySummaryText, EXPORT_CSV_MAX_ROWS } from '../supabase/functions/_shared/surveyExportText.js';
 
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
-const MIGRATION = read('supabase/migrations/20261102150000_company_pool_invite_email_require_sso.sql');
+const MIGRATION = read('supabase/migrations/20261102170000_company_pool_invite_email_require_sso.sql');
 const INVITE_ID = '11111111-2222-4333-8444-555555555555';
 
 function companyDeps(overrides = {}) {
