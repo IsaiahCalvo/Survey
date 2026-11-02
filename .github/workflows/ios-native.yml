@@ -114,7 +114,7 @@ jobs:
         if: always()
         run: |
           xcrun simctl spawn booted log show --last 5m --predicate 'process == "App"' > "$OUT/app.log" 2>/dev/null || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-native-results
@@ -135,7 +135,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
@@ -179,7 +179,7 @@ jobs:
             adb logcat -d > "$OUT/logcat.txt" || true
             adb shell pidof "$APP_ID" || { grep -E "AndroidRuntime|FATAL|ActivityManager.*(survey|Killing)|lowmemorykiller|chromium.*(crash|Renderer)" "$OUT/logcat.txt" | tail -40; echo "::error::the app is no longer running 45s after launch"; exit 1; }
             echo "App still running after 45s."
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: android-native-results
@@ -199,7 +199,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
@@ -264,7 +264,7 @@ jobs:
         run: |
           free -m
           sudo dmesg | grep -iE "out of memory|killed process|oom" | tail -20 || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: android-signed-in-results
@@ -283,7 +283,7 @@ jobs:
         run: echo "key=ios-walk-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
       - name: Already walked today?
         id: mark
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .ios-walk-mark
           key: ${{ steps.when.outputs.key }}
@@ -317,7 +317,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
@@ -407,7 +407,7 @@ jobs:
       - name: Save logs
         if: always()
         run: xcrun simctl spawn booted log show --last 10m --predicate 'process == "App"' > "$OUT/app.log" 2>/dev/null || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ios-signed-in-results
@@ -417,7 +417,7 @@ jobs:
         if: success() && github.event_name != 'workflow_dispatch'
         run: mkdir -p .ios-walk-mark && date -u > .ios-walk-mark/at
       - if: success() && github.event_name != 'workflow_dispatch'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .ios-walk-mark
           key: ${{ needs.ios-walk-due.outputs.key }}
