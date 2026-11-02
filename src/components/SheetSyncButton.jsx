@@ -10,17 +10,44 @@ import Icon from '../Icons';
 import Spinner from './Spinner';
 import { useTooltip } from './Tooltip';
 import { sheetLayoutInput, sheetSyncCall, sheetTemplateId, syncedAgo } from '../services/sheetSyncClient.js';
+import { isNativeApp } from '../utils/proLock.js';
+import { isElectronApp } from '../utils/layoutMode.js';
 
 const IDLE_ROUND_MS = 15000;   // while open and nothing changed here
 const CHANGE_ROUND_MS = 2500;  // after a change in the app
 const CONNECT_POLL_MS = 2000;
 const CONNECT_POLL_FOR_MS = 3 * 60 * 1000;
+// The consent tab's last page (public/google-connected.html) leaves the
+// one-time code here; the server links the sign-in only when this account
+// sends it back, so a consent link someone forwards links nothing.
+const CLAIM_KEY = 'survey-sheet-sync-claim';
+const CLAIM_FRESH_MS = 10 * 60 * 1000;
+// A web tab normally finishes on its own; if it hasn't by then (consent was
+// given in another browser), offer the code box there too.
+const ASK_CODE_AFTER_MS = 15000;
+
+function readClaim(provider, since) {
+  try {
+    const c = JSON.parse(window.localStorage.getItem(CLAIM_KEY) || 'null');
+    if (c && c.provider === provider && typeof c.code === 'string' && c.at >= since - 1000 && Date.now() - c.at < CLAIM_FRESH_MS) return c.code;
+  } catch { /* storage off: the code box still works */ }
+  return null;
+}
+
+function forgetClaim() {
+  try { window.localStorage.removeItem(CLAIM_KEY); } catch { /* nothing to forget */ }
+}
+
+// Desktop and phone apps open the consent page in another browser, which
+// cannot hand them the code: the person types it.
+const typesCode = () => isNativeApp() || isElectronApp();
 
 function useSheetSync({ documentId, template, markers, enabled }) {
   const templateId = sheetTemplateId(template);
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState(null); // 'connect' | 'link' | 'sync' | 'choose' | 'unlink' | 'disconnect'
   const [error, setError] = useState(null);
+  const [codeAsk, setCodeAsk] = useState(null); // provider whose code box shows while connecting
   const inFlight = useRef(false);
   const again = useRef(false); // a change came in while a round was running
   const retryTimer = useRef(null);
@@ -98,17 +125,38 @@ function useSheetSync({ documentId, template, markers, enabled }) {
     const who = provider === 'msgraph' ? 'Microsoft' : 'Google';
     const res = await sheetSyncCall('connect', { appOrigin: window.location.origin, provider });
     if (res?.error || !res?.url) { setError(res?.error || `Could not start ${who} sign-in.`); return; }
+    const started = Date.now();
     window.open(res.url, '_blank', 'noopener');
     // The consent page opens in its own tab (the system browser on phones and
-    // desktop); watch for the sign-in to land.
-    const until = Date.now() + CONNECT_POLL_FOR_MS;
-    while (Date.now() < until) {
-      await new Promise((r) => setTimeout(r, CONNECT_POLL_MS));
-      const s = await sheetSyncCall('status', ids);
-      if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { apply(s); return; }
+    // desktop); watch for its code, then for the sign-in to land.
+    setCodeAsk(typesCode() ? provider : null);
+    try {
+      while (Date.now() < started + CONNECT_POLL_FOR_MS) {
+        await new Promise((r) => setTimeout(r, CONNECT_POLL_MS));
+        const code = readClaim(provider, started);
+        if (code) {
+          forgetClaim();
+          const claimed = await sheetSyncCall('claim', { provider, code });
+          if (claimed?.error) { setError(claimed.error); return; }
+        }
+        const s = await sheetSyncCall('status', ids);
+        if ((provider === 'msgraph' ? s?.microsoft : s?.google)?.connected) { apply(s); return; }
+        if (Date.now() - started > ASK_CODE_AFTER_MS) setCodeAsk(provider);
+      }
+      setError(`${who} sign-in did not finish. Try again.`);
+    } finally {
+      setCodeAsk(null);
     }
-    setError(`${who} sign-in did not finish. Try again.`);
   }), [apply, ids, run]);
+
+  // The code typed from the consent tab (desktop and phone apps). The connect
+  // loop above sees the sign-in land on its next look.
+  const claimCode = useCallback(async (provider, code) => {
+    const res = await sheetSyncCall('claim', { provider, code });
+    if (res?.error) { setError(res.error); return false; }
+    setError(null);
+    return true;
+  }, []);
 
   const link = useCallback((title, provider = 'google') => run('link', async () => apply(await sheetSyncCall('link', { ...ids, ...layoutInput, title, provider }))), [apply, ids, layoutInput, run]);
   const choose = useCallback((markerId, choice) => run('choose', async () => apply(await sheetSyncCall('choose', { ...ids, markerId, choice }))), [apply, ids, run]);
@@ -120,7 +168,7 @@ function useSheetSync({ documentId, template, markers, enabled }) {
   }), [refresh, run]);
   const syncNow = useCallback(() => run('sync', () => sync({ force: true })), [run, sync]);
 
-  return { status, busy, error, live, connect, link, choose, putBackTab, unlink, disconnect, syncNow };
+  return { status, busy, error, live, codeAsk, connect, claimCode, link, choose, putBackTab, unlink, disconnect, syncNow };
 }
 
 const panelStyle = {
@@ -134,6 +182,39 @@ const btn = {
   color: 'var(--text-1)', font: 'inherit', fontSize: 13, cursor: 'pointer',
 };
 const primary = { ...btn, background: 'var(--accent, #2563eb)', borderColor: 'transparent', color: '#fff' };
+
+function ClaimCodeBox({ provider, onClaim }) {
+  const [code, setCode] = useState('');
+  const [sending, setSending] = useState(false);
+  const who = provider === 'msgraph' ? 'Microsoft' : 'Google';
+  const ready = code.replace(/[^A-Za-z0-9]/g, '').length === 8;
+  const send = async (e) => {
+    e.preventDefault();
+    if (!ready || sending) return;
+    setSending(true);
+    try { if (await onClaim(provider, code)) setCode(''); } finally { setSending(false); }
+  };
+  return (
+    <form onSubmit={send} style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 10 }}>
+      <label htmlFor="sheet-sync-claim-code" style={{ display: 'block', margin: '0 0 6px', ...small }}>
+        After you say yes, the browser shows a code. Type it here to finish connecting {who}.
+      </label>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          id="sheet-sync-claim-code"
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 9))}
+          placeholder="ABCD-EFGH"
+          autoComplete="one-time-code"
+          autoCapitalize="characters"
+          spellCheck={false}
+          style={{ ...btn, flex: 1, minWidth: 0, cursor: 'text', fontFamily: 'ui-monospace, Menlo, Consolas, monospace', letterSpacing: '0.06em' }}
+        />
+        <button type="submit" style={primary} disabled={!ready || sending}>{sending ? 'Checking…' : 'Finish'}</button>
+      </div>
+    </form>
+  );
+}
 
 export default function SheetSyncButton({ className, phone = false, documentId, template, markers, documentName }) {
   const tip = useTooltip();
@@ -298,6 +379,7 @@ export default function SheetSyncButton({ className, phone = false, documentId, 
       {open && (
         <div role="dialog" aria-label="Live sheet sync" style={panelStyle}>
           {body}
+          {busy === 'connect' && sync.codeAsk && <ClaimCodeBox provider={sync.codeAsk} onClaim={sync.claimCode} />}
           {error && status && <p role="alert" style={{ margin: '8px 0 0', color: 'var(--danger, #c0392b)', fontSize: 12 }}>{error}</p>}
         </div>
       )}

@@ -201,6 +201,7 @@ const hideRowIdColumn = (sheetId, scope) => {
  */
 export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fetch }) {
   const columnCounts = new Map(); // `${fileId}:${sheetId}` -> columns, from the last read
+  const lastEditors = new Map(); // fileId -> { name, email, me, at }, from the last getVersion
 
   async function call(url, { method = 'GET', body } = {}) {
     const token = await getAccessToken();
@@ -245,9 +246,17 @@ export function googleSheetsProvider({ endpoints, getAccessToken, fetchImpl = fe
     // edit left it unchanged for minutes), so skipping on it hid sheet edits
     // until "Sync now". The call stays to catch a trashed or deleted sheet.
     async getVersion(fileId) {
-      const meta = await call(`${endpoints.drive}/drive/v3/files/${encodeURIComponent(fileId)}?fields=trashed`);
+      const fields = 'trashed,modifiedTime,lastModifyingUser(displayName,emailAddress,me)';
+      const meta = await call(`${endpoints.drive}/drive/v3/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(fields)}`);
       if (meta.trashed) throw providerError('google: the sheet is in the trash', 404);
+      const u = meta.lastModifyingUser;
+      lastEditors.set(fileId, u ? { name: u.displayName || '', email: u.emailAddress || '', me: u.me === true, at: meta.modifiedTime || null } : null);
       return null;
+    },
+
+    // Who last changed the file, as the last getVersion saw it (no extra call).
+    lastEditor(fileId) {
+      return lastEditors.get(fileId) || null;
     },
 
     // `opts.sheetIds`: read only these tabs (the synced ones), so a big tab a

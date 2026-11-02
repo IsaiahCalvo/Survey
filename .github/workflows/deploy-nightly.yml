@@ -57,7 +57,7 @@ jobs:
       - name: When did Vercel's daily cap last refuse a deploy?
         id: cap
         if: github.event_name != 'workflow_dispatch'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .vercel-capped
           key: vercel-capped-none
