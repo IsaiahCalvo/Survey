@@ -48,6 +48,6 @@ export default function MotionPresence({ open, kind = 'dialog', children }) {
     'data-motion-state': 'closing',
     'data-motion-kind': kind,
     'aria-hidden': 'true',
-    inert: '',
+    inert: true,
   });
 }

@@ -30,7 +30,7 @@ import {
 import CrashReportsPanel from './CrashReportsPanel';
 import CompanyPanel from './company/CompanyPanel.jsx';
 import { isFeatureOn } from '../featureFlags.js';
-import { COMPANY_FLAG } from '../services/companyService.js';
+import { COMPANY_FLAG, getMyCompany } from '../services/companyService.js';
 import { downloadMyData } from '../services/accountExport';
 import {
   readAnnotationSnapping,
@@ -51,13 +51,15 @@ import {
   resolveSubscriptionQuery,
   SUBSCRIPTION_LOAD_FAILED_TEXT,
 } from '../utils/accountPlatform';
+import { readUsageStatsOff, writeUsageStatsOff } from '../utils/surveyAnalytics';
+import { IMPROVE_SURVEY_POLICY_VERSION } from '../legal/legalVersions';
 import { useTooltip } from './Tooltip';
 import ButtonGroup from './ButtonGroup.jsx';
 
 const SURVEY_SUPPORT_EMAIL = 'isaiahcalvo123@gmail.com';
 const SUBSCRIPTION_TIMEOUT_MS = 10_000;
 
-export const AccountSettings = ({ isOpen, onClose }) => {
+export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   const tip = useTooltip();
   const {
     user,
@@ -90,6 +92,23 @@ export const AccountSettings = ({ isOpen, onClose }) => {
   const [annotationSnapping, setAnnotationSnapping] = useState(() => readAnnotationSnapping());
   const [textboxAutoFit, setTextboxAutoFit] = useState(() => readTextboxAutoFit());
   const [snapAngle, setSnapAngle] = useState(() => readSnapAngle());
+  // Privacy tab. Usage statistics are per device; the learning opt-in lives on
+  // the account so the server can check it before using anything.
+  const [usageStatsOn, setUsageStatsOn] = useState(() => !readUsageStatsOff());
+  const improveSurveyOptIn = user?.user_metadata?.improve_survey_opt_in?.on === true;
+  const handleImproveSurveyToggle = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await updateProfile({
+        improve_survey_opt_in: { on: !improveSurveyOptIn, at: new Date().toISOString(), policy: IMPROVE_SURVEY_POLICY_VERSION },
+      });
+    } catch (err) {
+      setError(err?.message || 'Could not save that setting. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
   useEffect(() => {
     if (!isOpen) return undefined;
     const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); setSnapAngle(readSnapAngle()); };
@@ -117,6 +136,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
   // Subscription state
   const [subscription, setSubscription] = useState(null);
+  // A paid company seat lifts the plan to Enterprise without touching the
+  // person's own subscription row: { name, paid } or null.
+  const [companySeat, setCompanySeat] = useState(null);
+  const viaCompany = Boolean(companySeat?.paid)
+    && subscription?.tier !== 'enterprise' && subscription?.tier !== 'developer';
   const [loadingSubscription, setLoadingSubscription] = useState(true);
   const [subscriptionError, setSubscriptionError] = useState('');
   const [billingPeriod, setBillingPeriod] = useState('monthly');
@@ -135,7 +159,9 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       // rarely and most visits address a different concern, so restoring a
       // remembered tab produces a "why am I on this weird screen?" moment days
       // later. Landing on General every time is predictable.
-      setActiveTab('general');
+      // The one exception: a link that names a page (a company invite email
+      // opens Company).
+      setActiveTab(initialTab === 'company' && isFeatureOn(COMPANY_FLAG) ? 'company' : 'general');
       setSubscriptionViewTab('manage');
       setIsEditing(false);
       setCurrentPassword('');
@@ -144,7 +170,7 @@ export const AccountSettings = ({ isOpen, onClose }) => {
       setError('');
       setMessage('');
     }
-  }, [isOpen]);
+  }, [isOpen, initialTab]);
 
   // Update form fields when user data changes
   useEffect(() => {
@@ -171,12 +197,16 @@ export const AccountSettings = ({ isOpen, onClose }) => {
           .select('*')
           .eq('user_id', user.id)
           .maybeSingle();
+      // Best effort: no company (or an older database) just means no line.
+      const companyRequest = getMyCompany().catch(() => null);
       const data = await resolveSubscriptionQuery(
         request,
         SUBSCRIPTION_TIMEOUT_MS,
       );
+      const company = await companyRequest;
       if (requestId !== subscriptionRequestRef.current) return;
       setSubscription(data);
+      setCompanySeat(company ? { name: company.name, paid: company.my_seat_paid === true } : null);
     } catch (err) {
       if (requestId !== subscriptionRequestRef.current) return;
       console.error('Could not load subscription:', err);
@@ -193,6 +223,18 @@ export const AccountSettings = ({ isOpen, onClose }) => {
     }
     return () => { subscriptionRequestRef.current += 1; };
   }, [isOpen, user]);
+
+  // Joining or leaving a company happens on the Company page of this same
+  // window, so look again at the company seat whenever Subscription opens
+  // (quietly: the plan cards stay put while it loads).
+  useEffect(() => {
+    if (!isOpen || !user || activeTab !== 'subscription') return undefined;
+    let cancelled = false;
+    getMyCompany().then((company) => {
+      if (!cancelled) setCompanySeat(company ? { name: company.name, paid: company.my_seat_paid === true } : null);
+    }, () => {});
+    return () => { cancelled = true; };
+  }, [isOpen, user, activeTab]);
 
   // Refetch subscription when window regains focus (user returns from Stripe checkout)
   useEffect(() => {
@@ -567,6 +609,15 @@ export const AccountSettings = ({ isOpen, onClose }) => {
             >
               Crash reports
             </button>
+            {/* Learning opt-in and usage statistics. */}
+            <button
+              onClick={() => setActiveTab('privacy')}
+              className={`account-sidebar-btn ${activeTab === 'privacy' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'privacy'}
+            >
+              Privacy
+            </button>
           </div>
 
           {/* Content */}
@@ -844,8 +895,18 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                         card cannot: when a trial converts to a charge, that a
                         payment failed, or (for 7 days after it lands) that a
                         cancellation completed. */}
+                    {viaCompany && (
+                      <div data-testid="company-plan-line" style={{ color: 'var(--text-3)', fontSize: '12px', marginBottom: '14px' }}>
+                        {`Enterprise through ${companySeat.name}. Your company pays for your seat.`}
+                        {subscription?.tier === 'pro' && ['active', 'trialing'].includes(subscription?.status)
+                          ? (isPurchaseUiHidden()
+                            ? ' Your own Pro plan still bills you separately.'
+                            : ' Your own Pro plan still bills you separately; you can cancel it in Manage Billing & Payments.')
+                          : ''}
+                      </div>
+                    )}
                     {(() => {
-                      if (!subscription) return null;
+                      if (!subscription || viaCompany) return null;
                       const fmt = (d) => new Date(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
                       let text = null;
                       if (subscription.tier === 'free' && subscription.status === 'canceled') {
@@ -985,19 +1046,21 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                       <div className="account-subscription-card" data-testid="native-plan-status" style={{ border: '2px solid var(--accent)' }}>
                         <div className="account-subscription-header">
                           <div className="account-plan-name">
-                            {subscription?.tier
-                              ? `${subscription.tier.charAt(0).toUpperCase()}${subscription.tier.slice(1)} plan`
-                              : 'Free plan'}
+                            {viaCompany
+                              ? 'Enterprise plan'
+                              : subscription?.tier
+                                ? `${subscription.tier.charAt(0).toUpperCase()}${subscription.tier.slice(1)} plan`
+                                : 'Free plan'}
                           </div>
                         </div>
-                        <div style={{ color: 'var(--text-3)', fontSize: '13px' }}>Current plan</div>
+                        <div style={{ color: 'var(--text-3)', fontSize: '13px' }}>{viaCompany ? `Through ${companySeat.name}` : 'Current plan'}</div>
                       </div>
                     ) : (
                     <div className="account-subscription-grid">
                       {/* Free Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier === 'free' ? '2px solid var(--accent)' : '1px solid var(--border)',
-                        opacity: subscription?.tier === 'free' ? 1 : 0.7
+                        border: subscription?.tier === 'free' && !viaCompany ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        opacity: subscription?.tier === 'free' && !viaCompany ? 1 : 0.7
                       }}>
                         <div className="account-subscription-header">
                           <div className="account-plan-name">Free</div>
@@ -1016,7 +1079,11 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           </ul>
                         </div>
                         <div className="account-subscription-actions">
-                          {subscription?.tier === 'free' ? (
+                          {subscription?.tier === 'free' && viaCompany ? (
+                            <button className="account-btn-secondary" disabled>
+                              Your own plan
+                            </button>
+                          ) : subscription?.tier === 'free' ? (
                             <button className="account-btn-outline-green" disabled>
                               Current plan
                             </button>
@@ -1090,6 +1157,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                             <button className="account-btn-secondary" disabled>
                               On higher plan
                             </button>
+                          ) : viaCompany ? (
+                            <button className="account-btn-secondary" disabled>
+                              Included with your company
+                            </button>
                           ) : (
                             <StripeCheckout
                               tier="pro"
@@ -1104,8 +1175,8 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
                       {/* Enterprise Plan */}
                       <div className="account-subscription-card" style={{
-                        border: subscription?.tier === 'enterprise' ? '2px solid var(--accent)' : '1px solid var(--border)',
-                        opacity: subscription?.tier === 'enterprise' ? 1 : subscription?.tier === 'developer' ? 0.7 : 1
+                        border: subscription?.tier === 'enterprise' || viaCompany ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        opacity: subscription?.tier === 'enterprise' || viaCompany ? 1 : subscription?.tier === 'developer' ? 0.7 : 1
                       }}>
                         <div className="account-subscription-header">
                           <div className="account-plan-name">Enterprise</div>
@@ -1130,6 +1201,10 @@ export const AccountSettings = ({ isOpen, onClose }) => {
                           {subscription?.tier === 'enterprise' ? (
                             <button className="account-btn-outline-gold" disabled>
                               Current plan
+                            </button>
+                          ) : viaCompany ? (
+                            <button className="account-btn-outline-gold" disabled>
+                              {`Through ${companySeat.name}`}
                             </button>
                           ) : subscription?.tier === 'developer' ? (
                             <button className="account-btn-secondary" disabled>
@@ -1159,6 +1234,59 @@ export const AccountSettings = ({ isOpen, onClose }) => {
 
             {activeTab === 'crash-reports' && <CrashReportsPanel />}
             {companyOn && activeTab === 'company' && <CompanyPanel />}
+
+            {/* Off by default: none of a person's work is used to improve
+                Survey until they turn this on. Stored on the account with the
+                date and policy version, so it follows them and the server can
+                check it. Whatever later reads it must also skip projects the
+                person doesn't own and anything synced from Google or Microsoft
+                (privacy policy, "Helping improve Survey"). */}
+            {activeTab === 'privacy' && (
+              <section className="account-section" aria-labelledby="account-privacy-heading">
+                <h3 id="account-privacy-heading">Helping improve Survey</h3>
+                <div className="account-pref-row">
+                  <div className="account-pref-copy">
+                    <div className="account-pref-title" id="account-pref-improve-survey">Let Survey learn from my survey work</div>
+                    <p className="account-pref-description">
+                      When on, we may use the marks you make and your Smart fill fixes, in projects you own, to make tools like Smart fill better for everyone. We never show your plans or marks to other customers, never sell them, and never use files synced from Google or Microsoft. Only turn it on for work you have the right to share. Off unless you turn it on.{' '}
+                      <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="account-switch"
+                    role="switch"
+                    aria-checked={improveSurveyOptIn}
+                    aria-labelledby="account-pref-improve-survey"
+                    data-pref="improve-survey-opt-in"
+                    disabled={loading || !user}
+                    onClick={handleImproveSurveyToggle}
+                  >
+                    <span className="account-switch-track" aria-hidden="true" />
+                  </button>
+                </div>
+                <h3>Usage statistics</h3>
+                <div className="account-pref-row">
+                  <div className="account-pref-copy">
+                    <div className="account-pref-title" id="account-pref-usage-stats">Send usage statistics</div>
+                    <p className="account-pref-description">
+                      Short notes on which tools get used and what failed, with no names, emails, file names or drawings, help us find bugs. Applies to this device.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="account-switch"
+                    role="switch"
+                    aria-checked={usageStatsOn}
+                    aria-labelledby="account-pref-usage-stats"
+                    data-pref="usage-stats"
+                    onClick={() => { writeUsageStatsOff(usageStatsOn); setUsageStatsOn(!usageStatsOn); }}
+                  >
+                    <span className="account-switch-track" aria-hidden="true" />
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* KAL-397 — Settings -> Annotations (Acrobat's name for it). */}
             {activeTab === 'annotations' && (

@@ -92,6 +92,9 @@ export async function handleSendInviteEmail(input, deps) {
   const user = await deps.getUserFromToken(jwt);
   if (!user) return json(401, { sent: false, error: 'Unauthorized' });
 
+  const companyInviteId = typeof input.body?.companyInviteId === 'string' ? input.body.companyInviteId.trim() : '';
+  if (companyInviteId) return sendCompanyInviteEmail({ companyInviteId, body: input.body }, deps);
+
   const token = typeof input.body?.token === 'string' ? input.body.token.trim() : '';
   if (!token) return json(400, { sent: false, error: 'Missing token' });
 
@@ -283,4 +286,84 @@ export async function handleSendInviteEmail(input, deps) {
     return releaseFailedClaim();
   }
   return completeConfirmedDelivery();
+}
+
+// Where a company invite email sends people. The company workspace is a beta
+// on Survey Nightly, so an invite made there links back there; anything else
+// goes to the live app.
+export const COMPANY_INVITE_ORIGINS = [CANONICAL_ORIGIN, 'https://surveytool-nightly.vercel.app'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function companyInviteUrl(appOrigin) {
+  const origin = COMPANY_INVITE_ORIGINS.includes(appOrigin) ? appOrigin : CANONICAL_ORIGIN;
+  return `${origin}/?settings=company`;
+}
+
+function roleWord(role) {
+  return role === 'admin' ? 'an admin' : 'a member';
+}
+
+/* Company workspace invite (Enterprise, flag 'company-admin'). The invite
+ * row (organization_invites) is matched by email, so the person joins from
+ * Settings, Company once signed in with that address; the email just tells
+ * them it is waiting. claim_company_invite_email checks the caller is an
+ * owner or admin of the company, the invite is open, and it was not emailed
+ * in the last 10 minutes, and hands back the server's own copy of the email,
+ * role and company name, so nothing in the email comes from the browser
+ * except the inviter's display name. send-email binds the recipient to the
+ * open invite again and charges the caller's send budget (Pro or a paid
+ * company seat, like every invite email). */
+async function sendCompanyInviteEmail({ companyInviteId, body }, deps) {
+  if (!UUID_RE.test(companyInviteId)) return json(400, { sent: false, error: 'Missing invite' });
+  if (typeof deps.claimCompanyInviteEmail !== 'function') return json(502, { sent: false, retryable: true, error: 'Send failed' });
+
+  let claim = null;
+  try {
+    claim = await deps.claimCompanyInviteEmail(companyInviteId);
+  } catch (claimError) {
+    console.error('[send-invite-email] company invite claim failed:', claimError);
+    return json(502, { sent: false, retryable: true, error: 'Send failed' });
+  }
+  if (!claim || !claim.email) {
+    // Not theirs, closed, or emailed a moment ago: the same answer for all.
+    return json(409, { sent: false, retryable: false, error: 'Invite not open for email' });
+  }
+
+  const inviterName = copyField(body?.inviterName, 'A Survey user');
+  const companyName = copyField(claim.company_name, 'a company');
+  const release = async () => {
+    try { await deps.releaseCompanyInviteEmail?.(companyInviteId); } catch (e) {
+      console.error('[send-invite-email] company invite release failed:', e);
+    }
+  };
+
+  let result;
+  try {
+    result = await deps.sendFallbackEmail({
+      to: claim.email,
+      subject: `${inviterName} invited you to join ${companyName} on Survey`,
+      template: 'company-invite',
+      data: {
+        companyName,
+        inviterName,
+        role: roleWord(claim.role),
+        inviteUrl: companyInviteUrl(body?.appOrigin),
+        expiresAt: claim.expires_at || null,
+      },
+    });
+  } catch {
+    result = { outcome: 'uncertain' };
+  }
+  const outcome = typeof result === 'object' ? result?.outcome : (result ? 'confirmed' : 'definite-failure');
+  if (outcome === 'confirmed') return json(200, { sent: true });
+  if (outcome === 'uncertain') {
+    // Keep the claim: the provider may have taken it. A resend works after 10 minutes.
+    return json(502, { sent: false, retryable: false, error: 'Delivery outcome unknown' });
+  }
+  if (typeof result === 'object' && result?.status === 403) {
+    await release();
+    return json(403, { sent: false, retryable: false, error: 'Invite emails need Pro or a paid company plan' });
+  }
+  await release();
+  return json(502, { sent: false, retryable: true, error: 'Send failed' });
 }

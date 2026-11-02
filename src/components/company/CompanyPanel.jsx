@@ -20,7 +20,7 @@ import {
   cancelCompanyInvite, createCompany, declineCompanyInvite, deleteCompany, formatBytesShort,
   getMyCompany, inviteToCompany, leaveCompany, listCompanyActivity, listCompanyInvites,
   listCompanyMembers, myCompanyInvites, removeFromCompany, renameCompany, roleLabel, setCompanyRole,
-  companyBillingUrl, companyCheckoutUrl, minSeatsFor, seatsCost,
+  companyBillingUrl, companyCheckoutUrl, minSeatsFor, seatsCost, emailCompanyInvite, inviteEmailSummary,
 } from '../../services/companyService.js';
 import { buildBillingReturnUrl, isPurchaseUiHidden, openDeferredExternalDestination } from '../../utils/accountPlatform';
 import CompanySignOn from './CompanySignOn.jsx';
@@ -131,7 +131,7 @@ function NoCompany({ onChanged, setError, setMessage }) {
 }
 
 /* ---------- People ---------- */
-function People({ company, members, invites, isAdmin, isOwner, me, reload, setError, setMessage }) {
+function People({ company, members, invites, isAdmin, isOwner, me, user, reload, setError, setMessage }) {
   const [askConfirm, confirmDialog] = useConfirmDialog();
   const [emails, setEmails] = useState('');
   const [inviteRole, setInviteRole] = useState('member');
@@ -154,11 +154,16 @@ function People({ company, members, invites, isAdmin, isOwner, me, reload, setEr
     setBusy(true); setError(''); setMessage('');
     const sent = [];
     const failed = [];
+    const inviterName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || '';
+    const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
     for (const email of list) {
-      try { await inviteToCompany(company.id, email, inviteRole); sent.push(email); } catch (err) { failed.push(err.message); }
+      try {
+        const inviteId = await inviteToCompany(company.id, email, inviteRole);
+        sent.push({ address: email, email: inviteId ? await emailCompanyInvite(inviteId, { inviterName, appOrigin }) : 'failed' });
+      } catch (err) { failed.push(err.message); }
     }
     setBusy(false);
-    if (sent.length) { setEmails(''); setMessage(`Invited ${sent.join(', ')}. They join from Settings, Company.`); }
+    if (sent.length) { setEmails(''); setMessage(inviteEmailSummary(sent)); }
     if (failed.length) setError(failed.join(' '));
     await reload();
   };
@@ -256,6 +261,18 @@ function People({ company, members, invites, isAdmin, isOwner, me, reload, setEr
             </div>
             {isAdmin && (
               <div className="company-row-actions">
+                <button type="button" className="account-btn-secondary" disabled={busy}
+                  onClick={async () => {
+                    setBusy(true); setError(''); setMessage('');
+                    const how = await emailCompanyInvite(inv.id, {
+                      inviterName: user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || '',
+                      appOrigin: window.location.origin,
+                    });
+                    setBusy(false);
+                    if (how === 'sent') setMessage(`Emailed ${inv.email} again.`);
+                    else if (how === 'needs-plan') setError('Invite emails need Pro or a paid company plan.');
+                    else setError(`Could not email ${inv.email} right now. An invite can be emailed again 10 minutes after the last one.`);
+                  }}>Email again</button>
                 <button type="button" className="account-btn-secondary" disabled={busy}
                   onClick={() => act(() => cancelCompanyInvite(inv.id), `Invite for ${inv.email} canceled.`)}>Cancel invite</button>
               </div>
@@ -505,7 +522,7 @@ export default function CompanyPanel() {
         <Billing key={`${company.id}:${company.seat_limit}:${company.seats_used}`} company={company} paid={paid} isOwner={isOwner} setError={setError} />
       </section>
 
-      <People company={company} members={members} invites={invites} isAdmin={isAdmin} isOwner={isOwner} me={me}
+      <People company={company} members={members} invites={invites} isAdmin={isAdmin} isOwner={isOwner} me={me} user={user}
         reload={reload} setError={setError} setMessage={setMessage} />
 
       {isAdmin && <CompanySignOn company={company} reload={reload} setError={setError} setMessage={setMessage} />}

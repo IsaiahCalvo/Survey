@@ -285,6 +285,7 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
                 console.log('Inserted data:', insertData);
                 if (tier !== 'free') await restoreAfterUpgrade(supabase, userId);
             }
+            await sendSubscriptionStarted(supabase, session, subscription, tier, userId);
             console.log('=== handleCheckoutCompleted END ===');
             return;
         }
@@ -327,6 +328,7 @@ async function handleCheckoutCompleted(supabase: any, session: Stripe.Checkout.S
     // Both branches above either wrote the paid tier or threw.
     if (tier !== 'free') await restoreAfterUpgrade(supabase, userId);
 
+    await sendSubscriptionStarted(supabase, session, subscription, tier, userId);
     console.log('=== handleCheckoutCompleted END ===');
 }
 
@@ -542,6 +544,41 @@ async function handleSubscriptionDeleted(supabase: any, subscription: Stripe.Sub
 }
 
 // Handle trial ending soon
+const longDate = (unixSeconds: number | null | undefined) => unixSeconds
+    ? new Date(unixSeconds * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : '';
+
+// Confirmation the moment a plan starts, with the trial end, price, billing
+// period, automatic renewal and how to cancel (US ROSCA / state auto-renewal
+// laws; Terms of Service, "Subscriptions, free trial and billing"). A dropped
+// email never fails the webhook.
+async function sendSubscriptionStarted(supabase: any, session: Stripe.Checkout.Session, subscription: Stripe.Subscription, tier: string, userId: string) {
+    if (tier === 'free') return;
+    try {
+        let to = session.customer_details?.email || session.customer_email || '';
+        let firstName = '';
+        const { data: user } = await supabase.auth.admin.getUserById(userId);
+        if (!to) to = user?.user?.email || '';
+        firstName = user?.user?.user_metadata?.first_name || user?.user?.user_metadata?.firstName || '';
+        if (!to) return;
+        const price = subscription.items.data[0]?.price;
+        const amount = typeof price?.unit_amount === 'number'
+            ? `${(price.unit_amount / 100).toFixed(2)} ${String(price.currency || 'usd').toUpperCase()}`
+            : '';
+        const interval = price?.recurring?.interval || 'month';
+        const planName = tier === 'enterprise' ? 'Survey Enterprise' : 'Survey Pro';
+        const trialEndDate = subscription.status === 'trialing' ? longDate(subscription.trial_end) : '';
+        await sendEmail(
+            'subscription-started',
+            to,
+            trialEndDate ? `Your ${planName} trial has started` : `Your ${planName} subscription has started`,
+            { firstName, planName, amount, interval, trialEndDate, portalUrl: 'https://surveytool.app' },
+        );
+    } catch (error) {
+        console.error('Could not send the subscription confirmation:', error);
+    }
+}
+
 async function handleTrialWillEnd(supabase: any, subscription: Stripe.Subscription) {
     const { data: userSubscription } = await supabase
         .from('user_subscriptions')
@@ -603,7 +640,8 @@ async function handlePaymentSucceeded(supabase: any, invoice: Stripe.Invoice) {
             .eq('stripe_subscription_id', subscriptionId)
             .single();
 
-        if (userSubscription && invoice.customer_email && invoice.customer) {
+        // A trial's first invoice is $0: subscription-started already confirmed it.
+        if (userSubscription && invoice.customer_email && invoice.customer && invoice.amount_paid > 0) {
             // EMAIL LINK RULE (owner-reported 2026-08-20): never put a billing-portal
         // session URL in an email. Portal sessions are single-use and expire within
         // minutes, so every emailed link died before it was clicked ('For security

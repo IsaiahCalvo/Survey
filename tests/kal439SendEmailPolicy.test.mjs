@@ -136,6 +136,7 @@ test('free-tier invite gate: invite templates blocked, management templates unaf
   const gated = deps({
     findInviteRowForRecipient: async () => FRESH_INVITE,
     findActiveCollaboratorForRecipient: async () => ({ id: 'row' }),
+    findCompanyInviteForRecipient: async () => ({ id: 'company-invite' }),
     claimSendBudget: async (_t, _r, isInvite) => (isInvite ? 'invite_blocked_free_tier' : 'allowed'),
   });
   for (const template of INVITE_TEMPLATES) {

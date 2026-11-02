@@ -25,6 +25,7 @@ async function signUp(page, { email, firstName, lastName }) {
   await dialog.getByLabel('Last name').fill(lastName);
   await dialog.getByLabel('Password', { exact: true }).fill(PASSWORD);
   await dialog.getByLabel('Confirm password').fill(PASSWORD);
+  await dialog.getByRole('checkbox', { name: /I agree to the Terms of Service/ }).check();
   await dialog.getByRole('button', { name: 'Create account', exact: true }).click();
   await expect(dialog).toBeHidden();
 }

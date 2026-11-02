@@ -9752,7 +9752,7 @@ const SVGAnnotationLayerBody = memo(({
       // inert: no press or release ever lands on a lifted copy (its marks
       // set their own pointer-events, which pointerEvents: none can't undo).
       <div
-        inert=""
+        inert
         data-selection-gesture={isSelectionGestureActive(interactionState, surveyMarkerPreviewBounds?.dragMode) ? 'true' : undefined}
         style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}
       >

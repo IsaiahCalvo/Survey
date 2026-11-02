@@ -452,6 +452,13 @@
   --sheet-icon: 16px;
   --sheet-icon-sm: 14px;
   --sheet-divider: 1px solid var(--border);
+
+  /* Microsoft's own logo colours (sign-in button). Fixed by Microsoft's
+     brand rules, not part of our palette; the same in light and dark. */
+  --brand-microsoft-red: #F25022;
+  --brand-microsoft-green: #7FBA00;
+  --brand-microsoft-blue: #00A4EF;
+  --brand-microsoft-yellow: #FFB900;
 }
 
 /* Weak devices (src/utils/backdropBlur.js) and people who ask their system

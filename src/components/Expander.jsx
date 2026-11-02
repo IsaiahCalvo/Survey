@@ -31,7 +31,7 @@ export default function Expander({ open, className = '', children }) {
 
   if (!mounted) return null;
   return (
-    <div className={`expander${className ? ` ${className}` : ''}`} data-open={shown ? '' : undefined} inert={shown ? undefined : ''}>
+    <div className={`expander${className ? ` ${className}` : ''}`} data-open={shown ? '' : undefined} inert={!shown}>
       <div className="expander__inner">{children}</div>
     </div>
   );

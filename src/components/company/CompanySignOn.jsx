@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { copyTextToClipboard } from '../../utils/clipboard';
 import {
   addCompanyDomain, checkCompanyDomain, connectCompanySignIn, disconnectCompanySignIn, itSetupText,
-  listCompanyDomains, removeCompanyDomain, signOnLinks,
+  listCompanyDomains, removeCompanyDomain, setCompanyRequireSso, signOnLinks,
 } from '../../services/companyService.js';
 import { txtRecordName, txtRecordValue } from '../../../supabase/functions/_shared/companySso.js';
 
@@ -164,6 +164,30 @@ export default function CompanySignOn({ company, reload, setError, setMessage })
             </button>
           </div>
         </form>
+      )}
+
+      {company.sso_connected && proved.length > 0 && (
+        <>
+          <h4 className="company-step">4. Make it the only way in (optional)</h4>
+          <label className="company-check">
+            <input type="checkbox" checked={Boolean(company.require_sso)} disabled={busy}
+              onChange={(e) => {
+                const on = e.target.checked;
+                act(async () => {
+                  await setCompanyRequireSso(company.id, on);
+                  setMessage(on
+                    ? `Everyone at ${proved.map((d) => d.domain).join(', ')} now signs in with company sign-in. Password, Google and Microsoft sign-ins stop working for them.`
+                    : 'People can sign in any way again.');
+                  await reload();
+                });
+              }} />
+            Everyone with an email at {proved.map((d) => d.domain).join(', ')} must use company sign-in
+          </label>
+          <p className="company-row-sub">
+            Their password, Google and Microsoft sign-ins stop working, so leaving the company login also locks them out of Survey.
+            To turn this on, first sign in yourself with &quot;Sign in with company SSO&quot; so Survey knows it works.
+          </p>
+        </>
       )}
     </section>
   );
