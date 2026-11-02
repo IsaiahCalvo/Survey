@@ -234,7 +234,7 @@ max_frequency = "5s"
 
 # This hook runs before a token is issued. Survey's refuses a token only for an
 # email at a domain whose company requires company sign-in (SSO), when the
-# session did not come from SSO (migration 20261102150000). On locally so every
+# session did not come from SSO (migration 20261102170000). On locally so every
 # signed-in e2e sign-in goes through it. Production switches it on in its auth
 # settings separately.
 [auth.hook.custom_access_token]
