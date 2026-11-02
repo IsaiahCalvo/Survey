@@ -112,3 +112,5 @@ removing the old PDF engine (the new one is already the default), automatic M365
 write-back, a hosted-website surface, slimming the large app bundle, and the
 cosmetic / UI-polish queue. These are post-launch. (Phone/tablet apps are NOT
 deferred — they're in scope per step 6.)
+
+<!-- CI docs-only check test; this PR is closed without merging. -->
