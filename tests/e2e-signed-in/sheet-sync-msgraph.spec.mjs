@@ -79,7 +79,9 @@ async function userId(account) {
 }
 
 // Microsoft's consent page says yes at once (the fake), then sends the browser
-// to sheet-sync's Microsoft callback, which sends it on to the app's page.
+// to sheet-sync's Microsoft callback, which parks the sign-in and sends the
+// browser on to the app's page with a one-time code; the account that pressed
+// Connect finishes it with that code.
 async function connectMicrosoft(token) {
   const started = await call(token, 'connect', { appOrigin: E2E_BASE_URL, ...MS });
   expect(started.status, JSON.stringify(started.body)).toBe(200);
@@ -89,7 +91,13 @@ async function connectMicrosoft(token) {
   expect(new URL(consent.headers.get('location')).pathname).toMatch(/\/sheet-sync\/oauth\/msgraph\/callback$/);
   const callback = await fetch(consent.headers.get('location'), { redirect: 'manual' });
   expect(callback.status).toBe(302);
-  expect(callback.headers.get('location')).toBe(`${E2E_BASE_URL}/google-connected.html?provider=msgraph&result=connected`);
+  const landed = callback.headers.get('location');
+  expect(landed.split('#')[0]).toBe(`${E2E_BASE_URL}/google-connected.html?provider=msgraph&result=finish`);
+  expect(new URL(landed).hash).toMatch(/^#code=[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+  expect((await call(token, 'status', {})).body.microsoft?.connected, 'nothing linked before the claim').toBe(false);
+  const claimed = await call(token, 'claim', { ...MS, code: new URL(landed).hash.replace('#code=', '') });
+  expect(claimed.status, JSON.stringify(claimed.body)).toBe(200);
+  expect(claimed.body).toMatchObject({ ok: true, provider: 'msgraph', email: 'pm@contoso.example' });
 }
 
 async function openSurvey(page) {

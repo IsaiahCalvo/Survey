@@ -35,6 +35,11 @@
 //     column hidden.
 // - addTabs(fileId, scopes) -> { [scopeId]: sheetId }
 //     Tabs for categories added to the template after the file was made.
+// - lastEditor(fileId) -> { name, email, me, at } | null   (optional)
+//     Who last changed the file and when, as the last getVersion read it (no
+//     call of its own). `me` is true when it was the signed-in account (the
+//     linker, which is also who Survey writes as). Sheet edits are credited to
+//     this person in Changed By (round.js sheetEditorLabel).
 
 export const PROVIDER_METHODS = Object.freeze([
   'getVersion', 'readGrid', 'readCells', 'writeCells', 'appendRows', 'deleteRows', 'createFile', 'addTabs',
