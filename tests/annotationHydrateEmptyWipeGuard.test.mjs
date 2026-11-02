@@ -231,7 +231,9 @@ test('useAnnotationDoc: the empty-store hydrate branch SEEDS from local state in
   assert.match(HOOK_SOURCE, /if \(count > 0 \|\| hasMetaCallouts\) \{/);
   assert.match(
     HOOK_SOURCE,
-    /if \(count > 0 \|\| projectedByPage !== storeByPage\) \{[\s\S]*?setAnnotationsByPage\(\(previousByPage\) => \([\s\S]*?preserveTransientPagePresentationState\(previousByPage, projectedByPage\)/,
+    // 2026-11-02: edits made while the store opened ride on top
+    // (withOpeningMarks; tests/openingEditsMerge.test.mjs).
+    /if \(count > 0 \|\| projectedByPage !== storeByPage\) \{[\s\S]*?setAnnotationsByPage\(\(previousByPage\) => \([\s\S]*?preserveTransientPagePresentationState\(\s*previousByPage,\s*withOpeningMarks\(projectedByPage, previousByPage\),/,
   );
   // …and the empty-store else-branch pushes LOCAL state INTO the doc (the
   // inverse of a wipe) rather than calling setAnnotationsByPage at all.

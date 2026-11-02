@@ -123,7 +123,7 @@ test('release handoff keeps the final SVG mounted and swaps presentations in one
   );
   assert.match(
     VIEWER_SOURCE,
-    /visibility:\s*\(annotationHydrationGated \|\| useCanvasPresentation\)\s*\?\s*'hidden'\s*:\s*undefined/,
+    /visibility:\s*useCanvasPresentation\s*\?\s*'hidden'\s*:\s*undefined/,
   );
   assert.match(
     VIEWER_SOURCE,

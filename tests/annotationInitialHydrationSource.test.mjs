@@ -5,10 +5,7 @@ import assert from 'node:assert/strict';
 // PDFViewer was extracted from App.jsx into src/PDFViewer.jsx; read both so the
 // source guards find the code wherever it now lives.
 const APP_SOURCE = readFileSync(new URL('../src/viewerShared.js', import.meta.url), 'utf8')
-  + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8')
-  // the hydration page-cover render helper was lifted into its own module
-  // (2026-05-29); scan it too so the guard still finds the relocated markup.
-  + '\n' + readFileSync(new URL('../src/components/annotationHydrationCover.jsx', import.meta.url), 'utf8');
+  + '\n' + readFileSync(new URL('../src/PDFViewer.jsx', import.meta.url), 'utf8');
 const ANNOTATION_DOC_HOOK_SOURCE = readFileSync(new URL('../src/hooks/useAnnotationDoc.js', import.meta.url), 'utf8');
 
 test('cloud-backed survey highlights hydrate from the durable Y.Doc, not the legacy table', () => {
@@ -157,23 +154,6 @@ test('no project sidecar restore remains to replace a cloud document\'s spaces',
   assert.doesNotMatch(APP_SOURCE, /loadSurveyDataFromSupabase|shouldRestoreLegacyAnnotationBlob/);
 });
 
-test('first visible annotation wrappers expose and honor the hydration gate', () => {
-  assert.match(APP_SOURCE, /const firstVisibleAnnotationPage = useMemo/);
-  assert.match(APP_SOURCE, /data-annotation-hydration-gated=\{annotationHydrationGated \? 'true' : 'false'\}/);
-  assert.match(
-    APP_SOURCE,
-    /visibility:\s*\(annotationHydrationGated \|\| useCanvasPresentation\)\s*\?\s*'hidden'\s*:\s*undefined/,
-  );
-});
-
-test('first visible page is visually covered while annotation hydration is gated', () => {
-  assert.match(APP_SOURCE, /function renderAnnotationHydrationPageCover\(/);
-  assert.match(APP_SOURCE, /data-annotation-hydration-cover="true"/);
-  assert.match(APP_SOURCE, /data-annotation-visual-cover-active=\{annotationVisualCoverActive \? 'true' : 'false'\}/);
-  assert.match(APP_SOURCE, /renderAnnotationHydrationPageCover\(pageNumber, 'pdfjs', annotationVisualCoverActive\)/);
-  // The 'pdfjs-continuous' and 'pdfjs-single' covers lived in the legacy (!usePdfjsRenderer)
-  // render arm, which was removed once usePdfjsRenderer became permanently true. The live
-  // pdf.js path renders pages through PdfjsViewerContainer with the single 'pdfjs' cover above.
-  assert.match(APP_SOURCE, /visualCoverActive: !ready/);
-  assert.match(APP_SOURCE, /\[AnnotationHydrationGate\]\[visual-cover\]/);
-});
+// The first-page hydration gate and its see-through input cover were removed
+// 2026-11-02 (owner: every tool works the moment the PDF shows). Their
+// replacement is pinned in tests/openingEditsMerge.test.mjs.
