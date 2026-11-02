@@ -31,6 +31,14 @@ echo "screen ${W}x${H}, webview height ${VH}, top offset ${TOP}"
 X=$((W * 3 / 4)); Y=$((H * 13 / 20))
 ( pick Polygon ) || { pick Shapes; pick Polygon; }
 N0=$(ev "document.querySelectorAll('g[data-annotation-index]').length")
+# The corners sit near marks the earlier walks drew (the revision cloud's
+# right edge, a polyline), and a press that lands on a mark is lost (CI
+# 2026-11-02: 3 points, polygon box null). Move the polygon until no corner
+# press is within 24 px of anything but the bare annotation layer; keep the
+# old spot if none qualifies.
+C=$(ev "(() => { const d = window.devicePixelRatio || 1; const free = (x, y) => { for (const [dx, dy] of [[0, 0], [24, 0], [-24, 0], [0, 24], [0, -24], [17, 17], [-17, 17], [17, -17], [-17, -17]]) { const el = document.elementFromPoint((x + dx) / d, (y - $TOP + dy) / d); if (!el || !el.matches('svg[data-svg-annotation-layer]')) return false; } return true; }; for (const cy of [$((Y - 100)), $((Y - 60)), $((Y - 20)), $((Y + 20))]) for (const cx of [$X, $((X + 40)), $((X - 40))]) { if ([[-150, -70], [150, -70], [150, 70], [-150, 70]].every(([a, b]) => free(cx + a, cy + b))) return cx + ' ' + cy; } return 'none'; })()")
+echo "polygon centre: $C"
+if [ "$C" != none ]; then set -- $C; X=$1; Y=$(($2 + 100)); fi
 # Four corners, then a tap back on the first one closes the polygon.
 for p in "$((X - 150)) $((Y - 170))" "$((X + 150)) $((Y - 170))" "$((X + 150)) $((Y - 30))" "$((X - 150)) $((Y - 30))" "$((X - 150)) $((Y - 170))"; do
   # A short press, not `tap`, and gaps longer than a double-tap so each
@@ -51,8 +59,9 @@ before=$(count)
 echo "points right after drawing: $before"
 if [ "$before" != "4" ]; then
 pick "Rectangle Select"
-bb=$(ev "(() => { const g = document.querySelector('g[data-annotation-index=\"$N0\"]'); const r = g.getBoundingClientRect(); const d = window.devicePixelRatio || 1; return [r.left, r.top, r.right, r.bottom].map(v => Math.round(v * d)).join(' '); })()")
+bb=$(ev "(() => { const g = document.querySelector('g[data-annotation-index=\"$N0\"]'); if (!g) return 'none'; const r = g.getBoundingClientRect(); const d = window.devicePixelRatio || 1; return [r.left, r.top, r.right, r.bottom].map(v => Math.round(v * d)).join(' '); })()")
 echo "polygon box: $bb"
+[ "$bb" != none ] || { echo "::error::the new polygon (annotation $N0) is not on the page"; adb exec-out screencap -p > "$OUT/15-delete-point.png"; exit 1; }
 set -- $bb; L=$1; T=$(($2 + TOP)); R=$3; B=$(($4 + TOP))
 adb shell input stylus swipe $((L - 60)) $((T - 60)) $((R + 60)) $((B + 60)) 600
 sleep 1.5
