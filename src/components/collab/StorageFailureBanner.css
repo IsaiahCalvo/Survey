@@ -222,6 +222,9 @@
   transition: opacity 220ms var(--ease-out);
 }
 
+/* The phone's one-line form (PHONE_BRIEF_BY_CODE): hidden off the phone. */
+.storage-banner__brief { display: none; }
+
 /* The banner's action had no hover and no press (UX 2026-09-22). */
 .storage-banner__action:hover { background: var(--hover); }
 .storage-banner__action:active { background: var(--pressed); }
@@ -253,5 +256,47 @@
   }
   .storage-banner > .storage-banner__actions {
     flex-basis: calc(100% - 24px);
+  }
+}
+
+/* PHONE, one-line notice (launch polish 2026-11-02). The iPhone walk showed
+   "Live sync is offline" as a ~250px box over the top of the page. For the
+   codes in PHONE_BRIEF_BY_CODE the phone keeps one row: the triangle, the
+   heading over a short line, Retry, and the cross. */
+@media screen and (max-width: 599px), screen and (max-device-width: 599px), screen and (max-device-height: 599px) {
+  .storage-banner--brief {
+    flex-wrap: nowrap;
+    align-items: center;
+    padding: 8px 8px 8px 12px;
+  }
+  .storage-banner--brief .storage-banner__icon { margin-top: 0; margin-right: 0; }
+  .storage-banner--brief .storage-banner__text { flex: 1 1 auto; gap: 0; }
+  .storage-banner--brief .storage-banner__heading { font-size: 13px; line-height: 1.3; }
+  .storage-banner--brief .storage-banner__body,
+  .storage-banner--brief .storage-banner__secondary { display: none; }
+  .storage-banner--brief .storage-banner__brief {
+    display: block;
+    font-size: 12px;
+    line-height: 1.3;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .storage-banner--brief > .storage-banner__action {
+    order: 3;
+    margin-left: 0;
+    align-self: center;
+    /* a 44px-tall tap pad without growing the row */
+    padding: 12px 8px;
+    margin-top: -12px;
+    margin-bottom: -12px;
+  }
+  .storage-banner--brief .storage-banner__dismiss {
+    order: 4;
+    margin-left: 0;
+    align-self: center;
+    width: 36px;
+    height: 36px;
   }
 }

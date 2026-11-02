@@ -176,10 +176,15 @@ const HANDLED = {
   escape: () => /resolveEscape\(/.test(SRC.viewer) && /'switch-to-pan'/.test(SRC.viewer)
     && /e\.key === 'Escape'\) \{[\s\S]{0,200}cancelPolyDraft\(\)/.test(SRC.svg),
   // Chunk 6 (Drawboard canvas audit): PageUp / PageDown glide one view.
-  pageup: () => /event\.key !== 'PageDown' && event\.key !== 'PageUp'/.test(SRC.container)
+  pageup: () => /const isPageKey = event\.key === 'PageDown' \|\| event\.key === 'PageUp'/.test(SRC.container)
     && /event\.key === 'PageDown' \? screen : -screen/.test(SRC.container),
-  pagedown: () => /event\.key !== 'PageDown' && event\.key !== 'PageUp'/.test(SRC.container)
+  pagedown: () => /const isPageKey = event\.key === 'PageDown' \|\| event\.key === 'PageUp'/.test(SRC.container)
     && /event\.key === 'PageDown' \? screen : -screen/.test(SRC.container),
+  // Launch polish 2026-11-02: Home / End glide to the first / last page.
+  home: () => /const isEndKey = event\.key === 'Home' \|\| event\.key === 'End'/.test(SRC.container)
+    && /goToPage\(event\.key === 'Home' \? 1 : last, \{ smooth: true \}\)/.test(SRC.container),
+  end: () => /const isEndKey = event\.key === 'Home' \|\| event\.key === 'End'/.test(SRC.container)
+    && /goToPage\(event\.key === 'Home' \? 1 : last, \{ smooth: true \}\)/.test(SRC.container),
   // Hold Space: pan without putting the tool down. While a box or lasso is
   // being dragged, Space switches Window / Crossing instead.
   space: () => /addEventListener\('keydown', activateSpacePan, true\)/.test(SRC.container)
@@ -228,9 +233,9 @@ test('every row on the sheet has a key handler behind it', () => {
 
 test('the rows the old sheet got wrong stay off it', () => {
   const chords = documentedChords();
-  // No handler anywhere for these (page keys only ran in a "single page"
-  // scroll mode the viewer forces back to continuous; tabs have no keys).
-  for (const dead of ['home', 'end', 'mod+w', 'mod+tab', 'mod+shift+tab', 'b']) {
+  // No handler anywhere for these (tabs have no keys). Home / End came back
+  // as real first / last page jumps on 2026-11-02 (HANDLED above).
+  for (const dead of ['mod+w', 'mod+tab', 'mod+shift+tab', 'b']) {
     assert.ok(!chords.includes(dead), `${dead} is listed but does nothing`);
   }
   assert.match(SRC.viewer, /\/\/ Enforce continuous mode\n\s*useEffect\(\(\) => \{\n\s*if \(scrollMode !== 'continuous'\)/);
