@@ -84,7 +84,6 @@
     "gifenc": "^1.0.3",
     "jszip": "3.10.2",
     "mammoth": "1.13.0",
-    "martinez-polygon-clipping": "^0.7.4",
     "omggif": "1.0.10",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.2.108",

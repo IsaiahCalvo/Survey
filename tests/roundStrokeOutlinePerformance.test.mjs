@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { diff } from 'martinez-polygon-clipping';
+import { diff } from '../src/vendor/martinezPolygonClipping.js';
 import { erasePageAnnotations } from '../src/utils/pageSpaceEraser.js';
 import {
   commandsToPolygonSet,
