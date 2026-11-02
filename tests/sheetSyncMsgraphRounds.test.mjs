@@ -322,3 +322,33 @@ test('a workbook on a personal OneDrive pauses instead of half-syncing', async (
   await fakeApi('/drive-type', { driveType: 'personal' });
   await assert.rejects(ctx.round({ provider: msProvider() }), (e) => e.status === 409 && e.code === 'personal-onedrive');
 });
+
+test('a new workbook keeps text columns as text, like Google', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  const sheet = await ctx.sheet();
+  // Row ID, Changed By, Item, Locked? (a pick-one answer), Entity, Notes: text.
+  // Changed Date and the Height number answer: left alone.
+  assert.deepEqual([...sheet.textColumns].sort(), ['A2:A1000', 'B2:B1000', 'D2:D1000', 'E2:E1000', 'G2:G1000', 'H2:H1000']);
+});
+
+test('rounds read only the synced sheets, not a big sheet the PM added', async () => {
+  const ctx = await setup({ markers: { d1: door('d1', 'D-101') } });
+  await ctx.round(); await ctx.round();
+  const calls = [];
+  const counting = async (input, init) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    calls.push(`${req.method} ${new URL(req.url).pathname}`);
+    return fakeMsgraphFetch(req);
+  };
+  // The PM adds a sheet of their own (the fake makes it like Excel would).
+  const f = globalThis.__fakeMsgraph.files.get(ctx.fileId);
+  f.sheets.push({ id: 'pm-notes', name: 'PM notes', position: 99, visibility: 'Visible', cells: [['Big'], ['table']], hidden: [], validations: {} });
+  ctx.provider = createMsGraphProvider({ getAccessToken: async () => 'fake-ms-access-1', fetch: counting, baseUrl: BASE });
+  const r = await ctx.rowOf('d1');
+  await ctx.edit([{ row: r, col: await ctx.col('Notes'), value: 'Read me' }]);
+  const round = await ctx.round();
+  assert.equal(round.summary.toApp, 1);
+  const reads = calls.filter((c) => c.includes('/usedRange'));
+  assert.equal(reads.length, Object.keys(ctx.link.state.sheetIds).length, 'one read per synced sheet');
+  assert.ok(!reads.some((c) => c.includes('pm-notes')), 'the PM\'s own sheet is never read');
+});

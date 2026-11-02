@@ -81,15 +81,27 @@ async function userId(account) {
 }
 
 // Google's consent page says yes at once (the fake), then sends the browser
-// to sheet-sync's callback, which sends it on to the app's "connected" page.
-async function connectGoogle(token) {
+// to sheet-sync's callback, which parks the sign-in and sends the browser on
+// to the app's page with a one-time code in the #fragment.
+async function consentGoogle(token) {
   const started = await call(token, 'connect', { appOrigin: E2E_BASE_URL });
   expect(started.status, JSON.stringify(started.body)).toBe(200);
   const consent = await fetch(started.body.url, { redirect: 'manual' });
   expect(consent.status).toBe(302);
   const callback = await fetch(consent.headers.get('location'), { redirect: 'manual' });
   expect(callback.status).toBe(302);
-  expect(callback.headers.get('location')).toBe(`${E2E_BASE_URL}/google-connected.html?result=connected`);
+  const landed = callback.headers.get('location');
+  expect(landed.split('#')[0]).toBe(`${E2E_BASE_URL}/google-connected.html?result=finish`);
+  expect(new URL(landed).hash).toMatch(/^#code=[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+  return new URL(landed).hash.replace('#code=', '');
+}
+
+// ...and the account that pressed Connect finishes it with that code.
+async function connectGoogle(token) {
+  const code = await consentGoogle(token);
+  const claimed = await call(token, 'claim', { code });
+  expect(claimed.status, JSON.stringify(claimed.body)).toBe(200);
+  expect(claimed.body).toMatchObject({ ok: true, provider: 'google' });
 }
 
 // Open the seeded survey with its template in the Survey panel (as survey-report.spec.mjs).
@@ -328,6 +340,11 @@ test('with nobody\'s survey open, the background sweep brings sheet edits in, as
     expect(swept.due).toBeGreaterThanOrEqual(1);
     expect(swept.results, JSON.stringify(swept)).toContain('synced');
     expect((await markersOf(owner, doc.id)).d1.note?.text).toBe('Typed with nobody in Survey');
+    // Credited to the person who typed it in the sheet, not to the linker the
+    // round ran as.
+    expect((await markersOf(owner, doc.id)).d1.changedBy).toBe('JF (sheet)');
+    const credited = (await fake(`/files/${fileId}`)).sheets.find((s) => s.title === TAB);
+    expect(credited.rows[1][credited.rows[0].indexOf('Changed By')]).toBe('JF (sheet)');
     const row = await must('link row', admin.from('sheet_sync_links').select('last_change_at, last_round_at').eq('document_id', doc.id).single());
     expect(row.last_change_at, 'a busy sheet is checked every minute').toBeTruthy();
 
@@ -341,6 +358,132 @@ test('with nobody\'s survey open, the background sweep brings sheet edits in, as
   } finally {
     await admin.from('sheet_sync_links').delete().eq('document_id', doc.id);
     await admin.from('documents').delete().eq('id', doc.id);
+  }
+});
+
+test('a Google consent link sent to someone else links nothing', async () => {
+  const admin = adminClient();
+  const ownerId = await userId(E2E_ACCOUNTS.owner);
+  const owner = await apiClientFor(E2E_ACCOUNTS.owner);
+  const [ownerToken, editorToken] = await Promise.all(['owner', 'editor'].map((key) => signInToken(E2E_ACCOUNTS[key])));
+  await admin.from('sheet_sync_connections').delete().eq('user_id', ownerId);
+  try {
+    // The owner starts Connect Google and sends the consent link to someone,
+    // who says yes. The sign-in waits; nothing is linked yet.
+    const code = await consentGoogle(ownerToken);
+    expect((await call(ownerToken, 'status', {})).body.google).toEqual({ connected: false, email: null });
+    // Nobody can read the waiting sign-ins, not even the person they belong to.
+    expect((await owner.from('sheet_sync_pending_connections').select('*')).data ?? []).toEqual([]);
+
+    // Another account holding the code still cannot take it.
+    const stolen = await call(editorToken, 'claim', { code });
+    expect(stolen.status).toBe(410);
+    expect(stolen.body.code).toBe('claim_expired');
+
+    // The account that started it, without the code from that browser, gets
+    // five tries and then has to start again.
+    for (let i = 0; i < 5; i += 1) {
+      const wrong = await call(ownerToken, 'claim', { code: 'ZZZZ-ZZZZ' });
+      expect(wrong.status).toBe(400);
+      expect(wrong.body.code).toBe('claim_wrong');
+    }
+    const locked = await call(ownerToken, 'claim', { code });
+    expect(locked.status).toBe(429);
+    expect((await call(ownerToken, 'claim', { code })).status).toBe(410);
+    expect((await call(ownerToken, 'status', {})).body.google.connected).toBe(false);
+
+    // Started again and finished with the browser's code: linked. Lower case
+    // and without the dash, as a person might type it, works too.
+    const again = await consentGoogle(ownerToken);
+    const typed = await call(ownerToken, 'claim', { code: again.replace('-', '').toLowerCase() });
+    expect(typed.status, JSON.stringify(typed.body)).toBe(200);
+    expect((await call(ownerToken, 'status', {})).body.google).toEqual({ connected: true, email: E2E_ACCOUNTS.owner.email });
+    // A code works once.
+    expect((await call(ownerToken, 'claim', { code: again })).status).toBe(410);
+    const left = await admin.from('sheet_sync_pending_connections').select('user_id').eq('user_id', ownerId);
+    expect(left.data ?? []).toEqual([]);
+  } finally {
+    await admin.from('sheet_sync_pending_connections').delete().eq('user_id', ownerId);
+    await admin.from('sheet_sync_connections').delete().eq('user_id', ownerId);
+  }
+});
+
+test('the Survey panel finishes a Google sign-in from the consent tab', async ({ page, context }) => {
+  test.setTimeout(150_000);
+  if (process.env.E2E_FUNCTIONS_URL) {
+    await page.route('**/functions/v1/sheet-sync', (route) => route.fallback({ url: functionUrl('sheet-sync') }));
+  }
+  const ownerId = await userId(E2E_ACCOUNTS.owner);
+  await adminClient().from('sheet_sync_connections').delete().eq('user_id', ownerId);
+  try {
+    await page.addInitScript(() => window.localStorage.setItem('survey.flag.sheet-team-sync', '1'));
+    await signIn(page, E2E_ACCOUNTS.owner);
+    await openSurvey(page);
+    const button = page.locator('[data-sheet-sync-state]').filter({ visible: true }).first();
+    await expect(button).toBeVisible({ timeout: 60_000 });
+    await expect(button).toHaveAttribute('data-sheet-sync-state', 'none');
+    await button.click();
+    const panel = page.getByRole('dialog', { name: 'Live sheet sync' });
+    // The fake consent page says yes at once; the tab lands on the app's page,
+    // which hands the code to this tab through the site's storage.
+    const consentTab = context.waitForEvent('page');
+    await panel.getByRole('button', { name: 'Connect Google' }).click();
+    const tab = await consentTab;
+    await tab.waitForURL(/google-connected\.html\?result=finish/, { timeout: 30_000 });
+    await expect(tab.getByRole('heading', { name: 'Almost done' })).toBeVisible();
+    await expect(tab.locator('#code')).toHaveText(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(tab.url(), 'the code leaves the address bar').not.toContain('#code=');
+    await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 30_000 });
+    await expect(panel.getByText(`Signed in as ${E2E_ACCOUNTS.owner.email}`)).toBeVisible();
+    // The web tab never needed the code box.
+    await expect(panel.getByLabel(/the browser shows a code/)).toHaveCount(0);
+  } finally {
+    await adminClient().from('sheet_sync_connections').delete().eq('user_id', ownerId);
+  }
+});
+
+test('consent given in another browser: the panel takes the typed code', async ({ page, context }) => {
+  test.setTimeout(150_000);
+  if (process.env.E2E_FUNCTIONS_URL) {
+    await page.route('**/functions/v1/sheet-sync', (route) => route.fallback({ url: functionUrl('sheet-sync') }));
+  }
+  const ownerId = await userId(E2E_ACCOUNTS.owner);
+  await adminClient().from('sheet_sync_connections').delete().eq('user_id', ownerId);
+  try {
+    await page.addInitScript(() => window.localStorage.setItem('survey.flag.sheet-team-sync', '1'));
+    await signIn(page, E2E_ACCOUNTS.owner);
+    await openSurvey(page);
+    const button = page.locator('[data-sheet-sync-state]').filter({ visible: true }).first();
+    await expect(button).toBeVisible({ timeout: 60_000 });
+    await button.click();
+    const panel = page.getByRole('dialog', { name: 'Live sheet sync' });
+    // The consent page opens somewhere this tab cannot hear from (the way the
+    // desktop and phone apps open the system browser): keep its address and
+    // say yes from outside.
+    let consentUrl = null;
+    await context.route('**/o/oauth2/v2/auth**', (route) => { consentUrl = route.request().url(); return route.abort(); });
+    const consentTab = context.waitForEvent('page');
+    await panel.getByRole('button', { name: 'Connect Google' }).click();
+    const tab = await consentTab;
+    await expect.poll(() => consentUrl, { timeout: 15_000 }).toBeTruthy();
+    await tab.close();
+    const consent = await fetch(consentUrl, { redirect: 'manual' });
+    const callback = await fetch(consent.headers.get('location'), { redirect: 'manual' });
+    const code = new URL(callback.headers.get('location')).hash.replace('#code=', '');
+    expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+
+    const box = panel.getByLabel(/the browser shows a code/);
+    await expect(box).toBeVisible({ timeout: 30_000 });
+    await box.fill('ZZZZ-ZZZZ');
+    await panel.getByRole('button', { name: 'Finish' }).click();
+    await expect(panel.getByRole('alert')).toHaveText(/does not match/);
+    await box.fill(code.toLowerCase());
+    await panel.getByRole('button', { name: 'Finish' }).click();
+    await expect(button).toHaveAttribute('data-sheet-sync-state', 'connected', { timeout: 30_000 });
+    await expect(panel.getByText(`Signed in as ${E2E_ACCOUNTS.owner.email}`)).toBeVisible();
+  } finally {
+    await adminClient().from('sheet_sync_connections').delete().eq('user_id', ownerId);
+    await adminClient().from('sheet_sync_pending_connections').delete().eq('user_id', ownerId);
   }
 });
 

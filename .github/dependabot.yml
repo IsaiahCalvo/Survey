@@ -26,6 +26,14 @@ version: 2
 # numbers. dependabot-auto-merge.yml reads the per-package "Updates `x` from A
 # to B" lines out of the body instead, and still refuses the whole group if any
 # single package in it crosses a major version.
+#
+# 2026-11-02 — MAJOR VERSIONS NO LONGER RIDE IN THE GROUP. November's grouped
+# npm bump (#1323) carried 28 updates, and seven of them were majors (React 19,
+# MSAL 5, Electron 45, chokidar 6, martinez 0.9, pixelmatch 8, wait-on 9).
+# One major broke one test, which held all 21 routine bumps hostage, and the
+# auto-merge refused the whole batch anyway. Now the group takes only minor and
+# patch bumps, so it can auto-merge on its own, and each major comes as its own
+# pull request that a person (or Claude) can test and land one at a time.
 updates:
   - package-ecosystem: npm
     directory: /
@@ -37,6 +45,9 @@ updates:
         applies-to: version-updates
         patterns:
           - '*'
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /

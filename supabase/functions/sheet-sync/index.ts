@@ -4,7 +4,7 @@
 // database and a fake Google); this file only hands it Deno's pieces.
 //
 // GET  .../sheet-sync/oauth/callback   Google's consent page comes back here.
-// POST .../sheet-sync { action, ... }  status | connect | disconnect | link |
+// POST .../sheet-sync { action, ... }  status | connect | claim | disconnect | link |
 //                                      sync | choose | unlink (Bearer JWT).
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
 import * as Y from 'npm:yjs@13.6.30';

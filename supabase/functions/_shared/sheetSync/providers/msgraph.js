@@ -81,6 +81,10 @@ function plainCell(value, text, format, type) {
 
 // Drop-downs cover this many rows, like the desktop export.
 const DROP_DOWN_ROWS = 1000;
+const TEXT_KINDS = new Set(['choice', 'text', 'many']);
+// The same columns Google's provider formats as text (google.js textFormatRequests).
+const isTextColumn = (col) => ['rowId', 'changedBy', 'item', 'entity', 'notes'].includes(col?.key)
+  || (String(col?.key || '').startsWith('answer:') && TEXT_KINDS.has(col.item?.kind || 'choice'));
 
 /**
  * The comma list for a column's drop-down, or null. Excel caps a typed list at 255
@@ -151,6 +155,7 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   if (typeof getAccessToken !== 'function') throw new Error('msgraph: getAccessToken is required');
   const sessions = new Map(); // fileId → { id, at }
   const checkedBusiness = new Set();
+  const lastEditors = new Map(); // fileId -> { name, email, me, at }, from the last item read
 
   async function call(method, path, { body, headers = {}, where = path, raw = false } = {}) {
     const token = await getAccessToken();
@@ -171,7 +176,10 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
   }
 
   async function item(fileId) {
-    return call('GET', `${fileId}?$select=id,name,cTag,eTag,webUrl,parentReference`, { where: 'item' });
+    const meta = await call('GET', `${fileId}?$select=id,name,cTag,eTag,webUrl,parentReference,lastModifiedBy,lastModifiedDateTime`, { where: 'item' });
+    const u = meta?.lastModifiedBy?.user;
+    lastEditors.set(fileId, u ? { name: u.displayName || '', email: u.email || '', me: false, at: meta.lastModifiedDateTime || null } : null);
+    return meta;
   }
 
   async function assertBusiness(fileId) {
@@ -238,6 +246,16 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
     if (columns[0]?.key === 'rowId') {
       await workbook(fileId, 'PATCH', `${path}/range(address='A:A')`, { body: { columnHidden: true }, where: 'hideRowId' });
     }
+    // Text columns as text ("@"), the way Google's are: a PM typing 00123
+    // or 1/2 in a note keeps what they typed instead of a number or a date.
+    const textRows = Array.from({ length: DROP_DOWN_ROWS - 1 }, () => ['@']);
+    for (const [index, column] of columns.entries()) {
+      if (!isTextColumn(column)) continue;
+      const letter = columnLetter(index);
+      await workbook(fileId, 'PATCH', `${path}/range(address='${letter}2:${letter}${DROP_DOWN_ROWS}')`, {
+        body: { numberFormat: textRows }, where: 'textFormat',
+      }).catch(() => {});
+    }
     for (const [index, column] of columns.entries()) {
       const choices = dropDownChoices(column, layout);
       if (!choices) continue;
@@ -262,10 +280,20 @@ export function createMsGraphProvider({ getAccessToken, fetch: fetchImpl = globa
       return meta?.cTag ?? null;
     },
 
-    async readGrid(fileId) {
+    // Who last changed the workbook, as the last getVersion saw it.
+    lastEditor(fileId) {
+      return lastEditors.get(fileId) || null;
+    },
+
+    // `opts.sheetIds`: read only these sheets (the synced ones), so a big
+    // sheet a PM added for their own notes costs no calls. A synced sheet
+    // someone deleted is simply missing, which the round reports.
+    async readGrid(fileId, { sheetIds = null } = {}) {
       const list = await workbook(fileId, 'GET', 'worksheets?$select=id,name,position,visibility', { where: 'worksheets' });
+      const only = sheetIds?.length ? new Set(sheetIds.map(String)) : null;
       const sheets = [];
       for (const sheet of [...(list?.value || [])].sort((a, b) => a.position - b.position)) {
+        if (only && !only.has(String(sheet.id))) continue;
         const used = await usedRange(fileId, sheet.id, 'rowIndex,columnIndex,rowCount,columnCount,values,text,numberFormat,valueTypes');
         const rows = [];
         const rowOffset = used?.rowIndex || 0;
