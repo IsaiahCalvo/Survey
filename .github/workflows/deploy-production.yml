@@ -87,7 +87,7 @@ jobs:
           deno-version: v2.7.5
 
       - name: Setup Supabase CLI
-        uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+        uses: supabase/setup-cli@d239d1052f6f024a8d746d7e5aeddead63b9cb53 # v3.1.0
         with:
           version: 2.111.0
 
@@ -222,7 +222,7 @@ jobs:
         run: mkdir -p .vercel-capped && date -u +%FT%TZ > .vercel-capped/at && echo "key=vercel-capped-$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
         id: capmark
       - if: failure() && steps.vercel.outputs.capped == 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .vercel-capped
           key: ${{ steps.capmark.outputs.key }}
@@ -283,7 +283,7 @@ jobs:
 
       - name: When did Vercel's daily cap last refuse a deploy?
         id: cap
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .vercel-capped
           key: vercel-capped-none
