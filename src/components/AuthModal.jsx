@@ -18,7 +18,9 @@ import TurnstileWidget, { TURNSTILE_ENABLED } from './TurnstileWidget';
 import Icon from '../Icons';
 import './AuthModal.css';
 import { isGoogleSignInHidden } from '../utils/accountPlatform';
-import { companyDomainFrom, companySignInErrorMessage } from '../utils/companySignIn.js';
+import { isFeatureOn } from '../featureFlags.js';
+import { companyDomainFrom, companySignInErrorMessage, clearCompanySignInRequired, companySignInRequiredMessage, peekCompanySignInRequired } from '../utils/companySignIn.js';
+import { ssoRequiredForEmail } from '../services/companyService.js';
 import { termsAcceptance } from '../legal/legalVersions';
 
 export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' }) => {
@@ -46,7 +48,11 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const modalRef = useRef(null);
 
-  const { signIn, signUp, signInWithGoogle, signInWithSSO, resetPassword, resendConfirmation } = useAuth();
+  const { signIn, signUp, signInWithGoogle, signInWithMicrosoft, signInWithSSO, resetPassword, resendConfirmation } = useAuth();
+  // Beta (Nightly). Hidden in the iPhone and Android apps like Google, so
+  // the stores never ask for Sign in with Apple.
+  const [microsoftOn] = useState(() => isFeatureOn('microsoft-sign-in'));
+  const showMicrosoft = microsoftOn && !isGoogleSignInHidden() && typeof signInWithMicrosoft === 'function';
 
   const handleClose = useCallback(() => {
     // If onDismiss is available (for non-authenticated users), use it
@@ -91,6 +97,18 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
     return () => clearInterval(intervalId);
   }, [resendLastSentAt]);
 
+  // Signed out because the company requires its own sign-in: open on
+  // company sign-in and say why.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const domain = peekCompanySignInRequired();
+    if (domain === null) return undefined;
+    setMode('sso');
+    if (domain) setSsoDomain(domain);
+    setError(companySignInRequiredMessage(domain));
+    return () => clearCompanySignInRequired();
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
@@ -109,6 +127,15 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
 
     try {
       if (mode === 'login') {
+        // A company that requires SSO for this email's domain: steer to
+        // company sign-in instead of trying the password.
+        if (await ssoRequiredForEmail(email)) {
+          const domain = companyDomainFrom(email);
+          setMode('sso');
+          setSsoDomain(domain);
+          setError(companySignInRequiredMessage(domain));
+          return;
+        }
         await signIn(email, password, captchaToken);
         onClose();
       } else if (mode === 'signup') {
@@ -193,6 +220,21 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
     } catch (err) {
       console.error('Google sign-in error:', err);
       setError(err.message || 'Failed to sign in with Google. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  const handleMicrosoftSignIn = async () => {
+    setError('');
+    setMessage('');
+    setLoading(true);
+    try {
+      const result = await signInWithMicrosoft();
+      // The browser leaves for Microsoft; keep the spinner until it does.
+      if (!result?.url) setLoading(false);
+    } catch (err) {
+      console.error('Microsoft sign-in error:', err);
+      setError(authErrorMessage(err) || 'Could not sign in with Microsoft. Please try again.');
       setLoading(false);
     }
   };
@@ -459,9 +501,21 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
               </button>
             )}
 
+            {showMicrosoft && (
+              <button
+                type="button"
+                className="auth-google-btn"
+                onClick={handleMicrosoftSignIn}
+                disabled={loading}
+              >
+                <Icon name="microsoft" size={18} />
+                Continue with Microsoft
+              </button>
+            )}
+
             {!isGoogleSignInHidden() && (
               <p className="auth-terms-note">
-                By continuing with Google you agree to the{' '}
+                {`By continuing with ${showMicrosoft ? 'Google or Microsoft' : 'Google'} you agree to the `}
                 <a href="/terms.html" target="_blank" rel="noreferrer">Terms of Service</a>
                 {' '}and{' '}
                 <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>.
