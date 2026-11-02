@@ -33,3 +33,33 @@ export function companySignInErrorMessage(error, domain) {
   }
   return text || 'Company sign-in failed. Please try again.';
 }
+
+// When a company requires its own sign-in and someone signs in another way,
+// the app signs them out and reloads; this note (one tab, this session)
+// lets the sign-in form open on company sign-in and say why.
+const REQUIRED_NOTE_KEY = 'survey.companySignInRequired';
+
+export function markCompanySignInRequired(email) {
+  try { sessionStorage.setItem(REQUIRED_NOTE_KEY, companyDomainFrom(email) || '1'); } catch { /* storage off */ }
+}
+
+// Reads the note without clearing it: the domain, '' when there was a note
+// without one, or null when there was none. The sign-out reloads the page
+// right after the form first opens, so the note has to outlive that first
+// look; the form clears it once it closes, and a signed-in check clears it.
+export function peekCompanySignInRequired() {
+  try {
+    const value = sessionStorage.getItem(REQUIRED_NOTE_KEY);
+    if (value == null) return null;
+    return value === '1' ? '' : value;
+  } catch {
+    return null;
+  }
+}
+
+export function clearCompanySignInRequired() {
+  try { sessionStorage.removeItem(REQUIRED_NOTE_KEY); } catch { /* storage off */ }
+}
+
+export const companySignInRequiredMessage = (domain) =>
+  `${domain ? `${domain} asks` : 'Your company asks'} you to sign in with your work account. Continue with company SSO below.`;

@@ -39,6 +39,8 @@ Deno.serve(async (req) => {
     token: s.string({ max: 512, optional: true }),
     displayName: s.string({ max: 2000, optional: true }),
     inviterName: s.string({ max: 2000, optional: true }),
+    companyInviteId: s.string({ max: 64, optional: true }),
+    appOrigin: s.string({ max: 200, optional: true }),
   }, raw ?? {});
   const body: unknown = parsed.ok ? parsed.value : null;
 
@@ -97,6 +99,14 @@ Deno.serve(async (req) => {
       return data;
     },
     newClaimId: () => crypto.randomUUID(),
+    claimCompanyInviteEmail: async (inviteId: string) => {
+      const { data, error } = await callerClient.rpc('claim_company_invite_email', { p_invite: inviteId });
+      if (error) throw new Error(error.message);
+      return data ?? null;
+    },
+    releaseCompanyInviteEmail: async (inviteId: string) => {
+      await callerClient.rpc('release_company_invite_email', { p_invite: inviteId });
+    },
     claimInviteDelivery: async (kind: string, token: string, claimId: string) => {
       const { data, error } = await callerClient.rpc('claim_invite_email_delivery', {
         p_kind: kind,
@@ -176,7 +186,7 @@ Deno.serve(async (req) => {
           return { outcome: 'confirmed' as const };
         }
         if (res.status >= 400 && res.status < 500) {
-          return { outcome: 'definite-failure' as const };
+          return { outcome: 'definite-failure' as const, status: res.status };
         }
         // A 2xx with an invalid body or any 5xx can be a lost confirmation
         // after the inner send-email function/provider accepted the message.

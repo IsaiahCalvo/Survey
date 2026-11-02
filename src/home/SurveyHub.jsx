@@ -94,6 +94,20 @@ export default function SurveyHub({
   });
   const [share, setShare] = useState(null); // null | { kind, name, item, manage }
   const [settingsOpen, setSettingsOpen] = useState(false); // settings page shown over the hub
+  const [settingsTab, setSettingsTab] = useState(null);
+
+  // A company invite email links to ?settings=company: open Settings on the
+  // Company page once signed in, then drop the query so a reload stays put.
+  useEffect(() => {
+    if (!user || typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const want = url.searchParams.get('settings');
+    if (want !== 'company') return;
+    url.searchParams.delete('settings');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    setSettingsTab('company');
+    setSettingsOpen(true);
+  }, [user]);
 
   useEffect(() => {
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable — non-fatal */ }
@@ -295,7 +309,8 @@ export default function SurveyHub({
         <Suspense fallback={null}>
           <AccountSettings
             isOpen
-            onClose={() => setSettingsOpen(false)}
+            initialTab={settingsTab}
+            onClose={() => { setSettingsOpen(false); setSettingsTab(null); }}
           />
         </Suspense>
       )}

@@ -42,6 +42,8 @@ const ACTION_WORDS = Object.freeze({
   'sso.connected': 'connected company sign-in',
   'sso.updated': 'updated company sign-in',
   'sso.disconnected': 'disconnected company sign-in',
+  'sso.required': 'required company sign-in',
+  'sso.optional': 'stopped requiring company sign-in',
   'billing.updated': 'updated the company plan',
 });
 const BILLING_WORDS = Object.freeze({ active: 'paid', trialing: 'on trial', past_due: 'payment due', canceled: 'ended', none: 'not paid' });
@@ -155,6 +157,42 @@ export async function inviteToCompany(orgId, email, role) {
   return unwrap(await supabase.rpc('invite_organization_member', { p_org: orgId, p_email: email, p_role: role }), `Could not invite ${email}.`);
 }
 
+// Email the person that an invite is waiting. The server builds the email
+// from the invite row; a failure here never undoes the invite, which still
+// shows in their Settings, Company. Answers 'sent', 'needs-plan' or 'failed'.
+export async function emailCompanyInvite(inviteId, { inviterName = '', appOrigin = '' } = {}) {
+  try {
+    const { data, error } = await supabase.functions.invoke('send-invite-email', {
+      body: { companyInviteId: inviteId, inviterName, appOrigin },
+    });
+    if (!error && data?.sent) return 'sent';
+    let status = error?.context?.status || 0;
+    if (!status && error) {
+      try { status = (await error.context?.json?.())?.status || 0; } catch { /* not JSON */ }
+    }
+    return status === 403 ? 'needs-plan' : 'failed';
+  } catch {
+    return 'failed';
+  }
+}
+
+// Words for the invite banner, from how each email went.
+export function inviteEmailSummary(results) {
+  const by = (kind) => results.filter((r) => r.email === kind).map((r) => r.address);
+  const sent = by('sent');
+  const plan = by('needs-plan');
+  const failed = by('failed');
+  const parts = [];
+  if (sent.length) parts.push(`Invited ${sent.join(', ')}. We emailed them; they join from Settings, Company.`);
+  const quiet = [...plan, ...failed];
+  if (quiet.length) {
+    parts.push(`Invited ${quiet.join(', ')}. ${plan.length && !failed.length
+      ? 'Invite emails need Pro or a paid company plan, so tell them to sign in and open Settings, Company.'
+      : 'The email did not go out, so tell them to sign in and open Settings, Company.'}`);
+  }
+  return parts.join(' ');
+}
+
 export async function cancelCompanyInvite(inviteId) {
   return unwrap(await supabase.rpc('revoke_organization_invite', { p_invite: inviteId }), 'Could not cancel the invite.');
 }
@@ -204,6 +242,22 @@ export async function listCompanyActivity(orgId, { beforeId = null, actorId = nu
 }
 
 /* ---------- Company sign-in setup (domains + SAML) ---------- */
+
+// Must this email sign in through its company's SSO? Any error answers no,
+// so a hiccup never blocks a password sign-in (the server hook still holds).
+export async function ssoRequiredForEmail(email) {
+  if (!String(email || '').includes('@')) return false;
+  try {
+    const { data, error } = await supabase.rpc('sso_required_for_email', { p_email: String(email).trim() });
+    return !error && data === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function setCompanyRequireSso(orgId, on) {
+  return unwrap(await supabase.rpc('set_organization_require_sso', { p_org: orgId, p_on: Boolean(on) }), 'Could not change company sign-in.');
+}
 
 export async function listCompanyDomains(orgId) {
   return unwrap(await supabase

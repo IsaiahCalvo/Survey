@@ -116,6 +116,20 @@ function policyDeps(authHeader: string) {
             }
             return pickBindingInviteRow(candidates);
         },
+        findCompanyInviteForRecipient: async (email: string) => {
+            // organization_invites stores the address lowercased and trimmed.
+            const { data, error } = await caller
+                .from('organization_invites')
+                .select('id')
+                .eq('email', email)
+                .is('accepted_at', null)
+                .is('revoked_at', null)
+                .is('declined_at', null)
+                .gt('expires_at', new Date().toISOString())
+                .limit(1);
+            if (error || !data || !data.length) return null;
+            return data[0];
+        },
         findActiveCollaboratorForRecipient: async (email: string) => {
             const pattern = escapeLikePattern(email);
             for (const table of COLLABORATOR_TABLES) {
@@ -369,6 +383,18 @@ Deno.serve(async (req) => {
                     emailFileCard(data.documentName || 'Shared document', `Updated by ${data.changedByName || 'an owner'}`) +
                     emailButton('Open document', data.documentUrl || data.appUrl || '#') +
                     `<p style="${MUTED}" class="em-mut">Permission changes apply immediately. If you have unsaved changes, they may be blocked from saving after a downgrade.</p>`,
+            }),
+
+            'company-invite': (data: any) => renderEmailLayout({
+                heading: `Join ${data.companyName || 'your company'} on Survey`,
+                preheader: `${data.inviterName || 'A Survey user'} invited you to the company workspace.`,
+                footerReason: `You're receiving this because ${data.inviterName || 'a Survey user'} invited this address to a company on Survey.`,
+                bodyHtml:
+                    `<p style="${P}"><strong>${data.inviterName || 'A Survey user'}</strong> invited you to join <strong>${data.companyName || 'their company'}</strong> on Survey as ${data.role || 'a member'}.</p>` +
+                    `<p style="${P}">Sign in (or create an account) with this email address, then choose <strong>Join</strong> in Settings, Company.</p>` +
+                    emailButton('Open Survey', data.inviteUrl || data.appUrl || '#') +
+                    (data.expiresAt ? `<p style="${MUTED}" class="em-mut">The invite ends on ${String(data.expiresAt).slice(0, 10)}.</p>` : '') +
+                    `<p style="${FINE}" class="em-mut">If you weren't expecting this invite, you can safely ignore this email.</p>`,
             }),
 
             'access-removed': (data: any) => renderEmailLayout({
