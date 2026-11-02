@@ -428,3 +428,35 @@
     margin-top: 0;
   }
 }
+
+/* Sign-up's "I agree" tick and the matching note under Google and company
+   sign-in: the Terms and Privacy Policy are agreed to on this card. */
+.auth-terms {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 2px 0 12px;
+  font-size: var(--font-size-md);
+  line-height: 1.45;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.auth-terms input {
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.auth-terms a,
+.auth-terms-note a {
+  color: var(--link);
+}
+
+.auth-terms-note {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: var(--font-size-md);
+  line-height: 1.45;
+  color: var(--text-3);
+}

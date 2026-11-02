@@ -142,7 +142,7 @@ import { resolveNextSurveyEntity } from './survey/nextSurveyEntity.js';
 import TemplateOverwriteWarningModal from './components/TemplateOverwriteWarningModal';
 import TextLayer from './TextLayer';
 import UnsupportedAnnotationsNotice from './components/UnsupportedAnnotationsNotice';
-import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL, isFirstVisibleAnnotationPagePreviewing, resolveFirstVisibleAnnotationPage, shouldGateFirstVisibleAnnotationPage } from './utils/annotationHydrationGate';
+import { ANNOTATION_HYDRATION_PENDING, ANNOTATION_HYDRATION_READY_LOCAL } from './utils/annotationHydrationGate';
 import { BORDERS, COLORS, SHADOWS, TYPOGRAPHY } from './theme';
 import { ConfirmDeleteModal } from './components/collab/ConfirmDeleteModal.jsx';
 import { DEFAULT_ZOOM_PREFERENCES, ZOOM_MODES, clampScale, createZoomController, loadZoomPreferences, saveZoomPreferences } from './utils/zoomController';
@@ -559,7 +559,6 @@ import { composeColorForPatch, materializeFabricAnnotationFromYMap } from './uti
 import { renderPathToSvgAttrs } from './utils/svgPathAttrs';
 import { extractPdfOutlineBookmarks, generateBookmarkId } from './utils/bookmarkOutline';
 import { createCounterDragPreview, removeCounterDragPreview, updateCounterDragPreview } from './utils/counterGeometry';
-import { renderAnnotationHydrationPageCover } from './components/annotationHydrationCover';
 import { getExportErrorMessage, isFileLocked } from './utils/exportHelpers';
 import { buildTrackpadInteractionDebugSummaryText, summarizeOverlayLagSamples } from './utils/overlayDebug';
 import { EXCEL_AUTOMATIC_WRITEBACK_ENABLED, isSilentWritebackBlocked } from './utils/excelWritebackGate';
@@ -22683,92 +22682,11 @@ export function PDFViewer({ pdfFile, pdfFilePath, documentName = null, onBack, o
     return false;
   }, [rendererMode]);
 
-  const firstVisibleAnnotationPage = useMemo(() => resolveFirstVisibleAnnotationPage({
-    visiblePages: visiblePagesSet,
-    currentPage: pageNum,
-    fallbackPage: 1,
-  }), [visiblePagesSet, pageNum]);
-
-  const isCloudBackedAnnotationDocument = !!pdfFile?.id && cloudSyncEnabled;
-  // UX (w29, open speed): while the store is still opening, marks from this
-  // device's saved copy / the cloud snapshot are already painted; the first
-  // page then shows the PDF and those marks (no grey loading cover) and only
-  // blocks input until hydration is ready.
-  const firstVisibleAnnotationPagePreviewing = isFirstVisibleAnnotationPagePreviewing({
-    documentId: pdfFile?.id || null,
-    isCloudBackedDocument: isCloudBackedAnnotationDocument,
-    normalHydration: normalAnnotationHydration,
-    surveyHydration: surveyAnnotationHydration,
-  });
-  const isFirstVisibleAnnotationPageGated = useCallback((pageNumber) => {
-    const gated = shouldGateFirstVisibleAnnotationPage({
-      documentId: pdfFile?.id || null,
-      isCloudBackedDocument: isCloudBackedAnnotationDocument,
-      pageNumber,
-      firstVisiblePageNumber: firstVisibleAnnotationPage,
-      normalHydration: normalAnnotationHydration,
-      surveyHydration: surveyAnnotationHydration,
-    });
-    if (typeof window !== 'undefined') {
-      window.__annotationFirstPaintGate = gated ? {
-        documentId: pdfFile?.id || null,
-        pdfId,
-        pageNumber,
-        firstVisiblePageNumber: firstVisibleAnnotationPage,
-        normalHydration: normalAnnotationHydration,
-        surveyHydration: surveyAnnotationHydration,
-      } : null;
-    }
-    return gated;
-  }, [
-    firstVisibleAnnotationPage,
-    isCloudBackedAnnotationDocument,
-    normalAnnotationHydration,
-    pdfFile?.id,
-    pdfId,
-    surveyAnnotationHydration,
-  ]);
-
-  useEffect(() => {
-    if (!isCloudBackedAnnotationDocument) return;
-    const ready = !shouldGateFirstVisibleAnnotationPage({
-      documentId: pdfFile?.id || null,
-      isCloudBackedDocument: true,
-      pageNumber: firstVisibleAnnotationPage,
-      firstVisiblePageNumber: firstVisibleAnnotationPage,
-      normalHydration: normalAnnotationHydration,
-      surveyHydration: surveyAnnotationHydration,
-    });
-    appDebug('[AnnotationHydrationGate][first-page] ' + JSON.stringify({
-      documentId: pdfFile?.id || null,
-      pdfId,
-      pageNumber: firstVisibleAnnotationPage,
-      ready,
-      visualCoverActive: !ready,
-      // w29: marks painted early; the grey cover is off, input still held.
-      previewing: firstVisibleAnnotationPagePreviewing,
-      normal: normalAnnotationHydration,
-      survey: surveyAnnotationHydration,
-    }));
-    appDebug('[AnnotationHydrationGate][visual-cover] ' + JSON.stringify({
-      documentId: pdfFile?.id || null,
-      pdfId,
-      pageNumber: firstVisibleAnnotationPage,
-      active: !ready && !firstVisibleAnnotationPagePreviewing,
-      inputBlocked: !ready,
-      reason: ready
-        ? 'hydration-ready'
-        : (firstVisibleAnnotationPagePreviewing ? 'annotation-hydration-preview' : 'annotation-hydration-gated'),
-    }));
-  }, [
-    firstVisibleAnnotationPagePreviewing,
-    firstVisibleAnnotationPage,
-    isCloudBackedAnnotationDocument,
-    normalAnnotationHydration,
-    pdfFile?.id,
-    pdfId,
-    surveyAnnotationHydration,
-  ]);
+  // Owner 2026-11-02: every tool works the moment a page is drawn. No page
+  // waits (or hides its marks) for the cloud store to finish opening:
+  // useAnnotationDoc keeps the document editable meanwhile and lays edits
+  // made in that second on top of the stored marks (openingEditsMerge.js).
+  // It replaced a see-through cover that held input off the first page.
 
   useEffect(() => {
     if (!usePdfjsRenderer) return undefined;
@@ -37935,7 +37853,6 @@ ${pageBlocks}
                       }
                       // Always include current page when a tool that needs Canvas is active
                       if (toolNeedsCanvas && pageNumber === currentPage) return true;
-                      if (isFirstVisibleAnnotationPageGated(pageNumber)) return true;
                       return false;
                     })
                     .sort((a, b) => a - b)
@@ -38079,13 +37996,6 @@ ${pageBlocks}
                       );
                       const regionSelectionDisplayWidth = overlayDiv?.offsetWidth || (resolvedPageSize.width * layerScale);
                       const regionSelectionDisplayHeight = overlayDiv?.offsetHeight || (resolvedPageSize.height * layerScale);
-                      const annotationHydrationPending = isFirstVisibleAnnotationPageGated(pageNumber);
-                      // w29: a previewed page shows the PDF and its early-painted marks
-                      // (no grey cover) while a see-through blocker keeps input off it
-                      // until hydration is ready, so nothing drawn can be lost.
-                      const annotationPreviewInputBlocked = annotationHydrationPending && firstVisibleAnnotationPagePreviewing;
-                      const annotationHydrationGated = annotationHydrationPending && !annotationPreviewInputBlocked;
-                      const annotationVisualCoverActive = annotationHydrationGated;
                       const nativePdfAnnotationPolicy = pdfNativeAnnotationLayerPolicyByPage?.[pageNumber] ||
                         pdfNativeAnnotationLayerPolicyByPage?.[String(pageNumber)] ||
                         null;
@@ -38136,7 +38046,7 @@ ${pageBlocks}
                             left: 0,
                             width: '100%',
                             height: '100%',
-                            pointerEvents: annotationVisualCoverActive ? 'auto' : 'none',
+                            pointerEvents: 'none',
                             zIndex: 20,
                             visibility: hideOverlayUntilPdfReady ? 'hidden' : undefined,
                           }}
@@ -38144,8 +38054,6 @@ ${pageBlocks}
                           data-pdf-ever-ready={pagePdfHasEverBeenReady ? 'true' : 'false'}
                           data-pdf-spinner-visible={pagePdfReadyState.spinnerVisible ? 'true' : 'false'}
                           data-overlay-hidden-pending-pdf={hideOverlayUntilPdfReady ? 'true' : 'false'}
-                          data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
-                          data-annotation-visual-cover-active={annotationVisualCoverActive ? 'true' : 'false'}
                           data-native-pdf-annotation-layer-hidden={shouldHideNativePdfAnnotationLayer ? 'true' : 'false'}
                           data-native-pdf-annotation-layer-reason={nativePdfAnnotationPolicy?.reason || ''}
                           data-zoom-preview-active={pdfjsZoomPreviewActive ? 'true' : 'false'}
@@ -38297,7 +38205,7 @@ ${pageBlocks}
                               }}
                             >
                             {requiresLegacyAnnotationLayer && (
-                            <div style={(shouldHideFullLayer || annotationHydrationGated || erasePreviewPages.has(pageNumber)) ? { visibility: 'hidden' } : undefined}>
+                            <div style={(shouldHideFullLayer || erasePreviewPages.has(pageNumber)) ? { visibility: 'hidden' } : undefined}>
                               <PageAnnotationLayer
                                 pageNumber={pageNumber}
                                 width={resolvedPageSize.width}
@@ -38550,7 +38458,6 @@ ${pageBlocks}
                             <>
                               <div
                                 data-annotation-real-surface={pageNumber}
-                                data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
                                 data-zoom-snapshot-hidden={pdfjsZoomPreviewActive ? 'true' : 'false'}
                                 data-annotation-presentation={useCanvasPresentation ? 'canvas2d' : 'svg-edit'}
                                 data-production-annotation-benchmark-total={productionAnnotationBenchmarkConfig?.total || undefined}
@@ -38563,52 +38470,45 @@ ${pageBlocks}
                                   height: '100%',
                                   pointerEvents: 'none',
                                   visibility: pdfjsZoomPreviewActive ? 'hidden' : undefined,
-                                  // Owner 2026-10-04: the page shows as soon as it is drawn
-                                  // and its marks fade in quietly when hydration is ready
-                                  // (no grey cover). Only the gate flip changes opacity.
-                                  opacity: annotationHydrationGated ? 0 : undefined,
-                                  transition: 'opacity 180ms ease-out',
                                 }}
                               >
-                              {!annotationHydrationGated && (
-                                <LightweightAnnotationOverlay
-                                  pageNumber={pageNumber}
-                                  width={resolvedPageSize.width}
-                                  height={resolvedPageSize.height}
-                                  scale={layerScale}
-                                  annotations={isEraserTool ? pageAnnotations : benchmarkPageAnnotations}
-                                  callouts={callouts}
-                                  surveyMarkers={displaySurveyMarkersByPage[pageNumber]}
-                                  selectedModuleId={selectedModuleId}
-                                  showSurveyPanel={showSurveyPanel}
-                                  selectedSpaceId={annotationSpaceId}
-                                  activeSpaceId={activeSpaceId}
-                                  activeRegions={pageRegions}
-                                  activeRegionId={activeRegionId}
-                                  spaces={spaces}
-                                  getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
-                                  getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
-                                  isRegionOverlayEnabled={isRegionOverlayEnabled}
-                                  layerVisibility={annotationLayerVisibility}
-                                  hiddenLayerIds={hiddenLayerIds}
-                                  annotationRevision={annotationRevision}
-                                  calloutRevision={calloutRevision}
-                                  // Visible ONLY for the zoom/scroll proxy window. During an
-                                  // erase gesture the display surface is FabricEraserCanvas's
-                                  // own carved preview canvas — NOT this overlay. Tying this to
-                                  // the gesture state made React re-render the overlay with
-                                  // visibility:'visible' at stroke start, overriding the inline
-                                  // hide beginLiveErasePreview had just applied, so the
-                                  // un-carved warm copy sat beneath the preview and every carve
-                                  // hole showed intact ink through it ("partial erase does
-                                  // nothing" regression, 2026-07-14).
-                                  visible={suspendFullSvgForProxy}
-                                  // Perf: only paint the hidden bitmap while it can be shown
-                                  // (an erase can only start on a page in the render window).
-                                  paintEnabled={suspendFullSvgForProxy || (isEraserTool
-                                    && (pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1))}
-                                />
-                              )}
+                              <LightweightAnnotationOverlay
+                                pageNumber={pageNumber}
+                                width={resolvedPageSize.width}
+                                height={resolvedPageSize.height}
+                                scale={layerScale}
+                                annotations={isEraserTool ? pageAnnotations : benchmarkPageAnnotations}
+                                callouts={callouts}
+                                surveyMarkers={displaySurveyMarkersByPage[pageNumber]}
+                                selectedModuleId={selectedModuleId}
+                                showSurveyPanel={showSurveyPanel}
+                                selectedSpaceId={annotationSpaceId}
+                                activeSpaceId={activeSpaceId}
+                                activeRegions={pageRegions}
+                                activeRegionId={activeRegionId}
+                                spaces={spaces}
+                                getCanvasAnnotationVisibilityState={getCanvasAnnotationVisibilityState}
+                                getSurveyAnnotationVisibilityState={getSurveyAnnotationVisibilityState}
+                                isRegionOverlayEnabled={isRegionOverlayEnabled}
+                                layerVisibility={annotationLayerVisibility}
+                                hiddenLayerIds={hiddenLayerIds}
+                                annotationRevision={annotationRevision}
+                                calloutRevision={calloutRevision}
+                                // Visible ONLY for the zoom/scroll proxy window. During an
+                                // erase gesture the display surface is FabricEraserCanvas's
+                                // own carved preview canvas — NOT this overlay. Tying this to
+                                // the gesture state made React re-render the overlay with
+                                // visibility:'visible' at stroke start, overriding the inline
+                                // hide beginLiveErasePreview had just applied, so the
+                                // un-carved warm copy sat beneath the preview and every carve
+                                // hole showed intact ink through it ("partial erase does
+                                // nothing" regression, 2026-07-14).
+                                visible={suspendFullSvgForProxy}
+                                // Perf: only paint the hidden bitmap while it can be shown
+                                // (an erase can only start on a page in the render window).
+                                paintEnabled={suspendFullSvgForProxy || (isEraserTool
+                                  && (pdfjsMountedPages.has(pageNumber) || Math.abs(pageNumber - pageNum) <= 1))}
+                              />
                               {pageRegions && pageRegions.length > 0 && !(showRegionSelection && regionSelectionPage === pageNumber) && (() => {
                                 const space = spaces.find(s => s.id === activeSpaceId);
                                 const page = space?.assignedPages?.find(p => p.pageId === pageNumber);
@@ -38701,7 +38601,6 @@ ${pageBlocks}
                                 data-diag-svg-wrapper={pageNumber}
                                 data-svg-annotation-revision={pageAnnotations?.eraserPresentationRevision || ''}
                                 data-eraser-materialized-mutation-ids={(pageAnnotations?.eraserMaterializedMutationIds || []).join(' ')}
-                                data-annotation-hydration-gated={annotationHydrationGated ? 'true' : 'false'}
                                 data-annotation-overlay-recovery-tick={annotationOverlayRecoveryTick}
                                 style={{
                                   position: 'absolute',
@@ -38711,9 +38610,7 @@ ${pageBlocks}
                                   height: '100%',
                                   pointerEvents: 'none',
                                   zIndex: 100,
-                                  visibility: (annotationHydrationGated || useCanvasPresentation)
-                                    ? 'hidden'
-                                    : undefined,
+                                  visibility: useCanvasPresentation ? 'hidden' : undefined,
                                   // UX: Fix 3 (2026-04-16) — SVG layer stays visible during
                                   // callout edit. Previously `visibility: hidden` blanked the
                                   // ENTIRE layer to avoid double-rendering the edited callout
@@ -39590,14 +39487,6 @@ ${pageBlocks}
                             );
                           })()}
                           </div>
-                          {renderAnnotationHydrationPageCover(pageNumber, 'pdfjs', annotationVisualCoverActive)}
-                          {annotationPreviewInputBlocked && (
-                            <div
-                              data-annotation-preview-input-blocker={pageNumber}
-                              aria-busy="true"
-                              style={{ position: 'absolute', inset: 0, zIndex: 1000, pointerEvents: 'auto', cursor: 'progress' }}
-                            />
-                          )}
                           {cloudSyncEnabled && pdfFile?.id && (
                             <RemoteCursorLayer documentId={pdfFile.id} pageNumber={pageNumber} pageSize={resolvedPageSize} presence={documentPresenceList} selfId={user?.id || null} />
                           )}

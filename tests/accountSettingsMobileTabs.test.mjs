@@ -56,6 +56,7 @@ test('account settings nav exposes tab semantics', () => {
   assert.match(jsx, /className="account-settings-sidebar"[\s\S]{0,120}role="tablist"/);
   // + Crash reports (crash hunt 2026-10-07), + Annotations (KAL-397),
   // + Company (beta 'company-admin', shown only with the flag on)
-  assert.equal((jsx.match(/role="tab"/g) || []).length, 6);
-  assert.equal((jsx.match(/aria-selected=\{/g) || []).length, 6);
+  // + Privacy (learning opt-in and usage statistics)
+  assert.equal((jsx.match(/role="tab"/g) || []).length, 7);
+  assert.equal((jsx.match(/aria-selected=\{/g) || []).length, 7);
 });
