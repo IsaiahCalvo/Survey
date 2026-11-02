@@ -234,6 +234,16 @@ const SECONDARY_BY_CODE = {
   viewer_access: 'Ask the document owner for edit access if you need to make changes',
 };
 
+// Phone only (launch polish 2026-11-02): the codes whose notice shrinks to one
+// line on a phone. On the iPhone walk the full "Live sync is offline" notice
+// stood ~250px tall over the top of the page. Live sync going down is the
+// app's calm, self-healing case (work still saves on the device, it keeps
+// retrying), so the phone shows the heading, this short line, Retry and the
+// cross on one row. The full words stay on desktop.
+export const PHONE_BRIEF_BY_CODE = {
+  transport_offline: 'Trying to reconnect',
+};
+
 /*
  * The banner's 16x16 alert triangle.
  *
@@ -356,10 +366,12 @@ export function StorageFailureBanner({
   const heading = isRemoteDelete
     ? `${HEADING_BY_CODE[code]} ${collaboratorName || 'another collaborator'}`
     : HEADING_BY_CODE[code];
+  const phoneBrief = !confirmingDismiss ? PHONE_BRIEF_BY_CODE[code] : null;
 
   return (
     <div
-      className="storage-banner"
+      className={phoneBrief ? 'storage-banner storage-banner--brief' : 'storage-banner'}
+      data-code={code}
       // The side rails' widths (left / right edge) and the top bar's bottom
       // (top), StorageFailureBanner.css, set here rather than on :root
       // (utils/chromeInsets.js).
@@ -382,6 +394,12 @@ export function StorageFailureBanner({
         {!confirmingDismiss && (statusDetail || SECONDARY_BY_CODE[code]) && (
           <div className="storage-banner__secondary">
             {statusDetail || SECONDARY_BY_CODE[code]}
+          </div>
+        )}
+        {phoneBrief && (
+          // Shown only on a phone (CSS), where the body and secondary line hide.
+          <div className="storage-banner__brief">
+            {statusDetail || phoneBrief}
           </div>
         )}
       </div>

@@ -436,6 +436,10 @@ import { installFocusRingSource } from './utils/focusRingSource.js';
 // <html data-focus-ring="pointer|keyboard">: focus rings only while the
 // keyboard is moving focus (owner 2026-10-26, the stray "white border").
 if (typeof window !== 'undefined') installFocusRingSource(window);
+import { installBackdropBlurTier } from './utils/backdropBlur.js';
+// <html data-backdrop-blur="off">: weak devices skip the dialog backdrop blur
+// (launch polish 2026-11-02; styles.css).
+if (typeof window !== 'undefined') installBackdropBlurTier(window);
 
 // Suppress PDF.js "TT: undefined function" warnings
 // Suppress PDF.js "TT: undefined function" warnings
