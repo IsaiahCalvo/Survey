@@ -263,6 +263,29 @@ Deno.serve(async (req) => {
         // docs/design/email-style-guide.md. Reskins preserve each message's
         // information and links; copy is sentence case per the copy style guide.
         const templates = {
+            // Sent when a plan starts: the trial end, price, billing period,
+            // automatic renewal and how to cancel, as auto-renewal law wants.
+            'subscription-started': (data: any) => renderEmailLayout({
+                heading: data.trialEndDate ? 'Your free trial has started' : 'Your subscription has started',
+                preheader: data.trialEndDate
+                    ? `Your ${data.planName || 'Survey Pro'} trial runs until ${data.trialEndDate}.`
+                    : `Your ${data.planName || 'Survey Pro'} subscription is active.`,
+                footerReason: `You're receiving this because you started a Survey subscription.`,
+                bodyHtml:
+                    `<p style="${P}">Hi${data.firstName ? ' ' + data.firstName : ''},</p>` +
+                    (data.trialEndDate
+                        ? `<p style="${P}">Your free trial of <strong>${data.planName || 'Survey Pro'}</strong> has started. Unless you cancel before <strong>${data.trialEndDate}</strong>, it becomes a paid subscription on that date and renews automatically every ${data.interval || 'month'} until you cancel.</p>`
+                        : `<p style="${P}">Your <strong>${data.planName || 'Survey Pro'}</strong> subscription has started and renews automatically every ${data.interval || 'month'} until you cancel.</p>`) +
+                    emailDetailRows([
+                        ['Plan', String(data.planName || 'Survey Pro')],
+                        ['Price', data.amount ? `${data.amount} per ${data.interval || 'month'}` : 'As shown at checkout'],
+                        ...(data.trialEndDate ? [['First charge', String(data.trialEndDate)] as [string, string]] : []),
+                    ]) +
+                    `<p style="${P}"><strong>To cancel:</strong> open Survey and go to Settings, then Subscription. You keep the plan until the end of the period you paid for and are not charged again.</p>` +
+                    emailButton('Open Survey', data.portalUrl) +
+                    `<p style="${MUTED}" class="em-mut">Questions? Reply to this email for support.</p>`,
+            }),
+
             'trial-ending': (data: any) => renderEmailLayout({
                 heading: 'Your trial is ending soon',
                 preheader: `Your Pro trial ends on ${data.trialEndDate}.`,

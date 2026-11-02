@@ -43,6 +43,10 @@ for (const [size, device] of [['desktop', DESKTOP], ['phone', PHONE]]) test.desc
     await dialog.getByLabel('Last name').fill('First');
     await dialog.getByLabel('Password', { exact: true }).fill(PASSWORD);
     await dialog.getByLabel('Confirm password').fill(PASSWORD);
+    // No account until the Terms box is ticked.
+    await dialog.getByRole('button', { name: 'Create account', exact: true }).click();
+    await expect(dialog.getByText('Tick the box to agree to the Terms of Service and Privacy Policy.')).toBeVisible();
+    await dialog.getByRole('checkbox', { name: /I agree to the Terms of Service/ }).check();
     await dialog.getByRole('button', { name: 'Create account', exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect(profileChip(page, person)).toBeVisible();
@@ -53,7 +57,9 @@ for (const [size, device] of [['desktop', DESKTOP], ['phone', PHONE]]) test.desc
     await expect(pageDiv.locator('canvas').first()).toBeVisible({ timeout: 60_000 });
     const admin = adminClient();
     const { data: users } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    const id = users.users.find((user) => user.email === person.email)?.id;
+    const created = users.users.find((user) => user.email === person.email);
+    const id = created?.id;
+    expect(created?.user_metadata?.terms_accepted?.terms).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const { data: docs } = await admin.from('documents').select('name').eq('user_id', id);
     expect((docs || []).map((doc) => doc.name)).toEqual(['Sample floor plan.pdf']);
   });

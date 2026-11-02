@@ -20,6 +20,7 @@
 
 // Billing lifecycle emails: only our own backend (service-role key) may send.
 export const SERVICE_ONLY_TEMPLATES = [
+  'subscription-started',
   'trial-ending',
   'payment-failed',
   'subscription-canceled',

@@ -21,6 +21,7 @@ import { isGoogleSignInHidden } from '../utils/accountPlatform';
 import { isFeatureOn } from '../featureFlags.js';
 import { companyDomainFrom, companySignInErrorMessage, clearCompanySignInRequired, companySignInRequiredMessage, peekCompanySignInRequired } from '../utils/companySignIn.js';
 import { ssoRequiredForEmail } from '../services/companyService.js';
+import { termsAcceptance } from '../legal/legalVersions';
 
 export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' }) => {
   const [mode, setMode] = useState(initialMode); // 'login', 'signup', 'confirm', 'sso', 'reset'
@@ -42,6 +43,9 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaNonce, setCaptchaNonce] = useState(0);
   const [captchaBroken, setCaptchaBroken] = useState(false);
+  // Sign-up needs a clear "I agree" tick; the accepted Terms and Privacy dates
+  // are stored with the account (user_metadata.terms_accepted).
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const modalRef = useRef(null);
 
   const { signIn, signUp, signInWithGoogle, signInWithMicrosoft, signInWithSSO, resetPassword, resendConfirmation } = useAuth();
@@ -145,10 +149,16 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
           setLoading(false);
           return;
         }
+        if (!agreedToTerms) {
+          setError('Tick the box to agree to the Terms of Service and Privacy Policy.');
+          setLoading(false);
+          return;
+        }
         const data = await signUp(email, password, {
           first_name: firstName,
           last_name: lastName,
-          full_name: `${firstName} ${lastName}`
+          full_name: `${firstName} ${lastName}`,
+          terms_accepted: termsAcceptance(),
         }, captchaToken);
         if (data?.session) {
           // Email confirmation is disabled server-side — the user is already
@@ -424,6 +434,33 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
             </div>
           )}
 
+          {mode === 'sso' && (
+            <p className="auth-terms-note">
+              By continuing you agree to the{' '}
+              <a href="/terms.html" target="_blank" rel="noreferrer">Terms of Service</a>
+              {' '}and{' '}
+              <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>.
+            </p>
+          )}
+
+          {mode === 'signup' && (
+            <label className="auth-terms">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                disabled={loading}
+                data-auth-terms
+              />
+              <span>
+                I agree to the{' '}
+                <a href="/terms.html" target="_blank" rel="noreferrer">Terms of Service</a>
+                {' '}and{' '}
+                <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>.
+              </span>
+            </label>
+          )}
+
           {captchaMode && (
             <TurnstileWidget
               key={captchaNonce}
@@ -474,6 +511,15 @@ export const AuthModal = ({ isOpen, onClose, onDismiss, initialMode = 'login' })
                 <Icon name="microsoft" size={18} />
                 Continue with Microsoft
               </button>
+            )}
+
+            {!isGoogleSignInHidden() && (
+              <p className="auth-terms-note">
+                {`By continuing with ${showMicrosoft ? 'Google or Microsoft' : 'Google'} you agree to the `}
+                <a href="/terms.html" target="_blank" rel="noreferrer">Terms of Service</a>
+                {' '}and{' '}
+                <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>.
+              </p>
             )}
 
             {mode === 'login' && (

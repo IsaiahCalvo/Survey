@@ -109,6 +109,13 @@ export default function SurveyHub({
     setSettingsOpen(true);
   }, [user]);
 
+  // The account menu's open state, held here so it survives the loading shell
+  // being swapped for the loaded list (HubShell ProfileMenu). A tab switch or
+  // a different user still closes it, as a fresh shell used to.
+  const [openProfileMenu, setOpenProfileMenu] = useState(null); // null | 'desktop' | 'mobile'
+  const userId = user?.id ?? null;
+  useEffect(() => { setOpenProfileMenu(null); }, [tab, userId]);
+
   useEffect(() => {
     try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable — non-fatal */ }
   }, [tab]);
@@ -200,7 +207,7 @@ export default function SurveyHub({
   );
 
   return (
-    <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut, onSignIn }}>
+    <HubChromeContext.Provider value={{ user, onSettings: openSettings, onSignOut, onSignIn, openProfileMenu, setOpenProfileMenu }}>
       {tab === 'documents' && (
         documentsInitialLoading ? (
           <HubLoading {...common} tab="documents" />

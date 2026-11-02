@@ -38,6 +38,7 @@ import {
   E2E_SURVEY,
 } from '../tests/e2e-signed-in/accounts.mjs';
 import { E2E_R2, E2E_R2_SERVER_ENDPOINT, startE2eMinio, stopE2eMinio } from './e2e-minio.mjs';
+import { AI_NOTICE_VERSION, termsAcceptance } from '../src/legal/legalVersions.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const STACK_DIR = path.resolve(ROOT, process.env.E2E_STACK_DIR || '.e2e/supabase-stack');
@@ -261,7 +262,16 @@ async function ensureUser(admin, account, existingByEmail) {
   const attrs = {
     password: account.password,
     email_confirm: true,
-    user_metadata: { first_name: account.firstName, last_name: account.lastName, full_name: account.label },
+    // Seeded people have already agreed to the Terms and allowed the AI
+    // notice, like real accounts that signed up through the app. The fresh
+    // sign-up specs (first-run, launch-journey) cover the agree box itself.
+    user_metadata: {
+      first_name: account.firstName,
+      last_name: account.lastName,
+      full_name: account.label,
+      terms_accepted: termsAcceptance(),
+      ai_assistant_consent: { version: AI_NOTICE_VERSION, at: new Date().toISOString() },
+    },
   };
   const existing = existingByEmail.get(account.email);
   if (existing) {

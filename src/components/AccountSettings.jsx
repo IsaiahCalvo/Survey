@@ -51,6 +51,8 @@ import {
   resolveSubscriptionQuery,
   SUBSCRIPTION_LOAD_FAILED_TEXT,
 } from '../utils/accountPlatform';
+import { readUsageStatsOff, writeUsageStatsOff } from '../utils/surveyAnalytics';
+import { IMPROVE_SURVEY_POLICY_VERSION } from '../legal/legalVersions';
 import { useTooltip } from './Tooltip';
 import ButtonGroup from './ButtonGroup.jsx';
 
@@ -90,6 +92,23 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
   const [annotationSnapping, setAnnotationSnapping] = useState(() => readAnnotationSnapping());
   const [textboxAutoFit, setTextboxAutoFit] = useState(() => readTextboxAutoFit());
   const [snapAngle, setSnapAngle] = useState(() => readSnapAngle());
+  // Privacy tab. Usage statistics are per device; the learning opt-in lives on
+  // the account so the server can check it before using anything.
+  const [usageStatsOn, setUsageStatsOn] = useState(() => !readUsageStatsOff());
+  const improveSurveyOptIn = user?.user_metadata?.improve_survey_opt_in?.on === true;
+  const handleImproveSurveyToggle = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await updateProfile({
+        improve_survey_opt_in: { on: !improveSurveyOptIn, at: new Date().toISOString(), policy: IMPROVE_SURVEY_POLICY_VERSION },
+      });
+    } catch (err) {
+      setError(err?.message || 'Could not save that setting. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
   useEffect(() => {
     if (!isOpen) return undefined;
     const refresh = () => { setTextboxAutoFit(readTextboxAutoFit()); setAnnotationSnapping(readAnnotationSnapping()); setSnapAngle(readSnapAngle()); };
@@ -589,6 +608,15 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
               aria-selected={activeTab === 'crash-reports'}
             >
               Crash reports
+            </button>
+            {/* Learning opt-in and usage statistics. */}
+            <button
+              onClick={() => setActiveTab('privacy')}
+              className={`account-sidebar-btn ${activeTab === 'privacy' ? 'active' : ''}`}
+              role="tab"
+              aria-selected={activeTab === 'privacy'}
+            >
+              Privacy
             </button>
           </div>
 
@@ -1206,6 +1234,59 @@ export const AccountSettings = ({ isOpen, onClose, initialTab = null }) => {
 
             {activeTab === 'crash-reports' && <CrashReportsPanel />}
             {companyOn && activeTab === 'company' && <CompanyPanel />}
+
+            {/* Off by default: none of a person's work is used to improve
+                Survey until they turn this on. Stored on the account with the
+                date and policy version, so it follows them and the server can
+                check it. Whatever later reads it must also skip projects the
+                person doesn't own and anything synced from Google or Microsoft
+                (privacy policy, "Helping improve Survey"). */}
+            {activeTab === 'privacy' && (
+              <section className="account-section" aria-labelledby="account-privacy-heading">
+                <h3 id="account-privacy-heading">Helping improve Survey</h3>
+                <div className="account-pref-row">
+                  <div className="account-pref-copy">
+                    <div className="account-pref-title" id="account-pref-improve-survey">Let Survey learn from my survey work</div>
+                    <p className="account-pref-description">
+                      When on, we may use the marks you make and your Smart fill fixes, in projects you own, to make tools like Smart fill better for everyone. We never show your plans or marks to other customers, never sell them, and never use files synced from Google or Microsoft. Only turn it on for work you have the right to share. Off unless you turn it on.{' '}
+                      <a href="/privacy.html" target="_blank" rel="noreferrer">Privacy policy</a>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="account-switch"
+                    role="switch"
+                    aria-checked={improveSurveyOptIn}
+                    aria-labelledby="account-pref-improve-survey"
+                    data-pref="improve-survey-opt-in"
+                    disabled={loading || !user}
+                    onClick={handleImproveSurveyToggle}
+                  >
+                    <span className="account-switch-track" aria-hidden="true" />
+                  </button>
+                </div>
+                <h3>Usage statistics</h3>
+                <div className="account-pref-row">
+                  <div className="account-pref-copy">
+                    <div className="account-pref-title" id="account-pref-usage-stats">Send usage statistics</div>
+                    <p className="account-pref-description">
+                      Short notes on which tools get used and what failed, with no names, emails, file names or drawings, help us find bugs. Applies to this device.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="account-switch"
+                    role="switch"
+                    aria-checked={usageStatsOn}
+                    aria-labelledby="account-pref-usage-stats"
+                    data-pref="usage-stats"
+                    onClick={() => { writeUsageStatsOff(usageStatsOn); setUsageStatsOn(!usageStatsOn); }}
+                  >
+                    <span className="account-switch-track" aria-hidden="true" />
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* KAL-397 — Settings -> Annotations (Acrobat's name for it). */}
             {activeTab === 'annotations' && (
