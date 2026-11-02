@@ -1,8 +1,8 @@
 // How long a signed-in person waits, on a production build: from typing the
 // address to seeing Home, from opening a small document to seeing its first
 // page, and from opening a big drawing set (240 pages, 4,000 markups, seeded by
-// scripts/perf/big-doc-seed.mjs) to its first page and to its markups. Best of
-// three cold runs (fresh browser cache each time), checked against
+// scripts/perf/big-doc-seed.mjs) to its first page and to its markups, then
+// from Home back to that drawing's tab. Best of three cold runs (fresh browser cache each time), checked against
 // tests/e2e-speed/budget.mjs.
 import fs from 'node:fs';
 import { E2E_ACCOUNTS, E2E_DOCUMENT } from '../e2e-signed-in/accounts.mjs';
@@ -20,7 +20,23 @@ const LABELS = {
   firstPage: 'Open to first page',
   bigFirstPage: 'Big drawing: open to first page',
   bigMarks: 'Big drawing: open to its markups',
+  tabBack: 'Big drawing: Home back to its tab',
 };
+
+// From the next pointerdown to the first painted frame that shows the
+// document again, measured in the page (no polling slack).
+function armTabBackTimer() {
+  window.__tabBackMs = null;
+  document.addEventListener('pointerdown', () => {
+    const t0 = performance.now();
+    const tick = () => {
+      const surface = document.querySelector('[data-touch-pdf-surface]');
+      if (surface && surface.offsetParent) window.__tabBackMs = performance.now() - t0;
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, { once: true, capture: true });
+}
 
 // True once page 1's markup layer shows at least one shape.
 function pageOneHasMarks() {
@@ -57,7 +73,7 @@ test('Home, a small document and a big drawing set open within the speed budget'
     return context;
   };
 
-  const times = { home: [], firstPage: [], bigFirstPage: [], bigMarks: [] };
+  const times = { home: [], firstPage: [], bigFirstPage: [], bigMarks: [], tabBack: [] };
   for (let run = 0; run < RUNS; run += 1) {
     const context = await coldContext();
     const cold = await context.newPage();
@@ -94,6 +110,16 @@ test('Home, a small document and a big drawing set open within the speed budget'
     times.bigFirstPage.push(Date.now() - start);
     await expect.poll(() => big.evaluate(pageOneHasMarks), { timeout: 90_000, intervals: [50] }).toBe(true);
     times.bigMarks.push(Date.now() - start);
+    // Home, then back to the drawing's tab: it comes back as it was left, in
+    // one render (docs/TAB-SWITCHING.md).
+    const tabs = big.locator('.tab-bar');
+    await tabs.getByText('Home', { exact: true }).click();
+    await expect(big.locator('[data-touch-pdf-surface]')).toBeHidden();
+    await big.waitForTimeout(500);
+    await big.evaluate(armTabBackTimer);
+    await tabs.getByText(BIG_DOC_NAME, { exact: true }).click();
+    await expect.poll(() => big.evaluate(() => window.__tabBackMs), { timeout: 30_000, intervals: [50] }).not.toBeNull();
+    times.tabBack.push(Math.round(await big.evaluate(() => window.__tabBackMs)));
     await bigContext.close();
   }
 

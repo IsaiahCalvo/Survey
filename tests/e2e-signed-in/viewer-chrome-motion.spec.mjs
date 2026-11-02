@@ -53,11 +53,15 @@ async function cleanup(admin, seeded) {
 
 // Every frame for `ms`: the first page's top, the Survey bar's bottom and the
 // Survey panel's left edge (null while not drawn, or in a tab behind, which
-// keeps its layout: docs/TAB-SWITCHING.md S9).
-function startRecording(page, ms) {
-  return page.evaluate((duration) => new Promise((resolve) => {
+// keeps its layout: docs/TAB-SWITCHING.md S9). With `fromFirstPage`, the `ms`
+// count starts at the first frame that shows the page (giving up 10 s after
+// the call), so the whole window watches the document once it is back.
+function startRecording(page, ms, { fromFirstPage = false } = {}) {
+  return page.evaluate(({ duration, waitForPage }) => new Promise((resolve) => {
     const out = [];
-    const t0 = performance.now();
+    const called = performance.now();
+    let t0 = called;
+    let started = !waitForPage;
     const rectOf = (sel) => {
       const n = [...document.querySelectorAll(sel)].find((el) => !el.closest('[data-tab-behind]'));
       const r = n?.getBoundingClientRect();
@@ -65,17 +69,19 @@ function startRecording(page, ms) {
     };
     const tick = () => {
       const pg = rectOf('.survey-pdfjs-page-div[data-page-number="1"]');
+      if (!started && pg) { started = true; t0 = performance.now(); }
       out.push({
         t: performance.now() - t0,
         page: pg ? pg.top : null,
         bar: rectOf('[data-viewer-top-push="true"]')?.bottom ?? null,
         panel: rectOf('#survey-rail-panel')?.left ?? null,
       });
-      if (performance.now() - t0 < duration) requestAnimationFrame(tick);
+      const waiting = !started && performance.now() - called < 10_000;
+      if (waiting || performance.now() - t0 < duration) requestAnimationFrame(tick);
       else resolve(out);
     };
     requestAnimationFrame(tick);
-  }), ms);
+  }), { duration: ms, waitForPage: fromFirstPage });
 }
 
 // The biggest move between two frames, per 60 Hz frame: a dev build on a
@@ -125,7 +131,13 @@ test('the Survey bar makes room as it comes down, and a tab switch leaves the do
     await tabs.getByText('Home', { exact: true }).click();
     await expect(page.locator('[data-touch-pdf-surface]')).toBeHidden();
     await page.waitForTimeout(500);
-    recording = startRecording(page, 900);
+    // The window starts when the document is back on screen. How soon that
+    // is gets its own budget on the production build (tests/e2e-speed: Home
+    // to document tab): React 19's development build captures a debug stack
+    // for every element it creates, which makes this one render several times
+    // slower here than in the app people use, and a 900 ms window counted
+    // from the click then saw a single frame.
+    recording = startRecording(page, 900, { fromFirstPage: true });
     await tabs.getByText(seeded.docName, { exact: true }).click();
     frames = (await recording).filter((f) => f.page !== null);
     console.log('[motion] back', JSON.stringify({ first: frames[0], last: frames.at(-1), panelStep: steps(frames, 'panel') }));

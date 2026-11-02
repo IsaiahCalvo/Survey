@@ -80,7 +80,7 @@ test('a space folds open in place (Expander) and its regions rise in', () => {
   assert.match(panel, /data-expander-row=""\s*style=\{\{ '--expander-row': rowIndex \}\}/);
   const css = read('src/components/Expander.css');
   assert.match(css, /grid-template-rows var\(--motion-collapse\) var\(--ease-glide\)/);
-  assert.match(read('src/components/Expander.jsx'), /inert=\{shown \? undefined : ''\}/);
+  assert.match(read('src/components/Expander.jsx'), /inert=\{!shown\}/);
 });
 
 test('arrow keys in a choice group skip a disabled choice', async () => {

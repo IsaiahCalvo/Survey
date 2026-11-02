@@ -241,13 +241,25 @@ const isExpoNativeShell = () => {
    pinned at the bottom of the left rail, so putting it in the desktop menu too
    would be the same destination offered twice. */
 const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = false, tab, onNav }) => {
-  const { user, onSettings, onSignOut, onSignIn } = useContext(HubChromeContext);
+  const { user, onSettings, onSignOut, onSignIn, openProfileMenu, setOpenProfileMenu } = useContext(HubChromeContext);
   const tip = useTooltip();
   // Resolve the per-tier badge text. Callers may pass `userMeta` explicitly;
   // otherwise we read from AuthContext so free users no longer see "Pro".
   const auth = useAuth();
   const resolvedMeta = userMeta || `Synced · ${tierLabelFromAuth(auth?.tier)}`;
-  const [open, setOpen] = useState(false);
+  // Whether the menu is open lives in SurveyHub when it provides it: the
+  // loading screen and the loaded list are two different shells, so a menu
+  // opened while the list was still loading closed the moment it arrived.
+  // Each shell has a desktop and a phone menu; only the one opened shows.
+  const menuId = showArchive ? 'mobile' : 'desktop';
+  const [localOpen, setLocalOpen] = useState(false);
+  const shared = typeof setOpenProfileMenu === 'function';
+  const open = shared ? openProfileMenu === menuId : localOpen;
+  const setOpen = (value) => {
+    const next = typeof value === 'function' ? value(open) : value;
+    if (shared) setOpenProfileMenu((current) => (next ? menuId : (current === menuId ? null : current)));
+    else setLocalOpen(next);
+  };
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const ref = useRef(null);
   const menuRef = useRef(null);
@@ -292,11 +304,10 @@ const ProfileMenu = ({ userName, userMeta, showArchive = false, showShortcuts = 
         type="button"
         aria-label="Open account menu"
         aria-expanded={open}
-        onClick={() => setOpen((o) => {
-          const next = !o;
-          if (!next) setConfirmSignOut(false);
-          return next;
-        })}
+        onClick={() => {
+          if (open) setConfirmSignOut(false);
+          setOpen(!open);
+        }}
         // KAL-65: the shared chip, to the right like every left-rail control.
         {...tip(email || name, 'right')}
         style={{ display: 'flex', alignItems: 'center', gap: 7, width: '100%', background: open ? 'var(--ink-600)' : 'transparent', border: 0, borderRadius: 6, padding: '4px 6px', cursor: 'pointer', fontFamily: 'inherit', color: 'inherit', textAlign: 'left' }}
