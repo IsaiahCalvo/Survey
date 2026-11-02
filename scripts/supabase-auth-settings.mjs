@@ -1,6 +1,7 @@
 // Reads, and with --apply sets, the Supabase Auth settings from the backend
 // security pass (/mnt/project-files/security/backend-pass.md), approved by
-// Isaiah 2026-10-21, plus anonymous sign-ins for guest links (2026-10-28). Prints only the settings below: the auth config also
+// Isaiah 2026-10-21, plus anonymous sign-ins for guest links (2026-10-28) and
+// SAML single sign-on for company sign-in (2026-11-01). Prints only the settings below: the auth config also
 // holds SMTP and provider secrets, and this repo's Action logs are public.
 import { pathToFileURL } from 'node:url';
 
@@ -13,6 +14,7 @@ export const WATCHED = [
   'security_update_password_require_current_password',
   'security_update_password_require_reauthentication',
   'external_anonymous_users_enabled', 'rate_limit_anonymous_users',
+  'saml_enabled',
 ];
 
 const LOWER_UPPER_DIGITS = 'abcdefghijklmnopqrstuvwxyz:ABCDEFGHIJKLMNOPQRSTUVWXYZ:0123456789';
@@ -40,6 +42,9 @@ export function planAuthPatch(current) {
     // Guest links (Nightly, flag 'guest-links') sign guests in anonymously;
     // Isaiah approved turning this on 2026-10-28. Turnstile still guards it.
     external_anonymous_users_enabled: true,
+    // "Sign in with company SSO" needs SAML on; each company is then added
+    // with `supabase sso add`. Isaiah approved turning it on 2026-11-01.
+    saml_enabled: true,
   };
   if (!(Number(current.password_min_length) >= MIN_LENGTH)) want.password_min_length = MIN_LENGTH;
   const rule = current.password_required_characters ?? '';
