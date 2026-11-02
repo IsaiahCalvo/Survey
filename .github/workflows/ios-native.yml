@@ -188,9 +188,14 @@ jobs:
 
   android-signed-in:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    name: Android signed-in walk (local Supabase, export to share sheet)
+    name: Android signed-in walk (local Supabase, export to share sheet) ${{ matrix.gpu }} ${{ matrix.rep }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        gpu: [swiftshader_indirect, swangle_indirect, guest]
+        rep: [1, 2, 3, 4, 5]
     env:
       OUT: ${{ github.workspace }}/android-flow-out
     steps:
@@ -238,6 +243,7 @@ jobs:
           arch: x86_64
           profile: pixel_7
           disable-animations: true
+          emulator-options: -no-window -gpu ${{ matrix.gpu }} -no-snapshot -noaudio -no-boot-anim
           script: |
             mkdir -p "$OUT"
             adb reverse tcp:54421 tcp:54421
@@ -264,10 +270,14 @@ jobs:
         run: |
           free -m
           sudo dmesg | grep -iE "out of memory|killed process|oom" | tail -20 || true
+          sudo dmesg | tail -30 || true
+          ls -la /tmp/android-runner/ || true
+          cp -r /tmp/android-runner "$OUT/emu-crash" 2>/dev/null || true
+          ls -la ~/.android/ ~/.android/avd/test.avd/ || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: android-signed-in-results
+          name: android-signed-in-results-${{ matrix.gpu }}-${{ matrix.rep }}
           path: android-flow-out
           retention-days: 7
 
