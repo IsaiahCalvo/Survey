@@ -37,6 +37,11 @@ import {
   ANNOTATION_HYDRATION_UNAVAILABLE_SOURCE,
 } from '../utils/annotationHydrationGate.js';
 import { claimBodyReadOnly } from '../utils/readOnlyBodyReasons.js';
+import {
+  mergeOpeningKeyedEdits,
+  mergeOpeningListEdits,
+  mergeOpeningMarkEdits,
+} from '../utils/openingEditsMerge.js';
 import { syncTrace, syncTraceEnabled } from '../services/syncTrace.js';
 import {
   migrateCalloutsMetaToAnnotationsMap,
@@ -111,6 +116,8 @@ const STORE_COMPACTION_JITTER_MS = 3_000;
 const OPEN_RETRY_BASE_DELAY_MS = 2_000;
 const OPEN_RETRY_MAX_DELAY_MS = 60_000;
 const OPEN_RETRY_MAX_ATTEMPTS = 8;
+// An erase made while the store opens waits at most this long for it.
+const OPEN_WAIT_MAX_MS = 20_000;
 
 function pageCount(byPage) {
   let n = 0;
@@ -377,6 +384,19 @@ export function useAnnotationDoc({
   // painted by a failed attempt are never taken for the viewer's own. The
   // early paint is display-only: an empty store is never seeded from it.
   const prePreviewRef = useRef({ documentId: null, byPage: null });
+  // Owner 2026-11-02: every tool works the moment the PDF shows, while the
+  // store is still opening. What the store last put on the screen
+  // (`byPage`/`spaces`/`surveyMarkers`; null until the user first touches the
+  // document) is the baseline each later load compares the screen with, so
+  // the user's own edits are laid on top of it instead of painted over
+  // (openingEditsMerge.js). `done` once the open finished.
+  const openingEditsRef = useRef({ documentId: null, byPage: null, spaces: null, surveyMarkers: null, done: false });
+  // Callers that need the open store (an erase) wait here instead of failing
+  // during the opening second: resolve(true) once hydrated, false otherwise.
+  const openWaitersRef = useRef([]);
+  const openInProgressRef = useRef(false);
+  // True once the hydrate has been committed to the screen and captured.
+  const hydratedRef = useRef(false);
   const [initialHydration, setInitialHydration] = useState({ ready: false, source: 'pending', count: 0, documentId: null });
   // A failed open (e.g. the WAL tail read timing out) is retried with backoff
   // instead of leaving the page covered forever (w26). Bumping the tick re-runs
@@ -401,6 +421,9 @@ export function useAnnotationDoc({
   // the id resolved).
   useEffect(() => {
     if (!enabled || !documentId || !userId) {
+      openInProgressRef.current = false;
+      hydratedRef.current = false;
+      settleOpenWaiters(false);
       setSyncStatus({ stage: 'idle', healthy: true, error: null });
       setSyncQueueSize(0);
       setDeletedPdfAnnotations([]);
@@ -423,6 +446,12 @@ export function useAnnotationDoc({
     if (prePreviewRef.current.documentId !== documentId) {
       prePreviewRef.current = { documentId, byPage: null };
     }
+    // A failed-open retry keeps the edits made so far (same document).
+    if (openingEditsRef.current.documentId !== documentId || openingEditsRef.current.done) {
+      openingEditsRef.current = { documentId, byPage: null, spaces: null, surveyMarkers: null, done: false };
+    }
+    openInProgressRef.current = true;
+    hydratedRef.current = false;
     if (openFailuresRef.current.documentId !== documentId) {
       openFailuresRef.current = { documentId, count: 0 };
     }
@@ -461,9 +490,11 @@ export function useAnnotationDoc({
           // UX (w29, open speed): the document's marks paint as soon as this
           // device's saved copy (or the cloud snapshot) is read, instead of
           // after the whole open (seconds on a big document). Display only:
-          // hydration stays not-ready, so nothing is written or imported and
-          // the first page keeps blocking input (see annotationHydrationGate)
+          // hydration stays not-ready, so nothing is written or imported
           // until the real hydrate below replaces this with the same marks.
+          // The document stays editable meanwhile: edits made since the
+          // user's first touch are laid on top of each load (owner
+          // 2026-11-02, openingEditsMerge.js).
           whenFirstPageDrawn: () => (
             cancelled ? null : whenFirstPageDrawnRef.current?.()
           ),
@@ -481,9 +512,16 @@ export function useAnnotationDoc({
                 { preserveUnmeasured: true },
               )
               : previewByPage;
+            const openingBaseline = openingBaselineFor(documentId);
             setAnnotationsByPage((previousByPage) => (
-              preserveTransientPagePresentationState(previousByPage, projected)
+              preserveTransientPagePresentationState(
+                previousByPage,
+                openingBaseline
+                  ? mergeOpeningMarkEdits({ next: projected, baseline: openingBaseline.byPage, current: previousByPage })
+                  : projected,
+              )
             ));
+            if (openingBaseline) openingEditsRef.current = { ...openingBaseline, byPage: projected };
             setInitialHydration((previous) => (
               previous?.ready && previous.documentId === documentId
                 ? previous
@@ -508,6 +546,8 @@ export function useAnnotationDoc({
           // first-page cover lifts. The open is retried with backoff and the
           // marks appear when it succeeds. Before, the page sat on loading
           // dots forever. A deleted document or a permission denial is final.
+          openInProgressRef.current = false;
+          settleOpenWaiters(false);
           const failures = openFailuresRef.current;
           failures.count += 1;
           setInitialHydration({
@@ -691,6 +731,14 @@ export function useAnnotationDoc({
       metaFallbackIdsRef.current = new Set(metaFallback.ids);
       const hasMetaCallouts = metaFallback.callouts.length > 0;
 
+      // Edits the user made while the store opened go on top of what it
+      // holds (owner 2026-11-02; openingEditsMerge.js). null: none possible.
+      const openingBaseline = openingBaselineFor(documentId);
+      const withOpeningMarks = (next, current) => (
+        openingBaseline
+          ? mergeOpeningMarkEdits({ next, baseline: openingBaseline.byPage, current })
+          : next
+      );
       if (count > 0 || hasMetaCallouts || hasSpaces || hasSurvey) {
         // Durable store wins — paint from it. Callout groups arrive inside
         // storeByPage (and count toward `count`) like every other object.
@@ -714,17 +762,40 @@ export function useAnnotationDoc({
             combinedCalloutList.length > 0
               ? projectCalloutsIntoByPage(storeByPage, combinedCalloutList, sizesNow, { preserveUnmeasured: true })
               : storeByPage;
+          if (openingBaseline) {
+            // The capture learns the screen held the store's marks, so a
+            // mark the user deleted while opening is deleted in the store
+            // too (a mark the viewer never held is never deleted). Writes
+            // nothing: it is the store's own copy.
+            handle.applyByPage(stripMetaFallbackCallouts(projectedByPage, metaFallbackIdsRef.current));
+          }
           if (count > 0 || projectedByPage !== storeByPage) {
             setAnnotationsByPage((previousByPage) => (
-              preserveTransientPagePresentationState(previousByPage, projectedByPage)
+              preserveTransientPagePresentationState(
+                previousByPage,
+                withOpeningMarks(projectedByPage, previousByPage),
+              )
             ));
           }
         } else if (prePreviewRef.current.byPage !== null) {
           // w29: an early paint showed marks that are gone from the store now.
-          setAnnotationsByPage(prePreviewRef.current.byPage);
+          const prePreview = prePreviewRef.current.byPage;
+          setAnnotationsByPage((previousByPage) => withOpeningMarks(prePreview, previousByPage));
         }
-        if (hasSpaces) setSpaces(storeSpaces);
-        if (hasSurvey) setSurveyMarkers(storeSurvey);
+        if (hasSpaces) {
+          setSpaces((previousSpaces) => (
+            openingBaseline
+              ? mergeOpeningListEdits({ next: storeSpaces, baseline: openingBaseline.spaces, current: previousSpaces })
+              : storeSpaces
+          ));
+        }
+        if (hasSurvey) {
+          setSurveyMarkers((previousMarkers) => (
+            openingBaseline
+              ? mergeOpeningKeyedEdits({ next: storeSurvey, baseline: openingBaseline.surveyMarkers, current: previousMarkers })
+              : storeSurvey
+          ));
+        }
         // Document-level kinds: if the store has SOME state but not this kind yet
         // (first open after each kind's migration shipped), seed it from the
         // per-device state the viewer already loaded so nothing is dropped.
@@ -745,8 +816,10 @@ export function useAnnotationDoc({
         // gone from it now (deleted meanwhile); take them off the screen and
         // seed only what the viewer held before that paint.
         const prePreview = prePreviewRef.current.byPage;
-        if (prePreview !== null) setAnnotationsByPage(prePreview);
-        const curByPage = prePreview !== null ? prePreview : byPageRef.current;
+        const curByPage = prePreview !== null
+          ? withOpeningMarks(prePreview, byPageRef.current)
+          : byPageRef.current;
+        if (prePreview !== null) setAnnotationsByPage(curByPage);
         if (curByPage && pageCount(curByPage) > 0) {
           const result = handle.applyByPage(curByPage);
           if (result?.identityChanged && result.normalizedByPage) {
@@ -761,6 +834,7 @@ export function useAnnotationDoc({
 
       readyRef.current = true;
       prePreviewRef.current = { documentId, byPage: null };
+      openingEditsRef.current = { documentId, byPage: null, spaces: null, surveyMarkers: null, done: true };
       // Drives the existing "import embedded marks when empty" effect: a
       // never-imported PDF hydrates empty (count 0) → that effect runs the
       // importer → its marks flow back through capture below → durable.
@@ -770,6 +844,9 @@ export function useAnnotationDoc({
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
+      openInProgressRef.current = false;
+      hydratedRef.current = false;
+      settleOpenWaiters(false);
       const h = handleRef.current;
       handleRef.current = null;
       readyRef.current = false;
@@ -800,18 +877,33 @@ export function useAnnotationDoc({
     return claimBodyReadOnly(`annotation-store-unavailable:${documentId}`);
   }, [storeUnavailable, documentId, isActive]);
 
-  // UX (w29, open speed): while early-painted marks are showing and the store
-  // is still opening, nothing drawn could be saved (the capture waits for
-  // hydration, which then replaces the page). Same read-only layer as above,
-  // on every page and for the keyboard too, for the second or two until the
-  // open finishes; the marks are already visible meanwhile.
-  const storePreviewing = initialHydration?.source === ANNOTATION_HYDRATION_PREVIEW_SOURCE
-    && initialHydration?.ready !== true
-    && initialHydration?.documentId === documentId;
+  // While the store opens (early-painted marks showing, or nothing yet) the
+  // document stays fully editable (owner 2026-11-02: "as soon as the PDF
+  // loads, everything should be available"). The user's first touch fixes the
+  // baseline the hydrate merges their edits against (openingEditsMerge.js).
+  // It replaced a read-only layer that dimmed the toolbar for that second.
+  const opening = Boolean(enabled && documentId && userId)
+    && !(initialHydration?.ready === true && initialHydration?.documentId === documentId);
   useEffect(() => {
-    if (!storePreviewing || !isActive) return undefined;
-    return claimBodyReadOnly(`annotation-store-opening:${documentId}`);
-  }, [storePreviewing, documentId, isActive]);
+    if (!opening || !isActive || typeof window === 'undefined') return undefined;
+    const takeBaseline = () => {
+      const current = openingEditsRef.current;
+      if (current.documentId !== documentId || current.done || current.byPage) return;
+      openingEditsRef.current = {
+        documentId,
+        byPage: byPageRef.current || {},
+        spaces: spacesRef.current,
+        surveyMarkers: surveyMarkersRef.current,
+        done: false,
+      };
+    };
+    window.addEventListener('pointerdown', takeBaseline, true);
+    window.addEventListener('keydown', takeBaseline, true);
+    return () => {
+      window.removeEventListener('pointerdown', takeBaseline, true);
+      window.removeEventListener('keydown', takeBaseline, true);
+    };
+  }, [opening, isActive, documentId]);
 
   // The executor closes over document/template/user state and can legitimately
   // change after the durable handle opened. Reinstalling it also triggers an
@@ -871,6 +963,40 @@ export function useAnnotationDoc({
   function storeHeldImportMarks() {
     if (heldImportKeysRef.current.size === 0) return;
     captureIntoStoreRef.current?.(byPageRef.current, { drain: true });
+  }
+
+  // The opening baseline for this document once the user has touched it, or
+  // null (nothing to merge; the store's copy simply replaces the screen).
+  function openingBaselineFor(documentId) {
+    const current = openingEditsRef.current;
+    if (current.documentId !== documentId || current.done || !current.byPage) return null;
+    return current;
+  }
+
+  function settleOpenWaiters(ok) {
+    const waiters = openWaitersRef.current;
+    openWaitersRef.current = [];
+    for (const resolve of waiters) resolve(ok);
+  }
+
+  // Resolves true once the store is open and the screen's opening edits are
+  // stored (at once when that is already so), false when it is not opening
+  // or does not open in time.
+  function whenStoreOpen(timeoutMs = OPEN_WAIT_MAX_MS) {
+    if (hydratedRef.current && handleRef.current && readyRef.current) return Promise.resolve(true);
+    if (!openInProgressRef.current) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        openWaitersRef.current = openWaitersRef.current.filter((waiter) => waiter !== finish);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      openWaitersRef.current.push(finish);
+    });
   }
 
   function settleImportDrain(ok) {
@@ -955,6 +1081,22 @@ export function useAnnotationDoc({
   useEffect(() => {
     captureIntoStoreRef.current(annotationsByPage);
   }, [annotationsByPage]);
+
+  // After the capture above stored any opening edits, let waiting callers
+  // (an erase started while the store opened) go on.
+  useEffect(() => {
+    if (
+      initialHydration?.ready === true
+      && initialHydration?.documentId === documentId
+      && readyRef.current
+    ) {
+      hydratedRef.current = true;
+      openInProgressRef.current = false;
+      settleOpenWaiters(true);
+    }
+    // settleOpenWaiters only reads refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialHydration, documentId]);
 
   // Late role resolution: get_my_document_role is fetched async by YDocProvider
   // and often resolves AFTER the doc opened (docRole starts null = not yet
@@ -1306,6 +1448,9 @@ export function useAnnotationDoc({
   }, []);
 
   const commitEraseIntent = useCallback(async (intent, options = {}) => {
+    // An erase made while the store opens waits for it (a second or two)
+    // instead of being dropped (owner 2026-11-02).
+    if (!hydratedRef.current) await whenStoreOpen();
     const cloudHandle = handleRef.current;
     if (!cloudHandle || !readyRef.current) {
       return {
